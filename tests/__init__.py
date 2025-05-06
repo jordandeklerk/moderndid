@@ -1,1 +1,1 @@
-"""drdidsynth general tests."""
+"""drdidsynth tests."""
