@@ -320,3 +320,180 @@ class DiDDGP(BaseDGP):
             "first_treatment": first_treatment,
             "dynamic_effects": dynamic_effects,
         }
+
+
+class SyntheticControlsDGP(BaseDGP):
+    """Data generating process for synthetic control designs.
+
+    Creates synthetic panel data where one or more units are treated after
+    a pre-treatment period, and their outcomes are compared against a
+    synthetically constructed control unit from a pool of untreated units.
+    The data includes unit-specific effects, time-specific effects,
+    effects of covariates, and a treatment effect.
+    """
+
+    def __init__(
+        self,
+        n_treated_units=1,
+        n_control_units=20,
+        n_time_pre=10,
+        n_time_post=5,
+        n_features=3,
+        random_seed=42,
+    ):
+        """Initialize the Synthetic Controls data generating process.
+
+        Parameters
+        ----------
+        n_treated_units : int, default=1
+            Number of units that receive treatment.
+        n_control_units : int, default=20
+            Number of units in the control pool.
+        n_time_pre : int, default=10
+            Number of time periods before treatment.
+        n_time_post : int, default=5
+            Number of time periods after treatment starts.
+        n_features : int, default=3
+            Number of covariates to generate.
+        random_seed : int, default=42
+            Random seed for reproducibility.
+        """
+        super().__init__(random_seed=random_seed)
+        self.n_treated_units = n_treated_units
+        self.n_control_units = n_control_units
+        self.n_time_pre = n_time_pre
+        self.n_time_post = n_time_post
+        self.n_features = n_features
+
+        if self.n_treated_units <= 0:
+            raise ValueError("n_treated_units must be positive.")
+        if self.n_control_units <= 0:
+            raise ValueError("n_control_units must be positive.")
+        if self.n_time_pre <= 0:
+            raise ValueError("n_time_pre must be positive.")
+        if self.n_time_post <= 0:
+            raise ValueError("n_time_post must be positive.")
+
+    def generate_data(
+        self,
+        *args,
+        feature_effect_scale=1.0,
+        unit_effect_scale=0.5,
+        time_effect_scale=0.3,
+        noise_scale=0.2,
+        treatment_effect_value=2.0,
+        confounding_strength=0.3,
+        **kwargs,
+    ):
+        """Generate synthetic panel data for synthetic control analysis.
+
+        Parameters
+        ----------
+        feature_effect_scale : float, default=1.0
+            Scale parameter for the effects of features on the outcome.
+            Feature weights are drawn from N(0, feature_effect_scale^2).
+        unit_effect_scale : float, default=0.5
+            Scale parameter for the random component of unit-specific effects.
+        time_effect_scale : float, default=0.3
+            Scale parameter for time-specific effects.
+        noise_scale : float, default=0.2
+            Scale parameter for random noise in the outcome.
+        treatment_effect_value : float, default=2.0
+            The magnitude of the treatment effect.
+        confounding_strength : float, default=0.3
+            Strength of confounding. Unit effects are generated as
+            `confounding_strength * features[:, 0] + N(0, unit_effect_scale^2)`.
+            If n_features is 0, this parameter has no effect.
+
+        Returns
+        -------
+        dict
+            Dictionary containing:
+            - 'df': pandas DataFrame with panel data.
+            - 'true_treatment_effect': The true treatment effect value (scalar).
+            - 'unit_effects': numpy array of unit-specific effects.
+            - 'time_effects': numpy array of time-specific effects.
+            - 'features': numpy array of features (n_total_units x n_features).
+            - 'feature_weights': numpy array of weights for features.
+            - 'n_treated_units': Number of treated units.
+            - 'n_control_units': Number of control units.
+            - 'n_time_pre': Number of pre-treatment periods.
+            - 'n_time_post': Number of post-treatment periods.
+        """
+        if args:
+            raise ValueError(f"Unexpected positional arguments: {args}")
+        if kwargs:
+            raise ValueError(f"Unexpected keyword arguments: {kwargs}")
+        self.set_seed()
+
+        n_total_units = self.n_treated_units + self.n_control_units
+        n_total_time = self.n_time_pre + self.n_time_post
+
+        unit_ids = np.arange(n_total_units)
+        time_ids = np.arange(n_total_time)
+
+        # Features
+        features = np.random.normal(size=(n_total_units, self.n_features))
+
+        # Unit-specific effects
+        confounded_part = np.zeros(n_total_units)
+        if self.n_features > 0 and confounding_strength != 0:
+            confounded_part = confounding_strength * features[:, 0]
+
+        random_part_unit_effects = np.random.normal(size=n_total_units, scale=unit_effect_scale)
+        unit_effects = confounded_part + random_part_unit_effects
+
+        # Time-specific effects
+        time_effects_trend = time_effect_scale * np.arange(n_total_time)
+        time_effects_noise = np.random.normal(size=n_total_time, scale=time_effect_scale / 2)
+        time_effects = time_effects_trend + time_effects_noise
+
+        # Feature weights
+        feature_weights = np.random.normal(loc=0.0, scale=feature_effect_scale, size=self.n_features)
+
+        # Outcomes
+        outcomes = np.zeros((n_total_units, n_total_time))
+        for i in range(n_total_units):
+            for t in range(n_total_time):
+                outcome_val = unit_effects[i] + time_effects[t]
+
+                if self.n_features > 0:
+                    outcome_val += np.dot(features[i, :], feature_weights)
+
+                # Add treatment effect
+                is_treated_unit = i < self.n_treated_units
+                is_post_period = t >= self.n_time_pre
+                if is_treated_unit and is_post_period:
+                    outcome_val += treatment_effect_value
+
+                outcome_val += np.random.normal(scale=noise_scale)
+                outcomes[i, t] = outcome_val
+
+        data = []
+        for i in unit_ids:
+            for t in time_ids:
+                row = {
+                    "unit_id": i,
+                    "time_id": t,
+                    "outcome": outcomes[i, t],
+                    "is_treated_unit": i < self.n_treated_units,
+                    "is_post_period": t >= self.n_time_pre,
+                }
+                for j in range(self.n_features):
+                    row[f"X{j + 1}"] = features[i, j]
+                data.append(row)
+
+        df = pd.DataFrame(data)
+
+        return {
+            "df": df,
+            "true_treatment_effect": treatment_effect_value,
+            "unit_effects": unit_effects,
+            "time_effects": time_effects,
+            "features": features,
+            "feature_weights": feature_weights,
+            "n_treated_units": self.n_treated_units,
+            "n_control_units": self.n_control_units,
+            "n_time_pre": self.n_time_pre,
+            "n_time_post": self.n_time_post,
+        }
