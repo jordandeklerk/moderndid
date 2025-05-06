@@ -60,6 +60,7 @@ dev = [
     "isort",
     "flake8",
     "mypy",
+    "pylint",
 ]
 
 [tool.ruff]
