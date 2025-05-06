@@ -56,11 +56,8 @@ doc = [
 ]
 dev = [
     "pre-commit",
-    "black",
-    "isort",
-    "flake8",
+    "ruff>=0.11.7",
     "mypy",
-    "pylint",
 ]
 
 [tool.ruff]
