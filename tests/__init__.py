@@ -1,0 +1,1 @@
+"""drdidsynth general tests."""
