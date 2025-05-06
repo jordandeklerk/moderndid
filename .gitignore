@@ -43,3 +43,6 @@ wheels/
 # Logs
 logs/
 *.log
+
+# tox
+.tox/
