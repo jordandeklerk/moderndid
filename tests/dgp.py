@@ -175,7 +175,7 @@ class DiDDGP(BaseDGP):
                 }
 
                 for j in range(self.n_features):
-                    row[f"X{j+1}"] = features[i, j]
+                    row[f"X{j + 1}"] = features[i, j]
 
                 row["outcome"] = outcomes[i, t]
                 data.append(row)
@@ -305,7 +305,7 @@ class DiDDGP(BaseDGP):
                 }
 
                 for j in range(self.n_features):
-                    row[f"X{j+1}"] = features[i, j]
+                    row[f"X{j + 1}"] = features[i, j]
 
                 row["outcome"] = outcomes[i, t]
                 data.append(row)
