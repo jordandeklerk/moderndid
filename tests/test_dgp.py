@@ -1,4 +1,4 @@
-"""Tests for the data generating process."""
+"""Tests for the data generating process for DiD and Synthetic Controls."""
 
 import numpy as np
 import pandas as pd
