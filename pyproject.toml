@@ -3,7 +3,7 @@ requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "drdidsynth"
+name = "DR-synthdid"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
@@ -32,12 +32,12 @@ dependencies = [
 ]
 
 [tool.flit.module]
-name = "drdidsynth"
+name = "DR-synthdid"
 
 [project.urls]
-source = "https://github.com/jordandeklerk/drdidsynth"
-tracker = "https://github.com/jordandeklerk/drdidsynth/issues"
-documentation = "https://drdidsynth.readthedocs.io"
+source = "https://github.com/jordandeklerk/DR-synthdid"
+tracker = "https://github.com/jordandeklerk/DR-synthdid/issues"
+documentation = "https://DR-synthdid.readthedocs.io"
 
 [project.optional-dependencies]
 test = [
@@ -111,7 +111,7 @@ no_implicit_reexport = true
 
 # More strict checks for library code
 [[tool.mypy.overrides]]
-module = "drdidsynth"
+module = "DR-synthdid"
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
@@ -120,4 +120,4 @@ testpaths = [
 ]
 
 [tool.coverage.run]
-source = ["drdidsynth"]
+source = ["DR-synthdid"]
