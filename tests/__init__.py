@@ -1,4 +1,4 @@
-"""drdidsynth tests."""
+"""drsynthdid tests."""
 
 from .dgp import DiDDGP, SyntheticControlsDGP
 

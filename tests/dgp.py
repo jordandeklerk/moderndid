@@ -1,4 +1,4 @@
-"""Data generating process module for drdidsynth tests."""
+"""Data generating process."""
 
 import abc
 
