@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [tool.flit.module]
-name = "DR-synthdid"
+name = "drsynthdid"
 
 [project.urls]
 source = "https://github.com/jordandeklerk/DR-synthdid"
@@ -111,7 +111,7 @@ no_implicit_reexport = true
 
 # More strict checks for library code
 [[tool.mypy.overrides]]
-module = "DR-synthdid"
+module = "drsynthdid"
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
@@ -120,4 +120,4 @@ testpaths = [
 ]
 
 [tool.coverage.run]
-source = ["DR-synthdid"]
+source = ["drsynthdid"]
