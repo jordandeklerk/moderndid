@@ -9,7 +9,7 @@
 [![Python version](https://img.shields.io/badge/3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
 __DR-synthdid__ is a Python package implementing doubly robust causal inference that combines Difference-in-Differences with Synthetic Control methods, providing valid estimation under either parallel trends or synthetic control assumptions.
-<br>
+<br><br>
 
 __DR-synthdid__ is an unofficial implementation of the paper [Difference-in-Differences Meets Synthetic Control: Doubly Robust Identification and Estimation](https://arxiv.org/pdf/2503.11375).
 
