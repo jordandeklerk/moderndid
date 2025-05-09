@@ -1,5 +1,7 @@
 # Doubly Robust DiD with Synthetic Controls
 
+## Overview
+
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![Build Status](https://github.com/jordandeklerk/drdidsynth/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/drdidsynth/actions/workflows/test.yml)
@@ -9,3 +11,16 @@
 
 Unofficial implementation of the paper [Difference-in-Differences Meets Synthetic Control:
 Doubly Robust Identification and Estimation](https://arxiv.org/pdf/2503.11375).
+
+## Citation
+
+```bibtex
+@misc{sun2025difference,
+  title        = {Difference-in-Differences Meets Synthetic Control: Doubly Robust Identification and Estimation},
+  author       = {Sun, Yixiao and Xie, Haitian and Zhang, Yuhang},
+  howpublished = {arXiv preprint arXiv:2503.11375},
+  year         = {2025},
+  doi          = {10.48550/arXiv.2503.11375},
+  url          = {https://arxiv.org/abs/2503.11375}
+}
+```
