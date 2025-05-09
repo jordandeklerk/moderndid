@@ -32,6 +32,10 @@ wheels/
 *.swp
 *.swo
 
+# Documentation generated files
+docs/source/api/generated
+docs/source/contributing/generated
+
 # OS
 .DS_Store
 .env
