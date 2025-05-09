@@ -1,4 +1,4 @@
-<img src="./docs/source/_static/dr-synthdid.png" width="200" align="left" alt="drsynthdid logo"></img>
+<img src="./docs/source/_static/dr-synthdid.png" width="250" align="left" alt="drsynthdid logo"></img>
 
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
