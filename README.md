@@ -1,6 +1,3 @@
-<!-- <img src="docs/source/_static/dr-synthdid-light.png#gh-light-mode-only" width="250" align="left" alt="DR-synthdid logo"></img>
-<img src="docs/source/_static/dr-synthdid-dark.png#gh-dark-mode-only" width="250" align="left" alt="DR-synthdid logo"></img> -->
-
 <img src="docs/source/_static/dr-synthdid-light.png#gh-light-mode-only" width="200" align="left" alt="DR-synthdid logo"></img>
 <img src="docs/source/_static/dr-synthdid-dark.png#gh-dark-mode-only" width="200" align="left" alt="DR-synthdid logo"></img>
 
