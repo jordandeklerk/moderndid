@@ -1,0 +1,4 @@
+﻿drsynthdid
+==========
+
+.. automodule:: drsynthdid

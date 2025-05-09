@@ -99,8 +99,8 @@ intersphinx_mapping = {
 html_theme = "sphinx_book_theme"
 html_theme_options = {
     "logo": {
-        "image_light": "_static/logo.png",
-        "image_dark": "_static/logo_dark.png",
+        "image_light": "_static/dr-synthdid.png",
+        "image_dark": "_static/dr-synthdid.png",
     }
 }
 html_favicon = "_static/favicon.ico"
