@@ -1,6 +1,6 @@
 # DR-synthdid
 
-DR-synthdid is a Python package implementing doubly robust causal inference that combines Difference-in-Differences with Synthetic Control methods, providing valid estimation under either parallel trends or synthetic control assumptions with fast bootstrap inference.
+DR-synthdid is a Python package implementing doubly robust causal inference that combines difference-in-differences with synthetic control methods, providing valid estimation under either parallel trends or synthetic control assumptions with fast bootstrap inference.
 
 (installation)=
 ## Installation
@@ -28,15 +28,15 @@ pip install git+https://github.com/jordandeklerk/DR-synthdid
 :caption: Reference
 :hidden:
 
-api/index
 background
+api/index
 ```
 
 ```{toctree}
 :caption: Examples
 :hidden:
 
-examples/basic_usage
+examples/att
 ```
 
 ```{toctree}
@@ -47,8 +47,14 @@ contributing/testing
 ```
 
 ```{toctree}
-:caption: About
+:caption: Repository
 :hidden:
 
 GitHub repository <https://github.com/jordandeklerk/DR-synthdid>
 ```
+
+## Indices and tables
+
+* {ref}`genindex`
+* {ref}`modindex`
+* {ref}`search`
