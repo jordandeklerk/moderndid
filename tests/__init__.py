@@ -1,5 +1,5 @@
 """drsynthdid tests."""
 
-from .dgp import DiDDGP, SyntheticControlsDGP
+from .dgp import DiDDGP, DRDiDSCDGP, SyntheticControlsDGP
 
-__all__ = ["DiDDGP", "SyntheticControlsDGP"]
+__all__ = ["DiDDGP", "SyntheticControlsDGP", "DRDiDSCDGP"]
