@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from .dgp import BaseDGP, DiDDGP, SyntheticControlsDGP
+from .dgp import BaseDGP, DiDDGP, DRDiDSCDGP, SyntheticControlsDGP
 
 
 def test_abstract_methods():
@@ -160,7 +160,7 @@ def test_did_dgp_staggered():
         assert np.mean(outcomes_array) > 0
 
 
-def test_sc_dgp_init():
+def test_sc_dgp_init_success():
     dgp = SyntheticControlsDGP(
         n_treated_units=2,
         n_control_units=10,
@@ -176,14 +176,19 @@ def test_sc_dgp_init():
     assert dgp.n_features == 2
     assert dgp.random_seed == 123
 
+
+@pytest.mark.parametrize(
+    "invalid_params",
+    [
+        {"n_treated_units": 0},
+        {"n_control_units": 0},
+        {"n_time_pre": 0},
+        {"n_time_post": 0},
+    ],
+)
+def test_sc_dgp_init_value_errors(invalid_params):
     with pytest.raises(ValueError):
-        SyntheticControlsDGP(n_treated_units=0)
-    with pytest.raises(ValueError):
-        SyntheticControlsDGP(n_control_units=0)
-    with pytest.raises(ValueError):
-        SyntheticControlsDGP(n_time_pre=0)
-    with pytest.raises(ValueError):
-        SyntheticControlsDGP(n_time_post=0)
+        SyntheticControlsDGP(**invalid_params)
 
 
 def test_sc_dgp_generate_data():
@@ -306,3 +311,289 @@ def test_set_seed_sc():
         np.testing.assert_array_equal(data1["features"], data3["features"])
     with pytest.raises(AssertionError):
         pd.testing.assert_frame_equal(data1["df"], data3["df"])
+
+
+def test_drdidsc_dgp_init():
+    dgp = DRDiDSCDGP(
+        n_units=50,
+        n_time_pre=8,
+        n_time_post=4,
+        n_features=2,
+        n_latent_factors=1,
+        random_seed=123,
+    )
+    assert dgp.n_units == 50
+    assert dgp.n_time_pre == 8
+    assert dgp.n_time_post == 4
+    assert dgp.n_total_time == 12
+    assert dgp.treatment_time == 8
+    assert dgp.n_features == 2
+    assert dgp.n_latent_factors == 1
+    assert dgp.random_seed == 123
+
+
+def test_drdidsc_dgp_generate_data_defaults():
+    n_units, n_time_pre, n_time_post, n_features, n_latent_factors = 20, 5, 3, 2, 1
+    dgp = DRDiDSCDGP(
+        n_units=n_units,
+        n_time_pre=n_time_pre,
+        n_time_post=n_time_post,
+        n_features=n_features,
+        n_latent_factors=n_latent_factors,
+        random_seed=42,
+    )
+    data = dgp.generate_data()
+
+    expected_keys = {
+        "df",
+        "X",
+        "Y0_it",
+        "actual_tau_it",
+        "true_prop_scores",
+        "D_treatment_assignment",
+        "L_factor_loadings",
+        "F_time_factors",
+        "alpha_i_unit_effects",
+        "delta_t_time_effects",
+        "beta_prop_propensity_coefs",
+        "beta_outcome_outcome_coefs",
+        "att_hetero_coefs",
+        "avg_true_att",
+        "n_treated_units_actual",
+        "n_control_units_actual",
+        "treatment_time",
+    }
+    assert set(data.keys()) == expected_keys
+
+    df = data["df"]
+    n_total_time = n_time_pre + n_time_post
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == n_units * n_total_time
+    expected_df_cols = {"unit_id", "time_id", "outcome", "is_treated_unit", "treatment_in_period"}
+    for i in range(1, n_features + 1):
+        expected_df_cols.add(f"X{i}")
+    assert set(df.columns) == expected_df_cols
+
+    assert data["X"].shape == (n_units, n_features)
+    assert data["Y0_it"].shape == (n_units, n_total_time)
+    assert data["actual_tau_it"].shape == (n_units, n_total_time)
+    assert data["true_prop_scores"].shape == (n_units,)
+    assert data["D_treatment_assignment"].shape == (n_units,)
+    assert data["L_factor_loadings"].shape == (n_units, n_latent_factors)
+    assert data["F_time_factors"].shape == (n_total_time, n_latent_factors)
+    assert data["alpha_i_unit_effects"].shape == (n_units,)
+    assert data["delta_t_time_effects"].shape == (n_total_time,)
+
+    if n_features > 0:
+        assert data["beta_prop_propensity_coefs"].shape == (n_features,)
+        assert data["beta_outcome_outcome_coefs"].shape == (n_features,)
+    else:
+        assert len(data["beta_prop_propensity_coefs"]) == 0
+        assert len(data["beta_outcome_outcome_coefs"]) == 0
+
+    assert isinstance(data["avg_true_att"], float | np.floating)
+    assert data["treatment_time"] == n_time_pre
+
+    assert data["n_treated_units_actual"] == np.sum(data["D_treatment_assignment"])
+    assert data["n_control_units_actual"] == n_units - np.sum(data["D_treatment_assignment"])
+    assert df["is_treated_unit"].sum() == np.sum(data["D_treatment_assignment"]) * n_total_time
+
+    for _, row in df.iterrows():
+        is_treated_unit = data["D_treatment_assignment"][int(row["unit_id"])]
+        is_post_period = row["time_id"] >= n_time_pre
+        assert row["treatment_in_period"] == (is_treated_unit and is_post_period)
+
+
+def test_drdidsc_dgp_no_features_no_factors():
+    n_units, n_time_pre, n_time_post = 10, 3, 2
+    dgp = DRDiDSCDGP(
+        n_units=n_units,
+        n_time_pre=n_time_pre,
+        n_time_post=n_time_post,
+        n_features=0,
+        n_latent_factors=0,
+        random_seed=43,
+    )
+    data = dgp.generate_data()
+
+    assert data["X"].shape == (n_units, 0)
+    assert "X1" not in data["df"].columns
+    assert data["L_factor_loadings"].shape == (n_units, 0)
+    assert data["F_time_factors"].shape == (n_time_pre + n_time_post, 0)
+    assert len(data["beta_prop_propensity_coefs"]) == 0
+    assert len(data["beta_outcome_outcome_coefs"]) == 0
+    assert len(data["att_hetero_coefs"]) == 0
+
+
+def test_drdidsc_dgp_custom_params():
+    n_units, n_time_pre, n_time_post, n_features = 15, 4, 3, 1
+    dgp = DRDiDSCDGP(
+        n_units=n_units,
+        n_time_pre=n_time_pre,
+        n_time_post=n_time_post,
+        n_features=n_features,
+        random_seed=44,
+    )
+
+    custom_prop_coefs = np.array([2.0])
+    custom_outcome_coefs = np.array([-1.0])
+    custom_att_hetero_coefs = np.array([0.5])
+    custom_dynamic_coeffs = [1.0, 1.5]
+
+    data = dgp.generate_data(
+        feature_mean=5.0,
+        feature_cov=np.array([[4.0]]),
+        prop_score_coefs=custom_prop_coefs,
+        prop_score_intercept=-0.5,
+        treatment_fraction_target=0.33,
+        outcome_coefs=custom_outcome_coefs,
+        att_base=0.5,
+        att_hetero_coefs=custom_att_hetero_coefs,
+        att_dynamic_coeffs=custom_dynamic_coeffs,
+    )
+
+    assert data["X"].shape == (n_units, n_features)
+    if n_units > 0 and n_features > 0:
+        assert np.isclose(np.mean(data["X"][:, 0]), 5.0, atol=1.5)
+
+    np.testing.assert_array_equal(data["beta_prop_propensity_coefs"], custom_prop_coefs)
+    np.testing.assert_array_equal(data["beta_outcome_outcome_coefs"], custom_outcome_coefs)
+    np.testing.assert_array_equal(data["att_hetero_coefs"], custom_att_hetero_coefs)
+
+    expected_treated = int(n_units * 0.33)
+    if n_units * 0.33 == n_units and n_units > 1:
+        expected_treated = n_units - 1
+    elif n_units * 0.33 == n_units and n_units <= 1:
+        expected_treated = 0
+
+    assert data["n_treated_units_actual"] == expected_treated or data["n_treated_units_actual"] == expected_treated + 1
+
+    treated_mask = data["D_treatment_assignment"]
+    if np.any(treated_mask):
+        first_treated_unit_idx = np.where(treated_mask)[0][0]
+        tau_unit = data["actual_tau_it"][first_treated_unit_idx, :]
+
+        assert np.all(tau_unit[:n_time_pre] == 0)
+
+        base_effect_for_unit = 0.5
+        if n_features > 0:
+            base_effect_for_unit += data["X"][first_treated_unit_idx, 0] * custom_att_hetero_coefs[0]
+
+        if n_time_post > 0:
+            assert np.isclose(tau_unit[n_time_pre], base_effect_for_unit * custom_dynamic_coeffs[0])
+        if n_time_post > 1:
+            assert np.isclose(tau_unit[n_time_pre + 1], base_effect_for_unit * custom_dynamic_coeffs[1])
+        if n_time_post > 2:
+            assert np.isclose(tau_unit[n_time_pre + 2], base_effect_for_unit * custom_dynamic_coeffs[-1])
+
+
+def test_drdidsc_dgp_set_seed():
+    dgp_params = dict(n_units=10, n_time_pre=3, n_time_post=2, n_features=1, random_seed=777)
+    dgp1 = DRDiDSCDGP(**dgp_params)
+    data1 = dgp1.generate_data()
+
+    dgp2 = DRDiDSCDGP(**dgp_params)
+    data2 = dgp2.generate_data()
+
+    pd.testing.assert_frame_equal(data1["df"], data2["df"])
+    np.testing.assert_array_equal(data1["X"], data2["X"])
+    np.testing.assert_array_equal(data1["Y0_it"], data2["Y0_it"])
+    np.testing.assert_array_equal(data1["actual_tau_it"], data2["actual_tau_it"])
+    np.testing.assert_array_equal(data1["true_prop_scores"], data2["true_prop_scores"])
+    assert data1["avg_true_att"] == data2["avg_true_att"]
+
+    dgp1.set_seed(888)
+    data3 = dgp1.generate_data()
+
+    with pytest.raises(AssertionError):
+        pd.testing.assert_frame_equal(data1["df"], data3["df"])
+    with pytest.raises(AssertionError):
+        np.testing.assert_array_equal(data1["X"], data3["X"])
+
+
+@pytest.mark.parametrize(
+    "n_units, treatment_fraction_target, expected_n_treated_approx",
+    [
+        (10, 0.0, 0),
+        (10, 1.0, 9),
+        (10, 0.5, 5),
+        (1, 0.0, 0),
+        (1, 1.0, 0),
+        (2, 1.0, 1),
+        (0, 0.5, 0),
+    ],
+)
+def test_drdidsc_dgp_treatment_assignment_edge_cases(n_units, treatment_fraction_target, expected_n_treated_approx):
+    dgp = DRDiDSCDGP(n_units=n_units, n_time_pre=2, n_time_post=1, n_features=0, random_seed=45)
+    data = dgp.generate_data(treatment_fraction_target=treatment_fraction_target)
+
+    assert data["n_treated_units_actual"] == expected_n_treated_approx
+    if n_units > 0:
+        assert data["n_control_units_actual"] == n_units - expected_n_treated_approx
+    else:
+        assert data["n_control_units_actual"] == 0
+
+    assert np.sum(data["D_treatment_assignment"]) == expected_n_treated_approx
+
+    df = data["df"]
+    if n_units > 0:
+        assert df["is_treated_unit"].sum() == expected_n_treated_approx * (dgp.n_time_pre + dgp.n_time_post)
+
+        assert df["treatment_in_period"].sum() == expected_n_treated_approx * dgp.n_time_post
+    else:
+        assert len(df) == 0
+
+
+@pytest.mark.parametrize(
+    "dgp_init_kwargs, generate_data_args, generate_data_kwargs, match_pattern",
+    [
+        (
+            {"n_features": 2},
+            (),
+            {"feature_mean": np.array([1.0, 2.0, 3.0])},
+            "feature_mean must be scalar or",
+        ),
+        (
+            {"n_features": 2},
+            (),
+            {"feature_cov": np.eye(3)},
+            "feature_cov must be",
+        ),
+        (
+            {"n_features": 2},
+            (),
+            {"prop_score_coefs": np.array([1.0])},
+            "prop_score_coefs must be",
+        ),
+        (
+            {"n_features": 2},
+            (),
+            {"outcome_coefs": np.array([0.5, 0.1, 0.2])},
+            "outcome_coefs must be",
+        ),
+        (
+            {"n_features": 2},
+            (),
+            {"att_hetero_coefs": np.array([0.5])},
+            "att_hetero_coefs must be",
+        ),
+        (
+            {},
+            (1, 2, 3),
+            {},
+            "Unexpected positional arguments",
+        ),
+        (
+            {},
+            (),
+            {"unexpected_param": 100},
+            "Unexpected keyword arguments",
+        ),
+    ],
+)
+def test_drdidsc_dgp_generate_data_value_errors(
+    dgp_init_kwargs, generate_data_args, generate_data_kwargs, match_pattern
+):
+    dgp = DRDiDSCDGP(**dgp_init_kwargs)
+    with pytest.raises(ValueError, match=match_pattern):
+        dgp.generate_data(*generate_data_args, **generate_data_kwargs)
