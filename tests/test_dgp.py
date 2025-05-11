@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from .dgp import BaseDGP, DiDDGP, DRDiDSCDGP, SyntheticControlsDGP
+from .dgp import BaseDGP, DiD, DRDiDSC, SyntheticControl
 
 
 def test_abstract_methods():
@@ -13,7 +13,7 @@ def test_abstract_methods():
 
 
 def test_set_seed():
-    dgp = DiDDGP()
+    dgp = DiD()
 
     dgp.set_seed(42)
     data1 = dgp.generate_data()
@@ -32,7 +32,7 @@ def test_set_seed():
 
 
 def test_did_dgp_init():
-    dgp = DiDDGP(n_units=50, n_time=10, treatment_time=5, n_features=3, random_seed=42)
+    dgp = DiD(n_units=50, n_time=10, treatment_time=5, n_features=3, random_seed=42)
 
     assert dgp.n_units == 50
     assert dgp.n_time == 10
@@ -42,7 +42,7 @@ def test_did_dgp_init():
 
 
 def test_did_dgp_generate_data():
-    dgp = DiDDGP(n_units=100, n_time=5, treatment_time=3, random_seed=42)
+    dgp = DiD(n_units=100, n_time=5, treatment_time=3, random_seed=42)
     data = dgp.generate_data(
         treatment_fraction=0.6,
         unit_effect_scale=0.8,
@@ -80,7 +80,7 @@ def test_did_dgp_generate_data():
 
 
 def test_did_dgp_confounding():
-    dgp = DiDDGP(n_units=1000, n_time=4, treatment_time=2, random_seed=42)
+    dgp = DiD(n_units=1000, n_time=4, treatment_time=2, random_seed=42)
 
     data_conf = dgp.generate_data(confounding_strength=1.0)
     df_conf = data_conf["df"]
@@ -107,7 +107,7 @@ def test_did_dgp_confounding():
 
 
 def test_did_dgp_heterogeneity():
-    dgp = DiDDGP(n_units=100, n_time=4, treatment_time=2, random_seed=42)
+    dgp = DiD(n_units=100, n_time=4, treatment_time=2, random_seed=42)
 
     data_homogeneous = dgp.generate_data(effect_base=1.0, effect_coef=0.0)
 
@@ -120,7 +120,7 @@ def test_did_dgp_heterogeneity():
 
 
 def test_did_dgp_staggered():
-    dgp = DiDDGP(n_units=100, n_time=6, random_seed=42)
+    dgp = DiD(n_units=100, n_time=6, random_seed=42)
 
     treatment_times = [2, 3, 4]
     dynamic_effects = [0.5, 1.0, 1.5, 2.0]
@@ -161,7 +161,7 @@ def test_did_dgp_staggered():
 
 
 def test_sc_dgp_init_success():
-    dgp = SyntheticControlsDGP(
+    dgp = SyntheticControl(
         n_treated_units=2,
         n_control_units=10,
         n_time_pre=8,
@@ -188,7 +188,7 @@ def test_sc_dgp_init_success():
 )
 def test_sc_dgp_init_value_errors(invalid_params):
     with pytest.raises(ValueError):
-        SyntheticControlsDGP(**invalid_params)
+        SyntheticControl(**invalid_params)
 
 
 def test_sc_dgp_generate_data():
@@ -198,7 +198,7 @@ def test_sc_dgp_generate_data():
     n_post = 3
     n_feat = 2
 
-    dgp = SyntheticControlsDGP(
+    dgp = SyntheticControl(
         n_treated_units=n_treated,
         n_control_units=n_control,
         n_time_pre=n_pre,
@@ -257,7 +257,7 @@ def test_sc_dgp_generate_data():
 
 
 def test_sc_dgp_generate_data_no_features():
-    dgp = SyntheticControlsDGP(n_features=0, random_seed=43)
+    dgp = SyntheticControl(n_features=0, random_seed=43)
     data = dgp.generate_data()
     df = data["df"]
     assert "X1" not in df.columns
@@ -267,14 +267,10 @@ def test_sc_dgp_generate_data_no_features():
 
 def test_sc_dgp_confounding():
     n_total_units = 500
-    dgp_conf = SyntheticControlsDGP(
-        n_treated_units=10, n_control_units=n_total_units - 10, n_features=1, random_seed=42
-    )
+    dgp_conf = SyntheticControl(n_treated_units=10, n_control_units=n_total_units - 10, n_features=1, random_seed=42)
     data_conf = dgp_conf.generate_data(confounding_strength=0.9, unit_effect_scale=0.1)
 
-    dgp_no_conf = SyntheticControlsDGP(
-        n_treated_units=10, n_control_units=n_total_units - 10, n_features=1, random_seed=42
-    )
+    dgp_no_conf = SyntheticControl(n_treated_units=10, n_control_units=n_total_units - 10, n_features=1, random_seed=42)
     data_no_conf = dgp_no_conf.generate_data(confounding_strength=0.0, unit_effect_scale=0.1)
 
     features_conf = data_conf["features"][:, 0]
@@ -290,7 +286,7 @@ def test_sc_dgp_confounding():
 
 
 def test_set_seed_sc():
-    dgp = SyntheticControlsDGP(n_features=1, random_seed=420)
+    dgp = SyntheticControl(n_features=1, random_seed=420)
 
     dgp.set_seed(420)
     data1 = dgp.generate_data()
@@ -314,7 +310,7 @@ def test_set_seed_sc():
 
 
 def test_drdidsc_dgp_init():
-    dgp = DRDiDSCDGP(
+    dgp = DRDiDSC(
         n_units=50,
         n_time_pre=8,
         n_time_post=4,
@@ -334,7 +330,7 @@ def test_drdidsc_dgp_init():
 
 def test_drdidsc_dgp_generate_data_defaults():
     n_units, n_time_pre, n_time_post, n_features, n_latent_factors = 20, 5, 3, 2, 1
-    dgp = DRDiDSCDGP(
+    dgp = DRDiDSC(
         n_units=n_units,
         n_time_pre=n_time_pre,
         n_time_post=n_time_post,
@@ -406,7 +402,7 @@ def test_drdidsc_dgp_generate_data_defaults():
 
 def test_drdidsc_dgp_no_features_no_factors():
     n_units, n_time_pre, n_time_post = 10, 3, 2
-    dgp = DRDiDSCDGP(
+    dgp = DRDiDSC(
         n_units=n_units,
         n_time_pre=n_time_pre,
         n_time_post=n_time_post,
@@ -427,7 +423,7 @@ def test_drdidsc_dgp_no_features_no_factors():
 
 def test_drdidsc_dgp_custom_params():
     n_units, n_time_pre, n_time_post, n_features = 15, 4, 3, 1
-    dgp = DRDiDSCDGP(
+    dgp = DRDiDSC(
         n_units=n_units,
         n_time_pre=n_time_pre,
         n_time_post=n_time_post,
@@ -489,10 +485,10 @@ def test_drdidsc_dgp_custom_params():
 
 def test_drdidsc_dgp_set_seed():
     dgp_params = dict(n_units=10, n_time_pre=3, n_time_post=2, n_features=1, random_seed=777)
-    dgp1 = DRDiDSCDGP(**dgp_params)
+    dgp1 = DRDiDSC(**dgp_params)
     data1 = dgp1.generate_data()
 
-    dgp2 = DRDiDSCDGP(**dgp_params)
+    dgp2 = DRDiDSC(**dgp_params)
     data2 = dgp2.generate_data()
 
     pd.testing.assert_frame_equal(data1["df"], data2["df"])
@@ -524,7 +520,7 @@ def test_drdidsc_dgp_set_seed():
     ],
 )
 def test_drdidsc_dgp_treatment_assignment_edge_cases(n_units, treatment_fraction_target, expected_n_treated_approx):
-    dgp = DRDiDSCDGP(n_units=n_units, n_time_pre=2, n_time_post=1, n_features=0, random_seed=45)
+    dgp = DRDiDSC(n_units=n_units, n_time_pre=2, n_time_post=1, n_features=0, random_seed=45)
     data = dgp.generate_data(treatment_fraction_target=treatment_fraction_target)
 
     assert data["n_treated_units_actual"] == expected_n_treated_approx
@@ -594,6 +590,6 @@ def test_drdidsc_dgp_treatment_assignment_edge_cases(n_units, treatment_fraction
 def test_drdidsc_dgp_generate_data_value_errors(
     dgp_init_kwargs, generate_data_args, generate_data_kwargs, match_pattern
 ):
-    dgp = DRDiDSCDGP(**dgp_init_kwargs)
+    dgp = DRDiDSC(**dgp_init_kwargs)
     with pytest.raises(ValueError, match=match_pattern):
         dgp.generate_data(*generate_data_args, **generate_data_kwargs)
