@@ -1,4 +1,4 @@
-"""Data generating process."""
+"""Data generating processes for testing."""
 
 import abc
 

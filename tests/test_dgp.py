@@ -1,8 +1,11 @@
-"""Tests for the data generating process for DiD and Synthetic Controls."""
+"""Tests for the data generating processes."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from .helpers import importorskip
+
+pd = importorskip("pandas")
 
 from .dgp import BaseDGP, DiD, DRDiDSC, SantAnnaZhaoDRDiD, SyntheticControl
 
