@@ -1,6 +1,6 @@
 # pylint: disable=wildcard-import
 """Doubly Robust DiD with Synthetic Controls."""
 
-from .preprocess import pre_process_drdid
+from .preprocess import preprocess_drdid, preprocess_synth
 
-__all__ = ["pre_process_drdid"]
+__all__ = ["preprocess_drdid", "preprocess_synth"]

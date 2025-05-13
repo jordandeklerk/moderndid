@@ -1,4 +1,4 @@
-"""Preprocessing functions for DRDiD."""
+"""Preprocessing functions for DRDiD and synthetic control estimators."""
 
 import warnings
 from typing import Any, Literal
@@ -8,7 +8,7 @@ import pandas as pd
 import patsy
 
 
-def pre_process_drdid(
+def preprocess_drdid(
     data: pd.DataFrame,
     y_col: str,
     time_col: str,
@@ -301,7 +301,7 @@ def pre_process_drdid(
     return output
 
 
-def pre_process_synth(
+def preprocess_synth(
     data: pd.DataFrame,
     y_col: str,
     time_col: str,
