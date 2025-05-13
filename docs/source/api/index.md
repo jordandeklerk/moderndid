@@ -8,5 +8,6 @@ This section provides detailed documentation for all public modules, classes, an
 .. autosummary::
    :toctree: generated/
 
-   drsynthdid.pre_process_drdid
+   drsynthdid.preprocess_drdid
+   drsynthdid.preprocess_synth
 ```
