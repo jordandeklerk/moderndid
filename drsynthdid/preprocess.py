@@ -316,7 +316,7 @@ def _make_balanced_panel(df: pd.DataFrame, id_col: str, time_col: str) -> pd.Dat
 
     Identifies the number of unique time periods present in the data and keeps
     only those units (`id_col`) that have observations for exactly that number
-    of periods. Issues a warning if any units are dropped.
+    of periods.
 
     Parameters
     ----------

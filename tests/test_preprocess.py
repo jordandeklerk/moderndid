@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from drsynthdid.preprocess import pre_process_drdid
-from tests.dgp import DiD
+from tests.dgp import DiD, SantAnnaZhaoDRDiD
 
 
 def test_pre_process_panel():
@@ -173,3 +173,36 @@ def test_time_invariance_error_panel():
             covariates_formula="~ X1",
             panel=True,
         )
+
+
+def test_pre_process_santanna_zhao_rcs():
+    dgp = SantAnnaZhaoDRDiD(n_units=100, random_seed=42)
+    data_dict = dgp.generate_data(att=0.5)
+    df = data_dict["df"]
+
+    y_col = "y"
+    time_col = "post"
+    id_col = "id"
+    treat_col = "d"
+
+    result = pre_process_drdid(
+        data=df,
+        y_col=y_col,
+        time_col=time_col,
+        id_col=id_col,
+        treat_col=treat_col,
+        covariates_formula="~ x1 + x2 + x3 + x4",
+        panel=False,
+    )
+
+    assert isinstance(result, dict)
+    assert result["panel"] is False
+    assert "y" in result
+    assert "D" in result
+    assert "post" in result
+    assert "covariates" in result
+    assert "weights" in result
+    assert "n_obs" in result
+    assert len(result["y"]) == result["n_obs"]
+    assert len(result["y"]) == len(df)
+    assert result["covariates"].shape == (len(df), 5)
