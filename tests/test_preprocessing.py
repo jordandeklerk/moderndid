@@ -1,7 +1,9 @@
+"""Tests for the preprocessing functions."""
+
 import numpy as np
 import pytest
 
-from drsynthdid.preprocessing import pre_process_drdid
+from drsynthdid.preprocess import pre_process_drdid
 from tests.dgp import DiD
 
 
