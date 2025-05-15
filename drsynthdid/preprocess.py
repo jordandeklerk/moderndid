@@ -124,8 +124,8 @@ def preprocess_drdid(
             try:
                 df[col] = pd.to_numeric(df[col])
                 warnings.warn(f"Column '{col}' was not numeric; converted successfully.", UserWarning)
-            except (ValueError, TypeError):
-                raise TypeError(f"Column '{col}' must be numeric. Could not convert.")
+            except (ValueError, TypeError) as exc:
+                raise TypeError(f"Column '{col}' must be numeric. Could not convert.") from exc
 
     time_periods = sorted(df[time_col].unique())
     if len(time_periods) != 2:
@@ -145,7 +145,7 @@ def preprocess_drdid(
         original_cov_names = [f.name() for term in cov_terms for f in term.factors if f.name() != "Intercept"]
 
     except Exception as e:
-        raise ValueError(f"Error processing covariates_formula '{covariates_formula}': {e}")
+        raise ValueError(f"Error processing covariates_formula '{covariates_formula}': {e}") from e
 
     cols_to_drop = [name for name in original_cov_names if name in df.columns]
     df_processed = pd.concat([df.drop(columns=cols_to_drop), covariates_df], axis=1)
@@ -174,13 +174,13 @@ def preprocess_drdid(
     if cols_with_na:
         warnings.warn(
             f"Missing values found in columns: {', '.join(cols_with_na)}. "
-            f"Dropping rows with any missing values in relevant columns.",
+            "Dropping rows with any missing values in relevant columns.",
             UserWarning,
         )
         df_processed = df_processed.dropna(subset=cols_for_na_check)
 
     if len(df_processed) < initial_rows:
-        print(f"Dropped {initial_rows - len(df_processed)} rows due to missing values.")
+        warnings.warn(f"Dropped {initial_rows - len(df_processed)} rows due to missing values.", UserWarning)
     if df_processed.empty:
         raise ValueError("DataFrame is empty after handling missing values.")
 
@@ -188,12 +188,14 @@ def preprocess_drdid(
     if len(unique_treat_values) < 2:
         raise ValueError(
             f"Data must contain both treated (1) and control (0) units in '{treat_col}'. "
-            f"Found only: {unique_treat_values}. Ensure both groups are present after NA handling."
+            f"Found only: {unique_treat_values}. "
+            "Ensure both groups are present after NA handling."
         )
     if not (np.any(unique_treat_values == 0) and np.any(unique_treat_values == 1)):
         raise ValueError(
             f"Treatment indicator column '{treat_col}' must contain both 0 and 1. "
-            f"Found values: {unique_treat_values}. Ensure both groups are present after NA handling."
+            f"Found values: {unique_treat_values}. "
+            "Ensure both groups are present after NA handling."
         )
 
     if panel:
@@ -220,7 +222,7 @@ def preprocess_drdid(
             if not pre_df[cov_cols_to_check].equals(post_df[cov_cols_to_check]):
                 diff_mask = (pre_df[cov_cols_to_check] != post_df[cov_cols_to_check]).any()
                 diff_cols = diff_mask[diff_mask].index.to_list()
-                raise ValueError(f"Covariates must be time-invariant in panel data. Differing columns: {diff_cols}")
+                raise ValueError("Covariates must be time-invariant in panel data. " f"Differing columns: {diff_cols}")
 
         if not pre_df[treat_col].equals(post_df[treat_col]):
             raise ValueError(f"Treatment indicator ('{treat_col}') must be time-invariant in panel data.")
@@ -230,7 +232,7 @@ def preprocess_drdid(
 
     covariates_final = df_processed[covariates_df.columns].values
     if covariates_final.shape[1] > 1:
-        q, r = np.linalg.qr(covariates_final)
+        _, r = np.linalg.qr(covariates_final)
         diag_r = np.abs(np.diag(r))
         tol = diag_r.max() * 1e-6
         rank = np.sum(diag_r > tol)
@@ -238,9 +240,9 @@ def preprocess_drdid(
 
         if rank < num_covariates:
             warnings.warn(
-                f"Potential collinearity detected among covariates. "
+                "Potential collinearity detected among covariates. "
                 f"Rank ({rank}) is less than number of covariates ({num_covariates}). "
-                f"Results may be unstable.",
+                "Results may be unstable.",
                 UserWarning,
             )
 
@@ -248,9 +250,9 @@ def preprocess_drdid(
     req_size = covariates_final.shape[1] + 5
     if min_obs_per_group_period < req_size:
         warnings.warn(
-            f"Small group size detected. Minimum observations in a treatment/period group is "
+            "Small group size detected. Minimum observations in a treatment/period group is "
             f"{min_obs_per_group_period}, which might be less than recommended ({req_size}). "
-            f"Inference may be unreliable.",
+            "Inference may be unreliable.",
             UserWarning,
         )
 
@@ -309,7 +311,7 @@ def preprocess_synth(
     treat_col: str,
     treatment_period: Any,
     covariates_formula: str | None = None,
-    L_outcome_periods: list[Any] | None = None,
+    l_outcome_periods: list[Any] | None = None,
     weights_col: str | None = None,
     normalized: bool = True,
     post_periods_of_interest: list[Any] | None = None,
@@ -339,7 +341,7 @@ def preprocess_synth(
     covariates_formula : str or None, default None
         Patsy formula for covariates (e.g., "~ x1 + x2"). Covariates are
         taken from the last pre-treatment period or assumed time-invariant.
-    L_outcome_periods : list[Any] or None, default None
+    l_outcome_periods : list[Any] or None, default None
         List of specific pre-treatment time periods whose outcome (y_col)
         values should be used as predictors.
     weights_col : str or None, default None
@@ -383,15 +385,15 @@ def preprocess_synth(
                 try:
                     df[col] = pd.to_numeric(df[col])
                     warnings.warn(f"Column '{col}' was not numeric; converted successfully.", UserWarning)
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as exc:
                     if not np.issubdtype(df[col].dtype, np.datetime64):
-                        raise TypeError(f"Column '{col}' must be numeric or datetime. Could not convert.")
+                        raise TypeError(f"Column '{col}' must be numeric or datetime. Could not convert.") from exc
             else:
                 try:
                     df[col] = pd.to_numeric(df[col])
                     warnings.warn(f"Column '{col}' was not numeric; converted successfully.", UserWarning)
-                except (ValueError, TypeError):
-                    raise TypeError(f"Column '{col}' must be numeric. Could not convert.")
+                except (ValueError, TypeError) as exc:
+                    raise TypeError(f"Column '{col}' must be numeric. Could not convert.") from exc
 
     all_time_periods = sorted(df[time_col].unique())
     if treatment_period not in all_time_periods:
@@ -403,9 +405,9 @@ def preprocess_synth(
     if not pre_periods:
         raise ValueError("No pre-treatment periods found before treatment_period.")
 
-    if L_outcome_periods:
-        if not all(p in pre_periods for p in L_outcome_periods):
-            raise ValueError("All L_outcome_periods must be in the pre-treatment period.")
+    if l_outcome_periods:
+        if not all(p in pre_periods for p in l_outcome_periods):
+            raise ValueError("All l_outcome_periods must be in the pre-treatment period.")
 
     default_post_periods = [treatment_period]
     if post_periods_of_interest is None:
@@ -453,8 +455,9 @@ def preprocess_synth(
     ids_with_na = ids_with_na[id_col].unique()
 
     if len(ids_with_na) > 0:
-        msg = f"Dropping {len(ids_with_na)} units due to NA in '{y_col}' or '{weights_col}' "
-        msg += "within relevant periods."
+        msg = (
+            f"Dropping {len(ids_with_na)} units due to NA in '{y_col}' or " f"'{weights_col}' within relevant periods."
+        )
         warnings.warn(msg, UserWarning)
         df_balanced = df_balanced[~df_balanced[id_col].isin(ids_with_na)]
         final_treated_ids = sorted(list(set(final_treated_ids) - set(ids_with_na)))
@@ -476,33 +479,33 @@ def preprocess_synth(
         df_weights = pd.DataFrame({id_col: df_balanced[id_col].unique(), "_unit_weights": 1.0})
 
     weights_map = df_weights.set_index(id_col)["_unit_weights"]
-    weights_treat_arr = weights_map.loc[final_treated_ids].values
-    weights_control_arr = weights_map.loc[final_control_ids].values
+    weights_treat_arr = weights_map.loc[final_treated_ids].values.astype(float)
+    weights_control_arr = weights_map.loc[final_control_ids].values.astype(float)
 
     if normalized:
         overall_mean_weight = weights_map.loc[np.concatenate([final_treated_ids, final_control_ids])].mean()
         if overall_mean_weight > 0:
-            weights_treat_arr = weights_treat_arr / overall_mean_weight
-            weights_control_arr = weights_control_arr / overall_mean_weight
+            weights_treat_arr /= overall_mean_weight
+            weights_control_arr /= overall_mean_weight
         else:
             warnings.warn("Mean of weights is zero or negative. Cannot normalize.", UserWarning)
 
     df_pivot_y = df_balanced.pivot_table(index=id_col, columns=time_col, values=y_col)
 
-    Y_pre_treat_df = df_pivot_y.loc[final_treated_ids, pre_periods]
-    Y_post_treat_df = df_pivot_y.loc[final_treated_ids, post_periods_of_interest]
-    Y_pre_control_df = df_pivot_y.loc[final_control_ids, pre_periods]
-    Y_post_control_df = df_pivot_y.loc[final_control_ids, post_periods_of_interest]
+    y_pre_treat_df = df_pivot_y.loc[final_treated_ids, pre_periods]
+    y_post_treat_df = df_pivot_y.loc[final_treated_ids, post_periods_of_interest]
+    y_pre_control_df = df_pivot_y.loc[final_control_ids, pre_periods]
+    y_post_control_df = df_pivot_y.loc[final_control_ids, post_periods_of_interest]
 
     predictor_names = []
-    Z_parts_treat = []
-    Z_parts_control = []
+    z_parts_treat = []
+    z_parts_control = []
 
-    if L_outcome_periods:
-        lagged_outcomes_df = df_pivot_y[L_outcome_periods]
-        Z_parts_treat.append(lagged_outcomes_df.loc[final_treated_ids].T.values)
-        Z_parts_control.append(lagged_outcomes_df.loc[final_control_ids].T.values)
-        predictor_names.extend([f"{y_col}_lag_{p}" for p in L_outcome_periods])
+    if l_outcome_periods:
+        lagged_outcomes_df = df_pivot_y[l_outcome_periods]
+        z_parts_treat.append(lagged_outcomes_df.loc[final_treated_ids].T.values)
+        z_parts_control.append(lagged_outcomes_df.loc[final_control_ids].T.values)
+        predictor_names.extend([f"{y_col}_lag_{p}" for p in l_outcome_periods])
 
     patsy_cov_names = []
 
@@ -520,25 +523,25 @@ def preprocess_synth(
             if patsy_cov_names:
                 patsy_cov_matrix_treat = patsy_matrix_full.loc[final_treated_ids, patsy_cov_names].T.values
                 patsy_cov_matrix_control = patsy_matrix_full.loc[final_control_ids, patsy_cov_names].T.values
-                Z_parts_treat.append(patsy_cov_matrix_treat)
-                Z_parts_control.append(patsy_cov_matrix_control)
+                z_parts_treat.append(patsy_cov_matrix_treat)
+                z_parts_control.append(patsy_cov_matrix_control)
                 predictor_names.extend(patsy_cov_names)
         except Exception as e:
-            raise ValueError(f"Error processing covariates_formula '{covariates_formula}' for synth: {e}")
+            raise ValueError(f"Error processing covariates_formula '{covariates_formula}' for synth: {e}") from e
 
-    Z_treat = np.vstack(Z_parts_treat) if Z_parts_treat else np.empty((0, len(final_treated_ids)))
-    Z_control = np.vstack(Z_parts_control) if Z_parts_control else np.empty((0, len(final_control_ids)))
+    z_treat = np.vstack(z_parts_treat) if z_parts_treat else np.empty((0, len(final_treated_ids)))
+    z_control = np.vstack(z_parts_control) if z_parts_control else np.empty((0, len(final_control_ids)))
 
-    if Z_treat.shape[0] == 0:
-        msg = "No predictors specified (L_outcome_periods or covariates_formula). "
+    if z_treat.shape[0] == 0:
+        msg = "No predictors specified (l_outcome_periods or covariates_formula). "
         msg += "Z matrices will be empty."
         warnings.warn(msg, UserWarning)
 
-    if Z_control.shape[0] > 0 and Z_control.shape[1] > 0:
-        if Z_control.shape[0] < Z_control.shape[1]:
-            matrix_for_rank_check = Z_control.T
+    if z_control.shape[0] > 0 and z_control.shape[1] > 0:
+        if z_control.shape[0] < z_control.shape[1]:
+            matrix_for_rank_check = z_control.T
             if matrix_for_rank_check.shape[0] > 0 and matrix_for_rank_check.shape[1] > 0:
-                q, r = np.linalg.qr(matrix_for_rank_check)
+                _, r = np.linalg.qr(matrix_for_rank_check)
                 diag_r = np.abs(np.diag(r))
                 tol = diag_r.max() * 1e-7 if diag_r.size > 0 else 1e-7
                 rank = np.sum(diag_r > tol)
@@ -549,18 +552,18 @@ def preprocess_synth(
                     msg += "Synthetic control weights may be unstable or not unique."
                     warnings.warn(msg, UserWarning)
         else:
-            msg = f"Number of predictors ({Z_control.shape[0]}) >= "
-            msg += f"number of control units ({Z_control.shape[1]}). "
+            msg = f"Number of predictors ({z_control.shape[0]}) >= "
+            msg += f"number of control units ({z_control.shape[1]}). "
             msg += "This can lead to issues in synthetic control estimation."
             warnings.warn(msg, UserWarning)
 
     output = {
-        "Y_pre_treat": Y_pre_treat_df.T.values,
-        "Y_post_treat": Y_post_treat_df.T.values,
-        "Y_pre_control": Y_pre_control_df.T.values,
-        "Y_post_control": Y_post_control_df.T.values,
-        "Z_treat": Z_treat,
-        "Z_control": Z_control,
+        "Y_pre_treat": y_pre_treat_df.T.values,
+        "Y_post_treat": y_post_treat_df.T.values,
+        "Y_pre_control": y_pre_control_df.T.values,
+        "Y_post_control": y_post_control_df.T.values,
+        "Z_treat": z_treat,
+        "Z_control": z_control,
         "weights_treat": weights_treat_arr,
         "weights_control": weights_control_arr,
         "n_treated": len(final_treated_ids),
@@ -585,7 +588,7 @@ def _check_treatment_uniqueness(df: pd.DataFrame, id_col: str, treat_col: str) -
         invalid_ids = treat_counts[treat_counts > 1].index.to_list()
         raise ValueError(
             f"Treatment indicator ('{treat_col}') must be unique for each ID ('{id_col}'). "
-            f"IDs with varying treatment: {invalid_ids}"
+            f"IDs with varying treatment: {invalid_ids}."
         )
 
 
@@ -595,7 +598,10 @@ def _make_balanced_panel(df: pd.DataFrame, id_col: str, time_col: str) -> pd.Dat
     obs_counts = df.groupby(id_col).size()
     ids_to_keep = obs_counts[obs_counts == n_times].index
     if len(ids_to_keep) < len(obs_counts):
-        warnings.warn("Panel data is unbalanced. Dropping units with incomplete observations.", UserWarning)
+        warnings.warn(
+            "Panel data is unbalanced. Dropping units with incomplete observations.",
+            UserWarning,
+        )
     return df[df[id_col].isin(ids_to_keep)].copy()
 
 
@@ -610,7 +616,9 @@ def _filter_and_balance_for_periods(
     ids_to_keep = obs_counts[obs_counts == n_required_periods].index
 
     if len(ids_to_keep) < df_filtered[id_col].nunique():
-        msg = "Balancing panel for specified periods. Dropping units not observed in all "
-        msg += f"{n_required_periods} required periods: {sorted(list(set(required_periods)))}."
+        msg = (
+            "Balancing panel for specified periods. Dropping units not observed in all "
+            f"{n_required_periods} required periods: {sorted(list(set(required_periods)))}."
+        )
         warnings.warn(msg, UserWarning)
     return df_filtered[df_filtered[id_col].isin(ids_to_keep)].copy()
