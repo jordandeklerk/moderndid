@@ -3,9 +3,9 @@
 import warnings
 from typing import Any, Literal
 
+import formulaic
 import numpy as np
 import pandas as pd
-import patsy
 
 
 def preprocess_drdid(
@@ -140,12 +140,20 @@ def preprocess_drdid(
         covariates_formula = "~ 1"
 
     try:
-        covariates_df = patsy.dmatrix(covariates_formula, df, return_type="dataframe")
-        cov_terms = patsy.ModelDesc.from_formula(covariates_formula).rhs_termlist
-        original_cov_names = [f.name() for term in cov_terms for f in term.factors if f.name() != "Intercept"]
+        model_matrix_result = formulaic.model_matrix(
+            covariates_formula,
+            df,
+            output="pandas",
+        )
+        covariates_df = model_matrix_result
+        if hasattr(model_matrix_result, "model_spec") and model_matrix_result.model_spec:
+            original_cov_names = [var for var in model_matrix_result.model_spec.variables if var != "1"]
+        else:
+            original_cov_names = []
+            warnings.warn("Could not retrieve model_spec from formulaic output. ", UserWarning)
 
     except Exception as e:
-        raise ValueError(f"Error processing covariates_formula '{covariates_formula}': {e}") from e
+        raise ValueError(f"Error processing covariates_formula '{covariates_formula}' with formulaic: {e}") from e
 
     cols_to_drop = [name for name in original_cov_names if name in df.columns]
     df_processed = pd.concat([df.drop(columns=cols_to_drop), covariates_df], axis=1)
@@ -507,27 +515,29 @@ def preprocess_synth(
         z_parts_control.append(lagged_outcomes_df.loc[final_control_ids].T.values)
         predictor_names.extend([f"{y_col}_lag_{p}" for p in l_outcome_periods])
 
-    patsy_cov_names = []
+    generated_cov_names = []
 
     if covariates_formula:
         last_pre_period = pre_periods[-1]
-        df_for_patsy = df_balanced[
+        df_for_formulaic = df_balanced[
             (df_balanced[time_col] == last_pre_period)
             & (df_balanced[id_col].isin(np.concatenate([final_treated_ids, final_control_ids])))
         ].set_index(id_col)
 
         try:
-            patsy_matrix_full = patsy.dmatrix(covariates_formula, df_for_patsy, return_type="dataframe")
-            patsy_cov_names = [col for col in patsy_matrix_full.columns if col != "Intercept"]
+            model_matrix_full = formulaic.model_matrix(covariates_formula, df_for_formulaic, output="pandas")
+            generated_cov_names = [col for col in model_matrix_full.columns if col != "Intercept"]
 
-            if patsy_cov_names:
-                patsy_cov_matrix_treat = patsy_matrix_full.loc[final_treated_ids, patsy_cov_names].T.values
-                patsy_cov_matrix_control = patsy_matrix_full.loc[final_control_ids, patsy_cov_names].T.values
-                z_parts_treat.append(patsy_cov_matrix_treat)
-                z_parts_control.append(patsy_cov_matrix_control)
-                predictor_names.extend(patsy_cov_names)
+            if generated_cov_names:
+                cov_matrix_treat = model_matrix_full.loc[final_treated_ids, generated_cov_names].T.values
+                cov_matrix_control = model_matrix_full.loc[final_control_ids, generated_cov_names].T.values
+                z_parts_treat.append(cov_matrix_treat)
+                z_parts_control.append(cov_matrix_control)
+                predictor_names.extend(generated_cov_names)
         except Exception as e:
-            raise ValueError(f"Error processing covariates_formula '{covariates_formula}' for synth: {e}") from e
+            raise ValueError(
+                f"Error processing covariates_formula '{covariates_formula}' for synth with formulaic: {e}"
+            ) from e
 
     z_treat = np.vstack(z_parts_treat) if z_parts_treat else np.empty((0, len(final_treated_ids)))
     z_control = np.vstack(z_parts_control) if z_parts_control else np.empty((0, len(final_control_ids)))
