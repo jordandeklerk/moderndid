@@ -3,7 +3,7 @@
 import warnings
 from typing import Any, Literal
 
-import formulaic
+import formulaic as fml
 import numpy as np
 import pandas as pd
 
@@ -140,7 +140,7 @@ def preprocess_drdid(
         covariates_formula = "~ 1"
 
     try:
-        model_matrix_result = formulaic.model_matrix(
+        model_matrix_result = fml.model_matrix(
             covariates_formula,
             df,
             output="pandas",
@@ -525,7 +525,7 @@ def preprocess_synth(
         ].set_index(id_col)
 
         try:
-            model_matrix_full = formulaic.model_matrix(covariates_formula, df_for_formulaic, output="pandas")
+            model_matrix_full = fml.model_matrix(covariates_formula, df_for_formulaic, output="pandas")
             generated_cov_names = [col for col in model_matrix_full.columns if col != "Intercept"]
 
             if generated_cov_names:
