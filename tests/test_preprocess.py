@@ -249,8 +249,22 @@ def test_preprocess_drdid_invalid_treatment_values(invalid_treatment_data, panel
 @pytest.mark.parametrize(
     "single_group_data",
     [
-        pd.DataFrame({"time": [0, 1, 0, 1], "outcome": [1, 2, 3, 4], "id": [1, 1, 2, 2], "treatment": [0, 0, 0, 0]}),
-        pd.DataFrame({"time": [0, 1, 0, 1], "outcome": [1, 2, 3, 4], "id": [1, 1, 2, 2], "treatment": [1, 1, 1, 1]}),
+        pd.DataFrame(
+            {
+                "time": [0, 1, 0, 1],
+                "outcome": [1, 2, 3, 4],
+                "id": [1, 1, 2, 2],
+                "treatment": [0, 0, 0, 0],
+            }
+        ),
+        pd.DataFrame(
+            {
+                "time": [0, 1, 0, 1],
+                "outcome": [1, 2, 3, 4],
+                "id": [1, 1, 2, 2],
+                "treatment": [1, 1, 1, 1],
+            }
+        ),
     ],
 )
 @pytest.mark.parametrize("panel_setting", [True, False])
@@ -353,7 +367,14 @@ def test_preprocess_drdid_zero_weights(panel_setting):
 def test_preprocess_drdid_panel_missing_id_col():
     data = pd.DataFrame({"time": [0, 1, 0, 1], "outcome": [1, 2, 3, 4], "treatment": [0, 0, 1, 1]})
     with pytest.raises(ValueError, match="Missing required columns: id"):
-        preprocess_drdid(data=data, y_col="outcome", time_col="time", id_col="id", treat_col="treatment", panel=True)
+        preprocess_drdid(
+            data=data,
+            y_col="outcome",
+            time_col="time",
+            id_col="id",
+            treat_col="treatment",
+            panel=True,
+        )
 
 
 def test_preprocess_drdid_panel_duplicate_id_time():
@@ -370,7 +391,12 @@ def test_preprocess_drdid_panel_duplicate_id_time():
 
     with pytest.raises(ValueError, match="ID 'id' is not unique within time period 'time'"):
         preprocess_drdid(
-            data=data, y_col="outcome", time_col="time", id_col="id", treat_col="is_treated_unit", panel=True
+            data=data,
+            y_col="outcome",
+            time_col="time",
+            id_col="id",
+            treat_col="is_treated_unit",
+            panel=True,
         )
 
 
@@ -391,7 +417,7 @@ def test_preprocess_synth_basic():
     id_col = "unit_id"
     treat_col = "is_treated_unit"
     treatment_period = dgp_params["n_time_pre"]
-    L_outcome_periods = [treatment_period - 2, treatment_period - 1]
+    l_outcome_periods = [treatment_period - 2, treatment_period - 1]
     post_periods_of_interest = [treatment_period, treatment_period + 1]
 
     result = preprocess_synth(
@@ -402,7 +428,7 @@ def test_preprocess_synth_basic():
         treat_col=treat_col,
         treatment_period=treatment_period,
         covariates_formula="~ X1 + X2",
-        L_outcome_periods=L_outcome_periods,
+        l_outcome_periods=l_outcome_periods,
         post_periods_of_interest=post_periods_of_interest,
         normalized=True,
     )
@@ -437,19 +463,37 @@ def test_preprocess_synth_basic():
     assert result["n_control"] == dgp_params["n_control_units"]
     assert result["n_pre_periods"] == dgp_params["n_time_pre"]
     assert result["n_post_periods"] == len(post_periods_of_interest)
-    assert result["Y_pre_treat"].shape == (dgp_params["n_time_pre"], dgp_params["n_treated_units"])
-    assert result["Y_post_treat"].shape == (len(post_periods_of_interest), dgp_params["n_treated_units"])
-    assert result["Y_pre_control"].shape == (dgp_params["n_time_pre"], dgp_params["n_control_units"])
-    assert result["Y_post_control"].shape == (len(post_periods_of_interest), dgp_params["n_control_units"])
+    assert result["Y_pre_treat"].shape == (
+        dgp_params["n_time_pre"],
+        dgp_params["n_treated_units"],
+    )
+    assert result["Y_post_treat"].shape == (
+        len(post_periods_of_interest),
+        dgp_params["n_treated_units"],
+    )
+    assert result["Y_pre_control"].shape == (
+        dgp_params["n_time_pre"],
+        dgp_params["n_control_units"],
+    )
+    assert result["Y_post_control"].shape == (
+        len(post_periods_of_interest),
+        dgp_params["n_control_units"],
+    )
 
-    num_lagged_outcomes = len(L_outcome_periods)
+    num_lagged_outcomes = len(l_outcome_periods)
     num_covariates = dgp_params["n_features"]
     expected_num_predictors = num_lagged_outcomes + num_covariates
 
     assert len(result["predictor_names"]) == expected_num_predictors
     if expected_num_predictors > 0:
-        assert result["Z_treat"].shape == (expected_num_predictors, dgp_params["n_treated_units"])
-        assert result["Z_control"].shape == (expected_num_predictors, dgp_params["n_control_units"])
+        assert result["Z_treat"].shape == (
+            expected_num_predictors,
+            dgp_params["n_treated_units"],
+        )
+        assert result["Z_control"].shape == (
+            expected_num_predictors,
+            dgp_params["n_control_units"],
+        )
     else:
         assert result["Z_treat"].shape[0] == 0
         assert result["Z_control"].shape[0] == 0
@@ -468,15 +512,32 @@ def test_preprocess_synth_empty_df():
     empty_df = pd.DataFrame()
     with pytest.raises(ValueError, match="Missing required columns"):
         preprocess_synth(
-            data=empty_df, y_col="outcome", time_col="time", id_col="id", treat_col="treatment", treatment_period=1
+            data=empty_df,
+            y_col="outcome",
+            time_col="time",
+            id_col="id",
+            treat_col="treatment",
+            treatment_period=1,
         )
 
 
 def test_preprocess_synth_treatment_period_not_in_time():
-    data = pd.DataFrame({"time": [0, 1, 0, 1], "outcome": [1, 2, 3, 4], "id": [1, 1, 2, 2], "treatment": [0, 0, 1, 1]})
+    data = pd.DataFrame(
+        {
+            "time": [0, 1, 0, 1],
+            "outcome": [1, 2, 3, 4],
+            "id": [1, 1, 2, 2],
+            "treatment": [0, 0, 1, 1],
+        }
+    )
     with pytest.raises(ValueError, match="treatment_period .* not found in time column"):
         preprocess_synth(
-            data=data, y_col="outcome", time_col="time", id_col="id", treat_col="treatment", treatment_period=2
+            data=data,
+            y_col="outcome",
+            time_col="time",
+            id_col="id",
+            treat_col="treatment",
+            treatment_period=2,
         )
 
 
@@ -491,7 +552,12 @@ def test_preprocess_synth_treatment_period_is_first():
     )
     with pytest.raises(ValueError, match="treatment_period cannot be the first period"):
         preprocess_synth(
-            data=data, y_col="outcome", time_col="time", id_col="id", treat_col="treatment", treatment_period=0
+            data=data,
+            y_col="outcome",
+            time_col="time",
+            id_col="id",
+            treat_col="treatment",
+            treatment_period=0,
         )
 
 
@@ -506,7 +572,12 @@ def test_preprocess_synth_no_pre_treatment_periods():
     )
     with pytest.raises(ValueError, match="treatment_period cannot be the first period"):
         preprocess_synth(
-            data=data, y_col="outcome", time_col="time", id_col="id", treat_col="treatment", treatment_period=1
+            data=data,
+            y_col="outcome",
+            time_col="time",
+            id_col="id",
+            treat_col="treatment",
+            treatment_period=1,
         )
 
 
@@ -579,7 +650,7 @@ def test_preprocess_synth_collinearity_warning():
             id_col="id",
             treat_col="is_treated_unit",
             treatment_period=2,
-            L_outcome_periods=[1],
+            l_outcome_periods=[1],
             covariates_formula="~ X1",
         )
 
@@ -638,7 +709,7 @@ def test_preprocess_synth_no_units_after_balancing(scenario):
         )
 
 
-def test_preprocess_synth_invalid_L_outcome_periods():
+def test_preprocess_synth_invalid_l_outcome_periods():
     data = pd.DataFrame(
         {
             "time": [0, 1, 2, 3, 0, 1, 2, 3],
@@ -647,7 +718,7 @@ def test_preprocess_synth_invalid_L_outcome_periods():
             "treatment": [0, 0, 0, 0, 1, 1, 1, 1],
         }
     )
-    with pytest.raises(ValueError, match="All L_outcome_periods must be in the pre-treatment period"):
+    with pytest.raises(ValueError, match="All l_outcome_periods must be in the pre-treatment period"):
         preprocess_synth(
             data=data,
             y_col="outcome",
@@ -655,7 +726,7 @@ def test_preprocess_synth_invalid_L_outcome_periods():
             id_col="id",
             treat_col="treatment",
             treatment_period=2,
-            L_outcome_periods=[0, 1, 2],
+            l_outcome_periods=[0, 1, 2],
         )
 
 
@@ -691,13 +762,23 @@ def test_preprocess_synth_invalid_post_periods_of_interest(invalid_post_periods)
     [
         {
             "data": pd.DataFrame(
-                {"time": [0, 1, 0, 1], "outcome": [1, 2, 3, 4], "id": [1, 1, 2, 2], "treatment": [0, 0, 0, 0]}
+                {
+                    "time": [0, 1, 0, 1],
+                    "outcome": [1, 2, 3, 4],
+                    "id": [1, 1, 2, 2],
+                    "treatment": [0, 0, 0, 0],
+                }
             ),
             "match": "No treated units found",
         },
         {
             "data": pd.DataFrame(
-                {"time": [0, 1, 0, 1], "outcome": [1, 2, 3, 4], "id": [1, 1, 2, 2], "treatment": [1, 1, 1, 1]}
+                {
+                    "time": [0, 1, 0, 1],
+                    "outcome": [1, 2, 3, 4],
+                    "id": [1, 1, 2, 2],
+                    "treatment": [1, 1, 1, 1],
+                }
             ),
             "match": "No control units found",
         },
@@ -709,5 +790,10 @@ def test_preprocess_synth_no_treated_or_control_units(treatment_setup):
 
     with pytest.raises(ValueError, match=match_error):
         preprocess_synth(
-            data=data, y_col="outcome", time_col="time", id_col="id", treat_col="treatment", treatment_period=1
+            data=data,
+            y_col="outcome",
+            time_col="time",
+            id_col="id",
+            treat_col="treatment",
+            treatment_period=1,
         )

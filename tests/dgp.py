@@ -655,8 +655,7 @@ class DRDiDSC(BaseDGP):
             elif n_treated_target >= self.n_units and self.n_units <= 1:
                 n_treated_actual = 0
 
-            if n_treated_actual < 0:
-                n_treated_actual = 0
+            n_treated_actual = max(n_treated_actual, 0)
 
             if n_treated_actual > 0:
                 sorted_indices = np.argsort(true_prop_scores)

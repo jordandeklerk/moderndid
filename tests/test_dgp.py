@@ -487,7 +487,7 @@ def test_drdidsc_dgp_custom_params():
 
 
 def test_drdidsc_dgp_set_seed():
-    dgp_params = dict(n_units=10, n_time_pre=3, n_time_post=2, n_features=1, random_seed=777)
+    dgp_params = {"n_units": 10, "n_time_pre": 3, "n_time_post": 2, "n_features": 1, "random_seed": 777}
     dgp1 = DRDiDSC(**dgp_params)
     data1 = dgp1.generate_data()
 
