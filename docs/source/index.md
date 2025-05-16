@@ -35,8 +35,6 @@ api/index
 ```{toctree}
 :caption: Examples
 :hidden:
-
-examples/att
 ```
 
 ```{toctree}
