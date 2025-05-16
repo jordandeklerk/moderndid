@@ -24,7 +24,7 @@ def preprocess_drdid(
     n_boot: int | None = None,
     inf_func: bool = False,
 ) -> dict[str, Any]:
-    """Pre-processes data for doubly robust DiD estimation.
+    """Pre-processes data for DR DiD estimation.
 
     Validates input data, checks for required columns, handles missing values,
     balances panel data if requested, checks for time-invariant treatment/covariates

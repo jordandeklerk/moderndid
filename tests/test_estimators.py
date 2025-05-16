@@ -7,6 +7,31 @@ import pytest
 
 from drsynthdid.estimators import aipw_did_panel, aipw_did_rc
 
+from .dgp import SantAnnaZhaoDRDiD
+
+Y_RC_VALID = np.array([10.0, 12.0, 11.0, 13.0, 20.0, 22.0, 15.0, 18.0, 19.0, 25.0])
+POST_RC_VALID = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1], dtype=int)
+D_RC_VALID = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1], dtype=int)
+PS_RC_VALID = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
+OUT_Y_TREAT_POST_RC_VALID = np.array([18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 20.0, 26.0])
+OUT_Y_TREAT_PRE_RC_VALID = np.array([8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 10.0, 11.0])
+OUT_Y_CONT_POST_RC_VALID = np.array([12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 13.0, 14.0])
+OUT_Y_CONT_PRE_RC_VALID = np.array([9.0, 10.0, 11.0, 12.0, 10.0, 11.0, 12.0, 13.0, 9.0, 10.0])
+I_WEIGHTS_RC_UNIT_VALID = np.ones(10)
+I_WEIGHTS_RC_NON_UNIT_VALID = np.array([0.5, 1.2, 0.8, 1.5, 0.9, 1.1, 1.3, 0.7, 1.0, 1.4])
+
+ALL_VALID_ARGS_RC = (
+    Y_RC_VALID,
+    POST_RC_VALID,
+    D_RC_VALID,
+    PS_RC_VALID,
+    OUT_Y_TREAT_POST_RC_VALID,
+    OUT_Y_TREAT_PRE_RC_VALID,
+    OUT_Y_CONT_POST_RC_VALID,
+    OUT_Y_CONT_PRE_RC_VALID,
+    I_WEIGHTS_RC_UNIT_VALID,
+)
+
 
 def assert_allclose_with_nans(actual, desired, rtol=1e-7, atol=1e-9, msg=""):
     if np.isnan(desired):
@@ -198,42 +223,67 @@ def test_non_finite_mean_i_weights():
     assert_allclose_with_nans(att_nan, np.nan)
 
 
-Y_RC_VALID = np.array([10.0, 12.0, 11.0, 13.0, 20.0, 22.0, 15.0, 18.0, 19.0, 25.0])
-POST_RC_VALID = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1], dtype=int)
-D_RC_VALID = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1], dtype=int)
-PS_RC_VALID = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
-OUT_Y_TREAT_POST_RC_VALID = np.array([18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 20.0, 26.0])
-OUT_Y_TREAT_PRE_RC_VALID = np.array([8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 10.0, 11.0])
-OUT_Y_CONT_POST_RC_VALID = np.array([12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 13.0, 14.0])
-OUT_Y_CONT_PRE_RC_VALID = np.array([9.0, 10.0, 11.0, 12.0, 10.0, 11.0, 12.0, 13.0, 9.0, 10.0])
-I_WEIGHTS_RC_UNIT_VALID = np.ones(10)
-I_WEIGHTS_RC_NON_UNIT_VALID = np.array([0.5, 1.2, 0.8, 1.5, 0.9, 1.1, 1.3, 0.7, 1.0, 1.4])
-
-ALL_VALID_ARGS_RC = (
-    Y_RC_VALID,
-    POST_RC_VALID,
-    D_RC_VALID,
-    PS_RC_VALID,
-    OUT_Y_TREAT_POST_RC_VALID,
-    OUT_Y_TREAT_PRE_RC_VALID,
-    OUT_Y_CONT_POST_RC_VALID,
-    OUT_Y_CONT_PRE_RC_VALID,
-    I_WEIGHTS_RC_UNIT_VALID,
-)
-
-
 def test_aipw_rc_happy_path_unit_weights():
-    expected_att = -4.8239102629404504
-    actual_att = aipw_did_rc(*ALL_VALID_ARGS_RC)
-    assert_allclose_with_nans(actual_att, expected_att, rtol=1e-7, atol=1e-7)
+    dgp = SantAnnaZhaoDRDiD(n_units=5000, treatment_fraction=0.5, common_support_strength=0.75, random_seed=123)
+    att_val = 0.5
+    data = dgp.generate_data(att=att_val)
+
+    y_arr = data["df"]["y"].to_numpy()
+    post_arr = data["df"]["post"].to_numpy()
+    d_arr = data["df"]["d"].to_numpy()
+    ps_arr = data["propensity_scores"]
+
+    out_y_treat_pre_arr = data["potential_outcomes_pre"]["y0"]
+    out_y_cont_pre_arr = data["potential_outcomes_pre"]["y0"]
+    out_y_cont_post_arr = data["potential_outcomes_post"]["y0"]
+    out_y_treat_post_arr = data["potential_outcomes_post"]["y1"]
+
+    i_weights_arr = np.ones_like(y_arr)
+
+    actual_att = aipw_did_rc(
+        y_arr,
+        post_arr,
+        d_arr,
+        ps_arr,
+        out_y_treat_post_arr,
+        out_y_treat_pre_arr,
+        out_y_cont_post_arr,
+        out_y_cont_pre_arr,
+        i_weights_arr,
+    )
+    assert_allclose_with_nans(actual_att, data["true_att"], rtol=5e-2, atol=5e-2)
 
 
 def test_aipw_rc_happy_path_non_uniform_weights():
-    args = list(ALL_VALID_ARGS_RC)
-    args[-1] = I_WEIGHTS_RC_NON_UNIT_VALID
-    expected_att = -4.092809968588597
-    actual_att = aipw_did_rc(*args)
-    assert_allclose_with_nans(actual_att, expected_att, rtol=1e-7, atol=1e-7)
+    dgp = SantAnnaZhaoDRDiD(n_units=5000, treatment_fraction=0.5, common_support_strength=0.75, random_seed=456)
+    att_val = 0.3
+    data = dgp.generate_data(att=att_val)
+
+    y_arr = data["df"]["y"].to_numpy()
+    post_arr = data["df"]["post"].to_numpy()
+    d_arr = data["df"]["d"].to_numpy()
+    ps_arr = data["propensity_scores"]
+
+    out_y_treat_pre_arr = data["potential_outcomes_pre"]["y0"]
+    out_y_cont_pre_arr = data["potential_outcomes_pre"]["y0"]
+    out_y_cont_post_arr = data["potential_outcomes_post"]["y0"]
+    out_y_treat_post_arr = data["potential_outcomes_post"]["y1"]
+
+    rng = np.random.RandomState(789)
+    i_weights_arr = rng.rand(dgp.n_units) + 0.5
+
+    actual_att = aipw_did_rc(
+        y_arr,
+        post_arr,
+        d_arr,
+        ps_arr,
+        out_y_treat_post_arr,
+        out_y_treat_pre_arr,
+        out_y_cont_post_arr,
+        out_y_cont_pre_arr,
+        i_weights_arr,
+    )
+    assert_allclose_with_nans(actual_att, data["true_att"], rtol=5e-2, atol=5e-2)
 
 
 def test_aipw_rc_ps_one_for_control_unit():
