@@ -9,8 +9,8 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     r"""Compute the Augmented Inverse Propensity Weighted (AIPW) estimator.
 
     This estimator is for the Average Treatment Effect on the Treated (ATT) with panel data.
-    Assumes that propensity scores (`ps`) are appropriately bounded away from
-    0 and 1 (e.g., capped at 1 - :math:`\epsilon`) before being passed to this function.
+    Assumes that propensity scores are appropriately bounded away from 0 and 1 before being
+    passed to this function.
 
     Parameters
     ----------
@@ -21,11 +21,11 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
         A 1D array representing the treatment indicator (1 for treated, 0 for control)
         for each unit. Assumed to be time-invariant for panel data context here.
     ps : ndarray
-        A 1D array of propensity scores (estimated probability of being treated, P(D=1|X))
-        for each unit.
+        A 1D array of propensity scores (estimated probability of being treated,
+        :math:`P(D=1|X)` for each unit.
     out_reg : ndarray
         A 1D array of predicted outcome differences from the outcome regression model
-        (e.g., :math:`\mathbr{E}[delta_y | X, D=0]`) for each unit.
+        (e.g., :math:`\mathbb{E}[Y_{\text{post}} - Y_{\text{pre}} | X, D=0]`) for each unit.
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
 
@@ -33,6 +33,25 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     -------
     float
         The AIPW ATT estimate.
+
+    Examples
+    --------
+    Calculate the AIPW ATT estimate for a mock panel dataset.
+
+    .. ipython::
+
+        In [1]: import numpy as np
+           ...: from drsynthdid.estimators import aipw_did_panel
+           ...:
+           ...: delta_y = np.array([0.5, 1.2, -0.3, 0.8, 1.5, 0.2]) # Y_post - Y_pre
+           ...: d = np.array([1, 1, 0, 0, 1, 0]) # Treatment indicator
+           ...: ps = np.array([0.65, 0.7, 0.3, 0.4, 0.6, 0.35]) # Propensity scores P(D=1|X)
+           ...: out_reg = np.array([0.4, 0.9, -0.1, 0.6, 1.1, 0.1]) # Outcome regression E[delta_y|X, D=0]
+           ...: i_weights = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]) # Observation weights
+           ...:
+           ...: att_estimate = aipw_did_panel(delta_y, d, ps, out_reg, i_weights)
+           ...: att_estimate
+
     """
     if not all(isinstance(arr, np.ndarray) for arr in [delta_y, d, ps, out_reg, i_weights]):
         raise TypeError("All inputs (delta_y, d, ps, out_reg, i_weights) must be NumPy arrays.")
@@ -64,7 +83,7 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     if np.any(problematic_ps_for_controls):
         warnings.warn(
             "Propensity score is 1 for some control units. Their weights will be NaN/Inf. "
-            "This typically indicates issues with the propensity score model (e.g., perfect separation).",
+            "This typically indicates issues with the propensity score model.",
             UserWarning,
         )
 
