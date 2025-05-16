@@ -1,34 +1,32 @@
-"""Core statistical estimators for DR-DiD and synthetic control methods."""
+"""Core estimators for DR-DiD and synthetic control methods."""
 
 import warnings
 
 import numpy as np
 
 
-def aipw_did_panel(
-    delta_y: np.ndarray, d: np.ndarray, ps: np.ndarray, out_reg: np.ndarray, i_weights: np.ndarray
-) -> float:
-    """Compute the Augmented Inverse Propensity Weighted (AIPW) estimator.
+def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
+    r"""Compute the Augmented Inverse Propensity Weighted (AIPW) estimator.
 
     This estimator is for the Average Treatment Effect on the Treated (ATT) with panel data.
     Assumes that propensity scores (`ps`) are appropriately bounded away from
-    0 and 1 (e.g., capped at 1 - epsilon) before being passed to this function.
+    0 and 1 (e.g., capped at 1 - :math:`\epsilon`) before being passed to this function.
 
     Parameters
     ----------
-    delta_y : np.ndarray
+    delta_y : ndarray
         A 1D array representing the difference in outcomes between the
         post-treatment and pre-treatment periods (Y_post - Y_pre) for each unit.
-    d : np.ndarray
+    d : ndarray
         A 1D array representing the treatment indicator (1 for treated, 0 for control)
         for each unit. Assumed to be time-invariant for panel data context here.
-    ps : np.ndarray
+    ps : ndarray
         A 1D array of propensity scores (estimated probability of being treated, P(D=1|X))
         for each unit.
-    out_reg : np.ndarray
+    out_reg : ndarray
         A 1D array of predicted outcome differences from the outcome regression model
-        (e.g., E[delta_y | X, D=0]) for each unit.
-    i_weights : np.ndarray
+        (e.g., :math:`\mathbr{E}[delta_y | X, D=0]`) for each unit.
+    i_weights : ndarray
         A 1D array of individual observation weights for each unit.
 
     Returns

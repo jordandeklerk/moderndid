@@ -1,4 +1,4 @@
-"""Tests for the estimators."""
+"""Tests for estimators."""
 
 import warnings
 
