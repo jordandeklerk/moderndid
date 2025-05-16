@@ -2,7 +2,7 @@
 """Doubly Robust DiD with Synthetic Controls."""
 
 from .estimators import aipw_did_panel, aipw_did_rc_basic, aipw_did_rc_imp
-from .preprocess import preprocess_drdid, preprocess_synth
+from .utils import preprocess_drdid, preprocess_synth
 
 __all__ = [
     "preprocess_drdid",
