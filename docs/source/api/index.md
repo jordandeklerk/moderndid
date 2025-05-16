@@ -13,7 +13,7 @@ Detailed documentation for all public modules, classes, and functions in the DR-
    drsynthdid.aipw_did_rc_basic
 ```
 
-## Preprocessing
+## Utilities
 
 ```{eval-rst}
 .. autosummary::
