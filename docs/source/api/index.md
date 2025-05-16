@@ -1,8 +1,17 @@
 # API Reference
 
-This section provides detailed documentation for all public modules, classes, and functions in the DR-SynthDID package.
+Detailed documentation for all public modules, classes, and functions in the DR-SynthDID package.
 
-## Data Preprocessing
+## Estimators
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   drsynthdid.aipw_did_panel
+```
+
+## Preprocessing
 
 ```{eval-rst}
 .. autosummary::
