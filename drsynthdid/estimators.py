@@ -130,7 +130,7 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     return float(aipw_att)
 
 
-def aipw_did_rc(
+def aipw_did_rc_imp(
     y,
     post,
     d,
@@ -141,7 +141,7 @@ def aipw_did_rc(
     out_y_cont_pre,
     i_weights,
 ) -> float:
-    r"""Compute the locally efficient DR DiD estimator with repeated cross-section data.
+    r"""Compute the locally efficient AIPW estimator with repeated cross-section data.
 
     The locally efficient AIPW estimator for repeated cross-sections is given by
 
@@ -167,7 +167,7 @@ def aipw_did_rc(
         - \left[\frac{\sum_{i} w_i D_i (\hat{\mu}_{1,0}(X_i) - \hat{\mu}_{0,0}(X_i))}
                      {\sum_{i} w_i D_i}
                - \frac{\sum_{i} w_i D_i (1-T_i) (\hat{\mu}_{1,0}(X_i) - \hat{\mu}_{0,0}(X_i))}
-                      {\sum_{i} w_i D_i (1-T_i)}\right]
+                      {\sum_{i} w_i D_i (1-T_i)}\right],
 
     where :math:`w_i` are the normalized observation weights, :math:`D_i` is the treatment indicator,
     and :math:`T_i` is the post-treatment period indicator. The variable :math:`Y_i` denotes the outcome
@@ -217,7 +217,7 @@ def aipw_did_rc(
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from drsynthdid.estimators import aipw_did_rc
+           ...: from drsynthdid.estimators import aipw_did_rc_imp
            ...:
            ...: y = np.array([10, 12, 11, 13, 20, 22, 15, 18, 19, 25])
            ...: post = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1])
@@ -229,7 +229,7 @@ def aipw_did_rc(
            ...: out_y_cont_pre = np.array([9, 10, 11, 12, 10, 11, 12, 13, 9, 10])
            ...: i_weights = np.ones(10)
            ...:
-           ...: att_rc_estimate = aipw_did_rc(y, post, d, ps,
+           ...: att_rc_estimate = aipw_did_rc_imp(y, post, d, ps,
            ...:                               out_y_treat_post, out_y_treat_pre,
            ...:                               out_y_cont_post, out_y_cont_pre,
            ...:                               i_weights)
@@ -261,7 +261,6 @@ def aipw_did_rc(
     if not all(arr.shape == first_shape for arr in arrays):
         raise ValueError("All input arrays must have the same shape.")
 
-    # Normalize i_weights
     mean_i_weights = np.mean(i_weights)
     if mean_i_weights == 0:
         warnings.warn("Mean of i_weights is zero, cannot normalize. Using original weights.", UserWarning)
@@ -296,22 +295,21 @@ def aipw_did_rc(
     w_dt1 = normalized_weights * d * post
     w_dt0 = normalized_weights * d * (1 - post)
 
-    # Estimator of each component
     att_treat_pre_val = y - out_y_cont_pre
     att_treat_post_val = y - out_y_cont_post
 
-    att_treat_pre = _calc_avg_term(att_treat_pre_val, w_treat_pre, "att_treat_pre")
-    att_treat_post = _calc_avg_term(att_treat_post_val, w_treat_post, "att_treat_post")
-    att_cont_pre = _calc_avg_term(att_treat_pre_val, w_cont_pre, "att_cont_pre")
-    att_cont_post = _calc_avg_term(att_treat_post_val, w_cont_post, "att_cont_post")
+    att_treat_pre = _weighted_sum(att_treat_pre_val, w_treat_pre, "att_treat_pre")
+    att_treat_post = _weighted_sum(att_treat_post_val, w_treat_post, "att_treat_post")
+    att_cont_pre = _weighted_sum(att_treat_pre_val, w_cont_pre, "att_cont_pre")
+    att_cont_post = _weighted_sum(att_treat_post_val, w_cont_post, "att_cont_post")
 
     eff_term_post_val = out_y_treat_post - out_y_cont_post
     eff_term_pre_val = out_y_treat_pre - out_y_cont_pre
 
-    att_d_post = _calc_avg_term(eff_term_post_val, w_d, "att_d_post")
-    att_dt1_post = _calc_avg_term(eff_term_post_val, w_dt1, "att_dt1_post")
-    att_d_pre = _calc_avg_term(eff_term_pre_val, w_d, "att_d_pre")
-    att_dt0_pre = _calc_avg_term(eff_term_pre_val, w_dt0, "att_dt0_pre")
+    att_d_post = _weighted_sum(eff_term_post_val, w_d, "att_d_post")
+    att_dt1_post = _weighted_sum(eff_term_post_val, w_dt1, "att_dt1_post")
+    att_d_pre = _weighted_sum(eff_term_pre_val, w_d, "att_d_pre")
+    att_dt0_pre = _weighted_sum(eff_term_pre_val, w_dt0, "att_dt0_pre")
 
     # ATT estimator
     terms_for_sum = [
@@ -336,7 +334,138 @@ def aipw_did_rc(
     return float(aipw_att)
 
 
-def _calc_avg_term(term_val, weight_val, term_name):
+def aipw_did_rc_basic(y, post, d, ps, out_reg, i_weights):
+    r"""Compute the simplified AIPW estimator for repeated cross-section data.
+
+    The simplified AIPW estimator for repeated cross-sections uses a single outcome
+    regression model and is given by
+
+    .. math::
+
+        \hat{\tau}_{AIPW}^{RC1} = \left[\frac{\sum_{i} w_i D_i T_i (Y_i - \hat{m}(X_i))}
+                                             {\sum_{i} w_i D_i T_i}
+                                  - \frac{\sum_{i} w_i D_i (1-T_i) (Y_i - \hat{m}(X_i))}
+                                         {\sum_{i} w_i D_i (1-T_i)}\right]
+
+        - \left[\frac{\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} T_i
+                      (Y_i - \hat{m}(X_i))}
+                     {\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} T_i}
+               - \frac{\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} (1-T_i)
+                       (Y_i - \hat{m}(X_i))}
+                      {\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} (1-T_i)}\right],
+
+    where :math:`w_i` are the normalized observation weights, :math:`D_i` is the treatment indicator,
+    and :math:`T_i` is the post-treatment period indicator. The variable :math:`Y_i` denotes the outcome,
+    :math:`\hat{e}(X_i)` is the estimated propensity score (``ps``), and :math:`\hat{m}(X_i)` is the
+    predicted outcome from a single regression model (``out_reg``).
+
+    This simplified version uses one outcome regression model for all observations rather than
+    separate models for each treatment-period combination.
+
+    Parameters
+    ----------
+    y : ndarray
+        A 1D array representing the outcome variable for each unit.
+    post : ndarray
+        A 1D array representing the post-treatment period indicator (1 for post, 0 for pre)
+        for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    ps : ndarray
+        A 1D array of propensity scores (estimated probability of being treated,
+        :math:`P(D=1|X)`) for each unit.
+    out_reg : ndarray
+        A 1D array of predicted outcomes from a single outcome regression model
+        for each unit.
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+
+    Returns
+    -------
+    float
+        The simplified AIPW ATT estimate for repeated cross-sections.
+
+    Examples
+    --------
+    Calculate the simplified AIPW ATT estimate for a mock repeated cross-section dataset.
+
+    .. ipython::
+
+        In [1]: import numpy as np
+           ...: from drsynthdid.estimators import aipw_did_rc_basic
+           ...:
+           ...: y = np.array([10, 12, 11, 13, 20, 22, 15, 18, 19, 25])
+           ...: post = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1])
+           ...: d = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
+           ...: ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
+           ...: out_reg = np.array([10.5, 11.8, 11.2, 12.5, 18.5, 20.2, 14.8, 16.5, 18.2, 23.0])
+           ...: i_weights = np.ones(10)
+           ...:
+           ...: att_estimate = aipw_did_rc_basic(y, post, d, ps, out_reg, i_weights)
+           ...: att_estimate
+
+    See Also
+    --------
+    aipw_did_rc_imp : Locally efficient AIPW estimator for repeated cross-sections.
+    aipw_did_panel : AIPW estimator for panel data.
+
+    """
+    arrays = [y, post, d, ps, out_reg, i_weights]
+
+    if not all(isinstance(arr, np.ndarray) for arr in arrays):
+        raise TypeError("All inputs must be NumPy arrays.")
+
+    if not all(arr.ndim == 1 for arr in arrays):
+        raise ValueError("All input arrays must be 1-dimensional.")
+
+    first_shape = arrays[0].shape
+    if not all(arr.shape == first_shape for arr in arrays):
+        raise ValueError("All input arrays must have the same shape.")
+
+    mean_i_weights = np.mean(i_weights)
+    if mean_i_weights == 0:
+        warnings.warn("Mean of i_weights is zero, cannot normalize. Using original weights.", UserWarning)
+        normalized_weights = i_weights.copy()
+    elif not np.isfinite(mean_i_weights):
+        warnings.warn("Mean of i_weights is not finite. Using original weights.", UserWarning)
+        normalized_weights = i_weights.copy()
+    else:
+        normalized_weights = i_weights / mean_i_weights
+
+    w_treat_pre = normalized_weights * d * (1 - post)
+    w_treat_post = normalized_weights * d * post
+
+    problematic_ps_for_controls = (ps == 1.0) & (d == 0)
+    if np.any(problematic_ps_for_controls):
+        warnings.warn(
+            "Propensity score is 1 for some control units. Their weights will be NaN/Inf. "
+            "This typically indicates issues with the propensity score model.",
+            UserWarning,
+        )
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        w_cont_pre = normalized_weights * ps * (1 - d) * (1 - post) / (1 - ps)
+        w_cont_post = normalized_weights * ps * (1 - d) * post / (1 - ps)
+
+    residual = y - out_reg
+
+    aipw_1_pre = _weighted_sum(residual, w_treat_pre, "aipw_1_pre")
+    aipw_1_post = _weighted_sum(residual, w_treat_post, "aipw_1_post")
+    aipw_0_pre = _weighted_sum(residual, w_cont_pre, "aipw_0_pre")
+    aipw_0_post = _weighted_sum(residual, w_cont_post, "aipw_0_post")
+
+    # Calculate ATT
+    terms_for_sum = [aipw_1_pre, aipw_1_post, aipw_0_pre, aipw_0_post]
+    if any(np.isnan(term) for term in terms_for_sum):
+        aipw_att = np.nan
+    else:
+        aipw_att = (aipw_1_post - aipw_1_pre) - (aipw_0_post - aipw_0_pre)
+
+    return float(aipw_att)
+
+
+def _weighted_sum(term_val, weight_val, term_name):
     sum_w = np.sum(weight_val)
     if sum_w == 0 or not np.isfinite(sum_w):
         warnings.warn(f"Sum of weights for {term_name} is {sum_w}. Term will be NaN.", UserWarning)
