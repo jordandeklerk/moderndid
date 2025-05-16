@@ -9,7 +9,8 @@ Detailed documentation for all public modules, classes, and functions in the DR-
    :toctree: generated/
 
    drsynthdid.aipw_did_panel
-   drsynthdid.aipw_did_rc
+   drsynthdid.aipw_did_rc_imp
+   drsynthdid.aipw_did_rc_basic
 ```
 
 ## Preprocessing
