@@ -8,9 +8,24 @@ import numpy as np
 def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     r"""Compute the Augmented Inverse Propensity Weighted (AIPW) estimator.
 
-    This estimator is for the Average Treatment Effect on the Treated (ATT) with panel data.
-    Assumes that propensity scores are appropriately bounded away from 0 and 1 before being
-    passed to this function.
+    The AIPW estimator for panel data is given by
+
+    .. math::
+
+        \hat{\tau}_{AIPW} = \frac{\sum_{i} w_i D_i (Y_{i,post} - Y_{i,pre} - \hat{m}_0(X_i))}
+                                {\sum_{i} w_i D_i}
+        - \frac{\sum_{i} w_i (1-D_i) \frac{\hat{e}(X_i)}{1-\hat{e}(X_i)}
+                (Y_{i,post} - Y_{i,pre} - \hat{m}_0(X_i))}
+               {\sum_{i} w_i (1-D_i) \frac{\hat{e}(X_i)}{1-\hat{e}(X_i)}}
+
+    where :math:`w_i` are the normalized observation weights and :math:`D_i` is the treatment indicator.
+    The term :math:`Y_{i,post} - Y_{i,pre}` represents the outcome difference (``delta_y``) while
+    :math:`\hat{e}(X_i)` is the estimated propensity score (``ps``) and :math:`\hat{m}_0(X_i)` is the
+    predicted outcome difference under control (``out_reg``).
+
+    This combines inverse propensity weighting with outcome regression to achieve double robustness:
+    the estimator is consistent if either the propensity score model or the outcome model is
+    correctly specified.
 
     Parameters
     ----------
@@ -51,6 +66,10 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
            ...:
            ...: att_estimate = aipw_did_panel(delta_y, d, ps, out_reg, i_weights)
            ...: att_estimate
+
+    See Also
+    --------
+    aipw_did_rc : AIPW estimator for repeated cross-sections.
 
     """
     if not all(isinstance(arr, np.ndarray) for arr in [delta_y, d, ps, out_reg, i_weights]):
@@ -124,9 +143,39 @@ def aipw_did_rc(
 ) -> float:
     r"""Compute the Locally Efficient DR DiD estimator with Repeated Cross Section Data.
 
-    This estimator is for the Average Treatment Effect on the Treated (ATT).
-    Assumes that propensity scores are appropriately bounded away from 0 and 1 before
-    being passed to this function.
+    The locally efficient AIPW estimator for repeated cross-sections is given by
+
+    .. math::
+
+        \hat{\tau}_{AIPW}^{RC} = \left[\frac{\sum_{i} w_i D_i T_i (Y_i - \hat{\mu}_{0,1}(X_i))}
+                                           {\sum_{i} w_i D_i T_i}
+                                - \frac{\sum_{i} w_i D_i (1-T_i) (Y_i - \hat{\mu}_{0,0}(X_i))}
+                                       {\sum_{i} w_i D_i (1-T_i)}\right]
+
+        - \left[\frac{\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} T_i
+                      (Y_i - \hat{\mu}_{0,1}(X_i))}
+                     {\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} T_i}
+               - \frac{\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} (1-T_i)
+                       (Y_i - \hat{\mu}_{0,0}(X_i))}
+                      {\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} (1-T_i)}\right]
+
+        + \left[\frac{\sum_{i} w_i D_i (\hat{\mu}_{1,1}(X_i) - \hat{\mu}_{0,1}(X_i))}
+                     {\sum_{i} w_i D_i}
+               - \frac{\sum_{i} w_i D_i T_i (\hat{\mu}_{1,1}(X_i) - \hat{\mu}_{0,1}(X_i))}
+                      {\sum_{i} w_i D_i T_i}\right]
+
+        - \left[\frac{\sum_{i} w_i D_i (\hat{\mu}_{1,0}(X_i) - \hat{\mu}_{0,0}(X_i))}
+                     {\sum_{i} w_i D_i}
+               - \frac{\sum_{i} w_i D_i (1-T_i) (\hat{\mu}_{1,0}(X_i) - \hat{\mu}_{0,0}(X_i))}
+                      {\sum_{i} w_i D_i (1-T_i)}\right]
+
+    where :math:`w_i` are the normalized observation weights, :math:`D_i` is the treatment indicator,
+    and :math:`T_i` is the post-treatment period indicator. The variable :math:`Y_i` denotes the outcome
+    while :math:`\hat{e}(X_i)` is the estimated propensity score (``ps``) and :math:`\hat{\mu}_{d,t}(X_i)`
+    represents the predicted outcome for treatment status ``d`` in period `t`.
+
+    This achieves local efficiency by incorporating all four outcome regression predictions
+    and properly weighting observations to account for treatment selection and time periods.
 
     Parameters
     ----------
@@ -185,6 +234,10 @@ def aipw_did_rc(
            ...:                               out_y_cont_post, out_y_cont_pre,
            ...:                               i_weights)
            ...: att_rc_estimate
+
+    See Also
+    --------
+    aipw_did_panel : AIPW estimator for panel data.
 
     """
     arrays = [
