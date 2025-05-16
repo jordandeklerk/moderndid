@@ -6,7 +6,7 @@ import numpy as np
 
 
 def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
-    r"""Compute the Augmented Inverse Propensity Weighted (AIPW) estimator.
+    r"""Compute the augmented inverse propensity weighted (AIPW) estimator.
 
     The AIPW estimator for panel data is given by
 
@@ -16,7 +16,7 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
                                 {\sum_{i} w_i D_i}
         - \frac{\sum_{i} w_i (1-D_i) \frac{\hat{e}(X_i)}{1-\hat{e}(X_i)}
                 (Y_{i,post} - Y_{i,pre} - \hat{m}_0(X_i))}
-               {\sum_{i} w_i (1-D_i) \frac{\hat{e}(X_i)}{1-\hat{e}(X_i)}}
+               {\sum_{i} w_i (1-D_i) \frac{\hat{e}(X_i)}{1-\hat{e}(X_i)}},
 
     where :math:`w_i` are the normalized observation weights and :math:`D_i` is the treatment indicator.
     The term :math:`Y_{i,post} - Y_{i,pre}` represents the outcome difference (``delta_y``) while
@@ -58,11 +58,11 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
         In [1]: import numpy as np
            ...: from drsynthdid.estimators import aipw_did_panel
            ...:
-           ...: delta_y = np.array([0.5, 1.2, -0.3, 0.8, 1.5, 0.2]) # Y_post - Y_pre
-           ...: d = np.array([1, 1, 0, 0, 1, 0]) # Treatment indicator
-           ...: ps = np.array([0.65, 0.7, 0.3, 0.4, 0.6, 0.35]) # Propensity scores P(D=1|X)
-           ...: out_reg = np.array([0.4, 0.9, -0.1, 0.6, 1.1, 0.1]) # Outcome regression E[delta_y|X, D=0]
-           ...: i_weights = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0]) # Observation weights
+           ...: delta_y = np.array([0.5, 1.2, -0.3, 0.8, 1.5, 0.2])
+           ...: d = np.array([1, 1, 0, 0, 1, 0])
+           ...: ps = np.array([0.65, 0.7, 0.3, 0.4, 0.6, 0.35])
+           ...: out_reg = np.array([0.4, 0.9, -0.1, 0.6, 1.1, 0.1])
+           ...: i_weights = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
            ...:
            ...: att_estimate = aipw_did_panel(delta_y, d, ps, out_reg, i_weights)
            ...: att_estimate
@@ -141,7 +141,7 @@ def aipw_did_rc(
     out_y_cont_pre,
     i_weights,
 ) -> float:
-    r"""Compute the Locally Efficient DR DiD estimator with Repeated Cross Section Data.
+    r"""Compute the locally efficient DR DiD estimator with repeated cross-section data.
 
     The locally efficient AIPW estimator for repeated cross-sections is given by
 
@@ -220,9 +220,9 @@ def aipw_did_rc(
            ...: from drsynthdid.estimators import aipw_did_rc
            ...:
            ...: y = np.array([10, 12, 11, 13, 20, 22, 15, 18, 19, 25])
-           ...: post = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1]) # Post-treatment indicator
-           ...: d = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1])    # Treatment indicator
-           ...: ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68]) # P(D=1|X)
+           ...: post = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1])
+           ...: d = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
+           ...: ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
            ...: out_y_treat_post = np.array([18, 19, 20, 21, 22, 23, 24, 25, 20, 26])
            ...: out_y_treat_pre = np.array([8, 9, 10, 11, 12, 13, 14, 15, 10, 11])
            ...: out_y_cont_post = np.array([12, 13, 14, 15, 16, 17, 18, 19, 13, 14])
