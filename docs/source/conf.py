@@ -1,12 +1,12 @@
 # pylint: disable=redefined-builtin,invalid-name
-"""DR-synthdid sphinx configuration."""
+"""pydid sphinx configuration."""
 
 import os
 from importlib.metadata import metadata
 
 # -- Project information
 
-_metadata = metadata("DR-synthdid")
+_metadata = metadata("pydid")
 
 project = _metadata["Name"]
 author = _metadata["Author-email"].split("<", 1)[0].strip()
@@ -58,8 +58,8 @@ add_function_parentheses = False
 # -- Options for extensions
 
 extlinks = {
-    "issue": ("https://github.com/jordandeklerk/DR-synthdid/issues/%s", "GH#%s"),
-    "pull": ("https://github.com/jordandeklerk/DR-synthdid/pull/%s", "PR#%s"),
+    "issue": ("https://github.com/jordandeklerk/pydid/issues/%s", "GH#%s"),
+    "pull": ("https://github.com/jordandeklerk/pydid/pull/%s", "PR#%s"),
 }
 
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
@@ -99,8 +99,8 @@ intersphinx_mapping = {
 html_theme = "sphinx_book_theme"
 html_theme_options = {
     "logo": {
-        "image_light": "_static/dr-synthdid-light.png",
-        "image_dark": "_static/dr-synthdid-dark.png",
+        "image_light": "_static/pydid-light.png",
+        "image_dark": "_static/pydid-dark.png",
     }
 }
 html_favicon = "_static/favicon.ico"

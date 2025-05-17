@@ -1,6 +1,6 @@
 # API Reference
 
-Detailed documentation for all public modules, classes, and functions in the DR-SynthDID package.
+Detailed documentation for all public modules, classes, and functions in the pyDiD package.
 
 ## Propensity-Weighted Estimators
 
@@ -8,9 +8,9 @@ Detailed documentation for all public modules, classes, and functions in the DR-
 .. autosummary::
    :toctree: generated/
 
-   drsynthdid.aipw_did_panel
-   drsynthdid.aipw_did_rc_imp
-   drsynthdid.aipw_did_rc_basic
+   pydid.aipw_did_panel
+   pydid.aipw_did_rc_imp
+   pydid.aipw_did_rc_basic
 ```
 
 ## WOLS Estimators
@@ -19,8 +19,8 @@ Detailed documentation for all public modules, classes, and functions in the DR-
 .. autosummary::
    :toctree: generated/
 
-   drsynthdid.wols_panel
-   drsynthdid.wols_rc
+   pydid.wols_panel
+   pydid.wols_rc
 ```
 
 ## Utilities
@@ -29,6 +29,6 @@ Detailed documentation for all public modules, classes, and functions in the DR-
 .. autosummary::
    :toctree: generated/
 
-   drsynthdid.preprocess_drdid
-   drsynthdid.preprocess_synth
+   pydid.preprocess_drdid
+   pydid.preprocess_synth
 ```

@@ -7,7 +7,7 @@ coverage:
         threshold: 2%
         base: auto
         paths:
-          - "drsynthdid"
+          - "pydid"
        # advanced settings
         branches:
           - main

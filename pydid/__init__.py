@@ -1,5 +1,5 @@
 # pylint: disable=wildcard-import
-"""Doubly Robust DiD with Synthetic Controls."""
+"""DiD and doubly robust DiD estimators."""
 
 from .estimators import aipw_did_panel, aipw_did_rc_basic, aipw_did_rc_imp
 from .utils import preprocess_drdid, preprocess_synth
