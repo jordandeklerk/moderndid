@@ -1,4 +1,4 @@
-"""Propensity-weighted estimators for DR-DiD and synthetic control methods."""
+"""Propensity-weighted estimators for DR-DiD."""
 
 import warnings
 
@@ -51,7 +51,8 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
 
     See Also
     --------
-    aipw_did_rc : AIPW estimator for repeated cross-sections.
+    aipw_did_rc_basic : Simplified AIPW estimator for repeated cross-sections.
+    aipw_did_rc_imp : Locally efficient AIPW estimator for repeated cross-sections.
 
     """
     if not all(isinstance(arr, np.ndarray) for arr in [delta_y, d, ps, out_reg, i_weights]):
@@ -195,6 +196,7 @@ def aipw_did_rc_imp(
     See Also
     --------
     aipw_did_panel : AIPW estimator for panel data.
+    aipw_did_rc_basic : Simplified AIPW estimator for repeated cross-sections.
 
     """
     arrays = [

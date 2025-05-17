@@ -7,7 +7,7 @@ from .helpers import importorskip
 
 pd = importorskip("pandas")
 
-from drsynthdid.utils import preprocess_drdid, preprocess_synth
+from pydid.utils import preprocess_drdid, preprocess_synth
 from tests.dgp import DiD, SantAnnaZhaoDRDiD, SyntheticControl
 
 

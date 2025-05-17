@@ -1,4 +1,4 @@
-"""Preprocessing functions for DRDiD and synthetic control estimators."""
+"""Preprocessing functions for doubly robust DiD estimators."""
 
 import warnings
 from typing import Any, Literal
