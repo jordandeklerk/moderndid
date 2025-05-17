@@ -1,5 +1,5 @@
-<img src="docs/source/_static/pydid-light.png#gh-light-mode-only" width="185" align="left" alt="DR-synthdid logo"></img>
-<img src="docs/source/_static/pydid-dark.png#gh-dark-mode-only" width="185" align="left" alt="DR-synthdid logo"></img>
+<img src="docs/source/_static/pydid-light.png#gh-light-mode-only" width="185" align="left" alt="pyDiD logo"></img>
+<img src="docs/source/_static/pydid-dark.png#gh-dark-mode-only" width="185" align="left" alt="pyDiD logo"></img>
 
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
