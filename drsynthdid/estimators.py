@@ -49,24 +49,6 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     float
         The AIPW ATT estimate.
 
-    Examples
-    --------
-    Calculate the AIPW ATT estimate for a mock panel dataset.
-
-    .. ipython::
-
-        In [1]: import numpy as np
-           ...: from drsynthdid.estimators import aipw_did_panel
-           ...:
-           ...: delta_y = np.array([0.5, 1.2, -0.3, 0.8, 1.5, 0.2])
-           ...: d = np.array([1, 1, 0, 0, 1, 0])
-           ...: ps = np.array([0.65, 0.7, 0.3, 0.4, 0.6, 0.35])
-           ...: out_reg = np.array([0.4, 0.9, -0.1, 0.6, 1.1, 0.1])
-           ...: i_weights = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
-           ...:
-           ...: att_estimate = aipw_did_panel(delta_y, d, ps, out_reg, i_weights)
-           ...: att_estimate
-
     See Also
     --------
     aipw_did_rc : AIPW estimator for repeated cross-sections.
@@ -209,31 +191,6 @@ def aipw_did_rc_imp(
     -------
     float
         The AIPW ATT estimate for repeated cross-sections.
-
-    Examples
-    --------
-    Calculate the AIPW ATT estimate for a mock repeated cross-section dataset.
-
-    .. ipython::
-
-        In [1]: import numpy as np
-           ...: from drsynthdid.estimators import aipw_did_rc_imp
-           ...:
-           ...: y = np.array([10, 12, 11, 13, 20, 22, 15, 18, 19, 25])
-           ...: post = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1])
-           ...: d = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
-           ...: ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
-           ...: out_y_treat_post = np.array([18, 19, 20, 21, 22, 23, 24, 25, 20, 26])
-           ...: out_y_treat_pre = np.array([8, 9, 10, 11, 12, 13, 14, 15, 10, 11])
-           ...: out_y_cont_post = np.array([12, 13, 14, 15, 16, 17, 18, 19, 13, 14])
-           ...: out_y_cont_pre = np.array([9, 10, 11, 12, 10, 11, 12, 13, 9, 10])
-           ...: i_weights = np.ones(10)
-           ...:
-           ...: att_rc_estimate = aipw_did_rc_imp(y, post, d, ps,
-           ...:                               out_y_treat_post, out_y_treat_pre,
-           ...:                               out_y_cont_post, out_y_cont_pre,
-           ...:                               i_weights)
-           ...: att_rc_estimate
 
     See Also
     --------
@@ -385,25 +342,6 @@ def aipw_did_rc_basic(y, post, d, ps, out_reg, i_weights):
     -------
     float
         The simplified AIPW ATT estimate for repeated cross-sections.
-
-    Examples
-    --------
-    Calculate the simplified AIPW ATT estimate for a mock repeated cross-section dataset.
-
-    .. ipython::
-
-        In [1]: import numpy as np
-           ...: from drsynthdid.estimators import aipw_did_rc_basic
-           ...:
-           ...: y = np.array([10, 12, 11, 13, 20, 22, 15, 18, 19, 25])
-           ...: post = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1])
-           ...: d = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
-           ...: ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
-           ...: out_reg = np.array([10.5, 11.8, 11.2, 12.5, 18.5, 20.2, 14.8, 16.5, 18.2, 23.0])
-           ...: i_weights = np.ones(10)
-           ...:
-           ...: att_estimate = aipw_did_rc_basic(y, post, d, ps, out_reg, i_weights)
-           ...: att_estimate
 
     See Also
     --------

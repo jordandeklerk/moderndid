@@ -13,6 +13,16 @@ Detailed documentation for all public modules, classes, and functions in the DR-
    drsynthdid.aipw_did_rc_basic
 ```
 
+## WOLS Estimators
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   drsynthdid.wols_panel
+   drsynthdid.wols_rc
+```
+
 ## Utilities
 
 ```{eval-rst}
