@@ -11,6 +11,7 @@
 
 __pyDiD__ is a Python package implementing a variety of DiD and doubly robust DiD estimators with potentially multiple time periods, staggered treatment adoption, and when parallel trends may only be plausible after conditioning on covariates. We also implement an efficient estimator for settings with quasi-random treatment timing and a test for whether parallel trends is insensitive to functional form.
 
+<br>
 
 > **⚠️ Note:**
-> This package is currently in development.
+> This package is currently in active development.
