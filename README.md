@@ -11,38 +11,10 @@
 
 __pyDiD__ is a Python package implementing a variety of DiD, doubly robust DiD, and quasi-random treatment timing estimators. The package also include a test for whether parallel trends is insensitive to functional form.
 
-<br>
+<br><br>
 
 > **⚠️ Note:**
 > This package is currently in active development.
-
-This package implements doubly robust DiD estimators from
-
-* Sant'Anna, P. H. C., and Zhao, J. B. (2020). Doubly Robust Difference-in-Differences Estimators.
-*arXiv preprint arXiv:1812.01723*. doi:10.48550/arXiv.1812.01723.
-[Online](https://doi.org/10.48550/arXiv.1812.01723),
-[arXiv preprint arXiv:1812.01723v3](https://arxiv.org/abs/1812.01723v3),
-
-DiD estimators with multiple time periods from
-
-* Callaway, B., and Sant'Anna, P. H. C. (2020). Difference-in-Differences with Multiple Time Periods.
-*arXiv preprint arXiv:1803.09015*. doi:10.48550/arXiv.1803.09015.
-[Online](https://doi.org/10.48550/arXiv.1803.09015),
-[arXiv preprint arXiv:1803.09015v4](https://arxiv.org/abs/1803.09015v4),
-
-and DiD estimators for quasi-random treatment timing from
-
-* Roth, J., and Sant'Anna, P. H. C. (2023). Efficient Estimation for Staggered Rollout Designs.
-*arXiv preprint arXiv:2102.01291*. doi:10.48550/arXiv.2102.01291.
-[Online](https://doi.org/10.48550/arXiv.2102.01291),
-[arXiv preprint arXiv:2102.01291v7](https://arxiv.org/abs/2102.01291v7).
-
-The package also includes a test for sensitivity of parallel trends to functional form from
-
-* Roth, J., and Sant'Anna, P. H. C. (2022). When Is Parallel Trends Sensitive to Functional Form?
-*arXiv preprint arXiv:2010.04814*. doi:10.48550/arXiv.2010.04814.
-[Online](https://doi.org/10.48550/arXiv.2010.04814),
-[arXiv preprint arXiv:2010.04814v5](https://arxiv.org/abs/2010.04814v5).
 
 ## Citation
 
@@ -61,17 +33,17 @@ The package also includes a test for sensitivity of parallel trends to functiona
   year={2020}
 }
 
-@article{roth2022when,
-  title={When Is Parallel Trends Sensitive to Functional Form?},
-  author={Roth, Jonathan and Sant'Anna, Pedro H. C.},
-  journal={arXiv preprint arXiv:2010.04814},
-  year={2022}
-}
-
 @article{roth2023efficient,
   title={Efficient Estimation for Staggered Rollout Designs},
   author={Roth, Jonathan and Sant'Anna, Pedro H. C.},
   journal={arXiv preprint arXiv:2102.01291},
   year={2023}
+}
+
+@article{roth2022when,
+  title={When Is Parallel Trends Sensitive to Functional Form?},
+  author={Roth, Jonathan and Sant'Anna, Pedro H. C.},
+  journal={arXiv preprint arXiv:2010.04814},
+  year={2022}
 }
 ```
