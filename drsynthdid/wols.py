@@ -9,9 +9,9 @@ from scipy import linalg
 def wols_panel(delta_y, d, x, ps, i_weights):
     r"""Compute weighted OLS regression parameters for DR-DiD with panel data.
 
-    This function implements weighted ordinary least squares regression for the outcome
-    model component of the doubly-robust difference-in-differences estimator. The regression
-    is performed on control units only, with weights adjusted by the propensity score odds ratio.
+    Implements weighted ordinary least squares regression for the outcome model component of the
+    doubly-robust difference-in-differences estimator. The regression is performed on control units
+    only, with weights adjusted by the propensity score odds ratio.
 
     The weighted OLS estimator solves
 
@@ -128,11 +128,10 @@ def wols_panel(delta_y, d, x, ps, i_weights):
 def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     r"""Compute weighted OLS regression parameters for DR-DiD with repeated cross-sections.
 
-    This function implements weighted ordinary least squares regression for the outcome
-    model component of the doubly-robust difference-in-differences estimator with
-    repeated cross-section data. The regression is performed on specific subgroups
-    based on treatment status and time period, with weights adjusted by the
-    propensity score odds ratio.
+    Implements weighted ordinary least squares regression for the outcome model component of the
+    doubly-robust difference-in-differences estimator with repeated cross-section data. The
+    regression is performed on specific subgroups based on treatment status and time period, with
+    weights adjusted by the propensity score odds ratio.
 
     The weighted OLS estimator solves
 
