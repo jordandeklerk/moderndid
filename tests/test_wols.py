@@ -127,17 +127,13 @@ def test_wols_panel_multicollinearity():
 
     x = np.zeros((n_units, n_features))
     x[:, 0] = np.random.RandomState(333).randn(n_units)
-    x[:, 1] = x[:, 0] * 2 + np.random.RandomState(334).randn(n_units) * 0.0001
+    x[:, 1] = x[:, 0] * 2  # Ensure perfect multicollinearity
     x[:, 2] = x[:, 0] + x[:, 1]
     ps = np.array([0.6, 0.3, 0.4, 0.35, 0.7, 0.25, 0.45, 0.38, 0.65, 0.32])
     i_weights = np.ones(n_units)
 
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        result = wols_panel(delta_y, d, x, ps, i_weights)
-        assert any("Potential multicollinearity" in str(warn.message) for warn in w)
-
-    assert isinstance(result, dict)
+    with pytest.raises(ValueError, match="Failed to solve linear system"):
+        wols_panel(delta_y, d, x, ps, i_weights)
 
 
 @pytest.mark.parametrize(
