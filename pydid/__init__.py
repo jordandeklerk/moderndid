@@ -1,9 +1,9 @@
 # pylint: disable=wildcard-import
 """DiD and doubly robust DiD estimators."""
 
-from .estimators import aipw_did_panel, aipw_did_rc_basic, aipw_did_rc_imp
+from .drdid.estimators import aipw_did_panel, aipw_did_rc_basic, aipw_did_rc_imp
+from .drdid.wols import wols_panel, wols_rc
 from .utils import preprocess_drdid, preprocess_synth
-from .wols import wols_panel, wols_rc
 
 __all__ = [
     "preprocess_drdid",
