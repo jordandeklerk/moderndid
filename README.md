@@ -25,21 +25,27 @@ __pyDiD__ is a Python package implementing a variety of DiD, doubly robust DiD, 
   journal={arXiv preprint arXiv:1812.01723},
   year={2020}
 }
+```
 
+```bibtex
 @article{callaway2020difference,
   title={Difference-in-Differences with Multiple Time Periods},
   author={Callaway, Brantly and Sant'Anna, Pedro H. C.},
   journal={arXiv preprint arXiv:1803.09015},
   year={2020}
 }
+```
 
+```bibtex
 @article{roth2023efficient,
   title={Efficient Estimation for Staggered Rollout Designs},
   author={Roth, Jonathan and Sant'Anna, Pedro H. C.},
   journal={arXiv preprint arXiv:2102.01291},
   year={2023}
 }
+```
 
+```bibtex
 @article{roth2022when,
   title={When Is Parallel Trends Sensitive to Functional Form?},
   author={Roth, Jonathan and Sant'Anna, Pedro H. C.},
