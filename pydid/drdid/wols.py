@@ -90,7 +90,6 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     if np.max(control_weights) / np.min(control_weights) > 1e6:
         warnings.warn("Extreme weight ratios detected. Results may be numerically unstable.", UserWarning)
 
-    # Weighted OLS using normal equations: (X'WX)^{-1}X'Wy
     weighted_x = control_x * control_weights[:, np.newaxis]
     xtw_x = control_x.T @ weighted_x
 
@@ -108,17 +107,16 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     try:
         xtw_y = control_x.T @ (control_weights * control_y)
         coefficients = linalg.solve(xtw_x, xtw_y, overwrite_a=False, overwrite_b=False)
+
+        if np.any(np.isnan(coefficients)) or np.any(np.isinf(coefficients)):
+            raise ValueError(
+                "Failed to solve linear system. Coefficients contain NaN/Inf values, "
+                "likely due to multicollinearity or singular matrix."
+            )
     except linalg.LinAlgError as e:
         raise ValueError(
             f"Failed to solve linear system: {e}. " "The covariate matrix may be singular or ill-conditioned."
         ) from e
-
-    if np.any(np.isnan(coefficients)):
-        warnings.warn(
-            "Regression coefficients contain NaN values. "
-            "This may be due to multicollinearity or lack of variation in covariates.",
-            UserWarning,
-        )
 
     fitted_values = x @ coefficients
 
@@ -129,20 +127,25 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     r"""Compute weighted OLS regression parameters for DR-DiD with repeated cross-sections.
 
     Implements weighted ordinary least squares regression for the outcome model component of the
-    doubly-robust difference-in-differences estimator with repeated cross-section data. The
-    regression is performed on specific subgroups based on treatment status and time period, with
-    weights adjusted by the propensity score odds ratio.
+    doubly-robust difference-in-differences estimator with repeated cross-section data.
+    The regression is performed on specific subgroups based on treatment status and time period.
+    The weights used for the OLS are the `i_weights` passed to the function, applied to the
+    selected subgroup.
+
+    In the context of bootstrapping (e.g., when called from `boot_drdid_rc`),
+    these `i_weights` are typically the bootstrap-perturbed sampling weights.
+    The propensity scores (`ps` argument) are used for internal validation checks within this
+    function but do not contribute to the OLS weighting itself.
 
     The weighted OLS estimator solves
 
     .. math::
 
-        \hat{\beta} = \arg\min_{\beta} \sum_{i \in S} w_i \frac{\hat{e}(X_i)}{1-\hat{e}(X_i)}
-                      (Y_i - X_i'\beta)^2,
+        \hat{\beta} = \arg\min_{\beta} \sum_{i \in S} w'_i (Y_i - X_i'\beta)^2,
 
-    where :math:`w_i` are the observation weights, :math:`\hat{e}(X_i)` is the estimated
-    propensity score, :math:`Y_i` is the outcome, :math:`X_i` are the covariates, and
-    :math:`S` is the subset defined by the pre/treat parameters.
+    where :math:`S` is the subset of observations defined by the `pre` and `treat` parameters,
+    :math:`Y_i` is the outcome, :math:`X_i` are the covariates, and :math:`w'_i` are the
+    values from the `i_weights` argument corresponding to the observations in subset :math:`S`.
 
     Parameters
     ----------
@@ -202,20 +205,30 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     if pre is None:
         raise ValueError("pre parameter must be specified (True for pre-treatment, False for post-treatment).")
 
-    # Select subset based on pre/treat parameters
     if pre and treat:
-        subs = (d == 1) & (post == 0)  # Treated units in pre-period
+        subs = (d == 1) & (post == 0)
     elif not pre and treat:
-        subs = (d == 1) & (post == 1)  # Treated units in post-period
+        subs = (d == 1) & (post == 1)
     elif pre and not treat:
-        subs = (d == 0) & (post == 0)  # Control units in pre-period
-    else:  # not pre and not treat
-        subs = (d == 0) & (post == 1)  # Control units in post-period
+        subs = (d == 0) & (post == 0)
+    else:
+        subs = (d == 0) & (post == 1)
 
     n_subs = np.sum(subs)
+    n_features = x.shape[1]
 
     if n_subs == 0:
         raise ValueError(f"No units found for pre={pre}, treat={treat}. Cannot perform regression.")
+
+    if n_subs < n_features:
+        warnings.warn(
+            f"Number of observations in subset ({n_subs}) is less than the number of features ({n_features}). "
+            "Cannot estimate regression coefficients. Returning NaNs.",
+            UserWarning,
+        )
+        nan_coeffs = np.full(n_features, np.nan)
+        nan_fitted_values = np.full(y.shape[0], np.nan)
+        return {"out_reg": nan_fitted_values, "coefficients": nan_coeffs}
 
     if n_subs < 3:
         warnings.warn(f"Only {n_subs} units available for regression. Results may be unreliable.", UserWarning)
@@ -225,45 +238,56 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     if np.any(problematic_ps):
         raise ValueError("Propensity score is 1 for some units in subset. Weights would be undefined.")
 
-    ps_odds = ps / (1 - ps)
-    weight_all = i_weights * ps_odds
-
+    # Propensity scores (ps) are used for a check below, but not for OLS weighting in this context.
+    # The i_weights passed to this function are the bootstrap weights (original_i_weights * v_bootstrap).
     sub_x = x[subs]
     sub_y = y[subs]
-    sub_weights = weight_all[subs]
+    sub_weights = i_weights[subs]
 
-    if np.max(sub_weights) / np.min(sub_weights) > 1e6:
-        warnings.warn("Extreme weight ratios detected. Results may be numerically unstable.", UserWarning)
+    if n_subs > 1 and np.any(sub_weights > 0):
+        positive_weights = sub_weights[sub_weights > 0]
+        if positive_weights.size > 0:
+            min_positive_weight = np.min(positive_weights)
+            if min_positive_weight > 0:
+                if (np.max(sub_weights) / min_positive_weight) > 1e6:
+                    warnings.warn("Extreme weight ratios detected. Results may be numerically unstable.", UserWarning)
 
     weighted_x = sub_x * sub_weights[:, np.newaxis]
     xtw_x = sub_x.T @ weighted_x
+
+    coefficients = np.full(n_features, np.nan)
+    fitted_values = np.full(y.shape[0], np.nan)
 
     try:
         condition_number = np.linalg.cond(xtw_x)
         if condition_number > 1e10:
             warnings.warn(
                 f"Potential multicollinearity detected (condition number: {condition_number:.2e}). "
-                "Consider removing or combining covariates.",
+                "Results may be unreliable. Returning NaNs.",
                 UserWarning,
             )
-    except np.linalg.LinAlgError:
-        pass
+            return {"out_reg": fitted_values, "coefficients": coefficients}
 
-    try:
         xtw_y = sub_x.T @ (sub_weights * sub_y)
-        coefficients = linalg.solve(xtw_x, xtw_y, overwrite_a=False, overwrite_b=False)
-    except linalg.LinAlgError as e:
-        raise ValueError(
-            f"Failed to solve linear system: {e}. " "The covariate matrix may be singular or ill-conditioned."
-        ) from e
+        solved_coefficients = linalg.solve(xtw_x, xtw_y, overwrite_a=False, overwrite_b=False)
 
-    if np.any(np.isnan(coefficients)):
+        if np.any(np.isnan(solved_coefficients)) or np.any(np.isinf(solved_coefficients)):
+            warnings.warn(
+                "Solved coefficients contain NaN/Inf values, likely due to multicollinearity "
+                "or singular matrix. Returning NaNs.",
+                UserWarning,
+            )
+        else:
+            coefficients = solved_coefficients
+            fitted_values = x @ coefficients
+
+    except linalg.LinAlgError as e:
         warnings.warn(
-            "Regression coefficients contain NaN values. "
-            "This may be due to multicollinearity or lack of variation in covariates.",
+            f"Failed to solve linear system: {e}. "
+            "The covariate matrix may be singular or ill-conditioned. Returning NaNs.",
             UserWarning,
         )
-
-    fitted_values = x @ coefficients
+    except ValueError as e:
+        warnings.warn(f"ValueError during linear system solution: {e}. Returning NaNs.", UserWarning)
 
     return {"out_reg": fitted_values, "coefficients": coefficients}
