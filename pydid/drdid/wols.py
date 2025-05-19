@@ -129,13 +129,8 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     Implements weighted ordinary least squares regression for the outcome model component of the
     doubly-robust difference-in-differences estimator with repeated cross-section data.
     The regression is performed on specific subgroups based on treatment status and time period.
-    The weights used for the OLS are the `i_weights` passed to the function, applied to the
+    The weights used for the OLS are the ``i_weights`` passed to the function, applied to the
     selected subgroup.
-
-    In the context of bootstrapping (e.g., when called from `boot_drdid_rc`),
-    these `i_weights` are typically the bootstrap-perturbed sampling weights.
-    The propensity scores (`ps` argument) are used for internal validation checks within this
-    function but do not contribute to the OLS weighting itself.
 
     The weighted OLS estimator solves
 
@@ -145,7 +140,7 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
 
     where :math:`S` is the subset of observations defined by the `pre` and `treat` parameters,
     :math:`Y_i` is the outcome, :math:`X_i` are the covariates, and :math:`w'_i` are the
-    values from the `i_weights` argument corresponding to the observations in subset :math:`S`.
+    values from the ``i_weights`` argument corresponding to the observations in subset :math:`S`.
 
     Parameters
     ----------
@@ -178,6 +173,13 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
 
         - `out_reg` : ndarray
         - `coefficients` : ndarray
+
+    Notes
+    -----
+    In the context of bootstrapping (when called from `boot_drdid_rc`), the ``i_weights``
+    argument is typically the bootstrap-perturbed sampling weights. The propensity scores,
+    ``ps``, are used for internal validation checks within this function but do not
+    contribute to the OLS weighting itself.
 
     See Also
     --------
