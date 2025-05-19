@@ -193,15 +193,23 @@ def test_wols_rc_happy_path_control_post():
     ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
     i_weights = np.ones(n_units)
 
-    result = wols_rc(y, post, d, x, ps, i_weights, pre=False, treat=False)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        result = wols_rc(y, post, d, x, ps, i_weights, pre=False, treat=False)
+        assert len(w) >= 1
+
+        assert any(
+            "Number of observations in subset (2) is less than the number of features (3)" in str(warn.message)
+            for warn in w
+        )
 
     assert isinstance(result, dict)
     assert "out_reg" in result
     assert "coefficients" in result
     assert result["out_reg"].shape == (n_units,)
     assert result["coefficients"].shape == (n_features,)
-    assert np.all(np.isfinite(result["out_reg"]))
-    assert np.all(np.isfinite(result["coefficients"]))
+    assert np.all(np.isnan(result["out_reg"]))
+    assert np.all(np.isnan(result["coefficients"]))
 
 
 def test_wols_rc_happy_path_treat_pre():
@@ -267,9 +275,19 @@ def test_wols_rc_few_units_in_subset():
         warnings.simplefilter("always")
         result = wols_rc(y, post, d, x, ps, i_weights, pre=True, treat=False)
         assert len(w) >= 1
-        assert any("Only 1 units available for regression" in str(warn.message) for warn in w)
+
+        assert any(
+            "Number of observations in subset (1) is less than the number of features (2)" in str(warn.message)
+            for warn in w
+        )
 
     assert isinstance(result, dict)
+    assert "out_reg" in result
+    assert "coefficients" in result
+    assert result["out_reg"].shape == (n_units,)
+    assert result["coefficients"].shape == (n_features,)
+    assert np.all(np.isnan(result["out_reg"]))
+    assert np.all(np.isnan(result["coefficients"]))
 
 
 def test_wols_rc_ps_one_in_subset():
@@ -319,8 +337,20 @@ def test_wols_rc_multicollinearity():
     ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
     i_weights = np.ones(n_units)
 
-    with pytest.raises(ValueError, match="Failed to solve linear system"):
-        wols_rc(y, post, d, x, ps, i_weights, pre=True, treat=False)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        result = wols_rc(y, post, d, x, ps, i_weights, pre=True, treat=False)
+        assert len(w) >= 1
+        assert any(
+            "Number of observations in subset (2) is less than the number of features (3)" in str(warn.message)
+            for warn in w
+        )
+
+    assert isinstance(result, dict)
+    assert "out_reg" in result
+    assert "coefficients" in result
+    assert np.all(np.isnan(result["out_reg"]))
+    assert np.all(np.isnan(result["coefficients"]))
 
 
 @pytest.mark.parametrize(
