@@ -230,7 +230,7 @@ def preprocess_drdid(
             if not pre_df[cov_cols_to_check].equals(post_df[cov_cols_to_check]):
                 diff_mask = (pre_df[cov_cols_to_check] != post_df[cov_cols_to_check]).any()
                 diff_cols = diff_mask[diff_mask].index.to_list()
-                raise ValueError("Covariates must be time-invariant in panel data. " f"Differing columns: {diff_cols}")
+                raise ValueError(f"Covariates must be time-invariant in panel data. Differing columns: {diff_cols}")
 
         if not pre_df[treat_col].equals(post_df[treat_col]):
             raise ValueError(f"Treatment indicator ('{treat_col}') must be time-invariant in panel data.")
@@ -463,9 +463,7 @@ def preprocess_synth(
     ids_with_na = ids_with_na[id_col].unique()
 
     if len(ids_with_na) > 0:
-        msg = (
-            f"Dropping {len(ids_with_na)} units due to NA in '{y_col}' or " f"'{weights_col}' within relevant periods."
-        )
+        msg = f"Dropping {len(ids_with_na)} units due to NA in '{y_col}' or '{weights_col}' within relevant periods."
         warnings.warn(msg, UserWarning)
         df_balanced = df_balanced[~df_balanced[id_col].isin(ids_with_na)]
         final_treated_ids = sorted(list(set(final_treated_ids) - set(ids_with_na)))
