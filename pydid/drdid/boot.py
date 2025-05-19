@@ -139,7 +139,7 @@ def boot_drdid_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, 
     n_failed = np.sum(np.isnan(bootstrap_estimates))
     if n_failed > n_bootstrap * 0.1:
         warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed. " "Results may be unreliable.", UserWarning
+            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed. Results may be unreliable.", UserWarning
         )
 
     return bootstrap_estimates
