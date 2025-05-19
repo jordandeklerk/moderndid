@@ -115,7 +115,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
             )
     except linalg.LinAlgError as e:
         raise ValueError(
-            f"Failed to solve linear system: {e}. " "The covariate matrix may be singular or ill-conditioned."
+            f"Failed to solve linear system: {e}. The covariate matrix may be singular or ill-conditioned."
         ) from e
 
     fitted_values = x @ coefficients
