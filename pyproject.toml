@@ -31,6 +31,7 @@ dependencies = [
   "pandas>=2.0.0",
   "formulaic>=0.6.0",
   "statsmodels>=0.14.0",
+  "scikit-learn>=1.6.1",
 ]
 
 [tool.flit.module]
