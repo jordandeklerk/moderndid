@@ -1,4 +1,4 @@
-"""Propensity-weighted estimators for DR-DiD."""
+"""Augmented inverse propensity weighted (AIPW) estimators for DR-DiD."""
 
 import warnings
 
@@ -6,26 +6,28 @@ import numpy as np
 
 
 def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
-    r"""Compute the augmented inverse propensity weighted (AIPW) estimator.
+    r"""Compute the augmented inverse propensity weighted (AIPW) estimator for panel data.
 
-    The AIPW estimator for panel data is given by
+    For panel data settings (where the same units are observed before and after treatment),
+    this estimator combines inverse propensity weighting with outcome regression approaches
+    to achieve double robustness.
+
+    The AIPW estimator for panel data (equation 3.1 in [1]_) is given by
 
     .. math::
 
-        \hat{\tau}_{AIPW} = \frac{\sum_{i} w_i D_i (Y_{i,post} - Y_{i,pre} - \hat{m}_0(X_i))}
-                                {\sum_{i} w_i D_i}
-        - \frac{\sum_{i} w_i (1-D_i) \frac{\hat{e}(X_i)}{1-\hat{e}(X_i)}
-                (Y_{i,post} - Y_{i,pre} - \hat{m}_0(X_i))}
-               {\sum_{i} w_i (1-D_i) \frac{\hat{e}(X_i)}{1-\hat{e}(X_i)}},
+        \widehat{\tau}^{dr,p} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{p}(D)-\widehat{w}_{0}^{p}(D, X ;
+        \widehat{\gamma})\right)
+        \left(\Delta Y-\mu_{0, \Delta}^{p}\left(X ; \widehat{\beta}_{0,0}^{p},
+        \widehat{\beta}_{0,1}^{p}\right)\right)\right],
 
-    where :math:`w_i` are the normalized observation weights and :math:`D_i` is the treatment indicator.
-    The term :math:`Y_{i,post} - Y_{i,pre}` represents the outcome difference (``delta_y``) while
-    :math:`\hat{e}(X_i)` is the estimated propensity score (``ps``) and :math:`\hat{m}_0(X_i)` is the
-    predicted outcome difference under control (``out_reg``).
+    where
 
-    This combines inverse propensity weighting with outcome regression to achieve double robustness:
-    the estimator is consistent if either the propensity score model or the outcome model is
-    correctly specified.
+    .. math::
+
+        \widehat{w}_{1}^{p}(D)=\frac{D}{\mathbb{E}_{n}[D]} \quad \text{and} \quad
+        \widehat{w}_{0}^{p}(D, X ; \gamma)=\frac{\pi(X ; \gamma)(1-D)}{1-\pi(X ; \gamma)} \bigg/
+        \mathbb{E}_{n}\left[\frac{\pi(X ; \gamma)(1-D)}{1-\pi(X ; \gamma)}\right].
 
     Parameters
     ----------
@@ -51,9 +53,15 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
 
     See Also
     --------
-    aipw_did_rc_basic : Simplified AIPW estimator for repeated cross-sections.
-    aipw_did_rc_imp : Locally efficient AIPW estimator for repeated cross-sections.
+    aipw_did_rc_imp1 : Simplified AIPW estimator for repeated cross-sections.
+    aipw_did_rc_imp2 : Locally efficient AIPW estimator for repeated cross-sections.
 
+    References
+    ----------
+
+    .. [1] Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
+        Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
+        arXiv preprint: https://arxiv.org/abs/1812.01723
     """
     if not all(isinstance(arr, np.ndarray) for arr in [delta_y, d, ps, out_reg, i_weights]):
         raise TypeError("All inputs (delta_y, d, ps, out_reg, i_weights) must be NumPy arrays.")
@@ -113,7 +121,127 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     return float(aipw_att)
 
 
-def aipw_did_rc_imp(
+def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights):
+    r"""Compute the simplified AIPW estimator for repeated cross-section data.
+
+    For repeated cross-section settings (where different units are observed in pre and post periods),
+    this improved estimator provides a doubly robust approach that combines inverse propensity
+    weighting with outcome regression. It only requires modeling the outcomes for control units and
+    does not model outcomes for the treated group.
+
+    The simplified AIPW estimator for repeated cross-sections (equation 3.3 in [1]_)
+    is given by
+
+    .. math::
+
+        \widehat{\tau}_{1}^{dr,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D, T) -
+        \widehat{w}_{0}^{rc}(D, T, X ; \widehat{\gamma})\right)
+        \left(Y - \mu_{0, Y}^{rc}\left(T, X ; \widehat{\beta}_{0,0}^{rc},
+        \widehat{\beta}_{0,1}^{rc}\right)\right)\right],
+
+    where
+
+    .. math::
+
+        \mu_{0,Y}^{rc}(T, \cdot; \beta_{0,0}^{rc}, \beta_{0,1}^{rc}) = T \cdot \mu_{0,1}^{rc}(\cdot; \beta_{0,1}^{rc}) +
+        (1-T) \cdot \mu_{0,0}^{rc}(\cdot; \beta_{0,0}^{rc})
+
+    is an estimator for the pseudo-true :math:`\beta_{d, t}^{*, rc}` for :math:`d, t = 0, 1`, and the
+    weights :math:`\widehat{w}_{0}^{rc}(D, T)` and :math:`\widehat{w}_{1}^{rc}(D, T, X ; \widehat{\gamma})`
+    are the sample analogs of :math:`w_{0}^{rc}(D, T)` and :math:`w_{1}^{rc}(D, T, X ; g)` defined in equation
+    2.10 in [1]_.
+
+    Parameters
+    ----------
+    y : ndarray
+        A 1D array representing the outcome variable for each unit.
+    post : ndarray
+        A 1D array representing the post-treatment period indicator (1 for post, 0 for pre)
+        for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    ps : ndarray
+        A 1D array of propensity scores (estimated probability of being treated,
+        :math:`P(D=1|X)`) for each unit.
+    out_reg : ndarray
+        A 1D array of predicted outcomes from a single outcome regression model
+        for each unit.
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+
+    Returns
+    -------
+    float
+        The simplified AIPW ATT estimate for repeated cross-sections.
+
+    See Also
+    --------
+    aipw_did_rc_imp2 : Locally efficient AIPW estimator for repeated cross-sections.
+    aipw_did_panel : AIPW estimator for panel data.
+
+    References
+    ----------
+
+    .. [1] Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
+        Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
+        arXiv preprint: https://arxiv.org/abs/1812.01723
+    """
+    arrays = [y, post, d, ps, out_reg, i_weights]
+
+    if not all(isinstance(arr, np.ndarray) for arr in arrays):
+        raise TypeError("All inputs must be NumPy arrays.")
+
+    if not all(arr.ndim == 1 for arr in arrays):
+        raise ValueError("All input arrays must be 1-dimensional.")
+
+    first_shape = arrays[0].shape
+    if not all(arr.shape == first_shape for arr in arrays):
+        raise ValueError("All input arrays must have the same shape.")
+
+    mean_i_weights = np.mean(i_weights)
+    if mean_i_weights == 0:
+        warnings.warn("Mean of i_weights is zero, cannot normalize. Using original weights.", UserWarning)
+        normalized_weights = i_weights.copy()
+    elif not np.isfinite(mean_i_weights):
+        warnings.warn("Mean of i_weights is not finite. Using original weights.", UserWarning)
+        normalized_weights = i_weights.copy()
+    else:
+        normalized_weights = i_weights / mean_i_weights
+
+    w_treat_pre = normalized_weights * d * (1 - post)
+    w_treat_post = normalized_weights * d * post
+
+    problematic_ps_for_controls = (ps == 1.0) & (d == 0)
+    if np.any(problematic_ps_for_controls):
+        warnings.warn(
+            "Propensity score is 1 for some control units. Their weights will be NaN/Inf. "
+            "This typically indicates issues with the propensity score model.",
+            UserWarning,
+        )
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        w_cont_pre = normalized_weights * ps * (1 - d) * (1 - post) / (1 - ps)
+        w_cont_post = normalized_weights * ps * (1 - d) * post / (1 - ps)
+
+    residual = y - out_reg
+
+    aipw_1_pre = _weighted_sum(residual, w_treat_pre, "aipw_1_pre")
+    aipw_1_post = _weighted_sum(residual, w_treat_post, "aipw_1_post")
+    aipw_0_pre = _weighted_sum(residual, w_cont_pre, "aipw_0_pre")
+    aipw_0_post = _weighted_sum(residual, w_cont_post, "aipw_0_post")
+
+    # Calculate ATT
+    terms_for_sum = [aipw_1_pre, aipw_1_post, aipw_0_pre, aipw_0_post]
+    if any(np.isnan(term) for term in terms_for_sum):
+        aipw_att = np.nan
+    else:
+        aipw_att = (aipw_1_post - aipw_1_pre) - (aipw_0_post - aipw_0_pre)
+
+    return float(aipw_att)
+
+
+def aipw_did_rc_imp2(
     y,
     post,
     d,
@@ -126,39 +254,28 @@ def aipw_did_rc_imp(
 ) -> float:
     r"""Compute the locally efficient AIPW estimator with repeated cross-section data.
 
-    The locally efficient AIPW estimator for repeated cross-sections is given by
+    For repeated cross-section settings (where different units are observed in pre and post periods),
+    this estimator achieves local efficiency by incorporating all four outcome regression predictions
+    (for treated and control units in both time periods).
+
+    The locally efficient AIPW estimator for repeated cross-sections (equation 3.4 in [1]_)
+    is given by
 
     .. math::
 
-        \hat{\tau}_{AIPW}^{RC} = \left[\frac{\sum_{i} w_i D_i T_i (Y_i - \hat{\mu}_{0,1}(X_i))}
-                                           {\sum_{i} w_i D_i T_i}
-                                - \frac{\sum_{i} w_i D_i (1-T_i) (Y_i - \hat{\mu}_{0,0}(X_i))}
-                                       {\sum_{i} w_i D_i (1-T_i)}\right]
+        \widehat{\tau}_{2}^{dr,rc} = \widehat{\tau}_{1}^{dr,rc} +
+        \left(\mathbb{E}_{n}\left[\left(\frac{D}{\mathbb{E}_{n}[D]} - \widehat{w}_{1,1}^{rc}(D, T)\right)
+        \left(\mu_{1,1}^{rc}\left(X ; \widehat{\beta}_{1,1}^{rc}\right) -
+        \mu_{0,1}^{rc}\left(X ; \widehat{\beta}_{0,1}^{rc}\right)\right)\right]\right) - \\
+        \left(\mathbb{E}_{n}\left[\left(\frac{D}{\mathbb{E}_{n}[D]} - \widehat{w}_{1,0}^{rc}(D, T)\right)
+        \left(\mu_{1,0}^{rc}\left(X ; \widehat{\beta}_{1,0}^{rc}\right) -
+        \mu_{0,0}^{rc}\left(X ; \widehat{\beta}_{0,0}^{rc}\right)\right)\right]\right),
 
-        - \left[\frac{\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} T_i
-                      (Y_i - \hat{\mu}_{0,1}(X_i))}
-                     {\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} T_i}
-               - \frac{\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} (1-T_i)
-                       (Y_i - \hat{\mu}_{0,0}(X_i))}
-                      {\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} (1-T_i)}\right]
-
-        + \left[\frac{\sum_{i} w_i D_i (\hat{\mu}_{1,1}(X_i) - \hat{\mu}_{0,1}(X_i))}
-                     {\sum_{i} w_i D_i}
-               - \frac{\sum_{i} w_i D_i T_i (\hat{\mu}_{1,1}(X_i) - \hat{\mu}_{0,1}(X_i))}
-                      {\sum_{i} w_i D_i T_i}\right]
-
-        - \left[\frac{\sum_{i} w_i D_i (\hat{\mu}_{1,0}(X_i) - \hat{\mu}_{0,0}(X_i))}
-                     {\sum_{i} w_i D_i}
-               - \frac{\sum_{i} w_i D_i (1-T_i) (\hat{\mu}_{1,0}(X_i) - \hat{\mu}_{0,0}(X_i))}
-                      {\sum_{i} w_i D_i (1-T_i)}\right],
-
-    where :math:`w_i` are the normalized observation weights, :math:`D_i` is the treatment indicator,
-    and :math:`T_i` is the post-treatment period indicator. The variable :math:`Y_i` denotes the outcome
-    while :math:`\hat{e}(X_i)` is the estimated propensity score (``ps``) and :math:`\hat{\mu}_{d,t}(X_i)`
-    represents the predicted outcome for treatment status ``d`` in period `t`.
-
-    This achieves local efficiency by incorporating all four outcome regression predictions
-    and properly weighting observations to account for treatment selection and time periods.
+    where :math:`\mu_{d, \Delta}^{rc}(\cdot; \beta_{d, 1}^{rc}, \beta_{d, 0}^{rc})` =
+    :math:`\mu_{d, 1}^{rc}(\cdot; \beta_{d, 1}^{rc}) - \mu_{d, 0}^{rc}(\cdot; \beta_{d, 0}^{rc})` and the
+    weights :math:`\widehat{w}_{1, t}^{rc}(D, T)` and :math:`\widehat{w}_{0, t}^{rc}(D, T, X ; \widehat{\gamma})` are
+    defined as the sample analogs of :math:`w_{1, t}^{rc}(D, T)` and :math:`w_{0, t}^{rc}(D, T, X ; \gamma)` defined in
+    equation 2.10 in [1]_.
 
     Parameters
     ----------
@@ -196,8 +313,14 @@ def aipw_did_rc_imp(
     See Also
     --------
     aipw_did_panel : AIPW estimator for panel data.
-    aipw_did_rc_basic : Simplified AIPW estimator for repeated cross-sections.
+    aipw_did_rc_imp1 : Improved AIPW estimator for repeated cross-sections.
 
+    References
+    ----------
+
+    .. [1] Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
+        Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
+        arXiv preprint: https://arxiv.org/abs/1812.01723
     """
     arrays = [
         y,
@@ -290,118 +413,6 @@ def aipw_did_rc_imp(
             + (att_d_post - att_dt1_post)
             - (att_d_pre - att_dt0_pre)
         )
-    return float(aipw_att)
-
-
-def aipw_did_rc_basic(y, post, d, ps, out_reg, i_weights):
-    r"""Compute the simplified AIPW estimator for repeated cross-section data.
-
-    The simplified AIPW estimator for repeated cross-sections uses a single outcome
-    regression model and is given by
-
-    .. math::
-
-        \hat{\tau}_{AIPW}^{RC1} = \left[\frac{\sum_{i} w_i D_i T_i (Y_i - \hat{m}(X_i))}
-                                             {\sum_{i} w_i D_i T_i}
-                                  - \frac{\sum_{i} w_i D_i (1-T_i) (Y_i - \hat{m}(X_i))}
-                                         {\sum_{i} w_i D_i (1-T_i)}\right]
-
-        - \left[\frac{\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} T_i
-                      (Y_i - \hat{m}(X_i))}
-                     {\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} T_i}
-               - \frac{\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} (1-T_i)
-                       (Y_i - \hat{m}(X_i))}
-                      {\sum_{i} w_i \frac{(1-D_i) \hat{e}(X_i)}{1-\hat{e}(X_i)} (1-T_i)}\right],
-
-    where :math:`w_i` are the normalized observation weights, :math:`D_i` is the treatment indicator,
-    and :math:`T_i` is the post-treatment period indicator. The variable :math:`Y_i` denotes the outcome,
-    :math:`\hat{e}(X_i)` is the estimated propensity score (``ps``), and :math:`\hat{m}(X_i)` is the
-    predicted outcome from a single regression model (``out_reg``).
-
-    This simplified version uses one outcome regression model for all observations rather than
-    separate models for each treatment-period combination.
-
-    Parameters
-    ----------
-    y : ndarray
-        A 1D array representing the outcome variable for each unit.
-    post : ndarray
-        A 1D array representing the post-treatment period indicator (1 for post, 0 for pre)
-        for each unit.
-    d : ndarray
-        A 1D array representing the treatment indicator (1 for treated, 0 for control)
-        for each unit.
-    ps : ndarray
-        A 1D array of propensity scores (estimated probability of being treated,
-        :math:`P(D=1|X)`) for each unit.
-    out_reg : ndarray
-        A 1D array of predicted outcomes from a single outcome regression model
-        for each unit.
-    i_weights : ndarray
-        A 1D array of individual observation weights for each unit.
-
-    Returns
-    -------
-    float
-        The simplified AIPW ATT estimate for repeated cross-sections.
-
-    See Also
-    --------
-    aipw_did_rc_imp : Locally efficient AIPW estimator for repeated cross-sections.
-    aipw_did_panel : AIPW estimator for panel data.
-
-    """
-    arrays = [y, post, d, ps, out_reg, i_weights]
-
-    if not all(isinstance(arr, np.ndarray) for arr in arrays):
-        raise TypeError("All inputs must be NumPy arrays.")
-
-    if not all(arr.ndim == 1 for arr in arrays):
-        raise ValueError("All input arrays must be 1-dimensional.")
-
-    first_shape = arrays[0].shape
-    if not all(arr.shape == first_shape for arr in arrays):
-        raise ValueError("All input arrays must have the same shape.")
-
-    mean_i_weights = np.mean(i_weights)
-    if mean_i_weights == 0:
-        warnings.warn("Mean of i_weights is zero, cannot normalize. Using original weights.", UserWarning)
-        normalized_weights = i_weights.copy()
-    elif not np.isfinite(mean_i_weights):
-        warnings.warn("Mean of i_weights is not finite. Using original weights.", UserWarning)
-        normalized_weights = i_weights.copy()
-    else:
-        normalized_weights = i_weights / mean_i_weights
-
-    w_treat_pre = normalized_weights * d * (1 - post)
-    w_treat_post = normalized_weights * d * post
-
-    problematic_ps_for_controls = (ps == 1.0) & (d == 0)
-    if np.any(problematic_ps_for_controls):
-        warnings.warn(
-            "Propensity score is 1 for some control units. Their weights will be NaN/Inf. "
-            "This typically indicates issues with the propensity score model.",
-            UserWarning,
-        )
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = normalized_weights * ps * (1 - d) * (1 - post) / (1 - ps)
-        w_cont_post = normalized_weights * ps * (1 - d) * post / (1 - ps)
-
-    residual = y - out_reg
-
-    aipw_1_pre = _weighted_sum(residual, w_treat_pre, "aipw_1_pre")
-    aipw_1_post = _weighted_sum(residual, w_treat_post, "aipw_1_post")
-    aipw_0_pre = _weighted_sum(residual, w_cont_pre, "aipw_0_pre")
-    aipw_0_post = _weighted_sum(residual, w_cont_post, "aipw_0_post")
-
-    # Calculate ATT
-    terms_for_sum = [aipw_1_pre, aipw_1_post, aipw_0_pre, aipw_0_post]
-    if any(np.isnan(term) for term in terms_for_sum):
-        aipw_att = np.nan
-    else:
-        aipw_att = (aipw_1_post - aipw_1_pre) - (aipw_0_post - aipw_0_pre)
-
     return float(aipw_att)
 
 

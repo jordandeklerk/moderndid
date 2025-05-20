@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import pytest
 
-from pydid.drdid.estimators import aipw_did_panel, aipw_did_rc_basic, aipw_did_rc_imp
+from pydid.drdid.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 
 from .dgp import SantAnnaZhaoDRDiD
 
@@ -249,7 +249,7 @@ def test_aipw_rc_happy_path_unit_weights():
 
     i_weights_arr = np.ones_like(y_arr)
 
-    actual_att = aipw_did_rc_imp(
+    actual_att = aipw_did_rc_imp2(
         y_arr,
         post_arr,
         d_arr,
@@ -281,7 +281,7 @@ def test_aipw_rc_happy_path_non_uniform_weights():
     rng = np.random.RandomState(789)
     i_weights_arr = rng.rand(dgp.n_units) + 0.5
 
-    actual_att = aipw_did_rc_imp(
+    actual_att = aipw_did_rc_imp2(
         y_arr,
         post_arr,
         d_arr,
@@ -304,7 +304,7 @@ def test_aipw_rc_ps_one_for_control_unit():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_imp(*args)
+        actual_att = aipw_did_rc_imp2(*args)
         assert any("Propensity score is 1 for some control units" in str(warn.message) for warn in w)
         assert any(
             name in str(warn.message).lower()
@@ -320,7 +320,7 @@ def test_aipw_rc_all_zero_i_weights():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_imp(*args)
+        actual_att = aipw_did_rc_imp2(*args)
         assert any("Mean of i_weights is zero" in str(warn.message) for warn in w)
         term_names = ["att_treat_pre", "att_treat_post", "att_d_post", "att_dt1_post", "att_d_pre", "att_dt0_pre"]
         for term_name in term_names:
@@ -341,13 +341,13 @@ def test_aipw_rc_non_finite_mean_i_weights():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        att_inf = aipw_did_rc_imp(*args_inf)
+        att_inf = aipw_did_rc_imp2(*args_inf)
         assert any("Mean of i_weights is not finite" in str(warn.message) for warn in w)
     assert_allclose_with_nans(att_inf, np.nan)
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        att_nan = aipw_did_rc_imp(*args_nan)
+        att_nan = aipw_did_rc_imp2(*args_nan)
         assert any("Mean of i_weights is not finite" in str(warn.message) for warn in w)
     assert_allclose_with_nans(att_nan, np.nan)
 
@@ -357,7 +357,7 @@ def test_aipw_rc_input_type_errors(invalid_arg_idx):
     args = list(ALL_VALID_ARGS_RC)
     args[invalid_arg_idx] = list(args[invalid_arg_idx])
     with pytest.raises(TypeError, match="All inputs must be NumPy arrays."):
-        aipw_did_rc_imp(*args)
+        aipw_did_rc_imp2(*args)
 
 
 @pytest.mark.parametrize("mismatch_arg_idx", range(len(ALL_VALID_ARGS_RC)))
@@ -368,12 +368,12 @@ def test_aipw_rc_input_shape_mismatch_error(mismatch_arg_idx):
         short_arr = np.array([1.0] * (original_shape_len - 1))
         args[mismatch_arg_idx] = short_arr
         with pytest.raises(ValueError, match="All input arrays must have the same shape."):
-            aipw_did_rc_imp(*args)
+            aipw_did_rc_imp2(*args)
     elif original_shape_len == 1:
         long_arr = np.array([1.0] * (original_shape_len + 1))
         args[mismatch_arg_idx] = long_arr
         with pytest.raises(ValueError, match="All input arrays must have the same shape."):
-            aipw_did_rc_imp(*args)
+            aipw_did_rc_imp2(*args)
 
 
 @pytest.mark.parametrize("ndim_arg_idx", range(len(ALL_VALID_ARGS_RC)))
@@ -383,11 +383,11 @@ def test_aipw_rc_input_ndim_error(ndim_arg_idx):
     if args[ndim_arg_idx].size > 0:
         args[ndim_arg_idx] = arr_2d
         with pytest.raises(ValueError, match="All input arrays must be 1-dimensional."):
-            aipw_did_rc_imp(*args)
+            aipw_did_rc_imp2(*args)
     elif arr_2d.shape == (1, 0) and args[ndim_arg_idx].shape == (0,):
         args[ndim_arg_idx] = arr_2d
         with pytest.raises(ValueError, match="All input arrays must be 1-dimensional."):
-            aipw_did_rc_imp(*args)
+            aipw_did_rc_imp2(*args)
 
 
 def test_aipw_rc_empty_inputs():
@@ -396,7 +396,7 @@ def test_aipw_rc_empty_inputs():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_imp(*empty_args)
+        actual_att = aipw_did_rc_imp2(*empty_args)
         assert any("Mean of i_weights is not finite" in str(warn.message) for warn in w)
         term_names = [
             "att_treat_pre",
@@ -421,7 +421,7 @@ def test_aipw_rc_specific_term_nan_due_to_zero_weights():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_imp(*args)
+        actual_att = aipw_did_rc_imp2(*args)
         assert any("Sum of weights for att_treat_pre is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for att_cont_pre is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for att_dt0_pre is 0.0" in str(warn.message) for warn in w)
@@ -435,7 +435,7 @@ def test_aipw_rc_no_treated_units():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_imp(*args)
+        actual_att = aipw_did_rc_imp2(*args)
         assert any("Sum of weights for att_treat_pre is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for att_treat_post is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for att_d_post is 0.0" in str(warn.message) for warn in w)
@@ -448,7 +448,7 @@ def test_aipw_rc_no_control_units():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_imp(*args)
+        actual_att = aipw_did_rc_imp2(*args)
         assert any("Sum of weights for att_cont_pre is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for att_cont_post is 0.0" in str(warn.message) for warn in w)
     assert_allclose_with_nans(actual_att, np.nan)
@@ -457,7 +457,7 @@ def test_aipw_rc_no_control_units():
 def test_aipw_rc_basic_happy_path_unit_weights():
     y, post, d, ps, out_reg, i_weights = ALL_VALID_ARGS_RC_BASIC
 
-    actual_att = aipw_did_rc_basic(y, post, d, ps, out_reg, i_weights)
+    actual_att = aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights)
     assert isinstance(actual_att, float)
     assert np.isfinite(actual_att)
 
@@ -466,7 +466,7 @@ def test_aipw_rc_basic_happy_path_non_uniform_weights():
     args = list(ALL_VALID_ARGS_RC_BASIC)
     args[-1] = I_WEIGHTS_RC_NON_UNIT_VALID
 
-    actual_att = aipw_did_rc_basic(*args)
+    actual_att = aipw_did_rc_imp1(*args)
     assert isinstance(actual_att, float)
     assert np.isfinite(actual_att)
 
@@ -480,7 +480,7 @@ def test_aipw_rc_basic_ps_one_for_control_unit():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_basic(*args)
+        actual_att = aipw_did_rc_imp1(*args)
         assert any("Propensity score is 1 for some control units" in str(warn.message) for warn in w)
         assert any(
             name in str(warn.message).lower()
@@ -496,7 +496,7 @@ def test_aipw_rc_basic_all_zero_i_weights():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_basic(*args)
+        actual_att = aipw_did_rc_imp1(*args)
         assert any("Mean of i_weights is zero" in str(warn.message) for warn in w)
         term_names = ["aipw_1_pre", "aipw_1_post", "aipw_0_pre", "aipw_0_post"]
         for term_name in term_names:
@@ -517,13 +517,13 @@ def test_aipw_rc_basic_non_finite_mean_i_weights():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        att_inf = aipw_did_rc_basic(*args_inf)
+        att_inf = aipw_did_rc_imp1(*args_inf)
         assert any("Mean of i_weights is not finite" in str(warn.message) for warn in w)
     assert_allclose_with_nans(att_inf, np.nan)
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        att_nan = aipw_did_rc_basic(*args_nan)
+        att_nan = aipw_did_rc_imp1(*args_nan)
         assert any("Mean of i_weights is not finite" in str(warn.message) for warn in w)
     assert_allclose_with_nans(att_nan, np.nan)
 
@@ -533,7 +533,7 @@ def test_aipw_rc_basic_input_type_errors(invalid_arg_idx):
     args = list(ALL_VALID_ARGS_RC_BASIC)
     args[invalid_arg_idx] = list(args[invalid_arg_idx])
     with pytest.raises(TypeError, match="All inputs must be NumPy arrays."):
-        aipw_did_rc_basic(*args)
+        aipw_did_rc_imp1(*args)
 
 
 @pytest.mark.parametrize("mismatch_arg_idx", range(len(ALL_VALID_ARGS_RC_BASIC)))
@@ -544,12 +544,12 @@ def test_aipw_rc_basic_input_shape_mismatch_error(mismatch_arg_idx):
         short_arr = np.array([1.0] * (original_shape_len - 1))
         args[mismatch_arg_idx] = short_arr
         with pytest.raises(ValueError, match="All input arrays must have the same shape."):
-            aipw_did_rc_basic(*args)
+            aipw_did_rc_imp1(*args)
     elif original_shape_len == 1:
         long_arr = np.array([1.0] * (original_shape_len + 1))
         args[mismatch_arg_idx] = long_arr
         with pytest.raises(ValueError, match="All input arrays must have the same shape."):
-            aipw_did_rc_basic(*args)
+            aipw_did_rc_imp1(*args)
 
 
 @pytest.mark.parametrize("ndim_arg_idx", range(len(ALL_VALID_ARGS_RC_BASIC)))
@@ -559,7 +559,7 @@ def test_aipw_rc_basic_input_ndim_error(ndim_arg_idx):
     if args[ndim_arg_idx].size > 0:
         args[ndim_arg_idx] = arr_2d
         with pytest.raises(ValueError, match="All input arrays must be 1-dimensional."):
-            aipw_did_rc_basic(*args)
+            aipw_did_rc_imp1(*args)
 
 
 def test_aipw_rc_basic_empty_inputs():
@@ -568,7 +568,7 @@ def test_aipw_rc_basic_empty_inputs():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_basic(*empty_args)
+        actual_att = aipw_did_rc_imp1(*empty_args)
         assert any("Mean of i_weights is not finite" in str(warn.message) for warn in w)
         term_names = ["aipw_1_pre", "aipw_1_post", "aipw_0_pre", "aipw_0_post"]
         for term_name in term_names:
@@ -584,7 +584,7 @@ def test_aipw_rc_basic_no_treated_units():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_basic(*args)
+        actual_att = aipw_did_rc_imp1(*args)
         assert any("Sum of weights for aipw_1_pre is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for aipw_1_post is 0.0" in str(warn.message) for warn in w)
     assert_allclose_with_nans(actual_att, np.nan)
@@ -596,7 +596,7 @@ def test_aipw_rc_basic_no_control_units():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_basic(*args)
+        actual_att = aipw_did_rc_imp1(*args)
         assert any("Sum of weights for aipw_0_pre is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for aipw_0_post is 0.0" in str(warn.message) for warn in w)
     assert_allclose_with_nans(actual_att, np.nan)
@@ -608,7 +608,7 @@ def test_aipw_rc_basic_no_post_period():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_basic(*args)
+        actual_att = aipw_did_rc_imp1(*args)
         assert any("Sum of weights for aipw_1_post is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for aipw_0_post is 0.0" in str(warn.message) for warn in w)
     assert_allclose_with_nans(actual_att, np.nan)
@@ -620,7 +620,7 @@ def test_aipw_rc_basic_no_pre_period():
 
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        actual_att = aipw_did_rc_basic(*args)
+        actual_att = aipw_did_rc_imp1(*args)
         assert any("Sum of weights for aipw_1_pre is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for aipw_0_pre is 0.0" in str(warn.message) for warn in w)
     assert_allclose_with_nans(actual_att, np.nan)
