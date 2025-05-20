@@ -2,15 +2,15 @@
 
 Documentation for all public modules, classes, and functions in the pyDiD package.
 
-## Propensity-Weighted Estimators
+## Augmented Propensity Estimators
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated/
 
    pydid.aipw_did_panel
-   pydid.aipw_did_rc_imp
-   pydid.aipw_did_rc_basic
+   pydid.aipw_did_rc_imp1
+   pydid.aipw_did_rc_imp2
 ```
 
 ## Bootstrap Estimators

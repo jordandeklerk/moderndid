@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import LogisticRegression
 
-from .estimators import aipw_did_rc_imp
+from .aipw_estimators import aipw_did_rc_imp2
 from .wols import wols_rc
 
 
@@ -120,7 +120,7 @@ def boot_drdid_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, 
         b_weights_trimmed[~trim_ps] = 0
 
         try:
-            att_b = aipw_did_rc_imp(
+            att_b = aipw_did_rc_imp2(
                 y=y,
                 post=post,
                 d=d,
