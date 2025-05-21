@@ -20,13 +20,12 @@ def test_wols_panel_happy_path_unit_weights():
 
     result = wols_panel(delta_y, d, x, ps, i_weights)
 
-    assert isinstance(result, dict)
-    assert "out_reg" in result
-    assert "coefficients" in result
-    assert result["out_reg"].shape == (n_units,)
-    assert result["coefficients"].shape == (n_features,)
-    assert np.all(np.isfinite(result["out_reg"]))
-    assert np.all(np.isfinite(result["coefficients"]))
+    assert hasattr(result, "out_reg")
+    assert hasattr(result, "coefficients")
+    assert result.out_reg.shape == (n_units,)
+    assert result.coefficients.shape == (n_features,)
+    assert np.all(np.isfinite(result.out_reg))
+    assert np.all(np.isfinite(result.coefficients))
 
 
 def test_wols_panel_happy_path_non_uniform_weights():
@@ -41,13 +40,12 @@ def test_wols_panel_happy_path_non_uniform_weights():
 
     result = wols_panel(delta_y, d, x, ps, i_weights)
 
-    assert isinstance(result, dict)
-    assert "out_reg" in result
-    assert "coefficients" in result
-    assert result["out_reg"].shape == (n_units,)
-    assert result["coefficients"].shape == (n_features,)
-    assert np.all(np.isfinite(result["out_reg"]))
-    assert np.all(np.isfinite(result["coefficients"]))
+    assert hasattr(result, "out_reg")
+    assert hasattr(result, "coefficients")
+    assert result.out_reg.shape == (n_units,)
+    assert result.coefficients.shape == (n_features,)
+    assert np.all(np.isfinite(result.out_reg))
+    assert np.all(np.isfinite(result.coefficients))
 
 
 def test_wols_panel_no_control_units():
@@ -80,9 +78,8 @@ def test_wols_panel_few_control_units():
         assert len(w) >= 1
         assert any("Only 3 control units available" in str(warn.message) for warn in w)
 
-    assert isinstance(result, dict)
-    assert "out_reg" in result
-    assert "coefficients" in result
+    assert hasattr(result, "out_reg")
+    assert hasattr(result, "coefficients")
 
 
 def test_wols_panel_ps_one_for_control():
@@ -115,7 +112,7 @@ def test_wols_panel_extreme_weight_ratios():
         assert len(w) >= 1
         assert any("Extreme weight ratios detected" in str(warn.message) for warn in w)
 
-    assert isinstance(result, dict)
+    assert hasattr(result, "out_reg")
 
 
 def test_wols_panel_multicollinearity():
@@ -203,13 +200,12 @@ def test_wols_rc_happy_path_control_post():
             for warn in w
         )
 
-    assert isinstance(result, dict)
-    assert "out_reg" in result
-    assert "coefficients" in result
-    assert result["out_reg"].shape == (n_units,)
-    assert result["coefficients"].shape == (n_features,)
-    assert np.all(np.isnan(result["out_reg"]))
-    assert np.all(np.isnan(result["coefficients"]))
+    assert hasattr(result, "out_reg")
+    assert hasattr(result, "coefficients")
+    assert result.out_reg.shape == (n_units,)
+    assert result.coefficients.shape == (n_features,)
+    assert np.all(np.isnan(result.out_reg))
+    assert np.all(np.isnan(result.coefficients))
 
 
 def test_wols_rc_happy_path_treat_pre():
@@ -225,9 +221,9 @@ def test_wols_rc_happy_path_treat_pre():
 
     result = wols_rc(y, post, d, x, ps, i_weights, pre=True, treat=True)
 
-    assert isinstance(result, dict)
-    assert result["out_reg"].shape == (n_units,)
-    assert result["coefficients"].shape == (n_features,)
+    assert hasattr(result, "out_reg")
+    assert result.out_reg.shape == (n_units,)
+    assert result.coefficients.shape == (n_features,)
 
 
 def test_wols_rc_pre_parameter_required():
@@ -281,13 +277,12 @@ def test_wols_rc_few_units_in_subset():
             for warn in w
         )
 
-    assert isinstance(result, dict)
-    assert "out_reg" in result
-    assert "coefficients" in result
-    assert result["out_reg"].shape == (n_units,)
-    assert result["coefficients"].shape == (n_features,)
-    assert np.all(np.isnan(result["out_reg"]))
-    assert np.all(np.isnan(result["coefficients"]))
+    assert hasattr(result, "out_reg")
+    assert hasattr(result, "coefficients")
+    assert result.out_reg.shape == (n_units,)
+    assert result.coefficients.shape == (n_features,)
+    assert np.all(np.isnan(result.out_reg))
+    assert np.all(np.isnan(result.coefficients))
 
 
 def test_wols_rc_ps_one_in_subset():
@@ -318,9 +313,8 @@ def test_wols_rc_extreme_weights():
 
     result = wols_rc(y, post, d, x, ps, i_weights, pre=False, treat=False)
 
-    assert isinstance(result, dict)
-    assert "out_reg" in result
-    assert "coefficients" in result
+    assert hasattr(result, "out_reg")
+    assert hasattr(result, "coefficients")
 
 
 def test_wols_rc_multicollinearity():
@@ -346,11 +340,10 @@ def test_wols_rc_multicollinearity():
             for warn in w
         )
 
-    assert isinstance(result, dict)
-    assert "out_reg" in result
-    assert "coefficients" in result
-    assert np.all(np.isnan(result["out_reg"]))
-    assert np.all(np.isnan(result["coefficients"]))
+    assert hasattr(result, "out_reg")
+    assert hasattr(result, "coefficients")
+    assert np.all(np.isnan(result.out_reg))
+    assert np.all(np.isnan(result.coefficients))
 
 
 @pytest.mark.parametrize(
@@ -410,8 +403,7 @@ def test_wols_rc_all_subset_combinations(pre, treat):
     i_weights = np.ones(n_units)
 
     result = wols_rc(y, post, d, x, ps, i_weights, pre=pre, treat=treat)
-    assert isinstance(result, dict)
-    assert "out_reg" in result
-    assert "coefficients" in result
-    assert result["out_reg"].shape == (n_units,)
-    assert result["coefficients"].shape == (n_features,)
+    assert hasattr(result, "out_reg")
+    assert hasattr(result, "coefficients")
+    assert result.out_reg.shape == (n_units,)
+    assert result.coefficients.shape == (n_features,)

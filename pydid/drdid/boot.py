@@ -94,12 +94,12 @@ def wboot_drdid_rc_imp1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
 
         try:
             control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
-            out_y_cont_pre_b = control_pre_results["out_reg"]
+            out_y_cont_pre_b = control_pre_results.out_reg
 
             control_post_results = wols_rc(
                 y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
             )
-            out_y_cont_post_b = control_post_results["out_reg"]
+            out_y_cont_post_b = control_post_results.out_reg
 
             out_y_b = post * out_y_cont_post_b + (1 - post) * out_y_cont_pre_b
 
@@ -218,18 +218,18 @@ def wboot_drdid_rc_imp2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
 
         try:
             control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
-            out_y_cont_pre_b = control_pre_results["out_reg"]
+            out_y_cont_pre_b = control_pre_results.out_reg
 
             control_post_results = wols_rc(
                 y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
             )
-            out_y_cont_post_b = control_post_results["out_reg"]
+            out_y_cont_post_b = control_post_results.out_reg
 
             treat_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=True)
-            out_y_treat_pre_b = treat_pre_results["out_reg"]
+            out_y_treat_pre_b = treat_pre_results.out_reg
 
             treat_post_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=True)
-            out_y_treat_post_b = treat_post_results["out_reg"]
+            out_y_treat_post_b = treat_post_results.out_reg
 
         except (ValueError, np.linalg.LinAlgError, KeyError) as e:
             warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
