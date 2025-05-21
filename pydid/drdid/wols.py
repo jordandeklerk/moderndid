@@ -1,9 +1,25 @@
 """Weighted OLS regression for doubly-robust DiD estimators."""
 
 import warnings
+from typing import NamedTuple
 
 import numpy as np
 from scipy import linalg
+
+
+class WOLSResult(NamedTuple):
+    """Result from weighted OLS regression.
+
+    Attributes
+    ----------
+    out_reg : ndarray
+        Fitted values from the regression.
+    coefficients : ndarray
+        Estimated regression coefficients.
+    """
+
+    out_reg: np.ndarray
+    coefficients: np.ndarray
 
 
 def wols_panel(delta_y, d, x, ps, i_weights):
@@ -42,8 +58,8 @@ def wols_panel(delta_y, d, x, ps, i_weights):
 
     Returns
     -------
-    dict
-        A dictionary containing:
+    WOLSResult
+        A named tuple containing:
 
         - `out_reg` : ndarray
         - `coefficients` : ndarray
@@ -120,7 +136,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
 
     fitted_values = x @ coefficients
 
-    return {"out_reg": fitted_values, "coefficients": coefficients}
+    return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
 
 
 def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
@@ -168,8 +184,8 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
 
     Returns
     -------
-    dict
-        A dictionary containing:
+    WOLSResult
+        A named tuple containing:
 
         - `out_reg` : ndarray
         - `coefficients` : ndarray
@@ -230,7 +246,7 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
         )
         nan_coeffs = np.full(n_features, np.nan)
         nan_fitted_values = np.full(y.shape[0], np.nan)
-        return {"out_reg": nan_fitted_values, "coefficients": nan_coeffs}
+        return WOLSResult(out_reg=nan_fitted_values, coefficients=nan_coeffs)
 
     if n_subs < 3:
         warnings.warn(f"Only {n_subs} units available for regression. Results may be unreliable.", UserWarning)
@@ -268,7 +284,7 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
                 "Results may be unreliable. Returning NaNs.",
                 UserWarning,
             )
-            return {"out_reg": fitted_values, "coefficients": coefficients}
+            return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
 
         xtw_y = sub_x.T @ (sub_weights * sub_y)
         solved_coefficients = linalg.solve(xtw_x, xtw_y, overwrite_a=False, overwrite_b=False)
@@ -292,4 +308,4 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     except ValueError as e:
         warnings.warn(f"ValueError during linear system solution: {e}. Returning NaNs.", UserWarning)
 
-    return {"out_reg": fitted_values, "coefficients": coefficients}
+    return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
