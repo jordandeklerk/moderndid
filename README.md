@@ -9,7 +9,7 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/DR-synthdid)](https://github.com/jordandeklerk/DR-synthdid/graphs/commit-activity)
 [![Python version](https://img.shields.io/badge/3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
-__pyDiD__ is a Python package implementing a variety of DiD, doubly robust DiD, and quasi-random treatment timing estimators. The package also include a test for whether parallel trends is insensitive to functional form.
+__pyDiD__ is a Python package implementing a variety of DiD and doubly robust DiD estimators for two groups and two time periods, multiple time periods, quasi-random treatment timing, and a test for sensitivity to functional form.
 
 <br><br>
 
