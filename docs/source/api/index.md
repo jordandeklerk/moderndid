@@ -19,7 +19,8 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 .. autosummary::
    :toctree: generated/
 
-   pydid.boot_drdid_rc
+   pydid.wboot_drdid_rc_imp1
+   pydid.wboot_drdid_rc_imp2
 ```
 
 ## WOLS Estimators
