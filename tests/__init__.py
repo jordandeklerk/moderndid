@@ -1,1 +1,1 @@
-"""drsynthdid tests."""
+"""pydid tests."""
