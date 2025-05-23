@@ -3,10 +3,10 @@
 
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
-[![Build Status](https://github.com/jordandeklerk/DR-synthdid/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/DR-synthdid/actions/workflows/test.yml)
-[![Code Coverage](https://codecov.io/gh/jordandeklerk/DR-synthdid/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/DR-synthdid)
-[![Last commit](https://img.shields.io/github/last-commit/jordandeklerk/DR-synthdid)](https://github.com/jordandeklerk/DR-synthdid/graphs/commit-activity)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/DR-synthdid)](https://github.com/jordandeklerk/DR-synthdid/graphs/commit-activity)
+[![Build Status](https://github.com/jordandeklerk/pyDiD/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/pyDiD/actions/workflows/test.yml)
+[![Code Coverage](https://codecov.io/gh/jordandeklerk/pyDiD/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/pyDiD)
+[![Last commit](https://img.shields.io/github/last-commit/jordandeklerk/pyDiD)](https://github.com/jordandeklerk/pyDiD/graphs/commit-activity)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/pyDiD)](https://github.com/jordandeklerk/pyDiD/graphs/commit-activity)
 [![Python version](https://img.shields.io/badge/3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
 __pyDiD__ is a Python package implementing a variety of DiD and doubly robust DiD estimators for two groups and two time periods, multiple time periods, quasi-random treatment timing, and a test for sensitivity to functional form.
