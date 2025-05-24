@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import scipy.optimize
 
-from pydid.drdid.pscore_ipt import _loss_ps_cal_py, _loss_ps_ipt_py, calculate_pscore_ipt
+from pydid.drdid.pscore_ipt import _loss_ps_cal, _loss_ps_ipt, calculate_pscore_ipt
 
 
 def test_loss_ps_cal_py_basic():
@@ -16,7 +16,7 @@ def test_loss_ps_cal_py_basic():
 
     gamma = np.array([0.1, 0.2, -0.3])
 
-    value, gradient, hessian = _loss_ps_cal_py(gamma, D, X, iw)
+    value, gradient, hessian = _loss_ps_cal(gamma, D, X, iw)
 
     assert isinstance(value, float)
     assert not np.isnan(value)
@@ -37,7 +37,7 @@ def test_loss_ps_cal_py_with_weights():
 
     gamma = np.array([0.1, 0.2, -0.3])
 
-    value, gradient, hessian = _loss_ps_cal_py(gamma, D, X, iw)
+    value, gradient, hessian = _loss_ps_cal(gamma, D, X, iw)
 
     assert isinstance(value, float)
     assert not np.isnan(value)
@@ -57,7 +57,7 @@ def test_loss_ps_cal_py_nan_gamma():
 
     gamma = np.array([0.1, np.nan, -0.3])
 
-    value, gradient, hessian = _loss_ps_cal_py(gamma, D, X, iw)
+    value, gradient, hessian = _loss_ps_cal(gamma, D, X, iw)
 
     assert value == np.inf
     assert np.all(np.isnan(gradient))
@@ -75,7 +75,7 @@ def test_loss_ps_cal_py_shape_validation():
     gamma = np.array([0.1, 0.2])
 
     with pytest.raises(ValueError):
-        _loss_ps_cal_py(gamma, D, X, iw)
+        _loss_ps_cal(gamma, D, X, iw)
 
 
 def test_loss_ps_ipt_py_basic():
@@ -89,7 +89,7 @@ def test_loss_ps_ipt_py_basic():
 
     gamma = np.array([0.1, 0.2, -0.3])
 
-    value, gradient, hessian = _loss_ps_ipt_py(gamma, D, X, iw, n_obs)
+    value, gradient, hessian = _loss_ps_ipt(gamma, D, X, iw, n_obs)
 
     assert isinstance(value, float)
     assert not np.isnan(value)
@@ -110,7 +110,7 @@ def test_loss_ps_ipt_py_with_weights():
 
     gamma = np.array([0.1, 0.2, -0.3])
 
-    value, gradient, hessian = _loss_ps_ipt_py(gamma, D, X, iw, n_obs)
+    value, gradient, hessian = _loss_ps_ipt(gamma, D, X, iw, n_obs)
 
     assert isinstance(value, float)
     assert not np.isnan(value)
@@ -130,7 +130,7 @@ def test_loss_ps_ipt_py_nan_gamma():
 
     gamma = np.array([0.1, np.nan, -0.3])
 
-    value, gradient, hessian = _loss_ps_ipt_py(gamma, D, X, iw, n_obs)
+    value, gradient, hessian = _loss_ps_ipt(gamma, D, X, iw, n_obs)
 
     assert value == np.inf
     assert np.all(np.isnan(gradient))
@@ -147,7 +147,7 @@ def test_loss_ps_ipt_py_small_sample():
 
     gamma = np.array([0.1, 0.2, -0.3])
 
-    value, gradient, hessian = _loss_ps_ipt_py(gamma, D, X, iw, n_obs)
+    value, gradient, hessian = _loss_ps_ipt(gamma, D, X, iw, n_obs)
 
     assert isinstance(value, float)
     assert not np.isnan(value)

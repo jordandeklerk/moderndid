@@ -8,7 +8,7 @@ import scipy.special
 import statsmodels.api as sm
 
 
-def _loss_ps_cal_py(gamma, D, X, iw):
+def _loss_ps_cal(gamma, D, X, iw):
     """Loss function for calibrated propensity score estimation using trust.
 
     Parameters
@@ -33,7 +33,9 @@ def _loss_ps_cal_py(gamma, D, X, iw):
         return np.inf, np.full(k_features, np.nan), np.full((k_features, k_features), np.nan)
 
     ps_ind = X @ gamma
-    exp_ps_ind = np.exp(ps_ind)
+    # Prevent exponential overflow
+    ps_ind_clipped = np.clip(ps_ind, -500, 500)
+    exp_ps_ind = np.exp(ps_ind_clipped)
 
     value = -np.mean(np.where(D, ps_ind, -exp_ps_ind) * iw)
 
@@ -46,7 +48,7 @@ def _loss_ps_cal_py(gamma, D, X, iw):
     return value, gradient, hessian
 
 
-def _loss_ps_ipt_py(gamma, D, X, iw, n_obs):
+def _loss_ps_ipt(gamma, D, X, iw, n_obs):
     """Loss function for inverse probability tilting propensity score estimation.
 
     Parameters
@@ -72,10 +74,20 @@ def _loss_ps_ipt_py(gamma, D, X, iw, n_obs):
         return np.inf, np.full(k_features, np.nan), np.full((k_features, k_features), np.nan)
 
     if n_obs <= 1:
-        v_star = 1.0
-        cn = -1.0
+        # When n=1, we cannot compute log(n-1), so use a small epsilon
+        epsilon = 1e-10
+        log_n_minus_1 = np.log(epsilon)
+        cn = -epsilon
         bn = -1.0
-        an = -1.0
+        an = -epsilon
+        v_star = log_n_minus_1
+    elif n_obs < 2.5:
+        n_minus_1 = max(n_obs - 1, 0.1)
+        log_n_minus_1 = np.log(n_minus_1)
+        cn = -n_minus_1
+        bn = -n_obs + n_minus_1 * log_n_minus_1
+        an = -n_minus_1 * (1 - log_n_minus_1 + 0.5 * (log_n_minus_1**2))
+        v_star = log_n_minus_1
     else:
         log_n_minus_1 = np.log(n_obs - 1)
         cn = -(n_obs - 1)
@@ -85,9 +97,12 @@ def _loss_ps_ipt_py(gamma, D, X, iw, n_obs):
 
     v = X @ gamma
 
-    phi = np.where(v < v_star, -v - np.exp(v), an + bn * v + 0.5 * cn * (v**2))
-    phi1 = np.where(v < v_star, -1.0 - np.exp(v), bn + cn * v)
-    phi2 = np.where(v < v_star, -np.exp(v), cn)
+    # Prevent exponential overflow
+    v_clipped = np.clip(v, -500, 500)
+
+    phi = np.where(v < v_star, -v - np.exp(v_clipped), an + bn * v + 0.5 * cn * (v**2))
+    phi1 = np.where(v < v_star, -1.0 - np.exp(v_clipped), bn + cn * v)
+    phi2 = np.where(v < v_star, -np.exp(v_clipped), cn)
     value = -np.sum((iw * (1 - D) * phi) + v)
 
     grad_vec_term = iw * ((1 - D) * phi1 + 1.0)
@@ -143,12 +158,12 @@ def calculate_pscore_ipt(D, X, iw):
 
     try:
         opt_cal_results = scipy.optimize.minimize(
-            _loss_ps_cal_py,
+            _loss_ps_cal,
             init_gamma.astype(np.float64),
             args=(D, X, iw),
             method="trust-constr",
-            jac=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal_py(g, d_arr, x_arr, iw_arr)[1],
-            hess=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal_py(g, d_arr, x_arr, iw_arr)[2],
+            jac=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[1],
+            hess=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[2],
             options={"maxiter": 1000},
         )
         if opt_cal_results.success:
@@ -165,11 +180,11 @@ def calculate_pscore_ipt(D, X, iw):
         warnings.warn("Using IPT algorithm (Graham et al.) as trust-constr failed.", UserWarning)
         try:
             opt_ipt_results = scipy.optimize.minimize(
-                lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt_py(g, d_arr, x_arr, iw_arr, n)[0],
+                lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt(g, d_arr, x_arr, iw_arr, n)[0],
                 init_gamma.astype(np.float64),
                 args=(D, X, iw, n_obs),
                 method="BFGS",
-                jac=lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt_py(g, d_arr, x_arr, iw_arr, n)[1],
+                jac=lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt(g, d_arr, x_arr, iw_arr, n)[1],
                 options={"maxiter": 10000, "gtol": 1e-06},
             )
             if opt_ipt_results.success:
