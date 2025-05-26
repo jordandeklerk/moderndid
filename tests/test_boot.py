@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from pydid.drdid.boot import (
+    wboot_dr_tr_panel,
     wboot_drdid_imp_panel,
     wboot_drdid_ipt_rc1,
     wboot_drdid_ipt_rc2,
@@ -551,3 +552,118 @@ def test_wboot_drdid_imp_panel_compare_variance():
 
     boot_se = np.std(valid_estimates)
     assert 0.1 < boot_se < 2.0
+
+
+def test_wboot_dr_tr_panel_basic():
+    np.random.seed(42)
+    n = 200
+    p = 3
+
+    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
+    d = np.random.binomial(1, 0.3, n)
+    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
+    weights = np.ones(n)
+
+    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+
+    assert isinstance(boot_estimates, np.ndarray)
+    assert len(boot_estimates) == 100
+    assert not np.all(np.isnan(boot_estimates))
+    if not np.all(np.isnan(boot_estimates)):
+        assert np.nanstd(boot_estimates) > 0
+
+
+def test_wboot_dr_tr_panel_invalid_inputs():
+    n = 50
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    delta_y = np.random.randn(n)
+    d = np.random.binomial(1, 0.5, n)
+    weights = np.ones(n)
+
+    with pytest.raises(TypeError):
+        wboot_dr_tr_panel(list(delta_y), d, x, weights)
+
+    with pytest.raises(ValueError):
+        wboot_dr_tr_panel(delta_y[:-1], d, x, weights)
+
+    with pytest.raises(ValueError):
+        wboot_dr_tr_panel(delta_y, d, x, weights, n_bootstrap=0)
+
+    with pytest.raises(ValueError):
+        wboot_dr_tr_panel(delta_y, d, x, weights, trim_level=1.5)
+
+
+def test_wboot_dr_tr_panel_edge_cases():
+    np.random.seed(42)
+    n = 100
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    delta_y = np.random.randn(n)
+    weights = np.ones(n)
+
+    d_all_treated = np.ones(n)
+
+    with pytest.warns(UserWarning):
+        boot_estimates = wboot_dr_tr_panel(
+            delta_y=delta_y, d=d_all_treated, x=x, i_weights=weights, n_bootstrap=10, random_state=42
+        )
+
+    assert np.sum(np.isnan(boot_estimates)) >= 5
+
+
+def test_wboot_dr_tr_panel_reproducibility():
+    np.random.seed(42)
+    n = 100
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    d = np.random.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    weights = np.ones(n)
+
+    boot_estimates1 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+
+    boot_estimates2 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+
+    np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
+
+
+def test_wboot_dr_tr_panel_with_weights():
+    np.random.seed(42)
+    n = 200
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    d = np.random.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+
+    weights = np.random.exponential(1, n)
+
+    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+
+    assert isinstance(boot_estimates, np.ndarray)
+    assert len(boot_estimates) == 100
+    assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
+
+
+def test_wboot_dr_tr_panel_compare_with_improved():
+    np.random.seed(42)
+    n = 300
+    x = np.column_stack([np.ones(n), np.random.randn(n, 2)])
+    d = np.random.binomial(1, 0.4, n)
+
+    true_effect = 2.0
+    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + np.random.randn(n)
+    weights = np.ones(n)
+
+    boot_traditional = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42)
+
+    boot_improved = wboot_drdid_imp_panel(
+        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42
+    )
+
+    valid_traditional = boot_traditional[~np.isnan(boot_traditional)]
+    valid_improved = boot_improved[~np.isnan(boot_improved)]
+
+    assert len(valid_traditional) > 150
+    assert len(valid_improved) > 150
+    assert np.abs(np.mean(valid_traditional) - np.mean(valid_improved)) < 0.5
+
+    se_traditional = np.std(valid_traditional)
+    se_improved = np.std(valid_improved)
+    assert 0.5 < se_traditional / se_improved < 2.0
