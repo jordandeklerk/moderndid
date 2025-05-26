@@ -572,6 +572,108 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
     return bootstrap_estimates
 
 
+def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+    r"""Compute bootstrap estimates for IPW DiD with panel data.
+
+    Implements a bootstrapped Inverse Probability Weighting (IPW) difference-in-differences
+    estimator for panel data. Unlike doubly-robust methods, this uses only propensity
+    scores without outcome regression.
+
+    Parameters
+    ----------
+    delta_y : ndarray
+        A 1D array representing the difference in outcomes between the
+        post-treatment and pre-treatment periods (Y_post - Y_pre) for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    x : ndarray
+        A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+    n_bootstrap : int
+        Number of bootstrap iterations. Default is 1000.
+    trim_level : float
+        Maximum propensity score value for control units to avoid extreme weights.
+        Default is 0.995.
+    random_state : int, RandomState instance or None
+        Controls the random number generation for reproducibility.
+
+    Returns
+    -------
+    ndarray
+        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+
+    See Also
+    --------
+    wboot_drdid_imp_panel : Improved doubly-robust bootstrap for panel data.
+    wboot_dr_tr_panel : Traditional doubly-robust bootstrap for panel data.
+    """
+    n_units = _validate_bootstrap_inputs(
+        {"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level
+    )
+
+    rng = np.random.RandomState(random_state)
+    bootstrap_estimates = np.zeros(n_bootstrap)
+
+    for b in range(n_bootstrap):
+        v = rng.exponential(scale=1.0, size=n_units)
+        b_weights = i_weights * v
+
+        try:
+            ps_model = LogisticRegression(
+                penalty=None, fit_intercept=False, solver="lbfgs", max_iter=1000, random_state=rng
+            )
+            ps_model.fit(x, d, sample_weight=b_weights)
+            ps_b = ps_model.predict_proba(x)[:, 1]
+        except (ValueError, NotFittedError) as e:
+            warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
+
+        trim_ps_mask = np.ones_like(ps_b, dtype=bool)
+        control_mask = d == 0
+        trim_ps_mask[control_mask] = ps_b[control_mask] < trim_level
+
+        b_weights_trimmed = b_weights.copy()
+        b_weights_trimmed[~trim_ps_mask] = 0
+
+        try:
+            # IPW estimator: E[w * (D - ps*(1-D)/(1-ps)) * delta_y] / E[w * D]
+            ipw_weights = d - ps_b * (1 - d) / (1 - ps_b)
+
+            numerator = np.sum(b_weights_trimmed * trim_ps_mask * ipw_weights * delta_y)
+            denominator = np.sum(b_weights_trimmed * d)
+
+            if denominator == 0:
+                warnings.warn(f"No effectively treated units in bootstrap {b}. ATT will be NaN.", UserWarning)
+                bootstrap_estimates[b] = np.nan
+            else:
+                att_b = numerator / denominator
+                bootstrap_estimates[b] = att_b
+        except (ValueError, ZeroDivisionError, RuntimeWarning) as e:
+            warnings.warn(f"IPW computation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+
+    n_failed = np.sum(np.isnan(bootstrap_estimates))
+    if n_failed > 0:
+        warnings.warn(
+            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+            "This might be due to issues in propensity score estimation or IPW calculation "
+            "(e.g. perfect prediction, small effective sample sizes after trimming).",
+            UserWarning,
+        )
+    if n_failed > n_bootstrap * 0.1:
+        warnings.warn(
+            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
+            UserWarning,
+        )
+
+    return bootstrap_estimates
+
+
 def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for traditional doubly-robust DiD with panel data.
 
