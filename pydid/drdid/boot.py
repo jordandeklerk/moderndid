@@ -572,6 +572,114 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
     return bootstrap_estimates
 
 
+def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+    r"""Compute bootstrap estimates for traditional doubly-robust DiD with panel data.
+
+    This is a traditional bootstrap approach for doubly-robust difference-in-differences
+    with panel data that uses standard logistic regression for propensity score estimation
+    (as opposed to the IPT method in wboot_drdid_imp_panel).
+
+    Parameters
+    ----------
+    delta_y : ndarray
+        A 1D array representing the difference in outcomes between the
+        post-treatment and pre-treatment periods (Y_post - Y_pre) for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    x : ndarray
+        A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+    n_bootstrap : int
+        Number of bootstrap iterations. Default is 1000.
+    trim_level : float
+        Maximum propensity score value for control units to avoid extreme weights.
+        Default is 0.995.
+    random_state : int, RandomState instance or None
+        Controls the random number generation for reproducibility.
+
+    Returns
+    -------
+    ndarray
+        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+
+    See Also
+    --------
+    wboot_drdid_imp_panel : Improved bootstrap using IPT propensity scores.
+    aipw_did_panel : The underlying AIPW estimator for panel data.
+    """
+    n_units = _validate_bootstrap_inputs(
+        {"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level
+    )
+
+    rng = np.random.RandomState(random_state)
+    bootstrap_estimates = np.zeros(n_bootstrap)
+
+    for b in range(n_bootstrap):
+        v = rng.exponential(scale=1.0, size=n_units)
+        b_weights = i_weights * v
+
+        try:
+            ps_model = LogisticRegression(
+                penalty=None, fit_intercept=False, solver="lbfgs", max_iter=1000, random_state=rng
+            )
+            ps_model.fit(x, d, sample_weight=b_weights)
+            ps_b = ps_model.predict_proba(x)[:, 1]
+        except (ValueError, NotFittedError) as e:
+            warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
+
+        trim_ps_mask = np.ones_like(ps_b, dtype=bool)
+        control_mask = d == 0
+        trim_ps_mask[control_mask] = ps_b[control_mask] < trim_level
+
+        b_weights_trimmed = b_weights.copy()
+        b_weights_trimmed[~trim_ps_mask] = 0
+
+        try:
+            out_reg_results = wols_panel(delta_y=delta_y, d=d, x=x, ps=ps_b, i_weights=b_weights)
+            out_reg_b = out_reg_results.out_reg
+
+        except (ValueError, np.linalg.LinAlgError, KeyError) as e:
+            warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        try:
+            att_b = aipw_did_panel(
+                delta_y=delta_y,
+                d=d,
+                ps=ps_b,
+                out_reg=out_reg_b,
+                i_weights=b_weights_trimmed,
+            )
+            bootstrap_estimates[b] = att_b
+        except (ValueError, ZeroDivisionError, RuntimeWarning) as e:
+            warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+
+    n_failed = np.sum(np.isnan(bootstrap_estimates))
+    if n_failed > 0:
+        warnings.warn(
+            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+            "This might be due to issues in propensity score estimation, outcome regression, "
+            "or the AIPW calculation itself (e.g. perfect prediction, collinearity, "
+            "small effective sample sizes after weighting/trimming).",
+            UserWarning,
+        )
+    if n_failed > n_bootstrap * 0.1:
+        warnings.warn(
+            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
+            UserWarning,
+        )
+
+    return bootstrap_estimates
+
+
 def _validate_bootstrap_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=False):
     """Validate inputs for bootstrap functions."""
     # Check array types
