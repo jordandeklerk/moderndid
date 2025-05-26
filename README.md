@@ -16,7 +16,7 @@ __pyDiD__ is a Python package implementing a variety of DiD and doubly robust Di
 > **⚠️ Note:**
 > This package is currently in active development.
 
-## Citation
+<!-- ## Citation
 
 ```bibtex
 @article{santanna2020doubly,
@@ -52,4 +52,4 @@ __pyDiD__ is a Python package implementing a variety of DiD and doubly robust Di
   journal={arXiv preprint arXiv:2010.04814},
   year={2022}
 }
-```
+``` -->
