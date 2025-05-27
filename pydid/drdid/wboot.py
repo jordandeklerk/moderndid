@@ -56,13 +56,7 @@ def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level
         b_weights = i_weights * v
 
         try:
-            ps_b, ps_flag = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
-            if ps_flag > 0:
-                if ps_flag == 1:
-                    warnings.warn(f"Bootstrap {b}: IPT pscore estimation used Graham et al. method.", UserWarning)
-                elif ps_flag == 2:
-                    warnings.warn(f"Bootstrap {b}: IPT pscore estimation fell back to Logit.", UserWarning)
-
+            ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
         except (ValueError, np.linalg.LinAlgError, RuntimeError) as e:
             warnings.warn(f"Propensity score estimation (IPT) failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
@@ -379,13 +373,7 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
         b_weights = b_weights / np.mean(b_weights)
 
         try:
-            ps_b, ps_flag = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
-            if ps_flag > 0:
-                if ps_flag == 1:
-                    warnings.warn(f"Bootstrap {b}: IPT pscore estimation used Graham et al. method.", UserWarning)
-                elif ps_flag == 2:
-                    warnings.warn(f"Bootstrap {b}: IPT pscore estimation fell back to Logit.", UserWarning)
-
+            ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
         except (ValueError, np.linalg.LinAlgError, RuntimeError) as e:
             warnings.warn(f"Propensity score estimation (IPT) failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
@@ -499,12 +487,7 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
         b_weights = b_weights / np.mean(b_weights)
 
         try:
-            ps_b, ps_flag = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
-            if ps_flag > 0:
-                if ps_flag == 1:
-                    warnings.warn(f"Bootstrap {b}: IPT pscore estimation used Graham et al. method.", UserWarning)
-                elif ps_flag == 2:
-                    warnings.warn(f"Bootstrap {b}: IPT pscore estimation fell back to Logit.", UserWarning)
+            ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
         except (ValueError, np.linalg.LinAlgError, RuntimeError) as e:
             warnings.warn(f"Propensity score estimation (IPT) failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan

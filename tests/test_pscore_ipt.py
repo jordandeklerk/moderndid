@@ -166,13 +166,11 @@ def test_calculate_pscore_ipt_basic():
     D = np.random.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
-    pscore, flag = calculate_pscore_ipt(D, X, iw)
+    pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
     assert np.all((pscore >= 0) & (pscore <= 1))
-    assert isinstance(flag, int)
-    assert flag in [0, 1, 2]
 
 
 def test_calculate_pscore_ipt_with_weights():
@@ -184,13 +182,11 @@ def test_calculate_pscore_ipt_with_weights():
     D = np.random.binomial(1, 0.3, n_obs)
     iw = np.random.exponential(1, n_obs)
 
-    pscore, flag = calculate_pscore_ipt(D, X, iw)
+    pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
     assert np.all((pscore >= 0) & (pscore <= 1))
-    assert isinstance(flag, int)
-    assert flag in [0, 1, 2]
 
 
 def test_calculate_pscore_ipt_shape_validation():
@@ -202,10 +198,10 @@ def test_calculate_pscore_ipt_shape_validation():
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
-        pscore_d, _ = calculate_pscore_ipt(D[:-1], X, iw)
+        pscore_d = calculate_pscore_ipt(D[:-1], X, iw)
 
     with pytest.warns(UserWarning):
-        pscore_iw, _ = calculate_pscore_ipt(D, X, iw[:-1])
+        pscore_iw = calculate_pscore_ipt(D, X, iw[:-1])
 
     assert isinstance(pscore_d, np.ndarray)
     assert isinstance(pscore_iw, np.ndarray)
@@ -221,8 +217,7 @@ def test_calculate_pscore_ipt_collinear_covariates():
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
-        assert flag in [0, 1, 2]
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
@@ -238,8 +233,7 @@ def test_calculate_pscore_ipt_all_treated():
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
-        assert flag in [0, 1, 2]
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
@@ -256,8 +250,7 @@ def test_calculate_pscore_ipt_all_control():
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
-        assert flag in [0, 1, 2]
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
@@ -274,8 +267,7 @@ def test_calculate_pscore_ipt_small_sample():
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
-        assert flag in [0, 1, 2]
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
@@ -292,8 +284,7 @@ def test_calculate_pscore_ipt_perfect_separation():
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
-        assert flag in [0, 1, 2]
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
@@ -311,11 +302,10 @@ def test_calculate_pscore_ipt_reproducibility():
     D = np.random.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
-    pscore1, flag1 = calculate_pscore_ipt(D, X, iw)
-    pscore2, flag2 = calculate_pscore_ipt(D, X, iw)
+    pscore1 = calculate_pscore_ipt(D, X, iw)
+    pscore2 = calculate_pscore_ipt(D, X, iw)
 
     np.testing.assert_array_equal(pscore1, pscore2)
-    assert flag1 == flag2
 
 
 def test_calculate_pscore_ipt_trust_constr_fail_ipt_success():
@@ -337,14 +327,13 @@ def test_calculate_pscore_ipt_trust_constr_fail_ipt_success():
 
     scipy.optimize.minimize = mock_minimize
 
-    with pytest.warns(UserWarning, match="trust-constr algorithm for loss_ps_cal did not converge"):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
+    with pytest.warns(UserWarning, match="trust-constr optimization failed"):
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     scipy.optimize.minimize = original_minimize
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
-    assert flag == 1
 
 
 def test_calculate_pscore_ipt_both_methods_fail():
@@ -365,14 +354,12 @@ def test_calculate_pscore_ipt_both_methods_fail():
     scipy.optimize.minimize = mock_minimize
 
     with pytest.warns(UserWarning):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
-        assert flag in [0, 1, 2]
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     scipy.optimize.minimize = original_minimize
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
-    assert flag == 2
 
 
 def test_calculate_pscore_ipt_edge_case_one_observation():
@@ -385,8 +372,7 @@ def test_calculate_pscore_ipt_edge_case_one_observation():
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
-        assert flag in [0, 1, 2]
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
@@ -402,8 +388,7 @@ def test_calculate_pscore_ipt_non_binary_treatment():
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
-        assert flag in [0, 1, 2]
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
@@ -419,8 +404,7 @@ def test_calculate_pscore_ipt_zero_weights():
     iw = np.zeros(n_obs)
 
     with pytest.warns(UserWarning):
-        pscore, flag = calculate_pscore_ipt(D, X, iw)
+        pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
-    assert flag in [0, 1, 2]
