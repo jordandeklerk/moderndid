@@ -10,6 +10,7 @@ from .wboot import (
     wboot_drdid_rc_imp1,
     wboot_drdid_rc_imp2,
     wboot_ipw_panel,
+    wboot_reg_panel,
 )
 from .wols import wols_panel, wols_rc
 
@@ -24,6 +25,7 @@ __all__ = [
     "wboot_drdid_ipt_rc1",
     "wboot_drdid_ipt_rc2",
     "wboot_ipw_panel",
+    "wboot_reg_panel",
     "wols_panel",
     "wols_rc",
     "calculate_pscore_ipt",

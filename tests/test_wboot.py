@@ -11,6 +11,7 @@ from pydid.drdid.wboot import (
     wboot_drdid_rc_imp1,
     wboot_drdid_rc_imp2,
     wboot_ipw_panel,
+    wboot_reg_panel,
 )
 
 
@@ -781,3 +782,194 @@ def test_wboot_ipw_panel_compare_with_dr():
     se_ipw = np.std(valid_ipw)
     se_dr = np.std(valid_dr)
     assert 0.5 < se_ipw / se_dr < 3.0
+
+
+def test_wboot_reg_panel_basic():
+    np.random.seed(42)
+    n = 200
+    p = 3
+
+    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
+    d = np.random.binomial(1, 0.3, n)
+    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
+    weights = np.ones(n)
+
+    boot_estimates = wboot_reg_panel(
+        delta_y=delta_y,
+        d=d,
+        x=x,
+        i_weights=weights,
+        n_bootstrap=100,
+        random_state=42,
+    )
+
+    assert isinstance(boot_estimates, np.ndarray)
+    assert len(boot_estimates) == 100
+    assert not np.all(np.isnan(boot_estimates))
+    if not np.all(np.isnan(boot_estimates)):
+        assert np.nanstd(boot_estimates) > 0
+
+
+def test_wboot_reg_panel_invalid_inputs():
+    n = 50
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    delta_y = np.random.randn(n)
+    d = np.random.binomial(1, 0.5, n)
+    weights = np.ones(n)
+
+    with pytest.raises(TypeError):
+        wboot_reg_panel(list(delta_y), d, x, weights)
+
+    with pytest.raises(ValueError):
+        wboot_reg_panel(delta_y[:-1], d, x, weights)
+
+    with pytest.raises(ValueError):
+        wboot_reg_panel(delta_y, d, x, weights, n_bootstrap=0)
+
+
+def test_wboot_reg_panel_edge_cases():
+    np.random.seed(42)
+    n = 100
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    delta_y = np.random.randn(n)
+    weights = np.ones(n)
+
+    d_all_treated = np.ones(n)
+
+    with pytest.warns(UserWarning):
+        boot_estimates = wboot_reg_panel(
+            delta_y=delta_y,
+            d=d_all_treated,
+            x=x,
+            i_weights=weights,
+            n_bootstrap=10,
+            random_state=42,
+        )
+
+    assert np.sum(np.isnan(boot_estimates)) >= 5
+
+    x_many_cols = np.random.randn(10, 15)
+    d_few_control = np.array([1, 1, 1, 1, 1, 1, 1, 0, 0, 0])
+    delta_y_small = np.random.randn(10)
+    weights_small = np.ones(10)
+
+    with pytest.warns(UserWarning, match="Insufficient control units"):
+        boot_estimates = wboot_reg_panel(
+            delta_y=delta_y_small,
+            d=d_few_control,
+            x=x_many_cols,
+            i_weights=weights_small,
+            n_bootstrap=10,
+            random_state=42,
+        )
+
+
+def test_wboot_reg_panel_reproducibility():
+    np.random.seed(42)
+    n = 100
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    d = np.random.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    weights = np.ones(n)
+
+    boot_estimates1 = wboot_reg_panel(
+        delta_y=delta_y,
+        d=d,
+        x=x,
+        i_weights=weights,
+        n_bootstrap=50,
+        random_state=123,
+    )
+    boot_estimates2 = wboot_reg_panel(
+        delta_y=delta_y,
+        d=d,
+        x=x,
+        i_weights=weights,
+        n_bootstrap=50,
+        random_state=123,
+    )
+
+    np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
+
+
+def test_wboot_reg_panel_with_weights():
+    np.random.seed(42)
+    n = 200
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    d = np.random.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+
+    weights = np.random.exponential(1, n)
+
+    boot_estimates = wboot_reg_panel(
+        delta_y=delta_y,
+        d=d,
+        x=x,
+        i_weights=weights,
+        n_bootstrap=100,
+        random_state=42,
+    )
+
+    assert isinstance(boot_estimates, np.ndarray)
+    assert len(boot_estimates) == 100
+    assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
+
+
+def test_wboot_reg_panel_no_treated_units():
+    np.random.seed(42)
+    n = 100
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    d = np.zeros(n)
+    delta_y = x @ [1, 0.5] + np.random.randn(n)
+    weights = np.ones(n)
+
+    with pytest.warns(UserWarning, match="No effectively treated units"):
+        boot_estimates = wboot_reg_panel(
+            delta_y=delta_y,
+            d=d,
+            x=x,
+            i_weights=weights,
+            n_bootstrap=10,
+            random_state=42,
+        )
+
+    assert np.all(np.isnan(boot_estimates))
+
+
+def test_wboot_reg_panel_compare_with_dr():
+    np.random.seed(42)
+    n = 300
+    x = np.column_stack([np.ones(n), np.random.randn(n, 2)])
+    d = np.random.binomial(1, 0.4, n)
+
+    true_effect = 2.0
+    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + np.random.randn(n)
+    weights = np.ones(n)
+
+    boot_reg = wboot_reg_panel(
+        delta_y=delta_y,
+        d=d,
+        x=x,
+        i_weights=weights,
+        n_bootstrap=200,
+        random_state=42,
+    )
+    boot_dr = wboot_drdid_imp_panel(
+        delta_y=delta_y,
+        d=d,
+        x=x,
+        i_weights=weights,
+        n_bootstrap=200,
+        random_state=42,
+    )
+
+    valid_reg = boot_reg[~np.isnan(boot_reg)]
+    valid_dr = boot_dr[~np.isnan(boot_dr)]
+
+    assert len(valid_reg) > 150
+    assert len(valid_dr) > 150
+
+    mean_reg = np.mean(valid_reg)
+    mean_dr = np.mean(valid_dr)
+    assert 1.5 < mean_reg < 2.5
+    assert 1.5 < mean_dr < 2.5
