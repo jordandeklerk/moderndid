@@ -765,6 +765,155 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.9
     return bootstrap_estimates
 
 
+def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=None):
+    r"""Compute bootstrap estimates for regression-based robust DiD with panel data.
+
+    This implements a regression-based difference-in-differences estimator that
+    uses outcome regression on the control group only, without propensity scores.
+    It is designed for settings with 2 time periods and 2 groups.
+
+    Parameters
+    ----------
+    delta_y : ndarray
+        A 1D array representing the difference in outcomes between the
+        post-treatment and pre-treatment periods (Y_post - Y_pre) for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    x : ndarray
+        A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+    n_bootstrap : int
+        Number of bootstrap iterations. Default is 1000.
+    random_state : int, RandomState instance or None
+        Controls the random number generation for reproducibility.
+
+    Returns
+    -------
+    ndarray
+        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+
+    Warnings
+    --------
+    UserWarning
+        When outcome regression fails due to insufficient control units or collinearity.
+        When no treated units exist in bootstrap sample.
+
+    Raises
+    ------
+    TypeError
+        When inputs are not NumPy arrays.
+    ValueError
+        When array dimensions are incorrect or inconsistent.
+        When n_bootstrap is not a positive integer.
+
+    See Also
+    --------
+    wboot_drdid_imp_panel : Doubly-robust bootstrap with propensity scores.
+    wboot_ipw_panel : IPW bootstrap without outcome regression.
+
+    Notes
+    -----
+    The estimator uses weighted least squares regression on control units
+    to predict counterfactual outcomes, then computes:
+
+    .. math::
+        \hat{\tau}_{ATT} = \frac{\sum_i w_i D_i (\Delta Y_i - \hat{m}_0(X_i))}{\sum_i w_i D_i}
+
+    where :math:`\hat{m}_0(X_i)` is the predicted outcome change from the
+    control group regression.
+
+    Examples
+    --------
+    Basic usage with panel data:
+
+    .. ipython::
+
+        In [1]: import numpy as np
+           ...: from pydid.drdid import wboot_reg_panel
+           ...: np.random.seed(42)
+           ...: n = 100
+           ...: delta_y = np.random.normal(2, 1, n)
+           ...: d = np.random.binomial(1, 0.5, n)
+           ...: x = np.column_stack([np.ones(n), np.random.normal(0, 1, (n, 2))])
+           ...: i_weights = np.ones(n)
+           ...: bootstrap_estimates = wboot_reg_panel(
+           ...:     delta_y, d, x, i_weights, n_bootstrap=100
+           ...: )
+           ...: np.mean(bootstrap_estimates)
+    """
+    # Input validation
+    n_units = _validate_bootstrap_inputs(
+        {"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level=0.5
+    )
+
+    rng = np.random.RandomState(random_state)
+    bootstrap_estimates = np.zeros(n_bootstrap)
+
+    for b in range(n_bootstrap):
+        # Generate exponential weights
+        v = rng.exponential(scale=1.0, size=n_units)
+        b_weights = i_weights * v
+
+        # Fit weighted regression on control group
+        control_mask = d == 0
+        n_control = np.sum(control_mask)
+
+        if n_control < x.shape[1]:
+            warnings.warn(f"Insufficient control units ({n_control}) for regression in bootstrap {b}.", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        try:
+            # Weighted least squares on control group
+            x_control = x[control_mask]
+            y_control = delta_y[control_mask]
+            w_control = b_weights[control_mask]
+
+            # Add small regularization to avoid singular matrix
+            xtwx = x_control.T @ np.diag(w_control) @ x_control
+            xtwy = x_control.T @ (w_control * y_control)
+
+            # Solve normal equations with regularization
+            reg_coeff = np.linalg.solve(xtwx + 1e-10 * np.eye(x.shape[1]), xtwy)
+
+            # Compute outcome regression predictions for all units
+            out_reg_b = x @ reg_coeff
+
+        except (np.linalg.LinAlgError, ValueError) as e:
+            warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        # Compute ATT
+        numerator = np.sum(b_weights * d * (delta_y - out_reg_b))
+        denominator = np.sum(b_weights * d)
+
+        if denominator == 0:
+            warnings.warn(f"No effectively treated units in bootstrap {b}. ATT will be NaN.", UserWarning)
+            bootstrap_estimates[b] = np.nan
+        else:
+            att_b = numerator / denominator
+            bootstrap_estimates[b] = att_b
+
+    n_failed = np.sum(np.isnan(bootstrap_estimates))
+    if n_failed > 0:
+        warnings.warn(
+            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+            "This might be due to insufficient control units, collinearity in covariates, "
+            "or lack of treated units in bootstrap samples.",
+            UserWarning,
+        )
+    if n_failed > n_bootstrap * 0.1:
+        warnings.warn(
+            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
+            UserWarning,
+        )
+
+    return bootstrap_estimates
+
+
 def _validate_bootstrap_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=False):
     """Validate inputs for bootstrap functions."""
     # Check array types
