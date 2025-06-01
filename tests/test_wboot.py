@@ -13,6 +13,7 @@ from pydid.drdid.wboot import (
     wboot_ipw_panel,
     wboot_reg_panel,
     wboot_std_ipw_panel,
+    wboot_twfe_panel,
 )
 
 
@@ -1092,3 +1093,107 @@ def test_wboot_reg_panel_compare_with_dr():
     mean_dr = np.mean(valid_dr)
     assert 1.5 < mean_reg < 2.5
     assert 1.5 < mean_dr < 2.5
+
+
+def test_wboot_twfe_panel_basic():
+    np.random.seed(42)
+    n_units = 100
+    n_obs = 2 * n_units
+
+    y = np.random.randn(n_obs)
+    d = np.repeat([1] * 50 + [0] * 50, 2)
+    post = np.tile([0, 1], n_units)
+    x = np.ones((n_obs, 2))
+    x[:, 1] = np.random.randn(n_obs)
+    i_weights = np.ones(n_obs)
+
+    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=100, random_state=42)
+
+    assert isinstance(result, np.ndarray)
+    assert result.shape == (100,)
+    assert not np.all(np.isnan(result))
+
+
+def test_wboot_twfe_panel_no_intercept():
+    np.random.seed(42)
+    n_units = 50
+    n_obs = 2 * n_units
+
+    y = np.random.randn(n_obs)
+    d = np.repeat([1] * 25 + [0] * 25, 2)
+    post = np.tile([0, 1], n_units)
+    x = np.random.randn(n_obs, 2)
+    i_weights = np.ones(n_obs)
+
+    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=50, random_state=42)
+
+    assert isinstance(result, np.ndarray)
+    assert result.shape == (50,)
+
+
+def test_wboot_twfe_panel_weighted():
+    np.random.seed(42)
+    n_units = 40
+    n_obs = 2 * n_units
+
+    y = np.random.randn(n_obs)
+    d = np.repeat([1] * 20 + [0] * 20, 2)
+    post = np.tile([0, 1], n_units)
+    x = np.ones((n_obs, 1))
+    i_weights = np.random.uniform(0.5, 2, n_obs)
+
+    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=30, random_state=42)
+
+    assert isinstance(result, np.ndarray)
+    assert result.shape == (30,)
+
+
+def test_wboot_twfe_panel_invalid_input():
+    y = np.array([1.0, 2.0, 3.0])
+    d = np.array([1, 0, 1])
+    post = np.array([0, 1, 0])
+    x = np.ones((3, 1))
+    i_weights = np.ones(3)
+
+    with pytest.raises(ValueError, match="Number of observations must be even"):
+        wboot_twfe_panel(y, d, post, x, i_weights)
+
+
+def test_wboot_twfe_panel_type_error():
+    y = [1.0, 2.0, 3.0, 4.0]
+    d = np.array([1, 0, 1, 0])
+    post = np.array([0, 1, 0, 1])
+    x = np.ones((4, 1))
+    i_weights = np.ones(4)
+
+    with pytest.raises(TypeError, match="must be a NumPy array"):
+        wboot_twfe_panel(y, d, post, x, i_weights)
+
+
+def test_wboot_twfe_panel_shape_mismatch():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    d = np.array([1, 0, 1])
+    post = np.array([0, 1, 0, 1])
+    x = np.ones((4, 1))
+    i_weights = np.ones(4)
+
+    with pytest.raises(ValueError, match="same number of observations"):
+        wboot_twfe_panel(y, d, post, x, i_weights)
+
+
+def test_wboot_twfe_panel_reproducibility():
+    np.random.seed(42)
+    n_units = 30
+    n_obs = 2 * n_units
+
+    y = np.random.randn(n_obs)
+    d = np.repeat([1] * 15 + [0] * 15, 2)
+    post = np.tile([0, 1], n_units)
+    x = np.ones((n_obs, 2))
+    x[:, 1] = np.random.randn(n_obs)
+    i_weights = np.ones(n_obs)
+
+    result1 = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=50, random_state=42)
+    result2 = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=50, random_state=42)
+
+    np.testing.assert_array_equal(result1, result2)

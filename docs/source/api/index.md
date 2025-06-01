@@ -28,6 +28,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.wboot_std_ipw_panel
    pydid.wboot_dr_tr_panel
    pydid.wboot_reg_panel
+   pydid.wboot_twfe_panel
 ```
 
 ## WOLS Estimators
