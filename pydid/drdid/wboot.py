@@ -968,6 +968,99 @@ def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=Non
     return bootstrap_estimates
 
 
+def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=None):
+    r"""Compute bootstrap estimates for Two-Way Fixed Effects DiD with panel data.
+
+    Implements a bootstrapped Two-Way Fixed Effects (TWFE) difference-in-differences
+    estimator for panel data with 2 periods and 2 groups. This is the traditional
+    DiD regression approach using OLS with treatment-period interaction.
+
+    Parameters
+    ----------
+    y : ndarray
+        A 1D array representing the outcome variable for each unit-time observation.
+        Should be stacked with pre-period observations followed by post-period observations.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit-time observation.
+    post : ndarray
+        A 1D array representing the post-treatment period indicator (1 for post, 0 for pre)
+        for each unit-time observation.
+    x : ndarray
+        A 2D array of covariates (including intercept if desired) with shape
+        (n_observations, n_features). Should be stacked to match y, d, and post.
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit-time observation.
+    n_bootstrap : int
+        Number of bootstrap iterations. Default is 1000.
+    random_state : int, RandomState instance or None
+        Controls the random number generation for reproducibility.
+
+    Returns
+    -------
+    ndarray
+        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+
+    See Also
+    --------
+    wboot_reg_panel : Regression-based bootstrap for DiD with panel data.
+    wboot_drdid_imp_panel : Doubly-robust bootstrap for DiD with panel data.
+    """
+    n_obs = _validate_bootstrap_inputs(
+        {"y": y, "d": d, "post": post, "i_weights": i_weights}, x, n_bootstrap, trim_level=0.5
+    )
+
+    if n_obs % 2 != 0:
+        raise ValueError("Number of observations must be even for balanced panel data.")
+
+    n_units = n_obs // 2
+
+    rng = np.random.RandomState(random_state)
+    bootstrap_estimates = np.zeros(n_bootstrap)
+
+    for b in range(n_bootstrap):
+        v = rng.exponential(scale=1.0, size=n_units)
+        v = np.repeat(v, 2)
+        b_weights = i_weights * v
+
+        has_intercept = np.all(x[:, 0] == 1.0) if x.shape[1] > 0 else False
+
+        if has_intercept:
+            design_matrix = np.column_stack([x, d, post, d * post])
+            interaction_idx = x.shape[1] + 2
+        else:
+            design_matrix = np.column_stack([np.ones(n_obs), d, post, d * post, x])
+            interaction_idx = 3
+
+        try:
+            xtwx = design_matrix.T @ np.diag(b_weights) @ design_matrix
+            xtwy = design_matrix.T @ (b_weights * y)
+
+            reg_coeff = np.linalg.solve(xtwx + 1e-10 * np.eye(design_matrix.shape[1]), xtwy)
+
+            att_b = reg_coeff[interaction_idx]
+            bootstrap_estimates[b] = att_b
+
+        except (np.linalg.LinAlgError, ValueError) as e:
+            warnings.warn(f"TWFE regression failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+
+    n_failed = np.sum(np.isnan(bootstrap_estimates))
+    if n_failed > 0:
+        warnings.warn(
+            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+            "This might be due to collinearity in the design matrix or numerical instability.",
+            UserWarning,
+        )
+    if n_failed > n_bootstrap * 0.1:
+        warnings.warn(
+            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
+            UserWarning,
+        )
+
+    return bootstrap_estimates
+
+
 def _validate_bootstrap_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=False):
     """Validate inputs for bootstrap functions."""
     # Check array types
