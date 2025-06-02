@@ -1,1 +1,1 @@
-"""Test for DiDsensitivity to functional form."""
+"""Test for DiD sensitivity to functional form."""
