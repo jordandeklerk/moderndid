@@ -1,0 +1,1 @@
+"""Staggered DiD estimators."""
