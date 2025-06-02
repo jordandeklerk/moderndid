@@ -22,6 +22,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.wboot_drdid_imp_panel
    pydid.wboot_drdid_ipt_rc1
    pydid.wboot_drdid_ipt_rc2
+   pydid.wboot_drdid_rc
    pydid.wboot_drdid_rc_imp1
    pydid.wboot_drdid_rc_imp2
    pydid.wboot_ipw_panel
