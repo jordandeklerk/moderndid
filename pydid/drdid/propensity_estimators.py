@@ -430,3 +430,85 @@ def _weighted_sum(term_val, weight_val, term_name):
         return np.nan
 
     return weighted_sum_term / sum_w
+
+
+def std_ipw_panel(delta_y, d, ps, i_weights):
+    """Compute standardized IPW estimator for panel data.
+
+    Parameters
+    ----------
+    delta_y : ndarray
+        Outcome difference (post - pre).
+    d : ndarray
+        Treatment indicators.
+    ps : ndarray
+        Propensity scores.
+    i_weights : ndarray
+        Sample weights.
+
+    Returns
+    -------
+    float
+        Standardized IPW estimate.
+    """
+    # Treated units
+    w_treat = i_weights[d == 1]
+    n1 = np.sum(w_treat)
+
+    # Control units with IPW
+    control_mask = d == 0
+    if np.any(ps[control_mask] == 1.0):
+        return np.nan
+
+    w_cont = i_weights[control_mask] * ps[control_mask] / (1 - ps[control_mask])
+
+    sum_w_cont = np.sum(w_cont)
+    if sum_w_cont == 0:
+        return np.nan
+
+    w_cont_std = w_cont * np.sum(i_weights[control_mask]) / sum_w_cont
+
+    if n1 == 0:
+        return np.nan
+
+    att_treat = np.sum(w_treat * delta_y[d == 1]) / n1
+    att_cont = np.sum(w_cont_std * delta_y[control_mask]) / np.sum(w_cont_std)
+
+    return att_treat - att_cont
+
+
+def twfe_panel(delta_y, d, x, i_weights):
+    """Compute two-way fixed effects estimator for panel data.
+
+    Parameters
+    ----------
+    delta_y : ndarray
+        Outcome difference (post - pre).
+    d : ndarray
+        Treatment indicators.
+    x : ndarray
+        Covariate matrix.
+    i_weights : ndarray
+        Sample weights.
+
+    Returns
+    -------
+    float
+        TWFE estimate.
+    """
+    try:
+        X = np.column_stack([x, d])
+        W = np.diag(i_weights)
+
+        XtWX = X.T @ W @ X
+        XtWy = X.T @ W @ delta_y
+
+        if np.linalg.cond(XtWX) > 1e12:
+            return np.nan
+
+        beta = np.linalg.solve(XtWX, XtWy)
+
+        return float(beta[-1])
+
+    except (np.linalg.LinAlgError, ValueError):
+        return np.nan
