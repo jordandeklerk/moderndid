@@ -15,11 +15,11 @@ from .propensity_estimators import (
     aipw_did_panel,
     aipw_did_rc_imp1,
     aipw_did_rc_imp2,
+    ipt_pscore,
     ipw_did_rc,
     std_ipw_panel,
     twfe_panel,
 )
-from .pscore_ipt import calculate_pscore_ipt
 from .wols import wols_panel, wols_rc
 
 __all__ = [
@@ -47,5 +47,5 @@ __all__ = [
     "IPTDRDiDRC2",
     "wols_panel",
     "wols_rc",
-    "calculate_pscore_ipt",
+    "ipt_pscore",
 ]
