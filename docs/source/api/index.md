@@ -13,6 +13,8 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.aipw_did_rc_imp2
    pydid.std_ipw_panel
    pydid.twfe_panel
+   pydid.ipw_did_rc
+   pydid.ipt_pscore
 ```
 
 ## Bootstrap Estimators
