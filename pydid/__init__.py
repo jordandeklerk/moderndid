@@ -17,7 +17,13 @@ from pydid.drdid.bootstrap_panel import (
 )
 from pydid.drdid.bootstrap_rc import ImprovedDRDiDRC1, ImprovedDRDiDRC2, TraditionalDRDiDRC
 from pydid.drdid.bootstrap_rc_ipt import IPTDRDiDRC1, IPTDRDiDRC2
-from pydid.drdid.propensity_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
+from pydid.drdid.propensity_estimators import (
+    aipw_did_panel,
+    aipw_did_rc_imp1,
+    aipw_did_rc_imp2,
+    std_ipw_panel,
+    twfe_panel,
+)
 from pydid.drdid.pscore_ipt import calculate_pscore_ipt
 from pydid.drdid.wols import wols_panel, wols_rc
 
@@ -25,6 +31,8 @@ __all__ = [
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
+    "std_ipw_panel",
+    "twfe_panel",
     "BaseBootstrap",
     "PanelBootstrap",
     "RepeatedCrossSectionBootstrap",
