@@ -11,6 +11,8 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.aipw_did_panel
    pydid.aipw_did_rc_imp1
    pydid.aipw_did_rc_imp2
+   pydid.std_ipw_panel
+   pydid.twfe_panel
 ```
 
 ## Bootstrap Estimators
@@ -19,17 +21,20 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 .. autosummary::
    :toctree: generated/
 
-   pydid.wboot_drdid_imp_panel
-   pydid.wboot_drdid_ipt_rc1
-   pydid.wboot_drdid_ipt_rc2
-   pydid.wboot_drdid_rc
-   pydid.wboot_drdid_rc_imp1
-   pydid.wboot_drdid_rc_imp2
-   pydid.wboot_ipw_panel
-   pydid.wboot_std_ipw_panel
-   pydid.wboot_dr_tr_panel
-   pydid.wboot_reg_panel
-   pydid.wboot_twfe_panel
+   pydid.BaseBootstrap
+   pydid.PanelBootstrap
+   pydid.RepeatedCrossSectionBootstrap
+   pydid.ImprovedDRDiDPanel
+   pydid.IPWPanel
+   pydid.StandardizedIPWPanel
+   pydid.TraditionalDRDiDPanel
+   pydid.RegressionPanel
+   pydid.TWFEPanel
+   pydid.ImprovedDRDiDRC1
+   pydid.ImprovedDRDiDRC2
+   pydid.TraditionalDRDiDRC
+   pydid.IPTDRDiDRC1
+   pydid.IPTDRDiDRC2
 ```
 
 ## WOLS Estimators
