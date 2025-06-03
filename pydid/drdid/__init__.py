@@ -9,9 +9,16 @@ from .bootstrap_panel import (
     TraditionalDRDiDPanel,
     TWFEPanel,
 )
-from .bootstrap_rc import ImprovedDRDiDRC1, ImprovedDRDiDRC2, TraditionalDRDiDRC
+from .bootstrap_rc import ImprovedDRDiDRC1, ImprovedDRDiDRC2, IPWRepeatedCrossSection, TraditionalDRDiDRC
 from .bootstrap_rc_ipt import IPTDRDiDRC1, IPTDRDiDRC2
-from .propensity_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2, std_ipw_panel, twfe_panel
+from .propensity_estimators import (
+    aipw_did_panel,
+    aipw_did_rc_imp1,
+    aipw_did_rc_imp2,
+    ipw_did_rc,
+    std_ipw_panel,
+    twfe_panel,
+)
 from .pscore_ipt import calculate_pscore_ipt
 from .wols import wols_panel, wols_rc
 
@@ -19,6 +26,7 @@ __all__ = [
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
+    "ipw_did_rc",
     "std_ipw_panel",
     "twfe_panel",
     "BaseBootstrap",
@@ -34,6 +42,7 @@ __all__ = [
     "ImprovedDRDiDRC1",
     "ImprovedDRDiDRC2",
     "TraditionalDRDiDRC",
+    "IPWRepeatedCrossSection",
     "IPTDRDiDRC1",
     "IPTDRDiDRC2",
     "wols_panel",
