@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import pytest
 
-from pydid.drdid.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
+from pydid.drdid.propensity_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 
 from .dgp import SantAnnaZhaoDRDiD
 

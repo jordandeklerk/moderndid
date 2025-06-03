@@ -2,8 +2,19 @@
 
 import warnings
 from abc import ABC, abstractmethod
+from enum import Enum
 
 import numpy as np
+from sklearn.linear_model import LogisticRegression
+
+from .pscore_ipt import calculate_pscore_ipt
+
+
+class PropensityScoreMethod(Enum):
+    """Enumeration of propensity score estimation methods."""
+
+    LOGISTIC = "logistic"
+    IPT = "ipt"
 
 
 class BaseBootstrap(ABC):
@@ -22,6 +33,11 @@ class BaseBootstrap(ABC):
         random_state : int, RandomState instance or None
             Controls the random number generation for reproducibility.
         """
+        if not isinstance(n_bootstrap, int) or n_bootstrap <= 0:
+            raise ValueError("n_bootstrap must be a positive integer.")
+        if not isinstance(trim_level, int | float) or not 0 < trim_level <= 1:
+            raise ValueError("trim_level must be a number between 0 (exclusive) and 1 (inclusive).")
+
         self.n_bootstrap = n_bootstrap
         self.trim_level = trim_level
         self.random_state = random_state
@@ -103,7 +119,8 @@ class BaseBootstrap(ABC):
         n_failed = np.sum(np.isnan(estimates))
         if n_failed > 0:
             warnings.warn(
-                f"{n_failed} out of {self.n_bootstrap} bootstrap iterations failed and resulted in NaN. "
+                f"{n_failed} out of {self.n_bootstrap} bootstrap iterations failed and resulted "
+                "in NaN. "
                 "This might be due to issues in propensity score estimation, outcome regression, "
                 "or the AIPW calculation itself (e.g. perfect prediction, collinearity, "
                 "small effective sample sizes after weighting/trimming).",
@@ -117,8 +134,70 @@ class BaseBootstrap(ABC):
             )
         return estimates.copy()
 
+    @staticmethod
+    def _estimate_propensity_scores(
+        d: np.ndarray,
+        x: np.ndarray,
+        weights: np.ndarray,
+        method: PropensityScoreMethod = PropensityScoreMethod.LOGISTIC,
+    ) -> np.ndarray:
+        """Estimate propensity scores using specified method.
+
+        Parameters
+        ----------
+        d : ndarray
+            Treatment indicators.
+        x : ndarray
+            Covariate matrix.
+        weights : ndarray
+            Sample weights.
+        method : PropensityScoreMethod
+            Method to use for propensity score estimation.
+
+        Returns
+        -------
+        ndarray
+            Estimated propensity scores.
+        """
+        if method == PropensityScoreMethod.LOGISTIC:
+            ps_model = LogisticRegression(solver="lbfgs", max_iter=10000)
+            ps_model.fit(x, d, sample_weight=weights)
+            return ps_model.predict_proba(x)[:, 1]
+        if method == PropensityScoreMethod.IPT:
+            return calculate_pscore_ipt(d, x, weights)
+        raise ValueError(f"Unknown propensity score method: {method}")
+
+    def _run_bootstrap_iterations(self, i_weights: np.ndarray, **kwargs) -> np.ndarray:
+        """Run all bootstrap iterations.
+
+        Parameters
+        ----------
+        i_weights : ndarray
+            Original observation weights.
+        **kwargs
+            Additional arguments to pass to _compute_single_bootstrap.
+
+        Returns
+        -------
+        ndarray
+            Array of bootstrap estimates.
+        """
+        bootstrap_estimates = np.zeros(self.n_bootstrap)
+
+        for b in range(self.n_bootstrap):
+            b_weights = self._generate_weights(i_weights)
+
+            try:
+                bootstrap_estimates[b] = self._compute_single_bootstrap(b_weights, **kwargs)
+            except (ValueError, np.linalg.LinAlgError) as e:
+                warnings.warn(f"Bootstrap iteration {b} failed: {e}", UserWarning)
+                bootstrap_estimates[b] = np.nan
+                continue
+
+        return self._validate_results(bootstrap_estimates)
+
     @abstractmethod
-    def fit(self, **kwargs) -> np.ndarray:
+    def fit(self, *args, **kwargs) -> np.ndarray:
         """Compute bootstrap estimates.
 
         Returns
@@ -127,6 +206,106 @@ class BaseBootstrap(ABC):
             Array of bootstrap estimates.
         """
         pass  # pylint: disable=unnecessary-pass
+
+
+class PanelBootstrap(BaseBootstrap):
+    """Bootstrap estimator for panel data."""
+
+    def fit(  # pylint: disable=arguments-differ
+        self,
+        delta_y: np.ndarray,
+        d: np.ndarray,
+        x: np.ndarray,
+        i_weights: np.ndarray,
+        **kwargs,
+    ) -> np.ndarray:
+        """Compute bootstrap estimates for panel data.
+
+        Parameters
+        ----------
+        delta_y : ndarray
+            Outcome difference (post - pre).
+        d : ndarray
+            Treatment indicators.
+        x : ndarray
+            Covariate matrix.
+        i_weights : ndarray
+            Initial weights.
+        **kwargs
+            Additional arguments for specific estimators.
+
+        Returns
+        -------
+        ndarray
+            Array of bootstrap estimates.
+        """
+        _validate_inputs(
+            {"delta_y": delta_y, "d": d, "i_weights": i_weights},
+            x,
+            self.n_bootstrap,
+            self.trim_level,
+            check_intercept=True,
+        )
+
+        return self._run_bootstrap_iterations(
+            i_weights,
+            delta_y=delta_y,
+            d=d,
+            x=x,
+            **kwargs,
+        )
+
+
+class RepeatedCrossSectionBootstrap(BaseBootstrap):
+    """Bootstrap estimator for repeated cross-section data."""
+
+    def fit(  # pylint: disable=arguments-differ
+        self,
+        y: np.ndarray,
+        t: np.ndarray,
+        d: np.ndarray,
+        x: np.ndarray,
+        i_weights: np.ndarray,
+        **kwargs,
+    ) -> np.ndarray:
+        """Compute bootstrap estimates for repeated cross-section data.
+
+        Parameters
+        ----------
+        y : ndarray
+            Outcome variable.
+        t : ndarray
+            Time period indicators (0 for pre, 1 for post).
+        d : ndarray
+            Treatment indicators.
+        x : ndarray
+            Covariate matrix.
+        i_weights : ndarray
+            Initial weights.
+        **kwargs
+            Additional arguments for specific estimators.
+
+        Returns
+        -------
+        ndarray
+            Array of bootstrap estimates.
+        """
+        _validate_inputs(
+            {"y": y, "t": t, "d": d, "i_weights": i_weights},
+            x,
+            self.n_bootstrap,
+            self.trim_level,
+            check_intercept=True,
+        )
+
+        return self._run_bootstrap_iterations(
+            i_weights,
+            y=y,
+            t=t,
+            d=d,
+            x=x,
+            **kwargs,
+        )
 
 
 def _validate_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=False):
@@ -158,12 +337,13 @@ def _validate_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=Fa
     if not isinstance(n_bootstrap, int) or n_bootstrap <= 0:
         raise ValueError("n_bootstrap must be a positive integer.")
 
-    if not 0 < trim_level < 1:
-        raise ValueError("trim_level must be between 0 and 1.")
+    if not 0 < trim_level <= 1:
+        raise ValueError("trim_level must be between 0 (exclusive) and 1 (inclusive).")
 
     if check_intercept and not np.all(x[:, 0] == 1.0):
         warnings.warn(
-            "The first column of the covariate matrix 'x' does not appear to be an intercept (all ones). "
+            "The first column of the covariate matrix 'x' does not appear to be an intercept "
+            "(all ones). "
             "IPT propensity score estimation typically requires an intercept.",
             UserWarning,
         )
