@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import pytest
 
-from pydid.drdid.propensity_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
+from pydid.drdid.propensity_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2, ipw_did_rc
 
 from .dgp import SantAnnaZhaoDRDiD
 
@@ -87,6 +87,88 @@ def test_all_treated():
         assert len(w) >= 1
         assert any("Sum of w_cont is 0.0" in str(warn.message) for warn in w)
     assert_allclose_with_nans(actual_att, np.nan)
+
+
+def test_ipw_rc_happy_path():
+    y = np.array([10.0, 12.0, 11.0, 13.0, 20.0, 22.0, 15.0, 18.0, 19.0, 25.0])
+    post = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1])
+    d = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
+    ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62, 0.55, 0.68])
+    i_weights = np.ones(10)
+
+    att = ipw_did_rc(y, post, d, ps, i_weights)
+
+    assert isinstance(att, float)
+    assert not np.isnan(att)
+
+
+def test_ipw_rc_invalid_inputs():
+    y = np.array([10.0, 12.0, 11.0])
+    post = np.array([0, 1, 0])
+    d = np.array([0, 1, 1])
+    ps = np.array([0.4, 0.6, 0.5])
+    i_weights = np.ones(3)
+
+    with pytest.raises(TypeError):
+        ipw_did_rc(list(y), post, d, ps, i_weights)
+
+    with pytest.raises(ValueError):
+        ipw_did_rc(y[:-1], post, d, ps, i_weights)
+
+    with pytest.raises(ValueError):
+        ipw_did_rc(np.array([[10.0, 12.0]]), post, d, ps, i_weights)
+
+
+def test_ipw_rc_edge_cases():
+    y = np.array([10.0, 12.0, 11.0, 13.0])
+    post = np.array([0, 1, 0, 1])
+    i_weights = np.ones(4)
+
+    d_all_treated = np.ones(4)
+    ps = np.array([0.6, 0.6, 0.6, 0.6])
+    att = ipw_did_rc(y, post, d_all_treated, ps, i_weights)
+    assert isinstance(att, float)
+
+    d = np.array([0, 0, 1, 1])
+    ps_problematic = np.array([1.0, 1.0, 0.6, 0.6])
+    with pytest.warns(UserWarning, match="Propensity score is 1 for some control units"):
+        att = ipw_did_rc(y, post, d, ps_problematic, i_weights)
+    assert np.isnan(att)
+
+    post_all_pre = np.zeros(4)
+    ps_normal = np.array([0.4, 0.4, 0.6, 0.6])
+    with pytest.warns(UserWarning, match="Lambda is 0"):
+        att = ipw_did_rc(y, post_all_pre, d, ps_normal, i_weights)
+    assert np.isnan(att)
+
+    post_all_post = np.ones(4)
+    with pytest.warns(UserWarning, match="Lambda is 1"):
+        att = ipw_did_rc(y, post_all_post, d, ps_normal, i_weights)
+    assert np.isnan(att)
+
+
+def test_ipw_rc_with_weights():
+    y = np.array([10.0, 12.0, 11.0, 13.0, 20.0, 22.0, 15.0, 18.0])
+    post = np.array([0, 0, 1, 1, 0, 0, 1, 1])
+    d = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+    ps = np.array([0.4, 0.45, 0.38, 0.42, 0.6, 0.65, 0.58, 0.62])
+    weights = np.array([0.5, 1.2, 0.8, 1.5, 0.9, 1.1, 1.3, 0.7])
+
+    att = ipw_did_rc(y, post, d, ps, weights)
+
+    assert isinstance(att, float)
+    assert not np.isnan(att)
+
+
+def test_ipw_rc_numerical_precision():
+    y = np.array([10.0, 20.0, 15.0, 25.0])
+    post = np.array([0, 1, 0, 1])
+    d = np.array([0, 0, 1, 1])
+    ps = np.array([0.001, 0.001, 0.999, 0.999])
+    i_weights = np.ones(4)
+
+    att = ipw_did_rc(y, post, d, ps, i_weights)
+    assert isinstance(att, float)
 
 
 def test_all_control():

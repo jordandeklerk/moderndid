@@ -3,7 +3,7 @@
 import numpy as np
 
 from .base_bootstrap import PropensityScoreMethod, RepeatedCrossSectionBootstrap
-from .propensity_estimators import aipw_did_rc_imp1, aipw_did_rc_imp2
+from .propensity_estimators import aipw_did_rc_imp1, aipw_did_rc_imp2, ipw_did_rc
 from .wols import wols_rc
 
 
@@ -85,3 +85,34 @@ class TraditionalDRDiDRC(RepeatedCrossSectionBootstrap):
         or_reg_simple = np.full_like(y, control_mean)
 
         return aipw_did_rc_imp1(y, t, d, ps_b, or_reg_simple, b_weights_trimmed)
+
+
+class IPWRepeatedCrossSection(RepeatedCrossSectionBootstrap):
+    """IPW-only estimator for repeated cross-sections."""
+
+    def _compute_single_bootstrap(self, b_weights: np.ndarray, **kwargs) -> float:
+        """Compute a single bootstrap iteration using IPW.
+
+        Parameters
+        ----------
+        b_weights : ndarray
+            Bootstrap weights for this iteration.
+        **kwargs
+            Contains y, t, d, x from parent fit method.
+
+        Returns
+        -------
+        float
+            Bootstrap estimate for this iteration.
+        """
+        y = kwargs["y"]
+        t = kwargs["t"]
+        d = kwargs["d"]
+        x = kwargs["x"]
+
+        ps_b = self._estimate_propensity_scores(d, x, b_weights, PropensityScoreMethod.LOGISTIC)
+        ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
+
+        b_weights_trimmed = self._apply_trimming(ps_b, d, b_weights)
+
+        return ipw_did_rc(y, t, d, ps_b, b_weights_trimmed)

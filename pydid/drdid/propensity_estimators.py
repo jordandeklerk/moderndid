@@ -498,6 +498,94 @@ def twfe_panel(delta_y, d, x, i_weights):
         return np.nan
 
 
+def ipw_did_rc(y, post, d, ps, i_weights):
+    r"""Compute the IPW estimator for repeated cross-section data.
+
+    The IPW estimator for repeated cross-sections uses only inverse propensity
+    weighting (without outcome regression) to estimate the ATT. This estimator
+    requires correct specification of the propensity score model but is computationally
+    simpler than doubly robust methods.
+
+    The IPW estimator is given by
+
+    .. math::
+
+        \hat{\tau}^{ipw,rc} = \frac{1}{\mathbb{E}_n[D]}
+        \mathbb{E}_n\left[\frac{D - \pi(X)(1-D)/(1-\pi(X))}{\lambda(1-\lambda)}
+        (T - \lambda) Y\right],
+
+    where :math:`\lambda = \mathbb{E}_n[T]` is the proportion of observations
+    in the post-treatment period.
+
+    Parameters
+    ----------
+    y : ndarray
+        A 1D array representing the outcome variable for each unit.
+    post : ndarray
+        A 1D array representing the post-treatment period indicator (1 for post, 0 for pre)
+        for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    ps : ndarray
+        A 1D array of propensity scores (estimated probability of being treated,
+        :math:`P(D=1|X)`) for each unit.
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+
+    Returns
+    -------
+    float
+        The IPW ATT estimate for repeated cross-sections.
+
+    See Also
+    --------
+    aipw_did_rc_imp1 : Simplified AIPW estimator for repeated cross-sections.
+    aipw_did_rc_imp2 : Locally efficient AIPW estimator for repeated cross-sections.
+    std_ipw_panel : Standardized IPW estimator for panel data.
+    """
+    arrays = [y, post, d, ps, i_weights]
+
+    if not all(isinstance(arr, np.ndarray) for arr in arrays):
+        raise TypeError("All inputs must be NumPy arrays.")
+
+    if not all(arr.ndim == 1 for arr in arrays):
+        raise ValueError("All input arrays must be 1-dimensional.")
+
+    first_shape = arrays[0].shape
+    if not all(arr.shape == first_shape for arr in arrays):
+        raise ValueError("All input arrays must have the same shape.")
+
+    problematic_ps_for_controls = (ps == 1.0) & (d == 0)
+    if np.any(problematic_ps_for_controls):
+        warnings.warn(
+            "Propensity score is 1 for some control units, cannot compute IPW.",
+            UserWarning,
+        )
+        return np.nan
+
+    lambda_val = np.mean(i_weights * post) / np.mean(i_weights)
+
+    if lambda_val in (0, 1):
+        warnings.warn(
+            f"Lambda is {lambda_val}, cannot compute IPW estimator.",
+            UserWarning,
+        )
+        return np.nan
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ipw_weights = d - ps * (1 - d) / (1 - ps)
+
+    numerator = np.sum(i_weights * ipw_weights * ((post - lambda_val) / (lambda_val * (1 - lambda_val))) * y)
+    denominator = np.sum(i_weights * d)
+
+    if denominator == 0:
+        warnings.warn("No treated units found, cannot compute IPW estimator.", UserWarning)
+        return np.nan
+
+    return float(numerator / denominator)
+
+
 def _weighted_sum(term_val, weight_val, term_name):
     sum_w = np.sum(weight_val)
     if sum_w == 0 or not np.isfinite(sum_w):
