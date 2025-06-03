@@ -7,7 +7,7 @@ from enum import Enum
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 
-from .pscore_ipt import calculate_pscore_ipt
+from .propensity_estimators import ipt_pscore
 
 
 class PropensityScoreMethod(Enum):
@@ -164,7 +164,7 @@ class BaseBootstrap(ABC):
             ps_model.fit(x, d, sample_weight=weights)
             return ps_model.predict_proba(x)[:, 1]
         if method == PropensityScoreMethod.IPT:
-            return calculate_pscore_ipt(d, x, weights)
+            return ipt_pscore(d, x, weights)
         raise ValueError(f"Unknown propensity score method: {method}")
 
     def _run_bootstrap_iterations(self, i_weights: np.ndarray, **kwargs) -> np.ndarray:
