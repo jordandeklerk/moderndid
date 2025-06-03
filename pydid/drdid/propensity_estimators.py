@@ -1,4 +1,4 @@
-"""Augmented inverse propensity weighted (AIPW) estimators for DR-DiD."""
+"""Propensity score estimators."""
 
 import warnings
 
