@@ -416,22 +416,6 @@ def aipw_did_rc_imp2(
     return float(aipw_att)
 
 
-def _weighted_sum(term_val, weight_val, term_name):
-    sum_w = np.sum(weight_val)
-    if sum_w == 0 or not np.isfinite(sum_w):
-        warnings.warn(f"Sum of weights for {term_name} is {sum_w}. Term will be NaN.", UserWarning)
-        return np.nan
-
-    weighted_sum_term = np.sum(weight_val * term_val)
-    if not np.isfinite(weighted_sum_term):
-        warnings.warn(
-            f"Weighted sum for {term_name} is not finite ({weighted_sum_term}). Term will be NaN.", UserWarning
-        )
-        return np.nan
-
-    return weighted_sum_term / sum_w
-
-
 def std_ipw_panel(delta_y, d, ps, i_weights):
     """Compute standardized IPW estimator for panel data.
 
@@ -512,3 +496,19 @@ def twfe_panel(delta_y, d, x, i_weights):
 
     except (np.linalg.LinAlgError, ValueError):
         return np.nan
+
+
+def _weighted_sum(term_val, weight_val, term_name):
+    sum_w = np.sum(weight_val)
+    if sum_w == 0 or not np.isfinite(sum_w):
+        warnings.warn(f"Sum of weights for {term_name} is {sum_w}. Term will be NaN.", UserWarning)
+        return np.nan
+
+    weighted_sum_term = np.sum(weight_val * term_val)
+    if not np.isfinite(weighted_sum_term):
+        warnings.warn(
+            f"Weighted sum for {term_name} is not finite ({weighted_sum_term}). Term will be NaN.", UserWarning
+        )
+        return np.nan
+
+    return weighted_sum_term / sum_w
