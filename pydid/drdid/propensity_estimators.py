@@ -420,7 +420,29 @@ def aipw_did_rc_imp2(
 
 
 def std_ipw_panel(delta_y, d, ps, i_weights):
-    """Compute standardized IPW estimator for panel data.
+    r"""Compute standardized IPW estimator for panel data.
+
+    The standardized IPW estimator adjusts for selection bias by reweighting control
+    units based on their propensity scores. Unlike the standard IPW estimator, this
+    version standardizes the control weights to preserve the original control group size,
+    which can improve finite sample properties.
+
+    The estimator is given by
+
+    .. math::
+
+        \hat{\tau}^{stdipw,p} = \frac{1}{N_1} \sum_{i: D_i=1} w_i \Delta Y_i -
+        \frac{1}{N_0^*} \sum_{i: D_i=0} w_i^* \Delta Y_i,
+
+    where
+
+    .. math::
+
+        w_i^* = w_i \cdot \frac{\pi(X_i)}{1-\pi(X_i)} \cdot
+        \frac{\sum_{j: D_j=0} w_j}{\sum_{j: D_j=0} w_j \cdot \frac{\pi(X_j)}{1-\pi(X_j)}},
+
+    and :math:`N_0^* = \sum_{i: D_i=0} w_i^*` is the standardized control group size.
+    The standardization factor ensures that :math:`N_0^* = \sum_{i: D_i=0} w_i`.
 
     Parameters
     ----------
@@ -437,6 +459,16 @@ def std_ipw_panel(delta_y, d, ps, i_weights):
     -------
     float
         Standardized IPW estimate.
+
+    See Also
+    --------
+    aipw_did_panel : AIPW estimator for panel data.
+    ipw_did_rc : IPW estimator for repeated cross-sections.
+
+    Notes
+    -----
+    The estimator requires the overlap condition :math:`0 < \pi(X) < 1` for all units.
+    When propensity scores are close to 1 for control units, the estimator may be unstable.
     """
     # Treated units
     w_treat = i_weights[d == 1]
@@ -465,7 +497,31 @@ def std_ipw_panel(delta_y, d, ps, i_weights):
 
 
 def twfe_panel(delta_y, d, x, i_weights):
-    """Compute two-way fixed effects estimator for panel data.
+    r"""Compute two-way fixed effects estimator for panel data.
+
+    The two-way fixed effects (TWFE) estimator for panel data uses weighted
+    least squares regression to estimate the average treatment effect. By working
+    with first-differenced outcomes (:math:`\Delta Y_i = Y_{i,post} - Y_{i,pre}`),
+    this estimator effectively removes unit-specific fixed effects.
+
+    The estimator solves the weighted least squares problem
+
+    .. math::
+
+        \hat{\beta} = \arg\min_{\beta} \sum_{i=1}^n w_i (\Delta Y_i - X_i'\beta_X - D_i \tau)^2,
+
+    where :math:`w_i` are the sample weights, :math:`X_i` are the covariates,
+    :math:`D_i` is the treatment indicator, and :math:`\tau` is the treatment effect.
+
+    The solution is given by
+
+    .. math::
+
+        \begin{bmatrix} \hat{\beta}_X \\ \hat{\tau} \end{bmatrix} =
+        (Z'WZ)^{-1} Z'W \Delta Y,
+
+    where :math:`Z = [X, D]` is the augmented design matrix, and
+    :math:`W = \text{diag}(w_1, \ldots, w_n)` is the weight matrix.
 
     Parameters
     ----------
@@ -482,6 +538,17 @@ def twfe_panel(delta_y, d, x, i_weights):
     -------
     float
         TWFE estimate.
+
+    See Also
+    --------
+    aipw_did_panel : AIPW estimator for panel data.
+    std_ipw_panel : Standardized IPW estimator for panel data.
+
+    Notes
+    -----
+    This estimator assumes that the parallel trends assumption holds conditional
+    on the included covariates. The first-differencing removes time-invariant
+    unit fixed effects.
     """
     try:
         X = np.column_stack([x, d])
@@ -590,7 +657,7 @@ def ipw_did_rc(y, post, d, ps, i_weights):
 
 
 def ipt_pscore(D, X, iw):
-    """Calculate propensity scores using Inverse Probability Tilting.
+    r"""Calculate propensity scores using Inverse Probability Tilting.
 
     Parameters
     ----------
@@ -605,6 +672,17 @@ def ipt_pscore(D, X, iw):
     -------
     ndarray
         Propensity scores.
+
+    See Also
+    --------
+    aipw_did_panel : AIPW estimator using propensity scores.
+    ipw_did_rc : IPW estimator using propensity scores.
+
+    References
+    ----------
+    .. [1] Graham, B. S., Pinto, C. C., & Egel, D. (2012). Inverse probability tilting
+           for moment condition models with missing data. *The Review of Economic Studies*,
+           79(3), 1053-1079.
     """
     n_obs, k_features = X.shape
     init_gamma = _get_initial_gamma(D, X, iw, k_features)
