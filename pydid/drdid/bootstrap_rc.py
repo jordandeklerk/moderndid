@@ -116,3 +116,47 @@ class IPWRepeatedCrossSection(RepeatedCrossSectionBootstrap):
         b_weights_trimmed = self._apply_trimming(ps_b, d, b_weights)
 
         return ipw_did_rc(y, t, d, ps_b, b_weights_trimmed)
+
+
+class RegressionDiDRC(RepeatedCrossSectionBootstrap):
+    """Regression-based robust DiD for repeated cross-sections."""
+
+    def _compute_single_bootstrap(self, b_weights: np.ndarray, **kwargs) -> float:
+        """Compute a single bootstrap iteration using regression adjustment.
+
+        Parameters
+        ----------
+        b_weights : ndarray
+            Bootstrap weights for this iteration.
+        **kwargs
+            Contains y, t, d, x from parent fit method.
+
+        Returns
+        -------
+        float
+            Bootstrap estimate for this iteration.
+        """
+        y = kwargs["y"]
+        t = kwargs["t"]
+        d = kwargs["d"]
+        x = kwargs["x"]
+
+        reg_control_pre = wols_rc(y, t, d, x, np.ones_like(y), b_weights, pre=True, treat=False)
+        reg_control_post = wols_rc(y, t, d, x, np.ones_like(y), b_weights, pre=False, treat=False)
+
+        out_reg_pre = reg_control_pre.out_reg
+        out_reg_post = reg_control_post.out_reg
+
+        # Compute OR estimator with regression adjustment
+        treated_post = (d == 1) & (t == 1)
+        treated_pre = (d == 1) & (t == 0)
+
+        att_b = np.sum(b_weights[treated_post] * y[treated_post]) / np.sum(b_weights[treated_post])
+        att_b -= np.sum(b_weights[treated_pre] * y[treated_pre]) / np.sum(b_weights[treated_pre])
+
+        treated = d == 1
+        att_b -= np.sum(b_weights[treated] * (out_reg_post[treated] - out_reg_pre[treated])) / np.sum(
+            b_weights[treated]
+        )
+
+        return att_b

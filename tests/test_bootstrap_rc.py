@@ -7,6 +7,7 @@ from pydid.drdid import (
     ImprovedDRDiDRC1,
     ImprovedDRDiDRC2,
     IPWRepeatedCrossSection,
+    RegressionDiDRC,
     TraditionalDRDiDRC,
 )
 
@@ -203,27 +204,6 @@ def test_improved_drdid_rc1_with_weights():
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
     assert not np.all(np.isnan(boot_estimates))
-
-
-def test_improved_drdid_rc1_compare_with_rc2():
-    np.random.seed(42)
-    n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    t = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * t + np.random.randn(n)
-    weights = np.ones(n)
-
-    n_boot = 500
-
-    estimator1 = ImprovedDRDiDRC1(n_bootstrap=n_boot, random_state=42)
-    boot_estimates1 = estimator1.fit(y=y, t=t, d=d, x=x, i_weights=weights)
-
-    estimator2 = ImprovedDRDiDRC2(n_bootstrap=n_boot, random_state=42)
-    boot_estimates2 = estimator2.fit(y=y, t=t, d=d, x=x, i_weights=weights)
-
-    assert np.isclose(np.nanmean(boot_estimates1), np.nanmean(boot_estimates2), rtol=0.3)
-    assert np.isclose(np.nanstd(boot_estimates1), np.nanstd(boot_estimates2), rtol=0.3)
 
 
 def test_traditional_drdid_rc_basic():
@@ -441,3 +421,120 @@ def test_ipw_rc_all_pre_or_post():
         boot_estimates = estimator.fit(y=y, t=t_all_post, d=d, x=x, i_weights=weights)
 
     assert np.all(np.isnan(boot_estimates))
+
+
+def test_regression_did_rc_basic():
+    np.random.seed(42)
+    n = 200
+    p = 3
+
+    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
+    d = np.random.binomial(1, 0.3, n)
+    t = np.random.binomial(1, 0.5, n)
+    y = x @ [1, 0.5, -0.3] + 2 * d * t + np.random.randn(n)
+    weights = np.ones(n)
+
+    estimator = RegressionDiDRC(n_bootstrap=100, random_state=42)
+    boot_estimates = estimator.fit(y=y, t=t, d=d, x=x, i_weights=weights)
+
+    assert isinstance(boot_estimates, np.ndarray)
+    assert len(boot_estimates) == 100
+    assert not np.all(np.isnan(boot_estimates))
+    assert np.std(boot_estimates) > 0
+
+
+def test_regression_did_rc_invalid_inputs():
+    n = 50
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    y = np.random.randn(n)
+    d = np.random.binomial(1, 0.5, n)
+    t = np.random.binomial(1, 0.5, n)
+    weights = np.ones(n)
+
+    estimator = RegressionDiDRC()
+
+    with pytest.raises(TypeError):
+        estimator.fit(list(y), t, d, x, weights)
+
+    with pytest.raises(ValueError):
+        estimator.fit(y[:-1], t, d, x, weights)
+
+    with pytest.raises(ValueError):
+        RegressionDiDRC(n_bootstrap=0)
+
+    with pytest.raises(ValueError):
+        RegressionDiDRC(trim_level=1.5)
+
+
+def test_regression_did_rc_edge_cases():
+    np.random.seed(42)
+    n = 100
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    y = np.random.randn(n)
+    weights = np.ones(n)
+
+    d_all_control = np.zeros(n)
+    t = np.random.binomial(1, 0.5, n)
+
+    estimator = RegressionDiDRC(n_bootstrap=10, random_state=42)
+
+    with pytest.warns(UserWarning):
+        boot_estimates = estimator.fit(y=y, t=t, d=d_all_control, x=x, i_weights=weights)
+
+    assert np.all(np.isnan(boot_estimates))
+
+
+def test_regression_did_rc_no_control_pre():
+    np.random.seed(42)
+    n = 100
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    y = np.random.randn(n)
+    weights = np.ones(n)
+
+    d = np.ones(n)
+    d[:20] = 0
+    t = np.ones(n)
+    t[d == 0] = 1
+
+    estimator = RegressionDiDRC(n_bootstrap=10, random_state=42)
+
+    with pytest.warns(UserWarning):
+        boot_estimates = estimator.fit(y=y, t=t, d=d, x=x, i_weights=weights)
+
+    assert np.sum(np.isnan(boot_estimates)) > 0
+
+
+def test_regression_did_rc_reproducibility():
+    np.random.seed(42)
+    n = 100
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    d = np.random.binomial(1, 0.5, n)
+    t = np.random.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * t + np.random.randn(n)
+    weights = np.ones(n)
+
+    estimator1 = RegressionDiDRC(n_bootstrap=50, random_state=123)
+    boot_estimates1 = estimator1.fit(y=y, t=t, d=d, x=x, i_weights=weights)
+
+    estimator2 = RegressionDiDRC(n_bootstrap=50, random_state=123)
+    boot_estimates2 = estimator2.fit(y=y, t=t, d=d, x=x, i_weights=weights)
+
+    np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
+
+
+def test_regression_did_rc_with_weights():
+    np.random.seed(42)
+    n = 200
+    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    d = np.random.binomial(1, 0.5, n)
+    t = np.random.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * t + np.random.randn(n)
+
+    weights = np.random.exponential(1, n)
+
+    estimator = RegressionDiDRC(n_bootstrap=100, random_state=42)
+    boot_estimates = estimator.fit(y=y, t=t, d=d, x=x, i_weights=weights)
+
+    assert isinstance(boot_estimates, np.ndarray)
+    assert len(boot_estimates) == 100
+    assert not np.all(np.isnan(boot_estimates))

@@ -15,7 +15,13 @@ from pydid.drdid.bootstrap_panel import (
     TraditionalDRDiDPanel,
     TWFEPanel,
 )
-from pydid.drdid.bootstrap_rc import ImprovedDRDiDRC1, ImprovedDRDiDRC2, IPWRepeatedCrossSection, TraditionalDRDiDRC
+from pydid.drdid.bootstrap_rc import (
+    ImprovedDRDiDRC1,
+    ImprovedDRDiDRC2,
+    IPWRepeatedCrossSection,
+    RegressionDiDRC,
+    TraditionalDRDiDRC,
+)
 from pydid.drdid.bootstrap_rc_ipt import IPTDRDiDRC1, IPTDRDiDRC2
 from pydid.drdid.propensity_estimators import (
     aipw_did_panel,
@@ -49,6 +55,7 @@ __all__ = [
     "ImprovedDRDiDRC2",
     "TraditionalDRDiDRC",
     "IPWRepeatedCrossSection",
+    "RegressionDiDRC",
     "IPTDRDiDRC1",
     "IPTDRDiDRC2",
     "wols_panel",
