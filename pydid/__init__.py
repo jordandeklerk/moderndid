@@ -21,6 +21,7 @@ from pydid.drdid.bootstrap_rc import (
     IPWRepeatedCrossSection,
     RegressionDiDRC,
     TraditionalDRDiDRC,
+    TWFERepeatedCrossSection,
 )
 from pydid.drdid.bootstrap_rc_ipt import IPTDRDiDRC1, IPTDRDiDRC2
 from pydid.drdid.propensity_estimators import (
@@ -54,6 +55,7 @@ __all__ = [
     "ImprovedDRDiDRC1",
     "ImprovedDRDiDRC2",
     "TraditionalDRDiDRC",
+    "TWFERepeatedCrossSection",
     "IPWRepeatedCrossSection",
     "RegressionDiDRC",
     "IPTDRDiDRC1",

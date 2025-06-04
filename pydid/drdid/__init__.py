@@ -15,6 +15,7 @@ from .bootstrap_rc import (
     IPWRepeatedCrossSection,
     RegressionDiDRC,
     TraditionalDRDiDRC,
+    TWFERepeatedCrossSection,
 )
 from .bootstrap_rc_ipt import IPTDRDiDRC1, IPTDRDiDRC2
 from .propensity_estimators import (
@@ -50,6 +51,7 @@ __all__ = [
     "TraditionalDRDiDRC",
     "IPWRepeatedCrossSection",
     "RegressionDiDRC",
+    "TWFERepeatedCrossSection",
     "IPTDRDiDRC1",
     "IPTDRDiDRC2",
     "wols_panel",
