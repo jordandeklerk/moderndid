@@ -39,6 +39,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.TraditionalDRDiDRC
    pydid.IPWRepeatedCrossSection
    pydid.RegressionDiDRC
+   pydid.TWFERepeatedCrossSection
 ```
 
 ## WOLS Estimators

@@ -160,3 +160,58 @@ class RegressionDiDRC(RepeatedCrossSectionBootstrap):
         )
 
         return att_b
+
+
+class TWFERepeatedCrossSection(RepeatedCrossSectionBootstrap):
+    """Two-Way Fixed Effects (TWFE) DiD estimator for repeated cross-sections."""
+
+    def _compute_single_bootstrap(self, b_weights: np.ndarray, **kwargs) -> float:
+        """Compute a single bootstrap iteration using TWFE regression.
+
+        Parameters
+        ----------
+        b_weights : ndarray
+            Bootstrap weights for this iteration.
+        **kwargs
+            Contains y, t, d, x from parent fit method.
+
+        Returns
+        -------
+        float
+            Bootstrap estimate for this iteration.
+        """
+        y = kwargs["y"]
+        t = kwargs["t"]
+        d = kwargs["d"]
+        x = kwargs["x"]
+
+        # If there are no treated units, the treatment effect is 0.
+        if np.sum(d) == 0:
+            return 0.0
+
+        n_obs = len(y)
+        intercept = np.ones((n_obs, 1))
+        post = t.reshape(-1, 1)
+        treat = d.reshape(-1, 1)
+        post_treat = (t * d).reshape(-1, 1)
+
+        if x is not None:
+            if np.all(x[:, 0] == 1.0):
+                x_no_intercept = x[:, 1:]
+            else:
+                x_no_intercept = x
+            design_matrix = np.hstack([intercept, post, treat, post_treat, x_no_intercept])
+        else:
+            design_matrix = np.hstack([intercept, post, treat, post_treat])
+
+        sqrt_weights = np.sqrt(b_weights)
+        y_weighted = y * sqrt_weights
+        x_weighted = design_matrix * sqrt_weights[:, np.newaxis]
+
+        try:
+            xtx = x_weighted.T @ x_weighted
+            xty = x_weighted.T @ y_weighted
+            coefficients = np.linalg.solve(xtx, xty)  # noqa: N806
+            return coefficients[3]
+        except np.linalg.LinAlgError:
+            return np.nan
