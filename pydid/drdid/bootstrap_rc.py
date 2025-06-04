@@ -141,8 +141,8 @@ class RegressionDiDRC(RepeatedCrossSectionBootstrap):
         d = kwargs["d"]
         x = kwargs["x"]
 
-        reg_control_pre = wols_rc(y, t, d, x, np.ones_like(y), b_weights, pre=True, treat=False)
-        reg_control_post = wols_rc(y, t, d, x, np.ones_like(y), b_weights, pre=False, treat=False)
+        reg_control_pre = wols_rc(y, t, d, x, np.full_like(y, 0.5, dtype=float), b_weights, pre=True, treat=False)
+        reg_control_post = wols_rc(y, t, d, x, np.full_like(y, 0.5, dtype=float), b_weights, pre=False, treat=False)
 
         out_reg_pre = reg_control_pre.out_reg
         out_reg_post = reg_control_post.out_reg
