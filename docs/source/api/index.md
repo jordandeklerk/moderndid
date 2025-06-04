@@ -32,11 +32,13 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.TraditionalDRDiDPanel
    pydid.RegressionPanel
    pydid.TWFEPanel
+   pydid.IPTDRDiDRC1
+   pydid.IPTDRDiDRC2
    pydid.ImprovedDRDiDRC1
    pydid.ImprovedDRDiDRC2
    pydid.TraditionalDRDiDRC
-   pydid.IPTDRDiDRC1
-   pydid.IPTDRDiDRC2
+   pydid.IPWRepeatedCrossSection
+   pydid.RegressionDiDRC
 ```
 
 ## WOLS Estimators
