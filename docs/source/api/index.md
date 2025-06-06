@@ -51,13 +51,3 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.wols_panel
    pydid.wols_rc
 ```
-
-## Utilities
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated/
-
-   pydid.preprocess_drdid
-   pydid.preprocess_synth
-```
