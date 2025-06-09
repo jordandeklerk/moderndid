@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid.bootstrap_std_ipw_rc import wboot_std_ipw_rc
+from pydid.drdid.boot_std_ipw_rc import wboot_std_ipw_rc
 
 
 def test_wboot_std_ipw_rc_basic():

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid.bootstrap_ipw_rc import wboot_ipw_rc
+from pydid.drdid.boot_ipw_rc import wboot_ipw_rc
 from pydid.drdid.ipw_estimators import ipw_did_rc
 
 

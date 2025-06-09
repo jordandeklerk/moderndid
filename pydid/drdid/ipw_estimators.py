@@ -8,18 +8,6 @@ import numpy as np
 def ipw_did_rc(y, post, d, ps, i_weights, trim_ps=None):
     r"""Compute the inverse propensity weighted (IPW) estimator for repeated cross-sections.
 
-    The IPW estimator for repeated cross-sections is given by
-
-    .. math::
-
-        \hat{\tau}_{IPW} = \frac{\mathbb{E}_n\left[w_i \cdot \mathbbm{1}(\text{trim}) \cdot
-        \left(D_i - \frac{\pi(X_i)(1-D_i)}{1-\pi(X_i)}\right) \cdot
-        \frac{T_i - \lambda}{\lambda(1-\lambda)} \cdot Y_i\right]}
-        {\mathbb{E}_n[w_i \cdot D_i]}
-
-    where :math:`\lambda = \mathbb{E}_n[w_i \cdot \mathbbm{1}(\text{trim}) \cdot T_i]` and
-    :math:`\mathbbm{1}(\text{trim})` is the trimming indicator.
-
     Parameters
     ----------
     y : ndarray
@@ -46,7 +34,7 @@ def ipw_did_rc(y, post, d, ps, i_weights, trim_ps=None):
 
     See Also
     --------
-    pydid.drdid.bootstrap_ipw_rc.wboot_ipw_rc : Bootstrap inference for IPW DiD.
+    wboot_ipw_rc : Bootstrap inference for IPW DiD.
     """
     arrays = {"y": y, "post": post, "d": d, "ps": ps, "i_weights": i_weights}
     if trim_ps is not None:

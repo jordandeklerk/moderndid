@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import LogisticRegression
 
-from .bootstrap_panel import _validate_inputs
+from .boot_panel import _validate_inputs
 from .ipw_estimators import ipw_did_rc
 
 
