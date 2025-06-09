@@ -46,8 +46,6 @@ def wboot_reg_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):
     wboot_ipw_rc : IPW bootstrap for repeated cross-sections.
     """
     n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level=0.5)
-
-    # Check for treated units in each period before starting bootstrap
     n_treated_post = np.sum((d == 1) & (post == 1))
     n_treated_pre = np.sum((d == 1) & (post == 0))
 
