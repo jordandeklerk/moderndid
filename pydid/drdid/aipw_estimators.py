@@ -1,3 +1,4 @@
+# pylint: disable=superfluous-parens
 """Augmented inverse propensity weighted (AIPW) estimators for DR-DiD."""
 
 import warnings
@@ -66,14 +67,10 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     if not all(isinstance(arr, np.ndarray) for arr in [delta_y, d, ps, out_reg, i_weights]):
         raise TypeError("All inputs (delta_y, d, ps, out_reg, i_weights) must be NumPy arrays.")
 
-    if not (
-        delta_y.ndim == 1 and d.ndim == 1 and ps.ndim == 1 and out_reg.ndim == 1 and i_weights.ndim == 1
-    ):  # C0325 fix by removing outer parens
+    if not (delta_y.ndim == 1 and d.ndim == 1 and ps.ndim == 1 and out_reg.ndim == 1 and i_weights.ndim == 1):
         raise ValueError("All input arrays must be 1-dimensional.")
 
-    if not (
-        delta_y.shape == d.shape == ps.shape == out_reg.shape == i_weights.shape
-    ):  # C0325 fix by removing outer parens
+    if not (delta_y.shape == d.shape == ps.shape == out_reg.shape == i_weights.shape):
         raise ValueError("All input arrays must have the same shape.")
 
     mean_i_weights = np.mean(i_weights)
