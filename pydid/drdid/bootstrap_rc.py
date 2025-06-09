@@ -1,217 +1,334 @@
-"""Repeated cross-section bootstrap estimator classes using logistic regression."""
+"""Bootstrap inference for repeated cross-section DiD estimators using LogisticRegression."""
+
+import warnings
 
 import numpy as np
+from sklearn.exceptions import NotFittedError
+from sklearn.linear_model import LogisticRegression
 
-from .base_bootstrap import PropensityScoreMethod, RepeatedCrossSectionBootstrap
-from .propensity_estimators import aipw_did_rc_imp1, aipw_did_rc_imp2, ipw_did_rc
+from .aipw_estimators import aipw_did_rc_imp1, aipw_did_rc_imp2
+from .bootstrap_panel import _validate_inputs
 from .wols import wols_rc
 
 
-class ImprovedDRDiDRC1(RepeatedCrossSectionBootstrap):
-    """Improved DR-DiD for repeated cross-sections with control-only outcome regression."""
+def wboot_drdid_rc_imp1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+    r"""Compute bootstrap estimates for control-only doubly-robust DiD with repeated cross-sections.
 
-    def _compute_single_bootstrap(self, b_weights: np.ndarray, **kwargs) -> float:
-        """Compute a single bootstrap iteration.
+    Parameters
+    ----------
+    y : ndarray
+        A 1D array representing the outcome variable for each unit.
+    post : ndarray
+        A 1D array representing the post-treatment period indicator (1 for post, 0 for pre)
+        for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    x : ndarray
+        A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+    n_bootstrap : int
+        Number of bootstrap iterations. Default is 1000.
+    trim_level : float
+        Maximum propensity score value for control units to avoid extreme weights.
+        Default is 0.995.
+    random_state : int, RandomState instance or None
+        Controls the random number generation for reproducibility.
 
-        Parameters
-        ----------
-        b_weights : ndarray
-            Bootstrap weights for this iteration.
-        **kwargs
-            Contains y, t, d, x from parent fit method.
+    Returns
+    -------
+    ndarray
+        A 1D array of bootstrap ATT estimates with length n_bootstrap.
 
-        Returns
-        -------
-        float
-            Bootstrap estimate for this iteration.
-        """
-        y = kwargs["y"]
-        t = kwargs["t"]
-        d = kwargs["d"]
-        x = kwargs["x"]
+    See Also
+    --------
+    aipw_did_rc_imp1 : The underlying simplified AIPW estimator for repeated cross-sections.
+    boot_drdid_rc : Traditional bootstrap for doubly-robust DiD.
+    """
+    n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
 
-        ps_b = self._estimate_propensity_scores(d, x, b_weights, PropensityScoreMethod.LOGISTIC)
-        b_weights_trimmed = self._apply_trimming(ps_b, d, b_weights)
+    rng = np.random.RandomState(random_state)
+    bootstrap_estimates = np.zeros(n_bootstrap)
 
-        or_control_pre_b = wols_rc(y, t, d, x, ps_b, b_weights_trimmed, pre=True, treat=False).out_reg
-        or_control_post_b = wols_rc(y, t, d, x, ps_b, b_weights_trimmed, pre=False, treat=False).out_reg
-
-        or_reg_b = np.zeros_like(y)
-        or_reg_b[(d == 0) & (t == 0)] = or_control_pre_b[(d == 0) & (t == 0)]
-        or_reg_b[(d == 0) & (t == 1)] = or_control_post_b[(d == 0) & (t == 1)]
-        or_reg_b[(d == 1) & (t == 0)] = or_control_pre_b[(d == 1) & (t == 0)]
-        or_reg_b[(d == 1) & (t == 1)] = or_control_post_b[(d == 1) & (t == 1)]
-
-        return aipw_did_rc_imp1(y, t, d, ps_b, or_reg_b, b_weights_trimmed)
-
-
-class ImprovedDRDiDRC2(RepeatedCrossSectionBootstrap):
-    """Locally efficient DR-DiD for repeated cross-sections."""
-
-    def _compute_single_bootstrap(self, b_weights: np.ndarray, **kwargs) -> float:
-        """Compute a single bootstrap iteration."""
-        y = kwargs["y"]
-        t = kwargs["t"]
-        d = kwargs["d"]
-        x = kwargs["x"]
-
-        ps_b = self._estimate_propensity_scores(d, x, b_weights, PropensityScoreMethod.LOGISTIC)
-        b_weights_trimmed = self._apply_trimming(ps_b, d, b_weights)
-
-        out_y_treat_post = wols_rc(y, t, d, x, ps_b, b_weights_trimmed, pre=False, treat=True).out_reg
-        out_y_treat_pre = wols_rc(y, t, d, x, ps_b, b_weights_trimmed, pre=True, treat=True).out_reg
-        out_y_cont_post = wols_rc(y, t, d, x, ps_b, b_weights_trimmed, pre=False, treat=False).out_reg
-        out_y_cont_pre = wols_rc(y, t, d, x, ps_b, b_weights_trimmed, pre=True, treat=False).out_reg
-
-        return aipw_did_rc_imp2(
-            y, t, d, ps_b, out_y_treat_post, out_y_treat_pre, out_y_cont_post, out_y_cont_pre, b_weights_trimmed
-        )
-
-
-class TraditionalDRDiDRC(RepeatedCrossSectionBootstrap):
-    """Traditional DR-DiD for repeated cross-sections."""
-
-    def _compute_single_bootstrap(self, b_weights: np.ndarray, **kwargs) -> float:
-        """Compute a single bootstrap iteration."""
-        y = kwargs["y"]
-        t = kwargs["t"]
-        d = kwargs["d"]
-        x = kwargs["x"]
-
-        ps_b = self._estimate_propensity_scores(d, x, b_weights, PropensityScoreMethod.LOGISTIC)
-        b_weights_trimmed = self._apply_trimming(ps_b, d, b_weights)
-
-        control_mean = np.mean(y[d == 0]) if np.sum(d == 0) > 0 else 0.0
-        or_reg_simple = np.full_like(y, control_mean)
-
-        return aipw_did_rc_imp1(y, t, d, ps_b, or_reg_simple, b_weights_trimmed)
-
-
-class IPWRepeatedCrossSection(RepeatedCrossSectionBootstrap):
-    """IPW-only estimator for repeated cross-sections."""
-
-    def _compute_single_bootstrap(self, b_weights: np.ndarray, **kwargs) -> float:
-        """Compute a single bootstrap iteration using IPW.
-
-        Parameters
-        ----------
-        b_weights : ndarray
-            Bootstrap weights for this iteration.
-        **kwargs
-            Contains y, t, d, x from parent fit method.
-
-        Returns
-        -------
-        float
-            Bootstrap estimate for this iteration.
-        """
-        y = kwargs["y"]
-        t = kwargs["t"]
-        d = kwargs["d"]
-        x = kwargs["x"]
-
-        ps_b = self._estimate_propensity_scores(d, x, b_weights, PropensityScoreMethod.LOGISTIC)
-        ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
-
-        b_weights_trimmed = self._apply_trimming(ps_b, d, b_weights)
-
-        return ipw_did_rc(y, t, d, ps_b, b_weights_trimmed)
-
-
-class RegressionDiDRC(RepeatedCrossSectionBootstrap):
-    """Regression-based robust DiD for repeated cross-sections."""
-
-    def _compute_single_bootstrap(self, b_weights: np.ndarray, **kwargs) -> float:
-        """Compute a single bootstrap iteration using regression adjustment.
-
-        Parameters
-        ----------
-        b_weights : ndarray
-            Bootstrap weights for this iteration.
-        **kwargs
-            Contains y, t, d, x from parent fit method.
-
-        Returns
-        -------
-        float
-            Bootstrap estimate for this iteration.
-        """
-        y = kwargs["y"]
-        t = kwargs["t"]
-        d = kwargs["d"]
-        x = kwargs["x"]
-
-        reg_control_pre = wols_rc(y, t, d, x, np.full_like(y, 0.5, dtype=float), b_weights, pre=True, treat=False)
-        reg_control_post = wols_rc(y, t, d, x, np.full_like(y, 0.5, dtype=float), b_weights, pre=False, treat=False)
-
-        out_reg_pre = reg_control_pre.out_reg
-        out_reg_post = reg_control_post.out_reg
-
-        # Compute OR estimator with regression adjustment
-        treated_post = (d == 1) & (t == 1)
-        treated_pre = (d == 1) & (t == 0)
-
-        att_b = np.sum(b_weights[treated_post] * y[treated_post]) / np.sum(b_weights[treated_post])
-        att_b -= np.sum(b_weights[treated_pre] * y[treated_pre]) / np.sum(b_weights[treated_pre])
-
-        treated = d == 1
-        att_b -= np.sum(b_weights[treated] * (out_reg_post[treated] - out_reg_pre[treated])) / np.sum(
-            b_weights[treated]
-        )
-
-        return att_b
-
-
-class TWFERepeatedCrossSection(RepeatedCrossSectionBootstrap):
-    """Two-Way Fixed Effects (TWFE) DiD estimator for repeated cross-sections."""
-
-    def _compute_single_bootstrap(self, b_weights: np.ndarray, **kwargs) -> float:
-        """Compute a single bootstrap iteration using TWFE regression.
-
-        Parameters
-        ----------
-        b_weights : ndarray
-            Bootstrap weights for this iteration.
-        **kwargs
-            Contains y, t, d, x from parent fit method.
-
-        Returns
-        -------
-        float
-            Bootstrap estimate for this iteration.
-        """
-        y = kwargs["y"]
-        t = kwargs["t"]
-        d = kwargs["d"]
-        x = kwargs["x"]
-
-        # If there are no treated units, the treatment effect is 0.
-        if np.sum(d) == 0:
-            return 0.0
-
-        n_obs = len(y)
-        intercept = np.ones((n_obs, 1))
-        post = t.reshape(-1, 1)
-        treat = d.reshape(-1, 1)
-        post_treat = (t * d).reshape(-1, 1)
-
-        if x is not None:
-            if np.all(x[:, 0] == 1.0):
-                x_no_intercept = x[:, 1:]
-            else:
-                x_no_intercept = x
-            design_matrix = np.hstack([intercept, post, treat, post_treat, x_no_intercept])
-        else:
-            design_matrix = np.hstack([intercept, post, treat, post_treat])
-
-        sqrt_weights = np.sqrt(b_weights)
-        y_weighted = y * sqrt_weights
-        x_weighted = design_matrix * sqrt_weights[:, np.newaxis]
+    for b in range(n_bootstrap):
+        v = rng.exponential(scale=1.0, size=n_units)
+        b_weights = i_weights * v
 
         try:
-            xtx = x_weighted.T @ x_weighted
-            xty = x_weighted.T @ y_weighted
-            coefficients = np.linalg.solve(xtx, xty)  # noqa: N806
-            return coefficients[3]
-        except np.linalg.LinAlgError:
-            return np.nan
+            ps_model = LogisticRegression(
+                penalty=None, fit_intercept=False, solver="lbfgs", max_iter=1000, random_state=rng
+            )
+            ps_model.fit(x, d, sample_weight=b_weights)
+            ps_b = ps_model.predict_proba(x)[:, 1]
+        except (ValueError, NotFittedError) as e:
+            warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
+
+        trim_ps = np.ones_like(ps_b, dtype=bool)
+        control_mask = d == 0
+        trim_ps[control_mask] = ps_b[control_mask] < trim_level
+
+        try:
+            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
+            out_y_cont_pre_b = control_pre_results.out_reg
+
+            control_post_results = wols_rc(
+                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
+            )
+            out_y_cont_post_b = control_post_results.out_reg
+
+            out_y_b = post * out_y_cont_post_b + (1 - post) * out_y_cont_pre_b
+
+        except (ValueError, np.linalg.LinAlgError, KeyError) as e:
+            warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        b_weights_trimmed = b_weights.copy()
+        b_weights_trimmed[~trim_ps] = 0
+
+        try:
+            att_b = aipw_did_rc_imp1(
+                y=y,
+                post=post,
+                d=d,
+                ps=ps_b,
+                out_reg=out_y_b,
+                i_weights=b_weights_trimmed,
+            )
+            bootstrap_estimates[b] = att_b
+        except (ValueError, ZeroDivisionError) as e:
+            warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+
+    n_failed = np.sum(np.isnan(bootstrap_estimates))
+    if n_failed > n_bootstrap * 0.1:
+        warnings.warn(
+            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed. Results may be unreliable.", UserWarning
+        )
+
+    return bootstrap_estimates
+
+
+def wboot_drdid_rc_imp2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+    r"""Compute bootstrap estimates for improved doubly-robust DiD with repeated cross-sections.
+
+    Parameters
+    ----------
+    y : ndarray
+        A 1D array representing the outcome variable for each unit.
+    post : ndarray
+        A 1D array representing the post-treatment period indicator (1 for post, 0 for pre)
+        for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    x : ndarray
+        A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+    n_bootstrap : int
+        Number of bootstrap iterations. Default is 1000.
+    trim_level : float
+        Maximum propensity score value for control units to avoid extreme weights.
+        Default is 0.995.
+    random_state : int, RandomState instance or None
+        Controls the random number generation for reproducibility.
+
+    Returns
+    -------
+    ndarray
+        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+
+    See Also
+    --------
+    aipw_did_rc_imp2 : The underlying AIPW estimator for repeated cross-sections.
+    wols_rc : Weighted OLS for outcome regression components.
+    """
+    n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
+
+    rng = np.random.RandomState(random_state)
+    bootstrap_estimates = np.zeros(n_bootstrap)
+
+    for b in range(n_bootstrap):
+        v = rng.exponential(scale=1.0, size=n_units)
+        b_weights = i_weights * v
+
+        try:
+            ps_model = LogisticRegression(
+                penalty=None, fit_intercept=False, solver="lbfgs", max_iter=1000, random_state=rng
+            )
+            ps_model.fit(x, d, sample_weight=b_weights)
+            ps_b = ps_model.predict_proba(x)[:, 1]
+        except (ValueError, NotFittedError) as e:
+            warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
+
+        trim_ps = np.ones_like(ps_b, dtype=bool)
+        control_mask = d == 0
+        trim_ps[control_mask] = ps_b[control_mask] < trim_level
+
+        try:
+            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
+            out_y_cont_pre_b = control_pre_results.out_reg
+
+            control_post_results = wols_rc(
+                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
+            )
+            out_y_cont_post_b = control_post_results.out_reg
+
+            treat_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=True)
+            out_y_treat_pre_b = treat_pre_results.out_reg
+
+            treat_post_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=True)
+            out_y_treat_post_b = treat_post_results.out_reg
+
+        except (ValueError, np.linalg.LinAlgError, KeyError) as e:
+            warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        b_weights_trimmed = b_weights.copy()
+        b_weights_trimmed[~trim_ps] = 0
+
+        try:
+            att_b = aipw_did_rc_imp2(
+                y=y,
+                post=post,
+                d=d,
+                ps=ps_b,
+                out_y_treat_post=out_y_treat_post_b,
+                out_y_treat_pre=out_y_treat_pre_b,
+                out_y_cont_post=out_y_cont_post_b,
+                out_y_cont_pre=out_y_cont_pre_b,
+                i_weights=b_weights_trimmed,
+            )
+            bootstrap_estimates[b] = att_b
+        except (ValueError, ZeroDivisionError) as e:
+            warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+
+    n_failed = np.sum(np.isnan(bootstrap_estimates))
+    if n_failed > n_bootstrap * 0.1:
+        warnings.warn(
+            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed. Results may be unreliable.", UserWarning
+        )
+
+    return bootstrap_estimates
+
+
+def wboot_drdid_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
+    r"""Compute bootstrap estimates for traditional doubly-robust DiD with repeated cross-sections.
+
+    Parameters
+    ----------
+    y : ndarray
+        A 1D array representing the outcome variable for each unit.
+    post : ndarray
+        A 1D array representing the post-treatment period indicator (1 for post, 0 for pre)
+        for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    x : ndarray
+        A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+    n_bootstrap : int
+        Number of bootstrap iterations. Default is 1000.
+    trim_level : float
+        Maximum propensity score value for control units to avoid extreme weights.
+        Default is 0.995.
+    random_state : int, RandomState instance or None
+        Controls the random number generation for reproducibility.
+
+    Returns
+    -------
+    ndarray
+        A 1D array of bootstrap ATT estimates with length n_bootstrap.
+
+    See Also
+    --------
+    aipw_did_rc_imp2 : The underlying AIPW estimator for repeated cross-sections.
+    wboot_drdid_rc_imp2 : Improved bootstrap for doubly-robust DiD.
+    """
+    n_units = _validate_inputs({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
+
+    rng = np.random.RandomState(random_state)
+    bootstrap_estimates = np.zeros(n_bootstrap)
+
+    for b in range(n_bootstrap):
+        v = rng.exponential(scale=1.0, size=n_units)
+        b_weights = i_weights * v
+
+        try:
+            ps_model = LogisticRegression(
+                penalty=None, fit_intercept=False, solver="lbfgs", max_iter=1000, random_state=rng
+            )
+            ps_model.fit(x, d, sample_weight=b_weights)
+            ps_b = ps_model.predict_proba(x)[:, 1]
+        except (ValueError, NotFittedError) as e:
+            warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
+
+        trim_ps = np.ones_like(ps_b, dtype=bool)
+        control_mask = d == 0
+        trim_ps[control_mask] = ps_b[control_mask] < trim_level
+
+        try:
+            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
+            out_y_cont_pre_b = control_pre_results.out_reg
+
+            control_post_results = wols_rc(
+                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
+            )
+            out_y_cont_post_b = control_post_results.out_reg
+
+            treat_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=True)
+            out_y_treat_pre_b = treat_pre_results.out_reg
+
+            treat_post_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=True)
+            out_y_treat_post_b = treat_post_results.out_reg
+
+        except (ValueError, np.linalg.LinAlgError, KeyError) as e:
+            warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+            continue
+
+        b_weights_trimmed = b_weights.copy()
+        b_weights_trimmed[~trim_ps] = 0
+
+        try:
+            att_b = aipw_did_rc_imp2(
+                y=y,
+                post=post,
+                d=d,
+                ps=ps_b,
+                out_y_treat_post=out_y_treat_post_b,
+                out_y_treat_pre=out_y_treat_pre_b,
+                out_y_cont_post=out_y_cont_post_b,
+                out_y_cont_pre=out_y_cont_pre_b,
+                i_weights=b_weights_trimmed,
+            )
+            bootstrap_estimates[b] = att_b
+        except (ValueError, ZeroDivisionError) as e:
+            warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
+            bootstrap_estimates[b] = np.nan
+
+    n_failed = np.sum(np.isnan(bootstrap_estimates))
+    if n_failed > n_bootstrap * 0.1:
+        warnings.warn(
+            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed. Results may be unreliable.", UserWarning
+        )
+
+    return bootstrap_estimates
