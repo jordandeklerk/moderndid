@@ -4,7 +4,7 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
-from scipy import linalg
+import statsmodels.api as sm
 
 
 class WOLSResult(NamedTuple):
@@ -68,20 +68,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     --------
     wols_rc : Weighted OLS for repeated cross-section data.
     """
-    if not all(isinstance(arr, np.ndarray) for arr in [delta_y, d, x, ps, i_weights]):
-        raise TypeError("All inputs must be NumPy arrays.")
-
-    if not (delta_y.ndim == 1 and d.ndim == 1 and ps.ndim == 1 and i_weights.ndim == 1):
-        raise ValueError("delta_y, d, ps, and i_weights must be 1-dimensional.")
-
-    if x.ndim != 2:
-        raise ValueError("x must be a 2-dimensional array.")
-
-    n_units = delta_y.shape[0]
-    if not (
-        d.shape[0] == n_units and x.shape[0] == n_units and ps.shape[0] == n_units and i_weights.shape[0] == n_units
-    ):
-        raise ValueError("All arrays must have the same number of observations (first dimension).")
+    _validate_wols_arrays({"delta_y": delta_y, "d": d, "ps": ps, "i_weights": i_weights}, x, "wols_panel")
 
     control_filter = d == 0
     n_control = np.sum(control_filter)
@@ -103,36 +90,21 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     control_x = x[control_filter]
     control_y = delta_y[control_filter]
 
-    if np.max(control_weights) / np.min(control_weights) > 1e6:
-        warnings.warn("Extreme weight ratios detected. Results may be numerically unstable.", UserWarning)
-
-    weighted_x = control_x * control_weights[:, np.newaxis]
-    xtw_x = control_x.T @ weighted_x
+    _check_extreme_weights(control_weights)
 
     try:
-        condition_number = np.linalg.cond(xtw_x)
-        if condition_number > 1e10:
-            warnings.warn(
-                f"Potential multicollinearity detected (condition number: {condition_number:.2e}). "
-                "Consider removing or combining covariates.",
-                UserWarning,
-            )
-    except np.linalg.LinAlgError:
-        pass
-
-    try:
-        xtw_y = control_x.T @ (control_weights * control_y)
-        coefficients = linalg.solve(xtw_x, xtw_y, overwrite_a=False, overwrite_b=False)
-
-        if np.any(np.isnan(coefficients)) or np.any(np.isinf(coefficients)):
-            raise ValueError(
-                "Failed to solve linear system. Coefficients contain NaN/Inf values, "
-                "likely due to multicollinearity or singular matrix."
-            )
-    except linalg.LinAlgError as e:
+        wls_model = sm.WLS(control_y, control_x, weights=control_weights)
+        results = wls_model.fit()
+    except np.linalg.LinAlgError as e:
         raise ValueError(
-            f"Failed to solve linear system: {e}. The covariate matrix may be singular or ill-conditioned."
+            "Failed to solve linear system. The covariate matrix may be singular or ill-conditioned."
         ) from e
+    except Exception as e:
+        raise ValueError(f"Failed to fit weighted least squares model: {e}") from e
+
+    coefficients = results.params
+    _check_wls_condition_number(results)
+    _check_coefficients_validity(coefficients)
 
     fitted_values = x @ coefficients
 
@@ -201,24 +173,7 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     --------
     wols_panel : Weighted OLS for panel data.
     """
-    if not all(isinstance(arr, np.ndarray) for arr in [y, post, d, x, ps, i_weights]):
-        raise TypeError("All inputs must be NumPy arrays.")
-
-    if not (y.ndim == 1 and post.ndim == 1 and d.ndim == 1 and ps.ndim == 1 and i_weights.ndim == 1):
-        raise ValueError("y, post, d, ps, and i_weights must be 1-dimensional.")
-
-    if x.ndim != 2:
-        raise ValueError("x must be a 2-dimensional array.")
-
-    n_units = y.shape[0]
-    if not (
-        post.shape[0] == n_units
-        and d.shape[0] == n_units
-        and x.shape[0] == n_units
-        and ps.shape[0] == n_units
-        and i_weights.shape[0] == n_units
-    ):
-        raise ValueError("All arrays must have the same number of observations (first dimension).")
+    _validate_wols_arrays({"y": y, "post": post, "d": d, "ps": ps, "i_weights": i_weights}, x, "wols_rc")
 
     if pre is None:
         raise ValueError("pre parameter must be specified (True for pre-treatment, False for post-treatment).")
@@ -256,56 +211,91 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     if np.any(problematic_ps):
         raise ValueError("Propensity score is 1 for some units in subset. Weights would be undefined.")
 
-    # Propensity scores (ps) are used for a check below, but not for OLS weighting in this context.
-    # The i_weights passed to this function are the bootstrap weights (original_i_weights * v_bootstrap).
     sub_x = x[subs]
     sub_y = y[subs]
     sub_weights = i_weights[subs]
 
-    if n_subs > 1 and np.any(sub_weights > 0):
-        positive_weights = sub_weights[sub_weights > 0]
-        if positive_weights.size > 0:
-            min_positive_weight = np.min(positive_weights)
-            if min_positive_weight > 0:
-                if (np.max(sub_weights) / min_positive_weight) > 1e6:
-                    warnings.warn("Extreme weight ratios detected. Results may be numerically unstable.", UserWarning)
-
-    weighted_x = sub_x * sub_weights[:, np.newaxis]
-    xtw_x = sub_x.T @ weighted_x
+    _check_extreme_weights(sub_weights)
 
     coefficients = np.full(n_features, np.nan)
     fitted_values = np.full(y.shape[0], np.nan)
 
     try:
-        condition_number = np.linalg.cond(xtw_x)
-        if condition_number > 1e10:
-            warnings.warn(
-                f"Potential multicollinearity detected (condition number: {condition_number:.2e}). "
-                "Results may be unreliable. Returning NaNs.",
-                UserWarning,
-            )
-            return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
+        wls_model = sm.WLS(sub_y, sub_x, weights=sub_weights)
+        results = wls_model.fit()
+        coefficients = results.params
 
-        xtw_y = sub_x.T @ (sub_weights * sub_y)
-        solved_coefficients = linalg.solve(xtw_x, xtw_y, overwrite_a=False, overwrite_b=False)
+        _check_wls_condition_number(results, threshold_error=1e15, threshold_warn=1e10)
+        _check_coefficients_validity(coefficients)
 
-        if np.any(np.isnan(solved_coefficients)) or np.any(np.isinf(solved_coefficients)):
-            warnings.warn(
-                "Solved coefficients contain NaN/Inf values, likely due to multicollinearity "
-                "or singular matrix. Returning NaNs.",
-                UserWarning,
-            )
-        else:
-            coefficients = solved_coefficients
-            fitted_values = x @ coefficients
+        fitted_values = x @ coefficients
 
-    except linalg.LinAlgError as e:
-        warnings.warn(
-            f"Failed to solve linear system: {e}. "
-            "The covariate matrix may be singular or ill-conditioned. Returning NaNs.",
-            UserWarning,
-        )
-    except ValueError as e:
-        warnings.warn(f"ValueError during linear system solution: {e}. Returning NaNs.", UserWarning)
+    except (np.linalg.LinAlgError, ValueError, RuntimeError) as e:
+        warnings.warn(f"Failed to fit weighted least squares model: {e}. Returning NaNs.", UserWarning)
 
     return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
+
+
+def _validate_wols_arrays(arrays_dict: dict[str, np.ndarray], x: np.ndarray, function_name: str = "wols") -> int:
+    """Validate input arrays for WOLS functions."""
+    all_arrays = list(arrays_dict.values()) + [x]
+    if not all(isinstance(arr, np.ndarray) for arr in all_arrays):
+        raise TypeError("All inputs must be NumPy arrays.")
+
+    if function_name == "wols_panel":
+        dim_error_msg = "delta_y, d, ps, and i_weights must be 1-dimensional."
+    else:  # wols_rc
+        dim_error_msg = "y, post, d, ps, and i_weights must be 1-dimensional."
+
+    for arr in arrays_dict.values():
+        if arr.ndim != 1:
+            raise ValueError(dim_error_msg)
+
+    if x.ndim != 2:
+        raise ValueError("x must be a 2-dimensional array.")
+
+    n_units = next(iter(arrays_dict.values())).shape[0]
+    for arr in list(arrays_dict.values()) + [x]:
+        if arr.shape[0] != n_units:
+            raise ValueError("All arrays must have the same number of observations (first dimension).")
+
+    return n_units
+
+
+def _check_extreme_weights(weights: np.ndarray, threshold: float = 1e6) -> None:
+    """Check for extreme weight ratios and warn if found."""
+    if len(weights) > 1:
+        positive_mask = weights > 0
+        if np.any(positive_mask):
+            min_positive = np.min(weights[positive_mask])
+            max_weight = np.max(weights)
+            if max_weight / min_positive > threshold:
+                warnings.warn("Extreme weight ratios detected. Results may be numerically unstable.", UserWarning)
+
+
+def _check_wls_condition_number(results, threshold_error: float = 1e15, threshold_warn: float = 1e10) -> None:
+    """Check condition number of WLS results and handle accordingly."""
+    try:
+        condition_number = results.condition_number
+        if condition_number > threshold_error:
+            raise ValueError(
+                f"Failed to solve linear system: The covariate matrix may be singular or ill-conditioned "
+                f"(condition number: {condition_number:.2e})."
+            )
+        if condition_number > threshold_warn:
+            warnings.warn(
+                f"Potential multicollinearity detected (condition number: {condition_number:.2e}). "
+                "Consider removing or combining covariates.",
+                UserWarning,
+            )
+    except AttributeError:
+        pass
+
+
+def _check_coefficients_validity(coefficients: np.ndarray) -> None:
+    """Check if coefficients contain invalid values."""
+    if np.any(np.isnan(coefficients)) or np.any(np.isinf(coefficients)):
+        raise ValueError(
+            "Failed to solve linear system. Coefficients contain NaN/Inf values, "
+            "likely due to multicollinearity or singular matrix."
+        )
