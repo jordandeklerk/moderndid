@@ -10,18 +10,18 @@ from .utils import _validate_inputs
 
 
 def wboot_std_ipw_rc(
-    y: np.ndarray,
-    post: np.ndarray,
-    d: np.ndarray,
-    x: np.ndarray,
-    i_weights: np.ndarray,
-    n_bootstrap: int = 1000,
-    trim_level: float = 0.995,
-    random_state: int | np.random.Generator | None = None,
-) -> np.ndarray:
-    r"""Bootstrap standardized IPW DiD estimator for repeated cross-sections.
+    y,
+    post,
+    d,
+    x,
+    i_weights,
+    n_bootstrap=1000,
+    trim_level=0.995,
+    random_state=None,
+):
+    r"""Compute bootstrap standardized IPW DiD estimator for repeated cross-sections.
 
-    Implements the bootstrap procedure for computing standardized inverse
+    This function implements the bootstrap procedure for computing standardized inverse
     probability weighted (IPW) difference-in-differences estimates with
     repeated cross-sectional data. The standardized IPW estimator normalizes
     the weighted outcomes by the sum of weights within each group-period cell.

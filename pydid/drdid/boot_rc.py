@@ -14,6 +14,10 @@ from .wols import wols_rc
 def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for control-only doubly-robust DiD with repeated cross-sections.
 
+    This function implements the bootstrap inference for the doubly-robust difference-in-differences
+    estimator with repeated cross-section data. This version uses outcome regression on control
+    units only and standard logistic regression for propensity scores.
+
     Parameters
     ----------
     y : ndarray
@@ -116,6 +120,10 @@ def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
 
 def wboot_drdid_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for traditional doubly-robust DiD with repeated cross-sections.
+
+    This function implements the bootstrap inference for the locally efficient doubly-robust
+    difference-in-differences estimator with repeated cross-section data. This version uses
+    outcome regression on both treatment and control groups.
 
     Parameters
     ----------

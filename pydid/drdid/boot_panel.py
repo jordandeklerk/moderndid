@@ -15,6 +15,10 @@ from .wols import wols_panel
 def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute improved bootstrap estimates for doubly-robust DiD with panel data.
 
+    This function implements the improved bootstrap inference for the doubly-robust
+    difference-in-differences estimator with panel data, using the inverse probability
+    tilting method for propensity score estimation.
+
     Parameters
     ----------
     delta_y : ndarray
@@ -113,9 +117,9 @@ def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level
 def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for IPW DiD with panel data.
 
-    Implements a bootstrapped Inverse Probability Weighting (IPW) difference-in-differences
-    estimator for panel data. Unlike doubly-robust methods, this uses only propensity
-    scores without outcome regression.
+    This function implements a bootstrapped Inverse Probability Weighting (IPW)
+    difference-in-differences estimator for panel data. Unlike doubly-robust methods,
+    this uses only propensity scores without outcome regression.
 
     Parameters
     ----------
@@ -212,7 +216,7 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
 def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for standardized IPW DiD with panel data.
 
-    Implements a bootstrapped standardized Inverse Probability Weighting (IPW)
+    This function implements a bootstrapped standardized Inverse Probability Weighting (IPW)
     difference-in-differences estimator for panel data. This estimator uses
     standardized weights to compute separate means for treated and control groups.
 
@@ -315,9 +319,9 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0
 def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for traditional doubly-robust DiD with panel data.
 
-    This is a traditional bootstrap approach for doubly-robust difference-in-differences
-    with panel data that uses standard logistic regression for propensity score estimation
-    (as opposed to the IPT method in wboot_drdid_imp_panel).
+    This function implements a traditional bootstrap approach for doubly-robust
+    difference-in-differences with panel data that uses standard logistic regression
+    for propensity score estimation.
 
     Parameters
     ----------
@@ -419,9 +423,9 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.9
 
 
 def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=None):
-    """Compute bootstrap estimates for regression-based robust DiD with panel data.
+    r"""Compute bootstrap estimates for regression-based robust DiD with panel data.
 
-    This implements a regression-based difference-in-differences estimator that
+    This function implements a regression-based difference-in-differences estimator that
     uses outcome regression on the control group only, without propensity scores.
     It is designed for settings with 2 time periods and 2 groups.
 
@@ -515,9 +519,9 @@ def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=Non
 def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=None):
     r"""Compute bootstrap estimates for Two-Way Fixed Effects DiD with panel data.
 
-    Implements a bootstrapped Two-Way Fixed Effects (TWFE) difference-in-differences
-    estimator for panel data with 2 periods and 2 groups. This is the traditional
-    DiD regression approach using OLS with treatment-period interaction.
+    This function implements a bootstrapped Two-Way Fixed Effects (TWFE)
+    difference-in-differences estimator for panel data with 2 periods and 2 groups.
+    This is the traditional DiD regression approach using OLS with treatment-period interaction.
 
     Parameters
     ----------
