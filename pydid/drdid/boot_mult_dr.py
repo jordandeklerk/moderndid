@@ -4,15 +4,15 @@ import numpy as np
 
 
 def mboot_did(
-    linrep: np.ndarray,
-    n_bootstrap: int = 1000,
-    random_state: int | np.random.Generator | None = None,
-) -> np.ndarray:
-    r"""Multiplier bootstrap for doubly robust DiD estimator using Mammen weights.
+    linrep,
+    n_bootstrap=1000,
+    random_state=None,
+):
+    r"""Compute multiplier bootstrap for doubly robust DiD estimator using Mammen weights.
 
-    Implements the standard multiplier bootstrap for computing doubly robust
+    This function implements the standard multiplier bootstrap for computing doubly robust
     difference-in-differences estimates using Mammen's (1993) binary weights.
-    This function takes the influence function and applies bootstrap weights to
+    It takes the influence function and applies bootstrap weights to
     compute bootstrap estimates.
 
     Parameters
@@ -53,14 +53,14 @@ def mboot_did(
 
 
 def mboot_twfep_did(
-    linrep: np.ndarray,
-    n_units: int,
-    n_bootstrap: int = 1000,
-    random_state: int | np.random.Generator | None = None,
-) -> np.ndarray:
-    r"""Multiplier bootstrap for TWFE panel data DiD using Mammen weights.
+    linrep,
+    n_units,
+    n_bootstrap=1000,
+    random_state=None,
+):
+    r"""Compute multiplier bootstrap for TWFE panel data DiD using Mammen weights.
 
-    Implements the standard multiplier bootstrap for Two-Way Fixed Effects
+    This function implements the standard multiplier bootstrap for Two-Way Fixed Effects
     difference-in-differences with panel data (2 periods and 2 groups) using
     Mammen's (1993) binary weights.
 

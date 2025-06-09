@@ -8,6 +8,86 @@ import scipy.special
 import statsmodels.api as sm
 
 
+def calculate_pscore_ipt(D, X, iw):
+    """Calculate propensity scores using Inverse Probability Tilting.
+
+    Parameters
+    ----------
+    D : ndarray
+        Treatment indicator (1D array).
+    X : ndarray
+        Covariate matrix (2D array, n_obs x n_features), must include intercept.
+    iw : ndarray
+        Individual weights (1D array).
+
+    Returns
+    -------
+    ndarray
+        Propensity scores.
+    """
+    n_obs, k_features = X.shape
+    init_gamma = _get_initial_gamma(D, X, iw, k_features)
+
+    # Try trust-constr optimization first
+    try:
+        opt_cal_results = scipy.optimize.minimize(
+            _loss_ps_cal,
+            init_gamma.astype(np.float64),
+            args=(D, X, iw),
+            method="trust-constr",
+            jac=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[1],
+            hess=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[2],
+            options={"maxiter": 1000},
+        )
+        if opt_cal_results.success:
+            gamma_cal = opt_cal_results.x
+        else:
+            raise RuntimeError("trust-constr did not converge")
+    except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError) as e:
+        warnings.warn(f"trust-constr optimization failed: {e}. Using IPT algorithm.", UserWarning)
+
+        # Try IPT optimization
+        try:
+            opt_ipt_results = scipy.optimize.minimize(
+                lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt(g, d_arr, x_arr, iw_arr, n)[0],
+                init_gamma.astype(np.float64),
+                args=(D, X, iw, n_obs),
+                method="BFGS",
+                jac=lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt(g, d_arr, x_arr, iw_arr, n)[1],
+                options={"maxiter": 10000, "gtol": 1e-06},
+            )
+            if opt_ipt_results.success:
+                gamma_cal = opt_ipt_results.x
+            else:
+                raise RuntimeError("IPT optimization did not converge") from None
+        except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError) as e_ipt:
+            warnings.warn(f"IPT optimization failed: {e_ipt}. Using initial logit estimates.", UserWarning)
+            gamma_cal = init_gamma
+
+            # Validate logit fallback
+            try:
+                logit_model_refit = sm.Logit(D, X, weights=iw)
+                logit_results_refit = logit_model_refit.fit(disp=0, start_params=init_gamma, maxiter=100)
+                if not logit_results_refit.mle_retvals["converged"]:
+                    warnings.warn("Initial Logit model (used as fallback) also did not converge.", UserWarning)
+            except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError):
+                warnings.warn("Checking convergence of fallback Logit model failed.", UserWarning)
+
+    # Compute propensity scores
+    pscore_linear = X @ gamma_cal
+    pscore = scipy.special.expit(pscore_linear)
+
+    if np.any(np.isnan(pscore)):
+        warnings.warn(
+            "Propensity score model coefficients might have NA/Inf components. "
+            "Multicollinearity or lack of variation in covariates is a likely reason. "
+            "Resulting pscores contain NaNs.",
+            UserWarning,
+        )
+
+    return pscore
+
+
 def _loss_ps_cal(gamma, D, X, iw):
     """Loss function for calibrated propensity score estimation using trust.
 
@@ -109,86 +189,6 @@ def _loss_ps_ipt(gamma, D, X, iw, n_obs):
     hessian_term_matrix = X * hess_M_ipt_vector[:, np.newaxis]
     hessian = -(hessian_term_matrix.T @ X)
     return value, gradient, hessian
-
-
-def calculate_pscore_ipt(D, X, iw):
-    """Calculate propensity scores using Inverse Probability Tilting.
-
-    Parameters
-    ----------
-    D : ndarray
-        Treatment indicator (1D array).
-    X : ndarray
-        Covariate matrix (2D array, n_obs x n_features), must include intercept.
-    iw : ndarray
-        Individual weights (1D array).
-
-    Returns
-    -------
-    ndarray
-        Propensity scores.
-    """
-    n_obs, k_features = X.shape
-    init_gamma = _get_initial_gamma(D, X, iw, k_features)
-
-    # Try trust-constr optimization first
-    try:
-        opt_cal_results = scipy.optimize.minimize(
-            _loss_ps_cal,
-            init_gamma.astype(np.float64),
-            args=(D, X, iw),
-            method="trust-constr",
-            jac=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[1],
-            hess=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[2],
-            options={"maxiter": 1000},
-        )
-        if opt_cal_results.success:
-            gamma_cal = opt_cal_results.x
-        else:
-            raise RuntimeError("trust-constr did not converge")
-    except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError) as e:
-        warnings.warn(f"trust-constr optimization failed: {e}. Using IPT algorithm.", UserWarning)
-
-        # Try IPT optimization
-        try:
-            opt_ipt_results = scipy.optimize.minimize(
-                lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt(g, d_arr, x_arr, iw_arr, n)[0],
-                init_gamma.astype(np.float64),
-                args=(D, X, iw, n_obs),
-                method="BFGS",
-                jac=lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt(g, d_arr, x_arr, iw_arr, n)[1],
-                options={"maxiter": 10000, "gtol": 1e-06},
-            )
-            if opt_ipt_results.success:
-                gamma_cal = opt_ipt_results.x
-            else:
-                raise RuntimeError("IPT optimization did not converge") from None
-        except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError) as e_ipt:
-            warnings.warn(f"IPT optimization failed: {e_ipt}. Using initial logit estimates.", UserWarning)
-            gamma_cal = init_gamma
-
-            # Validate logit fallback
-            try:
-                logit_model_refit = sm.Logit(D, X, weights=iw)
-                logit_results_refit = logit_model_refit.fit(disp=0, start_params=init_gamma, maxiter=100)
-                if not logit_results_refit.mle_retvals["converged"]:
-                    warnings.warn("Initial Logit model (used as fallback) also did not converge.", UserWarning)
-            except (ValueError, np.linalg.LinAlgError, RuntimeError, OverflowError):
-                warnings.warn("Checking convergence of fallback Logit model failed.", UserWarning)
-
-    # Compute propensity scores
-    pscore_linear = X @ gamma_cal
-    pscore = scipy.special.expit(pscore_linear)
-
-    if np.any(np.isnan(pscore)):
-        warnings.warn(
-            "Propensity score model coefficients might have NA/Inf components. "
-            "Multicollinearity or lack of variation in covariates is a likely reason. "
-            "Resulting pscores contain NaNs.",
-            UserWarning,
-        )
-
-    return pscore
 
 
 def _get_initial_gamma(D, X, iw, k_features):
