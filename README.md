@@ -9,7 +9,7 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/pyDiD)](https://github.com/jordandeklerk/pyDiD/graphs/commit-activity)
 [![Python version](https://img.shields.io/badge/3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
-__pyDiD__ is a Python package implementing modern DiD estimators, including staggered treatment timing, multiple time periods, doubly robust methods, continuous treatments, machine learning approaches, and diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests for functional form.
+__pyDiD__ is a Python package implementing modern DiD estimators, including staggered treatment timing, multiple time periods, doubly robust methods, continuous treatments, two-stage DiD, local projection DiD, machine learning approaches, and diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests for functional form.
 
 <br><br>
 
