@@ -2,7 +2,9 @@
 
 Documentation for all public modules, classes, and functions in the pyDiD package.
 
-## Augmented Propensity Estimators
+## Core Estimators
+
+### AIPW Estimators
 
 ```{eval-rst}
 .. autosummary::
@@ -11,38 +13,49 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.aipw_did_panel
    pydid.aipw_did_rc_imp1
    pydid.aipw_did_rc_imp2
-   pydid.std_ipw_panel
-   pydid.twfe_panel
-   pydid.ipw_did_rc
-   pydid.ipt_pscore
 ```
 
-## Bootstrap Estimators
+### IPW Estimators
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated/
 
-   pydid.BaseBootstrap
-   pydid.PanelBootstrap
-   pydid.RepeatedCrossSectionBootstrap
-   pydid.ImprovedDRDiDPanel
-   pydid.IPWPanel
-   pydid.StandardizedIPWPanel
-   pydid.TraditionalDRDiDPanel
-   pydid.RegressionPanel
-   pydid.TWFEPanel
-   pydid.IPTDRDiDRC1
-   pydid.IPTDRDiDRC2
-   pydid.ImprovedDRDiDRC1
-   pydid.ImprovedDRDiDRC2
-   pydid.TraditionalDRDiDRC
-   pydid.IPWRepeatedCrossSection
-   pydid.RegressionDiDRC
-   pydid.TWFERepeatedCrossSection
+   pydid.ipw_did_rc
 ```
 
-## WOLS Estimators
+## Bootstrap Estimators
+
+### Panel Data Bootstrap
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   pydid.wboot_drdid_imp_panel
+   pydid.wboot_dr_tr_panel
+   pydid.wboot_ipw_panel
+   pydid.wboot_std_ipw_panel
+   pydid.wboot_reg_panel
+   pydid.wboot_twfe_panel
+```
+
+### Repeated Cross-Section Bootstrap
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   pydid.wboot_drdid_rc1
+   pydid.wboot_drdid_rc2
+   pydid.wboot_drdid_ipt_rc1
+   pydid.wboot_drdid_ipt_rc2
+   pydid.wboot_ipw_rc
+```
+
+## Supporting Functions
+
+### Weighted OLS
 
 ```{eval-rst}
 .. autosummary::
@@ -50,4 +63,13 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 
    pydid.wols_panel
    pydid.wols_rc
+```
+
+### Propensity Score Estimation
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   pydid.calculate_pscore_ipt
 ```

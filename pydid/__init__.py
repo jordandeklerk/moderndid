@@ -2,6 +2,7 @@
 """DiD and doubly robust DiD estimators."""
 
 from pydid.drdid.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
+from pydid.drdid.bootstrap_ipw_rc import wboot_ipw_rc
 from pydid.drdid.bootstrap_panel import (
     wboot_dr_tr_panel,
     wboot_drdid_imp_panel,
@@ -12,6 +13,7 @@ from pydid.drdid.bootstrap_panel import (
 )
 from pydid.drdid.bootstrap_rc import wboot_drdid_rc1, wboot_drdid_rc2
 from pydid.drdid.bootstrap_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
+from pydid.drdid.ipw_estimators import ipw_did_rc
 from pydid.drdid.pscore_ipt import calculate_pscore_ipt
 from pydid.drdid.wols import wols_panel, wols_rc
 
@@ -19,6 +21,8 @@ __all__ = [
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
+    "ipw_did_rc",
+    "wboot_ipw_rc",
     "wboot_dr_tr_panel",
     "wboot_drdid_imp_panel",
     "wboot_drdid_rc1",
