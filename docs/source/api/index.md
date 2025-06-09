@@ -53,6 +53,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.wboot_ipw_rc
    pydid.wboot_std_ipw_rc
    pydid.wboot_reg_rc
+   pydid.wboot_twfe_rc
 ```
 
 ## Supporting Functions
