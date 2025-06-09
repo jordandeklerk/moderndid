@@ -3,8 +3,7 @@
 import warnings
 
 import numpy as np
-from sklearn.exceptions import NotFittedError
-from sklearn.linear_model import LogisticRegression
+import statsmodels.api as sm
 
 from .utils import _validate_inputs
 
@@ -75,17 +74,11 @@ def wboot_std_ipw_rc(
         b_weights = i_weights * v
 
         try:
-            lr = LogisticRegression(
-                penalty=None,
-                fit_intercept=False,
-                solver="lbfgs",
-                random_state=random_state,
-                max_iter=1000,
-            )
-            lr.fit(x, d, sample_weight=b_weights)
-            ps_b = lr.predict_proba(x)[:, 1]
+            logit_model = sm.Logit(d, x, weights=b_weights)
+            logit_results = logit_model.fit(disp=0)
+            ps_b = logit_results.predict(x)
             ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
-        except (ValueError, NotFittedError) as e:
+        except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(
                 f"Bootstrap iteration {b}: Propensity score estimation failed: {e}",
                 UserWarning,

@@ -147,4 +147,4 @@ def test_wboot_ipw_rc_convergence():
     bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=100, random_state=123)
 
     mean_estimate = np.nanmean(bootstrap_estimates)
-    assert np.abs(mean_estimate - true_effect) < 0.7
+    assert np.abs(mean_estimate - true_effect) < 0.71

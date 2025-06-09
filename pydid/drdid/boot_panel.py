@@ -3,8 +3,7 @@
 import warnings
 
 import numpy as np
-from sklearn.exceptions import NotFittedError
-from sklearn.linear_model import LogisticRegression
+import statsmodels.api as sm
 
 from .aipw_estimators import aipw_did_panel
 from .pscore_ipt import calculate_pscore_ipt
@@ -153,6 +152,10 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
     """
     n_units = _validate_inputs({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, n_bootstrap, trim_level)
 
+    if len(np.unique(d)) < 2:
+        warnings.warn("Treatment indicator `d` has no variation. Cannot compute IPW. Returning NaNs.", UserWarning)
+        return np.full(n_bootstrap, np.nan)
+
     rng = np.random.RandomState(random_state)
     bootstrap_estimates = np.zeros(n_bootstrap)
 
@@ -161,12 +164,10 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         b_weights = i_weights * v
 
         try:
-            ps_model = LogisticRegression(
-                penalty=None, fit_intercept=False, solver="lbfgs", max_iter=1000, random_state=rng
-            )
-            ps_model.fit(x, d, sample_weight=b_weights)
-            ps_b = ps_model.predict_proba(x)[:, 1]
-        except (ValueError, NotFittedError) as e:
+            logit_model = sm.Logit(d, x, weights=b_weights)
+            logit_results = logit_model.fit(disp=0)
+            ps_b = logit_results.predict(x)
+        except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
             continue
@@ -363,12 +364,10 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.9
         b_weights = i_weights * v
 
         try:
-            ps_model = LogisticRegression(
-                penalty=None, fit_intercept=False, solver="lbfgs", max_iter=1000, random_state=rng
-            )
-            ps_model.fit(x, d, sample_weight=b_weights)
-            ps_b = ps_model.predict_proba(x)[:, 1]
-        except (ValueError, NotFittedError) as e:
+            logit_model = sm.Logit(d, x, weights=b_weights)
+            logit_results = logit_model.fit(disp=0)
+            ps_b = logit_results.predict(x)
+        except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
             continue
