@@ -56,6 +56,15 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.wboot_twfe_rc
 ```
 
+### Standard Multiplier Bootstrap
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   pydid.mboot_did
+```
+
 ## Supporting Functions
 
 ### Weighted OLS
