@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid.bootstrap_reg_rc import wboot_reg_rc
+from pydid.drdid.boot_reg_rc import wboot_reg_rc
 
 
 def test_wboot_reg_rc_basic():

@@ -4,7 +4,7 @@ import warnings
 
 import numpy as np
 
-from .bootstrap_panel import _validate_inputs
+from .boot_panel import _validate_inputs
 
 
 def wboot_reg_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):

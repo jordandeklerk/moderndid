@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid.bootstrap_rc import (
+from pydid.drdid.boot_rc import (
     wboot_drdid_rc1,
     wboot_drdid_rc2,
 )
