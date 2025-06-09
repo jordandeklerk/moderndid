@@ -7,8 +7,8 @@ from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import LogisticRegression
 
 from .aipw_estimators import aipw_did_panel
-from .base_bootstrap import _validate_inputs
 from .pscore_ipt import calculate_pscore_ipt
+from .utils import _validate_inputs
 from .wols import wols_panel
 
 
