@@ -11,7 +11,7 @@
 
 __pyDiD__ is a Python package implementing a variety of modern DiD estimators.
 
-<br><br>
+<br><br><br>
 
 > **⚠️ Note:**
 > This package is currently in active development.
