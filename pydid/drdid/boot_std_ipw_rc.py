@@ -28,17 +28,17 @@ def wboot_std_ipw_rc(
 
     Parameters
     ----------
-    y : np.ndarray
+    y : ndarray
         Outcome variable array of shape (n_units,).
-    post : np.ndarray
+    post : ndarray
         Post-treatment period indicator array of shape (n_units,).
         Must contain only 0 and 1 values.
-    d : np.ndarray
+    d : ndarray
         Treatment group indicator array of shape (n_units,).
         Must contain only 0 and 1 values.
-    x : np.ndarray
+    x : ndarray
         Covariate matrix of shape (n_units, n_features) including intercept.
-    i_weights : np.ndarray
+    i_weights : ndarray
         Individual observation weights of shape (n_units,).
     n_bootstrap : int, default=1000
         Number of bootstrap iterations.
@@ -50,7 +50,7 @@ def wboot_std_ipw_rc(
 
     Returns
     -------
-    np.ndarray
+    ndarray
         Bootstrap estimates of shape (n_bootstrap,) containing the
         standardized IPW DiD estimates for each bootstrap iteration.
 

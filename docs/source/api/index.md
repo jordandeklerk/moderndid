@@ -63,6 +63,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    :toctree: generated/
 
    pydid.mboot_did
+   pydid.mboot_twfep_did
 ```
 
 ## Supporting Functions
