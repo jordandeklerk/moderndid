@@ -2,6 +2,7 @@
 
 from .aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from .boot_ipw_rc import wboot_ipw_rc
+from .boot_mult_dr import mboot_did
 from .boot_panel import (
     wboot_dr_tr_panel,
     wboot_drdid_imp_panel,
@@ -24,6 +25,7 @@ __all__ = [
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
     "ipw_did_rc",
+    "mboot_did",
     "wboot_dr_tr_panel",
     "wboot_drdid_imp_panel",
     "wboot_drdid_rc1",
