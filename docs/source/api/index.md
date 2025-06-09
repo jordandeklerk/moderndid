@@ -51,6 +51,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.wboot_drdid_ipt_rc1
    pydid.wboot_drdid_ipt_rc2
    pydid.wboot_ipw_rc
+   pydid.wboot_std_ipw_rc
    pydid.wboot_reg_rc
 ```
 

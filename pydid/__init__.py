@@ -14,6 +14,7 @@ from pydid.drdid.bootstrap_panel import (
 from pydid.drdid.bootstrap_rc import wboot_drdid_rc1, wboot_drdid_rc2
 from pydid.drdid.bootstrap_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
 from pydid.drdid.bootstrap_reg_rc import wboot_reg_rc
+from pydid.drdid.bootstrap_std_ipw_rc import wboot_std_ipw_rc
 from pydid.drdid.ipw_estimators import ipw_did_rc
 from pydid.drdid.pscore_ipt import calculate_pscore_ipt
 from pydid.drdid.wols import wols_panel, wols_rc
@@ -34,6 +35,7 @@ __all__ = [
     "wboot_reg_panel",
     "wboot_reg_rc",
     "wboot_std_ipw_panel",
+    "wboot_std_ipw_rc",
     "wboot_twfe_panel",
     "wols_panel",
     "wols_rc",
