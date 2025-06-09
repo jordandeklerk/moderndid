@@ -1,1 +1,1 @@
-"""Difference-in-Differences estimators."""
+"""Difference-in-Differences estimators with multiple time periods."""
