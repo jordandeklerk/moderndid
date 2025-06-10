@@ -12,6 +12,20 @@ def ipw_did_rc(y, post, d, ps, i_weights, trim_ps=None):
     repeated cross-sections. The weights are not normalized to sum to 1, e.g., the estimator is
     of the Horwitz-Thompson type.
 
+    The IPW estimator for the ATT in repeated cross-sections is given by
+
+    .. math::
+
+        \tau^{ipw, rc} = \frac{1}{\mathbb{E}[D]} \mathbb{E}\left[
+        \left(\frac{D - \hat{\pi}(X)}{1 - \hat{\pi}(X)}\right)
+        \left(\frac{T - \lambda}{\lambda(1-\lambda)}\right) Y\right]
+
+    where :math:`D` is the treatment status, :math:`T` is the time period (1 for post-treatment,
+    0 for pre-treatment), :math:`Y` is the outcome, :math:`X` are covariates,
+    :math:`\hat{\pi}(X)` is an estimator of the propensity score :math:`\pi(X) = P(D=1|X)`,
+    and :math:`\lambda = P(T=1)` is the probability of being in the post-treatment
+    period.
+
     Parameters
     ----------
     y : ndarray
