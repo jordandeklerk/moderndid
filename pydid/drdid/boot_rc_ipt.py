@@ -56,7 +56,6 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
     for b in range(n_bootstrap):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
-        b_weights = b_weights / np.mean(b_weights)
 
         try:
             ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
@@ -174,7 +173,6 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
     for b in range(n_bootstrap):
         v = rng.exponential(scale=1.0, size=n_units)
         b_weights = i_weights * v
-        b_weights = b_weights / np.mean(b_weights)
 
         try:
             ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
@@ -193,16 +191,22 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
         b_weights_trimmed[~trim_ps_mask] = 0.0
 
         try:
-            control_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=False)
+            control_pre_results = wols_rc(
+                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=True, treat=False
+            )
             out_y_cont_pre_b = control_pre_results.out_reg
             control_post_results = wols_rc(
-                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=False
+                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=False, treat=False
             )
             out_y_cont_post_b = control_post_results.out_reg
 
-            treat_pre_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=True, treat=True)
+            treat_pre_results = wols_rc(
+                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=True, treat=True
+            )
             out_y_treat_pre_b = treat_pre_results.out_reg
-            treat_post_results = wols_rc(y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights, pre=False, treat=True)
+            treat_post_results = wols_rc(
+                y=y, post=post, d=d, x=x, ps=ps_b, i_weights=b_weights_trimmed, pre=False, treat=True
+            )
             out_y_treat_post_b = treat_post_results.out_reg
 
         except (ValueError, np.linalg.LinAlgError, KeyError) as e:
