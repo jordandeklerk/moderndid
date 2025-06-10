@@ -106,12 +106,6 @@ def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
             warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
 
-    n_failed = np.sum(np.isnan(bootstrap_estimates))
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed. Results may be unreliable.", UserWarning
-        )
-
     return bootstrap_estimates
 
 
@@ -217,11 +211,5 @@ def wboot_drdid_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         except (ValueError, ZeroDivisionError) as e:
             warnings.warn(f"AIPW computation failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
-
-    n_failed = np.sum(np.isnan(bootstrap_estimates))
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"{n_failed} out of {n_bootstrap} bootstrap iterations failed. Results may be unreliable.", UserWarning
-        )
 
     return bootstrap_estimates

@@ -118,11 +118,6 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
             "small effective sample sizes after weighting/trimming).",
             UserWarning,
         )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
-            UserWarning,
-        )
 
     return bootstrap_estimates
 
@@ -238,11 +233,6 @@ def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
             "This might be due to issues in propensity score estimation, outcome regression, "
             "or the AIPW calculation itself (e.g. perfect prediction, collinearity, "
             "small effective sample sizes after weighting/trimming).",
-            UserWarning,
-        )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
             UserWarning,
         )
 

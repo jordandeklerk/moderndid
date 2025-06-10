@@ -143,10 +143,5 @@ def wboot_std_ipw_rc(
             f"Results based on {n_bootstrap - n_failed} successful iterations.",
             UserWarning,
         )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            "More than 10% of bootstrap iterations failed. Results may be unreliable.",
-            UserWarning,
-        )
 
     return bootstrap_estimates

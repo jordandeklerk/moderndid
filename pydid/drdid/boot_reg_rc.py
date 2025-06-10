@@ -159,10 +159,5 @@ def wboot_reg_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):
             "or lack of treated units in bootstrap samples.",
             UserWarning,
         )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
-            UserWarning,
-        )
 
     return bootstrap_estimates

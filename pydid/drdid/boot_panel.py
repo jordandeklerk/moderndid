@@ -104,11 +104,6 @@ def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level
             "small effective sample sizes after weighting/trimming).",
             UserWarning,
         )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
-            UserWarning,
-        )
 
     return bootstrap_estimates
 
@@ -203,11 +198,6 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
             f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
             "This might be due to issues in propensity score estimation or IPW calculation "
             "(e.g. perfect prediction, small effective sample sizes after trimming).",
-            UserWarning,
-        )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
             UserWarning,
         )
 
@@ -310,11 +300,6 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0
             "(e.g. perfect prediction, small effective sample sizes after trimming).",
             UserWarning,
         )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
-            UserWarning,
-        )
 
     return bootstrap_estimates
 
@@ -414,11 +399,6 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.9
             "small effective sample sizes after weighting/trimming).",
             UserWarning,
         )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
-            UserWarning,
-        )
 
     return bootstrap_estimates
 
@@ -512,11 +492,6 @@ def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=Non
             "or lack of treated units in bootstrap samples.",
             UserWarning,
         )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
-            UserWarning,
-        )
 
     return bootstrap_estimates
 
@@ -598,11 +573,6 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
         warnings.warn(
             f"{n_failed} out of {n_bootstrap} bootstrap iterations failed and resulted in NaN. "
             "This might be due to collinearity in the design matrix or numerical instability.",
-            UserWarning,
-        )
-    if n_failed > n_bootstrap * 0.1:
-        warnings.warn(
-            f"More than 10% ({n_failed}/{n_bootstrap}) of bootstrap iterations failed. Results may be unreliable.",
             UserWarning,
         )
 
