@@ -8,8 +8,8 @@ import numpy as np
 def ipw_did_rc(y, post, d, ps, i_weights, trim_ps=None):
     r"""Compute the inverse propensity weighted (IPW) estimator for repeated cross-sections.
 
-    This function implements the inverse propensity weighted (IPW) estimator for
-    repeated cross-sections. The weights are not normalized to sum to 1, e.g., the estimator is
+    This function implements the inverse propensity weighted (IPW) estimator from
+    [1]_ for repeated cross-sections. The weights are not normalized to sum to 1, e.g., the estimator is
     of the Horwitz-Thompson type.
 
     The IPW estimator for the ATT in repeated cross-sections is given by
@@ -53,6 +53,13 @@ def ipw_did_rc(y, post, d, ps, i_weights, trim_ps=None):
     See Also
     --------
     wboot_ipw_rc : Bootstrap inference for IPW DiD.
+
+    References
+    ----------
+
+    .. [1] Abadie, A. (2005). Semiparametric difference-in-differences estimators.
+        The Review of Economic Studies, 72(1), 1-19.
+        https://www.jstor.org/stable/3700681
     """
     arrays = {"y": y, "post": post, "d": d, "ps": ps, "i_weights": i_weights}
     if trim_ps is not None:
