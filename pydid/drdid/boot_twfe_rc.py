@@ -3,6 +3,7 @@
 import warnings
 
 import numpy as np
+import statsmodels.api as sm
 
 from .utils import _validate_inputs
 
@@ -69,12 +70,9 @@ def wboot_twfe_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None)
             interaction_idx = 3
 
         try:
-            xtwx = design_matrix.T @ np.diag(b_weights) @ design_matrix
-            xtwy = design_matrix.T @ (b_weights * y)
-
-            reg_coeff = np.linalg.solve(xtwx + 1e-10 * np.eye(design_matrix.shape[1]), xtwy)
-
-            att_b = reg_coeff[interaction_idx]
+            wls_model = sm.WLS(y, design_matrix, weights=b_weights)
+            wls_results = wls_model.fit()
+            att_b = wls_results.params[interaction_idx]
             bootstrap_estimates[b] = att_b
 
         except (np.linalg.LinAlgError, ValueError) as e:
