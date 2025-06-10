@@ -3,6 +3,7 @@
 import warnings
 
 import numpy as np
+import statsmodels.api as sm
 
 from .boot_panel import _validate_inputs
 
@@ -80,32 +81,34 @@ def wboot_reg_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):
             continue
 
         try:
+            # Pre-period regression
             x_control_pre = x[control_pre]
             y_control_pre = y[control_pre]
             w_control_pre = b_weights[control_pre]
+            glm_pre = sm.GLM(
+                y_control_pre,
+                x_control_pre,
+                family=sm.families.Gaussian(link=sm.families.links.identity()),
+                var_weights=w_control_pre,
+            )
+            res_pre = glm_pre.fit()
+            reg_coeff_pre_b = res_pre.params
 
-            xtwx_pre = x_control_pre.T @ np.diag(w_control_pre) @ x_control_pre
-            xtwy_pre = x_control_pre.T @ (w_control_pre * y_control_pre)
-
-            reg_coeff_pre_b = np.linalg.solve(xtwx_pre + 1e-10 * np.eye(x.shape[1]), xtwy_pre)
-
-        except (np.linalg.LinAlgError, ValueError) as e:
-            warnings.warn(f"Pre-period regression failed in bootstrap {b}: {e}", UserWarning)
-            bootstrap_estimates[b] = np.nan
-            continue
-
-        try:
+            # Post-period regression
             x_control_post = x[control_post]
             y_control_post = y[control_post]
             w_control_post = b_weights[control_post]
-
-            xtwx_post = x_control_post.T @ np.diag(w_control_post) @ x_control_post
-            xtwy_post = x_control_post.T @ (w_control_post * y_control_post)
-
-            reg_coeff_post_b = np.linalg.solve(xtwx_post + 1e-10 * np.eye(x.shape[1]), xtwy_post)
+            glm_post = sm.GLM(
+                y_control_post,
+                x_control_post,
+                family=sm.families.Gaussian(link=sm.families.links.identity()),
+                var_weights=w_control_post,
+            )
+            res_post = glm_post.fit()
+            reg_coeff_post_b = res_post.params
 
         except (np.linalg.LinAlgError, ValueError) as e:
-            warnings.warn(f"Post-period regression failed in bootstrap {b}: {e}", UserWarning)
+            warnings.warn(f"Outcome regression failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
             continue
 

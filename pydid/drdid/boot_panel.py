@@ -477,10 +477,14 @@ def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=Non
             y_control = delta_y[control_mask]
             w_control = b_weights[control_mask]
 
-            xtwx = x_control.T @ np.diag(w_control) @ x_control
-            xtwy = x_control.T @ (w_control * y_control)
-
-            reg_coeff = np.linalg.solve(xtwx + 1e-10 * np.eye(x.shape[1]), xtwy)
+            glm_model = sm.GLM(
+                y_control,
+                x_control,
+                family=sm.families.Gaussian(link=sm.families.links.identity()),
+                var_weights=w_control,
+            )
+            glm_results = glm_model.fit()
+            reg_coeff = glm_results.params
             out_reg_b = x @ reg_coeff
 
         except (np.linalg.LinAlgError, ValueError) as e:
@@ -578,12 +582,9 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
             interaction_idx = 3
 
         try:
-            xtwx = design_matrix.T @ np.diag(b_weights) @ design_matrix
-            xtwy = design_matrix.T @ (b_weights * y)
-
-            reg_coeff = np.linalg.solve(xtwx + 1e-10 * np.eye(design_matrix.shape[1]), xtwy)
-
-            att_b = reg_coeff[interaction_idx]
+            wls_model = sm.WLS(y, design_matrix, weights=b_weights)
+            wls_results = wls_model.fit()
+            att_b = wls_results.params[interaction_idx]
             bootstrap_estimates[b] = att_b
 
         except (np.linalg.LinAlgError, ValueError) as e:
