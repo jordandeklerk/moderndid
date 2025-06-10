@@ -261,15 +261,17 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0
         b_weights = i_weights * v
 
         try:
-            ps_b = calculate_pscore_ipt(D=d, X=x, iw=b_weights)
-        except (ValueError, np.linalg.LinAlgError, RuntimeError) as e:
-            warnings.warn(f"Propensity score estimation (IPT) failed in bootstrap {b}: {e}", UserWarning)
+            logit_model = sm.Logit(d, x, weights=b_weights)
+            logit_results = logit_model.fit(disp=0)
+            ps_b = logit_results.predict(x)
+        except (ValueError, np.linalg.LinAlgError) as e:
+            warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
             continue
 
         ps_b = np.clip(ps_b, 1e-6, 1 - 1e-6)
 
-        trim_ps_mask = ps_b < 1.01
+        trim_ps_mask = np.ones_like(ps_b, dtype=bool)
         control_mask = d == 0
         trim_ps_mask[control_mask] = ps_b[control_mask] < trim_level
 
@@ -277,21 +279,21 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0
         w_cont_b = trim_ps_mask * b_weights * (1 - d) * ps_b / (1 - ps_b)
 
         try:
-            denom_treat = np.sum(w_treat_b)
-            denom_cont = np.sum(w_cont_b)
+            mean_w_treat = np.mean(w_treat_b)
+            mean_w_cont = np.mean(w_cont_b)
 
-            if denom_treat == 0:
+            if mean_w_treat == 0:
                 warnings.warn(f"No effectively treated units in bootstrap {b}. ATT will be NaN.", UserWarning)
                 bootstrap_estimates[b] = np.nan
                 continue
 
-            if denom_cont == 0:
+            if mean_w_cont == 0:
                 warnings.warn(f"No effectively control units in bootstrap {b}. ATT will be NaN.", UserWarning)
                 bootstrap_estimates[b] = np.nan
                 continue
 
-            aipw_1 = np.sum(w_treat_b * delta_y) / denom_treat
-            aipw_0 = np.sum(w_cont_b * delta_y) / denom_cont
+            aipw_1 = np.mean(w_treat_b * delta_y) / mean_w_treat
+            aipw_0 = np.mean(w_cont_b * delta_y) / mean_w_cont
 
             att_b = aipw_1 - aipw_0
             bootstrap_estimates[b] = att_b
@@ -492,8 +494,8 @@ def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=Non
             bootstrap_estimates[b] = np.nan
             continue
 
-        numerator = np.sum(b_weights * d * (delta_y - out_reg_b))
-        denominator = np.sum(b_weights * d)
+        numerator = np.mean(b_weights * d * (delta_y - out_reg_b))
+        denominator = np.mean(b_weights * d)
 
         if denominator == 0:
             warnings.warn(f"No effectively treated units in bootstrap {b}. ATT will be NaN.", UserWarning)

@@ -85,12 +85,14 @@ def wboot_reg_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):
             x_control_pre = x[control_pre]
             y_control_pre = y[control_pre]
             w_control_pre = b_weights[control_pre]
+
             glm_pre = sm.GLM(
                 y_control_pre,
                 x_control_pre,
                 family=sm.families.Gaussian(link=sm.families.links.identity()),
                 var_weights=w_control_pre,
             )
+
             res_pre = glm_pre.fit()
             reg_coeff_pre_b = res_pre.params
 
@@ -98,12 +100,14 @@ def wboot_reg_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):
             x_control_post = x[control_post]
             y_control_post = y[control_post]
             w_control_post = b_weights[control_post]
+
             glm_post = sm.GLM(
                 y_control_post,
                 x_control_post,
                 family=sm.families.Gaussian(link=sm.families.links.identity()),
                 var_weights=w_control_post,
             )
+
             res_post = glm_post.fit()
             reg_coeff_post_b = res_post.params
 
