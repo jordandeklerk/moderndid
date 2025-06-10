@@ -1,4 +1,4 @@
-"""Standard multiplier bootstrap for doubly robust estimators using Mammen weights."""
+"""Standard multiplier bootstrap using Mammen weights."""
 
 import numpy as np
 
