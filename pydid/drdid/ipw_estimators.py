@@ -9,7 +9,8 @@ def ipw_did_rc(y, post, d, ps, i_weights, trim_ps=None):
     r"""Compute the inverse propensity weighted (IPW) estimator for repeated cross-sections.
 
     This function implements the inverse propensity weighted (IPW) estimator for
-    repeated cross-sections.
+    repeated cross-sections. The weights are not normalized to sum to 1, e.g., the estimator is
+    of the Horwitz-Thompson type.
 
     Parameters
     ----------
@@ -53,20 +54,10 @@ def ipw_did_rc(y, post, d, ps, i_weights, trim_ps=None):
     if not all(arr.shape == first_shape for arr in arrays.values()):
         raise ValueError("All input arrays must have the same shape.")
 
-    mean_i_weights = np.mean(i_weights)
-    if mean_i_weights == 0:
-        warnings.warn("Mean of i_weights is zero, cannot normalize. Using original weights.", UserWarning)
-        normalized_weights = i_weights.copy()
-    elif not np.isfinite(mean_i_weights):
-        warnings.warn("Mean of i_weights is not finite. Using original weights.", UserWarning)
-        normalized_weights = i_weights.copy()
-    else:
-        normalized_weights = i_weights / mean_i_weights
-
     if trim_ps is None:
         trim_ps = np.ones_like(d, dtype=bool)
 
-    lambda_val = np.mean(normalized_weights * trim_ps * post)
+    lambda_val = np.mean(i_weights * trim_ps * post)
 
     if lambda_val in (0, 1):
         warnings.warn(f"Lambda is {lambda_val}, cannot compute IPW estimator.", UserWarning)
@@ -85,8 +76,8 @@ def ipw_did_rc(y, post, d, ps, i_weights, trim_ps=None):
         ipw_term = d - ps * (1 - d) / denominator_ps
 
     time_adj = (post - lambda_val) / (lambda_val * (1 - lambda_val))
-    numerator = np.mean(normalized_weights * trim_ps * ipw_term * time_adj * y)
-    denominator = np.mean(normalized_weights * d)
+    numerator = np.mean(i_weights * trim_ps * ipw_term * time_adj * y)
+    denominator = np.mean(i_weights * d)
 
     if denominator == 0:
         warnings.warn("No treated units found (denominator is 0).", UserWarning)
