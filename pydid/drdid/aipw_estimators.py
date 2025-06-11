@@ -5,8 +5,10 @@ import warnings
 
 import numpy as np
 
+from pydid.drdid.utils import _weighted_sum
 
-def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
+
+def aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps=None):
     r"""Compute the augmented inverse propensity weighted (AIPW) estimator for panel data.
 
     For panel data settings (where the same units are observed before and after treatment),
@@ -46,6 +48,8 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
         (e.g., :math:`\mathbb{E}[Y_{\text{post}} - Y_{\text{pre}} | X, D=0]`) for each unit.
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
+    trim_ps : ndarray
+        A 1D array used for trimming observations based on propensity scores.
 
     Returns
     -------
@@ -64,13 +68,18 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
-    if not all(isinstance(arr, np.ndarray) for arr in [delta_y, d, ps, out_reg, i_weights]):
-        raise TypeError("All inputs (delta_y, d, ps, out_reg, i_weights) must be NumPy arrays.")
+    if trim_ps is None:
+        trim_ps = np.ones_like(delta_y)
 
-    if not (delta_y.ndim == 1 and d.ndim == 1 and ps.ndim == 1 and out_reg.ndim == 1 and i_weights.ndim == 1):
+    arrays = [delta_y, d, ps, out_reg, i_weights, trim_ps]
+    if not all(isinstance(arr, np.ndarray) for arr in arrays):
+        raise TypeError("All inputs must be NumPy arrays.")
+
+    if not all(arr.ndim == 1 for arr in arrays):
         raise ValueError("All input arrays must be 1-dimensional.")
 
-    if not (delta_y.shape == d.shape == ps.shape == out_reg.shape == i_weights.shape):
+    first_shape = arrays[0].shape
+    if not all(arr.shape == first_shape for arr in arrays):
         raise ValueError("All input arrays must have the same shape.")
 
     mean_i_weights = np.mean(i_weights)
@@ -83,7 +92,7 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     else:
         normalized_weights = i_weights / mean_i_weights
 
-    w_treat = normalized_weights * d
+    w_treat = trim_ps * normalized_weights * d
     denominator_cont_ps = 1 - ps
 
     problematic_ps_for_controls = (denominator_cont_ps == 0) & (d == 0)
@@ -94,7 +103,7 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
             UserWarning,
         )
 
-    w_cont = normalized_weights * (1 - d) * ps / denominator_cont_ps
+    w_cont = trim_ps * normalized_weights * (1 - d) * ps / denominator_cont_ps
     delta_y_residual = delta_y - out_reg
 
     sum_w_treat = np.sum(w_treat)
@@ -118,7 +127,7 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights):
     return float(aipw_att)
 
 
-def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights):
+def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights, trim_ps=None):
     r"""Compute the simplified AIPW estimator for repeated cross-section data.
 
     For repeated cross-section settings (where different units are observed in pre and post periods),
@@ -166,6 +175,8 @@ def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights):
         for each unit.
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
+    trim_ps : ndarray
+        A 1D array used for trimming observations based on propensity scores.
 
     Returns
     -------
@@ -184,7 +195,10 @@ def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights):
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
-    arrays = [y, post, d, ps, out_reg, i_weights]
+    if trim_ps is None:
+        trim_ps = np.ones_like(y)
+
+    arrays = [y, post, d, ps, out_reg, i_weights, trim_ps]
 
     if not all(isinstance(arr, np.ndarray) for arr in arrays):
         raise TypeError("All inputs must be NumPy arrays.")
@@ -206,8 +220,8 @@ def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights):
     else:
         normalized_weights = i_weights / mean_i_weights
 
-    w_treat_pre = normalized_weights * d * (1 - post)
-    w_treat_post = normalized_weights * d * post
+    w_treat_pre = trim_ps * normalized_weights * d * (1 - post)
+    w_treat_post = trim_ps * normalized_weights * d * post
 
     problematic_ps_for_controls = (ps == 1.0) & (d == 0)
     if np.any(problematic_ps_for_controls):
@@ -218,8 +232,8 @@ def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights):
         )
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = normalized_weights * ps * (1 - d) * (1 - post) / (1 - ps)
-        w_cont_post = normalized_weights * ps * (1 - d) * post / (1 - ps)
+        w_cont_pre = trim_ps * normalized_weights * ps * (1 - d) * (1 - post) / (1 - ps)
+        w_cont_post = trim_ps * normalized_weights * ps * (1 - d) * post / (1 - ps)
 
     residual = y - out_reg
 
@@ -248,7 +262,8 @@ def aipw_did_rc_imp2(
     out_y_cont_post,
     out_y_cont_pre,
     i_weights,
-) -> float:
+    trim_ps=None,
+):
     r"""Compute the locally efficient AIPW estimator with repeated cross-section data.
 
     For repeated cross-section settings (where different units are observed in pre and post periods),
@@ -301,6 +316,8 @@ def aipw_did_rc_imp2(
         (e.g., :math:`\mathbb{E}[Y | X, D=0, \text{Post}=0]`).
     i_weights : ndarray
         A 1D array of individual observation weights for each unit.
+    trim_ps : ndarray
+        A 1D array used for trimming observations based on propensity scores.
 
     Returns
     -------
@@ -319,6 +336,9 @@ def aipw_did_rc_imp2(
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
+    if trim_ps is None:
+        trim_ps = np.ones_like(y)
+
     arrays = [
         y,
         post,
@@ -329,6 +349,7 @@ def aipw_did_rc_imp2(
         out_y_cont_post,
         out_y_cont_pre,
         i_weights,
+        trim_ps,
     ]
     if not all(isinstance(arr, np.ndarray) for arr in arrays):
         raise TypeError("All inputs must be NumPy arrays.")
@@ -351,8 +372,8 @@ def aipw_did_rc_imp2(
         normalized_weights = i_weights / mean_i_weights
 
     # Intermediate weights
-    w_treat_pre = normalized_weights * d * (1 - post)
-    w_treat_post = normalized_weights * d * post
+    w_treat_pre = trim_ps * normalized_weights * d * (1 - post)
+    w_treat_post = trim_ps * normalized_weights * d * post
 
     denominator_cont_ps = 1 - ps
     problematic_ps_for_controls_pre = (ps == 1.0) & (d == 0) & (post == 0)
@@ -366,13 +387,13 @@ def aipw_did_rc_imp2(
         )
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = normalized_weights * ps * (1 - d) * (1 - post) / denominator_cont_ps
-        w_cont_post = normalized_weights * ps * (1 - d) * post / denominator_cont_ps
+        w_cont_pre = trim_ps * normalized_weights * ps * (1 - d) * (1 - post) / denominator_cont_ps
+        w_cont_post = trim_ps * normalized_weights * ps * (1 - d) * post / denominator_cont_ps
 
     # Extra weights for efficiency
-    w_d = normalized_weights * d
-    w_dt1 = normalized_weights * d * post
-    w_dt0 = normalized_weights * d * (1 - post)
+    w_d = trim_ps * normalized_weights * d
+    w_dt1 = trim_ps * normalized_weights * d * post
+    w_dt0 = trim_ps * normalized_weights * d * (1 - post)
 
     att_treat_pre_val = y - out_y_cont_pre
     att_treat_post_val = y - out_y_cont_post
@@ -411,19 +432,3 @@ def aipw_did_rc_imp2(
             - (att_d_pre - att_dt0_pre)
         )
     return float(aipw_att)
-
-
-def _weighted_sum(term_val, weight_val, term_name):
-    sum_w = np.sum(weight_val)
-    if sum_w == 0 or not np.isfinite(sum_w):
-        warnings.warn(f"Sum of weights for {term_name} is {sum_w}. Term will be NaN.", UserWarning)
-        return np.nan
-
-    weighted_sum_term = np.sum(weight_val * term_val)
-    if not np.isfinite(weighted_sum_term):
-        warnings.warn(
-            f"Weighted sum for {term_name} is not finite ({weighted_sum_term}). Term will be NaN.", UserWarning
-        )
-        return np.nan
-
-    return weighted_sum_term / sum_w

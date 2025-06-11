@@ -166,15 +166,15 @@ def test_some_zero_i_weights():
 def test_input_type_errors():
     valid_np = np.array([1.0])
     invalid_list = [1.0]
-    with pytest.raises(TypeError, match="All inputs .* must be NumPy arrays."):
+    with pytest.raises(TypeError, match="All inputs must be NumPy arrays."):
         aipw_did_panel(invalid_list, valid_np, valid_np, valid_np, valid_np)
-    with pytest.raises(TypeError, match="All inputs .* must be NumPy arrays."):
+    with pytest.raises(TypeError, match="All inputs must be NumPy arrays."):
         aipw_did_panel(valid_np, invalid_list, valid_np, valid_np, valid_np)
-    with pytest.raises(TypeError, match="All inputs .* must be NumPy arrays."):
+    with pytest.raises(TypeError, match="All inputs must be NumPy arrays."):
         aipw_did_panel(valid_np, valid_np, invalid_list, valid_np, valid_np)
-    with pytest.raises(TypeError, match="All inputs .* must be NumPy arrays."):
+    with pytest.raises(TypeError, match="All inputs must be NumPy arrays."):
         aipw_did_panel(valid_np, valid_np, valid_np, invalid_list, valid_np)
-    with pytest.raises(TypeError, match="All inputs .* must be NumPy arrays."):
+    with pytest.raises(TypeError, match="All inputs must be NumPy arrays."):
         aipw_did_panel(valid_np, valid_np, valid_np, valid_np, invalid_list)
 
 
@@ -624,3 +624,106 @@ def test_aipw_rc_basic_no_pre_period():
         assert any("Sum of weights for aipw_1_pre is 0.0" in str(warn.message) for warn in w)
         assert any("Sum of weights for aipw_0_pre is 0.0" in str(warn.message) for warn in w)
     assert_allclose_with_nans(actual_att, np.nan)
+
+
+def test_panel_trimming_effect():
+    delta_y = np.array([1.0, 2.0, 0.0, 1.0, 3.0, 2.0])
+    d = np.array([1, 1, 0, 0, 1, 0])
+    ps = np.array([0.6, 0.7, 0.3, 0.4, 0.65, 0.35])
+    out_reg = np.array([0.5, 0.6, 0.2, 0.3, 0.55, 0.25])
+    i_weights = np.ones_like(delta_y)
+
+    att_no_trim = aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps=None)
+
+    trim_ps = np.array([1, 1, 1, 1, 0, 1])
+    att_trimmed = aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps)
+
+    assert att_no_trim != att_trimmed
+
+
+def test_panel_full_trimming():
+    delta_y = np.array([1.0, 2.0, 0.0, 1.0, 3.0, 2.0])
+    d = np.array([1, 1, 0, 0, 1, 0])
+    ps = np.array([0.6, 0.7, 0.3, 0.4, 0.65, 0.35])
+    out_reg = np.array([0.5, 0.6, 0.2, 0.3, 0.55, 0.25])
+    i_weights = np.ones_like(delta_y)
+    trim_ps = np.zeros_like(delta_y)
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        att_full_trim = aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps)
+        assert any("Sum of w_treat is zero" in str(warn.message) for warn in w)
+    assert np.isnan(att_full_trim)
+
+
+def test_panel_no_trimming_equivalence():
+    delta_y = np.array([1.0, 2.0, 0.0, 1.0, 3.0, 2.0])
+    d = np.array([1, 1, 0, 0, 1, 0])
+    ps = np.array([0.6, 0.7, 0.3, 0.4, 0.65, 0.35])
+    out_reg = np.array([0.5, 0.6, 0.2, 0.3, 0.55, 0.25])
+    i_weights = np.ones_like(delta_y)
+
+    att_none = aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps=None)
+    att_ones = aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps=np.ones_like(delta_y))
+
+    assert att_none == att_ones
+
+
+def test_rc_basic_trimming_effect():
+    args = list(ALL_VALID_ARGS_RC_BASIC)
+    att_no_trim = aipw_did_rc_imp1(*args, trim_ps=None)
+
+    trim_ps = np.ones_like(args[0])
+    trim_ps[0] = 0
+    att_trimmed = aipw_did_rc_imp1(*args, trim_ps=trim_ps)
+
+    assert att_no_trim != att_trimmed
+
+
+def test_rc_basic_full_trimming():
+    args = list(ALL_VALID_ARGS_RC_BASIC)
+    trim_ps = np.zeros_like(args[0])
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        att_full_trim = aipw_did_rc_imp1(*args, trim_ps=trim_ps)
+        assert any("Sum of weights for aipw_1_pre is 0.0" in str(warn.message) for warn in w)
+    assert np.isnan(att_full_trim)
+
+
+def test_rc_basic_no_trimming_equivalence():
+    args = list(ALL_VALID_ARGS_RC_BASIC)
+    att_none = aipw_did_rc_imp1(*args, trim_ps=None)
+    att_ones = aipw_did_rc_imp1(*args, trim_ps=np.ones_like(args[0]))
+
+    assert att_none == att_ones
+
+
+def test_rc_trimming_effect():
+    args = list(ALL_VALID_ARGS_RC)
+    att_no_trim = aipw_did_rc_imp2(*args, trim_ps=None)
+
+    trim_ps = np.ones_like(args[0])
+    trim_ps[0] = 0
+    att_trimmed = aipw_did_rc_imp2(*args, trim_ps=trim_ps)
+
+    assert att_no_trim != att_trimmed
+
+
+def test_rc_full_trimming():
+    args = list(ALL_VALID_ARGS_RC)
+    trim_ps = np.zeros_like(args[0])
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        att_full_trim = aipw_did_rc_imp2(*args, trim_ps=trim_ps)
+        assert any("Sum of weights for att_treat_pre is 0.0" in str(warn.message) for warn in w)
+    assert np.isnan(att_full_trim)
+
+
+def test_rc_no_trimming_equivalence():
+    args = list(ALL_VALID_ARGS_RC)
+    att_none = aipw_did_rc_imp2(*args, trim_ps=None)
+    att_ones = aipw_did_rc_imp2(*args, trim_ps=np.ones_like(args[0]))
+
+    assert att_none == att_ones
