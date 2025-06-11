@@ -174,27 +174,11 @@ def _loss_ps_ipt(gamma, D, X, iw, n_obs):
     if np.any(np.isnan(gamma)):
         return np.inf, np.full(k_features, np.nan), np.full((k_features, k_features), np.nan)
 
-    if n_obs <= 1:
-        # When n=1, we cannot compute log(n-1), so use a small epsilon
-        epsilon = 1e-10
-        log_n_minus_1 = np.log(epsilon)
-        cn = -epsilon
-        bn = -1.0
-        an = -epsilon
-        v_star = log_n_minus_1
-    elif n_obs < 2.5:
-        n_minus_1 = max(n_obs - 1, 0.1)
-        log_n_minus_1 = np.log(n_minus_1)
-        cn = -n_minus_1
-        bn = -n_obs + n_minus_1 * log_n_minus_1
-        an = -n_minus_1 * (1 - log_n_minus_1 + 0.5 * (log_n_minus_1**2))
-        v_star = log_n_minus_1
-    else:
-        log_n_minus_1 = np.log(n_obs - 1)
-        cn = -(n_obs - 1)
-        bn = -n_obs + (n_obs - 1) * log_n_minus_1
-        an = -(n_obs - 1) * (1 - log_n_minus_1 + 0.5 * (log_n_minus_1**2))
-        v_star = log_n_minus_1
+    log_n_minus_1 = np.log(n_obs - 1)
+    cn = -(n_obs - 1)
+    bn = -n_obs + (n_obs - 1) * log_n_minus_1
+    an = -(n_obs - 1) * (1 - log_n_minus_1 + 0.5 * (log_n_minus_1**2))
+    v_star = log_n_minus_1
 
     v = X @ gamma
     v_clipped = np.clip(v, -500, 500)

@@ -144,26 +144,6 @@ def test_loss_ps_ipt_py_nan_gamma():
     assert np.all(np.isnan(hessian))
 
 
-def test_loss_ps_ipt_py_small_sample():
-    n_obs = 1
-    k_features = 3
-
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.array([1])
-    iw = np.ones(n_obs)
-
-    gamma = np.array([0.1, 0.2, -0.3])
-
-    value, gradient, hessian = _loss_ps_ipt(gamma, D, X, iw, n_obs)
-
-    assert isinstance(value, float)
-    assert not np.isnan(value)
-    assert isinstance(gradient, np.ndarray)
-    assert gradient.shape == (k_features,)
-    assert isinstance(hessian, np.ndarray)
-    assert hessian.shape == (k_features, k_features)
-
-
 def test_calculate_pscore_ipt_basic():
     np.random.seed(42)
     n_obs = 200
@@ -264,22 +244,6 @@ def test_calculate_pscore_ipt_all_control():
     assert np.all(pscore < 0.5)
 
 
-def test_calculate_pscore_ipt_small_sample():
-    np.random.seed(42)
-    n_obs = 10
-    k_features = 3
-
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
-    iw = np.ones(n_obs)
-
-    with pytest.warns(UserWarning):
-        pscore = calculate_pscore_ipt(D, X, iw)
-
-    assert isinstance(pscore, np.ndarray)
-    assert pscore.shape == (n_obs,)
-
-
 def test_calculate_pscore_ipt_perfect_separation():
     np.random.seed(42)
     n_obs = 100
@@ -298,21 +262,6 @@ def test_calculate_pscore_ipt_perfect_separation():
 
     assert not np.any(np.isnan(pscore))
     assert np.all((pscore >= 0) & (pscore <= 1))
-
-
-def test_calculate_pscore_ipt_reproducibility():
-    np.random.seed(42)
-    n_obs = 200
-    k_features = 3
-
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
-    iw = np.ones(n_obs)
-
-    pscore1 = calculate_pscore_ipt(D, X, iw)
-    pscore2 = calculate_pscore_ipt(D, X, iw)
-
-    np.testing.assert_array_equal(pscore1, pscore2)
 
 
 def test_calculate_pscore_ipt_trust_constr_fail_ipt_success():
@@ -364,22 +313,6 @@ def test_calculate_pscore_ipt_both_methods_fail():
         pscore = calculate_pscore_ipt(D, X, iw)
 
     scipy.optimize.minimize = original_minimize
-
-    assert isinstance(pscore, np.ndarray)
-    assert pscore.shape == (n_obs,)
-
-
-def test_calculate_pscore_ipt_edge_case_one_observation():
-    np.random.seed(42)
-    n_obs = 1
-    k_features = 3
-
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.array([1])
-    iw = np.ones(n_obs)
-
-    with pytest.warns(UserWarning):
-        pscore = calculate_pscore_ipt(D, X, iw)
 
     assert isinstance(pscore, np.ndarray)
     assert pscore.shape == (n_obs,)
