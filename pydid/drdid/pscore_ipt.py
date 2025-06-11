@@ -3,13 +3,20 @@
 import warnings
 
 import numpy as np
+import scipy.linalg
 import scipy.optimize
 import scipy.special
 import statsmodels.api as sm
 
 
-def calculate_pscore_ipt(D, X, iw):
+def calculate_pscore_ipt(D, X, iw, quantiles=None):
     """Calculate propensity scores using Inverse Probability Tilting.
+
+    Inverse probability tilting (IPT) described in [1]_ involves specifying estimating
+    equations that fit the parameters of two or more generalized linear models with a
+    modification that ensures exact balance on the co-variate means. These estimating
+    equations are solved, and the estimated parameters are used in the (generalized)
+    propensity score, which is used to compute the weights.
 
     Parameters
     ----------
@@ -19,21 +26,36 @@ def calculate_pscore_ipt(D, X, iw):
         Covariate matrix (2D array, n_obs x n_features), must include intercept.
     iw : ndarray
         Individual weights (1D array).
+    quantiles : dict[int, list[float]] | None
+        Dict mapping column indices to quantiles (values between 0 and 1).
+        For example, {1: [0.25, 0.5, 0.75]} adds 25th, 50th, 75th percentiles
+        of the 2nd column as balance constraints. Default is None (no quantiles).
 
     Returns
     -------
     ndarray
         Propensity scores.
+
+    References
+    ----------
+    .. [1] Graham, B., Pinto, C., and Egel, D. (2012), "Inverse Probability Tilting for Moment
+        Condition Models with Missing Data," The Review of Economic Studies, 79(3), 1053-1079.
+        https://doi.org/10.1093/restud/rdr047
     """
-    n_obs, k_features = X.shape
-    init_gamma = _get_initial_gamma(D, X, iw, k_features)
+    X_processed, _ = _remove_collinear_columns(X)
+
+    if quantiles is not None:
+        X_processed = _add_quantile_constraints(X_processed, quantiles, iw)
+
+    n_obs, k_features = X_processed.shape
+    init_gamma = _get_initial_gamma(D, X_processed, iw, k_features)
 
     # Try trust-constr optimization first
     try:
         opt_cal_results = scipy.optimize.minimize(
             _loss_ps_cal,
             init_gamma.astype(np.float64),
-            args=(D, X, iw),
+            args=(D, X_processed, iw),
             method="trust-constr",
             jac=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[1],
             hess=lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[2],
@@ -51,7 +73,7 @@ def calculate_pscore_ipt(D, X, iw):
             opt_ipt_results = scipy.optimize.minimize(
                 lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt(g, d_arr, x_arr, iw_arr, n)[0],
                 init_gamma.astype(np.float64),
-                args=(D, X, iw, n_obs),
+                args=(D, X_processed, iw, n_obs),
                 method="BFGS",
                 jac=lambda g, d_arr, x_arr, iw_arr, n: _loss_ps_ipt(g, d_arr, x_arr, iw_arr, n)[1],
                 options={"maxiter": 10000, "gtol": 1e-06},
@@ -66,7 +88,7 @@ def calculate_pscore_ipt(D, X, iw):
 
             # Validate logit fallback
             try:
-                logit_model_refit = sm.Logit(D, X, weights=iw)
+                logit_model_refit = sm.Logit(D, X_processed, weights=iw)
                 logit_results_refit = logit_model_refit.fit(disp=0, start_params=init_gamma, maxiter=100)
                 if not logit_results_refit.mle_retvals["converged"]:
                     warnings.warn("Initial Logit model (used as fallback) also did not converge.", UserWarning)
@@ -74,7 +96,7 @@ def calculate_pscore_ipt(D, X, iw):
                 warnings.warn("Checking convergence of fallback Logit model failed.", UserWarning)
 
     # Compute propensity scores
-    pscore_linear = X @ gamma_cal
+    pscore_linear = X_processed @ gamma_cal
     pscore = scipy.special.expit(pscore_linear)
 
     if np.any(np.isnan(pscore)):
@@ -210,3 +232,94 @@ def _get_initial_gamma(D, X, iw, k_features):
     except (np.linalg.LinAlgError, ValueError) as e:
         warnings.warn(f"Initial Logit model failed: {e}. Using zeros for initial gamma.", UserWarning)
         return np.zeros(k_features)
+
+
+def _remove_collinear_columns(X):
+    """Remove collinear columns from covariate matrix."""
+    n_obs, n_cols = X.shape
+
+    if n_cols == 1:
+        return X, []
+
+    _, R, P = scipy.linalg.qr(X, mode="economic", pivoting=True)
+
+    diag_R = np.abs(np.diag(R))
+    tol = diag_R[0] * max(n_obs, n_cols) * np.finfo(float).eps
+    rank = np.sum(diag_R > tol)
+
+    if rank == n_cols:
+        return X, []
+
+    independent_cols = P[:rank]
+    removed_cols = P[rank:]
+
+    if len(removed_cols) > 0:
+        warnings.warn(
+            f"Removed {len(removed_cols)} collinear column(s) from covariate matrix. "
+            f"Column indices removed: {removed_cols.tolist()}",
+            UserWarning,
+        )
+
+    return X[:, independent_cols], removed_cols.tolist()
+
+
+def _add_quantile_constraints(X, quantiles, iw):
+    """Add quantile balance constraints to covariate matrix."""
+    quantile_features = []
+
+    for col_idx, q_list in quantiles.items():
+        if col_idx >= X.shape[1]:
+            warnings.warn(f"Column index {col_idx} exceeds number of columns ({X.shape[1]}). Skipping.", UserWarning)
+            continue
+
+        if col_idx == 0 and np.all(X[:, 0] == X[0, 0]):
+            warnings.warn("Skipping quantile constraints for intercept column.", UserWarning)
+            continue
+
+        col_values = X[:, col_idx]
+
+        for q in q_list:
+            if not 0 < q < 1:
+                warnings.warn(f"Quantile {q} must be between 0 and 1. Skipping.", UserWarning)
+                continue
+
+            threshold = _weighted_quantile(col_values, q, iw)
+
+            q_indicator = (col_values <= threshold).astype(float)
+            quantile_features.append(q_indicator)
+
+    if quantile_features:
+        X_extended = np.column_stack([X] + quantile_features)
+        return X_extended
+    return X
+
+
+def _weighted_quantile(values, q, weights):
+    """Compute weighted quantile."""
+    sorted_idx = np.argsort(values)
+    sorted_values = values[sorted_idx]
+    sorted_weights = weights[sorted_idx]
+
+    # Cumulative weights
+    cum_weights = np.cumsum(sorted_weights)
+    total_weight = cum_weights[-1]
+
+    # Find quantile position
+    quantile_weight = q * total_weight
+    idx = np.searchsorted(cum_weights, quantile_weight)
+
+    if idx == 0:
+        return sorted_values[0]
+    if idx >= len(sorted_values):
+        return sorted_values[-1]
+
+    # Linear interpolation between adjacent values
+    w_below = cum_weights[idx - 1]
+    w_above = cum_weights[idx]
+
+    if w_above == w_below:
+        return sorted_values[idx]
+
+    # Interpolation factor
+    alpha = (quantile_weight - w_below) / (w_above - w_below)
+    return sorted_values[idx - 1] + alpha * (sorted_values[idx] - sorted_values[idx - 1])
