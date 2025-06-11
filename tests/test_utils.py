@@ -7,7 +7,7 @@ from .helpers import importorskip
 
 pd = importorskip("pandas")
 
-from pydid.utils import preprocess_drdid
+from pydid.drdid.utils import preprocess_drdid
 from tests.dgp import DiD, SantAnnaZhaoDRDiD
 
 
