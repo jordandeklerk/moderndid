@@ -440,3 +440,19 @@ def _check_coefficients_validity(coefficients: np.ndarray) -> None:
             "Failed to solve linear system. Coefficients contain NaN/Inf values, "
             "likely due to multicollinearity or singular matrix."
         )
+
+
+def _weighted_sum(term_val, weight_val, term_name):
+    sum_w = np.sum(weight_val)
+    if sum_w == 0 or not np.isfinite(sum_w):
+        warnings.warn(f"Sum of weights for {term_name} is {sum_w}. Term will be NaN.", UserWarning)
+        return np.nan
+
+    weighted_sum_term = np.sum(weight_val * term_val)
+    if not np.isfinite(weighted_sum_term):
+        warnings.warn(
+            f"Weighted sum for {term_name} is not finite ({weighted_sum_term}). Term will be NaN.", UserWarning
+        )
+        return np.nan
+
+    return weighted_sum_term / sum_w
