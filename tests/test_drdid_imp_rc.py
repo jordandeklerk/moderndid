@@ -1,6 +1,6 @@
 import numpy as np
 
-from pydid.drdid.drdid_imp_rc import drdid_imp_rc
+from pydid import drdid_imp_rc
 
 
 def dgp_rc_for_test(n=2000, seed=42):

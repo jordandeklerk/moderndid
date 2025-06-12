@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
-from .utils import _validate_inputs
+from ..utils import _validate_inputs
 
 
 def wboot_std_ipw_rc(

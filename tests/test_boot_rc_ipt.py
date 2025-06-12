@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid.boot_rc_ipt import (
+from pydid import (
     wboot_drdid_ipt_rc1,
     wboot_drdid_ipt_rc2,
 )

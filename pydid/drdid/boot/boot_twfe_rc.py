@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
-from .utils import _validate_inputs
+from ..utils import _validate_inputs
 
 
 def wboot_twfe_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):
