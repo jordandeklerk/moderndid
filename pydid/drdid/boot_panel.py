@@ -462,7 +462,7 @@ def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=Non
             glm_model = sm.GLM(
                 y_control,
                 x_control,
-                family=sm.families.Gaussian(link=sm.families.links.identity()),
+                family=sm.families.Gaussian(link=sm.families.links.Identity()),
                 var_weights=w_control,
             )
             glm_results = glm_model.fit()
