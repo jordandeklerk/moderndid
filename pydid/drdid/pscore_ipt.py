@@ -42,6 +42,12 @@ def calculate_pscore_ipt(D, X, iw, quantiles=None):
         Condition Models with Missing Data," The Review of Economic Studies, 79(3), 1053-1079.
         https://doi.org/10.1093/restud/rdr047
     """
+    if np.all(iw == 0):
+        warnings.warn(
+            "All individual weights are zero. Propensity scores will be uninformative.",
+            UserWarning,
+        )
+        return np.full_like(D, np.nan, dtype=float)
     X_processed, _ = _remove_collinear_columns(X)
 
     if quantiles is not None:
@@ -53,7 +59,7 @@ def calculate_pscore_ipt(D, X, iw, quantiles=None):
     # Try trust-constr optimization first
     try:
         opt_cal_results = scipy.optimize.minimize(
-            _loss_ps_cal,
+            lambda g, d_arr, x_arr, iw_arr: _loss_ps_cal(g, d_arr, x_arr, iw_arr)[0],
             init_gamma.astype(np.float64),
             args=(D, X_processed, iw),
             method="trust-constr",
@@ -88,7 +94,7 @@ def calculate_pscore_ipt(D, X, iw, quantiles=None):
 
             # Validate logit fallback
             try:
-                logit_model_refit = sm.Logit(D, X_processed, weights=iw)
+                logit_model_refit = sm.Logit(D, X_processed)
                 logit_results_refit = logit_model_refit.fit(disp=0, start_params=init_gamma, maxiter=100)
                 if not logit_results_refit.mle_retvals["converged"]:
                     warnings.warn("Initial Logit model (used as fallback) also did not converge.", UserWarning)
@@ -200,7 +206,7 @@ def _loss_ps_ipt(gamma, D, X, iw, n_obs):
 def _get_initial_gamma(D, X, iw, k_features):
     """Get initial gamma values for optimization."""
     try:
-        logit_model = sm.Logit(D, X, weights=iw)
+        logit_model = sm.Logit(D, X)
         logit_results = logit_model.fit(disp=0, maxiter=100)
         init_gamma = logit_results.params
         if not logit_results.mle_retvals["converged"]:

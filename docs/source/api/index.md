@@ -2,7 +2,25 @@
 
 Documentation for all public modules, classes, and functions in the pyDiD package.
 
-## Core Estimators
+## Doubly Robust DiD Estimators
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   pydid.drdid_imp_panel
+```
+
+## Core Propensity Estimators
+
+### IPT Propensity Estimator
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   pydid.calculate_pscore_ipt
+```
 
 ### AIPW Estimators
 
@@ -76,13 +94,4 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 
    pydid.wols_panel
    pydid.wols_rc
-```
-
-### Propensity Score Estimation
-
-```{eval-rst}
-.. autosummary::
-   :toctree: generated/
-
-   pydid.calculate_pscore_ipt
 ```
