@@ -17,6 +17,8 @@ from pydid.drdid.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
 from pydid.drdid.boot_reg_rc import wboot_reg_rc
 from pydid.drdid.boot_std_ipw_rc import wboot_std_ipw_rc
 from pydid.drdid.boot_twfe_rc import wboot_twfe_rc
+from pydid.drdid.drdid_imp_local_rc import drdid_imp_local_rc
+from pydid.drdid.drdid_imp_rc import drdid_imp_rc
 from pydid.drdid.drdid_panel import drdid_imp_panel
 from pydid.drdid.ipw_estimators import ipw_did_rc
 from pydid.drdid.pscore_ipt import calculate_pscore_ipt
@@ -43,8 +45,10 @@ from pydid.utils import (
 )
 
 __all__ = [
-    # DR-DiD panel estimator
+    # DR-DiD estimators
     "drdid_imp_panel",
+    "drdid_imp_rc",
+    "drdid_imp_local_rc",
     # Core DiD estimators
     "aipw_did_panel",
     "aipw_did_rc_imp1",

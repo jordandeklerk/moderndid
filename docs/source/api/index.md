@@ -9,9 +9,11 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    :toctree: generated/
 
    pydid.drdid_imp_panel
+   pydid.drdid_imp_rc
+   pydid.drdid_imp_local_rc
 ```
 
-## Core Propensity Estimators
+## Propensity Estimators
 
 ### IPT Propensity Estimator
 

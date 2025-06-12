@@ -16,6 +16,8 @@ from .boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
 from .boot_reg_rc import wboot_reg_rc
 from .boot_std_ipw_rc import wboot_std_ipw_rc
 from .boot_twfe_rc import wboot_twfe_rc
+from .drdid_imp_local_rc import drdid_imp_local_rc
+from .drdid_imp_rc import drdid_imp_rc
 from .drdid_panel import drdid_imp_panel
 from .ipw_estimators import ipw_did_rc
 from .pscore_ipt import calculate_pscore_ipt
@@ -23,6 +25,8 @@ from .wols import wols_panel, wols_rc
 
 __all__ = [
     "drdid_imp_panel",
+    "drdid_imp_rc",
+    "drdid_imp_local_rc",
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
