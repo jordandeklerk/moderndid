@@ -1,4 +1,4 @@
-"""Doubly robust DiD estimators for panel data."""
+"""Improved and locally efficient doubly robust DiD estimator for panel data."""
 
 import warnings
 from typing import NamedTuple
@@ -124,28 +124,28 @@ def drdid_imp_panel(
 
     i_weights /= np.mean(i_weights)
 
-    # Estimate the propensity score
+    # Compute the propensity score using inverse probability tilting
     pscore_ipt_results = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = np.clip(pscore_ipt_results, 1e-6, 1 - 1e-6)
 
-    # Trimming
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Estimate the outcome regression for control group
+    # Compute the outcome regression for the control group
     outcome_reg = wols_panel(delta_y=delta_y, d=d, x=covariates, ps=ps_fit, i_weights=i_weights)
     out_delta = outcome_reg.out_reg
 
-    # Compute DR-DiD panel estimator
+    # Compute Bias-Reduced Doubly Robust DiD estimators
     dr_att = aipw_did_panel(delta_y=delta_y, d=d, ps=ps_fit, out_reg=out_delta, i_weights=i_weights, trim_ps=trim_ps)
 
-    # Compute the influence function
+    # Get the influence function to compute standard error
     mean_d_weights = np.mean(d * i_weights)
     if mean_d_weights == 0:
         raise ValueError("No treated units with positive weights, cannot compute ATT.")
 
-    dr_att_summand = (d - (1 - d) * ps_fit / (1 - ps_fit)) * (delta_y - out_delta)
-    att_inf_func = i_weights * trim_ps * (dr_att_summand - d * dr_att) / mean_d_weights
+    with np.errstate(divide="ignore", invalid="ignore"):
+        dr_att_summand_num = (1 - (1 - d) / (1 - ps_fit)) * (delta_y - out_delta)
+    att_inf_func = i_weights * trim_ps * (dr_att_summand_num - d * dr_att) / mean_d_weights
 
     # Inference
     dr_boot = None

@@ -120,106 +120,102 @@ def drdid_imp_local_rc(
             raise ValueError("i_weights must be non-negative.")
     i_weights /= np.mean(i_weights)
 
-    # Propensity score estimation
+    # Compute the propensity score using inverse probability tilting
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
 
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Outcome regression for control group
+    # Compute the outcome regression for the control group
     out_y_cont_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
     out_y_cont_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
     out_y_cont_pre = out_y_cont_pre_res.out_reg
     out_y_cont_post = out_y_cont_post_res.out_reg
 
-    # Outcome regression for treated group
+    # Combine the outcome regressions for the control group
+    out_y_cont = post * out_y_cont_post + (1 - post) * out_y_cont_pre
+
+    # Compute the outcome regression for the treated group at the pre-treatment period
     out_y_treat_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=True)
-    out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
     out_y_treat_pre = out_y_treat_pre_res.out_reg
+
+    # Compute the outcome regression for the treated group at the post-treatment period
+    out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
     out_y_treat_post = out_y_treat_post_res.out_reg
 
-    out_y = (
-        d * post * out_y_treat_post
-        + d * (1 - post) * out_y_treat_pre
-        + (1 - d) * post * out_y_cont_post
-        + (1 - d) * (1 - post) * out_y_cont_pre
-    )
-
-    # ATT estimator
+    # Compute the ATT estimator
+    # This is the efficient DR estimator from Sant'Anna and Zhao (2020), equation (3.4)
     dr_att = aipw_did_rc_imp2(
         y, post, d, ps_fit, out_y_cont_pre, out_y_cont_post, out_y_treat_pre, out_y_treat_post, i_weights, trim_ps
     )
 
-    # Influence function
+    # Get the influence function to compute standard errors
+    # First, the weights
     w_treat_pre = trim_ps * i_weights * d * (1 - post)
     w_treat_post = trim_ps * i_weights * d * post
 
     with np.errstate(divide="ignore", invalid="ignore"):
         w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
-    w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+        w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
 
     w_cont_pre = np.nan_to_num(w_cont_pre, nan=0.0, posinf=0.0, neginf=0.0)
     w_cont_post = np.nan_to_num(w_cont_post, nan=0.0, posinf=0.0, neginf=0.0)
 
-    resid = y - out_y
+    w_d = trim_ps * i_weights * d
+    w_dt1 = trim_ps * i_weights * d * post
+    w_dt0 = trim_ps * i_weights * d * (1 - post)
 
-    mean_w_treat_pre = np.mean(w_treat_pre)
-    eta_treat_pre = w_treat_pre * resid / mean_w_treat_pre if mean_w_treat_pre != 0 else np.zeros_like(w_treat_pre)
+    # Elements of the influence function (summands)
+    eta_treat_pre = w_treat_pre * (y - out_y_cont) / np.mean(w_treat_pre)
+    eta_treat_post = w_treat_post * (y - out_y_cont) / np.mean(w_treat_post)
+    eta_cont_pre = w_cont_pre * (y - out_y_cont) / np.mean(w_cont_pre)
+    eta_cont_post = w_cont_post * (y - out_y_cont) / np.mean(w_cont_post)
 
-    mean_w_treat_post = np.mean(w_treat_post)
-    eta_treat_post = w_treat_post * resid / mean_w_treat_post if mean_w_treat_post != 0 else np.zeros_like(w_treat_post)
+    # Extra elements for the locally efficient DRDID
+    eta_d_post = w_d * (out_y_treat_post - out_y_cont_post) / np.mean(w_d)
+    eta_dt1_post = w_dt1 * (out_y_treat_post - out_y_cont_post) / np.mean(w_dt1)
+    eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / np.mean(w_d)
+    eta_dt0_pre = w_dt0 * (out_y_treat_pre - out_y_cont_pre) / np.mean(w_dt0)
 
-    mean_w_cont_pre = np.mean(w_cont_pre)
-    eta_cont_pre = w_cont_pre * resid / mean_w_cont_pre if mean_w_cont_pre != 0 else np.zeros_like(w_cont_pre)
-
-    mean_w_cont_post = np.mean(w_cont_post)
-    eta_cont_post = w_cont_post * resid / mean_w_cont_post if mean_w_cont_post != 0 else np.zeros_like(w_cont_post)
-
+    # Estimator of each component
     att_treat_pre = np.mean(eta_treat_pre)
     att_treat_post = np.mean(eta_treat_post)
     att_cont_pre = np.mean(eta_cont_pre)
     att_cont_post = np.mean(eta_cont_post)
 
-    inf_treat_pre = (
-        eta_treat_pre - w_treat_pre * att_treat_pre / mean_w_treat_pre
-        if mean_w_treat_pre != 0
-        else np.zeros_like(eta_treat_pre)
-    )
-    inf_treat_post = (
-        eta_treat_post - w_treat_post * att_treat_post / mean_w_treat_post
-        if mean_w_treat_post != 0
-        else np.zeros_like(eta_treat_post)
-    )
-    inf_cont_pre = (
-        eta_cont_pre - w_cont_pre * att_cont_pre / mean_w_cont_pre
-        if mean_w_cont_pre != 0
-        else np.zeros_like(eta_cont_pre)
-    )
-    inf_cont_post = (
-        eta_cont_post - w_cont_post * att_cont_post / mean_w_cont_post
-        if mean_w_cont_post != 0
-        else np.zeros_like(eta_cont_post)
-    )
+    att_d_post = np.mean(eta_d_post)
+    att_dt1_post = np.mean(eta_dt1_post)
+    att_d_pre = np.mean(eta_d_pre)
+    att_dt0_pre = np.mean(eta_dt0_pre)
 
+    # Now, the influence function of the "treat" component
+    # Leading term of the influence function: no estimation effect
+    inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / np.mean(w_treat_pre)
+    inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / np.mean(w_treat_post)
+    # Influence function for the treated component
     inf_treat = inf_treat_post - inf_treat_pre
+
+    # Now, get the influence function of control component
+    # Leading term of the influence function: no estimation effect from nuisance parameters
+    inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / np.mean(w_cont_pre)
+    inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / np.mean(w_cont_post)
+    # Influence function for the control component
     inf_cont = inf_cont_post - inf_cont_pre
 
-    # Additional terms for local efficiency
-    inf_eff_treat_pre = (
-        w_treat_pre * (out_y_treat_pre - np.mean(out_y_treat_pre * w_treat_pre) / mean_w_treat_pre) / mean_w_treat_pre
-        if mean_w_treat_pre != 0
-        else np.zeros_like(w_treat_pre)
-    )
-    inf_eff_treat_post = (
-        w_treat_post
-        * (out_y_treat_post - np.mean(out_y_treat_post * w_treat_post) / mean_w_treat_post)
-        / mean_w_treat_post
-        if mean_w_treat_post != 0
-        else np.zeros_like(w_treat_post)
-    )
+    # Get the influence function of the DR estimator (put all pieces together)
+    dr_att_inf_func1 = inf_treat - inf_cont
 
-    att_inf_func = inf_treat - inf_cont + (inf_eff_treat_post - inf_eff_treat_pre)
+    # Now, we only need to get the influence function of the adjustment terms
+    # First, the terms as if all OR parameters were known
+    inf_eff1 = eta_d_post - w_d * att_d_post / np.mean(w_d)
+    inf_eff2 = eta_dt1_post - w_dt1 * att_dt1_post / np.mean(w_dt1)
+    inf_eff3 = eta_d_pre - w_d * att_d_pre / np.mean(w_d)
+    inf_eff4 = eta_dt0_pre - w_dt0 * att_dt0_pre / np.mean(w_dt0)
+    inf_eff = (inf_eff1 - inf_eff2) - (inf_eff3 - inf_eff4)
+
+    # Get the influence function of the locally efficient DR estimator (put all pieces together)
+    att_inf_func = dr_att_inf_func1 + inf_eff
 
     # Inference
     dr_boot = None

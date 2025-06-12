@@ -1,123 +1,181 @@
+"""Tests for the locally efficient doubly robust DiD estimator for panel data."""
+
 import numpy as np
+import pytest
 
-from pydid import drdid_imp_panel
-
-
-def dgp_panel_for_test(n=2000):
-    # covariates
-    x1 = np.random.normal(0, 1, n)
-    x2 = np.random.normal(0, 1, n)
-    x3 = np.random.normal(0, 1, n)
-    x4 = np.random.normal(0, 1, n)
-    # baseline outcome
-    y00 = x1 + x2 + np.random.normal(0, 1, n)
-    # outcome in second period
-    y10 = y00 + x1 + x3 + np.random.normal(0, 1, n)
-    # treatment effect
-    att = 1
-    # treatment indicator
-    d_propensity = 1 / (1 + np.exp(-(x1 + x3)))
-    d = (np.random.uniform(size=n) < d_propensity).astype(int)
-    # observed outcomes
-    y1 = y10 + att * d
-    y0 = y00
-    # matrix of covariates
-    covariates = np.column_stack((np.ones(n), x1, x2, x3, x4))
-    return y1, y0, d, covariates
+from pydid import drdid_panel
 
 
-def get_test_data():
-    y1, y0, d, covariates = dgp_panel_for_test()
-    i_weights = np.ones(len(y1))
-    return {
-        "y1": y1,
-        "y0": y0,
-        "d": d,
-        "covariates": covariates,
-        "i_weights": i_weights,
-        "n": len(y1),
-    }
+@pytest.mark.parametrize("covariates", [None, "with_covariates"])
+def test_drdid_panel_basic(covariates):
+    n_units = 200
+    rng = np.random.RandomState(42)
 
+    d = rng.binomial(1, 0.5, n_units)
 
-def test_analytical_inference():
-    setup = get_test_data()
-    result = drdid_imp_panel(
-        y1=setup["y1"],
-        y0=setup["y0"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        i_weights=setup["i_weights"],
-        boot=False,
-    )
-    assert result.att is not None
-    assert result.se is not None
-    assert np.isclose(result.att, 1.0, atol=0.2)
+    if covariates == "with_covariates":
+        x = rng.randn(n_units, 3)
+        x = np.column_stack([np.ones(n_units), x])
+    else:
+        x = None
+
+    y0 = rng.randn(n_units)
+    y1 = y0 + 2 * d + rng.randn(n_units)
+
+    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
+
+    assert isinstance(result.att, float)
+    assert isinstance(result.se, float)
+    assert result.se > 0
+    assert result.lci < result.uci
     assert result.boots is None
+    assert result.att_inf_func is None
 
 
-def test_weighted_bootstrap():
-    setup = get_test_data()
-    result = drdid_imp_panel(
-        y1=setup["y1"],
-        y0=setup["y0"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        i_weights=setup["i_weights"],
-        boot=True,
-        boot_type="weighted",
-        nboot=100,
-    )
-    assert result.att is not None
-    assert result.se is not None
-    assert np.isclose(result.att, 1.0, atol=0.2)
-    assert result.boots is not None
-    assert len(result.boots) == 100
+def test_drdid_panel_with_weights():
+    n_units = 200
+    rng = np.random.RandomState(42)
+
+    d = rng.binomial(1, 0.5, n_units)
+    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
+    y0 = rng.randn(n_units)
+    y1 = y0 + 2 * d + rng.randn(n_units)
+    i_weights = rng.uniform(0.5, 1.5, n_units)
+
+    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, i_weights=i_weights)
+
+    assert isinstance(result.att, float)
+    assert result.se > 0
 
 
-def test_multiplier_bootstrap():
-    setup = get_test_data()
-    result = drdid_imp_panel(
-        y1=setup["y1"],
-        y0=setup["y0"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        i_weights=setup["i_weights"],
-        boot=True,
-        boot_type="multiplier",
-        nboot=100,
-    )
-    assert result.att is not None
-    assert result.se is not None
-    assert np.isclose(result.att, 1.0, atol=0.2)
-    assert result.boots is not None
-    assert len(result.boots) == 100
+def test_drdid_panel_influence_function():
+    n_units = 200
+    rng = np.random.RandomState(42)
 
+    d = rng.binomial(1, 0.5, n_units)
+    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
+    y0 = rng.randn(n_units)
+    y1 = y0 + 2 * d + rng.randn(n_units)
 
-def test_influence_function():
-    setup = get_test_data()
-    result = drdid_imp_panel(
-        y1=setup["y1"],
-        y0=setup["y0"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        i_weights=setup["i_weights"],
-        influence_func=True,
-    )
+    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, influence_func=True)
+
     assert result.att_inf_func is not None
-    assert len(result.att_inf_func) == setup["n"]
+    assert len(result.att_inf_func) == n_units
+    assert np.abs(np.mean(result.att_inf_func)) < 0.1
 
 
-def test_no_covariates():
-    setup = get_test_data()
-    result = drdid_imp_panel(
-        y1=setup["y1"],
-        y0=setup["y0"],
-        d=setup["d"],
-        covariates=None,
-        i_weights=setup["i_weights"],
-        boot=False,
-    )
-    assert result.att is not None
-    assert result.se is not None
-    assert not np.isnan(result.att)
-    assert not np.isnan(result.se)
+@pytest.mark.parametrize("boot_type", ["weighted", "multiplier"])
+def test_drdid_panel_bootstrap(boot_type):
+    n_units = 100
+    rng = np.random.RandomState(42)
+
+    d = rng.binomial(1, 0.5, n_units)
+    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
+    y0 = rng.randn(n_units)
+    y1 = y0 + 2 * d + rng.randn(n_units)
+
+    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=100)
+
+    assert result.boots is not None
+    assert len(result.boots) == 100
+    assert result.se > 0
+    assert result.lci < result.uci
+
+
+def test_drdid_panel_no_treated():
+    n_units = 100
+    rng = np.random.RandomState(42)
+
+    d = np.zeros(n_units)
+    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
+    y0 = rng.randn(n_units)
+    y1 = y0 + rng.randn(n_units)
+
+    with pytest.raises(ValueError, match="No effectively treated units"):
+        drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
+
+
+def test_drdid_panel_all_treated():
+    n_units = 100
+    rng = np.random.RandomState(42)
+
+    d = np.ones(n_units)
+    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
+    y0 = rng.randn(n_units)
+    y1 = y0 + 2 + rng.randn(n_units)
+
+    with pytest.raises(ValueError, match="No control units"):
+        drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
+
+
+def test_drdid_panel_trimming():
+    n_units = 200
+    rng = np.random.RandomState(42)
+
+    d = rng.binomial(1, 0.05, n_units)
+    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
+    y0 = rng.randn(n_units)
+    y1 = y0 + 2 * d + rng.randn(n_units)
+
+    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, trim_level=0.9)
+
+    assert isinstance(result.att, float)
+    assert result.se > 0
+
+
+def test_drdid_panel_singular_covariate_matrix():
+    n_units = 100
+    rng = np.random.RandomState(42)
+
+    d = rng.binomial(1, 0.5, n_units)
+    x1 = rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), x1, x1])
+    y0 = rng.randn(n_units)
+    y1 = y0 + 2 * d + rng.randn(n_units)
+
+    with pytest.raises(ValueError, match="singular"):
+        drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
+
+
+def test_drdid_panel_negative_weights():
+    n_units = 100
+    rng = np.random.RandomState(42)
+
+    d = rng.binomial(1, 0.5, n_units)
+    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
+    y0 = rng.randn(n_units)
+    y1 = y0 + 2 * d + rng.randn(n_units)
+    i_weights = rng.randn(n_units)
+
+    with pytest.raises(ValueError, match="non-negative"):
+        drdid_panel(y1=y1, y0=y0, d=d, covariates=x, i_weights=i_weights)
+
+
+def test_drdid_panel_dgp():
+    n_units = 2000
+    rng = np.random.RandomState(42)
+
+    x1 = rng.normal(0, 1, n_units)
+    x2 = rng.normal(0, 1, n_units)
+    x3 = rng.normal(0, 1, n_units)
+    x4 = rng.normal(0, 1, n_units)
+
+    y00 = x1 + x2 + rng.normal(0, 1, n_units)
+
+    y10 = y00 + x1 + x3 + rng.normal(0, 1, n_units)
+
+    att_true = 1
+
+    d_propensity = 1 / (1 + np.exp(-(x1 + x3)))
+    d = (rng.uniform(size=n_units) < d_propensity).astype(int)
+
+    y1 = y10 + att_true * d
+    y0 = y00
+
+    covariates = np.column_stack((np.ones(n_units), x1, x2, x3, x4))
+
+    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=covariates)
+
+    assert 0.8 < result.att < 1.2
+    assert result.se > 0
+    assert result.args["estMethod"] == "trad"
