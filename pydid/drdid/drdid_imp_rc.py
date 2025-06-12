@@ -121,76 +121,63 @@ def drdid_imp_rc(
             raise ValueError("i_weights must be non-negative.")
     i_weights /= np.mean(i_weights)
 
-    # Propensity score estimation
+    # Compute the propensity score using inverse probability tilting
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
 
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Outcome regression for control group
+    # Compute the outcome regression for the control group
     out_y_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
     out_y_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
     out_y_pre = out_y_pre_res.out_reg
     out_y_post = out_y_post_res.out_reg
+
+    # Combine the outcome regressions
     out_y = post * out_y_post + (1 - post) * out_y_pre
 
-    # ATT estimator
+    # Compute the ATT estimator
     dr_att = aipw_did_rc_imp1(y, post, d, ps_fit, out_y, i_weights, trim_ps)
 
-    # Influence function
+    # Get the influence function to compute standard errors
+    # First, the weights
     w_treat_pre = trim_ps * i_weights * d * (1 - post)
     w_treat_post = trim_ps * i_weights * d * post
-
     with np.errstate(divide="ignore", invalid="ignore"):
         w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
-    w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+        w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
 
     w_cont_pre = np.nan_to_num(w_cont_pre, nan=0.0, posinf=0.0, neginf=0.0)
     w_cont_post = np.nan_to_num(w_cont_post, nan=0.0, posinf=0.0, neginf=0.0)
 
-    resid = y - out_y
+    # Elements of the influence function (summands)
+    eta_treat_pre = w_treat_pre * (y - out_y) / np.mean(w_treat_pre)
+    eta_treat_post = w_treat_post * (y - out_y) / np.mean(w_treat_post)
+    eta_cont_pre = w_cont_pre * (y - out_y) / np.mean(w_cont_pre)
+    eta_cont_post = w_cont_post * (y - out_y) / np.mean(w_cont_post)
 
-    mean_w_treat_pre = np.mean(w_treat_pre)
-    eta_treat_pre = w_treat_pre * resid / mean_w_treat_pre if mean_w_treat_pre != 0 else np.zeros_like(w_treat_pre)
-
-    mean_w_treat_post = np.mean(w_treat_post)
-    eta_treat_post = w_treat_post * resid / mean_w_treat_post if mean_w_treat_post != 0 else np.zeros_like(w_treat_post)
-
-    mean_w_cont_pre = np.mean(w_cont_pre)
-    eta_cont_pre = w_cont_pre * resid / mean_w_cont_pre if mean_w_cont_pre != 0 else np.zeros_like(w_cont_pre)
-
-    mean_w_cont_post = np.mean(w_cont_post)
-    eta_cont_post = w_cont_post * resid / mean_w_cont_post if mean_w_cont_post != 0 else np.zeros_like(w_cont_post)
-
+    # Estimator of each component
     att_treat_pre = np.mean(eta_treat_pre)
     att_treat_post = np.mean(eta_treat_post)
     att_cont_pre = np.mean(eta_cont_pre)
     att_cont_post = np.mean(eta_cont_post)
 
-    inf_treat_pre = (
-        eta_treat_pre - w_treat_pre * att_treat_pre / mean_w_treat_pre
-        if mean_w_treat_pre != 0
-        else np.zeros_like(eta_treat_pre)
-    )
-    inf_treat_post = (
-        eta_treat_post - w_treat_post * att_treat_post / mean_w_treat_post
-        if mean_w_treat_post != 0
-        else np.zeros_like(eta_treat_post)
-    )
-    inf_cont_pre = (
-        eta_cont_pre - w_cont_pre * att_cont_pre / mean_w_cont_pre
-        if mean_w_cont_pre != 0
-        else np.zeros_like(eta_cont_pre)
-    )
-    inf_cont_post = (
-        eta_cont_post - w_cont_post * att_cont_post / mean_w_cont_post
-        if mean_w_cont_post != 0
-        else np.zeros_like(eta_cont_post)
-    )
-
+    # Now, the influence function of the "treat" component
+    # Leading term of the influence function: no estimation effect
+    inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / np.mean(w_treat_pre)
+    inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / np.mean(w_treat_post)
+    # Influence function for the treated component
     inf_treat = inf_treat_post - inf_treat_pre
+
+    # Now, get the influence function of control component
+    # Leading term of the influence function: no estimation effect from nuisance parameters
+    inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / np.mean(w_cont_pre)
+    inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / np.mean(w_cont_post)
+    # Influence function for the control component
     inf_cont = inf_cont_post - inf_cont_pre
+
+    # Get the influence function of the DR estimator (put all pieces together)
     att_inf_func = inf_treat - inf_cont
 
     # Inference

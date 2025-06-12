@@ -1,40 +1,42 @@
 import numpy as np
 
-from pydid import drdid_imp_rc
+from pydid import drdid_imp_panel
 
 
-def dgp_rc_for_test(n=2000, seed=42):
-    np.random.seed(seed)
+def dgp_panel_for_test(n=2000):
     x1 = np.random.normal(0, 1, n)
     x2 = np.random.normal(0, 1, n)
     x3 = np.random.normal(0, 1, n)
     x4 = np.random.normal(0, 1, n)
-    post = np.random.binomial(1, 0.5, n)
+    y00 = x1 + x2 + np.random.normal(0, 1, n)
+    y10 = y00 + x1 + x3 + np.random.normal(0, 1, n)
+    att = 1
     d_propensity = 1 / (1 + np.exp(-(x1 + x3)))
     d = (np.random.uniform(size=n) < d_propensity).astype(int)
-    y = 1 + 2 * x1 + 3 * x2 + 4 * x3 + 5 * x4 + post + d * post + np.random.normal(0, 1, n)
+    y1 = y10 + att * d
+    y0 = y00
     covariates = np.column_stack((np.ones(n), x1, x2, x3, x4))
-    return y, post, d, covariates
+    return y1, y0, d, covariates
 
 
 def get_test_data():
-    y, post, d, covariates = dgp_rc_for_test()
-    i_weights = np.ones(len(y))
+    y1, y0, d, covariates = dgp_panel_for_test()
+    i_weights = np.ones(len(y1))
     return {
-        "y": y,
-        "post": post,
+        "y1": y1,
+        "y0": y0,
         "d": d,
         "covariates": covariates,
         "i_weights": i_weights,
-        "n": len(y),
+        "n": len(y1),
     }
 
 
 def test_analytical_inference():
     setup = get_test_data()
-    result = drdid_imp_rc(
-        y=setup["y"],
-        post=setup["post"],
+    result = drdid_imp_panel(
+        y1=setup["y1"],
+        y0=setup["y0"],
         d=setup["d"],
         covariates=setup["covariates"],
         i_weights=setup["i_weights"],
@@ -48,9 +50,9 @@ def test_analytical_inference():
 
 def test_weighted_bootstrap():
     setup = get_test_data()
-    result = drdid_imp_rc(
-        y=setup["y"],
-        post=setup["post"],
+    result = drdid_imp_panel(
+        y1=setup["y1"],
+        y0=setup["y0"],
         d=setup["d"],
         covariates=setup["covariates"],
         i_weights=setup["i_weights"],
@@ -67,9 +69,9 @@ def test_weighted_bootstrap():
 
 def test_multiplier_bootstrap():
     setup = get_test_data()
-    result = drdid_imp_rc(
-        y=setup["y"],
-        post=setup["post"],
+    result = drdid_imp_panel(
+        y1=setup["y1"],
+        y0=setup["y0"],
         d=setup["d"],
         covariates=setup["covariates"],
         i_weights=setup["i_weights"],
@@ -86,9 +88,9 @@ def test_multiplier_bootstrap():
 
 def test_influence_function():
     setup = get_test_data()
-    result = drdid_imp_rc(
-        y=setup["y"],
-        post=setup["post"],
+    result = drdid_imp_panel(
+        y1=setup["y1"],
+        y0=setup["y0"],
         d=setup["d"],
         covariates=setup["covariates"],
         i_weights=setup["i_weights"],
@@ -100,9 +102,9 @@ def test_influence_function():
 
 def test_no_covariates():
     setup = get_test_data()
-    result = drdid_imp_rc(
-        y=setup["y"],
-        post=setup["post"],
+    result = drdid_imp_panel(
+        y1=setup["y1"],
+        y0=setup["y0"],
         d=setup["d"],
         covariates=None,
         i_weights=setup["i_weights"],
