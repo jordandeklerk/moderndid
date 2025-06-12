@@ -18,8 +18,8 @@ from pydid.drdid.boot_reg_rc import wboot_reg_rc
 from pydid.drdid.boot_std_ipw_rc import wboot_std_ipw_rc
 from pydid.drdid.boot_twfe_rc import wboot_twfe_rc
 from pydid.drdid.drdid_imp_local_rc import drdid_imp_local_rc
+from pydid.drdid.drdid_imp_panel import drdid_imp_panel
 from pydid.drdid.drdid_imp_rc import drdid_imp_rc
-from pydid.drdid.drdid_panel import drdid_imp_panel
 from pydid.drdid.ipw_estimators import ipw_did_rc
 from pydid.drdid.pscore_ipt import calculate_pscore_ipt
 from pydid.drdid.wols import wols_panel, wols_rc

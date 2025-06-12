@@ -17,8 +17,8 @@ from .boot_reg_rc import wboot_reg_rc
 from .boot_std_ipw_rc import wboot_std_ipw_rc
 from .boot_twfe_rc import wboot_twfe_rc
 from .drdid_imp_local_rc import drdid_imp_local_rc
+from .drdid_imp_panel import drdid_imp_panel
 from .drdid_imp_rc import drdid_imp_rc
-from .drdid_panel import drdid_imp_panel
 from .ipw_estimators import ipw_did_rc
 from .pscore_ipt import calculate_pscore_ipt
 from .wols import wols_panel, wols_rc
