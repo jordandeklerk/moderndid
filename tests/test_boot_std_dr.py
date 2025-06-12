@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid import mboot_did
+from pydid import mboot_did
 
 
 def test_mboot_did_basic():

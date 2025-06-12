@@ -6,10 +6,10 @@ from typing import NamedTuple
 import numpy as np
 from scipy import stats
 
-from .aipw_estimators import aipw_did_rc_imp2
-from .boot_mult import mboot_did
-from .boot_rc_ipt import wboot_drdid_ipt_rc2
-from .pscore_ipt import calculate_pscore_ipt
+from .boot.boot_mult import mboot_did
+from .boot.boot_rc_ipt import wboot_drdid_ipt_rc2
+from .propensity.aipw_estimators import aipw_did_rc_imp2
+from .propensity.pscore_ipt import calculate_pscore_ipt
 from .wols import wols_rc
 
 

@@ -5,7 +5,7 @@ import warnings
 
 import numpy as np
 
-from pydid.drdid.utils import _weighted_sum
+from ..utils import _weighted_sum
 
 
 def aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps=None):

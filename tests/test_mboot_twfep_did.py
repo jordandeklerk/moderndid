@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid import mboot_twfep_did
+from pydid import mboot_twfep_did
 
 
 @pytest.mark.parametrize(

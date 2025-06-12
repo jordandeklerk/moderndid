@@ -1,10 +1,9 @@
 # pylint: disable=wildcard-import
 """DiD and doubly robust DiD estimators."""
 
-from pydid.drdid.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
-from pydid.drdid.boot_ipw_rc import wboot_ipw_rc
-from pydid.drdid.boot_mult import mboot_did, mboot_twfep_did
-from pydid.drdid.boot_panel import (
+from pydid.drdid.boot.boot_ipw_rc import wboot_ipw_rc
+from pydid.drdid.boot.boot_mult import mboot_did, mboot_twfep_did
+from pydid.drdid.boot.boot_panel import (
     wboot_dr_tr_panel,
     wboot_drdid_imp_panel,
     wboot_ipw_panel,
@@ -12,17 +11,18 @@ from pydid.drdid.boot_panel import (
     wboot_std_ipw_panel,
     wboot_twfe_panel,
 )
-from pydid.drdid.boot_rc import wboot_drdid_rc1, wboot_drdid_rc2
-from pydid.drdid.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
-from pydid.drdid.boot_reg_rc import wboot_reg_rc
-from pydid.drdid.boot_std_ipw_rc import wboot_std_ipw_rc
-from pydid.drdid.boot_twfe_rc import wboot_twfe_rc
+from pydid.drdid.boot.boot_rc import wboot_drdid_rc1, wboot_drdid_rc2
+from pydid.drdid.boot.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
+from pydid.drdid.boot.boot_reg_rc import wboot_reg_rc
+from pydid.drdid.boot.boot_std_ipw_rc import wboot_std_ipw_rc
+from pydid.drdid.boot.boot_twfe_rc import wboot_twfe_rc
 from pydid.drdid.drdid_imp_local_rc import drdid_imp_local_rc
 from pydid.drdid.drdid_imp_panel import drdid_imp_panel
 from pydid.drdid.drdid_imp_rc import drdid_imp_rc
 from pydid.drdid.drdid_panel import drdid_panel
-from pydid.drdid.ipw_estimators import ipw_did_rc
-from pydid.drdid.pscore_ipt import calculate_pscore_ipt
+from pydid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
+from pydid.drdid.propensity.ipw_estimators import ipw_did_rc
+from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
 from pydid.drdid.wols import wols_panel, wols_rc
 from pydid.utils import (
     are_varying,

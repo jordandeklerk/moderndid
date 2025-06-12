@@ -5,8 +5,8 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
-from .boot_panel import _validate_inputs
-from .ipw_estimators import ipw_did_rc
+from ..propensity.ipw_estimators import ipw_did_rc
+from ..utils import _validate_inputs
 
 
 def wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):

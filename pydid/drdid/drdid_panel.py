@@ -7,8 +7,8 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
-from .boot_mult import mboot_did
-from .boot_panel import wboot_dr_tr_panel
+from .boot.boot_mult import mboot_did
+from .boot.boot_panel import wboot_dr_tr_panel
 from .wols import wols_panel
 
 

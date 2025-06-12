@@ -1,6 +1,6 @@
 import numpy as np
 
-from pydid.drdid.drdid_imp_panel import drdid_imp_panel
+from pydid import drdid_imp_panel
 
 
 def dgp_panel_for_test(n=2000):
