@@ -19,12 +19,14 @@ from .boot_twfe_rc import wboot_twfe_rc
 from .drdid_imp_local_rc import drdid_imp_local_rc
 from .drdid_imp_panel import drdid_imp_panel
 from .drdid_imp_rc import drdid_imp_rc
+from .drdid_panel import drdid_panel
 from .ipw_estimators import ipw_did_rc
 from .pscore_ipt import calculate_pscore_ipt
 from .wols import wols_panel, wols_rc
 
 __all__ = [
     "drdid_imp_panel",
+    "drdid_panel",
     "drdid_imp_rc",
     "drdid_imp_local_rc",
     "aipw_did_panel",

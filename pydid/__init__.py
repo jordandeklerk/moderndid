@@ -20,6 +20,7 @@ from pydid.drdid.boot_twfe_rc import wboot_twfe_rc
 from pydid.drdid.drdid_imp_local_rc import drdid_imp_local_rc
 from pydid.drdid.drdid_imp_panel import drdid_imp_panel
 from pydid.drdid.drdid_imp_rc import drdid_imp_rc
+from pydid.drdid.drdid_panel import drdid_panel
 from pydid.drdid.ipw_estimators import ipw_did_rc
 from pydid.drdid.pscore_ipt import calculate_pscore_ipt
 from pydid.drdid.wols import wols_panel, wols_rc
@@ -49,7 +50,8 @@ __all__ = [
     "drdid_imp_panel",
     "drdid_imp_rc",
     "drdid_imp_local_rc",
-    # Core DiD estimators
+    "drdid_panel",
+    # Core propensity score estimators
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
