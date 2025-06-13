@@ -20,6 +20,7 @@ from pydid.drdid.drdid_imp_local_rc import drdid_imp_local_rc
 from pydid.drdid.drdid_imp_panel import drdid_imp_panel
 from pydid.drdid.drdid_imp_rc import drdid_imp_rc
 from pydid.drdid.drdid_panel import drdid_panel
+from pydid.drdid.drdid_rc import drdid_rc
 from pydid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from pydid.drdid.propensity.ipw_estimators import ipw_did_rc
 from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
@@ -51,6 +52,7 @@ __all__ = [
     "drdid_imp_rc",
     "drdid_imp_local_rc",
     "drdid_panel",
+    "drdid_rc",
     # Core propensity score estimators
     "aipw_did_panel",
     "aipw_did_rc_imp1",
