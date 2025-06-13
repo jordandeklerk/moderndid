@@ -26,7 +26,8 @@ from pydid.drdid.drdid_panel import drdid_panel
 from pydid.drdid.drdid_rc import drdid_rc
 from pydid.drdid.drdid_trad_rc import drdid_trad_rc
 
-# IPW DiD estimator
+# IPW DiD estimators
+from pydid.drdid.ipw_did_panel import ipw_did_panel
 from pydid.drdid.ipw_did_rc import ipw_did_rc
 
 # Propensity score estimators
@@ -67,7 +68,8 @@ __all__ = [
     "drdid_panel",
     "drdid_rc",
     "drdid_trad_rc",
-    # IPW DiD estimator
+    # IPW DiD estimators
+    "ipw_did_panel",
     "ipw_did_rc",
     # Core propensity score estimators
     "aipw_did_panel",

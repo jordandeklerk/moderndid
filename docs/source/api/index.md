@@ -22,7 +22,8 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 .. autosummary::
    :toctree: generated/
 
-   pydid.drdid_imp_local_rc
+   pydid.ipw_did_panel
+   pydid.ipw_did_rc
 ```
 
 ## Propensity Estimators
