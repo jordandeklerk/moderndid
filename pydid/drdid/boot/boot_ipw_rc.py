@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
-from ..propensity.ipw_estimators import ipw_did_rc
+from ..propensity.ipw_estimators import ipw_rc
 from ..utils import _validate_inputs
 
 
@@ -73,7 +73,7 @@ def wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, r
         trim_ps[control_mask] = ps_b[control_mask] < trim_level
 
         try:
-            att_b = ipw_did_rc(
+            att_b = ipw_rc(
                 y=y,
                 post=post,
                 d=d,

@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 
 
-def ipw_did_rc(y, post, d, ps, i_weights, trim_ps=None):
+def ipw_rc(y, post, d, ps, i_weights, trim_ps=None):
     r"""Compute the inverse propensity weighted (IPW) estimator for repeated cross-sections.
 
     This function implements the inverse propensity weighted (IPW) estimator from

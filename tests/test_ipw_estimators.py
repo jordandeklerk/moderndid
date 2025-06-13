@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid import ipw_did_rc, wboot_ipw_rc
+from pydid import ipw_rc, wboot_ipw_rc
 
 
 def test_ipw_did_rc_basic():
@@ -15,7 +15,7 @@ def test_ipw_did_rc_basic():
     ps = 0.3 * np.ones(n)
     i_weights = np.ones(n)
 
-    result = ipw_did_rc(y, post, d, ps, i_weights)
+    result = ipw_rc(y, post, d, ps, i_weights)
     assert isinstance(result, float)
     assert np.isfinite(result)
 
@@ -32,7 +32,7 @@ def test_ipw_did_rc_with_trimming():
     trim_ps = np.ones(n, dtype=bool)
     trim_ps[d == 0] = ps[d == 0] < 0.8
 
-    result = ipw_did_rc(y, post, d, ps, i_weights, trim_ps)
+    result = ipw_rc(y, post, d, ps, i_weights, trim_ps)
     assert isinstance(result, float)
     assert np.isfinite(result)
 
@@ -45,7 +45,7 @@ def test_ipw_did_rc_all_treated():
     ps = 0.5 * np.ones(n)
     i_weights = np.ones(n)
 
-    result = ipw_did_rc(y, post, d, ps, i_weights)
+    result = ipw_rc(y, post, d, ps, i_weights)
     assert np.isfinite(result)
 
 
@@ -58,7 +58,7 @@ def test_ipw_did_rc_no_treated():
     i_weights = np.ones(n)
 
     with pytest.warns(UserWarning, match="No treated units found"):
-        result = ipw_did_rc(y, post, d, ps, i_weights)
+        result = ipw_rc(y, post, d, ps, i_weights)
     assert np.isnan(result)
 
 
@@ -73,7 +73,7 @@ def test_ipw_did_rc_extreme_propensity():
     i_weights = np.ones(n)
 
     with pytest.warns(UserWarning, match="Propensity score is 1 for some control units"):
-        result = ipw_did_rc(y, post, d, ps, i_weights)
+        result = ipw_rc(y, post, d, ps, i_weights)
     assert np.isnan(result)
 
 
@@ -86,12 +86,12 @@ def test_ipw_did_rc_lambda_edge_cases():
 
     post = np.zeros(n)
     with pytest.warns(UserWarning, match="Lambda is 0"):
-        result = ipw_did_rc(y, post, d, ps, i_weights)
+        result = ipw_rc(y, post, d, ps, i_weights)
     assert np.isnan(result)
 
     post = np.ones(n)
     with pytest.warns(UserWarning, match="Lambda is 1"):
-        result = ipw_did_rc(y, post, d, ps, i_weights)
+        result = ipw_rc(y, post, d, ps, i_weights)
     assert np.isnan(result)
 
 
@@ -104,13 +104,13 @@ def test_ipw_did_rc_invalid_inputs():
     i_weights = np.ones(n)
 
     with pytest.raises(TypeError, match="All inputs must be NumPy arrays"):
-        ipw_did_rc(list(y), post, d, ps, i_weights)
+        ipw_rc(list(y), post, d, ps, i_weights)
 
     with pytest.raises(ValueError, match="All input arrays must be 1-dimensional"):
-        ipw_did_rc(y.reshape(-1, 1), post, d, ps, i_weights)
+        ipw_rc(y.reshape(-1, 1), post, d, ps, i_weights)
 
     with pytest.raises(ValueError, match="All input arrays must have the same shape"):
-        ipw_did_rc(y[:-1], post, d, ps, i_weights)
+        ipw_rc(y[:-1], post, d, ps, i_weights)
 
 
 def test_wboot_ipw_rc_basic():
