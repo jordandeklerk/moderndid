@@ -2,7 +2,7 @@
 
 Documentation for all public modules, classes, and functions in the pyDiD package.
 
-## Doubly Robust DiD Estimators
+## Doubly-Robust DiD Estimators
 
 ```{eval-rst}
 .. autosummary::
