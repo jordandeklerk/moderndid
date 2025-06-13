@@ -16,6 +16,15 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.drdid_panel
 ```
 
+## Inverse-Propensity Weighted DiD Estimators
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   pydid.drdid_imp_local_rc
+```
+
 ## Propensity Estimators
 
 ### IPT Propensity Estimator
@@ -44,7 +53,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 .. autosummary::
    :toctree: generated/
 
-   pydid.ipw_did_rc
+   pydid.ipw_rc
 ```
 
 ## Bootstrap Estimators

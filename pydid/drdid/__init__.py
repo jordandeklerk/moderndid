@@ -25,23 +25,32 @@ from .drdid_panel import drdid_panel
 from .drdid_rc import drdid_rc
 from .drdid_trad_rc import drdid_trad_rc
 
+# IPW DiD estimator
+from .ipw_did_rc import ipw_did_rc
+
 # Propensity score estimators
 from .propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
-from .propensity.ipw_estimators import ipw_did_rc
+from .propensity.ipw_estimators import ipw_rc
 from .propensity.pscore_ipt import calculate_pscore_ipt
 from .wols import wols_panel, wols_rc
 
 __all__ = [
-    "drdid_imp_panel",
-    "drdid_panel",
-    "drdid_imp_rc",
-    "drdid_rc",
+    # DR-DiD estimators
     "drdid_imp_local_rc",
+    "drdid_imp_panel",
+    "drdid_imp_rc",
+    "drdid_panel",
+    "drdid_rc",
     "drdid_trad_rc",
+    # IPW DiD estimator
+    "ipw_did_rc",
+    # Propensity score estimators
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
-    "ipw_did_rc",
+    "calculate_pscore_ipt",
+    "ipw_rc",
+    # Bootstrapping functions
     "mboot_did",
     "mboot_twfep_did",
     "wboot_dr_tr_panel",
@@ -58,7 +67,7 @@ __all__ = [
     "wboot_std_ipw_rc",
     "wboot_twfe_panel",
     "wboot_twfe_rc",
+    # Regression functions
     "wols_panel",
     "wols_rc",
-    "calculate_pscore_ipt",
 ]
