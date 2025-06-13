@@ -93,12 +93,11 @@ def drdid_imp_local_rc(
 
     References
     ----------
-    .. [1] Graham, B. S., Pinto, C. C., & Egel, D. (2012).
-        "Inverse probability tilting for moment condition models with missing data."
-        The Review of Economic Studies, 79(3), 1053-1079. https://doi.org/10.1093/restud/rdr047
+    .. [1] Graham, B. S., Pinto, C. C., & Egel, D. (2012). *Inverse probability tilting for moment
+        condition models with missing data.* The Review of Economic Studies, 79(3), 1053-1079.
+        https://doi.org/10.1093/restud/rdr047
 
-    .. [2] Sant'Anna, P. H., & Zhao, J. (2020).
-        "Doubly robust difference-in-differences estimators."
+    .. [2] Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
