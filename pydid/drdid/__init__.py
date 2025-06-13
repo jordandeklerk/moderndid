@@ -33,6 +33,7 @@ from .ipw_did_rc import ipw_did_rc
 from .propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from .propensity.ipw_estimators import ipw_rc
 from .propensity.pscore_ipt import calculate_pscore_ipt
+from .std_ipw_did_rc import std_ipw_did_rc
 from .wols import wols_panel, wols_rc
 
 __all__ = [
@@ -46,6 +47,7 @@ __all__ = [
     # IPW DiD estimators
     "ipw_did_panel",
     "ipw_did_rc",
+    "std_ipw_did_rc",
     # Propensity score estimators
     "aipw_did_panel",
     "aipw_did_rc_imp1",
