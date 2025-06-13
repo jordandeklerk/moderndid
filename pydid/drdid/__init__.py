@@ -19,6 +19,7 @@ from .drdid_imp_local_rc import drdid_imp_local_rc
 from .drdid_imp_panel import drdid_imp_panel
 from .drdid_imp_rc import drdid_imp_rc
 from .drdid_panel import drdid_panel
+from .drdid_rc import drdid_rc
 from .propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from .propensity.ipw_estimators import ipw_did_rc
 from .propensity.pscore_ipt import calculate_pscore_ipt
@@ -28,6 +29,7 @@ __all__ = [
     "drdid_imp_panel",
     "drdid_panel",
     "drdid_imp_rc",
+    "drdid_rc",
     "drdid_imp_local_rc",
     "aipw_did_panel",
     "aipw_did_rc_imp1",

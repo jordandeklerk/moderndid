@@ -1,3 +1,5 @@
+"""Tests for the improved doubly robust DiD estimator for panel data."""
+
 import numpy as np
 
 from pydid import drdid_imp_panel

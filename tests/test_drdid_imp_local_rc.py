@@ -1,4 +1,4 @@
-"""Tests for the locally efficient doubly robust DiD estimator for repeated cross-section data."""
+"""Tests for the improved and locally efficient DR-DiD estimator for repeated cross-section data."""
 
 import numpy as np
 import pytest

@@ -110,7 +110,7 @@ def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
 
 
 def wboot_drdid_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
-    r"""Compute bootstrap estimates for traditional doubly-robust DiD with repeated cross-sections.
+    r"""Compute bootstrap estimates for locally efficient doubly-robust DiD with repeated cross-sections.
 
     This function implements the bootstrap inference for the locally efficient doubly-robust
     difference-in-differences estimator with repeated cross-section data. This version uses
