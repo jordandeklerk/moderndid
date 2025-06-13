@@ -90,7 +90,7 @@ def drdid_imp_rc(
 
     See Also
     --------
-    drdid_imp_local_rc : Locally efficient version of the DR-DiD estimator for repeated cross-section data.
+    drdid_imp_local_rc : Improved and locally efficient DR-DiD estimator for repeated cross-section data.
 
     References
     ----------

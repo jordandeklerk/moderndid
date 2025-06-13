@@ -91,8 +91,7 @@ def drdid_imp_panel(
 
     See Also
     --------
-    drdid_imp_rc1 : Improved doubly robust DiD estimator for repeated cross-section data.
-    drdid_imp_rc2 : Locally efficient version of the DR-DiD estimator for repeated cross-section data.
+    drdid_panel : Locally efficient doubly robust DiD estimator for the ATT with panel data.
 
     References
     ----------

@@ -85,7 +85,7 @@ def drdid_panel(
 
     See Also
     --------
-    drdid_imp_panel : Improved doubly robust DiD estimator for panel data with IPT propensity scores.
+    drdid_imp_panel : Improved and locally efficient doubly robust DiD estimator for panel data.
 
     References
     ----------
