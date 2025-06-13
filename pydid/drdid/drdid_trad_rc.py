@@ -78,6 +78,12 @@ def drdid_trad_rc(
         A NamedTuple containing the ATT estimate, standard error, confidence interval,
         bootstrap draws, and influence function.
 
+    See Also
+    --------
+    drdid_imp_local_rc : Improved and locally efficient DR-DiD estimator for repeated cross-section data.
+    drdid_imp_rc : Improved, but not locally efficient, DR-DiD estimator for repeated cross-section data.
+    drdid_rc : Locally efficient DR-DiD estimator for repeated cross-section data.
+
     References
     ----------
     .. [2] Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
