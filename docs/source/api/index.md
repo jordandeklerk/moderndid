@@ -11,6 +11,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.drdid_imp_local_rc
    pydid.drdid_imp_rc
    pydid.drdid_rc
+   pydid.drdid_trad_rc
    pydid.drdid_imp_panel
    pydid.drdid_panel
 ```
