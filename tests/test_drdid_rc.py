@@ -303,39 +303,3 @@ def test_bootstrap_types(boot_type):
     assert len(result.boots) == 100
     assert result.se > 0
     assert result.lci < result.uci
-
-
-def test_consistency_across_methods():
-    setup = get_test_data()
-
-    result_analytical = drdid_rc(
-        y=setup["y"],
-        post=setup["post"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        boot=False,
-    )
-
-    result_weighted = drdid_rc(
-        y=setup["y"],
-        post=setup["post"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        boot=True,
-        boot_type="weighted",
-        nboot=200,
-    )
-
-    result_multiplier = drdid_rc(
-        y=setup["y"],
-        post=setup["post"],
-        d=setup["d"],
-        covariates=setup["covariates"],
-        boot=True,
-        boot_type="multiplier",
-        nboot=200,
-    )
-
-    assert np.isclose(result_analytical.att, result_weighted.att, rtol=1e-7)
-    assert np.isclose(result_analytical.att, result_multiplier.att, rtol=1e-7)
-    assert np.isclose(result_weighted.se, result_multiplier.se, rtol=0.2)

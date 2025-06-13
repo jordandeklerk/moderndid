@@ -1,5 +1,6 @@
 """Doubly robust DiD estimators."""
 
+# Bootstrapping functions
 from .boot.boot_ipw_rc import wboot_ipw_rc
 from .boot.boot_mult import mboot_did, mboot_twfep_did
 from .boot.boot_panel import (
@@ -15,11 +16,16 @@ from .boot.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
 from .boot.boot_reg_rc import wboot_reg_rc
 from .boot.boot_std_ipw_rc import wboot_std_ipw_rc
 from .boot.boot_twfe_rc import wboot_twfe_rc
+
+# DR-DiD estimators
 from .drdid_imp_local_rc import drdid_imp_local_rc
 from .drdid_imp_panel import drdid_imp_panel
 from .drdid_imp_rc import drdid_imp_rc
 from .drdid_panel import drdid_panel
 from .drdid_rc import drdid_rc
+from .drdid_trad_rc import drdid_trad_rc
+
+# Propensity score estimators
 from .propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from .propensity.ipw_estimators import ipw_did_rc
 from .propensity.pscore_ipt import calculate_pscore_ipt
@@ -31,6 +37,7 @@ __all__ = [
     "drdid_imp_rc",
     "drdid_rc",
     "drdid_imp_local_rc",
+    "drdid_trad_rc",
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",

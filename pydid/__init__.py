@@ -1,6 +1,7 @@
 # pylint: disable=wildcard-import
 """DiD and doubly robust DiD estimators."""
 
+# Bootstrapping functions
 from pydid.drdid.boot.boot_ipw_rc import wboot_ipw_rc
 from pydid.drdid.boot.boot_mult import mboot_did, mboot_twfep_did
 from pydid.drdid.boot.boot_panel import (
@@ -16,11 +17,16 @@ from pydid.drdid.boot.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc
 from pydid.drdid.boot.boot_reg_rc import wboot_reg_rc
 from pydid.drdid.boot.boot_std_ipw_rc import wboot_std_ipw_rc
 from pydid.drdid.boot.boot_twfe_rc import wboot_twfe_rc
+
+# DR-DiD estimators
 from pydid.drdid.drdid_imp_local_rc import drdid_imp_local_rc
 from pydid.drdid.drdid_imp_panel import drdid_imp_panel
 from pydid.drdid.drdid_imp_rc import drdid_imp_rc
 from pydid.drdid.drdid_panel import drdid_panel
 from pydid.drdid.drdid_rc import drdid_rc
+from pydid.drdid.drdid_trad_rc import drdid_trad_rc
+
+# Propensity score estimators
 from pydid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from pydid.drdid.propensity.ipw_estimators import ipw_did_rc
 from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
@@ -53,6 +59,7 @@ __all__ = [
     "drdid_imp_local_rc",
     "drdid_panel",
     "drdid_rc",
+    "drdid_trad_rc",
     # Core propensity score estimators
     "aipw_did_panel",
     "aipw_did_rc_imp1",
