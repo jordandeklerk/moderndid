@@ -34,6 +34,7 @@ from pydid.drdid.ipw_did_rc import ipw_did_rc
 from pydid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from pydid.drdid.propensity.ipw_estimators import ipw_rc
 from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
+from pydid.drdid.std_ipw_did_rc import std_ipw_did_rc
 
 # Regression functions
 from pydid.drdid.wols import wols_panel, wols_rc
@@ -71,6 +72,7 @@ __all__ = [
     # IPW DiD estimators
     "ipw_did_panel",
     "ipw_did_rc",
+    "std_ipw_did_rc",
     # Core propensity score estimators
     "aipw_did_panel",
     "aipw_did_rc_imp1",
