@@ -15,23 +15,6 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps=None):
     this estimator combines inverse propensity weighting with outcome regression approaches
     to achieve double robustness.
 
-    The AIPW estimator for panel data (equation 3.1 in [1]_) is given by
-
-    .. math::
-
-        \widehat{\tau}^{dr,p} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{p}(D)-\widehat{w}_{0}^{p}(D, X ;
-        \widehat{\gamma})\right)
-        \left(\Delta Y-\mu_{0, \Delta}^{p}\left(X ; \widehat{\beta}_{0,0}^{p},
-        \widehat{\beta}_{0,1}^{p}\right)\right)\right],
-
-    where
-
-    .. math::
-
-        \widehat{w}_{1}^{p}(D)=\frac{D}{\mathbb{E}_{n}[D]} \quad \text{and} \quad
-        \widehat{w}_{0}^{p}(D, X ; \gamma)=\frac{\pi(X ; \gamma)(1-D)}{1-\pi(X ; \gamma)} \bigg/
-        \mathbb{E}_{n}\left[\frac{\pi(X ; \gamma)(1-D)}{1-\pi(X ; \gamma)}\right].
-
     Parameters
     ----------
     delta_y : ndarray
@@ -134,28 +117,6 @@ def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights, trim_ps=None):
     this improved estimator provides a doubly robust approach that combines inverse propensity
     weighting with outcome regression. It only requires modeling the outcomes for control units and
     does not model outcomes for the treated group.
-
-    The simplified AIPW estimator for repeated cross-sections (equation 3.3 in [1]_)
-    is given by
-
-    .. math::
-
-        \widehat{\tau}_{1}^{dr,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D, T) -
-        \widehat{w}_{0}^{rc}(D, T, X ; \widehat{\gamma})\right)
-        \left(Y - \mu_{0, Y}^{rc}\left(T, X ; \widehat{\beta}_{0,0}^{rc},
-        \widehat{\beta}_{0,1}^{rc}\right)\right)\right],
-
-    where
-
-    .. math::
-
-        \mu_{0,Y}^{rc}(T, \cdot; \beta_{0,0}^{rc}, \beta_{0,1}^{rc}) = T \cdot \mu_{0,1}^{rc}(\cdot; \beta_{0,1}^{rc}) +
-        (1-T) \cdot \mu_{0,0}^{rc}(\cdot; \beta_{0,0}^{rc})
-
-    is an estimator for the pseudo-true :math:`\beta_{d, t}^{*, rc}` for :math:`d, t = 0, 1`, and the
-    weights :math:`\widehat{w}_{0}^{rc}(D, T)` and :math:`\widehat{w}_{1}^{rc}(D, T, X ; \widehat{\gamma})`
-    are the sample analogs of :math:`w_{0}^{rc}(D, T)` and :math:`w_{1}^{rc}(D, T, X ; g)` defined in equation
-    2.10 in [1]_.
 
     Parameters
     ----------
@@ -269,25 +230,6 @@ def aipw_did_rc_imp2(
     For repeated cross-section settings (where different units are observed in pre and post periods),
     this estimator achieves local efficiency by incorporating all four outcome regression predictions
     (for treated and control units in both time periods).
-
-    The locally efficient AIPW estimator for repeated cross-sections (equation 3.4 in [1]_)
-    is given by
-
-    .. math::
-
-        \widehat{\tau}_{2}^{dr,rc} = \widehat{\tau}_{1}^{dr,rc} +
-        \left(\mathbb{E}_{n}\left[\left(\frac{D}{\mathbb{E}_{n}[D]} - \widehat{w}_{1,1}^{rc}(D, T)\right)
-        \left(\mu_{1,1}^{rc}\left(X ; \widehat{\beta}_{1,1}^{rc}\right) -
-        \mu_{0,1}^{rc}\left(X ; \widehat{\beta}_{0,1}^{rc}\right)\right)\right]\right) - \\
-        \left(\mathbb{E}_{n}\left[\left(\frac{D}{\mathbb{E}_{n}[D]} - \widehat{w}_{1,0}^{rc}(D, T)\right)
-        \left(\mu_{1,0}^{rc}\left(X ; \widehat{\beta}_{1,0}^{rc}\right) -
-        \mu_{0,0}^{rc}\left(X ; \widehat{\beta}_{0,0}^{rc}\right)\right)\right]\right),
-
-    where :math:`\mu_{d, \Delta}^{rc}(\cdot; \beta_{d, 1}^{rc}, \beta_{d, 0}^{rc})` =
-    :math:`\mu_{d, 1}^{rc}(\cdot; \beta_{d, 1}^{rc}) - \mu_{d, 0}^{rc}(\cdot; \beta_{d, 0}^{rc})` and the
-    weights :math:`\widehat{w}_{1, t}^{rc}(D, T)` and :math:`\widehat{w}_{0, t}^{rc}(D, T, X ; \widehat{\gamma})` are
-    defined as the sample analogs of :math:`w_{1, t}^{rc}(D, T)` and :math:`w_{0, t}^{rc}(D, T, X ; \gamma)` defined in
-    equation 2.10 in [1]_.
 
     Parameters
     ----------
