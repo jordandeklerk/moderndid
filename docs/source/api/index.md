@@ -28,6 +28,15 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.std_ipw_did_panel
 ```
 
+## Outcome Regression DiD Estimators
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
+   pydid.reg_did_rc
+```
+
 ## Propensity Estimators
 
 ### IPT Propensity Estimator
