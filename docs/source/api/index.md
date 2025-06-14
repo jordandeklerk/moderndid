@@ -34,6 +34,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 .. autosummary::
    :toctree: generated/
 
+   pydid.reg_did_panel
    pydid.reg_did_rc
 ```
 
