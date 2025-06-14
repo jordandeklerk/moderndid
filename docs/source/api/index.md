@@ -39,6 +39,8 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.ordid
    pydid.reg_did_panel
    pydid.reg_did_rc
+   pydid.twfe_did_panel
+   pydid.twfe_did_rc
 ```
 
 ## Propensity Estimators
