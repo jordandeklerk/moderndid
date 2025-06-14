@@ -82,36 +82,26 @@ def twfe_did_rc(
 
     .. [1] Sant'Anna, P. H. C. and Zhao, J. (2020), "Doubly Robust Difference-in-Differences Estimators."
            Journal of Econometrics, Vol. 219 (1), pp. 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
-
-    Notes
-    -----
-    The TWFE estimator is implemented by running a regression with treatment-period interaction.
-    The model specification is: y ~ d:post + post + d + covariates
     """
-    # Convert inputs to arrays and flatten
     d = np.asarray(d).flatten()
     post = np.asarray(post).flatten()
     y = np.asarray(y).flatten()
     n = len(d)
 
-    # Handle weights
     if i_weights is None:
         i_weights = np.ones(n)
     else:
         i_weights = np.asarray(i_weights).flatten()
         if np.any(i_weights < 0):
             raise ValueError("i_weights must be non-negative.")
-    # Normalize weights
     i_weights = i_weights / np.mean(i_weights)
 
-    # Handle covariates
     x = None
     if covariates is not None:
         covariates = np.asarray(covariates)
         if covariates.ndim == 1:
             covariates = covariates.reshape(-1, 1)
 
-        # Remove intercept if included
         if covariates.shape[1] > 0 and np.all(covariates[:, 0] == 1):
             covariates = covariates[:, 1:]
             if covariates.shape[1] == 0:
@@ -121,38 +111,26 @@ def twfe_did_rc(
     if covariates is not None:
         x = covariates
 
-    # Create design matrix
-    # The regression model is: y ~ d:post + post + d + x
-    # Following R's formula expansion, this means:
-    # - intercept (implicit)
-    # - post (main effect)
-    # - d (main effect)
-    # - d:post (interaction)
-    # - x (covariates if any)
-
     if x is not None:
-        # With covariates: intercept, post, d, d:post, x
         design_matrix = np.column_stack(
             [
-                np.ones(n),  # intercept
-                post,  # post
-                d,  # d
-                d * post,  # d:post interaction
-                x,  # covariates
+                np.ones(n),
+                post,
+                d,
+                d * post,
+                x,
             ]
         )
     else:
-        # Without covariates: intercept, post, d, d:post
         design_matrix = np.column_stack(
             [
-                np.ones(n),  # intercept
-                post,  # post
-                d,  # d
-                d * post,  # d:post interaction
+                np.ones(n),
+                post,
+                d,
+                d * post,
             ]
         )
 
-    # Estimate TWFE regression
     try:
         wls_model = sm.WLS(y, design_matrix, weights=i_weights)
         wls_results = wls_model.fit()
@@ -163,7 +141,6 @@ def twfe_did_rc(
         # Elements for influence functions
         x_prime_x = design_matrix.T @ (i_weights[:, np.newaxis] * design_matrix) / n
 
-        # Check if XpX is invertible
         if np.linalg.cond(x_prime_x) > 1e15:
             raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
 
@@ -183,11 +160,8 @@ def twfe_did_rc(
     except (np.linalg.LinAlgError, ValueError) as e:
         raise ValueError(f"Failed to fit TWFE regression model: {e}") from e
 
-    # Compute standard errors and confidence intervals
     if not boot:
-        # Analytical standard error
         se = np.std(att_inf_func) / np.sqrt(n)
-        # 95% confidence interval
         uci = att + 1.96 * se
         lci = att - 1.96 * se
         boots = None
@@ -196,17 +170,12 @@ def twfe_did_rc(
             nboot = 999
 
         if boot_type == "multiplier":
-            # Multiplier bootstrap
             boots = mboot_did(att_inf_func, nboot)
-            # Get bootstrap std errors based on IQR
             se = stats.iqr(boots) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
-            # Get symmetric critical values
             critical_value = np.quantile(np.abs(boots / se), 0.95)
-            # Confidence intervals
             uci = att + critical_value * se
             lci = att - critical_value * se
         else:  # "weighted"
-            # Weighted bootstrap
             boots = wboot_twfe_rc(
                 y=y,
                 post=post,
@@ -215,15 +184,11 @@ def twfe_did_rc(
                 i_weights=i_weights,
                 n_bootstrap=nboot,
             )
-            # Get bootstrap std errors based on IQR
             se = stats.iqr(boots - att) / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
-            # Get symmetric critical values
             critical_value = np.quantile(np.abs((boots - att) / se), 0.95)
-            # Confidence intervals
             uci = att + critical_value * se
             lci = att - critical_value * se
 
-    # Return influence function only if requested
     if not influence_func:
         att_inf_func = None
 
