@@ -22,7 +22,8 @@ def nsw_data():
         return pickle.load(f)
 
 
-def test_drdid_panel_imp_basic(nsw_data):
+@pytest.mark.parametrize("est_method", ["imp", "trad"])
+def test_drdid_panel_basic(nsw_data, est_method):
     result = drdid(
         data=nsw_data,
         y_col="re",
@@ -30,7 +31,7 @@ def test_drdid_panel_imp_basic(nsw_data):
         treat_col="experimental",
         id_col="id",
         panel=True,
-        est_method="imp",
+        est_method=est_method,
     )
 
     assert isinstance(result.att, float)
@@ -40,26 +41,9 @@ def test_drdid_panel_imp_basic(nsw_data):
     assert result.boots is None
     assert result.att_inf_func is None
     assert result.call_params["panel"] is True
-    assert result.call_params["est_method"] == "imp"
+    assert result.call_params["est_method"] == est_method
     assert result.args["type"] == "dr"
-    assert result.args["estMethod"] == "imp"
-
-
-def test_drdid_panel_trad_basic(nsw_data):
-    result = drdid(
-        data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        panel=True,
-        est_method="trad",
-    )
-
-    assert isinstance(result.att, float)
-    assert isinstance(result.se, float)
-    assert result.se > 0
-    assert result.args["estMethod"] == "trad"
+    assert result.args["estMethod"] == est_method
 
 
 def test_drdid_panel_with_covariates(nsw_data):
@@ -121,51 +105,40 @@ def test_drdid_panel_with_influence_func(nsw_data):
     assert np.isclose(np.mean(result.att_inf_func), 0, atol=1e-10)
 
 
-def test_drdid_panel_bootstrap_weighted(nsw_data):
+@pytest.mark.parametrize(
+    "boot_type,est_method",
+    [
+        ("weighted", "imp"),
+        ("multiplier", "trad"),
+    ],
+)
+def test_drdid_panel_bootstrap(nsw_data, boot_type, est_method):
     result = drdid(
         data=nsw_data,
         y_col="re",
         time_col="year",
         treat_col="experimental",
         id_col="id",
-        covariates_formula="~ age + educ + black",
+        covariates_formula="~ age + educ",
         panel=True,
         boot=True,
-        boot_type="weighted",
+        boot_type=boot_type,
         n_boot=50,
-        est_method="imp",
+        inf_func=(boot_type == "multiplier"),  # Need influence function for multiplier
+        est_method=est_method,
     )
 
     assert result.boots is not None
     assert len(result.boots) == 50
     assert not np.all(np.isnan(result.boots))
     assert result.args["boot"] is True
-    assert result.args["boot_type"] == "weighted"
+    assert result.args["boot_type"] == boot_type
+    if boot_type == "multiplier":
+        assert result.att_inf_func is not None
 
 
-def test_drdid_panel_bootstrap_multiplier(nsw_data):
-    result = drdid(
-        data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
-        panel=True,
-        boot=True,
-        boot_type="multiplier",
-        n_boot=50,
-        inf_func=True,
-        est_method="trad",
-    )
-
-    assert result.boots is not None
-    assert len(result.boots) == 50
-    assert result.att_inf_func is not None
-    assert result.args["boot_type"] == "multiplier"
-
-
-def test_drdid_repeated_cross_section_imp(nsw_data):
+@pytest.mark.parametrize("est_method", ["imp", "trad", "imp_local", "trad_local"])
+def test_drdid_repeated_cross_section(nsw_data, est_method):
     result = drdid(
         data=nsw_data,
         y_col="re",
@@ -173,61 +146,13 @@ def test_drdid_repeated_cross_section_imp(nsw_data):
         treat_col="experimental",
         panel=False,
         covariates_formula="~ age + educ + black",
-        est_method="imp",
+        est_method=est_method,
     )
 
     assert isinstance(result.att, float)
     assert result.se > 0
     assert result.args["panel"] is False
-    assert result.args["estMethod"] == "imp"
-
-
-def test_drdid_repeated_cross_section_trad(nsw_data):
-    result = drdid(
-        data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        panel=False,
-        covariates_formula="~ age + educ + black",
-        est_method="trad",
-    )
-
-    assert isinstance(result.att, float)
-    assert result.se > 0
-    assert result.args["estMethod"] == "trad"
-
-
-def test_drdid_repeated_cross_section_imp_local(nsw_data):
-    result = drdid(
-        data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        panel=False,
-        covariates_formula="~ age + educ",
-        est_method="imp_local",
-    )
-
-    assert isinstance(result.att, float)
-    assert result.se > 0
-    assert result.args["estMethod"] == "imp_local"
-
-
-def test_drdid_repeated_cross_section_trad_local(nsw_data):
-    result = drdid(
-        data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        panel=False,
-        covariates_formula="~ age + educ",
-        est_method="trad_local",
-    )
-
-    assert isinstance(result.att, float)
-    assert result.se > 0
-    assert result.args["estMethod"] == "trad_local"
+    assert result.args["estMethod"] == est_method
 
 
 def test_drdid_rc_with_bootstrap(nsw_data):
@@ -247,36 +172,25 @@ def test_drdid_rc_with_bootstrap(nsw_data):
     assert len(result.boots) == 50
 
 
-def test_drdid_trim_level(nsw_data):
-    result1 = drdid(
+@pytest.mark.parametrize("trim_level", [0.99, 0.995])
+def test_drdid_trim_level(nsw_data, trim_level):
+    result = drdid(
         data=nsw_data,
         y_col="re",
         time_col="year",
         treat_col="experimental",
         id_col="id",
         panel=True,
-        trim_level=0.99,
+        trim_level=trim_level,
         est_method="imp",
     )
 
-    result2 = drdid(
-        data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        panel=True,
-        trim_level=0.995,
-        est_method="imp",
-    )
-
-    assert isinstance(result1.att, float)
-    assert isinstance(result2.att, float)
-    assert result1.args["trim_level"] == 0.99
-    assert result2.args["trim_level"] == 0.995
+    assert isinstance(result.att, float)
+    assert result.args["trim_level"] == trim_level
 
 
-def test_drdid_invalid_est_method_for_panel():
+@pytest.mark.parametrize("est_method", ["imp_local", "trad_local"])
+def test_drdid_invalid_est_method_for_panel(est_method):
     df = pd.DataFrame(
         {
             "id": np.repeat(range(50), 2),
@@ -286,7 +200,7 @@ def test_drdid_invalid_est_method_for_panel():
         }
     )
 
-    with pytest.raises(ValueError, match="est_method 'imp_local' is only available for repeated cross-sections"):
+    with pytest.raises(ValueError, match=f"est_method '{est_method}' is only available for repeated cross-sections"):
         drdid(
             data=df,
             y_col="y",
@@ -294,18 +208,7 @@ def test_drdid_invalid_est_method_for_panel():
             treat_col="treat",
             id_col="id",
             panel=True,
-            est_method="imp_local",
-        )
-
-    with pytest.raises(ValueError, match="est_method 'trad_local' is only available for repeated cross-sections"):
-        drdid(
-            data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
-            id_col="id",
-            panel=True,
-            est_method="trad_local",
+            est_method=est_method,
         )
 
 
@@ -328,32 +231,23 @@ def test_drdid_missing_id_col_panel():
         )
 
 
-def test_drdid_interaction_terms(nsw_data):
+@pytest.mark.parametrize(
+    "formula",
+    [
+        "~ age + educ + age:educ",  # Interaction terms
+        "~ age + I(age**2) + educ",  # Polynomial terms
+    ],
+)
+def test_drdid_formula_variations(nsw_data, formula):
     result = drdid(
         data=nsw_data,
         y_col="re",
         time_col="year",
         treat_col="experimental",
         id_col="id",
-        covariates_formula="~ age + educ + age:educ",
+        covariates_formula=formula,
         panel=True,
         est_method="imp",
-    )
-
-    assert isinstance(result.att, float)
-    assert result.se > 0
-
-
-def test_drdid_polynomial_terms(nsw_data):
-    result = drdid(
-        data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + I(age**2) + educ",
-        panel=True,
-        est_method="trad",
     )
 
     assert isinstance(result.att, float)
@@ -466,7 +360,24 @@ def test_drdid_subset_columns(nsw_data):
     assert result.se > 0
 
 
-def test_drdid_no_covariates_formula(nsw_data):
+@pytest.mark.parametrize("covariates_formula", [None, "~ 1"])
+def test_drdid_no_covariates(nsw_data, covariates_formula):
+    result = drdid(
+        data=nsw_data,
+        y_col="re",
+        time_col="year",
+        treat_col="experimental",
+        id_col="id",
+        covariates_formula=covariates_formula,
+        panel=True,
+        est_method="imp",
+    )
+
+    assert isinstance(result.att, float)
+    assert result.se > 0
+
+
+def test_drdid_no_covariates_equivalence(nsw_data):
     result1 = drdid(
         data=nsw_data,
         y_col="re",
@@ -489,8 +400,6 @@ def test_drdid_no_covariates_formula(nsw_data):
         est_method="imp",
     )
 
-    assert isinstance(result1.att, float)
-    assert isinstance(result2.att, float)
     assert np.isclose(result1.att, result2.att, rtol=1e-10)
     assert np.isclose(result1.se, result2.se, rtol=1e-10)
 
@@ -581,50 +490,42 @@ def test_drdid_more_than_two_periods_error():
         )
 
 
-def test_drdid_all_estimators_consistency(nsw_data):
+@pytest.mark.parametrize(
+    "panel,method",
+    [
+        (True, "imp"),
+        (True, "trad"),
+        (False, "imp"),
+        (False, "trad"),
+        (False, "imp_local"),
+        (False, "trad_local"),
+    ],
+)
+def test_drdid_all_estimators_consistency(nsw_data, panel, method):
+    # Skip invalid combinations
+    if panel and method in ["imp_local", "trad_local"]:
+        pytest.skip("Methods imp_local and trad_local are only for repeated cross-sections")
+
     treated_ids = nsw_data[nsw_data["experimental"] == 1]["id"].unique()[:50]
     control_ids = nsw_data[nsw_data["experimental"] == 0]["id"].unique()[:50]
     selected_ids = np.concatenate([treated_ids, control_ids])
     small_data = nsw_data[nsw_data["id"].isin(selected_ids)].copy()
 
-    panel_methods = ["imp", "trad"]
-    panel_results = {}
+    result = drdid(
+        data=small_data,
+        y_col="re",
+        time_col="year",
+        treat_col="experimental",
+        id_col="id" if panel else None,
+        covariates_formula="~ age + educ",
+        panel=panel,
+        est_method=method,
+    )
 
-    for method in panel_methods:
-        result = drdid(
-            data=small_data,
-            y_col="re",
-            time_col="year",
-            treat_col="experimental",
-            id_col="id",
-            covariates_formula="~ age + educ",
-            panel=True,
-            est_method=method,
-        )
-        panel_results[method] = result
-        assert isinstance(result.att, float)
-        assert result.se > 0
-
-    rc_methods = ["imp", "trad", "imp_local", "trad_local"]
-    rc_results = {}
-
-    for method in rc_methods:
-        result = drdid(
-            data=small_data,
-            y_col="re",
-            time_col="year",
-            treat_col="experimental",
-            panel=False,
-            covariates_formula="~ age + educ",
-            est_method=method,
-        )
-        rc_results[method] = result
-        assert isinstance(result.att, float)
-        assert result.se > 0
-
-    all_atts = [r.att for r in panel_results.values()] + [r.att for r in rc_results.values()]
-    assert all(np.isfinite(att) for att in all_atts)
-    assert all(-10000 < att < 10000 for att in all_atts)
+    assert isinstance(result.att, float)
+    assert result.se > 0
+    assert np.isfinite(result.att)
+    assert -10000 < result.att < 10000
 
 
 def test_drdid_comparison_with_ordid(nsw_data):
@@ -649,4 +550,5 @@ def test_drdid_comparison_with_ordid(nsw_data):
         est_method="trad",
     )
 
+    # Results should be somewhat different but in the same ballpark
     assert abs(or_result.att - dr_result.att) < abs(or_result.att) * 2

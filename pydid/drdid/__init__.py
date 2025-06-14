@@ -34,6 +34,7 @@ from .estimators.reg_did_rc import reg_did_rc
 from .estimators.std_ipw_did_panel import std_ipw_did_panel
 from .estimators.std_ipw_did_rc import std_ipw_did_rc
 from .estimators.wols import wols_panel, wols_rc
+from .ipwdid import ipwdid
 
 # Outcome regression estimators
 from .ordid import ordid
@@ -53,6 +54,7 @@ __all__ = [
     "drdid_rc",
     "drdid_trad_rc",
     # IPW DiD estimators
+    "ipwdid",
     "ipw_did_panel",
     "ipw_did_rc",
     "std_ipw_did_panel",
