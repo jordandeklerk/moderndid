@@ -1,4 +1,4 @@
-"""Standardized inverse propensity weighted DiD estimator for panel data."""
+"""Inverse propensity weighted DiD estimator for panel data."""
 
 import warnings
 from typing import NamedTuple
@@ -7,12 +7,12 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
-from .boot.boot_mult import mboot_did
-from .boot.boot_panel import wboot_std_ipw_panel
+from ..boot.boot_mult import mboot_did
+from ..boot.boot_panel import wboot_ipw_panel
 
 
-class StdIPWDIDPanelResult(NamedTuple):
-    """Result from the standardized IPW DiD Panel estimator."""
+class IPWDIDPanelResult(NamedTuple):
+    """Result from the IPW DiD Panel estimator."""
 
     att: float
     se: float
@@ -23,7 +23,7 @@ class StdIPWDIDPanelResult(NamedTuple):
     args: dict
 
 
-def std_ipw_did_panel(
+def ipw_did_panel(
     y1,
     y0,
     d,
@@ -35,12 +35,12 @@ def std_ipw_did_panel(
     influence_func=False,
     trim_level=0.995,
 ):
-    r"""Compute the standardized inverse propensity weighted DiD estimator for the ATT with panel data.
+    r"""Compute the inverse propensity weighted DiD estimator for the ATT with panel data.
 
-    This function implements the standardized inverse propensity weighted (IPW) estimator for the average
-    treatment effect on the treated (ATT) in difference-in-differences setups with panel data. IPW weights
-    are normalized to sum up to one, that is, the estimator is of the Hajek type. This is a standardized
-    version of Abadie (2005) [1]_ IPW DiD estimator.
+    This function implements the inverse propensity weighted (IPW) estimator for the average treatment
+    effect on the treated (ATT) in difference-in-differences setups with panel data as proposed by
+    Abadie (2005) [1]_. IPW weights are not normalized to sum up to one, that is, the estimator
+    is of the Horwitz-Thompson type.
 
     Parameters
     ----------
@@ -69,14 +69,14 @@ def std_ipw_did_panel(
 
     Returns
     -------
-    StdIPWDIDPanelResult
+    IPWDIDPanelResult
         A NamedTuple containing the ATT estimate, standard error, confidence interval,
         bootstrap draws, and influence function.
 
     See Also
     --------
-    ipw_did_panel : Non-standardized version of Abadie's IPW DiD estimator for panel data.
-    std_ipw_did_rc : Standardized IPW DiD estimator for repeated cross-section data.
+    ipw_did_rc : IPW DiD estimator for repeated cross-section data.
+    std_ipw_did_panel : Standardized version of Abadie's IPW DiD estimator for panel data.
 
     References
     ----------
@@ -89,8 +89,9 @@ def std_ipw_did_panel(
 
     Notes
     -----
-    The standardized IPW estimator normalizes weights within each group, making it a Hajek-type estimator.
-    This can provide more stable estimates when there is substantial variation in weights across groups.
+    The IPW estimator is less robust than doubly robust methods as it relies solely on correct
+    specification of the propensity score model. We recommend using doubly robust methods when
+    there is uncertainty about model specification.
     """
     d = np.asarray(d).flatten()
     n_units = len(d)
@@ -142,36 +143,24 @@ def std_ipw_did_panel(
     trim_ps = ps_fit < 1.01  # This effectively creates all True for treated units
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Compute standardized IPW estimator
+    # Compute IPW estimator
     # First, the weights
     w_treat = trim_ps * i_weights * d
     w_cont = trim_ps * i_weights * ps_fit * (1 - d) / (1 - ps_fit)
 
-    # Compute the means of weights for normalization
-    mean_w_treat = np.mean(w_treat)
-    mean_w_cont = np.mean(w_cont)
+    att_treat = w_treat * delta_y
+    att_cont = w_cont * delta_y
 
-    if mean_w_treat == 0:
+    mean_trim_weight_d = np.mean(trim_level * i_weights * d)
+
+    if mean_trim_weight_d == 0:
         warnings.warn("No effectively treated units after trimming.", UserWarning)
-        return StdIPWDIDPanelResult(
-            att=np.nan, se=np.nan, uci=np.nan, lci=np.nan, boots=None, att_inf_func=None, args={}
-        )
+        return IPWDIDPanelResult(att=np.nan, se=np.nan, uci=np.nan, lci=np.nan, boots=None, att_inf_func=None, args={})
 
-    if mean_w_cont == 0:
-        warnings.warn("No effectively control units after trimming.", UserWarning)
-        return StdIPWDIDPanelResult(
-            att=np.nan, se=np.nan, uci=np.nan, lci=np.nan, boots=None, att_inf_func=None, args={}
-        )
+    eta_treat = np.mean(att_treat) / mean_trim_weight_d
+    eta_cont = np.mean(att_cont) / mean_trim_weight_d
 
-    # Normalized weights
-    eta_treat = w_treat * delta_y / mean_w_treat
-    eta_cont = w_cont * delta_y / mean_w_cont
-
-    # Estimator of each component
-    att_treat = np.mean(eta_treat)
-    att_cont = np.mean(eta_cont)
-
-    ipw_att = att_treat - att_cont
+    ipw_att = eta_treat - eta_cont
 
     # Get the influence function to compute standard error
     # Asymptotic linear representation of logit's beta's
@@ -185,22 +174,19 @@ def std_ipw_did_panel(
 
     asy_lin_rep_ps = score_ps @ hessian_ps
 
-    # Now, get the influence function of treated component
-    # Leading term of the influence function: no estimation effect
-    inf_treat = eta_treat - w_treat * att_treat / mean_w_treat
-
     # Now, get the influence function of control component
     # Leading term of the influence function: no estimation effect
-    inf_cont = eta_cont - w_cont * att_cont / mean_w_cont
+    att_lin1 = att_treat - att_cont
 
     # Derivative matrix (k x 1 vector)
-    mom_logit = np.mean((w_cont * (delta_y - att_cont))[:, np.newaxis] * covariates, axis=0) / mean_w_cont
+    mom_logit = np.mean(att_cont[:, np.newaxis] * covariates, axis=0)
 
     # Now the influence function related to estimation effect of pscores
-    inf_cont_ps = asy_lin_rep_ps @ mom_logit
+    att_lin2 = asy_lin_rep_ps @ mom_logit
 
     # Get the influence function of the DR estimator (put all pieces together)
-    att_inf_func = inf_treat - (inf_cont + inf_cont_ps)
+    mean_weight_d = np.mean(i_weights * d)
+    att_inf_func = (att_lin1 - att_lin2 - i_weights * d * ipw_att) / mean_weight_d
 
     # Inference
     if not boot:
@@ -220,7 +206,7 @@ def std_ipw_did_panel(
             uci = ipw_att + cv * se_att
             lci = ipw_att - cv * se_att
         else:  # "weighted"
-            ipw_boot = wboot_std_ipw_panel(
+            ipw_boot = wboot_ipw_panel(
                 delta_y=delta_y, d=d, x=covariates, i_weights=i_weights, n_bootstrap=nboot, trim_level=trim_level
             )
             se_att = stats.iqr(ipw_boot - ipw_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
@@ -235,7 +221,7 @@ def std_ipw_did_panel(
 
     args = {
         "panel": True,
-        "normalized": True,
+        "normalized": False,
         "boot": boot,
         "boot_type": boot_type_str,
         "nboot": nboot,
@@ -243,7 +229,7 @@ def std_ipw_did_panel(
         "trim_level": trim_level,
     }
 
-    return StdIPWDIDPanelResult(
+    return IPWDIDPanelResult(
         att=ipw_att,
         se=se_att,
         uci=uci,

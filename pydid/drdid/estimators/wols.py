@@ -6,7 +6,7 @@ from typing import NamedTuple
 import numpy as np
 import statsmodels.api as sm
 
-from .utils import (
+from ..utils import (
     _check_coefficients_validity,
     _check_extreme_weights,
     _check_wls_condition_number,

@@ -19,16 +19,23 @@ from pydid.drdid.boot.boot_std_ipw_rc import wboot_std_ipw_rc
 from pydid.drdid.boot.boot_twfe_rc import wboot_twfe_rc
 
 # DR-DiD estimators
-from pydid.drdid.drdid_imp_local_rc import drdid_imp_local_rc
-from pydid.drdid.drdid_imp_panel import drdid_imp_panel
-from pydid.drdid.drdid_imp_rc import drdid_imp_rc
-from pydid.drdid.drdid_panel import drdid_panel
-from pydid.drdid.drdid_rc import drdid_rc
-from pydid.drdid.drdid_trad_rc import drdid_trad_rc
+from pydid.drdid.estimators.drdid_imp_local_rc import drdid_imp_local_rc
+from pydid.drdid.estimators.drdid_imp_panel import drdid_imp_panel
+from pydid.drdid.estimators.drdid_imp_rc import drdid_imp_rc
+from pydid.drdid.estimators.drdid_panel import drdid_panel
+from pydid.drdid.estimators.drdid_rc import drdid_rc
+from pydid.drdid.estimators.drdid_trad_rc import drdid_trad_rc
 
 # IPW DiD estimators
-from pydid.drdid.ipw_did_panel import ipw_did_panel
-from pydid.drdid.ipw_did_rc import ipw_did_rc
+from pydid.drdid.estimators.ipw_did_panel import ipw_did_panel
+from pydid.drdid.estimators.ipw_did_rc import ipw_did_rc
+from pydid.drdid.estimators.reg_did_panel import reg_did_panel
+from pydid.drdid.estimators.reg_did_rc import reg_did_rc
+from pydid.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
+from pydid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
+
+# Regression functions
+from pydid.drdid.estimators.wols import wols_panel, wols_rc
 
 # Outcome regression estimators
 from pydid.drdid.ordid import ordid
@@ -37,13 +44,6 @@ from pydid.drdid.ordid import ordid
 from pydid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from pydid.drdid.propensity.ipw_estimators import ipw_rc
 from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
-from pydid.drdid.reg_did_panel import reg_did_panel
-from pydid.drdid.reg_did_rc import reg_did_rc
-from pydid.drdid.std_ipw_did_panel import std_ipw_did_panel
-from pydid.drdid.std_ipw_did_rc import std_ipw_did_rc
-
-# Regression functions
-from pydid.drdid.wols import wols_panel, wols_rc
 
 # Panel data utilities
 from pydid.utils import (

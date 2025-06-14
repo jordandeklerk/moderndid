@@ -5,10 +5,10 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
+from ..estimators.wols import wols_panel
 from ..propensity.aipw_estimators import aipw_did_panel
 from ..propensity.pscore_ipt import calculate_pscore_ipt
 from ..utils import _validate_inputs
-from ..wols import wols_panel
 
 
 def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):

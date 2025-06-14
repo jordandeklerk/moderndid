@@ -18,16 +18,21 @@ from .boot.boot_std_ipw_rc import wboot_std_ipw_rc
 from .boot.boot_twfe_rc import wboot_twfe_rc
 
 # DR-DiD estimators
-from .drdid_imp_local_rc import drdid_imp_local_rc
-from .drdid_imp_panel import drdid_imp_panel
-from .drdid_imp_rc import drdid_imp_rc
-from .drdid_panel import drdid_panel
-from .drdid_rc import drdid_rc
-from .drdid_trad_rc import drdid_trad_rc
+from .estimators.drdid_imp_local_rc import drdid_imp_local_rc
+from .estimators.drdid_imp_panel import drdid_imp_panel
+from .estimators.drdid_imp_rc import drdid_imp_rc
+from .estimators.drdid_panel import drdid_panel
+from .estimators.drdid_rc import drdid_rc
+from .estimators.drdid_trad_rc import drdid_trad_rc
 
 # IPW DiD estimators
-from .ipw_did_panel import ipw_did_panel
-from .ipw_did_rc import ipw_did_rc
+from .estimators.ipw_did_panel import ipw_did_panel
+from .estimators.ipw_did_rc import ipw_did_rc
+from .estimators.reg_did_panel import reg_did_panel
+from .estimators.reg_did_rc import reg_did_rc
+from .estimators.std_ipw_did_panel import std_ipw_did_panel
+from .estimators.std_ipw_did_rc import std_ipw_did_rc
+from .estimators.wols import wols_panel, wols_rc
 
 # Outcome regression estimators
 from .ordid import ordid
@@ -36,11 +41,6 @@ from .ordid import ordid
 from .propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from .propensity.ipw_estimators import ipw_rc
 from .propensity.pscore_ipt import calculate_pscore_ipt
-from .reg_did_panel import reg_did_panel
-from .reg_did_rc import reg_did_rc
-from .std_ipw_did_panel import std_ipw_did_panel
-from .std_ipw_did_rc import std_ipw_did_rc
-from .wols import wols_panel, wols_rc
 
 __all__ = [
     # DR-DiD estimators
