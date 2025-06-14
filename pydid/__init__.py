@@ -30,12 +30,13 @@ from pydid.drdid.drdid_trad_rc import drdid_trad_rc
 from pydid.drdid.ipw_did_panel import ipw_did_panel
 from pydid.drdid.ipw_did_rc import ipw_did_rc
 
+# Outcome regression estimators
+from pydid.drdid.ordid import ordid
+
 # Propensity score estimators
 from pydid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from pydid.drdid.propensity.ipw_estimators import ipw_rc
 from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
-
-# Outcome regression estimators
 from pydid.drdid.reg_did_panel import reg_did_panel
 from pydid.drdid.reg_did_rc import reg_did_rc
 from pydid.drdid.std_ipw_did_panel import std_ipw_did_panel
@@ -80,6 +81,7 @@ __all__ = [
     "std_ipw_did_panel",
     "std_ipw_did_rc",
     # Outcome regression estimators
+    "ordid",
     "reg_did_panel",
     "reg_did_rc",
     # Core propensity score estimators

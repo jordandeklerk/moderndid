@@ -264,9 +264,10 @@ def preprocess_drdid(
             UserWarning,
         )
 
-    df_processed = df_processed.rename(columns={y_col: "y", treat_col: "D", time_col: "time", id_col: "id"})
+    rename_dict = {y_col: "y", treat_col: "D", time_col: "time"}
     if panel:
-        df_processed = df_processed.rename(columns={id_col: "id"})
+        rename_dict[id_col] = "id"
+    df_processed = df_processed.rename(columns=rename_dict)
 
     if normalized and "weights" in df_processed.columns:
         mean_weight = df_processed["weights"].mean()
