@@ -5,8 +5,8 @@ from typing import Any, Literal, NamedTuple
 import numpy as np
 import pandas as pd
 
-from .reg_did_panel import reg_did_panel
-from .reg_did_rc import reg_did_rc
+from .estimators.reg_did_panel import reg_did_panel
+from .estimators.reg_did_rc import reg_did_rc
 from .utils import preprocess_drdid
 
 

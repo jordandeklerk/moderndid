@@ -5,9 +5,9 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
+from ..estimators.wols import wols_rc
 from ..propensity.aipw_estimators import aipw_did_rc_imp1, aipw_did_rc_imp2
 from ..utils import _validate_inputs
-from ..wols import wols_rc
 
 
 def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
