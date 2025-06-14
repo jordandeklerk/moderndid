@@ -25,6 +25,7 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
    pydid.ipw_did_panel
    pydid.ipw_did_rc
    pydid.std_ipw_did_rc
+   pydid.std_ipw_did_panel
 ```
 
 ## Propensity Estimators
