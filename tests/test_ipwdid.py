@@ -125,7 +125,7 @@ def test_ipwdid_panel_bootstrap(nsw_data, boot_type, est_method):
         boot=True,
         boot_type=boot_type,
         n_boot=50,
-        inf_func=(boot_type == "multiplier"),  # Need influence function for multiplier
+        inf_func=(boot_type == "multiplier"),
         est_method=est_method,
     )
 
