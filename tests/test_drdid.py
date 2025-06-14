@@ -124,7 +124,7 @@ def test_drdid_panel_bootstrap(nsw_data, boot_type, est_method):
         boot=True,
         boot_type=boot_type,
         n_boot=50,
-        inf_func=(boot_type == "multiplier"),  # Need influence function for multiplier
+        inf_func=(boot_type == "multiplier"),
         est_method=est_method,
     )
 
@@ -234,8 +234,8 @@ def test_drdid_missing_id_col_panel():
 @pytest.mark.parametrize(
     "formula",
     [
-        "~ age + educ + age:educ",  # Interaction terms
-        "~ age + I(age**2) + educ",  # Polynomial terms
+        "~ age + educ + age:educ",
+        "~ age + I(age**2) + educ",
     ],
 )
 def test_drdid_formula_variations(nsw_data, formula):
@@ -465,7 +465,6 @@ def test_drdid_unbalanced_panel_warning():
             id_col="id",
             panel=True,
         )
-        # Should still get a result after dropping incomplete units
         assert isinstance(result.att, float)
 
 
@@ -502,7 +501,6 @@ def test_drdid_more_than_two_periods_error():
     ],
 )
 def test_drdid_all_estimators_consistency(nsw_data, panel, method):
-    # Skip invalid combinations
     if panel and method in ["imp_local", "trad_local"]:
         pytest.skip("Methods imp_local and trad_local are only for repeated cross-sections")
 
@@ -550,5 +548,4 @@ def test_drdid_comparison_with_ordid(nsw_data):
         est_method="trad",
     )
 
-    # Results should be somewhat different but in the same ballpark
     assert abs(or_result.att - dr_result.att) < abs(or_result.att) * 2
