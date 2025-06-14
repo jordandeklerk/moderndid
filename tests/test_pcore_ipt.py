@@ -1,3 +1,5 @@
+"""Tests for the IPT propensity score calculation and estimation."""
+
 import numpy as np
 import pytest
 import scipy.optimize

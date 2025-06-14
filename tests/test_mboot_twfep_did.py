@@ -1,3 +1,5 @@
+"""Tests for the mboot_twfep_did function."""
+
 import numpy as np
 import pytest
 
