@@ -95,8 +95,8 @@ def ordid(
 
     See Also
     --------
-    reg_did_panel : Underlying panel data estimator.
-    reg_did_rc : Underlying repeated cross-section estimator.
+    drdid : Doubly robust DiD estimator.
+    ipwdid : Inverse propensity weighted DiD estimator.
 
     References
     ----------

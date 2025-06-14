@@ -37,6 +37,7 @@ from pydid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
 
 # Regression functions
 from pydid.drdid.estimators.wols import wols_panel, wols_rc
+from pydid.drdid.ipwdid import ipwdid
 
 # Outcome regression estimators
 from pydid.drdid.ordid import ordid
@@ -78,6 +79,7 @@ __all__ = [
     "drdid_rc",
     "drdid_trad_rc",
     # IPW DiD estimators
+    "ipwdid",
     "ipw_did_panel",
     "ipw_did_rc",
     "std_ipw_did_panel",
