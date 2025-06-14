@@ -18,6 +18,7 @@ from .boot.boot_std_ipw_rc import wboot_std_ipw_rc
 from .boot.boot_twfe_rc import wboot_twfe_rc
 
 # DR-DiD estimators
+from .drdid import drdid
 from .estimators.drdid_imp_local_rc import drdid_imp_local_rc
 from .estimators.drdid_imp_panel import drdid_imp_panel
 from .estimators.drdid_imp_rc import drdid_imp_rc
@@ -44,6 +45,7 @@ from .propensity.pscore_ipt import calculate_pscore_ipt
 
 __all__ = [
     # DR-DiD estimators
+    "drdid",
     "drdid_imp_local_rc",
     "drdid_imp_panel",
     "drdid_imp_rc",

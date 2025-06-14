@@ -19,6 +19,7 @@ from pydid.drdid.boot.boot_std_ipw_rc import wboot_std_ipw_rc
 from pydid.drdid.boot.boot_twfe_rc import wboot_twfe_rc
 
 # DR-DiD estimators
+from pydid.drdid.drdid import drdid
 from pydid.drdid.estimators.drdid_imp_local_rc import drdid_imp_local_rc
 from pydid.drdid.estimators.drdid_imp_panel import drdid_imp_panel
 from pydid.drdid.estimators.drdid_imp_rc import drdid_imp_rc
@@ -69,6 +70,7 @@ from pydid.utils import (
 
 __all__ = [
     # DR-DiD estimators
+    "drdid",
     "drdid_imp_panel",
     "drdid_imp_rc",
     "drdid_imp_local_rc",
