@@ -86,7 +86,8 @@ def drdid_trad_rc(
 
     References
     ----------
-    .. [2] Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
+
+    .. [1] Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """

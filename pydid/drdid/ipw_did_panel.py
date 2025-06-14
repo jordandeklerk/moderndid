@@ -80,6 +80,7 @@ def ipw_did_panel(
 
     References
     ----------
+
     .. [1] Abadie, A. (2005). Semiparametric difference-in-differences estimators.
         The Review of Economic Studies, 72(1), 1-19. https://doi.org/10.1111/0034-6527.00321
 
