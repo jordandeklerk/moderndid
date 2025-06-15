@@ -151,6 +151,25 @@ def drdid(
 
         In [2]: print(att_result)
 
+    We can estimate the ATT with weighted bootstrapped standard errors as well.
+
+    .. ipython::
+        :okwarning:
+
+        In [3]: att_result_boot = pydid.drdid(
+           ...:     data=nsw_data,
+           ...:     y_col="re",
+           ...:     time_col="year",
+           ...:     treat_col="experimental",
+           ...:     id_col="id",
+           ...:     panel=True,
+           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
+           ...:     est_method="imp",
+           ...:     boot=True,
+           ...: )
+
+        In [4]: print(att_result_boot)
+
     Notes
     -----
     When panel data are available (`panel=True`), the function implements the

@@ -2,13 +2,23 @@
 
 Documentation for all public modules, classes, and functions in the pyDiD package.
 
-## Doubly-Robust DiD Estimators
+## Main Functions
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated/
 
    pydid.drdid
+   pydid.ipwdid
+   pydid.ordid
+```
+
+## Doubly-Robust DiD Estimators
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated/
+
    pydid.drdid_imp_local_rc
    pydid.drdid_imp_rc
    pydid.drdid_rc
@@ -23,7 +33,6 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 .. autosummary::
    :toctree: generated/
 
-   pydid.ipwdid
    pydid.ipw_did_panel
    pydid.ipw_did_rc
    pydid.std_ipw_did_rc
@@ -36,7 +45,6 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 .. autosummary::
    :toctree: generated/
 
-   pydid.ordid
    pydid.reg_did_panel
    pydid.reg_did_rc
    pydid.twfe_did_panel
