@@ -146,8 +146,7 @@ def drdid_imp_local_rc(
     out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
     out_y_treat_post = out_y_treat_post_res.out_reg
 
-    # Compute the ATT estimator
-    # This is the efficient DR estimator from Sant'Anna and Zhao (2020), equation (3.4)
+    # ATT calculation
     dr_att = aipw_did_rc_imp2(
         y, post, d, ps_fit, out_y_cont_pre, out_y_cont_post, out_y_treat_pre, out_y_treat_post, i_weights, trim_ps
     )
