@@ -160,7 +160,7 @@ def _get_estimator_title(estimator_type: str, est_method: str) -> str:
         "dr": {
             "imp": "Doubly Robust DiD Estimator (Improved Method)",
             "trad": "Doubly Robust DiD Estimator (Traditional Method)",
-            "imp_local": "Doubly Robust DiD Estimator (Improved Local Method)",
+            "imp_local": "Doubly Robust DiD Estimator (Improved Locally Efficient Method)",
             "trad_local": "Doubly Robust DiD Estimator (Traditional Local Method)",
             "default": "Doubly Robust DiD Estimator",
         },
