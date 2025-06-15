@@ -136,7 +136,7 @@ def drdid_imp_local_rc(
     )
 
     # Compute weights for the influence function
-    weights = _compute_drdid_weights(d, post, ps_fit, i_weights, trim_ps)
+    weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
     # Compute influence function components
     influence_components = _get_influence(
@@ -237,7 +237,7 @@ def _validate_and_preprocess_inputs(
     return y, post, d, covariates, i_weights, n_units
 
 
-def _compute_drdid_weights(
+def _compute_weights(
     d,
     post,
     ps_fit,
