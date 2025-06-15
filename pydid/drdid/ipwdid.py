@@ -45,7 +45,7 @@ def ipwdid(
     inf_func: bool = False,
     trim_level: float = 0.995,
 ) -> IPWDIDResult:
-    r"""Compute the inverse propensity weighted DiD estimator for the ATT.
+    r"""Wrap the inverse propensity weighted DiD estimators for the ATT.
 
     This function is a wrapper for inverse propensity weighted (IPW) DiD estimators.
     It can be used with panel or stationary repeated cross-section data and calls the
@@ -111,6 +111,74 @@ def ipwdid(
         - *att_inf_func*: Influence function values if inf_func=True.
         - *call_params*: Original function call parameters.
         - *args*: Arguments used in the estimation.
+
+    Examples
+    --------
+    Estimate the average treatment effect on the treated (ATT) using inverse propensity
+    weighting with panel data from a job training program. IPW reweights observations
+    to create balance between treated and control groups.
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import pydid
+           ...: import gzip
+           ...: import pickle
+           ...:
+           ...: with gzip.open('data/nsw_long.pkl.gz', 'rb') as f:
+           ...:     nsw_data = pickle.load(f)
+           ...:
+           ...: att_result = pydid.ipwdid(
+           ...:     data=nsw_data,
+           ...:     y_col="re",
+           ...:     time_col="year",
+           ...:     treat_col="experimental",
+           ...:     id_col="id",
+           ...:     panel=True,
+           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
+           ...:     est_method="ipw",
+           ...: )
+
+        In [2]: print(att_result)
+
+    We can also use the standardized (Hajek-type) IPW estimator, which normalizes
+    weights to sum to one and can be more stable with extreme propensity scores.
+
+    .. ipython::
+        :okwarning:
+
+        In [3]: att_result_std = pydid.ipwdid(
+           ...:     data=nsw_data,
+           ...:     y_col="re",
+           ...:     time_col="year",
+           ...:     treat_col="experimental",
+           ...:     id_col="id",
+           ...:     panel=True,
+           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
+           ...:     est_method="std_ipw",
+           ...: )
+
+        In [4]: print(att_result_std)
+
+    For more robust inference, we can use weighted-bootstrap standard errors with
+    propensity score trimming to handle extreme weights.
+
+    .. ipython::
+        :okwarning:
+
+        In [5]: att_result_boot = pydid.ipwdid(
+           ...:     data=nsw_data,
+           ...:     y_col="re",
+           ...:     time_col="year",
+           ...:     treat_col="experimental",
+           ...:     id_col="id",
+           ...:     panel=True,
+           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
+           ...:     est_method="ipw",
+           ...:     boot=True,
+           ...: )
+
+        In [6]: print(att_result_boot)
 
     Notes
     -----
