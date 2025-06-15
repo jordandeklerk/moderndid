@@ -41,7 +41,7 @@ def ordid(
     n_boot: int = 999,
     inf_func: bool = False,
 ) -> ORDIDResult:
-    r"""Compute the outcome regression DiD estimator for the ATT.
+    r"""Wrap the outcome regression DiD estimators for the ATT.
 
     This function is a wrapper for outcome regression DiD estimators.
     It calls the appropriate estimator based on the panel argument and
@@ -96,6 +96,63 @@ def ordid(
         - *att_inf_func*: Influence function values if inf_func=True.
         - *call_params*: Original function call parameters.
         - *args*: Arguments used in the estimation.
+
+    Examples
+    --------
+    Estimate the average treatment effect on the treated (ATT) using outcome regression
+    with panel data from a job training program. The outcome regression approach models
+    the conditional expectation of the outcome given covariates.
+
+    .. ipython::
+
+        In [1]: import pydid
+           ...: import gzip
+           ...: import pickle
+           ...:
+           ...: with gzip.open('data/nsw_long.pkl.gz', 'rb') as f:
+           ...:     nsw_data = pickle.load(f)
+           ...:
+           ...: att_result = pydid.ordid(
+           ...:     data=nsw_data,
+           ...:     y_col="re",
+           ...:     time_col="year",
+           ...:     treat_col="experimental",
+           ...:     id_col="id",
+           ...:     panel=True,
+           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
+           ...: )
+
+        In [2]: print(att_result)
+
+    For more robust inference, we can use weighted-bootstrap standard errors with
+    propensity score trimming to handle extreme weights.
+
+    .. ipython::
+        :okwarning:
+
+        In [3]: att_result_rc_boot = pydid.ordid(
+           ...:     data=nsw_data,
+           ...:     y_col="re",
+           ...:     time_col="year",
+           ...:     treat_col="experimental",
+           ...:     panel=False,
+           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
+           ...:     boot=True,
+           ...: )
+
+        In [4]: print(att_result_rc_boot)
+
+    Notes
+    -----
+    The outcome regression DiD estimator is based on a linear regression model for
+    the outcome conditional on covariates, time period, and treatment status. For
+    panel data, it estimates the ATT by comparing the change in outcomes for treated
+    units to the predicted change for control units based on their covariate values.
+
+    This estimator assumes that the conditional expectation function is correctly
+    specified and that the parallel trends assumption holds conditional on covariates.
+    Unlike the doubly robust estimator, it is not robust to misspecification of the
+    outcome regression model.
 
     See Also
     --------

@@ -47,7 +47,7 @@ def drdid(
     inf_func: bool = False,
     trim_level: float = 0.995,
 ) -> DRDIDResult:
-    r"""Compute the locally efficient doubly robust DiD estimator for the ATT.
+    r"""Wrap the locally efficient doubly robust DiD estimators for the ATT.
 
     This function is a wrapper for doubly robust difference-in-differences (DiD) estimators.
     It can be used with panel or stationary repeated cross-section data and calls the
@@ -151,7 +151,8 @@ def drdid(
 
         In [2]: print(att_result)
 
-    We can estimate the ATT with weighted bootstrapped standard errors as well.
+    For more robust inference, we can use bootstrapped standard errors with
+    propensity score trimming to handle extreme weights.
 
     .. ipython::
         :okwarning:
