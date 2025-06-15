@@ -7,6 +7,7 @@ import pandas as pd
 
 from .estimators.reg_did_panel import reg_did_panel
 from .estimators.reg_did_rc import reg_did_rc
+from .print import print_did_result
 from .utils import preprocess_drdid
 
 
@@ -21,6 +22,9 @@ class ORDIDResult(NamedTuple):
     att_inf_func: np.ndarray | None
     call_params: dict[str, Any]
     args: dict[str, Any]
+
+
+ORDIDResult = print_did_result(ORDIDResult)
 
 
 def ordid(

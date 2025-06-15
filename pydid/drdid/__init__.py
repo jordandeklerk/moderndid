@@ -33,6 +33,7 @@ from .estimators.twfe_did_rc import twfe_did_rc
 from .estimators.wols import wols_panel, wols_rc
 from .ipwdid import ipwdid
 from .ordid import ordid
+from .print import print_did_result
 from .propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from .propensity.ipw_estimators import ipw_rc
 from .propensity.pscore_ipt import calculate_pscore_ipt
@@ -84,4 +85,6 @@ __all__ = [
     # Regression functions
     "wols_panel",
     "wols_rc",
+    # Print function
+    "print_did_result",
 ]

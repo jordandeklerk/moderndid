@@ -9,6 +9,7 @@ from .estimators.ipw_did_panel import ipw_did_panel
 from .estimators.ipw_did_rc import ipw_did_rc
 from .estimators.std_ipw_did_panel import std_ipw_did_panel
 from .estimators.std_ipw_did_rc import std_ipw_did_rc
+from .print import print_did_result
 from .utils import preprocess_drdid
 
 
@@ -23,6 +24,9 @@ class IPWDIDResult(NamedTuple):
     att_inf_func: np.ndarray | None
     call_params: dict[str, Any]
     args: dict[str, Any]
+
+
+IPWDIDResult = print_did_result(IPWDIDResult)
 
 
 def ipwdid(
