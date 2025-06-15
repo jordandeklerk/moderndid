@@ -34,6 +34,7 @@ from pydid.drdid.estimators.twfe_did_rc import twfe_did_rc
 from pydid.drdid.estimators.wols import wols_panel, wols_rc
 from pydid.drdid.ipwdid import ipwdid
 from pydid.drdid.ordid import ordid
+from pydid.drdid.print import print_did_result
 from pydid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from pydid.drdid.propensity.ipw_estimators import ipw_rc
 from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
@@ -125,4 +126,6 @@ __all__ = [
     "unpanel",
     "validate_treatment_timing",
     "widen_panel",
+    # Print function
+    "print_did_result",
 ]

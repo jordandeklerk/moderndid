@@ -11,6 +11,7 @@ from .estimators.drdid_imp_rc import drdid_imp_rc
 from .estimators.drdid_panel import drdid_panel
 from .estimators.drdid_rc import drdid_rc
 from .estimators.drdid_trad_rc import drdid_trad_rc
+from .print import print_did_result
 from .utils import preprocess_drdid
 
 
@@ -25,6 +26,9 @@ class DRDIDResult(NamedTuple):
     att_inf_func: np.ndarray | None
     call_params: dict[str, Any]
     args: dict[str, Any]
+
+
+DRDIDResult = print_did_result(DRDIDResult)
 
 
 def drdid(
@@ -119,16 +123,44 @@ def drdid(
         - *call_params*: Original function call parameters.
         - *args*: Arguments used in the estimation.
 
+    Examples
+    --------
+    Estimate the average treatment effect on the treated (ATT) using panel data from a job training
+    program. The data tracks the same individuals over time, before and after
+    some received training.
+
+    .. ipython::
+
+        In [1]: import pydid
+           ...: import gzip
+           ...: import pickle
+           ...:
+           ...: with gzip.open('data/nsw_long.pkl.gz', 'rb') as f:
+           ...:     nsw_data = pickle.load(f)
+           ...:
+           ...: att_result = pydid.drdid(
+           ...:     data=nsw_data,
+           ...:     y_col="re",
+           ...:     time_col="year",
+           ...:     treat_col="experimental",
+           ...:     id_col="id",
+           ...:     panel=True,
+           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
+           ...:     est_method="imp",
+           ...: )
+
+        In [2]: print(att_result)
+
     Notes
     -----
-    When panel data are available (panel=True), the function implements the
+    When panel data are available (`panel=True`), the function implements the
     locally efficient doubly robust DiD estimator for the ATT defined in
     equation (3.1) in Sant'Anna and Zhao (2020). This estimator makes use of
     a logistic propensity score model for the probability of being in the
     treated group, and of a linear regression model for the outcome evolution
     among the comparison units.
 
-    When only stationary repeated cross-section data are available (panel=False),
+    When only stationary repeated cross-section data are available (`panel=False`),
     the function implements the locally efficient doubly robust DiD estimator
     for the ATT defined in equation (3.4) in Sant'Anna and Zhao (2020).
     This estimator makes use of a logistic propensity score model for the
@@ -136,17 +168,17 @@ def drdid(
     regression models for the outcome of both treated and comparison units,
     in both pre and post-treatment periods.
 
-    When est_method="imp" (the default), the nuisance parameters are estimated
+    When `est_method="imp"` (the default), the nuisance parameters are estimated
     using the methods described in Sections 3.1 and 3.2 of Sant'Anna and Zhao (2020).
     The propensity score parameters are estimated using the inverse probability
     tilting estimator proposed by Graham, Pinto and Pinto (2012), and the outcome
     regression coefficients are estimated using weighted least squares.
 
-    When est_method="trad", the propensity score parameters are estimated using
+    When `est_method="trad"`, the propensity score parameters are estimated using
     maximum likelihood, and the outcome regression coefficients are estimated
     using ordinary least squares.
 
-    The main advantage of using est_method="imp" is that the resulting estimator
+    The main advantage of using `est_method="imp"` is that the resulting estimator
     is not only locally efficient and doubly robust for the ATT, but it is also
     doubly robust for inference; see Sant'Anna and Zhao (2020) for details.
 
