@@ -130,13 +130,12 @@ def drdid(
     some received training.
 
     .. ipython::
+        :okwarning:
 
         In [1]: import pydid
-           ...: import gzip
-           ...: import pickle
+           ...: from pydid.datasets import load_nsw
            ...:
-           ...: with gzip.open('data/nsw_long.pkl.gz', 'rb') as f:
-           ...:     nsw_data = pickle.load(f)
+           ...: nsw_data = load_nsw()
            ...:
            ...: att_result = pydid.drdid(
            ...:     data=nsw_data,

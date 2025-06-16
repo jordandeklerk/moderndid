@@ -1,6 +1,7 @@
 # pylint: disable=wildcard-import
 """DiD and doubly robust DiD estimators."""
 
+from pydid import datasets
 from pydid.drdid.boot.boot_ipw_rc import wboot_ipw_rc
 from pydid.drdid.boot.boot_mult import mboot_did, mboot_twfep_did
 from pydid.drdid.boot.boot_panel import (
@@ -128,4 +129,6 @@ __all__ = [
     "widen_panel",
     # Print function
     "print_did_result",
+    # Datasets module
+    "datasets",
 ]
