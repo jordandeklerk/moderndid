@@ -135,7 +135,8 @@ def ordid(
            ...:     y_col="re",
            ...:     time_col="year",
            ...:     treat_col="experimental",
-           ...:     panel=False,
+           ...:     id_col="id",
+           ...:     panel=True,
            ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
            ...:     boot=True,
            ...: )
