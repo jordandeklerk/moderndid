@@ -91,10 +91,109 @@ def drdid_trad_rc(
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
+    y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
+
+    # Compute propensity score
+    ps_fit, ps_weights = _compute_propensity_score(d, covariates, i_weights)
+
+    # Apply trimming
+    trim_ps = np.ones(n_units, dtype=bool)
+    trim_ps[d == 0] = ps_fit[d == 0] < trim_level
+
+    # Compute the Outcome regression for the control group at the pre-treatment period, using ols.
+    out_reg_pre_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
+    if np.any(np.isnan(out_reg_pre_result.coefficients)):
+        raise ValueError(
+            "Outcome regression model coefficients have NA components. \n"
+            "Multicollinearity (or lack of variation) of covariates is a likely reason."
+        )
+    out_y_pre = out_reg_pre_result.out_reg
+
+    # Compute the Outcome regression for the control group at the post-treatment period, using ols.
+    out_reg_post_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
+    if np.any(np.isnan(out_reg_post_result.coefficients)):
+        raise ValueError(
+            "Outcome regression model coefficients have NA components. \n"
+            "Multicollinearity (or lack of variation) of covariates is a likely reason."
+        )
+    out_y_post = out_reg_post_result.out_reg
+    out_y = post * out_y_post + (1 - post) * out_y_pre
+
+    # Compute weights
+    weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
+
+    # Compute influence function components and ATT
+    influence_components = _get_influence_components(y, out_y, weights)
+
+    # ATT estimator
+    dr_att = (influence_components["att_treat_post"] - influence_components["att_treat_pre"]) - (
+        influence_components["att_cont_post"] - influence_components["att_cont_pre"]
+    )
+
+    # Get influence function quantities
+    influence_quantities = _get_influence_quantities(
+        y, post, d, covariates, ps_fit, ps_weights, out_y_pre, out_y_post, i_weights, n_units
+    )
+
+    # Compute influence function
+    dr_att_inf_func = _compute_influence_function(
+        y, post, out_y, covariates, weights, influence_components, influence_quantities
+    )
+
+    if not boot:
+        se_dr_att = np.std(dr_att_inf_func, ddof=1) / np.sqrt(n_units)
+        uci = dr_att + 1.96 * se_dr_att
+        lci = dr_att - 1.96 * se_dr_att
+        dr_boot = None
+    else:
+        if nboot is None:
+            nboot = 999
+        if boot_type == "multiplier":
+            dr_boot = mboot_did(dr_att_inf_func, nboot)
+            se_dr_att = stats.iqr(dr_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
+            cv = np.nanquantile(np.abs(dr_boot / se_dr_att), 0.95)
+            uci = dr_att + cv * se_dr_att
+            lci = dr_att - cv * se_dr_att
+        else:  # "weighted"
+            dr_boot = wboot_drdid_rc1(
+                y=y, post=post, d=d, x=covariates, i_weights=i_weights, n_bootstrap=nboot, trim_level=trim_level
+            )
+            se_dr_att = stats.iqr(dr_boot - dr_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
+            cv = np.nanquantile(np.abs((dr_boot - dr_att) / se_dr_att), 0.95)
+            uci = dr_att + cv * se_dr_att
+            lci = dr_att - cv * se_dr_att
+
+    if not influence_func:
+        dr_att_inf_func = None
+
+    args = {
+        "panel": False,
+        "estMethod": "trad2",
+        "boot": boot,
+        "boot_type": boot_type,
+        "nboot": nboot,
+        "type": "dr",
+        "trim_level": trim_level,
+    }
+
+    return DRDIDTradRCResult(
+        att=dr_att,
+        se=se_dr_att,
+        uci=uci,
+        lci=lci,
+        boots=dr_boot,
+        att_inf_func=dr_att_inf_func,
+        args=args,
+    )
+
+
+def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
+    """Validate and preprocess input arrays."""
     d = np.asarray(d).flatten()
     n_units = len(d)
     y = np.asarray(y).flatten()
     post = np.asarray(post).flatten()
+
     if covariates is None:
         covariates = np.ones((n_units, 1))
     else:
@@ -118,7 +217,11 @@ def drdid_trad_rc(
     if not np.any(post == 0):
         raise ValueError("No pre-treatment observations found.")
 
-    # Compute the propensity score by MLE
+    return y, post, d, covariates, i_weights, n_units
+
+
+def _compute_propensity_score(d, covariates, i_weights):
+    """Compute propensity score using logistic regression."""
     try:
         pscore_model = sm.Logit(d, covariates, weights=i_weights)
         pscore_results = pscore_model.fit(disp=0)
@@ -135,33 +238,31 @@ def drdid_trad_rc(
 
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
     ps_weights = ps_fit * (1 - ps_fit) * i_weights
-    trim_ps = np.ones(n_units, dtype=bool)
-    trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Compute the Outcome regression for the control group at the pre-treatment period, using ols.
-    out_reg_pre_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
-    if np.any(np.isnan(out_reg_pre_result.coefficients)):
-        raise ValueError(
-            "Outcome regression model coefficients have NA components. \n"
-            "Multicollinearity (or lack of variation) of covariates is a likely reason."
-        )
-    out_y_pre = out_reg_pre_result.out_reg
+    return ps_fit, ps_weights
 
-    # Compute the Outcome regression for the control group at the post-treatment period, using ols.
-    out_reg_post_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
-    if np.any(np.isnan(out_reg_post_result.coefficients)):
-        raise ValueError(
-            "Outcome regression model coefficients have NA components. \n"
-            "Multicollinearity (or lack of variation) of covariates is a likely reason."
-        )
-    out_y_post = out_reg_post_result.out_reg
-    out_y = post * out_y_post + (1 - post) * out_y_pre
 
-    # First, the weights
+def _compute_weights(d, post, ps_fit, i_weights, trim_ps):
+    """Compute weights for doubly robust DiD estimator."""
     w_treat_pre = trim_ps * i_weights * d * (1 - post)
     w_treat_post = trim_ps * i_weights * d * post
     w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
     w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+
+    return {
+        "w_treat_pre": w_treat_pre,
+        "w_treat_post": w_treat_post,
+        "w_cont_pre": w_cont_pre,
+        "w_cont_post": w_cont_post,
+    }
+
+
+def _get_influence_components(y, out_y, weights):
+    """Compute influence function components."""
+    w_treat_pre = weights["w_treat_pre"]
+    w_treat_post = weights["w_treat_post"]
+    w_cont_pre = weights["w_cont_pre"]
+    w_cont_post = weights["w_cont_post"]
 
     # Elements of the influence function (summands)
     eta_treat_pre = w_treat_pre * (y - out_y) / np.mean(w_treat_pre)
@@ -175,12 +276,20 @@ def drdid_trad_rc(
     att_cont_pre = np.mean(eta_cont_pre)
     att_cont_post = np.mean(eta_cont_post)
 
-    # ATT estimator
-    dr_att = (att_treat_post - att_treat_pre) - (att_cont_post - att_cont_pre)
+    return {
+        "eta_treat_pre": eta_treat_pre,
+        "eta_treat_post": eta_treat_post,
+        "eta_cont_pre": eta_cont_pre,
+        "eta_cont_post": eta_cont_post,
+        "att_treat_pre": att_treat_pre,
+        "att_treat_post": att_treat_post,
+        "att_cont_pre": att_cont_pre,
+        "att_cont_post": att_cont_post,
+    }
 
-    # Get the influence function to compute standard error
-    # First, the influence function of the nuisance functions
 
+def _get_influence_quantities(y, post, d, covariates, ps_fit, ps_weights, out_y_pre, out_y_post, i_weights, n_units):
+    """Compute quantities needed for influence function."""
     # Asymptotic linear representation of OLS parameters in pre-period
     weights_ols_pre = i_weights * (1 - d) * (1 - post)
     weighted_x_pre = weights_ols_pre[:, np.newaxis] * covariates
@@ -213,6 +322,36 @@ def drdid_trad_rc(
     score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
     hessian_ps = np.linalg.inv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
     asy_lin_rep_ps = score_ps @ hessian_ps
+
+    return {
+        "asy_lin_rep_ols_pre": asy_lin_rep_ols_pre,
+        "asy_lin_rep_ols_post": asy_lin_rep_ols_post,
+        "asy_lin_rep_ps": asy_lin_rep_ps,
+    }
+
+
+def _compute_influence_function(y, post, out_y, covariates, weights, influence_components, influence_quantities):
+    """Compute the influence function for traditional DR estimator."""
+    # Extract weights
+    w_treat_pre = weights["w_treat_pre"]
+    w_treat_post = weights["w_treat_post"]
+    w_cont_pre = weights["w_cont_pre"]
+    w_cont_post = weights["w_cont_post"]
+
+    # Extract influence components
+    eta_treat_pre = influence_components["eta_treat_pre"]
+    eta_treat_post = influence_components["eta_treat_post"]
+    eta_cont_pre = influence_components["eta_cont_pre"]
+    eta_cont_post = influence_components["eta_cont_post"]
+    att_treat_pre = influence_components["att_treat_pre"]
+    att_treat_post = influence_components["att_treat_post"]
+    att_cont_pre = influence_components["att_cont_pre"]
+    att_cont_post = influence_components["att_cont_post"]
+
+    # Extract asymptotic linear representations
+    asy_lin_rep_ols_pre = influence_quantities["asy_lin_rep_ols_pre"]
+    asy_lin_rep_ols_post = influence_quantities["asy_lin_rep_ols_post"]
+    asy_lin_rep_ps = influence_quantities["asy_lin_rep_ps"]
 
     # Now, the influence function of the "treat" component
     # Leading term of the influence function: no estimation effect
@@ -264,48 +403,4 @@ def drdid_trad_rc(
     # Get the influence function of the DR estimator (put all pieces together)
     dr_att_inf_func = inf_treat - inf_cont
 
-    if not boot:
-        se_dr_att = np.std(dr_att_inf_func, ddof=1) / np.sqrt(n_units)
-        uci = dr_att + 1.96 * se_dr_att
-        lci = dr_att - 1.96 * se_dr_att
-        dr_boot = None
-    else:
-        if nboot is None:
-            nboot = 999
-        if boot_type == "multiplier":
-            dr_boot = mboot_did(dr_att_inf_func, nboot)
-            se_dr_att = stats.iqr(dr_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
-            cv = np.nanquantile(np.abs(dr_boot / se_dr_att), 0.95)
-            uci = dr_att + cv * se_dr_att
-            lci = dr_att - cv * se_dr_att
-        else:  # "weighted"
-            dr_boot = wboot_drdid_rc1(
-                y=y, post=post, d=d, x=covariates, i_weights=i_weights, n_bootstrap=nboot, trim_level=trim_level
-            )
-            se_dr_att = stats.iqr(dr_boot - dr_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
-            cv = np.nanquantile(np.abs((dr_boot - dr_att) / se_dr_att), 0.95)
-            uci = dr_att + cv * se_dr_att
-            lci = dr_att - cv * se_dr_att
-
-    if not influence_func:
-        dr_att_inf_func = None
-
-    args = {
-        "panel": False,
-        "estMethod": "trad2",
-        "boot": boot,
-        "boot_type": boot_type,
-        "nboot": nboot,
-        "type": "dr",
-        "trim_level": trim_level,
-    }
-
-    return DRDIDTradRCResult(
-        att=dr_att,
-        se=se_dr_att,
-        uci=uci,
-        lci=lci,
-        boots=dr_boot,
-        att_inf_func=dr_att_inf_func,
-        args=args,
-    )
+    return dr_att_inf_func

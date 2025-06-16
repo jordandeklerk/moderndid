@@ -105,23 +105,7 @@ def drdid_imp_rc(
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
-    d = np.asarray(d).flatten()
-    n_units = len(d)
-    y = np.asarray(y).flatten()
-    post = np.asarray(post).flatten()
-
-    if covariates is None:
-        covariates = np.ones((n_units, 1))
-    else:
-        covariates = np.asarray(covariates)
-
-    if i_weights is None:
-        i_weights = np.ones(n_units)
-    else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
-            raise ValueError("i_weights must be non-negative.")
-    i_weights /= np.mean(i_weights)
+    y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
     # Compute the propensity score using inverse probability tilting
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
@@ -136,51 +120,17 @@ def drdid_imp_rc(
     out_y_pre = out_y_pre_res.out_reg
     out_y_post = out_y_post_res.out_reg
 
-    # Combine the outcome regressions
     out_y = post * out_y_post + (1 - post) * out_y_pre
 
     # Compute the ATT estimator
     dr_att = aipw_did_rc_imp1(y, post, d, ps_fit, out_y, i_weights, trim_ps)
+    weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Get the influence function to compute standard errors
-    # First, the weights
-    w_treat_pre = trim_ps * i_weights * d * (1 - post)
-    w_treat_post = trim_ps * i_weights * d * post
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
-        w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+    # Compute influence function components
+    influence_components = _get_influence_quantities(y, out_y, weights)
 
-    w_cont_pre = np.nan_to_num(w_cont_pre, nan=0.0, posinf=0.0, neginf=0.0)
-    w_cont_post = np.nan_to_num(w_cont_post, nan=0.0, posinf=0.0, neginf=0.0)
-
-    # Elements of the influence function (summands)
-    eta_treat_pre = w_treat_pre * (y - out_y) / np.mean(w_treat_pre)
-    eta_treat_post = w_treat_post * (y - out_y) / np.mean(w_treat_post)
-    eta_cont_pre = w_cont_pre * (y - out_y) / np.mean(w_cont_pre)
-    eta_cont_post = w_cont_post * (y - out_y) / np.mean(w_cont_post)
-
-    # Estimator of each component
-    att_treat_pre = np.mean(eta_treat_pre)
-    att_treat_post = np.mean(eta_treat_post)
-    att_cont_pre = np.mean(eta_cont_pre)
-    att_cont_post = np.mean(eta_cont_post)
-
-    # Now, the influence function of the "treat" component
-    # Leading term of the influence function: no estimation effect
-    inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / np.mean(w_treat_pre)
-    inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / np.mean(w_treat_post)
-    # Influence function for the treated component
-    inf_treat = inf_treat_post - inf_treat_pre
-
-    # Now, get the influence function of control component
-    # Leading term of the influence function: no estimation effect from nuisance parameters
-    inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / np.mean(w_cont_pre)
-    inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / np.mean(w_cont_post)
-    # Influence function for the control component
-    inf_cont = inf_cont_post - inf_cont_pre
-
-    # Get the influence function of the DR estimator (put all pieces together)
-    att_inf_func = inf_treat - inf_cont
+    # Compute the influence function
+    att_inf_func = _compute_influence_function(influence_components, weights)
 
     # Inference
     dr_boot = None
@@ -242,3 +192,127 @@ def drdid_imp_rc(
         att_inf_func=att_inf_func,
         args=args,
     )
+
+
+def _validate_and_preprocess_inputs(
+    y,
+    post,
+    d,
+    covariates,
+    i_weights,
+):
+    """Validate and preprocess input arrays."""
+    d = np.asarray(d).flatten()
+    n_units = len(d)
+    y = np.asarray(y).flatten()
+    post = np.asarray(post).flatten()
+
+    if covariates is None:
+        covariates = np.ones((n_units, 1))
+    else:
+        covariates = np.asarray(covariates)
+
+    if i_weights is None:
+        i_weights = np.ones(n_units)
+    else:
+        i_weights = np.asarray(i_weights).flatten()
+        if np.any(i_weights < 0):
+            raise ValueError("i_weights must be non-negative.")
+    i_weights /= np.mean(i_weights)
+
+    return y, post, d, covariates, i_weights, n_units
+
+
+def _compute_weights(
+    d,
+    post,
+    ps_fit,
+    i_weights,
+    trim_ps,
+):
+    """Compute weights for the improved DR-DiD estimator."""
+    # Treatment group weights
+    w_treat_pre = trim_ps * i_weights * d * (1 - post)
+    w_treat_post = trim_ps * i_weights * d * post
+
+    # Control group weights
+    with np.errstate(divide="ignore", invalid="ignore"):
+        w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
+        w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+
+    w_cont_pre = np.nan_to_num(w_cont_pre, nan=0.0, posinf=0.0, neginf=0.0)
+    w_cont_post = np.nan_to_num(w_cont_post, nan=0.0, posinf=0.0, neginf=0.0)
+
+    return {
+        "w_treat_pre": w_treat_pre,
+        "w_treat_post": w_treat_post,
+        "w_cont_pre": w_cont_pre,
+        "w_cont_post": w_cont_post,
+    }
+
+
+def _get_influence_quantities(
+    y,
+    out_y,
+    weights,
+):
+    """Compute influence function components."""
+    w_treat_pre = weights["w_treat_pre"]
+    w_treat_post = weights["w_treat_post"]
+    w_cont_pre = weights["w_cont_pre"]
+    w_cont_post = weights["w_cont_post"]
+
+    # Elements of the influence function (summands)
+    eta_treat_pre = w_treat_pre * (y - out_y) / np.mean(w_treat_pre)
+    eta_treat_post = w_treat_post * (y - out_y) / np.mean(w_treat_post)
+    eta_cont_pre = w_cont_pre * (y - out_y) / np.mean(w_cont_pre)
+    eta_cont_post = w_cont_post * (y - out_y) / np.mean(w_cont_post)
+
+    return {
+        "eta_treat_pre": eta_treat_pre,
+        "eta_treat_post": eta_treat_post,
+        "eta_cont_pre": eta_cont_pre,
+        "eta_cont_post": eta_cont_post,
+    }
+
+
+def _compute_influence_function(
+    components,
+    weights,
+):
+    """Assemble the improved doubly robust influence function."""
+    eta_treat_pre = components["eta_treat_pre"]
+    eta_treat_post = components["eta_treat_post"]
+    eta_cont_pre = components["eta_cont_pre"]
+    eta_cont_post = components["eta_cont_post"]
+
+    # Get weights
+    w_treat_pre = weights["w_treat_pre"]
+    w_treat_post = weights["w_treat_post"]
+    w_cont_pre = weights["w_cont_pre"]
+    w_cont_post = weights["w_cont_post"]
+
+    # Estimator of each component
+    att_treat_pre = np.mean(eta_treat_pre)
+    att_treat_post = np.mean(eta_treat_post)
+    att_cont_pre = np.mean(eta_cont_pre)
+    att_cont_post = np.mean(eta_cont_post)
+
+    # Now, the influence function of the "treat" component
+    # Leading term of the influence function: no estimation effect
+    inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / np.mean(w_treat_pre)
+    inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / np.mean(w_treat_post)
+    # Influence function for the treated component
+    inf_treat = inf_treat_post - inf_treat_pre
+
+    # Now, get the influence function of control component
+    # Leading term of the influence function: no estimation effect from nuisance parameters
+    inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / np.mean(w_cont_pre)
+    inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / np.mean(w_cont_post)
+    # Influence function for the control component
+    inf_cont = inf_cont_post - inf_cont_pre
+
+    # Get the influence function of the DR estimator (put all pieces together)
+    att_inf_func = inf_treat - inf_cont
+
+    return att_inf_func

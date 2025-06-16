@@ -92,112 +92,28 @@ def std_ipw_did_rc(
     Hajek-type estimator. This can provide more stable estimates when there is substantial variation
     in weights across groups.
     """
-    d = np.asarray(d).flatten()
-    n_units = len(d)
-    y = np.asarray(y).flatten()
-    post = np.asarray(post).flatten()
+    y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    if covariates is None:
-        covariates = np.ones((n_units, 1))
-    else:
-        covariates = np.asarray(covariates)
-
-    if i_weights is None:
-        i_weights = np.ones(n_units)
-    else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
-            raise ValueError("i_weights must be non-negative.")
-    i_weights = i_weights / np.mean(i_weights)
-
-    if not np.any(d == 1):
-        raise ValueError("No treated units found. Cannot estimate treatment effect.")
-    if not np.any(d == 0):
-        raise ValueError("No control units found. Cannot estimate treatment effect.")
-    if not np.any(post == 1):
-        raise ValueError("No post-treatment observations found.")
-    if not np.any(post == 0):
-        raise ValueError("No pre-treatment observations found.")
-
-    # Compute the propensity score by MLE
-    try:
-        pscore_model = sm.Logit(d, covariates, weights=i_weights)
-        pscore_results = pscore_model.fit(disp=0)
-        if not pscore_results.converged:
-            warnings.warn("GLM algorithm did not converge.", UserWarning)
-        if np.any(np.isnan(pscore_results.params)):
-            raise ValueError(
-                "Propensity score model coefficients have NA components. \n"
-                "Multicollinearity (or lack of variation) of covariates is a likely reason."
-            )
-        ps_fit = pscore_results.predict(covariates)
-    except np.linalg.LinAlgError as e:
-        raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
-
-    ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
-    ps_weights = ps_fit * (1 - ps_fit) * i_weights
-
-    # Trim the propensity scores
+    # Compute propensity score
+    ps_fit, ps_weights = _compute_propensity_score(d, covariates, i_weights)
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Compute IPW estimator components
-    # First, the weights
-    w_treat_pre = trim_ps * i_weights * d * (1 - post)
-    w_treat_post = trim_ps * i_weights * d * post
-    w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
-    w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+    weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Elements of the influence function (summands)
-    eta_treat_pre = w_treat_pre * y / np.mean(w_treat_pre)
-    eta_treat_post = w_treat_post * y / np.mean(w_treat_post)
-    eta_cont_pre = w_cont_pre * y / np.mean(w_cont_pre)
-    eta_cont_post = w_cont_post * y / np.mean(w_cont_post)
-
-    # Estimator of each component
-    att_treat_pre = np.mean(eta_treat_pre)
-    att_treat_post = np.mean(eta_treat_post)
-    att_cont_pre = np.mean(eta_cont_pre)
-    att_cont_post = np.mean(eta_cont_post)
+    # Compute influence function components
+    influence_components = _get_influence_components(y, weights)
 
     # ATT estimator
-    ipw_att = (att_treat_post - att_treat_pre) - (att_cont_post - att_cont_pre)
+    ipw_att = (influence_components["att_treat_post"] - influence_components["att_treat_pre"]) - (
+        influence_components["att_cont_post"] - influence_components["att_cont_pre"]
+    )
 
-    # Get the influence function to compute standard error
-    # Asymptotic linear representation of logit's beta's
-    score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
-    try:
-        hessian_ps = np.linalg.inv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
-    except np.linalg.LinAlgError:
-        warnings.warn("Failed to invert Hessian matrix. Using pseudo-inverse.", UserWarning)
-        hessian_ps = np.linalg.pinv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
-    asy_lin_rep_ps = score_ps @ hessian_ps
+    # Get influence function quantities
+    influence_quantities = _get_influence_quantities(d, covariates, ps_fit, ps_weights, i_weights, n_units)
 
-    # Now, the influence function of the "treat" component
-    # Leading term of the influence function: no estimation effect
-    inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / np.mean(w_treat_pre)
-    inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / np.mean(w_treat_post)
-    inf_treat = inf_treat_post - inf_treat_pre
-
-    # Now, get the influence function of control component
-    # Leading term of the influence function: no estimation effect
-    inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / np.mean(w_cont_pre)
-    inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / np.mean(w_cont_post)
-    inf_cont = inf_cont_post - inf_cont_pre
-
-    # Estimation effect from gamma hat (pscore)
-    # Derivative matrix (k x 1 vector)
-    m2_pre = np.mean((w_cont_pre * (y - att_cont_pre))[:, np.newaxis] * covariates, axis=0) / np.mean(w_cont_pre)
-    m2_post = np.mean((w_cont_post * (y - att_cont_post))[:, np.newaxis] * covariates, axis=0) / np.mean(w_cont_post)
-
-    # Now the influence function related to estimation effect of pscores
-    inf_cont_ps = asy_lin_rep_ps @ (m2_post - m2_pre)
-
-    # Influence function for the control component
-    inf_cont = inf_cont + inf_cont_ps
-
-    # Get the influence function of the IPW estimator (put all pieces together)
-    att_inf_func = inf_treat - inf_cont
+    # Compute influence function
+    att_inf_func = _compute_influence_function(y, covariates, weights, influence_components, influence_quantities)
 
     if not boot:
         se_att = np.std(att_inf_func, ddof=1) / np.sqrt(n_units)
@@ -242,3 +158,168 @@ def std_ipw_did_rc(
         att_inf_func=att_inf_func,
         args=args,
     )
+
+
+def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
+    """Validate and preprocess input arrays."""
+    d = np.asarray(d).flatten()
+    n_units = len(d)
+    y = np.asarray(y).flatten()
+    post = np.asarray(post).flatten()
+
+    if covariates is None:
+        covariates = np.ones((n_units, 1))
+    else:
+        covariates = np.asarray(covariates)
+
+    if i_weights is None:
+        i_weights = np.ones(n_units)
+    else:
+        i_weights = np.asarray(i_weights).flatten()
+        if np.any(i_weights < 0):
+            raise ValueError("i_weights must be non-negative.")
+    i_weights = i_weights / np.mean(i_weights)
+
+    if not np.any(d == 1):
+        raise ValueError("No treated units found. Cannot estimate treatment effect.")
+    if not np.any(d == 0):
+        raise ValueError("No control units found. Cannot estimate treatment effect.")
+    if not np.any(post == 1):
+        raise ValueError("No post-treatment observations found.")
+    if not np.any(post == 0):
+        raise ValueError("No pre-treatment observations found.")
+
+    return y, post, d, covariates, i_weights, n_units
+
+
+def _compute_propensity_score(d, covariates, i_weights):
+    """Compute propensity score using logistic regression."""
+    try:
+        pscore_model = sm.Logit(d, covariates, weights=i_weights)
+        pscore_results = pscore_model.fit(disp=0)
+        if not pscore_results.converged:
+            warnings.warn("GLM algorithm did not converge.", UserWarning)
+        if np.any(np.isnan(pscore_results.params)):
+            raise ValueError(
+                "Propensity score model coefficients have NA components. \n"
+                "Multicollinearity (or lack of variation) of covariates is a likely reason."
+            )
+        ps_fit = pscore_results.predict(covariates)
+    except np.linalg.LinAlgError as e:
+        raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
+
+    ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
+    ps_weights = ps_fit * (1 - ps_fit) * i_weights
+
+    return ps_fit, ps_weights
+
+
+def _compute_weights(d, post, ps_fit, i_weights, trim_ps):
+    """Compute standardized IPW weights."""
+    w_treat_pre = trim_ps * i_weights * d * (1 - post)
+    w_treat_post = trim_ps * i_weights * d * post
+    w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
+    w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+
+    return {
+        "w_treat_pre": w_treat_pre,
+        "w_treat_post": w_treat_post,
+        "w_cont_pre": w_cont_pre,
+        "w_cont_post": w_cont_post,
+    }
+
+
+def _get_influence_components(y, weights):
+    """Compute influence function components."""
+    w_treat_pre = weights["w_treat_pre"]
+    w_treat_post = weights["w_treat_post"]
+    w_cont_pre = weights["w_cont_pre"]
+    w_cont_post = weights["w_cont_post"]
+
+    # Elements of the influence function (summands)
+    eta_treat_pre = w_treat_pre * y / np.mean(w_treat_pre)
+    eta_treat_post = w_treat_post * y / np.mean(w_treat_post)
+    eta_cont_pre = w_cont_pre * y / np.mean(w_cont_pre)
+    eta_cont_post = w_cont_post * y / np.mean(w_cont_post)
+
+    # Estimator of each component
+    att_treat_pre = np.mean(eta_treat_pre)
+    att_treat_post = np.mean(eta_treat_post)
+    att_cont_pre = np.mean(eta_cont_pre)
+    att_cont_post = np.mean(eta_cont_post)
+
+    return {
+        "eta_treat_pre": eta_treat_pre,
+        "eta_treat_post": eta_treat_post,
+        "eta_cont_pre": eta_cont_pre,
+        "eta_cont_post": eta_cont_post,
+        "att_treat_pre": att_treat_pre,
+        "att_treat_post": att_treat_post,
+        "att_cont_pre": att_cont_pre,
+        "att_cont_post": att_cont_post,
+    }
+
+
+def _get_influence_quantities(d, covariates, ps_fit, ps_weights, i_weights, n_units):
+    """Compute quantities needed for influence function."""
+    # Asymptotic linear representation of logit's beta's
+    score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
+    try:
+        hessian_ps = np.linalg.inv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
+    except np.linalg.LinAlgError:
+        warnings.warn("Failed to invert Hessian matrix. Using pseudo-inverse.", UserWarning)
+        hessian_ps = np.linalg.pinv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
+    asy_lin_rep_ps = score_ps @ hessian_ps
+
+    return {
+        "asy_lin_rep_ps": asy_lin_rep_ps,
+    }
+
+
+def _compute_influence_function(y, covariates, weights, influence_components, influence_quantities):
+    """Compute the influence function for standardized IPW estimator."""
+    # Extract weights
+    w_treat_pre = weights["w_treat_pre"]
+    w_treat_post = weights["w_treat_post"]
+    w_cont_pre = weights["w_cont_pre"]
+    w_cont_post = weights["w_cont_post"]
+
+    # Extract influence components
+    eta_treat_pre = influence_components["eta_treat_pre"]
+    eta_treat_post = influence_components["eta_treat_post"]
+    eta_cont_pre = influence_components["eta_cont_pre"]
+    eta_cont_post = influence_components["eta_cont_post"]
+    att_treat_pre = influence_components["att_treat_pre"]
+    att_treat_post = influence_components["att_treat_post"]
+    att_cont_pre = influence_components["att_cont_pre"]
+    att_cont_post = influence_components["att_cont_post"]
+
+    asy_lin_rep_ps = influence_quantities["asy_lin_rep_ps"]
+
+    # Influence function of the "treat" component
+    # Leading term of the influence function: no estimation effect
+    inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / np.mean(w_treat_pre)
+    inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / np.mean(w_treat_post)
+    inf_treat = inf_treat_post - inf_treat_pre
+
+    # Influence function of control component
+    # Leading term of the influence function: no estimation effect
+    inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / np.mean(w_cont_pre)
+    inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / np.mean(w_cont_post)
+    inf_cont = inf_cont_post - inf_cont_pre
+
+    # Estimation effect from gamma hat (pscore)
+    # Derivative matrix (k x 1 vector)
+    m2_pre = np.mean((w_cont_pre * (y - att_cont_pre))[:, np.newaxis] * covariates, axis=0) / np.mean(w_cont_pre)
+    m2_post = np.mean((w_cont_post * (y - att_cont_post))[:, np.newaxis] * covariates, axis=0) / np.mean(w_cont_post)
+
+    # Now the influence function related to estimation effect of pscores
+    inf_cont_ps = asy_lin_rep_ps @ (m2_post - m2_pre)
+
+    # Influence function for the control component
+    inf_cont = inf_cont + inf_cont_ps
+
+    # Get the influence function of the standardized IPW estimator (put all pieces together)
+    att_inf_func = inf_treat - inf_cont
+
+    return att_inf_func

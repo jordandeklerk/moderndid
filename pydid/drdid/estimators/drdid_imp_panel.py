@@ -104,24 +104,9 @@ def drdid_imp_panel(
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
-    d = np.asarray(d).flatten()
-    n_units = len(d)
+    y1, y0, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights)
 
-    delta_y = np.asarray(y1).flatten() - np.asarray(y0).flatten()
-
-    if covariates is None:
-        covariates = np.ones((n_units, 1))
-    else:
-        covariates = np.asarray(covariates)
-
-    if i_weights is None:
-        i_weights = np.ones(n_units)
-    else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
-            raise ValueError("i_weights must be non-negative.")
-
-    i_weights /= np.mean(i_weights)
+    delta_y = y1 - y0
 
     # Compute the propensity score using inverse probability tilting
     pscore_ipt_results = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
@@ -137,14 +122,16 @@ def drdid_imp_panel(
     # Compute Bias-Reduced Doubly Robust DiD estimators
     dr_att = aipw_did_panel(delta_y=delta_y, d=d, ps=ps_fit, out_reg=out_delta, i_weights=i_weights, trim_ps=trim_ps)
 
-    # Get the influence function to compute standard error
-    mean_d_weights = np.mean(d * i_weights)
-    if mean_d_weights == 0:
-        raise ValueError("No treated units with positive weights, cannot compute ATT.")
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        dr_att_summand_num = (1 - (1 - d) / (1 - ps_fit)) * (delta_y - out_delta)
-    att_inf_func = i_weights * trim_ps * (dr_att_summand_num - d * dr_att) / mean_d_weights
+    # Compute influence function
+    att_inf_func = _compute_influence_function(
+        delta_y=delta_y,
+        d=d,
+        ps_fit=ps_fit,
+        out_delta=out_delta,
+        i_weights=i_weights,
+        trim_ps=trim_ps,
+        dr_att=dr_att,
+    )
 
     # Inference
     dr_boot = None
@@ -200,3 +187,56 @@ def drdid_imp_panel(
         att_inf_func=att_inf_func,
         args=args,
     )
+
+
+def _validate_and_preprocess_inputs(
+    y1,
+    y0,
+    d,
+    covariates,
+    i_weights,
+):
+    """Validate and preprocess input arrays."""
+    d = np.asarray(d).flatten()
+    n_units = len(d)
+
+    y1 = np.asarray(y1).flatten()
+    y0 = np.asarray(y0).flatten()
+
+    if covariates is None:
+        covariates = np.ones((n_units, 1))
+    else:
+        covariates = np.asarray(covariates)
+
+    if i_weights is None:
+        i_weights = np.ones(n_units)
+    else:
+        i_weights = np.asarray(i_weights).flatten()
+        if np.any(i_weights < 0):
+            raise ValueError("i_weights must be non-negative.")
+
+    i_weights /= np.mean(i_weights)
+
+    return y1, y0, d, covariates, i_weights, n_units
+
+
+def _compute_influence_function(
+    delta_y,
+    d,
+    ps_fit,
+    out_delta,
+    i_weights,
+    trim_ps,
+    dr_att,
+):
+    """Compute the influence function for the ATT estimator."""
+    # Get the influence function to compute standard error
+    mean_d_weights = np.mean(d * i_weights)
+    if mean_d_weights == 0:
+        raise ValueError("No treated units with positive weights, cannot compute ATT.")
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        dr_att_summand_num = (1 - (1 - d) / (1 - ps_fit)) * (delta_y - out_delta)
+    att_inf_func = i_weights * trim_ps * (dr_att_summand_num - d * dr_att) / mean_d_weights
+
+    return att_inf_func

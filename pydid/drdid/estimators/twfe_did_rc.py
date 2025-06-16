@@ -83,82 +83,9 @@ def twfe_did_rc(
     .. [1] Sant'Anna, P. H. C. and Zhao, J. (2020), "Doubly Robust Difference-in-Differences Estimators."
            Journal of Econometrics, Vol. 219 (1), pp. 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
     """
-    d = np.asarray(d).flatten()
-    post = np.asarray(post).flatten()
-    y = np.asarray(y).flatten()
-    n = len(d)
+    y, post, d, x, i_weights, n = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    if i_weights is None:
-        i_weights = np.ones(n)
-    else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
-            raise ValueError("i_weights must be non-negative.")
-    i_weights = i_weights / np.mean(i_weights)
-
-    x = None
-    if covariates is not None:
-        covariates = np.asarray(covariates)
-        if covariates.ndim == 1:
-            covariates = covariates.reshape(-1, 1)
-
-        if covariates.shape[1] > 0 and np.all(covariates[:, 0] == 1):
-            covariates = covariates[:, 1:]
-            if covariates.shape[1] == 0:
-                covariates = None
-                x = None
-
-    if covariates is not None:
-        x = covariates
-
-    if x is not None:
-        design_matrix = np.column_stack(
-            [
-                np.ones(n),
-                post,
-                d,
-                d * post,
-                x,
-            ]
-        )
-    else:
-        design_matrix = np.column_stack(
-            [
-                np.ones(n),
-                post,
-                d,
-                d * post,
-            ]
-        )
-
-    try:
-        wls_model = sm.WLS(y, design_matrix, weights=i_weights)
-        wls_results = wls_model.fit()
-
-        # Get ATT coefficient (d:post interaction)
-        att = wls_results.params[3]  # Index 3 is the d:post interaction
-
-        # Elements for influence functions
-        x_prime_x = design_matrix.T @ (i_weights[:, np.newaxis] * design_matrix) / n
-
-        if np.linalg.cond(x_prime_x) > 1e15:
-            raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
-
-        x_prime_x_inv = np.linalg.inv(x_prime_x)
-
-        # Get influence function of the TWFE regression
-        residuals = wls_results.resid
-        influence_reg = (i_weights[:, np.newaxis] * design_matrix * residuals[:, np.newaxis]) @ x_prime_x_inv
-
-        # Select the coefficient for d:post
-        selection_theta = np.zeros(design_matrix.shape[1])
-        selection_theta[3] = 1  # d:post interaction is at index 3
-
-        # Get the influence function of the ATT
-        att_inf_func = influence_reg @ selection_theta
-
-    except (np.linalg.LinAlgError, ValueError) as e:
-        raise ValueError(f"Failed to fit TWFE regression model: {e}") from e
+    att, att_inf_func = _fit_twfe_regression(y, post, d, x, i_weights, n)
 
     if not boot:
         se = np.std(att_inf_func) / np.sqrt(n)
@@ -207,3 +134,89 @@ def twfe_did_rc(
             "type": "twfe",
         },
     )
+
+
+def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
+    """Validate and preprocess input arrays."""
+    d = np.asarray(d).flatten()
+    post = np.asarray(post).flatten()
+    y = np.asarray(y).flatten()
+    n = len(d)
+
+    if i_weights is None:
+        i_weights = np.ones(n)
+    else:
+        i_weights = np.asarray(i_weights).flatten()
+        if np.any(i_weights < 0):
+            raise ValueError("i_weights must be non-negative.")
+    i_weights = i_weights / np.mean(i_weights)
+
+    x = None
+    if covariates is not None:
+        covariates = np.asarray(covariates)
+        if covariates.ndim == 1:
+            covariates = covariates.reshape(-1, 1)
+
+        if covariates.shape[1] > 0 and np.all(covariates[:, 0] == 1):
+            covariates = covariates[:, 1:]
+            if covariates.shape[1] == 0:
+                covariates = None
+                x = None
+
+    if covariates is not None:
+        x = covariates
+
+    return y, post, d, x, i_weights, n
+
+
+def _fit_twfe_regression(y, post, d, x, i_weights, n):
+    """Fit TWFE regression and compute influence function."""
+    if x is not None:
+        design_matrix = np.column_stack(
+            [
+                np.ones(n),
+                post,
+                d,
+                d * post,
+                x,
+            ]
+        )
+    else:
+        design_matrix = np.column_stack(
+            [
+                np.ones(n),
+                post,
+                d,
+                d * post,
+            ]
+        )
+
+    try:
+        wls_model = sm.WLS(y, design_matrix, weights=i_weights)
+        wls_results = wls_model.fit()
+
+        # Get ATT coefficient (d:post interaction)
+        att = wls_results.params[3]  # Index 3 is the d:post interaction
+
+        # Elements for influence functions
+        x_prime_x = design_matrix.T @ (i_weights[:, np.newaxis] * design_matrix) / n
+
+        if np.linalg.cond(x_prime_x) > 1e15:
+            raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
+
+        x_prime_x_inv = np.linalg.inv(x_prime_x)
+
+        # Get influence function of the TWFE regression
+        residuals = wls_results.resid
+        influence_reg = (i_weights[:, np.newaxis] * design_matrix * residuals[:, np.newaxis]) @ x_prime_x_inv
+
+        selection_theta = np.zeros(design_matrix.shape[1])
+        selection_theta[3] = 1  # d:post interaction is at index 3
+
+        # Get the influence function of the ATT
+        att_inf_func = influence_reg @ selection_theta
+
+    except (np.linalg.LinAlgError, ValueError) as e:
+        raise ValueError(f"Failed to fit TWFE regression model: {e}") from e
+
+    return att, att_inf_func
