@@ -1,25 +1,20 @@
 # pylint: disable=redefined-outer-name
 """Tests for inverse propensity weighted DiD."""
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
+from pydid.datasets import load_nsw
 from pydid.drdid.ipwdid import ipwdid
 
 from .helpers import importorskip
 
-gzip = importorskip("gzip")
-pickle = importorskip("pickle")
 pd = importorskip("pandas")
 
 
 @pytest.fixture
 def nsw_data():
-    data_path = Path(__file__).parent.parent / "data" / "nsw_long.pkl.gz"
-    with gzip.open(data_path, "rb") as f:
-        return pickle.load(f)
+    return load_nsw()
 
 
 @pytest.mark.parametrize("est_method", ["ipw", "std_ipw"])
