@@ -33,7 +33,8 @@ Regression-based estimators that model outcomes directly:
 - `reg_did_panel` and `reg_did_rc`: Flexible outcome regression DiD
 - `twfe_did_panel` and `twfe_did_rc`: Two-way fixed effects implementations
 
-The core estimators for this module are the doubly robust estimators, and we recommend users to utilize these estimators in practice. We include the other estimators mainly for researchers to compare estimates from more traditional DiD estimators.
+> **⚠️ Note:**
+> The core estimators for this module are the **doubly robust estimators**. We recommend users to utilize these estimators in practice as they will give the most robust estimate of the ATT. We include the other estimators mainly for researchers to compare estimates from more traditional DiD estimators in their research designs.
 
 ## Features
 
@@ -93,7 +94,7 @@ result = drdid_imp_local_rc(
 - **Automatic trimming**: Handles extreme propensity scores to ensure stable estimates
 - **AIPW estimators**: Augmented inverse propensity weighted variants
 
-### Example
+### Usage
 
 The following is a portion of the empirical illustration considered by Sant'Anna and Zhao (2020) that uses the LaLonde sample from the NSW experiment and considers data from the Current Population Survey (CPS) to form a non-experimental comparison group.
 
@@ -115,8 +116,6 @@ att_result = pydid.drdid(
     est_method='imp',
 )
 ```
-
-The resulting output prints several different quantities of interest along with the ATT estimate.
 
 ```bash
 =======================================================================
@@ -140,3 +139,14 @@ ATT   -901.2703    393.6212  -2.2897    0.0220  [-1672.7679, -129.7727]
 =======================================================================
  Reference: Sant'Anna and Zhao (2020), Journal of Econometrics
  ```
+
+## Citation
+
+```bibtex
+@article{santanna2020doubly,
+  title={Doubly Robust Difference-in-Differences Estimators},
+  author={Sant'Anna, Pedro H. C. and Zhao, Jun B.},
+  journal={arXiv preprint arXiv:1812.01723},
+  year={2020}
+}
+```
