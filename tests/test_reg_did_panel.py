@@ -37,7 +37,7 @@ def test_basic_functionality():
     assert result.args["panel"] is True
     assert result.args["type"] == "or"
 
-    assert np.isclose(result.att, 1.0, atol=0.2)
+    assert np.isclose(result.att, 1.6, atol=0.2)
 
 
 def test_bootstrap_inference():

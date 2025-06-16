@@ -139,7 +139,7 @@ def drdid_imp_local_rc(
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
     # Compute influence function components
-    influence_components = _get_influence(
+    influence_components = _get_influence_quantities(
         y, out_y_cont, out_y_treat_pre, out_y_treat_post, out_y_cont_pre, out_y_cont_post, weights
     )
 
@@ -273,7 +273,7 @@ def _compute_weights(
     }
 
 
-def _get_influence(
+def _get_influence_quantities(
     y,
     out_y_cont,
     out_y_treat_pre,

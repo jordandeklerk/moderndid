@@ -105,73 +105,19 @@ def reg_did_panel(
     .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020), "Doubly Robust Difference-in-Differences Estimators."
            Journal of Econometrics, Vol. 219 (1), pp. 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
     """
-    d = np.asarray(d).flatten()
-    n_units = len(d)
-    delta_y = np.asarray(y1).flatten() - np.asarray(y0).flatten()
+    y1, y0, d, int_cov, i_weights, n_units, delta_y = _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights)
 
-    if covariates is None:
-        int_cov = np.ones((n_units, 1))
-    else:
-        int_cov = np.asarray(covariates)
-        if int_cov.ndim == 1:
-            int_cov = int_cov.reshape(-1, 1)
+    # Fit outcome regression model
+    out_delta = _fit_outcome_regression(delta_y, d, int_cov, i_weights)
 
-    if i_weights is None:
-        i_weights = np.ones(n_units)
-    else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
-            raise ValueError("i_weights must be non-negative.")
-    i_weights = i_weights / np.mean(i_weights)
+    # Compute weights and ATT components
+    weights = _compute_weights(d, i_weights)
 
-    control_filter = d == 0
-    n_control = np.sum(control_filter)
+    reg_att_treat = weights["w_treat"] * delta_y
+    reg_att_cont = weights["w_cont"] * out_delta
 
-    if n_control == 0:
-        warnings.warn("All units are treated. Returning NaN.", UserWarning)
-        return RegDIDPanelResult(
-            att=np.nan,
-            se=np.nan,
-            uci=np.nan,
-            lci=np.nan,
-            boots=None,
-            att_inf_func=None,
-            args={},
-        )
-
-    if n_control < int_cov.shape[1]:
-        raise ValueError("Insufficient control units for regression.")
-
-    try:
-        glm_model = sm.GLM(
-            delta_y[control_filter],
-            int_cov[control_filter],
-            family=sm.families.Gaussian(link=sm.families.links.Identity()),
-            var_weights=i_weights[control_filter],
-        )
-        glm_results = glm_model.fit()
-        reg_coeff = glm_results.params
-    except (np.linalg.LinAlgError, ValueError) as e:
-        raise ValueError(f"Failed to fit outcome regression model: {e}") from e
-
-    if np.any(np.isnan(reg_coeff)):
-        raise ValueError(
-            "Outcome regression model coefficients have NA components. \n"
-            "Multicollinearity (or lack of variation) of covariates is probably the reason for it."
-        )
-
-    out_delta = int_cov @ reg_coeff
-
-    # Compute the OR-DiD estimator
-    # First, the weights
-    w_treat = i_weights * d
-    w_cont = i_weights * d
-
-    reg_att_treat = w_treat * delta_y
-    reg_att_cont = w_cont * out_delta
-
-    mean_w_treat = np.mean(w_treat)
-    mean_w_cont = np.mean(w_cont)
+    mean_w_treat = np.mean(weights["w_treat"])
+    mean_w_cont = np.mean(weights["w_cont"])
 
     if mean_w_treat == 0:
         # No treated units
@@ -191,42 +137,61 @@ def reg_did_panel(
             },
         )
 
-    eta_treat = np.mean(reg_att_treat) / mean_w_treat
-    eta_cont = np.mean(reg_att_cont) / mean_w_cont
+    if mean_w_cont == 0:
+        # No control units
+        eta_treat = np.mean(reg_att_treat) / mean_w_treat
+        eta_cont = np.nan
+        reg_att = np.nan
+    else:
+        eta_treat = np.mean(reg_att_treat) / mean_w_treat
+        eta_cont = np.mean(reg_att_cont) / mean_w_cont
+        reg_att = eta_treat - eta_cont
 
-    reg_att = eta_treat - eta_cont
+    # Check if reg_att is NaN (happens when all units are treated)
+    if np.isnan(reg_att):
+        reg_att_inf_func = np.full(n_units, np.nan)
+        se_reg_att = np.nan
+        uci = np.nan
+        lci = np.nan
+        reg_boot = None if not boot else np.full(nboot if nboot is not None else 999, np.nan)
 
-    # Get the influence function to compute standard error
-    # First, the influence function of the nuisance functions
-    # Asymptotic linear representation of OLS parameters
-    weights_ols = i_weights * (1 - d)
-    weighted_x = weights_ols[:, np.newaxis] * int_cov
-    weighted_resid_x = weights_ols[:, np.newaxis] * (delta_y - out_delta)[:, np.newaxis] * int_cov
-    gram_matrix = weighted_x.T @ int_cov / n_units
+        if not influence_func:
+            reg_att_inf_func = None
 
-    if np.linalg.cond(gram_matrix) > 1e15:
-        raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
+        boot_type_str = "multiplier" if boot_type == "multiplier" else "weighted"
+        args = {
+            "panel": True,
+            "boot": boot,
+            "boot_type": boot_type_str,
+            "nboot": nboot,
+            "type": "or",
+        }
 
-    gram_inv = np.linalg.inv(gram_matrix)
-    asy_lin_rep_ols = weighted_resid_x @ gram_inv
+        return RegDIDPanelResult(
+            att=reg_att,
+            se=se_reg_att,
+            uci=uci,
+            lci=lci,
+            boots=reg_boot,
+            att_inf_func=reg_att_inf_func,
+            args=args,
+        )
 
-    # Now, the influence function of the "treat" component
-    # Leading term of the influence function
-    inf_treat = (reg_att_treat - w_treat * eta_treat) / mean_w_treat
+    # Get influence function quantities
+    influence_quantities = _get_influence_quantities(delta_y, d, int_cov, out_delta, i_weights, n_units)
 
-    # Now, get the influence function of control component
-    # Leading term of the influence function: no estimation effect
-    inf_cont_1 = reg_att_cont - w_cont * eta_cont
-    # Estimation effect from beta hat (OLS using only controls)
-    # Derivative matrix (k x 1 vector)
-    control_ols_derivative = np.mean(w_cont[:, np.newaxis] * int_cov, axis=0)
-    # Now get the influence function related to the estimation effect related to beta's
-    inf_cont_2 = asy_lin_rep_ols @ control_ols_derivative
-    # Influence function for the control component
-    inf_control = (inf_cont_1 + inf_cont_2) / mean_w_cont
-
-    # Get the influence function of the DR estimator (put all pieces together)
-    reg_att_inf_func = inf_treat - inf_control
+    # Compute influence function
+    reg_att_inf_func = _compute_influence_function(
+        reg_att_treat,
+        reg_att_cont,
+        eta_treat,
+        eta_cont,
+        weights,
+        int_cov,
+        mean_w_treat,
+        mean_w_cont,
+        influence_quantities,
+    )
 
     if not boot:
         se_reg_att = np.std(reg_att_inf_func, ddof=1) / np.sqrt(n_units)
@@ -277,3 +242,121 @@ def reg_did_panel(
         att_inf_func=reg_att_inf_func,
         args=args,
     )
+
+
+def _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights):
+    """Validate and preprocess input arrays."""
+    d = np.asarray(d).flatten()
+    n_units = len(d)
+    delta_y = np.asarray(y1).flatten() - np.asarray(y0).flatten()
+
+    if covariates is None:
+        int_cov = np.ones((n_units, 1))
+    else:
+        int_cov = np.asarray(covariates)
+        if int_cov.ndim == 1:
+            int_cov = int_cov.reshape(-1, 1)
+
+    if i_weights is None:
+        i_weights = np.ones(n_units)
+    else:
+        i_weights = np.asarray(i_weights).flatten()
+        if np.any(i_weights < 0):
+            raise ValueError("i_weights must be non-negative.")
+    i_weights = i_weights / np.mean(i_weights)
+
+    return y1, y0, d, int_cov, i_weights, n_units, delta_y
+
+
+def _fit_outcome_regression(delta_y, d, int_cov, i_weights):
+    """Fit outcome regression model on control units."""
+    control_filter = d == 0
+    n_control = np.sum(control_filter)
+
+    if n_control == 0:
+        warnings.warn("All units are treated. Returning NaN.", UserWarning)
+        return np.full_like(delta_y, np.nan)
+
+    if n_control < int_cov.shape[1]:
+        raise ValueError("Insufficient control units for regression.")
+
+    try:
+        glm_model = sm.GLM(
+            delta_y[control_filter],
+            int_cov[control_filter],
+            family=sm.families.Gaussian(link=sm.families.links.Identity()),
+            var_weights=i_weights[control_filter],
+        )
+        glm_results = glm_model.fit()
+        reg_coeff = glm_results.params
+    except (np.linalg.LinAlgError, ValueError) as e:
+        raise ValueError(f"Failed to fit outcome regression model: {e}") from e
+
+    if np.any(np.isnan(reg_coeff)):
+        raise ValueError(
+            "Outcome regression model coefficients have NA components. \n"
+            "Multicollinearity (or lack of variation) of covariates is probably the reason for it."
+        )
+
+    out_delta = int_cov @ reg_coeff
+
+    return out_delta
+
+
+def _compute_weights(d, i_weights):
+    """Compute weights for outcome regression DiD estimator."""
+    w_treat = i_weights * d
+    w_cont = i_weights * (1 - d)
+
+    return {
+        "w_treat": w_treat,
+        "w_cont": w_cont,
+    }
+
+
+def _get_influence_quantities(delta_y, d, int_cov, out_delta, i_weights, n_units):
+    """Compute quantities needed for influence function."""
+    # Asymptotic linear representation of OLS parameters
+    weights_ols = i_weights * (1 - d)
+    weighted_x = weights_ols[:, np.newaxis] * int_cov
+    weighted_resid_x = weights_ols[:, np.newaxis] * (delta_y - out_delta)[:, np.newaxis] * int_cov
+    gram_matrix = weighted_x.T @ int_cov / n_units
+
+    if np.linalg.cond(gram_matrix) > 1e15:
+        raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
+
+    gram_inv = np.linalg.inv(gram_matrix)
+    asy_lin_rep_ols = weighted_resid_x @ gram_inv
+
+    return {
+        "asy_lin_rep_ols": asy_lin_rep_ols,
+    }
+
+
+def _compute_influence_function(
+    reg_att_treat, reg_att_cont, eta_treat, eta_cont, weights, int_cov, mean_w_treat, mean_w_cont, influence_quantities
+):
+    """Compute the influence function for outcome regression estimator."""
+    w_treat = weights["w_treat"]
+    w_cont = weights["w_cont"]
+    asy_lin_rep_ols = influence_quantities["asy_lin_rep_ols"]
+
+    # Influence function of the "treat" component
+    # Leading term of the influence function
+    inf_treat = (reg_att_treat - w_treat * eta_treat) / mean_w_treat
+
+    # Influence function of control component
+    # Leading term of the influence function: no estimation effect
+    inf_cont_1 = reg_att_cont - w_cont * eta_cont
+    # Estimation effect from beta hat (OLS using only controls)
+    # Derivative matrix (k x 1 vector)
+    control_ols_derivative = np.mean(w_cont[:, np.newaxis] * int_cov, axis=0)
+    # Now get the influence function related to the estimation effect related to beta's
+    inf_cont_2 = asy_lin_rep_ols @ control_ols_derivative
+    # Influence function for the control component
+    inf_control = (inf_cont_1 + inf_cont_2) / mean_w_cont
+
+    # Get the influence function of the OR estimator (put all pieces together)
+    reg_att_inf_func = inf_treat - inf_control
+
+    return reg_att_inf_func
