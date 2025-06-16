@@ -1,4 +1,5 @@
 """Standardized inverse probability weighted DiD estimator for repeated cross-sections data."""
+# pylint: disable=duplicate-code
 
 import warnings
 from typing import NamedTuple

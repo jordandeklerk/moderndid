@@ -1,4 +1,5 @@
 """Standardized inverse propensity weighted DiD estimator for panel data."""
+# pylint: disable=duplicate-code
 
 import warnings
 from typing import NamedTuple

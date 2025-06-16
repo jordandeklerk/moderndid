@@ -1,4 +1,5 @@
 """Traditional doubly robust DiD estimator for repeated cross-sections data (not locally efficient)."""
+# pylint: disable=duplicate-code
 
 import warnings
 from typing import NamedTuple
