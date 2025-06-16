@@ -1,4 +1,4 @@
-# Doubly-Robust Difference-in-Differences Module
+# Doubly-Robust Difference-in-Differences
 
 The `pydid.drdid` module provides a comprehensive suite of modern difference-in-differences estimators for causal inference, implementing state-of-the-art methods from recent econometric literature. This module goes beyond traditional DiD approaches by offering doubly robust, inverse propensity weighted, and outcome regression estimators that address common challenges in observational studies with two time periods (pre-treatment and post-treatment) and two groups (treatment group and comparison group).
 
