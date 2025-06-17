@@ -122,7 +122,7 @@ def ipwdid(
         :okwarning:
 
         In [1]: import pydid
-           ...: from pydid.datasets import load_nsw
+           ...: from pydid.data import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
