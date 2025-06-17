@@ -17,6 +17,7 @@ IPW-based estimators that re-weight observations to balance co-variate distribut
 ### 3. **Outcome Regression DiD** (`ordid`)
 
 Regression-based estimators that model outcome evolutions directly.
+<br>
 
 > [!IMPORTANT]
 > The core estimators for this module are the **doubly robust estimators**. We recommend users utilize these estimators in practice as they will give the most robust estimate of the ATT. We include the other estimators mainly for researchers to compare estimates from more traditional DiD estimators.
