@@ -104,10 +104,10 @@ def reg_did_rc(
     """
     y, post, d, int_cov, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Fit outcome regression models
+    # Outcome regression
     out_y_pre, out_y_post = _fit_outcome_regressions(y, post, d, int_cov, i_weights)
 
-    # Compute weights and ATT components
+    # Weights and ATT components
     weights = _compute_weights(d, post, i_weights)
 
     reg_att_treat_pre = weights["w_treat_pre"] * y
@@ -120,10 +120,10 @@ def reg_did_rc(
 
     reg_att = (eta_treat_post - eta_treat_pre) - eta_cont
 
-    # Get influence function quantities
+    # Influence function quantities
     influence_quantities = _get_influence_quantities(y, post, d, int_cov, out_y_pre, out_y_post, i_weights, n_units)
 
-    # Compute influence function
+    # Influence function
     reg_att_inf_func = _compute_influence_function(
         reg_att_treat_pre,
         reg_att_treat_post,
@@ -192,7 +192,6 @@ def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
         if int_cov.ndim == 1:
             int_cov = int_cov.reshape(-1, 1)
 
-    # Weights
     if i_weights is None:
         i_weights = np.ones(n_units)
     else:

@@ -195,10 +195,10 @@ def _fit_twfe_regression(y, post, d, x, i_weights, n):
         wls_model = sm.WLS(y, design_matrix, weights=i_weights)
         wls_results = wls_model.fit()
 
-        # Get ATT coefficient (d:post interaction)
+        # ATT coefficient (d:post interaction)
         att = wls_results.params[3]  # Index 3 is the d:post interaction
 
-        # Elements for influence functions
+        # Elements for influence function
         x_prime_x = design_matrix.T @ (i_weights[:, np.newaxis] * design_matrix) / n
 
         if np.linalg.cond(x_prime_x) > 1e15:
@@ -206,14 +206,14 @@ def _fit_twfe_regression(y, post, d, x, i_weights, n):
 
         x_prime_x_inv = np.linalg.inv(x_prime_x)
 
-        # Get influence function of the TWFE regression
+        # Influence function of the TWFE regression
         residuals = wls_results.resid
         influence_reg = (i_weights[:, np.newaxis] * design_matrix * residuals[:, np.newaxis]) @ x_prime_x_inv
 
         selection_theta = np.zeros(design_matrix.shape[1])
         selection_theta[3] = 1  # d:post interaction is at index 3
 
-        # Get the influence function of the ATT
+        # Influence function of the ATT
         att_inf_func = influence_reg @ selection_theta
 
     except (np.linalg.LinAlgError, ValueError) as e:

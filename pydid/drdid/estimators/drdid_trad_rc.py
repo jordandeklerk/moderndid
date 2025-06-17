@@ -94,14 +94,13 @@ def drdid_trad_rc(
     """
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Compute propensity score
+    # Propensity score estimation
     ps_fit, ps_weights = _compute_propensity_score(d, covariates, i_weights)
 
-    # Apply trimming
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Compute the Outcome regression for the control group at the pre-treatment period, using ols.
+    # Outcome regression for the control group at the pre-treatment period, using ols.
     out_reg_pre_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
     if np.any(np.isnan(out_reg_pre_result.coefficients)):
         raise ValueError(
@@ -110,7 +109,7 @@ def drdid_trad_rc(
         )
     out_y_pre = out_reg_pre_result.out_reg
 
-    # Compute the Outcome regression for the control group at the post-treatment period, using ols.
+    # Outcome regression for the control group at the post-treatment period, using ols.
     out_reg_post_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
     if np.any(np.isnan(out_reg_post_result.coefficients)):
         raise ValueError(
@@ -120,10 +119,10 @@ def drdid_trad_rc(
     out_y_post = out_reg_post_result.out_reg
     out_y = post * out_y_post + (1 - post) * out_y_pre
 
-    # Compute weights
+    # Weights
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Compute influence function components and ATT
+    # Influence function components and ATT
     influence_components = _get_influence_components(y, out_y, weights)
 
     # ATT estimator
@@ -131,12 +130,12 @@ def drdid_trad_rc(
         influence_components["att_cont_post"] - influence_components["att_cont_pre"]
     )
 
-    # Get influence function quantities
+    # Influence function quantities
     influence_quantities = _get_influence_quantities(
         y, post, d, covariates, ps_fit, ps_weights, out_y_pre, out_y_post, i_weights, n_units
     )
 
-    # Compute influence function
+    # Influence function
     dr_att_inf_func = _compute_influence_function(
         y, post, out_y, covariates, weights, influence_components, influence_quantities
     )
@@ -200,7 +199,6 @@ def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
     else:
         covariates = np.asarray(covariates)
 
-    # Weights
     if i_weights is None:
         i_weights = np.ones(n_units)
     else:
@@ -333,13 +331,13 @@ def _get_influence_quantities(y, post, d, covariates, ps_fit, ps_weights, out_y_
 
 def _compute_influence_function(y, post, out_y, covariates, weights, influence_components, influence_quantities):
     """Compute the influence function for traditional DR estimator."""
-    # Extract weights
+    # Weights
     w_treat_pre = weights["w_treat_pre"]
     w_treat_post = weights["w_treat_post"]
     w_cont_pre = weights["w_cont_pre"]
     w_cont_post = weights["w_cont_post"]
 
-    # Extract influence components
+    # Influence components
     eta_treat_pre = influence_components["eta_treat_pre"]
     eta_treat_post = influence_components["eta_treat_post"]
     eta_cont_pre = influence_components["eta_cont_pre"]
@@ -349,7 +347,7 @@ def _compute_influence_function(y, post, out_y, covariates, weights, influence_c
     att_cont_pre = influence_components["att_cont_pre"]
     att_cont_post = influence_components["att_cont_post"]
 
-    # Extract asymptotic linear representations
+    # Asymptotic linear representations
     asy_lin_rep_ols_pre = influence_quantities["asy_lin_rep_ols_pre"]
     asy_lin_rep_ols_post = influence_quantities["asy_lin_rep_ols_post"]
     asy_lin_rep_ps = influence_quantities["asy_lin_rep_ps"]

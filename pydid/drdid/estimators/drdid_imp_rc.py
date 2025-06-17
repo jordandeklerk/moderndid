@@ -107,14 +107,14 @@ def drdid_imp_rc(
     """
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Compute the propensity score using inverse probability tilting
+    # Propensity score estimation via inverse probability tilting
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
 
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Compute the outcome regression for the control group
+    # Outcome regression for the control group
     out_y_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
     out_y_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
     out_y_pre = out_y_pre_res.out_reg
@@ -122,14 +122,14 @@ def drdid_imp_rc(
 
     out_y = post * out_y_post + (1 - post) * out_y_pre
 
-    # Compute the ATT estimator
+    # ATT calculation using AIPW estimator (see Sant'Anna and Zhao (2020))
     dr_att = aipw_did_rc_imp1(y, post, d, ps_fit, out_y, i_weights, trim_ps)
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Compute influence function components
+    # Influence function components
     influence_components = _get_influence_quantities(y, out_y, weights)
 
-    # Compute the influence function
+    # Influence function
     att_inf_func = _compute_influence_function(influence_components, weights)
 
     # Inference

@@ -106,44 +106,42 @@ def drdid_imp_local_rc(
     """
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Compute the propensity score using inverse probability tilting
+    # Propensity score estimation
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
 
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Compute the outcome regression for the control group
+    # Outcome regression for the control group
     out_y_cont_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
     out_y_cont_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
     out_y_cont_pre = out_y_cont_pre_res.out_reg
     out_y_cont_post = out_y_cont_post_res.out_reg
 
-    # Combine the outcome regressions for the control group
     out_y_cont = post * out_y_cont_post + (1 - post) * out_y_cont_pre
 
-    # Compute the outcome regression for the treated group at the pre-treatment period
+    # Outcome regression for the treated group at the pre-treatment period
     out_y_treat_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=True)
     out_y_treat_pre = out_y_treat_pre_res.out_reg
 
-    # Compute the outcome regression for the treated group at the post-treatment period
+    # Outcome regression for the treated group at the post-treatment period
     out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
     out_y_treat_post = out_y_treat_post_res.out_reg
 
-    # ATT calculation using AIPW estimator
+    # ATT calculation using AIPW estimator (see Sant'Anna and Zhao (2020))
     dr_att = aipw_did_rc_imp2(
         y, post, d, ps_fit, out_y_cont_pre, out_y_cont_post, out_y_treat_pre, out_y_treat_post, i_weights, trim_ps
     )
 
-    # Compute weights for the influence function
+    # Weights for the influence function
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Compute influence function components
+    # Influence function components
     influence_components = _get_influence_quantities(
         y, out_y_cont, out_y_treat_pre, out_y_treat_post, out_y_cont_pre, out_y_cont_post, weights
     )
 
-    # Assemble the locally efficient influence function
     att_inf_func = _compute_influence_function(influence_components, weights)
 
     # Inference
@@ -291,13 +289,13 @@ def _get_influence_quantities(
     w_dt1 = weights["w_dt1"]
     w_dt0 = weights["w_dt0"]
 
-    # Compute eta components (influence function summands)
+    # eta components (influence function summands)
     eta_treat_pre = w_treat_pre * (y - out_y_cont) / np.mean(w_treat_pre)
     eta_treat_post = w_treat_post * (y - out_y_cont) / np.mean(w_treat_post)
     eta_cont_pre = w_cont_pre * (y - out_y_cont) / np.mean(w_cont_pre)
     eta_cont_post = w_cont_post * (y - out_y_cont) / np.mean(w_cont_post)
 
-    # Extra components for locally efficient estimator
+    # Extra components for locally efficient estimator (see Sant'Anna and Zhao (2020))
     eta_d_post = w_d * (out_y_treat_post - out_y_cont_post) / np.mean(w_d)
     eta_dt1_post = w_dt1 * (out_y_treat_post - out_y_cont_post) / np.mean(w_dt1)
     eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / np.mean(w_d)
@@ -348,12 +346,12 @@ def _compute_influence_function(
     att_d_pre = np.mean(eta_d_pre)
     att_dt0_pre = np.mean(eta_dt0_pre)
 
-    # Compute influence functions for treatment component
+    # Influence functions for treatment component
     inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / np.mean(w_treat_pre)
     inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / np.mean(w_treat_post)
     inf_treat = inf_treat_post - inf_treat_pre
 
-    # Compute influence functions for control component
+    # Influence functions for control component
     inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / np.mean(w_cont_pre)
     inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / np.mean(w_cont_post)
     inf_cont = inf_cont_post - inf_cont_pre
