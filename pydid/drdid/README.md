@@ -127,13 +127,13 @@ ATT   -901.2703    393.6212  -2.2897    0.0220  [-1672.7679, -129.7727]
  Reference: Sant'Anna and Zhao (2020), Journal of Econometrics
  ```
 
-## Citation
+## References
 
-```bibtex
-@article{santanna2020doubly,
-  title={Doubly Robust Difference-in-Differences Estimators},
-  author={Sant'Anna, Pedro H. C. and Zhao, Jun B.},
-  journal={arXiv preprint arXiv:1812.01723},
-  year={2020}
-}
-```
+Abadie, A. (2005). *Semiparametric difference-in-differences estimators.*
+The Review of Economic Studies, 72(1), 1-19. https://doi.org/10.1111/0034-6527.00321
+
+Graham, B. S., Pinto, C. C., & Egel, D. (2012). *Inverse probability tilting for moment condition models with missing data.*
+The Review of Economic Studies, 79(3), 1053-1079. https://doi.org/10.1093/restud/rdr047
+
+Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
+Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
