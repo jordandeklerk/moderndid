@@ -81,7 +81,7 @@ result = drdid_imp_local_rc(
 - **Automatic trimming**: Handles extreme propensity scores to ensure stable estimates
 - **AIPW estimators**: Augmented inverse propensity weighted variants
 
-### Usage
+## Usage
 
 The following is a portion of the empirical illustration considered by Sant'Anna and Zhao (2020) that uses the LaLonde sample from the NSW experiment and considers data from the Current Population Survey (CPS) to form a non-experimental comparison group:
 
