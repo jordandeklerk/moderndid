@@ -6,8 +6,8 @@ from typing import NamedTuple
 import numpy as np
 from scipy import stats
 
-from ..boot.boot_mult import mboot_did
-from ..boot.boot_panel import wboot_drdid_imp_panel
+from ..bootstrap.boot_mult import mboot_did
+from ..bootstrap.boot_panel import wboot_drdid_imp_panel
 from ..propensity.aipw_estimators import aipw_did_panel
 from ..propensity.pscore_ipt import calculate_pscore_ipt
 from .wols import wols_panel

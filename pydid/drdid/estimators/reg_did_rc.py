@@ -6,8 +6,8 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
-from ..boot.boot_mult import mboot_did
-from ..boot.boot_reg_rc import wboot_reg_rc
+from ..bootstrap.boot_mult import mboot_did
+from ..bootstrap.boot_reg_rc import wboot_reg_rc
 
 
 class RegDIDRCResult(NamedTuple):
