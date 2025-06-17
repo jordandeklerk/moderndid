@@ -108,21 +108,21 @@ def drdid_imp_panel(
 
     delta_y = y1 - y0
 
-    # Compute the propensity score using inverse probability tilting
+    # Propensity score estimation via inverse probability tilting
     pscore_ipt_results = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = np.clip(pscore_ipt_results, 1e-6, 1 - 1e-6)
 
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Compute the outcome regression for the control group
+    # Outcome regression for the control group
     outcome_reg = wols_panel(delta_y=delta_y, d=d, x=covariates, ps=ps_fit, i_weights=i_weights)
     out_delta = outcome_reg.out_reg
 
-    # Compute Bias-Reduced Doubly Robust DiD estimators
+    # ATT calculation using AIPW estimator (see Sant'Anna and Zhao (2020))
     dr_att = aipw_did_panel(delta_y=delta_y, d=d, ps=ps_fit, out_reg=out_delta, i_weights=i_weights, trim_ps=trim_ps)
 
-    # Compute influence function
+    # Influence function
     att_inf_func = _compute_influence_function(
         delta_y=delta_y,
         d=d,
@@ -230,7 +230,6 @@ def _compute_influence_function(
     dr_att,
 ):
     """Compute the influence function for the ATT estimator."""
-    # Get the influence function to compute standard error
     mean_d_weights = np.mean(d * i_weights)
     if mean_d_weights == 0:
         raise ValueError("No treated units with positive weights, cannot compute ATT.")

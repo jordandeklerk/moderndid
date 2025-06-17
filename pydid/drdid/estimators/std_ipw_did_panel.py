@@ -97,14 +97,14 @@ def std_ipw_did_panel(
         y1, y0, d, covariates, i_weights
     )
 
-    # Compute propensity score
+    # Propensity score estimation
     ps_fit, W, ps_results = _compute_propensity_score(d, covariates, i_weights)
 
     trim_ps = ps_fit < 1.01  # This effectively creates all True for treated units
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
     weights = _compute_weights(d, ps_fit, i_weights, trim_ps)
 
-    # Compute normalization factors
+    # Normalization factors
     mean_w_treat = np.mean(weights["w_treat"])
     mean_w_cont = np.mean(weights["w_cont"])
 
@@ -128,10 +128,10 @@ def std_ipw_did_panel(
 
     ipw_att = att_treat - att_cont
 
-    # Get influence function quantities
+    # Influence function quantities
     influence_quantities = _get_influence_quantities(d, covariates, ps_fit, i_weights, W, ps_results, n_units)
 
-    # Compute influence function
+    # Influence function
     att_inf_func = _compute_influence_function(
         eta_treat,
         eta_cont,

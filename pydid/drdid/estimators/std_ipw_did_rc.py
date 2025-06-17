@@ -95,14 +95,14 @@ def std_ipw_did_rc(
     """
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Compute propensity score
+    # Propensity score estimation
     ps_fit, ps_weights = _compute_propensity_score(d, covariates, i_weights)
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Compute influence function components
+    # Influence function components
     influence_components = _get_influence_components(y, weights)
 
     # ATT estimator
@@ -110,10 +110,10 @@ def std_ipw_did_rc(
         influence_components["att_cont_post"] - influence_components["att_cont_pre"]
     )
 
-    # Get influence function quantities
+    # Influence function quantities
     influence_quantities = _get_influence_quantities(d, covariates, ps_fit, ps_weights, i_weights, n_units)
 
-    # Compute influence function
+    # Influence function
     att_inf_func = _compute_influence_function(y, covariates, weights, influence_components, influence_quantities)
 
     if not boot:
@@ -279,13 +279,13 @@ def _get_influence_quantities(d, covariates, ps_fit, ps_weights, i_weights, n_un
 
 def _compute_influence_function(y, covariates, weights, influence_components, influence_quantities):
     """Compute the influence function for standardized IPW estimator."""
-    # Extract weights
+    # Weights
     w_treat_pre = weights["w_treat_pre"]
     w_treat_post = weights["w_treat_post"]
     w_cont_pre = weights["w_cont_pre"]
     w_cont_post = weights["w_cont_post"]
 
-    # Extract influence components
+    # Influence components
     eta_treat_pre = influence_components["eta_treat_pre"]
     eta_treat_post = influence_components["eta_treat_post"]
     eta_cont_pre = influence_components["eta_cont_pre"]

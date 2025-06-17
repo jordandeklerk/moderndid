@@ -98,18 +98,16 @@ def drdid_panel(
         y1, y0, d, covariates, i_weights
     )
 
-    # Compute propensity score
+    # Propensity score estimation
     ps_fit, W = _compute_propensity_score(d, covariates, i_weights)
-
-    # Apply trimming
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Estimate the outcome regression for control group
+    # Outcome regression for control group
     outcome_reg = wols_panel(delta_y=delta_y, d=d, x=covariates, ps=ps_fit, i_weights=i_weights)
     out_delta = outcome_reg.out_reg
 
-    # Compute weights and ATT components
+    # Weights and ATT components
     weights = _compute_weights(d, ps_fit, i_weights, trim_ps)
 
     dr_att_treat = weights["w_treat"] * (delta_y - out_delta)
@@ -129,10 +127,10 @@ def drdid_panel(
     # ATT estimator
     dr_att = eta_treat - eta_cont
 
-    # Get influence function quantities
+    # Influence function quantities
     influence_quantities = _get_influence_quantities(delta_y, d, covariates, ps_fit, out_delta, i_weights, W, n_units)
 
-    # Compute influence function
+    # Influence function
     att_inf_func = _compute_influence_function(
         dr_att_treat,
         dr_att_cont,

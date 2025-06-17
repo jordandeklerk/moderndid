@@ -1,46 +1,33 @@
 # Doubly-Robust Difference-in-Differences
 
-The `pydid.drdid` module provides a comprehensive suite of modern difference-in-differences estimators for causal inference, implementing state-of-the-art methods from recent econometric literature. This module goes beyond traditional DiD approaches by offering doubly robust, inverse propensity weighted, and outcome regression estimators that address common challenges in observational studies with two time periods (pre-treatment and post-treatment) and two groups (treatment group and comparison group).
+This module provides a comprehensive suite of modern difference-in-differences estimators for causal inference, implementing methods from recent econometric literature. We go beyond traditional DiD approaches by offering **doubly robust**, **inverse propensity weighted**, and **outcome regression estimators** that address common challenges in observational studies with two time periods (pre-treatment and post-treatment) and two groups (treatment group and comparison group).
+
+The computational methods here are inspired by the corresponding R package [DRDID](https://github.com/pedrohcgs/DRDID).
 
 ## Core Functionality
 
 ### 1. **Doubly Robust DiD Estimators** (`drdid`)
 
-Based on [Sant'Anna and Zhao (2020)](https://doi.org/10.1016/j.jeconom.2020.06.003), these estimators combine outcome regression and propensity score methods to achieve:
-
-- **Double robustness**: Consistent estimates when either the outcome model or the propensity score model is correctly specified
-- **Local efficiency**: Optimal estimators for panel and repeated cross-section data that achieve the semi-parametric efficiency bound
-- **Flexible nuisance estimation**: Compatible with machine learning methods for high-dimensional co-variates
-
-Available variants:
-
-- `drdid_panel` and `drdid_imp_panel`: For panel data with repeated observations of the same individuals
-- `drdid_rc` and `drdid_imp_rc`: For repeated cross-section data
-- `drdid_imp_local_rc`: Locally efficient and improved estimator for repeated cross-section data
-- `drdid_trad_rc`: Traditional implementation with alternative weighting
+Based on [Sant'Anna and Zhao (2020)](https://doi.org/10.1016/j.jeconom.2020.06.003), doubly robust DiD estimators are estimators for the ATT that are consistent when either a working (parametric) model for the propensity score or a working (parametric) model for the outcome evolution for the comparison group is correctly specified. We propose two different classes of DR DID estimators for the ATT that differ from each other depending on whether or not one models the outcome regression for the treated group in both pre and post-treatment periods
 
 ### 2. **Inverse Propensity Weighted DiD** (`ipwdid`)
 
-IPW-based estimators that reweight observations to balance covariate distributions:
-
-- `ipw_did_panel` and `ipw_did_rc`: Standard IPW DiD estimators
-- `std_ipw_did_panel` and `std_ipw_did_rc`: Stabilized (Hajek-type) IPW estimators with improved finite-sample properties
+IPW-based estimators that re-weight observations to balance co-variate distributions. We include both Horwitz-Thompson type IPW estimators (weights are not normalized to sum up to 1) and Hajek-type IPW estimators (normalize weights within the treatment and control group).
 
 ### 3. **Outcome Regression DiD** (`ordid`)
 
-Regression-based estimators that model outcomes directly:
+Regression-based estimators that model outcome evolutions directly.
 
-- `reg_did_panel` and `reg_did_rc`: Flexible outcome regression DiD
-- `twfe_did_panel` and `twfe_did_rc`: Two-way fixed effects implementations
+<br>
 
 > **⚠️ Note:**
-> The core estimators for this module are the **doubly robust estimators**. We recommend users to utilize these estimators in practice as they will give the most robust estimate of the ATT. We include the other estimators mainly for researchers to compare estimates from more traditional DiD estimators in their research designs.
+> The core estimators for this module are the **doubly robust estimators**. We recommend users utilize these estimators in practice as they will give the most robust estimate of the ATT. We include the other estimators mainly for researchers to compare estimates from more traditional DiD estimators.
 
 ## Features
 
 ### Unified High-Level API
 
-Three main functions provide access to all estimators with a consistent pandas-friendly interface
+Three main functions provide access to all DiD estimators via the `est_method` with a consistent pandas-friendly interface
 
 ```python
 from pydid.drdid import drdid, ipwdid, ordid
@@ -53,7 +40,7 @@ result = drdid(data, y_col='outcome', time_col='period', treat_col='treated',
 # IPW estimation
 result = ipwdid(data, y_col='outcome', time_col='period', treat_col='treated',
                id_col='id', panel=True, covariates_formula='~ age + education + income',
-               est_method='std_ipw')  # Stabilized weights
+               est_method='std_ipw')
 
 # Outcome regression
 result = ordid(data, y_col='outcome', time_col='period', treat_col='treated',
@@ -62,7 +49,7 @@ result = ordid(data, y_col='outcome', time_col='period', treat_col='treated',
 
 ### Flexible Low-Level API
 
-For advanced users, all underlying estimators are directly accessible with NumPy arrays
+For advanced users, all underlying estimators are directly accessible with NumPy arrays as well
 
 ```python
 from pydid.drdid.estimators import drdid_imp_local_rc
@@ -96,12 +83,12 @@ result = drdid_imp_local_rc(
 
 ### Usage
 
-The following is a portion of the empirical illustration considered by Sant'Anna and Zhao (2020) that uses the LaLonde sample from the NSW experiment and considers data from the Current Population Survey (CPS) to form a non-experimental comparison group.
+The following is a portion of the empirical illustration considered by Sant'Anna and Zhao (2020) that uses the LaLonde sample from the NSW experiment and considers data from the Current Population Survey (CPS) to form a non-experimental comparison group:
 
 ```python
 import pydid
 
-# Load the NSW example dataset
+# NSW dataset
 nsw_data = pydid.datasets.load_nsw()
 
 # Estimate ATT using doubly robust DiD
@@ -116,6 +103,8 @@ att_result = pydid.drdid(
     est_method='imp',
 )
 ```
+
+The output shows all of the relevant quantities for the estimated ATT and information about the method type, e.g., panel or repeated cross-section data, outcome and propensity models, and inference type:
 
 ```bash
 =======================================================================
