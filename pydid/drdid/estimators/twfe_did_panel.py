@@ -7,8 +7,8 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy import stats
 
-from ..boot.boot_mult import mboot_twfep_did
-from ..boot.boot_panel import wboot_twfe_panel
+from ..bootstrap.boot_mult import mboot_twfep_did
+from ..bootstrap.boot_panel import wboot_twfe_panel
 from ..ordid import ordid
 
 

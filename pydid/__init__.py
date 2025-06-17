@@ -2,9 +2,9 @@
 """DiD and doubly robust DiD estimators."""
 
 from pydid import datasets
-from pydid.drdid.boot.boot_ipw_rc import wboot_ipw_rc
-from pydid.drdid.boot.boot_mult import mboot_did, mboot_twfep_did
-from pydid.drdid.boot.boot_panel import (
+from pydid.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
+from pydid.drdid.bootstrap.boot_mult import mboot_did, mboot_twfep_did
+from pydid.drdid.bootstrap.boot_panel import (
     wboot_dr_tr_panel,
     wboot_drdid_imp_panel,
     wboot_ipw_panel,
@@ -12,11 +12,11 @@ from pydid.drdid.boot.boot_panel import (
     wboot_std_ipw_panel,
     wboot_twfe_panel,
 )
-from pydid.drdid.boot.boot_rc import wboot_drdid_rc1, wboot_drdid_rc2
-from pydid.drdid.boot.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
-from pydid.drdid.boot.boot_reg_rc import wboot_reg_rc
-from pydid.drdid.boot.boot_std_ipw_rc import wboot_std_ipw_rc
-from pydid.drdid.boot.boot_twfe_rc import wboot_twfe_rc
+from pydid.drdid.bootstrap.boot_rc import wboot_drdid_rc1, wboot_drdid_rc2
+from pydid.drdid.bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
+from pydid.drdid.bootstrap.boot_reg_rc import wboot_reg_rc
+from pydid.drdid.bootstrap.boot_std_ipw_rc import wboot_std_ipw_rc
+from pydid.drdid.bootstrap.boot_twfe_rc import wboot_twfe_rc
 from pydid.drdid.drdid import drdid
 from pydid.drdid.estimators.drdid_imp_local_rc import drdid_imp_local_rc
 from pydid.drdid.estimators.drdid_imp_panel import drdid_imp_panel
