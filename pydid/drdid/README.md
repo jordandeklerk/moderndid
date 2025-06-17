@@ -17,6 +17,7 @@ IPW-based estimators that re-weight observations to balance co-variate distribut
 ### 3. **Outcome Regression DiD** (`ordid`)
 
 Regression-based estimators that model outcome evolutions directly.
+
 <br>
 
 > [!IMPORTANT]
