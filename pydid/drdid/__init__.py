@@ -1,5 +1,7 @@
 """Doubly robust DiD estimators."""
 
+from pydid.data import load_nsw
+
 from .bootstrap.boot_ipw_rc import wboot_ipw_rc
 from .bootstrap.boot_mult import mboot_did, mboot_twfep_did
 from .bootstrap.boot_panel import (
@@ -87,4 +89,6 @@ __all__ = [
     "wols_rc",
     # Print function
     "print_did_result",
+    # Data module
+    "load_nsw",
 ]

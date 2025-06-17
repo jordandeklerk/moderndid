@@ -2,7 +2,7 @@
 
 Documentation for all public modules, classes, and functions in the pyDiD package.
 
-## Main Functions - Doubly-Robust DiD
+## Main Functions
 
 ```{eval-rst}
 .. autosummary::

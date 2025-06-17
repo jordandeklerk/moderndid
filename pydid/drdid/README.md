@@ -1,6 +1,6 @@
 # Doubly-Robust Difference-in-Differences
 
-This module provides a comprehensive suite of modern difference-in-differences estimators for causal inference, implementing methods from the recent econometric literature. We go beyond traditional DiD approaches by offering **doubly robust**, **inverse propensity weighted**, and **outcome regression estimators** that address common challenges in observational studies with two time periods (pre-treatment and post-treatment) and two groups (treatment group and comparison group).
+This module provides a comprehensive suite of modern difference-in-differences estimators for estimating the ATT (average treatment effect on the treated). We go beyond traditional DiD approaches by offering **doubly robust**, **inverse propensity weighted**, and **outcome regression estimators** that address common challenges in observational studies with two time periods (pre-treatment and post-treatment) and two groups (treatment group and comparison group).
 
 The computational methods here are inspired by the corresponding R package [DRDID](https://github.com/pedrohcgs/DRDID).
 
@@ -130,10 +130,10 @@ ATT   -901.2703    393.6212  -2.2897    0.0220  [-1672.7679, -129.7727]
 ## References
 
 Abadie, A. (2005). *Semiparametric difference-in-differences estimators.*
-The Review of Economic Studies, 72(1), 1-19. https://doi.org/10.1111/0034-6527.00321
+The Review of Economic Studies, 72(1), 1-19.
 
 Graham, B. S., Pinto, C. C., & Egel, D. (2012). *Inverse probability tilting for moment condition models with missing data.*
-The Review of Economic Studies, 79(3), 1053-1079. https://doi.org/10.1093/restud/rdr047
+The Review of Economic Studies, 79(3), 1053-1079.
 
 Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
-Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
+Journal of Econometrics, 219(1), 101-122.
