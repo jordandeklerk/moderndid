@@ -1,1 +1,1 @@
-# Difference-in-Differences with a Continuous Treatment
+# Difference-in-Differences with Continuous Treatments
