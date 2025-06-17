@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
+__all__ = ["load_nsw"]
+
 
 def load_nsw() -> pd.DataFrame:
     """Load the NSW (National Supported Work) demonstration dataset.
@@ -60,6 +62,3 @@ def load_nsw() -> pd.DataFrame:
         nsw_data = pickle.load(f)
 
     return nsw_data
-
-
-__all__ = ["load_nsw"]
