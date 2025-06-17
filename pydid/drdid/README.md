@@ -1,6 +1,6 @@
 # Doubly-Robust Difference-in-Differences
 
-This module provides a comprehensive suite of modern difference-in-differences estimators for causal inference, implementing methods from recent econometric literature. We go beyond traditional DiD approaches by offering **doubly robust**, **inverse propensity weighted**, and **outcome regression estimators** that address common challenges in observational studies with two time periods (pre-treatment and post-treatment) and two groups (treatment group and comparison group).
+This module provides a comprehensive suite of modern difference-in-differences estimators for causal inference, implementing methods from the recent econometric literature. We go beyond traditional DiD approaches by offering **doubly robust**, **inverse propensity weighted**, and **outcome regression estimators** that address common challenges in observational studies with two time periods (pre-treatment and post-treatment) and two groups (treatment group and comparison group).
 
 The computational methods here are inspired by the corresponding R package [DRDID](https://github.com/pedrohcgs/DRDID).
 
@@ -11,15 +11,15 @@ The computational methods here are inspired by the corresponding R package [DRDI
 
 ### 1. **Doubly Robust DiD Estimators** (`drdid`)
 
-Based on [Sant'Anna and Zhao (2020)](https://doi.org/10.1016/j.jeconom.2020.06.003), doubly robust DiD estimators for the ATT that are consistent when either a working (parametric) model for the propensity score or a working (parametric) model for the outcome evolution for the comparison group is correctly specified. We propose two different classes of DR DID estimators for the ATT that differ from each other depending on whether or not one models the outcome regression for the treated group in both pre and post-treatment periods
+Doubly robust DiD estimators for the ATT that are consistent when either a working (parametric) model for the propensity score or a working (parametric) model for the outcome evolution for the comparison group is correctly specified. We propose two different classes of DR DID estimators for the ATT that differ from each other depending on whether or not one models the outcome regression for the treated group in both pre and post-treatment periods
 
 ### 2. **Inverse Propensity Weighted DiD** (`ipwdid`)
 
-IPW-based estimators that re-weight observations to balance co-variate distributions. We include both Horwitz-Thompson type IPW estimators (weights are not normalized to sum up to 1) and Hajek-type IPW estimators (normalize weights within the treatment and control group).
+IPW-based DiD estimators that re-weight observations to balance co-variate distributions. We include both Horwitz-Thompson type IPW estimators (weights are not normalized to sum up to 1) and Hajek-type IPW estimators (normalize weights within the treatment and control group).
 
 ### 3. **Outcome Regression DiD** (`ordid`)
 
-Regression-based estimators that model outcome evolutions directly.
+Regression-based DiD estimators that model outcome evolutions directly.
 
 ## Features
 
