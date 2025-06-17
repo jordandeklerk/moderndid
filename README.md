@@ -11,7 +11,7 @@
 
 __pyDiD__ is a Python package implementing modern DiD estimators for panel and repeated cross-section data, including staggered treatment timing, multiple time periods, doubly robust methods, continuous treatments, two-stage DiD, local projection DiD, machine learning approaches, and diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests for functional form.
 
-<br><br>
+<br>
 
 > [!WARNING]
 > This package is currently in active development and subject to change.
