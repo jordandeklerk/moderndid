@@ -13,8 +13,8 @@ __pyDiD__ is a Python package implementing modern DiD estimators for panel and r
 
 <br><br>
 
-> **⚠️ Note:**
-> This package is currently in active development.
+> [!WARNING]
+> This package is currently in active development and subject to change.
 
 <!-- ## Citation
 
