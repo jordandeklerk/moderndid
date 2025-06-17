@@ -4,6 +4,9 @@ This module provides a comprehensive suite of modern difference-in-differences e
 
 The computational methods here are inspired by the corresponding R package [DRDID](https://github.com/pedrohcgs/DRDID).
 
+> [!IMPORTANT]
+> The core estimators for this module are the **doubly robust estimators**. We recommend users utilize these estimators in practice as they will give the most robust estimate of the ATT. We include the other estimators mainly for researchers to compare estimates from more traditional DiD estimators.
+
 ## Core Functionality
 
 ### 1. **Doubly Robust DiD Estimators** (`drdid`)
@@ -17,11 +20,6 @@ IPW-based estimators that re-weight observations to balance co-variate distribut
 ### 3. **Outcome Regression DiD** (`ordid`)
 
 Regression-based estimators that model outcome evolutions directly.
-
-<br>
-
-> [!IMPORTANT]
-> The core estimators for this module are the **doubly robust estimators**. We recommend users utilize these estimators in practice as they will give the most robust estimate of the ATT. We include the other estimators mainly for researchers to compare estimates from more traditional DiD estimators.
 
 ## Features
 
