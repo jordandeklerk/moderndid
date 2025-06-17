@@ -49,8 +49,8 @@ def load_nsw() -> pd.DataFrame:
         training programs with experimental data. American Economic Review,
         76(4), 604-620.
     """
-    module_path = Path(__file__).parent
-    data_path = module_path / "data" / "nsw_long.pkl.gz"
+    project_root = Path(__file__).parent.parent
+    data_path = project_root / "data" / "nsw_long.pkl.gz"
 
     if not data_path.exists():
         raise FileNotFoundError(

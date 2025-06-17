@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from pydid.datasets import load_nsw
+from pydid.data import load_nsw
 from pydid.drdid.drdid import drdid
 
 from .helpers import importorskip

@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from pydid.datasets import load_nsw
+from pydid.data import load_nsw
 
 
 def test_load_nsw():
@@ -54,10 +54,10 @@ def test_load_nsw_data_integrity():
 def test_import_from_package():
     import pydid
 
-    assert hasattr(pydid, "datasets")
-    assert hasattr(pydid.datasets, "load_nsw")
+    assert hasattr(pydid, "data")
+    assert hasattr(pydid.data, "load_nsw")
 
-    nsw_data = pydid.datasets.load_nsw()
+    nsw_data = pydid.data.load_nsw()
 
     assert isinstance(nsw_data, pd.DataFrame)
     assert nsw_data.shape[0] > 0
