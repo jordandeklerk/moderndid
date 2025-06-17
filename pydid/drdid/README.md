@@ -11,7 +11,7 @@ The computational methods here are inspired by the corresponding R package [DRDI
 
 ### 1. **Doubly Robust DiD Estimators** (`drdid`)
 
-Based on [Sant'Anna and Zhao (2020)](https://doi.org/10.1016/j.jeconom.2020.06.003), doubly robust DiD estimators are estimators for the ATT that are consistent when either a working (parametric) model for the propensity score or a working (parametric) model for the outcome evolution for the comparison group is correctly specified. We propose two different classes of DR DID estimators for the ATT that differ from each other depending on whether or not one models the outcome regression for the treated group in both pre and post-treatment periods
+Based on [Sant'Anna and Zhao (2020)](https://doi.org/10.1016/j.jeconom.2020.06.003), doubly robust DiD estimators for the ATT that are consistent when either a working (parametric) model for the propensity score or a working (parametric) model for the outcome evolution for the comparison group is correctly specified. We propose two different classes of DR DID estimators for the ATT that differ from each other depending on whether or not one models the outcome regression for the treated group in both pre and post-treatment periods
 
 ### 2. **Inverse Propensity Weighted DiD** (`ipwdid`)
 
