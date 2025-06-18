@@ -2,6 +2,8 @@
 """DiD and doubly robust DiD estimators."""
 
 from pydid.data import load_nsw
+from pydid.did.aggte_obj import AGGTEResult, aggte, format_aggte_result
+from pydid.did.multiperiod_obj import MPResult, format_mp_result, mp
 from pydid.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
 from pydid.drdid.bootstrap.boot_mult import mboot_did, mboot_twfep_did
 from pydid.drdid.bootstrap.boot_panel import (
@@ -130,4 +132,12 @@ __all__ = [
     "print_did_result",
     # Datasets module
     "load_nsw",
+    # Multi-period result objects
+    "MPResult",
+    "mp",
+    "format_mp_result",
+    # Aggregate treatment effect result objects
+    "AGGTEResult",
+    "aggte",
+    "format_aggte_result",
 ]
