@@ -255,3 +255,175 @@ def _mp_str(self):
 
 MPResult.__repr__ = _mp_repr
 MPResult.__str__ = _mp_str
+
+
+class MPPretestResult(NamedTuple):
+    """Container for pre-test results of conditional parallel trends assumption.
+
+    Attributes
+    ----------
+    cvm_stat : float
+        Cramer von Mises test statistic.
+    cvm_boots : ndarray, optional
+        Vector of bootstrapped Cramer von Mises test statistics.
+    cvm_critval : float
+        Cramer von Mises critical value.
+    cvm_pval : float
+        P-value for Cramer von Mises test.
+    ks_stat : float
+        Kolmogorov-Smirnov test statistic.
+    ks_boots : ndarray, optional
+        Vector of bootstrapped Kolmogorov-Smirnov test statistics.
+    ks_critval : float
+        Kolmogorov-Smirnov critical value.
+    ks_pval : float
+        P-value for Kolmogorov-Smirnov test.
+    cluster_vars : list[str], optional
+        Variables that were clustered on for the test.
+    x_formula : str, optional
+        Formula for the X variables used in the test.
+    """
+
+    cvm_stat: float
+    cvm_boots: np.ndarray | None
+    cvm_critval: float
+    cvm_pval: float
+    ks_stat: float
+    ks_boots: np.ndarray | None
+    ks_critval: float
+    ks_pval: float
+    cluster_vars: list[str] | None = None
+    x_formula: str | None = None
+
+
+def mp_pretest(
+    cvm_stat,
+    cvm_critval,
+    cvm_pval,
+    ks_stat,
+    ks_critval,
+    ks_pval,
+    cvm_boots=None,
+    ks_boots=None,
+    cluster_vars=None,
+    x_formula=None,
+):
+    """Create a pre-test result object for conditional parallel trends assumption.
+
+    Parameters
+    ----------
+    cvm_stat : float
+        Cramer von Mises test statistic.
+    cvm_critval : float
+        Cramer von Mises critical value.
+    cvm_pval : float
+        P-value for Cramer von Mises test.
+    ks_stat : float
+        Kolmogorov-Smirnov test statistic.
+    ks_critval : float
+        Kolmogorov-Smirnov critical value.
+    ks_pval : float
+        P-value for Kolmogorov-Smirnov test.
+    cvm_boots : ndarray, optional
+        Vector of bootstrapped Cramer von Mises test statistics.
+    ks_boots : ndarray, optional
+        Vector of bootstrapped Kolmogorov-Smirnov test statistics.
+    cluster_vars : list[str], optional
+        Variables that were clustered on for the test.
+    x_formula : str, optional
+        Formula for the X variables used in the test.
+
+    Returns
+    -------
+    MPPretestResult
+        NamedTuple containing pre-test results.
+    """
+    if cvm_boots is not None:
+        cvm_boots = np.asarray(cvm_boots)
+    if ks_boots is not None:
+        ks_boots = np.asarray(ks_boots)
+
+    return MPPretestResult(
+        cvm_stat=cvm_stat,
+        cvm_boots=cvm_boots,
+        cvm_critval=cvm_critval,
+        cvm_pval=cvm_pval,
+        ks_stat=ks_stat,
+        ks_boots=ks_boots,
+        ks_critval=ks_critval,
+        ks_pval=ks_pval,
+        cluster_vars=cluster_vars,
+        x_formula=x_formula,
+    )
+
+
+def format_mp_pretest_result(result: MPPretestResult):
+    """Format pre-test results.
+
+    Parameters
+    ----------
+    result : MPPretestResult
+        The pre-test result to format.
+
+    Returns
+    -------
+    str
+        Formatted string representation of the results.
+    """
+    lines = []
+
+    lines.append("")
+    lines.append("Pre-test of Conditional Parallel Trends Assumption")
+    lines.append("=" * 50)
+    lines.append("")
+
+    lines.append("Cramer von Mises Test:")
+    lines.append(f"  Test Statistic: {result.cvm_stat:.4f}")
+    lines.append(f"  Critical Value: {result.cvm_critval:.4f}")
+    lines.append(f"  P-value       : {result.cvm_pval:.4f}")
+    lines.append("")
+
+    lines.append("Kolmogorov-Smirnov Test:")
+    lines.append(f"  Test Statistic: {result.ks_stat:.4f}")
+    lines.append(f"  Critical Value: {result.ks_critval:.4f}")
+    lines.append(f"  P-value       : {result.ks_pval:.4f}")
+    lines.append("")
+
+    if result.cluster_vars:
+        cluster_str = ", ".join(result.cluster_vars)
+        lines.append(f"Clustering on: {cluster_str}")
+
+    if result.x_formula:
+        lines.append(f"X formula: {result.x_formula}")
+
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def summary_mp_pretest(result: MPPretestResult):
+    """Print summary of a pre-test result.
+
+    Parameters
+    ----------
+    result : MPPretestResult
+        The pre-test result to summarize.
+
+    Returns
+    -------
+    str
+        Formatted summary string.
+    """
+    return format_mp_pretest_result(result)
+
+
+def _mp_pretest_repr(self):
+    return format_mp_pretest_result(self)
+
+
+def _mp_pretest_str(self):
+    return format_mp_pretest_result(self)
+
+
+MPPretestResult.__repr__ = _mp_pretest_repr
+MPPretestResult.__str__ = _mp_pretest_str

@@ -3,7 +3,15 @@
 
 from pydid.data import load_nsw
 from pydid.did.aggte_obj import AGGTEResult, aggte, format_aggte_result
-from pydid.did.multiperiod_obj import MPResult, format_mp_result, mp
+from pydid.did.multiperiod_obj import (
+    MPPretestResult,
+    MPResult,
+    format_mp_pretest_result,
+    format_mp_result,
+    mp,
+    mp_pretest,
+    summary_mp_pretest,
+)
 from pydid.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
 from pydid.drdid.bootstrap.boot_mult import mboot_did, mboot_twfep_did
 from pydid.drdid.bootstrap.boot_panel import (
@@ -136,6 +144,10 @@ __all__ = [
     "MPResult",
     "mp",
     "format_mp_result",
+    "MPPretestResult",
+    "mp_pretest",
+    "format_mp_pretest_result",
+    "summary_mp_pretest",
     # Aggregate treatment effect result objects
     "AGGTEResult",
     "aggte",
