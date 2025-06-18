@@ -3,7 +3,15 @@
 import numpy as np
 import pytest
 
-from pydid import MPResult, format_mp_result, mp
+from pydid import (
+    MPPretestResult,
+    MPResult,
+    format_mp_pretest_result,
+    format_mp_result,
+    mp,
+    mp_pretest,
+    summary_mp_pretest,
+)
 
 
 def test_mp_basic():
@@ -156,3 +164,112 @@ def test_mp_display_methods():
     assert isinstance(repr_output, str)
     assert len(str_output) > 0
     assert len(repr_output) > 0
+
+
+def test_mp_pretest_basic():
+    cvm_boots = np.random.uniform(0, 5, 99)
+    ks_boots = np.random.uniform(0, 3, 99)
+
+    result = mp_pretest(
+        cvm_stat=1.23,
+        cvm_critval=1.46,
+        cvm_pval=0.089,
+        ks_stat=0.67,
+        ks_critval=0.88,
+        ks_pval=0.123,
+        cvm_boots=cvm_boots,
+        ks_boots=ks_boots,
+        cluster_vars=["state", "year"],
+        x_formula="~ X1 + X2 + X3",
+    )
+
+    assert isinstance(result, MPPretestResult)
+    assert result.cvm_stat == 1.23
+    assert result.cvm_critval == 1.46
+    assert result.cvm_pval == 0.089
+    assert result.ks_stat == 0.67
+    assert result.ks_critval == 0.88
+    assert result.ks_pval == 0.123
+    assert len(result.cvm_boots) == 99
+    assert len(result.ks_boots) == 99
+    assert result.cluster_vars == ["state", "year"]
+    assert result.x_formula == "~ X1 + X2 + X3"
+
+
+def test_mp_pretest_minimal():
+    result = mp_pretest(
+        cvm_stat=2.5,
+        cvm_critval=3.0,
+        cvm_pval=0.043,
+        ks_stat=1.2,
+        ks_critval=1.5,
+        ks_pval=0.085,
+    )
+
+    assert result.cvm_boots is None
+    assert result.ks_boots is None
+    assert result.cluster_vars is None
+    assert result.x_formula is None
+
+
+def test_mp_pretest_formatting():
+    result = mp_pretest(
+        cvm_stat=1.8765,
+        cvm_critval=2.1234,
+        cvm_pval=0.0567,
+        ks_stat=0.9876,
+        ks_critval=1.2345,
+        ks_pval=0.0890,
+        cluster_vars=["id"],
+        x_formula="~ age + income",
+    )
+
+    formatted = format_mp_pretest_result(result)
+
+    assert "Pre-test of Conditional Parallel Trends Assumption" in formatted
+    assert "Cramer von Mises Test:" in formatted
+    assert "Test Statistic: 1.8765" in formatted
+    assert "Critical Value: 2.1234" in formatted
+    assert "P-value       : 0.0567" in formatted
+    assert "Kolmogorov-Smirnov Test:" in formatted
+    assert "Test Statistic: 0.9876" in formatted
+    assert "Critical Value: 1.2345" in formatted
+    assert "P-value       : 0.0890" in formatted
+    assert "Clustering on: id" in formatted
+    assert "X formula: ~ age + income" in formatted
+
+
+def test_mp_pretest_summary():
+    result = mp_pretest(
+        cvm_stat=1.0,
+        cvm_critval=1.5,
+        cvm_pval=0.15,
+        ks_stat=0.8,
+        ks_critval=1.0,
+        ks_pval=0.20,
+    )
+
+    summary_output = summary_mp_pretest(result)
+    assert isinstance(summary_output, str)
+    assert "Cramer von Mises Test:" in summary_output
+    assert "Kolmogorov-Smirnov Test:" in summary_output
+
+
+def test_mp_pretest_display_methods():
+    result = mp_pretest(
+        cvm_stat=1.5,
+        cvm_critval=2.0,
+        cvm_pval=0.10,
+        ks_stat=0.9,
+        ks_critval=1.2,
+        ks_pval=0.15,
+    )
+
+    str_output = str(result)
+    repr_output = repr(result)
+
+    assert isinstance(str_output, str)
+    assert isinstance(repr_output, str)
+    assert len(str_output) > 0
+    assert len(repr_output) > 0
+    assert "Pre-test of Conditional Parallel Trends Assumption" in str_output
