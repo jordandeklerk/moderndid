@@ -3,6 +3,7 @@
 
 from pydid.data import load_mpdta, load_nsw
 from pydid.did.aggte_obj import AGGTEResult, aggte, format_aggte_result
+from pydid.did.mboot import mboot
 from pydid.did.multiperiod_obj import (
     MPPretestResult,
     MPResult,
@@ -100,6 +101,7 @@ __all__ = [
     "ipw_rc",
     "calculate_pscore_ipt",
     # Bootstrap functions
+    "mboot",
     "mboot_did",
     "mboot_twfep_did",
     "wboot_dr_tr_panel",
