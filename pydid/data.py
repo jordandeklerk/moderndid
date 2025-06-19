@@ -1,4 +1,4 @@
-"""Dataset functions for pyDiD examples and testing."""
+"""Datasets."""
 
 import gzip
 import pickle
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-__all__ = ["load_nsw"]
+__all__ = ["load_nsw", "load_mpdta"]
 
 
 def load_nsw() -> pd.DataFrame:
@@ -61,3 +61,41 @@ def load_nsw() -> pd.DataFrame:
         nsw_data = pickle.load(f)
 
     return nsw_data
+
+
+def load_mpdta() -> pd.DataFrame:
+    """Load the County Teen Employment dataset for multiple time period DiD analysis.
+
+    This dataset contains county-level teen employment rates from 2003-2007
+    with staggered treatment timing (minimum wage increases). States were first
+    treated in 2004, 2006, or 2007.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with the following columns:
+
+        - *year*: Year (2003-2007)
+        - *countyreal*: County identifier
+        - *lpop*: Log of county population
+        - *lemp*: Log of county-level teen employment (outcome variable)
+        - *first.treat*: Period when state first increased minimum wage (2004, 2006, 2007, or 0 for never-treated)
+        - *treat*: Treatment indicator (1 if treated, 0 if control)
+
+    References
+    ----------
+    .. [1] Callaway, B., & Sant'Anna, P. H. (2021). Difference-in-differences
+        with multiple time periods. Journal of Econometrics, 225(2), 200-230.
+    """
+    data_path = Path(__file__).parent / "_data" / "mpdta_long.pkl.gz"
+
+    if not data_path.exists():
+        raise FileNotFoundError(
+            f"MPDTA data file not found at {data_path}. "
+            "Please ensure the data file is included in the pyDiD installation."
+        )
+
+    with gzip.open(data_path, "rb") as f:
+        mpdta_data = pickle.load(f)
+
+    return mpdta_data
