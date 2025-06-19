@@ -12,6 +12,8 @@ from pydid.did.multiperiod_obj import (
     mp_pretest,
     summary_mp_pretest,
 )
+from pydid.did.preprocess_did import preprocess_did
+from pydid.did.preprocessing import DIDData
 from pydid.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
 from pydid.drdid.bootstrap.boot_mult import mboot_did, mboot_twfep_did
 from pydid.drdid.bootstrap.boot_panel import (
@@ -152,4 +154,7 @@ __all__ = [
     "AGGTEResult",
     "aggte",
     "format_aggte_result",
+    # Preprocessing functions
+    "DIDData",
+    "preprocess_did",
 ]
