@@ -1,4 +1,4 @@
-"""Public API for DiD preprocessing."""
+"""DiD preprocessing."""
 
 from .preprocessing.builders import DIDDataBuilder
 from .preprocessing.constants import BasePeriod, ControlGroup, EstimationMethod
