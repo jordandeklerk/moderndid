@@ -1,6 +1,7 @@
 """Difference-in-Differences estimators with multiple time periods."""
 
 from .aggte_obj import AGGTEResult, aggte, format_aggte_result
+from .mboot import mboot
 from .multiperiod_obj import (
     MPPretestResult,
     MPResult,
@@ -26,4 +27,5 @@ __all__ = [
     "summary_mp_pretest",
     "preprocess_did",
     "DIDData",
+    "mboot",
 ]
