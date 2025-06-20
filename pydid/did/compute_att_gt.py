@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Callable
 from typing import Any, NamedTuple
 
 import numpy as np
@@ -128,14 +127,38 @@ def run_att_gt_estimation(
     """
     time_factor = 1 if data.config.base_period != "universal" else 0
 
-    pre_treatment_idx = _determine_pre_treatment_period(group_idx, time_idx, data)
+    # Determine pre-treatment period
+    if data.config.base_period == "universal":
+        # Find last period before treatment (accounting for anticipation)
+        pre_periods = np.where(
+            data.config.time_periods < (data.config.treated_groups[group_idx] - data.config.anticipation)
+        )[0]
+        if len(pre_periods) > 0:
+            pre_treatment_idx = pre_periods[-1]
+        else:
+            pre_treatment_idx = None
+    else:
+        pre_treatment_idx = time_idx
 
-    is_post, updated_pre_idx = _check_post_treatment_period(group_idx, time_idx, data, time_factor)
-    if is_post:
-        if updated_pre_idx is None:
+    # Check if we're in post-treatment period and update pre-treatment index
+    is_post_treatment = data.config.treated_groups[group_idx] <= data.config.time_periods[time_idx + time_factor]
+
+    if is_post_treatment and data.config.base_period != "universal":
+        pre_periods = np.where(
+            data.config.time_periods < (data.config.treated_groups[group_idx] - data.config.anticipation)
+        )[0]
+
+        if len(pre_periods) == 0:
+            warnings.warn(
+                f"No pre-treatment periods for group first treated at {data.config.treated_groups[group_idx]}. "
+                "Units from this group are dropped.",
+                UserWarning,
+            )
             return None
-        pre_treatment_idx = updated_pre_idx
 
+        pre_treatment_idx = pre_periods[-1]
+
+    # Skip if pre-treatment equals post-treatment in universal base period
     if (
         data.config.base_period == "universal"
         and pre_treatment_idx is not None
@@ -152,11 +175,24 @@ def run_att_gt_estimation(
         return None
 
     if data.config.panel:
-        cohort_data, covariates = _prepare_cohort_data_panel(
-            cohort_index, time_idx, pre_treatment_idx, data, time_factor
-        )
+        cohort_data = {
+            "D": cohort_index,
+            "y1": data.outcomes_tensor[time_idx + time_factor],
+            "y0": data.outcomes_tensor[pre_treatment_idx],
+            "weights": data.weights,
+        }
+        covariates = data.covariates_tensor[min(pre_treatment_idx, time_idx)]
     else:
-        cohort_data, covariates = _prepare_cohort_data_cross_section(cohort_index, time_idx, data, time_factor)
+        post_mask = data.data[data.config.tname] == data.config.time_periods[time_idx + time_factor]
+        cohort_data = {
+            "D": cohort_index,
+            "y": data.data[data.config.yname].values,
+            "post": post_mask.astype(int).values,
+            "weights": data.data["weights"].values,
+        }
+        if data.config.allow_unbalanced_panel:
+            cohort_data["rowid"] = data.data[".rowid"].values
+        covariates = data.covariates_matrix
 
     try:
         return run_drdid(cohort_data, covariates, data)
@@ -167,68 +203,6 @@ def run_att_gt_estimation(
             UserWarning,
         )
         return None
-
-
-def run_drdid(
-    cohort_data: dict[str, np.ndarray],
-    covariates: np.ndarray,
-    data: DIDData,
-) -> dict[str, Any]:
-    """Run DR-DiD estimation for current group-time pair.
-
-    Parameters
-    ----------
-    cohort_data : dict
-        Dictionary containing outcome and treatment data for the cohort.
-    covariates : ndarray
-        Covariate matrix for the estimation.
-    data : DIDData
-        Preprocessed DiD data object.
-
-    Returns
-    -------
-    dict
-        Dictionary with ATT estimate and influence function.
-    """
-    n = len(cohort_data["D"])
-    est_method = data.config.est_method
-
-    if data.config.panel:
-        # Panel estimation
-        valid_obs, y1, y0, d, weights, cov_valid = _prepare_panel_estimation_data(cohort_data, covariates)
-
-        if valid_obs.sum() == 0:
-            return {"att": np.nan, "inf_func": np.zeros(n)}
-
-        result = _run_panel_estimation(y1, y0, d, cov_valid, weights, est_method)
-
-        # Adjust influence function for full sample
-        influence_func = np.zeros(n)
-        influence_func[valid_obs] = (n / valid_obs.sum()) * result.att_inf_func
-
-    else:
-        # Cross-section estimation
-        valid_obs, y, post, d, weights, cov_valid = _prepare_cross_section_estimation_data(cohort_data, covariates)
-
-        if valid_obs.sum() == 0:
-            return {"att": np.nan, "inf_func": np.zeros(n)}
-
-        result = _run_cross_section_estimation(y, post, d, cov_valid, weights, est_method)
-
-        if data.config.allow_unbalanced_panel and "rowid" in cohort_data:
-            inf_func_long = np.zeros(n)
-            inf_func_long[valid_obs] = (data.config.id_count / valid_obs.sum()) * result.att_inf_func
-
-            unique_ids = np.unique(cohort_data["rowid"])
-            influence_func = np.zeros(len(unique_ids))
-            for i, uid in enumerate(unique_ids):
-                mask = cohort_data["rowid"] == uid
-                influence_func[i] = inf_func_long[mask].sum()
-        else:
-            influence_func = np.zeros(n)
-            influence_func[valid_obs] = (n / valid_obs.sum()) * result.att_inf_func
-
-    return {"att": result.att, "inf_func": influence_func}
 
 
 def get_did_cohort_index(
@@ -259,316 +233,171 @@ def get_did_cohort_index(
         Array of 1s (treated), 0s (control), and NaNs indicating cohort membership.
     """
     if data.config.panel:
-        min_control, max_control = _get_control_group_bounds(data, time_idx, pre_treatment_idx, time_factor)
-        return _get_panel_cohort_indices(data, group_idx, min_control, max_control)
-    return _get_cross_section_cohort_indices(data, group_idx, time_idx, pre_treatment_idx, time_factor)
-
-
-def _run_panel_estimation(
-    y1: np.ndarray,
-    y0: np.ndarray,
-    d: np.ndarray,
-    covariates: np.ndarray,
-    weights: np.ndarray,
-    est_method: str | Callable,
-) -> Any:
-    """Run panel data estimation."""
-    if callable(est_method):
-        return est_method(y1=y1, y0=y0, d=d, covariates=covariates, i_weights=weights, influence_func=True)
-    if est_method == "ipw":
-        return std_ipw_did_panel(
-            y1=y1, y0=y0, d=d, covariates=covariates, i_weights=weights, boot=False, influence_func=True
-        )
-    if est_method == "reg":
-        return reg_did_panel(
-            y1=y1, y0=y0, d=d, covariates=covariates, i_weights=weights, boot=False, influence_func=True
-        )
-    # doubly robust (default)
-    return drdid_panel(y1=y1, y0=y0, d=d, covariates=covariates, i_weights=weights, boot=False, influence_func=True)
-
-
-def _run_cross_section_estimation(
-    y: np.ndarray,
-    post: np.ndarray,
-    d: np.ndarray,
-    covariates: np.ndarray,
-    weights: np.ndarray,
-    est_method: str | Callable,
-) -> Any:
-    """Run cross-section data estimation."""
-    if callable(est_method):
-        return est_method(y=y, post=post, d=d, covariates=covariates, i_weights=weights, influence_func=True)
-    if est_method == "ipw":
-        return std_ipw_did_rc(
-            y=y, post=post, d=d, covariates=covariates, i_weights=weights, boot=False, influence_func=True
-        )
-    if est_method == "reg":
-        return reg_did_rc(
-            y=y, post=post, d=d, covariates=covariates, i_weights=weights, boot=False, influence_func=True
-        )
-    # doubly robust (default)
-    return drdid_rc(y=y, post=post, d=d, covariates=covariates, i_weights=weights, boot=False, influence_func=True)
-
-
-def _get_control_group_bounds(
-    data: DIDData,
-    time_idx: int,
-    pre_treatment_idx: int,
-    time_factor: int,
-) -> tuple[float, float]:
-    """Determine control group boundaries based on configuration.
-
-    Returns
-    -------
-    tuple[float, float]
-        Minimum and maximum control group boundaries.
-    """
-    if data.config.control_group == "notyettreated":
-        # Find first cohort treated after the relevant period
-        relevant_period = data.config.time_periods[
-            max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
-        ]
-        future_cohorts = data.cohort_counts[data.cohort_counts["cohort"] > relevant_period]
-        if len(future_cohorts) > 0:
-            min_control = future_cohorts["cohort"].iloc[0]
-        else:
+        # Determine control group boundaries
+        if data.config.control_group == "notyettreated":
+            # Find first cohort treated after the relevant period
+            relevant_period = data.config.time_periods[
+                max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
+            ]
+            future_cohorts = data.cohort_counts[data.cohort_counts["cohort"] > relevant_period]
+            if len(future_cohorts) > 0:
+                min_control = future_cohorts["cohort"].iloc[0]
+            else:
+                min_control = np.inf
+        else:  # nevertreated
             min_control = np.inf
-    else:  # nevertreated
-        min_control = np.inf
 
-    max_control = np.inf  # Always include never-treated units
-    return min_control, max_control
+        max_control = np.inf  # Always include never-treated units
 
+        # Build cohort index for panel data
+        n_units = len(data.time_invariant_data) if data.config.allow_unbalanced_panel else data.config.id_count
+        cohort_index = np.full(n_units, np.nan)
 
-def _get_panel_cohort_indices(
-    data: DIDData,
-    group_idx: int,
-    min_control: float,
-    max_control: float,
-) -> np.ndarray:
-    """Get cohort indices for panel data.
+        if max_control not in data.cohort_counts["cohort"].values:
+            max_control = data.cohort_counts["cohort"].iloc[-1]
 
-    Returns
-    -------
-    np.ndarray
-        Array with 1s (treated), 0s (control), and NaNs.
-    """
-    n_units = len(data.time_invariant_data) if data.config.allow_unbalanced_panel else data.config.id_count
-    cohort_index = np.full(n_units, np.nan)
+        # Control group indices
+        control_mask = (data.cohort_counts["cohort"] >= min_control) & (data.cohort_counts["cohort"] <= max_control)
+        if control_mask.any():
+            control_idx = control_mask.idxmax()
+            start_control = data.cohort_counts.loc[: control_idx - 1, "cohort_size"].sum() if control_idx > 0 else 0
+            end_control = data.cohort_counts.loc[:control_idx, "cohort_size"].sum()
+            cohort_index[start_control:end_control] = 0
 
-    if max_control not in data.cohort_counts["cohort"].values:
-        max_control = data.cohort_counts["cohort"].iloc[-1]
+        # Treated group indices
+        treated_mask = data.cohort_counts["cohort"] == data.config.treated_groups[group_idx]
+        if treated_mask.any():
+            treat_idx = treated_mask.idxmax()
+            start_treat = data.cohort_counts.iloc[:treat_idx]["cohort_size"].sum() if treat_idx > 0 else 0
+            end_treat = data.cohort_counts.iloc[: treat_idx + 1]["cohort_size"].sum()
+            cohort_index[start_treat:end_treat] = 1
 
-    # Control group indices
-    control_mask = (data.cohort_counts["cohort"] >= min_control) & (data.cohort_counts["cohort"] <= max_control)
-    if control_mask.any():
-        control_idx = control_mask.idxmax()
-        start_control = data.cohort_counts.loc[: control_idx - 1, "cohort_size"].sum() if control_idx > 0 else 0
-        end_control = data.cohort_counts.loc[:control_idx, "cohort_size"].sum()
-        cohort_index[start_control:end_control] = 0
+    else:
+        # Build cohort index for repeated cross-section data
+        n_units = len(data.data)
+        cohort_index = np.full(n_units, np.nan)
 
-    # Treated group indices
-    treated_mask = data.cohort_counts["cohort"] == data.config.treated_groups[group_idx]
-    if treated_mask.any():
-        treat_idx = treated_mask.idxmax()
-        start_treat = data.cohort_counts.iloc[:treat_idx]["cohort_size"].sum() if treat_idx > 0 else 0
-        end_treat = data.cohort_counts.iloc[: treat_idx + 1]["cohort_size"].sum()
-        cohort_index[start_treat:end_treat] = 1
+        treated_flag = data.data[data.config.gname] == data.config.treated_groups[group_idx]
 
-    return cohort_index
+        if data.config.control_group == "nevertreated":
+            control_flag = data.data[data.config.gname] == np.inf
+        else:  # notyettreated
+            relevant_period = data.config.time_periods[
+                max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
+            ]
+            control_flag = (data.data[data.config.gname] == np.inf) | (
+                (data.data[data.config.gname] > relevant_period)
+                & (data.data[data.config.gname] != data.config.treated_groups[group_idx])
+            )
 
-
-def _get_cross_section_cohort_indices(
-    data: DIDData,
-    group_idx: int,
-    time_idx: int,
-    pre_treatment_idx: int,
-    time_factor: int,
-) -> np.ndarray:
-    """Get cohort indices for repeated cross-section data.
-
-    Returns
-    -------
-    np.ndarray
-        Array with 1s (treated), 0s (control), and NaNs.
-    """
-    n_units = len(data.data)
-    cohort_index = np.full(n_units, np.nan)
-
-    treated_flag = data.data[data.config.gname] == data.config.treated_groups[group_idx]
-
-    if data.config.control_group == "nevertreated":
-        control_flag = data.data[data.config.gname] == np.inf
-    else:  # notyettreated
-        relevant_period = data.config.time_periods[
-            max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
-        ]
-        control_flag = (data.data[data.config.gname] == np.inf) | (
-            (data.data[data.config.gname] > relevant_period)
-            & (data.data[data.config.gname] != data.config.treated_groups[group_idx])
+        keep_periods = data.data[data.config.tname].isin(
+            [data.config.time_periods[time_idx + time_factor], data.config.time_periods[pre_treatment_idx]]
         )
 
-    keep_periods = data.data[data.config.tname].isin(
-        [data.config.time_periods[time_idx + time_factor], data.config.time_periods[pre_treatment_idx]]
-    )
-
-    cohort_index[keep_periods & control_flag] = 0
-    cohort_index[keep_periods & treated_flag] = 1
+        cohort_index[keep_periods & control_flag] = 0
+        cohort_index[keep_periods & treated_flag] = 1
 
     return cohort_index
 
 
-def _prepare_panel_estimation_data(
+def run_drdid(
     cohort_data: dict[str, np.ndarray],
     covariates: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Prepare data for panel estimation.
+    data: DIDData,
+) -> dict[str, Any]:
+    """Run DR-DiD estimation for current group-time pair.
+
+    Parameters
+    ----------
+    cohort_data : dict
+        Dictionary containing outcome and treatment data for the cohort.
+    covariates : ndarray
+        Covariate matrix for the estimation.
+    data : DIDData
+        Preprocessed DiD data object.
 
     Returns
     -------
-    tuple
-        Valid observations mask, y1, y0, d, weights, covariates
+    dict
+        Dictionary with ATT estimate and influence function.
     """
-    valid_obs = ~np.isnan(cohort_data["D"])
-
-    if valid_obs.sum() == 0:
-        return valid_obs, np.array([]), np.array([]), np.array([]), np.array([]), np.array([])
-
-    y1 = cohort_data["y1"][valid_obs]
-    y0 = cohort_data["y0"][valid_obs]
-    d = cohort_data["D"][valid_obs]
-    weights = cohort_data["weights"][valid_obs]
-
-    if covariates.ndim > 1:
-        cov_valid = covariates[valid_obs]
-    else:
-        cov_valid = covariates[valid_obs] if len(covariates) > 1 else np.ones(valid_obs.sum())
-
-    return valid_obs, y1, y0, d, weights, cov_valid
-
-
-def _prepare_cross_section_estimation_data(
-    cohort_data: dict[str, np.ndarray],
-    covariates: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Prepare data for cross-section estimation.
-
-    Returns
-    -------
-    tuple
-        Valid observations mask, y, post, d, weights, covariates
-    """
-    valid_obs = ~np.isnan(cohort_data["D"])
     n = len(cohort_data["D"])
+    est_method = data.config.est_method
+    valid_obs = ~np.isnan(cohort_data["D"])
 
     if valid_obs.sum() == 0:
-        return valid_obs, np.array([]), np.array([]), np.array([]), np.array([]), np.array([])
+        return {"att": np.nan, "inf_func": np.zeros(n)}
 
-    y = cohort_data["y"][valid_obs]
-    post = cohort_data["post"][valid_obs]
-    d = cohort_data["D"][valid_obs]
-    weights = cohort_data["weights"][valid_obs]
+    if data.config.panel:
+        # Panel data estimation
+        y1 = cohort_data["y1"][valid_obs]
+        y0 = cohort_data["y0"][valid_obs]
+        d = cohort_data["D"][valid_obs]
+        weights = cohort_data["weights"][valid_obs]
 
-    if covariates.ndim > 1:
-        cov_valid = covariates[valid_obs]
-    else:
-        cov_valid = covariates if len(covariates) == n else covariates[valid_obs]
+        if covariates.ndim > 1:
+            cov_valid = covariates[valid_obs]
+        else:
+            cov_valid = covariates[valid_obs] if len(covariates) > 1 else np.ones(valid_obs.sum())
 
-    return valid_obs, y, post, d, weights, cov_valid
-
-
-def _determine_pre_treatment_period(
-    group_idx: int,
-    time_idx: int,
-    data: DIDData,
-) -> int | None:
-    """Determine the pre-treatment period index.
-
-    Returns
-    -------
-    int or None
-        Pre-treatment period index, or None if no valid period exists.
-    """
-    if data.config.base_period == "universal":
-        # Find last period before treatment (accounting for anticipation)
-        pre_periods = np.where(
-            data.config.time_periods < (data.config.treated_groups[group_idx] - data.config.anticipation)
-        )[0]
-        if len(pre_periods) > 0:
-            return pre_periods[-1]
-        return None
-    return time_idx
-
-
-def _check_post_treatment_period(
-    group_idx: int,
-    time_idx: int,
-    data: DIDData,
-    time_factor: int,
-) -> tuple[bool, int | None]:
-    """Check if in post-treatment period and update pre-treatment index.
-
-    Returns
-    -------
-    tuple[bool, int | None]
-        Whether in post-treatment, and updated pre-treatment index.
-    """
-    is_post_treatment = data.config.treated_groups[group_idx] <= data.config.time_periods[time_idx + time_factor]
-
-    if is_post_treatment:
-        pre_periods = np.where(
-            data.config.time_periods < (data.config.treated_groups[group_idx] - data.config.anticipation)
-        )[0]
-
-        if len(pre_periods) == 0:
-            warnings.warn(
-                f"No pre-treatment periods for group first treated at {data.config.treated_groups[group_idx]}. "
-                "Units from this group are dropped.",
-                UserWarning,
+        if callable(est_method):
+            result = est_method(y1=y1, y0=y0, d=d, covariates=cov_valid, i_weights=weights, influence_func=True)
+        elif est_method == "ipw":
+            result = std_ipw_did_panel(
+                y1=y1, y0=y0, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )
-            return True, None
+        elif est_method == "reg":
+            result = reg_did_panel(
+                y1=y1, y0=y0, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
+            )
+        else:  # doubly robust (default)
+            result = drdid_panel(
+                y1=y1, y0=y0, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
+            )
 
-        return True, pre_periods[-1]
+        # Adjust influence function for full sample
+        influence_func = np.zeros(n)
+        influence_func[valid_obs] = (n / valid_obs.sum()) * result.att_inf_func
 
-    return False, None
+    else:
+        # Cross-section data estimation
+        y = cohort_data["y"][valid_obs]
+        post = cohort_data["post"][valid_obs]
+        d = cohort_data["D"][valid_obs]
+        weights = cohort_data["weights"][valid_obs]
 
+        if covariates.ndim > 1:
+            cov_valid = covariates[valid_obs]
+        else:
+            cov_valid = covariates if len(covariates) == n else covariates[valid_obs]
 
-def _prepare_cohort_data_panel(
-    cohort_index: np.ndarray,
-    time_idx: int,
-    pre_treatment_idx: int,
-    data: DIDData,
-    time_factor: int,
-) -> tuple[dict[str, np.ndarray], np.ndarray]:
-    """Prepare cohort data for panel estimation."""
-    cohort_data = {
-        "D": cohort_index,
-        "y1": data.outcomes_tensor[time_idx + time_factor],
-        "y0": data.outcomes_tensor[pre_treatment_idx],
-        "weights": data.weights,
-    }
-    covariates = data.covariates_tensor[min(pre_treatment_idx, time_idx)]
-    return cohort_data, covariates
+        if callable(est_method):
+            result = est_method(y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, influence_func=True)
+        elif est_method == "ipw":
+            result = std_ipw_did_rc(
+                y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
+            )
+        elif est_method == "reg":
+            result = reg_did_rc(
+                y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
+            )
+        else:  # doubly robust (default)
+            result = drdid_rc(
+                y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
+            )
 
+        # Handle influence function for unbalanced panel
+        if data.config.allow_unbalanced_panel and "rowid" in cohort_data:
+            inf_func_long = np.zeros(n)
+            inf_func_long[valid_obs] = (data.config.id_count / valid_obs.sum()) * result.att_inf_func
 
-def _prepare_cohort_data_cross_section(
-    cohort_index: np.ndarray,
-    time_idx: int,
-    data: DIDData,
-    time_factor: int,
-) -> tuple[dict[str, np.ndarray], np.ndarray]:
-    """Prepare cohort data for cross-section estimation."""
-    post_mask = data.data[data.config.tname] == data.config.time_periods[time_idx + time_factor]
+            unique_ids = np.unique(cohort_data["rowid"])
+            influence_func = np.zeros(len(unique_ids))
+            for i, uid in enumerate(unique_ids):
+                mask = cohort_data["rowid"] == uid
+                influence_func[i] = inf_func_long[mask].sum()
+        else:
+            influence_func = np.zeros(n)
+            influence_func[valid_obs] = (n / valid_obs.sum()) * result.att_inf_func
 
-    cohort_data = {
-        "D": cohort_index,
-        "y": data.data[data.config.yname].values,
-        "post": post_mask.astype(int).values,
-        "weights": data.data["weights"].values,
-    }
-
-    if data.config.allow_unbalanced_panel:
-        cohort_data["rowid"] = data.data[".rowid"].values
-
-    covariates = data.covariates_matrix
-    return cohort_data, covariates
+    return {"att": result.att, "inf_func": influence_func}
