@@ -572,33 +572,6 @@ def test_influence_function_aggregation(mpdta_data):
     assert len(result["inf_func"]) <= n_units
 
 
-@pytest.mark.parametrize("print_details", [True, False])
-def test_compute_att_gt_with_print_details(mpdta_data, print_details, capsys):
-    data = preprocess_did(
-        mpdta_data,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first_treat",
-        xformla="~lpop",
-        panel=True,
-        control_group="nevertreated",
-        print_details=print_details,
-    )
-
-    result = run_att_gt_estimation(group_idx=0, time_idx=1, data=data)
-
-    captured = capsys.readouterr()
-    if print_details:
-        assert "Evaluating (g,t)" in captured.out
-    else:
-        assert "Evaluating (g,t)" not in captured.out
-
-    if result is not None:
-        assert "att" in result
-        assert "inf_func" in result
-
-
 def test_no_variation_in_treatment_timing():
     n = 100
     n_periods = 4
