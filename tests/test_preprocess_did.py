@@ -6,18 +6,18 @@ import pandas as pd
 import pytest
 
 from pydid.did import preprocess_did
-from pydid.did.preprocessing.constants import (
+from pydid.did.preprocess.constants import (
     NEVER_TREATED_VALUE,
     ControlGroup,
 )
-from pydid.did.preprocessing.models import DIDConfig, DIDData
-from pydid.did.preprocessing.tensors import TensorFactorySelector
-from pydid.did.preprocessing.transformers import (
+from pydid.did.preprocess.models import DIDConfig, DIDData
+from pydid.did.preprocess.tensors import TensorFactorySelector
+from pydid.did.preprocess.transformers import (
     DataTransformerPipeline,
     TreatmentEncoder,
     WeightNormalizer,
 )
-from pydid.did.preprocessing.validators import (
+from pydid.did.preprocess.validators import (
     ArgumentValidator,
     ColumnValidator,
     CompositeValidator,

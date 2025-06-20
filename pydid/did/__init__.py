@@ -12,8 +12,8 @@ from .multiperiod_obj import (
     mp_pretest,
     summary_mp_pretest,
 )
+from .preprocess.models import DIDData
 from .preprocess_did import preprocess_did
-from .preprocessing.models import DIDData
 
 __all__ = [
     "AGGTEResult",

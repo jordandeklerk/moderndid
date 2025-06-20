@@ -15,7 +15,7 @@ from pydid.drdid.estimators.reg_did_rc import reg_did_rc
 from pydid.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
 from pydid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
 
-from .preprocessing.models import DIDData
+from .preprocess.models import DIDData
 
 
 class ATTgtResult(NamedTuple):

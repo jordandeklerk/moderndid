@@ -1,8 +1,8 @@
 """DiD preprocessing."""
 
-from .preprocessing.builders import DIDDataBuilder
-from .preprocessing.constants import BasePeriod, ControlGroup, EstimationMethod
-from .preprocessing.models import DIDConfig
+from .preprocess.builders import DIDDataBuilder
+from .preprocess.constants import BasePeriod, ControlGroup, EstimationMethod
+from .preprocess.models import DIDConfig
 
 
 def preprocess_did(
