@@ -15,8 +15,8 @@ from pydid.did.compute_att_gt import (
     run_att_gt_estimation,
     run_drdid,
 )
+from pydid.did.preprocess.models import DIDConfig
 from pydid.did.preprocess_did import preprocess_did
-from pydid.did.preprocessing.models import DIDConfig
 
 
 @pytest.fixture
