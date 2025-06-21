@@ -44,6 +44,8 @@ class MPResult(NamedTuple):
         - estimation_method: estimation method used
         - bootstrap: whether bootstrap was used
         - uniform_bands: whether simultaneous confidence bands were computed
+        - G: unit-level group assignments
+        - weights_ind: unit-level sampling weights
     """
 
     groups: np.ndarray
@@ -59,6 +61,8 @@ class MPResult(NamedTuple):
     aggregate_effects: object | None = None
     alpha: float = 0.05
     estimation_params: dict = {}
+    G: np.ndarray | None = None
+    weights_ind: np.ndarray | None = None
 
 
 def mp(
@@ -75,6 +79,8 @@ def mp(
     aggregate_effects=None,
     alpha=0.05,
     estimation_params=None,
+    G=None,
+    weights_ind=None,
 ):
     """Create a multi-period result object for group-time ATTs.
 
@@ -106,6 +112,10 @@ def mp(
         Significance level.
     estimation_params : dict, optional
         DID estimation parameters.
+    G : ndarray, optional
+        Unit-level group assignments (length n, where n is number of units).
+    weights_ind : ndarray, optional
+        Unit-level sampling weights (length n, where n is number of units).
 
     Returns
     -------
@@ -142,6 +152,8 @@ def mp(
         aggregate_effects=aggregate_effects,
         alpha=alpha,
         estimation_params=estimation_params,
+        G=G,
+        weights_ind=weights_ind,
     )
 
 
