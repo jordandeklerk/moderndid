@@ -5,7 +5,7 @@ import pytest
 
 from pydid import twfe_did_panel
 
-from .helpers import importorskip
+from ..helpers import importorskip
 
 pd = importorskip("pandas")
 
