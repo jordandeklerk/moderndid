@@ -7,7 +7,7 @@ import pytest
 
 from pydid import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 
-from .dgp import SantAnnaZhaoDRDiD
+from ..dgp import SantAnnaZhaoDRDiD
 
 Y_RC_VALID = np.array([10.0, 12.0, 11.0, 13.0, 20.0, 22.0, 15.0, 18.0, 19.0, 25.0])
 POST_RC_VALID = np.array([0, 0, 1, 1, 0, 0, 1, 1, 0, 1], dtype=int)

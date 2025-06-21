@@ -7,7 +7,7 @@ import pytest
 from pydid.data import load_nsw
 from pydid.drdid.ordid import ordid
 
-from .helpers import importorskip
+from ..helpers import importorskip
 
 pd = importorskip("pandas")
 
