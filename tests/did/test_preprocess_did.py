@@ -6,9 +6,12 @@ import pandas as pd
 import pytest
 
 from pydid.did import preprocess_did
+from pydid.did.preprocess.builders import DIDDataBuilder
 from pydid.did.preprocess.constants import (
     NEVER_TREATED_VALUE,
+    BasePeriod,
     ControlGroup,
+    EstimationMethod,
 )
 from pydid.did.preprocess.models import DIDConfig, DIDData
 from pydid.did.preprocess.tensors import TensorFactorySelector
@@ -21,6 +24,7 @@ from pydid.did.preprocess.validators import (
     ArgumentValidator,
     ColumnValidator,
     CompositeValidator,
+    PanelStructureValidator,
     TreatmentValidator,
 )
 
@@ -107,6 +111,37 @@ def create_test_repeated_cross_section(
     )
 
     return df
+
+
+def create_unbalanced_panel_data(n_units=100, n_periods=4, missing_fraction=0.2, seed=42):
+    np.random.seed(seed)
+
+    units = np.repeat(np.arange(n_units), n_periods)
+    periods = np.tile(np.arange(1, n_periods + 1), n_units)
+
+    n_obs = len(units)
+    keep_mask = np.random.uniform(size=n_obs) > missing_fraction
+
+    units = units[keep_mask]
+    periods = periods[keep_mask]
+
+    treated_units = np.random.choice(n_units, n_units // 2, replace=False)
+    g = np.zeros(len(units))
+    for i, unit in enumerate(units):
+        if unit in treated_units:
+            g[i] = 3
+
+    y = np.random.normal(0, 1, len(units))
+
+    return pd.DataFrame(
+        {
+            "id": units,
+            "time": periods,
+            "y": y,
+            "g": g,
+            "x1": np.random.normal(0, 1, len(units)),
+        }
+    )
 
 
 class TestValidators:
@@ -425,3 +460,399 @@ class TestPreprocessDid:
                 control_group="invalid",
                 print_details=False,
             )
+
+
+class TestEdgeCases:
+    def test_missing_data_handling(self):
+        df = create_test_panel_data()
+
+        df_missing_y = df.copy()
+        df_missing_y.loc[df_missing_y.index[:10], "y"] = np.nan
+
+        result = preprocess_did(
+            data=df_missing_y,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            print_details=False,
+        )
+
+        assert len(result.data) < len(df)
+        assert not result.data["y"].isna().any()
+
+    def test_string_time_periods(self):
+        df = create_test_panel_data()
+        df["time_str"] = df["time"].map({1: "Q1", 2: "Q2", 3: "Q3", 4: "Q4"})
+        df["g_str"] = df["g"].map({0: "never", 3: "Q3"})
+
+        time_map = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}
+        g_map = {"never": 0, "Q3": 3}
+
+        df["time_numeric"] = df["time_str"].map(time_map)
+        df["g_numeric"] = df["g_str"].map(g_map)
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time_numeric",
+            idname="id",
+            gname="g_numeric",
+            print_details=False,
+        )
+
+        assert result.config.time_periods is not None
+        assert len(result.config.time_periods) == 4
+
+    def test_single_treated_unit(self):
+        df = create_test_panel_data(n_units=100)
+        treated_ids = df[df["g"] > 0]["id"].unique()
+        keep_ids = np.concatenate([df[df["g"] == 0]["id"].unique(), treated_ids[:1]])
+        df = df[df["id"].isin(keep_ids)]
+
+        with pytest.warns(UserWarning, match="Be aware that there are some small groups"):
+            result = preprocess_did(
+                data=df,
+                yname="y",
+                tname="time",
+                idname="id",
+                gname="g",
+                print_details=False,
+            )
+
+        assert result.config.treated_groups_count == 1
+
+
+class TestDataIntegrity:
+    def test_panel_structure_validation(self):
+        df = create_test_panel_data()
+        df = pd.concat([df, df.iloc[[0]]], ignore_index=True)
+
+        validator = PanelStructureValidator()
+        config = DIDConfig(
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            panel=True,
+        )
+
+        result = validator.validate(df, config)
+        assert not result.is_valid
+        assert any("observed more than once" in err for err in result.errors)
+
+    def test_treatment_reversibility(self):
+        df = create_test_panel_data()
+        treated_unit = df[df["g"] > 0]["id"].iloc[0]
+        df.loc[(df["id"] == treated_unit) & (df["time"] == 4), "g"] = 0
+
+        with pytest.raises(ValueError, match="must be irreversible"):
+            preprocess_did(
+                data=df,
+                yname="y",
+                tname="time",
+                idname="id",
+                gname="g",
+                print_details=False,
+            )
+
+    def test_early_treatment_handling(self):
+        df = create_test_panel_data(n_periods=5)
+        early_treated_units = df["id"].unique()[:10]
+        df.loc[df["id"].isin(early_treated_units), "g"] = 0.5
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            print_details=False,
+        )
+
+        assert not result.data["id"].isin(early_treated_units).any()
+
+
+class TestCovariateHandling:
+    def test_formula_parsing(self):
+        df = create_test_panel_data()
+        df["x3"] = df["x1"] * df["x2"]
+        df["factor_var"] = np.random.choice(["A", "B", "C"], len(df))
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            xformla="~ x1 + x2",
+            print_details=False,
+        )
+
+        assert result.covariates_tensor is not None
+        assert all(cov.shape[1] == 3 for cov in result.covariates_tensor)
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            xformla="~ x1 * x2",
+            print_details=False,
+        )
+
+        assert result.covariates_tensor is not None
+        assert all(cov.shape[1] == 3 for cov in result.covariates_tensor)
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            xformla="~ C(factor_var)",
+            print_details=False,
+        )
+
+        assert result.covariates_tensor is not None
+        assert all(cov.shape[1] == 2 for cov in result.covariates_tensor)
+
+    def test_no_intercept_formula(self):
+        df = create_test_panel_data()
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            xformla="~ 0 + x1 + x2",
+            print_details=False,
+        )
+
+        assert result.covariates_tensor is not None
+        assert all(cov.shape[1] == 3 for cov in result.covariates_tensor)
+
+
+class TestWeightHandling:
+    def test_zero_weights(self):
+        df = create_test_panel_data()
+        df["w"] = np.random.uniform(0.5, 2, len(df))
+        df.loc[df.index[:20], "w"] = 0
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            weightsname="w",
+            print_details=False,
+        )
+
+        assert len(result.data) == len(df)
+        assert (result.weights >= 0).all()
+        assert (result.weights == 0).sum() == 5
+
+    def test_weight_normalization(self):
+        df = create_test_panel_data()
+        df["w"] = np.random.uniform(1, 10, len(df))
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            weightsname="w",
+            print_details=False,
+        )
+
+        assert np.isclose(result.weights.mean(), 1.0, rtol=0.02)
+
+
+class TestUnbalancedPanelHandling:
+    def test_unbalanced_to_balanced_conversion(self):
+        df = create_unbalanced_panel_data(missing_fraction=0.3)
+
+        result_unbalanced = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            allow_unbalanced_panel=True,
+            print_details=False,
+        )
+
+        assert not result_unbalanced.is_balanced_panel
+
+        result_balanced = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            allow_unbalanced_panel=False,
+            print_details=False,
+        )
+
+        assert result_balanced.is_balanced_panel
+        assert result_balanced.config.id_count < df["id"].nunique()
+
+    def test_time_invariant_covariate_detection(self):
+        df = create_test_panel_data()
+        df["time_varying"] = df["time"] * np.random.normal(0, 1, len(df))
+        df["time_invariant"] = df.groupby("id")["x1"].transform("first")
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            xformla="~ time_varying + time_invariant",
+            allow_unbalanced_panel=True,
+            print_details=False,
+        )
+
+        if not result.is_balanced_panel:
+            assert "time_invariant" in result.time_invariant_data.columns
+            assert "time_varying" not in result.time_invariant_data.columns
+
+
+class TestClusteringOptions:
+    def test_multiple_clustering_vars(self):
+        df = create_test_panel_data()
+        df["cluster1"] = df["id"] // 10
+        df["cluster2"] = df["time"] % 2
+
+        with pytest.raises(ValueError, match="You can only provide 1 cluster variable"):
+            preprocess_did(
+                data=df,
+                yname="y",
+                tname="time",
+                idname="id",
+                gname="g",
+                clustervars=["cluster1", "cluster2"],
+                print_details=False,
+            )
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            clustervars=["cluster1"],
+            print_details=False,
+        )
+
+        assert result.cluster is not None
+        assert result.config.clustervars == ["cluster1"]
+
+    def test_invalid_cluster_var(self):
+        df = create_test_panel_data()
+
+        with pytest.raises((ValueError, KeyError), match="not found|Column not found"):
+            preprocess_did(
+                data=df,
+                yname="y",
+                tname="time",
+                idname="id",
+                gname="g",
+                clustervars=["nonexistent_var"],
+                print_details=False,
+            )
+
+
+class TestConfigurationOptions:
+    def test_anticipation_effects(self):
+        df = create_test_panel_data(n_periods=6, treat_period=5)
+
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            anticipation=1,
+            control_group="notyettreated",
+            print_details=False,
+        )
+
+        assert result.config.anticipation == 1
+
+    def test_base_period_options(self):
+        df = create_test_panel_data()
+
+        result_universal = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            base_period="universal",
+            print_details=False,
+        )
+
+        assert result_universal.config.base_period == BasePeriod.UNIVERSAL
+
+        result_varying = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            base_period="varying",
+            print_details=False,
+        )
+
+        assert result_varying.config.base_period == BasePeriod.VARYING
+
+    def test_estimation_method_options(self):
+        df = create_test_panel_data()
+
+        for method in ["dr", "ipw", "reg"]:
+            result = preprocess_did(
+                data=df,
+                yname="y",
+                tname="time",
+                idname="id",
+                gname="g",
+                est_method=method,
+                print_details=False,
+            )
+
+            assert result.config.est_method == EstimationMethod(method)
+
+
+class TestBuilderPattern:
+    def test_builder_validation_errors(self):
+        df = create_test_panel_data()
+        config = DIDConfig(
+            yname="missing_column",
+            tname="time",
+            idname="id",
+            gname="g",
+        )
+
+        builder = DIDDataBuilder()
+        with pytest.raises(ValueError, match="missing_column"):
+            builder.with_data(df).with_config(config).validate()
+
+    def test_builder_chaining(self):
+        df = create_test_panel_data()
+        config = DIDConfig(
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+        )
+
+        builder = DIDDataBuilder()
+        result = builder.with_data(df).with_config(config).validate().transform().build()
+
+        assert isinstance(result, DIDData)
+        assert result.config == config
