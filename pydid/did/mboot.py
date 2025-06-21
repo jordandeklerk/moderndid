@@ -80,14 +80,13 @@ def mboot(
     else:
         # Cluster-level bootstrap
         # Aggregate influence function to cluster level
-        unique_clusters = np.unique(cluster)
+        _, cluster_inverse, cluster_counts = np.unique(cluster, return_inverse=True, return_counts=True)
 
-        # Create cluster-level influence function
-        cluster_inf_func = np.zeros((n_clusters, n_params))
-        for i, c in enumerate(unique_clusters):
-            cluster_mask = cluster == c
-            cluster_inf_func[i] = np.mean(inf_func[cluster_mask], axis=0)
+        cluster_sum_inf_func = np.zeros((n_clusters, n_params))
+        for i in range(n_params):
+            cluster_sum_inf_func[:, i] = np.bincount(cluster_inverse, weights=inf_func[:, i])
 
+        cluster_inf_func = cluster_sum_inf_func / cluster_counts[:, np.newaxis]
         bres = np.sqrt(n_clusters) * _run_multiplier_bootstrap(cluster_inf_func, biters, random_state)
 
     col_sums_sq = np.sum(bres**2, axis=0)
