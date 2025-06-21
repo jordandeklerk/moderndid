@@ -946,7 +946,14 @@ def parse_formula(formula: str) -> dict[str, Any]:
     outcome = parts[0].strip()
     predictors_str = parts[1].strip()
 
-    predictors = [p.strip() for p in predictors_str.split("+")]
+    var_pattern = r"\b[a-zA-Z_]\w*\b"
+    all_vars = re.findall(var_pattern, predictors_str)
+
+    exclude = {"C", "I", "Q", "bs", "ns", "log", "exp", "sqrt", "abs", "np"}
+    predictors = [v for v in all_vars if v not in exclude]
+
+    seen = set()
+    predictors = [x for x in predictors if not (x in seen or seen.add(x))]
 
     return {
         "outcome": outcome,
