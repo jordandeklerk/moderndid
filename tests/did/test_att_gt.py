@@ -17,8 +17,8 @@ def test_att_gt_basic_functionality():
         tname="year",
         gname="first_treat",
         idname="countyreal",
-        control_group="nevertreated",
-        bstrap=False,
+        xformla="~ 1",
+        est_method="reg",
     )
 
     assert isinstance(result, MPResult)
