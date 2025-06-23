@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
-from pydid.data import load_mpdta
+from pydid import load_mpdta
 from pydid.did.compute_att_gt import (
     ATTgtResult,
     ComputeATTgtResult,
