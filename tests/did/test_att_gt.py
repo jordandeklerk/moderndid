@@ -3,8 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid import att_gt, load_mpdta
-from pydid.did.multiperiod_obj import MPResult
+from pydid import MPResult, att_gt, load_mpdta
 
 
 def test_att_gt_basic_functionality():
