@@ -55,5 +55,5 @@ ROW_ID_COLUMN = ".rowid"
 NEVER_TREATED_VALUE = float("inf")
 
 # Minimum group size threshold
-MIN_GROUP_SIZE_BASE = 5  # Base requirement
-MIN_GROUP_SIZE_PER_COVARIATE = 1  # Additional requirement per covariate
+MIN_GROUP_SIZE_BASE = 5
+MIN_GROUP_SIZE_PER_COVARIATE = 1

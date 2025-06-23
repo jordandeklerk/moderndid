@@ -209,17 +209,17 @@ class TensorFactorySelector:
         """Create all tensors using appropriate factory."""
         factory = cls.get_factory(config)
 
-        # Create time-invariant data first
+        # Time-invariant data
         time_invariant_data = factory.create_time_invariant_data(data, config)
 
-        # Create summary tables
+        # Summary tables
         summary_tables = factory.create_summary_tables(data, time_invariant_data, config)
 
-        # Create tensors
+        # Tensors
         outcomes_tensor = factory.create_outcomes_tensor(data, config)
         covariates_tensor = factory.create_covariates_tensor(data, config)
 
-        # Extract additional data
+        # Additional data
         cluster = factory.extract_cluster_variable(time_invariant_data, config)
         weights = factory.extract_weights(time_invariant_data)
 

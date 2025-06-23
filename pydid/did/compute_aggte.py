@@ -25,8 +25,8 @@ def compute_aggte(
 ):
     """Compute aggregated treatment effect parameters.
 
-    This function aggregates group-time average treatment effects into
-    different summary measures based on the specified aggregation type.
+    Aggregates group-time average treatment effects into different summary
+    measures based on the specified aggregation type.
 
     Parameters
     ----------

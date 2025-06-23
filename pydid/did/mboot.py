@@ -15,9 +15,9 @@ def mboot(
 ):
     """Compute multiplier bootstrap for DiD influence functions.
 
-    This function implements the multiplier bootstrap for computing standard errors
-    and critical values for uniform confidence bands. It handles both individual
-    and clustered data using Mammen weights.
+    Implements the multiplier bootstrap for computing standard errors and critical
+    values for uniform confidence bands. It handles both individual and clustered
+    data using Mammen weights.
 
     Parameters
     ----------
