@@ -37,9 +37,8 @@ def twfe_did_panel(
 ):
     r"""Compute linear two-way fixed effects DiD estimator for the ATT with panel data.
 
-    This function implements the linear two-way fixed effects (TWFE) estimator for the average
-    treatment effect on the treated (ATT) in difference-in-differences (DiD) setups with panel data.
-    As illustrated by Sant'Anna and Zhao (2020), this estimator generally does not recover
+    Implements the linear two-way fixed effects (TWFE) estimator for the ATT with panel data,
+    as illustrated by Sant'Anna and Zhao (2020) [1]_. This estimator generally does not recover
     the ATT. We encourage users to adopt alternative specifications.
 
     Parameters

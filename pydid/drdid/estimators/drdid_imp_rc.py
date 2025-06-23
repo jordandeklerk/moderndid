@@ -39,7 +39,7 @@ def drdid_imp_rc(
 ):
     r"""Compute the improved doubly robust DiD estimator for the ATT with repeated cross-section data.
 
-    This function implements the doubly robust DiD estimator for the ATT
+    Implements the improved and locally efficient DR-DiD estimator for the ATT
     with repeated cross-sectional data, as defined in Sant'Anna and Zhao (2020) [2]_.
 
     This estimator uses a logistic propensity score model and separate linear

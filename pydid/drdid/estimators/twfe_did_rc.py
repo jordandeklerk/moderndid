@@ -35,10 +35,9 @@ def twfe_did_rc(
 ):
     r"""Compute linear two-way fixed effects DiD estimator for the ATT with repeated cross-sections.
 
-    This function implements the linear two-way fixed effects (TWFE) estimator for the average
-    treatment effect on the treated (ATT) in difference-in-differences (DiD) setups with stationary
-    repeated cross-sectional data. As illustrated by Sant'Anna and Zhao (2020), this estimator
-    generally does not recover the ATT. We encourage empiricists to adopt alternative specifications.
+    Implements the linear two-way fixed effects (TWFE) estimator for the ATT with repeated cross-section data,
+    as illustrated by Sant'Anna and Zhao (2020) [1]_. This estimator generally does not recover the ATT.
+    We encourage users to adopt alternative specifications.
 
     Parameters
     ----------

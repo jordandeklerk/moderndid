@@ -37,8 +37,7 @@ def ipw_did_rc(
 ):
     r"""Compute the inverse propensity weighted DiD estimator for the ATT with repeated cross-section data.
 
-    This function implements the inverse propensity weighted (IPW) estimator for the average treatment
-    effect on the treated (ATT) in difference-in-differences setups with repeated cross-section data
+    Implements the inverse propensity weighted (IPW) estimator for the ATT with repeated cross-section data,
     as proposed by Abadie (2005) [1]_. IPW weights are not normalized to sum up to one, that is,
     the estimator is of the Horwitz-Thompson type.
 

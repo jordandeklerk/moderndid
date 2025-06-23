@@ -38,10 +38,9 @@ def std_ipw_did_panel(
 ):
     r"""Compute the standardized inverse propensity weighted DiD estimator for the ATT with panel data.
 
-    This function implements the standardized inverse propensity weighted (IPW) estimator for the average
-    treatment effect on the treated (ATT) in difference-in-differences setups with panel data. IPW weights
-    are normalized to sum up to one, that is, the estimator is of the Hajek type. This is a standardized
-    version of Abadie (2005) [1]_ IPW DiD estimator.
+    Implements the standardized inverse propensity weighted (IPW) estimator for the ATT with panel data,
+    as proposed by Abadie (2005) [1]_. IPW weights are normalized to sum up to one, that is,
+    the estimator is of the Hajek type.
 
     Parameters
     ----------

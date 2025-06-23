@@ -35,10 +35,9 @@ def reg_did_rc(
 ):
     r"""Compute the outcome regression DiD estimator for the ATT with repeated cross-section data.
 
-    This function implements outcome regression difference-in-differences (DiD) estimator for
-    the average treatment effect on the treated (ATT) when stationary repeated cross-sectional
-    data are available. The estimator follows the same spirit of the nonparametric estimators
-    proposed by Heckman, Ichimura and Todd (1997) [1]_, though here the outcome regression
+    Implements outcome regression difference-in-differences (DiD) estimator for the ATT when stationary
+    repeated cross-sectional data are available. The estimator follows the same spirit of the nonparametric
+    estimators proposed by Heckman, Ichimura and Todd (1997) [1]_, though here the outcome regression
     models are assumed to be linear in covariates (parametric).
 
     The nuisance parameters (outcome regression coefficients) are estimated via ordinary
