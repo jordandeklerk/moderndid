@@ -38,7 +38,7 @@ def drdid_rc(
 ):
     r"""Compute the locally efficient doubly robust DiD estimator for the ATT with repeated cross-section data.
 
-    This function implements the locally efficient doubly robust difference-in-differences (DiD)
+    Implements the locally efficient doubly robust difference-in-differences (DiD)
     estimator for the Average Treatment Effect on the Treated (ATT) defined in Sant'Anna and Zhao (2020) [1]_.
     This estimator uses a logistic propensity score model and linear regression models for the outcome.
 

@@ -39,8 +39,8 @@ def drdid_trad_rc(
 ):
     r"""Compute the traditional doubly robust DiD estimator for the ATT with repeated cross-section data.
 
-    This function implements the doubly robust difference-in-differences (DiD) estimator for the
-    average treatment effect on the treated (ATT) defined in equation (3.3) in Sant'Anna and Zhao (2020) [1]_.
+    Implements the doubly robust difference-in-differences (DiD) estimator for the ATT
+    with repeated cross-sectional data, as defined in equation (3.3) in Sant'Anna and Zhao (2020) [1]_.
     This estimator uses a logistic propensity score model and linear regression models for the outcome
     among the comparison units in both pre and post-treatment time periods. Importantly, this estimator
     is not locally efficient.

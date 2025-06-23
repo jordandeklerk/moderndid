@@ -37,11 +37,10 @@ def drdid_imp_panel(
     influence_func=False,
     trim_level=0.995,
 ):
-    r"""Compute the improved locally efficient doubly robust DiD estimator for the ATT with panel data.
+    r"""Compute the improved and locally efficient DR-DiD estimator for the ATT with panel data.
 
-    This function implements the locally efficient doubly robust difference-in-differences (DiD)
-    estimator for the Average Treatment Effect on the Treated (ATT) in panel data settings,
-    as described in Sant'Anna and Zhao (2020) [2]_.
+    Implements the locally efficient and improved doubly robust DiD estimator for the ATT
+    with panel data, as described in Sant'Anna and Zhao (2020) [2]_.
 
     The estimator uses a logistic propensity score model estimated via inverse probability tilting
     as described in Graham, Pinto, and Egel (2012) [1]_, and a linear regression model for the

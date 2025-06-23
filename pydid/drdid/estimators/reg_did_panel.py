@@ -36,9 +36,8 @@ def reg_did_panel(
 ):
     r"""Compute the outcome regression DiD estimator for the ATT with panel data.
 
-    This function implements outcome regression difference-in-differences (DiD) estimator for
-    the average treatment effect on the treated (ATT) defined in equation (2.2) of Sant'Anna
-    and Zhao (2020) [2]_ when panel data are available. The estimator follows the same spirit
+    Implements the outcome regression DiD estimator for the ATT with panel data,
+    as defined in equation (2.2) of Sant'Anna and Zhao (2020) [2]_. The estimator follows the same spirit
     of the nonparametric estimators proposed by Heckman, Ichimura and Todd (1997) [1]_, though
     here the outcome regression models are assumed to be linear in covariates (parametric).
 
