@@ -3,6 +3,7 @@
 
 from pydid.data import load_mpdta, load_nsw
 from pydid.did.aggte_obj import AGGTEResult, aggte, format_aggte_result
+from pydid.did.att_gt import att_gt
 from pydid.did.compute_aggte import compute_aggte
 from pydid.did.compute_att_gt import ATTgtResult, ComputeATTgtResult, compute_att_gt
 from pydid.did.mboot import mboot
@@ -163,6 +164,7 @@ __all__ = [
     "DIDData",
     "preprocess_did",
     # Multi-period DiD computation
+    "att_gt",
     "ATTgtResult",
     "ComputeATTgtResult",
     "compute_att_gt",
