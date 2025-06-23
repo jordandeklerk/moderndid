@@ -179,7 +179,7 @@ def format_mp_result(result: MPResult):
         lines.append(f"{result.estimation_params['call_info']}")
         lines.append("")
 
-    lines.append("Reference: Sant'Anna and Zhao (2020)")
+    lines.append("Reference: Callaway and Sant'Anna (2021)")
     lines.append("")
 
     lines.append("Group-Time Average Treatment Effects:")
