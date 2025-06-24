@@ -1,6 +1,7 @@
 """Difference-in-Differences estimators with multiple time periods."""
 
-from .aggte_obj import AGGTEResult, aggte, format_aggte_result
+from .aggte import aggte
+from .aggte_obj import AGGTEResult, format_aggte_result
 from .att_gt import att_gt
 from .compute_aggte import compute_aggte
 from .compute_att_gt import ATTgtResult, ComputeATTgtResult, compute_att_gt
@@ -18,8 +19,8 @@ from .preprocess.models import DIDData
 from .preprocess_did import preprocess_did
 
 __all__ = [
-    "AGGTEResult",
     "aggte",
+    "AGGTEResult",
     "format_aggte_result",
     "compute_aggte",
     "att_gt",

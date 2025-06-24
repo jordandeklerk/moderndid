@@ -2,7 +2,8 @@
 """DiD and doubly robust DiD estimators."""
 
 from pydid.data import load_mpdta, load_nsw
-from pydid.did.aggte_obj import AGGTEResult, aggte, format_aggte_result
+from pydid.did.aggte import aggte
+from pydid.did.aggte_obj import AGGTEResult, format_aggte_result
 from pydid.did.att_gt import att_gt
 from pydid.did.compute_aggte import compute_aggte
 from pydid.did.compute_att_gt import ATTgtResult, ComputeATTgtResult, compute_att_gt

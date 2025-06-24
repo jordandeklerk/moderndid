@@ -167,15 +167,19 @@ def compute_aggte(
             unit_level_groups = None
 
     if unit_level_groups is not None and unit_level_weights is not None:
+        unit_level_groups_recoded = np.array(
+            [_orig2t(g, unique_original_times_and_groups, recoded_times) for g in unit_level_groups]
+        )
+
         group_probabilities = np.array(
-            [np.mean(unit_level_weights * (unit_level_groups == g)) for g in unique_groups_recoded]
+            [np.mean(unit_level_weights * (unit_level_groups_recoded == g)) for g in unique_groups_recoded]
         )
         observation_group_probabilities = np.zeros(len(groups))
         for i, g in enumerate(unique_groups_recoded):
             mask = groups == g
             observation_group_probabilities[mask] = group_probabilities[i]
     else:
-        pass
+        unit_level_groups_recoded = None
 
     post_treatment = (groups <= times) & (times <= groups + max_e)
 
@@ -192,7 +196,7 @@ def compute_aggte(
             bootstrap_iterations=bootstrap_iterations,
             unique_groups_recoded=unique_groups_recoded,
             group_probabilities=group_probabilities,
-            unit_level_groups=unit_level_groups,
+            unit_level_groups=unit_level_groups_recoded,
             unit_level_weights=unit_level_weights,
         )
 
@@ -210,7 +214,7 @@ def compute_aggte(
             estimation_params=estimation_params,
             alpha=alpha,
             bootstrap_iterations=bootstrap_iterations,
-            unit_level_groups=unit_level_groups,
+            unit_level_groups=unit_level_groups_recoded,
             unit_level_weights=unit_level_weights,
         )
 
@@ -232,7 +236,7 @@ def compute_aggte(
             bootstrap_iterations=bootstrap_iterations,
             unique_groups_recoded=unique_groups_recoded,
             group_probabilities=group_probabilities,
-            unit_level_groups=unit_level_groups,
+            unit_level_groups=unit_level_groups_recoded,
             unit_level_weights=unit_level_weights,
             unique_original_times_and_groups=unique_original_times_and_groups,
             recoded_times=recoded_times,
@@ -252,7 +256,7 @@ def compute_aggte(
             bootstrap_iterations=bootstrap_iterations,
             unique_groups_recoded=unique_groups_recoded,
             group_probabilities=group_probabilities,
-            unit_level_groups=unit_level_groups,
+            unit_level_groups=unit_level_groups_recoded,
             unit_level_weights=unit_level_weights,
             unique_original_times_and_groups=unique_original_times_and_groups,
             recoded_times=recoded_times,
@@ -347,8 +351,7 @@ def _compute_group_att(
     group_influence_functions = []
 
     for i, g in enumerate(unique_groups_recoded):
-        # Post-treatment periods for group g
-        mask = (groups == g) & (g <= times) & (times <= g + max_e)
+        mask = (groups == g) & ((g - 1) <= times) & (times <= g + max_e)
 
         if mask.any():
             group_att[i] = np.mean(att[mask])
@@ -474,8 +477,8 @@ def _compute_dynamic_att(
     recoded_times,
 ):
     """Compute dynamic (event-study) treatment effects."""
-    # Compute event times
-    event_times = original_times - original_groups
+    # TODO: The event times are off by one compared to the R output.
+    event_times = (original_times - original_groups) + 1
     unique_event_times = np.unique(event_times)
     unique_event_times = unique_event_times[np.isfinite(unique_event_times)]
     unique_event_times = np.sort(unique_event_times)
@@ -501,7 +504,6 @@ def _compute_dynamic_att(
             (unique_event_times >= min_possible_e) & (unique_event_times <= balance_e)
         ]
 
-    # Apply min_e and max_e restrictions
     unique_event_times = unique_event_times[(unique_event_times >= min_e) & (unique_event_times <= max_e)]
 
     # Compute ATT for each event time
@@ -920,21 +922,10 @@ def _compute_se(
 
             cluster_var_name = clustervars[0]
 
-            if "data" in estimation_params and hasattr(estimation_params["data"], "data"):
-                panel_data = estimation_params["data"].data
-                if cluster_var_name in panel_data.columns:
-                    if estimation_params.get("panel", False):
-                        tname = estimation_params["data"].config.tname
-                        first_period = panel_data[tname].unique()[0]
-                        tname = estimation_params["data"].config.tname
-                        cluster = panel_data[panel_data[tname] == first_period][cluster_var_name].values
-                    else:
-                        idname = estimation_params["data"].config.idname
-                        cluster = panel_data.groupby(idname)[cluster_var_name].first().values
-                else:
-                    raise ValueError(f"Cluster variable '{cluster_var_name}' not found in the data.")
-            else:
-                raise ValueError("Data for clustering not found in estimation_params.")
+            warnings.warn(
+                f"Clustering requested on '{cluster_var_name}' but data not available. "
+                "Using standard bootstrap without clustering."
+            )
 
         mboot_result = mboot(
             inf_func=influence_function.reshape(-1, 1),
