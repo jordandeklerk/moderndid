@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from .compute_aggte import compute_aggte
 
 
@@ -9,8 +11,8 @@ def aggte(
     MP,
     type="group",
     balance_e=None,
-    min_e=-float("inf"),
-    max_e=float("inf"),
+    min_e=-np.inf,
+    max_e=np.inf,
     na_rm=False,
     bstrap=None,
     biters=None,
