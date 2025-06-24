@@ -3,7 +3,8 @@
 import numpy as np
 import pytest
 
-from pydid import AGGTEResult, aggte, format_aggte_result
+from pydid import AGGTEResult, format_aggte_result
+from pydid.did.aggte_obj import aggte
 
 
 def test_aggte_simple():
