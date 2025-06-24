@@ -108,6 +108,42 @@ def att_gt(
     MPResult
         Object containing all the results for group-time average treatment effects.
 
+    Examples
+    --------
+    The dataset below contains 500 observations of county-level teen employment rates from 2003-2007.
+    Some states are first treated in 2004, some in 2006, and some in 2007. The variable ``first.treat``
+    indicates the first period in which a state is treated:
+
+    .. ipython::
+
+        In [1]: import numpy as np
+           ...: from pydid import att_gt, load_mpdta
+           ...:
+           ...: df = load_mpdta()
+           ...: print(df.head())
+
+    We can compute group-time average treatment effects for a staggered adoption design
+    where different units adopt treatment at different time periods. The output is an object of type
+    ``MPResult`` which is a container for the results:
+
+    .. ipython::
+        :okwarning:
+
+        In [2]: result = att_gt(
+           ...:     data=df,
+           ...:     yname="lemp",
+           ...:     tname="year",
+           ...:     gname="first.treat",
+           ...:     idname="countyreal",
+           ...:     est_method="dr",
+           ...:     bstrap=False
+           ...: )
+           ...: print(result)
+
+    See Also
+    --------
+    aggte : Aggregate group-time average treatment effects.
+
     References
     ----------
     .. [1] Callaway, B., & Sant'Anna, P. H. (2021). "Difference-in-differences

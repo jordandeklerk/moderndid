@@ -8,6 +8,8 @@ Documentation for all public modules, classes, and functions in the pyDiD packag
 .. autosummary::
    :toctree: generated/
 
+   pydid.att_gt
+   pydid.aggte
    pydid.drdid
    pydid.ipwdid
    pydid.ordid
