@@ -152,3 +152,304 @@ def test_aggte_print_output(mp_result, agg_type, expected_text):
     output = str(result)
     assert "Aggregate Treatment Effects" in output
     assert expected_text in output
+
+
+def test_aggte_with_missing_values_no_na_rm(mp_result):
+    mp_result.att_gt[0] = np.nan
+
+    with pytest.raises(ValueError, match="Missing values at att_gt found"):
+        aggte(mp_result, type="simple", na_rm=False)
+
+
+def test_aggte_all_nan_values():
+    df = load_mpdta()
+    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    result.att_gt[:] = np.nan
+
+    agg_result = aggte(result, type="simple", na_rm=True)
+    assert agg_result.overall_att == 0.0
+    assert np.isnan(agg_result.overall_se)
+
+
+def test_aggte_empty_keepers_after_filtering():
+    df = load_mpdta()
+    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    with pytest.raises(ValueError, match="need at least one array"):
+        aggte(result, type="dynamic", min_e=100, max_e=101)
+
+
+def test_aggte_infinite_values_in_att(mp_result):
+    mp_result.att_gt[0] = np.inf
+
+    result = aggte(mp_result, type="simple")
+    assert not np.isnan(result.overall_att)
+
+
+def test_aggte_very_small_standard_errors(mp_result):
+    mp_result.influence_func[:] = 1e-15
+
+    result = aggte(mp_result, type="simple")
+    assert np.isnan(result.overall_se) or result.overall_se > 0
+
+
+def test_aggte_extreme_event_times():
+    df = load_mpdta()
+    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    agg_result = aggte(result, type="dynamic", min_e=-1e10, max_e=1e10)
+    assert agg_result.aggregation_type == "dynamic"
+    assert agg_result.min_event_time == int(-1e10)
+    assert agg_result.max_event_time == int(1e10)
+
+
+def test_aggte_non_sequential_time_periods():
+    df = load_mpdta()
+    mask = df["first.treat"] != 0
+    df.loc[mask, "first_treat"] = df.loc[mask, "first.treat"] + 1000
+    df.loc[~mask, "first_treat"] = np.inf
+    df["year"] = df["year"] + 1000
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    agg_result = aggte(result, type="calendar")
+    assert agg_result.aggregation_type == "calendar"
+    assert agg_result.event_times is not None
+
+
+def test_aggte_all_treated_same_time():
+    df = load_mpdta()
+    mask = df["first.treat"] != 0
+    df.loc[mask, "first_treat"] = 2004
+    df.loc[~mask, "first_treat"] = np.inf
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    agg_result = aggte(result, type="group")
+    treated_groups = [g for g in agg_result.event_times if np.isfinite(g)]
+    assert len(treated_groups) == 1
+
+
+def test_aggte_clustering_multiple_vars_error(mp_result):
+    with pytest.raises(NotImplementedError, match="multiple variables"):
+        aggte(
+            mp_result,
+            type="simple",
+            clustervars=["var1", "var2"],
+            bstrap=True,
+            biters=99,
+        )
+
+
+def test_aggte_uniform_bands_without_bootstrap():
+    df = load_mpdta()
+    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    with pytest.warns(UserWarning, match="bootstrap procedure"):
+        agg_result = aggte(
+            result,
+            type="group",
+            cband=True,
+            bstrap=False,
+        )
+
+    assert agg_result.aggregation_type == "group"
+
+
+def test_aggte_critical_value_nan_handling(mp_result):
+    mp_result.influence_func[:] = 0
+
+    with pytest.warns(UserWarning, match="critical value is NA"):
+        result = aggte(
+            mp_result,
+            type="group",
+            cband=True,
+            bstrap=True,
+            biters=99,
+        )
+
+    assert result.aggregation_type == "group"
+    assert not result.estimation_params.get("uniform_bands", True)
+
+
+def test_aggte_dynamic_no_post_treatment():
+    df = load_mpdta()
+    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    agg_result = aggte(result, type="dynamic", max_e=-1)
+
+    assert np.isnan(agg_result.overall_att)
+    assert np.isnan(agg_result.overall_se)
+
+
+def test_aggte_dynamic_with_extreme_balance():
+    df = load_mpdta()
+    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    agg_result = aggte(result, type="dynamic", balance_e=2)
+
+    assert agg_result.aggregation_type == "dynamic"
+    assert agg_result.balanced_event_threshold == 2
+
+
+def test_aggte_calendar_no_treated_units():
+    df = load_mpdta()
+    df["first_treat"] = 0
+    df["first.treat"] = 0
+
+    with pytest.raises(ValueError, match="No valid groups"):
+        att_gt(
+            data=df,
+            yname="lemp",
+            tname="year",
+            gname="first_treat",
+            idname="countyreal",
+            xformla="~ 1",
+            est_method="reg",
+        )
+
+
+def test_aggte_conflicting_cband_bootstrap():
+    df = load_mpdta()
+    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    with pytest.warns(UserWarning, match="bootstrap procedure"):
+        agg_result = aggte(
+            result,
+            type="dynamic",
+            cband=True,
+            bstrap=False,
+        )
+
+    assert agg_result.aggregation_type == "dynamic"
+
+
+def test_aggte_parameter_inheritance_from_mp():
+    df = load_mpdta()
+    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    agg_result = aggte(result, type="simple", alp=0.1)
+
+    assert agg_result.estimation_params.get("alpha") == 0.1
+
+
+def test_aggte_very_large_bootstrap_iterations():
+    df = load_mpdta()
+    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first_treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    agg_result = aggte(
+        result,
+        type="simple",
+        bstrap=True,
+        biters=10,
+    )
+
+    assert agg_result.aggregation_type == "simple"
+    assert agg_result.estimation_params.get("biters") == 10
