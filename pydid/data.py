@@ -4,6 +4,7 @@ import gzip
 import pickle
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 __all__ = ["load_nsw", "load_mpdta"]
@@ -97,5 +98,7 @@ def load_mpdta() -> pd.DataFrame:
 
     with gzip.open(data_path, "rb") as f:
         mpdta_data = pickle.load(f)
+
+    mpdta_data["first.treat"] = mpdta_data["first.treat"].astype(np.int64)
 
     return mpdta_data

@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name
 """Tests for group-time average treatment effects."""
 
 import numpy as np
@@ -6,15 +7,18 @@ import pytest
 from pydid import MPResult, att_gt, load_mpdta
 
 
-def test_att_gt_basic_functionality():
+@pytest.fixture
+def mpdta_data():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
+    return df
 
+
+def test_att_gt_basic_functionality(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -30,15 +34,12 @@ def test_att_gt_basic_functionality():
     assert len(result.se_gt) == len(result.groups)
 
 
-def test_att_gt_with_covariates():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_with_covariates(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ lpop",
         control_group="nevertreated",
@@ -50,15 +51,12 @@ def test_att_gt_with_covariates():
     assert np.all(~np.isnan(result.att_gt))
 
 
-def test_att_gt_notyettreated_control():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_notyettreated_control(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         control_group="notyettreated",
         bstrap=False,
@@ -68,15 +66,12 @@ def test_att_gt_notyettreated_control():
     assert result.estimation_params["control_group"] == "notyettreated"
 
 
-def test_att_gt_with_anticipation():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_with_anticipation(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         anticipation=1,
         bstrap=False,
@@ -86,17 +81,15 @@ def test_att_gt_with_anticipation():
     assert result.estimation_params["anticipation_periods"] == 1
 
 
-def test_att_gt_bootstrap_inference():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-    unique_counties = df["countyreal"].unique()[:100]
-    df = df[df["countyreal"].isin(unique_counties)]
+def test_att_gt_bootstrap_inference(mpdta_data):
+    unique_counties = mpdta_data["countyreal"].unique()[:100]
+    mpdta_data = mpdta_data[mpdta_data["countyreal"].isin(unique_counties)]
 
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         bstrap=True,
         biters=100,
@@ -111,15 +104,12 @@ def test_att_gt_bootstrap_inference():
 
 
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
-def test_att_gt_estimation_methods(est_method):
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_estimation_methods(est_method, mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         est_method=est_method,
         bstrap=False,
@@ -129,15 +119,12 @@ def test_att_gt_estimation_methods(est_method):
     assert result.estimation_params["estimation_method"] == est_method
 
 
-def test_att_gt_universal_base_period():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_universal_base_period(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         base_period="universal",
         bstrap=False,
@@ -147,16 +134,14 @@ def test_att_gt_universal_base_period():
     assert result.estimation_params["base_period"] == "universal"
 
 
-def test_att_gt_with_weights():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-    df["weights"] = np.random.uniform(0.5, 1.5, len(df))
+def test_att_gt_with_weights(mpdta_data):
+    mpdta_data["weights"] = np.random.uniform(0.5, 1.5, len(mpdta_data))
 
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         weightsname="weights",
         bstrap=False,
@@ -166,15 +151,12 @@ def test_att_gt_with_weights():
     assert result.weights_ind is not None
 
 
-def test_att_gt_repeated_cross_section():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_repeated_cross_section(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         panel=False,
         bstrap=False,
     )
@@ -183,16 +165,14 @@ def test_att_gt_repeated_cross_section():
     assert result.estimation_params["panel"] is False
 
 
-def test_att_gt_unbalanced_panel():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-    df = df[~((df["countyreal"] < 1010) & (df["year"] == 2005))]
+def test_att_gt_unbalanced_panel(mpdta_data):
+    mpdta_data = mpdta_data[~((mpdta_data["countyreal"] < 1010) & (mpdta_data["year"] == 2005))]
 
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         allow_unbalanced_panel=True,
         bstrap=False,
@@ -201,18 +181,16 @@ def test_att_gt_unbalanced_panel():
     assert isinstance(result, MPResult)
 
 
-def test_att_gt_clustering():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-    unique_counties = df["countyreal"].unique()[:100]
-    df = df[df["countyreal"].isin(unique_counties)]
-    df["cluster"] = df["countyreal"] // 10
+def test_att_gt_clustering(mpdta_data):
+    unique_counties = mpdta_data["countyreal"].unique()[:100]
+    mpdta_data = mpdta_data[mpdta_data["countyreal"].isin(unique_counties)]
+    mpdta_data["cluster"] = mpdta_data["countyreal"] // 10
 
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         clustervars=["cluster"],
         bstrap=True,
@@ -223,15 +201,12 @@ def test_att_gt_clustering():
     assert result.estimation_params["clustervars"] == ["cluster"]
 
 
-def test_att_gt_wald_pretest():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_wald_pretest(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         bstrap=False,
     )
@@ -243,44 +218,35 @@ def test_att_gt_wald_pretest():
         assert hasattr(result, "wald_pvalue")
 
 
-def test_att_gt_invalid_control_group():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_invalid_control_group(mpdta_data):
     with pytest.raises(ValueError):
         att_gt(
-            data=df,
+            data=mpdta_data,
             yname="lemp",
             tname="year",
-            gname="first_treat",
+            gname="first.treat",
             idname="countyreal",
             control_group="invalid",
         )
 
 
-def test_att_gt_missing_column():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_missing_column(mpdta_data):
     with pytest.raises(ValueError, match="yname"):
         att_gt(
-            data=df,
+            data=mpdta_data,
             yname="missing_column",
             tname="year",
-            gname="first_treat",
+            gname="first.treat",
             idname="countyreal",
         )
 
 
-def test_att_gt_all_treated_notyettreated():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, 2008)
-
+def test_att_gt_all_treated_notyettreated(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         control_group="notyettreated",
         bstrap=False,
@@ -290,15 +256,12 @@ def test_att_gt_all_treated_notyettreated():
     assert len(result.att_gt) > 0
 
 
-def test_att_gt_summary_output():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_summary_output(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         bstrap=False,
     )
@@ -309,15 +272,12 @@ def test_att_gt_summary_output():
     assert "Std. Error" in summary_str
 
 
-def test_att_gt_influence_functions():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_influence_functions(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         bstrap=False,
     )
@@ -328,15 +288,12 @@ def test_att_gt_influence_functions():
     assert result.influence_func.shape[1] == len(result.att_gt)
 
 
-def test_att_gt_variance_matrix():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_variance_matrix(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         bstrap=False,
     )
@@ -348,15 +305,12 @@ def test_att_gt_variance_matrix():
     assert np.allclose(result.vcov_analytical, result.vcov_analytical.T)
 
 
-def test_att_gt_custom_alpha():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_custom_alpha(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         alp=0.10,
         bstrap=False,
@@ -366,15 +320,12 @@ def test_att_gt_custom_alpha():
     assert result.critical_value < 1.96
 
 
-def test_att_gt_print_details():
-    df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
-
+def test_att_gt_print_details(mpdta_data):
     result = att_gt(
-        data=df,
+        data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         print_details=True,
         bstrap=False,
