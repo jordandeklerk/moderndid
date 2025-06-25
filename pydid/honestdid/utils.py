@@ -179,7 +179,10 @@ def validate_symmetric_psd(sigma):
 
     asymmetry = np.max(np.abs(sigma - sigma.T))
     if asymmetry > 1e-10:
-        warnings.warn(f"Matrix sigma not exactly symmetric (largest asymmetry was {asymmetry:.6g})", UserWarning)
+        warnings.warn(
+            f"Matrix sigma not exactly symmetric (largest asymmetry was {asymmetry:.6g})",
+            UserWarning,
+        )
 
     eigenvalues = np.linalg.eigvals(sigma)
     min_eigenvalue = np.min(eigenvalues.real)
