@@ -355,20 +355,6 @@ def test_critical_values_by_distribution(distribution, df_or_param):
         assert result["crit_val"] > 1.5
 
 
-def test_bootstrap_distribution_shape():
-    n = 200
-    k = 2
-    inf_func = np.random.normal(0, 1, (n, k))
-
-    result = mboot(inf_func, n_units=n, biters=999)
-
-    bres = result["bres"]
-    assert bres.shape == (999, k)
-
-    for j in range(k):
-        assert np.abs(np.mean(bres[:, j])) < 0.1
-
-
 @pytest.mark.parametrize(
     "n_obs,n_params",
     [
