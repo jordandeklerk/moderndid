@@ -56,6 +56,14 @@ from pydid.drdid.print import print_did_result
 from pydid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from pydid.drdid.propensity.ipw_estimators import ipw_rc
 from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
+from pydid.honestdid.utils import (
+    basis_vector,
+    compute_bounds,
+    lee_coefficient,
+    selection_matrix,
+    validate_conformable,
+    validate_symmetric_psd,
+)
 from pydid.utils import (
     are_varying,
     complete_data,
@@ -170,4 +178,11 @@ __all__ = [
     "ComputeATTgtResult",
     "compute_att_gt",
     "compute_aggte",
+    # Honest DiD utility functions
+    "selection_matrix",
+    "lee_coefficient",
+    "compute_bounds",
+    "basis_vector",
+    "validate_symmetric_psd",
+    "validate_conformable",
 ]
