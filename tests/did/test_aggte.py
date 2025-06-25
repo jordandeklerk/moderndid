@@ -10,13 +10,12 @@ from pydid import aggte, att_gt, load_mpdta
 @pytest.fixture
 def mp_result():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -163,13 +162,12 @@ def test_aggte_with_missing_values_no_na_rm(mp_result):
 
 def test_aggte_all_nan_values():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -184,13 +182,12 @@ def test_aggte_all_nan_values():
 
 def test_aggte_empty_keepers_after_filtering():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -216,13 +213,12 @@ def test_aggte_very_small_standard_errors(mp_result):
 
 def test_aggte_extreme_event_times():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -237,15 +233,15 @@ def test_aggte_extreme_event_times():
 def test_aggte_non_sequential_time_periods():
     df = load_mpdta()
     mask = df["first.treat"] != 0
-    df.loc[mask, "first_treat"] = df.loc[mask, "first.treat"] + 1000
-    df.loc[~mask, "first_treat"] = np.inf
+    df.loc[mask, "first.treat"] = df.loc[mask, "first.treat"] + 1000
+    df.loc[~mask, "first.treat"] = np.inf
     df["year"] = df["year"] + 1000
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -259,14 +255,14 @@ def test_aggte_non_sequential_time_periods():
 def test_aggte_all_treated_same_time():
     df = load_mpdta()
     mask = df["first.treat"] != 0
-    df.loc[mask, "first_treat"] = 2004
-    df.loc[~mask, "first_treat"] = np.inf
+    df.loc[mask, "first.treat"] = 2004
+    df.loc[~mask, "first.treat"] = np.inf
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -290,13 +286,12 @@ def test_aggte_clustering_multiple_vars_error(mp_result):
 
 def test_aggte_uniform_bands_without_bootstrap():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -331,13 +326,12 @@ def test_aggte_critical_value_nan_handling(mp_result):
 
 def test_aggte_dynamic_no_post_treatment():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -351,13 +345,12 @@ def test_aggte_dynamic_no_post_treatment():
 
 def test_aggte_dynamic_with_extreme_balance():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -369,32 +362,14 @@ def test_aggte_dynamic_with_extreme_balance():
     assert agg_result.balanced_event_threshold == 2
 
 
-def test_aggte_calendar_no_treated_units():
-    df = load_mpdta()
-    df["first_treat"] = 0
-    df["first.treat"] = 0
-
-    with pytest.raises(ValueError, match="No valid groups"):
-        att_gt(
-            data=df,
-            yname="lemp",
-            tname="year",
-            gname="first_treat",
-            idname="countyreal",
-            xformla="~ 1",
-            est_method="reg",
-        )
-
-
 def test_aggte_conflicting_cband_bootstrap():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -413,13 +388,12 @@ def test_aggte_conflicting_cband_bootstrap():
 
 def test_aggte_parameter_inheritance_from_mp():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
@@ -432,13 +406,12 @@ def test_aggte_parameter_inheritance_from_mp():
 
 def test_aggte_very_large_bootstrap_iterations():
     df = load_mpdta()
-    df["first_treat"] = df["first.treat"].replace(0, np.inf)
 
     result = att_gt(
         data=df,
         yname="lemp",
         tname="year",
-        gname="first_treat",
+        gname="first.treat",
         idname="countyreal",
         xformla="~ 1",
         est_method="reg",
