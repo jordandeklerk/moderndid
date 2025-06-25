@@ -1,0 +1,277 @@
+"""Functions for computing bounds on the smoothness parameter based on second differences."""
+
+import numpy as np
+from scipy import stats
+
+from .conditional import estimate_lowerbound_m_conditional_test
+
+
+def compute_delta_sd_upperbound_m(
+    betahat,
+    sigma,
+    num_pre_periods,
+    alpha=0.05,
+):
+    r"""Compute an upper bound for M at the :math:`1-\\alpha` level based on observed pre-period coefficients.
+
+    Constructs an upper bound for the smoothness parameter :math:`M` using the maximum
+    second difference of the observed pre-period coefficients.
+
+    Parameters
+    ----------
+    betahat : ndarray
+        Vector of estimated coefficients. First `num_pre_periods` elements are pre-treatment.
+    sigma : ndarray
+        Covariance matrix of estimated coefficients.
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    alpha : float, default=0.05
+        Significance level :math:`\\alpha` for the confidence bound.
+
+    Returns
+    -------
+    float
+        Upper bound for :math:`M` at the :math:`1-\\alpha` level.
+
+    Raises
+    ------
+    ValueError
+        If `num_pre_periods` < 3.
+
+    Notes
+    -----
+    The upper bound is computed as the maximum over all second differences of
+
+    .. math::
+        \\Delta^2 \\hat{\\beta}_t + z_{1-\\alpha} \\cdot \\text{se}(\\Delta^2 \\hat{\\beta}_t)
+
+    where :math:`\\Delta^2 \\hat{\\beta}_t` is the second difference at time :math:`t`,
+    :math:`\\text{se}(\\cdot)` denotes the standard error, and :math:`z_{1-\\alpha}` is the
+    :math:`1-\\alpha` quantile of the standard normal distribution.
+
+    See Also
+    --------
+    compute_delta_sd_lowerbound_m : Compute lower bound for M.
+    create_second_difference_matrix : Create matrix for computing second differences.
+
+    References
+    ----------
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
+        The Review of Economic Studies, 90(5), 2555-2591.
+    """
+    if num_pre_periods < 3:
+        raise ValueError("Cannot estimate M in pre-period with < 3 pre-period coefficients.")
+
+    pre_period_coef = betahat[:num_pre_periods]
+    pre_period_sigma = sigma[:num_pre_periods, :num_pre_periods]
+
+    a_sd = create_second_difference_matrix(num_pre_periods=num_pre_periods, num_post_periods=0)
+
+    pre_period_coef_diffs = a_sd @ pre_period_coef
+    pre_period_sigma_diffs = a_sd @ pre_period_sigma @ a_sd.T
+    se_diffs = np.sqrt(np.diag(pre_period_sigma_diffs))
+
+    upper_bound_vec = pre_period_coef_diffs + stats.norm.ppf(1 - alpha) * se_diffs
+    max_upper_bound = np.max(upper_bound_vec)
+
+    return max_upper_bound
+
+
+def compute_delta_sd_lowerbound_m(
+    betahat,
+    sigma,
+    num_pre_periods,
+    alpha=0.05,
+    grid_ub=None,
+    grid_points=1000,
+):
+    """Compute a lower bound for M using observed pre-period coefficients.
+
+    Constructs a lower bound for the smoothness parameter :math:`M` by constructing a
+    one-sided confidence interval on the maximal second difference of the observed
+    pre-period coefficients using the conditional test from Andrews, Roth, and Pakes (2019).
+
+    Parameters
+    ----------
+    betahat : ndarray
+        Vector of estimated coefficients. First `num_pre_periods` elements are pre-treatment.
+    sigma : ndarray
+        Covariance matrix of estimated coefficients.
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    alpha : float, default=0.05
+        Significance level for the confidence bound.
+    grid_ub : float, optional
+        Upper bound for grid search. If None, defaults to 3 times the max SE.
+    grid_points : int, default=1000
+        Number of points in the grid for searching over M values.
+
+    Returns
+    -------
+    float
+        Lower bound for M at the 1-alpha level. Returns np.inf if no values accepted.
+
+    Raises
+    ------
+    ValueError
+        If `num_pre_periods` <= 1.
+
+    Notes
+    -----
+    The lower bound is computed using the conditional test from Andrews, Roth, and Pakes (2019).
+    This test inverts a conditional test to find the smallest value of M that is not rejected.
+
+    See Also
+    --------
+    compute_delta_sd_upperbound_m : Compute upper bound for M.
+    estimate_lowerbound_m_conditional_test : Conditional test implementation.
+
+    References
+    ----------
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2019). Inference for linear conditional moment inequalities.
+        Technical report, National Bureau of Economic Research.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
+        The Review of Economic Studies, 90(5), 2555-2591.
+    """
+    if num_pre_periods < 3:
+        raise ValueError("Cannot estimate M in pre-period with < 3 pre-period coefficients.")
+
+    pre_period_coef = betahat[:num_pre_periods]
+    pre_period_sigma = sigma[:num_pre_periods, :num_pre_periods]
+
+    if grid_ub is None:
+        grid_ub = 3 * np.max(np.sqrt(np.diag(pre_period_sigma)))
+
+    results = estimate_lowerbound_m_conditional_test(
+        pre_period_coef,
+        pre_period_sigma,
+        grid_ub,
+        alpha,
+        grid_points,
+    )
+
+    return results
+
+
+def create_second_difference_matrix(
+    num_pre_periods,
+    num_post_periods,
+):
+    r"""Create matrix for computing second differences of coefficients.
+
+    Constructs a matrix :math:`A` such that :math:`A \\beta` gives the second differences
+    of the coefficient vector :math:`\\beta`.
+
+    Parameters
+    ----------
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    num_post_periods : int
+        Number of post-treatment periods.
+
+    Returns
+    -------
+    ndarray
+        Matrix for computing second differences. Has shape
+        :math:`(n_{\\text{second_diffs}}, num_{\\text{pre_periods}} + num_{\\text{post_periods}})`.
+
+    Notes
+    -----
+    For pre-periods, second differences are computed as:
+
+    .. math::
+        \\Delta^2 \\beta_t = \\beta_{t+1} - 2 \\beta_t + \\beta_{t-1}
+
+    for interior points, and
+
+    .. math::
+        \\Delta^2 \\beta_T = \\beta_T - 2 \\beta_{T-1} + \\beta_{T-2}
+
+    for the last pre-period.
+
+    For post-periods, similar logic applies.
+    """
+    total_periods = num_pre_periods + num_post_periods
+
+    if num_pre_periods >= 3:
+        n_pre_diffs = num_pre_periods - 2
+    else:
+        n_pre_diffs = 0
+
+    if num_post_periods >= 3:
+        n_post_diffs = num_post_periods - 2
+    else:
+        n_post_diffs = 0
+
+    n_diffs = n_pre_diffs + n_post_diffs
+
+    if n_diffs == 0:
+        return np.zeros((0, total_periods))
+
+    a_sd = np.zeros((n_diffs, total_periods))
+
+    if num_pre_periods >= 3:
+        for r in range(n_pre_diffs):
+            a_sd[r, r : (r + 3)] = [1, -2, 1]
+
+    if num_post_periods >= 3:
+        for r in range(n_post_diffs):
+            post_idx = n_pre_diffs + r
+            coef_idx = num_pre_periods + r
+            a_sd[post_idx, coef_idx : (coef_idx + 3)] = [1, -2, 1]
+
+    return a_sd
+
+
+def create_pre_period_constraint_matrix(num_pre_periods):
+    r"""Create constraint matrix and bounds for pre-period second differences.
+
+    Constructs the constraint matrix :math:`A` and bounds :math:`d` such that the constraints
+    :math:`|\\Delta^2 \\beta_i| \\leq M` can be written as :math:`A \\beta \\leq d M`.
+
+    Parameters
+    ----------
+    num_pre_periods : int
+        Number of pre-treatment periods.
+
+    Returns
+    -------
+    tuple
+        (A, d) where:
+        - :math:`A` : ndarray, constraint matrix of shape
+          :math:`(2 \\cdot (num_{\\text{pre_periods}} - 1), num_{\\text{pre_periods}})`
+        - :math:`d` : ndarray, vector of ones of length
+          :math:`2 \\cdot (num_{\\text{pre_periods}} - 1)`
+
+    Raises
+    ------
+    ValueError
+        If `num_pre_periods` < 2.
+
+    Notes
+    -----
+    The constraints are set up as:
+
+    .. math::
+        \\Delta^2 \\beta_i \\leq M  \\quad \\text{(upper bounds)}
+
+    .. math::
+        -\\Delta^2 \\beta_i \\leq M \\quad \\text{(lower bounds)}
+    """
+    if num_pre_periods < 2:
+        raise ValueError("Cannot estimate M in pre-period with < 2 pre-period coefficients.")
+
+    a_tilde = np.zeros((num_pre_periods - 1, num_pre_periods))
+
+    if num_pre_periods == 2:
+        return np.zeros((0, 2)), np.array([])
+
+    a_tilde[num_pre_periods - 2, (num_pre_periods - 3) : num_pre_periods] = [1, -2, 1]
+
+    for r in range(num_pre_periods - 2):
+        a_tilde[r, r : (r + 3)] = [1, -2, 1]
+
+    a_pre = np.vstack([a_tilde, -a_tilde])
+    d = np.ones(a_pre.shape[0])
+
+    return a_pre, d
