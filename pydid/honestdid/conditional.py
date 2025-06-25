@@ -16,7 +16,7 @@ def test_in_identified_set_max(
     alpha,
     d,
 ) -> bool:
-    r"""Run conditional test of the moments :math:`E[AY - d \\cdot M] \\leq 0` where :math:`Y \\sim N(\\mu, \\Sigma)`.
+    r"""Run conditional test of the moments.
 
     Tests whether a given value of :math:`M` is in the identified set by checking if
     the maximum normalized moment is statistically consistent with the constraint.
