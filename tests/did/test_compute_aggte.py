@@ -10,7 +10,6 @@ from pydid import compute_aggte, compute_att_gt, load_mpdta, mp, preprocess_did
 @pytest.fixture
 def mpdta_mp_result():
     mpdta = load_mpdta()
-    mpdta["first_treat"] = mpdta["first.treat"].replace(0, np.inf)
     mpdta["cluster"] = mpdta["countyreal"] % 10
 
     data = preprocess_did(
@@ -18,7 +17,7 @@ def mpdta_mp_result():
         yname="lemp",
         tname="year",
         idname="countyreal",
-        gname="first_treat",
+        gname="first.treat",
         xformla="~lpop",
         panel=True,
         control_group="nevertreated",
