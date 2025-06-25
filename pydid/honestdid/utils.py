@@ -120,16 +120,16 @@ def compute_bounds(eta, sigma, A, b, z):
 
     # Compute lower and upper bounds
     if np.any(ac_negative_idx):
-        VLo = np.max(objective[ac_negative_idx])
+        lower_bound = np.max(objective[ac_negative_idx])
     else:
-        VLo = -np.inf
+        lower_bound = -np.inf
 
     if np.any(ac_positive_idx):
-        VUp = np.min(objective[ac_positive_idx])
+        upper_bound = np.min(objective[ac_positive_idx])
     else:
-        VUp = np.inf
+        upper_bound = np.inf
 
-    return VLo, VUp
+    return lower_bound, upper_bound
 
 
 def basis_vector(index=1, size=1):
