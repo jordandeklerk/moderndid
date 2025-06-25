@@ -68,9 +68,9 @@ def test_create_pre_period_second_diff_constraints():
     assert len(d) == 4
     assert np.all(d == 1)
 
-    assert np.array_equal(A[0, :], [1, -2, 1])
+    assert np.array_equal(A[0, :], [0, 0, 0])
     assert np.array_equal(A[1, :], [1, -2, 1])
-    assert np.array_equal(A[2, :], [-1, 2, -1])
+    assert np.array_equal(A[2, :], [0, 0, 0])
     assert np.array_equal(A[3, :], [-1, 2, -1])
 
     num_pre_periods = 4
@@ -80,10 +80,12 @@ def test_create_pre_period_second_diff_constraints():
     assert len(d) == 6
     assert np.all(d == 1)
 
-    assert np.array_equal(A[0, :3], [1, -2, 1])
-    assert np.array_equal(A[1, 1:4], [1, -2, 1])
-    assert np.array_equal(A[2, 1:4], [1, -2, 1])
-    assert np.array_equal(A[3:, :], -A[:3, :])
+    assert np.array_equal(A[0, :], [1, -2, 1, 0])
+    assert np.array_equal(A[1, :], [0, 0, 0, 0])
+    assert np.array_equal(A[2, :], [0, 1, -2, 1])
+    assert np.array_equal(A[3, :], [-1, 2, -1, 0])
+    assert np.array_equal(A[4, :], [0, 0, 0, 0])
+    assert np.array_equal(A[5, :], [0, -1, 2, -1])
 
 
 def test_create_pre_period_second_diff_constraints_invalid():
@@ -195,7 +197,6 @@ def test_constraint_matrix_mathematical_correctness():
     second_diff = beta[2] - 2 * beta[1] + beta[0]
 
     assert A.shape == (6, 4)
-
     assert np.isclose(A[0, :] @ beta, second_diff)
 
     for i in range(3):

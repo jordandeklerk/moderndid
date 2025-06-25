@@ -111,8 +111,11 @@ def test_create_pre_period_constraint_matrix_minimum():
 
     A, d = create_pre_period_constraint_matrix(num_pre_periods)
 
-    assert A.shape == (0, 2)
-    assert len(d) == 0
+    assert A.shape == (2, 2)
+    assert len(d) == 2
+    assert np.all(d == 1)
+    assert np.array_equal(A[0, :], [1, -1])
+    assert np.array_equal(A[1, :], [-1, 1])
 
 
 def test_create_pre_period_constraint_matrix_invalid():

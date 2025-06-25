@@ -172,10 +172,13 @@ def _create_pre_period_second_diff_constraints(num_pre_periods):
 
     a_tilde = np.zeros((num_pre_periods - 1, num_pre_periods))
 
-    a_tilde[num_pre_periods - 2, (num_pre_periods - 3) : num_pre_periods] = [1, -2, 1]
+    a_tilde[num_pre_periods - 2, (num_pre_periods - 2) : num_pre_periods] = [1, -1]
 
-    for r in range(num_pre_periods - 2):
-        a_tilde[r, r : (r + 3)] = [1, -2, 1]
+    if num_pre_periods > 2:
+        a_tilde[num_pre_periods - 2, (num_pre_periods - 3) : num_pre_periods] = [1, -2, 1]
+
+        for r in range(num_pre_periods - 3):
+            a_tilde[r, r : (r + 3)] = [1, -2, 1]
 
     A = np.vstack([a_tilde, -a_tilde])
     d = np.ones(A.shape[0])
