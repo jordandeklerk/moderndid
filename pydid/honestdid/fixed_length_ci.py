@@ -70,11 +70,6 @@ def compute_flci(
         - optimal_half_length: Half-length of the confidence interval
         - m: Smoothness parameter used
         - status: Optimization status
-
-    See Also
-    --------
-    compute_delta_sd_upperbound_m : Compute upper bound for M.
-    compute_delta_sd_lowerbound_m : Compute lower bound for M.
     """
     if l_vec is None:
         l_vec = basis_vector(index=1, size=num_post_periods).flatten()
@@ -151,7 +146,7 @@ def _optimize_flci_params(
     h_min_variance = minimize_variance(sigma, num_pre_periods, num_post_periods, l_vec)
 
     # Optimal h using bisection method
-    h_optimal = _optimize_h_golden_search(
+    h_optimal = _optimize_h_bisection(
         h_min_variance, h_min_bias, m, num_points, alpha, sigma, num_pre_periods, num_post_periods, l_vec, seed
     )
 
@@ -456,7 +451,7 @@ def affine_variance(
     return variance
 
 
-def _optimize_h_golden_search(
+def _optimize_h_bisection(
     h_min,
     h_max,
     m,
