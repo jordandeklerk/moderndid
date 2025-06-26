@@ -2,7 +2,11 @@
 
 from .arp_no_nuisance import (
     APRCIResult,
-    compute_apr_ci,
+    compute_arp_ci,
+)
+from .arp_nuisance import (
+    ARPNuisanceCIResult,
+    compute_arp_nuisance_ci,
 )
 from .bounds import (
     compute_delta_sd_lowerbound_m,
@@ -46,7 +50,10 @@ __all__ = [
     # Fixed-length confidence intervals (FLCI)
     "compute_flci",
     "FLCIResult",
-    # APR confidence intervals
-    "compute_apr_ci",
+    # APR confidence intervals (no nuisance)
+    "compute_arp_ci",
     "APRCIResult",
+    # APR confidence intervals (with nuisance)
+    "compute_arp_nuisance_ci",
+    "ARPNuisanceCIResult",
 ]

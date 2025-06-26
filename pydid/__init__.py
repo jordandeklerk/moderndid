@@ -58,9 +58,11 @@ from pydid.drdid.propensity.ipw_estimators import ipw_rc
 from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
 from pydid.honestdid import (
     APRCIResult,
+    ARPNuisanceCIResult,
     FLCIResult,
     basis_vector,
-    compute_apr_ci,
+    compute_arp_ci,
+    compute_arp_nuisance_ci,
     compute_bounds,
     compute_delta_sd_lowerbound_m,
     compute_delta_sd_upperbound_m,
@@ -207,6 +209,8 @@ __all__ = [
     "compute_flci",
     "FLCIResult",
     # Honest DiD APR CI
-    "compute_apr_ci",
+    "compute_arp_ci",
     "APRCIResult",
+    "compute_arp_nuisance_ci",
+    "ARPNuisanceCIResult",
 ]

@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from pydid.honestdid.arp_no_nuisance import APRCIResult, _test_in_identified_set, compute_apr_ci
+from pydid.honestdid.arp_no_nuisance import APRCIResult, _test_in_identified_set, compute_arp_ci
 from pydid.honestdid.bounds import create_second_difference_matrix
 
 
@@ -41,11 +41,11 @@ def constraint_matrices(event_study_data):
     return A, d
 
 
-def test_compute_apr_ci_basic(event_study_data, constraint_matrices):
+def test_compute_arp_ci_basic(event_study_data, constraint_matrices):
     beta_hat, sigma, n_pre, n_post = event_study_data
     A, d = constraint_matrices
 
-    result = compute_apr_ci(
+    result = compute_arp_ci(
         beta_hat=beta_hat,
         sigma=sigma,
         A=A,
@@ -67,11 +67,11 @@ def test_compute_apr_ci_basic(event_study_data, constraint_matrices):
 
 
 @pytest.mark.parametrize("post_idx", [1, 2, 3, 4])
-def test_compute_apr_ci_different_post_periods(event_study_data, constraint_matrices, post_idx):
+def test_compute_arp_ci_different_post_periods(event_study_data, constraint_matrices, post_idx):
     beta_hat, sigma, n_pre, n_post = event_study_data
     A, d = constraint_matrices
 
-    result = compute_apr_ci(
+    result = compute_arp_ci(
         beta_hat=beta_hat,
         sigma=sigma,
         A=A,
@@ -87,11 +87,11 @@ def test_compute_apr_ci_different_post_periods(event_study_data, constraint_matr
 
 
 @pytest.mark.parametrize("alpha", [0.1, 0.05, 0.01])
-def test_compute_apr_ci_alpha_levels(event_study_data, constraint_matrices, alpha):
+def test_compute_arp_ci_alpha_levels(event_study_data, constraint_matrices, alpha):
     beta_hat, sigma, n_pre, n_post = event_study_data
     A, d = constraint_matrices
 
-    result = compute_apr_ci(
+    result = compute_arp_ci(
         beta_hat=beta_hat,
         sigma=sigma,
         A=A,
@@ -118,7 +118,7 @@ def test_ci_length_ordering(event_study_data):
     ci_lengths = []
 
     for alpha in alphas:
-        result = compute_apr_ci(
+        result = compute_arp_ci(
             beta_hat=beta_hat,
             sigma=sigma,
             A=A,
@@ -165,7 +165,7 @@ def test_test_in_identified_set():
         ("non_square_sigma", {"sigma_slice": (slice(None), slice(None, -1))}, "sigma must be square"),
     ],
 )
-def test_compute_apr_ci_invalid_inputs(event_study_data, constraint_matrices, error_case, kwargs, match):
+def test_compute_arp_ci_invalid_inputs(event_study_data, constraint_matrices, error_case, kwargs, match):
     beta_hat, sigma, n_pre, n_post = event_study_data
     A, d = constraint_matrices
 
@@ -178,14 +178,14 @@ def test_compute_apr_ci_invalid_inputs(event_study_data, constraint_matrices, er
         kwargs.pop("sigma_slice")
 
     with pytest.raises(ValueError, match=match):
-        compute_apr_ci(beta_hat=beta_hat, sigma=sigma, A=A, d=d, n_pre_periods=n_pre, n_post_periods=n_post, **kwargs)
+        compute_arp_ci(beta_hat=beta_hat, sigma=sigma, A=A, d=d, n_pre_periods=n_pre, n_post_periods=n_post, **kwargs)
 
 
-def test_compute_apr_ci_return_length(event_study_data, constraint_matrices):
+def test_compute_arp_ci_return_length(event_study_data, constraint_matrices):
     beta_hat, sigma, n_pre, n_post = event_study_data
     A, d = constraint_matrices
 
-    result = compute_apr_ci(
+    result = compute_arp_ci(
         beta_hat=beta_hat,
         sigma=sigma,
         A=A,
@@ -197,7 +197,7 @@ def test_compute_apr_ci_return_length(event_study_data, constraint_matrices):
         return_length=False,
     )
 
-    length = compute_apr_ci(
+    length = compute_arp_ci(
         beta_hat=beta_hat,
         sigma=sigma,
         A=A,
@@ -213,7 +213,7 @@ def test_compute_apr_ci_return_length(event_study_data, constraint_matrices):
     assert length == result.ci_length
 
 
-def test_compute_apr_ci_empty_ci():
+def test_compute_arp_ci_empty_ci():
     np.random.seed(123)
     n_pre = 4
     n_post = 4
@@ -226,7 +226,7 @@ def test_compute_apr_ci_empty_ci():
     A = np.vstack([A_sd, -A_sd])
     d = np.ones(A.shape[0]) * 0.01
 
-    result = compute_apr_ci(
+    result = compute_arp_ci(
         beta_hat=beta_hat,
         sigma=sigma,
         A=A,
@@ -256,11 +256,11 @@ def test_compute_apr_ci_empty_ci():
         (0.0, 1.0, 25),
     ],
 )
-def test_compute_apr_ci_custom_grid_bounds(event_study_data, constraint_matrices, grid_lb, grid_ub, grid_points):
+def test_compute_arp_ci_custom_grid_bounds(event_study_data, constraint_matrices, grid_lb, grid_ub, grid_points):
     beta_hat, sigma, n_pre, n_post = event_study_data
     A, d = constraint_matrices
 
-    result = compute_apr_ci(
+    result = compute_arp_ci(
         beta_hat=beta_hat,
         sigma=sigma,
         A=A,
@@ -282,7 +282,7 @@ def test_hybrid_flci_requires_params(event_study_data, constraint_matrices):
     A, d = constraint_matrices
 
     with pytest.raises(ValueError, match="hybrid_kappa must be specified"):
-        compute_apr_ci(
+        compute_arp_ci(
             beta_hat=beta_hat,
             sigma=sigma,
             A=A,
@@ -293,7 +293,7 @@ def test_hybrid_flci_requires_params(event_study_data, constraint_matrices):
         )
 
     with pytest.raises(ValueError, match="flci_halflength and flci_l must be specified"):
-        compute_apr_ci(
+        compute_arp_ci(
             beta_hat=beta_hat,
             sigma=sigma,
             A=A,
@@ -310,7 +310,7 @@ def test_hybrid_lf_requires_params(event_study_data, constraint_matrices):
     A, d = constraint_matrices
 
     with pytest.raises(ValueError, match="lf_cv must be specified"):
-        compute_apr_ci(
+        compute_arp_ci(
             beta_hat=beta_hat,
             sigma=sigma,
             A=A,
