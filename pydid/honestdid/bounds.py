@@ -56,6 +56,7 @@ def compute_delta_sd_upperbound_m(
 
     References
     ----------
+
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
         The Review of Economic Studies, 90(5), 2555-2591.
     """
@@ -128,6 +129,7 @@ def compute_delta_sd_lowerbound_m(
 
     References
     ----------
+
     .. [1] Andrews, I., Roth, J., & Pakes, A. (2019). Inference for linear conditional moment inequalities.
         Technical report, National Bureau of Economic Research.
     .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.

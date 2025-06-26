@@ -111,6 +111,7 @@ def compute_apr_ci(
 
     References
     ----------
+
     .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
         Conditional Moment Inequalities. Review of Economic Studies.
     """
