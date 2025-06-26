@@ -1,4 +1,4 @@
-# pylint: disable=redefined-outer-name
+# pylint: disable=redefined-outer-name, unused-argument
 """Tests for APR CI with no nuisance parameters."""
 
 import numpy as np
@@ -165,7 +165,7 @@ def test_test_in_identified_set():
         ("non_square_sigma", {"sigma_slice": (slice(None), slice(None, -1))}, "sigma must be square"),
     ],
 )
-def test_compute_apr_ci_invalid_inputs(event_study_data, constraint_matrices, kwargs, match):
+def test_compute_apr_ci_invalid_inputs(event_study_data, constraint_matrices, error_case, kwargs, match):
     beta_hat, sigma, n_pre, n_post = event_study_data
     A, d = constraint_matrices
 
