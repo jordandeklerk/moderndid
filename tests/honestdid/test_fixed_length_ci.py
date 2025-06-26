@@ -6,7 +6,7 @@ import pytest
 from pydid.honestdid.fixed_length_ci import (
     FLCIResult,
     _optimize_flci_params,
-    _optimize_h_golden_search,
+    _optimize_h_bisection,
     affine_variance,
     compute_flci,
     folded_normal_quantile,
@@ -311,13 +311,13 @@ def test_folded_normal_extreme_quantiles():
     assert q_high > 2.0
 
 
-def test_optimize_h_golden_search():
+def test_optimize_h_bisection():
     _, sigma, l_vec = generate_test_data()
 
     h_min = 0.5
     h_max = 2.0
 
-    h_optimal = _optimize_h_golden_search(
+    h_optimal = _optimize_h_bisection(
         h_min=h_min,
         h_max=h_max,
         m=1.0,
