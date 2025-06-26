@@ -33,6 +33,7 @@ dependencies = [
   "statsmodels>=0.14.4",
   "scikit-learn>=1.6.1",
   "cvxpy[ECOS]>=1.3.0",
+  "sympy>=1.14.0",
 ]
 
 [tool.flit.module]

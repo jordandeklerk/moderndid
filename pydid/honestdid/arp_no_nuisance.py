@@ -37,7 +37,7 @@ class APRCIResult(NamedTuple):
     status: str
 
 
-def compute_apr_ci(
+def compute_arp_ci(
     beta_hat,
     sigma,
     A,
