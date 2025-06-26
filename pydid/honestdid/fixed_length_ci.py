@@ -509,8 +509,9 @@ def _optimize_h_bisection(
         Optimal h value, or NaN if optimization fails.
     """
 
-    def compute_ci_half_length(h):
+    def _compute_ci_half_length(h):
         bias_result = maximize_bias(h, sigma, n_pre_periods, n_post_periods, post_period_weights, smoothness_bound)
+
         if bias_result["status"] == "optimal" and bias_result["value"] < np.inf:
             max_bias = bias_result["value"]
             return folded_normal_quantile(1 - alpha, mu=max_bias / h, sd=1.0, seed=seed) * h
@@ -525,8 +526,8 @@ def _optimize_h_bisection(
     h_mid_low = h_upper - (h_upper - h_lower) / golden_ratio
     h_mid_high = h_lower + (h_upper - h_lower) / golden_ratio
 
-    ci_mid_low = compute_ci_half_length(h_mid_low)
-    ci_mid_high = compute_ci_half_length(h_mid_high)
+    ci_mid_low = _compute_ci_half_length(h_mid_low)
+    ci_mid_high = _compute_ci_half_length(h_mid_high)
 
     if np.isnan(ci_mid_low) or np.isnan(ci_mid_high):
         return np.nan
@@ -537,7 +538,7 @@ def _optimize_h_bisection(
             h_mid_high = h_mid_low
             ci_mid_high = ci_mid_low
             h_mid_low = h_upper - (h_upper - h_lower) / golden_ratio
-            ci_mid_low = compute_ci_half_length(h_mid_low)
+            ci_mid_low = _compute_ci_half_length(h_mid_low)
             if np.isnan(ci_mid_low):
                 return np.nan
         else:
@@ -545,7 +546,7 @@ def _optimize_h_bisection(
             h_mid_low = h_mid_high
             ci_mid_low = ci_mid_high
             h_mid_high = h_lower + (h_upper - h_lower) / golden_ratio
-            ci_mid_high = compute_ci_half_length(h_mid_high)
+            ci_mid_high = _compute_ci_half_length(h_mid_high)
             if np.isnan(ci_mid_high):
                 return np.nan
 
