@@ -1,5 +1,9 @@
 """Sensitivity analysis for difference-in-differences using the approach of Rambachan and Roth (2022)."""
 
+from .arp_no_nuisance import (
+    APRCIResult,
+    compute_apr_ci,
+)
 from .bounds import (
     compute_delta_sd_lowerbound_m,
     compute_delta_sd_upperbound_m,
@@ -42,4 +46,7 @@ __all__ = [
     # Fixed-length confidence intervals (FLCI)
     "compute_flci",
     "FLCIResult",
+    # APR confidence intervals
+    "compute_apr_ci",
+    "APRCIResult",
 ]
