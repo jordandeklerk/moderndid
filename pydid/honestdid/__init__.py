@@ -10,6 +10,10 @@ from .conditional import (
     estimate_lowerbound_m_conditional_test,
     test_in_identified_set_max,
 )
+from .fixed_length_ci import (
+    FLCIResult,
+    compute_flci,
+)
 from .utils import (
     basis_vector,
     compute_bounds,
@@ -35,4 +39,7 @@ __all__ = [
     # Conditional test functions
     "test_in_identified_set_max",
     "estimate_lowerbound_m_conditional_test",
+    # Fixed-length confidence intervals (FLCI)
+    "compute_flci",
+    "FLCIResult",
 ]
