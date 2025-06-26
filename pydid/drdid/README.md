@@ -4,7 +4,7 @@ This module provides a comprehensive suite of modern difference-in-differences e
 
 The computational methods here are inspired by the corresponding R package [DRDID](https://github.com/pedrohcgs/DRDID).
 
-> [!IMPORTANT]
+> [!CAUTION]
 > The core estimators for this module are the **doubly robust estimators**. We recommend users utilize these estimators in practice as they will give the most robust estimate of the ATT. We include the other estimators mainly for researchers to compare estimates from more traditional DiD estimators.
 
 ## Core Functionality
