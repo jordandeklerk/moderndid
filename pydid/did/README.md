@@ -202,6 +202,9 @@ To compute this overall average treatment effect parameter, where we're interest
 overall_att =  aggte(att_gt_results, type='group')
 ```
 
+The output shows that we estimate that increasing the minimum wage decreased teen employment by 3.1%,
+and the effect is marginally statistically significant.
+
 ```
 ==============================================================================
  Aggregate Treatment Effects (Group/Cohort)
@@ -231,8 +234,6 @@ overall_att =  aggte(att_gt_results, type='group')
  Estimation Method: Doubly Robust
 ==============================================================================
 ```
-
-Here, we estimate that increasing the minimum wage decreased teen employment by 3.1%, and the effect is marginally statistically significant.
 
 ## References
 
