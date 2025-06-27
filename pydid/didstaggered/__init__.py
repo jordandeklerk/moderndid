@@ -1,1 +1,0 @@
-"""Staggered treatment DiD estimators."""
