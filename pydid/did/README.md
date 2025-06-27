@@ -142,7 +142,7 @@ Anticipation Periods:  0
 Estimation Method:  Doubly Robust
 ```
 
-### Event Studies
+### Event Study
 
 In the example above, it is relatively easy to directly interpret the group-time average treatment effects.
 However, there are many cases where it is convenient to aggregate the group-time average treatment effects into
