@@ -115,7 +115,7 @@ attgt_result = att_gt(
 The output contains estimates of the group-time average treatment effects and their standard errors
 along with other meta information:
 
-```bash
+```
 Reference: Callaway and Sant'Anna (2021)
 
 Group-Time Average Treatment Effects:
@@ -156,7 +156,7 @@ event_study =  aggte(att_gt_results, type='dynamic')
 
 Just like for group-time average treatment effects, these can be summarized in a nice way:
 
-```bash
+```
 ==============================================================================
  Aggregate Treatment Effects (Event Study)
 ==============================================================================
@@ -202,7 +202,7 @@ To compute this overall average treatment effect parameter, where we're interest
 overall_att =  aggte(att_gt_results, type='group')
 ```
 
-```bash
+```
 ==============================================================================
  Aggregate Treatment Effects (Group/Cohort)
 ==============================================================================
