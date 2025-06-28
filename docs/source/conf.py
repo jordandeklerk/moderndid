@@ -1,6 +1,7 @@
 # pylint: disable=redefined-builtin,invalid-name
 """pydid sphinx configuration."""
 
+import math
 import os
 from importlib.metadata import metadata
 
@@ -33,10 +34,9 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.extlinks",
     "numpydoc",
-    "myst_nb",
+    "myst_parser",
     "sphinx_copybutton",
     "sphinx_design",
-    "jupyter_sphinx",
     "IPython.sphinxext.ipython_directive",
     "IPython.sphinxext.ipython_console_highlighting",
 ]
@@ -55,6 +55,15 @@ default_role = "autolink"
 # If true, '()' will be appended to :func: etc. cross-reference text.
 add_function_parentheses = False
 
+# Ensure all our internal links work
+nitpicky = True
+nitpick_ignore = [
+    # Common type annotation issues
+    ("py:class", "ndarray"),
+    ("py:class", "array_like"),
+    ("py:class", "optional"),
+]
+
 # -- Options for extensions
 
 extlinks = {
@@ -65,10 +74,8 @@ extlinks = {
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
 
-nb_execution_mode = "auto"
-nb_execution_excludepatterns = ["*.ipynb"]
-nb_kernel_rgx_aliases = {".*": "python3"}
-myst_enable_extensions = ["colon_fence", "deflist", "dollarmath", "amsmath", "linkify"]
+# File extensions
+source_suffix = [".rst", ".md"]
 
 autosummary_generate = True
 autodoc_typehints = "none"
@@ -96,22 +103,79 @@ intersphinx_mapping = {
 
 # -- Options for HTML output
 
-html_theme = "sphinx_book_theme"
-html_theme_options = {
-    "logo": {
-        "image_light": "_static/pydid-light.png",
-        "image_dark": "_static/pydid-dark.png",
-    }
-}
+html_theme = "pydata_sphinx_theme"
+
+html_logo = "_static/logo.svg"
 html_favicon = "_static/favicon.ico"
+
+html_sidebars = {"index": ["search-button-field"], "**": ["search-button-field", "sidebar-nav-bs"]}
+
+html_theme_options = {
+    "header_links_before_dropdown": 6,
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/jordandeklerk/pyDiD",
+            "icon": "fa-brands fa-github",
+        },
+    ],
+    "logo": {
+        "text": "pyDiD",
+        "image_light": "_static/logo.svg",
+        "image_dark": "_static/logo.svg",
+    },
+    "navbar_start": ["navbar-logo"],
+    "navbar_end": ["theme-switcher", "navbar-icon-links"],
+    "navbar_persistent": [],
+    "secondary_sidebar_items": ["page-toc"],
+    "show_version_warning_banner": False,
+}
+
+html_title = f"{project} v{version} Manual"
 html_static_path = ["_static"]
-html_css_files = ["custom.css"]
-html_sidebars = {
-    "**": [
-        "navbar-logo.html",
-        "name.html",
-        "icon-links.html",
-        "search-button-field.html",
-        "sbt-sidebar-nav.html",
-    ]
+html_last_updated_fmt = "%b %d, %Y"
+
+html_css_files = [
+    "custom.css",
+]
+
+html_use_modindex = True
+html_domain_indices = False
+html_copy_source = False
+html_file_suffix = ".html"
+
+htmlhelp_basename = "pydid"
+
+# -----------------------------------------------------------------------------
+# Matplotlib plot_directive options
+# -----------------------------------------------------------------------------
+
+plot_pre_code = """
+import numpy as np
+np.random.seed(123)
+"""
+
+plot_include_source = True
+plot_formats = [("png", 96)]
+plot_html_show_formats = False
+plot_html_show_source_link = False
+
+phi = (math.sqrt(5) + 1) / 2
+
+font_size = 13 * 72 / 96.0  # 13 px
+
+plot_rcparams = {
+    "font.size": font_size,
+    "axes.titlesize": font_size,
+    "axes.labelsize": font_size,
+    "xtick.labelsize": font_size,
+    "ytick.labelsize": font_size,
+    "legend.fontsize": font_size,
+    "figure.figsize": (3 * phi, 3),
+    "figure.subplot.bottom": 0.2,
+    "figure.subplot.left": 0.2,
+    "figure.subplot.right": 0.9,
+    "figure.subplot.top": 0.85,
+    "figure.subplot.wspace": 0.4,
+    "text.usetex": False,
 }

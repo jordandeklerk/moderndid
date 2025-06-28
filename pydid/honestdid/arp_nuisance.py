@@ -107,17 +107,21 @@ def compute_arp_nuisance_ci(
         grid_ub = 20.0
 
     theta_grid = np.linspace(grid_lb, grid_ub, grid_points)
+    # Construct invertible transformation matrix Gamma with l_vec as first row
+    # This allows us to reparametrize the problem in terms of theta = l'*beta
     gamma = _construct_gamma(l_vec)
 
+    # Transform constraint matrix A using Gamma^(-1) to work in theta-space
+    # Extract columns corresponding to post-treatment periods and transform
     a_gamma_inv = a_matrix[:, num_pre_periods : num_pre_periods + num_post_periods] @ np.linalg.inv(gamma)
+    # First column corresponds to theta, remaining columns to nuisance parameters
     a_gamma_inv_one = a_gamma_inv[:, 0]
     a_gamma_inv_minus_one = a_gamma_inv[:, 1:]
 
-    # Compute Y = A*betahat - d
     y = a_matrix @ betahat - d_vec
     sigma_y = a_matrix @ sigma @ a_matrix.T
 
-    # Compute least favorable CV if needed
+    # Least favorable CV if needed
     if hybrid_flag == "LF":
         hybrid_list["lf_cv"] = _compute_least_favorable_cv(
             a_gamma_inv_minus_one,
@@ -126,11 +130,9 @@ def compute_arp_nuisance_ci(
             rows_for_arp=rows_for_arp,
         )
 
-    # Test each theta value
     accept_grid = []
 
     for theta in theta_grid:
-        # Update dbar for FLCI hybrid
         if hybrid_flag == "FLCI":
             hybrid_list["dbar"] = np.array(
                 [
@@ -143,7 +145,7 @@ def compute_arp_nuisance_ci(
                 ]
             )
 
-        # Test this theta value
+        # Test theta value
         result = _lp_conditional_test(
             y_t=y - a_gamma_inv_one * theta,
             x_t=a_gamma_inv_minus_one,
@@ -253,7 +255,7 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
         sd_vec = np.sqrt(np.diag(sigma_arp))
         eta_star = np.max(y_t_arp / sd_vec)
 
-        # Handle hybrid tests
+        # Hybrid tests
         if hybrid_flag == "LF":
             mod_size = (alpha - hybrid_list["hybrid_kappa"]) / (1 - hybrid_list["hybrid_kappa"])
             if eta_star > hybrid_list.get("lf_cv", np.inf):
@@ -335,8 +337,10 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
         full_rank_flag = np.linalg.matrix_rank(x_tb) == min(x_tb.shape)
 
     # Use dual approach if degenerate or not full rank
+    # The dual approach handles cases where the primal problem is ill-conditioned
+    # by working with the Lagrangian dual formulation
     if not full_rank_flag or degenerate_flag:
-        # Dual approach
+        # Work with Lagrange multipliers directly
         lp_dual_soln = _lp_dual_wrapper(y_t_arp, x_t_arp, lin_soln["eta_star"], lin_soln["lambda"], sigma_arp)
 
         sigma_b_dual2 = float(lp_dual_soln["gamma_tilde"].T @ sigma_arp @ lp_dual_soln["gamma_tilde"])
@@ -356,7 +360,7 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
         sigma_b_dual = np.sqrt(sigma_b_dual2)
         maxstat = lp_dual_soln["eta"] / sigma_b_dual
 
-        # Modify vlo, vup for hybrid
+        # Modify vlo, vup for hybrid tests
         if hybrid_flag == "LF":
             zlo_dual = lp_dual_soln["vlo"] / sigma_b_dual
             zup_dual = min(lp_dual_soln["vup"], hybrid_list.get("lf_cv", np.inf)) / sigma_b_dual
@@ -384,12 +388,13 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
                 "lambda": lin_soln["lambda"],
             }
 
-        # Compute critical value
+        # Critical value
         cval = max(0.0, _norminvp_generalized(1 - mod_size, zlo_dual, zup_dual))
         reject = maxstat > cval
 
     else:
-        # Primal approach
+        # Construct test statistic using binding constraints
+        # This approach leverages the KKT conditions at the optimum
         size_b = np.sum(b_index)
 
         sd_vec = np.sqrt(np.diag(sigma_arp))
@@ -397,32 +402,40 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
         sd_vec_bc = sd_vec[bc_index]
 
         x_tbc = x_t_arp[bc_index]
+        # Selection matrices for binding and non-binding constraints
         s_b = np.eye(len(y_t_arp))[b_index]
         s_bc = np.eye(len(y_t_arp))[bc_index]
 
-        # Construct Gamma_B
+        # Construct matrix that relates binding and non-binding constraints
+        # W matrices combine standard deviations and covariates
         w_b = np.column_stack([sd_vec_b.reshape(-1, 1), x_tb])
         w_bc = np.column_stack([sd_vec_bc.reshape(-1, 1), x_tbc])
 
+        # Project non-binding constraints onto the space of binding constraints
         gamma_b = w_bc @ np.linalg.inv(w_b) @ s_b - s_bc
 
-        # Compute v_B
+        # Efficient score direction for eta
+        # e1 is first basis vector, which selects eta from (eta, delta)
         e1 = basis_vector(1, size_b)
         v_b_short = np.linalg.inv(w_b).T @ e1
 
-        # Project v_b back to full space
+        # Project back to full space of all constraints
         v_b = s_b.T @ v_b_short
 
+        # Variance of the test statistic
         sigma2_b = float((v_b.T @ sigma_arp @ v_b).item())
         sigma_b = np.sqrt(sigma2_b)
 
+        # Correlation vector between non-binding and binding constraints
         rho = gamma_b @ sigma_arp @ v_b / sigma2_b
 
-        # Compute bounds
+        # Bounds for the test stat under the null
+        # These bounds arise from the constraint that non-binding constraints remain non-binding
         numerator = -gamma_b @ y_t_arp
         denominator = rho.flatten()
         v_b_y = float((v_b.T @ y_t_arp).item())
 
+        # Each constraint gives either an upper or lower bound depending on sign of rho
         maximand_or_minimand = numerator / denominator + v_b_y
 
         if np.any(denominator > 0):
@@ -435,7 +448,7 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
         else:
             vup = np.inf
 
-        # Modify for hybrid
+        # Hybrid tests
         if hybrid_flag == "LF":
             zlo = vlo / sigma_b
             zup = min(vup, hybrid_list.get("lf_cv", np.inf)) / sigma_b
@@ -455,7 +468,7 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
             zlo = vlo / sigma_b
             zup = vup / sigma_b
 
-        # Test statistic
+        # Test stat
         maxstat = lin_soln["eta_star"] / sigma_b
 
         if not zlo <= maxstat <= zup:
@@ -466,7 +479,7 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
                 "lambda": lin_soln["lambda"],
             }
 
-        # Critical value
+        # Crit value
         cval = max(0.0, _norminvp_generalized(1 - mod_size, zlo, zup))
         reject = maxstat > cval
 
@@ -512,17 +525,17 @@ def _test_delta_lp(y_t: np.ndarray, x_t: np.ndarray, sigma: np.ndarray) -> dict[
     dim_delta = x_t.shape[1]
     sd_vec = np.sqrt(np.diag(sigma))
 
-    # Objective: minimize eta
+    # Minimize eta
     c = np.concatenate([[1.0], np.zeros(dim_delta)])
 
-    # Constraints: -sd_vec*eta - X_T*delta <= -y_T
+    # Constraints are -sd_vec*eta - X_T*delta <= -y_T (y_T = a_matrix @ betahat - d_vec)
     A_ub = -np.column_stack([sd_vec, x_t])
     b_ub = -y_t
 
-    # Bounds: eta unbounded, delta unbounded
+    # Bounds: eta and delta unbounded
     bounds = [(None, None) for _ in range(len(c))]
 
-    # Solve LP
+    # Solve linear program
     result = opt.linprog(
         c=c,
         A_ub=A_ub,
@@ -582,11 +595,13 @@ def _lp_dual_wrapper(
     sd_vec = np.sqrt(np.diag(sigma))
     w_t = np.column_stack([sd_vec, x_t])
 
-    # Compute s_T
+    # Residual after projecting out gamma_tilde direction
+    # This is the component of y_t orthogonal to gamma_tilde under the metric sigma
     gamma_sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
     if gamma_sigma_gamma <= 0:
         raise ValueError("gamma'*sigma*gamma must be positive")
 
+    # Projection matrix is I - (sigma * gamma * gamma') / (gamma' * sigma * gamma)
     s_t = (np.eye(len(y_t)) - (sigma @ np.outer(gamma_tilde, gamma_tilde)) / gamma_sigma_gamma) @ y_t
 
     v_dict = _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t)
@@ -634,26 +649,28 @@ def _compute_vlo_vup_dual(
     max_iters = 10000
     switch_iters = 10
 
-    # Check if eta is a solution
     _, is_solution = _check_if_solution(eta, tol_equality, s_t, gamma_tilde, sigma, w_t)
     if not is_solution:
         return {"vlo": eta, "vup": np.inf}
 
-    # Compute vup
+    # Upper bound for the test stat support
     result, is_solution = _check_if_solution(high_initial, tol_equality, s_t, gamma_tilde, sigma, w_t)
     if is_solution:
         vup = np.inf
     else:
-        # Try shortcut method first
+        # Try shortcut method first: use LP solution to get better initial guess
+        # This exploits the structure of the problem to converge faster than bisection
         iters = 1
         sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
         b = (sigma @ gamma_tilde) / sigma_gamma
 
         if result.success:
+            # Use first-order approximation from LP solution
             mid = _round_eps(float(result.x @ s_t)) / (1 - float(result.x @ b))
         else:
             mid = high_initial
 
+        # Iterate shortcut method for a few steps
         while iters < switch_iters:
             result, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t)
             if is_solution:
@@ -664,7 +681,8 @@ def _compute_vlo_vup_dual(
             else:
                 break
 
-        # Bisection method
+        # Bisection method: guaranteed to converge but slower
+        # Use when shortcut method hasn't found the boundary
         low, high = eta, mid
         diff = tol_c + 1
 
@@ -681,7 +699,7 @@ def _compute_vlo_vup_dual(
 
         vup = mid
 
-    # Compute vlo
+    # Compute vlo using bisection method
     result, is_solution = _check_if_solution(low_initial, tol_equality, s_t, gamma_tilde, sigma, w_t)
     if is_solution:
         vlo = -np.inf
@@ -706,7 +724,7 @@ def _compute_vlo_vup_dual(
             else:
                 break
 
-        # Bisection method
+        # Bisection method now that shortcut method failed
         low, high = mid, eta
         diff = tol_c + 1
 
@@ -859,24 +877,29 @@ def _compute_least_favorable_cv(
         sigma = sigma[np.ix_(rows_for_arp, rows_for_arp)]
 
     if x_t is None:
-        # No nuisance parameter case
+        # No nuisance parameter case: simulate max of standardized normal vector
         xi_draws = rng.multivariate_normal(mean=np.zeros(sigma.shape[0]), cov=sigma, size=sims)
         sd_vec = np.sqrt(np.diag(sigma))
         xi_draws = xi_draws / sd_vec
         eta_vec = np.max(xi_draws, axis=1)
         return float(np.quantile(eta_vec, 1 - hybrid_kappa))
 
-    # Nuisance parameter case
+    # Nuisance parameter case: need to solve LP for each simulation
+    # This finds the least favorable distribution that maximizes size
     if x_t.ndim == 1:
         x_t = x_t.reshape(-1, 1)
 
     sd_vec = np.sqrt(np.diag(sigma))
     dim_delta = x_t.shape[1]
+    # Minimize eta (same as original LP)
     c = np.concatenate([[1.0], np.zeros(dim_delta)])
+    # Constraints matrix
     C = -np.column_stack([sd_vec, x_t])
 
+    # Simulate data under null hypothesis
     xi_draws = rng.multivariate_normal(mean=np.zeros(sigma.shape[0]), cov=sigma, size=sims)
 
+    # For each simulation, solve the LP to get test statistic value
     eta_vec = []
     for xi in xi_draws:
         result = opt.linprog(
@@ -914,14 +937,19 @@ def _compute_flci_vlo_vup(vbar, dbar, s_vec, c_vec):
     dict
         Dictionary with 'vlo' and 'vup'.
     """
+    # Stack vbar and -vbar to handle both upper and lower bounds
     vbar_mat = np.vstack([vbar.T, -vbar.T])
 
     vbar_c = vbar_mat @ c_vec
     vbar_s = vbar_mat @ s_vec
 
+    # Solve for critical values where linear constraints become binding
+    # Each constraint vbar'(s + c*v) <= d gives bound on v (v = vbar)
     max_or_min = (dbar - vbar_s) / vbar_c
 
+    # Constraints with negative coefficients give lower bounds (vlo)
     vlo = np.max(max_or_min[vbar_c < 0]) if np.any(vbar_c < 0) else -np.inf
+    # Constraints with positive coefficients give upper bounds (vup)
     vup = np.min(max_or_min[vbar_c > 0]) if np.any(vbar_c > 0) else np.inf
 
     return {"vlo": vlo, "vup": vup}
@@ -941,14 +969,18 @@ def _construct_gamma(l_vec: np.ndarray) -> np.ndarray:
         Invertible matrix with l_vec as first row.
     """
     bar_t = len(l_vec)
-    # Construct matrix B = [l_vec | I]
+    # Construct augmented matrix B = [l_vec | I]
+    # The identity matrix ensures we can find a basis that includes l_vec
     B = np.column_stack([l_vec.reshape(-1, 1), np.eye(bar_t)])
 
+    # Use reduced row echelon form to find linearly independent columns
     B_sympy = Matrix(B)
     rref_B, _ = B_sympy.rref()
 
     rref_B = np.array(rref_B).astype(float)
 
+    # Find pivot columns (leading ones) in RREF form
+    # These columns form a basis
     leading_ones = []
     for i in range(rref_B.shape[0]):
         try:
@@ -957,6 +989,8 @@ def _construct_gamma(l_vec: np.ndarray) -> np.ndarray:
         except ValueError:
             continue
 
+    # Select the pivot columns from original matrix and transpose
+    # This gives us Gamma with l_vec as the first row
     gamma = B[:, leading_ones].T
 
     if abs(np.linalg.det(gamma)) < 1e-10:
