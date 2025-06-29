@@ -1,4 +1,4 @@
-"""Functions for computing bounds on the smoothness parameter based on second differences."""
+"""Functions for computing bounds on the smoothness parameter."""
 
 import numpy as np
 from scipy import stats
@@ -277,3 +277,154 @@ def create_pre_period_constraint_matrix(num_pre_periods):
     d = np.ones(a_pre.shape[0])
 
     return a_pre, d
+
+
+def create_monotonicity_constraint_matrix(
+    num_pre_periods,
+    num_post_periods,
+    monotonicity_direction="increasing",
+    post_period_moments_only=False,
+):
+    r"""Create constraint matrix for imposing monotonicity restrictions.
+
+    Constructs a matrix :math:`A` such that :math:`A \delta \leq 0` implies
+    that :math:`\delta` is monotonic in the specified direction. This is used
+    to impose shape restrictions on treatment effect trajectories.
+
+    Parameters
+    ----------
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    num_post_periods : int
+        Number of post-treatment periods.
+    monotonicity_direction : {'increasing', 'decreasing'}, default='increasing'
+        Direction of monotonicity constraint.
+    post_period_moments_only : bool, default=False
+        If True, exclude constraints that only involve pre-periods.
+
+    Returns
+    -------
+    ndarray
+        Constraint matrix :math:`A` of shape :math:`(m, n)` where
+        :math:`n = num_{pre} + num_{post}` and :math:`m` is the number
+        of monotonicity constraints.
+
+    Raises
+    ------
+    ValueError
+        If `monotonicity_direction` is not 'increasing' or 'decreasing'.
+
+    Notes
+    -----
+    For an increasing monotonicity constraint, the matrix enforces:
+
+    .. math::
+        \delta_{t+1} - \delta_t \geq 0 \quad \forall t
+
+    By constructing :math:`A` such that each row computes :math:`\delta_t - \delta_{t+1}`,
+    the constraint :math:`A \delta \leq 0` ensures monotonicity.
+
+    When `post_period_moments_only=True`, constraints that only involve pre-period
+    comparisons are excluded, focusing on monotonicity patterns that involve at
+    least one post-period.
+
+    See Also
+    --------
+    create_sign_constraint_matrix : Create sign restriction constraints.
+
+    References
+    ----------
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
+        The Review of Economic Studies, 90(5), 2555-2591.
+    """
+    total_periods = num_pre_periods + num_post_periods
+    a_m = np.zeros((total_periods, total_periods))
+
+    for r in range(num_pre_periods - 1):
+        a_m[r, r : (r + 2)] = [1, -1]
+
+    # Constraint at the boundary between pre and post
+    a_m[num_pre_periods - 1, num_pre_periods - 1] = 1
+
+    if num_post_periods > 0:
+        a_m[num_pre_periods, num_pre_periods] = -1
+
+        # Post-period constraints
+        if num_post_periods > 1:
+            for r in range(num_pre_periods + 1, num_pre_periods + num_post_periods):
+                a_m[r, (r - 1) : r + 1] = [1, -1]
+
+    a_m = a_m[~np.all(a_m == 0, axis=1)]
+
+    if post_period_moments_only:
+        post_period_indices = list(range(num_pre_periods, total_periods))
+        has_post_period = np.any(a_m[:, post_period_indices] != 0, axis=1)
+        a_m = a_m[has_post_period]
+
+    if monotonicity_direction == "decreasing":
+        a_m = -a_m
+    elif monotonicity_direction != "increasing":
+        raise ValueError("monotonicity_direction must be 'increasing' or 'decreasing'")
+
+    return a_m
+
+
+def create_sign_constraint_matrix(
+    num_pre_periods,
+    num_post_periods,
+    bias_direction="positive",
+):
+    r"""Create constraint matrix for imposing sign restrictions.
+
+    Constructs a matrix :math:`A` such that :math:`A \delta \leq 0` implies
+    that the post-period effects have the specified sign.
+
+    Parameters
+    ----------
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    num_post_periods : int
+        Number of post-treatment periods.
+    bias_direction : {'positive', 'negative'}, default='positive'
+        Direction of the sign restriction on post-period effects.
+
+    Returns
+    -------
+    ndarray
+        Constraint matrix :math:`A` of shape :math:`(num_{post}, num_{pre} + num_{post})`.
+
+    Raises
+    ------
+    ValueError
+        If `bias_direction` is not 'positive' or 'negative'.
+
+    Notes
+    -----
+    For positive bias direction, the constraint enforces:
+
+    .. math::
+        \delta_t \geq 0 \quad \forall t \in \text{post-periods}
+
+    This is achieved by setting :math:`A = -I` for the post-period coefficients,
+    where :math:`I` is the identity matrix, so that :math:`-\delta_t \leq 0`.
+
+    See Also
+    --------
+    create_monotonicity_constraint_matrix : Create monotonicity constraints.
+
+    References
+    ----------
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
+        The Review of Economic Studies, 90(5), 2555-2591.
+    """
+    total_periods = num_pre_periods + num_post_periods
+
+    a_b = -np.eye(total_periods)
+    a_b = a_b[num_pre_periods : num_pre_periods + num_post_periods, :]
+
+    if bias_direction == "negative":
+        a_b = -a_b
+    elif bias_direction != "positive":
+        raise ValueError("bias_direction must be 'positive' or 'negative'")
+
+    return a_b
