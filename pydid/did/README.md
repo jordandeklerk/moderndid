@@ -200,7 +200,7 @@ Just like for group-time average treatment effects, these can be summarized in a
 
 The column event time is for each group relative to when they first participate in the treatment. For example, `event time=0` corresponds
 to the on impact effect, and `event time=-1` is the effect in the period before a unit becomes treated (checking that this is equal to 0 is
-potentially useful as a pre-test)
+potentially useful as a pre-test).
 
 We can also plot the event study with `plot_did()` as well:
 
