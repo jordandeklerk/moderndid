@@ -334,6 +334,7 @@ def create_monotonicity_constraint_matrix(
 
     References
     ----------
+
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
         The Review of Economic Studies, 90(5), 2555-2591.
     """
@@ -414,6 +415,7 @@ def create_sign_constraint_matrix(
 
     References
     ----------
+
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
         The Review of Economic Studies, 90(5), 2555-2591.
     """
