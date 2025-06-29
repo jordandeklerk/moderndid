@@ -15,6 +15,11 @@ from .multiperiod_obj import (
     mp_pretest,
     summary_mp_pretest,
 )
+from .plots import (
+    plot_att_gt,
+    plot_did,
+    plot_event_study,
+)
 from .preprocess.models import DIDData
 from .preprocess_did import preprocess_did
 
@@ -37,4 +42,7 @@ __all__ = [
     "ATTgtResult",
     "ComputeATTgtResult",
     "compute_att_gt",
+    "plot_att_gt",
+    "plot_event_study",
+    "plot_did",
 ]

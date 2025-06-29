@@ -239,8 +239,9 @@ def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
 def _compute_propensity_score(d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
     try:
-        pscore_model = sm.Logit(d, covariates, weights=i_weights)
-        pscore_results = pscore_model.fit(disp=0)
+        pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+
+        pscore_results = pscore_model.fit()
         if not pscore_results.converged:
             warnings.warn("Propensity score estimation did not converge.", UserWarning)
         if np.any(np.isnan(pscore_results.params)):

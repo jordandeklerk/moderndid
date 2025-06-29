@@ -17,6 +17,11 @@ from pydid.did.multiperiod_obj import (
     mp_pretest,
     summary_mp_pretest,
 )
+from pydid.did.plots import (
+    plot_att_gt,
+    plot_did,
+    plot_event_study,
+)
 from pydid.did.preprocess import DIDData
 from pydid.did.preprocess_did import preprocess_did
 from pydid.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
@@ -213,4 +218,8 @@ __all__ = [
     "APRCIResult",
     "compute_arp_nuisance_ci",
     "ARPNuisanceCIResult",
+    # Plotting functions
+    "plot_att_gt",
+    "plot_event_study",
+    "plot_did",
 ]

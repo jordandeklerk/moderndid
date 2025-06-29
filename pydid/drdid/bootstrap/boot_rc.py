@@ -59,8 +59,9 @@ def wboot_drdid_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         b_weights = i_weights * v
 
         try:
-            logit_model = sm.Logit(d, x, weights=b_weights)
-            logit_results = logit_model.fit(disp=0)
+            logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
+
+            logit_results = logit_model.fit()
             ps_b = logit_results.predict(x)
         except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
@@ -158,8 +159,9 @@ def wboot_drdid_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         b_weights = i_weights * v
 
         try:
-            logit_model = sm.Logit(d, x, weights=b_weights)
-            logit_results = logit_model.fit(disp=0)
+            logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
+
+            logit_results = logit_model.fit()
             ps_b = logit_results.predict(x)
         except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)

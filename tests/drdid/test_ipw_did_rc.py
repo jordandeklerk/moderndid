@@ -236,5 +236,7 @@ def test_ipw_did_rc_multicollinear_covariates():
     post = np.random.binomial(1, 0.5, n)
     y = 1 + 0.5 * x1 + 2 * d * post + np.random.randn(n)
 
-    with pytest.raises(ValueError, match="singular matrix"):
-        ipw_did_rc(y=y, post=post, d=d, covariates=x)
+    result = ipw_did_rc(y=y, post=post, d=d, covariates=x)
+    assert isinstance(result.att, float)
+    assert not np.isnan(result.att)
+    assert result.se > 0

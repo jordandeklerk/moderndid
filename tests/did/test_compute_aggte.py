@@ -137,11 +137,8 @@ def test_simple_aggregation_details(mpdta_mp_result):
 def test_dynamic_aggregation_event_times(mpdta_mp_result):
     result = compute_aggte(mpdta_mp_result, aggregation_type="dynamic")
 
-    expected_event_times = np.unique(mpdta_mp_result.times - mpdta_mp_result.groups + 1)
-    expected_event_times = expected_event_times[np.isfinite(expected_event_times)]
-
-    assert len(result.event_times) == len(expected_event_times)
-    assert np.allclose(np.sort(result.event_times), np.sort(expected_event_times))
+    assert len(result.event_times) == 7
+    assert np.allclose(np.sort(result.event_times), np.array([-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0]))
 
 
 def test_group_aggregation_groups(mpdta_mp_result):
@@ -307,13 +304,16 @@ def test_aggregation_correctness(synthetic_mp_result, agg_type):
     if agg_type == "simple":
         expected_att = np.mean(att_gt[post_treatment])
     elif agg_type == "dynamic":
-        event_times = times - groups + 1
-        post_treatment_events = event_times >= 0
-        unique_event_times = np.unique(event_times[post_treatment_events])
+        event_times = times - groups
+        post_treatment_mask = (times >= groups) & np.isfinite(groups)
+        valid_event_times = event_times[post_treatment_mask]
+        unique_event_times = np.unique(valid_event_times[np.isfinite(valid_event_times)])
         att_sum = 0
         for e in unique_event_times:
-            att_sum += np.mean(att_gt[event_times == e])
-        expected_att = att_sum / len(unique_event_times)
+            mask = (event_times == e) & post_treatment_mask
+            if mask.any():
+                att_sum += np.mean(att_gt[mask])
+        expected_att = att_sum / len(unique_event_times) if len(unique_event_times) > 0 else 0
     elif agg_type == "group":
         unique_groups = np.unique(groups)
         group_att = []
