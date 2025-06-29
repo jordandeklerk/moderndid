@@ -6,8 +6,10 @@ import pytest
 from pydid.honestdid import (
     compute_delta_sd_lowerbound_m,
     compute_delta_sd_upperbound_m,
+    create_monotonicity_constraint_matrix,
     create_pre_period_constraint_matrix,
     create_second_difference_matrix,
+    create_sign_constraint_matrix,
 )
 
 
@@ -133,3 +135,111 @@ def test_integration_upper_lower_bounds():
     lower = compute_delta_sd_lowerbound_m(betahat, sigma, num_pre_periods, grid_ub=upper * 2, grid_points=50)
 
     assert upper >= lower
+
+
+def test_create_monotonicity_constraint_matrix_basic():
+    num_pre_periods = 3
+    num_post_periods = 2
+
+    A = create_monotonicity_constraint_matrix(num_pre_periods, num_post_periods)
+
+    assert A.shape == (5, 5)
+    assert np.array_equal(A[0, :2], [1, -1])
+    assert np.array_equal(A[1, 1:3], [1, -1])
+    assert A[2, 2] == 1
+    assert A[3, 3] == -1
+    assert np.array_equal(A[4, 3:5], [1, -1])
+
+
+def test_create_monotonicity_constraint_matrix_decreasing():
+    num_pre_periods = 2
+    num_post_periods = 2
+
+    A_inc = create_monotonicity_constraint_matrix(num_pre_periods, num_post_periods, "increasing")
+    A_dec = create_monotonicity_constraint_matrix(num_pre_periods, num_post_periods, "decreasing")
+
+    assert np.array_equal(A_inc, -A_dec)
+
+
+def test_create_monotonicity_constraint_matrix_post_only():
+    num_pre_periods = 3
+    num_post_periods = 3
+
+    A_all = create_monotonicity_constraint_matrix(num_pre_periods, num_post_periods, post_period_moments_only=False)
+
+    A_post = create_monotonicity_constraint_matrix(num_pre_periods, num_post_periods, post_period_moments_only=True)
+
+    assert A_all.shape[0] > A_post.shape[0]
+    assert A_post.shape[1] == A_all.shape[1]
+
+
+def test_create_monotonicity_constraint_matrix_no_post():
+    num_pre_periods = 4
+    num_post_periods = 0
+
+    A = create_monotonicity_constraint_matrix(num_pre_periods, num_post_periods)
+
+    assert A.shape == (4, 4)
+
+
+def test_create_monotonicity_constraint_matrix_invalid_direction():
+    with pytest.raises(ValueError, match="monotonicity_direction must be"):
+        create_monotonicity_constraint_matrix(2, 2, "sideways")
+
+
+def test_create_sign_constraint_matrix_basic():
+    num_pre_periods = 2
+    num_post_periods = 3
+
+    A = create_sign_constraint_matrix(num_pre_periods, num_post_periods)
+
+    assert A.shape == (3, 5)
+    assert np.all(A[:, :num_pre_periods] == 0)
+    expected_post = -np.eye(3)
+    assert np.array_equal(A[:, num_pre_periods:], expected_post)
+
+
+def test_create_sign_constraint_matrix_negative():
+    num_pre_periods = 2
+    num_post_periods = 2
+
+    A_pos = create_sign_constraint_matrix(num_pre_periods, num_post_periods, "positive")
+    A_neg = create_sign_constraint_matrix(num_pre_periods, num_post_periods, "negative")
+
+    assert np.array_equal(A_pos, -A_neg)
+
+
+def test_create_sign_constraint_matrix_no_post():
+    num_pre_periods = 3
+    num_post_periods = 0
+
+    A = create_sign_constraint_matrix(num_pre_periods, num_post_periods)
+
+    assert A.shape == (0, 3)
+
+
+def test_create_sign_constraint_matrix_invalid_direction():
+    with pytest.raises(ValueError, match="bias_direction must be"):
+        create_sign_constraint_matrix(2, 2, "neutral")
+
+
+@pytest.mark.parametrize("num_pre,num_post", [(1, 1), (2, 3), (5, 0), (0, 4)])
+def test_constraint_matrix_dimensions(num_pre, num_post):
+    if num_pre > 0:
+        A_m = create_monotonicity_constraint_matrix(num_pre, num_post)
+        assert A_m.shape[1] == num_pre + num_post
+
+    A_s = create_sign_constraint_matrix(num_pre, num_post)
+    assert A_s.shape == (num_post, num_pre + num_post)
+
+
+def test_integration_monotonicity_sign_constraints():
+    num_pre_periods = 3
+    num_post_periods = 3
+    delta = np.array([-0.3, -0.2, -0.1, 0.1, 0.3, 0.5])
+
+    A_m = create_monotonicity_constraint_matrix(num_pre_periods, num_post_periods, "increasing")
+    assert np.all(A_m @ delta <= 1e-10)
+
+    A_s = create_sign_constraint_matrix(num_pre_periods, num_post_periods, "positive")
+    assert np.all(A_s @ delta <= 0)

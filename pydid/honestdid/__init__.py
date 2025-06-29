@@ -11,8 +11,10 @@ from .arp_nuisance import (
 from .bounds import (
     compute_delta_sd_lowerbound_m,
     compute_delta_sd_upperbound_m,
+    create_monotonicity_constraint_matrix,
     create_pre_period_constraint_matrix,
     create_second_difference_matrix,
+    create_sign_constraint_matrix,
 )
 from .conditional import (
     estimate_lowerbound_m_conditional_test,
@@ -44,6 +46,8 @@ __all__ = [
     "compute_delta_sd_lowerbound_m",
     "create_second_difference_matrix",
     "create_pre_period_constraint_matrix",
+    "create_monotonicity_constraint_matrix",
+    "create_sign_constraint_matrix",
     # Conditional test functions
     "test_in_identified_set_max",
     "estimate_lowerbound_m_conditional_test",
