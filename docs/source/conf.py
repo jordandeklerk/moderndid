@@ -108,7 +108,7 @@ html_theme = "pydata_sphinx_theme"
 html_logo = "_static/logo.svg"
 html_favicon = "_static/favicon.ico"
 
-html_sidebars = {"index": ["search-button-field"], "**": ["search-button-field", "sidebar-nav-bs"]}
+html_sidebars = {"**": ["sidebar-nav-bs"]}
 
 html_theme_options = {
     "header_links_before_dropdown": 6,
@@ -124,8 +124,9 @@ html_theme_options = {
         "image_light": "_static/logo.svg",
         "image_dark": "_static/logo.svg",
     },
+    "collapse_navigation": True,
     "navbar_start": ["navbar-logo"],
-    "navbar_end": ["theme-switcher", "navbar-icon-links"],
+    "navbar_end": ["search-button", "theme-switcher", "navbar-icon-links"],
     "navbar_persistent": [],
     "secondary_sidebar_items": ["page-toc"],
     "show_version_warning_banner": False,
@@ -138,10 +139,10 @@ html_last_updated_fmt = "%b %d, %Y"
 html_css_files = [
     "custom.css",
 ]
-
+html_context = {"default_mode": "light"}
 html_use_modindex = True
-html_domain_indices = False
 html_copy_source = False
+html_domain_indices = False
 html_file_suffix = ".html"
 
 htmlhelp_basename = "pydid"

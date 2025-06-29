@@ -8,8 +8,8 @@ For learning how to use pyDiD, see the :doc:`../tutorial/index`.
 
 .. _api-overview:
 
-API overview
-============
+Python API
+==========
 
 pyDiD adheres to the following naming convention:
 
