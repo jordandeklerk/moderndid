@@ -193,7 +193,7 @@ def format_mp_result(result: MPResult):
     else:
         band_type = "Pointwise"
 
-    band_text = f"[{conf_level}% {band_type}"
+    band_text = f"[{conf_level}% {band_type} Conf. Band]"
 
     conf_lower = result.att_gt - result.critical_value * result.se_gt
     conf_upper = result.att_gt + result.critical_value * result.se_gt
@@ -201,13 +201,13 @@ def format_mp_result(result: MPResult):
     sig = (conf_upper < 0) | (conf_lower > 0)
     sig[np.isnan(sig)] = False
 
-    lines.append(f" {'Group':>6} {'Time':>6} {'ATT(g,t)':>10} {'Std. Error':>12} {band_text:>18} {'Conf. Band]':>12}")
+    lines.append(f" {'Group':>6} {'Time':>6} {'ATT(g,t)':>10} {'Std. Error':>12}  {band_text}")
 
     for i, group in enumerate(result.groups):
         sig_marker = "*" if sig[i] else " "
         lines.append(
             f" {group:>6.0f} {result.times[i]:>6.0f} "
-            f"{result.att_gt[i]:>10.4f} {result.se_gt[i]:>12.4f} "
+            f"{result.att_gt[i]:>10.4f} {result.se_gt[i]:>12.4f}  "
             f"[{conf_lower[i]:>8.4f}, {conf_upper[i]:>8.4f}] {sig_marker}"
         )
 
