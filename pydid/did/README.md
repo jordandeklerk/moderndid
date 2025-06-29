@@ -100,14 +100,14 @@ import numpy as np
 
 data = pydid.datasets.load_mpdta()
 
-# Estimate group-time ATTs
+# Estimate group-time ATTs using outcome regression
 attgt_result = att_gt(
      data=df,
      yname="lemp",
      tname="year",
      gname="first.treat",
      idname="countyreal",
-     est_method="dr",
+     est_method="reg",
      bstrap=False
 )
 ```
@@ -119,23 +119,23 @@ along with other meta information:
 Reference: Callaway and Sant'Anna (2021)
 
 Group-Time Average Treatment Effects:
-  Group   Time   ATT(g,t)   Std. Error      [95% Simult.  Conf. Band]
-   2004   2003    -0.0105       0.0241      [ -0.0766,   0.0556]
-   2004   2004    -0.0704       0.0320      [ -0.1580,   0.0172]
-   2004   2005    -0.1373       0.0389      [ -0.2437,  -0.0308] *
-   2004   2006    -0.1008       0.0337      [ -0.1932,  -0.0084] *
-   2006   2003     0.0065       0.0221      [ -0.0541,   0.0671]
-   2006   2004    -0.0028       0.0188      [ -0.0542,   0.0487]
-   2006   2005    -0.0046       0.0172      [ -0.0516,   0.0424]
-   2006   2006    -0.0412       0.0194      [ -0.0943,   0.0119]
-   2007   2003     0.0305       0.0152      [ -0.0111,   0.0721]
-   2007   2004    -0.0027       0.0167      [ -0.0485,   0.0430]
-   2007   2005    -0.0311       0.0186      [ -0.0822,   0.0200]
-   2007   2006    -0.0261       0.0184      [ -0.0766,   0.0245]
+  Group   Time   ATT(g,t)   Std. Error    [95% Simult.  Conf. Band]
+   2004   2004    -0.0105       0.0232    [ -0.0743,   0.0533]
+   2004   2005    -0.0704       0.0319    [ -0.1582,   0.0173]
+   2004   2006    -0.1373       0.0356    [ -0.2352,  -0.0394] *
+   2004   2007    -0.1008       0.0331    [ -0.1918,  -0.0098] *
+   2006   2004     0.0065       0.0241    [ -0.0597,   0.0727]
+   2006   2005    -0.0028       0.0202    [ -0.0582,   0.0527]
+   2006   2006    -0.0046       0.0179    [ -0.0538,   0.0446]
+   2006   2007    -0.0412       0.0211    [ -0.0992,   0.0167]
+   2007   2004     0.0305       0.0145    [ -0.0095,   0.0705]
+   2007   2005    -0.0027       0.0173    [ -0.0502,   0.0448]
+   2007   2006    -0.0311       0.0190    [ -0.0833,   0.0211]
+   2007   2007    -0.0261       0.0168    [ -0.0721,   0.0200]
 ---
 Signif. codes: '*' confidence band does not cover 0
 
-P-value for pre-test of parallel trends assumption:  0.0592
+P-value for pre-test of parallel trends assumption:  0.1681
 
 Control Group:  Never Treated,
 Anticipation Periods:  0
@@ -167,19 +167,19 @@ Just like for group-time average treatment effects, these can be summarized in a
  Overall summary of ATT's based on event-study/dynamic aggregation:
 
    ATT          Std. Error     [95% Conf. Interval]
-      -0.0772       0.0204     [-0.1171, -0.0374] *
+      -0.0772       0.0214     [-0.1191, -0.0353] *
 
 
  Dynamic Effects:
 
     Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
-            -3     0.0305       0.0151   [-0.0088,  0.0698]
-            -2    -0.0006       0.0136   [-0.0361,  0.0349]
-            -1    -0.0245       0.0144   [-0.0620,  0.0131]
-             0    -0.0199       0.0120   [-0.0513,  0.0114]
-             1    -0.0510       0.0166   [-0.0942, -0.0077] *
-             2    -0.1373       0.0384   [-0.2375, -0.0370] *
-             3    -0.1008       0.0346   [-0.1911, -0.0106] *
+            -3     0.0305       0.0151   [-0.0084,  0.0694]
+            -2    -0.0006       0.0132   [-0.0346,  0.0335]
+            -1    -0.0245       0.0139   [-0.0602,  0.0113]
+             0    -0.0199       0.0120   [-0.0508,  0.0109]
+             1    -0.0510       0.0172   [-0.0951, -0.0068] *
+             2    -0.1373       0.0371   [-0.2326, -0.0419] *
+             3    -0.1008       0.0352   [-0.1912, -0.0104] *
 
 ------------------------------------------------------------------------------
  Signif. codes: '*' confidence band does not cover 0
@@ -216,15 +216,15 @@ and the effect is marginally statistically significant.
  Overall summary of ATT's based on group/cohort aggregation:
 
    ATT          Std. Error     [95% Conf. Interval]
-      -0.0310       0.0123     [-0.0551, -0.0069] *
+      -0.0313       0.0089     [-0.0487, -0.0140] *
 
 
  Group Effects:
 
          Group   Estimate   Std. Error   [95% Simult. Conf. Band]
-          2004    -0.0797       0.0256   [-0.1378, -0.0217] *
-          2006    -0.0229       0.0174   [-0.0623,  0.0165]
-          2007    -0.0261       0.0166   [-0.0637,  0.0116]
+          2004    -0.0797       0.0268   [-0.1429, -0.0166] *
+          2006    -0.0162       0.0121   [-0.0447,  0.0123]
+          2007    -0.0286       0.0109   [-0.0542, -0.0029] *
 
 ------------------------------------------------------------------------------
  Signif. codes: '*' confidence band does not cover 0

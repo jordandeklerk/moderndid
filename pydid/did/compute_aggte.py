@@ -477,8 +477,7 @@ def _compute_dynamic_att(
     recoded_times,
 ):
     """Compute dynamic (event-study) treatment effects."""
-    # TODO: The event times are off by one compared to the R output.
-    event_times = (original_times - original_groups) + 1
+    event_times = original_times - original_groups
     unique_event_times = np.unique(event_times)
     unique_event_times = unique_event_times[np.isfinite(unique_event_times)]
     unique_event_times = np.sort(unique_event_times)

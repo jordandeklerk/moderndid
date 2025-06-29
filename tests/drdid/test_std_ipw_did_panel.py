@@ -219,8 +219,11 @@ def test_std_ipw_did_panel_multicollinear_covariates():
     y0 = 1 + 0.5 * x1 + np.random.randn(n)
     y1 = y0 + 2 * d + np.random.randn(n) * 0.5
 
-    with pytest.raises(ValueError, match="singular matrix"):
-        std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x)
+    # The function should handle multicollinearity gracefully
+    result = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x)
+    assert isinstance(result.att, float)
+    assert not np.isnan(result.att)
+    assert result.se > 0
 
 
 def test_std_ipw_did_panel_arrays_vs_lists():

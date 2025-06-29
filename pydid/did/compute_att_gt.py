@@ -72,7 +72,7 @@ def compute_att_gt(data: DIDData) -> ComputeATTgtResult:
                     ATTgtResult(
                         att=0.0,
                         group=data.config.treated_groups[group_idx],
-                        year=data.config.time_periods[time_idx],
+                        year=data.config.time_periods[time_idx + time_factor],
                         post=is_post_treatment,
                     )
                 )
@@ -89,7 +89,7 @@ def compute_att_gt(data: DIDData) -> ComputeATTgtResult:
                 ATTgtResult(
                     att=att_estimate,
                     group=data.config.treated_groups[group_idx],
-                    year=data.config.time_periods[time_idx],
+                    year=data.config.time_periods[time_idx + time_factor],
                     post=is_post_treatment,
                 )
             )

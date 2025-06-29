@@ -211,7 +211,7 @@ def test_singular_covariate_matrix():
     x = np.column_stack([np.ones(n_units), x1, x1])
     y = rng.randn(n_units) + 2 * d * post
 
-    with pytest.raises(ValueError, match="singular"):
+    with pytest.raises(ValueError, match="[Ss]ingular"):
         drdid_rc(y=y, post=post, d=d, covariates=x)
 
 

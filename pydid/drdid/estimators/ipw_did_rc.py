@@ -218,8 +218,9 @@ def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
 def _compute_propensity_score(d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
     try:
-        pscore_model = sm.Logit(d, covariates, weights=i_weights)
-        pscore_results = pscore_model.fit(disp=0)
+        pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+
+        pscore_results = pscore_model.fit()
         if not pscore_results.converged:
             warnings.warn("GLM algorithm did not converge.", UserWarning)
         if np.any(np.isnan(pscore_results.params)):
@@ -287,7 +288,11 @@ def _get_influence_quantities(d, covariates, ps_fit, ps_weights, i_weights, n_un
     """Compute quantities needed for influence function."""
     # Asymptotic linear representation of logit's beta's
     score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
-    hessian_ps = np.linalg.inv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
+    try:
+        hessian_ps = np.linalg.inv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
+    except np.linalg.LinAlgError:
+        warnings.warn("Failed to invert Hessian matrix. Using pseudo-inverse.", UserWarning)
+        hessian_ps = np.linalg.pinv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
     asy_lin_rep_ps = score_ps @ hessian_ps
 
     return {
