@@ -142,6 +142,14 @@ Anticipation Periods:  0
 Estimation Method:  Doubly Robust
 ```
 
+We can also plot the results using `plot_did()`:
+
+```python
+plot_did(attgt_result)
+```
+
+![Group-Time Average Treatment Effects](/assets/att.png)
+
 ### Event Study
 
 In the example above, it is relatively easy to directly interpret the group-time average treatment effects.
@@ -189,6 +197,18 @@ Just like for group-time average treatment effects, these can be summarized in a
  Estimation Method: Doubly Robust
 ==============================================================================
 ```
+
+The column event time is for each group relative to when they first participate in the treatment. For example, `event time=0` corresponds
+to the on impact effect, and `event time=-1` is the effect in the period before a unit becomes treated (checking that this is equal to 0 is
+potentially useful as a pre-test)
+
+We can also plot the event study with `plot_did()` as well:
+
+```python
+plot_did(event_study)
+```
+
+![Group-Time Average Treatment Effects](/assets/event.png)
 
 ### Overall Effect of Participating in the Treatment
 
