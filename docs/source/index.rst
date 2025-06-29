@@ -1,6 +1,29 @@
-=============================
+.. _pydid_docs_mainpage:
+
+###################
 pyDiD documentation
-=============================
+###################
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   User Guide <user_guide>
+   API reference <api/index>
+   Tutorial <tutorial/index>
+   Development <dev/index>
+   release/index
+
+
+**Version**: |version|
+
+**Download documentation**:
+`Historical versions of documentation <https://github.com/jordandeklerk/pyDiD/releases>`_
+
+**Useful links**:
+`Installation <installing.html>`_ |
+`Source Repository <https://github.com/jordandeklerk/pyDiD>`_ |
+`Issue Tracker <https://github.com/jordandeklerk/pyDiD/issues>`_ |
 
 .. only:: not release
 
@@ -9,32 +32,27 @@ pyDiD documentation
       This documentation is for the latest development version of pyDiD.
       There is no stable release yet.
 
-**Date**: |today| **Version**: |version|
+pyDiD is a comprehensive Python package for modern difference-in-differences (DiD)
+estimation. It provides a unified framework for causal inference using DiD methods
+with panel and repeated cross-section data, including advanced estimators for
+staggered treatment timing, multiple time periods, doubly robust methods, continuous
+treatments, two-stage DiD, local projection DiD, machine learning approaches, and
+diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests.
 
-**Useful links**:
-`Installation <installing.html>`__ |
-`Source Repository <https://github.com/jordandeklerk/pyDiD>`__ |
-`Issue Tracker <https://github.com/jordandeklerk/pyDiD/issues>`__ |
 
-**pyDiD** is a Python package implementing modern DiD estimators for panel and repeated cross-section data,
-including staggered treatment timing, multiple time periods, doubly robust methods, continuous treatments,
-two-stage DiD, local projection DiD, machine learning approaches, and diagnostic tools like the Bacon-Goodman
-decomposition and sensitivity tests for functional form.
 
-.. grid:: 2
-    :gutter: 4
+.. grid:: 1 1 2 2
+    :gutter: 2 3 4 4
 
     .. grid-item-card::
+        :img-top: _static/user_guide.svg
         :text-align: center
 
-        .. image:: _static/user_guide.svg
-            :height: 100px
+        User guide
+        ^^^
 
-        User Guide
-        ^^^^^^^^^^
-
-        The user guide provides in-depth information on the key concepts of pyDiD
-        with useful background information and explanation.
+        The user guide provides in-depth information on the
+        key concepts of pyDiD with useful background information and explanation.
 
         +++
 
@@ -46,13 +64,11 @@ decomposition and sensitivity tests for functional form.
             To the user guide
 
     .. grid-item-card::
+        :img-top: _static/api_reference.svg
         :text-align: center
 
-        .. image:: _static/api_reference.svg
-            :height: 100px
-
-        API Reference
-        ^^^^^^^^^^^^^
+        API reference
+        ^^^
 
         The reference guide contains a detailed description of the functions,
         modules, and objects included in pyDiD. The reference describes how the
@@ -68,15 +84,13 @@ decomposition and sensitivity tests for functional form.
             To the reference guide
 
     .. grid-item-card::
+        :img-top: _static/tutorial.svg
         :text-align: center
 
-        .. image:: _static/tutorial.svg
-            :height: 100px
-
         Tutorial
-        ^^^^^^^^
+        ^^^
 
-        Step-by-step tutorials and examples to get started with pyDiD,
+        The tutorial provides step-by-step guides and examples to get started with DiD estimation,
         including practical applications and best practices.
 
         +++
@@ -89,16 +103,15 @@ decomposition and sensitivity tests for functional form.
             To the tutorial
 
     .. grid-item-card::
+        :img-top: _static/developer.svg
         :text-align: center
 
-        .. image:: _static/developer.svg
-            :height: 100px
+        Contributor's guide
+        ^^^
 
-        Developer Guide
-        ^^^^^^^^^^^^^^^
-
-        Want to contribute to pyDiD? The contributing guidelines will guide
-        you through the process of improving pyDiD.
+        Want to add to the codebase? Can help add functionality or improve the
+        documentation? The contributing guidelines will guide you through the
+        process of improving pyDiD.
 
         +++
 
@@ -107,15 +120,4 @@ decomposition and sensitivity tests for functional form.
             :color: secondary
             :click-parent:
 
-            To the development guide
-
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-
-   installing
-   user_guide
-   api/index
-   tutorial/index
-   dev/index
-   release/index
+            To the contributor's guide
