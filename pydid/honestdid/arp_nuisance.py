@@ -1,5 +1,6 @@
 """Andrews-Roth-Pakes (ARP) confidence intervals with nuisance parameters."""
 
+import warnings
 from typing import NamedTuple
 
 import numpy as np
@@ -181,9 +182,7 @@ def compute_arp_nuisance_ci(
 
     # Check if CI is open at endpoints
     if accept_grid[0] == 1 or accept_grid[-1] == 1:
-        import warnings
-
-        warnings.warn("CI is open at one of the endpoints; CI bounds may not be accurate", UserWarning)
+        warnings.warn("CI is open at one of the endpoints; CI bounds may not be accurate.", UserWarning)
 
     return ARPNuisanceCIResult(
         ci_lb=ci_lb,

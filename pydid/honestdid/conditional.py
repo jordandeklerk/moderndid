@@ -141,7 +141,7 @@ def estimate_lowerbound_m_conditional_test(
 
     if not accepted_ms:
         warnings.warn(
-            "Conditional test rejects all values of M provided. User should increase upper bound of grid.",
+            "Conditional test rejects all values of M provided. Increase the upper bound of the grid.",
             UserWarning,
         )
         return np.inf
