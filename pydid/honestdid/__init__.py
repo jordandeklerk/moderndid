@@ -20,6 +20,11 @@ from .conditional import (
     estimate_lowerbound_m_conditional_test,
     test_in_identified_set_max,
 )
+from .delta_rm import (
+    DeltaRMResult,
+    compute_conditional_cs_rm,
+    compute_identified_set_rm,
+)
 from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
@@ -60,4 +65,8 @@ __all__ = [
     # APR confidence intervals (with nuisance)
     "compute_arp_nuisance_ci",
     "ARPNuisanceCIResult",
+    # Delta RM (relative magnitudes)
+    "DeltaRMResult",
+    "compute_identified_set_rm",
+    "compute_conditional_cs_rm",
 ]
