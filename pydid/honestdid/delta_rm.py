@@ -5,6 +5,14 @@ from typing import NamedTuple
 import numpy as np
 import scipy.optimize as opt
 
+try:
+    import numba as nb
+
+    HAS_NUMBA = True
+except ImportError:
+    HAS_NUMBA = False
+    nb = None
+
 from .arp_no_nuisance import compute_arp_ci
 from .arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
 from .utils import basis_vector
@@ -310,10 +318,7 @@ def _create_relative_magnitudes_constraint_matrix(
 
     # First differences matrix
     total_periods = num_pre_periods + num_post_periods + 1
-    a_tilde = np.zeros((num_pre_periods + num_post_periods, total_periods))
-
-    for r in range(num_pre_periods + num_post_periods):
-        a_tilde[r, r : (r + 2)] = [-1, 1]
+    a_tilde = _create_first_differences_matrix(num_pre_periods, num_post_periods)
 
     # Vector to extract max first difference at period s
     v_max_diff = np.zeros(total_periods)
@@ -599,3 +604,27 @@ def _create_relative_magnitudes_constraint_vector(A_rm):
         Constraint vector d (all zeros).
     """
     return np.zeros(A_rm.shape[0])
+
+
+if HAS_NUMBA:
+
+    @nb.jit(nopython=True, cache=True)
+    def _create_first_differences_matrix(num_pre_periods, num_post_periods):
+        """Create first differences matrix using Numba for performance."""
+        total_periods = num_pre_periods + num_post_periods + 1
+        a_tilde = np.zeros((num_pre_periods + num_post_periods, total_periods))
+        for r in range(num_pre_periods + num_post_periods):
+            a_tilde[r, r] = -1.0
+            a_tilde[r, r + 1] = 1.0
+        return a_tilde
+
+
+else:
+
+    def _create_first_differences_matrix(num_pre_periods, num_post_periods):
+        """Create first differences matrix using pure Python and NumPy."""
+        total_periods = num_pre_periods + num_post_periods + 1
+        a_tilde = np.zeros((num_pre_periods + num_post_periods, total_periods))
+        for r in range(num_pre_periods + num_post_periods):
+            a_tilde[r, r : (r + 2)] = [-1, 1]
+        return a_tilde

@@ -4,6 +4,14 @@ import warnings
 
 import numpy as np
 
+try:
+    import numba as nb
+
+    HAS_NUMBA = True
+except ImportError:
+    HAS_NUMBA = False
+    nb = None
+
 
 def selection_matrix(selection, size, select="columns"):
     """Create a selection matrix for extracting specific rows or columns.
@@ -27,19 +35,11 @@ def selection_matrix(selection, size, select="columns"):
         Selection matrix of appropriate dimensions.
     """
     selection = np.asarray(selection)
-
     selection_0idx = selection - 1
+    n_selections = len(selection)
+    select_rows = select == "rows"
 
-    if select == "rows":
-        m = np.zeros((len(selection), size))
-        for i, idx in enumerate(selection_0idx):
-            m[i, idx] = 1
-    else:  # columns
-        m = np.zeros((size, len(selection)))
-        for i, idx in enumerate(selection_0idx):
-            m[idx, i] = 1
-
-    return m
+    return _selection_matrix_impl(selection_0idx, size, n_selections, select_rows)
 
 
 def lee_coefficient(eta, sigma):
@@ -98,38 +98,13 @@ def compute_bounds(eta, sigma, A, b, z):
     -----
     Returns (-inf, inf) when no constraints are active in the respective direction.
     """
-    eta = np.asarray(eta).flatten()
-    sigma = np.asarray(sigma)
-    A = np.asarray(A)
-    b = np.asarray(b).flatten()
-    z = np.asarray(z).flatten()
+    eta = np.asarray(eta, dtype=np.float64).flatten()
+    sigma = np.asarray(sigma, dtype=np.float64)
+    A = np.asarray(A, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64).flatten()
+    z = np.asarray(z, dtype=np.float64).flatten()
 
-    c = lee_coefficient(eta, sigma)
-
-    # Compute objective: (b - Az) / Ac
-    Az = A @ z
-    Ac = A @ c
-
-    nonzero_mask = np.abs(Ac) > 1e-10
-    objective = np.full_like(Ac, np.nan)
-    objective[nonzero_mask] = (b[nonzero_mask] - Az[nonzero_mask]) / Ac[nonzero_mask]
-
-    # Find indices where Ac is negative and positive
-    ac_negative_idx = Ac < 0
-    ac_positive_idx = Ac > 0
-
-    # Compute lower and upper bounds
-    if np.any(ac_negative_idx):
-        lower_bound = np.max(objective[ac_negative_idx])
-    else:
-        lower_bound = -np.inf
-
-    if np.any(ac_positive_idx):
-        upper_bound = np.min(objective[ac_positive_idx])
-    else:
-        upper_bound = np.inf
-
-    return lower_bound, upper_bound
+    return _compute_bounds_impl(eta, sigma, A, b, z)
 
 
 def basis_vector(index=1, size=1):
@@ -245,3 +220,73 @@ def validate_conformable(betahat, sigma, num_pre_periods, num_post_periods, l_ve
     # Check l_vec length
     if len(l_vec) != num_post_periods:
         raise ValueError(f"l_vec (length {len(l_vec)}) and post periods ({num_post_periods}) were non-conformable")
+
+
+if HAS_NUMBA:
+
+    @nb.jit(nopython=True, cache=True)
+    def _compute_bounds_impl(eta, sigma, A, b, z):
+        """Compute bounds (Numba-jitted)."""
+        sigma_eta = np.dot(sigma, eta)
+        eta_sigma_eta = np.dot(eta, sigma_eta)
+        c = sigma_eta / eta_sigma_eta
+
+        Az = np.dot(A, z)
+        Ac = np.dot(A, c)
+
+        lower_bound = -np.inf
+        upper_bound = np.inf
+
+        for i, ac_val in enumerate(Ac):
+            if abs(ac_val) > 1e-10:
+                obj_val = (b[i] - Az[i]) / ac_val
+                if ac_val < 0:
+                    lower_bound = max(lower_bound, obj_val)
+                elif obj_val < upper_bound:
+                    upper_bound = obj_val
+        return lower_bound, upper_bound
+
+    @nb.jit(nopython=True, cache=True)
+    def _selection_matrix_impl(selection_0idx, size, n_selections, select_rows):
+        """Create selection matrix (Numba-jitted)."""
+        if select_rows:
+            m = np.zeros((n_selections, size))
+            for i in range(n_selections):
+                m[i, selection_0idx[i]] = 1.0
+        else:
+            m = np.zeros((size, n_selections))
+            for i in range(n_selections):
+                m[selection_0idx[i], i] = 1.0
+        return m
+
+
+else:
+
+    def _compute_bounds_impl(eta, sigma, A, b, z):
+        """Compute bounds (pure Python)."""
+        c = lee_coefficient(eta, sigma)
+        Az = A @ z
+        Ac = A @ c
+
+        nonzero_mask = np.abs(Ac) > 1e-10
+        objective = np.full_like(Ac, np.nan)
+        objective[nonzero_mask] = (b[nonzero_mask] - Az[nonzero_mask]) / Ac[nonzero_mask]
+
+        ac_negative_idx = Ac < 0
+        ac_positive_idx = Ac > 0
+
+        lower_bound = np.max(objective[ac_negative_idx]) if np.any(ac_negative_idx) else -np.inf
+        upper_bound = np.min(objective[ac_positive_idx]) if np.any(ac_positive_idx) else np.inf
+        return lower_bound, upper_bound
+
+    def _selection_matrix_impl(selection_0idx, size, n_selections, select_rows):
+        """Create selection matrix (pure Python)."""
+        if select_rows:
+            m = np.zeros((n_selections, size))
+            for i, idx in enumerate(selection_0idx):
+                m[i, idx] = 1
+        else:
+            m = np.zeros((size, n_selections))
+            for i, idx in enumerate(selection_0idx):
+                m[idx, i] = 1
+        return m
