@@ -6,6 +6,14 @@ from typing import NamedTuple
 
 import numpy as np
 
+try:
+    import numba as nb
+
+    HAS_NUMBA = True
+except ImportError:
+    HAS_NUMBA = False
+    nb = None
+
 from .conditional import _norminvp_generalized
 from .utils import basis_vector, compute_bounds, selection_matrix
 
@@ -166,7 +174,10 @@ def compute_arp_ci(
     else:
         raise ValueError(f"Invalid hybrid_flag: {hybrid_flag}")
 
-    results_grid = _test_over_theta_grid(
+    # Use optimized version if available
+    grid_search_fn = _test_over_theta_grid_optimized if HAS_NUMBA else _test_over_theta_grid
+
+    results_grid = grid_search_fn(
         beta_hat=beta_hat,
         sigma=sigma,
         A=A,
@@ -251,7 +262,6 @@ def _test_in_identified_set(
     """
     sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
     sigma_tilde = np.maximum(sigma_tilde, 1e-10)
-
     A_tilde = np.diag(1 / sigma_tilde) @ A
     d_tilde = d / sigma_tilde
 
@@ -526,3 +536,57 @@ def _test_over_theta_grid(
         results.append([theta, float(in_set)])
 
     return np.array(results)
+
+
+if HAS_NUMBA:
+
+    @nb.jit(nopython=True, parallel=True, cache=True)
+    def _test_over_theta_grid_parallel_prep(beta_hat, post_period_vec, theta_grid):
+        """Prepare y vectors for all theta values."""
+        n_grid = len(theta_grid)
+        n_params = len(beta_hat)
+        y_matrix = np.empty((n_grid, n_params))
+
+        for i in nb.prange(n_grid):
+            y_matrix[i] = beta_hat - post_period_vec * theta_grid[i]
+
+        return y_matrix
+
+    def _test_over_theta_grid_optimized(
+        beta_hat,
+        sigma,
+        A,
+        d,
+        theta_grid,
+        n_pre_periods,
+        post_period_index,
+        alpha,
+        test_fn,
+        **test_kwargs,
+    ):
+        """Optimized grid search."""
+        post_period_vec = basis_vector(index=n_pre_periods + post_period_index, size=len(beta_hat)).flatten()
+
+        y_matrix = _test_over_theta_grid_parallel_prep(beta_hat, post_period_vec, theta_grid)
+
+        test_kwargs_opt = test_kwargs
+
+        results = []
+        for i, theta in enumerate(theta_grid):
+            y = y_matrix[i]
+
+            in_set = test_fn(
+                y=y,
+                sigma=sigma,
+                A=A,
+                d=d,
+                alpha=alpha,
+                **test_kwargs_opt,
+            )
+
+            results.append([theta, float(in_set)])
+
+        return np.array(results)
+
+else:
+    _test_over_theta_grid_optimized = _test_over_theta_grid

@@ -8,6 +8,14 @@ import scipy.optimize as opt
 from scipy import stats
 from sympy import Matrix
 
+try:
+    import numba as nb
+
+    HAS_NUMBA = True
+except ImportError:
+    HAS_NUMBA = False
+    nb = None
+
 from .conditional import _norminvp_generalized
 from .utils import basis_vector
 
@@ -131,24 +139,40 @@ def compute_arp_nuisance_ci(
             rows_for_arp=rows_for_arp,
         )
 
-    accept_grid = []
+    if HAS_NUMBA:
+        y_t_matrix = _prepare_y_values_numba(y, a_gamma_inv_one, theta_grid)
+    else:
+        y_t_matrix = None
 
-    for theta in theta_grid:
+    accept_grid = []
+    for i, theta in enumerate(theta_grid):
+        # Get or compute y_t for the current theta
+        y_t = y_t_matrix[i] if HAS_NUMBA else (y - a_gamma_inv_one * theta)
+
         if hybrid_flag == "FLCI":
-            hybrid_list["dbar"] = np.array(
-                [
-                    hybrid_list["flci_halflength"]
-                    - (hybrid_list["vbar"] @ d_vec)
-                    + (1 - hybrid_list["vbar"] @ a_gamma_inv_one) * theta,
-                    hybrid_list["flci_halflength"]
-                    + (hybrid_list["vbar"] @ d_vec)
-                    - (1 - hybrid_list["vbar"] @ a_gamma_inv_one) * theta,
-                ]
-            )
+            if HAS_NUMBA:
+                hybrid_list["dbar"] = _compute_hybrid_dbar_numba(
+                    hybrid_list["flci_halflength"],
+                    hybrid_list["vbar"],
+                    d_vec,
+                    a_gamma_inv_one,
+                    theta,
+                )
+            else:
+                hybrid_list["dbar"] = np.array(
+                    [
+                        hybrid_list["flci_halflength"]
+                        - (hybrid_list["vbar"] @ d_vec)
+                        + (1 - hybrid_list["vbar"] @ a_gamma_inv_one) * theta,
+                        hybrid_list["flci_halflength"]
+                        + (hybrid_list["vbar"] @ d_vec)
+                        - (1 - hybrid_list["vbar"] @ a_gamma_inv_one) * theta,
+                    ]
+                )
 
         # Test theta value
         result = _lp_conditional_test(
-            y_t=y - a_gamma_inv_one * theta,
+            y_t=y_t,
             x_t=a_gamma_inv_minus_one,
             sigma=sigma_y,
             alpha=alpha,
@@ -1037,3 +1061,32 @@ def _round_eps(x: float, eps: float | None = None) -> float:
     if eps is None:
         eps = np.finfo(float).eps ** (3 / 4)
     return 0.0 if abs(x) < eps else x
+
+
+if HAS_NUMBA:
+
+    @nb.jit(nopython=True, parallel=True, cache=True)
+    def _prepare_y_values_numba(y, a_gamma_inv_one, theta_grid):
+        """Prepare y_t values for all theta values."""
+        n_grid = len(theta_grid)
+        n_params = len(y)
+        y_matrix = np.empty((n_grid, n_params))
+
+        for i in nb.prange(n_grid):
+            y_matrix[i] = y - a_gamma_inv_one * theta_grid[i]
+
+        return y_matrix
+
+    @nb.jit(nopython=True, cache=True)
+    def _compute_hybrid_dbar_numba(flci_halflength, vbar, d_vec, a_gamma_inv_one, theta):
+        """Compute hybrid dbar for FLCI case."""
+        vbar_d = np.dot(vbar, d_vec)
+        vbar_a = np.dot(vbar, a_gamma_inv_one)
+
+        dbar = np.array(
+            [flci_halflength - vbar_d + (1 - vbar_a) * theta, flci_halflength + vbar_d - (1 - vbar_a) * theta]
+        )
+        return dbar
+
+else:
+    _compute_hybrid_dbar_numba = None
