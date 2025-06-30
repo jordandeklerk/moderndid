@@ -1,4 +1,4 @@
-"""Functions for relative magnitudes restrictions."""
+"""Functions for inference under relative magnitudes restrictions."""
 
 from typing import NamedTuple
 
