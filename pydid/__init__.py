@@ -64,6 +64,7 @@ from pydid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
 from pydid.honestdid import (
     APRCIResult,
     ARPNuisanceCIResult,
+    DeltaRMBResult,
     DeltaRMResult,
     FLCIResult,
     basis_vector,
@@ -71,10 +72,12 @@ from pydid.honestdid import (
     compute_arp_nuisance_ci,
     compute_bounds,
     compute_conditional_cs_rm,
+    compute_conditional_cs_rmb,
     compute_delta_sd_lowerbound_m,
     compute_delta_sd_upperbound_m,
     compute_flci,
     compute_identified_set_rm,
+    compute_identified_set_rmb,
     create_monotonicity_constraint_matrix,
     create_pre_period_constraint_matrix,
     create_second_difference_matrix,
@@ -229,6 +232,10 @@ __all__ = [
     "DeltaRMResult",
     "compute_conditional_cs_rm",
     "compute_identified_set_rm",
+    # Honest DiD Delta RMB
+    "DeltaRMBResult",
+    "compute_conditional_cs_rmb",
+    "compute_identified_set_rmb",
     # Plotting functions
     "plot_att_gt",
     "plot_event_study",

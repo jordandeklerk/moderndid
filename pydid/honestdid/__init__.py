@@ -25,6 +25,11 @@ from .delta_rm import (
     compute_conditional_cs_rm,
     compute_identified_set_rm,
 )
+from .delta_rmb import (
+    DeltaRMBResult,
+    compute_conditional_cs_rmb,
+    compute_identified_set_rmb,
+)
 from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
@@ -69,4 +74,8 @@ __all__ = [
     "DeltaRMResult",
     "compute_identified_set_rm",
     "compute_conditional_cs_rm",
+    # Delta RMB (relative magnitudes with bias restriction)
+    "DeltaRMBResult",
+    "compute_conditional_cs_rmb",
+    "compute_identified_set_rmb",
 ]
