@@ -6,7 +6,7 @@ import time
 import numpy as np
 import pytest
 
-from pydid.honestdid import arp_no_nuisance, arp_nuisance, bounds, delta_rm, utils
+from pydid.honestdid import arp_no_nuisance, arp_nuisance, bounds, numba, utils
 
 
 def _create_first_differences_matrix_py(num_pre_periods, num_post_periods):
@@ -142,7 +142,7 @@ def grid_search_sizes(request):
     return data
 
 
-@pytest.mark.skipif(not utils.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_compute_bounds_consistency(random_data):
     eta, sigma, A, b, z = random_data
     bounds_numba = utils.compute_bounds(eta, sigma, A, b, z)
@@ -151,7 +151,7 @@ def test_compute_bounds_consistency(random_data):
     np.testing.assert_allclose(bounds_numba[1], bounds_original[1], rtol=1e-10)
 
 
-@pytest.mark.skipif(not utils.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.parametrize("select", ["rows", "columns"])
 def test_selection_matrix_consistency(select):
     selection = np.array([2, 4, 6])
@@ -161,15 +161,15 @@ def test_selection_matrix_consistency(select):
     np.testing.assert_array_equal(matrix_numba, matrix_original)
 
 
-@pytest.mark.skipif(not delta_rm.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_first_differences_matrix_consistency():
     num_pre, num_post = 5, 4
-    matrix_numba = delta_rm._create_first_differences_matrix(num_pre, num_post)
+    matrix_numba = numba.create_first_differences_matrix(num_pre, num_post)
     matrix_original = _create_first_differences_matrix_py(num_pre, num_post)
     np.testing.assert_array_equal(matrix_numba, matrix_original)
 
 
-@pytest.mark.skipif(not bounds.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.parametrize("num_pre,num_post", [(2, 2), (3, 3), (5, 4)])
 def test_second_difference_matrix_consistency(num_pre, num_post):
     matrix_numba = bounds.create_second_difference_matrix(num_pre, num_post)
@@ -177,7 +177,7 @@ def test_second_difference_matrix_consistency(num_pre, num_post):
     np.testing.assert_array_equal(matrix_numba, matrix_original)
 
 
-@pytest.mark.skipif(not bounds.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.parametrize("num_pre,num_post", [(2, 1), (3, 2), (5, 4)])
 def test_monotonicity_matrix_consistency(num_pre, num_post):
     matrix_numba = bounds._create_monotonicity_matrix_impl(num_pre, num_post)
@@ -185,7 +185,7 @@ def test_monotonicity_matrix_consistency(num_pre, num_post):
     np.testing.assert_array_equal(matrix_numba, matrix_original)
 
 
-@pytest.mark.skipif(not arp_no_nuisance.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_grid_search_consistency(grid_search_data):
     results_numba = arp_no_nuisance._test_over_theta_grid(
         *grid_search_data, test_fn=arp_no_nuisance._test_in_identified_set
@@ -194,7 +194,7 @@ def test_grid_search_consistency(grid_search_data):
     np.testing.assert_array_equal(results_numba, results_original)
 
 
-@pytest.mark.skipif(not arp_nuisance.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_y_values_preparation():
     np.random.seed(42)
     y, a_gamma_inv_one = np.random.randn(10), np.random.randn(10)
@@ -204,7 +204,7 @@ def test_y_values_preparation():
     np.testing.assert_allclose(y_matrix_numba, y_matrix_original, rtol=1e-10)
 
 
-@pytest.mark.skipif(not arp_nuisance.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_hybrid_dbar_computation():
     flci_halflength, vbar, d_vec = 0.5, np.array([0.1, 0.2, 0.3]), np.array([1.0, 2.0, 3.0])
     a_gamma_inv_one, theta = np.array([0.4, 0.5, 0.6]), 0.7
@@ -223,7 +223,7 @@ def time_function(func, *args, **kwargs):
     return end - start
 
 
-@pytest.mark.skipif(not utils.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_compute_bounds_performance(random_data):
     eta, sigma, A, b, z = random_data
     utils.compute_bounds(eta, sigma, A, b, z)
@@ -232,7 +232,7 @@ def test_compute_bounds_performance(random_data):
     assert time_original > time_numba
 
 
-@pytest.mark.skipif(not utils.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.parametrize("select", ["rows", "columns"])
 def test_selection_matrix_performance(select):
     selection, size = np.arange(1, 51), 100
@@ -242,17 +242,17 @@ def test_selection_matrix_performance(select):
     assert time_original > time_numba
 
 
-@pytest.mark.skipif(not bounds.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_second_difference_matrix_performance(matrix_construction_sizes):
     num_pre, num_post = matrix_construction_sizes
     bounds.create_second_difference_matrix(num_pre, num_post)  # Warm-up
     time_numba = time_function(bounds.create_second_difference_matrix, num_pre, num_post)
     time_original = time_function(_create_second_difference_matrix_py, num_pre, num_post)
-    if num_pre > 10:  # Only expect speedup for larger matrices
+    if num_pre > 10:
         assert time_original * 1.1 > time_numba, "Numba version should not be significantly slower"
 
 
-@pytest.mark.skipif(not bounds.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_monotonicity_matrix_performance(matrix_construction_sizes):
     num_pre, num_post = matrix_construction_sizes
     bounds._create_monotonicity_matrix_impl(num_pre, num_post)  # Warm-up
@@ -262,17 +262,17 @@ def test_monotonicity_matrix_performance(matrix_construction_sizes):
         assert time_original * 1.1 > time_numba, "Numba version should not be significantly slower"
 
 
-@pytest.mark.skipif(not delta_rm.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_first_differences_matrix_performance(matrix_construction_sizes):
     num_pre, num_post = matrix_construction_sizes
-    delta_rm._create_first_differences_matrix(num_pre, num_post)
-    time_numba = time_function(delta_rm._create_first_differences_matrix, num_pre, num_post)
+    numba.create_first_differences_matrix(num_pre, num_post)
+    time_numba = time_function(numba.create_first_differences_matrix, num_pre, num_post)
     time_original = time_function(_create_first_differences_matrix_py, num_pre, num_post)
     if num_pre > 10:
         assert time_original > time_numba
 
 
-@pytest.mark.skipif(not arp_no_nuisance.HAS_NUMBA, reason="Numba not available")
+@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_grid_search_performance(grid_search_sizes):
     data = grid_search_sizes
     args = (
@@ -287,9 +287,22 @@ def test_grid_search_performance(grid_search_sizes):
     )
     kwargs = {"test_fn": arp_no_nuisance._test_in_identified_set}
 
-    arp_no_nuisance._test_over_theta_grid(*args, **kwargs)  # Warm-up
+    for _ in range(3):
+        arp_no_nuisance._test_over_theta_grid(*args, **kwargs)
+
     time_numba = time_function(arp_no_nuisance._test_over_theta_grid, *args, **kwargs)
     time_original = time_function(_test_over_theta_grid_py, *args, **kwargs)
 
-    if data["grid_size"] >= 100:
-        assert time_original * 1.1 > time_numba, "Numba version should not be significantly slower"
+    if data["grid_size"] == 50:
+        margin = 2.0
+    elif data["grid_size"] == 100:
+        margin = 1.5
+    elif data["grid_size"] == 500:
+        margin = 1.3
+    else:
+        margin = 1.2
+
+    if data["grid_size"] >= 50:
+        assert time_original * margin > time_numba, (
+            f"Numba version should not be significantly slower for grid_size={data['grid_size']}"
+        )

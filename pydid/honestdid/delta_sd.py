@@ -5,17 +5,10 @@ from typing import NamedTuple
 import numpy as np
 import scipy.optimize as opt
 
-try:
-    import numba as nb
-
-    HAS_NUMBA = True
-except ImportError:
-    HAS_NUMBA = False
-    nb = None
-
 from .arp_no_nuisance import compute_arp_ci
 from .arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
 from .fixed_length_ci import compute_flci
+from .numba import create_second_differences_matrix, find_rows_with_post_period_values
 from .utils import basis_vector
 
 
@@ -117,7 +110,7 @@ def compute_conditional_cs_sd(
 
     if post_period_moments_only and num_post_periods > 1:
         post_period_indices = list(range(num_pre_periods, num_pre_periods + num_post_periods))
-        rows_for_arp = _find_rows_with_post_period_values(A_sd, post_period_indices)
+        rows_for_arp = find_rows_with_post_period_values(A_sd, post_period_indices)
     else:
         rows_for_arp = None
 
@@ -332,9 +325,7 @@ def _create_sd_constraint_matrix(
     num_constraints = num_pre_periods + num_post_periods - 1
     total_periods = num_pre_periods + num_post_periods + 1
 
-    A_positive = np.zeros((num_constraints, total_periods))
-    for i in range(num_constraints):
-        A_positive[i, i : i + 3] = [1, -2, 1]
+    A_positive = create_second_differences_matrix(num_constraints, total_periods)
 
     # If drop_zero_period, remove the column for period 0
     if drop_zero_period:
@@ -466,31 +457,3 @@ def _compute_cs_sd_no_nuisance(
         return result.ci_length
 
     return {"grid": result.theta_grid, "accept": result.accept_grid}
-
-
-if HAS_NUMBA:
-
-    @nb.jit(nopython=True, cache=True)
-    def _find_rows_with_post_period_values(A_sd, post_period_indices):
-        """Find rows with non-zero values in post-period columns using Numba."""
-        rows = []
-        for i in range(A_sd.shape[0]):
-            has_nonzero = False
-            for j in post_period_indices:
-                if A_sd[i, j] != 0:
-                    has_nonzero = True
-                    break
-            if has_nonzero:
-                rows.append(i)
-
-        if len(rows) > 0:
-            return np.array(rows)
-        return None
-
-else:
-
-    def _find_rows_with_post_period_values(A_sd, post_period_indices):
-        """Find rows with non-zero values in post-period columns using vectorized operations."""
-        has_post_period_values = np.any(A_sd[:, post_period_indices] != 0, axis=1)
-        rows_for_arp = np.where(has_post_period_values)[0]
-        return rows_for_arp if len(rows_for_arp) > 0 else None
