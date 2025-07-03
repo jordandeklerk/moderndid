@@ -5,17 +5,10 @@ from typing import NamedTuple
 import numpy as np
 import scipy.optimize as opt
 
-try:
-    import numba as nb
-
-    HAS_NUMBA = True
-except ImportError:
-    HAS_NUMBA = False
-    nb = None
-
 from .arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
 from .bounds import create_sign_constraint_matrix
 from .delta_rm import _create_relative_magnitudes_constraint_matrix
+from .numba import find_rows_with_post_period_values
 from .utils import basis_vector
 
 
@@ -542,7 +535,7 @@ def _compute_conditional_cs_rmb_fixed_s(
 
     if post_period_moments_only and num_post_periods > 1:
         post_period_indices = list(range(num_pre_periods, num_pre_periods + num_post_periods))
-        rows_for_arp = _find_rows_with_post_period_values(A_rmb, post_period_indices)
+        rows_for_arp = find_rows_with_post_period_values(A_rmb, post_period_indices)
     else:
         rows_for_arp = None
         if num_post_periods == 1:
@@ -625,31 +618,3 @@ def _create_relative_magnitudes_bias_constraint_vector(A_rmb):
         Constraint vector d (all zeros).
     """
     return np.zeros(A_rmb.shape[0])
-
-
-if HAS_NUMBA:
-
-    @nb.jit(nopython=True, cache=True)
-    def _find_rows_with_post_period_values(A_rmb, post_period_indices):
-        """Find rows with non-zero values in post-period columns using Numba."""
-        rows = []
-        for i in range(A_rmb.shape[0]):
-            has_nonzero = False
-            for j in post_period_indices:
-                if A_rmb[i, j] != 0:
-                    has_nonzero = True
-                    break
-            if has_nonzero:
-                rows.append(i)
-
-        if len(rows) > 0:
-            return np.array(rows)
-        return None
-
-else:
-
-    def _find_rows_with_post_period_values(A_rmb, post_period_indices):
-        """Find rows with non-zero values in post-period columns using vectorized operations."""
-        has_post_period_values = np.any(A_rmb[:, post_period_indices] != 0, axis=1)
-        rows_for_arp = np.where(has_post_period_values)[0]
-        return rows_for_arp if len(rows_for_arp) > 0 else None
