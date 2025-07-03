@@ -35,6 +35,11 @@ from .delta_rmm import (
     compute_conditional_cs_rmm,
     compute_identified_set_rmm,
 )
+from .delta_sd import (
+    DeltaSDResult,
+    compute_conditional_cs_sd,
+    compute_identified_set_sd,
+)
 from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
@@ -87,4 +92,8 @@ __all__ = [
     "DeltaRMMResult",
     "compute_conditional_cs_rmm",
     "compute_identified_set_rmm",
+    # Delta SD (second differences)
+    "DeltaSDResult",
+    "compute_conditional_cs_sd",
+    "compute_identified_set_sd",
 ]
