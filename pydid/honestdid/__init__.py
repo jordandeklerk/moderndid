@@ -40,6 +40,11 @@ from .delta_sd import (
     compute_conditional_cs_sd,
     compute_identified_set_sd,
 )
+from .delta_sdb import (
+    DeltaSDBResult,
+    compute_conditional_cs_sdb,
+    compute_identified_set_sdb,
+)
 from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
@@ -96,4 +101,8 @@ __all__ = [
     "DeltaSDResult",
     "compute_conditional_cs_sd",
     "compute_identified_set_sd",
+    # Delta SDB (second differences with bias)
+    "DeltaSDBResult",
+    "compute_conditional_cs_sdb",
+    "compute_identified_set_sdb",
 ]
