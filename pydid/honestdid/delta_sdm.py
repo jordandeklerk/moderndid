@@ -1,4 +1,4 @@
-"""Functions for inference under second differences restrictions."""
+"""Functions for inference under second differences with monotonicity restrictions."""
 
 from typing import NamedTuple
 
@@ -7,13 +7,15 @@ import scipy.optimize as opt
 
 from .arp_no_nuisance import compute_arp_ci
 from .arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
+from .bounds import create_monotonicity_constraint_matrix
+from .delta_sd import _create_sd_constraint_matrix, _create_sd_constraint_vector
 from .fixed_length_ci import compute_flci
-from .numba import create_second_differences_matrix, find_rows_with_post_period_values
+from .numba import find_rows_with_post_period_values
 from .utils import basis_vector
 
 
-class DeltaSDResult(NamedTuple):
-    """Result from second differences identified set computation.
+class DeltaSDMResult(NamedTuple):
+    """Result from second differences with monotonicity identified set computation.
 
     Attributes
     ----------
@@ -27,7 +29,7 @@ class DeltaSDResult(NamedTuple):
     id_ub: float
 
 
-def compute_conditional_cs_sd(
+def compute_conditional_cs_sdm(
     betahat,
     sigma,
     num_pre_periods,
@@ -35,6 +37,7 @@ def compute_conditional_cs_sd(
     l_vec=None,
     m_bar=0,
     alpha=0.05,
+    monotonicity_direction="increasing",
     hybrid_flag="FLCI",
     hybrid_kappa=None,
     return_length=False,
@@ -44,10 +47,11 @@ def compute_conditional_cs_sd(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{SD}`(M).
+    r"""Compute conditional confidence set for :math:`\Delta^{SDM}`(M).
 
     Computes a confidence set for :math:`l'\beta_{post}` that is valid conditional on the
-    event study coefficients being in the identified set under :math:`\Delta^{SD}(M)`.
+    event study coefficients being in the identified set under the second differences with
+    monotonicity restriction :math:`\Delta^{SDM}(M)`.
 
     Parameters
     ----------
@@ -62,9 +66,11 @@ def compute_conditional_cs_sd(
     l_vec : ndarray, optional
         Vector defining parameter of interest. If None, defaults to first post-period.
     m_bar : float, default=0
-        Smoothness parameter M for :math:`\Delta^{SD}(M)`.
+        Smoothness parameter M for :math:`\Delta^{SDM}(M)`.
     alpha : float, default=0.05
         Significance level.
+    monotonicity_direction : {'increasing', 'decreasing'}, default='increasing'
+        Direction of monotonicity restriction.
     hybrid_flag : {'FLCI', 'LF', 'ARP'}, default='FLCI'
         Type of hybrid test.
     hybrid_kappa : float, optional
@@ -90,9 +96,10 @@ def compute_conditional_cs_sd(
 
     Notes
     -----
-    The restriction :math:`\Delta^{SD}(M)` bounds the second differences of the
-    underlying trend: :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`
-    for all :math:`t`.
+    The restriction :math:`\Delta^{SDM}(M)` combines second differences bounds with
+    a monotonicity restriction on treatment effects. This is the intersection of
+    :math:`\Delta^{SD}(M)` with the set where treatment effects are monotone
+    (either increasing or decreasing, determined by monotonicity_direction).
 
     References
     ----------
@@ -105,30 +112,32 @@ def compute_conditional_cs_sd(
     if hybrid_kappa is None:
         hybrid_kappa = alpha / 10
 
-    A_sd = _create_sd_constraint_matrix(num_pre_periods, num_post_periods, post_period_moments_only=False)
-    d_sd = _create_sd_constraint_vector(A_sd, m_bar)
+    A_sdm = _create_sdm_constraint_matrix(
+        num_pre_periods, num_post_periods, monotonicity_direction, post_period_moments_only=False
+    )
+    d_sdm = _create_sdm_constraint_vector(num_pre_periods, num_post_periods, m_bar, post_period_moments_only=False)
 
     if post_period_moments_only and num_post_periods > 1:
         post_period_indices = list(range(num_pre_periods, num_pre_periods + num_post_periods))
-        rows_for_arp = find_rows_with_post_period_values(A_sd, post_period_indices)
+        rows_for_arp = find_rows_with_post_period_values(A_sdm, post_period_indices)
     else:
         rows_for_arp = None
 
-    # Handle special case of single post-period
     if num_post_periods == 1:
-        return _compute_cs_sd_no_nuisance(
+        return _compute_cs_sdm_no_nuisance(
             betahat=betahat,
             sigma=sigma,
             num_pre_periods=num_pre_periods,
             num_post_periods=num_post_periods,
-            A_sd=A_sd,
-            d_sd=d_sd,
+            A_sdm=A_sdm,
+            d_sdm=d_sdm,
             l_vec=l_vec,
             m_bar=m_bar,
             alpha=alpha,
             hybrid_flag=hybrid_flag,
             hybrid_kappa=hybrid_kappa,
             return_length=return_length,
+            monotonicity_direction=monotonicity_direction,
             grid_points=grid_points,
             grid_lb=grid_lb,
             grid_ub=grid_ub,
@@ -151,15 +160,11 @@ def compute_conditional_cs_sd(
         hybrid_list["flci_l"] = flci_result.optimal_vec
         hybrid_list["flci_halflength"] = flci_result.optimal_half_length
 
-        # Compute vbar using quadratic programming
-        # vbar = argmin ||flci_l - A'v||^2
         try:
-            # Using least squares to solve: min ||flci_l - A'v||^2
-            vbar, _, _, _ = np.linalg.lstsq(A_sd.T, flci_result.optimal_vec, rcond=None)
+            vbar, _, _, _ = np.linalg.lstsq(A_sdm.T, flci_result.optimal_vec, rcond=None)
             hybrid_list["vbar"] = vbar
         except np.linalg.LinAlgError:
-            # Fallback: use zeros
-            hybrid_list["vbar"] = np.zeros(A_sd.shape[0])
+            hybrid_list["vbar"] = np.zeros(A_sdm.shape[0])
 
     # Grid bounds
     if grid_lb is None or grid_ub is None:
@@ -169,18 +174,26 @@ def compute_conditional_cs_sd(
             grid_ub = (flci_result.optimal_vec @ betahat) + flci_result.optimal_half_length
 
         if grid_lb is None or grid_ub is None:
+            id_set = compute_identified_set_sdm(
+                m_bar=m_bar,
+                true_beta=np.zeros(num_pre_periods + num_post_periods),
+                l_vec=l_vec,
+                num_pre_periods=num_pre_periods,
+                num_post_periods=num_post_periods,
+                monotonicity_direction=monotonicity_direction,
+            )
             sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
             if grid_lb is None:
-                grid_lb = -20 * sd_theta
+                grid_lb = id_set.id_lb - 20 * sd_theta
             if grid_ub is None:
-                grid_ub = 20 * sd_theta
+                grid_ub = id_set.id_ub + 20 * sd_theta
 
     result = compute_arp_nuisance_ci(
         betahat=betahat,
         sigma=sigma,
         l_vec=l_vec,
-        a_matrix=A_sd,
-        d_vec=d_sd,
+        a_matrix=A_sdm,
+        d_vec=d_sdm,
         num_pre_periods=num_pre_periods,
         num_post_periods=num_post_periods,
         alpha=alpha,
@@ -199,22 +212,25 @@ def compute_conditional_cs_sd(
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
 
 
-def compute_identified_set_sd(
+def compute_identified_set_sdm(
     m_bar,
     true_beta,
     l_vec,
     num_pre_periods,
     num_post_periods,
+    monotonicity_direction="increasing",
 ):
-    r"""Compute identified set for :math:`\Delta^{SD}`(M).
+    r"""Compute identified set for :math:`\Delta^{SDM}`(M).
 
     Computes the identified set for :math:`l'\beta_{post}` under the restriction that the
-    underlying trend :math:`\delta` lies in :math:`\Delta^{SD}(M)`.
+    underlying trend :math:`\delta` lies in :math:`\Delta^{SDM}(M)`, which combines second
+    differences bounds with a monotonicity restriction.
 
     Parameters
     ----------
     m_bar : float
-        Smoothness parameter M. Bounds the second differences: :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`.
+        Smoothness parameter M. Bounds the second differences:
+        :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`.
     true_beta : ndarray
         True coefficient values (pre and post periods).
     l_vec : ndarray
@@ -223,43 +239,41 @@ def compute_identified_set_sd(
         Number of pre-treatment periods.
     num_post_periods : int
         Number of post-treatment periods.
+    monotonicity_direction : {'increasing', 'decreasing'}, default='increasing'
+        Direction of monotonicity restriction.
 
     Returns
     -------
-    DeltaSDResult
+    DeltaSDMResult
         Lower and upper bounds of the identified set.
 
     Notes
     -----
     The identified set is computed by solving two linear programs:
 
-    - Maximize :math:`l'\delta_{post}` subject to :math:`\delta \in \Delta^{SD}(M)`
+    - Maximize :math:`l'\delta_{post}` subject to :math:`\delta \in \Delta^{SDM}(M)`
       and :math:`\delta_{pre} = \beta_{pre}`
-    - Minimize :math:`l'\delta_{post}` subject to :math:`\delta \in \Delta^{SD}(M)`
+    - Minimize :math:`l'\delta_{post}` subject to :math:`\delta \in \Delta^{SDM}(M)`
       and :math:`\delta_{pre} = \beta_{pre}`
 
-    The constraint :math:`\delta_{pre} = \beta_{pre}` reflects the assumption that pre-treatment
-    event study coefficients identify the pre-treatment trend.
+    The constraint :math:`\delta \in \Delta^{SDM}(M)` is the intersection of
+    :math:`\Delta^{SD}(M)` with a monotonicity restriction on treatment effects.
     """
-    # Create objective function: we want to min/max l'delta_post
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
 
-    # Create constraint matrix and vector for Delta^{SD}(M)
-    A_sd = _create_sd_constraint_matrix(num_pre_periods, num_post_periods)
-    d_sd = _create_sd_constraint_vector(A_sd, m_bar)
+    A_sdm = _create_sdm_constraint_matrix(num_pre_periods, num_post_periods, monotonicity_direction)
+    d_sdm = _create_sdm_constraint_vector(num_pre_periods, num_post_periods, m_bar)
 
-    # Add equality constraints: delta_pre = beta_pre
     A_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
     b_eq = true_beta[:num_pre_periods]
 
-    # Bounds: all variables unconstrained
     bounds = [(None, None) for _ in range(num_pre_periods + num_post_periods)]
 
     # Solve for maximum
     result_max = opt.linprog(
         c=-f_delta,
-        A_ub=A_sd,
-        b_ub=d_sd,
+        A_ub=A_sdm,
+        b_ub=d_sdm,
         A_eq=A_eq,
         b_eq=b_eq,
         bounds=bounds,
@@ -269,8 +283,8 @@ def compute_identified_set_sd(
     # Solve for minimum
     result_min = opt.linprog(
         c=f_delta,
-        A_ub=A_sd,
-        b_ub=d_sd,
+        A_ub=A_sdm,
+        b_ub=d_sdm,
         A_eq=A_eq,
         b_eq=b_eq,
         bounds=bounds,
@@ -280,7 +294,7 @@ def compute_identified_set_sd(
     if not result_max.success or not result_min.success:
         # If optimization fails, return the observed value
         observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
-        return DeltaSDResult(id_lb=observed_val, id_ub=observed_val)
+        return DeltaSDMResult(id_lb=observed_val, id_ub=observed_val)
 
     # Compute bounds of identified set
     # ID set = observed value ± bias
@@ -288,20 +302,20 @@ def compute_identified_set_sd(
     id_ub = observed - result_min.fun
     id_lb = observed + result_max.fun
 
-    return DeltaSDResult(id_lb=id_lb, id_ub=id_ub)
+    return DeltaSDMResult(id_lb=id_lb, id_ub=id_ub)
 
 
-def _create_sd_constraint_matrix(
+def _create_sdm_constraint_matrix(
     num_pre_periods,
     num_post_periods,
-    drop_zero_period=True,
+    monotonicity_direction="increasing",
     post_period_moments_only=False,
 ):
-    r"""Create constraint matrix for second differences restriction.
+    r"""Create constraint matrix for :math:`\Delta^{SDM}(M)`.
 
-    Creates matrix A such that the constraint :math:`\delta \in \Delta^{SD}(M)` can be
-    written as :math:`A \delta \leq d`, where d is a vector with all elements equal to M.
-    This implements the constraint :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M` for all t.
+    Combines second differences (SD) and monotonicity (M) constraints into a single
+    constraint matrix A such that :math:`\delta \in \Delta^{SDM}(M)` can be written
+    as :math:`A \delta \leq d`.
 
     Parameters
     ----------
@@ -309,76 +323,94 @@ def _create_sd_constraint_matrix(
         Number of pre-treatment periods.
     num_post_periods : int
         Number of post-treatment periods.
-    drop_zero_period : bool, default=True
-        Whether to drop the period t=0 (treatment period) from the constraints.
-        This is standard as we typically normalize :math:`\delta_0 = 0`.
+    monotonicity_direction : {'increasing', 'decreasing'}, default='increasing'
+        Direction of monotonicity restriction.
     post_period_moments_only : bool, default=False
-        If True, exclude moments that only involve pre-periods.
+        If True, use only post-period moments.
 
     Returns
     -------
     ndarray
         Constraint matrix A.
     """
-    # First construct the positive moments matrix
-    # Each row represents one second difference constraint
-    num_constraints = num_pre_periods + num_post_periods - 1
-    total_periods = num_pre_periods + num_post_periods + 1
+    A_sd = _create_sd_constraint_matrix(
+        num_pre_periods=num_pre_periods,
+        num_post_periods=num_post_periods,
+        post_period_moments_only=post_period_moments_only,
+    )
 
-    A_positive = create_second_differences_matrix(num_constraints, total_periods)
+    A_m = create_monotonicity_constraint_matrix(
+        num_pre_periods=num_pre_periods,
+        num_post_periods=num_post_periods,
+        monotonicity_direction=monotonicity_direction,
+        post_period_moments_only=post_period_moments_only,
+    )
 
-    # If drop_zero_period, remove the column for period 0
-    if drop_zero_period:
-        A_positive = np.delete(A_positive, num_pre_periods, axis=1)
-
-    # If requested, remove constraints that only involve pre-periods
-    if post_period_moments_only and num_post_periods > 1:
-        post_period_start = num_pre_periods if drop_zero_period else num_pre_periods + 1
-        post_period_indices = np.arange(post_period_start, A_positive.shape[1])
-
-        rows_to_keep = []
-        for i in range(A_positive.shape[0]):
-            if np.any(A_positive[i, post_period_indices] != 0):
-                rows_to_keep.append(i)
-
-        A_positive = A_positive[rows_to_keep, :]
-
-    A = np.vstack([A_positive, -A_positive])
+    A = np.vstack([A_sd, A_m])
 
     return A
 
 
-def _create_sd_constraint_vector(A, m_bar):
-    r"""Create the d vector for second differences constraints.
+def _create_sdm_constraint_vector(
+    num_pre_periods,
+    num_post_periods,
+    m_bar,
+    post_period_moments_only=False,
+):
+    r"""Create constraint vector for :math:`\Delta^{SDM}(M)`.
+
+    Creates vector d such that :math:`\delta \in \Delta^{SDM}(M)` can be written
+    as :math:`A \delta \leq d`.
 
     Parameters
     ----------
-    A : ndarray
-        Constraint matrix from _create_sd_constraint_matrix.
+    num_pre_periods : int
+        Number of pre-treatment periods.
+    num_post_periods : int
+        Number of post-treatment periods.
     m_bar : float
-        Smoothness parameter M for :math:`\Delta^{SD}(M)`.
+        Smoothness parameter M.
+    post_period_moments_only : bool, default=False
+        If True, use only post-period moments.
 
     Returns
     -------
     ndarray
-        Vector d such that :math:`A \delta \leq d` defines :math:`\Delta^{SD}(M)`.
+        Constraint vector d.
     """
-    return np.full(A.shape[0], m_bar)
+    A_sd = _create_sd_constraint_matrix(
+        num_pre_periods=num_pre_periods,
+        num_post_periods=num_post_periods,
+        post_period_moments_only=post_period_moments_only,
+    )
+
+    d_sd = _create_sd_constraint_vector(A_sd, m_bar)
+
+    # Monotonicity constraints have RHS of 0
+    if post_period_moments_only:
+        d_m = np.zeros(num_post_periods if num_post_periods > 1 else num_pre_periods + num_post_periods)
+    else:
+        d_m = np.zeros(num_pre_periods + num_post_periods)
+
+    d = np.concatenate([d_sd, d_m])
+
+    return d
 
 
-def _compute_cs_sd_no_nuisance(
+def _compute_cs_sdm_no_nuisance(
     betahat,
     sigma,
     num_pre_periods,
     num_post_periods,
-    A_sd,
-    d_sd,
+    A_sdm,
+    d_sdm,
     l_vec,
     m_bar,
     alpha,
     hybrid_flag,
     hybrid_kappa,
     return_length,
+    monotonicity_direction,
     grid_points,
     grid_lb,
     grid_ub,
@@ -398,8 +430,8 @@ def _compute_cs_sd_no_nuisance(
             alpha=hybrid_kappa,
         )
 
-        # For single post-period, we need only the post-period part of optimal_vec
-        hybrid_list["flci_l"] = flci_result.optimal_vec[num_pre_periods:]
+        # For single post-period, we need the full optimal_vec for compute_arp_ci
+        hybrid_list["flci_l"] = flci_result.optimal_vec
         hybrid_list["flci_halflength"] = flci_result.optimal_half_length
 
         if grid_ub is None:
@@ -409,23 +441,22 @@ def _compute_cs_sd_no_nuisance(
 
     else:  # LF or ARP
         if hybrid_flag == "LF":
-            # Compute least favorable CV
             lf_cv = _compute_least_favorable_cv(
                 x_t=None,
-                sigma=A_sd @ sigma @ A_sd.T,
+                sigma=A_sdm @ sigma @ A_sdm.T,
                 hybrid_kappa=hybrid_kappa,
                 seed=seed,
             )
             hybrid_list["lf_cv"] = lf_cv
 
-        # Set grid bounds based on identified set
         if grid_ub is None or grid_lb is None:
-            id_set = compute_identified_set_sd(
+            id_set = compute_identified_set_sdm(
                 m_bar=m_bar,
                 true_beta=np.zeros(num_pre_periods + num_post_periods),
                 l_vec=l_vec,
                 num_pre_periods=num_pre_periods,
                 num_post_periods=num_post_periods,
+                monotonicity_direction=monotonicity_direction,
             )
             sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
             if grid_ub is None:
@@ -434,24 +465,32 @@ def _compute_cs_sd_no_nuisance(
                 grid_lb = id_set.id_lb - 20 * sd_theta
 
     # Compute confidence set
-    result = compute_arp_ci(
-        beta_hat=betahat,
-        sigma=sigma,
-        A=A_sd,
-        d=d_sd,
-        n_pre_periods=num_pre_periods,
-        n_post_periods=num_post_periods,
-        alpha=alpha,
-        hybrid_flag=hybrid_flag,
-        hybrid_kappa=hybrid_kappa,
-        lf_cv=hybrid_list.get("lf_cv"),
-        flci_l=hybrid_list.get("flci_l"),
-        flci_halflength=hybrid_list.get("flci_halflength"),
-        grid_lb=grid_lb,
-        grid_ub=grid_ub,
-        grid_points=grid_points,
-        return_length=return_length,
-    )
+    arp_kwargs = {
+        "beta_hat": betahat,
+        "sigma": sigma,
+        "A": A_sdm,
+        "d": d_sdm,
+        "n_pre_periods": num_pre_periods,
+        "n_post_periods": num_post_periods,
+        "alpha": alpha,
+        "hybrid_flag": hybrid_flag,
+        "hybrid_kappa": hybrid_kappa,
+        "grid_lb": grid_lb,
+        "grid_ub": grid_ub,
+        "grid_points": grid_points,
+        "return_length": return_length,
+    }
+
+    if hybrid_flag == "FLCI":
+        if "flci_l" in hybrid_list:
+            arp_kwargs["flci_l"] = hybrid_list["flci_l"]
+        if "flci_halflength" in hybrid_list:
+            arp_kwargs["flci_halflength"] = hybrid_list["flci_halflength"]
+    elif hybrid_flag == "LF":
+        if "lf_cv" in hybrid_list:
+            arp_kwargs["lf_cv"] = hybrid_list["lf_cv"]
+
+    result = compute_arp_ci(**arp_kwargs)
 
     if return_length:
         return result.ci_length

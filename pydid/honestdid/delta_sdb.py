@@ -188,7 +188,7 @@ def compute_conditional_cs_sdb(
                 new_ub = -id_set.id_lb
                 id_set = DeltaSDBResult(id_lb=new_lb, id_ub=new_ub)
 
-            sd_theta = np.sqrt(l_vec @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec)
+            sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
             if grid_lb is None:
                 grid_lb = id_set.id_lb - 20 * sd_theta
             if grid_ub is None:
@@ -300,12 +300,12 @@ def compute_identified_set_sdb(
 
     if not result_max.success or not result_min.success:
         # If optimization fails, return the observed value
-        observed_val = l_vec @ true_beta[num_pre_periods:]
+        observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
         return DeltaSDBResult(id_lb=observed_val, id_ub=observed_val)
 
     # Compute bounds of identified set
     # ID set = observed value ± bias
-    observed = l_vec @ true_beta[num_pre_periods:]
+    observed = l_vec.flatten() @ true_beta[num_pre_periods:]
     id_ub = observed - result_min.fun
     id_lb = observed + result_max.fun
 
@@ -449,7 +449,7 @@ def _compute_cs_sdb_no_nuisance(
                 num_post_periods=num_post_periods,
                 bias_direction=bias_direction,
             )
-            sd_theta = np.sqrt(l_vec @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec)
+            sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
             if grid_ub is None:
                 grid_ub = id_set.id_ub + 20 * sd_theta
             if grid_lb is None:

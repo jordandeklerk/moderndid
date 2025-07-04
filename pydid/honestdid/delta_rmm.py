@@ -121,7 +121,7 @@ def compute_conditional_cs_rmm(
         hybrid_kappa = alpha / 10
 
     if grid_lb is None or grid_ub is None:
-        sd_theta = np.sqrt(l_vec @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec)
+        sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
         if grid_lb is None:
             grid_lb = -20 * sd_theta
         if grid_ub is None:
@@ -432,11 +432,11 @@ def _compute_identified_set_rmm_fixed_s(
 
     if not result_max.success or not result_min.success:
         # If solver fails, return observed value
-        observed_val = l_vec @ true_beta[num_pre_periods:]
+        observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
         return DeltaRMMResult(id_lb=observed_val, id_ub=observed_val)
 
-    id_ub = l_vec @ true_beta[num_pre_periods:] - result_min.fun
-    id_lb = l_vec @ true_beta[num_pre_periods:] + result_max.fun
+    id_ub = l_vec.flatten() @ true_beta[num_pre_periods:] - result_min.fun
+    id_lb = l_vec.flatten() @ true_beta[num_pre_periods:] + result_max.fun
 
     return DeltaRMMResult(id_lb=id_lb, id_ub=id_ub)
 
@@ -534,7 +534,7 @@ def _compute_conditional_cs_rmm_fixed_s(
                 d_rmm = d_rmm[post_period_rows]
 
     if grid_lb is None or grid_ub is None:
-        sd_theta = np.sqrt(l_vec @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec)
+        sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
         if grid_lb is None:
             grid_lb = -20 * sd_theta
         if grid_ub is None:

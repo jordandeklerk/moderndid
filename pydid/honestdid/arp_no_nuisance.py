@@ -6,15 +6,8 @@ from typing import NamedTuple
 
 import numpy as np
 
-try:
-    import numba as nb
-
-    HAS_NUMBA = True
-except ImportError:
-    HAS_NUMBA = False
-    nb = None
-
 from .conditional import _norminvp_generalized
+from .numba import prepare_theta_grid_y_values
 from .utils import basis_vector, compute_bounds, selection_matrix
 
 
@@ -175,9 +168,7 @@ def compute_arp_ci(
         raise ValueError(f"Invalid hybrid_flag: {hybrid_flag}")
 
     # Use optimized version if available
-    grid_search_fn = _test_over_theta_grid_optimized if HAS_NUMBA else _test_over_theta_grid
-
-    results_grid = grid_search_fn(
+    results_grid = _test_over_theta_grid(
         beta_hat=beta_hat,
         sigma=sigma,
         A=A,
@@ -300,7 +291,6 @@ def _test_in_identified_set(
         # given the conditioning event, so we reject
         return False
 
-    # Compute critical value
     critical_val = max(
         0,
         _norminvp_generalized(
@@ -325,6 +315,7 @@ def _test_in_identified_set_flci_hybrid(
     hybrid_kappa,
     flci_halflength,
     flci_l,
+    **kwargs,  # pylint: disable=unused-argument
 ):
     """Hybrid test with FLCI first stage.
 
@@ -350,7 +341,7 @@ def _test_in_identified_set_flci_hybrid(
     flci_l : ndarray
         Weight vector for FLCI.
     **kwargs
-        Unused parameters.
+        Unused parameters for compatibility.
 
     Returns
     -------
@@ -376,7 +367,6 @@ def _test_in_identified_set_flci_hybrid(
     A_combined = np.vstack([A, A_firststage])
     d_combined = np.hstack([d, d_firststage])
 
-    # Run standard test with combined constraints
     return _test_in_identified_set(
         y=y,
         sigma=sigma,
@@ -394,6 +384,7 @@ def _test_in_identified_set_lf_hybrid(
     alpha,
     hybrid_kappa,
     lf_cv,
+    **kwargs,  # pylint: disable=unused-argument
 ):
     r"""Hybrid test with least favorable first stage.
 
@@ -452,13 +443,9 @@ def _test_in_identified_set_lf_hybrid(
     c = sigma @ gamma / (gamma.T @ sigma @ gamma).item()
     z = (np.eye(len(y)) - c @ gamma.T) @ y
 
-    # Compute truncation bounds
     v_lo, v_up = compute_bounds(eta=gamma, sigma=sigma, A=A_bar, b=d_bar, z=z)
-
-    # Adjust significance level
     alpha_tilde = (alpha - hybrid_kappa) / (1 - hybrid_kappa)
 
-    # Compute critical value
     critical_val = max(
         0,
         _norminvp_generalized(
@@ -470,7 +457,6 @@ def _test_in_identified_set_lf_hybrid(
         ),
     )
 
-    # Test decision
     reject = max_moment > critical_val
     return not reject
 
@@ -517,13 +503,13 @@ def _test_over_theta_grid(
     ndarray
         Array of shape (n_grid, 2) with columns [theta, accept].
     """
-    results = []
-
     post_period_vec = basis_vector(index=n_pre_periods + post_period_index, size=len(beta_hat)).flatten()
 
-    for theta in theta_grid:
-        y = beta_hat - post_period_vec * theta
+    y_matrix = prepare_theta_grid_y_values(beta_hat, post_period_vec, theta_grid)
 
+    results = []
+    for i, theta in enumerate(theta_grid):
+        y = y_matrix[i]
         in_set = test_fn(
             y=y,
             sigma=sigma,
@@ -532,61 +518,5 @@ def _test_over_theta_grid(
             alpha=alpha,
             **test_kwargs,
         )
-
         results.append([theta, float(in_set)])
-
     return np.array(results)
-
-
-if HAS_NUMBA:
-
-    @nb.jit(nopython=True, parallel=True, cache=True)
-    def _test_over_theta_grid_parallel_prep(beta_hat, post_period_vec, theta_grid):
-        """Prepare y vectors for all theta values."""
-        n_grid = len(theta_grid)
-        n_params = len(beta_hat)
-        y_matrix = np.empty((n_grid, n_params))
-
-        for i in nb.prange(n_grid):
-            y_matrix[i] = beta_hat - post_period_vec * theta_grid[i]
-
-        return y_matrix
-
-    def _test_over_theta_grid_optimized(
-        beta_hat,
-        sigma,
-        A,
-        d,
-        theta_grid,
-        n_pre_periods,
-        post_period_index,
-        alpha,
-        test_fn,
-        **test_kwargs,
-    ):
-        """Optimized grid search."""
-        post_period_vec = basis_vector(index=n_pre_periods + post_period_index, size=len(beta_hat)).flatten()
-
-        y_matrix = _test_over_theta_grid_parallel_prep(beta_hat, post_period_vec, theta_grid)
-
-        test_kwargs_opt = test_kwargs
-
-        results = []
-        for i, theta in enumerate(theta_grid):
-            y = y_matrix[i]
-
-            in_set = test_fn(
-                y=y,
-                sigma=sigma,
-                A=A,
-                d=d,
-                alpha=alpha,
-                **test_kwargs_opt,
-            )
-
-            results.append([theta, float(in_set)])
-
-        return np.array(results)
-
-else:
-    _test_over_theta_grid_optimized = _test_over_theta_grid

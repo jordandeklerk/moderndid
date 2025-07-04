@@ -199,7 +199,7 @@ def test_y_values_preparation():
     np.random.seed(42)
     y, a_gamma_inv_one = np.random.randn(10), np.random.randn(10)
     theta_grid = np.linspace(-1, 1, 5)
-    y_matrix_numba = arp_nuisance._prepare_y_values_numba(y, a_gamma_inv_one, theta_grid)
+    y_matrix_numba = arp_nuisance.prepare_theta_grid_y_values(y, a_gamma_inv_one, theta_grid)
     y_matrix_original = np.array([y - a_gamma_inv_one * theta for theta in theta_grid])
     np.testing.assert_allclose(y_matrix_numba, y_matrix_original, rtol=1e-10)
 
@@ -208,7 +208,7 @@ def test_y_values_preparation():
 def test_hybrid_dbar_computation():
     flci_halflength, vbar, d_vec = 0.5, np.array([0.1, 0.2, 0.3]), np.array([1.0, 2.0, 3.0])
     a_gamma_inv_one, theta = np.array([0.4, 0.5, 0.6]), 0.7
-    dbar_numba = arp_nuisance._compute_hybrid_dbar_numba(flci_halflength, vbar, d_vec, a_gamma_inv_one, theta)
+    dbar_numba = arp_nuisance.compute_hybrid_dbar(flci_halflength, vbar, d_vec, a_gamma_inv_one, theta)
     vbar_d, vbar_a = np.dot(vbar, d_vec), np.dot(vbar, a_gamma_inv_one)
     dbar_manual = np.array(
         [flci_halflength - vbar_d + (1 - vbar_a) * theta, flci_halflength + vbar_d - (1 - vbar_a) * theta]
