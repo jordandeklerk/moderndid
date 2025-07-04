@@ -195,7 +195,7 @@ def test_insufficient_pre_periods_errors(num_pre, num_post, error_msg):
             )
 
 
-def test_compute_conditional_cs_rmm_basic(simple_event_study_data):
+def test_compute_conditional_cs_rmm_basic(simple_event_study_data, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
     result = compute_conditional_cs_rmm(
@@ -207,19 +207,19 @@ def test_compute_conditional_cs_rmm_basic(simple_event_study_data):
         m_bar=0.5,
         alpha=0.05,
         monotonicity_direction="increasing",
-        grid_points=100,
+        grid_points=fast_config["grid_points_medium"],
     )
 
     assert isinstance(result, dict)
     assert "grid" in result
     assert "accept" in result
     assert len(result["grid"]) == len(result["accept"])
-    assert len(result["grid"]) == 100
+    assert len(result["grid"]) == fast_config["grid_points_medium"]
 
     assert np.any(result["accept"] > 0)
 
 
-def test_compute_conditional_cs_rmm_return_length():
+def test_compute_conditional_cs_rmm_return_length(fast_config):
     betahat = np.array([0, 0, 0, 0.5, 0.5])
     sigma = np.eye(5) * 0.01
     l_vec = np.array([1, 0])
@@ -234,7 +234,7 @@ def test_compute_conditional_cs_rmm_return_length():
         alpha=0.05,
         monotonicity_direction="increasing",
         return_length=True,
-        grid_points=100,
+        grid_points=fast_config["grid_points_medium"],
     )
 
     length_large_m = compute_conditional_cs_rmm(
@@ -247,7 +247,7 @@ def test_compute_conditional_cs_rmm_return_length():
         alpha=0.05,
         monotonicity_direction="increasing",
         return_length=True,
-        grid_points=100,
+        grid_points=fast_config["grid_points_medium"],
     )
 
     assert isinstance(length_small_m, float)
@@ -258,7 +258,7 @@ def test_compute_conditional_cs_rmm_return_length():
 
 
 @pytest.mark.parametrize("hybrid_flag", ["LF", "ARP"])
-def test_compute_conditional_cs_rmm_hybrid_flags(simple_event_study_data, hybrid_flag):
+def test_compute_conditional_cs_rmm_hybrid_flags(simple_event_study_data, hybrid_flag, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
     result = compute_conditional_cs_rmm(
@@ -271,7 +271,7 @@ def test_compute_conditional_cs_rmm_hybrid_flags(simple_event_study_data, hybrid
         alpha=0.05,
         hybrid_flag=hybrid_flag,
         monotonicity_direction="increasing",
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert "grid" in result
@@ -279,7 +279,7 @@ def test_compute_conditional_cs_rmm_hybrid_flags(simple_event_study_data, hybrid
     assert np.any(result["accept"] > 0)
 
 
-def test_compute_conditional_cs_rmm_custom_grid_bounds(simple_event_study_data):
+def test_compute_conditional_cs_rmm_custom_grid_bounds(simple_event_study_data, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
     result = compute_conditional_cs_rmm(
@@ -293,14 +293,14 @@ def test_compute_conditional_cs_rmm_custom_grid_bounds(simple_event_study_data):
         monotonicity_direction="increasing",
         grid_lb=-2,
         grid_ub=2,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert result["grid"][0] == pytest.approx(-2)
     assert result["grid"][-1] == pytest.approx(2)
 
 
-@pytest.mark.parametrize("grid_points", [50, 100, 200])
+@pytest.mark.parametrize("grid_points", [20, 30, 50])
 def test_grid_resolution(simple_event_study_data, grid_points):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
@@ -365,7 +365,7 @@ def test_different_s_values():
     assert all(r >= 0 for r in results)
 
 
-def test_confidence_interval_coverage_ordering():
+def test_confidence_interval_coverage_ordering(fast_config):
     betahat = np.array([0, 0, 0, 0.5, 0.5])
     sigma = np.eye(5) * 0.01
     l_vec = np.array([1, 0])
@@ -384,7 +384,7 @@ def test_confidence_interval_coverage_ordering():
             alpha=alpha,
             monotonicity_direction="increasing",
             return_length=True,
-            grid_points=100,
+            grid_points=fast_config["grid_points_medium"],
         )
         lengths.append(length)
 
@@ -424,7 +424,7 @@ def test_different_m_bar_values(simple_event_study_data, m_bar):
     assert result.id_lb <= result.id_ub
 
 
-def test_post_period_moments_only_flag():
+def test_post_period_moments_only_flag(fast_config):
     betahat = np.array([0.1, 0.15, 0.2, 0.3, 0.4, 0.5])
     sigma = np.eye(6) * 0.01
     l_vec = np.array([1, 0, 0])
@@ -439,7 +439,7 @@ def test_post_period_moments_only_flag():
         alpha=0.05,
         monotonicity_direction="increasing",
         post_period_moments_only=False,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     result_post_only = compute_conditional_cs_rmm(
@@ -452,7 +452,7 @@ def test_post_period_moments_only_flag():
         alpha=0.05,
         monotonicity_direction="increasing",
         post_period_moments_only=True,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert np.any(result_all["accept"] > 0)

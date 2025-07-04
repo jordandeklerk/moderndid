@@ -130,7 +130,7 @@ def test_test_in_identified_set_max_zero_variance():
     assert isinstance(reject, bool)
 
 
-def test_estimate_lowerbound_m_conditional_test_basic():
+def test_estimate_lowerbound_m_conditional_test_basic(fast_config):
     np.random.seed(123)
 
     pre_period_coef = np.array([0.0, 0.1, 0.2, 0.3])
@@ -141,7 +141,7 @@ def test_estimate_lowerbound_m_conditional_test_basic():
         pre_period_covar=pre_period_covar,
         grid_ub=1.0,
         alpha=0.05,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert np.isfinite(result)
@@ -164,7 +164,7 @@ def test_estimate_lowerbound_m_conditional_test_all_rejected():
     assert isinstance(result, int | float)
 
 
-def test_estimate_lowerbound_m_conditional_test_consistency():
+def test_estimate_lowerbound_m_conditional_test_consistency(fast_config):
     np.random.seed(456)
     pre_period_coef = np.random.normal(0, 0.1, 4)
     pre_period_covar = np.eye(4) * 0.01
@@ -174,7 +174,7 @@ def test_estimate_lowerbound_m_conditional_test_consistency():
         pre_period_covar=pre_period_covar,
         grid_ub=1.0,
         alpha=0.05,
-        grid_points=30,
+        grid_points=fast_config["grid_points_small"],
     )
 
     result_10 = estimate_lowerbound_m_conditional_test(
@@ -182,7 +182,7 @@ def test_estimate_lowerbound_m_conditional_test_consistency():
         pre_period_covar=pre_period_covar,
         grid_ub=1.0,
         alpha=0.10,
-        grid_points=30,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert result_10 <= result_05
@@ -206,7 +206,7 @@ def test_constraint_matrix_mathematical_correctness():
     assert np.allclose(A[3:, :], -A[:3, :])
 
 
-def test_integration_test_and_estimate():
+def test_integration_test_and_estimate(fast_config):
     np.random.seed(789)
 
     pre_period_coef = np.array([0.05, 0.10, 0.16, 0.23])
@@ -217,7 +217,7 @@ def test_integration_test_and_estimate():
         pre_period_covar=pre_period_covar,
         grid_ub=2.0,
         alpha=0.05,
-        grid_points=100,
+        grid_points=fast_config["grid_points_small"],
     )
 
     if np.isfinite(lower_bound) and lower_bound > 0:

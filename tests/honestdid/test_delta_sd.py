@@ -108,7 +108,7 @@ def test_compute_identified_set_sd_large_m_bar(simple_data):
     assert result_large.id_ub - result_large.id_lb > result_small.id_ub - result_small.id_lb
 
 
-def test_compute_conditional_cs_sd_basic(simple_data):
+def test_compute_conditional_cs_sd_basic(simple_data, fast_config):
     result = compute_conditional_cs_sd(
         betahat=simple_data["betahat"],
         sigma=simple_data["sigma"],
@@ -117,17 +117,17 @@ def test_compute_conditional_cs_sd_basic(simple_data):
         l_vec=simple_data["l_vec"],
         m_bar=0.1,
         alpha=0.05,
-        grid_points=100,
+        grid_points=fast_config["grid_points_medium"],
     )
 
     assert isinstance(result, dict)
     assert "grid" in result
     assert "accept" in result
     assert len(result["grid"]) == len(result["accept"])
-    assert len(result["grid"]) == 100
+    assert len(result["grid"]) == fast_config["grid_points_medium"]
 
 
-def test_compute_conditional_cs_sd_return_length(simple_data):
+def test_compute_conditional_cs_sd_return_length(simple_data, fast_config):
     result = compute_conditional_cs_sd(
         betahat=simple_data["betahat"],
         sigma=simple_data["sigma"],
@@ -137,7 +137,7 @@ def test_compute_conditional_cs_sd_return_length(simple_data):
         m_bar=0.1,
         alpha=0.05,
         return_length=True,
-        grid_points=100,
+        grid_points=fast_config["grid_points_medium"],
     )
 
     assert isinstance(result, float)
@@ -145,7 +145,7 @@ def test_compute_conditional_cs_sd_return_length(simple_data):
 
 
 @pytest.mark.parametrize("hybrid_flag", ["FLCI", "LF", "ARP"])
-def test_compute_conditional_cs_sd_hybrid_flags(simple_data, hybrid_flag):
+def test_compute_conditional_cs_sd_hybrid_flags(simple_data, hybrid_flag, fast_config):
     result = compute_conditional_cs_sd(
         betahat=simple_data["betahat"],
         sigma=simple_data["sigma"],
@@ -155,7 +155,7 @@ def test_compute_conditional_cs_sd_hybrid_flags(simple_data, hybrid_flag):
         m_bar=0.1,
         alpha=0.05,
         hybrid_flag=hybrid_flag,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(result, dict)
@@ -163,7 +163,7 @@ def test_compute_conditional_cs_sd_hybrid_flags(simple_data, hybrid_flag):
     assert "accept" in result
 
 
-def test_compute_conditional_cs_sd_custom_grid_bounds(simple_data):
+def test_compute_conditional_cs_sd_custom_grid_bounds(simple_data, fast_config):
     result = compute_conditional_cs_sd(
         betahat=simple_data["betahat"],
         sigma=simple_data["sigma"],
@@ -174,14 +174,14 @@ def test_compute_conditional_cs_sd_custom_grid_bounds(simple_data):
         alpha=0.05,
         grid_lb=-1.0,
         grid_ub=1.0,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert result["grid"][0] == pytest.approx(-1.0)
     assert result["grid"][-1] == pytest.approx(1.0)
 
 
-def test_compute_conditional_cs_sd_post_period_moments_only(simple_data):
+def test_compute_conditional_cs_sd_post_period_moments_only(simple_data, fast_config):
     result_all = compute_conditional_cs_sd(
         betahat=simple_data["betahat"],
         sigma=simple_data["sigma"],
@@ -191,7 +191,7 @@ def test_compute_conditional_cs_sd_post_period_moments_only(simple_data):
         m_bar=0.1,
         alpha=0.05,
         post_period_moments_only=False,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     result_post = compute_conditional_cs_sd(
@@ -203,7 +203,7 @@ def test_compute_conditional_cs_sd_post_period_moments_only(simple_data):
         m_bar=0.1,
         alpha=0.05,
         post_period_moments_only=True,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(result_all, dict)

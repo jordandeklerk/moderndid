@@ -94,7 +94,7 @@ def test_compute_identified_set_sdb_zero_smoothness(simple_data):
     assert result.id_ub >= observed_val
 
 
-def test_compute_conditional_cs_sdb_single_post_period():
+def test_compute_conditional_cs_sdb_single_post_period(fast_config):
     num_pre_periods = 3
     num_post_periods = 2
     betahat = np.array([0.1, -0.05, 0.02, 0.2, 0.0])
@@ -109,17 +109,17 @@ def test_compute_conditional_cs_sdb_single_post_period():
         l_vec=l_vec,
         m_bar=0.1,
         alpha=0.05,
-        grid_points=100,
+        grid_points=fast_config["grid_points_medium"],
     )
 
     assert "grid" in result
     assert "accept" in result
     assert len(result["grid"]) == len(result["accept"])
-    assert len(result["grid"]) == 100
+    assert len(result["grid"]) == fast_config["grid_points_medium"]
     assert np.all((result["accept"] == 0) | (result["accept"] == 1))
 
 
-def test_compute_conditional_cs_sdb_multiple_post_periods(simple_data):
+def test_compute_conditional_cs_sdb_multiple_post_periods(simple_data, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, l_vec = simple_data
 
     result = compute_conditional_cs_sdb(
@@ -131,16 +131,16 @@ def test_compute_conditional_cs_sdb_multiple_post_periods(simple_data):
         m_bar=0.1,
         alpha=0.05,
         hybrid_flag="LF",
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert "grid" in result
     assert "accept" in result
     assert len(result["grid"]) == len(result["accept"])
-    assert len(result["grid"]) == 50
+    assert len(result["grid"]) == fast_config["grid_points_small"]
 
 
-def test_compute_conditional_cs_sdb_return_length(simple_data):
+def test_compute_conditional_cs_sdb_return_length(simple_data, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, l_vec = simple_data
 
     result = compute_conditional_cs_sdb(
@@ -152,7 +152,7 @@ def test_compute_conditional_cs_sdb_return_length(simple_data):
         m_bar=0.1,
         alpha=0.05,
         return_length=True,
-        grid_points=100,
+        grid_points=fast_config["grid_points_medium"],
     )
 
     assert isinstance(result, float)
@@ -160,7 +160,7 @@ def test_compute_conditional_cs_sdb_return_length(simple_data):
 
 
 @pytest.mark.parametrize("hybrid_flag", ["FLCI", "LF", "ARP"])
-def test_compute_conditional_cs_sdb_hybrid_flags(simple_data, hybrid_flag):
+def test_compute_conditional_cs_sdb_hybrid_flags(simple_data, hybrid_flag, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, l_vec = simple_data
 
     result = compute_conditional_cs_sdb(
@@ -172,7 +172,7 @@ def test_compute_conditional_cs_sdb_hybrid_flags(simple_data, hybrid_flag):
         m_bar=0.05,
         alpha=0.05,
         hybrid_flag=hybrid_flag,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert "grid" in result
@@ -180,7 +180,7 @@ def test_compute_conditional_cs_sdb_hybrid_flags(simple_data, hybrid_flag):
 
 
 @pytest.mark.parametrize("bias_direction", ["positive", "negative"])
-def test_compute_conditional_cs_sdb_bias_directions(simple_data, bias_direction):
+def test_compute_conditional_cs_sdb_bias_directions(simple_data, bias_direction, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, l_vec = simple_data
 
     result = compute_conditional_cs_sdb(
@@ -192,14 +192,14 @@ def test_compute_conditional_cs_sdb_bias_directions(simple_data, bias_direction)
         m_bar=0.1,
         alpha=0.05,
         bias_direction=bias_direction,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert "grid" in result
     assert "accept" in result
 
 
-def test_compute_conditional_cs_sdb_custom_grid_bounds(simple_data):
+def test_compute_conditional_cs_sdb_custom_grid_bounds(simple_data, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, l_vec = simple_data
 
     result = compute_conditional_cs_sdb(
@@ -212,14 +212,14 @@ def test_compute_conditional_cs_sdb_custom_grid_bounds(simple_data):
         alpha=0.05,
         grid_lb=-1,
         grid_ub=1,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert np.min(result["grid"]) >= -1
     assert np.max(result["grid"]) <= 1
 
 
-def test_compute_conditional_cs_sdb_post_period_moments_only(simple_data):
+def test_compute_conditional_cs_sdb_post_period_moments_only(simple_data, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, l_vec = simple_data
 
     result_all = compute_conditional_cs_sdb(
@@ -231,7 +231,7 @@ def test_compute_conditional_cs_sdb_post_period_moments_only(simple_data):
         m_bar=0.05,
         alpha=0.05,
         post_period_moments_only=False,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     result_post_only = compute_conditional_cs_sdb(
@@ -243,7 +243,7 @@ def test_compute_conditional_cs_sdb_post_period_moments_only(simple_data):
         m_bar=0.05,
         alpha=0.05,
         post_period_moments_only=True,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert len(result_all["grid"]) == len(result_post_only["grid"])

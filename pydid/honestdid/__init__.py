@@ -54,10 +54,12 @@ from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
 )
+from .numba import (
+    lee_coefficient,
+)
 from .utils import (
     basis_vector,
     compute_bounds,
-    lee_coefficient,
     selection_matrix,
     validate_conformable,
     validate_symmetric_psd,
@@ -66,11 +68,11 @@ from .utils import (
 __all__ = [
     # Utility functions
     "selection_matrix",
-    "lee_coefficient",
     "compute_bounds",
     "basis_vector",
     "validate_symmetric_psd",
     "validate_conformable",
+    "lee_coefficient",
     # Delta SD bounds
     "compute_delta_sd_upperbound_m",
     "compute_delta_sd_lowerbound_m",

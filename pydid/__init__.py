@@ -217,11 +217,11 @@ __all__ = [
     "compute_aggte",
     # Honest DiD utility functions
     "selection_matrix",
-    "lee_coefficient",
     "compute_bounds",
     "basis_vector",
     "validate_symmetric_psd",
     "validate_conformable",
+    "lee_coefficient",
     # Honest DiD bound estimation
     "compute_delta_sd_upperbound_m",
     "compute_delta_sd_lowerbound_m",
