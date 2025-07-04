@@ -45,6 +45,11 @@ from .delta_sdb import (
     compute_conditional_cs_sdb,
     compute_identified_set_sdb,
 )
+from .delta_sdm import (
+    DeltaSDMResult,
+    compute_conditional_cs_sdm,
+    compute_identified_set_sdm,
+)
 from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
@@ -105,4 +110,8 @@ __all__ = [
     "DeltaSDBResult",
     "compute_conditional_cs_sdb",
     "compute_identified_set_sdb",
+    # Delta SDM (second differences with monotonicity)
+    "DeltaSDMResult",
+    "compute_conditional_cs_sdm",
+    "compute_identified_set_sdm",
 ]
