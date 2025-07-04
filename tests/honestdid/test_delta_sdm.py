@@ -75,7 +75,7 @@ def test_compute_identified_set_sdm_different_l_vec(basic_setup):
     assert result.id_lb <= observed <= result.id_ub
 
 
-def test_compute_conditional_cs_sdm_single_post_period():
+def test_compute_conditional_cs_sdm_single_post_period(fast_config):
     num_pre_periods = 3
     num_post_periods = 1
     betahat = np.array([0.1, -0.05, 0.02, 0.15])
@@ -88,18 +88,18 @@ def test_compute_conditional_cs_sdm_single_post_period():
         num_post_periods=num_post_periods,
         m_bar=0.1,
         alpha=0.05,
-        grid_points=100,
+        grid_points=fast_config["grid_points_medium"],
     )
 
     assert isinstance(result, dict)
     assert "grid" in result
     assert "accept" in result
     assert len(result["grid"]) == len(result["accept"])
-    assert len(result["grid"]) == 100
+    assert len(result["grid"]) == fast_config["grid_points_medium"]
     assert all(x in [0, 1] for x in result["accept"])
 
 
-def test_compute_conditional_cs_sdm_multiple_post_periods(basic_setup):
+def test_compute_conditional_cs_sdm_multiple_post_periods(basic_setup, fast_config):
     result = compute_conditional_cs_sdm(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -108,16 +108,16 @@ def test_compute_conditional_cs_sdm_multiple_post_periods(basic_setup):
         m_bar=0.1,
         alpha=0.05,
         hybrid_flag="FLCI",
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(result, dict)
     assert "grid" in result
     assert "accept" in result
-    assert len(result["grid"]) == 50
+    assert len(result["grid"]) == fast_config["grid_points_small"]
 
 
-def test_compute_conditional_cs_sdm_return_length(basic_setup):
+def test_compute_conditional_cs_sdm_return_length(basic_setup, fast_config):
     result = compute_conditional_cs_sdm(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -125,14 +125,14 @@ def test_compute_conditional_cs_sdm_return_length(basic_setup):
         num_post_periods=basic_setup["num_post_periods"],
         m_bar=0.1,
         return_length=True,
-        grid_points=100,
+        grid_points=fast_config["grid_points_medium"],
     )
 
     assert isinstance(result, float)
     assert result >= 0
 
 
-def test_compute_conditional_cs_sdm_arp_method(basic_setup):
+def test_compute_conditional_cs_sdm_arp_method(basic_setup, fast_config):
     result = compute_conditional_cs_sdm(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -141,14 +141,14 @@ def test_compute_conditional_cs_sdm_arp_method(basic_setup):
         m_bar=0.1,
         alpha=0.05,
         hybrid_flag="ARP",
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(result, dict)
-    assert len(result["grid"]) == 50
+    assert len(result["grid"]) == fast_config["grid_points_small"]
 
 
-def test_compute_conditional_cs_sdm_lf_method_single_post():
+def test_compute_conditional_cs_sdm_lf_method_single_post(fast_config):
     num_pre_periods = 3
     num_post_periods = 1
     betahat = np.array([0.1, -0.05, 0.02, 0.15])
@@ -162,12 +162,12 @@ def test_compute_conditional_cs_sdm_lf_method_single_post():
         m_bar=0.1,
         alpha=0.05,
         hybrid_flag="LF",
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
         seed=123,
     )
 
     assert isinstance(result, dict)
-    assert len(result["grid"]) == 50
+    assert len(result["grid"]) == fast_config["grid_points_small"]
 
 
 def test_create_sdm_constraint_matrix():
@@ -220,7 +220,7 @@ def test_zero_m_bar(basic_setup):
     assert result.id_lb <= result.id_ub
 
 
-def test_custom_l_vec(basic_setup):
+def test_custom_l_vec(basic_setup, fast_config):
     l_vec = np.array([0, 0, 1])
 
     result = compute_conditional_cs_sdm(
@@ -230,14 +230,14 @@ def test_custom_l_vec(basic_setup):
         num_post_periods=basic_setup["num_post_periods"],
         l_vec=l_vec,
         m_bar=0.1,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(result, dict)
-    assert len(result["grid"]) == 50
+    assert len(result["grid"]) == fast_config["grid_points_small"]
 
 
-def test_post_period_moments_only_false(basic_setup):
+def test_post_period_moments_only_false(basic_setup, fast_config):
     result = compute_conditional_cs_sdm(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -245,14 +245,14 @@ def test_post_period_moments_only_false(basic_setup):
         num_post_periods=basic_setup["num_post_periods"],
         m_bar=0.1,
         post_period_moments_only=False,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(result, dict)
-    assert len(result["grid"]) == 50
+    assert len(result["grid"]) == fast_config["grid_points_small"]
 
 
-def test_custom_grid_bounds(basic_setup):
+def test_custom_grid_bounds(basic_setup, fast_config):
     result = compute_conditional_cs_sdm(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -261,7 +261,7 @@ def test_custom_grid_bounds(basic_setup):
         m_bar=0.1,
         grid_lb=-0.5,
         grid_ub=0.5,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert result["grid"][0] >= -0.5
@@ -282,7 +282,7 @@ def test_large_m_bar(basic_setup):
 
 
 @pytest.mark.parametrize("alpha", [0.01, 0.05, 0.10])
-def test_different_alpha_levels(basic_setup, alpha):
+def test_different_alpha_levels(basic_setup, alpha, fast_config):
     result = compute_conditional_cs_sdm(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -290,7 +290,7 @@ def test_different_alpha_levels(basic_setup, alpha):
         num_post_periods=basic_setup["num_post_periods"],
         m_bar=0.1,
         alpha=alpha,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(result, dict)
@@ -298,7 +298,7 @@ def test_different_alpha_levels(basic_setup, alpha):
 
 
 @pytest.mark.parametrize("direction", ["increasing", "decreasing"])
-def test_monotonicity_directions(basic_setup, direction):
+def test_monotonicity_directions(basic_setup, direction, fast_config):
     result = compute_conditional_cs_sdm(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -306,8 +306,8 @@ def test_monotonicity_directions(basic_setup, direction):
         num_post_periods=basic_setup["num_post_periods"],
         m_bar=0.1,
         monotonicity_direction=direction,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(result, dict)
-    assert len(result["grid"]) == 50
+    assert len(result["grid"]) == fast_config["grid_points_small"]

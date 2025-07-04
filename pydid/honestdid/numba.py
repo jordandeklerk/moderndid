@@ -14,6 +14,9 @@ except ImportError:
 
 __all__ = [
     "HAS_NUMBA",
+    "lee_coefficient",
+    "selection_matrix",
+    "compute_bounds",
     "find_rows_with_post_period_values",
     "create_first_differences_matrix",
     "create_second_differences_matrix",
@@ -80,6 +83,40 @@ def _compute_hybrid_dbar_impl(flci_halflength, vbar, d_vec, a_gamma_inv_one, the
     vbar_d = np.dot(vbar, d_vec)
     vbar_a = np.dot(vbar, a_gamma_inv_one)
     return np.array([flci_halflength - vbar_d + (1 - vbar_a) * theta, flci_halflength + vbar_d - (1 - vbar_a) * theta])
+
+
+def _lee_coefficient_impl(eta, sigma):
+    sigma_eta = sigma @ eta
+    eta_sigma_eta = eta.T @ sigma_eta
+    if np.abs(eta_sigma_eta) < 1e-10:
+        raise ValueError("Estimated coefficient is effectively zero, cannot compute coefficient.")
+    return sigma_eta / eta_sigma_eta
+
+
+def _selection_matrix_impl(selection_0idx, size, n_selections, select_rows):
+    if select_rows:
+        m = np.zeros((n_selections, size))
+        for i, idx in enumerate(selection_0idx):
+            m[i, idx] = 1
+    else:
+        m = np.zeros((size, n_selections))
+        for i, idx in enumerate(selection_0idx):
+            m[idx, i] = 1
+    return m
+
+
+def _compute_bounds_impl(eta, sigma, A, b, z):
+    c = _lee_coefficient_impl(eta, sigma)
+    Az = A @ z
+    Ac = A @ c
+    nonzero_mask = np.abs(Ac) > 1e-10
+    objective = np.full_like(Ac, np.nan)
+    objective[nonzero_mask] = (b[nonzero_mask] - Az[nonzero_mask]) / Ac[nonzero_mask]
+    ac_negative_idx = Ac < 0
+    ac_positive_idx = Ac > 0
+    lower_bound = np.max(objective[ac_negative_idx]) if np.any(ac_negative_idx) else -np.inf
+    upper_bound = np.min(objective[ac_positive_idx]) if np.any(ac_positive_idx) else np.inf
+    return lower_bound, upper_bound
 
 
 if HAS_NUMBA:
@@ -169,6 +206,70 @@ if HAS_NUMBA:
         return np.array(
             [flci_halflength - vbar_d + (1 - vbar_a) * theta, flci_halflength + vbar_d - (1 - vbar_a) * theta]
         )
+
+    @nb.jit(nopython=True, cache=True)
+    def _lee_coefficient_impl(eta, sigma):
+        sigma_eta = np.dot(sigma, eta)
+        eta_sigma_eta = np.dot(eta, sigma_eta)
+        if np.abs(eta_sigma_eta) < 1e-10:
+            raise ValueError("Estimated coefficient is effectively zero, cannot compute coefficient.")
+        return sigma_eta / eta_sigma_eta
+
+    @nb.jit(nopython=True, cache=True)
+    def _selection_matrix_impl(selection_0idx, size, n_selections, select_rows):
+        if select_rows:
+            m = np.zeros((n_selections, size))
+            for i in range(n_selections):
+                m[i, selection_0idx[i]] = 1.0
+        else:
+            m = np.zeros((size, n_selections))
+            for i in range(n_selections):
+                m[selection_0idx[i], i] = 1.0
+        return m
+
+    @nb.jit(nopython=True, cache=True)
+    def _compute_bounds_impl(eta, sigma, A, b, z):
+        sigma_eta = np.dot(sigma, eta)
+        eta_sigma_eta = np.dot(eta, sigma_eta)
+        c = sigma_eta / eta_sigma_eta
+        Az = np.dot(A, z)
+        Ac = np.dot(A, c)
+        lower_bound = -np.inf
+        upper_bound = np.inf
+        for i, ac_val in enumerate(Ac):
+            if abs(ac_val) > 1e-10:
+                obj_val = (b[i] - Az[i]) / ac_val
+                if ac_val < 0:
+                    lower_bound = max(lower_bound, obj_val)
+                elif obj_val < upper_bound:
+                    upper_bound = obj_val
+        return lower_bound, upper_bound
+
+
+def lee_coefficient(eta, sigma):
+    """Compute coefficient for constructing confidence intervals."""
+    eta = np.asarray(eta, dtype=np.float64).flatten()
+    sigma = np.asarray(sigma, dtype=np.float64)
+    return _lee_coefficient_impl(eta, sigma)
+
+
+def selection_matrix(selection, size, select="columns"):
+    """Create a selection matrix for extracting specific rows or columns."""
+    selection = np.asarray(selection)
+    selection_0idx = selection - 1
+    n_selections = len(selection)
+    select_rows = select == "rows"
+    return _selection_matrix_impl(selection_0idx, size, n_selections, select_rows)
+
+
+def compute_bounds(eta, sigma, A, b, z):
+    """Compute lower and upper bounds for confidence intervals."""
+    eta = np.asarray(eta, dtype=np.float64).flatten()
+    sigma = np.asarray(sigma, dtype=np.float64)
+    A = np.asarray(A, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64).flatten()
+    z = np.asarray(z, dtype=np.float64).flatten()
+    return _compute_bounds_impl(eta, sigma, A, b, z)
 
 
 def find_rows_with_post_period_values(A, post_period_indices):

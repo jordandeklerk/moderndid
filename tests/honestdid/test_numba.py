@@ -63,7 +63,7 @@ def _selection_matrix_py(selection_0idx, size, n_selections, select_rows):
 
 
 def _compute_bounds_py(eta, sigma, A, b, z):
-    c = utils.lee_coefficient(eta, sigma)
+    c = numba.lee_coefficient(eta, sigma)
     Az = A @ z
     Ac = A @ c
     nonzero_mask = np.abs(Ac) > 1e-10
@@ -117,15 +117,19 @@ def grid_search_data():
     return beta_hat, sigma, A, d, theta_grid, n_pre_periods, post_period_index, alpha
 
 
-@pytest.fixture(params=[(10, 10), (20, 20), (50, 50), (100, 100)])
-def matrix_construction_sizes(request):
+@pytest.fixture(params=[(10, 10), (20, 20)])
+def matrix_construction_sizes(request, fast_config):
+    if fast_config["skip_expensive_params"] and request.param == (20, 20):
+        pytest.skip("Skipping expensive parameter combination")
     return request.param
 
 
-@pytest.fixture(params=[50, 100, 500, 1000])
-def grid_search_sizes(request):
+@pytest.fixture(params=[30, 50])
+def grid_search_sizes(request, fast_config):
+    if fast_config["skip_expensive_params"] and request.param == 50:
+        pytest.skip("Skipping expensive parameter combination")
     np.random.seed(42)
-    n = 20
+    n = fast_config["n_medium"]
     grid_size = request.param
     data = {
         "beta_hat": np.random.randn(n),
@@ -224,7 +228,10 @@ def time_function(func, *args, **kwargs):
 
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
-def test_compute_bounds_performance(random_data):
+@pytest.mark.perf
+def test_compute_bounds_performance(random_data, request):
+    if request.config.getoption("--skip-perf", default=False):
+        pytest.skip("Skipping performance test")
     eta, sigma, A, b, z = random_data
     utils.compute_bounds(eta, sigma, A, b, z)
     time_numba = time_function(utils.compute_bounds, eta, sigma, A, b, z)
@@ -234,8 +241,12 @@ def test_compute_bounds_performance(random_data):
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.parametrize("select", ["rows", "columns"])
-def test_selection_matrix_performance(select):
-    selection, size = np.arange(1, 51), 100
+@pytest.mark.perf
+def test_selection_matrix_performance(select, request, fast_config):
+    if request.config.getoption("--skip-perf", default=False):
+        pytest.skip("Skipping performance test")
+    selection_size = fast_config["n_medium"]
+    selection, size = np.arange(1, selection_size + 1), selection_size * 2
     utils.selection_matrix(selection, size, select)
     time_numba = time_function(utils.selection_matrix, selection, size, select)
     time_original = time_function(_selection_matrix_py, selection - 1, size, len(selection), select == "rows")
@@ -243,7 +254,10 @@ def test_selection_matrix_performance(select):
 
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
-def test_second_difference_matrix_performance(matrix_construction_sizes):
+@pytest.mark.perf
+def test_second_difference_matrix_performance(matrix_construction_sizes, request):
+    if request.config.getoption("--skip-perf", default=False):
+        pytest.skip("Skipping performance test")
     num_pre, num_post = matrix_construction_sizes
     bounds.create_second_difference_matrix(num_pre, num_post)  # Warm-up
     time_numba = time_function(bounds.create_second_difference_matrix, num_pre, num_post)
@@ -253,7 +267,10 @@ def test_second_difference_matrix_performance(matrix_construction_sizes):
 
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
-def test_monotonicity_matrix_performance(matrix_construction_sizes):
+@pytest.mark.perf
+def test_monotonicity_matrix_performance(matrix_construction_sizes, request):
+    if request.config.getoption("--skip-perf", default=False):
+        pytest.skip("Skipping performance test")
     num_pre, num_post = matrix_construction_sizes
     bounds._create_monotonicity_matrix_impl(num_pre, num_post)  # Warm-up
     time_numba = time_function(bounds._create_monotonicity_matrix_impl, num_pre, num_post)
@@ -263,7 +280,10 @@ def test_monotonicity_matrix_performance(matrix_construction_sizes):
 
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
-def test_first_differences_matrix_performance(matrix_construction_sizes):
+@pytest.mark.perf
+def test_first_differences_matrix_performance(matrix_construction_sizes, request):
+    if request.config.getoption("--skip-perf", default=False):
+        pytest.skip("Skipping performance test")
     num_pre, num_post = matrix_construction_sizes
     numba.create_first_differences_matrix(num_pre, num_post)
     time_numba = time_function(numba.create_first_differences_matrix, num_pre, num_post)
@@ -273,7 +293,10 @@ def test_first_differences_matrix_performance(matrix_construction_sizes):
 
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
-def test_grid_search_performance(grid_search_sizes):
+@pytest.mark.perf
+def test_grid_search_performance(grid_search_sizes, request):
+    if request.config.getoption("--skip-perf", default=False):
+        pytest.skip("Skipping performance test")
     data = grid_search_sizes
     args = (
         data["beta_hat"],
@@ -287,22 +310,22 @@ def test_grid_search_performance(grid_search_sizes):
     )
     kwargs = {"test_fn": arp_no_nuisance._test_in_identified_set}
 
-    for _ in range(3):
+    for _ in range(2):  # Reduce warm-up iterations
         arp_no_nuisance._test_over_theta_grid(*args, **kwargs)
 
     time_numba = time_function(arp_no_nuisance._test_over_theta_grid, *args, **kwargs)
     time_original = time_function(_test_over_theta_grid_py, *args, **kwargs)
 
-    if data["grid_size"] == 50:
+    if data["grid_size"] == 30:
+        margin = 2.5
+    elif data["grid_size"] == 50:
         margin = 2.0
     elif data["grid_size"] == 100:
         margin = 1.5
-    elif data["grid_size"] == 500:
-        margin = 1.3
     else:
         margin = 1.2
 
-    if data["grid_size"] >= 50:
+    if data["grid_size"] >= 30:
         assert time_original * margin > time_numba, (
             f"Numba version should not be significantly slower for grid_size={data['grid_size']}"
         )

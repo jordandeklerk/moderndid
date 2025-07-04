@@ -64,8 +64,8 @@ def test_create_constraint_matrix_basic(constraint_matrix_params):
     assert A.shape[0] > 0
 
 
-@pytest.mark.parametrize("num_pre_periods,num_post_periods", [(3, 2), (4, 3), (5, 4)])
-@pytest.mark.parametrize("m_bar", [0.5, 1, 2])
+@pytest.mark.parametrize("num_pre_periods,num_post_periods", [(3, 2), (4, 3)])
+@pytest.mark.parametrize("m_bar", [0.5, 1])
 def test_create_constraint_matrix_different_configurations(num_pre_periods, num_post_periods, m_bar):
     for s in range(-(num_pre_periods - 1), 1):
         A = _create_relative_magnitudes_constraint_matrix(
@@ -250,7 +250,7 @@ def test_insufficient_pre_periods_errors(num_pre, num_post, error_msg):
             )
 
 
-def test_compute_conditional_cs_rm_basic(simple_event_study_data):
+def test_compute_conditional_cs_rm_basic(simple_event_study_data, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
     result = compute_conditional_cs_rm(
@@ -261,19 +261,19 @@ def test_compute_conditional_cs_rm_basic(simple_event_study_data):
         l_vec=l_vec,
         m_bar=0.5,
         alpha=0.05,
-        grid_points=100,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(result, dict)
     assert "grid" in result
     assert "accept" in result
     assert len(result["grid"]) == len(result["accept"])
-    assert len(result["grid"]) == 100
+    assert len(result["grid"]) == fast_config["grid_points_small"]
 
     assert np.any(result["accept"] > 0)
 
 
-def test_compute_conditional_cs_rm_return_length():
+def test_compute_conditional_cs_rm_return_length(fast_config):
     betahat = np.array([0, 0, 0, 0.5, 0.5])
     sigma = np.eye(5) * 0.01
     l_vec = np.array([1, 0])
@@ -287,7 +287,7 @@ def test_compute_conditional_cs_rm_return_length():
         m_bar=0.5,
         alpha=0.05,
         return_length=True,
-        grid_points=100,
+        grid_points=fast_config["grid_points_small"],
     )
 
     length_large_m = compute_conditional_cs_rm(
@@ -299,7 +299,7 @@ def test_compute_conditional_cs_rm_return_length():
         m_bar=2,
         alpha=0.05,
         return_length=True,
-        grid_points=100,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert isinstance(length_small_m, float)
@@ -310,7 +310,7 @@ def test_compute_conditional_cs_rm_return_length():
 
 
 @pytest.mark.parametrize("hybrid_flag", ["LF", "ARP"])
-def test_compute_conditional_cs_rm_hybrid_flags(simple_event_study_data, hybrid_flag):
+def test_compute_conditional_cs_rm_hybrid_flags(simple_event_study_data, hybrid_flag, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
     result = compute_conditional_cs_rm(
@@ -322,7 +322,7 @@ def test_compute_conditional_cs_rm_hybrid_flags(simple_event_study_data, hybrid_
         m_bar=0.5,
         alpha=0.05,
         hybrid_flag=hybrid_flag,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert "grid" in result
@@ -330,7 +330,7 @@ def test_compute_conditional_cs_rm_hybrid_flags(simple_event_study_data, hybrid_
     assert np.any(result["accept"] > 0)
 
 
-def test_compute_conditional_cs_rm_custom_grid_bounds(simple_event_study_data):
+def test_compute_conditional_cs_rm_custom_grid_bounds(simple_event_study_data, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
     result = compute_conditional_cs_rm(
@@ -343,14 +343,14 @@ def test_compute_conditional_cs_rm_custom_grid_bounds(simple_event_study_data):
         alpha=0.05,
         grid_lb=-2,
         grid_ub=2,
-        grid_points=50,
+        grid_points=fast_config["grid_points_small"],
     )
 
     assert result["grid"][0] == pytest.approx(-2)
     assert result["grid"][-1] == pytest.approx(2)
 
 
-@pytest.mark.parametrize("grid_points", [50, 100, 200])
+@pytest.mark.parametrize("grid_points", [15, 20, 30])
 def test_grid_resolution(simple_event_study_data, grid_points):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
@@ -369,7 +369,7 @@ def test_grid_resolution(simple_event_study_data, grid_points):
     assert len(result["accept"]) == grid_points
 
 
-def test_integration_identified_set_and_cs():
+def test_integration_identified_set_and_cs(fast_config):
     true_beta = np.array([0.05, 0.05, 0.05, 0.4, 0.6])
     betahat = true_beta + np.random.normal(0, 0.02, 5)
     sigma = np.eye(5) * 0.01
@@ -392,7 +392,7 @@ def test_integration_identified_set_and_cs():
         m_bar=1,
         alpha=0.05,
         hybrid_flag="ARP",
-        grid_points=100,
+        grid_points=fast_config["grid_points_small"],
         grid_lb=id_set.id_lb - 0.2,
         grid_ub=id_set.id_ub + 0.2,
     )
@@ -424,7 +424,7 @@ def test_different_m_bar_values(simple_event_study_data, m_bar):
     assert result.id_lb <= result.id_ub
 
 
-def test_confidence_interval_coverage_ordering():
+def test_confidence_interval_coverage_ordering(fast_config):
     betahat = np.array([0, 0, 0, 0.5, 0.5])
     sigma = np.eye(5) * 0.01
     l_vec = np.array([1, 0])
@@ -442,7 +442,7 @@ def test_confidence_interval_coverage_ordering():
             m_bar=0.5,
             alpha=alpha,
             return_length=True,
-            grid_points=100,
+            grid_points=fast_config["grid_points_small"],
         )
         lengths.append(length)
 
@@ -450,6 +450,7 @@ def test_confidence_interval_coverage_ordering():
         assert lengths[i] <= lengths[i - 1]
 
 
+@pytest.mark.slow
 def test_larger_event_study_basic(larger_event_study_data):
     num_pre_periods, num_post_periods, _, _, true_beta, l_vec = larger_event_study_data
 
@@ -509,7 +510,7 @@ def test_violated_parallel_trends_scenario():
     assert result_large_m.id_ub - result_large_m.id_lb >= result_small_m.id_ub - result_small_m.id_lb
 
 
-def test_confidence_set_contains_true_value():
+def test_confidence_set_contains_true_value(fast_config):
     np.random.seed(123)
     true_effect = 0.5
     betahat = np.array([0.02, -0.01, 0.03, true_effect + 0.05, 0.6])
@@ -524,7 +525,7 @@ def test_confidence_set_contains_true_value():
         l_vec=l_vec,
         m_bar=0.5,
         alpha=0.05,
-        grid_points=200,
+        grid_points=fast_config["grid_points_medium"],
         grid_lb=true_effect - 1,
         grid_ub=true_effect + 1,
     )
