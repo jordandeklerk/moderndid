@@ -1,5 +1,5 @@
 # pylint: disable=redefined-outer-name
-"""Tests for second differences with monotonicity restriction."""
+"""Tests for second differences under second differences restriction."""
 
 import numpy as np
 import pytest
