@@ -472,7 +472,6 @@ def _compute_cs_sdb_no_nuisance(
         "return_length": return_length,
     }
 
-    # Add method-specific parameters
     if hybrid_flag == "FLCI":
         arp_kwargs["flci_l"] = hybrid_list.get("flci_l")
         arp_kwargs["flci_halflength"] = hybrid_list.get("flci_halflength")
