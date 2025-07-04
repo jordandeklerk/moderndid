@@ -20,6 +20,7 @@ __all__ = [
     "find_rows_with_post_period_values",
     "create_first_differences_matrix",
     "create_second_differences_matrix",
+    "create_sdrm_constraint_matrix",
     "check_matrix_sparsity",
     "quadratic_form",
     "safe_divide",
@@ -117,6 +118,40 @@ def _compute_bounds_impl(eta, sigma, A, b, z):
     lower_bound = np.max(objective[ac_negative_idx]) if np.any(ac_negative_idx) else -np.inf
     upper_bound = np.min(objective[ac_positive_idx]) if np.any(ac_positive_idx) else np.inf
     return lower_bound, upper_bound
+
+
+def _create_sdrm_constraint_matrix_impl(num_pre_periods, num_post_periods, m_bar, s, max_positive=True, drop_zero=True):
+    total_periods = num_pre_periods + num_post_periods + 1
+
+    num_second_diffs = num_pre_periods + num_post_periods - 1
+    a_tilde = np.zeros((num_second_diffs, total_periods))
+
+    for r in range(num_second_diffs):
+        a_tilde[r, r : r + 3] = [1, -2, 1]
+
+    v_max_diff = np.zeros((1, total_periods))
+    idx = num_pre_periods + s - 1
+    v_max_diff[0, idx : idx + 3] = [1, -2, 1]
+
+    if not max_positive:
+        v_max_diff = -v_max_diff
+
+    a_ub_pre = np.tile(v_max_diff, (num_pre_periods - 1, 1))
+    a_ub_post = np.tile(m_bar * v_max_diff, (num_post_periods, 1))
+    a_ub = np.vstack([a_ub_pre, a_ub_post])
+
+    a_upper = a_tilde - a_ub
+    a_lower = -a_tilde - a_ub
+    a_matrix = np.vstack([a_upper, a_lower])
+
+    row_norms = np.sum(a_matrix**2, axis=1)
+    non_zero_rows = row_norms > 1e-10
+    a_matrix = a_matrix[non_zero_rows]
+
+    if drop_zero:
+        a_matrix = np.delete(a_matrix, num_pre_periods, axis=1)
+
+    return a_matrix
 
 
 if HAS_NUMBA:
@@ -245,6 +280,81 @@ if HAS_NUMBA:
                     upper_bound = obj_val
         return lower_bound, upper_bound
 
+    @nb.jit(nopython=True, cache=True)
+    def _create_sdrm_constraint_matrix_impl(
+        num_pre_periods, num_post_periods, m_bar, s, max_positive=True, drop_zero=True
+    ):
+        total_periods = num_pre_periods + num_post_periods + 1
+
+        num_second_diffs = num_pre_periods + num_post_periods - 1
+        a_tilde = np.zeros((num_second_diffs, total_periods))
+
+        for r in range(num_second_diffs):
+            a_tilde[r, r] = 1.0
+            a_tilde[r, r + 1] = -2.0
+            a_tilde[r, r + 2] = 1.0
+
+        v_max_diff = np.zeros((1, total_periods))
+        idx = num_pre_periods + s - 1
+        v_max_diff[0, idx] = 1.0
+        v_max_diff[0, idx + 1] = -2.0
+        v_max_diff[0, idx + 2] = 1.0
+
+        if not max_positive:
+            v_max_diff = -v_max_diff
+
+        a_ub = np.zeros((num_pre_periods + num_post_periods - 1, total_periods))
+
+        for i in range(num_pre_periods - 1):
+            for j in range(total_periods):
+                a_ub[i, j] = v_max_diff[0, j]
+
+        for i in range(num_pre_periods - 1, num_pre_periods + num_post_periods - 1):
+            for j in range(total_periods):
+                a_ub[i, j] = m_bar * v_max_diff[0, j]
+
+        a_upper = a_tilde - a_ub
+        a_lower = -a_tilde - a_ub
+
+        a_matrix_full = np.zeros((2 * num_second_diffs, total_periods))
+        for i in range(num_second_diffs):
+            for j in range(total_periods):
+                a_matrix_full[i, j] = a_upper[i, j]
+                a_matrix_full[i + num_second_diffs, j] = a_lower[i, j]
+
+        non_zero_count = 0
+        for i in range(2 * num_second_diffs):
+            row_norm = 0.0
+            for j in range(total_periods):
+                row_norm += a_matrix_full[i, j] ** 2
+            if row_norm > 1e-10:
+                non_zero_count += 1
+
+        if drop_zero:
+            a_matrix = np.zeros((non_zero_count, total_periods - 1))
+        else:
+            a_matrix = np.zeros((non_zero_count, total_periods))
+
+        row_idx = 0
+        for i in range(2 * num_second_diffs):
+            row_norm = 0.0
+            for j in range(total_periods):
+                row_norm += a_matrix_full[i, j] ** 2
+
+            if row_norm > 1e-10:
+                if drop_zero:
+                    col_idx = 0
+                    for j in range(total_periods):
+                        if j != num_pre_periods:
+                            a_matrix[row_idx, col_idx] = a_matrix_full[i, j]
+                            col_idx += 1
+                else:
+                    for j in range(total_periods):
+                        a_matrix[row_idx, j] = a_matrix_full[i, j]
+                row_idx += 1
+
+        return a_matrix
+
 
 def lee_coefficient(eta, sigma):
     """Compute coefficient for constructing confidence intervals."""
@@ -318,3 +428,8 @@ def prepare_theta_grid_y_values(beta_hat_or_y, period_vec_or_a_inv, theta_grid):
 def compute_hybrid_dbar(flci_halflength, vbar, d_vec, a_gamma_inv_one, theta):
     """Compute hybrid dbar for FLCI case."""
     return _compute_hybrid_dbar_impl(flci_halflength, vbar, d_vec, a_gamma_inv_one, theta)
+
+
+def create_sdrm_constraint_matrix(num_pre_periods, num_post_periods, m_bar, s, max_positive=True, drop_zero=True):
+    """Create constraint matrix for Delta^{SDRM}."""
+    return _create_sdrm_constraint_matrix_impl(num_pre_periods, num_post_periods, m_bar, s, max_positive, drop_zero)
