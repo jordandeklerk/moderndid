@@ -55,6 +55,11 @@ from .delta_sdrm import (
     compute_conditional_cs_sdrm,
     compute_identified_set_sdrm,
 )
+from .delta_sdrmb import (
+    DeltaSDRMBResult,
+    compute_conditional_cs_sdrmb,
+    compute_identified_set_sdrmb,
+)
 from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
@@ -125,4 +130,8 @@ __all__ = [
     "DeltaSDRMResult",
     "compute_conditional_cs_sdrm",
     "compute_identified_set_sdrm",
+    # Delta SDRMB (second differences with relative magnitudes and bias)
+    "DeltaSDRMBResult",
+    "compute_conditional_cs_sdrmb",
+    "compute_identified_set_sdrmb",
 ]
