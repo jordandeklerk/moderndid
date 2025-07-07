@@ -72,7 +72,7 @@ from .fixed_length_ci import (
 from .numba import (
     lee_coefficient,
 )
-from .plots import (
+from .plots.core import (
     event_study_plot,
     plot_sensitivity,
     plot_sensitivity_rm,
