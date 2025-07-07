@@ -156,7 +156,7 @@ def _create_sdrm_constraint_matrix_impl(num_pre_periods, num_post_periods, m_bar
 
 if HAS_NUMBA:
 
-    @nb.jit(nopython=True, cache=True)
+    @nb.njit(cache=True)
     def _find_rows_with_post_period_values_impl(A, post_period_indices):
         rows = []
         for i in range(A.shape[0]):
@@ -166,7 +166,7 @@ if HAS_NUMBA:
                     break
         return np.array(rows) if rows else None
 
-    @nb.jit(nopython=True, cache=True)
+    @nb.njit(cache=True)
     def _create_first_differences_matrix_impl(num_pre_periods, num_post_periods):
         total_periods = num_pre_periods + num_post_periods + 1
         a_tilde = np.zeros((num_pre_periods + num_post_periods, total_periods))
@@ -175,7 +175,7 @@ if HAS_NUMBA:
             a_tilde[r, r + 1] = 1.0
         return a_tilde
 
-    @nb.jit(nopython=True, cache=True)
+    @nb.njit(cache=True)
     def _create_second_differences_matrix_impl(num_constraints, total_periods):
         A_positive = np.zeros((num_constraints, total_periods))
         for i in range(num_constraints):
@@ -185,7 +185,7 @@ if HAS_NUMBA:
                 A_positive[i, i + 2] = 1.0
         return A_positive
 
-    @nb.jit(nopython=True, cache=True)
+    @nb.njit(cache=True)
     def _check_matrix_sparsity_pattern_impl(A, threshold=1e-10):
         nnz = 0
         total_elements = A.shape[0] * A.shape[1]
@@ -214,7 +214,7 @@ if HAS_NUMBA:
             else:
                 result[i] = x[i]
 
-    @nb.jit(nopython=True, cache=True, parallel=True)
+    @nb.njit(cache=True, parallel=True)
     def _quadratic_form_impl(x, A):
         n = x.shape[0]
         result = 0.0
@@ -225,7 +225,7 @@ if HAS_NUMBA:
             result += x[i] * row_sum
         return result
 
-    @nb.jit(nopython=True, parallel=True, cache=True)
+    @nb.njit(parallel=True, cache=True)
     def _prepare_theta_grid_y_values_impl(beta_hat_or_y, period_vec_or_a_inv, theta_grid):
         n_grid = len(theta_grid)
         n_params = len(beta_hat_or_y)
@@ -234,7 +234,7 @@ if HAS_NUMBA:
             y_matrix[i] = beta_hat_or_y - period_vec_or_a_inv * theta_grid[i]
         return y_matrix
 
-    @nb.jit(nopython=True, cache=True)
+    @nb.njit(cache=True)
     def _compute_hybrid_dbar_impl(flci_halflength, vbar, d_vec, a_gamma_inv_one, theta):
         vbar_d = np.dot(vbar, d_vec)
         vbar_a = np.dot(vbar, a_gamma_inv_one)
@@ -242,7 +242,7 @@ if HAS_NUMBA:
             [flci_halflength - vbar_d + (1 - vbar_a) * theta, flci_halflength + vbar_d - (1 - vbar_a) * theta]
         )
 
-    @nb.jit(nopython=True, cache=True)
+    @nb.njit(cache=True)
     def _lee_coefficient_impl(eta, sigma):
         sigma_eta = np.dot(sigma, eta)
         eta_sigma_eta = np.dot(eta, sigma_eta)
@@ -250,7 +250,7 @@ if HAS_NUMBA:
             raise ValueError("Estimated coefficient is effectively zero, cannot compute coefficient.")
         return sigma_eta / eta_sigma_eta
 
-    @nb.jit(nopython=True, cache=True)
+    @nb.njit(cache=True)
     def _selection_matrix_impl(selection_0idx, size, n_selections, select_rows):
         if select_rows:
             m = np.zeros((n_selections, size))
@@ -262,7 +262,7 @@ if HAS_NUMBA:
                 m[selection_0idx[i], i] = 1.0
         return m
 
-    @nb.jit(nopython=True, cache=True)
+    @nb.njit(cache=True)
     def _compute_bounds_impl(eta, sigma, A, b, z):
         sigma_eta = np.dot(sigma, eta)
         eta_sigma_eta = np.dot(eta, sigma_eta)
@@ -280,7 +280,7 @@ if HAS_NUMBA:
                     upper_bound = obj_val
         return lower_bound, upper_bound
 
-    @nb.jit(nopython=True, cache=True)
+    @nb.njit(cache=True)
     def _create_sdrm_constraint_matrix_impl(
         num_pre_periods, num_post_periods, m_bar, s, max_positive=True, drop_zero=True
     ):
