@@ -69,6 +69,10 @@ from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
 )
+from .honest_did import (
+    HonestDiDResult,
+    honest_did,
+)
 from .numba import (
     lee_coefficient,
 )
@@ -93,6 +97,9 @@ from .utils import (
 )
 
 __all__ = [
+    # Main interface
+    "honest_did",
+    "HonestDiDResult",
     # Utility functions
     "selection_matrix",
     "compute_bounds",
