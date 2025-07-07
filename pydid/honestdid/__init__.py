@@ -72,6 +72,18 @@ from .fixed_length_ci import (
 from .numba import (
     lee_coefficient,
 )
+from .plots import (
+    event_study_plot,
+    plot_sensitivity,
+    plot_sensitivity_rm,
+)
+from .sensitivity import (
+    OriginalCSResult,
+    SensitivityResult,
+    construct_original_cs,
+    create_sensitivity_results,
+    create_sensitivity_results_relative_magnitudes,
+)
 from .utils import (
     basis_vector,
     compute_bounds,
@@ -143,4 +155,14 @@ __all__ = [
     "DeltaSDRMMResult",
     "compute_conditional_cs_sdrmm",
     "compute_identified_set_sdrmm",
+    # Main sensitivity analysis functions
+    "OriginalCSResult",
+    "SensitivityResult",
+    "construct_original_cs",
+    "create_sensitivity_results",
+    "create_sensitivity_results_relative_magnitudes",
+    # Plotting functions
+    "event_study_plot",
+    "plot_sensitivity",
+    "plot_sensitivity_rm",
 ]
