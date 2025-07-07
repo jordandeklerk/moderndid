@@ -62,18 +62,12 @@ def honest_did(
     **kwargs : Additional parameters
         Additional parameters passed to sensitivity analysis functions:
 
-        - method : str
-            CI method ('FLCI', 'Conditional', 'C-F', 'C-LF')
-        - m_vec : ndarray
-            Vector of M values for smoothness bounds
-        - m_bar_vec : ndarray
-            Vector of Mbar values for relative magnitude bounds
-        - monotonicity_direction : str
-            'increasing' or 'decreasing'
-        - bias_direction : str
-            'positive' or 'negative'
-        - alpha : float
-            Significance level (default 0.05)
+        - method : CI method ('FLCI', 'Conditional', 'C-F', 'C-LF')
+        - m_vec : Vector of M values for smoothness bounds
+        - m_bar_vec : Vector of Mbar values for relative magnitude bounds
+        - monotonicity_direction : 'increasing' or 'decreasing'
+        - bias_direction : 'positive' or 'negative'
+        - alpha : Significance level (default 0.05)
 
     Returns
     -------
