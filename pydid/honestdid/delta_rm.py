@@ -43,10 +43,50 @@ def compute_conditional_cs_rm(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{RM}`(Mbar).
+    r"""Compute conditional confidence set for :math:`\Delta^{RM}(\bar{M})`.
 
-    Computes confidence set by taking the union over all choices of
+    Computes the confidence set by taking the union over all choices of
     reference period :math:`s` and sign restrictions (+)/(-).
+
+    The relative magnitudes restriction :math:`\Delta^{RM}(\bar{M})` formalizes the
+    intuition that post-treatment violations of parallel trends should not be "too
+    different" from pre-treatment violations:
+
+    .. math::
+
+        \Delta^{RM}(\bar{M}) = \{\delta : \forall t \geq 0, |\delta_{t+1} - \delta_t| \leq
+        \bar{M} \cdot \max_{s<0} |\delta_{s+1} - \delta_s|\}.
+
+    This enables partial identification of treatment effects when parallel trends may
+    be violated. Note that :math:`\Delta^{RM}(\bar{M})` can be written as a finite union of polyhedra,
+    allowing the use of linear programming for computing identified sets.
+
+    The confidence set is computed as
+
+    .. math::
+
+        CS = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
+            CS_{s,+} \cup CS_{s,-}
+        \right),
+
+    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets under the (+) and
+    (-) sign restrictions respectively. The union is necessary because the maximum
+    pre-treatment violation could occur at any period :math:`s` with either sign.
+
+    Since :math:`\Delta^{RM}(\bar{M})` is a finite union of polyhedra, a valid confidence
+    set is constructed by taking the union of the confidence sets for each of its
+    components (Lemma 2.2).
+
+    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
+    set has uniform asymptotic coverage
+
+    .. math::
+
+        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
+        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
+
+    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta` for all
+    :math:`P \in \mathcal{P}`.
 
     Parameters
     ----------
@@ -59,9 +99,11 @@ def compute_conditional_cs_rm(
     num_post_periods : int
         Number of post-treatment periods.
     l_vec : ndarray, optional
-        Vector defining parameter of interest. If None, defaults to first post-period.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`.
+        If None, defaults to first post-period, :math:`\tau_{post,1}`.
     m_bar : float, default=0
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`. Controls how much larger post-treatment
+        violations can be relative to pre-treatment violations.
     alpha : float, default=0.05
         Significance level.
     hybrid_flag : {'LF', 'ARP'}, default='LF'
@@ -89,22 +131,16 @@ def compute_conditional_cs_rm(
 
     Notes
     -----
-    The confidence set is computed as:
-
-    .. math::
-
-        CS = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
-            CS_{s,+} \cup CS_{s,-}
-        \right)
-
-    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets
-    under the (+) and (-) restrictions respectively.
+    The confidence set is constructed using the moment inequality approach from Section 3 of Rambachan & Roth (2023).
+    Testing :math:`H_0: \theta = \bar{\theta}, \delta \in \Delta` is transformed into testing a system of moment
+    inequalities with linear nuisance parameters. The conditional/hybrid tests from Andrews, Roth & Pakes (2021) handle
+    the computational challenge of high-dimensional nuisance parameters by exploiting the linear structure.
 
     References
     ----------
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods < 2:
         raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
@@ -185,23 +221,45 @@ def compute_conditional_cs_rm(
 
 
 def compute_identified_set_rm(m_bar, true_beta, l_vec, num_pre_periods, num_post_periods):
-    r"""Compute identified set for :math:`\Delta^{RM}`(Mbar).
+    r"""Compute identified set for :math:`\Delta^{RM}(\bar{M})`.
 
     Computes the identified set by taking the union over all choices of
     reference period s and sign restrictions (+)/(-).
 
+    The identified set is computed as
+
+    .. math::
+
+        \mathcal{S}(\beta, \Delta^{RM}(\bar{M})) = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
+            \mathcal{S}_{s,+} \cup \mathcal{S}_{s,-}
+        \right),
+
+    For each fixed :math:`(s, \text{sign})`, the bounds are obtained from Lemma 2.1 by solving:
+
+    .. math::
+
+        \theta^{ub} = l'\beta_{post} - \min_{\delta} l'\delta_{post}
+
+        \theta^{lb} = l'\beta_{post} - \max_{\delta} l'\delta_{post}
+
+    subject to :math:`\delta_{pre} = \beta_{pre}` and :math:`\delta \in \Delta^{RM}_{s,\text{sign}}(\bar{M})`.
+
+    These are linear programs because the constraint set is a polyhedron. The final
+    identified set is :math:`[\min_s \theta^{lb}_s, \max_s \theta^{ub}_s]`.
+
     Parameters
     ----------
     m_bar : float
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`. Controls how much larger post-treatment
+        violations can be relative to pre-treatment violations.
     true_beta : ndarray
-        True coefficient values (pre and post periods).
+        True coefficient values :math:`\beta = (\beta_{pre}', \beta_{post}')'`.
     l_vec : ndarray
-        Vector defining parameter of interest.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`.
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`\underline{T}`.
     num_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`\bar{T}`.
 
     Returns
     -------
@@ -210,16 +268,20 @@ def compute_identified_set_rm(m_bar, true_beta, l_vec, num_pre_periods, num_post
 
     Notes
     -----
-    The identified set is computed as:
+    This implements the partial identification approach from Section 2 of Rambachan
+    & Roth (2023). The relative magnitudes restriction formalizes the intuition that
+    post-treatment violations of parallel trends should not be "too different" from
+    pre-treatment violations.
 
-    .. math::
+    Since :math:`\Delta^{RM}(\bar{M})` is a finite union of polyhedra, the identified set is
+    computed by solving linear programs for each polyhedron in the union. The identified set is
+    then the union of the bounds from each polyhedron.
 
-        ID = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
-            ID_{s,+} \cup ID_{s,-}
-        \right)
+    References
+    ----------
 
-    where :math:`ID_{s,+}` and :math:`ID_{s,-}` are the identified sets
-    under the (+) and (-) restrictions respectively.
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods < 2:
         raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
@@ -268,43 +330,45 @@ def _create_relative_magnitudes_constraint_matrix(
     max_positive=True,
     drop_zero_period=True,
 ):
-    r"""Create constraint matrix for :math:`\Delta^{RM}_{s,(.)}`(Mbar).
+    r"""Create constraint matrix for :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M})`.
 
-    Creates matrix A such that the constraint :math:`\delta \in \Delta^{RM}_{s,(.)}`(Mbar)
+    Creates matrix A such that the constraint :math:`\delta \in \Delta^{RM}_{s,\text{sign}}(\bar{M})`
     can be written as :math:`A \delta \leq d`.
+
+    The key computational step is linearizing the absolute value constraint
+    :math:`|\delta_{t+1} - \delta_t| \leq \bar{M} \cdot \text{sign} \cdot (\delta_{s+1} - \delta_s)`
+    by decomposing it into two inequalities:
+
+    .. math::
+
+        \delta_{t+1} - \delta_t \leq \bar{M} \cdot \text{sign} \cdot (\delta_{s+1} - \delta_s)
+
+        -(\delta_{t+1} - \delta_t) \leq \bar{M} \cdot \text{sign} \cdot (\delta_{s+1} - \delta_s)
+
+    The matrix A stacks these constraints for all time periods, enabling the use of
+    standard linear programming solvers.
 
     Parameters
     ----------
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`\underline{T}`.
     num_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`\bar{T}`.
     m_bar : float, default=1
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`.
     s : int, default=0
         Reference period for relative magnitudes restriction.
-        Must be between -(num_pre_periods-1) and 0.
+        Must be between :math:`-(\underline{T}-1)` and 0.
     max_positive : bool, default=True
-        If True, uses (+) restriction; if False, uses (-) restriction.
+        If True, uses (+) restriction where :math:`\delta_{s+1} - \delta_s \geq 0`;
+        if False, uses (-) restriction where :math:`\delta_{s+1} - \delta_s \leq 0`.
     drop_zero_period : bool, default=True
-        If True, drops period t=0 from the constraint matrix.
+        If True, drops period t=0 from the constraint matrix (standard normalization).
 
     Returns
     -------
     ndarray
-        Constraint matrix A.
-
-    Notes
-    -----
-    The relative magnitudes restriction :math:`\Delta^{RM}_{s,(.)}`(Mbar) requires
-    that changes in the bias are no more than Mbar times the maximum change
-    between periods s-1 and s.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        Constraint matrix A of shape (n_constraints, n_periods).
     """
     if not -(num_pre_periods - 1) <= s <= 0:
         raise ValueError(f"s must be between {-(num_pre_periods - 1)} and 0, got {s}")
@@ -350,17 +414,24 @@ def _compute_identified_set_rm_fixed_s(
     num_pre_periods,
     num_post_periods,
 ):
-    r"""Compute identified set for :math:`\Delta^{RM}_{s,(.)}`(Mbar) at fixed s.
+    r"""Compute identified set for :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M})` at fixed s.
 
-    Computes bounds on :math:`l'\delta_{post}` subject to :math:`\delta \in \Delta^{RM}_{s,(.)}`(Mbar)
-    and :math:`\delta_{pre} = \beta_{pre}`.
+    Helper function that solves the linear programs for a specific choice of
+    reference period :math:`s` and sign. The constraint
+
+    .. math::
+
+        |\delta_{t+1} - \delta_t| \leq \bar{M} \cdot |\delta_{s+1} - \delta_s|
+
+    is linearized by decomposing the absolute values, resulting in the polyhedron
+    :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M})`.
 
     Parameters
     ----------
     s : int
         Reference period for relative magnitudes restriction.
     m_bar : float
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`.
     max_positive : bool
         If True, uses (+) restriction; if False, uses (-) restriction.
     true_beta : ndarray
@@ -405,7 +476,8 @@ def _compute_identified_set_rm_fixed_s(
     if b_eq.ndim != 1:
         b_eq = b_eq.flatten()
 
-    # Solve for maximum
+    # Solve linear program: max l'*delta_post subject to delta in Delta_RM and delta_pre = beta_pre
+    # This gives the lower bound of the identified set: theta_lb = l'*beta_post - max(l'*delta_post)
     result_max = opt.linprog(
         c=-f_delta,
         A_ub=A_ineq,
@@ -416,7 +488,8 @@ def _compute_identified_set_rm_fixed_s(
         method="highs",
     )
 
-    # Solve for minimum
+    # Solve linear program: min l'*delta_post subject to delta in Delta_RM and delta_pre = beta_pre
+    # This gives the upper bound of the identified set: theta_ub = l'*beta_post - min(l'*delta_post)
     result_min = opt.linprog(
         c=f_delta,
         A_ub=A_ineq,
@@ -455,7 +528,23 @@ def _compute_conditional_cs_rm_fixed_s(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{RM}_{s,(.)}`(Mbar) at fixed s.
+    r"""Compute conditional confidence set for :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M})` at fixed s.
+
+    Implements the moment inequality approach from Section 3 of Rambachan & Roth (2023)
+    for constructing confidence sets under the relative magnitudes restriction. It uses
+    the conditional/hybrid tests from Andrews, Roth & Pakes (2021) to handle the nuisance
+    parameters that arise in the moment inequality formulation.
+
+    Testing :math:`H_0: \theta = \bar{\theta}, \delta \in \Delta` is equivalent to testing a system of
+    moment inequalities given by
+
+    .. math::
+
+        H_0: \exists \tau_{post} \text{ s.t. } l'\tau_{post} = \bar{\theta} \text{ and }
+        \mathbb{E}[Y_n - A L_{post} \tau_{post}] \leq 0,
+
+    where :math:`Y_n = A\hat{\beta}_n - d` and :math:`A` is the constraint matrix. This transforms
+    the partial identification problem into a moment inequality testing problem with linear nuisance parameters.
 
     Parameters
     ----------
@@ -464,7 +553,7 @@ def _compute_conditional_cs_rm_fixed_s(
     max_positive : bool
         If True, uses (+) restriction; if False, uses (-) restriction.
     m_bar : float
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`.
     betahat : ndarray
         Estimated event study coefficients.
     sigma : ndarray
@@ -496,6 +585,18 @@ def _compute_conditional_cs_rm_fixed_s(
     -------
     dict
         Dictionary with 'grid' and 'accept' arrays.
+
+    Notes
+    -----
+    The conditional test addresses the computational challenge of having :math:`\bar{T}-1`
+    dimensional nuisance parameters by exploiting the linear structure. It uses the dual
+    linear program to identify binding moments and conditions on sufficient statistics to
+    eliminate nuisance parameter dependence. The hybrid test combines this with a least-favorable
+    critical value to improve power when multiple moments are close to binding.
+
+    Theoretical guarantees ensure uniform asymptotic size control and consistency. Under the
+    linear independence constraint qualification (LICQ) condition, the conditional test achieves
+    optimal local asymptotic power.
     """
     if hybrid_kappa is None:
         hybrid_kappa = alpha / 10
@@ -581,9 +682,9 @@ def _compute_conditional_cs_rm_fixed_s(
 
 
 def _create_relative_magnitudes_constraint_vector(A_rm):
-    r"""Create constraint vector for :math:`\Delta^{RM}_{s,(.)}`(Mbar).
+    r"""Create constraint vector for :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M})`.
 
-    Creates vector d such that the constraint :math:`\delta \in \Delta^{RM}_{s,(.)}`(Mbar)
+    Creates vector :math:`d` such that the constraint :math:`\delta \in \Delta^{RM}_{s,\text{sign}}(\bar{M})`
     can be written as :math:`A \delta \leq d`.
 
     Parameters
@@ -595,5 +696,11 @@ def _create_relative_magnitudes_constraint_vector(A_rm):
     -------
     ndarray
         Constraint vector d (all zeros).
+
+    Notes
+    -----
+    The constraint vector is all zeros because the relative magnitudes bound is
+    incorporated directly into the constraint matrix :math:`A` through the construction
+    in :func:`_create_relative_magnitudes_constraint_matrix`.
     """
     return np.zeros(A_rm.shape[0])

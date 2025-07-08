@@ -44,11 +44,51 @@ def compute_conditional_cs_sdrm(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{SDRM}(M)`.
+    r"""Compute conditional confidence set for :math:`\Delta^{SDRM}(\bar{M})`.
 
-    Computes a confidence set for :math:`l'\beta_{post}` under the restriction that delta
-    lies in :math:`\Delta^{SDRM}(M)`, which bounds the second differences in post-treatment
+    Computes a confidence set for :math:`l'\tau_{post}` under the restriction that delta
+    lies in :math:`\Delta^{SDRM}(\bar{M})`, which bounds the second differences in post-treatment
     periods based on the maximum absolute second difference in pre-treatment periods.
+
+    The combined smoothness and relative magnitudes restriction :math:`\Delta^{SDRM}(\bar{M})`
+    formalizes the intuition that deviations from linearity in the post-treatment differential
+    trend should be bounded by the observed non-linearities in the pre-treatment period:
+
+    .. math::
+
+        \Delta^{SDRM}(\bar{M}) = \{\delta : \forall t \geq 0,
+        |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \leq
+        \bar{M} \cdot \max_{s<0} |(\delta_{s+1} - \delta_s) - (\delta_s - \delta_{s-1})|\}
+
+    This restriction is useful when researchers believe the differential trend evolves
+    relatively smoothly but are uncertain about the appropriate smoothness bound M.
+
+    The confidence set is computed as
+
+    .. math::
+
+        CS = \bigcup_{s=-(T_{pre}-2)}^{0} \left(
+            CS_{s,+} \cup CS_{s,-}
+        \right)
+
+    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets under the (+) and
+    (-) sign restrictions respectively. The union is necessary because the maximum
+    pre-treatment second difference could occur at any period :math:`s` with either sign.
+
+    Since :math:`\Delta^{SDRM}(\bar{M})` is a finite union of polyhedra, a valid confidence
+    set is constructed by taking the union of the confidence sets for each of its
+    components (Lemma 2.2).
+
+    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
+    set has uniform asymptotic coverage
+
+    .. math::
+
+        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
+        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
+
+    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
+    for all :math:`P \in \mathcal{P}`.
 
     Parameters
     ----------
@@ -61,10 +101,10 @@ def compute_conditional_cs_sdrm(
     num_post_periods : int
         Number of post-treatment periods.
     l_vec : ndarray, optional
-        Vector defining parameter of interest. If None, defaults to first post-period.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`. If None, defaults to first post-period.
     m_bar : float, default=0
-        Relative magnitude parameter. Post-period second differences can be at most
-        m_bar times the max pre-period second difference.
+        Relative magnitude parameter :math:`\bar{M}`. Post-period second differences can be at most
+        :math:`\bar{M}` times the max pre-period second difference.
     alpha : float, default=0.05
         Significance level.
     hybrid_flag : {'LF', 'ARP', 'FLCI'}, default='LF'
@@ -98,16 +138,19 @@ def compute_conditional_cs_sdrm(
 
     Notes
     -----
-    The restriction :math:`\Delta^{SDRM}(M)` allows the maximum absolute second difference
-    in post-treatment periods to be at most M times the maximum absolute second difference
-    in pre-treatment periods. This captures the idea that violations of parallel trends
-    should be proportional to pre-existing variation.
+    The confidence set is constructed using the moment inequality approach from Section 3.
+    Since :math:`\Delta^{SDRM}(\bar{M})` is a finite union of polyhedra, we can apply Lemma 2.2
+    to construct a valid confidence set by taking the union of the confidence sets for each
+    of its components.
+
+    Unlike :math:`\Delta^{SD}(M)`, this restriction is not convex, so Fixed Length Confidence
+    Intervals (FLCIs) may have poor performance. The conditional/hybrid approach is recommended.
 
     References
     ----------
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods == 1:
         raise ValueError(
@@ -207,43 +250,56 @@ def compute_identified_set_sdrm(
     num_pre_periods,
     num_post_periods,
 ):
-    r"""Compute identified set for :math:`\Delta^{SDRM}(M)`.
+    r"""Compute identified set for :math:`\Delta^{SDRM}(\bar{M})`.
 
-    Computes the identified set for :math:`l'\beta_{post}` under the restriction that the
-    underlying trend delta lies in :math:`\Delta^{SDRM}(M)`, taking the union over all
+    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
+    underlying trend delta lies in :math:`\Delta^{SDRM}(\bar{M})`, taking the union over all
     choices of s and sign.
+
+    The identified set is computed as
+
+    .. math::
+
+        \mathcal{S}(\beta, \Delta^{SDRM}(\bar{M})) = \bigcup_{s=-(T_{pre}-2)}^{0} \left(
+            \mathcal{S}_{s,+} \cup \mathcal{S}_{s,-}
+        \right),
+
+    where :math:`\mathcal{S}_{s,\text{sign}}` is the identified set when the maximum
+    pre-period second difference occurs at period :math:`s` with the given sign.
+
+    For each :math:`(s, \text{sign})`, we solve linear programs to find the bounds
+    of :math:`l'\tau_{post}` subject to :math:`\delta \in \Delta^{SDRM}_{s,\text{sign}}(\bar{M})`
+    and :math:`\delta_{pre} = \beta_{pre}`.
+
+    Under the combined smoothness and relative magnitudes restriction, the causal parameter
+    :math:`\theta = l'\tau_{post}` is partially identified. The identified set accounts for
+    uncertainty about which pre-period has the maximum second difference.
 
     Parameters
     ----------
     m_bar : float
-        Relative magnitude parameter. Second differences in post-treatment periods
-        can be at most m_bar times the maximum absolute second difference in
+        Relative magnitude parameter :math:`\bar{M}`. Second differences in post-treatment periods
+        can be at most :math:`\bar{M}` times the maximum absolute second difference in
         pre-treatment periods.
     true_beta : ndarray
-        True coefficient values (pre and post periods).
+        True coefficient values :math:`\beta = (\beta_{pre}', \beta_{post}')'`.
     l_vec : ndarray
-        Vector defining parameter of interest.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`.
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`\underline{T}`.
     num_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`\bar{T}`.
 
     Returns
     -------
     DeltaSDRMResult
         Lower and upper bounds of the identified set.
 
-    Notes
-    -----
-    The identified set is computed by solving linear programs for each choice of
-    period s and sign (positive/negative maximum), then taking the union of all
-    resulting intervals.
-
     References
     ----------
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     l_vec = np.asarray(l_vec).flatten()
 
@@ -546,22 +602,32 @@ def _create_sdrm_constraint_matrix(
     max_positive=True,
     drop_zero=True,
 ):
-    r"""Create constraint matrix A for :math:`\Delta^{SDRM}_{s,sign}(M)`.
+    r"""Create constraint matrix A for :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})`.
 
     Creates a matrix for the linear constraints that delta is in
-    :math:`\Delta^{SDRM}_{s,sign}(M)`, where sign is + if max_positive = True
+    :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})`, where sign is + if max_positive = True
     and - if max_positive = False.
+
+    The constraint :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})` restricts the second
+    differences of :math:`\delta` as follows:
+
+    .. math::
+
+        |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \leq
+        \bar{M} \cdot \text{sign} \cdot [(\delta_{s+1} - \delta_s) - (\delta_s - \delta_{s-1})]
+
+    for all :math:`t`, where sign is +1 if max_positive=True and -1 if max_positive=False.
 
     Parameters
     ----------
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`\underline{T}`.
     num_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`\bar{T}`.
     m_bar : float
-        Relative magnitude parameter.
+        Relative magnitude parameter :math:`\bar{M}`.
     s : int
-        Period index for maximum second difference (must be <= 0).
+        Period index for maximum second difference (must be :math:`\leq 0`).
     max_positive : bool, default=True
         If True, period s has maximum positive second difference.
         If False, period s has maximum negative second difference.
@@ -571,13 +637,20 @@ def _create_sdrm_constraint_matrix(
     Returns
     -------
     ndarray
-        Constraint matrix A such that delta in Delta^{SDRM} iff A * delta <= d.
+        Constraint matrix A such that :math:`\delta \in \Delta^{SDRM}_{s,\text{sign}}(\bar{M})`
+        iff :math:`A \delta \leq d`.
+
+    Notes
+    -----
+    This constraint combines the smoothness intuition of :math:`\Delta^{SD}` with the
+    relative magnitudes approach of :math:`\Delta^{RM}`, allowing the smoothness bound
+    to depend on observed pre-treatment variation.
     """
     return create_sdrm_constraint_matrix(num_pre_periods, num_post_periods, m_bar, s, max_positive, drop_zero)
 
 
 def _create_sdrm_constraint_vector(a_matrix):
-    """Create constraint vector d for Delta^{SDRM}.
+    r"""Create constraint vector d for :math:`\Delta^{SDRM}`.
 
     Parameters
     ----------
@@ -588,5 +661,10 @@ def _create_sdrm_constraint_vector(a_matrix):
     -------
     ndarray
         Constraint vector d (all zeros for SDRM).
+
+    Notes
+    -----
+    The constraint vector is all zeros because the relative magnitudes bound is
+    incorporated directly into the constraint matrix A.
     """
     return np.zeros(a_matrix.shape[0])

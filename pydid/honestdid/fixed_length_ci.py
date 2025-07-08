@@ -34,26 +34,40 @@ def compute_flci(
     r"""Compute fixed-length confidence intervals under smoothness restrictions.
 
     Constructs confidence intervals of optimal length that are valid for the linear
-    combination :math:`l'\beta` under the restriction that the underlying trend changes
-    satisfy smoothness constraint :math:`\Delta^{SD}(M)`.
+    combination :math:`l'\tau_{post}` under the restriction that the underlying trend
+    :math:`\delta` lies in the smoothness constraint set :math:`\Delta^{SD}(M)`.
+
+    The FLCI approach minimizes the worst-case length of the confidence interval
+    by choosing an optimal linear combination of pre-treatment coefficients. The
+    key insight is that under :math:`\Delta^{SD}(M)`, we can construct an auxiliary
+    estimator
+
+    .. math::
+
+        \hat{\theta}_{FLCI} = \ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post},
+
+    where :math:`\ell_{pre}` is chosen to minimize the length of the resulting
+    confidence interval subject to controlling worst-case bias.
 
     Parameters
     ----------
     beta_hat : ndarray
-        Vector of estimated coefficients. First `n_pre_periods` elements are
-        pre-treatment, remainder are post-treatment.
+        Vector of estimated event study coefficients :math:`\hat{\beta}`.
+        First `n_pre_periods` elements are pre-treatment, remainder are post-treatment.
     sigma : ndarray
-        Covariance matrix of estimated coefficients.
+        Covariance matrix of estimated coefficients :math:`\Sigma`.
     smoothness_bound : float
-        Smoothness parameter M for the restriction set :math:`\Delta^{SD}(M)`.
+        Smoothness parameter :math:`M` for the restriction set :math:`\Delta^{SD}(M)`.
+        Bounds the second differences: :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`.
     n_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`T_{pre}`.
     n_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`T_{post}`.
     post_period_weights : ndarray, optional
-        Weight vector for post-treatment periods. Default is the first post-period.
+        Weight vector :math:`\ell_{post}` for post-treatment periods. Default is the
+        first post-period (i.e., :math:`\ell_{post} = e_1`).
     num_points : int, default=100
-        Number of points for grid search.
+        Number of points for grid search in optimization.
     alpha : float, default=0.05
         Significance level for confidence interval.
     seed : int, default=0
@@ -65,11 +79,46 @@ def compute_flci(
         NamedTuple containing:
 
         - flci: Tuple of (lower, upper) confidence interval bounds
-        - optimal_vec: Optimal weight vector for all periods
-        - optimal_pre_period_vec: Optimal weights for pre-periods
+        - optimal_vec: Optimal weight vector :math:`(\ell_{pre}, \ell_{post})` for all periods
+        - optimal_pre_period_vec: Optimal weights :math:`\ell_{pre}` for pre-periods
         - optimal_half_length: Half-length of the confidence interval
-        - smoothness_bound: Smoothness parameter used
+        - smoothness_bound: Smoothness parameter :math:`M` used
         - status: Optimization status
+
+    Warnings
+    --------
+    FLCIs are recommended primarily for :math:`\Delta^{SD}(M)` where they have
+    guaranteed consistency and near-optimal finite-sample properties. For other
+    restriction sets, consider using conditional or hybrid confidence sets instead.
+
+    Notes
+    -----
+    The FLCI is computed by solving a nested optimization problem. For each
+    candidate standard deviation :math:`h`, we find the worst-case bias under
+    :math:`\Delta^{SD}(M)`, then choose :math:`h` to minimize the resulting
+    confidence interval length.
+
+    Under convexity and centrosymmetry conditions on the identified set, FLCIs achieve near-optimal
+    expected length in finite samples. When :math:`\alpha = 0.05`, the expected
+    length of the shortest possible confidence set that satisfies coverage is at
+    most 28% shorter than the FLCI.
+
+    FLCIs can be inconsistent when the identified set length varies with
+    :math:`\delta_{pre}`. They are consistent if and only if the identified set
+    always has maximal length:
+
+    .. math::
+
+        LID(\delta_{pre}, \Delta) = \sup_{\tilde{\delta}_{pre}} LID(\tilde{\delta}_{pre}, \Delta).
+
+    This condition holds everywhere for :math:`\Delta^{SD}(M)` but fails for many
+    other restriction sets of interest.
+
+    References
+    ----------
+
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if post_period_weights is None:
         post_period_weights = basis_vector(index=1, size=n_post_periods).flatten()
@@ -116,14 +165,30 @@ def _optimize_flci_params(
     alpha,
     seed,
 ):
-    """Compute optimal FLCI parameters.
+    r"""Compute optimal FLCI parameters.
+
+    Solves the FLCI optimization problem
+
+    .. math::
+
+        \min_{h \in [h_{min}, h_{max}]} \text{CI half-length}(h),
+
+    where the CI half-length for a given :math:`h` is:
+
+    .. math::
+
+        \text{CI half-length}(h) = h \cdot q_{1-\alpha}\left(\left|N\left(\frac{b^*(h)}{h}, 1\right)\right|\right),
+
+    Here :math:`b^*(h)` is the worst-case bias when the standard deviation is
+    constrained to be :math:`h`, and :math:`q_{1-\alpha}` is the :math:`(1-\alpha)`
+    quantile of the folded normal distribution.
 
     Parameters
     ----------
     sigma : ndarray
         Covariance matrix of coefficients.
     smoothness_bound : float
-        Smoothness parameter.
+        Smoothness parameter :math:`M`.
     n_pre_periods : int
         Number of pre-treatment periods.
     n_post_periods : int
@@ -140,7 +205,20 @@ def _optimize_flci_params(
     Returns
     -------
     dict
-        Dictionary containing optimal parameters.
+        Dictionary containing optimal parameters:
+
+        - optimal_vec: Optimal weight vector :math:`(\ell_{pre}, \ell_{post})`
+        - optimal_pre_period_vec: Optimal pre-period weights :math:`\ell_{pre}`
+        - optimal_half_length: Optimal CI half-length
+        - smoothness_bound: Smoothness parameter used
+        - status: Optimization status
+
+    Notes
+    -----
+    The optimization uses golden section search (bisection) when possible,
+    falling back to grid search if the bisection method fails. The search
+    is over :math:`h \in [h_{min}, h_{max}]` where :math:`h_{min}` minimizes
+    variance and :math:`h_{max}` minimizes bias.
     """
     h_min_bias = get_min_bias_h(sigma, n_pre_periods, n_post_periods, post_period_weights)
     h_min_variance = minimize_variance(sigma, n_pre_periods, n_post_periods, post_period_weights)
@@ -214,27 +292,61 @@ def maximize_bias(
     post_period_weights,
     smoothness_bound=1.0,
 ):
-    """Find worst-case bias subject to standard deviation constraint :math:`h`.
+    r"""Find worst-case bias subject to standard deviation constraint :math:`h`.
+
+    Solves the optimization problem:
+
+    .. math::
+
+        \max_{\ell_{pre}} \quad & \sup_{\delta \in \Delta^{SD}(M)} |\ell'_{pre}\delta_{pre} - \ell'_{post}\delta_{post}|
+
+        \text{s.t.} \quad & \text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post}) \leq h^2
+
+    This finds the pre-treatment weights :math:`\ell_{pre}` that maximize the
+    worst-case bias over :math:`\Delta^{SD}(M)`, subject to the constraint that
+    the resulting estimator has standard deviation at most :math:`h`.
 
     Parameters
     ----------
     h : float
-        Standard deviation constraint.
+        Standard deviation constraint for the affine estimator.
     sigma : ndarray
-        Covariance matrix.
+        Covariance matrix :math:`\Sigma` of event study coefficients.
     n_pre_periods : int
         Number of pre-treatment periods.
     n_post_periods : int
         Number of post-treatment periods.
     post_period_weights : ndarray
-        Post-treatment weight vector.
+        Post-treatment weight vector :math:`\ell_{post}`.
     smoothness_bound : float
-        Smoothness parameter.
+        Smoothness parameter :math:`M` (not directly used in optimization,
+        applied as scaling factor to result).
 
     Returns
     -------
     dict
-        Dictionary with optimization results.
+        Dictionary with optimization results:
+
+        - status: 'optimal' if successful, 'failed' or error message otherwise
+        - value: Maximum bias value (scaled by smoothness_bound)
+        - optimal_l: Optimal pre-period weights :math:`\ell_{pre}`
+        - optimal_w: Optimal weights in :math:`w` parameterization
+        - optimal_x: Full solution vector from optimization
+
+    Notes
+    -----
+    The optimization uses a change of variables where pre-treatment levels are
+    parameterized through first differences (weights). The worst-case bias under
+    :math:`\Delta^{SD}(M)` has a closed-form solution given the weights, allowing
+    this to be formulated as a convex optimization problem.
+
+    This implementation is specific to :math:`\Delta^{SD}(M)`. For other restriction
+    sets, the worst-case bias computation differs significantly. For :math:`\Delta^{SDPB}(M)`
+    and :math:`\Delta^{SDI}(M)`, the worst-case bias of any affine estimator equals
+    its worst-case bias over :math:`\Delta^{SD}(M)`, meaning sign and monotonicity
+    restrictions provide no benefit for FLCIs. For :math:`\Delta^{RM}(\bar{M})`,
+    the worst-case bias is infinite whenever :math:`\bar{M} > 0`, as pre-treatment
+    violations can be arbitrarily scaled up.
     """
     stacked_vars = cp.Variable(2 * n_pre_periods)
 
@@ -320,23 +432,45 @@ def minimize_variance(
     n_post_periods,
     post_period_weights,
 ):
-    """Find the minimum achievable standard deviation :math:`h`.
+    r"""Find the minimum achievable standard deviation :math:`h`.
+
+    Solves the optimization problem:
+
+    .. math::
+
+        \min_{\ell_{pre}} \quad & \text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post})
+
+        \text{s.t.} \quad & \text{Bias constraints from } \Delta^{SD}(M)
+
+    This finds the minimum variance achievable by any affine estimator that
+    satisfies the bias constraints imposed by the smoothness restriction.
+
+    The variance of the affine estimator is
+
+    .. math::
+
+        \text{Var}(\hat{\theta}) = \ell'_{pre}\Sigma_{pre,pre}\ell_{pre} +
+        2\ell'_{pre}\Sigma_{pre,post}\ell_{post} + \ell'_{post}\Sigma_{post,post}\ell_{post}.
+
+    This is minimized subject to constraints that ensure the resulting estimator
+    has bounded bias under :math:`\Delta^{SD}(M)`. The solution provides a lower
+    bound for the feasible values of :math:`h` in the FLCI optimization.
 
     Parameters
     ----------
     sigma : ndarray
-        Covariance matrix.
+        Covariance matrix :math:`\Sigma` of event study coefficients.
     n_pre_periods : int
         Number of pre-treatment periods.
     n_post_periods : int
         Number of post-treatment periods.
     post_period_weights : ndarray
-        Post-treatment weight vector.
+        Post-treatment weight vector :math:`\ell_{post}`.
 
     Returns
     -------
     float
-        Minimum achievable standard deviation.
+        Minimum achievable standard deviation :math:`h_{min}`.
     """
     stacked_vars = cp.Variable(2 * n_pre_periods)
 
@@ -406,23 +540,43 @@ def get_min_bias_h(
     n_post_periods,
     post_period_weights,
 ):
-    """Compute :math:`h` that yields minimum bias.
+    r"""Compute :math:`h` that yields minimum bias.
+
+    Finds the standard deviation :math:`h` corresponding to the estimator that
+    minimizes worst-case bias under :math:`\Delta^{SD}(M)`. This occurs when
+    all pre-treatment weight is placed on the last pre-treatment period.
+
+    The minimum bias estimator uses
+
+    .. math::
+
+        \ell_{pre} = (0, ..., 0, \sum_{s=1}^{T_{post}} s \cdot \ell_{post,s}).
+
+    This choice minimizes bias because it uses only the pre-treatment coefficient
+    closest to the treatment period, reducing extrapolation error.
 
     Parameters
     ----------
     sigma : ndarray
-        Covariance matrix.
+        Covariance matrix :math:`\Sigma` of event study coefficients.
     n_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`T_{pre}`.
     n_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`T_{post}`.
     post_period_weights : ndarray
-        Post-treatment weight vector.
+        Post-treatment weight vector :math:`\ell_{post}`.
 
     Returns
     -------
     float
-        Standard deviation for minimum bias configuration.
+        Standard deviation :math:`h_{max}` for minimum bias configuration.
+
+    Notes
+    -----
+    This provides an upper bound for the feasible values of :math:`h` in the
+    FLCI optimization. For :math:`h > h_{max}`, the bias constraint becomes
+    slack and further increases in :math:`h` do not improve the confidence
+    interval length.
     """
     weights = np.zeros(n_pre_periods)
     weights[-1] = np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
@@ -439,16 +593,31 @@ def affine_variance(
     sigma,
     n_pre_periods,
 ):
-    """Compute variance of affine estimator.
+    r"""Compute variance of affine estimator.
+
+    Computes the variance of the affine estimator
+
+    .. math::
+
+        \hat{\theta} = \ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post}.
+
+    Under standard asymptotics, this has variance
+
+    .. math::
+
+        \text{Var}(\hat{\theta}) = \begin{pmatrix} \ell_{pre} \\ \ell_{post} \end{pmatrix}'
+        \begin{pmatrix} \Sigma_{pre,pre} & \Sigma_{pre,post} \\
+        \Sigma_{post,pre} & \Sigma_{post,post} \end{pmatrix}
+        \begin{pmatrix} \ell_{pre} \\ \ell_{post} \end{pmatrix}.
 
     Parameters
     ----------
     l_pre : ndarray
-        Pre-treatment weight vector.
+        Pre-treatment weight vector :math:`\ell_{pre}`.
     l_post : ndarray
-        Post-treatment weight vector.
+        Post-treatment weight vector :math:`\ell_{post}`.
     sigma : ndarray
-        Full covariance matrix.
+        Full covariance matrix :math:`\Sigma` of event study coefficients.
     n_pre_periods : int
         Number of pre-treatment periods.
 
@@ -478,35 +647,47 @@ def _optimize_h_bisection(
     post_period_weights,
     seed=0,
 ):
-    """Find optimal h using golden section search.
+    r"""Find optimal h using golden section search.
+
+    Implements golden section search to find the value of :math:`h` that
+    minimizes the confidence interval half-length. The objective function is
+
+    .. math::
+
+        f(h) = h \cdot q_{1-\alpha}\left(\left|N\left(\frac{M \cdot b^*(h)}{h}, 1\right)\right|\right),
+
+    where :math:`b^*(h)` is the maximum bias achievable with standard deviation :math:`h`.
+
+    Golden section search is used because the objective is unimodal in :math:`h`
+    and it converges faster than grid search.
 
     Parameters
     ----------
     h_min : float
-        Lower bound for h.
+        Lower bound for :math:`h` (minimum variance solution).
     h_max : float
-        Upper bound for h.
+        Upper bound for :math:`h` (minimum bias solution).
     smoothness_bound : float
-        Smoothness parameter.
+        Smoothness parameter :math:`M`.
     num_points : int
-        Number of points for tolerance.
+        Number of points for tolerance calculation.
     alpha : float
-        Significance level.
+        Significance level :math:`\alpha`.
     sigma : ndarray
-        Covariance matrix.
+        Covariance matrix :math:`\Sigma`.
     n_pre_periods : int
         Number of pre-treatment periods.
     n_post_periods : int
         Number of post-treatment periods.
     post_period_weights : ndarray
-        Post-treatment weight vector.
+        Post-treatment weight vector :math:`\ell_{post}`.
     seed : int
-        Random seed.
+        Random seed for folded normal quantile computation.
 
     Returns
     -------
     float
-        Optimal h value, or NaN if optimization fails.
+        Optimal :math:`h` value, or NaN if optimization fails.
     """
 
     def _compute_ci_half_length(h):
@@ -561,24 +742,41 @@ def folded_normal_quantile(
 ):
     r"""Compute quantile of folded normal distribution.
 
-    The folded normal is the distribution of :math:`|X|`
-    where :math:`X \\sim N(\\mu, \\sigma^2)`.
+    The folded normal is the distribution of :math:`|X|` where :math:`X \sim N(\mu, \sigma^2)`.
+    This arises in the FLCI construction because we need to cover the absolute bias
+    :math:`|\text{bias}|` with high probability.
+
+    For the FLCI, we have
+
+    .. math::
+
+        \frac{\hat{\theta} - \theta}{\text{sd}(\hat{\theta})} + \frac{\text{bias}}{\text{sd}(\hat{\theta})}
+        \sim N\left(\frac{\text{bias}}{\text{sd}(\hat{\theta})}, 1\right).
+
+    The confidence interval must cover :math:`\theta` when the bias takes its
+    worst-case value in either direction, leading to a folded normal distribution.
 
     Parameters
     ----------
     p : float
-        Probability level (between 0 and 1).
+        Probability level (between 0 and 1), typically :math:`1 - \alpha`.
     mu : float
-        Mean of underlying normal.
+        Mean of underlying normal, equal to :math:`\text{bias}/\text{sd}(\hat{\theta})`.
     sd : float
-        Standard deviation of underlying normal.
+        Standard deviation of underlying normal (typically 1).
     seed : int
-        Random seed.
+        Random seed for Monte Carlo approximation.
 
     Returns
     -------
     float
         The p-th quantile of the folded normal distribution.
+
+    Notes
+    -----
+    When :math:`\mu = 0`, this reduces to the half-normal distribution.
+    For non-zero :math:`\mu`, we use Monte Carlo simulation to approximate
+    the quantile as no closed-form expression exists.
     """
     if sd <= 0:
         raise ValueError("Standard deviation must be positive")
@@ -596,33 +794,68 @@ def folded_normal_quantile(
 
 
 def weights_to_l(weights):
-    """Convert from weight parameterization to l parameterization.
+    r"""Convert from weight parameterization to l parameterization.
+
+    Converts from the first-difference parameterization :math:`w` to the
+    levels parameterization :math:`\ell` via
+
+    .. math::
+
+        \ell_t = \sum_{s=1}^{t} w_s.
+
+    This transformation is used because the optimization problem is more
+    naturally expressed in terms of :math:`w`, while the final estimator
+    is expressed in terms of :math:`\ell`.
 
     Parameters
     ----------
     weights : ndarray
-        Weight vector.
+        Weight vector :math:`w` (first differences).
 
     Returns
     -------
     ndarray
-        :math:`L` vector (cumulative sums).
+        Level vector :math:`\ell` (cumulative sums).
+
+    Notes
+    -----
+    Under :math:`\Delta^{SD}(M)`, the worst-case bias has a simple form when
+    expressed in terms of :math:`w`, which motivates this parameterization
+    in the optimization.
     """
     return np.cumsum(weights)
 
 
 def l_to_weights(l_vector):
-    """Convert from l parameterization to weight parameterization.
+    r"""Convert from :math:`\ell` parameterization to weight parameterization.
+
+    Converts from the levels parameterization :math:`\ell` to the
+    first-difference parameterization :math:`w` via
+
+    .. math::
+
+        w_t = \begin{cases}
+        \ell_1 & \text{if } t = 1 \\
+        \ell_t - \ell_{t-1} & \text{if } t > 1
+        \end{cases}.
+
+    This is the inverse transformation of :func:`weights_to_l`.
 
     Parameters
     ----------
     l_vector : ndarray
-        :math:`L` vector (cumulative sums).
+        Level vector :math:`\ell` (cumulative sums).
 
     Returns
     -------
     ndarray
-        Weight vector (first differences).
+        Weight vector :math:`w` (first differences).
+
+    Notes
+    -----
+    The weight parameterization ensures that certain constraints in the
+    optimization (related to worst-case bias under :math:`\Delta^{SD}(M)`)
+    take a simple linear form.
     """
     weights = np.zeros_like(l_vector)
     weights[0] = l_vector[0]

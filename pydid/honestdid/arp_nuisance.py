@@ -51,54 +51,86 @@ def compute_arp_nuisance_ci(
     rows_for_arp=None,
     return_length=False,
 ):
-    """Compute ARP confidence interval with nuisance parameters.
+    r"""Compute ARP confidence interval with nuisance parameters.
 
-    Computes confidence interval for :math:`l'*beta` subject to constraints
-    :math:`A*delta <= d`, accounting for estimation uncertainty in nuisance parameters.
+    Computes confidence interval for :math:`\theta = l'\beta` subject to the constraint
+    that :math:`\delta \in \Delta`, where :math:`\Delta = \{\delta : A\delta \leq d\}`.
+    This implements the conditional inference approach from Andrews, Roth & Pakes (2023)
+    that provides uniformly valid inference over the identified set.
+
+    The ARP approach transforms the partial identification problem into a conditional
+    inference problem. Rather than inverting a test of :math:`H_0: \theta = \theta_0`
+    for each value on a grid, it tests whether :math:`\theta_0` lies in the identified
+    set:
+
+    .. math::
+        \mathcal{I}(\Delta) = \{l'(\beta - \delta) : \delta \in \Delta, \delta_{pre} = \beta_{pre}\}.
+
+    The key here is that under the null, the event study coefficients satisfy
+    :math:`\hat{\beta} \sim N(\tau + \delta, \Sigma)` where :math:`\delta \in \Delta`.
+    The test conditions on which moments bind at the optimum, leading to a truncated
+    normal distribution for the test statistic. This conditioning ensures correct
+    coverage even when the identified set is small or empty.
 
     Parameters
     ----------
     betahat : ndarray
-        Vector of estimated event study coefficients.
+        Vector of estimated event study coefficients :math:`\hat{\beta}`.
     sigma : ndarray
-        Covariance matrix of betahat.
+        Covariance matrix :math:`\Sigma` of betahat.
     l_vec : ndarray
-        Vector defining parameter of interest l'*beta.
+        Vector :math:`l` defining parameter of interest :math:`\theta = l'\tau_{post}`.
     a_matrix : ndarray
-        Constraint matrix A.
+        Constraint matrix :math:`A` defining the set :math:`\Delta`.
     d_vec : ndarray
-        Constraint bounds d.
+        Constraint bounds :math:`d` such that :math:`\Delta = \{\delta : A\delta \leq d\}`.
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`T_{pre}`.
     num_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`T_{post}`.
     alpha : float, default=0.05
-        Significance level for confidence interval.
+        Significance level :math:`\alpha` for confidence interval.
     hybrid_flag : {'ARP', 'LF', 'FLCI'}, default='ARP'
-        Type of test to use.
+        Type of test to use. 'ARP' is the standard conditional test, 'LF' uses
+        a least favorable critical value for the first stage, and 'FLCI' uses
+        fixed-length confidence intervals for improved power.
     hybrid_list : dict, optional
-        Parameters for hybrid tests.
+        Parameters for hybrid tests, including hybrid_kappa (first-stage size),
+        lf_cv (least favorable critical value), or FLCI parameters.
     grid_lb : float, optional
-        Lower bound for grid search. If None, uses -20.
+        Lower bound for grid search. If None, uses :math:`-20 \cdot SE(\theta)`.
     grid_ub : float, optional
-        Upper bound for grid search. If None, uses 20.
+        Upper bound for grid search. If None, uses :math:`20 \cdot SE(\theta)`.
     grid_points : int, default=1000
         Number of grid points to test.
     rows_for_arp : ndarray, optional
-        Subset of moments to use for ARP.
+        Subset of moments to use for ARP test. Useful when some moments are
+        uninformative about post-treatment effects.
     return_length : bool, default=False
-        If True, only return the CI length.
+        If True, only return the CI length (useful for power calculations).
 
     Returns
     -------
     ARPNuisanceCIResult
-        Confidence interval results.
+        NamedTuple containing CI bounds, acceptance grid, and length.
+
+    Notes
+    -----
+    The method handles nuisance parameters by reparametrizing the problem using
+    an invertible transformation :math:`\Gamma` with :math:`l` as its first row.
+    This allows expressing the constraints in terms of :math:`(\theta, \xi)` where
+    :math:`\xi` are nuisance parameters.
+
+    The test then profiles over :math:`\xi` for each value of :math:`\theta`,
+    using either primal or dual optimization depending on the conditioning set's geometry.
 
     References
     ----------
 
     .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
         Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if hybrid_list is None:
         hybrid_list = {}
@@ -203,36 +235,58 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
     hybrid_list=None,
     rows_for_arp=None,
 ):
-    """Perform ARP test of moment inequality with nuisance parameters.
+    r"""Perform ARP test of moment inequality with nuisance parameters.
 
-    Tests :math:`H_0: E[y_T - X_T*delta] <= 0`
+    Tests the null hypothesis :math:`H_0: \mathbb{E}[Y_T - X_T\xi] \leq 0` for some :math:`\xi`,
+    where :math:`Y_T = A\hat{\beta} - d` has been adjusted for the hypothesized value of
+    :math:`\theta`. This is the core testing problem in the ARP framework.
+
+    The test statistic is :math:`\eta^* = \min_{\eta, \xi} \eta` subject to
+    :math:`Y_T - X_T\xi \leq \eta \cdot \text{diag}(\Sigma_Y)^{1/2}`, where
+    :math:`\Sigma_Y = A\Sigma A'`. The test conditions on the binding moments at
+    the optimum, leading to a truncated normal critical value.
+
+    When the optimization problem is degenerate or the binding moments don't have
+    full rank, the method switches to a dual approach that works directly with
+    the Lagrange multipliers. This ensures numerical stability and correct inference
+    even in challenging cases.
 
     Parameters
     ----------
     y_t : ndarray
-        Outcome vector (already adjusted by :math:`theta` if testing a specific value).
+        Outcome vector :math:`Y_T = A\hat{\beta} - d` (already adjusted by :math:`\theta`).
     x_t : ndarray or None
-        Covariate matrix (None for no nuisance parameters).
+        Covariate matrix :math:`X_T` for nuisance parameters. If None, no nuisance
+        parameters are present.
     sigma : ndarray
-        Covariance matrix of y_t.
+        Covariance matrix :math:`\Sigma_Y = A\Sigma A'` of y_t.
     alpha : float
-        Significance level.
+        Significance level :math:`\alpha` for the test.
     hybrid_flag : {'ARP', 'LF', 'FLCI'}
-        Type of test to perform.
+        Type of test to perform. 'ARP' is standard conditional test, 'LF' adds
+        least favorable first stage, 'FLCI' adds fixed-length CI constraints.
     hybrid_list : dict, optional
-        Additional parameters for hybrid tests.
+        Additional parameters for hybrid tests including hybrid_kappa, lf_cv,
+        flci_halflength, vbar, and dbar.
     rows_for_arp : ndarray, optional
-        Subset of rows to use for ARP.
+        Subset of rows to use for ARP test, allowing focus on informative moments.
 
     Returns
     -------
     dict
-        Dictionary with:
+        Dictionary containing:
 
-        - reject: whether test rejects
-        - eta: test statistic value
-        - delta: nuisance parameter estimate :math:`delta`
-        - lambda: Lagrange multipliers :math:`lambda`
+        - reject: bool, whether test rejects the null
+        - eta: float, test statistic value :math:`\eta^*`
+        - delta: ndarray, optimal nuisance parameters :math:`\xi^*`
+        - lambda: ndarray, Lagrange multipliers :math:`\lambda^*` at optimum
+
+    Notes
+    -----
+    The test constructs the least favorable distribution by finding the value of
+    :math:`\xi` that minimizes the test statistic. It then computes a conditional
+    critical value that accounts for the optimization over :math:`\xi`. The
+    conditioning ensures the test has correct size uniformly over :math:`\Delta`.
     """
     if hybrid_list is None:
         hybrid_list = {}
@@ -492,33 +546,49 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
     }
 
 
-def _test_delta_lp(y_t: np.ndarray, x_t: np.ndarray, sigma: np.ndarray) -> dict[str, np.ndarray | float | bool]:
+def _test_delta_lp(y_t, x_t, sigma):
     r"""Solve linear program for delta test.
 
-    Solves
+    Solves the optimization problem
 
     .. math::
 
-        \\min_{\\eta, \\delta} \\eta \\text{ s.t. } y_T - X_T*\\delta \\
-        \\leq \\eta*\\sqrt{\\text{diag}(\\sigma)}
+        \eta^* = \min_{\eta, \xi} \eta \quad \text{s.t.} \quad y_T - X_T\xi \leq \eta \cdot \text{diag}(\Sigma)^{1/2}.
+
+    This linear program finds the smallest scaling :math:`\eta` such that there exists
+    a nuisance parameter vector :math:`\xi` making all moment inequalities satisfied.
+    The solution characterizes whether the null hypothesis can be rejected and identifies
+    which moments bind at the optimum.
+
+    The dual solution (Lagrange multipliers) is crucial for the conditional inference
+    approach as it determines the conditioning event. Moments with positive multipliers
+    are binding and define the geometry of the conditional test.
 
     Parameters
     ----------
     y_t : ndarray
-        Outcome vector.
+        Outcome vector :math:`y_T = A\hat{\beta} - d` adjusted for hypothesized :math:`\theta`.
     x_t : ndarray
-        Covariate matrix.
+        Covariate matrix :math:`X_T` corresponding to nuisance parameters.
     sigma : ndarray
-        Covariance matrix of y_t.
+        Covariance matrix :math:`\Sigma_Y` of y_t.
 
     Returns
     -------
     dict
-        Dictionary with:
-        - eta_star: minimum value
-        - delta_star: minimizer
-        - lambda: Lagrange multipliers (dual solution)
-        - success: whether optimization succeeded
+        Dictionary containing:
+
+        - eta_star: float, optimal value :math:`\eta^*`
+        - delta_star: ndarray, optimal nuisance parameters :math:`\xi^*`
+        - lambda: ndarray, Lagrange multipliers :math:`\lambda^*` (dual solution)
+        - success: bool, whether optimization succeeded
+
+    Notes
+    -----
+    The constraint :math:`y_T - X_T\xi \leq \eta \cdot \text{diag}(\Sigma)^{1/2}` normalizes
+    each moment by its standard deviation, ensuring scale invariance. The optimal
+    :math:`\eta^*` can be interpreted as the maximum standardized violation of the
+    moment inequalities under the least favorable choice of :math:`\xi`.
     """
     if x_t.ndim == 1:
         x_t = x_t.reshape(-1, 1)
@@ -564,31 +634,54 @@ def _test_delta_lp(y_t: np.ndarray, x_t: np.ndarray, sigma: np.ndarray) -> dict[
 
 
 def _lp_dual_wrapper(
-    y_t: np.ndarray,
-    x_t: np.ndarray,
-    eta: float,
-    gamma_tilde: np.ndarray,
-    sigma: np.ndarray,
-) -> dict[str, float]:
-    """Wrap vlo and vup computation using bisection approach.
+    y_t,
+    x_t,
+    eta,
+    gamma_tilde,
+    sigma,
+):
+    r"""Wrap vlo and vup computation using bisection approach.
+
+    Computes the support bounds :math:`[v_{lo}, v_{up}]` for the test statistic
+    under the conditional distribution when using the dual approach. The dual
+    approach is necessary when the primal problem is degenerate or when the
+    binding constraints don't have full rank.
+
+    The key here is that we can work directly with the Lagrange multipliers
+    :math:`\gamma` (normalized to sum to 1) rather than the primal variables.
+    The test statistic :math:`\gamma'Y` has a truncated normal distribution
+    with truncation bounds determined by the requirement that :math:`\gamma`
+    remains optimal.
 
     Parameters
     ----------
     y_t : ndarray
-        Outcome vector.
+        Outcome vector :math:`Y_T = A\hat{\beta} - d`.
     x_t : ndarray
-        Covariate matrix.
+        Covariate matrix :math:`X_T` (may not have full column rank).
     eta : float
-        Solution from LP test.
+        Optimal value :math:`\eta^*` from the linear program.
     gamma_tilde : ndarray
-        Vertex of the dual (lambda from test_delta_lp).
+        Normalized Lagrange multipliers :math:`\tilde{\gamma} = \lambda / \sum_i \lambda_i`.
     sigma : ndarray
-        Covariance matrix of y_t.
+        Covariance matrix :math:`\Sigma_Y` of y_t.
 
     Returns
     -------
     dict
-        Dictionary with vlo, vup, eta, and gamma_tilde.
+        Dictionary containing:
+
+        - vlo: float, lower bound of support
+        - vup: float, upper bound of support
+        - eta: float, optimal value (passed through)
+        - gamma_tilde: ndarray, normalized multipliers (passed through)
+
+    Notes
+    -----
+    The dual approach constructs a valid test by working with the optimality
+    conditions of the linear program. Even when the primal problem is ill-conditioned,
+    the dual formulation provides a well-defined test statistic with computable
+    truncation bounds.
     """
     if x_t.ndim == 1:
         x_t = x_t.reshape(-1, 1)
@@ -616,31 +709,52 @@ def _lp_dual_wrapper(
 
 
 def _compute_vlo_vup_dual(
-    eta: float,
-    s_t: np.ndarray,
-    gamma_tilde: np.ndarray,
-    sigma: np.ndarray,
-    w_t: np.ndarray,
-) -> dict[str, float]:
-    """Compute vlo and vup using dual approach with bisection.
+    eta,
+    s_t,
+    gamma_tilde,
+    sigma,
+    w_t,
+):
+    r"""Compute vlo and vup using dual approach with bisection.
+
+    Computes the truncation bounds for the test statistic :math:`\tilde{\gamma}'Y`
+    under the conditional distribution using the dual formulation. The bounds
+    :math:`[v_{lo}, v_{up}]` are determined by the requirement that :math:`\tilde{\gamma}`
+    remains the optimal dual solution.
+
+    The method uses a hybrid approach that first attempts a shortcut based on
+    the first-order optimality conditions, then falls back to bisection if needed.
+    The shortcut exploits the fact that at the boundary :math:`v = v_{lo}` or
+    :math:`v = v_{up}`, a new constraint becomes binding, allowing direct computation
+    in many cases.
 
     Parameters
     ----------
     eta : float
-        Solution from LP test.
+        Optimal value :math:`\eta^*` from the linear program.
     s_t : ndarray
-        Modified outcome vector.
+        Residual vector :math:`s = (I - b\gamma')Y` where :math:`b = \Sigma\gamma/(\gamma'\Sigma\gamma)`.
     gamma_tilde : ndarray
-        Dual solution vector.
+        Normalized dual solution :math:`\tilde{\gamma}` with :math:`\sum_i \tilde{\gamma}_i = 1`.
     sigma : ndarray
-        Covariance matrix.
+        Covariance matrix :math:`\Sigma_Y`.
     w_t : ndarray
-        Constraint matrix.
+        Constraint matrix :math:`W = [\text{diag}(\sigma)^{1/2}, X_T]`.
 
     Returns
     -------
     dict
-        Dictionary with 'vlo' and 'vup' values.
+        Dictionary with:
+
+        - vlo: float, lower bound of conditional support
+        - vup: float, upper bound of conditional support
+
+    Notes
+    -----
+    The bounds are found by solving :math:`\max_{\lambda \geq 0} \lambda's` subject to
+    :math:`W'\lambda = e_1` and :math:`\lambda'\mathbf{1} = 1`, where :math:`e_1` is the
+    first standard basis vector. The value :math:`v` where this maximum equals :math:`v`
+    itself determines the boundary of the support.
     """
     tol_c = 1e-6
     tol_equality = 1e-6
@@ -746,12 +860,12 @@ def _compute_vlo_vup_dual(
 
 
 def _solve_max_program(
-    s_t: np.ndarray,
-    gamma_tilde: np.ndarray,
-    sigma: np.ndarray,
-    w_t: np.ndarray,
-    c: float,
-) -> opt.OptimizeResult:
+    s_t,
+    gamma_tilde,
+    sigma,
+    w_t,
+    c,
+):
     r"""Solve linear program for maximum.
 
     Solves: :math:`\\max f'x \\text{ s.t. } W_T'x = b_{eq}`
@@ -801,14 +915,14 @@ def _solve_max_program(
 
 
 def _check_if_solution(
-    c: float,
-    tol: float,
-    s_t: np.ndarray,
-    gamma_tilde: np.ndarray,
-    sigma: np.ndarray,
-    w_t: np.ndarray,
-) -> tuple[opt.OptimizeResult, bool]:
-    """Check if c is a solution to the dual problem.
+    c,
+    tol,
+    s_t,
+    gamma_tilde,
+    sigma,
+    w_t,
+):
+    """Check if :math:`c` is a solution to the dual problem.
 
     Parameters
     ----------
@@ -845,27 +959,52 @@ def _compute_least_favorable_cv(
     rows_for_arp=None,
     seed=0,
 ):
-    """Compute least favorable critical value.
+    r"""Compute least favorable critical value.
+
+    Computes the critical value for the least favorable (LF) hybrid test, which
+    uses a data-dependent first stage that rejects for large values of the test
+    statistic :math:`\eta^*`. The LF critical value is chosen to control the
+    first-stage rejection probability at :math:`\kappa` under the least favorable
+    distribution.
+
+    The least favorable distribution places all probability mass at the point
+    in :math:`\Delta` that maximizes the rejection probability. For the case with
+    nuisance parameters, this requires solving the linear program for each simulated
+    draw to find :math:`\eta^*`. The :math:`(1-\kappa)` quantile of these simulated
+    values provides the critical value.
+
+    This first-stage test improves power by screening out values of :math:`\theta`
+    that are far from the identified set. The second stage then applies the
+    conditional test with adjusted size :math:`(\alpha - \kappa)/(1 - \kappa)`.
 
     Parameters
     ----------
     x_t : ndarray or None
-        Covariate matrix.
+        Covariate matrix :math:`X_T` for nuisance parameters. If None, the test
+        has no nuisance parameters.
     sigma : ndarray
-        Covariance matrix.
+        Covariance matrix :math:`\Sigma_Y` of the moments.
     hybrid_kappa : float
-        Desired size of first-stage test.
+        First-stage size :math:`\kappa`, typically :math:`\alpha/10`.
     sims : int
-        Number of simulations.
+        Number of Monte Carlo simulations for critical value computation.
     rows_for_arp : ndarray, optional
-        Subset of rows to use.
+        Subset of rows to use, focusing on informative moments.
     seed : int or None
-        Random seed.
+        Random seed for reproducibility.
 
     Returns
     -------
     float
-        Least favorable critical value.
+        Least favorable critical value :math:`c_{LF}` such that
+        :math:`\mathbb{P}(\eta^* > c_{LF}) = \kappa` under the least favorable distribution.
+
+    Notes
+    -----
+    Without nuisance parameters, the least favorable distribution is standard
+    multivariate normal and :math:`\eta^* = \max_i Z_i/\sigma_i` where :math:`Z_i`
+    are the standardized moments. With nuisance parameters, each simulation
+    requires solving the linear program to account for optimization over :math:`\xi`.
     """
     rng = np.random.default_rng(seed)
 
@@ -920,23 +1059,43 @@ def _compute_least_favorable_cv(
 
 
 def _compute_flci_vlo_vup(vbar, dbar, s_vec, c_vec):
-    """Compute vlo and vup for FLCI hybrid.
+    r"""Compute vlo and vup for FLCI hybrid.
+
+    Computes the truncation bounds :math:`[v_{lo}, v_{up}]` that arise from
+    imposing the FLCI constraints :math:`|\bar{v}'Y| \leq \bar{d}` in the
+    hybrid test. These bounds ensure that the FLCI constraints remain satisfied
+    under the conditional distribution.
+
+    The FLCI constraints can be written as :math:`\bar{v}'Y \leq \bar{d}` and
+    :math:`-\bar{v}'Y \leq \bar{d}`. Under the conditional distribution where
+    :math:`Y = s + cv` for scalar :math:`v`, these become linear constraints
+    on :math:`v`, yielding the truncation bounds.
 
     Parameters
     ----------
     vbar : ndarray
-        FLCI coefficient vector.
+        FLCI coefficient vector :math:`\bar{v}` from the FLCI optimization.
     dbar : ndarray
-        FLCI bounds.
+        FLCI bounds :math:`\bar{d}`, typically the FLCI half-length.
     s_vec : ndarray
-        Residual vector.
+        Residual vector :math:`s` after projecting out the test direction.
     c_vec : ndarray
-        Scaling vector.
+        Scaling vector :math:`c` for the test statistic direction.
 
     Returns
     -------
     dict
-        Dictionary with 'vlo' and 'vup'.
+        Dictionary with:
+
+        - vlo: float, lower truncation bound
+        - vup: float, upper truncation bound
+
+    Notes
+    -----
+    Each FLCI constraint :math:`\pm\bar{v}'(s + cv) \leq \bar{d}` gives either
+    an upper or lower bound on :math:`v` depending on the sign of :math:`\bar{v}'c`.
+    Constraints with :math:`\bar{v}'c > 0` yield upper bounds, while those with
+    :math:`\bar{v}'c < 0` yield lower bounds.
     """
     # Stack vbar and -vbar to handle both upper and lower bounds
     vbar_mat = np.vstack([vbar.T, -vbar.T])
@@ -956,18 +1115,44 @@ def _compute_flci_vlo_vup(vbar, dbar, s_vec, c_vec):
     return {"vlo": vlo, "vup": vup}
 
 
-def _construct_gamma(l_vec: np.ndarray) -> np.ndarray:
-    """Construct invertible matrix Gamma with l_vec as first row.
+def _construct_gamma(l_vec):
+    r"""Construct invertible matrix Gamma with l_vec as first row.
+
+    Constructs an invertible matrix :math:`\Gamma` such that its first row equals
+    :math:`l'`. This transformation is central to the ARP approach as it allows
+    reparametrizing :math:`\beta_{post} = \Gamma^{-1}(\theta, \xi)'` where
+    :math:`\theta = l'\beta_{post}` is the parameter of interest and :math:`\xi`
+    are nuisance parameters.
+
+    The construction uses the reduced row echelon form (RREF) to find a basis
+    that includes :math:`l`. Starting with the augmented matrix :math:`[l | I]`,
+    the algorithm identifies pivot columns that form a linearly independent set
+    including :math:`l`.
 
     Parameters
     ----------
     l_vec : ndarray
-        Vector to use as first row.
+        Vector :math:`l` defining the parameter of interest :math:`\theta = l'\beta_{post}`.
+        Must have length equal to the number of post-treatment periods.
 
     Returns
     -------
     ndarray
-        Invertible matrix with l_vec as first row.
+        Invertible matrix :math:`\Gamma` with :math:`l'` as its first row.
+        Shape is :math:`(T_{post}, T_{post})` where :math:`T_{post}` is the
+        number of post-treatment periods.
+
+    Raises
+    ------
+    ValueError
+        If construction fails to produce an invertible matrix.
+
+    Notes
+    -----
+    This transformation enables the ARP test to separate the parameter of interest
+    :math:`\theta` from nuisance parameters :math:`\xi`. After transformation,
+    the constraints become :math:`A\Gamma^{-1}(\theta, \xi)' \leq d`, allowing
+    the test to profile over :math:`\xi` for each value of :math:`\theta`.
     """
     bar_t = len(l_vec)
     # Construct augmented matrix B = [l_vec | I]
@@ -1000,7 +1185,7 @@ def _construct_gamma(l_vec: np.ndarray) -> np.ndarray:
     return gamma
 
 
-def _find_leading_one_column(row: np.ndarray, rref_matrix: np.ndarray) -> int:
+def _find_leading_one_column(row, rref_matrix):
     """Find column index of leading one in a row of RREF matrix.
 
     Parameters
@@ -1021,7 +1206,7 @@ def _find_leading_one_column(row: np.ndarray, rref_matrix: np.ndarray) -> int:
     raise ValueError(f"Row {row} has no leading one")
 
 
-def _round_eps(x: float, eps: float | None = None) -> float:
+def _round_eps(x, eps=None):
     r"""Round value to zero if within machine epsilon.
 
     Parameters
