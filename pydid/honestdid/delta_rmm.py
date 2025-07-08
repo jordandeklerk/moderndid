@@ -45,11 +45,54 @@ def compute_conditional_cs_rmm(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{RMM}`(Mbar).
+    r"""Compute conditional confidence set for :math:`\Delta^{RMM}(\bar{M})`.
 
-    Computes confidence set by taking the union over all choices of
-    reference period :math:`s` and sign restrictions (+)/(-). This is
-    the intersection of :math:`\Delta^{RM}`(Mbar) with a monotonicity restriction.
+    Computes a confidence set for :math:`l'\tau_{post}` under the restriction that delta
+    lies in :math:`\Delta^{RMM}(\bar{M})`, which combines the relative magnitudes restriction
+    with a monotonicity constraint on treatment effects.
+
+    The combined restriction is defined as:
+
+    .. math::
+
+        \Delta^{RMM}(\bar{M}) = \Delta^{RM}(\bar{M}) \cap \Delta^{Mon}
+
+    where :math:`\Delta^{Mon} = \Delta^{I} \cup (-\Delta^{I})` with
+    :math:`\Delta^{I} = \{\delta : \delta_t \geq \delta_{t-1}, \forall t\}`
+    for increasing or :math:`\Delta^{D} = \{\delta : \delta_t \leq \delta_{t-1}, \forall t\}` for decreasing.
+
+    This restriction is useful when violations of parallel trends are expected to be
+    bounded by pre-treatment variation and economic theory suggests monotonic treatment
+    effects (e.g., cumulative policy effects or fading treatment intensity).
+    The intersection typically yields smaller identified sets than either restriction
+    alone.
+
+    The confidence set is computed as
+
+    .. math::
+
+        CS = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
+            CS_{s,+} \cup CS_{s,-}
+        \right) \cap CS^{Mon},
+
+    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets under the
+    positive and negative reference restrictions respectively, and :math:`CS^{Mon}`
+    enforces the monotonicity constraint.
+
+    Since :math:`\Delta^{RMM}(\bar{M})` is a finite union of polyhedra, a valid confidence
+    set is constructed by taking the union of the confidence sets for each of its
+    components (Lemma 2.2).
+
+    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
+    set has uniform asymptotic coverage
+
+    .. math::
+
+        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
+        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
+
+    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
+    for all :math:`P \in \mathcal{P}`.
 
     Parameters
     ----------
@@ -64,7 +107,8 @@ def compute_conditional_cs_rmm(
     l_vec : ndarray, optional
         Vector defining parameter of interest. If None, defaults to first post-period.
     m_bar : float, default=0
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`. Post-period deviations can be at
+        most :math:`\bar{M}` times the maximum pre-period deviation.
     alpha : float, default=0.05
         Significance level.
     hybrid_flag : {'LF', 'ARP'}, default='LF'
@@ -94,23 +138,20 @@ def compute_conditional_cs_rmm(
 
     Notes
     -----
-    The confidence set is computed as:
+    The confidence set is constructed using the moment inequality approach from Section 3 of
+    Rambachan & Roth (2023). Since :math:`\Delta^{RMM}(\bar{M}) = \Delta^{RM}(\bar{M}) \cap \Delta^{Mon}`
+    is a finite union of polyhedra, we can apply Lemma 2.2 to construct a valid confidence set
+    by taking unions and intersections.
 
-    .. math::
-
-        CS = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
-            CS_{s,+} \cup CS_{s,-}
-        \right)
-
-    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets
-    under the (+) and (-) restrictions respectively, intersected with the
-    monotonicity restriction.
+    The computational approach leverages that both restrictions can be expressed as linear
+    constraints. The monotonicity constraint adds shape restrictions that can improve power
+    when treatment effects evolve smoothly over time.
 
     References
     ----------
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods < 2:
         raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
@@ -195,16 +236,29 @@ def compute_conditional_cs_rmm(
 def compute_identified_set_rmm(
     m_bar, true_beta, l_vec, num_pre_periods, num_post_periods, monotonicity_direction="increasing"
 ):
-    r"""Compute identified set for :math:`\Delta^{RMM}`(Mbar).
+    r"""Compute identified set for :math:`\Delta^{RMM}(\bar{M})`.
 
-    Computes the identified set by taking the union over all choices of
-    reference period s and sign restrictions (+)/(-), intersected with
-    the monotonicity restriction on effect trajectories.
+    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
+    underlying trend delta lies in :math:`\Delta^{RMM}(\bar{M})`, taking the union over all
+    choices of reference period :math:`s` and sign restrictions, intersected with the
+    monotonicity constraint.
+
+    The identified set under :math:`\Delta^{RMM}(\bar{M})` is:
+
+    .. math::
+
+        \mathcal{I}(\Delta^{RMM}(\bar{M})) = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
+            \mathcal{I}(\Delta^{RM}_{s,+}(\bar{M})) \cup \mathcal{I}(\Delta^{RM}_{s,-}(\bar{M}))
+        \right) \cap \mathcal{I}(\Delta^{Mon})
+
+    where each :math:`\mathcal{I}(\cdot)` is computed by solving linear programs to find
+    the range of :math:`l'\tau_{post}` consistent with the constraints.
 
     Parameters
     ----------
     m_bar : float
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`. Post-period deviations can be at
+        most :math:`\bar{M}` times the maximum pre-period deviation.
     true_beta : ndarray
         True coefficient values (pre and post periods).
     l_vec : ndarray
@@ -223,17 +277,15 @@ def compute_identified_set_rmm(
 
     Notes
     -----
-    The identified set is computed as:
+    The identified set is computed by solving linear programs for each choice of
+    period :math:`s \in \{-(T_{pre}-1), ..., 0\}` and sign (positive/negative reference),
+    then taking the union of all resulting intervals. The monotonicity constraint
+    is enforced in each linear program, ensuring that treatment effects are either
+    non-decreasing or non-increasing over time.
 
-    .. math::
-
-        ID = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
-            ID_{s,+} \cup ID_{s,-}
-        \right) \cap \Delta^{M}
-
-    where :math:`ID_{s,+}` and :math:`ID_{s,-}` are the identified sets
-    under the (+) and (-) restrictions respectively, and :math:`\Delta^{M}`
-    represents the monotonicity restriction.
+    The combination of relative magnitudes and monotonicity can substantially
+    reduce the identified set compared to either restriction alone, particularly
+    when both assumptions are economically plausible.
     """
     if num_pre_periods < 2:
         raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
@@ -285,11 +337,20 @@ def _create_relative_magnitudes_monotonicity_constraint_matrix(
     drop_zero_period=True,
     monotonicity_direction="increasing",
 ):
-    r"""Create constraint matrix for :math:`\Delta^{RMM}_{s,(.)}`(Mbar).
+    r"""Create constraint matrix for :math:`\Delta^{RMM}_{s,sign}(\bar{M})`.
 
-    Creates matrix :math:`A` such that the constraint :math:`\delta \in \Delta^{RMM}_{s,(.)}`(Mbar)
+    Creates matrix :math:`A` such that the constraint :math:`\delta \in \Delta^{RMM}_{s,sign}(\bar{M})`
     can be written as :math:`A \delta \leq d`. This combines the relative magnitudes
     constraint with a monotonicity restriction.
+
+    The constraint set is defined as
+
+    .. math::
+
+        \Delta^{RMM}_{s,sign}(\bar{M}) = \Delta^{RM}_{s,sign}(\bar{M}) \cap \Delta^{Mon},
+
+    where :math:`\Delta^{RM}_{s,sign}(\bar{M})` constrains post-treatment deviations relative
+    to period :math:`s`, and :math:`\Delta^{Mon}` enforces monotonicity of treatment effects.
 
     Parameters
     ----------
@@ -298,7 +359,7 @@ def _create_relative_magnitudes_monotonicity_constraint_matrix(
     num_post_periods : int
         Number of post-treatment periods.
     m_bar : float, default=1
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`.
     s : int, default=0
         Reference period for relative magnitudes restriction.
         Must be between -(num_pre_periods-1) and 0.
@@ -312,13 +373,19 @@ def _create_relative_magnitudes_monotonicity_constraint_matrix(
     Returns
     -------
     ndarray
-        Constraint matrix A.
+        Constraint matrix A such that :math:`\delta \in \Delta^{RMM}` iff :math:`A\delta \leq d`.
+
+    Notes
+    -----
+    This function stacks the constraint matrices from the relative magnitudes
+    restriction for period :math:`s` and the monotonicity constraint to create
+    a combined system that captures the intersection of the two sets.
 
     References
     ----------
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     # Get the relative magnitudes constraint matrix
     A_rm = _create_relative_magnitudes_constraint_matrix(
@@ -351,17 +418,25 @@ def _compute_identified_set_rmm_fixed_s(
     num_post_periods,
     monotonicity_direction="increasing",
 ):
-    r"""Compute identified set for :math:`\Delta^{RMM}_{s,(.)}`(Mbar) at fixed s.
+    r"""Compute identified set for :math:`\Delta^{RMM}_{s,\text{sign}}(\bar{M})` at fixed s.
 
-    Computes bounds on :math:`l'\delta_{post}` subject to :math:`\delta \in \Delta^{RMM}_{s,(.)}`(Mbar)
-    and :math:`\delta_{pre} = \beta_{pre}`.
+    Helper function that solves the linear programs for a specific choice of
+    reference period :math:`s` and sign. The bounds are obtained by solving
+
+    .. math::
+
+        \theta^{ub} = l'\beta_{post} - \min_{\delta} l'\delta_{post}
+
+        \theta^{lb} = l'\beta_{post} - \max_{\delta} l'\delta_{post}
+
+    subject to :math:`\delta_{pre} = \beta_{pre}` and :math:`\delta \in \Delta^{RMM}_{s,\text{sign}}(\bar{M})`.
 
     Parameters
     ----------
     s : int
         Reference period for relative magnitudes restriction.
     m_bar : float
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`.
     max_positive : bool
         If True, uses (+) restriction; if False, uses (-) restriction.
     true_beta : ndarray
@@ -460,7 +535,11 @@ def _compute_conditional_cs_rmm_fixed_s(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{RMM}_{s,(.)}`(Mbar) at fixed :math:`s`.
+    r"""Compute conditional confidence set for :math:`\Delta^{RMM}_{s,\text{sign}}(\bar{M})` at fixed :math:`s`.
+
+    Helper function that implements the moment inequality testing approach for the combined relative
+    magnitudes and monotonicity restriction. The constraint set :math:`\Delta^{RMM}_{s,\text{sign}}(\bar{M})`
+    is a polyhedron, allowing the use of the conditional/hybrid tests from Andrews, Roth & Pakes (2021).
 
     Parameters
     ----------
@@ -469,7 +548,7 @@ def _compute_conditional_cs_rmm_fixed_s(
     max_positive : bool
         If True, uses (+) restriction; if False, uses (-) restriction.
     m_bar : float
-        Smoothness parameter Mbar.
+        Relative magnitude parameter :math:`\bar{M}`.
     betahat : ndarray
         Estimated event study coefficients.
     sigma : ndarray
@@ -591,10 +670,15 @@ def _compute_conditional_cs_rmm_fixed_s(
 
 
 def _create_relative_magnitudes_monotonicity_constraint_vector(A_rmm):
-    r"""Create constraint vector for :math:`\Delta^{RMM}_{s,(.)}`(Mbar).
+    r"""Create constraint vector for :math:`\Delta^{RMM}_{s,sign}(\bar{M})`.
 
-    Creates vector d such that the constraint :math:`\delta \in \Delta^{RMM}_{s,(.)}`(Mbar)
+    Creates vector d such that the constraint :math:`\delta \in \Delta^{RMM}_{s,sign}(\bar{M})`
     can be written as :math:`A \delta \leq d`.
+
+    For the combined relative magnitudes and monotonicity restriction, the constraint
+    vector :math:`d` is a vector of zeros. This arises because both the relative
+    magnitudes constraint and the monotonicity constraint can be written as homogeneous
+    inequalities of the form :math:`A\delta \leq 0`.
 
     Parameters
     ----------
@@ -604,6 +688,12 @@ def _create_relative_magnitudes_monotonicity_constraint_vector(A_rmm):
     Returns
     -------
     ndarray
-        Constraint vector d (all zeros).
+        Constraint vector d (all zeros for :math:`\Delta^{RMM}`).
+
+    Notes
+    -----
+    The zero constraint vector reflects that all restrictions in :math:`\Delta^{RMM}`
+    are relative comparisons between different elements of :math:`\delta`, rather than
+    absolute bounds on individual components.
     """
     return np.zeros(A_rmm.shape[0])

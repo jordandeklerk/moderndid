@@ -47,12 +47,51 @@ def compute_conditional_cs_sdrmm(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{SDRMM}(M)`.
+    r"""Compute conditional confidence set for :math:`\Delta^{SDRMM}(\bar{M})`.
 
-    Computes a confidence set for :math:`l'\beta_{post}` under the restriction that delta
-    lies in :math:`\Delta^{SDRMM}(M)`, which combines second differences with relative
-    magnitudes restriction and a monotonicity constraint. This is the intersection of
-    :math:`\Delta^{SDRM}(M)` with a shape restriction on monotonicity.
+    Computes a confidence set for :math:`l'\tau_{post}` under the restriction that delta
+    lies in :math:`\Delta^{SDRMM}(\bar{M})`, which combines second differences with relative
+    magnitudes restriction and a monotonicity constraint.
+
+    The combined restriction is defined as
+
+    .. math::
+
+        \Delta^{SDRMM}(\bar{M}) = \Delta^{SDRM}(\bar{M}) \cap \Delta^{Mon},
+
+    where :math:`\Delta^{Mon} = \{\delta : \delta_t \geq \delta_{t-1}, \forall t\}` for increasing
+    or :math:`\Delta^{Mon} = \{\delta : \delta_t \leq \delta_{t-1}, \forall t\}` for decreasing.
+
+    This restriction is particularly useful when pre-treatment trends suggest smoothly
+    evolving confounders, the magnitude of violations should be bounded by pre-treatment
+    variation, and economic theory suggests monotonic treatment effects over time.
+
+    The confidence set is computed as
+
+    .. math::
+
+        CS = \bigcup_{s=-(T_{pre}-2)}^{0} \left(
+            CS_{s,+} \cup CS_{s,-}
+        \right) \cap CS^{Mon}
+
+    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets under the
+    positive and negative reference restrictions respectively, and :math:`CS^{Mon}`
+    enforces the monotonicity constraint.
+
+    Since :math:`\Delta^{SDRMM}(\bar{M})` is a finite union of polyhedra, a valid confidence
+    set is constructed by taking the union of the confidence sets for each of its
+    components (Lemma 2.2).
+
+    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
+    set has uniform asymptotic coverage
+
+    .. math::
+
+        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
+        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
+
+    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
+    for all :math:`P \in \mathcal{P}`.
 
     Parameters
     ----------
@@ -68,7 +107,7 @@ def compute_conditional_cs_sdrmm(
         Vector defining parameter of interest. If None, defaults to first post-period.
     m_bar : float, default=0
         Relative magnitude parameter. Post-period second differences can be at most
-        m_bar times the max pre-period second difference.
+        :math:`\bar{M}` times the max pre-period second difference.
     alpha : float, default=0.05
         Significance level.
     hybrid_flag : {'LF', 'ARP', 'FLCI'}, default='LF'
@@ -104,15 +143,21 @@ def compute_conditional_cs_sdrmm(
 
     Notes
     -----
-    The restriction :math:`\Delta^{SDRMM}(M)` intersects the second differences with
-    relative magnitudes restriction with a monotonicity constraint. This captures both
-    smoothness in changes and monotonic behavior of treatment effects.
+    The confidence set is constructed using the moment inequality approach from Section 3 of Rambachan & Roth (2023).
+    Since :math:`\Delta^{SDRMM}(\bar{M})` is a finite union of polyhedra, we can apply Lemma 2.2
+    to construct a valid confidence set by taking the union of the confidence sets for each
+    of its components.
+
+    This restriction provides a middle ground between the flexibility of
+    :math:`\Delta^{SDRM}` and the additional structure imposed by monotonicity,
+    potentially yielding tighter confidence intervals when both assumptions
+    are plausible.
 
     References
     ----------
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods == 1:
         raise ValueError(
@@ -214,17 +259,27 @@ def compute_identified_set_sdrmm(
     num_post_periods,
     monotonicity_direction="increasing",
 ):
-    r"""Compute identified set for :math:`\Delta^{SDRMM}(M)`.
+    r"""Compute identified set for :math:`\Delta^{SDRMM}(\bar{M})`.
 
-    Computes the identified set for :math:`l'\beta_{post}` under the restriction that the
-    underlying trend delta lies in :math:`\Delta^{SDRMM}(M)`, taking the union over all
+    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
+    underlying trend delta lies in :math:`\Delta^{SDRMM}(\bar{M})`, taking the union over all
     choices of s and sign, intersected with the monotonicity constraint.
+
+    The identified set under :math:`\Delta^{SDRMM}(\bar{M})` is
+
+    .. math::
+
+        \mathcal{I}(\Delta^{SDRMM}(\bar{M})) = \bigcup_{s=-(T_{pre}-2)}^{0} \bigcup_{sign \in \{+,-\}}
+        \mathcal{I}(\Delta^{SDRM}_{s,sign}(\bar{M}) \cap \Delta^{Mon}),
+
+    where each :math:`\mathcal{I}(\cdot)` is computed by solving linear programs to find
+    the range of :math:`l'\tau_{post}` consistent with the constraints.
 
     Parameters
     ----------
     m_bar : float
         Relative magnitude parameter. Second differences in post-treatment periods
-        can be at most m_bar times the maximum absolute second difference in
+        can be at most :math:`\bar{M}` times the maximum absolute second difference in
         pre-treatment periods.
     true_beta : ndarray
         True coefficient values (pre and post periods).
@@ -245,14 +300,20 @@ def compute_identified_set_sdrmm(
     Notes
     -----
     The identified set is computed by solving linear programs for each choice of
-    period s and sign (positive/negative maximum), then taking the union of all
-    resulting intervals, subject to both the SDRM and monotonicity constraints.
+    period :math:`s \in \{-(T_{pre}-2), ..., 0\}` and sign (positive/negative maximum),
+    then taking the union of all resulting intervals. The monotonicity constraint
+    is enforced in each linear program, ensuring that treatment effects are either
+    non-decreasing or non-increasing over time.
+
+    The linear programs solve for the maximum and minimum of :math:`l'\delta_{post}`
+    subject to constraints including :math:`\delta_{pre} = \beta_{pre}` and
+    :math:`\delta \in \Delta^{SDRM}_{s,sign}(\bar{M}) \cap \Delta^{Mon}`.
 
     References
     ----------
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     l_vec = np.asarray(l_vec).flatten()
 
@@ -580,11 +641,21 @@ def _create_sdrmm_constraint_matrix(
     monotonicity_direction="increasing",
     drop_zero=True,
 ):
-    r"""Create constraint matrix A for :math:`\Delta^{SDRMM}_{s,sign}(M)`.
+    r"""Create constraint matrix A for :math:`\Delta^{SDRMM}_{s,sign}(\bar{M})`.
 
     Creates a matrix for the linear constraints that delta is in
-    :math:`\Delta^{SDRMM}_{s,sign}(M)`, which combines second differences with
+    :math:`\Delta^{SDRMM}_{s,sign}(\bar{M})`, which combines second differences with
     relative magnitudes and monotonicity constraints.
+
+    The constraint set is defined as
+
+    .. math::
+
+        \Delta^{SDRMM}_{s,sign}(\bar{M}) = \Delta^{SDRM}_{s,sign}(\bar{M}) \cap \Delta^{Mon}.
+
+    This function stacks the constraint matrices from the relative magnitudes
+    constraint for period :math:`s` and the monotonicity constraint (increasing
+    or decreasing) to create a combined system.
 
     Parameters
     ----------
@@ -593,21 +664,28 @@ def _create_sdrmm_constraint_matrix(
     num_post_periods : int
         Number of post-treatment periods.
     m_bar : float
-        Relative magnitude parameter.
+        Relative magnitude parameter. Controls how much larger post-treatment
+        second differences can be relative to period :math:`s`.
     s : int
         Period index for maximum second difference (must be <= 0).
     max_positive : bool, default=True
         If True, period s has maximum positive second difference.
         If False, period s has maximum negative second difference.
     monotonicity_direction : str, default='increasing'
-        Direction of monotonicity constraint.
+        Direction of monotonicity constraint ('increasing' or 'decreasing').
     drop_zero : bool, default=True
         Whether to drop the constraint for period t=0.
 
     Returns
     -------
     ndarray
-        Constraint matrix A such that delta in Delta^{SDRMM} iff A * delta <= d.
+        Constraint matrix :math:`A` such that :math:`\delta \in \Delta^{SDRMM}` iff :math:`A\delta \leq d`.
+
+    Notes
+    -----
+    The monotonicity constraints are adjusted to match the dimensionality of the
+    SDRM constraints when drop_zero=False, ensuring proper alignment of the
+    constraint system.
     """
     a_sdrm = _create_sdrm_constraint_matrix(num_pre_periods, num_post_periods, m_bar, s, max_positive, drop_zero)
 
@@ -622,16 +700,28 @@ def _create_sdrmm_constraint_matrix(
 
 
 def _create_sdrmm_constraint_vector(a_matrix):
-    """Create constraint vector d for Delta^{SDRMM}.
+    r"""Create constraint vector d for :math:`\Delta^{SDRMM}`.
+
+    For the combined smoothness with relative magnitudes and monotonicity restriction,
+    the constraint vector :math:`d` is a vector of zeros. This arises because the
+    relative magnitudes constraints in :math:`\Delta^{SDRM}` can be written as
+    homogeneous inequalities of the form :math:`A_{SDRM}\delta \leq 0`, and the
+    monotonicity constraints are also homogeneous: :math:`A_{Mon}\delta \leq 0`.
 
     Parameters
     ----------
     a_matrix : ndarray
-        The constraint matrix A.
+        The constraint matrix :math:`A`.
 
     Returns
     -------
     ndarray
-        Constraint vector d (all zeros for SDRMM).
+        Constraint vector d (all zeros for :math:`\Delta^{SDRMM}`).
+
+    Notes
+    -----
+    The zero constraint vector reflects that all restrictions in :math:`\Delta^{SDRMM}`
+    are relative comparisons between different elements of :math:`\delta`, rather than
+    absolute bounds on individual components.
     """
     return np.zeros(a_matrix.shape[0])

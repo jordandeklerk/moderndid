@@ -45,11 +45,52 @@ def compute_conditional_cs_sdrmb(
     grid_ub=None,
     seed=0,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{SDRMB}(M)`.
+    r"""Compute conditional confidence set for :math:`\Delta^{SDRMB}(\bar{M})`.
 
-    Computes a confidence set for :math:`l'\beta_{post}` under the restriction that delta
-    lies in :math:`\Delta^{SDRMB}(M)`, which intersects :math:`\Delta^{SDRM}(M)` with
+    Computes a confidence set for :math:`l'\tau_{post}` under the restriction that delta
+    lies in :math:`\Delta^{SDRMB}(\bar{M})`, which intersects :math:`\Delta^{SDRM}(\bar{M})` with
     a sign restriction (positive or negative bias).
+
+    The combined restriction is defined as:
+
+    .. math::
+
+        \Delta^{SDRMB}(\bar{M}) = \Delta^{SDRM}(\bar{M}) \cap \Delta^{B}
+
+    where :math:`\Delta^{B} = \Delta^{PB}` for positive bias with
+    :math:`\Delta^{PB} = \{\delta : \delta_t \geq 0, \forall t \geq 0\}`,
+    or :math:`\Delta^{B} = -\Delta^{PB} = \{\delta : \delta_t \leq 0, \forall t \geq 0\}` for negative bias.
+
+    This restriction combines three intuitions: smoothness of differential trends
+    (second differences), relative magnitude bounds based on pre-treatment variation,
+    and known direction of bias (e.g., concurrent policy with known sign).
+
+    The confidence set is computed as
+
+    .. math::
+
+        CS = \bigcup_{s=-(T_{pre}-2)}^{0} \left(
+            CS_{s,+} \cup CS_{s,-}
+        \right) \cap CS^{sign}
+
+    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets under
+    the (+) and (-) restrictions respectively, and :math:`CS^{sign}` enforces the
+    bias direction constraint.
+
+    Since :math:`\Delta^{SDRMB}(\bar{M})` is a finite union of polyhedra, a valid confidence
+    set is constructed by taking the union of the confidence sets for each of its
+    components (Lemma 2.2).
+
+    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
+    set has uniform asymptotic coverage
+
+    .. math::
+
+        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
+        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
+
+    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
+    for all :math:`P \in \mathcal{P}`.
 
     Parameters
     ----------
@@ -101,26 +142,20 @@ def compute_conditional_cs_sdrmb(
 
     Notes
     -----
-    Since this choice of :math:`\Delta^{SDRM}` bounds the variation in post-treatment
-    trends based on observed variation in pre-treatment trends, we require at least
-    2 pre-treatment periods.
+    The confidence set is constructed using the moment inequality approach from Section 3.
+    Since :math:`\Delta^{SDRMB}(\bar{M})` is a finite union of polyhedra, we can apply Lemma 2.2
+    to construct a valid confidence set by taking the union of the confidence sets for each
+    of its components.
 
-    The confidence set is computed as:
-
-    .. math::
-
-        CS = \bigcup_{s=-(T_{pre}-2)}^{0} \left(
-            CS_{s,+} \cup CS_{s,-}
-        \right)
-
-    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets under
-    the (+) and (-) restrictions respectively, intersected with the sign restriction.
+    This restriction is not convex, so Fixed Length Confidence Intervals (FLCIs)
+    are not recommended. The conditional/hybrid approach provides better power
+    when multiple constraints are binding.
 
     References
     ----------
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods == 1:
         raise ValueError(
@@ -223,11 +258,16 @@ def compute_identified_set_sdrmb(
     num_post_periods,
     bias_direction="positive",
 ):
-    r"""Compute identified set for :math:`\Delta^{SDRMB}(M)`.
+    r"""Compute identified set for :math:`\Delta^{SDRMB}(\bar{M})`.
 
-    Computes the identified set for :math:`l'\beta_{post}` under the restriction that the
-    underlying trend delta lies in :math:`\Delta^{SDRMB}(M)`, taking the union over all
+    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
+    underlying trend delta lies in :math:`\Delta^{SDRMB}(\bar{M})`, taking the union over all
     choices of s and sign, intersected with the bias sign restriction.
+
+    The identified set under :math:`\Delta^{SDRMB}(\bar{M})` represents the values of
+    :math:`\theta = l'\tau_{post}` consistent with the observed pre-treatment coefficients
+    :math:`\beta_{pre} = \delta_{pre}`, smoothness and relative magnitude constraints on
+    second differences, and a sign restriction on post-treatment bias.
 
     Parameters
     ----------
@@ -552,7 +592,20 @@ def _create_sdrmb_constraint_matrix(
 
     Creates a matrix for the linear constraints that delta is in
     :math:`\Delta^{SDRMB}_{s,sign}(M)`, which combines the second differences
-    constraint with a sign restriction.
+    with relative magnitudes constraint and a sign restriction.
+
+    The constraint set is defined as
+
+    .. math::
+
+        \Delta^{SDRMB}_{s,sign}(\bar{M}) = \Delta^{SDRM}_{s,sign}(\bar{M}) \cap \Delta^{B},
+
+    where :math:`\Delta^{SDRM}_{s,sign}(\bar{M})` constrains post-treatment second
+    differences relative to a specific pre-treatment period :math:`s`, and
+    :math:`\Delta^{B}` enforces a sign restriction on all post-treatment effects.
+
+    This function stacks the constraint matrices from both restrictions to create
+    a combined system :math:`A\delta \leq d` that captures the intersection.
 
     Parameters
     ----------
@@ -561,14 +614,15 @@ def _create_sdrmb_constraint_matrix(
     num_post_periods : int
         Number of post-treatment periods.
     m_bar : float
-        Relative magnitude parameter.
+        Relative magnitude parameter. Post-period second differences can be at
+        most :math:`\bar{M}` times the second difference in period :math:`s`.
     s : int
         Period index for maximum second difference (must be <= 0).
     max_positive : bool, default=True
         If True, period s has maximum positive second difference.
         If False, period s has maximum negative second difference.
     bias_direction : str, default='positive'
-        Direction of bias sign restriction.
+        Direction of bias sign restriction ('positive' or 'negative').
     drop_zero : bool, default=True
         Whether to drop the constraint for period t=0.
 
@@ -576,6 +630,11 @@ def _create_sdrmb_constraint_matrix(
     -------
     ndarray
         Constraint matrix A such that :math:`\delta \in \Delta^{SDRMB}` iff :math:`A \delta \leq d`.
+
+    Notes
+    -----
+    The resulting constraint matrix has dimensions :math:`(n_{constraints}, T_{pre} + T_{post})`,
+    where the number of constraints depends on the specific restrictions being imposed.
     """
     a_sdrm = create_sdrm_constraint_matrix(
         num_pre_periods=num_pre_periods,
@@ -600,6 +659,11 @@ def _create_sdrmb_constraint_matrix(
 def _create_sdrmb_constraint_vector(a_matrix):
     r"""Create constraint vector d for :math:`\Delta^{SDRMB}`.
 
+    For the combined smoothness with relative magnitudes and bias restriction,
+    the constraint vector :math:`d` is a vector of zeros. This is because both
+    the :math:`\Delta^{SDRM}` and :math:`\Delta^{B}` restrictions can be written
+    with homogeneous inequality constraints of the form :math:`A\delta \leq 0`.
+
     Parameters
     ----------
     a_matrix : ndarray
@@ -609,5 +673,11 @@ def _create_sdrmb_constraint_vector(a_matrix):
     -------
     ndarray
         Constraint vector d (all zeros for :math:`\Delta^{SDRMB}`).
+
+    Notes
+    -----
+    The zero vector arises because the relative magnitudes constraint compares
+    scaled second differences to zero, and the bias sign restriction constrains
+    post-treatment effects relative to zero.
     """
     return np.zeros(a_matrix.shape[0])

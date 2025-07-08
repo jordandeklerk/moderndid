@@ -1,7 +1,6 @@
 """Andrews-Roth-Pakes (APR) confidence intervals with no nuisance parameters."""
 
 import warnings
-from collections.abc import Callable
 from typing import NamedTuple
 
 import numpy as np
@@ -57,64 +56,89 @@ def compute_arp_ci(
     flci_l=None,
     lf_cv=None,
 ):
-    r"""Compute APR confidence interval for treatment effect with no nuisance parameters.
+    r"""Compute ARP confidence interval for treatment effect with no nuisance parameters.
 
-    Constructs confidence intervals using the Andrews-Roth-Pakes (APR) conditional
-    test that accounts for pre-treatment trends under shape restrictions without
-    nuisance parameters.
+    Constructs confidence intervals using the Andrews-Roth-Pakes (ARP) conditional
+    test for the case where the parameter of interest :math:`\theta = \beta_{post,s}`
+    is a single post-treatment coefficient. This special case allows for more
+    efficient computation as there are no nuisance parameters to profile over.
+
+    The method tests whether each value :math:`\theta_0` on a grid lies in the
+    identified set:
+
+    .. math::
+        \mathcal{I}(\Delta) = \{\beta_{post,s} - \delta_{post,s} :
+            \delta \in \Delta, \delta_{pre} = \hat{\beta}_{pre}\}.
+
+    Under the null that :math:`\theta_0 \in \mathcal{I}(\Delta)`, the test statistic
+    follows a truncated normal distribution after conditioning on which constraint binds.
+
+    The key here is that without nuisance parameters, the binding constraint
+    uniquely determines the least favorable distribution. The test conditions on
+    the event :math:`\{\arg\max_i (A\hat{\beta} - d)_i/\sigma_i = j\}` and computes
+    the appropriate truncated normal critical value.
 
     Parameters
     ----------
     beta_hat : ndarray
-        Vector of estimated coefficients. First `n_pre_periods` elements are
-        pre-treatment, remainder are post-treatment.
+        Vector of estimated event study coefficients :math:`\hat{\beta}`. First
+        `n_pre_periods` elements are pre-treatment, remainder are post-treatment.
     sigma : ndarray
-        Covariance matrix of estimated coefficients.
+        Covariance matrix :math:`\Sigma` of estimated coefficients.
     A : ndarray
-        Matrix defining the constraint set :math:`\Delta`.
+        Matrix :math:`A` defining the constraint set :math:`\Delta`.
     d : ndarray
-        Vector defining the constraint set :math:`\Delta`.
+        Vector :math:`d` such that :math:`\Delta = \{\delta : A\delta \leq d\}`.
     n_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`T_{pre}`.
     n_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`T_{post}`.
     post_period_index : int, default=1
-        Which post-treatment period to compute CI for (1-indexed).
+        Which post-treatment period :math:`s` to compute CI for (1-indexed).
     alpha : float, default=0.05
-        Significance level for confidence interval.
+        Significance level :math:`\alpha` for confidence interval.
     grid_lb : float, optional
-        Lower bound for grid search. If None, uses automatic bounds.
+        Lower bound for grid search. If None, uses :math:`\hat{\theta} - 10 \cdot SE(\hat{\theta})`.
     grid_ub : float, optional
-        Upper bound for grid search. If None, uses automatic bounds.
+        Upper bound for grid search. If None, uses :math:`\hat{\theta} + 10 \cdot SE(\hat{\theta})`.
     grid_points : int, default=1000
         Number of points in the grid search.
     return_length : bool, default=False
-        If True, only return the CI length (for optimization).
+        If True, only return the CI length (useful for power calculations).
     hybrid_flag : {'ARP', 'FLCI', 'LF'}, default='ARP'
-        Type of test to use:
-
-        - 'ARP': Standard APR test
-        - 'FLCI': Hybrid with fixed-length CI first stage
-        - 'LF': Hybrid with least favorable first stage
+        Type of test to use. 'ARP' is the standard conditional test, 'FLCI' adds
+        fixed-length CI constraints for improved power, 'LF' uses a least favorable
+        first stage.
     hybrid_kappa : float, optional
-        First-stage size for hybrid tests. Required if hybrid_flag != 'ARP'.
+        First-stage size :math:`\kappa` for hybrid tests. Required if hybrid_flag != 'ARP'.
     flci_halflength : float, optional
-        Half-length of FLCI. Required if hybrid_flag == 'FLCI'.
+        Half-length of FLCI constraint. Required if hybrid_flag == 'FLCI'.
     flci_l : ndarray, optional
-        Weight vector for FLCI. Required if hybrid_flag == 'FLCI'.
+        Weight vector :math:`\ell` for FLCI. Required if hybrid_flag == 'FLCI'.
     lf_cv : float, optional
         Critical value for LF test. Required if hybrid_flag == 'LF'.
 
     Returns
     -------
     APRCIResult
-        NamedTuple containing CI bounds, grid results, and status.
+        NamedTuple containing CI bounds, grid of tested values, acceptance
+        indicators, and optimization status.
+
+    Notes
+    -----
+    The no-nuisance case provides computational advantages over the general case.
+    The test statistic simplifies to :math:`\eta^* = \max_i (A\hat{\beta} - d)_i/\sigma_i`
+    where :math:`\sigma_i = \sqrt{(A\Sigma A')_{ii}}`. The conditioning event depends
+    only on which constraint achieves this maximum, leading to a one-dimensional
+    truncated normal distribution.
 
     References
     ----------
 
     .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
         Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     beta_hat = np.asarray(beta_hat).flatten()
     sigma = np.asarray(sigma)
@@ -226,30 +250,50 @@ def _test_in_identified_set(
     alpha,
     **kwargs,  # pylint: disable=unused-argument
 ):
-    r"""Run APR test of the moments :math:`E[AY] - d <= 0`.
+    r"""Run ARP test of the moments :math:`E[AY - d] \leq 0`.
 
-    Tests whether :math:`Y \sim N(\mu, \sigma)` with :math:`\mu \leq 0` under the null.
-    The APR test conditions on the location of the binding moment.
+    Tests whether :math:`Y = \hat{\beta} - \theta_0 e_{post,s}` could have arisen from
+    a distribution where :math:`\theta_0` lies in the identified set. The null hypothesis
+    is that :math:`Y \sim N(\tau + \delta - \theta_0 e_{post,s}, \Sigma)` for some
+    :math:`\delta \in \Delta` with :math:`\delta_{pre} = Y_{pre}`.
+
+    The test first identifies which constraint would bind if :math:`\theta_0` were
+    on the boundary of the identified set. It then conditions on this constraint
+    binding, leading to a truncated normal test. The truncation bounds :math:`[v_{lo}, v_{up}]`
+    ensure that other constraints remain slack.
 
     Parameters
     ----------
     y : ndarray
-        Observed coefficient vector minus hypothesized value.
+        Observed coefficient vector :math:`Y = \hat{\beta} - \theta_0 e_{post,s}`
+        where :math:`\theta_0` is the hypothesized value.
     sigma : ndarray
-        Covariance matrix.
+        Covariance matrix :math:`\Sigma` of the event study coefficients.
     A : ndarray
-        Constraint matrix.
+        Constraint matrix :math:`A` defining :math:`\Delta`.
     d : ndarray
-        Constraint bounds.
+        Constraint bounds :math:`d` such that :math:`\Delta = \{\delta : A\delta \leq d\}`.
     alpha : float
-        Significance level.
+        Significance level :math:`\alpha` for the test.
     **kwargs
-        Unused parameters for compatibility.
+        Unused parameters for compatibility with hybrid tests.
 
     Returns
     -------
     bool
-        True if null is NOT rejected (value is in identified set).
+        True if null is NOT rejected (i.e., :math:`\theta_0` is in the confidence set).
+
+    Notes
+    -----
+    The test statistic is :math:`\eta^* = \max_i \tilde{A}_i Y - \tilde{d}_i` where
+    :math:`\tilde{A}` and :math:`\tilde{d}` are normalized by the standard deviations.
+    If :math:`\eta^* \leq 0`, all constraints are satisfied and we cannot reject.
+    Otherwise, we condition on constraint :math:`j = \arg\max_i \tilde{A}_i Y - \tilde{d}_i`
+    binding and test whether the observed value is consistent with this conditioning.
+
+    The truncation bounds ensure that under the conditional distribution, constraint
+    :math:`j` remains the binding constraint. This is crucial for the validity of
+    the conditional inference approach.
     """
     sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
     sigma_tilde = np.maximum(sigma_tilde, 1e-10)
@@ -317,29 +361,42 @@ def _test_in_identified_set_flci_hybrid(
     flci_l,
     **kwargs,  # pylint: disable=unused-argument
 ):
-    """Hybrid test with FLCI first stage.
+    r"""Hybrid test with FLCI first stage.
 
-    First tests if :math:`|l'y| > halflength`. If so, rejects immediately.
-    Otherwise, adds this constraint and adjusts second-stage size.
+    Implements a two-stage test that first checks if :math:`|\ell'Y| > h_{FLCI}`
+    where :math:`h_{FLCI}` is the fixed-length confidence interval half-length.
+    If this constraint is violated, the test immediately rejects. Otherwise,
+    it adds the FLCI constraints to the main constraint set and proceeds with
+    the conditional test.
+
+    The FLCI approach optimally chooses :math:`\ell` to minimize the worst-case
+    length of the confidence interval under :math:`\Delta^{SD}(M)`. Using this
+    as a first stage improves power because the FLCI often provides a tight
+    initial bound on :math:`\theta`.
+
+    The constraints :math:`|\ell'Y| \leq h_{FLCI}` are equivalent to
+    :math:`\ell'Y \leq h_{FLCI}` and :math:`-\ell'Y \leq h_{FLCI}`. These are
+    added to the constraint set :math:`AY \leq d` for the second stage, which
+    uses adjusted size :math:`\tilde{\alpha} = (\alpha - \kappa)/(1 - \kappa)`.
 
     Parameters
     ----------
     y : ndarray
-        Observed coefficient vector minus hypothesized value.
+        Observed coefficient vector :math:`Y = \hat{\beta} - \theta_0 e_{post,s}`.
     sigma : ndarray
-        Covariance matrix.
+        Covariance matrix :math:`\Sigma`.
     A : ndarray
-        Constraint matrix.
+        Constraint matrix :math:`A` for main restrictions.
     d : ndarray
-        Constraint bounds.
+        Constraint bounds :math:`d`.
     alpha : float
-        Overall significance level.
+        Overall significance level :math:`\alpha`.
     hybrid_kappa : float
-        First-stage significance level.
+        First-stage significance level :math:`\kappa`.
     flci_halflength : float
-        Half-length of FLCI.
+        Half-length :math:`h_{FLCI}` of the fixed-length confidence interval.
     flci_l : ndarray
-        Weight vector for FLCI.
+        Weight vector :math:`\ell` from FLCI optimization.
     **kwargs
         Unused parameters for compatibility.
 
@@ -347,6 +404,13 @@ def _test_in_identified_set_flci_hybrid(
     -------
     bool
         True if null is NOT rejected (value is in identified set).
+
+    Notes
+    -----
+    The FLCI hybrid leverages the optimal linear combination :math:`\ell` found
+    by minimizing worst-case CI length. This often provides tighter bounds than
+    the least favorable approach, especially when :math:`\Delta` has special
+    structure like smoothness restrictions.
     """
     # First stage: test FLCI constraint
     flci_l = np.asarray(flci_l).flatten()
@@ -388,25 +452,42 @@ def _test_in_identified_set_lf_hybrid(
 ):
     r"""Hybrid test with least favorable first stage.
 
-    First tests if :math:`\max_{i} \left( \frac{a_i'y - d_i}{\sigma_i} \right) > lf_cv`.
-    If so, rejects immediately. Otherwise, conditions on this event and adjusts second-stage size.
+    Implements a two-stage test that first checks if
+
+    .. math::
+
+        \eta^* = \max_{i} (\tilde{A}_i Y - \tilde{d}_i) > c_{LF},
+
+    where :math:`c_{LF}` is the least favorable critical value. If this first stage rejects, the test
+    immediately rejects :math:`\theta_0`. Otherwise, it proceeds to a second stage
+    with adjusted size.
+
+    The least favorable critical value :math:`c_{LF}` is chosen so that
+    :math:`\mathbb{P}_{LF}(\eta^* > c_{LF}) = \kappa` under the least favorable
+    distribution in :math:`\Delta`. This distribution places all mass at the point
+    that maximizes the rejection probability.
+
+    The second stage applies the conditional test with size
+    :math:`\tilde{\alpha} = (\alpha - \kappa)/(1 - \kappa)`, ensuring overall size
+    :math:`\alpha`. This hybrid approach improves power by quickly rejecting values
+    of :math:`\theta_0` far from the identified set while maintaining exact size control.
 
     Parameters
     ----------
     y : ndarray
-        Observed coefficient vector minus hypothesized value.
+        Observed coefficient vector :math:`Y = \hat{\beta} - \theta_0 e_{post,s}`.
     sigma : ndarray
-        Covariance matrix.
+        Covariance matrix :math:`\Sigma`.
     A : ndarray
-        Constraint matrix.
+        Constraint matrix :math:`A`.
     d : ndarray
-        Constraint bounds.
+        Constraint bounds :math:`d`.
     alpha : float
-        Overall significance level.
+        Overall significance level :math:`\alpha`.
     hybrid_kappa : float
-        First-stage significance level.
+        First-stage significance level :math:`\kappa`, typically :math:`\alpha/10`.
     lf_cv : float
-        Critical value for least favorable test.
+        Least favorable critical value :math:`c_{LF}` for first-stage test.
     **kwargs
         Unused parameters.
 
@@ -414,6 +495,15 @@ def _test_in_identified_set_lf_hybrid(
     -------
     bool
         True if null is NOT rejected (value is in identified set).
+
+    Notes
+    -----
+    The least favorable hybrid test balances power and size. The first stage
+    provides power against alternatives far from the identified set, while the
+    second stage ensures correct coverage near the boundary.
+
+    The adjustment :math:`\tilde{\alpha} = (\alpha - \kappa)/(1 - \kappa)` follows from the
+    requirement that :math:`\kappa + (1-\kappa)\tilde{\alpha} = \alpha`.
     """
     sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
     sigma_tilde = np.maximum(sigma_tilde, 1e-10)
@@ -470,7 +560,7 @@ def _test_over_theta_grid(
     n_pre_periods,
     post_period_index,
     alpha,
-    test_fn: Callable,
+    test_fn,
     **test_kwargs,
 ):
     """Test whether values in a grid lie in the identified set.

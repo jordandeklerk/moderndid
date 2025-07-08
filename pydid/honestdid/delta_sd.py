@@ -44,10 +44,38 @@ def compute_conditional_cs_sd(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{SD}`(M).
+    r"""Compute conditional confidence set for :math:`\Delta^{SD}(M)`.
 
-    Computes a confidence set for :math:`l'\beta_{post}` that is valid conditional on the
+    Computes a confidence set for :math:`l'\tau_{post}` that is valid conditional on the
     event study coefficients being in the identified set under :math:`\Delta^{SD}(M)`.
+
+    The smoothness restriction :math:`\Delta^{SD}(M)` formalizes the concern about
+    confounding from secular trends that evolve smoothly over time. It bounds the
+    discrete analog of the second derivative:
+
+    .. math::
+
+        \Delta^{SD}(M) = \{\delta : |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \leq M, \forall t\}
+
+    When :math:`M = 0`, this requires the differential trend to be exactly linear,
+    corresponding to the common practice of controlling for linear group-specific trends.
+    For :math:`M > 0`, it allows for approximate linearity, acknowledging that linear
+    specifications may not be exactly correct (Wolfers, 2006; Lee and Solon, 2011).
+
+    Since :math:`\Delta^{SD}(M)` is a finite union of polyhedra, a valid confidence
+    set is constructed by taking the union of the confidence sets for each of its
+    components (Lemma 2.2).
+
+    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
+    set has uniform asymptotic coverage
+
+    .. math::
+
+        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
+        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
+
+    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
+    for all :math:`P \in \mathcal{P}`.
 
     Parameters
     ----------
@@ -60,9 +88,9 @@ def compute_conditional_cs_sd(
     num_post_periods : int
         Number of post-treatment periods.
     l_vec : ndarray, optional
-        Vector defining parameter of interest. If None, defaults to first post-period.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`. If None, defaults to first post-period.
     m_bar : float, default=0
-        Smoothness parameter M for :math:`\Delta^{SD}(M)`.
+        Smoothness parameter M. Bounds the second differences: :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`.
     alpha : float, default=0.05
         Significance level.
     hybrid_flag : {'FLCI', 'LF', 'ARP'}, default='FLCI'
@@ -90,15 +118,24 @@ def compute_conditional_cs_sd(
 
     Notes
     -----
-    The restriction :math:`\Delta^{SD}(M)` bounds the second differences of the
-    underlying trend: :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`
-    for all :math:`t`.
+    :math:`\Delta^{SD}(M)` is convex and centrosymmetric (i.e. :math:`\tilde{\delta} \in \Delta`
+    implies :math:`-\tilde{\delta} \in \Delta`), which allows for the use of Fixed Length Confidence
+    Intervals (FLCIs) with near-optimal finite-sample properties (Armstrong & Kolesár, 2018). The identified
+    set under :math:`\Delta^{SD}(M)` has constant length :math:`2M` regardless of the pre-treatment
+    coefficients.
+
+    The confidence set is constructed using either FLCIs (default) or the moment inequality
+    approach from Section 3. For FLCIs, the expected length is at most 28% longer than
+    the shortest possible confidence set satisfying the coverage requirement when the
+    true parameter is at the center of the identified set (Proposition 4.1).
 
     References
     ----------
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    .. [2] Armstrong, T. B., & Kolesár, M. (2018). Optimal inference in a class of
+        regression models. Econometrica, 86(2), 655-683.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -206,23 +243,44 @@ def compute_identified_set_sd(
     num_pre_periods,
     num_post_periods,
 ):
-    r"""Compute identified set for :math:`\Delta^{SD}`(M).
+    r"""Compute identified set for :math:`\Delta^{SD}(M)`.
 
-    Computes the identified set for :math:`l'\beta_{post}` under the restriction that the
+    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
     underlying trend :math:`\delta` lies in :math:`\Delta^{SD}(M)`.
+
+    Following Lemma 2.1 in Rambachan & Roth (2023), the identified set is:
+
+    .. math::
+
+        \mathcal{S}(\beta, \Delta^{SD}(M)) = [\theta^{lb}, \theta^{ub}]
+
+    where:
+
+    .. math::
+
+        \theta^{ub} = l'\beta_{post} - \min_{\delta} l'\delta_{post}
+
+        \theta^{lb} = l'\beta_{post} - \max_{\delta} l'\delta_{post}
+
+    subject to :math:`\delta \in \Delta^{SD}(M)` and :math:`\delta_{pre} = \beta_{pre}`.
+
+    Under the decomposition :math:`\beta = \tau + \delta` with :math:`\tau_{pre} = 0`,
+    the causal parameter :math:`\theta = l'\tau_{post}` is partially identified. Since
+    :math:`\delta_{pre} = \beta_{pre}` is point identified, the restriction
+    :math:`\delta \in \Delta^{SD}(M)` constrains the possible values of :math:`\delta_{post}`.
 
     Parameters
     ----------
     m_bar : float
         Smoothness parameter M. Bounds the second differences: :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`.
     true_beta : ndarray
-        True coefficient values (pre and post periods).
+        True coefficient values :math:`\beta = (\beta_{pre}', \beta_{post}')'`.
     l_vec : ndarray
-        Vector defining parameter of interest.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`.
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`\underline{T}`.
     num_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`\bar{T}`.
 
     Returns
     -------
@@ -231,15 +289,9 @@ def compute_identified_set_sd(
 
     Notes
     -----
-    The identified set is computed by solving two linear programs:
-
-    - Maximize :math:`l'\delta_{post}` subject to :math:`\delta \in \Delta^{SD}(M)`
-      and :math:`\delta_{pre} = \beta_{pre}`
-    - Minimize :math:`l'\delta_{post}` subject to :math:`\delta \in \Delta^{SD}(M)`
-      and :math:`\delta_{pre} = \beta_{pre}`
-
-    The constraint :math:`\delta_{pre} = \beta_{pre}` reflects the assumption that pre-treatment
-    event study coefficients identify the pre-treatment trend.
+    These optimization problems are solved using linear programming. The constraint
+    :math:`\delta_{pre} = \beta_{pre}` reflects that pre-treatment event study
+    coefficients identify the pre-treatment trend under the no-anticipation assumption.
     """
     # Create objective function: we want to min/max l'delta_post
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
@@ -301,14 +353,27 @@ def _create_sd_constraint_matrix(
 
     Creates matrix A such that the constraint :math:`\delta \in \Delta^{SD}(M)` can be
     written as :math:`A \delta \leq d`, where d is a vector with all elements equal to M.
-    This implements the constraint :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M` for all t.
+
+    The constraint matrix implements
+
+    .. math::
+
+        (\delta_{t-1} - 2\delta_t + \delta_{t+1}) \leq M
+
+        -(\delta_{t-1} - 2\delta_t + \delta_{t+1}) \leq M
+
+    for each period t. This ensures :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`.
+
+    The second differences constraint can be viewed as a discrete analog of bounding
+    the second derivative of a smooth function. This is motivated by concerns about
+    confounding from secular trends that evolve smoothly over time.
 
     Parameters
     ----------
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods :math:`\underline{T}`.
     num_post_periods : int
-        Number of post-treatment periods.
+        Number of post-treatment periods :math:`\bar{T}`.
     drop_zero_period : bool, default=True
         Whether to drop the period t=0 (treatment period) from the constraints.
         This is standard as we typically normalize :math:`\delta_0 = 0`.
@@ -318,7 +383,7 @@ def _create_sd_constraint_matrix(
     Returns
     -------
     ndarray
-        Constraint matrix A.
+        Constraint matrix A of shape (2*(num_constraints), num_periods).
     """
     # First construct the positive moments matrix
     # Each row represents one second difference constraint
@@ -346,24 +411,6 @@ def _create_sd_constraint_matrix(
     A = np.vstack([A_positive, -A_positive])
 
     return A
-
-
-def _create_sd_constraint_vector(A, m_bar):
-    r"""Create the d vector for second differences constraints.
-
-    Parameters
-    ----------
-    A : ndarray
-        Constraint matrix from _create_sd_constraint_matrix.
-    m_bar : float
-        Smoothness parameter M for :math:`\Delta^{SD}(M)`.
-
-    Returns
-    -------
-    ndarray
-        Vector d such that :math:`A \delta \leq d` defines :math:`\Delta^{SD}(M)`.
-    """
-    return np.full(A.shape[0], m_bar)
 
 
 def _compute_cs_sd_no_nuisance(
@@ -457,3 +504,21 @@ def _compute_cs_sd_no_nuisance(
         return result.ci_length
 
     return {"grid": result.theta_grid, "accept": result.accept_grid}
+
+
+def _create_sd_constraint_vector(A, m_bar):
+    r"""Create the d vector for second differences constraints.
+
+    Parameters
+    ----------
+    A : ndarray
+        Constraint matrix from _create_sd_constraint_matrix.
+    m_bar : float
+        Smoothness parameter M for :math:`\Delta^{SD}(M)`.
+
+    Returns
+    -------
+    ndarray
+        Vector d such that :math:`A \delta \leq d` defines :math:`\Delta^{SD}(M)`.
+    """
+    return np.full(A.shape[0], m_bar)
