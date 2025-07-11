@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 from scipy import stats
 
-from .utils import compute_bounds, selection_matrix
+from .numba import compute_bounds, selection_matrix
 
 
 def test_in_identified_set_max(

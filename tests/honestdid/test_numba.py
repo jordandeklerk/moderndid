@@ -149,7 +149,7 @@ def grid_search_sizes(request, fast_config):
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_compute_bounds_consistency(random_data):
     eta, sigma, A, b, z = random_data
-    bounds_numba = utils.compute_bounds(eta, sigma, A, b, z)
+    bounds_numba = numba.compute_bounds(eta, sigma, A, b, z)
     bounds_original = _compute_bounds_py(eta, sigma, A, b, z)
     np.testing.assert_allclose(bounds_numba[0], bounds_original[0], rtol=1e-10)
     np.testing.assert_allclose(bounds_numba[1], bounds_original[1], rtol=1e-10)
@@ -160,7 +160,7 @@ def test_compute_bounds_consistency(random_data):
 def test_selection_matrix_consistency(select):
     selection = np.array([2, 4, 6])
     size = 10
-    matrix_numba = utils.selection_matrix(selection, size, select)
+    matrix_numba = numba.selection_matrix(selection, size, select)
     matrix_original = _selection_matrix_py(selection - 1, size, len(selection), select == "rows")
     np.testing.assert_array_equal(matrix_numba, matrix_original)
 
@@ -233,8 +233,8 @@ def test_compute_bounds_performance(random_data, request):
     if request.config.getoption("--skip-perf", default=False):
         pytest.skip("Skipping performance test")
     eta, sigma, A, b, z = random_data
-    utils.compute_bounds(eta, sigma, A, b, z)
-    time_numba = time_function(utils.compute_bounds, eta, sigma, A, b, z)
+    numba.compute_bounds(eta, sigma, A, b, z)
+    time_numba = time_function(numba.compute_bounds, eta, sigma, A, b, z)
     time_original = time_function(_compute_bounds_py, eta, sigma, A, b, z)
     assert time_original > time_numba
 
@@ -247,8 +247,8 @@ def test_selection_matrix_performance(select, request, fast_config):
         pytest.skip("Skipping performance test")
     selection_size = fast_config["n_medium"]
     selection, size = np.arange(1, selection_size + 1), selection_size * 2
-    utils.selection_matrix(selection, size, select)
-    time_numba = time_function(utils.selection_matrix, selection, size, select)
+    numba.selection_matrix(selection, size, select)
+    time_numba = time_function(numba.selection_matrix, selection, size, select)
     time_original = time_function(_selection_matrix_py, selection - 1, size, len(selection), select == "rows")
     assert time_original > time_numba
 

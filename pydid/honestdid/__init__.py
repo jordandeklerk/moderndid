@@ -74,7 +74,9 @@ from .honest_did import (
     honest_did,
 )
 from .numba import (
+    compute_bounds,
     lee_coefficient,
+    selection_matrix,
 )
 from .plots.core import (
     event_study_plot,
@@ -88,10 +90,16 @@ from .sensitivity import (
     create_sensitivity_results,
     create_sensitivity_results_relative_magnitudes,
 )
+from .sun_abraham import (
+    SunAbrahamResult,
+    aggregate_sunab,
+    sunab,
+    sunab_att,
+)
 from .utils import (
     basis_vector,
-    compute_bounds,
-    selection_matrix,
+    bin_factor,
+    create_interactions,
     validate_conformable,
     validate_symmetric_psd,
 )
@@ -100,13 +108,20 @@ __all__ = [
     # Main interface
     "honest_did",
     "HonestDiDResult",
+    # Sun-Abraham estimator
+    "sunab",
+    "sunab_att",
+    "aggregate_sunab",
+    "SunAbrahamResult",
     # Utility functions
-    "selection_matrix",
-    "compute_bounds",
     "basis_vector",
     "validate_symmetric_psd",
     "validate_conformable",
     "lee_coefficient",
+    "bin_factor",
+    "create_interactions",
+    "selection_matrix",
+    "compute_bounds",
     # Delta SD bounds
     "compute_delta_sd_upperbound_m",
     "compute_delta_sd_lowerbound_m",
