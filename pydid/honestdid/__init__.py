@@ -79,6 +79,10 @@ from .honest_did import (
     HonestDiDResult,
     honest_did,
 )
+from .honest_sunab import (
+    SunAbrahamCoefficients,
+    extract_sunab_coefficients,
+)
 from .numba import (
     compute_bounds,
     lee_coefficient,
@@ -108,6 +112,9 @@ __all__ = [
     # Main interface
     "honest_did",
     "HonestDiDResult",
+    # Sun & Abraham coefficient extraction
+    "extract_sunab_coefficients",
+    "SunAbrahamCoefficients",
     # Sun-Abraham estimator
     "sunab",
     "sunab_att",
