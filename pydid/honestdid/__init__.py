@@ -65,6 +65,12 @@ from .delta_sdrmm import (
     compute_conditional_cs_sdrmm,
     compute_identified_set_sdrmm,
 )
+from .did_sunab import (
+    SunAbrahamResult,
+    aggregate_sunab,
+    sunab,
+    sunab_att,
+)
 from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
@@ -89,12 +95,6 @@ from .sensitivity import (
     construct_original_cs,
     create_sensitivity_results,
     create_sensitivity_results_relative_magnitudes,
-)
-from .sun_abraham import (
-    SunAbrahamResult,
-    aggregate_sunab,
-    sunab,
-    sunab_att,
 )
 from .utils import (
     basis_vector,
