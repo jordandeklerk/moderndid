@@ -77,6 +77,7 @@ from pydid.honestdid import (
     HonestDiDResult,
     OriginalCSResult,
     SensitivityResult,
+    SunAbrahamCoefficients,
     SunAbrahamResult,
     aggregate_sunab,
     basis_vector,
@@ -115,6 +116,7 @@ from pydid.honestdid import (
     create_sign_constraint_matrix,
     estimate_lowerbound_m_conditional_test,
     event_study_plot,
+    extract_sunab_coefficients,
     honest_did,
     lee_coefficient,
     plot_sensitivity,
@@ -328,4 +330,6 @@ __all__ = [
     "sunab_att",
     "aggregate_sunab",
     "SunAbrahamResult",
+    "extract_sunab_coefficients",
+    "SunAbrahamCoefficients",
 ]
