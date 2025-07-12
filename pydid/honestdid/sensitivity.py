@@ -8,17 +8,9 @@ import pandas as pd
 from scipy import stats
 
 from .bounds import compute_delta_sd_upperbound_m
-from .delta_rm import compute_conditional_cs_rm
-from .delta_rmb import compute_conditional_cs_rmb
-from .delta_rmm import compute_conditional_cs_rmm
-from .delta_sd import compute_conditional_cs_sd
-from .delta_sdb import compute_conditional_cs_sdb
-from .delta_sdm import compute_conditional_cs_sdm
-from .delta_sdrm import compute_conditional_cs_sdrm
-from .delta_sdrmb import compute_conditional_cs_sdrmb
-from .delta_sdrmm import compute_conditional_cs_sdrmm
 from .fixed_length_ci import compute_flci
 from .utils import basis_vector, validate_conformable, validate_symmetric_psd
+from .wrappers import DeltaMethodSelector
 
 
 class SensitivityResult(NamedTuple):
@@ -141,203 +133,81 @@ def create_sensitivity_results(
 
     results = []
 
-    if monotonicity_direction is None and bias_direction is None:
-        delta_type = "DeltaSD"
-        if method is None:
+    compute_fn, delta_type = DeltaMethodSelector.get_smoothness_method(
+        monotonicity_direction=monotonicity_direction,
+        bias_direction=bias_direction,
+    )
+
+    if method is None:
+        if monotonicity_direction is None and bias_direction is None:
             method = "FLCI"
+        else:
+            method = "C-F"
 
-        for m in m_vec:
-            if method == "FLCI":
-                # Fixed-length CI doesn't incorporate shape restrictions
-                flci_result = compute_flci(
-                    beta_hat=betahat,
-                    sigma=sigma,
-                    n_pre_periods=num_pre_periods,
-                    n_post_periods=num_post_periods,
-                    post_period_weights=l_vec,
-                    smoothness_bound=m,
-                    alpha=alpha,
-                )
-                results.append(
-                    SensitivityResult(
-                        lb=flci_result.flci[0],
-                        ub=flci_result.flci[1],
-                        method="FLCI",
-                        delta=delta_type,
-                        m=m,
-                    )
-                )
-            elif method in ["Conditional", "C-F", "C-LF"]:
-                hybrid_flag = {
-                    "Conditional": "ARP",  # Andrews, Roth, Pakes (2022)
-                    "C-F": "FLCI",  # Conditional + FLCI hybrid
-                    "C-LF": "LF",  # Conditional + Least Favorable hybrid
-                }[method]
+    if method == "FLCI" and (monotonicity_direction is not None or bias_direction is not None):
+        warnings.warn(
+            "You specified a shape/sign restriction but method = FLCI. The FLCI does not use these restrictions!"
+        )
 
-                cs_result = compute_conditional_cs_sd(
-                    betahat=betahat,
-                    sigma=sigma,
-                    num_pre_periods=num_pre_periods,
-                    num_post_periods=num_post_periods,
-                    l_vec=l_vec,
-                    alpha=alpha,
-                    m_bar=m,
-                    hybrid_flag=hybrid_flag,
-                    grid_points=grid_points,
-                    grid_lb=grid_lb,
-                    grid_ub=grid_ub,
+    for m in m_vec:
+        if method == "FLCI":
+            # Fixed-length CI doesn't incorporate shape restrictions
+            flci_result = compute_flci(
+                beta_hat=betahat,
+                sigma=sigma,
+                n_pre_periods=num_pre_periods,
+                n_post_periods=num_post_periods,
+                post_period_weights=l_vec,
+                smoothness_bound=m,
+                alpha=alpha,
+            )
+            results.append(
+                SensitivityResult(
+                    lb=flci_result.flci[0],
+                    ub=flci_result.flci[1],
+                    method="FLCI",
+                    delta=delta_type,
+                    m=m,
                 )
-                accept_idx = np.where(cs_result["accept"])[0]
-                if len(accept_idx) > 0:
-                    lb = cs_result["grid"][accept_idx[0]]
-                    ub = cs_result["grid"][accept_idx[-1]]
-                else:
-                    lb = np.nan
-                    ub = np.nan
+            )
+        elif method in ["Conditional", "C-F", "C-LF"]:
+            hybrid_flag = {
+                "Conditional": "ARP",  # Andrews, Roth, Pakes (2022)
+                "C-F": "FLCI",  # Conditional + FLCI hybrid
+                "C-LF": "LF",  # Conditional + Least Favorable hybrid
+            }[method]
 
-                results.append(SensitivityResult(lb=lb, ub=ub, method=method, delta=delta_type, m=m))
+            delta_kwargs = {
+                "betahat": betahat,
+                "sigma": sigma,
+                "num_pre_periods": num_pre_periods,
+                "num_post_periods": num_post_periods,
+                "l_vec": l_vec,
+                "alpha": alpha,
+                "m_bar": m,
+                "hybrid_flag": hybrid_flag,
+                "grid_points": grid_points,
+                "grid_lb": grid_lb,
+                "grid_ub": grid_ub,
+            }
+
+            if monotonicity_direction is not None:
+                delta_kwargs["monotonicity_direction"] = monotonicity_direction
+            elif bias_direction is not None:
+                delta_kwargs["bias_direction"] = bias_direction
+
+            cs_result = compute_fn(**delta_kwargs)
+            accept_idx = np.where(cs_result["accept"])[0]
+            if len(accept_idx) > 0:
+                lb = cs_result["grid"][accept_idx[0]]
+                ub = cs_result["grid"][accept_idx[-1]]
             else:
-                raise ValueError(f"Unknown method: {method}")
+                lb = np.nan
+                ub = np.nan
 
-    elif bias_direction is not None:
-        # Sign restriction on bias direction
-        if method is None:
-            method = "C-F"
-
-        if bias_direction == "positive":
-            delta_type = "DeltaSDPB"
-        elif bias_direction == "negative":
-            delta_type = "DeltaSDNB"
+            results.append(SensitivityResult(lb=lb, ub=ub, method=method, delta=delta_type, m=m))
         else:
-            raise ValueError(f"bias_direction must be 'positive' or 'negative', got {bias_direction}")
-
-        if method == "FLCI":
-            warnings.warn(
-                "You specified a sign restriction but method = FLCI. The FLCI does not use the sign restriction!"
-            )
-
-        for m in m_vec:
-            if method == "FLCI":
-                # FLCI can't incorporate the bias direction restriction
-                flci_result = compute_flci(
-                    beta_hat=betahat,
-                    sigma=sigma,
-                    n_pre_periods=num_pre_periods,
-                    n_post_periods=num_post_periods,
-                    post_period_weights=l_vec,
-                    smoothness_bound=m,
-                    alpha=alpha,
-                )
-                results.append(
-                    SensitivityResult(
-                        lb=flci_result.flci[0],
-                        ub=flci_result.flci[1],
-                        method="FLCI",
-                        delta=delta_type,
-                        m=m,
-                    )
-                )
-            elif method in ["Conditional", "C-F", "C-LF"]:
-                hybrid_flag = {
-                    "Conditional": "ARP",
-                    "C-F": "FLCI",
-                    "C-LF": "LF",
-                }[method]
-
-                cs_result = compute_conditional_cs_sdb(
-                    betahat=betahat,
-                    sigma=sigma,
-                    num_pre_periods=num_pre_periods,
-                    num_post_periods=num_post_periods,
-                    l_vec=l_vec,
-                    alpha=alpha,
-                    m_bar=m,
-                    bias_direction=bias_direction,
-                    hybrid_flag=hybrid_flag,
-                    grid_points=grid_points,
-                    grid_lb=grid_lb,
-                    grid_ub=grid_ub,
-                )
-                accept_idx = np.where(cs_result["accept"])[0]
-                if len(accept_idx) > 0:
-                    lb = cs_result["grid"][accept_idx[0]]
-                    ub = cs_result["grid"][accept_idx[-1]]
-                else:
-                    lb = np.nan
-                    ub = np.nan
-
-                results.append(SensitivityResult(lb=lb, ub=ub, method=method, delta=delta_type, m=m))
-
-    else:
-        # Monotonicity restriction on treatment effects
-        if method is None:
-            method = "C-F"
-
-        if monotonicity_direction == "increasing":
-            delta_type = "DeltaSDI"
-        elif monotonicity_direction == "decreasing":
-            delta_type = "DeltaSDD"
-        else:
-            raise ValueError(
-                f"monotonicity_direction must be 'increasing' or 'decreasing', got {monotonicity_direction}"
-            )
-
-        if method == "FLCI":
-            warnings.warn(
-                "You specified a shape restriction but method = FLCI. The FLCI does not use the shape restriction!"
-            )
-
-        for m in m_vec:
-            if method == "FLCI":
-                # FLCI doesn't use monotonicity information
-                flci_result = compute_flci(
-                    beta_hat=betahat,
-                    sigma=sigma,
-                    n_pre_periods=num_pre_periods,
-                    n_post_periods=num_post_periods,
-                    post_period_weights=l_vec,
-                    smoothness_bound=m,
-                    alpha=alpha,
-                )
-                results.append(
-                    SensitivityResult(
-                        lb=flci_result.flci[0],
-                        ub=flci_result.flci[1],
-                        method="FLCI",
-                        delta=delta_type,
-                        m=m,
-                    )
-                )
-            elif method in ["Conditional", "C-F", "C-LF"]:
-                hybrid_flag = {
-                    "Conditional": "ARP",
-                    "C-F": "FLCI",
-                    "C-LF": "LF",
-                }[method]
-
-                cs_result = compute_conditional_cs_sdm(
-                    betahat=betahat,
-                    sigma=sigma,
-                    num_pre_periods=num_pre_periods,
-                    num_post_periods=num_post_periods,
-                    l_vec=l_vec,
-                    alpha=alpha,
-                    m_bar=m,
-                    monotonicity_direction=monotonicity_direction,
-                    hybrid_flag=hybrid_flag,
-                    grid_points=grid_points,
-                    grid_lb=grid_lb,
-                    grid_ub=grid_ub,
-                )
-                accept_idx = np.where(cs_result["accept"])[0]
-                if len(accept_idx) > 0:
-                    lb = cs_result["grid"][accept_idx[0]]
-                    ub = cs_result["grid"][accept_idx[-1]]
-                else:
-                    lb = np.nan
-                    ub = np.nan
-
-                results.append(SensitivityResult(lb=lb, ub=ub, method=method, delta=delta_type, m=m))
+            raise ValueError(f"Unknown method: {method}")
 
     df = pd.DataFrame(results)
     return df
@@ -437,158 +307,47 @@ def create_sensitivity_results_relative_magnitudes(
 
     results = []
 
-    if bound == "deviation from parallel trends":
-        # Bounds violations relative to max pre-treatment violation
-        if monotonicity_direction is None and bias_direction is None:
-            delta_type = "DeltaRM"
-            compute_fn = compute_conditional_cs_rm
-        elif monotonicity_direction is not None:
-            if monotonicity_direction == "increasing":
-                delta_type = "DeltaRMI"
-            else:
-                delta_type = "DeltaRMD"
-            compute_fn = compute_conditional_cs_rmm
+    if bound == "deviation from linear trend" and num_pre_periods < 3:
+        raise ValueError(
+            "Not enough pre-periods for 'deviation from linear trend' (Delta^SDRM requires at least 3 pre-periods)"
+        )
+
+    compute_fn, delta_type = DeltaMethodSelector.get_relative_magnitude_method(
+        bound_type=bound,
+        monotonicity_direction=monotonicity_direction,
+        bias_direction=bias_direction,
+    )
+
+    for m_bar in m_bar_vec:
+        delta_kwargs = {
+            "betahat": betahat,
+            "sigma": sigma,
+            "num_pre_periods": num_pre_periods,
+            "num_post_periods": num_post_periods,
+            "l_vec": l_vec,
+            "alpha": alpha,
+            "m_bar": m_bar,
+            "hybrid_flag": hybrid_flag,
+            "grid_points": grid_points,
+            "grid_lb": grid_lb,
+            "grid_ub": grid_ub,
+        }
+
+        if monotonicity_direction is not None:
+            delta_kwargs["monotonicity_direction"] = monotonicity_direction
+        elif bias_direction is not None:
+            delta_kwargs["bias_direction"] = bias_direction
+
+        cs_result = compute_fn(**delta_kwargs)
+        accept_idx = np.where(cs_result["accept"])[0]
+        if len(accept_idx) > 0:
+            lb = cs_result["grid"][accept_idx[0]]
+            ub = cs_result["grid"][accept_idx[-1]]
         else:
-            if bias_direction == "positive":
-                delta_type = "DeltaRMPB"
-            else:
-                delta_type = "DeltaRMNB"
-            compute_fn = compute_conditional_cs_rmb
+            lb = np.nan
+            ub = np.nan
 
-        for m_bar in m_bar_vec:
-            if monotonicity_direction is None and bias_direction is None:
-                cs_result = compute_fn(
-                    betahat=betahat,
-                    sigma=sigma,
-                    num_pre_periods=num_pre_periods,
-                    num_post_periods=num_post_periods,
-                    l_vec=l_vec,
-                    alpha=alpha,
-                    m_bar=m_bar,
-                    hybrid_flag=hybrid_flag,
-                    grid_points=grid_points,
-                    grid_lb=grid_lb,
-                    grid_ub=grid_ub,
-                )
-            elif monotonicity_direction is not None:
-                cs_result = compute_fn(
-                    betahat=betahat,
-                    sigma=sigma,
-                    num_pre_periods=num_pre_periods,
-                    num_post_periods=num_post_periods,
-                    l_vec=l_vec,
-                    alpha=alpha,
-                    m_bar=m_bar,
-                    monotonicity_direction=monotonicity_direction,
-                    hybrid_flag=hybrid_flag,
-                    grid_points=grid_points,
-                    grid_lb=grid_lb,
-                    grid_ub=grid_ub,
-                )
-            else:
-                cs_result = compute_fn(
-                    betahat=betahat,
-                    sigma=sigma,
-                    num_pre_periods=num_pre_periods,
-                    num_post_periods=num_post_periods,
-                    l_vec=l_vec,
-                    alpha=alpha,
-                    m_bar=m_bar,
-                    bias_direction=bias_direction,
-                    hybrid_flag=hybrid_flag,
-                    grid_points=grid_points,
-                    grid_lb=grid_lb,
-                    grid_ub=grid_ub,
-                )
-
-            accept_idx = np.where(cs_result["accept"])[0]
-            if len(accept_idx) > 0:
-                lb = cs_result["grid"][accept_idx[0]]
-                ub = cs_result["grid"][accept_idx[-1]]
-            else:
-                lb = np.nan
-                ub = np.nan
-
-            results.append(SensitivityResult(lb=lb, ub=ub, method=method, delta=delta_type, m=m_bar))
-
-    else:
-        # "deviation from linear trend" - bounds second differences relative to pre-treatment
-        if num_pre_periods < 3:
-            raise ValueError(
-                "Not enough pre-periods for 'deviation from linear trend' (Delta^SDRM requires at least 3 pre-periods)"
-            )
-
-        if monotonicity_direction is None and bias_direction is None:
-            delta_type = "DeltaSDRM"
-            compute_fn = compute_conditional_cs_sdrm
-        elif monotonicity_direction is not None:
-            if monotonicity_direction == "increasing":
-                delta_type = "DeltaSDRMI"
-            else:
-                delta_type = "DeltaSDRMD"
-            compute_fn = compute_conditional_cs_sdrmm
-        else:
-            if bias_direction == "positive":
-                delta_type = "DeltaSDRMPB"
-            else:
-                delta_type = "DeltaSDRMNB"
-            compute_fn = compute_conditional_cs_sdrmb
-
-        for m_bar in m_bar_vec:
-            if monotonicity_direction is None and bias_direction is None:
-                cs_result = compute_fn(
-                    betahat=betahat,
-                    sigma=sigma,
-                    num_pre_periods=num_pre_periods,
-                    num_post_periods=num_post_periods,
-                    l_vec=l_vec,
-                    alpha=alpha,
-                    m_bar=m_bar,
-                    hybrid_flag=hybrid_flag,
-                    grid_points=grid_points,
-                    grid_lb=grid_lb,
-                    grid_ub=grid_ub,
-                )
-            elif monotonicity_direction is not None:
-                cs_result = compute_fn(
-                    betahat=betahat,
-                    sigma=sigma,
-                    num_pre_periods=num_pre_periods,
-                    num_post_periods=num_post_periods,
-                    l_vec=l_vec,
-                    alpha=alpha,
-                    m_bar=m_bar,
-                    monotonicity_direction=monotonicity_direction,
-                    hybrid_flag=hybrid_flag,
-                    grid_points=grid_points,
-                    grid_lb=grid_lb,
-                    grid_ub=grid_ub,
-                )
-            else:
-                cs_result = compute_fn(
-                    betahat=betahat,
-                    sigma=sigma,
-                    num_pre_periods=num_pre_periods,
-                    num_post_periods=num_post_periods,
-                    l_vec=l_vec,
-                    alpha=alpha,
-                    m_bar=m_bar,
-                    bias_direction=bias_direction,
-                    hybrid_flag=hybrid_flag,
-                    grid_points=grid_points,
-                    grid_lb=grid_lb,
-                    grid_ub=grid_ub,
-                )
-
-            accept_idx = np.where(cs_result["accept"])[0]
-            if len(accept_idx) > 0:
-                lb = cs_result["grid"][accept_idx[0]]
-                ub = cs_result["grid"][accept_idx[-1]]
-            else:
-                lb = np.nan
-                ub = np.nan
-
-            results.append(SensitivityResult(lb=lb, ub=ub, method=method, delta=delta_type, m=m_bar))
+        results.append(SensitivityResult(lb=lb, ub=ub, method=method, delta=delta_type, m=m_bar))
 
     df = pd.DataFrame(results)
     df = df.rename(columns={"m": "Mbar"})

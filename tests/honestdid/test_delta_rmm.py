@@ -9,7 +9,7 @@ from pydid.honestdid import (
     compute_conditional_cs_rmm,
     compute_identified_set_rmm,
 )
-from pydid.honestdid.delta_rmm import (
+from pydid.honestdid.delta.relative_magnitude.rmm import (
     _create_relative_magnitudes_monotonicity_constraint_matrix,
     _create_relative_magnitudes_monotonicity_constraint_vector,
 )

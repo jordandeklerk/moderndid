@@ -9,7 +9,7 @@ from pydid.honestdid import (
     compute_conditional_cs_rmb,
     compute_identified_set_rmb,
 )
-from pydid.honestdid.delta_rmb import (
+from pydid.honestdid.delta.relative_magnitude.rmb import (
     _compute_identified_set_rmb_fixed_s,
     _create_relative_magnitudes_bias_constraint_matrix,
     _create_relative_magnitudes_bias_constraint_vector,
