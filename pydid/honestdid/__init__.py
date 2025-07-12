@@ -20,50 +20,50 @@ from .conditional import (
     estimate_lowerbound_m_conditional_test,
     test_in_identified_set_max,
 )
-from .delta_rm import (
+from .delta.relative_magnitude.rm import (
     DeltaRMResult,
     compute_conditional_cs_rm,
     compute_identified_set_rm,
 )
-from .delta_rmb import (
+from .delta.relative_magnitude.rmb import (
     DeltaRMBResult,
     compute_conditional_cs_rmb,
     compute_identified_set_rmb,
 )
-from .delta_rmm import (
+from .delta.relative_magnitude.rmm import (
     DeltaRMMResult,
     compute_conditional_cs_rmm,
     compute_identified_set_rmm,
 )
-from .delta_sd import (
-    DeltaSDResult,
-    compute_conditional_cs_sd,
-    compute_identified_set_sd,
-)
-from .delta_sdb import (
-    DeltaSDBResult,
-    compute_conditional_cs_sdb,
-    compute_identified_set_sdb,
-)
-from .delta_sdm import (
-    DeltaSDMResult,
-    compute_conditional_cs_sdm,
-    compute_identified_set_sdm,
-)
-from .delta_sdrm import (
+from .delta.second_diff_relative_magnitude.sdrm import (
     DeltaSDRMResult,
     compute_conditional_cs_sdrm,
     compute_identified_set_sdrm,
 )
-from .delta_sdrmb import (
+from .delta.second_diff_relative_magnitude.sdrmb import (
     DeltaSDRMBResult,
     compute_conditional_cs_sdrmb,
     compute_identified_set_sdrmb,
 )
-from .delta_sdrmm import (
+from .delta.second_diff_relative_magnitude.sdrmm import (
     DeltaSDRMMResult,
     compute_conditional_cs_sdrmm,
     compute_identified_set_sdrmm,
+)
+from .delta.second_differences.sd import (
+    DeltaSDResult,
+    compute_conditional_cs_sd,
+    compute_identified_set_sd,
+)
+from .delta.second_differences.sdb import (
+    DeltaSDBResult,
+    compute_conditional_cs_sdb,
+    compute_identified_set_sdb,
+)
+from .delta.second_differences.sdm import (
+    DeltaSDMResult,
+    compute_conditional_cs_sdm,
+    compute_identified_set_sdm,
 )
 from .did_sunab import (
     SunAbrahamResult,
@@ -113,6 +113,10 @@ from .utils import (
     create_interactions,
     validate_conformable,
     validate_symmetric_psd,
+)
+from .wrappers import (
+    DeltaMethodSelector,
+    get_delta_method,
 )
 
 __all__ = [
@@ -208,4 +212,7 @@ __all__ = [
     "event_study_plot",
     "plot_sensitivity",
     "plot_sensitivity_rm",
+    # Wrapper utilities
+    "DeltaMethodSelector",
+    "get_delta_method",
 ]
