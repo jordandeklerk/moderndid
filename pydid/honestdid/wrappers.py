@@ -5,15 +5,15 @@ from .delta.relative_magnitude import (
     compute_conditional_cs_rmb,
     compute_conditional_cs_rmm,
 )
+from .delta.second_diff import (
+    compute_conditional_cs_sd,
+    compute_conditional_cs_sdb,
+    compute_conditional_cs_sdm,
+)
 from .delta.second_diff_relative_magnitude import (
     compute_conditional_cs_sdrm,
     compute_conditional_cs_sdrmb,
     compute_conditional_cs_sdrmm,
-)
-from .delta.second_differences import (
-    compute_conditional_cs_sd,
-    compute_conditional_cs_sdb,
-    compute_conditional_cs_sdm,
 )
 
 
