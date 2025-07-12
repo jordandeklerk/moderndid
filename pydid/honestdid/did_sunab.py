@@ -262,7 +262,7 @@ def sunab(
     n_cohorts = len(cohort_unique)
 
     sort_idx = np.argsort(cohort_int)
-    never_treated_cohorts, always_treated_idx = find_never_always_treated(
+    never_treated_cohorts, always_treated_idx = _find_never_always_treated(
         cohort_int[sort_idx], period[sort_idx], n_cohorts
     )
 
@@ -347,172 +347,6 @@ def sunab(
             "n_treated_cohorts": result_dict["n_treated_cohorts"],
         },
     )
-
-
-def sunab_att(cohort, period, **kwargs):
-    """Estimate overall average treatment effect on the treated.
-
-    Convenience wrapper for computing the overall ATT instead of
-    event-study coefficients. Aggregates post-treatment effects.
-
-    Parameters
-    ----------
-    cohort : array-like
-        Treatment cohort.
-    period : array-like
-        Time period.
-    **kwargs : dict
-        Additional arguments passed to sunab().
-
-    Returns
-    -------
-    SunAbrahamResult
-        Result with overall ATT estimate.
-    """
-    return sunab(cohort, period, att=True, **kwargs)
-
-
-def aggregate_sunab(result, cohort_coefs, cohort_vcov):
-    """Aggregate cohort-specific coefficients to event-study estimates.
-
-    Computes weighted averages of cohort-specific treatment effects
-    using cohort shares as weights to obtain proper event-study coefficients.
-
-    Parameters
-    ----------
-    result : SunAbrahamResult
-        Result object containing event times and cohort information.
-    cohort_coefs : dict
-        Dictionary mapping (period, cohort) tuples to coefficient estimates.
-    cohort_vcov : ndarray
-        Variance-covariance matrix for cohort-specific coefficients.
-
-    Returns
-    -------
-    SunAbrahamResult
-        Updated result with aggregated event-study coefficients.
-    """
-    event_times = result.event_times
-    n_events = len(event_times)
-
-    att_by_event = np.zeros(n_events)
-    vcov_aggregated = np.zeros((n_events, n_events))
-
-    coef_names = list(cohort_coefs.keys())
-
-    for e_idx, event_time in enumerate(event_times):
-        event_coef_idx = []
-        event_shares = []
-
-        for idx, (period, _) in enumerate(coef_names):
-            if period == event_time:
-                event_coef_idx.append(idx)
-                event_shares.append(1.0)
-
-        if not event_coef_idx:
-            continue
-
-        event_shares = np.array(event_shares)
-        event_shares = event_shares / event_shares.sum()
-
-        event_coefs = np.array([cohort_coefs[coef_names[idx]] for idx in event_coef_idx])
-        att_by_event[e_idx] = np.sum(event_shares * event_coefs)
-
-        shares_matrix = np.outer(event_shares, event_shares)
-
-        vcov_subset = cohort_vcov[np.ix_(event_coef_idx, event_coef_idx)]
-
-        vcov_aggregated[e_idx, e_idx] = np.sum(shares_matrix * vcov_subset)
-
-    return result._replace(
-        att_by_event=att_by_event, se_by_event=np.sqrt(np.diag(vcov_aggregated)), vcov=vcov_aggregated
-    )
-
-
-def _create_interaction_result(period_values, cohort_values, interaction_matrix, cohort, is_ref_cohort, att):
-    """Create result object with interaction information.
-
-    Parameters
-    ----------
-    period_values : ndarray
-        Unique relative period values.
-    cohort_values : ndarray
-        Unique cohort values.
-    interaction_matrix : ndarray
-        Computed interaction matrix.
-    cohort : ndarray
-        Original cohort array.
-    is_ref_cohort : ndarray
-        Reference cohort indicator.
-    att : bool
-        Whether ATT was requested.
-
-    Returns
-    -------
-    SunAbrahamResult
-        Result with interaction information.
-    """
-    cohort_counts = np.bincount(np.searchsorted(np.unique(cohort[~is_ref_cohort]), cohort[~is_ref_cohort]))
-    cohort_shares = cohort_counts / cohort_counts.sum()
-
-    return SunAbrahamResult(
-        att_by_event=np.zeros(len(period_values)),
-        se_by_event=np.zeros(len(period_values)),
-        event_times=np.sort(period_values),
-        vcov=np.eye(len(period_values)),
-        cohort_shares=cohort_shares,
-        influence_func=None,
-        att=0.0 if att else None,
-        se_att=0.0 if att else None,
-        n_cohorts=len(cohort_values),
-        n_periods=len(period_values),
-        estimation_params={"interaction_matrix_shape": interaction_matrix.shape, "status": "interactions_only"},
-    )
-
-
-def _create_disaggregated_result(coefs, vcov, cohort, period_values):
-    """Create result with disaggregated cohort-period coefficients."""
-    se = np.sqrt(np.diag(vcov))
-
-    return SunAbrahamResult(
-        att_by_event=coefs,
-        se_by_event=se,
-        event_times=period_values,
-        vcov=vcov,
-        cohort_shares=np.ones(len(coefs)) / len(coefs),
-        influence_func=None,
-        att=None,
-        se_att=None,
-        n_cohorts=len(np.unique(cohort)),
-        n_periods=len(period_values),
-        estimation_params={"aggregated": False},
-    )
-
-
-def _empty_result():
-    """Return empty result when estimation is not possible.
-
-    Returns
-    -------
-    SunAbrahamResult
-        Result with NaN values and empty arrays.
-    """
-    return SunAbrahamResult(
-        att_by_event=np.array([]),
-        se_by_event=np.array([]),
-        event_times=np.array([]),
-        vcov=np.empty((0, 0)),
-        cohort_shares=np.array([]),
-        influence_func=None,
-        att=np.nan,
-        se_att=np.nan,
-        n_cohorts=0,
-        n_periods=0,
-        estimation_params={"status": "no_valid_observations"},
-    )
-
-
-# Helper functions
 
 
 def estimate_sunab_model(outcome, covariates, interaction_matrix, cohort, period, period_values, weights, att, no_agg):
@@ -607,60 +441,84 @@ def estimate_sunab_model(outcome, covariates, interaction_matrix, cohort, period
     }
 
 
-@njit
-def find_never_always_treated(cohort_int, period, n_cohorts):
-    """Find never-treated cohorts and always-treated units.
+def sunab_att(cohort, period, **kwargs):
+    """Estimate overall average treatment effect on the treated.
+
+    Convenience wrapper for computing the overall ATT instead of
+    event-study coefficients. Aggregates post-treatment effects.
 
     Parameters
     ----------
-    cohort_int : ndarray
-        Integer cohort identifiers (sorted).
-    period : ndarray
-        Relative period for each observation.
-    n_cohorts : int
-        Number of unique cohorts.
+    cohort : array-like
+        Treatment cohort.
+    period : array-like
+        Time period.
+    **kwargs : dict
+        Additional arguments passed to sunab().
 
     Returns
     -------
-    never_treated_cohorts : ndarray
-        Cohort indices that are never treated.
-    always_treated_idx : ndarray
-        Observation indices that are always treated.
+    SunAbrahamResult
+        Result with overall ATT estimate.
     """
-    cohort_min = np.full(n_cohorts, np.inf)
-    cohort_max = np.full(n_cohorts, -np.inf)
+    return sunab(cohort, period, att=True, **kwargs)
 
-    n = len(cohort_int)
-    i = 0
 
-    while i < n:
-        current_cohort = cohort_int[i]
+def aggregate_sunab(result, cohort_coefs, cohort_vcov):
+    """Aggregate cohort-specific coefficients to event-study estimates.
 
-        while i < n and cohort_int[i] == current_cohort:
-            cohort_min[current_cohort] = min(cohort_min[current_cohort], period[i])
-            cohort_max[current_cohort] = max(cohort_max[current_cohort], period[i])
-            i += 1
+    Computes weighted averages of cohort-specific treatment effects
+    using cohort shares as weights to obtain proper event-study coefficients.
 
-    # Never-treated: only have negative relative periods
-    never_treated = []
-    for c in range(n_cohorts):
-        if cohort_max[c] < 0:
-            never_treated.append(c)
+    Parameters
+    ----------
+    result : SunAbrahamResult
+        Result object containing event times and cohort information.
+    cohort_coefs : dict
+        Dictionary mapping (period, cohort) tuples to coefficient estimates.
+    cohort_vcov : ndarray
+        Variance-covariance matrix for cohort-specific coefficients.
 
-    # Always-treated: only have non-negative relative periods
-    always_treated_idx = []
-    i = 0
-    while i < n:
-        current_cohort = cohort_int[i]
-        if cohort_min[current_cohort] >= 0:
-            while i < n and cohort_int[i] == current_cohort:
-                always_treated_idx.append(i)
-                i += 1
-        else:
-            while i < n and cohort_int[i] == current_cohort:
-                i += 1
+    Returns
+    -------
+    SunAbrahamResult
+        Updated result with aggregated event-study coefficients.
+    """
+    event_times = result.event_times
+    n_events = len(event_times)
 
-    return np.array(never_treated, dtype=np.int32), np.array(always_treated_idx, dtype=np.int32)
+    att_by_event = np.zeros(n_events)
+    vcov_aggregated = np.zeros((n_events, n_events))
+
+    coef_names = list(cohort_coefs.keys())
+
+    for e_idx, event_time in enumerate(event_times):
+        event_coef_idx = []
+        event_shares = []
+
+        for idx, (period, _) in enumerate(coef_names):
+            if period == event_time:
+                event_coef_idx.append(idx)
+                event_shares.append(1.0)
+
+        if not event_coef_idx:
+            continue
+
+        event_shares = np.array(event_shares)
+        event_shares = event_shares / event_shares.sum()
+
+        event_coefs = np.array([cohort_coefs[coef_names[idx]] for idx in event_coef_idx])
+        att_by_event[e_idx] = np.sum(event_shares * event_coefs)
+
+        shares_matrix = np.outer(event_shares, event_shares)
+
+        vcov_subset = cohort_vcov[np.ix_(event_coef_idx, event_coef_idx)]
+
+        vcov_aggregated[e_idx, e_idx] = np.sum(shares_matrix * vcov_subset)
+
+    return result._replace(
+        att_by_event=att_by_event, se_by_event=np.sqrt(np.diag(vcov_aggregated)), vcov=vcov_aggregated
+    )
 
 
 def create_period_interactions(period, period_values, is_ref_cohort, is_always_treated, n_total, valid_obs_mask):
@@ -820,3 +678,142 @@ def aggregate_to_event_study(coefs, vcov, interactions, cohort, period_values, w
         "se_att": se_att,
         "cohort_shares": cohort_shares,
     }
+
+
+def _create_interaction_result(period_values, cohort_values, interaction_matrix, cohort, is_ref_cohort, att):
+    """Create result object with interaction information.
+
+    Parameters
+    ----------
+    period_values : ndarray
+        Unique relative period values.
+    cohort_values : ndarray
+        Unique cohort values.
+    interaction_matrix : ndarray
+        Computed interaction matrix.
+    cohort : ndarray
+        Original cohort array.
+    is_ref_cohort : ndarray
+        Reference cohort indicator.
+    att : bool
+        Whether ATT was requested.
+
+    Returns
+    -------
+    SunAbrahamResult
+        Result with interaction information.
+    """
+    cohort_counts = np.bincount(np.searchsorted(np.unique(cohort[~is_ref_cohort]), cohort[~is_ref_cohort]))
+    cohort_shares = cohort_counts / cohort_counts.sum()
+
+    return SunAbrahamResult(
+        att_by_event=np.zeros(len(period_values)),
+        se_by_event=np.zeros(len(period_values)),
+        event_times=np.sort(period_values),
+        vcov=np.eye(len(period_values)),
+        cohort_shares=cohort_shares,
+        influence_func=None,
+        att=0.0 if att else None,
+        se_att=0.0 if att else None,
+        n_cohorts=len(cohort_values),
+        n_periods=len(period_values),
+        estimation_params={"interaction_matrix_shape": interaction_matrix.shape, "status": "interactions_only"},
+    )
+
+
+def _create_disaggregated_result(coefs, vcov, cohort, period_values):
+    """Create result with disaggregated cohort-period coefficients."""
+    se = np.sqrt(np.diag(vcov))
+
+    return SunAbrahamResult(
+        att_by_event=coefs,
+        se_by_event=se,
+        event_times=period_values,
+        vcov=vcov,
+        cohort_shares=np.ones(len(coefs)) / len(coefs),
+        influence_func=None,
+        att=None,
+        se_att=None,
+        n_cohorts=len(np.unique(cohort)),
+        n_periods=len(period_values),
+        estimation_params={"aggregated": False},
+    )
+
+
+@njit
+def _find_never_always_treated(cohort_int, period, n_cohorts):
+    """Find never-treated cohorts and always-treated units.
+
+    Parameters
+    ----------
+    cohort_int : ndarray
+        Integer cohort identifiers (sorted).
+    period : ndarray
+        Relative period for each observation.
+    n_cohorts : int
+        Number of unique cohorts.
+
+    Returns
+    -------
+    never_treated_cohorts : ndarray
+        Cohort indices that are never treated.
+    always_treated_idx : ndarray
+        Observation indices that are always treated.
+    """
+    cohort_min = np.full(n_cohorts, np.inf)
+    cohort_max = np.full(n_cohorts, -np.inf)
+
+    n = len(cohort_int)
+    i = 0
+
+    while i < n:
+        current_cohort = cohort_int[i]
+
+        while i < n and cohort_int[i] == current_cohort:
+            cohort_min[current_cohort] = min(cohort_min[current_cohort], period[i])
+            cohort_max[current_cohort] = max(cohort_max[current_cohort], period[i])
+            i += 1
+
+    # Never-treated: only have negative relative periods
+    never_treated = []
+    for c in range(n_cohorts):
+        if cohort_max[c] < 0:
+            never_treated.append(c)
+
+    # Always-treated: only have non-negative relative periods
+    always_treated_idx = []
+    i = 0
+    while i < n:
+        current_cohort = cohort_int[i]
+        if cohort_min[current_cohort] >= 0:
+            while i < n and cohort_int[i] == current_cohort:
+                always_treated_idx.append(i)
+                i += 1
+        else:
+            while i < n and cohort_int[i] == current_cohort:
+                i += 1
+
+    return np.array(never_treated, dtype=np.int32), np.array(always_treated_idx, dtype=np.int32)
+
+
+def _empty_result():
+    """Return empty result when estimation is not possible.
+
+    Returns
+    -------
+    SunAbrahamResult
+        Result with NaN values and empty arrays.
+    """
+    return SunAbrahamResult(
+        att_by_event=np.array([]),
+        se_by_event=np.array([]),
+        event_times=np.array([]),
+        vcov=np.empty((0, 0)),
+        cohort_shares=np.array([]),
+        influence_func=None,
+        att=np.nan,
+        se_att=np.nan,
+        n_cohorts=0,
+        n_periods=0,
+        estimation_params={"status": "no_valid_observations"},
+    )
