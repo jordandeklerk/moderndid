@@ -35,6 +35,21 @@ from .delta.relative_magnitude.rmm import (
     compute_conditional_cs_rmm,
     compute_identified_set_rmm,
 )
+from .delta.second_diff.sd import (
+    DeltaSDResult,
+    compute_conditional_cs_sd,
+    compute_identified_set_sd,
+)
+from .delta.second_diff.sdb import (
+    DeltaSDBResult,
+    compute_conditional_cs_sdb,
+    compute_identified_set_sdb,
+)
+from .delta.second_diff.sdm import (
+    DeltaSDMResult,
+    compute_conditional_cs_sdm,
+    compute_identified_set_sdm,
+)
 from .delta.second_diff_relative_magnitude.sdrm import (
     DeltaSDRMResult,
     compute_conditional_cs_sdrm,
@@ -49,21 +64,6 @@ from .delta.second_diff_relative_magnitude.sdrmm import (
     DeltaSDRMMResult,
     compute_conditional_cs_sdrmm,
     compute_identified_set_sdrmm,
-)
-from .delta.second_differences.sd import (
-    DeltaSDResult,
-    compute_conditional_cs_sd,
-    compute_identified_set_sd,
-)
-from .delta.second_differences.sdb import (
-    DeltaSDBResult,
-    compute_conditional_cs_sdb,
-    compute_identified_set_sdb,
-)
-from .delta.second_differences.sdm import (
-    DeltaSDMResult,
-    compute_conditional_cs_sdm,
-    compute_identified_set_sdm,
 )
 from .did_sunab import (
     SunAbrahamResult,
