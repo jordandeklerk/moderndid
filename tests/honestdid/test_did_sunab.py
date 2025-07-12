@@ -11,11 +11,11 @@ from pydid.honestdid.did_sunab import (
     _create_disaggregated_result,
     _create_interaction_result,
     _empty_result,
+    _find_never_always_treated,
     aggregate_sunab,
     aggregate_to_event_study,
     create_period_interactions,
     estimate_sunab_model,
-    find_never_always_treated,
     sunab,
     sunab_att,
 )
@@ -505,12 +505,12 @@ def test_estimate_sunab_model_singular_matrix(simple_data):
         assert result is not None or len(w) > 0
 
 
-def test_find_never_always_treated_basic():
+def test__find_never_always_treated_basic():
     cohort_int = np.array([0, 0, 0, 1, 1, 1, 2, 2, 2])
     period = np.array([-1, 0, 1, -1, -2, -3, 0, 1, 2])
     n_cohorts = 3
 
-    never_treated, always_treated_idx = find_never_always_treated(cohort_int, period, n_cohorts)
+    never_treated, always_treated_idx = _find_never_always_treated(cohort_int, period, n_cohorts)
 
     assert len(never_treated) == 1
     assert 1 in never_treated
@@ -518,23 +518,23 @@ def test_find_never_always_treated_basic():
     assert set(always_treated_idx) == {6, 7, 8}
 
 
-def test_find_never_always_treated_all_treated():
+def test__find_never_always_treated_all_treated():
     cohort_int = np.array([0, 0, 1, 1])
     period = np.array([0, 1, 2, 3])
     n_cohorts = 2
 
-    never_treated, always_treated_idx = find_never_always_treated(cohort_int, period, n_cohorts)
+    never_treated, always_treated_idx = _find_never_always_treated(cohort_int, period, n_cohorts)
 
     assert len(never_treated) == 0
     assert len(always_treated_idx) == 4
 
 
-def test_find_never_always_treated_mixed():
+def test__find_never_always_treated_mixed():
     cohort_int = np.array([0, 0, 0, 1, 1, 1])
     period = np.array([-1, 0, 1, -2, -1, 0])
     n_cohorts = 2
 
-    never_treated, always_treated_idx = find_never_always_treated(cohort_int, period, n_cohorts)
+    never_treated, always_treated_idx = _find_never_always_treated(cohort_int, period, n_cohorts)
 
     assert len(never_treated) == 0
     assert len(always_treated_idx) == 0

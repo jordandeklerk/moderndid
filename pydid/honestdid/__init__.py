@@ -67,7 +67,14 @@ from .delta_sdrmm import (
 )
 from .did_sunab import (
     SunAbrahamResult,
+    _create_disaggregated_result,
+    _create_interaction_result,
+    _empty_result,
+    _find_never_always_treated,
     aggregate_sunab,
+    aggregate_to_event_study,
+    create_period_interactions,
+    estimate_sunab_model,
     sunab,
     sunab_att,
 )
@@ -115,11 +122,18 @@ __all__ = [
     # Sun & Abraham coefficient extraction
     "extract_sunab_coefficients",
     "SunAbrahamCoefficients",
-    # Sun-Abraham estimator
+    # Sun & Abraham estimator
     "sunab",
     "sunab_att",
     "aggregate_sunab",
     "SunAbrahamResult",
+    "aggregate_to_event_study",
+    "create_period_interactions",
+    "estimate_sunab_model",
+    "_create_disaggregated_result",
+    "_create_interaction_result",
+    "_empty_result",
+    "_find_never_always_treated",
     # Utility functions
     "basis_vector",
     "validate_symmetric_psd",
