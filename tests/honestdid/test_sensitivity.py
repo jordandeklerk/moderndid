@@ -187,7 +187,7 @@ def test_default_m_vec_construction(basic_event_study_data):
 def test_flci_warning_with_restriction(basic_event_study_data):
     betahat, sigma, num_pre_periods, num_post_periods = basic_event_study_data
 
-    with pytest.warns(UserWarning, match="shape restriction"):
+    with pytest.warns(UserWarning, match="shape/sign restriction"):
         create_sensitivity_results(
             betahat=betahat,
             sigma=sigma,
