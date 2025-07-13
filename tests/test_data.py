@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from pydid.data import load_mpdta, load_nsw
+from pydid.data import load_ehec, load_mpdta, load_nsw
 
 
 def test_load_nsw():
@@ -134,3 +134,63 @@ def test_load_mpdta_returns_copy():
     mpdta_data1["test_column"] = 1
 
     assert "test_column" not in mpdta_data2.columns
+
+
+def test_load_ehec():
+    ehec_data = load_ehec()
+
+    assert isinstance(ehec_data, pd.DataFrame)
+    assert ehec_data.shape == (552, 5)
+
+    expected_columns = ["stfips", "year", "dins", "yexp2", "W"]
+    assert list(ehec_data.columns) == expected_columns
+
+    assert set(ehec_data["year"].unique()) == set(range(2008, 2020))
+
+    assert ehec_data["yexp2"].notna().sum() == 360
+    assert ehec_data["yexp2"].isna().sum() == 192
+
+    assert set(ehec_data["yexp2"].dropna().unique()) == {2014.0, 2015.0, 2016.0, 2017.0, 2019.0}
+
+
+def test_load_ehec_data_integrity():
+    ehec_data = load_ehec()
+
+    key_columns = ["stfips", "year", "dins", "W"]
+    for col in key_columns:
+        assert ehec_data[col].notna().all()
+
+    assert ehec_data["stfips"].dtype in [np.int64, np.int32]
+    assert ehec_data["year"].dtype in [np.int64, np.int32]
+    assert ehec_data["dins"].dtype in [np.float64, np.float32]
+    assert ehec_data["yexp2"].dtype in [np.float64, np.float32]
+    assert ehec_data["W"].dtype in [np.float64, np.float32]
+
+    state_counts = ehec_data["stfips"].value_counts()
+    assert (state_counts == 12).all()
+
+    assert ehec_data["dins"].min() > 0.4
+    assert ehec_data["dins"].max() < 1.0
+
+    assert ehec_data["W"].min() > 0
+
+
+def test_import_ehec_from_package():
+    import pydid
+
+    assert hasattr(pydid, "load_ehec")
+    assert hasattr(pydid.data, "load_ehec")
+
+    ehec_data = pydid.load_ehec()
+
+    assert isinstance(ehec_data, pd.DataFrame)
+    assert ehec_data.shape[0] == 552
+
+
+def test_load_ehec_returns_copy():
+    ehec_data1 = load_ehec()
+    ehec_data2 = load_ehec()
+
+    ehec_data1["test_column"] = 1
+
+    assert "test_column" not in ehec_data2.columns
