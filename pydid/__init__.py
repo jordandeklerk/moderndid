@@ -1,7 +1,7 @@
 # pylint: disable=wildcard-import
 """DiD and doubly robust DiD estimators."""
 
-from pydid.data import load_mpdta, load_nsw
+from pydid.data import load_ehec, load_mpdta, load_nsw
 from pydid.did.aggte import aggte
 from pydid.did.aggte_obj import AGGTEResult, format_aggte_result
 from pydid.did.att_gt import att_gt
@@ -221,6 +221,7 @@ __all__ = [
     # Datasets module
     "load_nsw",
     "load_mpdta",
+    "load_ehec",
     # Multi-period result objects
     "MPResult",
     "mp",
