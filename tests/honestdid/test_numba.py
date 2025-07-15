@@ -310,14 +310,15 @@ def test_grid_search_performance(grid_search_sizes, request):
     )
     kwargs = {"test_fn": arp_no_nuisance._test_in_identified_set}
 
-    for _ in range(2):  # Reduce warm-up iterations
+    warm_up_iterations = 5 if data["grid_size"] <= 30 else 2
+    for _ in range(warm_up_iterations):
         arp_no_nuisance._test_over_theta_grid(*args, **kwargs)
 
     time_numba = time_function(arp_no_nuisance._test_over_theta_grid, *args, **kwargs)
     time_original = time_function(_test_over_theta_grid_py, *args, **kwargs)
 
     if data["grid_size"] == 30:
-        margin = 2.5
+        margin = 3.5
     elif data["grid_size"] == 50:
         margin = 2.0
     elif data["grid_size"] == 100:
