@@ -40,20 +40,16 @@ class DataFormat(str, Enum):
     UNBALANCED_PANEL = "unbalanced_panel"
 
 
-# Default values
 DEFAULT_ALPHA = 0.05
 DEFAULT_BOOTSTRAP_ITERATIONS = 1000
 DEFAULT_ANTICIPATION_PERIODS = 0
 DEFAULT_TRIM_LEVEL = 0.995
 DEFAULT_CORES = 1
 
-# Column name
 WEIGHTS_COLUMN = "weights"
 ROW_ID_COLUMN = ".rowid"
 
-# Special values
 NEVER_TREATED_VALUE = float("inf")
 
-# Minimum group size threshold
 MIN_GROUP_SIZE_BASE = 5
 MIN_GROUP_SIZE_PER_COVARIATE = 1

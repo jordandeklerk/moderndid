@@ -50,10 +50,8 @@ class ColumnSelector(BaseTransformer):
         if config.clustervars:
             cols_to_keep.extend(config.clustervars)
 
-        # Add formula variables
         if config.xformla and config.xformla != "~1":
             formula_vars = extract_vars_from_formula(config.xformla)
-            # Remove outcome variable if it's in the formula
             formula_vars = [v for v in formula_vars if v != config.yname]
             cols_to_keep.extend(formula_vars)
 
@@ -90,7 +88,6 @@ class WeightNormalizer(BaseTransformer):
         else:
             weights = data[config.weightsname].values
 
-        # Normalize weights to have mean 1
         weights = weights / weights.mean()
         data[WEIGHTS_COLUMN] = weights
 
@@ -105,11 +102,8 @@ class TreatmentEncoder(BaseTransformer):
         data = data.copy()
 
         data[config.gname] = data[config.gname].astype(float)
-
-        # Convert control group (g=0) to infinity
         data.loc[data[config.gname] == 0, config.gname] = NEVER_TREATED_VALUE
 
-        # Handle never-treated groups (treated after last period)
         tlist = sorted(data[config.tname].unique())
         max_treatment_time = max(tlist)
         data.loc[data[config.gname] > max_treatment_time, config.gname] = NEVER_TREATED_VALUE
@@ -127,7 +121,6 @@ class EarlyTreatmentFilter(BaseTransformer):
         tlist = sorted(data[config.tname].unique())
         first_period = min(tlist)
 
-        # Drop units treated in first period or before
         treated_early = data[config.gname] <= first_period + config.anticipation
 
         if config.idname:
@@ -154,14 +147,11 @@ class NeverTreatedHandler(BaseTransformer):
 
         glist = sorted(data[config.gname].unique())
 
-        # Check if we have a never-treated group
         if NEVER_TREATED_VALUE in glist:
             return data
 
-        # No never-treated group - need to handle
         finite_glist = [g for g in glist if np.isfinite(g)]
         if not finite_glist:
-            # No finite treatment groups
             return data
 
         latest_g = max(finite_glist)
@@ -172,11 +162,9 @@ class NeverTreatedHandler(BaseTransformer):
                 "No never-treated group is available. "
                 "The last treated cohort is being coerced as 'never-treated' units."
             )
-            # Drop periods >= cutoff and set latest cohort to never-treated
             data = data[data[config.tname] < cutoff_t].copy()
             data.loc[data[config.gname] == latest_g, config.gname] = NEVER_TREATED_VALUE
         else:
-            # Just drop the late periods
             data = data[data[config.tname] < cutoff_t].copy()
 
         return data
@@ -194,7 +182,6 @@ class PanelBalancer(BaseTransformer):
         tlist = sorted(data[config.tname].unique())
         n_periods = len(tlist)
 
-        # Keep only units observed in all periods
         unit_counts = data.groupby(config.idname).size()
         complete_units = unit_counts[unit_counts == n_periods].index
 
@@ -224,17 +211,14 @@ class RepeatedCrossSectionHandler(BaseTransformer):
 
         data = data.copy()
 
-        # Determine if this is true RCS (no idname provided)
         if config.idname is None:
             config.true_repeated_cross_sections = True
 
         if config.true_repeated_cross_sections:
-            # Create row id for true RCS
             data = data.reset_index(drop=True)
             data[ROW_ID_COLUMN] = data.index
             config.idname = ROW_ID_COLUMN
         else:
-            # Use existing id for unbalanced panel
             data[ROW_ID_COLUMN] = data[config.idname]
 
         return data
@@ -262,7 +246,6 @@ class ConfigUpdater:
         tlist = sorted(data[config.tname].unique())
         glist = sorted(data[config.gname].unique())
 
-        # Filter out never-treated from treatment groups
         glist_finite = [g for g in glist if np.isfinite(g)]
 
         if config.idname:
