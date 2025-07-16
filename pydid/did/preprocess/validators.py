@@ -40,7 +40,6 @@ class ColumnValidator(BaseValidator):
         warnings = []
         data_columns = data.columns.tolist()
 
-        # Check required columns
         required_cols = {
             "yname": config.yname,
             "tname": config.tname,
@@ -54,19 +53,15 @@ class ColumnValidator(BaseValidator):
             if col_name not in data_columns:
                 errors.append(f"{col_type} = '{col_name}' must be a column in the dataset")
 
-        # Check optional columns
         if config.weightsname and config.weightsname not in data_columns:
             errors.append(f"weightsname = '{config.weightsname}' must be a column in the dataset")
 
-        # Check cluster variables
         if config.clustervars:
             for cluster_var in config.clustervars:
                 if cluster_var not in data_columns:
                     errors.append(f"clustervars contains '{cluster_var}' which is not in the dataset")
 
-        # Type validation (only if columns exist)
         if not errors:
-            # Check numeric types
             if config.tname in data_columns and not pd.api.types.is_numeric_dtype(data[config.tname]):
                 errors.append(f"tname = '{config.tname}' is not numeric. Please convert it")
 
@@ -91,7 +86,6 @@ class TreatmentValidator(BaseValidator):
         if not config.panel or not config.idname:
             return BaseValidator._create_result(errors, warnings)
 
-        # Check treatment irreversibility
         gname_by_id = data.groupby(config.idname)[config.gname].nunique()
         if (gname_by_id > 1).any():
             errors.append(
@@ -99,7 +93,6 @@ class TreatmentValidator(BaseValidator):
                 "periods for each particular unit. The treatment must be irreversible."
             )
 
-        # Check for units treated in first period
         first_period = data[config.tname].min()
         treated_first = data[config.gname] <= first_period
 
@@ -125,13 +118,11 @@ class PanelStructureValidator(BaseValidator):
         if not config.panel or not config.idname:
             return BaseValidator._create_result(errors, warnings)
 
-        # Check for duplicated id-time combinations
         if data.duplicated(subset=[config.idname, config.tname]).any():
             errors.append(
                 "The value of idname must be unique (by tname). Some units are observed more than once in a period."
             )
 
-        # Check if panel is balanced
         if not config.allow_unbalanced_panel:
             time_periods = data[config.tname].unique()
             unit_counts = data.groupby(config.idname).size()
@@ -154,15 +145,12 @@ class ClusterValidator(BaseValidator):
         if not config.clustervars:
             return BaseValidator._create_result(errors, warnings)
 
-        # Remove idname from cluster vars if present
         cluster_vars = [cv for cv in config.clustervars if cv != config.idname]
 
-        # Check number of cluster variables
         if len(cluster_vars) > 1:
             errors.append("You can only provide 1 cluster variable additionally to the one provided in idname")
             return BaseValidator._create_result(errors, warnings)
 
-        # Check that cluster variables don't vary over time
         if len(cluster_vars) > 0 and config.idname and config.panel:
             for clust_var in cluster_vars:
                 clust_nunique = data.groupby(config.idname)[clust_var].nunique()
@@ -183,24 +171,20 @@ class ArgumentValidator(BaseValidator):
         errors = []
         warnings = []
 
-        # Validate control group
         if config.control_group not in [ControlGroup.NEVER_TREATED, ControlGroup.NOT_YET_TREATED]:
             errors.append(
                 f"control_group must be either '{ControlGroup.NEVER_TREATED.value}' "
                 f"or '{ControlGroup.NOT_YET_TREATED.value}'"
             )
 
-        # Validate base period
         if config.base_period not in [BasePeriod.UNIVERSAL, BasePeriod.VARYING]:
             errors.append(f"base_period must be either '{BasePeriod.UNIVERSAL.value}' or '{BasePeriod.VARYING.value}'")
 
-        # Validate anticipation
         if not isinstance(config.anticipation, int | float):
             errors.append("anticipation must be numeric")
         elif config.anticipation < 0:
             errors.append("anticipation must be positive")
 
-        # Validate alpha level
         if not 0 < config.alp < 1:
             errors.append("alp must be between 0 and 1")
 

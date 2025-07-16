@@ -46,7 +46,6 @@ class BaseTensorFactory(ABC):
             # Check which variables are time-invariant
             for var in formula_vars:
                 if var in data.columns:
-                    # Check if variable varies within units
                     var_counts = data.groupby(config.idname)[var].nunique()
                     if (var_counts == 1).all():
                         time_invariant_cols.append(var)
@@ -104,7 +103,6 @@ class PanelTensorFactory(BaseTensorFactory):
         outcomes_tensor = []
 
         for i in range(len(config.time_periods)):
-            # Get outcomes for this time period
             start_idx = i * config.id_count
             end_idx = (i + 1) * config.id_count
             outcomes_tensor.append(data[config.yname].iloc[start_idx:end_idx].values)
@@ -157,7 +155,6 @@ class UnbalancedPanelTensorFactory(BaseTensorFactory):
                 # Try to get from original data if truly time-invariant
                 var_counts = data.groupby(config.idname)[var].nunique()
                 if (var_counts == 1).all():
-                    # Add to time-invariant data
                     time_invariant_data[var] = data.groupby(config.idname)[var].first().values
                     available_vars.append(var)
 
@@ -209,17 +206,12 @@ class TensorFactorySelector:
         """Create all tensors using appropriate factory."""
         factory = cls.get_factory(config)
 
-        # Time-invariant data
         time_invariant_data = factory.create_time_invariant_data(data, config)
-
-        # Summary tables
         summary_tables = factory.create_summary_tables(data, time_invariant_data, config)
 
-        # Tensors
         outcomes_tensor = factory.create_outcomes_tensor(data, config)
         covariates_tensor = factory.create_covariates_tensor(data, config)
 
-        # Additional data
         cluster = factory.extract_cluster_variable(time_invariant_data, config)
         weights = factory.extract_weights(time_invariant_data)
 

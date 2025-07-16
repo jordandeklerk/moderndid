@@ -21,12 +21,10 @@ from .constants import (
 class DIDConfig:
     """Configuration for DiD analysis."""
 
-    # Required parameters
     yname: str
     tname: str
     gname: str
 
-    # Optional parameters with defaults
     idname: str | None = None
     xformla: str = "~1"
     panel: bool = True
@@ -46,7 +44,6 @@ class DIDConfig:
     pl: bool = False
     cores: int = 1
 
-    # Computed values (set during preprocessing)
     true_repeated_cross_sections: bool = False
     time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
     time_periods_count: int = 0
@@ -64,23 +61,19 @@ class DIDConfig:
 class DIDData:
     """Container for preprocessed DiD data."""
 
-    # Core data
     data: pd.DataFrame
     time_invariant_data: pd.DataFrame
     weights: np.ndarray
 
-    # Summary statistics
     cohort_counts: pd.DataFrame
     period_counts: pd.DataFrame
     crosstable_counts: pd.DataFrame
 
-    # Optional data structures
     outcomes_tensor: list[np.ndarray] | None = None
     covariates_matrix: np.ndarray | None = None
     covariates_tensor: list[np.ndarray] | None = None
     cluster: np.ndarray | None = None
 
-    # Config
     config: DIDConfig = field(default_factory=DIDConfig)
 
     @property

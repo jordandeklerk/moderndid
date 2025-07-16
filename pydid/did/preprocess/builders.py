@@ -119,7 +119,6 @@ class DIDDataBuilder:
         if self._config.print_details:
             summary = self._get_summary(tensor_data)
             if summary:
-                # Use warnings to display summary when requested
                 warnings.warn(summary, stacklevel=2)
 
         did_data = DIDData(
