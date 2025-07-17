@@ -151,11 +151,18 @@ def compute_conditional_cs_rm(
         hybrid_kappa = alpha / 10
 
     if grid_lb is None or grid_ub is None:
+        id_set = compute_identified_set_rm(
+            m_bar=m_bar,
+            true_beta=betahat,
+            l_vec=l_vec,
+            num_pre_periods=num_pre_periods,
+            num_post_periods=num_post_periods,
+        )
         sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
         if grid_lb is None:
-            grid_lb = -20 * sd_theta
+            grid_lb = id_set.id_lb - 20 * sd_theta
         if grid_ub is None:
-            grid_ub = 20 * sd_theta
+            grid_ub = id_set.id_ub + 20 * sd_theta
 
     min_s = -(num_pre_periods - 1)
     s_values = list(range(min_s, 1))
@@ -448,6 +455,10 @@ def _compute_identified_set_rm_fixed_s(
     DeltaRMResult
         Lower and upper bounds of the identified set.
     """
+    # Ensure l_vec is 1D
+    if l_vec.ndim == 2:
+        l_vec = l_vec.flatten()
+
     # Objective: min/max l'*delta_post
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec])
 
@@ -626,11 +637,21 @@ def _compute_conditional_cs_rm_fixed_s(
         rows_for_arp = None
 
     if grid_lb is None or grid_ub is None:
+        # For fixed s, compute the identified set to get better grid bounds
+        id_set = _compute_identified_set_rm_fixed_s(
+            s=s,
+            m_bar=m_bar,
+            max_positive=max_positive,
+            true_beta=betahat,
+            l_vec=l_vec,
+            num_pre_periods=num_pre_periods,
+            num_post_periods=num_post_periods,
+        )
         sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
         if grid_lb is None:
-            grid_lb = -20 * sd_theta
+            grid_lb = id_set.id_lb - 20 * sd_theta
         if grid_ub is None:
-            grid_ub = 20 * sd_theta
+            grid_ub = id_set.id_ub + 20 * sd_theta
 
     if num_post_periods == 1:
         if hybrid_flag == "LF":

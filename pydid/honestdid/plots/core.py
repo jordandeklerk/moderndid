@@ -96,27 +96,29 @@ def plot_sensitivity(
     sns.set_style("whitegrid")
     sns.set_context("paper", font_scale=PLOT_CONFIG["font_scale"])
 
-    m_values = robust_results["M"].unique()
+    m_col = "M" if "M" in robust_results.columns else "m"
+
+    m_values = robust_results[m_col].unique()
     m_gap = np.min(np.diff(np.sort(m_values))) if len(m_values) > 1 else 1
     m_min = np.min(m_values)
 
     original_results = original_results.copy()
-    original_results["M"] = m_min - m_gap
+    original_results[m_col] = m_min - m_gap
 
     df = pd.concat([original_results, robust_results], ignore_index=True)
 
-    df["M"] = df["M"] * rescale_factor
+    df[m_col] = df[m_col] * rescale_factor
     df["lb"] = df["lb"] * rescale_factor
     df["ub"] = df["ub"] * rescale_factor
 
-    df = df[df["M"] <= max_m]
+    df = df[df[m_col] <= max_m]
 
     fig, ax = plt.subplots(figsize=PLOT_CONFIG["figure_size"])
 
     methods = df["method"].unique()
     palette = COLOR_PALETTES["sensitivity"]
 
-    m_values_unique = np.sort(df["M"].unique())
+    m_values_unique = np.sort(df[m_col].unique())
     value_range = m_values_unique[-1] - m_values_unique[0] if len(m_values_unique) > 1 else 0
     offsets = _calculate_offsets(len(methods), value_range)
 
@@ -124,7 +126,7 @@ def plot_sensitivity(
         method_df = df[df["method"] == method]
         color = palette.get(method, "#34495e")
 
-        x_positions = method_df["M"].values + offsets[i]
+        x_positions = method_df[m_col].values + offsets[i]
 
         ax.errorbar(
             x_positions,
@@ -147,9 +149,10 @@ def plot_sensitivity(
     )
 
     legend_config = PLOT_CONFIG["legend_style"].copy()
+    legend_config.pop("frame_alpha", None)
     legend_config["ncol"] = min(len(methods), 5)
     legend = ax.legend(**legend_config)
-    legend.get_frame().set_alpha(PLOT_CONFIG["legend_style"]["frame_alpha"])
+    legend.get_frame().set_alpha(PLOT_CONFIG["legend_style"].get("frame_alpha", 0.9))
 
     _apply_axis_styling(ax)
 
@@ -245,9 +248,10 @@ def plot_sensitivity_rm(
     )
 
     legend_config = PLOT_CONFIG["legend_style"].copy()
+    legend_config.pop("frame_alpha", None)
     legend_config["ncol"] = min(len(methods), 3)
     legend = ax.legend(**legend_config)
-    legend.get_frame().set_alpha(PLOT_CONFIG["legend_style"]["frame_alpha"])
+    legend.get_frame().set_alpha(PLOT_CONFIG["legend_style"].get("frame_alpha", 0.9))
 
     _apply_axis_styling(ax)
 

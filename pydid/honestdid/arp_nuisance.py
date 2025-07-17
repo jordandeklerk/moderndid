@@ -135,10 +135,12 @@ def compute_arp_nuisance_ci(
     if hybrid_list is None:
         hybrid_list = {}
 
-    if grid_lb is None:
-        grid_lb = -20.0
-    if grid_ub is None:
-        grid_ub = 20.0
+    if grid_lb is None or grid_ub is None:
+        sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
+        if grid_lb is None:
+            grid_lb = -20.0 * sd_theta
+        if grid_ub is None:
+            grid_ub = 20.0 * sd_theta
 
     theta_grid = np.linspace(grid_lb, grid_ub, grid_points)
     # Construct invertible transformation matrix Gamma with l_vec as first row
