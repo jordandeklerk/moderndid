@@ -162,11 +162,19 @@ def compute_conditional_cs_rmm(
         hybrid_kappa = alpha / 10
 
     if grid_lb is None or grid_ub is None:
+        id_set = compute_identified_set_rmm(
+            m_bar=m_bar,
+            true_beta=betahat,
+            l_vec=l_vec,
+            num_pre_periods=num_pre_periods,
+            num_post_periods=num_post_periods,
+            monotonicity_direction=monotonicity_direction,
+        )
         sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
         if grid_lb is None:
-            grid_lb = -20 * sd_theta
+            grid_lb = id_set.id_lb - 20 * sd_theta
         if grid_ub is None:
-            grid_ub = 20 * sd_theta
+            grid_ub = id_set.id_ub + 20 * sd_theta
 
     min_s = -(num_pre_periods - 1)
     s_values = list(range(min_s, 1))
@@ -613,11 +621,22 @@ def _compute_conditional_cs_rmm_fixed_s(
                 d_rmm = d_rmm[post_period_rows]
 
     if grid_lb is None or grid_ub is None:
+        # For fixed s, compute the identified set to get better grid bounds
+        id_set = _compute_identified_set_rmm_fixed_s(
+            s=s,
+            m_bar=m_bar,
+            max_positive=max_positive,
+            true_beta=betahat,
+            l_vec=l_vec,
+            num_pre_periods=num_pre_periods,
+            num_post_periods=num_post_periods,
+            monotonicity_direction=monotonicity_direction,
+        )
         sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
         if grid_lb is None:
-            grid_lb = -20 * sd_theta
+            grid_lb = id_set.id_lb - 20 * sd_theta
         if grid_ub is None:
-            grid_ub = 20 * sd_theta
+            grid_ub = id_set.id_ub + 20 * sd_theta
 
     if num_post_periods == 1:
         if hybrid_flag == "LF":
