@@ -39,7 +39,6 @@ def compute_conditional_cs_sdrmm(
     alpha=0.05,
     hybrid_flag="LF",
     hybrid_kappa=None,
-    return_length=False,
     monotonicity_direction="increasing",
     post_period_moments_only=True,
     grid_points=1000,
@@ -114,8 +113,6 @@ def compute_conditional_cs_sdrmm(
         Type of hybrid test.
     hybrid_kappa : float, optional
         First-stage size for hybrid test. If None, defaults to alpha/10.
-    return_length : bool, default=False
-        If True, return only the length of the confidence interval.
     monotonicity_direction : {'increasing', 'decreasing'}, default='increasing'
         Direction of monotonicity restriction.
     post_period_moments_only : bool, default=True
@@ -132,8 +129,7 @@ def compute_conditional_cs_sdrmm(
     Returns
     -------
     dict or float
-        If return_length is False, returns dict with 'grid' and 'accept' arrays.
-        If return_length is True, returns the length of the confidence interval.
+        Returns dict with 'grid' and 'accept' arrays.
 
     Raises
     ------
@@ -242,11 +238,6 @@ def compute_conditional_cs_sdrmm(
     accept_pos = np.max(all_cs_pos, axis=1)
     accept_neg = np.max(all_cs_neg, axis=1)
     accept = np.maximum(accept_pos, accept_neg)
-
-    if return_length:
-        grid_diffs = np.diff(grid)
-        grid_lengths = 0.5 * np.concatenate([[grid_diffs[0]], grid_diffs[:-1] + grid_diffs[1:], [grid_diffs[-1]]])
-        return np.sum(accept * grid_lengths)
 
     return {"grid": grid, "accept": accept}
 
@@ -575,7 +566,6 @@ def _compute_conditional_cs_sdrmm_fixed_s(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
-        return_length=False,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -621,7 +611,6 @@ def _compute_cs_sdrmm_no_nuisance(
         "grid_lb": grid_lb,
         "grid_ub": grid_ub,
         "grid_points": grid_points,
-        "return_length": False,
     }
 
     if hybrid_flag == "LF" and "lf_cv" in hybrid_list:
