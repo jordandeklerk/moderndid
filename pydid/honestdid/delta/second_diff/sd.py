@@ -109,9 +109,8 @@ def compute_conditional_cs_sd(
 
     Returns
     -------
-    dict or float
-        If return_length is False, returns dict with 'grid' and 'accept' arrays.
-        If return_length is True, returns the length of the confidence interval.
+    dict
+        Returns dict with 'grid' and 'accept' arrays.
 
     Notes
     -----
