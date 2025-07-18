@@ -151,18 +151,11 @@ def compute_conditional_cs_rm(
         hybrid_kappa = alpha / 10
 
     if grid_lb is None or grid_ub is None:
-        id_set = compute_identified_set_rm(
-            m_bar=m_bar,
-            true_beta=betahat,
-            l_vec=l_vec,
-            num_pre_periods=num_pre_periods,
-            num_post_periods=num_post_periods,
-        )
         sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
         if grid_lb is None:
-            grid_lb = id_set.id_lb - 20 * sd_theta
+            grid_lb = -20 * sd_theta
         if grid_ub is None:
-            grid_ub = id_set.id_ub + 20 * sd_theta
+            grid_ub = 20 * sd_theta
 
     min_s = -(num_pre_periods - 1)
     s_values = list(range(min_s, 1))
@@ -220,9 +213,11 @@ def compute_conditional_cs_rm(
     grid = np.linspace(grid_lb, grid_ub, grid_points)
 
     if return_length:
-        grid_length = np.concatenate([[0], np.diff(grid) / 2, [0]])
-        grid_length = grid_length[:-1] + grid_length[1:]
-        return np.sum(accept * grid_length)
+        grid_spacing = np.diff(grid)
+        grid_lengths = 0.5 * np.concatenate(
+            [[grid_spacing[0]], grid_spacing[:-1] + grid_spacing[1:], [grid_spacing[-1]]]
+        )
+        return np.sum(accept * grid_lengths)
 
     return {"grid": grid, "accept": accept}
 
