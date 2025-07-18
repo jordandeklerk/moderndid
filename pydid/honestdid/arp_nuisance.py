@@ -49,7 +49,6 @@ def compute_arp_nuisance_ci(
     grid_ub=None,
     grid_points=1000,
     rows_for_arp=None,
-    return_length=False,
 ):
     r"""Compute ARP confidence interval with nuisance parameters.
 
@@ -106,8 +105,6 @@ def compute_arp_nuisance_ci(
     rows_for_arp : ndarray, optional
         Subset of moments to use for ARP test. Useful when some moments are
         uninformative about post-treatment effects.
-    return_length : bool, default=False
-        If True, only return the CI length (useful for power calculations).
 
     Returns
     -------
@@ -207,14 +204,10 @@ def compute_arp_nuisance_ci(
         ci_lb = np.nan
         ci_ub = np.nan
 
-    if return_length:
-        grid_spacing = np.diff(theta_grid)
-        grid_lengths = 0.5 * np.concatenate(
-            [[grid_spacing[0]], grid_spacing[:-1] + grid_spacing[1:], [grid_spacing[-1]]]
-        )
-        length = np.sum(accept_grid * grid_lengths)
-    else:
-        length = ci_ub - ci_lb if not np.isnan(ci_lb) else np.nan
+    # Use trapezoidal rule for integration which correctly handles non-contiguous acceptance regions
+    grid_spacing = np.diff(theta_grid)
+    grid_lengths = 0.5 * np.concatenate([[grid_spacing[0]], grid_spacing[:-1] + grid_spacing[1:], [grid_spacing[-1]]])
+    length = np.sum(accept_grid * grid_lengths)
 
     # Check if CI is open at endpoints
     if accept_grid[0] == 1 or accept_grid[-1] == 1:
@@ -608,13 +601,13 @@ def _test_delta_lp(y_t, x_t, sigma):
     # Bounds: eta and delta unbounded
     bounds = [(None, None) for _ in range(len(c))]
 
-    # Solve linear program
+    # Use dual simplex approach
     result = opt.linprog(
         c=c,
         A_ub=A_ub,
         b_ub=b_ub,
         bounds=bounds,
-        method="highs",
+        method="highs-ds",
     )
 
     if result.success:
@@ -1044,12 +1037,13 @@ def _compute_least_favorable_cv(
     # For each simulation, solve the LP to get test statistic value
     eta_vec = []
     for xi in xi_draws:
+        # Use dual simplex to match R's lpSolveAPI settings
         result = opt.linprog(
             c=c,
             A_ub=C,
             b_ub=-xi,
             bounds=[(None, None) for _ in range(len(c))],
-            method="highs",
+            method="highs-ds",
         )
         if result.success:
             eta_vec.append(result.x[0])
