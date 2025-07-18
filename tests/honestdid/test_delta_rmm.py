@@ -219,44 +219,6 @@ def test_compute_conditional_cs_rmm_basic(simple_event_study_data, fast_config):
     assert np.any(result["accept"] > 0)
 
 
-def test_compute_conditional_cs_rmm_return_length(fast_config):
-    betahat = np.array([0, 0, 0, 0.5, 0.5])
-    sigma = np.eye(5) * 0.01
-    l_vec = np.array([1, 0])
-
-    length_small_m = compute_conditional_cs_rmm(
-        betahat=betahat,
-        sigma=sigma,
-        num_pre_periods=3,
-        num_post_periods=2,
-        l_vec=l_vec,
-        m_bar=0.5,
-        alpha=0.05,
-        monotonicity_direction="increasing",
-        return_length=True,
-        grid_points=fast_config["grid_points_medium"],
-    )
-
-    length_large_m = compute_conditional_cs_rmm(
-        betahat=betahat,
-        sigma=sigma,
-        num_pre_periods=3,
-        num_post_periods=2,
-        l_vec=l_vec,
-        m_bar=2,
-        alpha=0.05,
-        monotonicity_direction="increasing",
-        return_length=True,
-        grid_points=fast_config["grid_points_medium"],
-    )
-
-    assert isinstance(length_small_m, float)
-    assert isinstance(length_large_m, float)
-    assert length_small_m > 0
-    assert length_large_m > 0
-    assert length_large_m >= length_small_m
-
-
 @pytest.mark.parametrize("hybrid_flag", ["LF", "ARP"])
 def test_compute_conditional_cs_rmm_hybrid_flags(simple_event_study_data, hybrid_flag, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
@@ -383,7 +345,6 @@ def test_confidence_interval_coverage_ordering(fast_config):
             m_bar=0.5,
             alpha=alpha,
             monotonicity_direction="increasing",
-            return_length=True,
             grid_points=fast_config["grid_points_medium"],
         )
         lengths.append(length)
