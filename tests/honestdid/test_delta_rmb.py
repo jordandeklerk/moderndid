@@ -350,6 +350,7 @@ def test_confidence_interval_coverage_ordering(fast_config):
             alpha=alpha,
             bias_direction="positive",
             grid_points=fast_config["grid_points_medium"],
+            return_length=True,
         )
         lengths.append(length)
 
