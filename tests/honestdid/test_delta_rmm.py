@@ -346,6 +346,7 @@ def test_confidence_interval_coverage_ordering(fast_config):
             alpha=alpha,
             monotonicity_direction="increasing",
             grid_points=fast_config["grid_points_medium"],
+            return_length=True,
         )
         lengths.append(length)
 

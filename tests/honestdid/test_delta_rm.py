@@ -406,6 +406,7 @@ def test_confidence_interval_coverage_ordering(fast_config):
             m_bar=0.5,
             alpha=alpha,
             grid_points=fast_config["grid_points_small"],
+            return_length=True,
         )
         lengths.append(length)
 
