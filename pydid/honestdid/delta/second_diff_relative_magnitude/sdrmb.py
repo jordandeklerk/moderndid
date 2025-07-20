@@ -561,7 +561,8 @@ def _compute_cs_sdrmb_no_nuisance(
         )
         kwargs["lf_cv"] = lf_cv
 
-    return compute_arp_ci(**kwargs)
+    result = compute_arp_ci(**kwargs)
+    return {"grid": result.theta_grid, "accept": result.accept_grid.astype(int)}
 
 
 def _create_sdrmb_constraint_matrix(
