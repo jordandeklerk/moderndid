@@ -578,7 +578,8 @@ def _compute_cs_sdrm_no_nuisance(
     if hybrid_flag == "LF" and "lf_cv" in hybrid_list:
         arp_kwargs["lf_cv"] = hybrid_list["lf_cv"]
 
-    return compute_arp_ci(**arp_kwargs)
+    result = compute_arp_ci(**arp_kwargs)
+    return {"grid": result.theta_grid, "accept": result.accept_grid.astype(int)}
 
 
 def _create_sdrm_constraint_matrix(
