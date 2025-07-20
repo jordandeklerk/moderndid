@@ -209,7 +209,9 @@ def compute_arp_nuisance_ci(
     grid_lengths = 0.5 * np.concatenate([[grid_spacing[0]], grid_spacing[:-1] + grid_spacing[1:], [grid_spacing[-1]]])
     length = np.sum(accept_grid * grid_lengths)
 
-    # Check if CI is open at endpoints
+    if len(accepted_indices) == 0:
+        length = np.nan
+
     if accept_grid[0] == 1 or accept_grid[-1] == 1:
         warnings.warn("CI is open at one of the endpoints; CI bounds may not be accurate.", UserWarning)
 
