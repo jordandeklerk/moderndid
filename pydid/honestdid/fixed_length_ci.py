@@ -268,9 +268,7 @@ def _optimize_flci_params(
         )
         optimal_result = {
             "optimal_l": bias_result["optimal_l"],
-            "ci_half_length": folded_normal_quantile(
-                1 - alpha, mu=(smoothness_bound * bias_result["value"]) / h_optimal, sd=1.0, seed=seed
-            )
+            "ci_half_length": folded_normal_quantile(1 - alpha, mu=bias_result["value"] / h_optimal, sd=1.0, seed=seed)
             * h_optimal,
             "status": bias_result["status"],
         }
@@ -361,7 +359,6 @@ def maximize_bias(
 
     absolute_values = stacked_vars[:n_pre_periods]
     weight_vector = stacked_vars[n_pre_periods:]
-
     lower_triangular = np.tril(np.ones((n_pre_periods, n_pre_periods)))
 
     constraints.extend(
@@ -371,12 +368,7 @@ def maximize_bias(
     target_sum = np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
     constraints.append(cp.sum(weight_vector) == target_sum)
 
-    weights_to_levels_matrix = np.zeros((n_pre_periods, n_pre_periods))
-    weights_to_levels_matrix[0, 0] = 1
-
-    for i in range(1, n_pre_periods):
-        weights_to_levels_matrix[i, i] = 1
-        weights_to_levels_matrix[i, i - 1] = -1
+    weights_to_levels_matrix = _create_diff_matrix(n_pre_periods)
 
     stacked_transform_matrix = np.hstack([np.zeros((n_pre_periods, n_pre_periods)), weights_to_levels_matrix])
 
@@ -477,12 +469,7 @@ def minimize_variance(
     absolute_values = stacked_vars[:n_pre_periods]
     weight_vector = stacked_vars[n_pre_periods:]
 
-    weights_to_levels_matrix = np.zeros((n_pre_periods, n_pre_periods))
-    weights_to_levels_matrix[0, 0] = 1
-    for i in range(1, n_pre_periods):
-        weights_to_levels_matrix[i, i] = 1
-        weights_to_levels_matrix[i, i - 1] = -1
-
+    weights_to_levels_matrix = _create_diff_matrix(n_pre_periods)
     stacked_transform_matrix = np.hstack([np.zeros((n_pre_periods, n_pre_periods)), weights_to_levels_matrix])
 
     sigma_pre = sigma[:n_pre_periods, :n_pre_periods]
@@ -794,7 +781,46 @@ def folded_normal_quantile(
 
 
 def weights_to_l(weights):
-    r"""Convert from weight parameterization to l parameterization.
+    r"""Convert from :math:`\ell` parameterization to :math:`w` parameterization.
+
+    Converts from the levels parameterization :math:`\ell` to the
+    first-difference parameterization :math:`w` via
+
+    .. math::
+
+        w_t = \begin{cases}
+        \ell_1 & \text{if } t = 1 \\
+        \ell_t - \ell_{t-1} & \text{if } t > 1
+        \end{cases}.
+
+    This is the inverse transformation of :func:`l_to_weights`.
+
+    Parameters
+    ----------
+    l_vector : ndarray
+        Level vector :math:`\ell` (cumulative sums).
+
+    Returns
+    -------
+    ndarray
+        Weight vector :math:`w` (first differences).
+
+    Notes
+    -----
+    The weight parameterization ensures that certain constraints in the
+    optimization (related to worst-case bias under :math:`\Delta^{SD}(M)`)
+    take a simple linear form.
+    """
+    l_vector = np.zeros_like(weights)
+    l_vector[0] = weights[0]
+
+    if len(weights) > 1:
+        l_vector[1:] = np.diff(weights)
+    return l_vector
+
+
+def l_to_weights(l_vector):
+    r"""Convert from weight parameterization to :math:`\ell` parameterization.
 
     Converts from the first-difference parameterization :math:`w` to the
     levels parameterization :math:`\ell` via
@@ -823,43 +849,12 @@ def weights_to_l(weights):
     expressed in terms of :math:`w`, which motivates this parameterization
     in the optimization.
     """
-    return np.cumsum(weights)
+    return np.cumsum(l_vector)
 
 
-def l_to_weights(l_vector):
-    r"""Convert from :math:`\ell` parameterization to weight parameterization.
-
-    Converts from the levels parameterization :math:`\ell` to the
-    first-difference parameterization :math:`w` via
-
-    .. math::
-
-        w_t = \begin{cases}
-        \ell_1 & \text{if } t = 1 \\
-        \ell_t - \ell_{t-1} & \text{if } t > 1
-        \end{cases}.
-
-    This is the inverse transformation of :func:`weights_to_l`.
-
-    Parameters
-    ----------
-    l_vector : ndarray
-        Level vector :math:`\ell` (cumulative sums).
-
-    Returns
-    -------
-    ndarray
-        Weight vector :math:`w` (first differences).
-
-    Notes
-    -----
-    The weight parameterization ensures that certain constraints in the
-    optimization (related to worst-case bias under :math:`\Delta^{SD}(M)`)
-    take a simple linear form.
-    """
-    weights = np.zeros_like(l_vector)
-    weights[0] = l_vector[0]
-
-    if len(l_vector) > 1:
-        weights[1:] = np.diff(l_vector)
-    return weights
+def _create_diff_matrix(size):
+    mat = np.eye(size)
+    if size > 1:
+        for i in range(1, size):
+            mat[i, i - 1] = -1
+    return mat
