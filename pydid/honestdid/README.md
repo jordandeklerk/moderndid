@@ -96,7 +96,7 @@ sensitivity_results_rm = create_sensitivity_results_relative_magnitudes(
 
 ### Visualization Tools
 
-Built-in plotting functions for sensitivity analysis:
+Built-in plotting functions:
 
 ```python
 from pydid import plot_sensitivity, plot_sensitivity_rm
@@ -178,13 +178,11 @@ all_coef_names = list(twfe_results.coef().index)
 coef_indices = [all_coef_names.index(name) for name in coef_names]
 
 sigma = sigma_full[np.ix_(coef_indices, coef_indices)]
+
+print(twfe_results.summary())
 ```
 
 This gives us event study coefficients for years 2008-2012, 2014, and 2015 (2013 is the reference period):
-
-```python
-print(twfe_results.summary())
-```
 
 ```bash
 | Coefficient                                 |   Estimate |   Std. Error |   t value |   Pr(>|t|) |   2.5% |   97.5% |
