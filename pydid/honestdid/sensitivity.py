@@ -8,6 +8,7 @@ import pandas as pd
 from scipy import stats
 
 from .bounds import compute_delta_sd_upperbound_m
+from .delta.relative_magnitude.rm import compute_identified_set_rm
 from .fixed_length_ci import compute_flci
 from .utils import basis_vector, validate_conformable, validate_symmetric_psd
 from .wrappers import DeltaMethodSelector
@@ -319,6 +320,24 @@ def create_sensitivity_results_relative_magnitudes(
     )
 
     for m_bar in m_bar_vec:
+        # If grid bounds are not user-specified, calculate them based on the identified set for this Mbar
+        if grid_lb is None or grid_ub is None:
+            id_set = compute_identified_set_rm(
+                m_bar=m_bar,
+                true_beta=betahat,
+                l_vec=l_vec,
+                num_pre_periods=num_pre_periods,
+                num_post_periods=num_post_periods,
+            )
+            post_indices = slice(num_pre_periods, num_pre_periods + num_post_periods)
+            sd_theta = np.sqrt(l_vec.flatten() @ sigma[post_indices, post_indices] @ l_vec.flatten())
+
+            current_grid_lb = id_set.id_lb - 20 * sd_theta
+            current_grid_ub = id_set.id_ub + 20 * sd_theta
+        else:
+            current_grid_lb = grid_lb
+            current_grid_ub = grid_ub
+
         delta_kwargs = {
             "betahat": betahat,
             "sigma": sigma,
@@ -329,8 +348,8 @@ def create_sensitivity_results_relative_magnitudes(
             "m_bar": m_bar,
             "hybrid_flag": hybrid_flag,
             "grid_points": grid_points,
-            "grid_lb": grid_lb,
-            "grid_ub": grid_ub,
+            "grid_lb": current_grid_lb,
+            "grid_ub": current_grid_ub,
         }
 
         if monotonicity_direction is not None:

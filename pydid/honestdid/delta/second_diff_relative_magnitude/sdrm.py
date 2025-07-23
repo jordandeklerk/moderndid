@@ -178,7 +178,7 @@ def compute_conditional_cs_sdrm(
             grid_ub = 20 * sd_theta
 
     min_s = -(num_pre_periods - 2)
-    s_values = range(min_s, 1)
+    s_values = range(min_s, 0)
 
     grid = np.linspace(grid_lb, grid_ub, grid_points)
     n_s = len(s_values)
@@ -304,7 +304,7 @@ def compute_identified_set_sdrm(
     l_vec = np.asarray(l_vec).flatten()
 
     min_s = -(num_pre_periods - 2)
-    s_values = range(min_s, 1)
+    s_values = range(min_s, 0)
 
     all_bounds = []
 
