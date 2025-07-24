@@ -37,7 +37,6 @@ def compute_conditional_cs_sd(
     alpha=0.05,
     hybrid_flag="FLCI",
     hybrid_kappa=None,
-    return_length=False,
     post_period_moments_only=True,
     grid_points=1000,
     grid_lb=None,
@@ -97,8 +96,6 @@ def compute_conditional_cs_sd(
         Type of hybrid test.
     hybrid_kappa : float, optional
         First-stage size for hybrid test. If None, defaults to alpha/10.
-    return_length : bool, default=False
-        If True, return only the length of the confidence interval.
     post_period_moments_only : bool, default=True
         If True, use only post-period moments for ARP test.
     grid_points : int, default=1000
@@ -112,9 +109,8 @@ def compute_conditional_cs_sd(
 
     Returns
     -------
-    dict or float
-        If return_length is False, returns dict with 'grid' and 'accept' arrays.
-        If return_length is True, returns the length of the confidence interval.
+    dict
+        Returns dict with 'grid' and 'accept' arrays.
 
     Notes
     -----
@@ -165,7 +161,6 @@ def compute_conditional_cs_sd(
             alpha=alpha,
             hybrid_flag=hybrid_flag,
             hybrid_kappa=hybrid_kappa,
-            return_length=return_length,
             grid_points=grid_points,
             grid_lb=grid_lb,
             grid_ub=grid_ub,
@@ -200,17 +195,11 @@ def compute_conditional_cs_sd(
 
     # Grid bounds
     if grid_lb is None or grid_ub is None:
-        if hybrid_flag == "FLCI" and grid_lb is None:
-            grid_lb = (flci_result.optimal_vec @ betahat) - flci_result.optimal_half_length
-        if hybrid_flag == "FLCI" and grid_ub is None:
-            grid_ub = (flci_result.optimal_vec @ betahat) + flci_result.optimal_half_length
-
-        if grid_lb is None or grid_ub is None:
-            sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-            if grid_lb is None:
-                grid_lb = -20 * sd_theta
-            if grid_ub is None:
-                grid_ub = 20 * sd_theta
+        sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
+        if grid_lb is None:
+            grid_lb = -20 * sd_theta
+        if grid_ub is None:
+            grid_ub = 20 * sd_theta
 
     result = compute_arp_nuisance_ci(
         betahat=betahat,
@@ -227,11 +216,7 @@ def compute_conditional_cs_sd(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
-        return_length=return_length,
     )
-
-    if return_length:
-        return result.length
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
 
@@ -425,7 +410,6 @@ def _compute_cs_sd_no_nuisance(
     alpha,
     hybrid_flag,
     hybrid_kappa,
-    return_length,
     grid_points,
     grid_lb,
     grid_ub,
@@ -497,11 +481,7 @@ def _compute_cs_sd_no_nuisance(
         grid_lb=grid_lb,
         grid_ub=grid_ub,
         grid_points=grid_points,
-        return_length=return_length,
     )
-
-    if return_length:
-        return result.ci_length
 
     return {"grid": result.theta_grid, "accept": result.accept_grid}
 

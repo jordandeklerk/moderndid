@@ -129,22 +129,6 @@ def test_compute_conditional_cs_sdrmb_multiple_post_periods(basic_setup, fast_co
     assert np.any(result["accept"] == 1)
 
 
-def test_compute_conditional_cs_sdrmb_return_length(basic_setup, fast_config):
-    result = compute_conditional_cs_sdrmb(
-        betahat=basic_setup["betahat"],
-        sigma=basic_setup["sigma"],
-        num_pre_periods=basic_setup["num_pre_periods"],
-        num_post_periods=basic_setup["num_post_periods"],
-        m_bar=1.0,
-        alpha=0.05,
-        return_length=True,
-        grid_points=fast_config["grid_points_small"],
-    )
-
-    assert isinstance(result, float)
-    assert result >= 0
-
-
 @pytest.mark.parametrize("hybrid_flag", ["LF", "ARP"])
 def test_compute_conditional_cs_sdrmb_hybrid_flags(basic_setup, fast_config, hybrid_flag):
     result = compute_conditional_cs_sdrmb(

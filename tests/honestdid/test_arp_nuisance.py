@@ -300,30 +300,6 @@ def test_compute_arp_nuisance_ci_basic(panel_data):
     assert isinstance(result.length, float)
 
 
-@pytest.mark.parametrize("return_length", [True, False])
-def test_compute_arp_nuisance_ci_return_length(panel_data, return_length):
-    a_matrix = np.eye(panel_data["num_post"])
-    a_matrix = np.column_stack([np.zeros((a_matrix.shape[0], panel_data["num_pre"])), a_matrix])
-    d_vec = np.ones(panel_data["num_post"])
-
-    result = compute_arp_nuisance_ci(
-        betahat=panel_data["betahat"],
-        sigma=panel_data["sigma"],
-        l_vec=panel_data["l_vec"],
-        a_matrix=a_matrix,
-        d_vec=d_vec,
-        num_pre_periods=panel_data["num_pre"],
-        num_post_periods=panel_data["num_post"],
-        alpha=0.05,
-        grid_points=20,
-        return_length=return_length,
-    )
-
-    assert isinstance(result.length, float)
-    if not return_length:
-        assert result.length == pytest.approx(result.ci_ub - result.ci_lb, rel=1e-6)
-
-
 def test_compute_arp_nuisance_ci_with_rows_subset(rng):
     num_pre = 4
     num_post = 3

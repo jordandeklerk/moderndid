@@ -127,23 +127,6 @@ def test_compute_conditional_cs_sd_basic(simple_data, fast_config):
     assert len(result["grid"]) == fast_config["grid_points_medium"]
 
 
-def test_compute_conditional_cs_sd_return_length(simple_data, fast_config):
-    result = compute_conditional_cs_sd(
-        betahat=simple_data["betahat"],
-        sigma=simple_data["sigma"],
-        num_pre_periods=simple_data["num_pre_periods"],
-        num_post_periods=simple_data["num_post_periods"],
-        l_vec=simple_data["l_vec"],
-        m_bar=0.1,
-        alpha=0.05,
-        return_length=True,
-        grid_points=fast_config["grid_points_medium"],
-    )
-
-    assert isinstance(result, float)
-    assert result > 0
-
-
 @pytest.mark.parametrize("hybrid_flag", ["FLCI", "LF", "ARP"])
 def test_compute_conditional_cs_sd_hybrid_flags(simple_data, hybrid_flag, fast_config):
     result = compute_conditional_cs_sd(

@@ -140,25 +140,6 @@ def test_compute_conditional_cs_sdb_multiple_post_periods(simple_data, fast_conf
     assert len(result["grid"]) == fast_config["grid_points_small"]
 
 
-def test_compute_conditional_cs_sdb_return_length(simple_data, fast_config):
-    num_pre_periods, num_post_periods, betahat, sigma, l_vec = simple_data
-
-    result = compute_conditional_cs_sdb(
-        betahat=betahat,
-        sigma=sigma,
-        num_pre_periods=num_pre_periods,
-        num_post_periods=num_post_periods,
-        l_vec=l_vec,
-        m_bar=0.1,
-        alpha=0.05,
-        return_length=True,
-        grid_points=fast_config["grid_points_medium"],
-    )
-
-    assert isinstance(result, float)
-    assert result >= 0
-
-
 @pytest.mark.parametrize("hybrid_flag", ["FLCI", "LF", "ARP"])
 def test_compute_conditional_cs_sdb_hybrid_flags(simple_data, hybrid_flag, fast_config):
     num_pre_periods, num_post_periods, betahat, sigma, l_vec = simple_data

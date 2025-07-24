@@ -209,9 +209,11 @@ def compute_conditional_cs_rm(
     grid = np.linspace(grid_lb, grid_ub, grid_points)
 
     if return_length:
-        grid_length = np.concatenate([[0], np.diff(grid) / 2, [0]])
-        grid_length = grid_length[:-1] + grid_length[1:]
-        return np.sum(accept * grid_length)
+        grid_spacing = np.diff(grid)
+        grid_lengths = 0.5 * np.concatenate(
+            [[grid_spacing[0]], grid_spacing[:-1] + grid_spacing[1:], [grid_spacing[-1]]]
+        )
+        return np.sum(accept * grid_lengths)
 
     return {"grid": grid, "accept": accept}
 
