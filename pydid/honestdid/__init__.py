@@ -65,19 +65,6 @@ from .delta.second_diff_relative_magnitude.sdrmm import (
     compute_conditional_cs_sdrmm,
     compute_identified_set_sdrmm,
 )
-from .did_sunab import (
-    SunAbrahamResult,
-    _create_disaggregated_result,
-    _create_interaction_result,
-    _empty_result,
-    _find_never_always_treated,
-    aggregate_sunab,
-    aggregate_to_event_study,
-    create_period_interactions,
-    estimate_sunab_model,
-    sunab,
-    sunab_att,
-)
 from .fixed_length_ci import (
     FLCIResult,
     compute_flci,
@@ -85,10 +72,6 @@ from .fixed_length_ci import (
 from .honest_did import (
     HonestDiDResult,
     honest_did,
-)
-from .honest_sunab import (
-    SunAbrahamCoefficients,
-    extract_sunab_coefficients,
 )
 from .numba import (
     compute_bounds,
@@ -123,21 +106,6 @@ __all__ = [
     # Main interface
     "honest_did",
     "HonestDiDResult",
-    # Sun & Abraham coefficient extraction
-    "extract_sunab_coefficients",
-    "SunAbrahamCoefficients",
-    # Sun & Abraham estimator
-    "sunab",
-    "sunab_att",
-    "aggregate_sunab",
-    "SunAbrahamResult",
-    "aggregate_to_event_study",
-    "create_period_interactions",
-    "estimate_sunab_model",
-    "_create_disaggregated_result",
-    "_create_interaction_result",
-    "_empty_result",
-    "_find_never_always_treated",
     # Utility functions
     "basis_vector",
     "validate_symmetric_psd",
