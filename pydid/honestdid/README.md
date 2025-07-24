@@ -85,12 +85,31 @@ sensitivity_results_rm = create_sensitivity_results_relative_magnitudes(
 )
 ```
 
+### Advanced Sensitivity Restrictions
+
+Beyond the basic relative magnitudes and smoothness restrictions, the package offers additional restrictions for users to incorporate context-specific knowledge about confounding factors contributing to possible violations of the parallel trends assumption:
+
+- **Relative Magnitudes with Sign Restrictions** (`compute_conditional_cs_rmb`): Incorporate knowledge about bias direction (positive/negative) alongside relative magnitude bounds
+- **Relative Magnitudes with Monotonicity** (`compute_conditional_cs_rmm`): Add monotonicity constraints when treatment effects are expected to evolve smoothly (increasing/decreasing)
+- **Second Differences with Sign Restrictions** (`compute_conditional_cs_sdb`): Combine smoothness constraints with bias direction
+- **Second Differences with Monotonicity** (`compute_conditional_cs_sdm`): Enforce both smoothness and monotonic evolution of effects
+- **Combined Smoothness and Relative Magnitudes** (`compute_conditional_cs_sdrm`): Apply both types of restrictions simultaneously
+- **Full Constraint Combinations** (`compute_conditional_cs_sdrmb`, `compute_conditional_cs_sdrmm`): Layer all three types of constraints for maximum robustness
+
+All these options are available both at a lower-level API with the specific functions mentioned above, or through the high-level wrapper function `honest_did` with the required `kwargs` relevant to the specific restrictions.
+
 ### Multiple Confidence Interval Methods
 
-- **Fixed-Length CI (`FLCI`)**: Default method with optimal length for smoothness methods
+- **Fixed-Length CI (`FLCI`)**: Default method with optimal length for **smoothness methods**
 - **Andrew-Roth-Pakes (`ARP`)**: Data-driven CI construction
 - **Conditional CI (`Conditional`)**: Conditions on non-negativity
-- **C-LF Method (`C-LF`)**: Computationally efficient for relative magnitudes
+- **C-LF Method (`C-LF`)**: Computationally efficient for **relative magnitudes**
+
+### Flexible Parameter Analysis
+
+- Analyze any linear combination of post-treatment effects via `l_vec` parameter
+- Support for average effects, cumulative effects, or custom weighted combinations
+- Fine-grained control over computational parameters (grid resolution, bounds, bootstrap settings)
 
 ### Visualizations
 
@@ -182,7 +201,7 @@ print(twfe_results.summary())
 
 This gives us event study coefficients for years 2008-2012, 2014, and 2015 (2013 is the reference period):
 
-```bash
+```
 | Coefficient                                 |   Estimate |   Std. Error |   t value |   Pr(>|t|) |   2.5% |   97.5% |
 |:--------------------------------------------|-----------:|-------------:|----------:|-----------:|-------:|--------:|
 | C(year, contr.treatment(base=2013))[2008]:D |     -0.005 |        0.009 |    -0.611 |      0.545 | -0.023 |   0.012 |
@@ -332,8 +351,8 @@ Below, we show how the package can be used with modern methods for DiD with stag
 
 ### Using HonestDiD with pyDiD's `att_gt` and `aggte` Methods
 
-Here's how we can combine staggered treatment DiD estimators of the Callaway and Sant'Anna type with Honest DiD
-sensitivity analysis:
+We can combine staggered treatment DiD estimators of the Callaway and Sant'Anna type with Honest DiD
+sensitivity analysis in a straight-forward way:
 
 ```python
 from pydid import att_gt, aggte, honest_did, load_ehec
@@ -355,9 +374,9 @@ cs_results = att_gt(
 es = aggte(cs_results, type='dynamic', min_e=-5, max_e=5)
 ```
 
-This produces event study estimates with pre-treatment deviations:
+This produces event study estimates with pre-treatment deviations below:
 
-```bash
+```
 Dynamic Effects:
 
 Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
