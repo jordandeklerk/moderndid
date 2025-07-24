@@ -52,7 +52,7 @@ result = honest_did(
 )
 ```
 
-### Direct Coefficient API
+### Direct API
 
 For users with pre-computed event study coefficients:
 
@@ -94,7 +94,7 @@ sensitivity_results_rm = create_sensitivity_results_relative_magnitudes(
 - **Conditional CI (`Conditional`)**: Conditions on non-negativity
 - **C-LF Method (`C-LF`)**: Computationally efficient for relative magnitudes
 
-### Visualization Tools
+### Visualizations
 
 Built-in plotting functions:
 
@@ -320,18 +320,6 @@ plot_sensitivity_rm(delta_rm_results_avg, original_ci_avg)
 ```
 
 ![Sensitivity-Analysis-Average](/assets/medicaid_sensitivity_avg.png)
-
-### Staggered Treatment Timing
-
-So far we have focused on a simple case without staggered timing. The HonestDiD approach works well with recently-introduced methods for DiD under staggered treatment timing.
-
-For staggered treatment timing, the HonestDiD approach works well with recently-introduced methods such as Sun & Abraham or Callaway & Sant'Anna. These methods first estimate clean event-study coefficients that avoid negative weighting issues, which can then be used with HonestDiD for sensitivity analysis.
-
-The general workflow is:
-
-1. Estimate event-study coefficients using a method designed for staggered timing
-2. Extract the coefficient vector and variance-covariance matrix
-3. Apply HonestDiD sensitivity analysis as shown above
 
 ## References
 
