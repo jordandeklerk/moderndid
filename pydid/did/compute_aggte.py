@@ -324,6 +324,7 @@ def _compute_simple_att(
         overall_se=simple_se,
         aggregation_type="simple",
         influence_func=simple_influence_function,
+        influence_func_overall=simple_influence_function,
         estimation_params=estimation_params,
         call_info={"function": "compute_aggte", "type": "simple"},
     )
@@ -448,7 +449,8 @@ def _compute_group_att(
         att_by_event=group_att,
         se_by_event=group_se,
         critical_values=np.full(len(unique_groups_recoded), critical_value),
-        influence_func=overall_influence_function,
+        influence_func=group_influence_functions,
+        influence_func_overall=overall_influence_function,
         estimation_params=estimation_params,
         call_info={"function": "compute_aggte", "type": "group"},
     )
@@ -482,7 +484,6 @@ def _compute_dynamic_att(
     unique_event_times = unique_event_times[np.isfinite(unique_event_times)]
     unique_event_times = np.sort(unique_event_times)
 
-    # Handle sample balancing
     include_balanced = np.ones(len(groups), dtype=bool)
     if balance_e is not None:
         max_recoded_time = times.max()
@@ -490,7 +491,6 @@ def _compute_dynamic_att(
         # Only keep observations where we can observe balance_e periods after treatment
         include_balanced = (max_original_time - original_groups) >= balance_e
 
-        # Update event times based on balanced sample
         event_times_balanced = event_times[include_balanced]
         unique_event_times = np.unique(event_times_balanced)
         unique_event_times = unique_event_times[np.isfinite(unique_event_times)]
@@ -505,7 +505,6 @@ def _compute_dynamic_att(
 
     unique_event_times = unique_event_times[(unique_event_times >= min_e) & (unique_event_times <= max_e)]
 
-    # Compute ATT for each event time
     dynamic_att = np.zeros(len(unique_event_times))
     dynamic_influence_functions = []
 
@@ -615,7 +614,8 @@ def _compute_dynamic_att(
         att_by_event=dynamic_att,
         se_by_event=dynamic_se,
         critical_values=np.full(len(unique_event_times), critical_value),
-        influence_func=overall_influence_function,
+        influence_func=dynamic_influence_functions,
+        influence_func_overall=overall_influence_function,
         min_event_time=int(min_e) if np.isfinite(min_e) else None,
         max_event_time=int(max_e) if np.isfinite(max_e) else None,
         balanced_event_threshold=balance_e,
@@ -759,7 +759,8 @@ def _compute_calendar_att(
         att_by_event=calendar_att,
         se_by_event=calendar_se,
         critical_values=np.full(len(calendar_times), critical_value),
-        influence_func=overall_influence_function,
+        influence_func=calendar_influence_functions,
+        influence_func_overall=overall_influence_function,
         estimation_params=estimation_params,
         call_info={"function": "compute_aggte", "type": "calendar"},
     )

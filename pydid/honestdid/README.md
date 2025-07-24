@@ -319,6 +319,83 @@ plot_sensitivity_rm(delta_rm_results_avg, original_ci_avg)
 
 ![Sensitivity-Analysis-Average](/assets/medicaid_sensitivity_avg.png)
 
+## Staggered Treatment Timing
+
+The `honest_did` function can be used with any estimator that produces a vector of event study coefficients,
+provided you are willing to impose relative magnitudes or smoothness restrictions that relate the bias of the
+"post-treatment" estimates to the "pre-treatment" estimates.
+
+Below, we show how the package can be used with modern methods for DiD with staggered treatment timing.
+
+### Using HonestDiD with pyDiD's `att_gt` and `aggte` Methods
+
+Here's how we can combine staggered treatment DiD estimators of the Callaway and Sant'Anna type with Honest DiD
+sensitivity analysis:
+
+```python
+from pydid import att_gt, aggte, honest_did, load_ehec
+
+df = load_ehec()
+
+# Replace missing treatment times with a large number
+df['yexp2'] = df['yexp2'].fillna(3000)
+
+cs_results = att_gt(
+    yname='dins',
+    tname='year',
+    idname='stfips',
+    gname='yexp2',
+    data=df,
+    control_group='notyettreated'
+)
+
+es = aggte(cs_results, type='dynamic', min_e=-5, max_e=5)
+```
+
+This produces event study estimates with pre-treatment deviations:
+
+```bash
+Dynamic Effects:
+
+Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
+        -5    -0.0146       0.0127   [-0.0540,  0.0247]
+        -4    -0.0196       0.0140   [-0.0629,  0.0236]
+        -3    -0.0039       0.0177   [-0.0585,  0.0508]
+        -2    -0.0197       0.0150   [-0.0660,  0.0265]
+         0     0.0401       0.0065   [ 0.0201,  0.0601] *
+         1     0.0545       0.0127   [ 0.0153,  0.0937] *
+         2     0.0492       0.0075   [ 0.0259,  0.0724] *
+         3     0.0855       0.0079   [ 0.0610,  0.1101] *
+         4     0.0822       0.0102   [ 0.0508,  0.1137] *
+         5     0.0803       0.0106   [ 0.0476,  0.1130] *
+```
+
+Now we can apply Honest DiD sensitivity analysis via relative magnitudes:
+
+```python
+# Immediate treatment effect (event_time=0)
+sensitivity_results = honest_did(
+    es,
+    event_time=0,
+    sensitivity_type='relative_magnitude',
+    m_bar_vec=[0.5, 1.0, 1.5, 2.0]
+)
+
+print(sensitivity_results)
+```
+
+```bash
+         lb        ub method    delta  Mbar
+0  0.001160  0.073665   C-LF  DeltaRM   0.5
+1 -0.033459  0.107886   C-LF  DeltaRM   1.0
+2 -0.069379  0.143407   C-LF  DeltaRM   1.5
+3 -0.102718  0.179631   C-LF  DeltaRM   2.0
+```
+
+These results show that the immediate treatment effect has a breakdown value of $\bar{M} = 1.0$. This means the significant positive effect of Medicaid expansion on insurance coverage becomes insignificant if we allow post-treatment violations of parallel trends to be as large as the maximum pre-treatment violation. The effect remains robust only under the more stringent assumption that post-treatment violations are at most half the size of pre-treatment violations.
+
+![CS-Sensitivity-Analysis](/assets/cs_sensitivity_rm.png)
+
 ## References
 
 Rambachan, A., & Roth, J. (2023). *A more credible approach to parallel trends.*
