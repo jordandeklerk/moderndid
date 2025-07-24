@@ -197,8 +197,8 @@ def sunab(
             raise ValueError(
                 "Cannot use 'bin' when 'period' contains relative periods. Use 'bin_rel' to bin relative periods."
             )
-        # For relative periods, cohorts are just identifiers
-        # No need to compute relative periods or identify never-treated
+    # For relative periods, cohorts are just identifiers
+    # No need to compute relative periods or identify never-treated
     else:
         if bin is not None:
             period = bin_factor(bin, period, "period")

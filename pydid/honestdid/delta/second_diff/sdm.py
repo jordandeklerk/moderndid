@@ -40,7 +40,6 @@ def compute_conditional_cs_sdm(
     monotonicity_direction="increasing",
     hybrid_flag="FLCI",
     hybrid_kappa=None,
-    return_length=False,
     post_period_moments_only=True,
     grid_points=1000,
     grid_lb=None,
@@ -103,8 +102,6 @@ def compute_conditional_cs_sdm(
         Type of hybrid test.
     hybrid_kappa : float, optional
         First-stage size for hybrid test. If None, defaults to alpha/10.
-    return_length : bool, default=False
-        If True, return only the length of the confidence interval.
     post_period_moments_only : bool, default=True
         If True, use only post-period moments for ARP test.
     grid_points : int, default=1000
@@ -119,8 +116,7 @@ def compute_conditional_cs_sdm(
     Returns
     -------
     dict or float
-        If return_length is False, returns dict with 'grid' and 'accept' arrays.
-        If return_length is True, returns the length of the confidence interval.
+        Returns dict with 'grid' and 'accept' arrays.
 
     Notes
     -----
@@ -171,7 +167,6 @@ def compute_conditional_cs_sdm(
             alpha=alpha,
             hybrid_flag=hybrid_flag,
             hybrid_kappa=hybrid_kappa,
-            return_length=return_length,
             monotonicity_direction=monotonicity_direction,
             grid_points=grid_points,
             grid_lb=grid_lb,
@@ -238,11 +233,7 @@ def compute_conditional_cs_sdm(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
-        return_length=return_length,
     )
-
-    if return_length:
-        return result.length
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
 
@@ -449,7 +440,6 @@ def _compute_cs_sdm_no_nuisance(
     alpha,
     hybrid_flag,
     hybrid_kappa,
-    return_length,
     monotonicity_direction,
     grid_points,
     grid_lb,
@@ -518,7 +508,6 @@ def _compute_cs_sdm_no_nuisance(
         "grid_lb": grid_lb,
         "grid_ub": grid_ub,
         "grid_points": grid_points,
-        "return_length": return_length,
     }
 
     if hybrid_flag == "FLCI":
@@ -531,8 +520,5 @@ def _compute_cs_sdm_no_nuisance(
             arp_kwargs["lf_cv"] = hybrid_list["lf_cv"]
 
     result = compute_arp_ci(**arp_kwargs)
-
-    if return_length:
-        return result.ci_length
 
     return {"grid": result.theta_grid, "accept": result.accept_grid}

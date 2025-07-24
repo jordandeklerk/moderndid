@@ -88,20 +88,29 @@ att_results = att_gt(data, anticipation=2, ...)
 
 The dataset used in this example contains 500 observations of county-level teen employment rates from 2003-2007.
 Some states are first treated in 2004, some in 2006, and some in 2007. The variable `first.treat`
-indicates the first period in which a state is treated.
+indicates the first period in which a state is treated:
+
+```bash
+      year  countyreal      lpop      lemp  first.treat  treat
+0     2003        8001  5.896761  8.461469         2007      1
+1     2004        8001  5.896761  8.336870         2007      1
+2     2005        8001  5.896761  8.340217         2007      1
+3     2006        8001  5.896761  8.378161         2007      1
+4     2007        8001  5.896761  8.487352         2007      1
+```
 
 We can compute group-time average treatment effects for a staggered adoption design. The output is an object of type
 `MPResult` which is a container for the results:
 
 ```python
-import pydid
+import pydid as did
 import pandas as pd
 import numpy as np
 
 data = pydid.datasets.load_mpdta()
 
 # Estimate group-time ATTs using outcome regression
-attgt_result = att_gt(
+attgt_result = did.att_gt(
      data=df,
      yname="lemp",
      tname="year",

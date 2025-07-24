@@ -148,21 +148,6 @@ def test_compute_conditional_cs_sdrmm_flci_method(basic_setup, fast_config):
     assert len(result["grid"]) == fast_config["grid_points_small"]
 
 
-def test_compute_conditional_cs_sdrmm_return_length(basic_setup, fast_config):
-    result = compute_conditional_cs_sdrmm(
-        betahat=basic_setup["betahat"],
-        sigma=basic_setup["sigma"],
-        num_pre_periods=basic_setup["num_pre_periods"],
-        num_post_periods=basic_setup["num_post_periods"],
-        m_bar=1.0,
-        return_length=True,
-        grid_points=fast_config["grid_points_medium"],
-    )
-
-    assert isinstance(result, float)
-    assert result >= 0
-
-
 def test_compute_conditional_cs_sdrmm_lf_method_single_post(fast_config):
     num_pre_periods = 3
     num_post_periods = 1
