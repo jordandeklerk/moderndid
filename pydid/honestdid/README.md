@@ -257,10 +257,13 @@ delta_sd_results = create_sensitivity_results(
 print(delta_sd_results)
 ```
 
+> [!CAUTION]
+> Minor numerical differences may occur between the confidence interval bounds computed here and those from the R `HonestDiD` package when using smoothness restrictions. These differences arise from variations in the numerical optimization algorithms used for FLCI computation, but are typically negligible in practice.
+
 ```bash
          lb        ub method    delta     m
-0  0.025962  0.060706   FLCI  DeltaSD  0.00
-1  0.013153  0.078700   FLCI  DeltaSD  0.01
+0  0.015038  0.049782   FLCI  DeltaSD  0.00
+1  0.013431  0.078979   FLCI  DeltaSD  0.01
 2  0.002810  0.090763   FLCI  DeltaSD  0.02
 3 -0.007189  0.100762   FLCI  DeltaSD  0.03
 4 -0.017189  0.110762   FLCI  DeltaSD  0.04
