@@ -115,7 +115,11 @@ def test_aggregation_types(mpdta_mp_result, agg_type):
     assert result.overall_att is not None
     assert result.overall_se is not None
     assert result.influence_func is not None
-    assert result.influence_func.shape == (mpdta_mp_result.n_units,)
+    if agg_type == "simple":
+        assert result.influence_func.shape == (mpdta_mp_result.n_units,)
+    else:
+        assert result.influence_func.shape[0] == mpdta_mp_result.n_units
+        assert result.influence_func.shape[1] == len(result.event_times)
 
     if agg_type in ["dynamic", "group", "calendar"]:
         assert result.event_times is not None

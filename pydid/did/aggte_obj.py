@@ -30,6 +30,13 @@ class AGGTEResult(NamedTuple):
         Critical values for uniform confidence bands.
     influence_func : ndarray, optional
         Influence function of the aggregated parameters.
+
+        - For overall ATT: 1D array of length n_units
+        - For dynamic/group/calendar: 2D array of shape (n_units, n_events) containing
+          influence functions for each event-specific ATT
+    influence_func_overall : ndarray, optional
+        Influence function for the overall ATT (1D array of length n_units).
+        This is stored separately for compatibility with both aggregation types.
     min_event_time : int, optional
         Minimum event time (for dynamic effects).
     max_event_time : int, optional
@@ -57,6 +64,7 @@ class AGGTEResult(NamedTuple):
     se_by_event: np.ndarray | None = None
     critical_values: np.ndarray | None = None
     influence_func: np.ndarray | None = None
+    influence_func_overall: np.ndarray | None = None
     min_event_time: int | None = None
     max_event_time: int | None = None
     balanced_event_threshold: int | None = None
@@ -73,6 +81,7 @@ def aggte(
     se_by_event=None,
     critical_values=None,
     influence_func=None,
+    influence_func_overall=None,
     min_event_time=None,
     max_event_time=None,
     balanced_event_threshold=None,
@@ -99,6 +108,11 @@ def aggte(
         Critical values for confidence bands.
     influence_func : ndarray, optional
         Influence function of aggregated parameters.
+
+        - For dynamic/group/calendar: 2D array of shape (n_units, n_events)
+        - For simple: 1D array of length n_units
+    influence_func_overall : ndarray, optional
+        Influence function for the overall ATT (1D array).
     min_event_time : int, optional
         Minimum event time.
     max_event_time : int, optional
@@ -143,6 +157,7 @@ def aggte(
         se_by_event=se_by_event,
         critical_values=critical_values,
         influence_func=influence_func,
+        influence_func_overall=influence_func_overall,
         min_event_time=min_event_time,
         max_event_time=max_event_time,
         balanced_event_threshold=balanced_event_threshold,
