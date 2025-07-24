@@ -151,14 +151,10 @@ def compute_conditional_cs_rm(
         hybrid_kappa = alpha / 10
 
     if grid_lb is None or grid_ub is None:
-        sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-        if grid_lb is None:
-            grid_lb = -20 * sd_theta
-        if grid_ub is None:
-            grid_ub = 20 * sd_theta
+        raise ValueError("grid_lb and grid_ub must be provided.")
 
     min_s = -(num_pre_periods - 1)
-    s_values = list(range(min_s, 1))
+    s_values = list(range(min_s, 0))
 
     all_accepts = np.zeros((grid_points, len(s_values) * 2))
 
@@ -289,7 +285,7 @@ def compute_identified_set_rm(m_bar, true_beta, l_vec, num_pre_periods, num_post
         raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
 
     min_s = -(num_pre_periods - 1)
-    s_values = list(range(min_s, 1))
+    s_values = list(range(min_s, 0))
 
     all_bounds = []
 
@@ -632,21 +628,7 @@ def _compute_conditional_cs_rm_fixed_s(
         rows_for_arp = None
 
     if grid_lb is None or grid_ub is None:
-        # For fixed s, compute the identified set to get better grid bounds
-        id_set = _compute_identified_set_rm_fixed_s(
-            s=s,
-            m_bar=m_bar,
-            max_positive=max_positive,
-            true_beta=betahat,
-            l_vec=l_vec,
-            num_pre_periods=num_pre_periods,
-            num_post_periods=num_post_periods,
-        )
-        sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-        if grid_lb is None:
-            grid_lb = id_set.id_lb - 20 * sd_theta
-        if grid_ub is None:
-            grid_ub = id_set.id_ub + 20 * sd_theta
+        raise ValueError("grid_lb and grid_ub must be provided.")
 
     if num_post_periods == 1:
         if hybrid_flag == "LF":
