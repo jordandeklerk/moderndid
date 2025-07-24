@@ -89,14 +89,14 @@ sensitivity_results_rm = create_sensitivity_results_relative_magnitudes(
 
 Beyond the basic relative magnitudes and smoothness restrictions, the package offers additional restrictions for users to incorporate context-specific knowledge about confounding factors contributing to possible violations of the parallel trends assumption:
 
-- **Relative Magnitudes with Sign Restrictions** (`compute_conditional_cs_rmb`): Incorporate knowledge about bias direction (positive/negative) alongside relative magnitude bounds
-- **Relative Magnitudes with Monotonicity** (`compute_conditional_cs_rmm`): Add monotonicity constraints when treatment effects are expected to evolve smoothly (increasing/decreasing)
-- **Second Differences with Sign Restrictions** (`compute_conditional_cs_sdb`): Combine smoothness constraints with bias direction
-- **Second Differences with Monotonicity** (`compute_conditional_cs_sdm`): Enforce both smoothness and monotonic evolution of effects
-- **Combined Smoothness and Relative Magnitudes** (`compute_conditional_cs_sdrm`): Apply both types of restrictions simultaneously
-- **Full Constraint Combinations** (`compute_conditional_cs_sdrmb`, `compute_conditional_cs_sdrmm`): Layer all three types of constraints for maximum robustness
+- **Relative Magnitudes with Sign Restrictions**: Incorporate knowledge about bias direction (positive/negative) alongside relative magnitude bounds
+- **Relative Magnitudes with Monotonicity**: Add monotonicity constraints when treatment effects are expected to evolve smoothly (increasing/decreasing)
+- **Second Differences with Sign Restrictions**: Combine smoothness constraints with bias direction
+- **Second Differences with Monotonicity**: Enforce both smoothness and monotonic evolution of effects
+- **Combined Smoothness and Relative Magnitudes**: Apply both types of restrictions simultaneously
+- **Full Constraint Combinations**: Layer all three types of constraints for maximum robustness
 
-All these options are available both at a lower-level API with the specific functions mentioned above, or through the high-level wrapper function `honest_did` with the required `kwargs` relevant to the specific restrictions.
+All these options are available both at a lower-level API or through the high-level wrapper function `honest_did` with the required `kwargs` relevant to the specific restrictions.
 
 ### Multiple Confidence Interval Methods
 
