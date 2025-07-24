@@ -51,7 +51,7 @@ documentation = "https://pyDiD.readthedocs.io"
 test = [
     "pytest",
     "pytest-cov",
-    "pyfixest>=0.18.0",
+    "pyfixest>=0.30.2",
 ]
 doc = [
     "sphinx-book-theme",

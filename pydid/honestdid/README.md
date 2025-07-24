@@ -9,7 +9,7 @@ The computational methods here are inspired by the corresponding R package [Hone
 
 ## Background
 
-The robust inference approach in Rambachan and Roth formalizes the intuition that pre-trends are informative about violations of parallel trends. They provide several ways to formalize what this means.
+The robust inference approach in [Rambachan and Roth](https://asheshrambachan.github.io/assets/files/hpt-draft.pdf) formalizes the intuition that pre-trends are informative about violations of parallel trends. They provide several ways to formalize what this means.
 
 ### Bounds on Relative Magnitudes
 
@@ -20,13 +20,11 @@ One approach is to impose that violations of parallel trends in the post-treatme
 
 ### Smoothness Restrictions
 
-Another approach is to restrict how much post-treatment violations can deviate from a linear extrapolation of the pre-trend. We impose that the slope of the pre-trend can change by no more than $M$ across consecutive periods. Setting $M = 0$ imposes exactly linear counterfactual trends, while larger $M$ allows more non-linearity.
-
-### Robust Confidence Intervals
-
-Given these restrictions, the method provides confidence intervals that are guaranteed to have correct coverage when the restrictions are satisfied, accounting for estimation error in both treatment effects and pre-trends.
+Another approach is to restrict how much post-treatment violations can deviate from a linear extrapolation of the pre-trend. The paper imposes that the slope of the pre-trend can change by no more than $M$ across consecutive periods. Setting $M = 0$ imposes exactly linear counterfactual trends, while larger $M$ allows more non-linearity.
 
 ### Sensitivity Analysis
+
+Given these restrictions, the Honest Did package provides confidence intervals that are guaranteed to have correct coverage when the restrictions are satisfied, accounting for estimation error in both treatment effects and pre-trends.
 
 Researchers can report confidence intervals under different assumptions about the magnitude of post-treatment violations (different values of $\bar{M}$ or $M$) and identify "breakdown values" – the largest restriction for which effects remain significant.
 
