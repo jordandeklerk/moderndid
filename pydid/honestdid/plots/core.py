@@ -1,10 +1,13 @@
-"""Plotting functions for sensitivity analysis results."""
+"""Plotting functions for sensitivity analysis."""
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from scipy import stats
+
+mpl.rcParams["errorbar.capsize"] = 7
 
 PLOT_CONFIG = {
     "figure_size": (12, 7),
@@ -18,41 +21,69 @@ PLOT_CONFIG = {
     "spine_linewidth_event_study": 2,
     "errorbar_style": {
         "fmt": "o",
-        "capsize": 8,
-        "capthick": 2.5,
-        "linewidth": 2.5,
+        "capsize": 7,
+        "capthick": 2,
+        "linewidth": 2,
         "markersize": 8,
         "markeredgewidth": 0,
-        "elinewidth": 2.5,
+        "elinewidth": 2,
         "alpha": 0.85,
     },
+    "event_study_ci_style": {
+        "fmt": "none",
+        "capsize": 5,
+        "capthick": 1.5,
+        "elinewidth": 2,
+        "alpha": 0.8,
+    },
     "legend_style": {
-        "loc": "upper center",
-        "bbox_to_anchor": (0.5, -0.12),
+        "loc": "best",
         "frameon": True,
-        "fancybox": True,
-        "shadow": True,
-        "fontsize": 12,
-        "frame_alpha": 0.9,
+        "fancybox": False,
+        "shadow": False,
+        "fontsize": 11,
+        "framealpha": 0.95,
+        "edgecolor": "#e0e0e0",
+        "facecolor": "white",
+        "borderpad": 0.8,
+        "columnspacing": 1.5,
+        "handlelength": 1.5,
+        "handletextpad": 0.8,
+        "borderaxespad": 0.8,
+    },
+    "legend_style_bottom": {
+        "loc": "upper center",
+        "bbox_to_anchor": (0.5, -0.15),
+        "frameon": True,
+        "fancybox": False,
+        "shadow": False,
+        "fontsize": 11,
+        "framealpha": 0.95,
+        "edgecolor": "#e0e0e0",
+        "facecolor": "white",
+        "borderpad": 0.8,
+        "columnspacing": 1.5,
+        "handlelength": 1.5,
+        "handletextpad": 0.8,
     },
 }
 
 COLOR_PALETTES = {
     "sensitivity": {
-        "Original": "#e74c3c",
-        "FLCI": "#3498db",
-        "Conditional": "#2ecc71",
-        "C-F": "#9b59b6",
-        "C-LF": "#f39c12",
+        "Original": "blue",
+        "FLCI": "red",
+        "Conditional": "red",
+        "C-F": "red",
+        "C-LF": "red",
     },
     "sensitivity_rm": {
-        "Original": "#e74c3c",
-        "Conditional": "#3498db",
-        "C-LF": "#2ecc71",
+        "Original": "blue",
+        "Conditional": "red",
+        "C-LF": "red",
     },
     "event_study": {
-        "main": "#e74c3c",
-        "ci": "#3498db",
+        "main": "red",
+        "ci": "blue",
         "additional": ["#2ecc71", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22"],
         "zero_line": "#2c3e50",
         "treatment_line": "#7f8c8d",
@@ -102,10 +133,10 @@ def plot_sensitivity(
     m_gap = np.min(np.diff(np.sort(m_values))) if len(m_values) > 1 else 1
     m_min = np.min(m_values)
 
-    original_results = original_results.copy()
-    original_results[m_col] = m_min - m_gap
+    original_df = pd.DataFrame([original_results._asdict()])
+    original_df[m_col] = m_min - m_gap
 
-    df = pd.concat([original_results, robust_results], ignore_index=True)
+    df = pd.concat([original_df, robust_results], ignore_index=True)
 
     df[m_col] = df[m_col] * rescale_factor
     df["lb"] = df["lb"] * rescale_factor
@@ -128,7 +159,7 @@ def plot_sensitivity(
 
         x_positions = method_df[m_col].values + offsets[i]
 
-        ax.errorbar(
+        errorbar = ax.errorbar(
             x_positions,
             (method_df["lb"] + method_df["ub"]) / 2,
             yerr=(method_df["ub"] - method_df["lb"]) / 2,
@@ -137,8 +168,25 @@ def plot_sensitivity(
             **PLOT_CONFIG["errorbar_style"],
         )
 
+        if len(errorbar) > 1 and errorbar[1] is not None:
+            for cap in errorbar[1]:
+                cap.set_markersize(10)
+                cap.set_markeredgewidth(2)
+
     if add_x_axis:
         ax.axhline(y=0, color=PLOT_CONFIG["axis_color"], linestyle="-", alpha=0.4, linewidth=1.5)
+
+    ax.set_xticks(m_values_unique)
+    ax.set_xticklabels([f"{val:.3g}" for val in m_values_unique], ha="center")
+
+    if len(m_values_unique) > 1:
+        minor_ticks = []
+        for i in range(len(m_values_unique) - 1):
+            minor_ticks.append((m_values_unique[i] + m_values_unique[i + 1]) / 2)
+        ax.set_xticks(minor_ticks, minor=True)
+
+    ax.tick_params(axis="x", which="major", length=8, width=2, color=PLOT_CONFIG["axis_color"], direction="out")
+    ax.tick_params(axis="x", which="minor", length=4, width=1, color=PLOT_CONFIG["axis_color"], direction="out")
 
     ax.set_xlabel(r"$M$", fontsize=PLOT_CONFIG["label_fontsize"], fontweight="bold", color=PLOT_CONFIG["axis_color"])
     ax.set_ylabel(
@@ -148,11 +196,14 @@ def plot_sensitivity(
         color=PLOT_CONFIG["axis_color"],
     )
 
-    legend_config = PLOT_CONFIG["legend_style"].copy()
-    legend_config.pop("frame_alpha", None)
+    legend_config = PLOT_CONFIG["legend_style_bottom"].copy()
     legend_config["ncol"] = min(len(methods), 5)
+
     legend = ax.legend(**legend_config)
-    legend.get_frame().set_alpha(PLOT_CONFIG["legend_style"].get("frame_alpha", 0.9))
+
+    legend.get_frame().set_linewidth(0.8)
+    for text in legend.get_texts():
+        text.set_color("#2c3e50")
 
     _apply_axis_styling(ax)
 
@@ -199,10 +250,10 @@ def plot_sensitivity_rm(
     mbar_gap = np.min(np.diff(np.sort(mbar_values))) if len(mbar_values) > 1 else 0.2
     mbar_min = np.min(mbar_values)
 
-    original_results = original_results.copy()
-    original_results["Mbar"] = mbar_min - mbar_gap
+    original_df = pd.DataFrame([original_results._asdict()])
+    original_df["Mbar"] = mbar_min - mbar_gap
 
-    df = pd.concat([original_results, robust_results], ignore_index=True)
+    df = pd.concat([original_df, robust_results], ignore_index=True)
 
     df["Mbar"] = df["Mbar"] * rescale_factor
     df["lb"] = df["lb"] * rescale_factor
@@ -225,7 +276,7 @@ def plot_sensitivity_rm(
 
         x_positions = method_df["Mbar"].values + offsets[i]
 
-        ax.errorbar(
+        errorbar = ax.errorbar(
             x_positions,
             (method_df["lb"] + method_df["ub"]) / 2,
             yerr=(method_df["ub"] - method_df["lb"]) / 2,
@@ -234,8 +285,25 @@ def plot_sensitivity_rm(
             **PLOT_CONFIG["errorbar_style"],
         )
 
+        if len(errorbar) > 1 and errorbar[1] is not None:
+            for cap in errorbar[1]:
+                cap.set_markersize(10)
+                cap.set_markeredgewidth(2)
+
     if add_x_axis:
         ax.axhline(y=0, color=PLOT_CONFIG["axis_color"], linestyle="-", alpha=0.4, linewidth=1.5)
+
+    ax.set_xticks(mbar_values_unique)
+    ax.set_xticklabels([f"{val:.3g}" for val in mbar_values_unique], ha="center")
+
+    if len(mbar_values_unique) > 1:
+        minor_ticks = []
+        for i in range(len(mbar_values_unique) - 1):
+            minor_ticks.append((mbar_values_unique[i] + mbar_values_unique[i + 1]) / 2)
+        ax.set_xticks(minor_ticks, minor=True)
+
+    ax.tick_params(axis="x", which="major", length=8, width=2, color=PLOT_CONFIG["axis_color"], direction="out")
+    ax.tick_params(axis="x", which="minor", length=4, width=1, color=PLOT_CONFIG["axis_color"], direction="out")
 
     ax.set_xlabel(
         r"$\bar{M}$", fontsize=PLOT_CONFIG["label_fontsize"], fontweight="bold", color=PLOT_CONFIG["axis_color"]
@@ -247,11 +315,14 @@ def plot_sensitivity_rm(
         color=PLOT_CONFIG["axis_color"],
     )
 
-    legend_config = PLOT_CONFIG["legend_style"].copy()
-    legend_config.pop("frame_alpha", None)
+    legend_config = PLOT_CONFIG["legend_style_bottom"].copy()
     legend_config["ncol"] = min(len(methods), 3)
+
     legend = ax.legend(**legend_config)
-    legend.get_frame().set_alpha(PLOT_CONFIG["legend_style"].get("frame_alpha", 0.9))
+
+    legend.get_frame().set_linewidth(0.8)
+    for text in legend.get_texts():
+        text.set_color("#2c3e50")
 
     _apply_axis_styling(ax)
 
@@ -354,18 +425,22 @@ def event_study_plot(
     else:
         offsets = np.zeros(n_ci_sets)
 
-    for t, beta, se in zip(plot_times, plot_betas, plot_ses):
-        if not np.isnan(se):
-            ci_lower = beta - z_crit * se
-            ci_upper = beta + z_crit * se
-            ax.plot(
-                [t + offsets[0], t + offsets[0]],
-                [ci_lower, ci_upper],
-                color=COLOR_PALETTES["event_study"]["ci"],
-                linewidth=3,
-                alpha=0.6,
-                solid_capstyle="round",
-            )
+    y_error = z_crit * plot_ses
+    valid_mask = ~np.isnan(y_error)
+
+    event_errorbar_style = PLOT_CONFIG["event_study_ci_style"].copy()
+    event_errorbar_style["fmt"] = "none"
+
+    errorbar_lines = ax.errorbar(
+        x=plot_times[valid_mask] + offsets[0],
+        y=plot_betas[valid_mask],
+        yerr=y_error[valid_mask],
+        color=COLOR_PALETTES["event_study"]["ci"],
+        **event_errorbar_style,
+    )
+
+    for cap in errorbar_lines[1]:
+        cap.set_markeredgewidth(1.5)
 
     ax.scatter(
         plot_times + offsets[0],
@@ -393,18 +468,19 @@ def event_study_plot(
             color = ci_data.get("color", default_colors[i % len(default_colors)])
             label = ci_data.get("label", f"CI {i + 1}")
 
-            for t, beta, se in zip(plot_times, add_plot_betas, add_plot_ses):
-                if not np.isnan(se):
-                    ci_lower = beta - z_crit * se
-                    ci_upper = beta + z_crit * se
-                    ax.plot(
-                        [t + offsets[i + 1], t + offsets[i + 1]],
-                        [ci_lower, ci_upper],
-                        color=color,
-                        linewidth=3,
-                        alpha=0.6,
-                        solid_capstyle="round",
-                    )
+            add_y_error = z_crit * add_plot_ses
+            add_valid_mask = ~np.isnan(add_y_error)
+
+            add_errorbar_lines = ax.errorbar(
+                x=plot_times[add_valid_mask] + offsets[i + 1],
+                y=add_plot_betas[add_valid_mask],
+                yerr=add_y_error[add_valid_mask],
+                color=color,
+                **event_errorbar_style,
+            )
+
+            for cap in add_errorbar_lines[1]:
+                cap.set_markeredgewidth(1.5)
 
             ax.scatter(
                 plot_times + offsets[i + 1],
@@ -455,10 +531,16 @@ def event_study_plot(
         colors=PLOT_CONFIG["axis_color"],
     )
 
-    if n_ci_sets > 1:
-        ax.legend(loc="upper right", frameon=True, fancybox=True, shadow=True, fontsize=12)
-    else:
-        ax.legend(loc="upper right", frameon=True, fancybox=True, shadow=True, fontsize=12)
+    if n_ci_sets > 1 or reference_period > 1:
+        legend_config = PLOT_CONFIG["legend_style"].copy()
+        legend_config["loc"] = "upper left"
+        legend_config["ncol"] = 1
+
+        legend = ax.legend(**legend_config)
+
+        legend.get_frame().set_linewidth(0.8)
+        for text in legend.get_texts():
+            text.set_color("#2c3e50")
 
     plt.tight_layout()
     return fig
