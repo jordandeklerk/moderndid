@@ -778,45 +778,6 @@ def folded_normal_quantile(
 
 
 def weights_to_l(weights):
-    r"""Convert from :math:`\ell` parameterization to :math:`w` parameterization.
-
-    Converts from the levels parameterization :math:`\ell` to the
-    first-difference parameterization :math:`w` via
-
-    .. math::
-
-        w_t = \begin{cases}
-        \ell_1 & \text{if } t = 1 \\
-        \ell_t - \ell_{t-1} & \text{if } t > 1
-        \end{cases}.
-
-    This is the inverse transformation of :func:`l_to_weights`.
-
-    Parameters
-    ----------
-    l_vector : ndarray
-        Level vector :math:`\ell` (cumulative sums).
-
-    Returns
-    -------
-    ndarray
-        Weight vector :math:`w` (first differences).
-
-    Notes
-    -----
-    The weight parameterization ensures that certain constraints in the
-    optimization (related to worst-case bias under :math:`\Delta^{SD}(M)`)
-    take a simple linear form.
-    """
-    l_vector = np.zeros_like(weights)
-    l_vector[0] = weights[0]
-
-    if len(weights) > 1:
-        l_vector[1:] = np.diff(weights)
-    return l_vector
-
-
-def l_to_weights(l_vector):
     r"""Convert from weight parameterization to :math:`\ell` parameterization.
 
     Converts from the first-difference parameterization :math:`w` to the
@@ -846,7 +807,46 @@ def l_to_weights(l_vector):
     expressed in terms of :math:`w`, which motivates this parameterization
     in the optimization.
     """
-    return np.cumsum(l_vector)
+    return np.cumsum(weights)
+
+
+def l_to_weights(l_vector):
+    r"""Convert from :math:`\ell` parameterization to :math:`w` parameterization.
+
+    Converts from the levels parameterization :math:`\ell` to the
+    first-difference parameterization :math:`w` via
+
+    .. math::
+
+        w_t = \begin{cases}
+        \ell_1 & \text{if } t = 1 \\
+        \ell_t - \ell_{t-1} & \text{if } t > 1
+        \end{cases}.
+
+    This is the inverse transformation of :func:`weights_to_l`.
+
+    Parameters
+    ----------
+    l_vector : ndarray
+        Level vector :math:`\ell` (cumulative sums).
+
+    Returns
+    -------
+    ndarray
+        Weight vector :math:`w` (first differences).
+
+    Notes
+    -----
+    The weight parameterization ensures that certain constraints in the
+    optimization (related to worst-case bias under :math:`\Delta^{SD}(M)`)
+    take a simple linear form.
+    """
+    weights = np.zeros_like(l_vector)
+    weights[0] = l_vector[0]
+
+    if len(l_vector) > 1:
+        weights[1:] = np.diff(l_vector)
+    return weights
 
 
 def _create_diff_matrix(size):

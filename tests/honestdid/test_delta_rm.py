@@ -261,6 +261,8 @@ def test_compute_conditional_cs_rm_basic(simple_event_study_data, fast_config):
         l_vec=l_vec,
         m_bar=0.5,
         alpha=0.05,
+        grid_lb=-2,
+        grid_ub=2,
         grid_points=fast_config["grid_points_small"],
     )
 
@@ -286,6 +288,8 @@ def test_compute_conditional_cs_rm_hybrid_flags(simple_event_study_data, hybrid_
         m_bar=0.5,
         alpha=0.05,
         hybrid_flag=hybrid_flag,
+        grid_lb=-2,
+        grid_ub=2,
         grid_points=fast_config["grid_points_small"],
     )
 
@@ -326,6 +330,8 @@ def test_grid_resolution(simple_event_study_data, grid_points):
         l_vec=l_vec,
         m_bar=0.5,
         alpha=0.05,
+        grid_lb=-2,
+        grid_ub=2,
         grid_points=grid_points,
     )
 
@@ -405,6 +411,8 @@ def test_confidence_interval_coverage_ordering(fast_config):
             l_vec=l_vec,
             m_bar=0.5,
             alpha=alpha,
+            grid_lb=-1,
+            grid_ub=2,
             grid_points=fast_config["grid_points_small"],
             return_length=True,
         )
