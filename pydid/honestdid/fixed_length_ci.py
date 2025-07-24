@@ -223,7 +223,6 @@ def _optimize_flci_params(
     h_min_bias = get_min_bias_h(sigma, n_pre_periods, n_post_periods, post_period_weights)
     h_min_variance = minimize_variance(sigma, n_pre_periods, n_post_periods, post_period_weights)
 
-    # Optimal h using bisection method
     h_optimal = _optimize_h_bisection(
         h_min_variance,
         h_min_bias,
@@ -256,13 +255,11 @@ def _optimize_flci_params(
                     }
                 )
 
-        # Find minimum CI half-length
         if ci_half_lengths:
             optimal_result = min(ci_half_lengths, key=lambda x: x["ci_half_length"])
         else:
             raise ValueError("Optimization failed for all values of h")
     else:
-        # Use optimal h from bisection
         bias_result = maximize_bias(
             h_optimal, sigma, n_pre_periods, n_post_periods, post_period_weights, smoothness_bound
         )
