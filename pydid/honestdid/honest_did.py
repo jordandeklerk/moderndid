@@ -148,6 +148,11 @@ def _honest_did_aggte(
 
     influence_func = event_study.influence_func
 
+    if influence_func.ndim != 2:
+        raise ValueError(
+            f"Expected 2D influence function matrix for dynamic aggregation, got shape {influence_func.shape}. "
+        )
+
     event_times = event_study.event_times
     att_estimates = event_study.att_by_event
 
@@ -200,7 +205,6 @@ def _honest_did_aggte(
     event_time_idx = np.where(post_event_times == event_time)[0][0] + 1
     l_vec = basis_vector(index=event_time_idx, size=num_post_periods)
 
-    # Original confidence interval
     original_ci = construct_original_cs(
         betahat=att_no_ref,
         sigma=vcov_matrix,
