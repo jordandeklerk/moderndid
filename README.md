@@ -23,21 +23,21 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 **Core DiD Estimators:**
 
-- **`didpy.did`**: Multiple time periods and variation in treatment timing (Callaway and Sant'Anna, 2021) with group-time effects and flexible aggregation schemes
-- **`didpy.drdid`**: Doubly robust difference-in-differences estimators (Sant'Anna and Zhao, 2020) for panel and repeated cross-section data with improved efficiency and robustness
+- **[`didpy.did`](https://github.com/jordandeklerk/didpy/tree/main/didpy/did)**: Multiple time periods and variation in treatment timing (Callaway and Sant'Anna, 2021) with group-time effects and flexible aggregation schemes
+- **[`didpy.drdid`](https://github.com/jordandeklerk/didpy/tree/main/didpy/drdid)**: Doubly robust difference-in-differences estimators (Sant'Anna and Zhao, 2020) for panel and repeated cross-section data with improved efficiency and robustness
 
 **Advanced Methods:**
 
-- **`didpy.didcont`**: Continuous treatment DiD for dose-response relationships and non-binary treatments
-- **`didpy.didinter`**: Intertemporal Did for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags
-- **`didpy.didml`**: Machine learning approaches to DiD combining causal inference with ML methods
-- **`didpy.didbacon`**: Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons
-- **`didpy.drdidweak`**: New class of doubly robust estimators for treatment effect estimands that is also robust against weak covariate overlap
-- **`didpy.didcomp`**: DiD setups with repeated cross-sectional data and potential compositional changes across time periods
-- **`didpy.didlocal`**: Local projections DiD to address possible biases arising from negative weighting
-- **`didpy.did2s`**: Two-stage DiD for estimating TWFE models while avoiding issues with staggered treatment adoption
+- **[`didpy.didcont`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didcont)**: Continuous treatment DiD for dose-response relationships and non-binary treatments
+- **[`didpy.didinter`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didinter)**: Intertemporal Did for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags
+- **[`didpy.didml`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didml)**: Machine learning approaches to DiD combining causal inference with ML methods
+- **[`didpy.didbacon`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didbacon)**: Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons
+- **[`didpy.drdidweak`](https://github.com/jordandeklerk/didpy/tree/main/didpy/drdidweak)**: New class of doubly robust estimators for treatment effect estimands that is also robust against weak covariate overlap
+- **[`didpy.didcomp`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didcomp)**: DiD setups with repeated cross-sectional data and potential compositional changes across time periods
+- **[`didpy.didlocal`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didlocal)**: Local projections DiD to address possible biases arising from negative weighting
+- **[`didpy.did2s`](https://github.com/jordandeklerk/didpy/tree/main/didpy/did2s)**: Two-stage DiD for estimating TWFE models while avoiding issues with staggered treatment adoption
 
 **Diagnostic and Sensitivity Tools:**
 
-- **`didpy.didhonest`**: Sensitivity analysis for violations of parallel trends (Rambachan and Roth, 2023) with multiple restriction types
-- **`didpy.functional`**: Specification tests for functional form assumptions in DiD models
+- **[`didpy.didhonest`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didhonest)**: Sensitivity analysis for violations of parallel trends (Rambachan and Roth, 2023) with multiple restriction types
+- **[`didpy.functional`](https://github.com/jordandeklerk/didpy/tree/main/didpy/functional)**: Specification tests for functional form assumptions in DiD models
