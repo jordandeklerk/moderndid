@@ -371,11 +371,9 @@ def _create_relative_magnitudes_constraint_matrix(
     if not -(num_pre_periods - 1) <= s <= 0:
         raise ValueError(f"s must be between {-(num_pre_periods - 1)} and 0, got {s}")
 
-    # First differences matrix
     total_periods = num_pre_periods + num_post_periods + 1
     a_tilde = create_first_differences_matrix(num_pre_periods, num_post_periods)
 
-    # Vector to extract max first difference at period s
     v_max_diff = np.zeros(total_periods)
     v_max_diff[(num_pre_periods + s) : (num_pre_periods + s + 2)] = [-1, 1]
 
@@ -446,7 +444,6 @@ def _compute_identified_set_rm_fixed_s(
     DeltaRMResult
         Lower and upper bounds of the identified set.
     """
-    # Ensure l_vec is 1D
     if l_vec.ndim == 2:
         l_vec = l_vec.flatten()
 
@@ -469,10 +466,8 @@ def _compute_identified_set_rm_fixed_s(
     A_eq = pre_period_equality
     b_eq = true_beta[:num_pre_periods]
 
-    # Bounds: all variables unconstrained
     bounds = [(None, None) for _ in range(num_pre_periods + num_post_periods)]
 
-    # Ensure b_ineq is 1D
     if b_ineq.ndim != 1:
         b_ineq = b_ineq.flatten()
     if b_eq.ndim != 1:

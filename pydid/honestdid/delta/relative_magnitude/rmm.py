@@ -395,7 +395,6 @@ def _create_relative_magnitudes_monotonicity_constraint_matrix(
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
-    # Get the relative magnitudes constraint matrix
     A_rm = _create_relative_magnitudes_constraint_matrix(
         num_pre_periods=num_pre_periods,
         num_post_periods=num_post_periods,
@@ -405,7 +404,6 @@ def _create_relative_magnitudes_monotonicity_constraint_matrix(
         drop_zero_period=drop_zero_period,
     )
 
-    # Get the monotonicity constraint matrix
     A_m = create_monotonicity_constraint_matrix(
         num_pre_periods=num_pre_periods,
         num_post_periods=num_post_periods,
@@ -491,7 +489,6 @@ def _compute_identified_set_rmm_fixed_s(
     if b_eq.ndim != 1:
         b_eq = b_eq.flatten()
 
-    # Solve for maximum
     result_max = opt.linprog(
         c=-f_delta,
         A_ub=A_ineq,
@@ -502,7 +499,6 @@ def _compute_identified_set_rmm_fixed_s(
         method="highs",
     )
 
-    # Solve for minimum
     result_min = opt.linprog(
         c=f_delta,
         A_ub=A_ineq,
@@ -514,7 +510,6 @@ def _compute_identified_set_rmm_fixed_s(
     )
 
     if not result_max.success or not result_min.success:
-        # If solver fails, return observed value
         observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
         return DeltaRMMResult(id_lb=observed_val, id_ub=observed_val)
 

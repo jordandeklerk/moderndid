@@ -243,7 +243,6 @@ def create_pre_period_constraint_matrix(num_pre_periods):
         raise ValueError("Cannot estimate M in pre-period with < 2 pre-period coefficients.")
 
     a_tilde = np.zeros((num_pre_periods - 1, num_pre_periods))
-
     a_tilde[num_pre_periods - 2, (num_pre_periods - 2) : num_pre_periods] = [1, -1]
 
     if num_pre_periods > 2:

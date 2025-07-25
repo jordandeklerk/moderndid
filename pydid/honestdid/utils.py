@@ -93,22 +93,18 @@ def validate_conformable(betahat, sigma, num_pre_periods, num_post_periods, l_ve
     sigma = np.asarray(sigma)
     l_vec = np.asarray(l_vec)
 
-    # Check betahat is a vector
     if betahat.ndim > 2:
         raise ValueError(f"Expected a vector but betahat has shape {betahat.shape}")
 
     betahat_flat = betahat.flatten()
     beta_length = len(betahat_flat)
 
-    # Check sigma is square
     if sigma.ndim != 2 or sigma.shape[0] != sigma.shape[1]:
         raise ValueError(f"Expected a square matrix but sigma was {sigma.shape[0]} by {sigma.shape[1]}")
 
-    # Check betahat and sigma are conformable
     if sigma.shape[0] != beta_length:
         raise ValueError(f"betahat ({betahat.shape}) and sigma ({sigma.shape}) were non-conformable")
 
-    # Check periods match betahat length
     num_periods = num_pre_periods + num_post_periods
     if num_periods != beta_length:
         raise ValueError(
@@ -116,7 +112,6 @@ def validate_conformable(betahat, sigma, num_pre_periods, num_post_periods, l_ve
             f"({num_pre_periods} + {num_post_periods}) were non-conformable"
         )
 
-    # Check l_vec length
     if len(l_vec) != num_post_periods:
         raise ValueError(f"l_vec (length {len(l_vec)}) and post periods ({num_post_periods}) were non-conformable")
 

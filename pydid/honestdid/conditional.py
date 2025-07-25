@@ -44,7 +44,6 @@ def test_in_identified_set_max(
     d_mod = d * m_value
 
     sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
-
     sigma_tilde = np.maximum(sigma_tilde, 1e-10)
 
     a_tilde = np.diag(1 / sigma_tilde) @ A
@@ -65,7 +64,6 @@ def test_in_identified_set_max(
     sigma_bar = np.sqrt(gamma.T @ sigma @ gamma)
 
     c = sigma @ gamma / (gamma.T @ sigma @ gamma).item()
-
     z = (np.eye(len(y)) - c @ gamma.T) @ y
 
     v_lo, v_up = compute_bounds(eta=gamma, sigma=sigma, A=a_bar, b=d_bar, z=z)

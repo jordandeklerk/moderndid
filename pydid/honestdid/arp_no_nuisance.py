@@ -167,7 +167,6 @@ def compute_arp_ci(
             if lf_cv is None:
                 raise ValueError("lf_cv must be specified for LF hybrid")
 
-    # Set default grid bounds
     if grid_lb is None:
         post_period_vec = basis_vector(index=n_pre_periods + post_period_index, size=len(beta_hat)).flatten()
         point_est = post_period_vec @ beta_hat
@@ -191,7 +190,6 @@ def compute_arp_ci(
     else:
         raise ValueError(f"Invalid hybrid_flag: {hybrid_flag}")
 
-    # Use optimized version if available
     results_grid = _test_over_theta_grid(
         beta_hat=beta_hat,
         sigma=sigma,
@@ -211,7 +209,6 @@ def compute_arp_ci(
     accept_grid = results_grid[:, 1].astype(bool)
     accepted_thetas = theta_grid[accept_grid]
 
-    # Check for open endpoints
     if accept_grid[0] or accept_grid[-1]:
         warnings.warn(
             "CI is open at one of the endpoints; CI bounds may not be accurate. Consider expanding the grid bounds.",
@@ -300,7 +297,6 @@ def _test_in_identified_set(
     A_tilde = np.diag(1 / sigma_tilde) @ A
     d_tilde = d / sigma_tilde
 
-    # Find maximum normalized moment
     normalized_moments = A_tilde @ y - d_tilde
     max_location = np.argmax(normalized_moments)
     max_moment = normalized_moments[max_location]
@@ -308,7 +304,6 @@ def _test_in_identified_set(
     # If max_moment is positive, we have a constraint violation
     # In this case, we need to check if it's statistically significant
     if max_moment <= 0:
-        # All constraints satisfied, cannot reject
         return True
 
     # Construct conditioning event
@@ -324,7 +319,6 @@ def _test_in_identified_set(
     c = sigma @ gamma / (gamma.T @ sigma @ gamma).item()
     z = (np.eye(len(y)) - c @ gamma.T) @ y
 
-    # Compute truncation bounds
     v_lo, v_up = compute_bounds(eta=gamma, sigma=sigma, A=A_bar, b=d_bar, z=z)
 
     # Check if the observed max_moment is within the truncation bounds
@@ -419,7 +413,6 @@ def _test_in_identified_set_flci_hybrid(
     A_firststage = np.vstack([flci_l, -flci_l])
     d_firststage = np.array([flci_halflength, flci_halflength])
 
-    # Check if any first-stage constraint is violated
     if np.max(A_firststage @ y - d_firststage) > 0:
         return False
 
@@ -528,7 +521,6 @@ def _test_in_identified_set_lf_hybrid(
     A_bar = A_tilde - iota @ T_B @ A_tilde
     d_bar = (np.eye(len(d_tilde)) - iota @ T_B) @ d_tilde
 
-    # Compute conditional distribution parameters
     sigma_bar = np.sqrt(gamma.T @ sigma @ gamma).item()
     c = sigma @ gamma / (gamma.T @ sigma @ gamma).item()
     z = (np.eye(len(y)) - c @ gamma.T) @ y

@@ -186,14 +186,11 @@ def compute_conditional_cs_sd(
         # Compute vbar using quadratic programming
         # vbar = argmin ||flci_l - A'v||^2
         try:
-            # Using least squares to solve: min ||flci_l - A'v||^2
             vbar, _, _, _ = np.linalg.lstsq(A_sd.T, flci_result.optimal_vec, rcond=None)
             hybrid_list["vbar"] = vbar
         except np.linalg.LinAlgError:
-            # Fallback: use zeros
             hybrid_list["vbar"] = np.zeros(A_sd.shape[0])
 
-    # Grid bounds
     if grid_lb is None or grid_ub is None:
         sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
         if grid_lb is None:
@@ -292,7 +289,6 @@ def compute_identified_set_sd(
     # Bounds: all variables unconstrained
     bounds = [(None, None) for _ in range(num_pre_periods + num_post_periods)]
 
-    # Solve for maximum
     result_max = opt.linprog(
         c=-f_delta,
         A_ub=A_sd,
@@ -303,7 +299,6 @@ def compute_identified_set_sd(
         method="highs",
     )
 
-    # Solve for minimum
     result_min = opt.linprog(
         c=f_delta,
         A_ub=A_sd,
@@ -315,7 +310,6 @@ def compute_identified_set_sd(
     )
 
     if not result_max.success or not result_min.success:
-        # If optimization fails, return the observed value
         observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
         return DeltaSDResult(id_lb=observed_val, id_ub=observed_val)
 
@@ -440,7 +434,6 @@ def _compute_cs_sd_no_nuisance(
 
     else:  # LF or ARP
         if hybrid_flag == "LF":
-            # Compute least favorable CV
             lf_cv = _compute_least_favorable_cv(
                 x_t=None,
                 sigma=A_sd @ sigma @ A_sd.T,
@@ -449,7 +442,6 @@ def _compute_cs_sd_no_nuisance(
             )
             hybrid_list["lf_cv"] = lf_cv
 
-        # Set grid bounds based on identified set
         if grid_ub is None or grid_lb is None:
             id_set = compute_identified_set_sd(
                 m_bar=m_bar,
@@ -464,7 +456,6 @@ def _compute_cs_sd_no_nuisance(
             if grid_lb is None:
                 grid_lb = id_set.id_lb - 20 * sd_theta
 
-    # Compute confidence set
     result = compute_arp_ci(
         beta_hat=betahat,
         sigma=sigma,
