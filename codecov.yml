@@ -7,7 +7,7 @@ coverage:
         threshold: 2%
         base: auto
         paths:
-          - "pydid"
+          - "didpy"
        # advanced settings
         branches:
           - main

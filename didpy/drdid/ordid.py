@@ -105,12 +105,12 @@ def ordid(
 
     .. ipython::
 
-        In [1]: import pydid
-           ...: from pydid.data import load_nsw
+        In [1]: import didpy
+           ...: from didpy.data import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
-           ...: att_result = pydid.ordid(
+           ...: att_result = didpy.ordid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -128,7 +128,7 @@ def ordid(
     .. ipython::
         :okwarning:
 
-        In [3]: att_result_rc_boot = pydid.ordid(
+        In [3]: att_result_rc_boot = didpy.ordid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",

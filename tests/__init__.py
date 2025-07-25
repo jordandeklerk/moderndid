@@ -1,1 +1,1 @@
-"""pydid tests."""
+"""didpy tests."""

@@ -1,5 +1,5 @@
 =============
-Testing pyDiD
+Testing didpy
 =============
 
 How to run the test suite
@@ -49,7 +49,7 @@ files with tests of the core functionality always being in their own file
 with no optional dependencies import, and tests that require optional dependencies
 in a separate file.
 
-About pyDiD testing
+About didpy testing
 ===================
 
 The test suite is structured to ensure both the core functionality and the optional
@@ -57,11 +57,11 @@ dependencies integrations work as expected.
 
 The ``importorskip`` helper function from ``tests/helpers.py`` is used when importing
 optional dependencies so that tests are skipped if a dependency is not available.
-In addition, the env variable ``PYDID_REQUIRE_ALL_DEPS`` can be set to disable this behavior
+In addition, the env variable ``didpy_REQUIRE_ALL_DEPS`` can be set to disable this behavior
 and ensure uninstalled dependencies raise an error.
 
 When using ``tox -e pyXXX`` all optional dependencies are installed,
-and ``PYDID_REQUIRE_ALL_DEPS`` is set to ensure all tests in the test suite run.
+and ``didpy_REQUIRE_ALL_DEPS`` is set to ensure all tests in the test suite run.
 However, ``tox -e minimal`` only installs the core dependencies and doesn't set the env variable,
 which ensures that the minimal install is viable and works as expected.
 

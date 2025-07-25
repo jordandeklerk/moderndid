@@ -132,12 +132,12 @@ def drdid(
     .. ipython::
         :okwarning:
 
-        In [1]: import pydid
-           ...: from pydid.data import load_nsw
+        In [1]: import didpy
+           ...: from didpy.data import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
-           ...: att_result = pydid.drdid(
+           ...: att_result = didpy.drdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -156,7 +156,7 @@ def drdid(
     .. ipython::
         :okwarning:
 
-        In [3]: att_result_boot = pydid.drdid(
+        In [3]: att_result_boot = didpy.drdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
