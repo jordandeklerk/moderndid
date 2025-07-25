@@ -301,13 +301,11 @@ def compute_identified_set_sdrmb(
     all_bounds = []
 
     for s in s_values:
-        # Positive maximum
         bounds_pos = _compute_identified_set_sdrmb_fixed_s(
             s, m_bar, True, true_beta, l_vec, num_pre_periods, num_post_periods, bias_direction
         )
         all_bounds.append(bounds_pos)
 
-        # Negative maximum
         bounds_neg = _compute_identified_set_sdrmb_fixed_s(
             s, m_bar, False, true_beta, l_vec, num_pre_periods, num_post_periods, bias_direction
         )
@@ -369,7 +367,6 @@ def _compute_identified_set_sdrmb_fixed_s(
     a_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
     b_eq = true_beta[:num_pre_periods]
 
-    # Solve for maximum
     result_max = opt.linprog(
         c=-c,
         A_ub=a_sdrmb,
@@ -380,7 +377,6 @@ def _compute_identified_set_sdrmb_fixed_s(
         method="highs",
     )
 
-    # Solve for minimum
     result_min = opt.linprog(
         c=c,
         A_ub=a_sdrmb,
@@ -391,14 +387,12 @@ def _compute_identified_set_sdrmb_fixed_s(
         method="highs",
     )
 
-    # Compute bounds
     l_beta_post = l_vec @ true_beta[num_pre_periods:]
 
     if result_max.success and result_min.success:
         id_ub = l_beta_post - result_min.fun
         id_lb = l_beta_post + result_max.fun
     else:
-        # If optimization fails, return point estimate
         id_ub = id_lb = l_beta_post
 
     return DeltaSDRMBResult(id_lb=id_lb, id_ub=id_ub)
@@ -480,7 +474,6 @@ def _compute_conditional_cs_sdrmb_fixed_s(
 
     hybrid_list = {"hybrid_kappa": hybrid_kappa}
 
-    # Compute confidence interval
     if num_post_periods == 1:
         # Single post-period: use no-nuisance parameter method
         return _compute_cs_sdrmb_no_nuisance(

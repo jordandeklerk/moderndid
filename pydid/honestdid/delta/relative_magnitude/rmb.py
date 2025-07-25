@@ -496,7 +496,6 @@ def _compute_identified_set_rmb_fixed_s(
     if b_eq.ndim != 1:
         b_eq = b_eq.flatten()
 
-    # Solve for maximum
     result_max = opt.linprog(
         c=-f_delta,
         A_ub=A_ineq,
@@ -507,7 +506,6 @@ def _compute_identified_set_rmb_fixed_s(
         method="highs",
     )
 
-    # Solve for minimum
     result_min = opt.linprog(
         c=f_delta,
         A_ub=A_ineq,
@@ -519,7 +517,6 @@ def _compute_identified_set_rmb_fixed_s(
     )
 
     if not result_max.success or not result_min.success:
-        # If solver fails, return observed value
         observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
         return DeltaRMBResult(id_lb=observed_val, id_ub=observed_val)
 

@@ -116,7 +116,6 @@ def create_sensitivity_results(
     if monotonicity_direction is not None and bias_direction is not None:
         raise ValueError("Cannot specify both monotonicity_direction and bias_direction.")
 
-    # Construct default M grid
     if m_vec is None:
         if num_pre_periods == 1:
             # With only one pre-period, we can't estimate second differences

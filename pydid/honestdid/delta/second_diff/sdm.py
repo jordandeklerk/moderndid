@@ -196,7 +196,6 @@ def compute_conditional_cs_sdm(
         except np.linalg.LinAlgError:
             hybrid_list["vbar"] = np.zeros(A_sdm.shape[0])
 
-    # Grid bounds
     if grid_lb is None or grid_ub is None:
         if hybrid_flag == "FLCI" and grid_lb is None:
             grid_lb = (flci_result.optimal_vec @ betahat) - flci_result.optimal_half_length
@@ -300,7 +299,6 @@ def compute_identified_set_sdm(
 
     bounds = [(None, None) for _ in range(num_pre_periods + num_post_periods)]
 
-    # Solve for maximum
     result_max = opt.linprog(
         c=-f_delta,
         A_ub=A_sdm,
@@ -311,7 +309,6 @@ def compute_identified_set_sdm(
         method="highs",
     )
 
-    # Solve for minimum
     result_min = opt.linprog(
         c=f_delta,
         A_ub=A_sdm,
@@ -323,7 +320,6 @@ def compute_identified_set_sdm(
     )
 
     if not result_max.success or not result_min.success:
-        # If optimization fails, return the observed value
         observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
         return DeltaSDMResult(id_lb=observed_val, id_ub=observed_val)
 
@@ -494,7 +490,6 @@ def _compute_cs_sdm_no_nuisance(
             if grid_lb is None:
                 grid_lb = id_set.id_lb - 20 * sd_theta
 
-    # Compute confidence set
     arp_kwargs = {
         "beta_hat": betahat,
         "sigma": sigma,

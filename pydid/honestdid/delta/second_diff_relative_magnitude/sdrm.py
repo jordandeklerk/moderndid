@@ -164,7 +164,6 @@ def compute_conditional_cs_sdrm(
     if hybrid_kappa is None:
         hybrid_kappa = alpha / 10
 
-    # Set default grid bounds
     if grid_lb is None or grid_ub is None:
         post_sigma = sigma[num_pre_periods:, num_pre_periods:]
         sd_theta = np.sqrt(l_vec @ post_sigma @ l_vec)
@@ -300,13 +299,11 @@ def compute_identified_set_sdrm(
     all_bounds = []
 
     for s in s_values:
-        # Positive maximum
         bounds_pos = _compute_identified_set_sdrm_fixed_s(
             s, m_bar, True, true_beta, l_vec, num_pre_periods, num_post_periods
         )
         all_bounds.append(bounds_pos)
 
-        # Negative maximum
         bounds_neg = _compute_identified_set_sdrm_fixed_s(
             s, m_bar, False, true_beta, l_vec, num_pre_periods, num_post_periods
         )
@@ -365,7 +362,6 @@ def _compute_identified_set_sdrm_fixed_s(
     a_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
     b_eq = true_beta[:num_pre_periods]
 
-    # Solve for maximum
     result_max = opt.linprog(
         c=-c,
         A_ub=a_sdrm,
@@ -376,7 +372,6 @@ def _compute_identified_set_sdrm_fixed_s(
         method="highs",
     )
 
-    # Solve for minimum
     result_min = opt.linprog(
         c=c,
         A_ub=a_sdrm,
@@ -387,14 +382,12 @@ def _compute_identified_set_sdrm_fixed_s(
         method="highs",
     )
 
-    # Compute bounds
     l_beta_post = l_vec @ true_beta[num_pre_periods:]
 
     if result_max.success and result_min.success:
         id_ub = l_beta_post - result_min.fun
         id_lb = l_beta_post + result_max.fun
     else:
-        # If optimization fails, return point estimate
         id_ub = id_lb = l_beta_post
 
     return DeltaSDRMResult(id_lb=id_lb, id_ub=id_ub)
@@ -471,7 +464,6 @@ def _compute_conditional_cs_sdrm_fixed_s(
         post_period_indices = list(range(num_pre_periods, a_sdrm.shape[1]))
         rows_for_arp = find_rows_with_post_period_values(a_sdrm, post_period_indices)
 
-    # Compute confidence interval
     if num_post_periods == 1:
         # Single post-period: use no-nuisance parameter method
         return _compute_cs_sdrm_no_nuisance(

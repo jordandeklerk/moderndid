@@ -800,12 +800,6 @@ def weights_to_l(weights):
     -------
     ndarray
         Level vector :math:`\ell` (cumulative sums).
-
-    Notes
-    -----
-    Under :math:`\Delta^{SD}(M)`, the worst-case bias has a simple form when
-    expressed in terms of :math:`w`, which motivates this parameterization
-    in the optimization.
     """
     return np.cumsum(weights)
 
@@ -834,12 +828,6 @@ def l_to_weights(l_vector):
     -------
     ndarray
         Weight vector :math:`w` (first differences).
-
-    Notes
-    -----
-    The weight parameterization ensures that certain constraints in the
-    optimization (related to worst-case bias under :math:`\Delta^{SD}(M)`)
-    take a simple linear form.
     """
     weights = np.zeros_like(l_vector)
     weights[0] = l_vector[0]

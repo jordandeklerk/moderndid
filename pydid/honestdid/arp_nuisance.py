@@ -167,7 +167,6 @@ def compute_arp_nuisance_ci(
 
     accept_grid = []
     for i, theta in enumerate(theta_grid):
-        # Get y_t for the current theta
         y_t = y_t_matrix[i]
 
         if hybrid_flag == "FLCI":
@@ -371,7 +370,6 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
     k = x_t_arp.shape[1] if x_t_arp.ndim > 1 else 1
     degenerate_flag = np.sum(lin_soln["lambda"] > tol_lambda) != (k + 1)
 
-    # Identify binding moments
     b_index = lin_soln["lambda"] > tol_lambda
     bc_index = ~b_index
 
@@ -380,7 +378,6 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
 
     x_tb = x_t_arp[b_index]
 
-    # Check rank condition
     if x_tb.size == 0 or (x_tb.ndim == 1 and len(x_tb) < k):
         full_rank_flag = False
     else:
@@ -412,12 +409,10 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
         sigma_b_dual = np.sqrt(sigma_b_dual2)
         maxstat = lp_dual_soln["eta"] / sigma_b_dual
 
-        # Modify vlo, vup for hybrid tests
         if hybrid_flag == "LF":
             zlo_dual = lp_dual_soln["vlo"] / sigma_b_dual
             zup_dual = min(lp_dual_soln["vup"], hybrid_list.get("lf_cv", np.inf)) / sigma_b_dual
         elif hybrid_flag == "FLCI":
-            # Compute FLCI vlo, vup
             gamma_full = np.zeros(len(y_t))
             gamma_full[rows_for_arp] = lp_dual_soln["gamma_tilde"]
 
@@ -440,7 +435,6 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
                 "lambda": lin_soln["lambda"],
             }
 
-        # Critical value
         cval = max(0.0, _norminvp_generalized(1 - mod_size, zlo_dual, zup_dual))
         reject = maxstat > cval
 
@@ -500,12 +494,10 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
         else:
             vup = np.inf
 
-        # Hybrid tests
         if hybrid_flag == "LF":
             zlo = vlo / sigma_b
             zup = min(vup, hybrid_list.get("lf_cv", np.inf)) / sigma_b
         elif hybrid_flag == "FLCI":
-            # Compute FLCI vlo, vup
             gamma_full = np.zeros(len(y_t))
             gamma_full[rows_for_arp] = v_b.flatten()
 
@@ -520,7 +512,6 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
             zlo = vlo / sigma_b
             zup = vup / sigma_b
 
-        # Test stat
         maxstat = lin_soln["eta_star"] / sigma_b
 
         if not zlo <= maxstat <= zup:
@@ -531,7 +522,6 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
                 "lambda": lin_soln["lambda"],
             }
 
-        # Crit value
         cval = max(0.0, _norminvp_generalized(1 - mod_size, zlo, zup))
         reject = maxstat > cval
 

@@ -185,12 +185,10 @@ def compute_conditional_cs_sdrmm(
     grid = np.linspace(grid_lb, grid_ub, grid_points)
     n_s = len(s_values)
 
-    # Compute CS for all (s, sign) combinations
     all_cs_pos = np.zeros((grid_points, n_s))
     all_cs_neg = np.zeros((grid_points, n_s))
 
     for i, s in enumerate(s_values):
-        # Positive maximum
         cs_pos = _compute_conditional_cs_sdrmm_fixed_s(
             s=s,
             max_positive=True,
@@ -212,7 +210,6 @@ def compute_conditional_cs_sdrmm(
         )
         all_cs_pos[:, i] = cs_pos["accept"]
 
-        # Negative maximum
         cs_neg = _compute_conditional_cs_sdrmm_fixed_s(
             s=s,
             max_positive=False,
@@ -314,7 +311,6 @@ def compute_identified_set_sdrmm(
     all_bounds = []
 
     for s in s_values:
-        # Positive maximum
         bounds_pos = _compute_identified_set_sdrmm_fixed_s(
             s,
             m_bar,
@@ -327,7 +323,6 @@ def compute_identified_set_sdrmm(
         )
         all_bounds.append(bounds_pos)
 
-        # Negative maximum
         bounds_neg = _compute_identified_set_sdrmm_fixed_s(
             s,
             m_bar,
@@ -398,7 +393,6 @@ def _compute_identified_set_sdrmm_fixed_s(
     a_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
     b_eq = true_beta[:num_pre_periods]
 
-    # Solve for maximum
     result_max = opt.linprog(
         c=-c,
         A_ub=a_sdrmm,
@@ -409,7 +403,6 @@ def _compute_identified_set_sdrmm_fixed_s(
         method="highs",
     )
 
-    # Solve for minimum
     result_min = opt.linprog(
         c=c,
         A_ub=a_sdrmm,
@@ -420,14 +413,12 @@ def _compute_identified_set_sdrmm_fixed_s(
         method="highs",
     )
 
-    # Compute bounds
     l_beta_post = l_vec @ true_beta[num_pre_periods:]
 
     if result_max.success and result_min.success:
         id_ub = l_beta_post - result_min.fun
         id_lb = l_beta_post + result_max.fun
     else:
-        # If optimization fails, return point estimate
         id_ub = id_lb = l_beta_post
 
     return DeltaSDRMMResult(id_lb=id_lb, id_ub=id_ub)
@@ -509,7 +500,6 @@ def _compute_conditional_cs_sdrmm_fixed_s(
         post_period_indices = list(range(num_pre_periods, a_sdrmm.shape[1]))
         rows_for_arp = find_rows_with_post_period_values(a_sdrmm, post_period_indices)
 
-    # Compute confidence interval
     if num_post_periods == 1:
         # Single post-period: use no-nuisance parameter method
         return _compute_cs_sdrmm_no_nuisance(
@@ -677,7 +667,6 @@ def _create_sdrmm_constraint_matrix(
     constraint system.
     """
     a_sdrm = _create_sdrm_constraint_matrix(num_pre_periods, num_post_periods, m_bar, s, max_positive, drop_zero)
-
     a_mono = create_monotonicity_constraint_matrix(
         num_pre_periods, num_post_periods, monotonicity_direction, post_period_moments_only=False
     )
