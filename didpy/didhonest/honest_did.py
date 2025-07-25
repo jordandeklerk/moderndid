@@ -8,8 +8,8 @@ import pandas as pd
 from .sensitivity import (
     OriginalCSResult,
     construct_original_cs,
-    create_sensitivity_results,
     create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_sm,
 )
 from .utils import basis_vector
 
@@ -225,7 +225,7 @@ def _honest_did_aggte(
             **kwargs,
         )
     elif sensitivity_type == "smoothness":
-        robust_ci = create_sensitivity_results(
+        robust_ci = create_sensitivity_results_sm(
             betahat=att_no_ref,
             sigma=vcov_matrix,
             num_pre_periods=num_pre_periods,

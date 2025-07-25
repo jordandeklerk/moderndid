@@ -56,13 +56,13 @@ For users with pre-computed event study coefficients:
 
 ```python
 from didpy import (
-    create_sensitivity_results,
+    create_sensitivity_results_sm,
     create_sensitivity_results_relative_magnitudes,
     construct_original_cs
 )
 
 # For smoothness restrictions
-sensitivity_results = create_sensitivity_results(
+sensitivity_results = create_sensitivity_results_sm(
     betahat=event_study_coefs,
     sigma=vcov_matrix,
     num_pre_periods=5,
@@ -116,10 +116,10 @@ All these options are available both at a lower-level API or through the high-le
 Built-in plotting functions:
 
 ```python
-from didpy import plot_sensitivity, plot_sensitivity_rm
+from didpy import plot_sensitivity_sm, plot_sensitivity_rm
 
 # Plot sensitivity analysis for smoothness restrictions
-fig = plot_sensitivity(sensitivity_results, original_ci_df)
+fig = plot_sensitivity_sm(sensitivity_results, original_ci_df)
 
 # Plot sensitivity analysis for relative magnitudes
 fig = plot_sensitivity_rm(sensitivity_results_rm, original_ci_df)
@@ -132,7 +132,7 @@ We will examine the effects of Medicaid expansions on insurance coverage using p
 ```python
 from didpy import (
     load_ehec,
-    create_sensitivity_results,
+    create_sensitivity_results_sm,
     create_sensitivity_results_relative_magnitudes,
     construct_original_cs
 )
@@ -264,7 +264,7 @@ plot_sensitivity_rm(delta_rm_results, original_ci)
 We can also do a sensitivity analysis based on smoothness restrictions, i.e., imposing that the slope of the difference in trends changes by no more than $M$ between periods.
 
 ```python
-delta_sd_results = create_sensitivity_results(
+delta_sd_results = create_sensitivity_results_sm(
     betahat=betahat,
     sigma=sigma,
     num_pre_periods=num_pre_periods,
@@ -292,7 +292,7 @@ print(delta_sd_results)
 We see that the breakdown value for a significant effect is $M \approx 0.03$, meaning that we can reject a null effect unless we are willing to allow for the linear extrapolation across consecutive periods to be off by more than 0.03 percentage points.
 
 ```python
-plot_sensitivity(delta_sd_results, original_ci)
+plot_sensitivity_sm(delta_sd_results, original_ci)
 ```
 
 ![Sensitivity-Analysis-Using-Smoothness-Restrictions](/assets/medicaid_sensitivity_sd.png)

@@ -91,7 +91,7 @@ COLOR_PALETTES = {
 }
 
 
-def plot_sensitivity(
+def plot_sensitivity_sm(
     robust_results,
     original_results,
     rescale_factor=1,
@@ -107,7 +107,7 @@ def plot_sensitivity(
     Parameters
     ----------
     robust_results : pd.DataFrame
-        DataFrame from create_sensitivity_results with columns:
+        DataFrame from create_sensitivity_results_sm with columns:
         lb, ub, method, Delta, M.
     original_results : pd.DataFrame
         DataFrame from construct_original_cs with columns:

@@ -9,8 +9,8 @@ from didpy.didhonest.sensitivity import (
     OriginalCSResult,
     SensitivityResult,
     construct_original_cs,
-    create_sensitivity_results,
     create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_sm,
 )
 
 
@@ -59,7 +59,7 @@ def test_construct_original_cs(basic_event_study_data):
 def test_create_sensitivity_results(basic_event_study_data, method, monotonicity, bias, expected_delta, m_vec):
     betahat, sigma, num_pre_periods, num_post_periods = basic_event_study_data
 
-    results = create_sensitivity_results(
+    results = create_sensitivity_results_sm(
         betahat=betahat,
         sigma=sigma,
         num_pre_periods=num_pre_periods,
@@ -134,7 +134,7 @@ def test_create_sensitivity_results_relative_magnitudes(
 )
 def test_create_sensitivity_results_errors(kwargs, error_match):
     with pytest.raises(ValueError, match=error_match):
-        create_sensitivity_results(**kwargs)
+        create_sensitivity_results_sm(**kwargs)
 
 
 @pytest.mark.parametrize(
@@ -170,7 +170,7 @@ def test_create_sensitivity_results_relative_magnitudes_errors(kwargs, error_mat
 def test_default_m_vec_construction(basic_event_study_data):
     betahat, sigma, num_pre_periods, num_post_periods = basic_event_study_data
 
-    results = create_sensitivity_results(
+    results = create_sensitivity_results_sm(
         betahat=betahat,
         sigma=sigma,
         num_pre_periods=num_pre_periods,
@@ -188,7 +188,7 @@ def test_flci_warning_with_restriction(basic_event_study_data):
     betahat, sigma, num_pre_periods, num_post_periods = basic_event_study_data
 
     with pytest.warns(UserWarning, match="shape/sign restriction"):
-        create_sensitivity_results(
+        create_sensitivity_results_sm(
             betahat=betahat,
             sigma=sigma,
             num_pre_periods=num_pre_periods,
