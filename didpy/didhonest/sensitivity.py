@@ -33,7 +33,7 @@ class OriginalCSResult(NamedTuple):
     delta: str | None = None
 
 
-def create_sensitivity_results(
+def create_sensitivity_results_sm(
     betahat,
     sigma,
     num_pre_periods,

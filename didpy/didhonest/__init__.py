@@ -80,15 +80,15 @@ from .numba import (
 )
 from .plots.core import (
     event_study_plot,
-    plot_sensitivity,
     plot_sensitivity_rm,
+    plot_sensitivity_sm,
 )
 from .sensitivity import (
     OriginalCSResult,
     SensitivityResult,
     construct_original_cs,
-    create_sensitivity_results,
     create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_sm,
 )
 from .utils import (
     basis_vector,
@@ -174,11 +174,11 @@ __all__ = [
     "OriginalCSResult",
     "SensitivityResult",
     "construct_original_cs",
-    "create_sensitivity_results",
+    "create_sensitivity_results_sm",
     "create_sensitivity_results_relative_magnitudes",
     # Plotting functions
     "event_study_plot",
-    "plot_sensitivity",
+    "plot_sensitivity_sm",
     "plot_sensitivity_rm",
     # Wrapper utilities
     "DeltaMethodSelector",
