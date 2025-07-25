@@ -1,7 +1,7 @@
-.. _pydid_docs_mainpage:
+.. _didpy_docs_mainpage:
 
 ###################
-pyDiD documentation
+didpy documentation
 ###################
 
 .. toctree::
@@ -18,21 +18,21 @@ pyDiD documentation
 **Version**: |version|
 
 **Download documentation**:
-`Historical versions of documentation <https://github.com/jordandeklerk/pyDiD/releases>`_
+`Historical versions of documentation <https://github.com/jordandeklerk/didpy/releases>`_
 
 **Useful links**:
 `Installation <installing.html>`_ |
-`Source Repository <https://github.com/jordandeklerk/pyDiD>`_ |
-`Issue Tracker <https://github.com/jordandeklerk/pyDiD/issues>`_ |
+`Source Repository <https://github.com/jordandeklerk/didpy>`_ |
+`Issue Tracker <https://github.com/jordandeklerk/didpy/issues>`_ |
 
 .. only:: not release
 
    .. warning::
 
-      This documentation is for the latest development version of pyDiD.
+      This documentation is for the latest development version of didpy.
       There is no stable release yet.
 
-pyDiD is a comprehensive Python package for modern difference-in-differences (DiD)
+didpy is a comprehensive Python package for modern difference-in-differences (DiD)
 estimation. It provides a unified framework for causal inference using DiD methods
 with panel and repeated cross-section data, including advanced estimators for
 staggered treatment timing, multiple time periods, doubly robust methods, continuous
@@ -52,7 +52,7 @@ diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests.
         ^^^
 
         The user guide provides in-depth information on the
-        key concepts of pyDiD with useful background information and explanation.
+        key concepts of didpy with useful background information and explanation.
 
         +++
 
@@ -71,7 +71,7 @@ diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests.
         ^^^
 
         The reference guide contains a detailed description of the functions,
-        modules, and objects included in pyDiD. The reference describes how the
+        modules, and objects included in didpy. The reference describes how the
         methods work and which parameters can be used.
 
         +++
@@ -111,7 +111,7 @@ diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests.
 
         Want to add to the codebase? Can help add functionality or improve the
         documentation? The contributing guidelines will guide you through the
-        process of improving pyDiD.
+        process of improving didpy.
 
         +++
 

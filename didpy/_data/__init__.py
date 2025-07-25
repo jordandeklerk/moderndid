@@ -1,1 +1,1 @@
-"""Datasets for pyDiD."""
+"""Datasets for didpy."""

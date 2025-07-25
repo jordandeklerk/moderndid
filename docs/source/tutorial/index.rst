@@ -2,7 +2,7 @@
 Tutorial
 ========
 
-pyDiD is a collection of difference-in-differences (DiD) estimators and
+didpy is a collection of difference-in-differences (DiD) estimators and
 convenience functions built on NumPy. It contains a number of
 open-source Python packages for causal inference with DiD methods.
 
@@ -26,14 +26,14 @@ Before reading this tutorial, we recommend that you read
 Additional functionality is provided by the ``utils`` module for
 panel data processing and validation.
 
-To import pyDiD modules, we recommend using the pattern:
+To import didpy modules, we recommend using the pattern:
 
 .. code-block:: python
 
-   import pydid
+   import didpy
 
-Then functions can be accessed as ``pydid.drdid_imp_panel``,
-``pydid.ipw_did_panel``, etc.
+Then functions can be accessed as ``didpy.drdid_imp_panel``,
+``didpy.ipw_did_panel``, etc.
 
 .. toctree::
    :hidden:

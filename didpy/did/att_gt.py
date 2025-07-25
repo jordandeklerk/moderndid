@@ -117,7 +117,7 @@ def att_gt(
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from pydid import att_gt, load_mpdta
+           ...: from didpy import att_gt, load_mpdta
            ...:
            ...: df = load_mpdta()
            ...: print(df.head())

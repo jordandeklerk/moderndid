@@ -3,15 +3,15 @@ API Reference
 =============
 
 This reference manual details functions, modules, and objects
-included in pyDiD, describing what they are and what they do.
-For learning how to use pyDiD, see the :doc:`../tutorial/index`.
+included in didpy, describing what they are and what they do.
+For learning how to use didpy, see the :doc:`../tutorial/index`.
 
 .. _api-overview:
 
 Python API
 ==========
 
-pyDiD adheres to the following naming convention:
+didpy adheres to the following naming convention:
 
 * Public modules and functions should have an all lowercase name, potentially
   with underscores separating words.
@@ -19,15 +19,15 @@ pyDiD adheres to the following naming convention:
 
 .. _api-importing:
 
-Importing from pyDiD
+Importing from didpy
 ====================
 
-The recommended way to use pyDiD functions is the following:
+The recommended way to use didpy functions is the following:
 
 .. code-block:: python
 
-   import pydid
-   result = pydid.drdid_imp_panel(...)
+   import didpy
+   result = didpy.drdid_imp_panel(...)
 
 Main estimation functions
 =========================
@@ -35,11 +35,11 @@ Main estimation functions
 .. autosummary::
    :toctree: generated/
 
-   pydid.att_gt
-   pydid.aggte
-   pydid.drdid
-   pydid.ipwdid
-   pydid.ordid
+   didpy.att_gt
+   didpy.aggte
+   didpy.drdid
+   didpy.ipwdid
+   didpy.ordid
 
 Doubly-robust DiD estimators
 ============================
@@ -50,8 +50,8 @@ Panel data
 .. autosummary::
    :toctree: generated/
 
-   pydid.drdid_imp_panel
-   pydid.drdid_panel
+   didpy.drdid_imp_panel
+   didpy.drdid_panel
 
 Repeated cross-sections
 -----------------------
@@ -59,10 +59,10 @@ Repeated cross-sections
 .. autosummary::
    :toctree: generated/
 
-   pydid.drdid_imp_local_rc
-   pydid.drdid_imp_rc
-   pydid.drdid_rc
-   pydid.drdid_trad_rc
+   didpy.drdid_imp_local_rc
+   didpy.drdid_imp_rc
+   didpy.drdid_rc
+   didpy.drdid_trad_rc
 
 Inverse propensity weighted DiD estimators
 ==========================================
@@ -73,8 +73,8 @@ Panel data
 .. autosummary::
    :toctree: generated/
 
-   pydid.ipw_did_panel
-   pydid.std_ipw_did_panel
+   didpy.ipw_did_panel
+   didpy.std_ipw_did_panel
 
 Repeated cross-sections
 -----------------------
@@ -82,8 +82,8 @@ Repeated cross-sections
 .. autosummary::
    :toctree: generated/
 
-   pydid.ipw_did_rc
-   pydid.std_ipw_did_rc
+   didpy.ipw_did_rc
+   didpy.std_ipw_did_rc
 
 Outcome regression DiD estimators
 =================================
@@ -94,8 +94,8 @@ Panel data
 .. autosummary::
    :toctree: generated/
 
-   pydid.reg_did_panel
-   pydid.twfe_did_panel
+   didpy.reg_did_panel
+   didpy.twfe_did_panel
 
 Repeated cross-sections
 -----------------------
@@ -103,8 +103,8 @@ Repeated cross-sections
 .. autosummary::
    :toctree: generated/
 
-   pydid.reg_did_rc
-   pydid.twfe_did_rc
+   didpy.reg_did_rc
+   didpy.twfe_did_rc
 
 Propensity score utilities
 ==========================
@@ -115,7 +115,7 @@ Core propensity score estimation
 .. autosummary::
    :toctree: generated/
 
-   pydid.calculate_pscore_ipt
+   didpy.calculate_pscore_ipt
 
 AIPW estimators
 ---------------
@@ -123,9 +123,9 @@ AIPW estimators
 .. autosummary::
    :toctree: generated/
 
-   pydid.aipw_did_panel
-   pydid.aipw_did_rc_imp1
-   pydid.aipw_did_rc_imp2
+   didpy.aipw_did_panel
+   didpy.aipw_did_rc_imp1
+   didpy.aipw_did_rc_imp2
 
 IPW estimators
 --------------
@@ -133,7 +133,7 @@ IPW estimators
 .. autosummary::
    :toctree: generated/
 
-   pydid.ipw_rc
+   didpy.ipw_rc
 
 Bootstrap inference
 ===================
@@ -144,12 +144,12 @@ Panel data bootstrap
 .. autosummary::
    :toctree: generated/
 
-   pydid.wboot_drdid_imp_panel
-   pydid.wboot_dr_tr_panel
-   pydid.wboot_ipw_panel
-   pydid.wboot_std_ipw_panel
-   pydid.wboot_reg_panel
-   pydid.wboot_twfe_panel
+   didpy.wboot_drdid_imp_panel
+   didpy.wboot_dr_tr_panel
+   didpy.wboot_ipw_panel
+   didpy.wboot_std_ipw_panel
+   didpy.wboot_reg_panel
+   didpy.wboot_twfe_panel
 
 Repeated cross-section bootstrap
 --------------------------------
@@ -157,14 +157,14 @@ Repeated cross-section bootstrap
 .. autosummary::
    :toctree: generated/
 
-   pydid.wboot_drdid_rc1
-   pydid.wboot_drdid_rc2
-   pydid.wboot_drdid_ipt_rc1
-   pydid.wboot_drdid_ipt_rc2
-   pydid.wboot_ipw_rc
-   pydid.wboot_std_ipw_rc
-   pydid.wboot_reg_rc
-   pydid.wboot_twfe_rc
+   didpy.wboot_drdid_rc1
+   didpy.wboot_drdid_rc2
+   didpy.wboot_drdid_ipt_rc1
+   didpy.wboot_drdid_ipt_rc2
+   didpy.wboot_ipw_rc
+   didpy.wboot_std_ipw_rc
+   didpy.wboot_reg_rc
+   didpy.wboot_twfe_rc
 
 Multiplier bootstrap
 --------------------
@@ -172,8 +172,8 @@ Multiplier bootstrap
 .. autosummary::
    :toctree: generated/
 
-   pydid.mboot_did
-   pydid.mboot_twfep_did
+   didpy.mboot_did
+   didpy.mboot_twfep_did
 
 Supporting functions
 ====================
@@ -184,5 +184,5 @@ Weighted OLS
 .. autosummary::
    :toctree: generated/
 
-   pydid.wols_panel
-   pydid.wols_rc
+   didpy.wols_panel
+   didpy.wols_rc

@@ -36,9 +36,9 @@ The main entry point provides a consistent interface for working with event stud
 
 ```python
 
-from pydid import honest_did
+from didpy import honest_did
 
-# For event study objects (e.g., from pydid.did.aggte)
+# For event study objects (e.g., from didpy.did.aggte)
 result = honest_did(
     event_study,
     event_time=0,
@@ -55,7 +55,7 @@ result = honest_did(
 For users with pre-computed event study coefficients:
 
 ```python
-from pydid import (
+from didpy import (
     create_sensitivity_results,
     create_sensitivity_results_relative_magnitudes,
     construct_original_cs
@@ -116,7 +116,7 @@ All these options are available both at a lower-level API or through the high-le
 Built-in plotting functions:
 
 ```python
-from pydid import plot_sensitivity, plot_sensitivity_rm
+from didpy import plot_sensitivity, plot_sensitivity_rm
 
 # Plot sensitivity analysis for smoothness restrictions
 fig = plot_sensitivity(sensitivity_results, original_ci_df)
@@ -130,7 +130,7 @@ fig = plot_sensitivity_rm(sensitivity_results_rm, original_ci_df)
 We will examine the effects of Medicaid expansions on insurance coverage using publicly-available data derived from the ACS. We first load the data and packages relevant for the analysis.
 
 ```python
-from pydid import (
+from didpy import (
     load_ehec,
     create_sensitivity_results,
     create_sensitivity_results_relative_magnitudes,
@@ -349,13 +349,13 @@ provided you are willing to impose relative magnitudes or smoothness restriction
 
 Below, we show how the package can be used with modern methods for DiD with staggered treatment timing.
 
-### Using HonestDiD with pyDiD's `att_gt` and `aggte` Methods
+### Using HonestDiD with didpy's `att_gt` and `aggte` Methods
 
 We can combine staggered treatment DiD estimators of the Callaway and Sant'Anna type with Honest DiD
 sensitivity analysis in a straight-forward way:
 
 ```python
-from pydid import att_gt, aggte, honest_did, load_ehec
+from didpy import att_gt, aggte, honest_did, load_ehec
 
 df = load_ehec()
 
