@@ -14,6 +14,11 @@ __didpy__ is a unified Python implementation of modern difference-in-differences
 
 <br>
 
+> [!WARNING]
+> This package is currently in active development and subject to change.
+
+<br>
+
 __didpy__ provides dedicated sub-packages for all modern DiD methodologies:
 
 **Core DiD Estimators:**
@@ -38,8 +43,3 @@ __didpy__ provides dedicated sub-packages for all modern DiD methodologies:
 - **`didpy.functional`**: Specification tests for functional form assumptions in DiD models
 
 Each subpackage is designed as a self-contained module with its own estimators, inference procedures, and visualization tools, while sharing common infrastructure for data handling and computation. This modular architecture allows researchers to use exactly the methods they need while benefiting from a unified interface and consistent design principles across all DiD approaches.
-
-<br>
-
-> [!WARNING]
-> This package is currently in active development and subject to change.
