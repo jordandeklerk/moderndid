@@ -87,7 +87,7 @@ from .sensitivity import (
     OriginalCSResult,
     SensitivityResult,
     construct_original_cs,
-    create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_rm,
     create_sensitivity_results_sm,
 )
 from .utils import (
@@ -175,7 +175,7 @@ __all__ = [
     "SensitivityResult",
     "construct_original_cs",
     "create_sensitivity_results_sm",
-    "create_sensitivity_results_relative_magnitudes",
+    "create_sensitivity_results_rm",
     # Plotting functions
     "event_study_plot",
     "plot_sensitivity_sm",

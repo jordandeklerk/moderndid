@@ -71,7 +71,7 @@ from didpy.didhonest import (
     create_monotonicity_constraint_matrix,
     create_pre_period_constraint_matrix,
     create_second_difference_matrix,
-    create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_rm,
     create_sensitivity_results_sm,
     create_sign_constraint_matrix,
     estimate_lowerbound_m_conditional_test,
@@ -307,7 +307,7 @@ __all__ = [
     "SensitivityResult",
     "construct_original_cs",
     "create_sensitivity_results_sm",
-    "create_sensitivity_results_relative_magnitudes",
+    "create_sensitivity_results_rm",
     # Honest DiD plotting
     "event_study_plot",
     "plot_sensitivity_sm",

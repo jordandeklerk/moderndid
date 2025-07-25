@@ -57,7 +57,7 @@ For users with pre-computed event study coefficients:
 ```python
 from didpy import (
     create_sensitivity_results_sm,
-    create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_rm,
     construct_original_cs
 )
 
@@ -74,7 +74,7 @@ sensitivity_results = create_sensitivity_results_sm(
 )
 
 # For relative magnitude restrictions
-sensitivity_results_rm = create_sensitivity_results_relative_magnitudes(
+sensitivity_results_rm = create_sensitivity_results_rm(
     betahat=event_study_coefs,
     sigma=vcov_matrix,
     num_pre_periods=5,
@@ -133,7 +133,7 @@ We will examine the effects of Medicaid expansions on insurance coverage using p
 from didpy import (
     load_ehec,
     create_sensitivity_results_sm,
-    create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_rm,
     construct_original_cs
 )
 
@@ -231,7 +231,7 @@ original_ci = construct_original_cs(
     alpha=0.05
 )
 
-delta_rm_results = create_sensitivity_results_relative_magnitudes(
+delta_rm_results = create_sensitivity_results_rm(
     betahat=betahat,
     sigma=sigma,
     num_pre_periods=num_pre_periods,
@@ -313,7 +313,7 @@ original_ci_avg = construct_original_cs(
     alpha=0.05
 )
 
-delta_rm_results_avg = create_sensitivity_results_relative_magnitudes(
+delta_rm_results_avg = create_sensitivity_results_rm(
     betahat=betahat,
     sigma=sigma,
     num_pre_periods=num_pre_periods,

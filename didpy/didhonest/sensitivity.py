@@ -213,7 +213,7 @@ def create_sensitivity_results_sm(
     return df
 
 
-def create_sensitivity_results_relative_magnitudes(
+def create_sensitivity_results_rm(
     betahat,
     sigma,
     num_pre_periods,

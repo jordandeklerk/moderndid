@@ -226,7 +226,7 @@ def plot_sensitivity_rm(
     Parameters
     ----------
     robust_results : pd.DataFrame
-        DataFrame from create_sensitivity_results_relative_magnitudes with
+        DataFrame from create_sensitivity_results_rm with
         columns: lb, ub, method, Delta, Mbar.
     original_results : pd.DataFrame
         DataFrame from construct_original_cs with columns:

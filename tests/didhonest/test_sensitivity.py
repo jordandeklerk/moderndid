@@ -9,7 +9,7 @@ from didpy.didhonest.sensitivity import (
     OriginalCSResult,
     SensitivityResult,
     construct_original_cs,
-    create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_rm,
     create_sensitivity_results_sm,
 )
 
@@ -97,7 +97,7 @@ def test_create_sensitivity_results_relative_magnitudes(
 ):
     betahat, sigma, num_pre_periods, num_post_periods = basic_event_study_data
 
-    results = create_sensitivity_results_relative_magnitudes(
+    results = create_sensitivity_results_rm(
         betahat=betahat,
         sigma=sigma,
         num_pre_periods=num_pre_periods,
@@ -164,7 +164,7 @@ def test_create_sensitivity_results_errors(kwargs, error_match):
 )
 def test_create_sensitivity_results_relative_magnitudes_errors(kwargs, error_match):
     with pytest.raises(ValueError, match=error_match):
-        create_sensitivity_results_relative_magnitudes(**kwargs)
+        create_sensitivity_results_rm(**kwargs)
 
 
 def test_default_m_vec_construction(basic_event_study_data):
