@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import pytest
 
-from pydid import wols_panel, wols_rc
+from didpy import wols_panel, wols_rc
 
 
 def test_wols_panel_happy_path_unit_weights():

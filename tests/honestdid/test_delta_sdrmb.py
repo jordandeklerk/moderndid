@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from pydid.honestdid import (
+from didpy.honestdid import (
     DeltaSDRMBResult,
     compute_conditional_cs_sdrmb,
     compute_identified_set_sdrmb,

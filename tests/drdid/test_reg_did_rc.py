@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid import reg_did_rc
+from didpy.drdid import reg_did_rc
 
 
 def test_reg_did_rc_basic():

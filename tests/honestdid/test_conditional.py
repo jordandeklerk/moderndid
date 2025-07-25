@@ -3,12 +3,12 @@
 import numpy as np
 import pytest
 
-from pydid.honestdid.conditional import (
+from didpy.honestdid.conditional import (
     _create_pre_period_second_diff_constraints,
     _norminvp_generalized,
     estimate_lowerbound_m_conditional_test,
 )
-from pydid.honestdid.conditional import (
+from didpy.honestdid.conditional import (
     test_in_identified_set_max as in_identified_set_max_func,
 )
 

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid import drdid_panel
+from didpy import drdid_panel
 
 
 @pytest.mark.parametrize("covariates", [None, "with_covariates"])

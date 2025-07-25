@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from pydid.utils import extract_vars_from_formula
+from didpy.utils import extract_vars_from_formula
 
 from .constants import (
     BasePeriod,

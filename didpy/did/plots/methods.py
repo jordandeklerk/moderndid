@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
-    from pydid.did.aggte_obj import AGGTEResult
-    from pydid.did.multiperiod_obj import MPResult
+    from didpy.did.aggte_obj import AGGTEResult
+    from didpy.did.multiperiod_obj import MPResult
 
 
 def _mp_plot(self: MPResult, **kwargs: Any) -> Figure:
@@ -24,7 +24,7 @@ def _mp_plot(self: MPResult, **kwargs: Any) -> Figure:
     Figure
         Matplotlib figure object.
     """
-    from pydid.did.plots.core import plot_att_gt
+    from didpy.did.plots.core import plot_att_gt
 
     return plot_att_gt(self, **kwargs)
 
@@ -45,15 +45,15 @@ def _aggte_plot(self: AGGTEResult, plot_type: str | None = None, **kwargs: Any) 
     Figure
         Matplotlib figure object.
     """
-    from pydid.did.plots.core import plot_did
+    from didpy.did.plots.core import plot_did
 
     return plot_did(self, plot_type=plot_type, **kwargs)
 
 
 def add_plot_methods():
     """Add plot methods to result objects."""
-    from pydid.did.aggte_obj import AGGTEResult
-    from pydid.did.multiperiod_obj import MPResult
+    from didpy.did.aggte_obj import AGGTEResult
+    from didpy.did.multiperiod_obj import MPResult
 
     MPResult.plot = _mp_plot
     AGGTEResult.plot = _aggte_plot

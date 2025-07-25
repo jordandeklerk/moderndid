@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from pydid.honestdid.fixed_length_ci import (
+from didpy.honestdid.fixed_length_ci import (
     FLCIResult,
     _optimize_flci_params,
     _optimize_h_bisection,
