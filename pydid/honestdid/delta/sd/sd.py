@@ -271,22 +271,17 @@ def compute_identified_set_sd(
 
     Notes
     -----
-    These optimization problems are solved using linear programming. The constraint
-    :math:`\delta_{pre} = \beta_{pre}` reflects that pre-treatment event study
+    The constraint :math:`\delta_{pre} = \beta_{pre}` reflects that pre-treatment event study
     coefficients identify the pre-treatment trend under the no-anticipation assumption.
     """
-    # Create objective function: we want to min/max l'delta_post
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
 
-    # Create constraint matrix and vector for Delta^{SD}(M)
     A_sd = _create_sd_constraint_matrix(num_pre_periods, num_post_periods)
     d_sd = _create_sd_constraint_vector(A_sd, m_bar)
 
-    # Add equality constraints: delta_pre = beta_pre
     A_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
     b_eq = true_beta[:num_pre_periods]
 
-    # Bounds: all variables unconstrained
     bounds = [(None, None) for _ in range(num_pre_periods + num_post_periods)]
 
     result_max = opt.linprog(
