@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from pydid import drdid_imp_panel
+from didpy import drdid_imp_panel
 
 
 def dgp_panel_for_test(n=2000):

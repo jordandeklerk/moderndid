@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pydid.honestdid.sensitivity import (
+from didpy.honestdid.sensitivity import (
     OriginalCSResult,
     SensitivityResult,
     construct_original_cs,

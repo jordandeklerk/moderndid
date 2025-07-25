@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from pydid import compute_aggte, compute_att_gt, load_mpdta, mp, preprocess_did
+from didpy import compute_aggte, compute_att_gt, load_mpdta, mp, preprocess_did
 
 
 @pytest.fixture

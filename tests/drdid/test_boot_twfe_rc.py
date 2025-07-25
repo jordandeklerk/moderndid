@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid import wboot_twfe_rc
+from didpy import wboot_twfe_rc
 
 
 def test_wboot_twfe_rc_basic():

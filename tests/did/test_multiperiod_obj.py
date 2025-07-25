@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid import (
+from didpy import (
     MPPretestResult,
     MPResult,
     format_mp_pretest_result,

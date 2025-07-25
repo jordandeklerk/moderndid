@@ -4,8 +4,8 @@
 import numpy as np
 import pytest
 
-from pydid.data import load_nsw
-from pydid.drdid.drdid import drdid
+from didpy.data import load_nsw
+from didpy.drdid.drdid import drdid
 
 from ..helpers import importorskip
 
@@ -522,7 +522,7 @@ def test_drdid_all_estimators_consistency(nsw_data, panel, method):
 
 
 def test_drdid_comparison_with_ordid(nsw_data):
-    from pydid.drdid.ordid import ordid
+    from didpy.drdid.ordid import ordid
 
     or_result = ordid(
         data=nsw_data,

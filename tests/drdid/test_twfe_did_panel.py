@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid import twfe_did_panel
+from didpy import twfe_did_panel
 
 from ..helpers import importorskip
 

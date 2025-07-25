@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid import std_ipw_did_rc
+from didpy.drdid import std_ipw_did_rc
 
 
 def test_std_ipw_did_rc_basic():

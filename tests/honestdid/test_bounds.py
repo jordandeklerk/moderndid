@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.honestdid import (
+from didpy.honestdid import (
     compute_delta_sd_lowerbound_m,
     compute_delta_sd_upperbound_m,
     create_monotonicity_constraint_matrix,

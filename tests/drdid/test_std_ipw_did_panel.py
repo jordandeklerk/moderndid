@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pydid.drdid import std_ipw_did_panel
+from didpy.drdid import std_ipw_did_panel
 
 
 def test_std_ipw_did_panel_basic():
@@ -264,7 +264,7 @@ def test_std_ipw_did_panel_vs_non_standardized():
     y0 = x @ [1, 0.5] + np.random.randn(n)
     y1 = y0 + 2 * d + np.random.randn(n) * 0.5
 
-    from pydid.drdid import ipw_did_panel
+    from didpy.drdid import ipw_did_panel
 
     result_std = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x)
     result_non_std = ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x)

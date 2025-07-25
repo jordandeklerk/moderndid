@@ -4,8 +4,8 @@
 import numpy as np
 import pytest
 
-from pydid.honestdid.arp_no_nuisance import APRCIResult, _test_in_identified_set, compute_arp_ci
-from pydid.honestdid.bounds import create_second_difference_matrix
+from didpy.honestdid.arp_no_nuisance import APRCIResult, _test_in_identified_set, compute_arp_ci
+from didpy.honestdid.bounds import create_second_difference_matrix
 
 
 @pytest.fixture

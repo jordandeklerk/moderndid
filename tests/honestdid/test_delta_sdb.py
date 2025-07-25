@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from pydid.honestdid import (
+from didpy.honestdid import (
     DeltaSDBResult,
     compute_conditional_cs_sdb,
     compute_identified_set_sdb,

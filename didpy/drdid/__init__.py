@@ -1,6 +1,6 @@
 """Doubly robust DiD estimators."""
 
-from pydid.data import load_nsw
+from didpy.data import load_nsw
 
 from .bootstrap.boot_ipw_rc import wboot_ipw_rc
 from .bootstrap.boot_mult import mboot_did, mboot_twfep_did

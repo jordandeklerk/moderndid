@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
-from pydid import load_mpdta
-from pydid.did.compute_att_gt import (
+from didpy import load_mpdta
+from didpy.did.compute_att_gt import (
     ATTgtResult,
     ComputeATTgtResult,
     compute_att_gt,
@@ -15,8 +15,8 @@ from pydid.did.compute_att_gt import (
     run_att_gt_estimation,
     run_drdid,
 )
-from pydid.did.preprocess.models import DIDConfig
-from pydid.did.preprocess_did import preprocess_did
+from didpy.did.preprocess.models import DIDConfig
+from didpy.did.preprocess_did import preprocess_did
 
 
 @pytest.fixture
