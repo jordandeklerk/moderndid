@@ -15,7 +15,7 @@ __didpy__ is a unified Python implementation of modern difference-in-differences
 <br>
 
 > [!WARNING]
-> This package is currently in active development and subject to change.
+> This package is currently in active development with core estimators and some sensitivity analysis implemented. The API is subject to change.
 
 ## Sub-Modules for DiD Estimators
 
