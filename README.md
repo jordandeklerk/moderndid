@@ -9,7 +9,35 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/didpy)](https://github.com/jordandeklerk/didpy/graphs/commit-activity)
 [![Python version](https://img.shields.io/badge/3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
-__didpy__ is a Python package implementing modern DiD estimators for panel and repeated cross-section data, including staggered treatment timing, multiple time periods, doubly robust methods, continuous treatments, two-stage DiD, local projection DiD, machine learning approaches, and diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests for functional form.
+
+__didpy__ is a unified Python implementation of modern difference-in-differences (DiD) methodologies, bringing together the fragmented landscape of DiD estimators into a single, coherent framework. This package consolidates methods from leading econometric research and various R packages into one comprehensive Python library with a consistent API.
+
+<br>
+
+__didpy__ provides dedicated sub-packages for all modern DiD methodologies:
+
+**Core DiD Estimators:**
+
+- **`didpy.did`**: Multiple time periods and variation in treatment timing (Callaway and Sant'Anna, 2021) with group-time effects and flexible aggregation schemes
+- **`didpy.drdid`**: Doubly robust difference-in-differences estimators (Sant'Anna and Zhao, 2020) for panel and repeated cross-section data with improved efficiency and robustness
+
+**Advanced Methods:**
+
+- **`didpy.didcont`**: Continuous treatment DiD for dose-response relationships and non-binary treatments
+- **`didpy.didinter`**: Intertemporal Did for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags
+- **`didpy.didml`**: Machine learning approaches to DiD combining causal inference with ML methods
+- **`didpy.didbacon`**: Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons
+- **`didpy.drdidweak`**: New class of doubly robust estimators for treatment effect estimands that is also robust against weak covariate overlap
+- **`didpy.didcomp`**: DiD setups with repeated cross-sectional data and potential compositional changes across time periods
+- **`didpy.didlocal`**: Local projections DiD to address possible biases arising from negative weighting
+- **`didpy.did2s`**: Two-stage DiD for estimating TWFE models while avoiding issues with staggered treatment adoption
+
+**Diagnostic and Sensitivity Tools:**
+
+- **`didpy.didhonest`**: Sensitivity analysis for violations of parallel trends (Rambachan and Roth, 2023) with multiple restriction types
+- **`didpy.functional`**: Specification tests for functional form assumptions in DiD models
+
+Each subpackage is designed as a self-contained module with its own estimators, inference procedures, and visualization tools, while sharing common infrastructure for data handling and computation. This modular architecture allows researchers to use exactly the methods they need while benefiting from a unified interface and consistent design principles across all DiD approaches.
 
 <br>
 
