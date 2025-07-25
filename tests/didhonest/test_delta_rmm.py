@@ -4,12 +4,12 @@
 import numpy as np
 import pytest
 
-from didpy.honestdid import (
+from didpy.didhonest import (
     DeltaRMMResult,
     compute_conditional_cs_rmm,
     compute_identified_set_rmm,
 )
-from didpy.honestdid.delta.rm.rmm import (
+from didpy.didhonest.delta.rm.rmm import (
     _create_relative_magnitudes_monotonicity_constraint_matrix,
     _create_relative_magnitudes_monotonicity_constraint_vector,
 )
