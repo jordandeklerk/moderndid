@@ -7,7 +7,7 @@ import scipy.optimize as opt
 
 from ...arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
 from ...bounds import create_sign_constraint_matrix
-from ...delta.relative_magnitude.rm import _create_relative_magnitudes_constraint_matrix
+from ...delta.rm.rm import _create_relative_magnitudes_constraint_matrix
 from ...numba import find_rows_with_post_period_values
 from ...utils import basis_vector
 

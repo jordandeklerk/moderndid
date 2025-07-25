@@ -20,47 +20,47 @@ from .conditional import (
     estimate_lowerbound_m_conditional_test,
     test_in_identified_set_max,
 )
-from .delta.relative_magnitude.rm import (
+from .delta.rm.rm import (
     DeltaRMResult,
     compute_conditional_cs_rm,
     compute_identified_set_rm,
 )
-from .delta.relative_magnitude.rmb import (
+from .delta.rm.rmb import (
     DeltaRMBResult,
     compute_conditional_cs_rmb,
     compute_identified_set_rmb,
 )
-from .delta.relative_magnitude.rmm import (
+from .delta.rm.rmm import (
     DeltaRMMResult,
     compute_conditional_cs_rmm,
     compute_identified_set_rmm,
 )
-from .delta.second_diff.sd import (
+from .delta.sd.sd import (
     DeltaSDResult,
     compute_conditional_cs_sd,
     compute_identified_set_sd,
 )
-from .delta.second_diff.sdb import (
+from .delta.sd.sdb import (
     DeltaSDBResult,
     compute_conditional_cs_sdb,
     compute_identified_set_sdb,
 )
-from .delta.second_diff.sdm import (
+from .delta.sd.sdm import (
     DeltaSDMResult,
     compute_conditional_cs_sdm,
     compute_identified_set_sdm,
 )
-from .delta.second_diff_relative_magnitude.sdrm import (
+from .delta.sdrm.sdrm import (
     DeltaSDRMResult,
     compute_conditional_cs_sdrm,
     compute_identified_set_sdrm,
 )
-from .delta.second_diff_relative_magnitude.sdrmb import (
+from .delta.sdrm.sdrmb import (
     DeltaSDRMBResult,
     compute_conditional_cs_sdrmb,
     compute_identified_set_sdrmb,
 )
-from .delta.second_diff_relative_magnitude.sdrmm import (
+from .delta.sdrm.sdrmm import (
     DeltaSDRMMResult,
     compute_conditional_cs_sdrmm,
     compute_identified_set_sdrmm,
