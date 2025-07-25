@@ -60,7 +60,7 @@ def compute_conditional_cs_sdrm(
         \bar{M} \cdot \max_{s<0} |(\delta_{s+1} - \delta_s) - (\delta_s - \delta_{s-1})|\}
 
     This restriction is useful when researchers believe the differential trend evolves
-    relatively smoothly but are uncertain about the appropriate smoothness bound M.
+    relatively smoothly but are uncertain about the appropriate smoothness bound :math:`M`.
 
     The confidence set is computed as
 

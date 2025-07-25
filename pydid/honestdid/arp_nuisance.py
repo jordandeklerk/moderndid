@@ -1018,18 +1018,14 @@ def _compute_least_favorable_cv(
 
     sd_vec = np.sqrt(np.diag(sigma))
     dim_delta = x_t.shape[1]
-    # Minimize eta (same as original LP)
     c = np.concatenate([[1.0], np.zeros(dim_delta)])
-    # Constraints matrix
     C = -np.column_stack([sd_vec, x_t])
 
-    # Simulate data under null hypothesis
     xi_draws = rng.multivariate_normal(mean=np.zeros(sigma.shape[0]), cov=sigma, size=sims)
 
-    # For each simulation, solve the LP to get test statistic value
     eta_vec = []
     for xi in xi_draws:
-        # Use dual simplex to match R's lpSolveAPI settings
+        # Dual simplex
         result = opt.linprog(
             c=c,
             A_ub=C,
@@ -1085,9 +1081,7 @@ def _compute_flci_vlo_vup(vbar, dbar, s_vec, c_vec):
     Constraints with :math:`\bar{v}'c > 0` yield upper bounds, while those with
     :math:`\bar{v}'c < 0` yield lower bounds.
     """
-    # Stack vbar and -vbar to handle both upper and lower bounds
     vbar_mat = np.vstack([vbar.T, -vbar.T])
-
     vbar_c = vbar_mat @ c_vec
     vbar_s = vbar_mat @ s_vec
 
@@ -1147,14 +1141,13 @@ def _construct_gamma(l_vec):
     # The identity matrix ensures we can find a basis that includes l_vec
     B = np.column_stack([l_vec.reshape(-1, 1), np.eye(bar_t)])
 
-    # Use reduced row echelon form to find linearly independent columns
+    # Reduced row echelon form
     B_sympy = Matrix(B)
     rref_B, _ = B_sympy.rref()
 
     rref_B = np.array(rref_B).astype(float)
 
-    # Find pivot columns (leading ones) in RREF form
-    # These columns form a basis
+    # Pivot columns form the basis
     leading_ones = []
     for i in range(rref_B.shape[0]):
         try:

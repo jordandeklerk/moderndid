@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from pydid.honestdid.delta.second_diff.sdm import (
+from pydid.honestdid.delta.sd.sdm import (
     DeltaSDMResult,
     _create_sdm_constraint_matrix,
     _create_sdm_constraint_vector,

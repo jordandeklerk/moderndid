@@ -8,7 +8,7 @@ import pandas as pd
 from scipy import stats
 
 from .bounds import compute_delta_sd_upperbound_m
-from .delta.relative_magnitude.rm import compute_identified_set_rm
+from .delta.rm.rm import compute_identified_set_rm
 from .fixed_length_ci import compute_flci
 from .utils import basis_vector, validate_conformable, validate_symmetric_psd
 from .wrappers import DeltaMethodSelector

@@ -8,7 +8,7 @@ import scipy.optimize as opt
 from ...arp_no_nuisance import compute_arp_ci
 from ...arp_nuisance import compute_arp_nuisance_ci
 from ...bounds import create_sign_constraint_matrix
-from ...delta.second_diff.sd import _create_sd_constraint_matrix, _create_sd_constraint_vector
+from ...delta.sd.sd import _create_sd_constraint_matrix, _create_sd_constraint_vector
 from ...fixed_length_ci import compute_flci
 from ...numba import find_rows_with_post_period_values
 from ...utils import basis_vector
