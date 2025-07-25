@@ -11,7 +11,7 @@ pf = importorskip("pyfixest")
 
 from didpy.didhonest import (
     construct_original_cs,
-    create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_rm,
     create_sensitivity_results_sm,
 )
 
@@ -81,7 +81,7 @@ def test_relative_magnitudes_sensitivity(event_study_results):
     betahat, sigma = event_study_results
 
     m_bar_vec_rm = np.arange(0.5, 2.5, 0.5)
-    delta_rm_results = create_sensitivity_results_relative_magnitudes(
+    delta_rm_results = create_sensitivity_results_rm(
         betahat=betahat, sigma=sigma, num_pre_periods=5, num_post_periods=2, m_bar_vec=m_bar_vec_rm
     )
 
@@ -147,7 +147,7 @@ def test_average_effect_sensitivity(event_study_results):
     betahat, sigma = event_study_results
 
     l_vec = np.array([0.5, 0.5])
-    delta_rm_results_avg = create_sensitivity_results_relative_magnitudes(
+    delta_rm_results_avg = create_sensitivity_results_rm(
         betahat=betahat,
         sigma=sigma,
         num_pre_periods=5,

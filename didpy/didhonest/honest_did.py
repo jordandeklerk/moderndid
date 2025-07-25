@@ -8,7 +8,7 @@ import pandas as pd
 from .sensitivity import (
     OriginalCSResult,
     construct_original_cs,
-    create_sensitivity_results_relative_magnitudes,
+    create_sensitivity_results_rm,
     create_sensitivity_results_sm,
 )
 from .utils import basis_vector
@@ -215,7 +215,7 @@ def _honest_did_aggte(
     )
 
     if sensitivity_type == "relative_magnitude":
-        robust_ci = create_sensitivity_results_relative_magnitudes(
+        robust_ci = create_sensitivity_results_rm(
             betahat=att_no_ref,
             sigma=vcov_matrix,
             num_pre_periods=num_pre_periods,
