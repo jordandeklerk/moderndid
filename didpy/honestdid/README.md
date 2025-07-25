@@ -349,7 +349,7 @@ provided you are willing to impose relative magnitudes or smoothness restriction
 
 Below, we show how the package can be used with modern methods for DiD with staggered treatment timing.
 
-### Using HonestDiD with didpy's `att_gt` and `aggte` Methods
+### Using HonestDiD with `att_gt` and `aggte`
 
 We can combine staggered treatment DiD estimators of the Callaway and Sant'Anna type with Honest DiD
 sensitivity analysis in a straight-forward way:
