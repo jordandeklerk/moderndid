@@ -19,7 +19,7 @@ __didpy__ is a unified Python implementation of modern difference-in-differences
 
 <br>
 
-__didpy__ provides dedicated sub-packages for all modern DiD methodologies:
+## Sub-Modules for DiD Estimators
 
 **Core DiD Estimators:**
 
