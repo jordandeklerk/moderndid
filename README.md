@@ -21,12 +21,12 @@ __didpy__ is a unified Python implementation of modern difference-in-differences
 
 Each subpackage below is designed as a self-contained module with its own estimators, inference procedures, and visualization tools, while sharing common infrastructure for data handling and computation. This modular architecture allows researchers to use exactly the methods they need while benefiting from a unified interface and consistent design principles across all DiD approaches.
 
-**Core DiD Estimators:**
+**Core DiD Estimators**
 
 - **[`didpy.did`](https://github.com/jordandeklerk/didpy/tree/main/didpy/did)**: Multiple time periods and variation in treatment timing (Callaway and Sant'Anna, 2021) with group-time effects and flexible aggregation schemes
 - **[`didpy.drdid`](https://github.com/jordandeklerk/didpy/tree/main/didpy/drdid)**: Doubly robust difference-in-differences estimators (Sant'Anna and Zhao, 2020) for panel and repeated cross-section data with improved efficiency and robustness
 
-**Advanced Methods:**
+**Advanced Methods**
 
 - **[`didpy.didcont`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didcont)**: Continuous treatment DiD for dose-response relationships and non-binary treatments
 - **[`didpy.didinter`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didinter)**: Intertemporal Did for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags
@@ -37,7 +37,7 @@ Each subpackage below is designed as a self-contained module with its own estima
 - **[`didpy.didlocal`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didlocal)**: Local projections DiD to address possible biases arising from negative weighting
 - **[`didpy.did2s`](https://github.com/jordandeklerk/didpy/tree/main/didpy/did2s)**: Two-stage DiD for estimating TWFE models while avoiding issues with staggered treatment adoption
 
-**Diagnostic and Sensitivity Tools:**
+**Diagnostic and Sensitivity Tools**
 
 - **[`didpy.didhonest`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didhonest)**: Sensitivity analysis for violations of parallel trends (Rambachan and Roth, 2023) with multiple restriction types
 - **[`didpy.functional`](https://github.com/jordandeklerk/didpy/tree/main/didpy/functional)**: Specification tests for functional form assumptions in DiD models
