@@ -23,13 +23,13 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 **Core DiD Estimators**
 
-- **[`didpy.did`](https://github.com/jordandeklerk/didpy/tree/main/didpy/did)**: Multiple time periods and variation in treatment timing (Callaway and Sant'Anna, 2021) with group-time effects and flexible aggregation schemes
-- **[`didpy.drdid`](https://github.com/jordandeklerk/didpy/tree/main/didpy/drdid)**: Doubly robust difference-in-differences estimators (Sant'Anna and Zhao, 2020) for panel and repeated cross-section data with improved efficiency and robustness
+- **[`didpy.did`](https://github.com/jordandeklerk/didpy/tree/main/didpy/did)**: Multiple time periods and variation in treatment timing with group-time effects and flexible aggregation schemes (Callaway and Sant'Anna, 2021)
+- **[`didpy.drdid`](https://github.com/jordandeklerk/didpy/tree/main/didpy/drdid)**: Doubly robust difference-in-differences estimators for panel and repeated cross-section data with improved efficiency and robustness (Sant'Anna and Zhao, 2020)
 
 **Advanced Methods**
 
-- **[`didpy.didcont`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didcont)**: Continuous treatment DiD for dose-response relationships and non-binary treatments
-- **[`didpy.didinter`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didinter)**: Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags
+- **[`didpy.didcont`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didcont)**: Continuous treatment DiD for dose-response relationships and non-binary treatments (Callaway, Bacon, and Sant'Anna, 2024)
+- **[`didpy.didinter`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didinter)**: Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags (Chaisemartin and D’Haultfœuille, 2024)
 - **[`didpy.didml`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didml)**: Machine learning approaches to DiD combining causal inference with ML methods
 - **[`didpy.didbacon`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didbacon)**: Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons
 - **[`didpy.drdidweak`](https://github.com/jordandeklerk/didpy/tree/main/didpy/drdidweak)**: New class of doubly robust estimators for treatment effect estimands that is also robust against weak covariate overlap
@@ -39,5 +39,5 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 **Diagnostic and Sensitivity Tools**
 
-- **[`didpy.didhonest`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didhonest)**: Sensitivity analysis for violations of parallel trends (Rambachan and Roth, 2023) with multiple restriction types
+- **[`didpy.didhonest`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didhonest)**: Sensitivity analysis for violations of parallel trends with multiple restriction types (Rambachan and Roth, 2023)
 - **[`didpy.functional`](https://github.com/jordandeklerk/didpy/tree/main/didpy/functional)**: Specification tests for functional form assumptions in DiD models
