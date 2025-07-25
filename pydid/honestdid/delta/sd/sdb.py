@@ -293,7 +293,6 @@ def compute_identified_set_sdb(
     A_sdb = _create_sdb_constraint_matrix(num_pre_periods, num_post_periods, bias_direction)
     d_sdb = _create_sdb_constraint_vector(num_pre_periods, num_post_periods, m_bar)
 
-    # Add equality constraints: delta_pre = beta_pre
     A_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
     b_eq = true_beta[:num_pre_periods]
 
