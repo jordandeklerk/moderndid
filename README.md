@@ -12,14 +12,10 @@
 
 __didpy__ is a unified Python implementation of modern difference-in-differences (DiD) methodologies, bringing together the fragmented landscape of DiD estimators into a single, coherent framework. This package consolidates methods from leading econometric research and various R packages into one comprehensive Python library with a consistent API.
 
-<br>
-
 > [!WARNING]
 > This package is currently in active development with core estimators and some sensitivity analysis implemented. The API is subject to change.
 
-<br>
-
-Each subpackage is designed as a self-contained module with its own estimators, inference procedures, and visualization tools, while sharing common infrastructure for data handling and computation.
+Each subpackage below is designed as a self-contained module with its own estimators, inference procedures, and visualization tools, while sharing common infrastructure for data handling and computation. This architecture choice aims to allow researchers to use exactly the methods they need while benefiting from a unified interface and consistent design principles across all DiD approaches.
 
 | Module | Status | Description | Reference |
 |:-------|:-------|:------------|:----------|
