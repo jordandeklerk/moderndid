@@ -3,15 +3,8 @@
 import numpy as np
 from scipy import stats
 
-try:
-    import numba as nb
-
-    HAS_NUMBA = True
-except ImportError:
-    HAS_NUMBA = False
-    nb = None
-
 from .conditional import estimate_lowerbound_m_conditional_test
+from .numba import create_bounds_second_difference_matrix, create_monotonicity_matrix
 
 
 def compute_delta_sd_upperbound_m(
@@ -201,7 +194,7 @@ def create_second_difference_matrix(
 
     For post-periods, similar logic applies.
     """
-    return _create_second_difference_matrix_impl(num_pre_periods, num_post_periods)
+    return create_bounds_second_difference_matrix(num_pre_periods, num_post_periods)
 
 
 def create_pre_period_constraint_matrix(num_pre_periods):
@@ -318,7 +311,7 @@ def create_monotonicity_constraint_matrix(
     """
     total_periods = num_pre_periods + num_post_periods
 
-    a_m = _create_monotonicity_matrix_impl(num_pre_periods, num_post_periods)
+    a_m = create_monotonicity_matrix(num_pre_periods, num_post_periods)
     a_m = a_m[~np.all(a_m == 0, axis=1)]
 
     if post_period_moments_only:
@@ -394,98 +387,3 @@ def create_sign_constraint_matrix(
         raise ValueError("bias_direction must be 'positive' or 'negative'")
 
     return a_b
-
-
-if HAS_NUMBA:
-
-    @nb.jit(nopython=True, cache=True)
-    def _create_second_difference_matrix_impl(num_pre_periods, num_post_periods):
-        """Create second differences matrix (Numba-jitted)."""
-        total_periods = num_pre_periods + num_post_periods
-        n_pre_diffs = num_pre_periods - 2 if num_pre_periods >= 3 else 0
-        n_post_diffs = num_post_periods - 2 if num_post_periods >= 3 else 0
-        n_diffs = n_pre_diffs + n_post_diffs
-
-        if n_diffs == 0:
-            return np.zeros((0, total_periods))
-
-        a_sd = np.zeros((n_diffs, total_periods))
-
-        if n_pre_diffs > 0:
-            for r in range(n_pre_diffs):
-                a_sd[r, r] = 1.0
-                a_sd[r, r + 1] = -2.0
-                a_sd[r, r + 2] = 1.0
-
-        if n_post_diffs > 0:
-            for r in range(n_post_diffs):
-                post_idx = n_pre_diffs + r
-                coef_idx = num_pre_periods + r
-                a_sd[post_idx, coef_idx] = 1.0
-                a_sd[post_idx, coef_idx + 1] = -2.0
-                a_sd[post_idx, coef_idx + 2] = 1.0
-
-        return a_sd
-
-    @nb.jit(nopython=True, cache=True)
-    def _create_monotonicity_matrix_impl(num_pre_periods, num_post_periods):
-        """Create base monotonicity matrix (Numba-jitted)."""
-        total_periods = num_pre_periods + num_post_periods
-        a_m = np.zeros((total_periods, total_periods))
-
-        for r in range(num_pre_periods - 1):
-            a_m[r, r] = 1.0
-            a_m[r, r + 1] = -1.0
-
-        a_m[num_pre_periods - 1, num_pre_periods - 1] = 1.0
-
-        if num_post_periods > 0:
-            a_m[num_pre_periods, num_pre_periods] = -1.0
-            if num_post_periods > 1:
-                for r in range(num_pre_periods + 1, num_pre_periods + num_post_periods):
-                    a_m[r, r - 1] = 1.0
-                    a_m[r, r] = -1.0
-        return a_m
-
-
-else:
-
-    def _create_second_difference_matrix_impl(num_pre_periods, num_post_periods):
-        """Create second differences matrix (pure Python)."""
-        total_periods = num_pre_periods + num_post_periods
-        n_pre_diffs = num_pre_periods - 2 if num_pre_periods >= 3 else 0
-        n_post_diffs = num_post_periods - 2 if num_post_periods >= 3 else 0
-        n_diffs = n_pre_diffs + n_post_diffs
-
-        if n_diffs == 0:
-            return np.zeros((0, total_periods))
-
-        a_sd = np.zeros((n_diffs, total_periods))
-
-        if n_pre_diffs > 0:
-            for r in range(n_pre_diffs):
-                a_sd[r, r : (r + 3)] = [1, -2, 1]
-
-        if n_post_diffs > 0:
-            for r in range(n_post_diffs):
-                post_idx = n_pre_diffs + r
-                coef_idx = num_pre_periods + r
-                a_sd[post_idx, coef_idx : (coef_idx + 3)] = [1, -2, 1]
-        return a_sd
-
-    def _create_monotonicity_matrix_impl(num_pre_periods, num_post_periods):
-        """Create base monotonicity matrix (pure Python)."""
-        total_periods = num_pre_periods + num_post_periods
-        a_m = np.zeros((total_periods, total_periods))
-
-        for r in range(num_pre_periods - 1):
-            a_m[r, r : (r + 2)] = [1, -1]
-
-        a_m[num_pre_periods - 1, num_pre_periods - 1] = 1
-
-        if num_post_periods > 0:
-            a_m[num_pre_periods, num_pre_periods] = -1
-            if num_post_periods > 1:
-                for r in range(num_pre_periods + 1, num_pre_periods + num_post_periods):
-                    a_m[r, (r - 1) : r + 1] = [1, -1]
-        return a_m

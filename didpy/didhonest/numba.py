@@ -27,6 +27,8 @@ __all__ = [
     "clip_values",
     "prepare_theta_grid_y_values",
     "compute_hybrid_dbar",
+    "create_bounds_second_difference_matrix",
+    "create_monotonicity_matrix",
 ]
 
 
@@ -152,6 +154,46 @@ def _create_sdrm_constraint_matrix_impl(num_pre_periods, num_post_periods, m_bar
         a_matrix = np.delete(a_matrix, num_pre_periods, axis=1)
 
     return a_matrix
+
+
+def _create_bounds_second_difference_matrix_impl(num_pre_periods, num_post_periods):
+    total_periods = num_pre_periods + num_post_periods
+    n_pre_diffs = num_pre_periods - 2 if num_pre_periods >= 3 else 0
+    n_post_diffs = num_post_periods - 2 if num_post_periods >= 3 else 0
+    n_diffs = n_pre_diffs + n_post_diffs
+
+    if n_diffs == 0:
+        return np.zeros((0, total_periods))
+
+    a_sd = np.zeros((n_diffs, total_periods))
+
+    if n_pre_diffs > 0:
+        for r in range(n_pre_diffs):
+            a_sd[r, r : (r + 3)] = [1, -2, 1]
+
+    if n_post_diffs > 0:
+        for r in range(n_post_diffs):
+            post_idx = n_pre_diffs + r
+            coef_idx = num_pre_periods + r
+            a_sd[post_idx, coef_idx : (coef_idx + 3)] = [1, -2, 1]
+    return a_sd
+
+
+def _create_monotonicity_matrix_impl(num_pre_periods, num_post_periods):
+    total_periods = num_pre_periods + num_post_periods
+    a_m = np.zeros((total_periods, total_periods))
+
+    for r in range(num_pre_periods - 1):
+        a_m[r, r : (r + 2)] = [1, -1]
+
+    a_m[num_pre_periods - 1, num_pre_periods - 1] = 1
+
+    if num_post_periods > 0:
+        a_m[num_pre_periods, num_pre_periods] = -1
+        if num_post_periods > 1:
+            for r in range(num_pre_periods + 1, num_pre_periods + num_post_periods):
+                a_m[r, (r - 1) : r + 1] = [1, -1]
+    return a_m
 
 
 if HAS_NUMBA:
@@ -355,6 +397,53 @@ if HAS_NUMBA:
 
         return a_matrix
 
+    @nb.njit(cache=True)
+    def _create_bounds_second_difference_matrix_impl(num_pre_periods, num_post_periods):
+        total_periods = num_pre_periods + num_post_periods
+        n_pre_diffs = num_pre_periods - 2 if num_pre_periods >= 3 else 0
+        n_post_diffs = num_post_periods - 2 if num_post_periods >= 3 else 0
+        n_diffs = n_pre_diffs + n_post_diffs
+
+        if n_diffs == 0:
+            return np.zeros((0, total_periods))
+
+        a_sd = np.zeros((n_diffs, total_periods))
+
+        if n_pre_diffs > 0:
+            for r in range(n_pre_diffs):
+                a_sd[r, r] = 1.0
+                a_sd[r, r + 1] = -2.0
+                a_sd[r, r + 2] = 1.0
+
+        if n_post_diffs > 0:
+            for r in range(n_post_diffs):
+                post_idx = n_pre_diffs + r
+                coef_idx = num_pre_periods + r
+                a_sd[post_idx, coef_idx] = 1.0
+                a_sd[post_idx, coef_idx + 1] = -2.0
+                a_sd[post_idx, coef_idx + 2] = 1.0
+
+        return a_sd
+
+    @nb.njit(cache=True)
+    def _create_monotonicity_matrix_impl(num_pre_periods, num_post_periods):
+        total_periods = num_pre_periods + num_post_periods
+        a_m = np.zeros((total_periods, total_periods))
+
+        for r in range(num_pre_periods - 1):
+            a_m[r, r] = 1.0
+            a_m[r, r + 1] = -1.0
+
+        a_m[num_pre_periods - 1, num_pre_periods - 1] = 1.0
+
+        if num_post_periods > 0:
+            a_m[num_pre_periods, num_pre_periods] = -1.0
+            if num_post_periods > 1:
+                for r in range(num_pre_periods + 1, num_pre_periods + num_post_periods):
+                    a_m[r, r - 1] = 1.0
+                    a_m[r, r] = -1.0
+        return a_m
+
 
 def lee_coefficient(eta, sigma):
     """Compute coefficient for constructing confidence intervals."""
@@ -433,3 +522,13 @@ def compute_hybrid_dbar(flci_halflength, vbar, d_vec, a_gamma_inv_one, theta):
 def create_sdrm_constraint_matrix(num_pre_periods, num_post_periods, m_bar, s, max_positive=True, drop_zero=True):
     """Create constraint matrix for Delta^{SDRM}."""
     return _create_sdrm_constraint_matrix_impl(num_pre_periods, num_post_periods, m_bar, s, max_positive, drop_zero)
+
+
+def create_bounds_second_difference_matrix(num_pre_periods, num_post_periods):
+    """Create second differences matrix for bounds computation."""
+    return _create_bounds_second_difference_matrix_impl(num_pre_periods, num_post_periods)
+
+
+def create_monotonicity_matrix(num_pre_periods, num_post_periods):
+    """Create base monotonicity matrix."""
+    return _create_monotonicity_matrix_impl(num_pre_periods, num_post_periods)
