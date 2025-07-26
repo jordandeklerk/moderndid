@@ -17,16 +17,12 @@ __didpy__ is a unified Python implementation of modern difference-in-differences
 > [!WARNING]
 > This package is currently in active development with core estimators and some sensitivity analysis implemented. The API is subject to change.
 
-## Implementation Status
-
 Each subpackage is designed as a self-contained module with its own estimators, inference procedures, and visualization tools, while sharing common infrastructure for data handling and computation.
 
 | Module | Status | Description | Reference |
 |--------|---------|-------------|-----------|
-| **Core Estimators** | | | |
 | [`didpy.did`](https://github.com/jordandeklerk/didpy/tree/main/didpy/did) | ✅ **Implemented** | Multiple time periods and variation in treatment timing with group-time effects and flexible aggregation schemes | [Callaway and Sant'Anna, 2021](https://arxiv.org/pdf/1803.09015) |
 | [`didpy.drdid`](https://github.com/jordandeklerk/didpy/tree/main/didpy/drdid) | ✅ **Implemented** | Doubly robust difference-in-differences estimators for panel and repeated cross-section data with improved efficiency and robustness | [Sant'Anna and Zhao, 2020](https://arxiv.org/pdf/1812.01723) |
-| **Advanced Methods** | | | |
 | [`didpy.didcont`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didcont) | ⏳ Planned | Continuous treatment DiD for dose-response relationships and non-binary treatments | [Callaway, Goodman-Bacon, and Sant'Anna, 2024](https://arxiv.org/pdf/2107.02637) |
 | [`didpy.didinter`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didinter) | ⏳ Planned | Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags | [Chaisemartin and D'Haultfœuille, 2024](https://arxiv.org/pdf/2007.04267) |
 | [`didpy.didml`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didml) | ⏳ Planned | Modern machine learning approaches to DiD for estimation of time-varying conditional average treatment effects on the treated (CATT) | [Hatamyar, Kreif, Rocha, and Huber, 2023](https://arxiv.org/pdf/2310.11962) |
@@ -35,6 +31,5 @@ Each subpackage is designed as a self-contained module with its own estimators, 
 | [`didpy.didcomp`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didcomp) | ⏳ Planned | DiD setups with repeated cross-sectional data and potential compositional changes across time periods | [Sant'Anna and Xu, 2025](https://arxiv.org/pdf/2304.13925) |
 | [`didpy.didlocal`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didlocal) | ⏳ Planned | Local projections DiD to address possible biases arising from negative weighting | [Dube, Girardi, Jorda, and Taylor, 2025](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf) |
 | [`didpy.did2s`](https://github.com/jordandeklerk/didpy/tree/main/didpy/did2s) | ⏳ Planned | Two-stage DiD for estimating TWFE models while avoiding issues with staggered treatment adoption | [Gardner, 2021](https://jrgcmu.github.io/2sdd_current.pdf) |
-| **Diagnostic Tools** | | | |
 | [`didpy.didhonest`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didhonest) | ✅ **Implemented** | Sensitivity analysis for violations of parallel trends with multiple restriction types | [Rambachan and Roth, 2023](https://academic.oup.com/restud/article-abstract/90/5/2555/7039335?redirectedFrom=fulltext) |
 | [`didpy.functional`](https://github.com/jordandeklerk/didpy/tree/main/didpy/functional) | ⏳ Planned | Specification tests for functional form assumptions in DiD models | [Roth and Sant'Anna, 2023](https://arxiv.org/pdf/2010.04814) |
