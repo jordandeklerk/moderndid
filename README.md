@@ -19,7 +19,7 @@ __didpy__ is a unified Python implementation of modern difference-in-differences
 
 ## Sub-Modules for DiD Estimators
 
-Each subpackage below is designed as a self-contained module with its own estimators, inference procedures, and visualization tools, while sharing common infrastructure for data handling and computation. This modular architecture allows researchers to use exactly the methods they need while benefiting from a unified interface and consistent design principles across all DiD approaches.
+Each subpackage below is designed as a self-contained module with its own estimators, inference procedures, and visualization tools, while sharing common infrastructure for data handling and computation. This architecture choice aims to allow researchers to use exactly the methods they need while benefiting from a unified interface and consistent design principles across all DiD approaches.
 
 **Core DiD Estimators**
 
@@ -30,7 +30,7 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 - **[`didpy.didcont`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didcont)**: Continuous treatment DiD for dose-response relationships and non-binary treatments ([Callaway, Goodman-Bacon, and Sant'Anna, 2024](https://arxiv.org/pdf/2107.02637))
 - **[`didpy.didinter`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didinter)**: Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags ([Chaisemartin and D’Haultfœuille, 2024](https://arxiv.org/pdf/2007.04267))
-- **[`didpy.didml`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didml)**: Modern machine learning approaches to DiD for estimation of time-varying conditional average treatment effects on the treated [Hatamyar, Kreif, Rocha, and Huber, 2023](https://arxiv.org/pdf/2310.11962)
+- **[`didpy.didml`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didml)**: Modern machine learning approaches to DiD for estimation of time-varying conditional average treatment effects on the treated (CATT) ([Hatamyar, Kreif, Rocha, and Huber, 2023](https://arxiv.org/pdf/2310.11962))
 - **[`didpy.didbacon`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didbacon)**: Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons ([Goodman-Bacon, 2019](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf))
 - **[`didpy.drdidweak`](https://github.com/jordandeklerk/didpy/tree/main/didpy/drdidweak)**: New class of doubly robust estimators for treatment effect estimands that is also robust against weak covariate overlap ([Ma, Sant'Anna, Sasaki, and Ura, 2023](https://arxiv.org/pdf/2304.08974))
 - **[`didpy.didcomp`](https://github.com/jordandeklerk/didpy/tree/main/didpy/didcomp)**: DiD setups with repeated cross-sectional data and potential compositional changes across time periods ([Sant'Anna and  Xu, 2025](https://arxiv.org/pdf/2304.13925))
