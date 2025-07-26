@@ -74,7 +74,6 @@ def mboot(
     else:
         n_clusters = n_units
 
-    # Run multiplier bootstrap
     if cluster is None:
         bres = np.sqrt(n_units) * _run_multiplier_bootstrap(inf_func, biters, random_state)
     else:
@@ -105,7 +104,6 @@ def mboot(
         se_bootstrap = (q75 - q25) / (1.3489795)
         se_full[ndg_dim] = se_bootstrap / np.sqrt(n_clusters)
 
-    # Critical value for uniform confidence bands
     crit_val = np.nan
     if bres_clean.shape[1] > 0:
         with warnings.catch_warnings():
