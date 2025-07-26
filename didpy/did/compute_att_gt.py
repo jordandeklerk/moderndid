@@ -50,7 +50,6 @@ def compute_att_gt(data: DIDData) -> ComputeATTgtResult:
     n_units = data.config.id_count
     time_periods = data.config.time_periods
 
-    # Number of time periods to consider
     n_time_periods = len(time_periods) - 1 if data.config.base_period != "universal" else len(time_periods)
     time_factor = 1 if data.config.base_period != "universal" else 0
 
@@ -127,9 +126,7 @@ def run_att_gt_estimation(
     """
     time_factor = 1 if data.config.base_period != "universal" else 0
 
-    # Determine pre-treatment period
     if data.config.base_period == "universal":
-        # Find last period before treatment (accounting for anticipation)
         pre_periods = np.where(
             data.config.time_periods < (data.config.treated_groups[group_idx] - data.config.anticipation)
         )[0]
@@ -329,7 +326,6 @@ def run_drdid(
         return {"att": np.nan, "inf_func": np.zeros(n)}
 
     if data.config.panel:
-        # Panel data estimation
         y1 = cohort_data["y1"][valid_obs]
         y0 = cohort_data["y0"][valid_obs]
         d = cohort_data["D"][valid_obs]
@@ -360,7 +356,6 @@ def run_drdid(
         influence_func[valid_obs] = (n / valid_obs.sum()) * result.att_inf_func
 
     else:
-        # Cross-section data estimation
         y = cohort_data["y"][valid_obs]
         post = cohort_data["post"][valid_obs]
         d = cohort_data["D"][valid_obs]
