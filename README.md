@@ -17,6 +17,8 @@ __didpy__ is a unified Python implementation of modern difference-in-differences
 > [!WARNING]
 > This package is currently in active development with core estimators and some sensitivity analysis implemented. The API is subject to change.
 
+<br>
+
 Each subpackage is designed as a self-contained module with its own estimators, inference procedures, and visualization tools, while sharing common infrastructure for data handling and computation.
 
 | Module | Status | Description | Reference |
