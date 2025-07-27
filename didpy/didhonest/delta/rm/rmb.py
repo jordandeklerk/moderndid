@@ -5,7 +5,7 @@ from typing import NamedTuple
 import numpy as np
 import scipy.optimize as opt
 
-from ...arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
+from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
 from ...delta.rm.rm import _create_relative_magnitudes_constraint_matrix
 from ...numba import find_rows_with_post_period_values
@@ -642,7 +642,7 @@ def _compute_conditional_cs_rmb_fixed_s(
 
     if num_post_periods == 1:
         if hybrid_flag == "LF":
-            lf_cv = _compute_least_favorable_cv(
+            lf_cv = compute_least_favorable_cv(
                 x_t=None,
                 sigma=A_rmb @ sigma @ A_rmb.T,
                 hybrid_kappa=hybrid_kappa,

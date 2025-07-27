@@ -6,7 +6,7 @@ import numpy as np
 import scipy.optimize as opt
 
 from ...arp_no_nuisance import compute_arp_ci
-from ...arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
+from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...numba import create_first_differences_matrix
 from ...utils import basis_vector
 
@@ -627,7 +627,7 @@ def _compute_conditional_cs_rm_fixed_s(
 
     if num_post_periods == 1:
         if hybrid_flag == "LF":
-            lf_cv = _compute_least_favorable_cv(
+            lf_cv = compute_least_favorable_cv(
                 x_t=None,
                 sigma=A_rm @ sigma @ A_rm.T,
                 hybrid_kappa=hybrid_kappa,

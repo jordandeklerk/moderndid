@@ -76,20 +76,6 @@ To verify that didpy is installed correctly, you can run the following command:
 
     python -c "import didpy; print(didpy.__version__)"
 
-Dependencies
-------------
-
-Required dependencies:
-
-- numpy (>=1.22.0)
-- scipy (>=1.10.0,<1.16)
-- pandas (>=2.0.0)
-- formulaic (>=0.6.0)
-- statsmodels (>=0.14.4)
-- scikit-learn (>=1.6.1)
-- cvxpy[ECOS] (>=1.3.0)
-- sympy (>=1.14.0)
-
 Development
 -----------
 

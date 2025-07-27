@@ -184,7 +184,7 @@ def test_second_difference_matrix_consistency(num_pre, num_post):
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.parametrize("num_pre,num_post", [(2, 1), (3, 2), (5, 4)])
 def test_monotonicity_matrix_consistency(num_pre, num_post):
-    matrix_numba = bounds._create_monotonicity_matrix_impl(num_pre, num_post)
+    matrix_numba = numba._create_monotonicity_matrix_impl(num_pre, num_post)
     matrix_original = _create_monotonicity_matrix_py(num_pre, num_post)
     np.testing.assert_array_equal(matrix_numba, matrix_original)
 
@@ -272,8 +272,8 @@ def test_monotonicity_matrix_performance(matrix_construction_sizes, request):
     if request.config.getoption("--skip-perf", default=False):
         pytest.skip("Skipping performance test")
     num_pre, num_post = matrix_construction_sizes
-    bounds._create_monotonicity_matrix_impl(num_pre, num_post)  # Warm-up
-    time_numba = time_function(bounds._create_monotonicity_matrix_impl, num_pre, num_post)
+    numba._create_monotonicity_matrix_impl(num_pre, num_post)  # Warm-up
+    time_numba = time_function(numba._create_monotonicity_matrix_impl, num_pre, num_post)
     time_original = time_function(_create_monotonicity_matrix_py, num_pre, num_post)
     if num_pre > 10:
         assert time_original * 1.1 > time_numba, "Numba version should not be significantly slower"

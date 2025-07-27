@@ -6,7 +6,7 @@ import numpy as np
 import scipy.optimize as opt
 
 from ...arp_no_nuisance import compute_arp_ci
-from ...arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
+from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
 from ...numba import create_sdrm_constraint_matrix, find_rows_with_post_period_values
 from ...utils import basis_vector
@@ -546,7 +546,7 @@ def _compute_cs_sdrmb_no_nuisance(
     }
 
     if hybrid_flag == "LF":
-        lf_cv = _compute_least_favorable_cv(
+        lf_cv = compute_least_favorable_cv(
             x_t=None,
             sigma=a_sdrmb @ sigma @ a_sdrmb.T,
             hybrid_kappa=hybrid_kappa,
