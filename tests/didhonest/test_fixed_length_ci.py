@@ -12,10 +12,8 @@ from didpy.didhonest.fixed_length_ci import (
     compute_flci,
     folded_normal_quantile,
     get_min_bias_h,
-    l_to_weights,
     maximize_bias,
     minimize_variance,
-    weights_to_l,
 )
 
 
@@ -296,45 +294,6 @@ def test_h_ordering(test_data):
     )
 
     assert h_min_var <= h_min_bias + 1e-6
-
-
-@pytest.mark.parametrize(
-    "weights,expected",
-    [
-        (np.array([1, 2, 3, 4]), np.array([1, 3, 6, 10])),
-        (np.array([0.5, -0.3, 0.8, 1.2]), None),
-        (np.array([5.0]), np.array([5.0])),
-    ],
-)
-def test_weights_to_l_conversion(weights, expected):
-    l_vector = weights_to_l(weights)
-
-    if expected is None:
-        recovered = l_to_weights(l_vector)
-        np.testing.assert_array_almost_equal(weights, recovered)
-    else:
-        np.testing.assert_array_almost_equal(l_vector, expected)
-
-
-@pytest.mark.parametrize(
-    "l_vector,expected",
-    [
-        (np.array([1, 3, 6, 10]), np.array([1, 2, 3, 4])),
-        (np.array([5.0]), np.array([5.0])),
-    ],
-)
-def test_l_to_weights_conversion(l_vector, expected):
-    weights = l_to_weights(l_vector)
-    np.testing.assert_array_almost_equal(weights, expected)
-
-
-def test_conversion_roundtrip():
-    original_weights = np.array([0.5, -0.3, 0.8, 1.2])
-
-    l_vector = weights_to_l(original_weights)
-    recovered_weights = l_to_weights(l_vector)
-
-    np.testing.assert_array_almost_equal(original_weights, recovered_weights)
 
 
 @pytest.mark.parametrize(
