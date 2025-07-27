@@ -9,10 +9,12 @@ didpy documentation
    :hidden:
 
    User Guide <user_guide>
+   Examples <examples/index>
    API reference <api/index>
-   Tutorial <tutorial/index>
    Development <dev/index>
    release/index
+   background
+   installing
 
 
 **Version**: |version|
@@ -32,12 +34,10 @@ didpy documentation
       This documentation is for the latest development version of didpy.
       There is no stable release yet.
 
-didpy is a comprehensive Python package for modern difference-in-differences (DiD)
-estimation. It provides a unified framework for causal inference using DiD methods
-with panel and repeated cross-section data, including advanced estimators for
-staggered treatment timing, multiple time periods, doubly robust methods, continuous
-treatments, two-stage DiD, local projection DiD, machine learning approaches, and
-diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests.
+didpy is a unified Python implementation of modern difference-in-differences (DiD)
+methodologies, bringing together the fragmented landscape of DiD estimators into a single,
+coherent framework. This package consolidates methods from leading econometric research and
+various R packages into one comprehensive Python library with a consistent API.
 
 
 
@@ -87,20 +87,20 @@ diagnostic tools like the Bacon-Goodman decomposition and sensitivity tests.
         :img-top: _static/tutorial.svg
         :text-align: center
 
-        Tutorial
+        Example gallery
         ^^^
 
-        The tutorial provides step-by-step guides and examples to get started with DiD estimation,
-        including practical applications and best practices.
+        New to didpy? Check out the example gallery for practical demonstrations
+        of how to use the package's DiD estimators with real-world data scenarios.
 
         +++
 
-        .. button-ref:: tutorial/index
+        .. button-ref:: examples/index
             :expand:
             :color: secondary
             :click-parent:
 
-            To the tutorial
+            To the example gallery
 
     .. grid-item-card::
         :img-top: _static/developer.svg

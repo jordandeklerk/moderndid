@@ -1,4 +1,4 @@
-"""Sensitivity analysis using the approach of Rambachan and Roth (2021)."""
+"""Sensitivity analysis using the approach of Rambachan and Roth."""
 
 from typing import NamedTuple, Protocol, runtime_checkable
 
@@ -77,6 +77,59 @@ def honest_did(
         - robust_ci : DataFrame with sensitivity analysis results
         - original_ci : Original confidence interval
         - sensitivity_type : Type of analysis performed
+
+    Examples
+    --------
+    The ``honest_did`` function performs sensitivity analysis on event study estimates to assess
+    the robustness of results to violations of parallel trends. We demonstrate this below with a
+    staggered treatment adoption design.
+
+    First, we need to compute an event study. The function requires an event study
+    object that contains the dynamic influence functions, which we obtain by first computing group-time
+    effects and then aggregating them.
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import numpy as np
+           ...: from didpy import att_gt, aggte, load_mpdta
+           ...: from didpy.didhonest import honest_did
+           ...
+           ...: df = load_mpdta()
+           ...: gt_result = att_gt(
+           ...:     data=df,
+           ...:     yname="lemp",
+           ...:     tname="year",
+           ...:     gname="first.treat",
+           ...:     idname="countyreal",
+           ...:     est_method="dr",
+           ...:     bstrap=False
+           ...: )
+           ...: es_result = aggte(gt_result, type="dynamic")
+           ...: print(es_result)
+
+    Now we can apply the honest DiD sensitivity analysis. We can examine how robust
+    our estimated treatment effects are when we allow for potential violations of the parallel
+    trends assumption. We'll analyze the on-impact effect (event_time=0) using smoothness
+    restrictions, which bound how much pre-treatment trends can deviate.
+
+    .. ipython::
+        :okwarning:
+
+        In [2]: hd_result = honest_did(
+           ...:     event_study=es_result,
+           ...:     event_time=0,
+           ...:     sensitivity_type="smoothness",
+           ...:     m_vec=[0.01, 0.02, 0.03]
+           ...: )
+           ...:
+           ...: hd_result
+
+    The output shows the original confidence interval (which assumes parallel trends hold exactly)
+    and robust confidence intervals under different smoothness bounds. The ``m_vec`` parameter specifies
+    different bounds on how much the linear trend can change between consecutive periods. Larger
+    values of :math:`M` allow for bigger violations of parallel trends. If the robust CIs remain informative
+    even under reasonable violations, this provides evidence that the results are credible.
 
     References
     ----------

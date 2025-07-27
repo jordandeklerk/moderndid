@@ -1,3 +1,4 @@
+# pylint: disable=too-many-return-statements
 """Andrews-Roth-Pakes (ARP) confidence intervals with nuisance parameters."""
 
 import warnings
@@ -52,24 +53,28 @@ def compute_arp_nuisance_ci(
 ):
     r"""Compute ARP confidence interval with nuisance parameters.
 
-    Computes confidence interval for :math:`\theta = l'\beta` subject to the constraint
+    Computes confidence interval for :math:`\theta = l'\tau_{post}` subject to the constraint
     that :math:`\delta \in \Delta`, where :math:`\Delta = \{\delta : A\delta \leq d\}`.
     This implements the conditional inference approach from Andrews, Roth & Pakes (2023)
     that provides uniformly valid inference over the identified set.
 
-    The ARP approach transforms the partial identification problem into a conditional
-    inference problem. Rather than inverting a test of :math:`H_0: \theta = \theta_0`
-    for each value on a grid, it tests whether :math:`\theta_0` lies in the identified
-    set:
+    The method tests the composite null hypothesis from equation (12) in [2]_
 
     .. math::
-        \mathcal{I}(\Delta) = \{l'(\beta - \delta) : \delta \in \Delta, \delta_{pre} = \beta_{pre}\}.
+        H_0: \exists \tau_{post} \in \mathbb{R}^{\bar{T}} \text{ s.t. } l'\tau_{post} = \bar{\theta}
+        \text{ and } \mathbb{E}_{\hat{\beta}_n \sim
+        \mathcal{N}(\delta+\tau, \Sigma_n)}[Y_n - AL_{post}\tau_{post}] \leq 0,
 
-    The key here is that under the null, the event study coefficients satisfy
-    :math:`\hat{\beta} \sim N(\tau + \delta, \Sigma)` where :math:`\delta \in \Delta`.
-    The test conditions on which moments bind at the optimum, leading to a truncated
-    normal distribution for the test statistic. This conditioning ensures correct
-    coverage even when the identified set is small or empty.
+    where :math:`Y_n = A\hat{\beta}_n - d` and :math:`L_{post} = [0, I]'`. After a change of
+    basis using matrix :math:`\Gamma` with :math:`l'` as its first row, this becomes
+    equation (13) in [2]_
+
+    .. math::
+        H_0: \exists \tilde{\tau} \in \mathbb{R}^{\bar{T}-1} \text{ s.t. }
+        \mathbb{E}[\tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau}] \leq 0,
+
+    where :math:`\tilde{Y}(\bar{\theta}) = Y_n - \tilde{A}_{(\cdot,1)}\bar{\theta}` and
+    :math:`\tilde{X} = \tilde{A}_{(\cdot,-1)}`.
 
     Parameters
     ----------
@@ -116,10 +121,15 @@ def compute_arp_nuisance_ci(
     The method handles nuisance parameters by reparametrizing the problem using
     an invertible transformation :math:`\Gamma` with :math:`l` as its first row.
     This allows expressing the constraints in terms of :math:`(\theta, \xi)` where
-    :math:`\xi` are nuisance parameters.
+    :math:`\xi` are nuisance parameters. The test then profiles over :math:`\xi` for each
+    value of :math:`\theta`, using either primal or dual optimization depending on the conditioning
+    set's geometry.
 
-    The test then profiles over :math:`\xi` for each value of :math:`\theta`,
-    using either primal or dual optimization depending on the conditioning set's geometry.
+    The test controls size uniformly without requiring the linear independence constraint
+    qualification (LICQ). However, when LICQ holds (i.e., gradients of binding constraints
+    are linearly independent), Proposition 3.3 shows the conditional test achieves optimal
+    local asymptotic power converging to the power envelope for tests controlling size in
+    the finite-sample normal model.
 
     References
     ----------
@@ -156,7 +166,7 @@ def compute_arp_nuisance_ci(
 
     # Least favorable CV if needed
     if hybrid_flag == "LF":
-        hybrid_list["lf_cv"] = _compute_least_favorable_cv(
+        hybrid_list["lf_cv"] = compute_least_favorable_cv(
             a_gamma_inv_minus_one,
             sigma_y,
             hybrid_list["hybrid_kappa"],
@@ -179,7 +189,7 @@ def compute_arp_nuisance_ci(
             )
 
         # Test theta value
-        result = _lp_conditional_test(
+        result = lp_conditional_test(
             y_t=y_t,
             x_t=a_gamma_inv_minus_one,
             sigma=sigma_y,
@@ -222,7 +232,7 @@ def compute_arp_nuisance_ci(
     )
 
 
-def _lp_conditional_test(  # pylint: disable=too-many-return-statements
+def lp_conditional_test(
     y_t,
     x_t=None,
     sigma=None,
@@ -233,14 +243,32 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
 ):
     r"""Perform ARP test of moment inequality with nuisance parameters.
 
-    Tests the null hypothesis :math:`H_0: \mathbb{E}[Y_T - X_T\xi] \leq 0` for some :math:`\xi`,
-    where :math:`Y_T = A\hat{\beta} - d` has been adjusted for the hypothesized value of
-    :math:`\theta`. This is the core testing problem in the ARP framework.
+    Tests the null hypothesis :math:`H_0: \exists \tilde{\tau} \in \mathbb{R}^{\bar{T}-1} \text{ s.t. }
+    \mathbb{E}[\tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau}] \leq 0`, where
+    :math:`\tilde{Y}_n(\bar{\theta}) = Y_n - \tilde{A}_{(\cdot,1)}\bar{\theta}` has been adjusted
+    for the hypothesized value of :math:`\theta`. This is the core testing problem (13) in the ARP framework.
 
-    The test statistic is :math:`\eta^* = \min_{\eta, \xi} \eta` subject to
-    :math:`Y_T - X_T\xi \leq \eta \cdot \text{diag}(\Sigma_Y)^{1/2}`, where
-    :math:`\Sigma_Y = A\Sigma A'`. The test conditions on the binding moments at
+    The test statistic from equation (14) in [2]_ is
+
+    .. math::
+        \hat{\eta} = \min_{\eta, \tilde{\tau}} \eta \text{ s.t. }
+        \tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau} \leq \tilde{\sigma}_n \cdot \eta,
+
+    where :math:`\tilde{\sigma}_n = \sqrt{\text{diag}(\tilde{\Sigma}_n)}` and
+    :math:`\tilde{\Sigma}_n = A\Sigma_n A'`. The test conditions on the binding moments at
     the optimum, leading to a truncated normal critical value.
+
+    The conditional distribution of :math:`\hat{\eta}` given :math:`\gamma_* \in \hat{V}_n` and
+    :math:`S_n = s` is
+
+    .. math::
+        \hat{\eta} | \{\gamma_* \in \hat{V}_n, S_n = s\} \sim \xi | \xi \in [v^{lo}, v^{up}],
+
+    where :math:`\xi \sim \mathcal{N}(\gamma_*'\tilde{\mu}(\bar{\theta}), \gamma_*'\tilde{\Sigma}_n\gamma_*)`,
+    :math:`S_n = (I - \tilde{\Sigma}_n\gamma_*\gamma_*'/(\gamma_*'\tilde{\Sigma}_n\gamma_*))\tilde{Y}_n(\bar{\theta})`,
+    and :math:`[v^{lo}, v^{up}]` are truncation bounds. The conditional test uses critical value
+    :math:`\max\{0, c_{C,\alpha}\}` where :math:`c_{C,\alpha}` is the :math:`(1-\alpha)` quantile of the
+    truncated normal under :math:`\gamma_*'\tilde{\mu}(\bar{\theta}) = 0`.
 
     When the optimization problem is degenerate or the binding moments don't have
     full rank, the method switches to a dual approach that works directly with
@@ -280,9 +308,26 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
     Notes
     -----
     The test constructs the least favorable distribution by finding the value of
-    :math:`\xi` that minimizes the test statistic. It then computes a conditional
-    critical value that accounts for the optimization over :math:`\xi`. The
-    conditioning ensures the test has correct size uniformly over :math:`\Delta`.
+    :math:`\tilde{\tau}` that minimizes the test statistic. Under the null hypothesis,
+    :math:`\gamma_*'\tilde{\mu}(\bar{\theta}) \leq 0` since :math:`\gamma_* \geq 0`,
+    :math:`\gamma_*'\tilde{X} = 0`, and there exists :math:`\tilde{\tau}` such that
+    :math:`\tilde{\mu}(\bar{\theta}) - \tilde{X}\tilde{\tau} \leq 0`.
+
+    For the hybrid test, if the first-stage LF test with size :math:`\kappa` rejects
+    (i.e., :math:`\hat{\eta} > c_{LF,\kappa}`), the test rejects. Otherwise, it applies
+    a modified conditional test with size :math:`(\alpha-\kappa)/(1-\kappa)` that
+    conditions on :math:`\hat{\eta} \leq c_{LF,\kappa}`, using :math:`v_H^{up} = \min\{v^{up}, c_{LF,\kappa}\}`.
+
+    Under LICQ, the LF-hybrid test's local asymptotic power is at least as good as the
+    power of the optimal size-:math:`(\alpha-\kappa)/(1-\kappa)` test (Corollary 3.1).
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
+        Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if hybrid_list is None:
         hybrid_list = {}
@@ -331,7 +376,7 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
         }
 
     # Compute eta and argmin delta
-    lin_soln = _test_delta_lp(y_t_arp, x_t_arp, sigma_arp)
+    lin_soln = test_delta_lp(y_t_arp, x_t_arp, sigma_arp)
 
     if not lin_soln["success"]:
         return {
@@ -533,23 +578,32 @@ def _lp_conditional_test(  # pylint: disable=too-many-return-statements
     }
 
 
-def _test_delta_lp(y_t, x_t, sigma):
+def test_delta_lp(y_t, x_t, sigma):
     r"""Solve linear program for delta test.
 
-    Solves the optimization problem
+    Solves the primal optimization problem from equation (14) in [2]_
 
     .. math::
 
-        \eta^* = \min_{\eta, \xi} \eta \quad \text{s.t.} \quad y_T - X_T\xi \leq \eta \cdot \text{diag}(\Sigma)^{1/2}.
+        \hat{\eta} = \min_{\eta, \tilde{\tau}} \eta \quad \text{s.t.} \quad
+        \tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau} \leq \tilde{\sigma}_n \cdot \eta.
 
     This linear program finds the smallest scaling :math:`\eta` such that there exists
-    a nuisance parameter vector :math:`\xi` making all moment inequalities satisfied.
+    a nuisance parameter vector :math:`\tilde{\tau}` making all moment inequalities satisfied.
     The solution characterizes whether the null hypothesis can be rejected and identifies
     which moments bind at the optimum.
 
-    The dual solution (Lagrange multipliers) is crucial for the conditional inference
-    approach as it determines the conditioning event. Moments with positive multipliers
-    are binding and define the geometry of the conditional test.
+    By duality (equation (15) in [2]_), this equals
+
+    .. math::
+
+        \hat{\eta} = \max_{\gamma} \gamma'\tilde{Y}_n(\bar{\theta}) \text{ s.t. }
+        \gamma'\tilde{X} = 0, \gamma'\tilde{\sigma}_n = 1, \gamma \geq 0.
+
+    The dual solution :math:`\gamma_*` (Lagrange multipliers) is crucial for the conditional
+    inference approach as it determines the conditioning event. The vertices :math:`\hat{V}_n \subset V(\Sigma_n)`
+    correspond to basic feasible solutions of the dual program, and conditioning on :math:`\gamma_* \in \hat{V}_n`
+    ensures correct coverage.
 
     Parameters
     ----------
@@ -576,6 +630,14 @@ def _test_delta_lp(y_t, x_t, sigma):
     each moment by its standard deviation, ensuring scale invariance. The optimal
     :math:`\eta^*` can be interpreted as the maximum standardized violation of the
     moment inequalities under the least favorable choice of :math:`\xi`.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
+        Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if x_t.ndim == 1:
         x_t = x_t.reshape(-1, 1)
@@ -620,82 +682,7 @@ def _test_delta_lp(y_t, x_t, sigma):
     }
 
 
-def _lp_dual_wrapper(
-    y_t,
-    x_t,
-    eta,
-    gamma_tilde,
-    sigma,
-):
-    r"""Wrap vlo and vup computation using bisection approach.
-
-    Computes the support bounds :math:`[v_{lo}, v_{up}]` for the test statistic
-    under the conditional distribution when using the dual approach. The dual
-    approach is necessary when the primal problem is degenerate or when the
-    binding constraints don't have full rank.
-
-    The key here is that we can work directly with the Lagrange multipliers
-    :math:`\gamma` (normalized to sum to 1) rather than the primal variables.
-    The test statistic :math:`\gamma'Y` has a truncated normal distribution
-    with truncation bounds determined by the requirement that :math:`\gamma`
-    remains optimal.
-
-    Parameters
-    ----------
-    y_t : ndarray
-        Outcome vector :math:`Y_T = A\hat{\beta} - d`.
-    x_t : ndarray
-        Covariate matrix :math:`X_T` (may not have full column rank).
-    eta : float
-        Optimal value :math:`\eta^*` from the linear program.
-    gamma_tilde : ndarray
-        Normalized Lagrange multipliers :math:`\tilde{\gamma} = \lambda / \sum_i \lambda_i`.
-    sigma : ndarray
-        Covariance matrix :math:`\Sigma_Y` of y_t.
-
-    Returns
-    -------
-    dict
-        Dictionary containing:
-
-        - vlo: float, lower bound of support
-        - vup: float, upper bound of support
-        - eta: float, optimal value (passed through)
-        - gamma_tilde: ndarray, normalized multipliers (passed through)
-
-    Notes
-    -----
-    The dual approach constructs a valid test by working with the optimality
-    conditions of the linear program. Even when the primal problem is ill-conditioned,
-    the dual formulation provides a well-defined test statistic with computable
-    truncation bounds.
-    """
-    if x_t.ndim == 1:
-        x_t = x_t.reshape(-1, 1)
-
-    sd_vec = np.sqrt(np.diag(sigma))
-    w_t = np.column_stack([sd_vec, x_t])
-
-    # Residual after projecting out gamma_tilde direction
-    # This is the component of y_t orthogonal to gamma_tilde under the metric sigma
-    gamma_sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
-    if gamma_sigma_gamma <= 0:
-        raise ValueError("gamma'*sigma*gamma must be positive")
-
-    # Projection matrix is I - (sigma * gamma * gamma') / (gamma' * sigma * gamma)
-    s_t = (np.eye(len(y_t)) - (sigma @ np.outer(gamma_tilde, gamma_tilde)) / gamma_sigma_gamma) @ y_t
-
-    v_dict = _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t)
-
-    return {
-        "vlo": v_dict["vlo"],
-        "vup": v_dict["vup"],
-        "eta": eta,
-        "gamma_tilde": gamma_tilde,
-    }
-
-
-def _compute_vlo_vup_dual(
+def compute_vlo_vup_dual(
     eta,
     s_t,
     gamma_tilde,
@@ -742,6 +729,14 @@ def _compute_vlo_vup_dual(
     :math:`W'\lambda = e_1` and :math:`\lambda'\mathbf{1} = 1`, where :math:`e_1` is the
     first standard basis vector. The value :math:`v` where this maximum equals :math:`v`
     itself determines the boundary of the support.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
+        Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     tol_c = 1e-6
     tol_equality = 1e-6
@@ -846,6 +841,191 @@ def _compute_vlo_vup_dual(
     return {"vlo": vlo, "vup": vup}
 
 
+def compute_least_favorable_cv(
+    x_t=None,
+    sigma=None,
+    hybrid_kappa=0.05,
+    sims=1000,
+    rows_for_arp=None,
+    seed=0,
+):
+    r"""Compute least favorable critical value.
+
+    Computes the critical value :math:`c_{LF,\kappa}` for the least favorable (LF) hybrid test,
+    which uses a data-dependent first stage that rejects for large values of the test
+    statistic :math:`\hat{\eta}`. The LF critical value is the :math:`(1-\kappa)` quantile of
+    :math:`\max_{\gamma \in V(\Sigma)} \gamma'\xi` where :math:`\xi \sim \mathcal{N}(0, \tilde{\Sigma}_n)`.
+
+    The least favorable distribution assumes :math:`\tilde{\mu}(\bar{\theta}) = 0`, which
+    maximizes the rejection probability under the null. Since the distribution of :math:`\hat{\eta}`
+    under the null is bounded above (in first-order stochastic dominance) by its distribution
+    when :math:`\tilde{\mu}(\bar{\theta}) = 0`, this ensures size control.
+
+    For the hybrid test, if :math:`\hat{\eta} > c_{LF,\kappa}`, the first stage rejects.
+    Otherwise, the second stage applies a modified conditional test with size
+    :math:`(\alpha - \kappa)/(1 - \kappa)` that conditions on :math:`\hat{\eta} \leq c_{LF,\kappa}`.
+
+    Parameters
+    ----------
+    x_t : ndarray or None
+        Covariate matrix :math:`X_T` for nuisance parameters. If None, the test
+        has no nuisance parameters.
+    sigma : ndarray
+        Covariance matrix :math:`\Sigma_Y` of the moments.
+    hybrid_kappa : float
+        First-stage size :math:`\kappa`, typically :math:`\alpha/10`.
+    sims : int
+        Number of Monte Carlo simulations for critical value computation.
+    rows_for_arp : ndarray, optional
+        Subset of rows to use, focusing on informative moments.
+    seed : int or None
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    float
+        Least favorable critical value :math:`c_{LF}` such that
+        :math:`\mathbb{P}(\eta^* > c_{LF}) = \kappa` under the least favorable distribution.
+
+    Notes
+    -----
+    Without nuisance parameters, the least favorable distribution is standard
+    multivariate normal and :math:`\eta^* = \max_i Z_i/\sigma_i` where :math:`Z_i`
+    are the standardized moments. With nuisance parameters, each simulation
+    requires solving the linear program to account for optimization over :math:`\xi`.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
+        Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    """
+    rng = np.random.default_rng(seed)
+
+    if rows_for_arp is not None:
+        if x_t is not None:
+            if x_t.ndim == 1:
+                x_t = x_t[rows_for_arp]
+            else:
+                x_t = x_t[rows_for_arp]
+        sigma = sigma[np.ix_(rows_for_arp, rows_for_arp)]
+
+    if x_t is None:
+        # No nuisance parameter case: simulate max of standardized normal vector
+        xi_draws = rng.multivariate_normal(mean=np.zeros(sigma.shape[0]), cov=sigma, size=sims)
+        sd_vec = np.sqrt(np.diag(sigma))
+        xi_draws = xi_draws / sd_vec
+        eta_vec = np.max(xi_draws, axis=1)
+        return float(np.quantile(eta_vec, 1 - hybrid_kappa))
+
+    # Nuisance parameter case: need to solve LP for each simulation
+    # This finds the least favorable distribution that maximizes size
+    if x_t.ndim == 1:
+        x_t = x_t.reshape(-1, 1)
+
+    sd_vec = np.sqrt(np.diag(sigma))
+    dim_delta = x_t.shape[1]
+    c = np.concatenate([[1.0], np.zeros(dim_delta)])
+    C = -np.column_stack([sd_vec, x_t])
+
+    xi_draws = rng.multivariate_normal(mean=np.zeros(sigma.shape[0]), cov=sigma, size=sims)
+
+    eta_vec = []
+    for xi in xi_draws:
+        # Dual simplex
+        result = opt.linprog(
+            c=c,
+            A_ub=C,
+            b_ub=-xi,
+            bounds=[(None, None) for _ in range(len(c))],
+            method="highs-ds",
+        )
+        if result.success:
+            eta_vec.append(result.x[0])
+
+    if len(eta_vec) == 0:
+        raise RuntimeError("Failed to compute any valid eta values")
+
+    return float(np.quantile(eta_vec, 1 - hybrid_kappa))
+
+
+def _lp_dual_wrapper(
+    y_t,
+    x_t,
+    eta,
+    gamma_tilde,
+    sigma,
+):
+    r"""Wrap vlo and vup computation using bisection approach.
+
+    Computes the support bounds :math:`[v_{lo}, v_{up}]` for the test statistic
+    under the conditional distribution when using the dual approach. The dual
+    approach is necessary when the primal problem is degenerate or when the
+    binding constraints don't have full rank.
+
+    The key here is that we can work directly with the Lagrange multipliers
+    :math:`\gamma` (normalized to sum to 1) rather than the primal variables.
+    The test statistic :math:`\gamma'Y` has a truncated normal distribution
+    with truncation bounds determined by the requirement that :math:`\gamma`
+    remains optimal.
+
+    Parameters
+    ----------
+    y_t : ndarray
+        Outcome vector :math:`Y_T = A\hat{\beta} - d`.
+    x_t : ndarray
+        Covariate matrix :math:`X_T` (may not have full column rank).
+    eta : float
+        Optimal value :math:`\eta^*` from the linear program.
+    gamma_tilde : ndarray
+        Normalized Lagrange multipliers :math:`\tilde{\gamma} = \lambda / \sum_i \lambda_i`.
+    sigma : ndarray
+        Covariance matrix :math:`\Sigma_Y` of y_t.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+
+        - vlo: float, lower bound of support
+        - vup: float, upper bound of support
+        - eta: float, optimal value (passed through)
+        - gamma_tilde: ndarray, normalized multipliers (passed through)
+
+    Notes
+    -----
+    The dual approach constructs a valid test by working with the optimality
+    conditions of the linear program. Even when the primal problem is ill-conditioned,
+    the dual formulation provides a well-defined test statistic with computable
+    truncation bounds.
+    """
+    if x_t.ndim == 1:
+        x_t = x_t.reshape(-1, 1)
+
+    sd_vec = np.sqrt(np.diag(sigma))
+    w_t = np.column_stack([sd_vec, x_t])
+
+    # Residual after projecting out gamma_tilde direction
+    # This is the component of y_t orthogonal to gamma_tilde under the metric sigma
+    gamma_sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
+    if gamma_sigma_gamma <= 0:
+        raise ValueError("gamma'*sigma*gamma must be positive")
+
+    # Projection matrix is I - (sigma * gamma * gamma') / (gamma' * sigma * gamma)
+    s_t = (np.eye(len(y_t)) - (sigma @ np.outer(gamma_tilde, gamma_tilde)) / gamma_sigma_gamma) @ y_t
+
+    v_dict = compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t)
+
+    return {
+        "vlo": v_dict["vlo"],
+        "vup": v_dict["vup"],
+        "eta": eta,
+        "gamma_tilde": gamma_tilde,
+    }
+
+
 def _solve_max_program(
     s_t,
     gamma_tilde,
@@ -936,110 +1116,6 @@ def _check_if_solution(
     result = _solve_max_program(s_t, gamma_tilde, sigma, w_t, c)
     is_solution = result.success and abs(c - result.objective_value) <= tol
     return result, is_solution
-
-
-def _compute_least_favorable_cv(
-    x_t=None,
-    sigma=None,
-    hybrid_kappa=0.05,
-    sims=1000,
-    rows_for_arp=None,
-    seed=0,
-):
-    r"""Compute least favorable critical value.
-
-    Computes the critical value for the least favorable (LF) hybrid test, which
-    uses a data-dependent first stage that rejects for large values of the test
-    statistic :math:`\eta^*`. The LF critical value is chosen to control the
-    first-stage rejection probability at :math:`\kappa` under the least favorable
-    distribution.
-
-    The least favorable distribution places all probability mass at the point
-    in :math:`\Delta` that maximizes the rejection probability. For the case with
-    nuisance parameters, this requires solving the linear program for each simulated
-    draw to find :math:`\eta^*`. The :math:`(1-\kappa)` quantile of these simulated
-    values provides the critical value.
-
-    This first-stage test improves power by screening out values of :math:`\theta`
-    that are far from the identified set. The second stage then applies the
-    conditional test with adjusted size :math:`(\alpha - \kappa)/(1 - \kappa)`.
-
-    Parameters
-    ----------
-    x_t : ndarray or None
-        Covariate matrix :math:`X_T` for nuisance parameters. If None, the test
-        has no nuisance parameters.
-    sigma : ndarray
-        Covariance matrix :math:`\Sigma_Y` of the moments.
-    hybrid_kappa : float
-        First-stage size :math:`\kappa`, typically :math:`\alpha/10`.
-    sims : int
-        Number of Monte Carlo simulations for critical value computation.
-    rows_for_arp : ndarray, optional
-        Subset of rows to use, focusing on informative moments.
-    seed : int or None
-        Random seed for reproducibility.
-
-    Returns
-    -------
-    float
-        Least favorable critical value :math:`c_{LF}` such that
-        :math:`\mathbb{P}(\eta^* > c_{LF}) = \kappa` under the least favorable distribution.
-
-    Notes
-    -----
-    Without nuisance parameters, the least favorable distribution is standard
-    multivariate normal and :math:`\eta^* = \max_i Z_i/\sigma_i` where :math:`Z_i`
-    are the standardized moments. With nuisance parameters, each simulation
-    requires solving the linear program to account for optimization over :math:`\xi`.
-    """
-    rng = np.random.default_rng(seed)
-
-    if rows_for_arp is not None:
-        if x_t is not None:
-            if x_t.ndim == 1:
-                x_t = x_t[rows_for_arp]
-            else:
-                x_t = x_t[rows_for_arp]
-        sigma = sigma[np.ix_(rows_for_arp, rows_for_arp)]
-
-    if x_t is None:
-        # No nuisance parameter case: simulate max of standardized normal vector
-        xi_draws = rng.multivariate_normal(mean=np.zeros(sigma.shape[0]), cov=sigma, size=sims)
-        sd_vec = np.sqrt(np.diag(sigma))
-        xi_draws = xi_draws / sd_vec
-        eta_vec = np.max(xi_draws, axis=1)
-        return float(np.quantile(eta_vec, 1 - hybrid_kappa))
-
-    # Nuisance parameter case: need to solve LP for each simulation
-    # This finds the least favorable distribution that maximizes size
-    if x_t.ndim == 1:
-        x_t = x_t.reshape(-1, 1)
-
-    sd_vec = np.sqrt(np.diag(sigma))
-    dim_delta = x_t.shape[1]
-    c = np.concatenate([[1.0], np.zeros(dim_delta)])
-    C = -np.column_stack([sd_vec, x_t])
-
-    xi_draws = rng.multivariate_normal(mean=np.zeros(sigma.shape[0]), cov=sigma, size=sims)
-
-    eta_vec = []
-    for xi in xi_draws:
-        # Dual simplex
-        result = opt.linprog(
-            c=c,
-            A_ub=C,
-            b_ub=-xi,
-            bounds=[(None, None) for _ in range(len(c))],
-            method="highs-ds",
-        )
-        if result.success:
-            eta_vec.append(result.x[0])
-
-    if len(eta_vec) == 0:
-        raise RuntimeError("Failed to compute any valid eta values")
-
-    return float(np.quantile(eta_vec, 1 - hybrid_kappa))
 
 
 def _compute_flci_vlo_vup(vbar, dbar, s_vec, c_vec):

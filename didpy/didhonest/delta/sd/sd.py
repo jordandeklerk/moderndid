@@ -6,7 +6,7 @@ import numpy as np
 import scipy.optimize as opt
 
 from ...arp_no_nuisance import compute_arp_ci
-from ...arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
+from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...fixed_length_ci import compute_flci
 from ...numba import create_second_differences_matrix, find_rows_with_post_period_values
 from ...utils import basis_vector
@@ -429,7 +429,7 @@ def _compute_cs_sd_no_nuisance(
 
     else:  # LF or ARP
         if hybrid_flag == "LF":
-            lf_cv = _compute_least_favorable_cv(
+            lf_cv = compute_least_favorable_cv(
                 x_t=None,
                 sigma=A_sd @ sigma @ A_sd.T,
                 hybrid_kappa=hybrid_kappa,

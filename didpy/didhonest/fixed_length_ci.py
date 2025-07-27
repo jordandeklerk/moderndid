@@ -33,21 +33,30 @@ def compute_flci(
 ):
     r"""Compute fixed-length confidence intervals under smoothness restrictions.
 
-    Constructs confidence intervals of optimal length that are valid for the linear
-    combination :math:`l'\tau_{post}` under the restriction that the underlying trend
-    :math:`\delta` lies in the smoothness constraint set :math:`\Delta^{SD}(M)`.
+    Constructs fixed-length confidence intervals (FLCIs) based on affine estimators
+    that are valid for the linear combination :math:`l'\tau_{post}` under the
+    restriction that the underlying trend :math:`\delta` lies in the smoothness
+    constraint set :math:`\Delta^{SD}(M)`.
 
-    The FLCI approach minimizes the worst-case length of the confidence interval
-    by choosing an optimal linear combination of pre-treatment coefficients. The
-    key insight is that under :math:`\Delta^{SD}(M)`, we can construct an auxiliary
-    estimator
+    The FLCI takes the form
 
     .. math::
 
-        \hat{\theta}_{FLCI} = \ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post},
+        \mathcal{C}_{\alpha,n}(a, v, \chi) = (a + v'\hat{\beta}_n) \pm \chi,
 
-    where :math:`\ell_{pre}` is chosen to minimize the length of the resulting
-    confidence interval subject to controlling worst-case bias.
+    where :math:`a` is a scalar, :math:`v \in \mathbb{R}^{\underline{T}+\bar{T}}` is a
+    weight vector, and :math:`\chi` is the half-length of the confidence interval.
+
+    The optimization minimizes :math:`\chi` subject to the coverage requirement
+    in the finite-sample normal model. The smallest value of :math:`\chi` that
+    satisfies coverage is
+
+    .. math::
+
+        \chi_n(a, v; \alpha) = \sigma_{v,n} \cdot cv_{\alpha}(\bar{b}(a, v) / \sigma_{v,n}),
+
+    where :math:`\sigma_{v,n} = \sqrt{v'\Sigma_n v}` and :math:`cv_{\alpha}(t)` denotes
+    the :math:`1-\alpha` quantile of the folded normal distribution :math:`|N(t, 1)|`.
 
     Parameters
     ----------
@@ -98,21 +107,23 @@ def compute_flci(
     :math:`\Delta^{SD}(M)`, then choose :math:`h` to minimize the resulting
     confidence interval length.
 
+    For :math:`\Delta^{SD}(M)` with :math:`\theta = \tau_1`, the affine estimator
+    used by the optimal FLCI takes the form in [1]_
+
+    .. math::
+
+        a + v'\hat{\beta}_n = \hat{\beta}_{n,1} -
+            \sum_{s=-\underline{T}+1}^{0} w_s(\hat{\beta}_{n,s} - \hat{\beta}_{n,s-1}),
+
+    where the weights :math:`w_s` sum to one (but may be negative). This estimator
+    adjusts the event-study coefficient for :math:`t=1` by an estimate of the
+    differential trend between :math:`t=0` and :math:`t=1` formed by taking a
+    weighted average of the differential trends in periods prior to treatment.
+
     Under convexity and centrosymmetry conditions on the identified set, FLCIs achieve near-optimal
     expected length in finite samples. When :math:`\alpha = 0.05`, the expected
     length of the shortest possible confidence set that satisfies coverage is at
     most 28% shorter than the FLCI.
-
-    FLCIs can be inconsistent when the identified set length varies with
-    :math:`\delta_{pre}`. They are consistent if and only if the identified set
-    always has maximal length:
-
-    .. math::
-
-        LID(\delta_{pre}, \Delta) = \sup_{\tilde{\delta}_{pre}} LID(\tilde{\delta}_{pre}, \Delta).
-
-    This condition holds everywhere for :math:`\Delta^{SD}(M)` but fails for many
-    other restriction sets of interest.
 
     References
     ----------
@@ -155,6 +166,440 @@ def compute_flci(
     )
 
 
+def maximize_bias(
+    h,
+    sigma,
+    n_pre_periods,
+    n_post_periods,
+    post_period_weights,
+    smoothness_bound=1.0,
+):
+    r"""Find worst-case bias subject to standard deviation constraint :math:`h`.
+
+    Computes the affine estimator's worst-case bias defined as in [1]_
+
+    .. math::
+
+        \bar{b}(a, v) = \sup_{\delta \in \Delta, \tau_{post} \in \mathbb{R}^{\bar{T}}}
+            |a + v'(\delta + L_{post}\tau_{post}) - l'\tau_{post}|,
+
+    where :math:`a` and :math:`v` are chosen to minimize the confidence interval
+    length subject to the constraint that the resulting estimator has standard
+    deviation at most :math:`h`.
+
+    For the special case of :math:`\Delta^{SD}(M)`, this reduces to finding
+    pre-treatment weights :math:`\ell_{pre}` that maximize the worst-case bias
+    subject to :math:`\text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post}) \leq h^2`.
+
+    Parameters
+    ----------
+    h : float
+        Standard deviation constraint for the affine estimator.
+    sigma : ndarray
+        Covariance matrix :math:`\Sigma` of event study coefficients.
+    n_pre_periods : int
+        Number of pre-treatment periods.
+    n_post_periods : int
+        Number of post-treatment periods.
+    post_period_weights : ndarray
+        Post-treatment weight vector :math:`\ell_{post}`.
+    smoothness_bound : float
+        Smoothness parameter :math:`M` (not directly used in optimization,
+        applied as scaling factor to result).
+
+    Returns
+    -------
+    dict
+        Dictionary with optimization results:
+
+        - status: 'optimal' if successful, 'failed' or error message otherwise
+        - value: Maximum bias value (scaled by smoothness_bound)
+        - optimal_l: Optimal pre-period weights :math:`\ell_{pre}`
+        - optimal_w: Optimal weights in :math:`w` parameterization
+        - optimal_x: Full solution vector from optimization
+
+    Notes
+    -----
+    The optimization uses a change of variables where pre-treatment levels are
+    parameterized through first differences (weights). The worst-case bias under
+    :math:`\Delta^{SD}(M)` has a closed-form solution given the weights, allowing
+    this to be formulated as a convex optimization problem.
+
+    This implementation is specific to :math:`\Delta^{SD}(M)`. For other restriction
+    sets, the worst-case bias computation differs significantly. For :math:`\Delta^{SDPB}(M)`
+    and :math:`\Delta^{SDI}(M)`, the worst-case bias of any affine estimator equals
+    its worst-case bias over :math:`\Delta^{SD}(M)`, meaning sign and monotonicity
+    restrictions provide no benefit for FLCIs. For :math:`\Delta^{RM}(\bar{M})`,
+    the worst-case bias is infinite whenever :math:`\bar{M} > 0`, as pre-treatment
+    violations can be arbitrarily scaled up.
+
+    References
+    ----------
+
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    """
+    stacked_vars = cp.Variable(2 * n_pre_periods)
+
+    bias_constant = sum(
+        abs(np.dot(np.arange(1, s + 1), post_period_weights[(n_post_periods - s) : n_post_periods]))
+        for s in range(1, n_post_periods + 1)
+    ) - np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
+
+    objective = cp.Minimize(bias_constant + cp.sum(stacked_vars[:n_pre_periods]))
+
+    constraints = []
+
+    absolute_values = stacked_vars[:n_pre_periods]
+    weight_vector = stacked_vars[n_pre_periods:]
+    lower_triangular = np.tril(np.ones((n_pre_periods, n_pre_periods)))
+
+    constraints.extend(
+        [-absolute_values <= lower_triangular @ weight_vector, lower_triangular @ weight_vector <= absolute_values]
+    )
+
+    target_sum = np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
+    constraints.append(cp.sum(weight_vector) == target_sum)
+
+    weights_to_levels_matrix = _create_diff_matrix(n_pre_periods)
+
+    stacked_transform_matrix = np.hstack([np.zeros((n_pre_periods, n_pre_periods)), weights_to_levels_matrix])
+
+    sigma_pre = sigma[:n_pre_periods, :n_pre_periods]
+    sigma_pre_post = sigma[:n_pre_periods, n_pre_periods:]
+    sigma_post = post_period_weights @ sigma[n_pre_periods:, n_pre_periods:] @ post_period_weights
+
+    A_quadratic = stacked_transform_matrix.T @ sigma_pre @ stacked_transform_matrix
+    A_linear = 2 * stacked_transform_matrix.T @ sigma_pre_post @ post_period_weights
+
+    variance_expr = cp.quad_form(stacked_vars, A_quadratic) + A_linear @ stacked_vars + sigma_post
+    constraints.append(variance_expr <= h**2)
+
+    problem = cp.Problem(objective, constraints)
+
+    try:
+        problem.solve(solver=cp.ECOS, verbose=False)
+
+        if problem.status in ["optimal", "optimal_inaccurate"]:
+            optimal_w = stacked_vars.value[n_pre_periods:]
+            optimal_l_pre = _weights_to_l(optimal_w)
+
+            bias_value = problem.value * smoothness_bound
+
+            return {
+                "status": "optimal",
+                "value": bias_value,
+                "optimal_x": stacked_vars.value,
+                "optimal_w": optimal_w,
+                "optimal_l": optimal_l_pre,
+            }
+
+        return {
+            "status": "failed",
+            "value": np.inf,
+            "optimal_x": None,
+            "optimal_w": None,
+            "optimal_l": None,
+        }
+    except (ValueError, RuntimeError, cp.error.SolverError) as e:
+        return {
+            "status": f"error: {str(e)}",
+            "value": np.inf,
+            "optimal_x": None,
+            "optimal_w": None,
+            "optimal_l": None,
+        }
+
+
+def minimize_variance(
+    sigma,
+    n_pre_periods,
+    n_post_periods,
+    post_period_weights,
+):
+    r"""Find the minimum achievable standard deviation :math:`h`.
+
+    Solves the optimization problem in [1]_
+
+    .. math::
+
+        \min_{\ell_{pre}} \quad & \text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post})
+
+        \text{s.t.} \quad & \text{Bias constraints from } \Delta^{SD}(M)
+
+    This finds the minimum variance achievable by any affine estimator that
+    satisfies the bias constraints imposed by the smoothness restriction.
+
+    The variance of the affine estimator is
+
+    .. math::
+
+        \text{Var}(\hat{\theta}) = \ell'_{pre}\Sigma_{pre,pre}\ell_{pre} +
+        2\ell'_{pre}\Sigma_{pre,post}\ell_{post} + \ell'_{post}\Sigma_{post,post}\ell_{post}.
+
+    This is minimized subject to constraints that ensure the resulting estimator
+    has bounded bias under :math:`\Delta^{SD}(M)`. The solution provides a lower
+    bound for the feasible values of :math:`h` in the FLCI optimization.
+
+    Parameters
+    ----------
+    sigma : ndarray
+        Covariance matrix :math:`\Sigma` of event study coefficients.
+    n_pre_periods : int
+        Number of pre-treatment periods.
+    n_post_periods : int
+        Number of post-treatment periods.
+    post_period_weights : ndarray
+        Post-treatment weight vector :math:`\ell_{post}`.
+
+    Returns
+    -------
+    float
+        Minimum achievable standard deviation :math:`h_{min}`.
+
+    References
+    ----------
+
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    """
+    stacked_vars = cp.Variable(2 * n_pre_periods)
+
+    absolute_values = stacked_vars[:n_pre_periods]
+    weight_vector = stacked_vars[n_pre_periods:]
+
+    weights_to_levels_matrix = _create_diff_matrix(n_pre_periods)
+    stacked_transform_matrix = np.hstack([np.zeros((n_pre_periods, n_pre_periods)), weights_to_levels_matrix])
+
+    sigma_pre = sigma[:n_pre_periods, :n_pre_periods]
+    sigma_pre_post = sigma[:n_pre_periods, n_pre_periods:]
+    sigma_post = post_period_weights @ sigma[n_pre_periods:, n_pre_periods:] @ post_period_weights
+
+    A_quadratic = stacked_transform_matrix.T @ sigma_pre @ stacked_transform_matrix
+    A_linear = 2 * stacked_transform_matrix.T @ sigma_pre_post @ post_period_weights
+
+    variance_expr = cp.quad_form(stacked_vars, A_quadratic) + A_linear @ stacked_vars + sigma_post
+    objective = cp.Minimize(variance_expr)
+
+    constraints = []
+
+    lower_triangular = np.tril(np.ones((n_pre_periods, n_pre_periods)))
+    constraints.extend(
+        [-absolute_values <= lower_triangular @ weight_vector, lower_triangular @ weight_vector <= absolute_values]
+    )
+
+    target_sum = np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
+    constraints.append(cp.sum(weight_vector) == target_sum)
+
+    problem = cp.Problem(objective, constraints)
+
+    try:
+        problem.solve(solver=cp.ECOS, verbose=False)
+
+        if problem.status in ["optimal", "optimal_inaccurate"]:
+            return np.sqrt(problem.value)
+
+        for scale_factor in [10, 100, 1000]:
+            scaled_A_quadratic = A_quadratic * scale_factor
+            scaled_A_linear = A_linear * scale_factor
+            scaled_sigma_post = sigma_post * scale_factor
+
+            scaled_variance_expr = (
+                cp.quad_form(stacked_vars, scaled_A_quadratic) + scaled_A_linear @ stacked_vars + scaled_sigma_post
+            )
+            scaled_objective = cp.Minimize(scaled_variance_expr)
+            scaled_problem = cp.Problem(scaled_objective, constraints)
+
+            scaled_problem.solve(solver=cp.ECOS, verbose=False)
+
+            if scaled_problem.status in ["optimal", "optimal_inaccurate"]:
+                return np.sqrt(scaled_problem.value / scale_factor)
+
+        raise ValueError("Error in optimization for minimum variance")
+    except (ValueError, RuntimeError, cp.error.SolverError) as e:
+        raise ValueError(f"Error in optimization for minimum variance: {str(e)}") from e
+
+
+def affine_variance(
+    l_pre,
+    l_post,
+    sigma,
+    n_pre_periods,
+):
+    r"""Compute variance of affine estimator.
+
+    Computes the variance of the affine estimator
+
+    .. math::
+
+        \hat{\theta} = \ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post}.
+
+    Under standard asymptotics, this has variance
+
+    .. math::
+
+        \text{Var}(\hat{\theta}) = \begin{pmatrix} \ell_{pre} \\ \ell_{post} \end{pmatrix}'
+        \begin{pmatrix} \Sigma_{pre,pre} & \Sigma_{pre,post} \\
+        \Sigma_{post,pre} & \Sigma_{post,post} \end{pmatrix}
+        \begin{pmatrix} \ell_{pre} \\ \ell_{post} \end{pmatrix}.
+
+    Parameters
+    ----------
+    l_pre : ndarray
+        Pre-treatment weight vector :math:`\ell_{pre}`.
+    l_post : ndarray
+        Post-treatment weight vector :math:`\ell_{post}`.
+    sigma : ndarray
+        Full covariance matrix :math:`\Sigma` of event study coefficients.
+    n_pre_periods : int
+        Number of pre-treatment periods.
+
+    Returns
+    -------
+    float
+        Variance of the affine estimator.
+
+    References
+    ----------
+
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    """
+    sigma_pre = sigma[:n_pre_periods, :n_pre_periods]
+    sigma_pre_post = sigma[:n_pre_periods, n_pre_periods:]
+    sigma_post = l_post @ sigma[n_pre_periods:, n_pre_periods:] @ l_post
+
+    variance = l_pre @ sigma_pre @ l_pre + 2 * l_pre @ sigma_pre_post @ l_post + sigma_post
+
+    return variance
+
+
+def folded_normal_quantile(
+    p,
+    mu=0.0,
+    sd=1.0,
+    seed=0,
+):
+    r"""Compute quantile of folded normal distribution :math:`cv_{\alpha}(t)`.
+
+    Computes the :math:`1-\alpha` quantile of the folded normal distribution
+    :math:`|N(t, 1)|`, denoted :math:`cv_{\alpha}(t)` in the paper. This function
+    arises in the FLCI construction through equation (18) in [1]_
+
+    .. math::
+
+        \chi_n(a, v; \alpha) = \sigma_{v,n} \cdot cv_{\alpha}(\bar{b}(a, v) / \sigma_{v,n}).
+
+    The folded normal is the distribution of :math:`|X|` where :math:`X \sim N(\mu, \sigma^2)`.
+    For the FLCI, we need this because the affine estimator has distribution
+
+    .. math::
+
+        a + v'\hat{\beta}_n \sim N(a + v'\beta, v'\Sigma_n v),
+
+    and thus :math:`|a + v'\hat{\beta}_n - \theta| \sim |N(b, v'\Sigma_n v)|` where
+    :math:`b = a + v'\beta - \theta` is the bias.
+
+    Parameters
+    ----------
+    p : float
+        Probability level (between 0 and 1), typically :math:`1 - \alpha`.
+    mu : float
+        Mean parameter :math:`t` of the underlying normal distribution, equal to
+        :math:`\bar{b}(a, v) / \sigma_{v,n}` in the FLCI context.
+    sd : float
+        Standard deviation of underlying normal (typically 1).
+    seed : int
+        Random seed for Monte Carlo approximation.
+
+    Returns
+    -------
+    float
+        The value :math:`cv_p(t)`, the p-th quantile of :math:`|N(t, 1)|`.
+
+    Notes
+    -----
+    When :math:`t = 0`, this reduces to the half-normal distribution.
+    For non-zero :math:`t`, we use Monte Carlo simulation to approximate
+    the quantile as no closed-form expression exists.
+
+    If :math:`t = \infty`, we define :math:`cv_{\alpha}(t) = \infty` as noted
+    in the paper (footnote 22).
+
+    References
+    ----------
+
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    """
+    if sd <= 0:
+        raise ValueError("Standard deviation must be positive")
+
+    mu_abs = abs(mu)
+
+    if mu_abs == 0:
+        return sd * stats.halfnorm.ppf(p)
+
+    rng = np.random.default_rng(seed)
+    n_samples = 10**6
+    normal_samples = rng.normal(mu_abs, sd, n_samples)
+    folded_samples = np.abs(normal_samples)
+    return np.quantile(folded_samples, p)
+
+
+def get_min_bias_h(
+    sigma,
+    n_pre_periods,
+    n_post_periods,
+    post_period_weights,
+):
+    r"""Compute :math:`h` that yields minimum bias.
+
+    Finds the standard deviation :math:`h` corresponding to the estimator that
+    minimizes worst-case bias under :math:`\Delta^{SD}(M)`. This occurs when
+    all pre-treatment weight is placed on the last pre-treatment period.
+
+    The minimum bias estimator uses
+
+    .. math::
+
+        \ell_{pre} = (0, ..., 0, \sum_{s=1}^{T_{post}} s \cdot \ell_{post,s}).
+
+    This choice minimizes bias because it uses only the pre-treatment coefficient
+    closest to the treatment period, reducing extrapolation error.
+
+    Parameters
+    ----------
+    sigma : ndarray
+        Covariance matrix :math:`\Sigma` of event study coefficients.
+    n_pre_periods : int
+        Number of pre-treatment periods :math:`T_{pre}`.
+    n_post_periods : int
+        Number of post-treatment periods :math:`T_{post}`.
+    post_period_weights : ndarray
+        Post-treatment weight vector :math:`\ell_{post}`.
+
+    Returns
+    -------
+    float
+        Standard deviation :math:`h_{max}` for minimum bias configuration.
+
+    Notes
+    -----
+    This provides an upper bound for the feasible values of :math:`h` in the
+    FLCI optimization. For :math:`h > h_{max}`, the bias constraint becomes
+    slack and further increases in :math:`h` do not improve the confidence
+    interval length.
+    """
+    weights = np.zeros(n_pre_periods)
+    weights[-1] = np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
+
+    l_pre = _weights_to_l(weights)
+    variance = affine_variance(l_pre, post_period_weights, sigma, n_pre_periods)
+
+    return np.sqrt(variance)
+
+
 def _optimize_flci_params(
     sigma,
     smoothness_bound,
@@ -167,21 +612,21 @@ def _optimize_flci_params(
 ):
     r"""Compute optimal FLCI parameters.
 
-    Solves the FLCI optimization problem
+    Solves the FLCI optimization problem to minimize the confidence interval
+    half-length :math:`\chi_n(a, v; \alpha)` defined as:
 
     .. math::
 
-        \min_{h \in [h_{min}, h_{max}]} \text{CI half-length}(h),
+        \chi_n(a, v; \alpha) = \sigma_{v,n} \cdot cv_{\alpha}(\bar{b}(a, v) / \sigma_{v,n}),
 
-    where the CI half-length for a given :math:`h` is:
+    where :math:`\sigma_{v,n} = \sqrt{v'\Sigma_n v}` is the standard deviation
+    of the affine estimator, :math:`\bar{b}(a, v)` is the worst-case bias from
+    equation (17), and :math:`cv_{\alpha}(t)` denotes the :math:`1-\alpha` quantile
+    of the folded normal distribution :math:`|N(t, 1)|`.
 
-    .. math::
-
-        \text{CI half-length}(h) = h \cdot q_{1-\alpha}\left(\left|N\left(\frac{b^*(h)}{h}, 1\right)\right|\right),
-
-    Here :math:`b^*(h)` is the worst-case bias when the standard deviation is
-    constrained to be :math:`h`, and :math:`q_{1-\alpha}` is the :math:`(1-\alpha)`
-    quantile of the folded normal distribution.
+    The optimization is performed over :math:`(a, v)` pairs, which for
+    :math:`\Delta^{SD}(M)` reduces to optimizing over :math:`h \in [h_{min}, h_{max}]`
+    where :math:`h_{min}` minimizes variance and :math:`h_{max}` minimizes bias.
 
     Parameters
     ----------
@@ -277,346 +722,6 @@ def _optimize_flci_params(
         "smoothness_bound": smoothness_bound,
         "status": optimal_result["status"],
     }
-
-
-def maximize_bias(
-    h,
-    sigma,
-    n_pre_periods,
-    n_post_periods,
-    post_period_weights,
-    smoothness_bound=1.0,
-):
-    r"""Find worst-case bias subject to standard deviation constraint :math:`h`.
-
-    Solves the optimization problem:
-
-    .. math::
-
-        \max_{\ell_{pre}} \quad & \sup_{\delta \in \Delta^{SD}(M)} |\ell'_{pre}\delta_{pre} - \ell'_{post}\delta_{post}|
-
-        \text{s.t.} \quad & \text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post}) \leq h^2
-
-    This finds the pre-treatment weights :math:`\ell_{pre}` that maximize the
-    worst-case bias over :math:`\Delta^{SD}(M)`, subject to the constraint that
-    the resulting estimator has standard deviation at most :math:`h`.
-
-    Parameters
-    ----------
-    h : float
-        Standard deviation constraint for the affine estimator.
-    sigma : ndarray
-        Covariance matrix :math:`\Sigma` of event study coefficients.
-    n_pre_periods : int
-        Number of pre-treatment periods.
-    n_post_periods : int
-        Number of post-treatment periods.
-    post_period_weights : ndarray
-        Post-treatment weight vector :math:`\ell_{post}`.
-    smoothness_bound : float
-        Smoothness parameter :math:`M` (not directly used in optimization,
-        applied as scaling factor to result).
-
-    Returns
-    -------
-    dict
-        Dictionary with optimization results:
-
-        - status: 'optimal' if successful, 'failed' or error message otherwise
-        - value: Maximum bias value (scaled by smoothness_bound)
-        - optimal_l: Optimal pre-period weights :math:`\ell_{pre}`
-        - optimal_w: Optimal weights in :math:`w` parameterization
-        - optimal_x: Full solution vector from optimization
-
-    Notes
-    -----
-    The optimization uses a change of variables where pre-treatment levels are
-    parameterized through first differences (weights). The worst-case bias under
-    :math:`\Delta^{SD}(M)` has a closed-form solution given the weights, allowing
-    this to be formulated as a convex optimization problem.
-
-    This implementation is specific to :math:`\Delta^{SD}(M)`. For other restriction
-    sets, the worst-case bias computation differs significantly. For :math:`\Delta^{SDPB}(M)`
-    and :math:`\Delta^{SDI}(M)`, the worst-case bias of any affine estimator equals
-    its worst-case bias over :math:`\Delta^{SD}(M)`, meaning sign and monotonicity
-    restrictions provide no benefit for FLCIs. For :math:`\Delta^{RM}(\bar{M})`,
-    the worst-case bias is infinite whenever :math:`\bar{M} > 0`, as pre-treatment
-    violations can be arbitrarily scaled up.
-    """
-    stacked_vars = cp.Variable(2 * n_pre_periods)
-
-    bias_constant = sum(
-        abs(np.dot(np.arange(1, s + 1), post_period_weights[(n_post_periods - s) : n_post_periods]))
-        for s in range(1, n_post_periods + 1)
-    ) - np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
-
-    objective = cp.Minimize(bias_constant + cp.sum(stacked_vars[:n_pre_periods]))
-
-    constraints = []
-
-    absolute_values = stacked_vars[:n_pre_periods]
-    weight_vector = stacked_vars[n_pre_periods:]
-    lower_triangular = np.tril(np.ones((n_pre_periods, n_pre_periods)))
-
-    constraints.extend(
-        [-absolute_values <= lower_triangular @ weight_vector, lower_triangular @ weight_vector <= absolute_values]
-    )
-
-    target_sum = np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
-    constraints.append(cp.sum(weight_vector) == target_sum)
-
-    weights_to_levels_matrix = _create_diff_matrix(n_pre_periods)
-
-    stacked_transform_matrix = np.hstack([np.zeros((n_pre_periods, n_pre_periods)), weights_to_levels_matrix])
-
-    sigma_pre = sigma[:n_pre_periods, :n_pre_periods]
-    sigma_pre_post = sigma[:n_pre_periods, n_pre_periods:]
-    sigma_post = post_period_weights @ sigma[n_pre_periods:, n_pre_periods:] @ post_period_weights
-
-    A_quadratic = stacked_transform_matrix.T @ sigma_pre @ stacked_transform_matrix
-    A_linear = 2 * stacked_transform_matrix.T @ sigma_pre_post @ post_period_weights
-
-    variance_expr = cp.quad_form(stacked_vars, A_quadratic) + A_linear @ stacked_vars + sigma_post
-    constraints.append(variance_expr <= h**2)
-
-    problem = cp.Problem(objective, constraints)
-
-    try:
-        problem.solve(solver=cp.ECOS, verbose=False)
-
-        if problem.status in ["optimal", "optimal_inaccurate"]:
-            optimal_w = stacked_vars.value[n_pre_periods:]
-            optimal_l_pre = weights_to_l(optimal_w)
-
-            bias_value = problem.value * smoothness_bound
-
-            return {
-                "status": "optimal",
-                "value": bias_value,
-                "optimal_x": stacked_vars.value,
-                "optimal_w": optimal_w,
-                "optimal_l": optimal_l_pre,
-            }
-
-        return {
-            "status": "failed",
-            "value": np.inf,
-            "optimal_x": None,
-            "optimal_w": None,
-            "optimal_l": None,
-        }
-    except (ValueError, RuntimeError, cp.error.SolverError) as e:
-        return {
-            "status": f"error: {str(e)}",
-            "value": np.inf,
-            "optimal_x": None,
-            "optimal_w": None,
-            "optimal_l": None,
-        }
-
-
-def minimize_variance(
-    sigma,
-    n_pre_periods,
-    n_post_periods,
-    post_period_weights,
-):
-    r"""Find the minimum achievable standard deviation :math:`h`.
-
-    Solves the optimization problem:
-
-    .. math::
-
-        \min_{\ell_{pre}} \quad & \text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post})
-
-        \text{s.t.} \quad & \text{Bias constraints from } \Delta^{SD}(M)
-
-    This finds the minimum variance achievable by any affine estimator that
-    satisfies the bias constraints imposed by the smoothness restriction.
-
-    The variance of the affine estimator is
-
-    .. math::
-
-        \text{Var}(\hat{\theta}) = \ell'_{pre}\Sigma_{pre,pre}\ell_{pre} +
-        2\ell'_{pre}\Sigma_{pre,post}\ell_{post} + \ell'_{post}\Sigma_{post,post}\ell_{post}.
-
-    This is minimized subject to constraints that ensure the resulting estimator
-    has bounded bias under :math:`\Delta^{SD}(M)`. The solution provides a lower
-    bound for the feasible values of :math:`h` in the FLCI optimization.
-
-    Parameters
-    ----------
-    sigma : ndarray
-        Covariance matrix :math:`\Sigma` of event study coefficients.
-    n_pre_periods : int
-        Number of pre-treatment periods.
-    n_post_periods : int
-        Number of post-treatment periods.
-    post_period_weights : ndarray
-        Post-treatment weight vector :math:`\ell_{post}`.
-
-    Returns
-    -------
-    float
-        Minimum achievable standard deviation :math:`h_{min}`.
-    """
-    stacked_vars = cp.Variable(2 * n_pre_periods)
-
-    absolute_values = stacked_vars[:n_pre_periods]
-    weight_vector = stacked_vars[n_pre_periods:]
-
-    weights_to_levels_matrix = _create_diff_matrix(n_pre_periods)
-    stacked_transform_matrix = np.hstack([np.zeros((n_pre_periods, n_pre_periods)), weights_to_levels_matrix])
-
-    sigma_pre = sigma[:n_pre_periods, :n_pre_periods]
-    sigma_pre_post = sigma[:n_pre_periods, n_pre_periods:]
-    sigma_post = post_period_weights @ sigma[n_pre_periods:, n_pre_periods:] @ post_period_weights
-
-    A_quadratic = stacked_transform_matrix.T @ sigma_pre @ stacked_transform_matrix
-    A_linear = 2 * stacked_transform_matrix.T @ sigma_pre_post @ post_period_weights
-
-    variance_expr = cp.quad_form(stacked_vars, A_quadratic) + A_linear @ stacked_vars + sigma_post
-    objective = cp.Minimize(variance_expr)
-
-    constraints = []
-
-    lower_triangular = np.tril(np.ones((n_pre_periods, n_pre_periods)))
-    constraints.extend(
-        [-absolute_values <= lower_triangular @ weight_vector, lower_triangular @ weight_vector <= absolute_values]
-    )
-
-    target_sum = np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
-    constraints.append(cp.sum(weight_vector) == target_sum)
-
-    problem = cp.Problem(objective, constraints)
-
-    try:
-        problem.solve(solver=cp.ECOS, verbose=False)
-
-        if problem.status in ["optimal", "optimal_inaccurate"]:
-            return np.sqrt(problem.value)
-
-        for scale_factor in [10, 100, 1000]:
-            scaled_A_quadratic = A_quadratic * scale_factor
-            scaled_A_linear = A_linear * scale_factor
-            scaled_sigma_post = sigma_post * scale_factor
-
-            scaled_variance_expr = (
-                cp.quad_form(stacked_vars, scaled_A_quadratic) + scaled_A_linear @ stacked_vars + scaled_sigma_post
-            )
-            scaled_objective = cp.Minimize(scaled_variance_expr)
-            scaled_problem = cp.Problem(scaled_objective, constraints)
-
-            scaled_problem.solve(solver=cp.ECOS, verbose=False)
-
-            if scaled_problem.status in ["optimal", "optimal_inaccurate"]:
-                return np.sqrt(scaled_problem.value / scale_factor)
-
-        raise ValueError("Error in optimization for minimum variance")
-    except (ValueError, RuntimeError, cp.error.SolverError) as e:
-        raise ValueError(f"Error in optimization for minimum variance: {str(e)}") from e
-
-
-def get_min_bias_h(
-    sigma,
-    n_pre_periods,
-    n_post_periods,
-    post_period_weights,
-):
-    r"""Compute :math:`h` that yields minimum bias.
-
-    Finds the standard deviation :math:`h` corresponding to the estimator that
-    minimizes worst-case bias under :math:`\Delta^{SD}(M)`. This occurs when
-    all pre-treatment weight is placed on the last pre-treatment period.
-
-    The minimum bias estimator uses
-
-    .. math::
-
-        \ell_{pre} = (0, ..., 0, \sum_{s=1}^{T_{post}} s \cdot \ell_{post,s}).
-
-    This choice minimizes bias because it uses only the pre-treatment coefficient
-    closest to the treatment period, reducing extrapolation error.
-
-    Parameters
-    ----------
-    sigma : ndarray
-        Covariance matrix :math:`\Sigma` of event study coefficients.
-    n_pre_periods : int
-        Number of pre-treatment periods :math:`T_{pre}`.
-    n_post_periods : int
-        Number of post-treatment periods :math:`T_{post}`.
-    post_period_weights : ndarray
-        Post-treatment weight vector :math:`\ell_{post}`.
-
-    Returns
-    -------
-    float
-        Standard deviation :math:`h_{max}` for minimum bias configuration.
-
-    Notes
-    -----
-    This provides an upper bound for the feasible values of :math:`h` in the
-    FLCI optimization. For :math:`h > h_{max}`, the bias constraint becomes
-    slack and further increases in :math:`h` do not improve the confidence
-    interval length.
-    """
-    weights = np.zeros(n_pre_periods)
-    weights[-1] = np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
-
-    l_pre = weights_to_l(weights)
-    variance = affine_variance(l_pre, post_period_weights, sigma, n_pre_periods)
-
-    return np.sqrt(variance)
-
-
-def affine_variance(
-    l_pre,
-    l_post,
-    sigma,
-    n_pre_periods,
-):
-    r"""Compute variance of affine estimator.
-
-    Computes the variance of the affine estimator
-
-    .. math::
-
-        \hat{\theta} = \ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post}.
-
-    Under standard asymptotics, this has variance
-
-    .. math::
-
-        \text{Var}(\hat{\theta}) = \begin{pmatrix} \ell_{pre} \\ \ell_{post} \end{pmatrix}'
-        \begin{pmatrix} \Sigma_{pre,pre} & \Sigma_{pre,post} \\
-        \Sigma_{post,pre} & \Sigma_{post,post} \end{pmatrix}
-        \begin{pmatrix} \ell_{pre} \\ \ell_{post} \end{pmatrix}.
-
-    Parameters
-    ----------
-    l_pre : ndarray
-        Pre-treatment weight vector :math:`\ell_{pre}`.
-    l_post : ndarray
-        Post-treatment weight vector :math:`\ell_{post}`.
-    sigma : ndarray
-        Full covariance matrix :math:`\Sigma` of event study coefficients.
-    n_pre_periods : int
-        Number of pre-treatment periods.
-
-    Returns
-    -------
-    float
-        Variance of the affine estimator.
-    """
-    sigma_pre = sigma[:n_pre_periods, :n_pre_periods]
-    sigma_pre_post = sigma[:n_pre_periods, n_pre_periods:]
-    sigma_post = l_post @ sigma[n_pre_periods:, n_pre_periods:] @ l_post
-
-    variance = l_pre @ sigma_pre @ l_pre + 2 * l_pre @ sigma_pre_post @ l_post + sigma_post
-
-    return variance
 
 
 def _optimize_h_bisection(
@@ -718,66 +823,7 @@ def _optimize_h_bisection(
     return (h_lower + h_upper) / 2
 
 
-def folded_normal_quantile(
-    p,
-    mu=0.0,
-    sd=1.0,
-    seed=0,
-):
-    r"""Compute quantile of folded normal distribution.
-
-    The folded normal is the distribution of :math:`|X|` where :math:`X \sim N(\mu, \sigma^2)`.
-    This arises in the FLCI construction because we need to cover the absolute bias
-    :math:`|\text{bias}|` with high probability.
-
-    For the FLCI, we have
-
-    .. math::
-
-        \frac{\hat{\theta} - \theta}{\text{sd}(\hat{\theta})} + \frac{\text{bias}}{\text{sd}(\hat{\theta})}
-        \sim N\left(\frac{\text{bias}}{\text{sd}(\hat{\theta})}, 1\right).
-
-    The confidence interval must cover :math:`\theta` when the bias takes its
-    worst-case value in either direction, leading to a folded normal distribution.
-
-    Parameters
-    ----------
-    p : float
-        Probability level (between 0 and 1), typically :math:`1 - \alpha`.
-    mu : float
-        Mean of underlying normal, equal to :math:`\text{bias}/\text{sd}(\hat{\theta})`.
-    sd : float
-        Standard deviation of underlying normal (typically 1).
-    seed : int
-        Random seed for Monte Carlo approximation.
-
-    Returns
-    -------
-    float
-        The p-th quantile of the folded normal distribution.
-
-    Notes
-    -----
-    When :math:`\mu = 0`, this reduces to the half-normal distribution.
-    For non-zero :math:`\mu`, we use Monte Carlo simulation to approximate
-    the quantile as no closed-form expression exists.
-    """
-    if sd <= 0:
-        raise ValueError("Standard deviation must be positive")
-
-    mu_abs = abs(mu)
-
-    if mu_abs == 0:
-        return sd * stats.halfnorm.ppf(p)
-
-    rng = np.random.default_rng(seed)
-    n_samples = 10**6
-    normal_samples = rng.normal(mu_abs, sd, n_samples)
-    folded_samples = np.abs(normal_samples)
-    return np.quantile(folded_samples, p)
-
-
-def weights_to_l(weights):
+def _weights_to_l(weights):
     r"""Convert from weight parameterization to :math:`\ell` parameterization.
 
     Converts from the first-difference parameterization :math:`w` to the
@@ -804,7 +850,7 @@ def weights_to_l(weights):
     return np.cumsum(weights)
 
 
-def l_to_weights(l_vector):
+def _l_to_weights(l_vector):
     r"""Convert from :math:`\ell` parameterization to :math:`w` parameterization.
 
     Converts from the levels parameterization :math:`\ell` to the

@@ -1,188 +1,63 @@
-=============
-API Reference
-=============
+.. module:: didpy
+
+.. _reference:
+
+###############
+didpy reference
+###############
+
+:Release: |version|
+:Date: |today|
 
 This reference manual details functions, modules, and objects
 included in didpy, describing what they are and what they do.
-For learning how to use didpy, see the :doc:`../tutorial/index`.
 
-.. _api-overview:
+Core DiD Methods
+================
 
-Python API
-==========
+.. toctree::
+   :maxdepth: 3
 
-didpy adheres to the following naming convention:
+   did
+   drdid
 
-* Public modules and functions should have an all lowercase name, potentially
-  with underscores separating words.
-* Private modules should be prefixed with an underscore, ``_like_this``.
-
-.. _api-importing:
-
-Importing from didpy
+Extended DiD Methods
 ====================
 
-The recommended way to use didpy functions is the following:
+.. toctree::
+   :maxdepth: 3
 
-.. code-block:: python
+   did2s
+   didcont
+   didinter
+   didlocal
+   didml
+   drdidweak
+   didcomp
 
-   import didpy
-   result = didpy.drdid_imp_panel(...)
-
-Main estimation functions
-=========================
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.att_gt
-   didpy.aggte
-   didpy.drdid
-   didpy.ipwdid
-   didpy.ordid
-
-Doubly-robust DiD estimators
+Sensitivity and Diagnostics
 ============================
 
-Panel data
-----------
+.. toctree::
+   :maxdepth: 3
 
-.. autosummary::
-   :toctree: generated/
+   honestdid
+   didbacon
+   functional
 
-   didpy.drdid_imp_panel
-   didpy.drdid_panel
+Bootstrap and Propensity
+========================
 
-Repeated cross-sections
------------------------
+.. toctree::
+   :maxdepth: 3
 
-.. autosummary::
-   :toctree: generated/
+   bootstrap
+   propensity
+   utilities
 
-   didpy.drdid_imp_local_rc
-   didpy.drdid_imp_rc
-   didpy.drdid_rc
-   didpy.drdid_trad_rc
+Acknowledgements
+================
 
-Inverse propensity weighted DiD estimators
-==========================================
-
-Panel data
-----------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.ipw_did_panel
-   didpy.std_ipw_did_panel
-
-Repeated cross-sections
------------------------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.ipw_did_rc
-   didpy.std_ipw_did_rc
-
-Outcome regression DiD estimators
-=================================
-
-Panel data
-----------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.reg_did_panel
-   didpy.twfe_did_panel
-
-Repeated cross-sections
------------------------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.reg_did_rc
-   didpy.twfe_did_rc
-
-Propensity score utilities
-==========================
-
-Core propensity score estimation
---------------------------------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.calculate_pscore_ipt
-
-AIPW estimators
----------------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.aipw_did_panel
-   didpy.aipw_did_rc_imp1
-   didpy.aipw_did_rc_imp2
-
-IPW estimators
---------------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.ipw_rc
-
-Bootstrap inference
-===================
-
-Panel data bootstrap
---------------------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.wboot_drdid_imp_panel
-   didpy.wboot_dr_tr_panel
-   didpy.wboot_ipw_panel
-   didpy.wboot_std_ipw_panel
-   didpy.wboot_reg_panel
-   didpy.wboot_twfe_panel
-
-Repeated cross-section bootstrap
---------------------------------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.wboot_drdid_rc1
-   didpy.wboot_drdid_rc2
-   didpy.wboot_drdid_ipt_rc1
-   didpy.wboot_drdid_ipt_rc2
-   didpy.wboot_ipw_rc
-   didpy.wboot_std_ipw_rc
-   didpy.wboot_reg_rc
-   didpy.wboot_twfe_rc
-
-Multiplier bootstrap
---------------------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.mboot_did
-   didpy.mboot_twfep_did
-
-Supporting functions
-====================
-
-Weighted OLS
-------------
-
-.. autosummary::
-   :toctree: generated/
-
-   didpy.wols_panel
-   didpy.wols_rc
+The didpy package implements various difference-in-differences methodologies from
+the econometric literature. We acknowledge the original authors of these methods,
+and the authors of the R packages that inspired this package.

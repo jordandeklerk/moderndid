@@ -7,6 +7,10 @@ from .arp_no_nuisance import (
 from .arp_nuisance import (
     ARPNuisanceCIResult,
     compute_arp_nuisance_ci,
+    compute_least_favorable_cv,
+    compute_vlo_vup_dual,
+    lp_conditional_test,
+    test_delta_lp,
 )
 from .bounds import (
     compute_delta_sd_lowerbound_m,
@@ -67,7 +71,11 @@ from .delta.sdrm.sdrmm import (
 )
 from .fixed_length_ci import (
     FLCIResult,
+    affine_variance,
     compute_flci,
+    folded_normal_quantile,
+    maximize_bias,
+    minimize_variance,
 )
 from .honest_did import (
     HonestDiDResult,
@@ -128,11 +136,19 @@ __all__ = [
     # Fixed-length confidence intervals (FLCI)
     "compute_flci",
     "FLCIResult",
+    "maximize_bias",
+    "minimize_variance",
+    "affine_variance",
+    "folded_normal_quantile",
     # APR confidence intervals (no nuisance)
     "compute_arp_ci",
     "APRCIResult",
     # APR confidence intervals (with nuisance)
     "compute_arp_nuisance_ci",
+    "compute_least_favorable_cv",
+    "compute_vlo_vup_dual",
+    "lp_conditional_test",
+    "test_delta_lp",
     "ARPNuisanceCIResult",
     # Delta RM (relative magnitudes)
     "DeltaRMResult",

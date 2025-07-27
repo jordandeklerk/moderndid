@@ -6,7 +6,7 @@ import numpy as np
 import scipy.optimize as opt
 
 from ...arp_no_nuisance import compute_arp_ci
-from ...arp_nuisance import _compute_least_favorable_cv, compute_arp_nuisance_ci
+from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_monotonicity_constraint_matrix
 from ...delta.sd.sd import _create_sd_constraint_matrix, _create_sd_constraint_vector
 from ...fixed_length_ci import compute_flci
@@ -467,7 +467,7 @@ def _compute_cs_sdm_no_nuisance(
 
     else:  # LF or ARP
         if hybrid_flag == "LF":
-            lf_cv = _compute_least_favorable_cv(
+            lf_cv = compute_least_favorable_cv(
                 x_t=None,
                 sigma=A_sdm @ sigma @ A_sdm.T,
                 hybrid_kappa=hybrid_kappa,
