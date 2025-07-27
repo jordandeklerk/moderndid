@@ -850,39 +850,6 @@ def _weights_to_l(weights):
     return np.cumsum(weights)
 
 
-def _l_to_weights(l_vector):
-    r"""Convert from :math:`\ell` parameterization to :math:`w` parameterization.
-
-    Converts from the levels parameterization :math:`\ell` to the
-    first-difference parameterization :math:`w` via
-
-    .. math::
-
-        w_t = \begin{cases}
-        \ell_1 & \text{if } t = 1 \\
-        \ell_t - \ell_{t-1} & \text{if } t > 1
-        \end{cases}.
-
-    This is the inverse transformation of :func:`weights_to_l`.
-
-    Parameters
-    ----------
-    l_vector : ndarray
-        Level vector :math:`\ell` (cumulative sums).
-
-    Returns
-    -------
-    ndarray
-        Weight vector :math:`w` (first differences).
-    """
-    weights = np.zeros_like(l_vector)
-    weights[0] = l_vector[0]
-
-    if len(l_vector) > 1:
-        weights[1:] = np.diff(l_vector)
-    return weights
-
-
 def _create_diff_matrix(size):
     mat = np.eye(size)
     if size > 1:

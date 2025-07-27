@@ -376,7 +376,7 @@ def lp_conditional_test(
         }
 
     # Compute eta and argmin delta
-    lin_soln = test_delta_lp(y_t_arp, x_t_arp, sigma_arp)
+    lin_soln = _test_delta_lp(y_t_arp, x_t_arp, sigma_arp)
 
     if not lin_soln["success"]:
         return {
@@ -575,110 +575,6 @@ def lp_conditional_test(
         "eta": lin_soln["eta_star"],
         "delta": lin_soln["delta_star"],
         "lambda": lin_soln["lambda"],
-    }
-
-
-def test_delta_lp(y_t, x_t, sigma):
-    r"""Solve linear program for delta test.
-
-    Solves the primal optimization problem from equation (14) in [2]_
-
-    .. math::
-
-        \hat{\eta} = \min_{\eta, \tilde{\tau}} \eta \quad \text{s.t.} \quad
-        \tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau} \leq \tilde{\sigma}_n \cdot \eta.
-
-    This linear program finds the smallest scaling :math:`\eta` such that there exists
-    a nuisance parameter vector :math:`\tilde{\tau}` making all moment inequalities satisfied.
-    The solution characterizes whether the null hypothesis can be rejected and identifies
-    which moments bind at the optimum.
-
-    By duality (equation (15) in [2]_), this equals
-
-    .. math::
-
-        \hat{\eta} = \max_{\gamma} \gamma'\tilde{Y}_n(\bar{\theta}) \text{ s.t. }
-        \gamma'\tilde{X} = 0, \gamma'\tilde{\sigma}_n = 1, \gamma \geq 0.
-
-    The dual solution :math:`\gamma_*` (Lagrange multipliers) is crucial for the conditional
-    inference approach as it determines the conditioning event. The vertices :math:`\hat{V}_n \subset V(\Sigma_n)`
-    correspond to basic feasible solutions of the dual program, and conditioning on :math:`\gamma_* \in \hat{V}_n`
-    ensures correct coverage.
-
-    Parameters
-    ----------
-    y_t : ndarray
-        Outcome vector :math:`y_T = A\hat{\beta} - d` adjusted for hypothesized :math:`\theta`.
-    x_t : ndarray
-        Covariate matrix :math:`X_T` corresponding to nuisance parameters.
-    sigma : ndarray
-        Covariance matrix :math:`\Sigma_Y` of y_t.
-
-    Returns
-    -------
-    dict
-        Dictionary containing:
-
-        - eta_star: float, optimal value :math:`\eta^*`
-        - delta_star: ndarray, optimal nuisance parameters :math:`\xi^*`
-        - lambda: ndarray, Lagrange multipliers :math:`\lambda^*` (dual solution)
-        - success: bool, whether optimization succeeded
-
-    Notes
-    -----
-    The constraint :math:`y_T - X_T\xi \leq \eta \cdot \text{diag}(\Sigma)^{1/2}` normalizes
-    each moment by its standard deviation, ensuring scale invariance. The optimal
-    :math:`\eta^*` can be interpreted as the maximum standardized violation of the
-    moment inequalities under the least favorable choice of :math:`\xi`.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
-    """
-    if x_t.ndim == 1:
-        x_t = x_t.reshape(-1, 1)
-
-    dim_delta = x_t.shape[1]
-    sd_vec = np.sqrt(np.diag(sigma))
-
-    # Minimize eta
-    c = np.concatenate([[1.0], np.zeros(dim_delta)])
-
-    # Constraints are -sd_vec*eta - X_T*delta <= -y_T (y_T = a_matrix @ betahat - d_vec)
-    A_ub = -np.column_stack([sd_vec, x_t])
-    b_ub = -y_t
-
-    # Bounds: eta and delta unbounded
-    bounds = [(None, None) for _ in range(len(c))]
-
-    # Use dual simplex approach
-    result = opt.linprog(
-        c=c,
-        A_ub=A_ub,
-        b_ub=b_ub,
-        bounds=bounds,
-        method="highs-ds",
-    )
-
-    if result.success:
-        eta_star = result.x[0]
-        delta_star = result.x[1:]
-        # Get dual variables (Lagrange multipliers)
-        dual_vars = -result.ineqlin.marginals if hasattr(result, "ineqlin") else np.zeros(len(b_ub))
-    else:
-        eta_star = np.nan
-        delta_star = np.full(dim_delta, np.nan)
-        dual_vars = np.zeros(len(b_ub))
-
-    return {
-        "eta_star": eta_star,
-        "delta_star": delta_star,
-        "lambda": dual_vars,
-        "success": result.success,
     }
 
 
@@ -949,6 +845,110 @@ def compute_least_favorable_cv(
         raise RuntimeError("Failed to compute any valid eta values")
 
     return float(np.quantile(eta_vec, 1 - hybrid_kappa))
+
+
+def _test_delta_lp(y_t, x_t, sigma):
+    r"""Solve linear program for delta test.
+
+    Solves the primal optimization problem from equation (14) in [2]_
+
+    .. math::
+
+        \hat{\eta} = \min_{\eta, \tilde{\tau}} \eta \quad \text{s.t.} \quad
+        \tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau} \leq \tilde{\sigma}_n \cdot \eta.
+
+    This linear program finds the smallest scaling :math:`\eta` such that there exists
+    a nuisance parameter vector :math:`\tilde{\tau}` making all moment inequalities satisfied.
+    The solution characterizes whether the null hypothesis can be rejected and identifies
+    which moments bind at the optimum.
+
+    By duality (equation (15) in [2]_), this equals
+
+    .. math::
+
+        \hat{\eta} = \max_{\gamma} \gamma'\tilde{Y}_n(\bar{\theta}) \text{ s.t. }
+        \gamma'\tilde{X} = 0, \gamma'\tilde{\sigma}_n = 1, \gamma \geq 0.
+
+    The dual solution :math:`\gamma_*` (Lagrange multipliers) is crucial for the conditional
+    inference approach as it determines the conditioning event. The vertices :math:`\hat{V}_n \subset V(\Sigma_n)`
+    correspond to basic feasible solutions of the dual program, and conditioning on :math:`\gamma_* \in \hat{V}_n`
+    ensures correct coverage.
+
+    Parameters
+    ----------
+    y_t : ndarray
+        Outcome vector :math:`y_T = A\hat{\beta} - d` adjusted for hypothesized :math:`\theta`.
+    x_t : ndarray
+        Covariate matrix :math:`X_T` corresponding to nuisance parameters.
+    sigma : ndarray
+        Covariance matrix :math:`\Sigma_Y` of y_t.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+
+        - eta_star: float, optimal value :math:`\eta^*`
+        - delta_star: ndarray, optimal nuisance parameters :math:`\xi^*`
+        - lambda: ndarray, Lagrange multipliers :math:`\lambda^*` (dual solution)
+        - success: bool, whether optimization succeeded
+
+    Notes
+    -----
+    The constraint :math:`y_T - X_T\xi \leq \eta \cdot \text{diag}(\Sigma)^{1/2}` normalizes
+    each moment by its standard deviation, ensuring scale invariance. The optimal
+    :math:`\eta^*` can be interpreted as the maximum standardized violation of the
+    moment inequalities under the least favorable choice of :math:`\xi`.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
+        Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    """
+    if x_t.ndim == 1:
+        x_t = x_t.reshape(-1, 1)
+
+    dim_delta = x_t.shape[1]
+    sd_vec = np.sqrt(np.diag(sigma))
+
+    # Minimize eta
+    c = np.concatenate([[1.0], np.zeros(dim_delta)])
+
+    # Constraints are -sd_vec*eta - X_T*delta <= -y_T (y_T = a_matrix @ betahat - d_vec)
+    A_ub = -np.column_stack([sd_vec, x_t])
+    b_ub = -y_t
+
+    # Bounds: eta and delta unbounded
+    bounds = [(None, None) for _ in range(len(c))]
+
+    # Use dual simplex approach
+    result = opt.linprog(
+        c=c,
+        A_ub=A_ub,
+        b_ub=b_ub,
+        bounds=bounds,
+        method="highs-ds",
+    )
+
+    if result.success:
+        eta_star = result.x[0]
+        delta_star = result.x[1:]
+        # Get dual variables (Lagrange multipliers)
+        dual_vars = -result.ineqlin.marginals if hasattr(result, "ineqlin") else np.zeros(len(b_ub))
+    else:
+        eta_star = np.nan
+        delta_star = np.full(dim_delta, np.nan)
+        dual_vars = np.zeros(len(b_ub))
+
+    return {
+        "eta_star": eta_star,
+        "delta_star": delta_star,
+        "lambda": dual_vars,
+        "success": result.success,
+    }
 
 
 def _lp_dual_wrapper(

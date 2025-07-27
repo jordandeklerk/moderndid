@@ -88,7 +88,6 @@ from didpy.didhonest import (
     plot_sensitivity_rm,
     plot_sensitivity_sm,
     selection_matrix,
-    test_delta_lp,
     test_in_identified_set_max,
     validate_conformable,
     validate_symmetric_psd,
@@ -279,7 +278,6 @@ __all__ = [
     "compute_least_favorable_cv",
     "compute_vlo_vup_dual",
     "lp_conditional_test",
-    "test_delta_lp",
     # Honest DiD Delta RM
     "DeltaRMResult",
     "compute_conditional_cs_rm",

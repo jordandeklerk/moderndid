@@ -8,16 +8,16 @@ from didpy.didhonest.arp_nuisance import (
     ARPNuisanceCIResult,
     _check_if_solution,
     _compute_flci_vlo_vup,
-    _compute_least_favorable_cv,
-    _compute_vlo_vup_dual,
     _construct_gamma,
     _find_leading_one_column,
-    _lp_conditional_test,
     _lp_dual_wrapper,
     _round_eps,
     _solve_max_program,
     _test_delta_lp,
     compute_arp_nuisance_ci,
+    compute_least_favorable_cv,
+    compute_vlo_vup_dual,
+    lp_conditional_test,
 )
 
 
@@ -187,7 +187,7 @@ def test_compute_vlo_vup_dual(rng):
     w_t = np.column_stack([np.ones(n), rng.normal(0, 1, (n, 2))])
     eta = 0.5
 
-    result = _compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t)
+    result = compute_vlo_vup_dual(eta, s_t, gamma_tilde, sigma, w_t)
     assert "vlo" in result
     assert "vup" in result
     assert result["vlo"] <= eta <= result["vup"]
@@ -209,13 +209,13 @@ def test_compute_least_favorable_cv():
     np.random.seed(42)
     sigma = np.eye(5)
 
-    cv_no_nuisance = _compute_least_favorable_cv(None, sigma, 0.1, sims=100)
+    cv_no_nuisance = compute_least_favorable_cv(None, sigma, 0.1, sims=100)
     assert isinstance(cv_no_nuisance, float)
     assert cv_no_nuisance > 0
 
     x_t = np.array([[0.5, 0.2], [0.3, 0.4], [0.1, 0.6], [0.7, 0.1], [0.2, 0.3]])
     try:
-        cv_with_nuisance = _compute_least_favorable_cv(x_t, sigma, 0.1, sims=50, seed=42)
+        cv_with_nuisance = compute_least_favorable_cv(x_t, sigma, 0.1, sims=50, seed=42)
         assert isinstance(cv_with_nuisance, float)
     except RuntimeError:
         pass
@@ -235,7 +235,7 @@ def test_compute_flci_vlo_vup():
 
 @pytest.mark.parametrize("x_t", [None, np.random.normal(0, 1, (10, 2))])
 def test_lp_conditional_test_with_without_nuisance(simple_data, x_t):
-    result = _lp_conditional_test(
+    result = lp_conditional_test(
         y_t=simple_data["y_t"],
         x_t=x_t,
         sigma=simple_data["sigma"],
@@ -262,7 +262,7 @@ def test_lp_conditional_test_hybrid_types(simple_data, hybrid_flag):
         "dbar": np.array([1.0, 1.0]),
         "flci_halflength": 0.5,
     }
-    result = _lp_conditional_test(
+    result = lp_conditional_test(
         y_t=simple_data["y_t"],
         x_t=simple_data["x_t"],
         sigma=simple_data["sigma"],
@@ -334,7 +334,7 @@ def test_all_hybrid_flags():
     y_t = np.array([1.0, 2.0])
     sigma = np.eye(2)
 
-    result = _lp_conditional_test(
+    result = lp_conditional_test(
         y_t=y_t,
         x_t=None,
         sigma=sigma,
@@ -344,7 +344,7 @@ def test_all_hybrid_flags():
     assert isinstance(result, dict)
     assert "reject" in result
 
-    result = _lp_conditional_test(
+    result = lp_conditional_test(
         y_t=y_t,
         x_t=None,
         sigma=sigma,
@@ -355,7 +355,7 @@ def test_all_hybrid_flags():
     assert isinstance(result, dict)
     assert "reject" in result
 
-    result = _lp_conditional_test(
+    result = lp_conditional_test(
         y_t=y_t,
         x_t=None,
         sigma=sigma,
@@ -415,7 +415,7 @@ def test_ci_open_at_endpoints(panel_data):
 @pytest.mark.parametrize("invalid_hybrid_flag", ["invalid", "INVALID", ""])
 def test_invalid_hybrid_flag(simple_data, invalid_hybrid_flag):
     with pytest.raises(ValueError, match=f"Invalid hybrid_flag: {invalid_hybrid_flag}"):
-        _lp_conditional_test(
+        lp_conditional_test(
             y_t=simple_data["y_t"],
             x_t=simple_data["x_t"],
             sigma=simple_data["sigma"],
@@ -428,7 +428,7 @@ def test_singular_covariance_matrix(edge_case_data):
     y_t = np.array([1.0, 1.0])
     x_t = np.array([[1.0], [1.0]])
 
-    result = _lp_conditional_test(
+    result = lp_conditional_test(
         y_t=y_t,
         x_t=x_t,
         sigma=edge_case_data["singular_sigma"],
@@ -473,7 +473,7 @@ def test_high_dimensional_case(high_dim_data):
     if eigenvalues.min() < 0.1:
         sigma += (0.1 - eigenvalues.min()) * np.eye(high_dim_data["n"])
 
-    result = _lp_conditional_test(
+    result = lp_conditional_test(
         y_t=high_dim_data["y_t"],
         x_t=high_dim_data["x_t"],
         sigma=sigma,
@@ -491,13 +491,13 @@ def test_binding_constraint_configurations(rng):
     x_t = rng.normal(0, 1, (n, k))
     sigma = np.eye(n)
 
-    result1 = _lp_conditional_test(y_t, x_t, sigma, alpha=0.05)
+    result1 = lp_conditional_test(y_t, x_t, sigma, alpha=0.05)
 
     y_t = -10 * np.ones(n)
-    result2 = _lp_conditional_test(y_t, x_t, sigma, alpha=0.05)
+    result2 = lp_conditional_test(y_t, x_t, sigma, alpha=0.05)
 
     y_t = np.concatenate([np.zeros(3), -10 * np.ones(3)])
-    result3 = _lp_conditional_test(y_t, x_t, sigma, alpha=0.05)
+    result3 = lp_conditional_test(y_t, x_t, sigma, alpha=0.05)
 
     for result in [result1, result2, result3]:
         assert isinstance(result["reject"], bool)
@@ -511,7 +511,7 @@ def test_bisection_convergence():
     sigma = np.eye(n) + 0.1 * np.ones((n, n))
     w_t = np.column_stack([np.ones(n), np.eye(n)])
 
-    result = _compute_vlo_vup_dual(0.5, s_t, gamma_tilde, sigma, w_t)
+    result = compute_vlo_vup_dual(0.5, s_t, gamma_tilde, sigma, w_t)
     assert result["vlo"] < result["vup"]
     assert not np.isinf(result["vlo"]) or not np.isinf(result["vup"])
 
@@ -520,8 +520,8 @@ def test_least_favorable_cv_reproducibility():
     sigma = np.eye(4)
     x_t = np.random.RandomState(42).normal(0, 1, (4, 2))
 
-    cv1 = _compute_least_favorable_cv(x_t, sigma, 0.05, sims=100, seed=123)
-    cv2 = _compute_least_favorable_cv(x_t, sigma, 0.05, sims=100, seed=123)
+    cv1 = compute_least_favorable_cv(x_t, sigma, 0.05, sims=100, seed=123)
+    cv2 = compute_least_favorable_cv(x_t, sigma, 0.05, sims=100, seed=123)
 
     if not (isinstance(cv1, float) and isinstance(cv2, float)):
         pytest.skip("LF CV computation failed")
@@ -643,7 +643,7 @@ def test_influence_function_properties(panel_data):
     x_t = np.random.normal(0, 1, (len(y_t), 2))
     sigma_y = a_matrix @ panel_data["sigma"] @ a_matrix.T
 
-    result = _lp_conditional_test(
+    result = lp_conditional_test(
         y_t=y_t,
         x_t=x_t,
         sigma=sigma_y,

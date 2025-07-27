@@ -10,7 +10,6 @@ from .arp_nuisance import (
     compute_least_favorable_cv,
     compute_vlo_vup_dual,
     lp_conditional_test,
-    test_delta_lp,
 )
 from .bounds import (
     compute_delta_sd_lowerbound_m,
@@ -148,7 +147,6 @@ __all__ = [
     "compute_least_favorable_cv",
     "compute_vlo_vup_dual",
     "lp_conditional_test",
-    "test_delta_lp",
     "ARPNuisanceCIResult",
     # Delta RM (relative magnitudes)
     "DeltaRMResult",
