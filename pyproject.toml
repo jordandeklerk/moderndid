@@ -3,7 +3,7 @@ requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "didpy"
+name = "doublediff"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
@@ -40,12 +40,12 @@ dependencies = [
 ]
 
 [tool.flit.module]
-name = "didpy"
+name = "doublediff"
 
 [project.urls]
-source = "https://github.com/jordandeklerk/didpy"
-tracker = "https://github.com/jordandeklerk/didpy/issues"
-documentation = "https://didpy.readthedocs.io"
+source = "https://github.com/jordandeklerk/doublediff"
+tracker = "https://github.com/jordandeklerk/doublediff/issues"
+documentation = "https://doublediff.readthedocs.io"
 
 [project.optional-dependencies]
 test = [
@@ -88,8 +88,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"src/didpy/__init__.py" = ["I", "F401", "E402", "F403"]
-"src/didpy/**/__init__.py" = ["I", "F401", "E402", "F403"]
+"src/doublediff/__init__.py" = ["I", "F401", "E402", "F403"]
+"src/doublediff/**/__init__.py" = ["I", "F401", "E402", "F403"]
 "tests/**/*" = ["D", "E402", "NPY002"]
 
 [tool.ruff.lint.pydocstyle]
@@ -120,7 +120,7 @@ no_implicit_reexport = true
 
 # More strict checks for library code
 [[tool.mypy.overrides]]
-module = "didpy"
+module = "doublediff"
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
@@ -129,4 +129,4 @@ testpaths = [
 ]
 
 [tool.coverage.run]
-source = ["didpy"]
+source = ["doublediff"]

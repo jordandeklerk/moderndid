@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import pytest
 
-from didpy import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
+from doublediff import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 
 from ..dgp import SantAnnaZhaoDRDiD
 

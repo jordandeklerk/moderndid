@@ -92,7 +92,7 @@ def aggte(
         :okwarning:
 
         In [1]: import numpy as np
-           ...: from didpy import att_gt, aggte, load_mpdta
+           ...: from doublediff import att_gt, aggte, load_mpdta
            ...:
            ...: df = load_mpdta()
            ...:

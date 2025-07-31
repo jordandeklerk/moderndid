@@ -14,7 +14,7 @@ Theoretical Background
 Functions
 ---------
 
-.. currentmodule:: didpy
+.. currentmodule:: doublediff
 
 Weighted OLS Functions
 ~~~~~~~~~~~~~~~~~~~~~~

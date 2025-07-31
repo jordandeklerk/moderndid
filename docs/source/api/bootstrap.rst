@@ -14,7 +14,7 @@ Theoretical Background
 Functions
 ---------
 
-.. currentmodule:: didpy
+.. currentmodule:: doublediff
 
 Panel Data Bootstrap
 ~~~~~~~~~~~~~~~~~~~~

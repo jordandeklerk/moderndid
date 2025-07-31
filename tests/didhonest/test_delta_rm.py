@@ -4,12 +4,12 @@
 import numpy as np
 import pytest
 
-from didpy.didhonest import (
+from doublediff.didhonest import (
     DeltaRMResult,
     compute_conditional_cs_rm,
     compute_identified_set_rm,
 )
-from didpy.didhonest.delta.rm.rm import (
+from doublediff.didhonest.delta.rm.rm import (
     _create_relative_magnitudes_constraint_matrix,
     _create_relative_magnitudes_constraint_vector,
 )

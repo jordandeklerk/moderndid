@@ -121,12 +121,12 @@ def ipwdid(
     .. ipython::
         :okwarning:
 
-        In [1]: import didpy
-           ...: from didpy.data import load_nsw
+        In [1]: import doublediff
+           ...: from doublediff.data import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
-           ...: att_result = didpy.ipwdid(
+           ...: att_result = doublediff.ipwdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -145,7 +145,7 @@ def ipwdid(
     .. ipython::
         :okwarning:
 
-        In [3]: att_result_std = didpy.ipwdid(
+        In [3]: att_result_std = doublediff.ipwdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -164,7 +164,7 @@ def ipwdid(
     .. ipython::
         :okwarning:
 
-        In [5]: att_result_boot = didpy.ipwdid(
+        In [5]: att_result_boot = doublediff.ipwdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",

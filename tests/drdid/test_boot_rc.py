@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from didpy import (
+from doublediff import (
     wboot_drdid_rc1,
     wboot_drdid_rc2,
 )

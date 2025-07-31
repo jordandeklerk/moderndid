@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from didpy.drdid import drdid_trad_rc
+from doublediff.drdid import drdid_trad_rc
 
 
 def test_drdid_trad_rc_basic():

@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from didpy import compute_aggte, compute_att_gt, load_mpdta, mp, preprocess_did
+from doublediff import compute_aggte, compute_att_gt, load_mpdta, mp, preprocess_did
 
 
 @pytest.fixture

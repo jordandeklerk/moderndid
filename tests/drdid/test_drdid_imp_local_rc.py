@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from didpy import drdid_imp_local_rc
+from doublediff import drdid_imp_local_rc
 
 
 @pytest.mark.parametrize("covariates", [None, "with_covariates"])

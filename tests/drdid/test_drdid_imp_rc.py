@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from didpy import drdid_imp_rc
+from doublediff import drdid_imp_rc
 
 
 def dgp_rc_for_test(n=2000, seed=42):

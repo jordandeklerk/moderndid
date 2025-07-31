@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from didpy.did import mboot
+from doublediff.did import mboot
 
 
 def test_basic_functionality():

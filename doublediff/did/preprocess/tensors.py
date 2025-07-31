@@ -6,7 +6,7 @@ from typing import Protocol
 import numpy as np
 import pandas as pd
 
-from didpy.utils import extract_vars_from_formula
+from doublediff.utils import extract_vars_from_formula
 
 from .constants import WEIGHTS_COLUMN, DataFormat
 from .models import DIDConfig
