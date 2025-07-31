@@ -100,6 +100,14 @@ def compute_flci(
     guaranteed consistency and near-optimal finite-sample properties. For other
     restriction sets, consider using conditional or hybrid confidence sets instead.
 
+    During the optimization process, you may encounter a warning from CVXPY about
+    "Solution may be inaccurate" when the solver reaches numerical precision limits.
+    This typically occurs during the binary search for optimal parameters when the
+    variance constraint becomes very tight (h values around 0.009 or smaller).
+    Despite this warning, the returned solution is still valid and usable. The
+    warning simply indicates that the solver terminated with status "optimal_inaccurate"
+    rather than "optimal" due to numerical precision constraints.
+
     Notes
     -----
     The FLCI is computed by solving a nested optimization problem. For each
@@ -176,20 +184,20 @@ def maximize_bias(
 ):
     r"""Find worst-case bias subject to standard deviation constraint :math:`h`.
 
-    Computes the affine estimator's worst-case bias defined as in [1]_
+    Computes the affine estimator's worst-case bias, which for :math:`\Delta^{SD}(M)`
+    is found by solving the following Second-Order Cone Program (SOCP)
 
     .. math::
 
-        \bar{b}(a, v) = \sup_{\delta \in \Delta, \tau_{post} \in \mathbb{R}^{\bar{T}}}
-            |a + v'(\delta + L_{post}\tau_{post}) - l'\tau_{post}|,
+        \min_{w, t} \quad & C_{bias} + \sum_{s=-\underline{T}+1}^{0} t_s \\
+        \text{s.t.} \quad & -t_s \leq \sum_{j=-\underline{T}+1}^{s} w_j \leq t_s, \quad \forall s \\
+                          & \sum_{s=-\underline{T}+1}^{0} w_s = \sum_{s=1}^{\bar{T}} s \cdot \ell_{post,s} \\
+                          & \text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post}) \leq h^2.
 
-    where :math:`a` and :math:`v` are chosen to minimize the confidence interval
-    length subject to the constraint that the resulting estimator has standard
-    deviation at most :math:`h`.
-
-    For the special case of :math:`\Delta^{SD}(M)`, this reduces to finding
-    pre-treatment weights :math:`\ell_{pre}` that maximize the worst-case bias
-    subject to :math:`\text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post}) \leq h^2`.
+    Here, the optimization is over first-difference weights :math:`w` and slack
+    variables :math:`t`. The vector :math:`\ell_{pre}` contains the cumulative sums
+    of :math:`w`. The quadratic variance constraint is reformulated as a second-order
+    cone, and the problem is solved using an interior-point method from [2]_.
 
     Parameters
     ----------
@@ -220,11 +228,6 @@ def maximize_bias(
 
     Notes
     -----
-    The optimization uses a change of variables where pre-treatment levels are
-    parameterized through first differences (weights). The worst-case bias under
-    :math:`\Delta^{SD}(M)` has a closed-form solution given the weights, allowing
-    this to be formulated as a convex optimization problem.
-
     This implementation is specific to :math:`\Delta^{SD}(M)`. For other restriction
     sets, the worst-case bias computation differs significantly. For :math:`\Delta^{SDPB}(M)`
     and :math:`\Delta^{SDI}(M)`, the worst-case bias of any affine estimator equals
@@ -238,6 +241,9 @@ def maximize_bias(
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+
+    .. [2] Goulart, P. J., & Chen, Y. (2024). Clarabel: An interior-point solver
+        for conic programs with quadratic objectives. *arXiv preprint arXiv:2405.13033*.
     """
     stacked_vars = cp.Variable(2 * n_pre_periods)
 
@@ -278,7 +284,7 @@ def maximize_bias(
     problem = cp.Problem(objective, constraints)
 
     try:
-        problem.solve(solver=cp.ECOS, verbose=False)
+        problem.solve(solver=cp.CLARABEL, verbose=False)
 
         if problem.status in ["optimal", "optimal_inaccurate"]:
             optimal_w = stacked_vars.value[n_pre_periods:]
@@ -319,27 +325,20 @@ def minimize_variance(
 ):
     r"""Find the minimum achievable standard deviation :math:`h`.
 
-    Solves the optimization problem in [1]_
+    Solves a Quadratic Program (QP) to find the minimum variance of an affine
+    estimator subject to bias constraints arising from :math:`\Delta^{SD}(M)`.
+    The optimization problem is formulated as
 
     .. math::
 
-        \min_{\ell_{pre}} \quad & \text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post})
+        \min_{w, t} \quad & \text{Var}(\ell'_{pre}\hat{\beta}_{pre} + \ell'_{post}\hat{\beta}_{post}) \\
+        \text{s.t.} \quad & -t_s \leq \sum_{j=-\underline{T}+1}^{s} w_j \leq t_s, \quad \forall s \\
+                          & \sum_{s=-\underline{T}+1}^{0} w_s = \sum_{s=1}^{\bar{T}} s \cdot \ell_{post,s}.
 
-        \text{s.t.} \quad & \text{Bias constraints from } \Delta^{SD}(M)
-
-    This finds the minimum variance achievable by any affine estimator that
-    satisfies the bias constraints imposed by the smoothness restriction.
-
-    The variance of the affine estimator is
-
-    .. math::
-
-        \text{Var}(\hat{\theta}) = \ell'_{pre}\Sigma_{pre,pre}\ell_{pre} +
-        2\ell'_{pre}\Sigma_{pre,post}\ell_{post} + \ell'_{post}\Sigma_{post,post}\ell_{post}.
-
-    This is minimized subject to constraints that ensure the resulting estimator
-    has bounded bias under :math:`\Delta^{SD}(M)`. The solution provides a lower
-    bound for the feasible values of :math:`h` in the FLCI optimization.
+    The variance is a quadratic function of the first-difference weights :math:`w`,
+    making this a QP. The problem is solved using an interior-point method from [2]_.
+    The solution provides a lower bound for the feasible values of :math:`h` in
+    the FLCI optimization.
 
     Parameters
     ----------
@@ -362,6 +361,9 @@ def minimize_variance(
 
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+
+    .. [2] Goulart, P. J., & Chen, Y. (2024). Clarabel: An interior-point solver
+        for conic programs with quadratic objectives. *arXiv preprint arXiv:2405.13033*.
     """
     stacked_vars = cp.Variable(2 * n_pre_periods)
 
@@ -394,7 +396,7 @@ def minimize_variance(
     problem = cp.Problem(objective, constraints)
 
     try:
-        problem.solve(solver=cp.ECOS, verbose=False)
+        problem.solve(solver=cp.CLARABEL, verbose=False)
 
         if problem.status in ["optimal", "optimal_inaccurate"]:
             return np.sqrt(problem.value)
@@ -410,7 +412,7 @@ def minimize_variance(
             scaled_objective = cp.Minimize(scaled_variance_expr)
             scaled_problem = cp.Problem(scaled_objective, constraints)
 
-            scaled_problem.solve(solver=cp.ECOS, verbose=False)
+            scaled_problem.solve(solver=cp.CLARABEL, verbose=False)
 
             if scaled_problem.status in ["optimal", "optimal_inaccurate"]:
                 return np.sqrt(scaled_problem.value / scale_factor)

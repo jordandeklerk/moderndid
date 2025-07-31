@@ -45,54 +45,26 @@ def compute_conditional_cs_rmb(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{RMB}(\bar{M})`.
+    r"""Compute conditional confidence set for :math:`\Delta^{RM}(\bar{M})` with bias sign restrictions.
 
-    Computes a confidence set for :math:`l'\tau_{post}` under the restriction that delta
-    lies in :math:`\Delta^{RMB}(\bar{M})`, which combines the relative magnitudes restriction
-    with a sign restriction on post-treatment bias.
+    Computes a confidence set for :math:`l'\tau_{post}` under the restriction that :math:`\delta`
+    lies in the intersection of the relative magnitudes set :math:`\Delta^{RM}(\bar{M})`
+    and a bias sign restriction set :math:`\Delta^{B}`.
 
-    The combined restriction is defined as:
-
-    .. math::
-
-        \Delta^{RMB}(\bar{M}) = \Delta^{RM}(\bar{M}) \cap \Delta^{B}
-
-    where :math:`\Delta^{B} = \Delta^{PB}` for positive bias with
-    :math:`\Delta^{PB} = \{\delta : \delta_t \geq 0, \forall t \geq 0\}`,
-    or :math:`\Delta^{B} = -\Delta^{PB} = \{\delta : \delta_t \leq 0, \forall t \geq 0\}` for negative bias.
-
-    This restriction is useful when economic theory suggests both bounded deviations from
-    parallel trends (relative to pre-treatment variation) and a known direction of bias,
-    such as when a concurrent policy is expected to have effects in a particular direction.
-    The intersection typically leads to smaller identified sets than using either restriction
-    alone.
-
-    The confidence set is computed as
+    The combined restriction is defined as the intersection of the sets from
+    Sections 2.4.1 and 2.4.4 of [2]_
 
     .. math::
 
-        CS = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
-            CS_{s,+} \cup CS_{s,-}
-        \right) \cap CS^{sign},
+        \Delta^{RMB}(\bar{M}) = \Delta^{RM}(\bar{M}) \cap \Delta^{B},
 
-    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets under the
-    positive and negative reference restrictions respectively, and :math:`CS^{sign}`
-    enforces the bias direction constraint.
+    where :math:`\Delta^{B}` is :math:`\Delta^{PB} = \{\delta: \delta_t \ge 0 \, \forall t \ge 0\}`
+    for positive bias, or :math:`-\Delta^{PB}` for negative bias. This is useful when
+    there is prior knowledge about the direction of the bias.
 
-    Since :math:`\Delta^{RMB}(\bar{M})` is a finite union of polyhedra, a valid confidence
-    set is constructed by taking the union of the confidence sets for each of its
-    components (Lemma 2.2).
-
-    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
-    set has uniform asymptotic coverage
-
-    .. math::
-
-        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
-        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
-
-    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
-    for all :math:`P \in \mathcal{P}`.
+    Since :math:`\Delta^{RMB}(\bar{M})` is a finite union of polyhedra, a valid
+    confidence set is constructed by taking the union of confidence sets for each
+    component polyhedron, following Lemma 2.2 of [2]_.
 
     Parameters
     ----------
@@ -107,8 +79,7 @@ def compute_conditional_cs_rmb(
     l_vec : ndarray, optional
         Vector defining parameter of interest. If None, defaults to first post-period.
     m_bar : float, default=0
-        Relative magnitude parameter :math:`\bar{M}`. Post-period deviations can be at
-        most :math:`\bar{M}` times the maximum pre-period deviation.
+        Relative magnitude parameter :math:`\bar{M}`.
     alpha : float, default=0.05
         Significance level.
     hybrid_flag : {'LF', 'ARP'}, default='LF'
@@ -138,20 +109,18 @@ def compute_conditional_cs_rmb(
 
     Notes
     -----
-    The confidence set is constructed using the moment inequality approach. Since
-    :math:`\Delta^{RMB}(\bar{M}) = \Delta^{RM}(\bar{M}) \cap \Delta^{B}` is a finite union
-    of polyhedra, we can apply Lemma 2.2 from Rambachan & Roth (2023) to construct a valid
-    confidence set by taking unions and intersections.
-
-    The computational approach leverages that both restrictions can be expressed as linear
-    constraints, allowing the use of standard linear programming tools. The bias sign restriction
-    often significantly reduces the identified set when there is strong prior information
-    about the direction of confounding.
+    The confidence set is constructed using the moment inequality approach from [1]_,
+    as described in Section 3 of [2]_. The intersection of :math:`\Delta^{RM}(\bar{M})`
+    and :math:`\Delta^{B}` forms a finite union of polyhedra (Section 2.4.5 of [2]_),
+    allowing the application of Lemma 2.2 for constructing a valid confidence set.
+    The sign restriction on the bias often sharpens the identified set.
 
     References
     ----------
 
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods < 2:
@@ -252,33 +221,24 @@ def compute_conditional_cs_rmb(
 def compute_identified_set_rmb(m_bar, true_beta, l_vec, num_pre_periods, num_post_periods, bias_direction="positive"):
     r"""Compute identified set for :math:`\Delta^{RMB}(\bar{M})`.
 
-    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
-    underlying trend delta lies in :math:`\Delta^{RMB}(\bar{M})`, taking the union over all
-    choices of reference period :math:`s` and sign restrictions, intersected with the
-    bias sign restriction.
+    Computes the identified set for :math:`l'\tau_{post}` under the restriction
+    :math:`\delta \in \Delta^{RM}(\bar{M}) \cap \Delta^B`.
 
-    The identified set is computed as:
+    The identified set is the union of identified sets for each component polyhedron,
+    as stated in (7) of [2]_
 
     .. math::
 
-        \mathcal{I}(\Delta^{RMB}(\bar{M})) = \bigcup_{s=-(T_{pre}-1)}^{0} \left(
-            \mathcal{I}(\Delta^{RM}_{s,+}(\bar{M})) \cup \mathcal{I}(\Delta^{RM}_{s,-}(\bar{M}))
-        \right) \cap \mathcal{I}(\Delta^{B})
+        \mathcal{S}(\beta, \Delta^{RMB}(\bar{M})) = \bigcup_{s<0, \text{sign} \in \{+,-\}}
+        \mathcal{S}(\beta, \Delta^{RM}_{s, \text{sign}}(\bar{M}) \cap \Delta^B).
 
-    where :math:`\mathcal{I}(\Delta^{RM}_{s,+}(\bar{M}))` and :math:`\mathcal{I}(\Delta^{RM}_{s,-}(\bar{M}))`
-    are the identified sets under the positive and negative reference restrictions respectively,
-    and :math:`\mathcal{I}(\Delta^{B})` enforces the sign restriction.
-
-    The identified set under :math:`\Delta^{RMB}(\bar{M})` represents the values of
-    :math:`\theta = l'\tau_{post}` consistent with the observed pre-treatment coefficients
-    :math:`\beta_{pre} = \delta_{pre}`, the relative magnitudes constraint, and the sign
-    restriction on post-treatment bias.
+    For each component, the bounds are determined by solving the linear programs
+    from Lemma 2.1 of [2]_.
 
     Parameters
     ----------
     m_bar : float
-        Relative magnitude parameter :math:`\bar{M}`. Post-period deviations can be at
-        most :math:`\bar{M}` times the maximum pre-period deviation.
+        Relative magnitude parameter :math:`\bar{M}`.
     true_beta : ndarray
         True coefficient values (pre and post periods).
     l_vec : ndarray
@@ -295,10 +255,13 @@ def compute_identified_set_rmb(m_bar, true_beta, l_vec, num_pre_periods, num_pos
     DeltaRMBResult
         Lower and upper bounds of the identified set.
 
-    Notes
-    -----
-    The sign restriction can substantially reduce the identified set when there is
-    strong prior information about the direction of confounding.
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods < 2:
         raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
@@ -359,21 +322,22 @@ def _create_relative_magnitudes_bias_constraint_matrix(
     drop_zero_period=True,
     bias_direction="positive",
 ):
-    r"""Create constraint matrix for :math:`\Delta^{RMB}_{s,sign}(\bar{M})`.
+    r"""Create constraint matrix for :math:`\Delta^{RM}_{s,sign}(\bar{M}) \cap \Delta^B`.
 
-    Creates matrix :math:`A` such that the constraint :math:`\delta \in \Delta^{RMB}_{s,sign}(\bar{M})`
-    can be written as :math:`A \delta \leq d`. This combines the relative magnitudes
-    constraint with a sign restriction.
+    Creates matrix :math:`A` for the polyhedral restriction :math:`A\delta \le d`
+    representing the intersection of a relative magnitudes component polyhedron
+    and a bias sign restriction.
 
-    The constraint set is defined as:
+    The combined constraint set is
 
     .. math::
 
         \Delta^{RMB}_{s,sign}(\bar{M}) = \Delta^{RM}_{s,sign}(\bar{M}) \cap \Delta^{B}
 
-    where :math:`\Delta^{RM}_{s,sign}(\bar{M})` constrains post-treatment deviations relative
-    to period :math:`s`, and :math:`\Delta^{B}` enforces a sign restriction on all
-    post-treatment effects.
+    where :math:`\Delta^{RM}_{s,sign}(\bar{M})` is a component of the relative
+    magnitudes restriction and :math:`\Delta^B` is the bias sign restriction from
+    Section 2.4.4 of [2]_. Both are polyhedra, so their intersection is also a
+    polyhedron.
 
     Parameters
     ----------
@@ -385,7 +349,6 @@ def _create_relative_magnitudes_bias_constraint_matrix(
         Relative magnitude parameter :math:`\bar{M}`.
     s : int, default=0
         Reference period for relative magnitudes restriction.
-        Must be between -(num_pre_periods-1) and 0.
     max_positive : bool, default=True
         If True, uses (+) restriction; if False, uses (-) restriction.
     drop_zero_period : bool, default=True
@@ -396,11 +359,14 @@ def _create_relative_magnitudes_bias_constraint_matrix(
     Returns
     -------
     ndarray
-        Constraint matrix A such that :math:`\delta \in \Delta^{RMB}` iff :math:`A\delta \leq d`.
+        Constraint matrix A for the combined restriction.
 
     References
     ----------
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     A_rm = _create_relative_magnitudes_constraint_matrix(
@@ -431,18 +397,10 @@ def _compute_identified_set_rmb_fixed_s(
     num_post_periods,
     bias_direction="positive",
 ):
-    r"""Compute identified set for :math:`\Delta^{RMB}_{s,\text{sign}}(\bar{M})` at fixed s.
+    r"""Compute identified set for a component of :math:`\Delta^{RMB}(\bar{M})` at fixed s.
 
-    Helper function that solves the linear programs for a specific choice of
-    reference period :math:`s` and sign. The bounds are obtained by solving
-
-    .. math::
-
-        \theta^{ub} = l'\beta_{post} - \min_{\delta} l'\delta_{post}
-
-        \theta^{lb} = l'\beta_{post} - \max_{\delta} l'\delta_{post}
-
-    subject to :math:`\delta_{pre} = \beta_{pre}` and :math:`\delta \in \Delta^{RMB}_{s,\text{sign}}(\bar{M})`.
+    Helper function that solves the linear programs from Lemma 2.1 of [2]_ for a
+    specific polyhedron :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M}) \cap \Delta^B`.
 
     Parameters
     ----------
@@ -466,7 +424,15 @@ def _compute_identified_set_rmb_fixed_s(
     Returns
     -------
     DeltaRMBResult
-        Lower and upper bounds of the identified set.
+        Lower and upper bounds of the identified set for the component polyhedron.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     # Objective: min/max l'*delta_post
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec])
@@ -545,11 +511,10 @@ def _compute_conditional_cs_rmb_fixed_s(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{RMB}_{s,\text{sign}}(\bar{M})` at fixed :math:`s`.
+    r"""Compute conditional CS for a component of :math:`\Delta^{RMB}(\bar{M})` at fixed :math:`s`.
 
-    Helper function that implements the moment inequality testing approach for the combined
-    relative magnitudes and bias sign restriction. The constraint set :math:`\Delta^{RMB}_{s,\text{sign}}(\bar{M})`
-    is a polyhedron, allowing the use of the conditional/hybrid tests from Andrews, Roth & Pakes (2021).
+    Helper function that implements the moment inequality testing approach for a
+    single polyhedron :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M}) \cap \Delta^B`.
 
     Parameters
     ----------
@@ -592,6 +557,14 @@ def _compute_conditional_cs_rmb_fixed_s(
     -------
     dict
         Dictionary with 'grid' and 'accept' arrays.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if hybrid_kappa is None:
         hybrid_kappa = alpha / 10
@@ -693,13 +666,11 @@ def _compute_conditional_cs_rmb_fixed_s(
 def _create_relative_magnitudes_bias_constraint_vector(A_rmb):
     r"""Create constraint vector for :math:`\Delta^{RMB}_{s,sign}(\bar{M})`.
 
-    Creates vector d such that the constraint :math:`\delta \in \Delta^{RMB}_{s,sign}(\bar{M})`
-    can be written as :math:`A \delta \leq d`.
+    Creates vector d for the constraint :math:`A\delta \le d`.
 
     For the combined relative magnitudes and bias restriction, the constraint vector
-    :math:`d` is a vector of zeros. This arises because both the relative magnitudes
-    constraint and the bias sign restriction can be written as homogeneous inequalities
-    of the form :math:`A\delta \leq 0`.
+    :math:`d` is a vector of zeros. This is because both restrictions are defined
+    by homogeneous inequalities.
 
     Parameters
     ----------
@@ -709,11 +680,6 @@ def _create_relative_magnitudes_bias_constraint_vector(A_rmb):
     Returns
     -------
     ndarray
-        Constraint vector d (all zeros for :math:`\Delta^{RMB}`).
-
-    Notes
-    -----
-    The zero constraint vector reflects that all restrictions are relative comparisons
-    or sign constraints, rather than absolute bounds on individual components.
+        Constraint vector d (all zeros).
     """
     return np.zeros(A_rmb.shape[0])

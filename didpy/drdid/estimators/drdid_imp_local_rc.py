@@ -40,11 +40,27 @@ def drdid_imp_local_rc(
     r"""Compute the improved and locally efficient DR-DiD estimator for the ATT with repeated cross-section data.
 
     Implements the locally efficient and improved doubly robust DiD estimator for the ATT
-    with repeated cross-sectional data, as defined in Sant'Anna and Zhao (2020) [2]_.
+    with repeated cross-sectional data. The estimator is implemented as in equation (3.10) of [2]_ as
 
-    This estimator uses a logistic propensity score model and separate linear
-    regression models for the control and treated groups' outcomes in both pre and post-treatment
-    periods. The resulting estimator is doubly robust and locally efficient.
+    .. math::
+        \widehat{\tau}_{2,imp}^{dr,rc} = \widehat{\tau}_{1,imp}^{dr,rc} +
+        \mathbb{E}_{n}\left[\left(\frac{D}{\mathbb{E}_{n}[D]} - \widehat{w}_{1,1}^{rc}(D,T)\right)
+        (\mu_{1,1}^{rc}(X; \widehat{\beta}_{1,1}^{ols,rc}) - \mu_{0,1}^{rc}(X; \widehat{\beta}_{0,1}^{wls,rc}))\right]
+        \\
+        - \mathbb{E}_{n}\left[\left(\frac{D}{\mathbb{E}_{n}[D]} - \widehat{w}_{1,0}^{rc}(D,T)\right)
+        (\mu_{1,0}^{rc}(X; \widehat{\beta}_{1,0}^{ols,rc}) - \mu_{0,0}^{rc}(X; \widehat{\beta}_{0,0}^{wls,rc}))\right],
+
+    where :math:`\widehat{\tau}_{1, i m p}^{d r, r c}` is the improved DR-DiD estimator that is not locally
+    efficient and
+
+    .. math::
+        \widehat{\tau}_{1,imp}^{dr,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D,T)
+        - \widehat{w}_{0}^{rc}(D,T,X;\widehat{\gamma}^{ipt})\right)
+        (Y - \mu_{0,Y}^{lin,rc}(T,X;\widehat{\beta}_{0,1}^{wls,rc}, \widehat{\beta}_{0,0}^{wls,rc}))\right].
+
+    This estimator uses a logistic propensity score model and separate linear regression models for the
+    control and treated groups' outcomes in both pre and post-treatment periods. The resulting estimator
+    is doubly robust and locally efficient.
 
     Parameters
     ----------
@@ -79,13 +95,27 @@ def drdid_imp_local_rc(
 
     Notes
     -----
-    The nuisance parameters (propensity score and outcome regression parameters) are estimated
-    as described in Section 3.2 of Sant'Anna and Zhao (2020). The propensity score is
-    estimated using the inverse probability tilting estimator from Graham, Pinto, and Egel (2012) [1]_,
-    and the outcome regression coefficients are estimated using weighted least squares.
+    The nuisance parameters are estimated as described in Section 3.2 of [2]_.
+    The propensity score is estimated using the inverse probability tilting estimator from [1]_,
 
-    The resulting estimator is doubly robust and locally efficient. For a version that is not
-    locally efficient, consider ``drdid_imp_rc``.
+    .. math::
+        \widehat{\gamma}^{ipt} = \arg\max_{\gamma \in \Gamma} \mathbb{E}_{n}
+        \left[D X^{\prime} \gamma - (1-D) \exp(X^{\prime} \gamma)\right]
+
+    The outcome regression coefficients for the control group are estimated using weighted least squares,
+
+    .. math::
+        \widehat{\beta}_{0,t}^{wls,rc} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
+        \left[\left.\frac{\Lambda(X^{\prime}\hat{\gamma}^{ipt})}{1-\Lambda(X^{\prime}\hat{\gamma}^{ipt})}
+        (Y-X^{\prime}b)^{2} \right\rvert\, D=0, T=t\right]
+
+    and for the treated group using ordinary least squares.
+
+    .. math::
+        \widehat{\beta}_{1,t}^{ols,rc} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
+        \left[\left(Y-X^{\prime}b\right)^{2} \mid D=1, T=t\right]
+
+    The resulting estimator is doubly robust and locally efficient.
 
     See Also
     --------

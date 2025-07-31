@@ -3,6 +3,9 @@
 from .arp_no_nuisance import (
     APRCIResult,
     compute_arp_ci,
+    test_in_identified_set,
+    test_in_identified_set_flci_hybrid,
+    test_in_identified_set_lf_hybrid,
 )
 from .arp_nuisance import (
     ARPNuisanceCIResult,
@@ -148,6 +151,9 @@ __all__ = [
     "compute_vlo_vup_dual",
     "lp_conditional_test",
     "ARPNuisanceCIResult",
+    "test_in_identified_set_flci_hybrid",
+    "test_in_identified_set_lf_hybrid",
+    "test_in_identified_set",
     # Delta RM (relative magnitudes)
     "DeltaRMResult",
     "compute_identified_set_rm",

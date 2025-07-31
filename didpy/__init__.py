@@ -88,6 +88,9 @@ from didpy.didhonest import (
     plot_sensitivity_rm,
     plot_sensitivity_sm,
     selection_matrix,
+    test_in_identified_set,
+    test_in_identified_set_flci_hybrid,
+    test_in_identified_set_lf_hybrid,
     test_in_identified_set_max,
     validate_conformable,
     validate_symmetric_psd,
@@ -261,6 +264,9 @@ __all__ = [
     "create_monotonicity_constraint_matrix",
     "create_sign_constraint_matrix",
     # Honest DiD conditional test
+    "test_in_identified_set",
+    "test_in_identified_set_flci_hybrid",
+    "test_in_identified_set_lf_hybrid",
     "test_in_identified_set_max",
     "estimate_lowerbound_m_conditional_test",
     # Honest DiD FLCI

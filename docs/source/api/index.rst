@@ -41,7 +41,7 @@ Sensitivity and Diagnostics
 .. toctree::
    :maxdepth: 3
 
-   honestdid
+   didhonest
    didbacon
    functional
 
