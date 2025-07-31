@@ -14,7 +14,7 @@ Theoretical Background
 Functions
 ---------
 
-.. currentmodule:: didpy
+.. currentmodule:: doublediff
 
 Core Propensity Score Estimation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

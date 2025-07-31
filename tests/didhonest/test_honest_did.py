@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from didpy import AGGTEResult, HonestDiDResult, honest_did
+from doublediff import AGGTEResult, HonestDiDResult, honest_did
 
 
 @pytest.fixture

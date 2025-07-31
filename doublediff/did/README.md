@@ -31,7 +31,7 @@ Aggregates the numerous group-time ATTs into interpretable summary parameters:
 The main entry point provides a pandas-friendly interface with sensible defaults:
 
 ```python
-from didpy.did import att_gt, aggte
+from doublediff.did import att_gt, aggte
 
 # Estimate group-time ATTs
 att_results = att_gt(
@@ -103,11 +103,11 @@ We can compute group-time average treatment effects for a staggered adoption des
 `MPResult` which is a container for the results:
 
 ```python
-import didpy as did
+import doublediff as did
 import pandas as pd
 import numpy as np
 
-data = didpy.datasets.load_mpdta()
+data = doublediff.datasets.load_mpdta()
 
 # Estimate group-time ATTs using outcome regression
 attgt_result = did.att_gt(

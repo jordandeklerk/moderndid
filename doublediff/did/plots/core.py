@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
 
-from didpy.did.aggte_obj import AGGTEResult
-from didpy.did.multiperiod_obj import MPResult
+from doublediff.did.aggte_obj import AGGTEResult
+from doublediff.did.multiperiod_obj import MPResult
 
 
 @dataclass

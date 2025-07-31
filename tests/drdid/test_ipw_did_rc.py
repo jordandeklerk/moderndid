@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from didpy.drdid import ipw_did_rc
+from doublediff.drdid import ipw_did_rc
 
 
 def test_ipw_did_rc_basic():

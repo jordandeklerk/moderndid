@@ -9,7 +9,7 @@ from tests.helpers import importorskip
 
 pf = importorskip("pyfixest")
 
-from didpy.didhonest import (
+from doublediff.didhonest import (
     construct_original_cs,
     create_sensitivity_results_rm,
     create_sensitivity_results_sm,

@@ -8,12 +8,12 @@ from typing import Any, NamedTuple
 import numpy as np
 import scipy.sparse as sp
 
-from didpy.drdid.estimators.drdid_panel import drdid_panel
-from didpy.drdid.estimators.drdid_rc import drdid_rc
-from didpy.drdid.estimators.reg_did_panel import reg_did_panel
-from didpy.drdid.estimators.reg_did_rc import reg_did_rc
-from didpy.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
-from didpy.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
+from doublediff.drdid.estimators.drdid_panel import drdid_panel
+from doublediff.drdid.estimators.drdid_rc import drdid_rc
+from doublediff.drdid.estimators.reg_did_panel import reg_did_panel
+from doublediff.drdid.estimators.reg_did_rc import reg_did_rc
+from doublediff.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
+from doublediff.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
 
 from .preprocess.models import DIDData
 

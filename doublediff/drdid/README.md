@@ -28,7 +28,7 @@ Regression-based DiD estimators that model outcome evolutions directly.
 Three main functions provide access to all DR-DiD estimators via the `est_method` with a consistent pandas-friendly interface
 
 ```python
-from didpy.drdid import drdid, ipwdid, ordid
+from doublediff.drdid import drdid, ipwdid, ordid
 
 # Doubly robust estimation
 result = drdid(data, y_col='outcome', time_col='period', treat_col='treated',
@@ -50,7 +50,7 @@ result = ordid(data, y_col='outcome', time_col='period', treat_col='treated',
 For advanced users, all underlying estimators are directly accessible with NumPy arrays as well
 
 ```python
-from didpy.drdid.estimators import drdid_imp_local_rc
+from doublediff.drdid.estimators import drdid_imp_local_rc
 
 # Doubly-Robust locally efficient and improved ATT estimate
 result = drdid_imp_local_rc(
@@ -84,13 +84,13 @@ result = drdid_imp_local_rc(
 The following is a portion of the empirical illustration considered by Sant'Anna and Zhao (2020) that uses the LaLonde sample from the NSW experiment and considers data from the Current Population Survey (CPS) to form a non-experimental comparison group:
 
 ```python
-import didpy
+import doublediff
 
 # NSW dataset
-nsw_data = didpy.datasets.load_nsw()
+nsw_data = doublediff.datasets.load_nsw()
 
 # Estimate ATT using doubly robust DiD
-att_result = didpy.drdid(
+att_result = doublediff.drdid(
     data=nsw_data,
     y_col='re',
     time_col='year',

@@ -1,16 +1,16 @@
-.. module:: didpy
+.. module:: doublediff
 
 .. _reference:
 
 ###############
-didpy reference
+doublediff reference
 ###############
 
 :Release: |version|
 :Date: |today|
 
 This reference manual details functions, modules, and objects
-included in didpy, describing what they are and what they do.
+included in doublediff, describing what they are and what they do.
 
 Core DiD Methods
 ================
@@ -58,6 +58,6 @@ Bootstrap and Propensity
 Acknowledgements
 ================
 
-The didpy package implements various difference-in-differences methodologies from
+The doublediff package implements various difference-in-differences methodologies from
 the econometric literature. We acknowledge the original authors of these methods,
 and the authors of the R packages that inspired this package.

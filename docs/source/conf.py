@@ -1,5 +1,5 @@
 # pylint: disable=redefined-builtin,invalid-name
-"""didpy sphinx configuration."""
+"""doublediff sphinx configuration."""
 
 import math
 import os
@@ -7,7 +7,7 @@ from importlib.metadata import metadata
 
 # -- Project information
 
-_metadata = metadata("didpy")
+_metadata = metadata("doublediff")
 
 project = _metadata["Name"]
 author = _metadata["Author-email"].split("<", 1)[0].strip()
@@ -67,8 +67,8 @@ nitpick_ignore = [
 # -- Options for extensions
 
 extlinks = {
-    "issue": ("https://github.com/jordandeklerk/didpy/issues/%s", "GH#%s"),
-    "pull": ("https://github.com/jordandeklerk/didpy/pull/%s", "PR#%s"),
+    "issue": ("https://github.com/jordandeklerk/doublediff/issues/%s", "GH#%s"),
+    "pull": ("https://github.com/jordandeklerk/doublediff/pull/%s", "PR#%s"),
 }
 
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
@@ -115,12 +115,12 @@ html_theme_options = {
     "icon_links": [
         {
             "name": "GitHub",
-            "url": "https://github.com/jordandeklerk/didpy",
+            "url": "https://github.com/jordandeklerk/doublediff",
             "icon": "fa-brands fa-github",
         },
     ],
     "logo": {
-        "text": "didpy",
+        "text": "doublediff",
         "image_light": "_static/logo.svg",
         "image_dark": "_static/logo.svg",
     },
@@ -145,7 +145,7 @@ html_copy_source = False
 html_domain_indices = False
 html_file_suffix = ".html"
 
-htmlhelp_basename = "didpy"
+htmlhelp_basename = "doublediff"
 
 # -----------------------------------------------------------------------------
 # Matplotlib plot_directive options

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from didpy import drdid_rc
+from doublediff import drdid_rc
 
 
 def dgp_rc_for_test(n=2000, seed=42):

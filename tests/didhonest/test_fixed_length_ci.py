@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from didpy.didhonest.fixed_length_ci import (
+from doublediff.didhonest.fixed_length_ci import (
     FLCIResult,
     _optimize_flci_params,
     _optimize_h_bisection,

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from didpy import mboot_twfep_did
+from doublediff import mboot_twfep_did
 
 
 @pytest.mark.parametrize(

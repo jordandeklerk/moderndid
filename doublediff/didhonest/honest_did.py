@@ -92,8 +92,8 @@ def honest_did(
         :okwarning:
 
         In [1]: import numpy as np
-           ...: from didpy import att_gt, aggte, load_mpdta
-           ...: from didpy.didhonest import honest_did
+           ...: from doublediff import att_gt, aggte, load_mpdta
+           ...: from doublediff.didhonest import honest_did
            ...
            ...: df = load_mpdta()
            ...: gt_result = att_gt(

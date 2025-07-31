@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from didpy import mboot_did
+from doublediff import mboot_did
 
 
 def test_mboot_did_basic():
