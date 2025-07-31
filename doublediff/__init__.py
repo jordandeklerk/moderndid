@@ -1,5 +1,5 @@
 # pylint: disable=wildcard-import
-"""DiD and doubly robust DiD estimators."""
+"""Modern difference-in-differences estimators."""
 
 from doublediff.data import load_ehec, load_mpdta, load_nsw
 from doublediff.did.aggte import aggte
