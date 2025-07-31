@@ -37,12 +37,15 @@ def reg_did_panel(
     r"""Compute the outcome regression DiD estimator for the ATT with panel data.
 
     Implements the outcome regression DiD estimator for the ATT with panel data,
-    as defined in equation (2.2) of Sant'Anna and Zhao (2020) [2]_. The estimator follows the same spirit
-    of the nonparametric estimators proposed by Heckman, Ichimura and Todd (1997) [1]_, though
-    here the outcome regression models are assumed to be linear in covariates (parametric).
+    as defined in equation (2.2) of [2]_. The estimator is given by
 
-    The nuisance parameters (outcome regression coefficients) are estimated via ordinary
-    least squares.
+    .. math::
+        \widehat{\tau}^{reg} = \bar{Y}_{1,1} - \left[\bar{Y}_{1,0} + n_{treat}^{-1}
+        \sum_{i|D_i=1} (\widehat{\mu}_{0,1}(X_i) - \widehat{\mu}_{0,0}(X_i))\right].
+
+    The estimator follows the same spirit of the nonparametric estimators proposed by [1]_, though
+    here the outcome regression models are assumed to be linear in covariates (parametric). The nuisance
+    parameters (outcome regression coefficients) are estimated via ordinary least squares.
 
     Parameters
     ----------

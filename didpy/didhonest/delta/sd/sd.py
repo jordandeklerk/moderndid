@@ -45,36 +45,21 @@ def compute_conditional_cs_sd(
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{SD}(M)`.
 
-    Computes a confidence set for :math:`l'\tau_{post}` that is valid conditional on the
-    event study coefficients being in the identified set under :math:`\Delta^{SD}(M)`.
+    Computes a confidence set for :math:`l'\tau_{post}` that is valid conditional on the event study
+    coefficients being in the identified set under :math:`\Delta^{SD}(M)`.
 
-    The smoothness restriction :math:`\Delta^{SD}(M)` formalizes the concern about
-    confounding from secular trends that evolve smoothly over time. It bounds the
-    discrete analog of the second derivative:
+    The smoothness restriction :math:`\Delta^{SD}(M)` formalizes the concern about confounding from
+    secular trends that evolve smoothly over time. It bounds the discrete analog of the second
+    derivative, as defined in Equation (8) of [3]_
 
     .. math::
 
-        \Delta^{SD}(M) = \{\delta : |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \leq M, \forall t\}
+        \Delta^{SD}(M) := \{\delta: |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \le M, \forall t\}.
 
     When :math:`M = 0`, this requires the differential trend to be exactly linear,
     corresponding to the common practice of controlling for linear group-specific trends.
     For :math:`M > 0`, it allows for approximate linearity, acknowledging that linear
-    specifications may not be exactly correct (Wolfers, 2006; Lee and Solon, 2011).
-
-    Since :math:`\Delta^{SD}(M)` is a finite union of polyhedra, a valid confidence
-    set is constructed by taking the union of the confidence sets for each of its
-    components (Lemma 2.2).
-
-    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
-    set has uniform asymptotic coverage
-
-    .. math::
-
-        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
-        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
-
-    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
-    for all :math:`P \in \mathcal{P}`.
+    specifications may not be exactly correct.
 
     Parameters
     ----------
@@ -114,24 +99,25 @@ def compute_conditional_cs_sd(
 
     Notes
     -----
-    :math:`\Delta^{SD}(M)` is convex and centrosymmetric (i.e. :math:`\tilde{\delta} \in \Delta`
-    implies :math:`-\tilde{\delta} \in \Delta`), which allows for the use of Fixed Length Confidence
-    Intervals (FLCIs) with near-optimal finite-sample properties (Armstrong & Kolesár, 2018). The identified
-    set under :math:`\Delta^{SD}(M)` has constant length :math:`2M` regardless of the pre-treatment
-    coefficients.
+    :math:`\Delta^{SD}(M)` is convex and centrosymmetric (i.e. :math:`\tilde{\delta} \in \Delta` implies
+    :math:`-\tilde{\delta} \in \Delta`), which allows for the use of Fixed Length Confidence Intervals
+    (FLCIs) with near-optimal finite-sample properties [2]_. The identified set under
+    :math:`\Delta^{SD}(M)` has constant length :math:`2M` regardless of the pre-treatment coefficients.
 
-    The confidence set is constructed using either FLCIs (default) or the moment inequality
-    approach from Section 3. For FLCIs, the expected length is at most 28% longer than
-    the shortest possible confidence set satisfying the coverage requirement when the
-    true parameter is at the center of the identified set (Proposition 4.1).
+    The confidence set is constructed using either FLCIs (default) or the moment inequality approach
+    from Section 3 of [3]_. For FLCIs, the expected length is at most 28% longer than the shortest
+    possible confidence set satisfying the coverage requirement when the true parameter is at the
+    center of the identified set (Proposition 4.1 in [2]_).
 
     References
     ----------
 
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
     .. [2] Armstrong, T. B., & Kolesár, M. (2018). Optimal inference in a class of
         regression models. Econometrica, 86(2), 655-683.
+    .. [3] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -227,24 +213,22 @@ def compute_identified_set_sd(
 ):
     r"""Compute identified set for :math:`\Delta^{SD}(M)`.
 
-    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
-    underlying trend :math:`\delta` lies in :math:`\Delta^{SD}(M)`.
+    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the underlying
+    trend :math:`\delta` lies in :math:`\Delta^{SD}(M)`.
 
-    Following Lemma 2.1 in Rambachan & Roth (2023), the identified set is:
-
-    .. math::
-
-        \mathcal{S}(\beta, \Delta^{SD}(M)) = [\theta^{lb}, \theta^{ub}]
-
-    where:
+    Following Lemma 2.1 in [2]_, if :math:`\Delta` is closed and convex, then :math:`\mathcal{S}(\beta, \Delta)`
+    is an interval, :math:`[\theta^{lb}(\beta, \Delta), \theta^{ub}(\beta, \Delta)]`, where
 
     .. math::
 
-        \theta^{ub} = l'\beta_{post} - \min_{\delta} l'\delta_{post}
+        \theta^{lb}(\beta, \Delta) := l'\beta_{post} - \max_{\delta} \{l'\delta_{post} :
+        \delta \in \Delta, \delta_{pre} = \beta_{pre}\},
 
-        \theta^{lb} = l'\beta_{post} - \max_{\delta} l'\delta_{post}
+        \theta^{ub}(\beta, \Delta) := l'\beta_{post} - \min_{\delta} \{l'\delta_{post} :
+        \delta \in \Delta, \delta_{pre} = \beta_{pre}\}.
 
-    subject to :math:`\delta \in \Delta^{SD}(M)` and :math:`\delta_{pre} = \beta_{pre}`.
+    The identified set is constructed subject to :math:`\delta \in \Delta^{SD}(M)` and
+    :math:`\delta_{pre} = \beta_{pre}`.
 
     Under the decomposition :math:`\beta = \tau + \delta` with :math:`\tau_{pre} = 0`,
     the causal parameter :math:`\theta = l'\tau_{post}` is partially identified. Since
@@ -271,8 +255,16 @@ def compute_identified_set_sd(
 
     Notes
     -----
-    The constraint :math:`\delta_{pre} = \beta_{pre}` reflects that pre-treatment event study
-    coefficients identify the pre-treatment trend under the no-anticipation assumption.
+    The constraint :math:`\delta_{pre} = \beta_{pre}` reflects that pre-treatment event study coefficients
+    identify the pre-treatment trend under the no-anticipation assumption.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
 
@@ -325,18 +317,19 @@ def _create_sd_constraint_matrix(
 ):
     r"""Create constraint matrix for second differences restriction.
 
-    Creates matrix A such that the constraint :math:`\delta \in \Delta^{SD}(M)` can be
-    written as :math:`A \delta \leq d`, where d is a vector with all elements equal to M.
+    Creates matrix A such that the constraint :math:`\delta \in \Delta^{SD}(M)` can be written as
+    :math:`A \delta \leq d`, where d is a vector with all elements equal to M.
 
-    The constraint matrix implements
+    The constraint matrix implements the pair of inequalities that define the bound on the
+    discrete second derivative of :math:`\delta`
 
     .. math::
 
-        (\delta_{t-1} - 2\delta_t + \delta_{t+1}) \leq M
+        (\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1}) \le M
 
-        -(\delta_{t-1} - 2\delta_t + \delta_{t+1}) \leq M
+        -((\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})) \le M,
 
-    for each period t. This ensures :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`.
+    for each period :math:`t`. This ensures :math:`|(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \le M`.
 
     The second differences constraint can be viewed as a discrete analog of bounding
     the second derivative of a smooth function. This is motivated by concerns about

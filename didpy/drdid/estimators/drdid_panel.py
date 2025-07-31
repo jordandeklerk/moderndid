@@ -40,7 +40,14 @@ def drdid_panel(
 
     Implements the locally efficient doubly robust difference-in-differences (DiD)
     estimator for the Average Treatment Effect on the Treated (ATT) defined in equation (3.1)
-    in Sant'Anna and Zhao (2020) [1]_. This estimator uses a logistic propensity score model
+    in [1]_. The estimator is given by
+
+    .. math::
+        \widehat{\tau}^{dr,p} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{p}(D)
+        - \widehat{w}_{0}^{p}(D,X;\widehat{\gamma})\right) \left(\Delta Y -
+        \mu_{0,\Delta}^{p}(X;\widehat{\beta}_{0,0}^p, \widehat{\beta}_{0,1}^p)\right)\right].
+
+    This estimator uses a logistic propensity score model
     and a linear regression model for the outcome evolution among the comparison units.
 
     The propensity score parameters are estimated using maximum likelihood, and the outcome

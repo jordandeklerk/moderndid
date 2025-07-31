@@ -49,52 +49,24 @@ def compute_conditional_cs_sdrm(
     lies in :math:`\Delta^{SDRM}(\bar{M})`, which bounds the second differences in post-treatment
     periods based on the maximum absolute second difference in pre-treatment periods.
 
-    The combined smoothness and relative magnitudes restriction :math:`\Delta^{SDRM}(\bar{M})`
-    formalizes the intuition that deviations from linearity in the post-treatment differential
-    trend should be bounded by the observed non-linearities in the pre-treatment period:
+    The combined smoothness and relative magnitudes restriction, :math:`\Delta^{SDRM}(\bar{M})`, is defined in [1]_ as
 
     .. math::
 
-        \Delta^{SDRM}(\bar{M}) = \{\delta : \forall t \geq 0,
-        |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \leq
-        \bar{M} \cdot \max_{s<0} |(\delta_{s+1} - \delta_s) - (\delta_s - \delta_{s-1})|\}
+        \Delta^{SDRM}(\bar{M}) = \left\{\delta: \forall t \geqslant 0,
+        \left|\left(\delta_{t+1}-\delta_{t}\right)-\left(\delta_{t}-\delta_{t-1}\right)\right| \leqslant
+        \bar{M} \cdot \max_{s<0} \left|\left(\delta_{s+1}-\delta_{s}\right)-
+        \left(\delta_{s}-\delta_{s-1}\right)\right|\right\}.
 
     This restriction is useful when researchers believe the differential trend evolves
     relatively smoothly but are uncertain about the appropriate smoothness bound :math:`M`.
-
-    The confidence set is computed as
-
-    .. math::
-
-        CS = \bigcup_{s=-(T_{pre}-2)}^{0} \left(
-            CS_{s,+} \cup CS_{s,-}
-        \right)
-
-    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets under the (+) and
-    (-) sign restrictions respectively. The union is necessary because the maximum
-    pre-treatment second difference could occur at any period :math:`s` with either sign.
-
-    Since :math:`\Delta^{SDRM}(\bar{M})` is a finite union of polyhedra, a valid confidence
-    set is constructed by taking the union of the confidence sets for each of its
-    components (Lemma 2.2).
-
-    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
-    set has uniform asymptotic coverage
-
-    .. math::
-
-        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
-        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
-
-    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
-    for all :math:`P \in \mathcal{P}`.
 
     Parameters
     ----------
     betahat : ndarray
         Estimated event study coefficients.
     sigma : ndarray
-        Covariance matrix of betahat.
+        Covariance matrix of :math:`\hat{\beta}`.
     num_pre_periods : int
         Number of pre-treatment periods.
     num_post_periods : int
@@ -102,14 +74,15 @@ def compute_conditional_cs_sdrm(
     l_vec : ndarray, optional
         Vector defining parameter of interest :math:`\theta = l'\tau_{post}`. If None, defaults to first post-period.
     m_bar : float, default=0
-        Relative magnitude parameter :math:`\bar{M}`. Post-period second differences can be at most
-        :math:`\bar{M}` times the max pre-period second difference.
+        Relative magnitude parameter :math:`\bar{M}`. Second differences in post-treatment periods
+        can be at most :math:`\bar{M}` times the maximum absolute second difference in
+        pre-treatment periods.
     alpha : float, default=0.05
         Significance level.
     hybrid_flag : {'LF', 'ARP', 'FLCI'}, default='LF'
         Type of hybrid test.
     hybrid_kappa : float, optional
-        First-stage size for hybrid test. If None, defaults to alpha/10.
+        First-stage size for hybrid test. If None, defaults to :math:`\alpha/10`.
     post_period_moments_only : bool, default=True
         If True, use only post-period moments for ARP test.
     grid_points : int, default=1000
@@ -243,27 +216,30 @@ def compute_identified_set_sdrm(
     r"""Compute identified set for :math:`\Delta^{SDRM}(\bar{M})`.
 
     Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
-    underlying trend delta lies in :math:`\Delta^{SDRM}(\bar{M})`, taking the union over all
-    choices of s and sign.
+    underlying trend delta lies in :math:`\Delta^{SDRM}(\bar{M})`.
 
-    The identified set is computed as
+    The identified set is the union of identified sets for each component polyhedron,
+    following Equation (7) in [1]_,
 
     .. math::
 
-        \mathcal{S}(\beta, \Delta^{SDRM}(\bar{M})) = \bigcup_{s=-(T_{pre}-2)}^{0} \left(
-            \mathcal{S}_{s,+} \cup \mathcal{S}_{s,-}
+        \mathcal{S}(\beta, \Delta) = \bigcup_{k=1}^{K} \mathcal{S}(\beta, \Delta_k).
+
+    For :math:`\Delta^{SDRM}(\bar{M})`, this union is taken over all possible pre-treatment periods `s`
+    where the maximum second difference could occur, and for both positive and negative signs of this maximum,
+
+    .. math::
+
+        \mathcal{S}(\beta, \Delta^{SDRM}(\bar{M})) = \bigcup_{s<0} \left(
+            \mathcal{S}(\beta, \Delta_{s,+}^{SDRM}(\bar{M})) \cup \mathcal{S}(\beta, \Delta_{s,-}^{SDRM}(\bar{M}))
         \right),
 
-    where :math:`\mathcal{S}_{s,\text{sign}}` is the identified set when the maximum
-    pre-period second difference occurs at period :math:`s` with the given sign.
+    where :math:`\mathcal{S}(\beta, \Delta_{s,\text{sign}}^{SDRM}(\bar{M}))` is the identified set when the maximum
+    pre-period second difference occurs at period :math:`s` with a given sign.
 
-    For each :math:`(s, \text{sign})`, we solve linear programs to find the bounds
-    of :math:`l'\tau_{post}` subject to :math:`\delta \in \Delta^{SDRM}_{s,\text{sign}}(\bar{M})`
+    For each component, we solve linear programs to find the bounds
+    of :math:`l'\tau_{post}` subject to :math:`\delta \in \Delta_{s,\text{sign}}^{SDRM}(\bar{M})`
     and :math:`\delta_{pre} = \beta_{pre}`.
-
-    Under the combined smoothness and relative magnitudes restriction, the causal parameter
-    :math:`\theta = l'\tau_{post}` is partially identified. The identified set accounts for
-    uncertainty about which pre-period has the maximum second difference.
 
     Parameters
     ----------
@@ -327,7 +303,7 @@ def _compute_identified_set_sdrm_fixed_s(
 ):
     """Compute identified set for fixed s and sign.
 
-    Helper function that computes bounds for a specific choice of s
+    Helper function that computes bounds for a specific choice of :math:`s`
     and sign (max_positive).
 
     Parameters
@@ -584,19 +560,32 @@ def _create_sdrm_constraint_matrix(
 ):
     r"""Create constraint matrix A for :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})`.
 
-    Creates a matrix for the linear constraints that delta is in
-    :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})`, where sign is + if max_positive = True
-    and - if max_positive = False.
+    Creates a matrix for the linear constraints defining the polyhedron
+    :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})`. This corresponds to the case where the
+    maximum absolute second difference in the pre-treatment period occurs at period `s`
+    and has a specified sign, as discussed in Section 2.4.5 of [1]_.
 
-    The constraint :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})` restricts the second
-    differences of :math:`\delta` as follows:
+    The polyhedron :math:`\Delta^{SDRM}_{s,+}(\bar{M})` is defined by constraints ensuring that
+    the second difference at `s` is non-negative, that it is the maximum absolute second
+    difference in the pre-period, and that for all :math:`t \geqslant 0`, the post-treatment
+    second differences are bounded by :math:`\bar{M}` times the second difference at `s`.
+
+    For :math:`\Delta^{SDRM}_{s,+}(\bar{M})` (when `max_positive=True`), this is expressed by the inequality
 
     .. math::
 
-        |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \leq
-        \bar{M} \cdot \text{sign} \cdot [(\delta_{s+1} - \delta_s) - (\delta_s - \delta_{s-1})]
+        \forall t \geqslant 0, \left|(\delta_{t+1}-\delta_{t}) - (\delta_t - \delta_{t-1})\right|
+        \leqslant \bar{M} \left( (\delta_{s+1}-\delta_{s}) - (\delta_s - \delta_{s-1}) \right)
 
-    for all :math:`t`, where sign is +1 if max_positive=True and -1 if max_positive=False.
+    and for all :math:`s' < 0`,
+
+    .. math::
+
+        \left|(\delta_{s'+1}-\delta_{s'}) - (\delta_{s'} - \delta_{s'-1})\right|
+        \leqslant (\delta_{s+1}-\delta_{s}) - (\delta_s - \delta_{s-1}).
+
+    The case for :math:`\Delta^{SDRM}_{s,-}(\bar{M})` is analogous, with the sign flipped.
+    These inequalities are converted into a matrix `A` for the linear constraint system :math:`A\delta \le d`.
 
     Parameters
     ----------
@@ -630,7 +619,7 @@ def _create_sdrm_constraint_matrix(
 
 
 def _create_sdrm_constraint_vector(a_matrix):
-    r"""Create constraint vector d for :math:`\Delta^{SDRM}`.
+    r"""Create constraint vector d for :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})`.
 
     Parameters
     ----------
@@ -640,11 +629,12 @@ def _create_sdrm_constraint_vector(a_matrix):
     Returns
     -------
     ndarray
-        Constraint vector d (all zeros for SDRM).
+        Constraint vector d for the linear system :math:`A\delta \le d`.
 
     Notes
     -----
-    The constraint vector is all zeros because the relative magnitudes bound is
-    incorporated directly into the constraint matrix A.
+    The constraint vector is all zeros because the inequalities defining
+    :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})` in [1]_ are all homogeneous
+    (i.e., of the form :math:`c'\delta \le 0`).
     """
     return np.zeros(a_matrix.shape[0])

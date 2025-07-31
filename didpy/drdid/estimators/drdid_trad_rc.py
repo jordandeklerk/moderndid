@@ -40,7 +40,13 @@ def drdid_trad_rc(
     r"""Compute the traditional doubly robust DiD estimator for the ATT with repeated cross-section data.
 
     Implements the doubly robust difference-in-differences (DiD) estimator for the ATT
-    with repeated cross-sectional data, as defined in equation (3.3) in Sant'Anna and Zhao (2020) [1]_.
+    with repeated cross-sectional data, as defined in equation (3.3) in [1]_. The estimator is given by
+
+    .. math::
+        \widehat{\tau}_{1}^{dr,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D,T) -
+        \widehat{w}_{0}^{rc}(D,T,X;\widehat{\gamma})\right)
+        (Y - \mu_{0,Y}^{rc}(T,X;\widehat{\beta}_{0,0}^{rc}, \widehat{\beta}_{0,1}^{rc}))\right].
+
     This estimator uses a logistic propensity score model and linear regression models for the outcome
     among the comparison units in both pre and post-treatment time periods. Importantly, this estimator
     is not locally efficient.
