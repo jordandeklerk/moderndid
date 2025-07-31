@@ -40,11 +40,16 @@ def drdid_imp_panel(
     r"""Compute the improved and locally efficient DR-DiD estimator for the ATT with panel data.
 
     Implements the locally efficient and improved doubly robust DiD estimator for the ATT
-    with panel data, as described in Sant'Anna and Zhao (2020) [2]_.
+    with panel data, as described in [2]_. The estimator is given by
+
+    .. math::
+        \widehat{\tau}_{imp}^{dr, p} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{p}(D) -
+        \widehat{w}_{0}^{p}(D, X ; \widehat{\gamma}^{ipt})\right)
+        \left(\Delta Y - \mu_{0, \Delta}^{lin, p}(X ; \widehat{\beta}_{0, \Delta}^{wls, p})\right)\right].
 
     The estimator uses a logistic propensity score model estimated via inverse probability tilting
-    as described in Graham, Pinto, and Egel (2012) [1]_, and a linear regression model for the
-    outcome evolution of control units (estimated via weighted least squares).
+    as described in [1]_, and a linear regression model for the outcome evolution of control units
+    (estimated via weighted least squares).
 
     Parameters
     ----------
@@ -79,11 +84,19 @@ def drdid_imp_panel(
 
     Notes
     -----
-    The nuisance parameters (propensity score and outcome regression parameters) are estimated
-    using the methods described in Section 3.1 of Sant'Anna and Zhao (2020). The propensity
-    score parameters are estimated using the inverse probability tilting estimator from
-    Graham, Pinto, and Egel (2012), and the outcome regression coefficients are estimated
-    using weighted least squares.
+    The nuisance parameters are estimated as described in Section 3.1 of [2]_.
+    The propensity score parameters are estimated using the inverse probability tilting estimator from [1]_
+
+    .. math::
+        \widehat{\gamma}^{ipt} = \arg\max_{\gamma \in \Gamma} \mathbb{E}_{n}
+        \left[D X^{\prime} \gamma - (1-D) \exp(X^{\prime} \gamma)\right]
+
+    and the outcome regression coefficients are estimated using weighted least squares
+
+    .. math::
+        \widehat{\beta}_{0, \Delta}^{wls, p} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
+        \left[\left.\frac{\Lambda(X^{\prime} \hat{\gamma}^{ipt})}{1-\Lambda(X^{\prime} \hat{\gamma}^{ipt})}
+        (\Delta Y - X^{\prime} b)^{2} \right\rvert\, D=0\right].
 
     The resulting estimator is not only locally efficient and doubly robust for the ATT,
     but it is also doubly robust for inference.

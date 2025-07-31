@@ -39,8 +39,13 @@ def std_ipw_did_rc(
     r"""Compute the standardized inverse propensity weighted DiD estimator for the ATT with repeated cross-section data.
 
     Implements the standardized inverse propensity weighted (IPW) estimator for the ATT with
-    repeated cross-section data, as proposed by Abadie (2005) [1]_. IPW weights are normalized
-    to sum up to one, that is, the estimator is of the Hajek type.
+    repeated cross-section data, as proposed by [1]_ and discussed in [2]_. This is the Hajek-type
+    estimator, where weights are normalized to sum to one. The estimator is given by equation (4.2)
+    in [2]_ as
+
+    .. math::
+        \widehat{\tau}_{std}^{ipw,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D,T) -
+        \widehat{w}_{0}^{rc}(D,T,X;\widehat{\gamma})\right) Y\right].
 
     Parameters
     ----------

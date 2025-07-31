@@ -39,13 +39,13 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     The weighted OLS estimator solves
 
     .. math::
+        \widehat{\beta}_{0, \Delta}^{wls, p} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
+        \left[\left.\frac{\Lambda(X^{\prime} \hat{\gamma}^{ipt})}{1-\Lambda(X^{\prime} \hat{\gamma}^{ipt})}
+        (\Delta Y - X^{\prime} b)^{2} \right\rvert\, D=0\right],
 
-        \hat{\beta} = \arg\min_{\beta} \sum_{i: D_i=0} w_i \frac{\hat{e}(X_i)}{1-\hat{e}(X_i)}
-                      (\Delta Y_i - X_i'\beta)^2,
-
-    where :math:`w_i` are the observation weights, :math:`\hat{e}(X_i)` is the estimated
-    propensity score, :math:`\Delta Y_i` is the outcome difference (post - pre), and
-    :math:`X_i` are the covariates including intercept.
+    where :math:`\Lambda(\cdot)` is the logistic CDF, :math:`\hat{\gamma}^{ipt}` are the inverse probability tilting
+    propensity score parameters, :math:`\Delta Y` is the outcome difference (post - pre), and
+    :math:`X` are the covariates including intercept.
 
     Parameters
     ----------
@@ -124,18 +124,21 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     Implements weighted ordinary least squares regression for the outcome model component of the
     doubly-robust difference-in-differences estimator with repeated cross-section data.
     The regression is performed on specific subgroups based on treatment status and time period.
-    The weights used for the OLS are the ``i_weights`` passed to the function, applied to the
-    selected subgroup.
 
-    The weighted OLS estimator solves
+    For the control group, the weighted OLS estimator solves
 
     .. math::
+        \widehat{\beta}_{0,t}^{wls,rc} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
+        \left[\left.\frac{\Lambda(X^{\prime}\hat{\gamma}^{ipt})}{1-\Lambda(X^{\prime}\hat{\gamma}^{ipt})}
+        (Y-X^{\prime}b)^{2} \right\rvert\, D=0, T=t\right].
 
-        \hat{\beta} = \arg\min_{\beta} \sum_{i \in S} w'_i (Y_i - X_i'\beta)^2,
+    For the treated group, it solves
 
-    where :math:`S` is the subset of observations defined by the `pre` and `treat` parameters,
-    :math:`Y_i` is the outcome, :math:`X_i` are the covariates, and :math:`w'_i` are the
-    values from the ``i_weights`` argument corresponding to the observations in subset :math:`S`.
+    .. math::
+        \widehat{\beta}_{1,t}^{ols,rc} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
+        \left[\left(Y-X^{\prime}b\right)^{2} \mid D=1, T=t\right],
+
+    where :math:`t` indicates the period (pre/post).
 
     Parameters
     ----------

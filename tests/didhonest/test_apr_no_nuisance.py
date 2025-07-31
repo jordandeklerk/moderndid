@@ -4,7 +4,8 @@
 import numpy as np
 import pytest
 
-from didpy.didhonest.arp_no_nuisance import APRCIResult, _test_in_identified_set, compute_arp_ci
+from didpy.didhonest import arp_no_nuisance
+from didpy.didhonest.arp_no_nuisance import APRCIResult, compute_arp_ci
 from didpy.didhonest.bounds import create_second_difference_matrix
 
 
@@ -142,18 +143,18 @@ def test_test_in_identified_set():
     d = np.array([0.5, 0.5])
 
     y_in = np.array([0.1, 0.2])
-    in_set = _test_in_identified_set(y_in, sigma, A, d, alpha=0.05)
+    in_set = arp_no_nuisance.test_in_identified_set(y_in, sigma, A, d, alpha=0.05)
     assert in_set
 
     A_full = np.array([[1, 0], [0, 1], [-1, 0], [0, -1]])
     d_full = np.array([1.0, 1.0, 1.0, 1.0])
 
     y_clearly_out = np.array([2.0, 2.0])
-    not_in_set = _test_in_identified_set(y_clearly_out, sigma, A_full, d_full, alpha=0.10)
+    not_in_set = arp_no_nuisance.test_in_identified_set(y_clearly_out, sigma, A_full, d_full, alpha=0.10)
     assert not not_in_set
 
     y_well_within = np.array([0.0, 0.0])
-    well_within_set = _test_in_identified_set(y_well_within, sigma, A_full, d_full, alpha=0.05)
+    well_within_set = arp_no_nuisance.test_in_identified_set(y_well_within, sigma, A_full, d_full, alpha=0.05)
     assert well_within_set
 
 

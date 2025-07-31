@@ -38,8 +38,14 @@ def ipw_did_rc(
     r"""Compute the inverse propensity weighted DiD estimator for the ATT with repeated cross-section data.
 
     Implements the inverse propensity weighted (IPW) estimator for the ATT with repeated cross-section data,
-    as proposed by Abadie (2005) [1]_. IPW weights are not normalized to sum up to one, that is,
-    the estimator is of the Horwitz-Thompson type.
+    as proposed by [1]_ and discussed in [2]_. The estimator is given by the sample analogue of equation (2.3) in [2]_
+    as
+
+    .. math::
+        \tau = \frac{1}{\mathbb{E}[D]} \mathbb{E}\left[\frac{D-p(X)}{1-p(X)}
+        \frac{T-\lambda}{\lambda(1-\lambda)} Y\right].
+
+    IPW weights are not normalized to sum up to one, that is, the estimator is of the Horwitz-Thompson type.
 
     Parameters
     ----------

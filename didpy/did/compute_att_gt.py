@@ -137,7 +137,6 @@ def run_att_gt_estimation(
     else:
         pre_treatment_idx = time_idx
 
-    # Check if we're in post-treatment period and update pre-treatment index
     is_post_treatment = data.config.treated_groups[group_idx] <= data.config.time_periods[time_idx + time_factor]
 
     if is_post_treatment and data.config.base_period != "universal":
@@ -155,7 +154,6 @@ def run_att_gt_estimation(
 
         pre_treatment_idx = pre_periods[-1]
 
-    # Skip if pre-treatment equals post-treatment in universal base period
     if (
         data.config.base_period == "universal"
         and pre_treatment_idx is not None
@@ -244,9 +242,8 @@ def get_did_cohort_index(
         else:  # nevertreated
             min_control = np.inf
 
-        max_control = np.inf  # Always include never-treated units
+        max_control = np.inf
 
-        # Build cohort index for panel data
         n_units = len(data.time_invariant_data) if data.config.allow_unbalanced_panel else data.config.id_count
         cohort_index = np.full(n_units, np.nan)
 
@@ -270,7 +267,6 @@ def get_did_cohort_index(
             cohort_index[start_treat:end_treat] = 1
 
     else:
-        # Build cohort index for repeated cross-section data
         n_units = len(data.data)
         cohort_index = np.full(n_units, np.nan)
 
@@ -351,7 +347,6 @@ def run_drdid(
                 y1=y1, y0=y0, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )
 
-        # Adjust influence function for full sample
         influence_func = np.zeros(n)
         influence_func[valid_obs] = (n / valid_obs.sum()) * result.att_inf_func
 

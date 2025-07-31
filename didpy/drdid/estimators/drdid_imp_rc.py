@@ -40,7 +40,12 @@ def drdid_imp_rc(
     r"""Compute the improved doubly robust DiD estimator for the ATT with repeated cross-section data.
 
     Implements the improved and locally efficient DR-DiD estimator for the ATT
-    with repeated cross-sectional data, as defined in Sant'Anna and Zhao (2020) [2]_.
+    with repeated cross-sectional data, as defined in [2]_. The estimator is given by
+
+    .. math::
+        \widehat{\tau}_{1,imp}^{dr,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D,T) -
+        \widehat{w}_{0}^{rc}(D,T,X;\widehat{\gamma}^{ipt})\right)
+        (Y - \mu_{0,Y}^{lin,rc}(T,X;\widehat{\beta}_{0,1}^{wls,rc}, \widehat{\beta}_{0,0}^{wls,rc}))\right].
 
     This estimator uses a logistic propensity score model and separate linear
     regression models for the control group's outcome in both pre and post-treatment
@@ -80,13 +85,21 @@ def drdid_imp_rc(
 
     Notes
     -----
-    The nuisance parameters (propensity score and outcome regression parameters) are estimated
-    as described in Section 3.2 of Sant'Anna and Zhao (2020). The propensity score is
-    estimated using the inverse probability tilting estimator from Graham, Pinto, and Egel (2012) [1]_,
+    The nuisance parameters are estimated as described in Section 3.2 of [2]_.
+    The propensity score is estimated using the inverse probability tilting estimator from [1]_,
+
+    .. math::
+        \widehat{\gamma}^{ipt} = \arg\max_{\gamma \in \Gamma} \mathbb{E}_{n}
+        \left[D X^{\prime} \gamma - (1-D) \exp(X^{\prime} \gamma)\right]
+
     and the outcome regression coefficients are estimated using weighted least squares.
 
-    The resulting estimator is doubly robust for inference but is not locally efficient. For the
-    locally efficient version, consider ``drdid_imp_local_rc``.
+    .. math::
+        \widehat{\beta}_{0, t}^{wls, rc} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
+        \left[\left.\frac{\Lambda(X^{\prime} \hat{\gamma}^{ipt})}{1-\Lambda(X^{\prime} \hat{\gamma}^{ipt})}
+        (Y - X^{\prime} b)^{2} \right\rvert\, D=0, T=t\right]
+
+    The resulting estimator is doubly robust for inference but is not locally efficient.
 
     See Also
     --------

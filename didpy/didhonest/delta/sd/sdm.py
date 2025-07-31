@@ -46,39 +46,31 @@ def compute_conditional_cs_sdm(
     grid_ub=None,
     seed=None,
 ):
-    r"""Compute conditional confidence set for :math:`\Delta^{SDM}(M)`.
+    r"""Compute conditional confidence set for :math:`\Delta^{SDI}(M)`.
 
-    Computes a confidence set for :math:`l'\tau_{post}` that is valid conditional on the
-    event study coefficients being in the identified set under the second differences with
-    monotonicity restriction :math:`\Delta^{SDM}(M)`.
+    Computes a confidence set for :math:`l'\tau_{post}` that is valid conditional on the event study
+    coefficients being in the identified set under the second differences with monotonicity
+    restriction :math:`\Delta^{SDI}(M)`.
 
-    The combined smoothness and monotonicity restriction is defined as
+    The combined smoothness and monotonicity restriction, denoted :math:`\Delta^{SDI}(M)` in [2]_, is
+    defined as the intersection of :math:`\Delta^{SD}(M)` and a monotonicity restriction :math:`\Delta^I`
 
     .. math::
 
-        \Delta^{SDM}(M) = \Delta^{SD}(M) \cap \Delta^{Mon},
+        \Delta^{SDI}(M) := \Delta^{SD}(M) \cap \Delta^{I},
 
-    where :math:`\Delta^{Mon} = \{\delta : \delta_t \geq \delta_{t-1}, \forall t\}` for increasing
-    or :math:`\Delta^{Mon} = \{\delta : \delta_t \leq \delta_{t-1}, \forall t\}` for decreasing.
+    where
+
+    .. math::
+
+        \Delta^{SD}(M) := \{\delta: |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \le M, \forall t\},
+
+    and :math:`\Delta^{I} := \{\delta: \delta_t \ge \delta_{t-1}, \forall t\}` for an increasing trend. For a
+    decreasing trend, the restriction is :math:`\Delta^{SD}(M) \cap (-\Delta^{I})`.
 
     This restriction is useful when economic theory suggests both smooth evolution of
     trends and monotonic behavior (e.g., secular trends expected to continue post-treatment).
     The intersection typically leads to smaller identified sets than using either restriction alone.
-
-    Since :math:`\Delta^{SDM}(M)` is a finite union of polyhedra, a valid confidence
-    set is constructed by taking the union of the confidence sets for each of its
-    components (Lemma 2.2).
-
-    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
-    set has uniform asymptotic coverage
-
-    .. math::
-
-        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
-        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
-
-    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
-    for all :math:`P \in \mathcal{P}`.
 
     Parameters
     ----------
@@ -93,7 +85,7 @@ def compute_conditional_cs_sdm(
     l_vec : ndarray, optional
         Vector defining parameter of interest. If None, defaults to first post-period.
     m_bar : float, default=0
-        Smoothness parameter M for :math:`\Delta^{SDM}(M)`.
+        Smoothness parameter M for :math:`\Delta^{SDI}(M)`.
     alpha : float, default=0.05
         Significance level.
     monotonicity_direction : {'increasing', 'decreasing'}, default='increasing'
@@ -120,22 +112,24 @@ def compute_conditional_cs_sdm(
 
     Notes
     -----
-    :math:`\Delta^{SDM}(M)` is a polyhedron formed by the intersection of smoothness and
-    monotonicity constraints. The confidence set is constructed using either FLCIs or the
-    moment inequality approach from Section 3 of Rambachan & Roth (2023).
+    :math:`\Delta^{SDI}(M)` is a polyhedron formed by the intersection of smoothness and monotonicity
+    constraints. The confidence set is constructed using either FLCIs or the moment inequality
+    approach from Section 3 of [2]_.
 
-    As noted in Rambachan & Roth (2023), monotonicity restrictions are often motivated
-    by economic arguments. For example, Lovenheim & Willen (2019) argue that pre-treatment
-    trends in the "wrong direction" (opposite to treatment effects) support their findings.
+    As noted in [2]_, monotonicity restrictions are often motivated by economic arguments. For
+    example, Lovenheim & Willen (2019) argue that pre-treatment trends in the "wrong direction"
+    (opposite to treatment effects) support their findings.
 
-    Unlike :math:`\Delta^{SD}(M)` alone, the optimal FLCI for :math:`\Delta^{SDM}(M)`
-    has the same worst-case bias as for :math:`\Delta^{SD}(M)`, meaning FLCIs do not
-    adapt to the additional monotonicity restriction.
+    Unlike :math:`\Delta^{SD}(M)` alone, the optimal FLCI for :math:`\Delta^{SDI}(M)` has the same
+    worst-case bias as for :math:`\Delta^{SD}(M)`, meaning FLCIs do not adapt to the additional
+    monotonicity restriction.
 
     References
     ----------
 
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if l_vec is None:
@@ -245,28 +239,25 @@ def compute_identified_set_sdm(
     num_post_periods,
     monotonicity_direction="increasing",
 ):
-    r"""Compute identified set for :math:`\Delta^{SDM}(M)`.
+    r"""Compute identified set for :math:`\Delta^{SDI}(M)`.
 
-    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
-    underlying trend :math:`\delta` lies in :math:`\Delta^{SDM}(M)`, which combines second
-    differences bounds with a monotonicity restriction.
+    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the underlying
+    trend :math:`\delta` lies in :math:`\Delta^{SDI}(M)`, which combines second differences bounds
+    with a monotonicity restriction.
 
-    Under the decomposition :math:`\beta = \tau + \delta` with :math:`\tau_{pre} = 0`,
-    the causal parameter :math:`\theta = l'\tau_{post}` is partially identified when
-    :math:`\delta \in \Delta^{SDM}(M) = \Delta^{SD}(M) \cap \Delta^{Mon}`.
-
-    The identified set is computed by solving two linear programs:
+    The identified set is an interval :math:`[\theta^{lb}, \theta^{ub}]` derived from Lemma 2.1 in [2]_.
+    The bounds are given by
 
     .. math::
 
-        \theta^{ub} = \max_{\delta} l'\delta_{post} \quad \text{subject to} \quad
-        \delta \in \Delta^{SDM}(M) \quad \text{and} \quad \delta_{pre} = \beta_{pre}
+        \theta^{lb}(\beta, \Delta) := l'\beta_{post} - \max_{\delta} \{l'\delta_{post} :
+        \delta \in \Delta, \delta_{pre} = \beta_{pre}\}
 
-        \theta^{lb} = \min_{\delta} l'\delta_{post} \quad \text{subject to} \quad
-        \delta \in \Delta^{SDM}(M) \quad \text{and} \quad \delta_{pre} = \beta_{pre}
+        \theta^{ub}(\beta, \Delta) := l'\beta_{post} - \min_{\delta} \{l'\delta_{post} :
+        \delta \in \Delta, \delta_{pre} = \beta_{pre}\},
 
-    The constraint :math:`\delta \in \Delta^{SDM}(M)` is the intersection of
-    :math:`\Delta^{SD}(M)` with a monotonicity restriction on treatment effects.
+    where :math:`\Delta` is :math:`\Delta^{SDI}(M)`, the intersection of the smoothness and
+    monotonicity restrictions.
 
     Parameters
     ----------
@@ -288,6 +279,14 @@ def compute_identified_set_sdm(
     -------
     DeltaSDMResult
         Lower and upper bounds of the identified set.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
 
@@ -338,10 +337,10 @@ def _create_sdm_constraint_matrix(
     monotonicity_direction="increasing",
     post_period_moments_only=False,
 ):
-    r"""Create constraint matrix for :math:`\Delta^{SDM}(M)`.
+    r"""Create constraint matrix for :math:`\Delta^{SDI}(M)`.
 
-    Combines second differences (SD) and monotonicity (M) constraints into a single
-    constraint matrix :math:`A` such that :math:`\delta \in \Delta^{SDM}(M)` can be written
+    Combines second differences (SD) and monotonicity (I) constraints into a single
+    constraint matrix :math:`A` such that :math:`\delta \in \Delta^{SDI}(M)` can be written
     as :math:`A \delta \leq d`.
 
     Parameters
@@ -384,9 +383,9 @@ def _create_sdm_constraint_vector(
     m_bar,
     post_period_moments_only=False,
 ):
-    r"""Create constraint vector for :math:`\Delta^{SDM}(M)`.
+    r"""Create constraint vector for :math:`\Delta^{SDI}(M)`.
 
-    Creates vector :math:`d` such that :math:`\delta \in \Delta^{SDM}(M)` can be written
+    Creates vector :math:`d` such that :math:`\delta \in \Delta^{SDI}(M)` can be written
     as :math:`A \delta \leq d`.
 
     Parameters

@@ -39,8 +39,14 @@ def ipw_did_panel(
     r"""Compute the inverse propensity weighted DiD estimator for the ATT with panel data.
 
     Implements the inverse propensity weighted (IPW) estimator for the ATT with panel data,
-    as proposed by Abadie (2005) [1]_. IPW weights are not normalized to sum up to one, that is,
-    the estimator is of the Horwitz-Thompson type.
+    as proposed by [1]_ and discussed in [2]_. The estimator is given by equation (2.4) in [2]_
+    as
+
+    .. math::
+        \widehat{\tau}^{ipw,p} = \frac{1}{\mathbb{E}_{n}[D]} \mathbb{E}_{n}
+        \left[\frac{D-\widehat{\pi}(X)}{1-\widehat{\pi}(X)}\left(Y_{1}-Y_{0}\right)\right].
+
+    IPW weights are not normalized to sum up to one, that is, the estimator is of the Horwitz-Thompson type.
 
     Parameters
     ----------

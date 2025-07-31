@@ -13,7 +13,6 @@ didpy documentation
    API reference <api/index>
    Development <dev/index>
    release/index
-   background
    installing
 
 
