@@ -24,6 +24,43 @@ from doublediff.did.plots import (
 )
 from doublediff.did.preprocess import DIDData
 from doublediff.did.preprocess_did import preprocess_did
+from doublediff.diddr.bootstrap.boot_ipw_rc import wboot_ipw_rc
+from doublediff.diddr.bootstrap.boot_mult import mboot_did, mboot_twfep_did
+from doublediff.diddr.bootstrap.boot_panel import (
+    wboot_dr_tr_panel,
+    wboot_drdid_imp_panel,
+    wboot_ipw_panel,
+    wboot_reg_panel,
+    wboot_std_ipw_panel,
+    wboot_twfe_panel,
+)
+from doublediff.diddr.bootstrap.boot_rc import wboot_drdid_rc1, wboot_drdid_rc2
+from doublediff.diddr.bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
+from doublediff.diddr.bootstrap.boot_reg_rc import wboot_reg_rc
+from doublediff.diddr.bootstrap.boot_std_ipw_rc import wboot_std_ipw_rc
+from doublediff.diddr.bootstrap.boot_twfe_rc import wboot_twfe_rc
+from doublediff.diddr.drdid import drdid
+from doublediff.diddr.estimators.drdid_imp_local_rc import drdid_imp_local_rc
+from doublediff.diddr.estimators.drdid_imp_panel import drdid_imp_panel
+from doublediff.diddr.estimators.drdid_imp_rc import drdid_imp_rc
+from doublediff.diddr.estimators.drdid_panel import drdid_panel
+from doublediff.diddr.estimators.drdid_rc import drdid_rc
+from doublediff.diddr.estimators.drdid_trad_rc import drdid_trad_rc
+from doublediff.diddr.estimators.ipw_did_panel import ipw_did_panel
+from doublediff.diddr.estimators.ipw_did_rc import ipw_did_rc
+from doublediff.diddr.estimators.reg_did_panel import reg_did_panel
+from doublediff.diddr.estimators.reg_did_rc import reg_did_rc
+from doublediff.diddr.estimators.std_ipw_did_panel import std_ipw_did_panel
+from doublediff.diddr.estimators.std_ipw_did_rc import std_ipw_did_rc
+from doublediff.diddr.estimators.twfe_did_panel import twfe_did_panel
+from doublediff.diddr.estimators.twfe_did_rc import twfe_did_rc
+from doublediff.diddr.estimators.wols import wols_panel, wols_rc
+from doublediff.diddr.ipwdid import ipwdid
+from doublediff.diddr.ordid import ordid
+from doublediff.diddr.print import print_did_result
+from doublediff.diddr.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
+from doublediff.diddr.propensity.ipw_estimators import ipw_rc
+from doublediff.diddr.propensity.pscore_ipt import calculate_pscore_ipt
 from doublediff.didhonest import (
     APRCIResult,
     ARPNuisanceCIResult,
@@ -95,43 +132,6 @@ from doublediff.didhonest import (
     validate_conformable,
     validate_symmetric_psd,
 )
-from doublediff.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
-from doublediff.drdid.bootstrap.boot_mult import mboot_did, mboot_twfep_did
-from doublediff.drdid.bootstrap.boot_panel import (
-    wboot_dr_tr_panel,
-    wboot_drdid_imp_panel,
-    wboot_ipw_panel,
-    wboot_reg_panel,
-    wboot_std_ipw_panel,
-    wboot_twfe_panel,
-)
-from doublediff.drdid.bootstrap.boot_rc import wboot_drdid_rc1, wboot_drdid_rc2
-from doublediff.drdid.bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
-from doublediff.drdid.bootstrap.boot_reg_rc import wboot_reg_rc
-from doublediff.drdid.bootstrap.boot_std_ipw_rc import wboot_std_ipw_rc
-from doublediff.drdid.bootstrap.boot_twfe_rc import wboot_twfe_rc
-from doublediff.drdid.drdid import drdid
-from doublediff.drdid.estimators.drdid_imp_local_rc import drdid_imp_local_rc
-from doublediff.drdid.estimators.drdid_imp_panel import drdid_imp_panel
-from doublediff.drdid.estimators.drdid_imp_rc import drdid_imp_rc
-from doublediff.drdid.estimators.drdid_panel import drdid_panel
-from doublediff.drdid.estimators.drdid_rc import drdid_rc
-from doublediff.drdid.estimators.drdid_trad_rc import drdid_trad_rc
-from doublediff.drdid.estimators.ipw_did_panel import ipw_did_panel
-from doublediff.drdid.estimators.ipw_did_rc import ipw_did_rc
-from doublediff.drdid.estimators.reg_did_panel import reg_did_panel
-from doublediff.drdid.estimators.reg_did_rc import reg_did_rc
-from doublediff.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
-from doublediff.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
-from doublediff.drdid.estimators.twfe_did_panel import twfe_did_panel
-from doublediff.drdid.estimators.twfe_did_rc import twfe_did_rc
-from doublediff.drdid.estimators.wols import wols_panel, wols_rc
-from doublediff.drdid.ipwdid import ipwdid
-from doublediff.drdid.ordid import ordid
-from doublediff.drdid.print import print_did_result
-from doublediff.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
-from doublediff.drdid.propensity.ipw_estimators import ipw_rc
-from doublediff.drdid.propensity.pscore_ipt import calculate_pscore_ipt
 from doublediff.utils import (
     are_varying,
     complete_data,
