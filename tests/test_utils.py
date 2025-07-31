@@ -7,7 +7,7 @@ from .helpers import importorskip
 
 pd = importorskip("pandas")
 
-from doublediff.drdid.utils import preprocess_drdid
+from doublediff.diddr.utils import preprocess_drdid
 from tests.dgp import SantAnnaZhaoDRDiD
 
 
