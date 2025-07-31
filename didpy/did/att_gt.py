@@ -170,11 +170,8 @@ def att_gt(
         base_period=base_period,
         print_details=print_details,
     )
-
-    # Compute all ATT(g,t)
     results = compute_att_gt(dp)
 
-    # Extract ATT(g,t) and influence functions
     att_gt_list = results.attgt_list
     influence_functions = results.influence_functions
 
@@ -192,7 +189,6 @@ def att_gt(
     else:
         influence_functions_dense = np.array(influence_functions)
 
-    # Analytical standard errors
     n_units = dp.config.id_count
     variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units
     standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
@@ -208,7 +204,6 @@ def att_gt(
 
     zero_na_sd_indices = np.unique(np.where(np.isnan(standard_errors))[0])
 
-    # Bootstrap variance matrix
     if bstrap:
         cluster = None
         if clustervars is not None and len(clustervars) > 0:
@@ -224,7 +219,6 @@ def att_gt(
             if len(clustervars) == 1:
                 cluster = cluster_data[clustervars[0]].values
             else:
-                # Create interaction of two cluster variables
                 cluster = pd.Categorical(
                     cluster_data[clustervars[0]].astype(str) + "_" + cluster_data[clustervars[1]].astype(str)
                 ).codes
@@ -247,18 +241,14 @@ def att_gt(
 
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
-    # Compute Wald pre-test
-    # Select which periods are pre-treatment
+    # Wald pre-test
     pre_treatment_indices = np.where(groups > times)[0]
 
-    # Drop group-periods that have variance equal to zero (singularity problems)
     if len(zero_na_sd_indices) > 0:
         pre_treatment_indices = pre_treatment_indices[~np.isin(pre_treatment_indices, zero_na_sd_indices)]
 
     # Pseudo-atts in pre-treatment periods
     pre_treatment_att = att_values[pre_treatment_indices]
-
-    # Covariance matrix of pre-treatment atts
     pre_treatment_variance = variance_matrix[np.ix_(pre_treatment_indices, pre_treatment_indices)]
 
     if len(pre_treatment_indices) == 0:
@@ -277,7 +267,6 @@ def att_gt(
         la.norm(pre_treatment_variance) == 0
         or np.linalg.matrix_rank(pre_treatment_variance) < pre_treatment_variance.shape[0]
     ):
-        # Singular covariance matrix for pre-treatment periods
         warnings.warn(
             "Not returning pre-test Wald statistic due to singular covariance matrix",
             UserWarning,
@@ -297,7 +286,6 @@ def att_gt(
             wald_statistic = None
             wald_pvalue = None
 
-    # Compute confidence intervals / bands
     critical_value = scipy.stats.norm.ppf(1 - alp / 2)
 
     if bstrap and cband:

@@ -347,7 +347,6 @@ def _compute_group_att(
     unit_level_weights,
 ):
     """Compute group-specific ATTs."""
-    # Compute ATT for each group
     group_att = np.zeros(len(unique_groups_recoded))
     group_influence_functions = []
 

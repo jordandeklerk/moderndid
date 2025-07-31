@@ -39,7 +39,23 @@ def drdid_rc(
     r"""Compute the locally efficient doubly robust DiD estimator for the ATT with repeated cross-section data.
 
     Implements the locally efficient doubly robust difference-in-differences (DiD)
-    estimator for the Average Treatment Effect on the Treated (ATT) defined in Sant'Anna and Zhao (2020) [1]_.
+    estimator for the Average Treatment Effect on the Treated (ATT) defined in [1]_.
+    This is the estimator based on the efficient influence function, which is derived
+    in Section 2.3 of [1]_. The estimator is given by
+
+    .. math::
+        \tau_{2}^{dr,rc} = \tau_{1}^{dr,rc} +
+        \left(\mathbb{E}[\mu_{1,1}^{rc}(X) - \mu_{0,1}^{rc}(X) | D=1] -
+        \mathbb{E}[\mu_{1,1}^{rc}(X) - \mu_{0,1}^{rc}(X) | D=1, T=1]\right) \\
+        - \left(\mathbb{E}[\mu_{1,0}^{rc}(X) - \mu_{0,0}^{rc}(X) | D=1] -
+        \mathbb{E}[\mu_{1,0}^{rc}(X) - \mu_{0,0}^{rc}(X) | D=1, T=0]\right),
+
+    where :math:`\tau_{1}^{d r, r c}` is given by
+
+    .. math::
+        \tau_{1}^{dr,rc} = \mathbb{E}\left[\left(w_{1}^{rc}(D,T) - w_{0}^{rc}(D,T,X;\pi)\right)
+        \left(Y - \mu_{0,Y}^{rc}(T,X)\right)\right].
+
     This estimator uses a logistic propensity score model and linear regression models for the outcome.
 
     The propensity score parameters are estimated using maximum likelihood, and the outcome

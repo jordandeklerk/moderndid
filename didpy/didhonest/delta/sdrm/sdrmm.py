@@ -49,70 +49,44 @@ def compute_conditional_cs_sdrmm(
     r"""Compute conditional confidence set for :math:`\Delta^{SDRMM}(\bar{M})`.
 
     Computes a confidence set for :math:`l'\tau_{post}` under the restriction that delta
-    lies in :math:`\Delta^{SDRMM}(\bar{M})`, which combines second differences with relative
-    magnitudes restriction and a monotonicity constraint.
+    lies in :math:`\Delta^{SDRMM}(\bar{M})`, which combines the second-differences-with-relative-magnitudes
+    restriction with a monotonicity constraint.
 
-    The combined restriction is defined as
-
-    .. math::
-
-        \Delta^{SDRMM}(\bar{M}) = \Delta^{SDRM}(\bar{M}) \cap \Delta^{Mon},
-
-    where :math:`\Delta^{Mon} = \{\delta : \delta_t \geq \delta_{t-1}, \forall t\}` for increasing
-    or :math:`\Delta^{Mon} = \{\delta : \delta_t \leq \delta_{t-1}, \forall t\}` for decreasing.
-
-    This restriction is particularly useful when pre-treatment trends suggest smoothly
-    evolving confounders, the magnitude of violations should be bounded by pre-treatment
-    variation, and economic theory suggests monotonic treatment effects over time.
-
-    The confidence set is computed as
+    This combined restriction is the intersection of :math:`\Delta^{SDRM}(\bar{M})` and a
+    monotonicity restriction :math:`\Delta^{Mon}`, as discussed in Section 2.4.4 of [1]_,
 
     .. math::
 
-        CS = \bigcup_{s=-(T_{pre}-2)}^{0} \left(
-            CS_{s,+} \cup CS_{s,-}
-        \right) \cap CS^{Mon}
+        \Delta^{SDRMM}(\bar{M}) = \Delta^{SDRM}(\bar{M}) \cap \Delta^{Mon}
 
-    where :math:`CS_{s,+}` and :math:`CS_{s,-}` are the confidence sets under the
-    positive and negative reference restrictions respectively, and :math:`CS^{Mon}`
-    enforces the monotonicity constraint.
+    where for an increasing trend,
+    :math:`\Delta^{Mon} = \Delta^{I} = \{\delta : \delta_t \geq \delta_{t-1}, \forall t\}`.
 
-    Since :math:`\Delta^{SDRMM}(\bar{M})` is a finite union of polyhedra, a valid confidence
-    set is constructed by taking the union of the confidence sets for each of its
-    components (Lemma 2.2).
-
-    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
-    set has uniform asymptotic coverage
-
-    .. math::
-
-        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
-        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
-
-    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
-    for all :math:`P \in \mathcal{P}`.
+    This restriction is useful when pre-treatment trends suggest smoothly
+    evolving confounders and economic theory suggests monotonic effects over time.
 
     Parameters
     ----------
     betahat : ndarray
         Estimated event study coefficients.
     sigma : ndarray
-        Covariance matrix of betahat.
+        Covariance matrix of :math:`\hat{\beta}`.
     num_pre_periods : int
         Number of pre-treatment periods.
     num_post_periods : int
         Number of post-treatment periods.
     l_vec : ndarray, optional
-        Vector defining parameter of interest. If None, defaults to first post-period.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`. If None, defaults to first post-period.
     m_bar : float, default=0
-        Relative magnitude parameter. Post-period second differences can be at most
-        :math:`\bar{M}` times the max pre-period second difference.
+        Relative magnitude parameter :math:`\bar{M}`. Second differences in post-treatment periods
+        can be at most :math:`\bar{M}` times the maximum absolute second difference in
+        pre-treatment periods.
     alpha : float, default=0.05
         Significance level.
     hybrid_flag : {'LF', 'ARP', 'FLCI'}, default='LF'
         Type of hybrid test.
     hybrid_kappa : float, optional
-        First-stage size for hybrid test. If None, defaults to alpha/10.
+        First-stage size for hybrid test. If None, defaults to :math:`\alpha/10`.
     monotonicity_direction : {'increasing', 'decreasing'}, default='increasing'
         Direction of monotonicity restriction.
     post_period_moments_only : bool, default=True
@@ -250,17 +224,18 @@ def compute_identified_set_sdrmm(
     r"""Compute identified set for :math:`\Delta^{SDRMM}(\bar{M})`.
 
     Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
-    underlying trend delta lies in :math:`\Delta^{SDRMM}(\bar{M})`, taking the union over all
-    choices of s and sign, intersected with the monotonicity constraint.
+    underlying trend delta lies in :math:`\Delta^{SDRMM}(\bar{M})`.
 
-    The identified set under :math:`\Delta^{SDRMM}(\bar{M})` is
+    This set combines the second-differences-with-relative-magnitudes constraint with a
+    monotonicity constraint, as discussed in Section 2.4.4 of [1]_. The identified set is
+    the union of identified sets for each component polyhedron,
 
     .. math::
 
-        \mathcal{I}(\Delta^{SDRMM}(\bar{M})) = \bigcup_{s=-(T_{pre}-2)}^{0} \bigcup_{sign \in \{+,-\}}
-        \mathcal{I}(\Delta^{SDRM}_{s,sign}(\bar{M}) \cap \Delta^{Mon}),
+        \mathcal{S}(\beta, \Delta^{SDRMM}(\bar{M})) = \bigcup_{s<0, sign \in \{+,-\}}
+        \mathcal{S}(\beta, \Delta^{SDRM}_{s,sign}(\bar{M}) \cap \Delta^{Mon})
 
-    where each :math:`\mathcal{I}(\cdot)` is computed by solving linear programs to find
+    where each component set is computed by solving linear programs to find
     the range of :math:`l'\tau_{post}` consistent with the constraints.
 
     Parameters
@@ -272,7 +247,7 @@ def compute_identified_set_sdrmm(
     true_beta : ndarray
         True coefficient values (pre and post periods).
     l_vec : ndarray
-        Vector defining parameter of interest.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`.
     num_pre_periods : int
         Number of pre-treatment periods.
     num_post_periods : int
@@ -352,23 +327,25 @@ def _compute_identified_set_sdrmm_fixed_s(
     num_post_periods,
     monotonicity_direction="increasing",
 ):
-    """Compute identified set for fixed s and sign.
+    r"""Compute identified set for fixed s and sign.
 
-    Helper function that computes bounds for a specific choice of s
+    Helper function that computes bounds for a specific choice of :math:`s`
     and sign (max_positive), subject to both SDRM and monotonicity constraints.
 
     Parameters
     ----------
     s : int
-        Period index for maximum second difference.
+        Period index for maximum second difference (must be <= 0).
     m_bar : float
-        Relative magnitude parameter.
+        Relative magnitude parameter. Second differences in post-treatment periods
+        can be at most :math:`\bar{M}` times the maximum absolute second difference in
+        pre-treatment periods.
     max_positive : bool
         Sign of maximum second difference.
     true_beta : ndarray
         Vector of true event study coefficients.
     l_vec : ndarray
-        Vector defining parameter of interest.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`.
     num_pre_periods : int
         Number of pre-treatment periods.
     num_post_periods : int
@@ -443,7 +420,7 @@ def _compute_conditional_cs_sdrmm_fixed_s(
     grid_ub,
     seed,
 ):
-    """Compute conditional CS for fixed s and sign.
+    r"""Compute conditional CS for fixed s and sign.
 
     Helper function for computing ARP confidence interval for a specific
     choice of s and sign, with both SDRM and monotonicity constraints.
@@ -451,11 +428,13 @@ def _compute_conditional_cs_sdrmm_fixed_s(
     Parameters
     ----------
     s : int
-        Period index for maximum second difference.
+        Period index for maximum second difference (must be <= 0).
     max_positive : bool
         Sign of maximum second difference.
     m_bar : float
-        Relative magnitude parameter.
+        Relative magnitude parameter. Second differences in post-treatment periods
+        can be at most :math:`\bar{M}` times the maximum absolute second difference in
+        pre-treatment periods.
     betahat : ndarray
         Estimated event study coefficients.
     sigma : ndarray
@@ -465,7 +444,7 @@ def _compute_conditional_cs_sdrmm_fixed_s(
     num_post_periods : int
         Number of post-treatment periods.
     l_vec : ndarray
-        Vector defining parameter of interest.
+        Vector defining parameter of interest :math:`\theta = l'\tau_{post}`.
     alpha : float
         Significance level.
     hybrid_flag : str
@@ -622,19 +601,18 @@ def _create_sdrmm_constraint_matrix(
 ):
     r"""Create constraint matrix A for :math:`\Delta^{SDRMM}_{s,sign}(\bar{M})`.
 
-    Creates a matrix for the linear constraints that delta is in
-    :math:`\Delta^{SDRMM}_{s,sign}(\bar{M})`, which combines second differences with
-    relative magnitudes and monotonicity constraints.
+    Creates a matrix for the linear constraints that define
+    :math:`\Delta^{SDRMM}_{s,sign}(\bar{M})`. This set combines the second-differences-with-relative-magnitudes
+    constraint with a monotonicity constraint, as discussed in Section 2.4.4 of [1]_.
 
-    The constraint set is defined as
+    The constraint set is the intersection of two polyhedra,
 
     .. math::
 
-        \Delta^{SDRMM}_{s,sign}(\bar{M}) = \Delta^{SDRM}_{s,sign}(\bar{M}) \cap \Delta^{Mon}.
+        \Delta^{SDRMM}_{s,sign}(\bar{M}) = \Delta^{SDRM}_{s,sign}(\bar{M}) \cap \Delta^{Mon}
 
     This function stacks the constraint matrices from the relative magnitudes
-    constraint for period :math:`s` and the monotonicity constraint (increasing
-    or decreasing) to create a combined system.
+    constraint for period :math:`s` and the monotonicity constraint to create a combined system.
 
     Parameters
     ----------
@@ -682,9 +660,9 @@ def _create_sdrmm_constraint_vector(a_matrix):
 
     For the combined smoothness with relative magnitudes and monotonicity restriction,
     the constraint vector :math:`d` is a vector of zeros. This arises because the
-    relative magnitudes constraints in :math:`\Delta^{SDRM}` can be written as
-    homogeneous inequalities of the form :math:`A_{SDRM}\delta \leq 0`, and the
-    monotonicity constraints are also homogeneous: :math:`A_{Mon}\delta \leq 0`.
+    relative magnitudes constraints in :math:`\Delta^{SDRM}` and the monotonicity
+    constraints in :math:`\Delta^{Mon}` can be written as homogeneous inequalities,
+    as shown in [1]_.
 
     Parameters
     ----------

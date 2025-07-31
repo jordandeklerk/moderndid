@@ -51,7 +51,7 @@ def compute_arp_nuisance_ci(
     grid_points=1000,
     rows_for_arp=None,
 ):
-    r"""Compute ARP confidence interval with nuisance parameters.
+    r"""Compute Andrews-Roth-Pakes (ARP) confidence interval with nuisance parameters.
 
     Computes confidence interval for :math:`\theta = l'\tau_{post}` subject to the constraint
     that :math:`\delta \in \Delta`, where :math:`\Delta = \{\delta : A\delta \leq d\}`.
@@ -241,12 +241,12 @@ def lp_conditional_test(
     hybrid_list=None,
     rows_for_arp=None,
 ):
-    r"""Perform ARP test of moment inequality with nuisance parameters.
+    r"""Perform Andrews-Roth-Pakes (ARP) test of moment inequality with nuisance parameters.
 
     Tests the null hypothesis :math:`H_0: \exists \tilde{\tau} \in \mathbb{R}^{\bar{T}-1} \text{ s.t. }
     \mathbb{E}[\tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau}] \leq 0`, where
     :math:`\tilde{Y}_n(\bar{\theta}) = Y_n - \tilde{A}_{(\cdot,1)}\bar{\theta}` has been adjusted
-    for the hypothesized value of :math:`\theta`. This is the core testing problem (13) in the ARP framework.
+    for the hypothesized value of :math:`\theta`. This is the core testing problem in the ARP framework.
 
     The test statistic from equation (14) in [2]_ is
 
@@ -264,8 +264,17 @@ def lp_conditional_test(
     .. math::
         \hat{\eta} | \{\gamma_* \in \hat{V}_n, S_n = s\} \sim \xi | \xi \in [v^{lo}, v^{up}],
 
-    where :math:`\xi \sim \mathcal{N}(\gamma_*'\tilde{\mu}(\bar{\theta}), \gamma_*'\tilde{\Sigma}_n\gamma_*)`,
-    :math:`S_n = (I - \tilde{\Sigma}_n\gamma_*\gamma_*'/(\gamma_*'\tilde{\Sigma}_n\gamma_*))\tilde{Y}_n(\bar{\theta})`,
+    where
+
+    .. math::
+
+        \xi \sim \mathcal{N}(\gamma_*'\tilde{\mu}(\bar{\theta}), \gamma_*'\tilde{\Sigma}_n\gamma_*),
+
+    .. math::
+
+        S_n = \left(I - \frac{\tilde{\Sigma}_n\gamma_*\gamma_*'}
+        {\gamma_*'\tilde{\Sigma}_n\gamma_*}\right)\tilde{Y}_n(\bar{\theta}),
+
     and :math:`[v^{lo}, v^{up}]` are truncation bounds. The conditional test uses critical value
     :math:`\max\{0, c_{C,\alpha}\}` where :math:`c_{C,\alpha}` is the :math:`(1-\alpha)` quantile of the
     truncated normal under :math:`\gamma_*'\tilde{\mu}(\bar{\theta}) = 0`.
@@ -585,7 +594,7 @@ def compute_vlo_vup_dual(
     sigma,
     w_t,
 ):
-    r"""Compute vlo and vup using dual approach with bisection.
+    r"""Compute the truncation bounds for the test statistic using dual approach with bisection.
 
     Computes the truncation bounds for the test statistic :math:`\tilde{\gamma}'Y`
     under the conditional distribution using the dual formulation. The bounds

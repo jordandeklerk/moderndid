@@ -47,39 +47,31 @@ def compute_conditional_cs_sdb(
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{SDB}(M)`.
 
-    Computes a confidence set for :math:`l'\tau_{post}` that is valid conditional on the
-    event study coefficients being in the identified set under the second differences with
-    bias restriction :math:`\Delta^{SDB}(M)`.
+    Computes a confidence set for :math:`l'\tau_{post}` that is valid conditional on the event study
+    coefficients being in the identified set under the second differences with bias restriction
+    :math:`\Delta^{SDB}(M)`.
 
-    The combined smoothness and bias direction restriction is defined as
+    The combined smoothness and bias direction restriction is defined as the intersection of
+    :math:`\Delta^{SD}(M)` and a sign restriction on the bias. For a positive bias, this is
+    denoted :math:`\Delta^{SDPB}(M)` in [2]_
 
     .. math::
 
-        \Delta^{SDB}(M) = \Delta^{SD}(M) \cap \Delta^{B},
+        \Delta^{SDPB}(M) := \Delta^{SD}(M) \cap \Delta^{PB},
 
-    where :math:`\Delta^{B} = \Delta^{PB}` for positive bias with
-    :math:`\Delta^{PB} = \{\delta : \delta_t \geq 0, \forall t \geq 0\}`,
-    or :math:`\Delta^{B} = -\Delta^{PB} = \{\delta : \delta_t \leq 0, \forall t \geq 0\}` for negative bias.
+    where
+
+    .. math::
+
+        \Delta^{SD}(M) := \{\delta: |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \le M, \forall t\},
+
+    and :math:`\Delta^{PB} := \{\delta: \delta_t \ge 0, \forall t \ge 0\}`. For a negative bias, the
+    restriction is :math:`\Delta^{SD}(M) \cap (-\Delta^{PB})`.
 
     This restriction is useful when economic theory suggests both smooth evolution of
     confounding trends and a known direction of bias (e.g., a concurrent policy expected
     to have a positive effect). The intersection typically leads to smaller identified sets
     than using either restriction alone.
-
-    Since :math:`\Delta^{SDB}(M)` is a finite union of polyhedra, a valid confidence
-    set is constructed by taking the union of the confidence sets for each of its
-    components (Lemma 2.2).
-
-    Under the approximation :math:`\hat{\beta} \sim \mathcal{N}(\beta, \Sigma)`, the confidence
-    set has uniform asymptotic coverage
-
-    .. math::
-
-        \liminf_{n \to \infty} \inf_{P \in \mathcal{P}} \inf_{\theta \in \mathcal{S}(\delta_P + \tau_P, \Delta)}
-        \mathbb{P}_P(\theta \in \mathcal{C}_n(\hat{\beta}_n, \hat{\Sigma}_n)) \geq 1 - \alpha,
-
-    for a large class of distributions :math:`\mathcal{P}` such that :math:`\delta_P \in \Delta`
-    for all :math:`P \in \mathcal{P}`.
 
     Parameters
     ----------
@@ -122,19 +114,21 @@ def compute_conditional_cs_sdb(
 
     Notes
     -----
-    :math:`\Delta^{SDB}(M)` is a polyhedron formed by the intersection of smoothness and sign
-    constraints. The confidence set is constructed using either FLCIs or the moment inequality
-    approach from Section 3 of Rambachan & Roth (2023).
+    :math:`\Delta^{SDB}(M)` is a polyhedron formed by the intersection of smoothness and sign constraints.
+    The confidence set is constructed using either FLCIs or the moment inequality approach from
+    Section 3 of [2]_.
 
-    Unlike :math:`\Delta^{SD}(M)` alone, the optimal FLCI for :math:`\Delta^{SDB}(M)`
-    has the same worst-case bias as for :math:`\Delta^{SD}(M)`, meaning FLCIs do not
-    adapt to the additional sign restriction. The conditional/hybrid approach may
-    therefore have better power when the sign restriction is informative.
+    Unlike :math:`\Delta^{SD}(M)` alone, the optimal FLCI for :math:`\Delta^{SDB}(M)` has the same
+    worst-case bias as for :math:`\Delta^{SD}(M)`, meaning FLCIs do not adapt to the additional
+    sign restriction. The conditional/hybrid approach may therefore have better power when the
+    sign restriction is informative.
 
     References
     ----------
 
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if l_vec is None:
@@ -249,29 +243,31 @@ def compute_identified_set_sdb(
     num_post_periods,
     bias_direction="positive",
 ):
-    r"""Compute identified set for :math:`\Delta^{SDB}`(M).
+    r"""Compute identified set for :math:`\Delta^{SDB}(M)`.
 
-    Computes the identified set for :math:`l'\beta_{post}` under the restriction that the
-    underlying trend :math:`\delta` lies in :math:`\Delta^{SDB}(M)`, which combines second
-    differences bounds with a sign restriction.
+    Computes the identified set for :math:`l'\tau_{post}` under the restriction that the underlying
+    trend :math:`\delta` lies in :math:`\Delta^{SDB}(M)`, which combines second differences bounds
+    with a sign restriction.
 
-    The identified set is computed by solving two linear programs:
+    The identified set is an interval :math:`[\theta^{lb}, \theta^{ub}]` derived from Lemma 2.1 in [2]_.
+    The bounds are given by
 
     .. math::
 
-        \theta^{ub} = \max_{\delta} l'\delta_{post} \quad \text{subject to} \quad
-        \delta \in \Delta^{SDB}(M) \quad \text{and} \quad \delta_{pre} = \beta_{pre}
+        \theta^{lb}(\beta, \Delta) := l'\beta_{post} - \max_{\delta} \{l'\delta_{post} :
+        \delta \in \Delta, \delta_{pre} = \beta_{pre}\}
 
-        \theta^{lb} = \min_{\delta} l'\delta_{post} \quad \text{subject to} \quad
-        \delta \in \Delta^{SDB}(M) \quad \text{and} \quad \delta_{pre} = \beta_{pre}
+        \theta^{ub}(\beta, \Delta) := l'\beta_{post} - \min_{\delta} \{l'\delta_{post} :
+        \delta \in \Delta, \delta_{pre} = \beta_{pre}\},
 
-    The constraint :math:`\delta \in \Delta^{SDB}(M)` is the intersection of
-    :math:`\Delta^{SD}(M)` with a sign restriction on post-treatment effects.
+    where :math:`\Delta` is :math:`\Delta^{SDB}(M)`, the intersection of the smoothness and sign
+    restrictions.
 
     Parameters
     ----------
     m_bar : float
-        Smoothness parameter M. Bounds the second differences: :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`.
+        Smoothness parameter M. Bounds the second differences:
+        :math:`|\delta_{t-1} - 2\delta_t + \delta_{t+1}| \leq M`.
     true_beta : ndarray
         True coefficient values (pre and post periods).
     l_vec : ndarray
@@ -287,6 +283,14 @@ def compute_identified_set_sdb(
     -------
     DeltaSDBResult
         Lower and upper bounds of the identified set.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
+        conditional moment inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
 

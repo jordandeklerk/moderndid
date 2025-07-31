@@ -192,9 +192,9 @@ def test_monotonicity_matrix_consistency(num_pre, num_post):
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_grid_search_consistency(grid_search_data):
     results_numba = arp_no_nuisance._test_over_theta_grid(
-        *grid_search_data, test_fn=arp_no_nuisance._test_in_identified_set
+        *grid_search_data, test_fn=arp_no_nuisance.test_in_identified_set
     )
-    results_original = _test_over_theta_grid_py(*grid_search_data, test_fn=arp_no_nuisance._test_in_identified_set)
+    results_original = _test_over_theta_grid_py(*grid_search_data, test_fn=arp_no_nuisance.test_in_identified_set)
     np.testing.assert_array_equal(results_numba, results_original)
 
 
@@ -308,7 +308,7 @@ def test_grid_search_performance(grid_search_sizes, request):
         data["post_period_index"],
         data["alpha"],
     )
-    kwargs = {"test_fn": arp_no_nuisance._test_in_identified_set}
+    kwargs = {"test_fn": arp_no_nuisance.test_in_identified_set}
 
     warm_up_iterations = 5 if data["grid_size"] <= 30 else 2
     for _ in range(warm_up_iterations):

@@ -38,8 +38,12 @@ def twfe_did_panel(
     r"""Compute linear two-way fixed effects DiD estimator for the ATT with panel data.
 
     Implements the linear two-way fixed effects (TWFE) estimator for the ATT with panel data,
-    as illustrated by Sant'Anna and Zhao (2020) [1]_. This estimator generally does not recover
-    the ATT. We encourage users to adopt alternative specifications.
+    as illustrated in [1]_. The estimator is based on the regression model from equation (2.5)
+    of [1]_ as
+
+    .. math::
+        Y_{it} = \alpha_1 + \alpha_2 T_i + \alpha_3 D_i + \tau^{fe}(T_i \cdot D_i)
+        + \theta' X_i + \varepsilon_{it}.
 
     Parameters
     ----------
@@ -70,6 +74,10 @@ def twfe_did_panel(
     TWFEDIDPanelResult
         A NamedTuple containing the TWFE DiD point estimate, standard error, confidence interval,
         bootstrap draws, and influence function.
+
+    Warnings
+    --------
+    This estimator generally does not recover the ATT. We encourage users to adopt alternative specifications.
 
     See Also
     --------

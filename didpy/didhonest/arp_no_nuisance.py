@@ -56,27 +56,31 @@ def compute_arp_ci(
     flci_l=None,
     lf_cv=None,
 ):
-    r"""Compute ARP confidence interval for treatment effect with no nuisance parameters.
+    r"""Compute Andrews-Roth-Pakes (ARP) confidence interval with no nuisance parameters.
 
-    Constructs confidence intervals using the Andrews-Roth-Pakes (ARP) conditional
-    test for the case where the parameter of interest :math:`\theta = \beta_{post,s}`
-    is a single post-treatment coefficient. This special case allows for more
-    efficient computation as there are no nuisance parameters to profile over.
+    Constructs confidence intervals for the parameter of interest :math:`\theta = l' \tau_{\text{post}}`
+    in the special case where :math:`\bar{T} = 1` (single post-treatment period), which means
+    there are no nuisance parameters :math:`\tilde{\tau}` to profile over. This allows for more
+    efficient computation compared to the general case.
 
-    The method tests whether each value :math:`\theta_0` on a grid lies in the
-    identified set:
+    For each value :math:`\bar{\theta}` on a grid, the method tests the null hypothesis
+    :math:`H_0: \theta = \bar{\theta}, \delta \in \Delta` where :math:`\Delta = \{\delta: A \delta \leq d\}`.
+    Following the results from [1]_, this is equivalent to testing whether there exists
+    :math:`\tau_{\text{post}} \in \mathbb{R}^{\bar{T}}` such that :math:`l' \tau_{\text{post}} = \bar{\theta}`
+    and
 
     .. math::
-        \mathcal{I}(\Delta) = \{\beta_{post,s} - \delta_{post,s} :
-            \delta \in \Delta, \delta_{pre} = \hat{\beta}_{pre}\}.
 
-    Under the null that :math:`\theta_0 \in \mathcal{I}(\Delta)`, the test statistic
-    follows a truncated normal distribution after conditioning on which constraint binds.
+        \mathbb{E}_{\hat{\beta}_n \sim \mathcal{N}(\delta+\tau, \Sigma_n)}
+            [Y_n - A L_{\text{post}} \tau_{\text{post}}] \leq 0
 
-    The key here is that without nuisance parameters, the binding constraint
-    uniquely determines the least favorable distribution. The test conditions on
-    the event :math:`\{\arg\max_i (A\hat{\beta} - d)_i/\sigma_i = j\}` and computes
-    the appropriate truncated normal critical value.
+    where :math:`Y_n = A \hat{\beta}_n - d` and :math:`L_{\text{post}} = [0, I]'`.
+
+    In the no-nuisance case (:math:`\bar{T} = 1`), the profiled test statistic from equation (14) in [2]_
+    simplifies to :math:`\hat{\eta} = \max_i (A \hat{\beta}_n - d)_i / \tilde{\sigma}_{n,i}` where
+    :math:`\tilde{\sigma}_{n,i} = \sqrt{(A \Sigma_n A')_{ii}}`. The test conditions on the event
+    that constraint :math:`j = \arg\max_i (A \hat{\beta}_n - d)_i / \tilde{\sigma}_{n,i}` is binding,
+    leading to a truncated normal distribution for :math:`\hat{\eta}`.
 
     Parameters
     ----------
@@ -123,14 +127,6 @@ def compute_arp_ci(
     APRCIResult
         NamedTuple containing CI bounds, grid of tested values, acceptance
         indicators, and optimization status.
-
-    Notes
-    -----
-    The no-nuisance case provides computational advantages over the general case.
-    The test statistic simplifies to :math:`\eta^* = \max_i (A\hat{\beta} - d)_i/\sigma_i`
-    where :math:`\sigma_i = \sqrt{(A\Sigma A')_{ii}}`. The conditioning event depends
-    only on which constraint achieves this maximum, leading to a one-dimensional
-    truncated normal distribution.
 
     References
     ----------
@@ -182,11 +178,11 @@ def compute_arp_ci(
     theta_grid = np.linspace(grid_lb, grid_ub, grid_points)
 
     if hybrid_flag == "ARP":
-        test_fn = _test_in_identified_set
+        test_fn = test_in_identified_set
     elif hybrid_flag == "FLCI":
-        test_fn = _test_in_identified_set_flci_hybrid
+        test_fn = test_in_identified_set_flci_hybrid
     elif hybrid_flag == "LF":
-        test_fn = _test_in_identified_set_lf_hybrid
+        test_fn = test_in_identified_set_lf_hybrid
     else:
         raise ValueError(f"Invalid hybrid_flag: {hybrid_flag}")
 
@@ -239,7 +235,7 @@ def compute_arp_ci(
     )
 
 
-def _test_in_identified_set(
+def test_in_identified_set(
     y,
     sigma,
     A,
@@ -247,17 +243,27 @@ def _test_in_identified_set(
     alpha,
     **kwargs,  # pylint: disable=unused-argument
 ):
-    r"""Run ARP test of the moments :math:`E[AY - d] \leq 0`.
+    r"""Test whether :math:`\bar{\theta}` lies in the identified set using the ARP conditional approach.
 
-    Tests whether :math:`Y = \hat{\beta} - \theta_0 e_{post,s}` could have arisen from
-    a distribution where :math:`\theta_0` lies in the identified set. The null hypothesis
-    is that :math:`Y \sim N(\tau + \delta - \theta_0 e_{post,s}, \Sigma)` for some
-    :math:`\delta \in \Delta` with :math:`\delta_{pre} = Y_{pre}`.
+    Tests the null hypothesis :math:`H_0: \theta = \bar{\theta}, \delta \in \Delta` by checking
+    whether the moment inequalities :math:`\mathbb{E}[\tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau}] \leq 0`
+    hold for some :math:`\tilde{\tau}` (equation 13 in [2]_). In the no-nuisance case where :math:`\bar{T} = 1`,
+    there is no :math:`\tilde{\tau}` to optimize over.
 
-    The test first identifies which constraint would bind if :math:`\theta_0` were
-    on the boundary of the identified set. It then conditions on this constraint
-    binding, leading to a truncated normal test. The truncation bounds :math:`[v_{lo}, v_{up}]`
-    ensure that other constraints remain slack.
+    Following equations (14)-(15) in [2]_, the test statistic is the solution to the dual program
+
+    .. math::
+        \hat{\eta} = \max_{\gamma} \gamma' \tilde{Y}_n(\bar{\theta})
+        \text{ s.t. } \gamma' \tilde{X} = 0, \gamma' \tilde{\sigma}_n = 1, \gamma \geq 0,
+
+    where :math:`\tilde{Y}_n(\bar{\theta}) = A\hat{\beta}_n - d - A L_{\text{post}}(\bar{\theta}, 0)'`
+    and :math:`\tilde{\sigma}_n = \sqrt{\text{diag}(A \Sigma_n A')}`. In the no-nuisance case,
+    the constraint :math:`\gamma' \tilde{X} = 0` is vacuous, so :math:`\hat{\eta}` simplifies to
+    :math:`\max_i (\tilde{Y}_n(\bar{\theta}))_i / \tilde{\sigma}_{n,i}`.
+
+    The test conditions on the event :math:`\{\gamma_* \in \hat{V}_n, S_n = s\}` where :math:`\gamma_*`
+    is the optimal vertex. Under this conditioning, :math:`\hat{\eta}` follows a truncated normal
+    distribution with truncation bounds :math:`[v^{lo}, v^{up}]` that ensure :math:`\gamma_*` remains optimal.
 
     Parameters
     ----------
@@ -280,17 +286,13 @@ def _test_in_identified_set(
     bool
         True if null is NOT rejected (i.e., :math:`\theta_0` is in the confidence set).
 
-    Notes
-    -----
-    The test statistic is :math:`\eta^* = \max_i \tilde{A}_i Y - \tilde{d}_i` where
-    :math:`\tilde{A}` and :math:`\tilde{d}` are normalized by the standard deviations.
-    If :math:`\eta^* \leq 0`, all constraints are satisfied and we cannot reject.
-    Otherwise, we condition on constraint :math:`j = \arg\max_i \tilde{A}_i Y - \tilde{d}_i`
-    binding and test whether the observed value is consistent with this conditioning.
+    References
+    ----------
 
-    The truncation bounds ensure that under the conditional distribution, constraint
-    :math:`j` remains the binding constraint. This is crucial for the validity of
-    the conditional inference approach.
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
+        Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
     sigma_tilde = np.maximum(sigma_tilde, 1e-10)
@@ -344,7 +346,7 @@ def _test_in_identified_set(
     return not reject
 
 
-def _test_in_identified_set_flci_hybrid(
+def test_in_identified_set_flci_hybrid(
     y,
     sigma,
     A,
@@ -355,23 +357,22 @@ def _test_in_identified_set_flci_hybrid(
     flci_l,
     **kwargs,  # pylint: disable=unused-argument
 ):
-    r"""Hybrid test with FLCI first stage.
+    r"""Hybrid test combining fixed-length confidence interval (FLCI) constraints with ARP conditional test.
 
-    Implements a two-stage test that first checks if :math:`|\ell'Y| > h_{FLCI}`
-    where :math:`h_{FLCI}` is the fixed-length confidence interval half-length.
-    If this constraint is violated, the test immediately rejects. Otherwise,
-    it adds the FLCI constraints to the main constraint set and proceeds with
-    the conditional test.
+    Implements a two-stage hybrid test following the general structure described in Section 3.2
+    of [2]_. The first stage checks whether the FLCI constraints :math:`|\ell' Y| \leq h_{FLCI}`
+    are satisfied, where :math:`\ell` is an optimally chosen weight vector and :math:`h_{FLCI}`
+    is the FLCI half-length. If these constraints are violated (i.e., if :math:`|\ell' Y| > h_{FLCI}`),
+    the test rejects immediately with size :math:`\kappa`.
 
-    The FLCI approach optimally chooses :math:`\ell` to minimize the worst-case
-    length of the confidence interval under :math:`\Delta^{SD}(M)`. Using this
-    as a first stage improves power because the FLCI often provides a tight
-    initial bound on :math:`\theta`.
+    If the first stage does not reject, the second stage proceeds with a modified conditional
+    test that includes the FLCI constraints in the constraint set. Following the hybrid approach,
+    the second stage uses adjusted size :math:`\tilde{\alpha} = \frac{\alpha - \kappa}{1 - \kappa}`
+    to ensure overall size :math:`\alpha` control.
 
-    The constraints :math:`|\ell'Y| \leq h_{FLCI}` are equivalent to
-    :math:`\ell'Y \leq h_{FLCI}` and :math:`-\ell'Y \leq h_{FLCI}`. These are
-    added to the constraint set :math:`AY \leq d` for the second stage, which
-    uses adjusted size :math:`\tilde{\alpha} = (\alpha - \kappa)/(1 - \kappa)`.
+    The FLCI constraints :math:`|\ell' Y| \leq h_{FLCI}` are reformulated as two linear inequalities:
+    :math:`\ell' Y \leq h_{FLCI}` and :math:`-\ell' Y \leq h_{FLCI}`, which are added to the
+    original constraint set :math:`\Delta = \{\delta : A\delta \leq d\}` for the second stage test.
 
     Parameters
     ----------
@@ -405,6 +406,14 @@ def _test_in_identified_set_flci_hybrid(
     by minimizing worst-case CI length. This often provides tighter bounds than
     the least favorable approach, especially when :math:`\Delta` has special
     structure like smoothness restrictions.
+
+    References
+    ----------
+
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
+        Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     # First stage: test FLCI constraint
     flci_l = np.asarray(flci_l).flatten()
@@ -424,7 +433,7 @@ def _test_in_identified_set_flci_hybrid(
     A_combined = np.vstack([A, A_firststage])
     d_combined = np.hstack([d, d_firststage])
 
-    return _test_in_identified_set(
+    return test_in_identified_set(
         y=y,
         sigma=sigma,
         A=A_combined,
@@ -433,7 +442,7 @@ def _test_in_identified_set_flci_hybrid(
     )
 
 
-def _test_in_identified_set_lf_hybrid(
+def test_in_identified_set_lf_hybrid(
     y,
     sigma,
     A,
@@ -443,27 +452,26 @@ def _test_in_identified_set_lf_hybrid(
     lf_cv,
     **kwargs,  # pylint: disable=unused-argument
 ):
-    r"""Hybrid test with least favorable first stage.
+    r"""Conditional-least favorable (LF) hybrid test.
 
-    Implements a two-stage test that first checks if
+    Implements the conditional-LF hybrid test that combines a least favorable (LF) first stage
+    with a conditional second stage. As described in [1]_, the distribution of :math:`\hat{\eta}`
+    under the null is bounded above (in the sense of first-order stochastic dominance) by
+    the distribution when :math:`\tilde{\mu}(\bar{\theta}) = 0`.
 
-    .. math::
+    The first stage uses a size-:math:`\kappa` LF test that rejects when
+    :math:`\hat{\eta} > c_{LF,\kappa}`, where :math:`c_{LF,\kappa}` is the :math:`1-\kappa`
+    quantile of :math:`\max_{\gamma \in V(\Sigma)} \gamma' \xi` with :math:`\xi \sim \mathcal{N}(0, \tilde{\Sigma}_n)`.
+    This critical value can be calculated by simulation as it depends only on :math:`\tilde{\Sigma}_n`.
 
-        \eta^* = \max_{i} (\tilde{A}_i Y - \tilde{d}_i) > c_{LF},
+    If the first stage does not reject, the second stage conducts a modified conditional test
+    with size :math:`\frac{\alpha - \kappa}{1 - \kappa}` that also conditions on the event
+    :math:`\{\hat{\eta} \leq c_{LF,\kappa}\}`. The truncation upper bound becomes
+    :math:`v_H^{up} = \min\{v^{up}, c_{LF,\kappa}\}`, ensuring the test conditions on passing
+    the first stage.
 
-    where :math:`c_{LF}` is the least favorable critical value. If this first stage rejects, the test
-    immediately rejects :math:`\theta_0`. Otherwise, it proceeds to a second stage
-    with adjusted size.
-
-    The least favorable critical value :math:`c_{LF}` is chosen so that
-    :math:`\mathbb{P}_{LF}(\eta^* > c_{LF}) = \kappa` under the least favorable
-    distribution in :math:`\Delta`. This distribution places all mass at the point
-    that maximizes the rejection probability.
-
-    The second stage applies the conditional test with size
-    :math:`\tilde{\alpha} = (\alpha - \kappa)/(1 - \kappa)`, ensuring overall size
-    :math:`\alpha`. This hybrid approach improves power by quickly rejecting values
-    of :math:`\theta_0` far from the identified set while maintaining exact size control.
+    This hybrid approach improves power when binding and non-binding moments are close together
+    (relative to sampling variation) while maintaining exact size :math:`\alpha` control.
 
     Parameters
     ----------
@@ -489,14 +497,13 @@ def _test_in_identified_set_lf_hybrid(
     bool
         True if null is NOT rejected (value is in identified set).
 
-    Notes
-    -----
-    The least favorable hybrid test balances power and size. The first stage
-    provides power against alternatives far from the identified set, while the
-    second stage ensures correct coverage near the boundary.
+    References
+    ----------
 
-    The adjustment :math:`\tilde{\alpha} = (\alpha - \kappa)/(1 - \kappa)` follows from the
-    requirement that :math:`\kappa + (1-\kappa)\tilde{\alpha} = \alpha`.
+    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
+        Conditional Moment Inequalities. Review of Economic Studies.
+    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
+        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
     sigma_tilde = np.maximum(sigma_tilde, 1e-10)

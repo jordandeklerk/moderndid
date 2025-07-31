@@ -39,8 +39,13 @@ def std_ipw_did_panel(
     r"""Compute the standardized inverse propensity weighted DiD estimator for the ATT with panel data.
 
     Implements the standardized inverse propensity weighted (IPW) estimator for the ATT with panel data,
-    as proposed by Abadie (2005) [1]_. IPW weights are normalized to sum up to one, that is,
-    the estimator is of the Hajek type.
+    as proposed by [1]_ and discussed in [2]_. This is the Hajek-type estimator, where weights are
+    normalized to sum to one. The estimator is given by equation (4.1) in [2]_ as
+
+    .. math::
+        \widehat{\tau}_{std}^{ipw,p} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{p}(D) -
+        \widehat{w}_{0}^{p}(D,X;\widehat{\gamma})\right)
+        \left(Y_{1}-Y_{0}\right)\right].
 
     Parameters
     ----------
