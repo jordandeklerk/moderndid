@@ -1,9 +1,8 @@
 """Wrapper for outcome regression DiD estimators."""
 
-from typing import Any, Literal, NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
-import pandas as pd
 
 from .estimators.reg_did_panel import reg_did_panel
 from .estimators.reg_did_rc import reg_did_rc
@@ -28,19 +27,19 @@ ORDIDResult = print_did_result(ORDIDResult)
 
 
 def ordid(
-    data: pd.DataFrame,
-    y_col: str,
-    time_col: str,
-    treat_col: str,
-    id_col: str | None = None,
-    covariates_formula: str | None = None,
-    panel: bool = True,
-    weights_col: str | None = None,
-    boot: bool = False,
-    boot_type: Literal["weighted", "multiplier"] = "weighted",
-    n_boot: int = 999,
-    inf_func: bool = False,
-) -> ORDIDResult:
+    data,
+    y_col,
+    time_col,
+    treat_col,
+    id_col=None,
+    covariates_formula=None,
+    panel=True,
+    weights_col=None,
+    boot=False,
+    boot_type="weighted",
+    n_boot=999,
+    inf_func=False,
+):
     r"""Wrap the outcome regression DiD estimators for the ATT.
 
     This function is a wrapper for outcome regression DiD estimators.

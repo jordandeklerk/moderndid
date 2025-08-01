@@ -1,9 +1,8 @@
 """Wrapper for doubly robust DiD estimators."""
 
-from typing import Any, Literal, NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
-import pandas as pd
 
 from .estimators.drdid_imp_local_rc import drdid_imp_local_rc
 from .estimators.drdid_imp_panel import drdid_imp_panel
@@ -32,21 +31,21 @@ DRDIDResult = print_did_result(DRDIDResult)
 
 
 def drdid(
-    data: pd.DataFrame,
-    y_col: str,
-    time_col: str,
-    treat_col: str,
-    id_col: str | None = None,
-    covariates_formula: str | None = None,
-    panel: bool = True,
-    est_method: Literal["imp", "trad", "imp_local", "trad_local"] = "imp",
-    weights_col: str | None = None,
-    boot: bool = False,
-    boot_type: Literal["weighted", "multiplier"] = "weighted",
-    n_boot: int = 999,
-    inf_func: bool = False,
-    trim_level: float = 0.995,
-) -> DRDIDResult:
+    data,
+    y_col,
+    time_col,
+    treat_col,
+    id_col=None,
+    covariates_formula=None,
+    panel=True,
+    est_method="imp",
+    weights_col=None,
+    boot=False,
+    boot_type="weighted",
+    n_boot=999,
+    inf_func=False,
+    trim_level=0.995,
+):
     r"""Wrap the locally efficient doubly robust DiD estimators for the ATT.
 
     This function is a wrapper for doubly robust difference-in-differences (DiD) estimators.
@@ -174,24 +173,22 @@ def drdid(
     -----
     When panel data are available (`panel=True`), the function implements the
     locally efficient doubly robust DiD estimator for the ATT defined in
-    equation (3.1) in Sant'Anna and Zhao (2020). This estimator makes use of
-    a logistic propensity score model for the probability of being in the
-    treated group, and of a linear regression model for the outcome evolution
-    among the comparison units.
+    equation (3.1) in [2]_. This estimator makes use of a logistic propensity score
+    model for the probability of being in the treated group, and of a linear regression
+    model for the outcome evolution among the comparison units.
 
     When only stationary repeated cross-section data are available (`panel=False`),
     the function implements the locally efficient doubly robust DiD estimator
-    for the ATT defined in equation (3.4) in Sant'Anna and Zhao (2020).
-    This estimator makes use of a logistic propensity score model for the
-    probability of being in the treated group, and of (separate) linear
-    regression models for the outcome of both treated and comparison units,
-    in both pre and post-treatment periods.
+    for the ATT defined in equation (3.4) in [2]_. This estimator makes use of a
+    logistic propensity score model for the probability of being in the treated group,
+    and of (separate) linear regression models for the outcome of both treated and
+    comparison units, in both pre and post-treatment periods.
 
     When `est_method="imp"` (the default), the nuisance parameters are estimated
-    using the methods described in Sections 3.1 and 3.2 of Sant'Anna and Zhao (2020).
+    using the methods described in Sections 3.1 and 3.2 of [2]_.
     The propensity score parameters are estimated using the inverse probability
-    tilting estimator proposed by Graham, Pinto and Pinto (2012), and the outcome
-    regression coefficients are estimated using weighted least squares.
+    tilting estimator proposed by [1]_, and the outcome regression coefficients are
+    estimated using weighted least squares.
 
     When `est_method="trad"`, the propensity score parameters are estimated using
     maximum likelihood, and the outcome regression coefficients are estimated
@@ -199,7 +196,7 @@ def drdid(
 
     The main advantage of using `est_method="imp"` is that the resulting estimator
     is not only locally efficient and doubly robust for the ATT, but it is also
-    doubly robust for inference; see Sant'Anna and Zhao (2020) for details.
+    doubly robust for inference; see [2]_ for details.
 
     See Also
     --------
@@ -243,7 +240,7 @@ def drdid(
         data=data,
         y_col=y_col,
         time_col=time_col,
-        id_col=id_col if panel else "dummy_id",  # Dummy ID for RC data
+        id_col=id_col if panel else "dummy_id",
         treat_col=treat_col,
         covariates_formula=covariates_formula,
         panel=panel,
