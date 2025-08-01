@@ -157,7 +157,7 @@ def mp(
     )
 
 
-def format_mp_result(result: MPResult):
+def format_mp_result(result):
     """Format multi-period results.
 
     Parameters
@@ -241,7 +241,7 @@ def format_mp_result(result: MPResult):
     return "\n".join(lines)
 
 
-def summary_mp(result: MPResult):
+def summary_mp(result):
     """Print summary of a multi-period result.
 
     Parameters
@@ -369,7 +369,7 @@ def mp_pretest(
     )
 
 
-def format_mp_pretest_result(result: MPPretestResult):
+def format_mp_pretest_result(result):
     """Format pre-test results.
 
     Parameters
@@ -413,7 +413,7 @@ def format_mp_pretest_result(result: MPPretestResult):
     return "\n".join(lines)
 
 
-def summary_mp_pretest(result: MPPretestResult):
+def summary_mp_pretest(result):
     """Print summary of a pre-test result.
 
     Parameters

@@ -2,9 +2,9 @@
 
 .. _reference:
 
-###############
+####################
 doublediff reference
-###############
+####################
 
 :Release: |version|
 :Date: |today|

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import numpy as np
 import scipy.sparse as sp
@@ -34,7 +34,7 @@ class ComputeATTgtResult(NamedTuple):
     influence_functions: sp.csr_matrix
 
 
-def compute_att_gt(data: DIDData) -> ComputeATTgtResult:
+def compute_att_gt(data: DIDData):
     """Compute group-time average treatment effects.
 
     Parameters
@@ -104,10 +104,10 @@ def compute_att_gt(data: DIDData) -> ComputeATTgtResult:
 
 
 def run_att_gt_estimation(
-    group_idx: int,
-    time_idx: int,
-    data: DIDData,
-) -> dict[str, Any] | None:
+    group_idx,
+    time_idx,
+    data,
+):
     """Run ATT estimation for a given group-time pair.
 
     Parameters
@@ -201,12 +201,12 @@ def run_att_gt_estimation(
 
 
 def get_did_cohort_index(
-    group_idx: int,
-    time_idx: int,
-    time_factor: int,
-    pre_treatment_idx: int,
-    data: DIDData,
-) -> np.ndarray:
+    group_idx,
+    time_idx,
+    time_factor,
+    pre_treatment_idx,
+    data,
+):
     """Get cohort indices for current group-time pair.
 
     Parameters
@@ -294,10 +294,10 @@ def get_did_cohort_index(
 
 
 def run_drdid(
-    cohort_data: dict[str, np.ndarray],
-    covariates: np.ndarray,
-    data: DIDData,
-) -> dict[str, Any]:
+    cohort_data,
+    covariates,
+    data,
+):
     """Run DR-DiD estimation for current group-time pair.
 
     Parameters
