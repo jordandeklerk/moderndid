@@ -13,7 +13,7 @@ from .wols import wols_rc
 
 
 class DRDIDRCResult(NamedTuple):
-    """Result from the DRDID RC estimator."""
+    """Result from the drdid RC estimator."""
 
     att: float
     se: float
@@ -320,7 +320,7 @@ def _get_influence_components(
     eta_cont_pre = w_cont_pre * (y - out_y_cont) / np.mean(w_cont_pre)
     eta_cont_post = w_cont_post * (y - out_y_cont) / np.mean(w_cont_post)
 
-    # Extra elements for the locally efficient DRDID
+    # Extra elements for the locally efficient drdid
     eta_d_post = w_d * (out_y_treat_post - out_y_cont_post) / np.mean(w_d)
     eta_dt1_post = w_dt1 * (out_y_treat_post - out_y_cont_post) / np.mean(w_dt1)
     eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / np.mean(w_d)

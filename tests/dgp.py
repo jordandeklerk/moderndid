@@ -55,7 +55,7 @@ class SantAnnaZhaoDRDiD(BaseDGP):
         common_support_strength: float = 0.75,
         random_seed: int = 1234,
     ):
-        """Initialize the Sant'Anna and Zhao DRDiD data generating process.
+        """Initialize the Sant'Anna and Zhao drdid data generating process.
 
         Parameters
         ----------
