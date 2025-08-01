@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from doublediff.didhonest.delta.sd.sd import (
+from causaldid.didhonest.delta.sd.sd import (
     DeltaSDResult,
     _create_sd_constraint_matrix,
     _create_sd_constraint_vector,

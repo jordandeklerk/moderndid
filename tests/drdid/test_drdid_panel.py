@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from doublediff import drdid_panel
+from causaldid import drdid_panel
 
 
 @pytest.mark.parametrize("covariates", [None, "with_covariates"])

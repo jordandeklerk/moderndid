@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from doublediff.utils import extract_vars_from_formula
+from causaldid.utils import extract_vars_from_formula
 
 from .constants import (
     BasePeriod,

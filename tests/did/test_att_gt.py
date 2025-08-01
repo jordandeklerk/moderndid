@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from doublediff import MPResult, att_gt, load_mpdta
+from causaldid import MPResult, att_gt, load_mpdta
 
 
 @pytest.fixture

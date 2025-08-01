@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from doublediff.didhonest.delta.sdrm.sdrmm import (
+from causaldid.didhonest.delta.sdrm.sdrmm import (
     DeltaSDRMMResult,
     _create_sdrmm_constraint_matrix,
     _create_sdrmm_constraint_vector,

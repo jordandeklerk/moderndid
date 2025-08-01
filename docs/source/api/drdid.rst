@@ -107,7 +107,7 @@ Both estimands are consistent for the ATT under the same doubly robust condition
 Top Level Functions
 -------------------
 
-.. currentmodule:: doublediff
+.. currentmodule:: causaldid
 
 .. autosummary::
    :toctree: generated/

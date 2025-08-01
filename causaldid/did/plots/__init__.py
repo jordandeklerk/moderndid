@@ -1,11 +1,11 @@
 """Plots for DID models."""
 
-from doublediff.did.plots.core import (
+from causaldid.did.plots.core import (
     plot_att_gt,
     plot_did,
     plot_event_study,
 )
-from doublediff.did.plots.methods import add_plot_methods
+from causaldid.did.plots.methods import add_plot_methods
 
 # Add plotting methods to result objects
 add_plot_methods()

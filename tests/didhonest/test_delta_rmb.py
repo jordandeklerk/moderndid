@@ -4,12 +4,12 @@
 import numpy as np
 import pytest
 
-from doublediff.didhonest import (
+from causaldid.didhonest import (
     DeltaRMBResult,
     compute_conditional_cs_rmb,
     compute_identified_set_rmb,
 )
-from doublediff.didhonest.delta.rm.rmb import (
+from causaldid.didhonest.delta.rm.rmb import (
     _compute_identified_set_rmb_fixed_s,
     _create_relative_magnitudes_bias_constraint_matrix,
     _create_relative_magnitudes_bias_constraint_vector,
@@ -249,7 +249,7 @@ def test_rmb_vs_rm_restriction():
     true_beta = np.array([0, 0, 0, 0.5, 0.5])
     l_vec = np.array([1, 0])
 
-    from doublediff.didhonest import compute_identified_set_rm
+    from causaldid.didhonest import compute_identified_set_rm
 
     result_rm = compute_identified_set_rm(
         m_bar=1,

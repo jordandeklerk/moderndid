@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from doublediff import twfe_did_rc
+from causaldid import twfe_did_rc
 
 
 def dgp_rc_for_test(n=2000):

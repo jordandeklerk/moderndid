@@ -7,7 +7,7 @@ coverage:
         threshold: 2%
         base: auto
         paths:
-          - "doublediff"
+          - "causaldid"
        # advanced settings
         branches:
           - main

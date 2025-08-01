@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from doublediff import AGGTEResult, format_aggte_result
-from doublediff.did.aggte_obj import aggte
+from causaldid import AGGTEResult, format_aggte_result
+from causaldid.did.aggte_obj import aggte
 
 
 def test_aggte_simple():

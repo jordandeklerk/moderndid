@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from doublediff import (
+from causaldid import (
     wboot_drdid_rc1,
     wboot_drdid_rc2,
 )

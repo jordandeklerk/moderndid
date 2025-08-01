@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from doublediff.didhonest.arp_nuisance import (
+from causaldid.didhonest.arp_nuisance import (
     ARPNuisanceCIResult,
     _check_if_solution,
     _compute_flci_vlo_vup,

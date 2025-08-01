@@ -105,12 +105,12 @@ def ordid(
 
     .. ipython::
 
-        In [1]: import doublediff
-           ...: from doublediff.data import load_nsw
+        In [1]: import causaldid
+           ...: from causaldid.data import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
-           ...: att_result = doublediff.ordid(
+           ...: att_result = causaldid.ordid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -128,7 +128,7 @@ def ordid(
     .. ipython::
         :okwarning:
 
-        In [3]: att_result_rc_boot = doublediff.ordid(
+        In [3]: att_result_rc_boot = causaldid.ordid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",

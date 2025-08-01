@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from doublediff import (
+from causaldid import (
     MPPretestResult,
     MPResult,
     format_mp_pretest_result,
