@@ -14,7 +14,7 @@ from .wols import wols_rc
 
 
 class DRDIDRCResult(NamedTuple):
-    """Result from the DRDID RC estimator."""
+    """Result from the drdid RC estimator."""
 
     att: float
     se: float

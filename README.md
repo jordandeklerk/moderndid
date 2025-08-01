@@ -23,7 +23,7 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 **[`doublediff.did`](https://github.com/jordandeklerk/doublediff/tree/main/doublediff/did)** — Multiple time periods and variation in treatment timing with group-time effects and flexible aggregation schemes ([Callaway & Sant'Anna, 2021](https://arxiv.org/pdf/1803.09015))
 
-**[`doublediff.diddr`](https://github.com/jordandeklerk/doublediff/tree/main/doublediff/diddr)** — Doubly robust difference-in-differences estimators for panel and repeated cross-section data with improved efficiency and robustness ([Sant'Anna & Zhao, 2020](https://arxiv.org/pdf/1812.01723))
+**[`doublediff.drdid`](https://github.com/jordandeklerk/doublediff/tree/main/doublediff/drdid)** — Doubly robust difference-in-differences estimators for panel and repeated cross-section data with improved efficiency and robustness ([Sant'Anna & Zhao, 2020](https://arxiv.org/pdf/1812.01723))
 
 **[`doublediff.didhonest`](https://github.com/jordandeklerk/doublediff/tree/main/doublediff/didhonest)** — Sensitivity analysis for violations of parallel trends with multiple restriction types ([Rambachan & Roth, 2023](https://academic.oup.com/restud/article-abstract/90/5/2555/7039335?redirectedFrom=fulltext))
 

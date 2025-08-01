@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from doublediff.data import load_nsw
-from doublediff.diddr.ipwdid import ipwdid
+from doublediff.drdid.ipwdid import ipwdid
 
 from ..helpers import importorskip
 

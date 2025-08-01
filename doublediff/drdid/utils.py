@@ -1,4 +1,4 @@
-"""Utility functions for DRDiD estimators."""
+"""Utility functions for drdid estimators."""
 
 import warnings
 from typing import Any, Literal

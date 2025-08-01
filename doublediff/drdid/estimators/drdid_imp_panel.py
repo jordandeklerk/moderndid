@@ -14,7 +14,7 @@ from .wols import wols_panel
 
 
 class DRDIDPanelResult(NamedTuple):
-    """Result from the DRDID Panel estimator."""
+    """Result from the drdid Panel estimator."""
 
     att: float
     se: float
