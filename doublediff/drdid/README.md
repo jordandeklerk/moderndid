@@ -2,7 +2,7 @@
 
 This module provides a comprehensive suite of modern difference-in-differences estimators for estimating the ATT (average treatment effect on the treated). We go beyond traditional DiD approaches by offering **doubly robust**, **inverse propensity weighted**, and **outcome regression estimators** that address common challenges in observational studies with two time periods (pre-treatment and post-treatment) and two groups (treatment group and comparison group).
 
-The computational methods here are inspired by the corresponding R package [drdid](https://github.com/pedrohcgs/drdid).
+The computational methods here are inspired by the corresponding R package [DRDID](https://github.com/pedrohcgs/drdid).
 
 > [!CAUTION]
 > The core estimators for this module are the **doubly robust estimators**. We recommend users utilize these estimators in practice as they will give the most robust estimate of the ATT. We include the other estimators mainly for researchers to compare estimates from more traditional DiD estimators.
