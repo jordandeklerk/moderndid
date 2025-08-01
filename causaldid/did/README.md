@@ -107,7 +107,7 @@ import causaldid as did
 import pandas as pd
 import numpy as np
 
-data = causaldid.datasets.load_mpdta()
+data = did.load_mpdta()
 
 # Estimate group-time ATTs using outcome regression
 attgt_result = did.att_gt(
