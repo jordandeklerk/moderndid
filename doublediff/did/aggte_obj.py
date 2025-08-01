@@ -166,7 +166,7 @@ def aggte(
     )
 
 
-def format_aggte_result(result: AGGTEResult):
+def format_aggte_result(result):
     """Format aggregate treatment effect results.
 
     Parameters

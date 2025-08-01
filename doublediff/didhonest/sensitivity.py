@@ -72,6 +72,7 @@ def create_sensitivity_results_sm(
         - "Conditional": Conditional confidence intervals
         - "C-F": Conditional FLCI hybrid
         - "C-LF": Conditional least-favorable hybrid
+
         Default is "FLCI" if no restrictions, "C-F" otherwise.
     m_vec : ndarray, optional
         Vector of M values for sensitivity analysis. If None, constructs
@@ -249,6 +250,7 @@ def create_sensitivity_results_rm(
 
         - "Deviation from parallel trends": :math:`\Delta^{RM}` and variants
         - "Deviation from linear trend": :math:`\Delta^{SDRM}` and variants
+
     method : str, default="C-LF"
         Confidence interval method: "Conditional" or "C-LF".
     m_bar_vec : ndarray, optional
