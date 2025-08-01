@@ -3,7 +3,7 @@ Installation
 ============
 
 Installing doublediff
-----------------
+---------------------
 
 .. tip::
 
@@ -68,7 +68,7 @@ may need another tool (there are many!) for dealing with environments or complex
     pip install doublediff
 
 Verifying the installation
---------------------------
+---------------------------
 
 To verify that doublediff is installed correctly, you can run the following command:
 

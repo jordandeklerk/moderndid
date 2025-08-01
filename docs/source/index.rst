@@ -1,8 +1,8 @@
-.. _didpy_docs_mainpage:
+.. _doublediff_docs_mainpage:
 
-###################
+#########################
 doublediff documentation
-###################
+#########################
 
 .. toctree::
    :maxdepth: 1
