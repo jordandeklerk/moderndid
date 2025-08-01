@@ -5,22 +5,22 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from doublediff.did import preprocess_did
-from doublediff.did.preprocess.builders import DIDDataBuilder
-from doublediff.did.preprocess.constants import (
+from causaldid.did import preprocess_did
+from causaldid.did.preprocess.builders import DIDDataBuilder
+from causaldid.did.preprocess.constants import (
     NEVER_TREATED_VALUE,
     BasePeriod,
     ControlGroup,
     EstimationMethod,
 )
-from doublediff.did.preprocess.models import DIDConfig, DIDData
-from doublediff.did.preprocess.tensors import TensorFactorySelector
-from doublediff.did.preprocess.transformers import (
+from causaldid.did.preprocess.models import DIDConfig, DIDData
+from causaldid.did.preprocess.tensors import TensorFactorySelector
+from causaldid.did.preprocess.transformers import (
     DataTransformerPipeline,
     TreatmentEncoder,
     WeightNormalizer,
 )
-from doublediff.did.preprocess.validators import (
+from causaldid.did.preprocess.validators import (
     ArgumentValidator,
     ColumnValidator,
     CompositeValidator,

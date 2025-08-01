@@ -3,7 +3,7 @@ requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "doublediff"
+name = "causaldid"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
@@ -40,12 +40,12 @@ dependencies = [
 ]
 
 [tool.flit.module]
-name = "doublediff"
+name = "causaldid"
 
 [project.urls]
-source = "https://github.com/jordandeklerk/doublediff"
-tracker = "https://github.com/jordandeklerk/doublediff/issues"
-documentation = "https://doublediff.readthedocs.io"
+source = "https://github.com/jordandeklerk/causaldid"
+tracker = "https://github.com/jordandeklerk/causaldid/issues"
+documentation = "https://causaldid.readthedocs.io"
 
 [project.optional-dependencies]
 test = [
@@ -88,8 +88,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"src/doublediff/__init__.py" = ["I", "F401", "E402", "F403"]
-"src/doublediff/**/__init__.py" = ["I", "F401", "E402", "F403"]
+"src/causaldid/__init__.py" = ["I", "F401", "E402", "F403"]
+"src/causaldid/**/__init__.py" = ["I", "F401", "E402", "F403"]
 "tests/**/*" = ["D", "E402", "NPY002"]
 
 [tool.ruff.lint.pydocstyle]
@@ -120,7 +120,7 @@ no_implicit_reexport = true
 
 # More strict checks for library code
 [[tool.mypy.overrides]]
-module = "doublediff"
+module = "causaldid"
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
@@ -129,4 +129,4 @@ testpaths = [
 ]
 
 [tool.coverage.run]
-source = ["doublediff"]
+source = ["causaldid"]

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from doublediff.didhonest.sensitivity import (
+from causaldid.didhonest.sensitivity import (
     OriginalCSResult,
     SensitivityResult,
     construct_original_cs,

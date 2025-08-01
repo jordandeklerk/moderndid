@@ -2,7 +2,7 @@
 Developer Guide
 ===============
 
-This guide contains information for developers who want to contribute to doublediff.
+This guide contains information for developers who want to contribute to causaldid.
 
 .. toctree::
    :maxdepth: 2

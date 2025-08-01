@@ -6,7 +6,7 @@ import warnings
 import numpy as np
 import pytest
 
-from doublediff import (
+from causaldid import (
     basis_vector,
     bin_factor,
     compute_bounds,

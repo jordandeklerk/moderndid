@@ -1,1 +1,1 @@
-"""doublediff tests."""
+"""causaldid tests."""

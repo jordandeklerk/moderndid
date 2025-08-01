@@ -169,7 +169,7 @@ For certain choices of :math:`\Delta` that are convex and centro-symmetric, :mat
 Top Level Functions
 -------------------
 
-.. currentmodule:: doublediff
+.. currentmodule:: causaldid
 
 Sensitivity Analysis - Wrapper
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

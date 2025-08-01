@@ -1,14 +1,14 @@
 # pylint: disable=wildcard-import
 """Modern difference-in-differences estimators."""
 
-from doublediff.data import load_ehec, load_mpdta, load_nsw
-from doublediff.did.aggte import aggte
-from doublediff.did.aggte_obj import AGGTEResult, format_aggte_result
-from doublediff.did.att_gt import att_gt
-from doublediff.did.compute_aggte import compute_aggte
-from doublediff.did.compute_att_gt import ATTgtResult, ComputeATTgtResult, compute_att_gt
-from doublediff.did.mboot import mboot
-from doublediff.did.multiperiod_obj import (
+from causaldid.data import load_ehec, load_mpdta, load_nsw
+from causaldid.did.aggte import aggte
+from causaldid.did.aggte_obj import AGGTEResult, format_aggte_result
+from causaldid.did.att_gt import att_gt
+from causaldid.did.compute_aggte import compute_aggte
+from causaldid.did.compute_att_gt import ATTgtResult, ComputeATTgtResult, compute_att_gt
+from causaldid.did.mboot import mboot
+from causaldid.did.multiperiod_obj import (
     MPPretestResult,
     MPResult,
     format_mp_pretest_result,
@@ -17,14 +17,14 @@ from doublediff.did.multiperiod_obj import (
     mp_pretest,
     summary_mp_pretest,
 )
-from doublediff.did.plots import (
+from causaldid.did.plots import (
     plot_att_gt,
     plot_did,
     plot_event_study,
 )
-from doublediff.did.preprocess import DIDData
-from doublediff.did.preprocess_did import preprocess_did
-from doublediff.didhonest import (
+from causaldid.did.preprocess import DIDData
+from causaldid.did.preprocess_did import preprocess_did
+from causaldid.didhonest import (
     APRCIResult,
     ARPNuisanceCIResult,
     DeltaRMBResult,
@@ -95,9 +95,9 @@ from doublediff.didhonest import (
     validate_conformable,
     validate_symmetric_psd,
 )
-from doublediff.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
-from doublediff.drdid.bootstrap.boot_mult import mboot_did, mboot_twfep_did
-from doublediff.drdid.bootstrap.boot_panel import (
+from causaldid.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
+from causaldid.drdid.bootstrap.boot_mult import mboot_did, mboot_twfep_did
+from causaldid.drdid.bootstrap.boot_panel import (
     wboot_dr_tr_panel,
     wboot_drdid_imp_panel,
     wboot_ipw_panel,
@@ -105,34 +105,34 @@ from doublediff.drdid.bootstrap.boot_panel import (
     wboot_std_ipw_panel,
     wboot_twfe_panel,
 )
-from doublediff.drdid.bootstrap.boot_rc import wboot_drdid_rc1, wboot_drdid_rc2
-from doublediff.drdid.bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
-from doublediff.drdid.bootstrap.boot_reg_rc import wboot_reg_rc
-from doublediff.drdid.bootstrap.boot_std_ipw_rc import wboot_std_ipw_rc
-from doublediff.drdid.bootstrap.boot_twfe_rc import wboot_twfe_rc
-from doublediff.drdid.drdid import drdid
-from doublediff.drdid.estimators.drdid_imp_local_rc import drdid_imp_local_rc
-from doublediff.drdid.estimators.drdid_imp_panel import drdid_imp_panel
-from doublediff.drdid.estimators.drdid_imp_rc import drdid_imp_rc
-from doublediff.drdid.estimators.drdid_panel import drdid_panel
-from doublediff.drdid.estimators.drdid_rc import drdid_rc
-from doublediff.drdid.estimators.drdid_trad_rc import drdid_trad_rc
-from doublediff.drdid.estimators.ipw_did_panel import ipw_did_panel
-from doublediff.drdid.estimators.ipw_did_rc import ipw_did_rc
-from doublediff.drdid.estimators.reg_did_panel import reg_did_panel
-from doublediff.drdid.estimators.reg_did_rc import reg_did_rc
-from doublediff.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
-from doublediff.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
-from doublediff.drdid.estimators.twfe_did_panel import twfe_did_panel
-from doublediff.drdid.estimators.twfe_did_rc import twfe_did_rc
-from doublediff.drdid.estimators.wols import wols_panel, wols_rc
-from doublediff.drdid.ipwdid import ipwdid
-from doublediff.drdid.ordid import ordid
-from doublediff.drdid.print import print_did_result
-from doublediff.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
-from doublediff.drdid.propensity.ipw_estimators import ipw_rc
-from doublediff.drdid.propensity.pscore_ipt import calculate_pscore_ipt
-from doublediff.utils import (
+from causaldid.drdid.bootstrap.boot_rc import wboot_drdid_rc1, wboot_drdid_rc2
+from causaldid.drdid.bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
+from causaldid.drdid.bootstrap.boot_reg_rc import wboot_reg_rc
+from causaldid.drdid.bootstrap.boot_std_ipw_rc import wboot_std_ipw_rc
+from causaldid.drdid.bootstrap.boot_twfe_rc import wboot_twfe_rc
+from causaldid.drdid.drdid import drdid
+from causaldid.drdid.estimators.drdid_imp_local_rc import drdid_imp_local_rc
+from causaldid.drdid.estimators.drdid_imp_panel import drdid_imp_panel
+from causaldid.drdid.estimators.drdid_imp_rc import drdid_imp_rc
+from causaldid.drdid.estimators.drdid_panel import drdid_panel
+from causaldid.drdid.estimators.drdid_rc import drdid_rc
+from causaldid.drdid.estimators.drdid_trad_rc import drdid_trad_rc
+from causaldid.drdid.estimators.ipw_did_panel import ipw_did_panel
+from causaldid.drdid.estimators.ipw_did_rc import ipw_did_rc
+from causaldid.drdid.estimators.reg_did_panel import reg_did_panel
+from causaldid.drdid.estimators.reg_did_rc import reg_did_rc
+from causaldid.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
+from causaldid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
+from causaldid.drdid.estimators.twfe_did_panel import twfe_did_panel
+from causaldid.drdid.estimators.twfe_did_rc import twfe_did_rc
+from causaldid.drdid.estimators.wols import wols_panel, wols_rc
+from causaldid.drdid.ipwdid import ipwdid
+from causaldid.drdid.ordid import ordid
+from causaldid.drdid.print import print_did_result
+from causaldid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
+from causaldid.drdid.propensity.ipw_estimators import ipw_rc
+from causaldid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
+from causaldid.utils import (
     are_varying,
     complete_data,
     convert_panel_time_to_int,

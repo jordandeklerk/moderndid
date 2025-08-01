@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from doublediff import twfe_did_panel
+from causaldid import twfe_did_panel
 
 from ..helpers import importorskip
 

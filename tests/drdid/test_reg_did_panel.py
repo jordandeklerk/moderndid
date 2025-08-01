@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from doublediff import reg_did_panel
+from causaldid import reg_did_panel
 
 
 def dgp_panel_for_test(n=2000, true_att=1.0):

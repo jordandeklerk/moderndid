@@ -1,22 +1,20 @@
-"""Wrapper for doubly robust DiD estimators."""
+"""Wrapper for inverse propensity weighted DiD estimators."""
 
 from typing import Any, Literal, NamedTuple
 
 import numpy as np
 import pandas as pd
 
-from .estimators.drdid_imp_local_rc import drdid_imp_local_rc
-from .estimators.drdid_imp_panel import drdid_imp_panel
-from .estimators.drdid_imp_rc import drdid_imp_rc
-from .estimators.drdid_panel import drdid_panel
-from .estimators.drdid_rc import drdid_rc
-from .estimators.drdid_trad_rc import drdid_trad_rc
+from .estimators.ipw_did_panel import ipw_did_panel
+from .estimators.ipw_did_rc import ipw_did_rc
+from .estimators.std_ipw_did_panel import std_ipw_did_panel
+from .estimators.std_ipw_did_rc import std_ipw_did_rc
 from .print import print_did_result
 from .utils import preprocess_drdid
 
 
-class DRDIDResult(NamedTuple):
-    """Result from the doubly robust DiD estimator."""
+class IPWDIDResult(NamedTuple):
+    """Result from the inverse propensity weighted DiD estimator."""
 
     att: float
     se: float
@@ -28,10 +26,10 @@ class DRDIDResult(NamedTuple):
     args: dict[str, Any]
 
 
-DRDIDResult = print_did_result(DRDIDResult)
+IPWDIDResult = print_did_result(IPWDIDResult)
 
 
-def drdid(
+def ipwdid(
     data: pd.DataFrame,
     y_col: str,
     time_col: str,
@@ -39,17 +37,17 @@ def drdid(
     id_col: str | None = None,
     covariates_formula: str | None = None,
     panel: bool = True,
-    est_method: Literal["imp", "trad", "imp_local", "trad_local"] = "imp",
+    est_method: Literal["ipw", "std_ipw"] = "ipw",
     weights_col: str | None = None,
     boot: bool = False,
     boot_type: Literal["weighted", "multiplier"] = "weighted",
     n_boot: int = 999,
     inf_func: bool = False,
     trim_level: float = 0.995,
-) -> DRDIDResult:
-    r"""Wrap the locally efficient doubly robust DiD estimators for the ATT.
+) -> IPWDIDResult:
+    r"""Wrap the inverse propensity weighted DiD estimators for the ATT.
 
-    This function is a wrapper for doubly robust difference-in-differences (DiD) estimators.
+    This function is a wrapper for inverse propensity weighted (IPW) DiD estimators.
     It can be used with panel or stationary repeated cross-section data and calls the
     appropriate estimator based on the panel argument and estimation method.
 
@@ -76,23 +74,14 @@ def drdid(
         Whether the data is panel (True) or repeated cross-sections (False).
         Panel data should be in long format with each row representing
         a unit-time observation.
-    est_method : {"imp", "trad", "imp_local", "trad_local"}, default "imp"
-        The method to estimate the nuisance parameters.
+    est_method : {"ipw", "std_ipw"}, default "ipw"
+        The IPW estimation method to use.
 
-        - "imp": Uses weighted least squares to estimate outcome regressions and
-          inverse probability tilting to estimate the propensity score, leading to
-          the improved locally efficient DR DiD estimator. For panel data, this
-          corresponds to equation (3.1) in Sant'Anna and Zhao (2020). For repeated
-          cross-sections, this uses a single propensity score model.
-        - "trad": Uses OLS to estimate outcome regressions and maximum likelihood
-          to estimate propensity score, leading to the "traditional" locally
-          efficient DR DiD estimator.
-        - "imp_local": For repeated cross-sections only. Implements the locally
-          efficient estimator from equation (3.4) in Sant'Anna and Zhao (2020)
-          with separate outcome regressions for each group and time period.
-        - "trad_local": For repeated cross-sections only. Traditional DR DiD
-          estimator from equation (3.3) in Sant'Anna and Zhao (2020) that is
-          not locally efficient.
+        - "ipw": Standard inverse propensity weighted estimator (Horvitz-Thompson type).
+          Weights are not normalized to sum to one. This is based on Abadie (2005).
+        - "std_ipw": Standardized (Hajek-type) inverse propensity weighted estimator.
+          Weights are normalized to sum to one, which can improve finite sample
+          performance when propensity scores are close to 0 or 1.
     weights_col : str | None, default None
         Name of the column containing sampling weights.
         If None, all observations have equal weight.
@@ -111,11 +100,11 @@ def drdid(
 
     Returns
     -------
-    DRDIDResult
+    IPWDIDResult
         NamedTuple containing:
 
-        - *att*: The DR DiD point estimate.
-        - *se*: The DR DiD standard error.
+        - *att*: The IPW DiD point estimate.
+        - *se*: The IPW DiD standard error.
         - *uci*: The upper bound of a 95% confidence interval.
         - *lci*: The lower bound of a 95% confidence interval.
         - *boots*: Bootstrap draws of the ATT if boot=True.
@@ -125,19 +114,19 @@ def drdid(
 
     Examples
     --------
-    Estimate the average treatment effect on the treated (ATT) using panel data from a job training
-    program. The data tracks the same individuals over time, before and after
-    some received training.
+    Estimate the average treatment effect on the treated (ATT) using inverse propensity
+    weighting with panel data from a job training program. IPW reweights observations
+    to create balance between treated and control groups.
 
     .. ipython::
         :okwarning:
 
-        In [1]: import doublediff
-           ...: from doublediff.data import load_nsw
+        In [1]: import causaldid
+           ...: from causaldid.data import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
-           ...: att_result = doublediff.drdid(
+           ...: att_result = causaldid.ipwdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -145,18 +134,37 @@ def drdid(
            ...:     id_col="id",
            ...:     panel=True,
            ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
-           ...:     est_method="imp",
+           ...:     est_method="ipw",
            ...: )
 
         In [2]: print(att_result)
 
-    For more robust inference, we can use bootstrapped standard errors with
+    We can also use the standardized (Hajek-type) IPW estimator, which normalizes
+    weights to sum to one and can be more stable with extreme propensity scores.
+
+    .. ipython::
+        :okwarning:
+
+        In [3]: att_result_std = causaldid.ipwdid(
+           ...:     data=nsw_data,
+           ...:     y_col="re",
+           ...:     time_col="year",
+           ...:     treat_col="experimental",
+           ...:     id_col="id",
+           ...:     panel=True,
+           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
+           ...:     est_method="std_ipw",
+           ...: )
+
+        In [4]: print(att_result_std)
+
+    For more robust inference, we can use weighted-bootstrap standard errors with
     propensity score trimming to handle extreme weights.
 
     .. ipython::
         :okwarning:
 
-        In [3]: att_result_boot = doublediff.drdid(
+        In [5]: att_result_boot = causaldid.ipwdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -164,55 +172,35 @@ def drdid(
            ...:     id_col="id",
            ...:     panel=True,
            ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
-           ...:     est_method="imp",
+           ...:     est_method="ipw",
            ...:     boot=True,
            ...: )
 
-        In [4]: print(att_result_boot)
+        In [6]: print(att_result_boot)
 
     Notes
     -----
-    When panel data are available (`panel=True`), the function implements the
-    locally efficient doubly robust DiD estimator for the ATT defined in
-    equation (3.1) in Sant'Anna and Zhao (2020). This estimator makes use of
-    a logistic propensity score model for the probability of being in the
-    treated group, and of a linear regression model for the outcome evolution
-    among the comparison units.
+    The IPW estimator uses the propensity score (probability of being in the treated
+    group) to reweight observations and create a balanced comparison between treated
+    and control units. The standard IPW estimator ("ipw") uses unnormalized weights,
+    while the standardized version ("std_ipw") normalizes weights to sum to one within
+    each group, which can improve performance when propensity scores are extreme.
 
-    When only stationary repeated cross-section data are available (`panel=False`),
-    the function implements the locally efficient doubly robust DiD estimator
-    for the ATT defined in equation (3.4) in Sant'Anna and Zhao (2020).
-    This estimator makes use of a logistic propensity score model for the
-    probability of being in the treated group, and of (separate) linear
-    regression models for the outcome of both treated and comparison units,
-    in both pre and post-treatment periods.
-
-    When `est_method="imp"` (the default), the nuisance parameters are estimated
-    using the methods described in Sections 3.1 and 3.2 of Sant'Anna and Zhao (2020).
-    The propensity score parameters are estimated using the inverse probability
-    tilting estimator proposed by Graham, Pinto and Pinto (2012), and the outcome
-    regression coefficients are estimated using weighted least squares.
-
-    When `est_method="trad"`, the propensity score parameters are estimated using
-    maximum likelihood, and the outcome regression coefficients are estimated
-    using ordinary least squares.
-
-    The main advantage of using `est_method="imp"` is that the resulting estimator
-    is not only locally efficient and doubly robust for the ATT, but it is also
-    doubly robust for inference; see Sant'Anna and Zhao (2020) for details.
+    Unlike doubly robust methods, IPW estimators are not robust to misspecification
+    of the propensity score model. However, they can be more efficient when the
+    propensity score model is correctly specified and there is substantial overlap
+    between treated and control groups.
 
     See Also
     --------
-    ipwdid : Inverse propensity weighted DiD estimator.
+    drdid : Doubly robust DiD estimator.
     ordid : Outcome regression DiD estimator.
 
     References
     ----------
-
-    .. [1] Graham, B., Pinto, C., and Egel, D. (2012),
-           "Inverse Probability Tilting for Moment Condition Models with Missing Data."
-           Review of Economic Studies, vol. 79 (3), pp. 1053-1079.
-           https://doi.org/10.1093/restud/rdr047
+    .. [1] Abadie, A. (2005), "Semiparametric Difference-in-Differences Estimators",
+           Review of Economic Studies, vol. 72(1), pp. 1-19.
+           https://doi.org/10.1111/0034-6527.00321
 
     .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020),
            "Doubly Robust Difference-in-Differences Estimators."
@@ -255,11 +243,8 @@ def drdid(
     )
 
     if panel:
-        if est_method in ["imp_local", "trad_local"]:
-            raise ValueError(f"est_method '{est_method}' is only available for repeated cross-sections (panel=False)")
-
-        if est_method == "imp":
-            result = drdid_imp_panel(
+        if est_method == "ipw":
+            result = ipw_did_panel(
                 y1=dp["y1"],
                 y0=dp["y0"],
                 d=dp["D"],
@@ -271,8 +256,8 @@ def drdid(
                 influence_func=inf_func,
                 trim_level=trim_level,
             )
-        else:  # "trad"
-            result = drdid_panel(
+        else:  # "std_ipw"
+            result = std_ipw_did_panel(
                 y1=dp["y1"],
                 y0=dp["y0"],
                 d=dp["D"],
@@ -285,8 +270,8 @@ def drdid(
                 trim_level=trim_level,
             )
     else:  # Repeated cross-section
-        if est_method == "imp":
-            result = drdid_imp_rc(
+        if est_method == "ipw":
+            result = ipw_did_rc(
                 y=dp["y"],
                 post=dp["post"],
                 d=dp["D"],
@@ -298,34 +283,8 @@ def drdid(
                 influence_func=inf_func,
                 trim_level=trim_level,
             )
-        elif est_method == "trad":
-            result = drdid_rc(
-                y=dp["y"],
-                post=dp["post"],
-                d=dp["D"],
-                covariates=dp["covariates"],
-                i_weights=dp["weights"],
-                boot=boot,
-                boot_type=boot_type,
-                nboot=n_boot,
-                influence_func=inf_func,
-                trim_level=trim_level,
-            )
-        elif est_method == "imp_local":
-            result = drdid_imp_local_rc(
-                y=dp["y"],
-                post=dp["post"],
-                d=dp["D"],
-                covariates=dp["covariates"],
-                i_weights=dp["weights"],
-                boot=boot,
-                boot_type=boot_type,
-                nboot=n_boot,
-                influence_func=inf_func,
-                trim_level=trim_level,
-            )
-        else:  # "trad_local"
-            result = drdid_trad_rc(
+        else:  # "std_ipw"
+            result = std_ipw_did_rc(
                 y=dp["y"],
                 post=dp["post"],
                 d=dp["D"],
@@ -347,12 +306,12 @@ def drdid(
             "boot": boot,
             "boot_type": boot_type,
             "nboot": n_boot,
-            "type": "dr",
+            "type": "ipw",
             "trim_level": trim_level,
         }
     )
 
-    return DRDIDResult(
+    return IPWDIDResult(
         att=result.att,
         se=result.se,
         uci=result.uci,

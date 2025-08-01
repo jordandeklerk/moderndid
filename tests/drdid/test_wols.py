@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import pytest
 
-from doublediff import wols_panel, wols_rc
+from causaldid import wols_panel, wols_rc
 
 
 def test_wols_panel_happy_path_unit_weights():

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from doublediff import wboot_reg_rc
+from causaldid import wboot_reg_rc
 
 
 def test_wboot_reg_rc_basic():

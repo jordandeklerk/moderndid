@@ -4,8 +4,8 @@
 import numpy as np
 import pytest
 
-from doublediff.data import load_nsw
-from doublediff.drdid.ordid import ordid
+from causaldid.data import load_nsw
+from causaldid.drdid.ordid import ordid
 
 from ..helpers import importorskip
 

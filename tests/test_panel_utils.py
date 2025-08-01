@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from doublediff.utils import (
+from causaldid.utils import (
     are_varying,
     complete_data,
     convert_panel_time_to_int,

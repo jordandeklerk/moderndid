@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 import scipy.sparse as sp
 
-from doublediff import load_mpdta
-from doublediff.did.compute_att_gt import (
+from causaldid import load_mpdta
+from causaldid.did.compute_att_gt import (
     ATTgtResult,
     ComputeATTgtResult,
     compute_att_gt,
@@ -15,8 +15,8 @@ from doublediff.did.compute_att_gt import (
     run_att_gt_estimation,
     run_drdid,
 )
-from doublediff.did.preprocess.models import DIDConfig
-from doublediff.did.preprocess_did import preprocess_did
+from causaldid.did.preprocess.models import DIDConfig
+from causaldid.did.preprocess_did import preprocess_did
 
 
 @pytest.fixture

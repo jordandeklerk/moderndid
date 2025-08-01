@@ -2,18 +2,18 @@
 Installation
 ============
 
-Installing doublediff
+Installing causaldid
 ---------------------
 
 .. tip::
 
     This page assumes you are comfortable using a terminal and are familiar with package managers.
-    The only prerequisite for installing doublediff is Python itself. If you don't have Python yet and want
+    The only prerequisite for installing causaldid is Python itself. If you don't have Python yet and want
     the simplest way to get started, we recommend you use the Anaconda Distribution - it includes Python,
     NumPy, and many other commonly used packages for scientific computing and data science.
     You can download Anaconda from `here <https://www.anaconda.com/download>`_.
 
-The recommended method of installing doublediff depends on your preferred workflow. Below, we break down the installation methods
+The recommended method of installing causaldid depends on your preferred workflow. Below, we break down the installation methods
 into the following categories:
 
 - Installing from PyPI
@@ -22,7 +22,7 @@ into the following categories:
 
 Choose the method that best suits your needs. If you're unsure, start with the Environment-based method using ``conda`` or ``pip``.
 
-The two main tools that install Python packages are ``pip`` and ``conda``. Their functionality partially overlaps (e.g. both can install doublediff),
+The two main tools that install Python packages are ``pip`` and ``conda``. Their functionality partially overlaps (e.g. both can install causaldid),
 however, they can also work together. We'll discuss the major differences between pip and conda here - this is important to understand if
 you want to manage packages effectively.
 
@@ -36,25 +36,25 @@ The second difference is that pip installs from the Python Packaging Index (PyPI
 The third difference is that conda is an integrated solution for managing packages, dependencies and environments, while with pip you
 may need another tool (there are many!) for dealing with environments or complex dependencies.
 
-- **Conda**: If you use conda, you can install doublediff from the conda-forge channel by creating a new environment and installing doublediff:
+- **Conda**: If you use conda, you can install causaldid from the conda-forge channel by creating a new environment and installing causaldid:
 
 .. code-block:: console
 
     conda create -n my-env
     conda activate my-env
-    conda install doublediff
+    conda install causaldid
 
-- **pip**: If you use pip, you can install doublediff from PyPI:
+- **pip**: If you use pip, you can install causaldid from PyPI:
 
 .. code-block:: console
 
-    pip install doublediff
+    pip install causaldid
 
 - **Development**: To install the latest development version from GitHub:
 
 .. code-block:: console
 
-    pip install git+https://github.com/jordandeklerk/doublediff
+    pip install git+https://github.com/jordandeklerk/causaldid
 
 .. tip::
 
@@ -65,26 +65,26 @@ may need another tool (there are many!) for dealing with environments or complex
     python -m venv my-env
     source my-env/bin/activate  # macOS/Linux
     my-env\Scripts\activate     # Windows
-    pip install doublediff
+    pip install causaldid
 
 Verifying the installation
 ---------------------------
 
-To verify that doublediff is installed correctly, you can run the following command:
+To verify that causaldid is installed correctly, you can run the following command:
 
 .. code-block:: console
 
-    python -c "import doublediff; print(doublediff.__version__)"
+    python -c "import causaldid; print(causaldid.__version__)"
 
 Development
 -----------
 
-To install doublediff for development:
+To install causaldid for development:
 
 .. code-block:: console
 
-    git clone https://github.com/jordandeklerk/doublediff.git
-    cd doublediff
+    git clone https://github.com/jordandeklerk/causaldid.git
+    cd causaldid
     pip install -e ".[dev]"
 
-This will install doublediff in editable mode along with all development dependencies.
+This will install causaldid in editable mode along with all development dependencies.

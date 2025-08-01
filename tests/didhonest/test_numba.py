@@ -6,7 +6,7 @@ import time
 import numpy as np
 import pytest
 
-from doublediff.didhonest import arp_no_nuisance, arp_nuisance, bounds, numba, utils
+from causaldid.didhonest import arp_no_nuisance, arp_nuisance, bounds, numba, utils
 
 
 def _create_first_differences_matrix_py(num_pre_periods, num_post_periods):

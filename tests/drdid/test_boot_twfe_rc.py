@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from doublediff import wboot_twfe_rc
+from causaldid import wboot_twfe_rc
 
 
 def test_wboot_twfe_rc_basic():

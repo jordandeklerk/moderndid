@@ -1,5 +1,5 @@
 ==================
-Testing doublediff
+Testing causaldid
 ==================
 
 How to run the test suite
@@ -49,7 +49,7 @@ files with tests of the core functionality always being in their own file
 with no optional dependencies import, and tests that require optional dependencies
 in a separate file.
 
-About doublediff testing
+About causaldid testing
 =========================
 
 The test suite is structured to ensure both the core functionality and the optional

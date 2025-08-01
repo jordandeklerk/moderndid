@@ -14,7 +14,7 @@ Theoretical Background
 Functions
 ---------
 
-.. currentmodule:: doublediff
+.. currentmodule:: causaldid
 
 Core Propensity Score Estimation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
