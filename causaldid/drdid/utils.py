@@ -1,7 +1,6 @@
 """Utility functions for drdid estimators."""
 
 import warnings
-from typing import Any, Literal
 
 import formulaic as fml
 import numpy as np
@@ -9,21 +8,21 @@ import pandas as pd
 
 
 def preprocess_drdid(
-    data: pd.DataFrame,
-    y_col: str,
-    time_col: str,
-    id_col: str,
-    treat_col: str,
-    covariates_formula: str | None = None,
-    panel: bool = True,
-    normalized: bool = True,
-    est_method: Literal["imp", "trad"] = "imp",
-    weights_col: str | None = None,
-    boot: bool = False,
-    boot_type: Literal["weighted", "multiplier"] = "weighted",
-    n_boot: int | None = None,
-    inf_func: bool = False,
-) -> dict[str, Any]:
+    data,
+    y_col,
+    time_col,
+    id_col,
+    treat_col,
+    covariates_formula=None,
+    panel=True,
+    normalized=True,
+    est_method="imp",
+    weights_col=None,
+    boot=False,
+    boot_type="weighted",
+    n_boot=None,
+    inf_func=False,
+):
     """Pre-processes data for DR DiD estimation.
 
     Validates input data, checks for required columns, handles missing values,
@@ -312,7 +311,7 @@ def preprocess_drdid(
     return output
 
 
-def _check_treatment_uniqueness(df: pd.DataFrame, id_col: str, treat_col: str) -> None:
+def _check_treatment_uniqueness(df, id_col, treat_col):
     """Check if treatment status is unique for each ID in panel data."""
     treat_counts = df.groupby(id_col)[treat_col].nunique()
     if (treat_counts > 1).any():
@@ -323,7 +322,7 @@ def _check_treatment_uniqueness(df: pd.DataFrame, id_col: str, treat_col: str) -
         )
 
 
-def _make_balanced_panel(df: pd.DataFrame, id_col: str, time_col: str) -> pd.DataFrame:
+def _make_balanced_panel(df, id_col, time_col):
     """Convert an unbalanced panel DataFrame into a balanced one."""
     n_times = df[time_col].nunique()
     obs_counts = df.groupby(id_col).size()
@@ -378,7 +377,7 @@ def _validate_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=Fa
     return n_units
 
 
-def _validate_wols_arrays(arrays_dict: dict[str, np.ndarray], x: np.ndarray, function_name: str = "wols") -> int:
+def _validate_wols_arrays(arrays_dict, x, function_name="wols"):
     """Validate input arrays for WOLS functions."""
     all_arrays = list(arrays_dict.values()) + [x]
     if not all(isinstance(arr, np.ndarray) for arr in all_arrays):
@@ -404,7 +403,7 @@ def _validate_wols_arrays(arrays_dict: dict[str, np.ndarray], x: np.ndarray, fun
     return n_units
 
 
-def _check_extreme_weights(weights: np.ndarray, threshold: float = 1e6) -> None:
+def _check_extreme_weights(weights, threshold=1e6):
     """Check for extreme weight ratios and warn if found."""
     if len(weights) > 1:
         positive_mask = weights > 0
@@ -415,7 +414,7 @@ def _check_extreme_weights(weights: np.ndarray, threshold: float = 1e6) -> None:
                 warnings.warn("Extreme weight ratios detected. Results may be numerically unstable.", UserWarning)
 
 
-def _check_wls_condition_number(results, threshold_error: float = 1e15, threshold_warn: float = 1e10) -> None:
+def _check_wls_condition_number(results, threshold_error=1e15, threshold_warn=1e10):
     """Check condition number of WLS results and handle accordingly."""
     try:
         condition_number = results.condition_number
@@ -434,7 +433,7 @@ def _check_wls_condition_number(results, threshold_error: float = 1e15, threshol
         pass
 
 
-def _check_coefficients_validity(coefficients: np.ndarray) -> None:
+def _check_coefficients_validity(coefficients):
     """Check if coefficients contain invalid values."""
     if np.any(np.isnan(coefficients)) or np.any(np.isinf(coefficients)):
         raise ValueError(

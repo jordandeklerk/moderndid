@@ -1,9 +1,8 @@
 """Wrapper for inverse propensity weighted DiD estimators."""
 
-from typing import Any, Literal, NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
-import pandas as pd
 
 from .estimators.ipw_did_panel import ipw_did_panel
 from .estimators.ipw_did_rc import ipw_did_rc
@@ -30,21 +29,21 @@ IPWDIDResult = print_did_result(IPWDIDResult)
 
 
 def ipwdid(
-    data: pd.DataFrame,
-    y_col: str,
-    time_col: str,
-    treat_col: str,
-    id_col: str | None = None,
-    covariates_formula: str | None = None,
-    panel: bool = True,
-    est_method: Literal["ipw", "std_ipw"] = "ipw",
-    weights_col: str | None = None,
-    boot: bool = False,
-    boot_type: Literal["weighted", "multiplier"] = "weighted",
-    n_boot: int = 999,
-    inf_func: bool = False,
-    trim_level: float = 0.995,
-) -> IPWDIDResult:
+    data,
+    y_col,
+    time_col,
+    treat_col,
+    id_col=None,
+    covariates_formula=None,
+    panel=True,
+    est_method="ipw",
+    weights_col=None,
+    boot=False,
+    boot_type="weighted",
+    n_boot=999,
+    inf_func=False,
+    trim_level=0.995,
+):
     r"""Wrap the inverse propensity weighted DiD estimators for the ATT.
 
     This function is a wrapper for inverse propensity weighted (IPW) DiD estimators.
@@ -231,7 +230,7 @@ def ipwdid(
         data=data,
         y_col=y_col,
         time_col=time_col,
-        id_col=id_col if panel else "dummy_id",  # Dummy ID for RC data
+        id_col=id_col if panel else "dummy_id",
         treat_col=treat_col,
         covariates_formula=covariates_formula,
         panel=panel,
