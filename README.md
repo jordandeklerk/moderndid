@@ -21,28 +21,28 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 ### Core Implementations
 
-**[`causaldid.did`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/did)** — Multiple time periods and variation in treatment timing with group-time effects and flexible aggregation schemes ([Callaway & Sant'Anna, 2021](https://arxiv.org/pdf/1803.09015))
+**[`causaldid.did`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/did)** — Multiple time periods and variation in treatment timing with group-time effects and flexible aggregation schemes [Callaway & Sant'Anna, 2021](https://arxiv.org/pdf/1803.09015)
 
-**[`causaldid.drdid`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/drdid)** — Doubly robust difference-in-differences estimators for panel and repeated cross-section data with improved efficiency and robustness ([Sant'Anna & Zhao, 2020](https://arxiv.org/pdf/1812.01723))
+**[`causaldid.drdid`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/drdid)** — Doubly robust difference-in-differences estimators for panel and repeated cross-section data with improved efficiency and robustness [Sant'Anna & Zhao, 2020](https://arxiv.org/pdf/1812.01723)
 
-**[`causaldid.didhonest`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didhonest)** — Sensitivity analysis for violations of parallel trends with multiple restriction types ([Rambachan & Roth, 2023](https://asheshrambachan.github.io/assets/files/hpt-draft.pdf))
+**[`causaldid.didhonest`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didhonest)** — Sensitivity analysis for violations of parallel trends with multiple restriction types [Rambachan & Roth, 2023](https://asheshrambachan.github.io/assets/files/hpt-draft.pdf)
 
 ### In Development
 
-**[`causaldid.didcont`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didcont)** — Continuous treatment DiD for dose-response relationships and non-binary treatments ([Callaway et al., 2024](https://arxiv.org/pdf/2107.02637))
+**[`causaldid.didcont`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didcont)** — Continuous treatment DiD for dose-response relationships and non-binary treatments [Callaway et al., 2024](https://arxiv.org/pdf/2107.02637)
 
-**[`causaldid.didinter`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didinter)** — Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags ([Chaisemartin & D'Haultfœuille, 2024](https://arxiv.org/pdf/2007.04267))
+**[`causaldid.didinter`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didinter)** — Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags [Chaisemartin & D'Haultfœuille, 2024](https://arxiv.org/pdf/2007.04267)
 
-**[`causaldid.didml`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didml)** — Modern machine learning approaches to DiD for estimation of time-varying conditional average treatment effects on the treated ([Hatamyar et al., 2023](https://arxiv.org/pdf/2310.11962))
+**[`causaldid.didml`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didml)** — Modern machine learning approaches to DiD for estimation of time-varying conditional average treatment effects on the treated [Hatamyar et al., 2023](https://arxiv.org/pdf/2310.11962)
 
-**[`causaldid.didbacon`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didbacon)** — Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons ([Goodman-Bacon, 2019](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf))
+**[`causaldid.didbacon`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didbacon)** — Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons [Goodman-Bacon, 2019](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf)
 
-**[`causaldid.drdidweak`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/drdidweak)** — Doubly robust estimators for treatment effect estimands that is also robust against weak covariate overlap ([Ma et al., 2023](https://arxiv.org/pdf/2304.08974))
+**[`causaldid.drdidweak`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/drdidweak)** — Doubly robust estimators for treatment effect estimands that is also robust against weak covariate overlap [Ma et al., 2023](https://arxiv.org/pdf/2304.08974)
 
-**[`causaldid.didcomp`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didcomp)** — DiD setups with repeated cross-sectional data and potential compositional changes across time periods ([Sant'Anna & Xu, 2025](https://arxiv.org/pdf/2304.13925))
+**[`causaldid.didcomp`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didcomp)** — DiD setups with repeated cross-sectional data and potential compositional changes across time periods [Sant'Anna & Xu, 2025](https://arxiv.org/pdf/2304.13925)
 
-**[`causaldid.didlocal`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didlocal)** — Local projections DiD to address possible biases arising from negative weighting ([Dube et al., 2025](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf))
+**[`causaldid.didlocal`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didlocal)** — Local projections DiD to address possible biases arising from negative weighting [Dube et al., 2025](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf)
 
-**[`causaldid.did2s`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/did2s)** — Two-stage DiD for estimating TWFE models while avoiding issues with staggered treatment adoption ([Gardner, 2021](https://jrgcmu.github.io/2sdd_current.pdf))
+**[`causaldid.did2s`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/did2s)** — Two-stage DiD for estimating TWFE models while avoiding issues with staggered treatment adoption [Gardner, 2021](https://jrgcmu.github.io/2sdd_current.pdf)
 
-**[`causaldid.functional`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/functional)** — Specification tests for functional form assumptions in DiD models ([Roth & Sant'Anna, 2023](https://arxiv.org/pdf/2010.04814))
+**[`causaldid.functional`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/functional)** — Specification tests for functional form assumptions in DiD models [Roth & Sant'Anna, 2023](https://arxiv.org/pdf/2010.04814)
