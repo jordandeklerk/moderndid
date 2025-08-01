@@ -25,7 +25,7 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 **[`causaldid.drdid`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/drdid)** — Doubly robust difference-in-differences estimators for panel and repeated cross-section data with improved efficiency and robustness ([Sant'Anna & Zhao, 2020](https://arxiv.org/pdf/1812.01723))
 
-**[`causaldid.didhonest`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didhonest)** — Sensitivity analysis for violations of parallel trends with multiple restriction types ([Rambachan & Roth, 2023](https://academic.oup.com/restud/article-abstract/90/5/2555/7039335?redirectedFrom=fulltext))
+**[`causaldid.didhonest`](https://github.com/jordandeklerk/causaldid/tree/main/causaldid/didhonest)** — Sensitivity analysis for violations of parallel trends with multiple restriction types ([Rambachan & Roth, 2023](https://asheshrambachan.github.io/assets/files/hpt-draft.pdf))
 
 ### In Development
 
