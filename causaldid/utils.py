@@ -2,19 +2,18 @@
 
 import re
 import warnings
-from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 
 
 def complete_data(
-    data: pd.DataFrame,
-    *args: str,
-    formula: str | None = None,
-    variables: list[str] | None = None,
-    min_periods: int | str = "all",
-) -> pd.DataFrame:
+    data,
+    *args,
+    formula=None,
+    variables=None,
+    min_periods="all",
+):
     """Filter out entities with too few observations.
 
     This function allows you to define a minimum number of periods
@@ -97,11 +96,11 @@ def complete_data(
 
 
 def widen_panel(
-    data: pd.DataFrame,
-    separator: str = "_",
-    ignore_attributes: bool = False,
-    varying: list[str] | None = None,
-) -> pd.DataFrame:
+    data,
+    separator="_",
+    ignore_attributes=False,
+    varying=None,
+):
     """Convert long panel data to wide format.
 
     Transforms panel data from long format (one row per entity-time) to wide
@@ -172,14 +171,14 @@ def widen_panel(
 
 
 def long_panel(
-    data: pd.DataFrame,
-    entity_col: str,
-    stub_names: list[str] | None = None,
-    suffix: str = r"\d+",
-    separator: str = "_",
-    time_name: str = "time",
-    time_values: list[int | str] | None = None,
-) -> pd.DataFrame:
+    data,
+    entity_col,
+    stub_names=None,
+    suffix=r"\d+",
+    separator="_",
+    time_name="time",
+    time_values=None,
+):
     r"""Convert wide panel data to long format.
 
     Transforms panel data from wide format (one row per entity) to long
@@ -280,7 +279,7 @@ def long_panel(
     return pivot_df
 
 
-def unpanel(data: pd.DataFrame) -> pd.DataFrame:
+def unpanel(data):
     """Convert panel data with MultiIndex to regular DataFrame.
 
     This convenience function removes the MultiIndex structure from panel
@@ -306,7 +305,7 @@ def unpanel(data: pd.DataFrame) -> pd.DataFrame:
     return data.copy()
 
 
-def is_panel_balanced(data: pd.DataFrame) -> bool:
+def is_panel_balanced(data):
     """Check if panel data is balanced.
 
     Parameters
@@ -333,7 +332,7 @@ def is_panel_balanced(data: pd.DataFrame) -> bool:
     return len(set(counts)) == 1
 
 
-def panel_has_gaps(data: pd.DataFrame) -> dict[int, list[int]]:
+def panel_has_gaps(data):
     """Check for gaps in time series within entities.
 
     Parameters
@@ -371,7 +370,7 @@ def panel_has_gaps(data: pd.DataFrame) -> dict[int, list[int]]:
     return gaps
 
 
-def is_repeated_cross_section(data: pd.DataFrame) -> bool:
+def is_repeated_cross_section(data):
     """Check if data is repeated cross-section format.
 
     Parameters
@@ -391,9 +390,7 @@ def is_repeated_cross_section(data: pd.DataFrame) -> bool:
     return data.index.get_level_values(entity_name).nunique() == len(data)
 
 
-def datetime_to_int(
-    dates: pd.Series | pd.DatetimeIndex, freq: str = "YS", start_value: int = 1000
-) -> dict[pd.Timestamp, int]:
+def datetime_to_int(dates, freq="YS", start_value=1000):
     """Convert datetime values to integers preserving time spacing.
 
     For yearly frequencies, uses the year directly. For other frequencies,
@@ -433,8 +430,10 @@ def datetime_to_int(
 
 
 def convert_panel_time_to_int(
-    data: pd.DataFrame, freq: str = "YS", start_value: int = 1000
-) -> tuple[pd.DataFrame, dict[int, pd.Timestamp]]:
+    data,
+    freq="YS",
+    start_value=1000,
+):
     """Convert datetime time index to integers in panel data.
 
     Parameters
@@ -476,13 +475,13 @@ def convert_panel_time_to_int(
 
 
 def panel_to_cross_section_diff(
-    data: pd.DataFrame,
-    y_col: str,
-    x_base_cols: list[str] | None = None,
-    x_delta_cols: list[str] | None = None,
-    pre_period: int | None = None,
-    post_period: int | None = None,
-) -> pd.DataFrame:
+    data,
+    y_col,
+    x_base_cols=None,
+    x_delta_cols=None,
+    pre_period=None,
+    post_period=None,
+):
     """Transform panel data to cross-section with differences.
 
     Creates a cross-sectional dataset with outcome differences and
@@ -554,13 +553,13 @@ def panel_to_cross_section_diff(
 
 
 def are_varying(
-    data: pd.DataFrame,
-    covariates: list[str] | None = None,
-    rtol: float = 1e-05,
-    atol: float = 1e-08,
-    variation_type: Literal["time", "individual", "both"] = "time",
-    return_names: bool = True,
-) -> list[str] | dict[str, bool] | pd.DataFrame:
+    data,
+    covariates=None,
+    rtol=1e-05,
+    atol=1e-08,
+    variation_type="time",
+    return_names=True,
+):
     """Identify which covariates vary within entities over time or across individuals.
 
     This function checks whether variables vary within entities over time
@@ -650,10 +649,10 @@ def are_varying(
 
 
 def fill_panel_gaps(
-    data: pd.DataFrame,
-    fill_value: Any = np.nan,
-    method: Literal["value", "ffill", "bfill"] = "value",
-) -> pd.DataFrame:
+    data,
+    fill_value=np.nan,
+    method="value",
+):
     """Fill gaps in panel data time series.
 
     Parameters
@@ -703,10 +702,10 @@ def fill_panel_gaps(
 
 
 def make_panel_balanced(
-    data: pd.DataFrame,
-    min_periods: int | None = None,
-    method: Literal["drop", "fill"] = "drop",
-    fill_value: Any = np.nan,
+    data,
+    min_periods=None,
+    method="drop",
+    fill_value=np.nan,
 ) -> pd.DataFrame:
     """Create balanced panel from unbalanced data.
 
@@ -760,7 +759,7 @@ def make_panel_balanced(
     return result.sort_index()
 
 
-def create_relative_time_indicators(data: pd.DataFrame, cohort_col: str, base_period: int = -1) -> pd.DataFrame:
+def create_relative_time_indicators(data, cohort_col, base_period=-1):
     """Create relative time indicators for DiD analysis.
 
     Parameters
@@ -803,7 +802,7 @@ def create_relative_time_indicators(data: pd.DataFrame, cohort_col: str, base_pe
     return indicators
 
 
-def validate_treatment_timing(data: pd.DataFrame, treat_col: str, cohort_col: str | None = None) -> dict[str, Any]:
+def validate_treatment_timing(data, treat_col, cohort_col=None):
     """Validate treatment timing assumptions for DiD.
 
     Parameters
@@ -877,13 +876,13 @@ def validate_treatment_timing(data: pd.DataFrame, treat_col: str, cohort_col: st
 
 
 def prepare_data_for_did(
-    data: pd.DataFrame,
-    y_col: str,
-    entity_col: str,
-    time_col: str,
-    treat_col: str | None = None,
-    covariates: list[str] | None = None,
-) -> pd.DataFrame:
+    data,
+    y_col,
+    entity_col,
+    time_col,
+    treat_col=None,
+    covariates=None,
+):
     """Prepare data for difference-in-differences analysis.
 
     Parameters
@@ -937,7 +936,7 @@ def prepare_data_for_did(
     return result
 
 
-def parse_formula(formula: str) -> dict[str, Any]:
+def parse_formula(formula):
     """Parse formula string to extract components."""
     parts = formula.split("~")
     if len(parts) != 2:
@@ -962,7 +961,7 @@ def parse_formula(formula: str) -> dict[str, Any]:
     }
 
 
-def extract_vars_from_formula(formula: str) -> list[str]:
+def extract_vars_from_formula(formula):
     """Extract all variable names from formula string."""
     parsed = parse_formula(formula)
     vars_list = []
