@@ -3,6 +3,7 @@
 
 import math
 import os
+from datetime import date
 from importlib.metadata import metadata
 
 # -- Project information
@@ -11,7 +12,7 @@ _metadata = metadata("moderndid")
 
 project = _metadata["Name"]
 author = _metadata["Author-email"].split("<", 1)[0].strip()
-copyright = f"2025, {author}"
+copyright = f"{date.today().year}, {author}"
 
 version = _metadata["Version"]
 if os.environ.get("READTHEDOCS", False):
@@ -54,6 +55,10 @@ default_role = "autolink"
 
 # If true, '()' will be appended to :func: etc. cross-reference text.
 add_function_parentheses = False
+
+rst_prolog = r"""
+.. |l_vec| replace:: :math:`\ell_{vec}`
+"""
 
 # Ensure all our internal links work
 nitpicky = True
@@ -117,11 +122,13 @@ extlinks = {
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
 
-# File extensions
-source_suffix = [".rst", ".md"]
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "myst-parser",
+}
 
 autosummary_generate = True
-autodoc_typehints = "none"
+autodoc_typehints = "signature"
 autodoc_default_options = {
     "members": False,
 }
@@ -195,10 +202,6 @@ html_domain_indices = False
 html_file_suffix = ".html"
 
 htmlhelp_basename = "moderndid"
-
-# -----------------------------------------------------------------------------
-# Matplotlib plot_directive options
-# -----------------------------------------------------------------------------
 
 plot_pre_code = """
 import numpy as np
