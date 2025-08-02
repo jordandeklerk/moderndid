@@ -132,19 +132,26 @@ def compute_conditional_cs_rmb(
         hybrid_kappa = alpha / 10
 
     if grid_lb is None or grid_ub is None:
-        id_set = compute_identified_set_rmb(
-            m_bar=m_bar,
-            true_beta=betahat,
-            l_vec=l_vec,
-            num_pre_periods=num_pre_periods,
-            num_post_periods=num_post_periods,
-            bias_direction=bias_direction,
-        )
-        sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-        if grid_lb is None:
-            grid_lb = id_set.id_lb - 20 * sd_theta
+        sel = slice(num_pre_periods, num_pre_periods + num_post_periods)
+
+        sigma_post = sigma[sel, sel]
+        sd_theta = np.sqrt(l_vec.T @ sigma_post @ l_vec)
+
+        if num_pre_periods > 1:
+            pre_betas_with_zero = np.concatenate([betahat[:num_pre_periods], [0]])
+            maxpre = np.max(np.abs(np.diff(pre_betas_with_zero)))
+        else:
+            maxpre = np.abs(betahat[0])
+
+        gridoff = betahat[sel] @ l_vec
+
+        post_period_indices = np.arange(1, num_post_periods + 1)
+        gridhalf = (m_bar * post_period_indices @ np.abs(l_vec) * maxpre) + (20 * sd_theta)
+
         if grid_ub is None:
-            grid_ub = id_set.id_ub + 20 * sd_theta
+            grid_ub = gridoff + gridhalf
+        if grid_lb is None:
+            grid_lb = gridoff - gridhalf
 
     min_s = -(num_pre_periods - 1)
     s_values = list(range(min_s, 1))
@@ -596,22 +603,26 @@ def _compute_conditional_cs_rmb_fixed_s(
                 d_rmb = d_rmb[post_period_rows]
 
     if grid_lb is None or grid_ub is None:
-        # For fixed s, compute the identified set to get better grid bounds
-        id_set = _compute_identified_set_rmb_fixed_s(
-            s=s,
-            m_bar=m_bar,
-            max_positive=max_positive,
-            true_beta=betahat,
-            l_vec=l_vec,
-            num_pre_periods=num_pre_periods,
-            num_post_periods=num_post_periods,
-            bias_direction=bias_direction,
-        )
-        sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-        if grid_lb is None:
-            grid_lb = id_set.id_lb - 20 * sd_theta
+        sel = slice(num_pre_periods, num_pre_periods + num_post_periods)
+
+        sigma_post = sigma[sel, sel]
+        sd_theta = np.sqrt(l_vec.T @ sigma_post @ l_vec)
+
+        if num_pre_periods > 1:
+            pre_betas_with_zero = np.concatenate([betahat[:num_pre_periods], [0]])
+            maxpre = np.max(np.abs(np.diff(pre_betas_with_zero)))
+        else:
+            maxpre = np.abs(betahat[0])
+
+        gridoff = betahat[sel] @ l_vec
+
+        post_period_indices = np.arange(1, num_post_periods + 1)
+        gridhalf = (m_bar * post_period_indices @ np.abs(l_vec) * maxpre) + (20 * sd_theta)
+
         if grid_ub is None:
-            grid_ub = id_set.id_ub + 20 * sd_theta
+            grid_ub = gridoff + gridhalf
+        if grid_lb is None:
+            grid_lb = gridoff - gridhalf
 
     if num_post_periods == 1:
         if hybrid_flag == "LF":

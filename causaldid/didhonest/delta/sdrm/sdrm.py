@@ -138,12 +138,26 @@ def compute_conditional_cs_sdrm(
         hybrid_kappa = alpha / 10
 
     if grid_lb is None or grid_ub is None:
-        post_sigma = sigma[num_pre_periods:, num_pre_periods:]
-        sd_theta = np.sqrt(l_vec @ post_sigma @ l_vec)
-        if grid_lb is None:
-            grid_lb = -20 * sd_theta
+        sel = slice(num_pre_periods, num_pre_periods + num_post_periods)
+
+        sigma_post = sigma[sel, sel]
+        sd_theta = np.sqrt(l_vec.T @ sigma_post @ l_vec)
+
+        if num_pre_periods > 1:
+            pre_betas_with_zero = np.concatenate([betahat[:num_pre_periods], [0]])
+            maxpre = np.max(np.abs(np.diff(pre_betas_with_zero)))
+        else:
+            maxpre = np.abs(betahat[0])
+
+        gridoff = betahat[sel] @ l_vec
+
+        post_period_indices = np.arange(1, num_post_periods + 1)
+        gridhalf = (m_bar * post_period_indices @ np.abs(l_vec) * maxpre) + (20 * sd_theta)
+
         if grid_ub is None:
-            grid_ub = 20 * sd_theta
+            grid_ub = gridoff + gridhalf
+        if grid_lb is None:
+            grid_lb = gridoff - gridhalf
 
     min_s = -(num_pre_periods - 2)
     s_values = range(min_s, 0)
