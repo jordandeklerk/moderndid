@@ -131,12 +131,12 @@ def drdid(
     .. ipython::
         :okwarning:
 
-        In [1]: import causaldid
-           ...: from causaldid.data import load_nsw
+        In [1]: import moderndid
+           ...: from moderndid.data import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
-           ...: att_result = causaldid.drdid(
+           ...: att_result = moderndid.drdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -155,7 +155,7 @@ def drdid(
     .. ipython::
         :okwarning:
 
-        In [3]: att_result_boot = causaldid.drdid(
+        In [3]: att_result_boot = moderndid.drdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",

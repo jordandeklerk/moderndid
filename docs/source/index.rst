@@ -1,7 +1,7 @@
-.. _causaldid_docs_mainpage:
+.. _moderndid_docs_mainpage:
 
 #########################
-causaldid documentation
+moderndid documentation
 #########################
 
 .. toctree::
@@ -19,21 +19,21 @@ causaldid documentation
 **Version**: |version|
 
 **Download documentation**:
-`Historical versions of documentation <https://github.com/jordandeklerk/causaldid/releases>`_
+`Historical versions of documentation <https://github.com/jordandeklerk/moderndid/releases>`_
 
 **Useful links**:
 `Installation <installing.html>`_ |
-`Source Repository <https://github.com/jordandeklerk/causaldid>`_ |
-`Issue Tracker <https://github.com/jordandeklerk/causaldid/issues>`_ |
+`Source Repository <https://github.com/jordandeklerk/moderndid>`_ |
+`Issue Tracker <https://github.com/jordandeklerk/moderndid/issues>`_ |
 
 .. only:: not release
 
    .. warning::
 
-      This documentation is for the latest development version of causaldid.
+      This documentation is for the latest development version of moderndid.
       There is no stable release yet.
 
-causaldid is a unified Python implementation of modern difference-in-differences (DiD)
+moderndid is a unified Python implementation of modern difference-in-differences (DiD)
 methodologies, bringing together the fragmented landscape of DiD estimators into a single,
 coherent framework. This package consolidates methods from leading econometric research and
 various R packages into one comprehensive Python library with a consistent API.
@@ -51,7 +51,7 @@ various R packages into one comprehensive Python library with a consistent API.
         ^^^
 
         The user guide provides in-depth information on the
-        key concepts of causaldid with useful background information and explanation.
+        key concepts of moderndid with useful background information and explanation.
 
         +++
 
@@ -70,7 +70,7 @@ various R packages into one comprehensive Python library with a consistent API.
         ^^^
 
         The reference guide contains a detailed description of the functions,
-        modules, and objects included in causaldid. The reference describes how the
+        modules, and objects included in moderndid. The reference describes how the
         methods work and which parameters can be used.
 
         +++
@@ -89,7 +89,7 @@ various R packages into one comprehensive Python library with a consistent API.
         Example gallery
         ^^^
 
-        New to causaldid? Check out the example gallery for practical demonstrations
+        New to moderndid? Check out the example gallery for practical demonstrations
         of how to use the package's DiD estimators with real-world data scenarios.
 
         +++
@@ -110,7 +110,7 @@ various R packages into one comprehensive Python library with a consistent API.
 
         Want to add to the codebase? Can help add functionality or improve the
         documentation? The contributing guidelines will guide you through the
-        process of improving causaldid.
+        process of improving moderndid.
 
         +++
 

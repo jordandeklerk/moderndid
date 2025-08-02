@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import scipy.optimize
 
-from causaldid.drdid.propensity.pscore_ipt import (
+from moderndid.drdid.propensity.pscore_ipt import (
     _add_quantile_constraints,
     _loss_ps_cal,
     _loss_ps_ipt,

@@ -104,12 +104,12 @@ def ordid(
 
     .. ipython::
 
-        In [1]: import causaldid
-           ...: from causaldid.data import load_nsw
+        In [1]: import moderndid
+           ...: from moderndid.data import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
-           ...: att_result = causaldid.ordid(
+           ...: att_result = moderndid.ordid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -127,7 +127,7 @@ def ordid(
     .. ipython::
         :okwarning:
 
-        In [3]: att_result_rc_boot = causaldid.ordid(
+        In [3]: att_result_rc_boot = moderndid.ordid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from causaldid import wboot_std_ipw_rc
+from moderndid import wboot_std_ipw_rc
 
 
 def test_wboot_std_ipw_rc_basic():
