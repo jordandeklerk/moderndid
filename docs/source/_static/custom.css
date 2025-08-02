@@ -103,6 +103,23 @@ h1#moderndid-documentation {
   font-weight: bold;
 }
 
+/* Align navigation tabs with content */
+.bd-container {
+  max-width: 100%;
+}
+
+.bd-header .bd-header__inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.bd-content .bd-article-container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
 /* Monospace titles for API docs */
 div.empty + section>h1 {
   font-family: var(--pst-font-family-monospace);
@@ -115,4 +132,16 @@ div.empty + section>h1 {
 
 .sig-prename {
   display: none;
+}
+
+.bd-header-nav-items {
+  margin-left: 1rem;
+}
+
+ul.bd-navbar-elements {
+  padding-left: 1rem;
+}
+
+.navbar-nav {
+  margin-left: 1rem;
 }
