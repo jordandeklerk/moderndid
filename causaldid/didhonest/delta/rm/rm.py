@@ -102,9 +102,12 @@ def compute_conditional_cs_rm(
     grid_points : int, default=1000
         Number of grid points for confidence interval search.
     grid_lb : float, optional
-        Lower bound for grid search.
+        Lower bound for grid search. If None, calculated as
+        gridoff - gridhalf, where gridoff = betahat_post @ l_vec and
+        gridhalf = (m_bar * sum(1:T_post * |l_vec|) * maxpre) + (20 * sd_theta).
     grid_ub : float, optional
-        Upper bound for grid search.
+        Upper bound for grid search. If None, calculated as
+        gridoff + gridhalf, using the same formula as grid_lb.
     seed : int, optional
         Random seed for reproducibility.
 
@@ -162,7 +165,26 @@ def compute_conditional_cs_rm(
         hybrid_kappa = alpha / 10
 
     if grid_lb is None or grid_ub is None:
-        raise ValueError("grid_lb and grid_ub must be provided.")
+        sel = slice(num_pre_periods, num_pre_periods + num_post_periods)
+
+        sigma_post = sigma[sel, sel]
+        sd_theta = np.sqrt(l_vec.T @ sigma_post @ l_vec)
+
+        if num_pre_periods > 1:
+            pre_betas_with_zero = np.concatenate([betahat[:num_pre_periods], [0]])
+            maxpre = np.max(np.abs(np.diff(pre_betas_with_zero)))
+        else:
+            maxpre = np.abs(betahat[0])
+
+        gridoff = betahat[sel] @ l_vec
+
+        post_period_indices = np.arange(1, num_post_periods + 1)
+        gridhalf = (m_bar * post_period_indices @ np.abs(l_vec) * maxpre) + (20 * sd_theta)
+
+        if grid_ub is None:
+            grid_ub = gridoff + gridhalf
+        if grid_lb is None:
+            grid_lb = gridoff - gridhalf
 
     min_s = -(num_pre_periods - 1)
     s_values = list(range(min_s, 0))
