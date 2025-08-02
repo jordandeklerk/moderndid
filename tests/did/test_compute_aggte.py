@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from causaldid import compute_aggte, compute_att_gt, load_mpdta, mp, preprocess_did
+from moderndid import compute_aggte, compute_att_gt, load_mpdta, mp, preprocess_did
 
 
 @pytest.fixture

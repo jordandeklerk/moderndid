@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from causaldid.drdid import reg_did_rc
+from moderndid.drdid import reg_did_rc
 
 
 def test_reg_did_rc_basic():

@@ -229,7 +229,7 @@ These aggregations provide transparent and interpretable ways to summarize treat
 Top Level Functions
 -------------------
 
-.. currentmodule:: causaldid
+.. currentmodule:: moderndid
 
 ATT Estimation
 ~~~~~~~~~~~~~~

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from causaldid import twfe_did_panel
+from moderndid import twfe_did_panel
 
 from ..helpers import importorskip
 

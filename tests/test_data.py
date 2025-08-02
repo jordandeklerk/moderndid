@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from causaldid.data import load_ehec, load_mpdta, load_nsw
+from moderndid.data import load_ehec, load_mpdta, load_nsw
 
 
 def test_load_nsw():
@@ -52,12 +52,12 @@ def test_load_nsw_data_integrity():
 
 
 def test_import_from_package():
-    import causaldid
+    import moderndid
 
-    assert hasattr(causaldid, "data")
-    assert hasattr(causaldid.data, "load_nsw")
+    assert hasattr(moderndid, "data")
+    assert hasattr(moderndid.data, "load_nsw")
 
-    nsw_data = causaldid.data.load_nsw()
+    nsw_data = moderndid.data.load_nsw()
 
     assert isinstance(nsw_data, pd.DataFrame)
     assert nsw_data.shape[0] > 0
@@ -116,12 +116,12 @@ def test_load_mpdta_data_integrity():
 
 
 def test_import_mpdta_from_package():
-    import causaldid
+    import moderndid
 
-    assert hasattr(causaldid, "load_mpdta")
-    assert hasattr(causaldid.data, "load_mpdta")
+    assert hasattr(moderndid, "load_mpdta")
+    assert hasattr(moderndid.data, "load_mpdta")
 
-    mpdta_data = causaldid.load_mpdta()
+    mpdta_data = moderndid.load_mpdta()
 
     assert isinstance(mpdta_data, pd.DataFrame)
     assert mpdta_data.shape[0] == 2500
@@ -176,12 +176,12 @@ def test_load_ehec_data_integrity():
 
 
 def test_import_ehec_from_package():
-    import causaldid
+    import moderndid
 
-    assert hasattr(causaldid, "load_ehec")
-    assert hasattr(causaldid.data, "load_ehec")
+    assert hasattr(moderndid, "load_ehec")
+    assert hasattr(moderndid.data, "load_ehec")
 
-    ehec_data = causaldid.load_ehec()
+    ehec_data = moderndid.load_ehec()
 
     assert isinstance(ehec_data, pd.DataFrame)
     assert ehec_data.shape[0] == 552

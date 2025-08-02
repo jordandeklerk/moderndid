@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from causaldid import AGGTEResult, HonestDiDResult, honest_did
+from moderndid import AGGTEResult, HonestDiDResult, honest_did
 
 
 @pytest.fixture

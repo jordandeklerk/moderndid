@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from causaldid import (
+from moderndid import (
     wboot_dr_tr_panel,
     wboot_drdid_imp_panel,
     wboot_ipw_panel,

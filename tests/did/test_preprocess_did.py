@@ -5,22 +5,22 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from causaldid.did import preprocess_did
-from causaldid.did.preprocess.builders import DIDDataBuilder
-from causaldid.did.preprocess.constants import (
+from moderndid.did import preprocess_did
+from moderndid.did.preprocess.builders import DIDDataBuilder
+from moderndid.did.preprocess.constants import (
     NEVER_TREATED_VALUE,
     BasePeriod,
     ControlGroup,
     EstimationMethod,
 )
-from causaldid.did.preprocess.models import DIDConfig, DIDData
-from causaldid.did.preprocess.tensors import TensorFactorySelector
-from causaldid.did.preprocess.transformers import (
+from moderndid.did.preprocess.models import DIDConfig, DIDData
+from moderndid.did.preprocess.tensors import TensorFactorySelector
+from moderndid.did.preprocess.transformers import (
     DataTransformerPipeline,
     TreatmentEncoder,
     WeightNormalizer,
 )
-from causaldid.did.preprocess.validators import (
+from moderndid.did.preprocess.validators import (
     ArgumentValidator,
     ColumnValidator,
     CompositeValidator,

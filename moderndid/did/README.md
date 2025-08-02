@@ -31,7 +31,7 @@ Aggregates the numerous group-time ATTs into interpretable summary parameters:
 The main entry point provides a pandas-friendly interface with sensible defaults:
 
 ```python
-from causaldid.did import att_gt, aggte
+from moderndid.did import att_gt, aggte
 
 # Estimate group-time ATTs
 att_results = att_gt(
@@ -103,7 +103,7 @@ We can compute group-time average treatment effects for a staggered adoption des
 `MPResult` which is a container for the results:
 
 ```python
-import causaldid as did
+import moderndid as did
 import pandas as pd
 import numpy as np
 

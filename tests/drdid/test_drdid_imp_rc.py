@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from causaldid import drdid_imp_rc
+from moderndid import drdid_imp_rc
 
 
 def dgp_rc_for_test(n=2000, seed=42):

@@ -4,9 +4,9 @@
 import numpy as np
 import pytest
 
-from causaldid.didhonest import arp_no_nuisance
-from causaldid.didhonest.arp_no_nuisance import APRCIResult, compute_arp_ci
-from causaldid.didhonest.bounds import create_second_difference_matrix
+from moderndid.didhonest import arp_no_nuisance
+from moderndid.didhonest.arp_no_nuisance import APRCIResult, compute_arp_ci
+from moderndid.didhonest.bounds import create_second_difference_matrix
 
 
 @pytest.fixture
