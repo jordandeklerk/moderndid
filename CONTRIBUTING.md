@@ -2,7 +2,7 @@
 
 ## Before contributing
 
-Welcome to causaldid! Before contributing to the project, please ensure you understand our contribution process.
+Welcome to moderndid! Before contributing to the project, please ensure you understand our contribution process.
 
 ## Contributing code
 
@@ -10,7 +10,7 @@ Welcome to causaldid! Before contributing to the project, please ensure you unde
    (advice: use [venv](https://docs.python.org/3/library/venv.html),
    [virtualenv](https://virtualenv.pypa.io/), or [miniconda](https://docs.conda.io/en/latest/miniconda.html))
 2. Install tox: `python -m pip install tox`
-3. Clone the repository: `git clone https://github.com/YOUR_USERNAME/causaldid.git`
+3. Clone the repository: `git clone https://github.com/YOUR_USERNAME/moderndid.git`
 4. Start a new branch off main: `git switch -c new-branch main`
 5. Make your code changes
 6. Check that your code follows the style guidelines of the project: `tox -e check`

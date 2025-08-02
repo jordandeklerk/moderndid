@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from causaldid import drdid_imp_local_rc
+from moderndid import drdid_imp_local_rc
 
 
 @pytest.mark.parametrize("covariates", [None, "with_covariates"])

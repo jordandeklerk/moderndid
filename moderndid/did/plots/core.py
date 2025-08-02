@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.figure import Figure
 
-from causaldid.did.aggte_obj import AGGTEResult
-from causaldid.did.multiperiod_obj import MPResult
+from moderndid.did.aggte_obj import AGGTEResult
+from moderndid.did.multiperiod_obj import MPResult
 
 
 @dataclass

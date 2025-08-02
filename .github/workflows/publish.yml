@@ -32,7 +32,7 @@ jobs:
     # workflow by requiring signoff from a maintainer.
     environment:
       name: publish
-      url: https://pypi.org/p/causaldid
+      url: https://pypi.org/p/moderndid
     needs: build-package
     permissions:
       # write id-token is necessary for trusted publishing (OIDC)

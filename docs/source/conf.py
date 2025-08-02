@@ -1,5 +1,5 @@
 # pylint: disable=redefined-builtin,invalid-name
-"""causaldid sphinx configuration."""
+"""moderndid sphinx configuration."""
 
 import math
 import os
@@ -7,7 +7,7 @@ from importlib.metadata import metadata
 
 # -- Project information
 
-_metadata = metadata("causaldid")
+_metadata = metadata("moderndid")
 
 project = _metadata["Name"]
 author = _metadata["Author-email"].split("<", 1)[0].strip()
@@ -110,8 +110,8 @@ nitpick_ignore = [
 # -- Options for extensions
 
 extlinks = {
-    "issue": ("https://github.com/jordandeklerk/causaldid/issues/%s", "GH#%s"),
-    "pull": ("https://github.com/jordandeklerk/causaldid/pull/%s", "PR#%s"),
+    "issue": ("https://github.com/jordandeklerk/moderndid/issues/%s", "GH#%s"),
+    "pull": ("https://github.com/jordandeklerk/moderndid/pull/%s", "PR#%s"),
 }
 
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
@@ -164,12 +164,12 @@ html_theme_options = {
     "icon_links": [
         {
             "name": "GitHub",
-            "url": "https://github.com/jordandeklerk/causaldid",
+            "url": "https://github.com/jordandeklerk/moderndid",
             "icon": "fa-brands fa-github",
         },
     ],
     "logo": {
-        "text": "causaldid",
+        "text": "moderndid",
         "image_light": "_static/logo.svg",
         "image_dark": "_static/logo.svg",
     },
@@ -194,7 +194,7 @@ html_copy_source = False
 html_domain_indices = False
 html_file_suffix = ".html"
 
-htmlhelp_basename = "causaldid"
+htmlhelp_basename = "moderndid"
 
 # -----------------------------------------------------------------------------
 # Matplotlib plot_directive options

@@ -14,7 +14,7 @@ Theoretical Background
 Functions
 ---------
 
-.. currentmodule:: causaldid
+.. currentmodule:: moderndid
 
 Weighted OLS Functions
 ~~~~~~~~~~~~~~~~~~~~~~

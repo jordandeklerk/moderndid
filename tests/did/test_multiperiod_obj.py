@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from causaldid import (
+from moderndid import (
     MPPretestResult,
     MPResult,
     format_mp_pretest_result,
