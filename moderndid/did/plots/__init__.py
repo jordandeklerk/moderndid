@@ -1,11 +1,11 @@
 """Plots for DID models."""
 
-from causaldid.did.plots.core import (
+from moderndid.did.plots.core import (
     plot_att_gt,
     plot_did,
     plot_event_study,
 )
-from causaldid.did.plots.methods import add_plot_methods
+from moderndid.did.plots.methods import add_plot_methods
 
 # Add plotting methods to result objects
 add_plot_methods()

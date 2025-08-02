@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from causaldid.did import mboot
+from moderndid.did import mboot
 
 
 def test_basic_functionality():

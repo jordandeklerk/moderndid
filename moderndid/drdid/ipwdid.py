@@ -120,12 +120,12 @@ def ipwdid(
     .. ipython::
         :okwarning:
 
-        In [1]: import causaldid
-           ...: from causaldid.data import load_nsw
+        In [1]: import moderndid
+           ...: from moderndid.data import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
-           ...: att_result = causaldid.ipwdid(
+           ...: att_result = moderndid.ipwdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -144,7 +144,7 @@ def ipwdid(
     .. ipython::
         :okwarning:
 
-        In [3]: att_result_std = causaldid.ipwdid(
+        In [3]: att_result_std = moderndid.ipwdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",
@@ -163,7 +163,7 @@ def ipwdid(
     .. ipython::
         :okwarning:
 
-        In [5]: att_result_boot = causaldid.ipwdid(
+        In [5]: att_result_boot = moderndid.ipwdid(
            ...:     data=nsw_data,
            ...:     y_col="re",
            ...:     time_col="year",

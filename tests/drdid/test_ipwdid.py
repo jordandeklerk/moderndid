@@ -4,8 +4,8 @@
 import numpy as np
 import pytest
 
-from causaldid.data import load_nsw
-from causaldid.drdid.ipwdid import ipwdid
+from moderndid.data import load_nsw
+from moderndid.drdid.ipwdid import ipwdid
 
 from ..helpers import importorskip
 
@@ -568,7 +568,7 @@ def test_ipwdid_extreme_trimming(nsw_data):
 
 
 def test_ipwdid_comparison_with_other_estimators(nsw_data):
-    from causaldid import drdid, ordid
+    from moderndid import drdid, ordid
 
     treated_ids = nsw_data[nsw_data["experimental"] == 1]["id"].unique()[:100]
     control_ids = nsw_data[nsw_data["experimental"] == 0]["id"].unique()[:100]

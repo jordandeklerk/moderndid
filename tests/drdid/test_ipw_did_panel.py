@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from causaldid.drdid import ipw_did_panel
+from moderndid.drdid import ipw_did_panel
 
 
 def test_ipw_did_panel_basic():

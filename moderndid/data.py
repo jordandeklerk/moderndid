@@ -56,7 +56,7 @@ def load_nsw() -> pd.DataFrame:
     if not data_path.exists():
         raise FileNotFoundError(
             f"NSW data file not found at {data_path}. "
-            "Please ensure the data file is included in the causaldid installation."
+            "Please ensure the data file is included in the moderndid installation."
         )
 
     with gzip.open(data_path, "rb") as f:
@@ -95,7 +95,7 @@ def load_mpdta() -> pd.DataFrame:
     if not data_path.exists():
         raise FileNotFoundError(
             f"MPDTA data file not found at {data_path}. "
-            "Please ensure the data file is included in the causaldid installation."
+            "Please ensure the data file is included in the moderndid installation."
         )
 
     with gzip.open(data_path, "rb") as f:
@@ -148,7 +148,7 @@ def load_ehec() -> pd.DataFrame:
     if not data_path.exists():
         raise FileNotFoundError(
             f"EHEC data file not found at {data_path}. "
-            "Please ensure the data file is included in the causaldid installation."
+            "Please ensure the data file is included in the moderndid installation."
         )
 
     with gzip.open(data_path, "rb") as f:

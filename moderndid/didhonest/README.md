@@ -36,9 +36,9 @@ The main entry point provides a consistent interface for working with event stud
 
 ```python
 
-from causaldid import honest_did
+from moderndid import honest_did
 
-# For event study objects (e.g., from causaldid.did.aggte)
+# For event study objects (e.g., from moderndid.did.aggte)
 result = honest_did(
     event_study,
     event_time=0,
@@ -55,7 +55,7 @@ result = honest_did(
 For users with pre-computed event study coefficients:
 
 ```python
-from causaldid import (
+from moderndid import (
     create_sensitivity_results_sm,
     create_sensitivity_results_rm,
     construct_original_cs
@@ -116,7 +116,7 @@ All these options are available both at a lower-level API or through the high-le
 Built-in plotting functions:
 
 ```python
-from causaldid import plot_sensitivity_sm, plot_sensitivity_rm
+from moderndid import plot_sensitivity_sm, plot_sensitivity_rm
 
 # Plot sensitivity analysis for smoothness restrictions
 fig = plot_sensitivity_sm(sensitivity_results, original_ci_df)
@@ -130,7 +130,7 @@ fig = plot_sensitivity_rm(sensitivity_results_rm, original_ci_df)
 We will examine the effects of Medicaid expansions on insurance coverage using publicly-available data derived from the ACS. We first load the data and packages relevant for the analysis.
 
 ```python
-from causaldid import (
+from moderndid import (
     load_ehec,
     create_sensitivity_results_sm,
     create_sensitivity_results_rm,
@@ -355,7 +355,7 @@ We can combine staggered treatment DiD estimators of the Callaway and Sant'Anna 
 sensitivity analysis in a straight-forward way:
 
 ```python
-from causaldid import att_gt, aggte, honest_did, load_ehec
+from moderndid import att_gt, aggte, honest_did, load_ehec
 
 df = load_ehec()
 
