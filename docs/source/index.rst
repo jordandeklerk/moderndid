@@ -26,12 +26,6 @@ moderndid documentation
 `Source Repository <https://github.com/jordandeklerk/moderndid>`_ |
 `Issue Tracker <https://github.com/jordandeklerk/moderndid/issues>`_ |
 
-.. only:: not release
-
-   .. warning::
-
-      This documentation is for the latest development version of moderndid.
-      There is no stable release yet.
 
 moderndid is a unified Python implementation of modern difference-in-differences (DiD)
 methodologies, bringing together the fragmented landscape of DiD estimators into a single,
