@@ -126,7 +126,7 @@ focusing on intertemporal effects where treatment may be non-binary and non-abso
 .. _didml-module:
 
 Machine Learning DiD
-===================
+====================
 
 The ``moderndid.didml`` module integrates machine learning methods with
 difference-in-differences estimation following `Hatamyar et al. (2023)
