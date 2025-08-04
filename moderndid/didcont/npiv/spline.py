@@ -2,6 +2,7 @@
 """Multivariate spline construction for continuous treatment DiD estimation."""
 
 import warnings
+from itertools import combinations, product
 from typing import NamedTuple
 
 import numpy as np
@@ -241,67 +242,161 @@ def prodspline(
     )
 
 
-def tensor_prod_model_matrix(bases: list[np.ndarray]) -> np.ndarray:
-    """Construct tensor product of basis matrices.
+def tensor_prod_model_matrix(bases):
+    r"""Construct tensor product of marginal basis model matrices.
+
+    Produces model matrices for tensor product smooths from marginal basis
+    model matrices. The tensor product is computed row-wise using Kronecker
+    products.
 
     Parameters
     ----------
     bases : list of ndarray
-        List of basis matrices for each variable.
+        List of model matrices for marginal bases. Each matrix must have
+        the same number of rows (observations).
 
     Returns
     -------
     ndarray
-        Full tensor product basis matrix.
+        Tensor product model matrix of shape (n, prod(dims)) where n is the
+        number of observations and dims are the dimensions of input matrices.
+
+    References
+    ----------
+
+    .. [1] Wood, S. N. (2006). Low-rank scale-invariant tensor product smooths
+        for generalized additive mixed models. Biometrics, 62(4), 1025-1036.
     """
     if not bases:
-        return np.ones((1, 1))
+        raise ValueError("bases cannot be empty")
 
-    n = bases[0].shape[0]
+    for i, basis in enumerate(bases):
+        if not isinstance(basis, np.ndarray):
+            raise TypeError(f"bases[{i}] must be a NumPy array")
+        if basis.ndim != 2:
+            raise ValueError(f"bases[{i}] must be 2-dimensional")
 
-    dims = [b.shape[1] for b in bases]
-    total_cols = np.prod(dims)
+    n_obs = bases[0].shape[0]
+    for i, basis in enumerate(bases[1:], 1):
+        if basis.shape[0] != n_obs:
+            raise ValueError(
+                f"All matrices must have same number of rows. bases[0] has {n_obs}, bases[{i}] has {basis.shape[0]}"
+            )
 
-    result = np.ones((n, total_cols))
+    dims = [basis.shape[1] for basis in bases]
+    total_cols = int(np.prod(dims))
+    result = np.empty((n_obs, total_cols), dtype=np.float64)
 
-    for row in range(n):
-        rows = [b[row, :] for b in bases]
+    for row in range(n_obs):
+        row_vectors = [basis[row, :] for basis in bases]
 
-        tensor_row = rows[0]
-        for r in rows[1:]:
-            tensor_row = np.kron(tensor_row, r)
+        tensor_row = row_vectors[0].copy()
+        for vec in row_vectors[1:]:
+            tensor_row = np.kron(tensor_row, vec)
 
         result[row, :] = tensor_row
 
     return result
 
 
-def glp_model_matrix(bases: list[np.ndarray]) -> np.ndarray:
-    """Construct generalized linear product (GLP) basis matrix.
+def glp_model_matrix(bases):
+    r"""Construct generalized linear product (GLP) model matrix.
+
+    Produces model matrices for generalized polynomial smooths from marginal
+    basis model matrices. The GLP creates a hierarchical polynomial structure
+    where terms of different orders can be included, providing a more
+    parsimonious alternative to full tensor products while retaining good
+    approximation capabilities.
 
     Parameters
     ----------
     bases : list of ndarray
-        List of basis matrices for each variable.
+        List of model matrices for marginal bases. Each matrix must have
+        the same number of rows (observations).
 
     Returns
     -------
     ndarray
-        GLP basis matrix with hierarchical structure.
+        GLP model matrix with hierarchical polynomial structure.
+
+    References
+    ----------
+
+    .. [1] Hall, P., & Racine, J. S. (2015). Cross-validated generalized
+        local polynomial regression. Journal of Econometrics, 184(2), 328-346.
     """
     if not bases:
-        return np.array([[]])
+        raise ValueError("bases cannot be empty")
 
-    n = bases[0].shape[0]
+    for i, basis in enumerate(bases):
+        if not isinstance(basis, np.ndarray):
+            raise TypeError(f"bases[{i}] must be a NumPy array")
+        if basis.ndim != 2:
+            raise ValueError(f"bases[{i}] must be 2-dimensional")
 
-    P = np.hstack(bases)
+    n_obs = bases[0].shape[0]
+
+    for i, basis in enumerate(bases[1:], 1):
+        if basis.shape[0] != n_obs:
+            raise ValueError(
+                f"All matrices must have same number of rows. bases[0] has {n_obs}, bases[{i}] has {basis.shape[0]}"
+            )
+
+    if n_obs == 0:
+        return np.empty((0, 0))
 
     num_bases = len(bases)
-    if num_bases > 1:
-        for i in range(num_bases):
-            for j in range(i + 1, num_bases):
-                interaction = bases[i][:, :, np.newaxis] * bases[j][:, np.newaxis, :]
-                interaction = interaction.reshape(n, -1)
-                P = np.hstack([P, interaction])
+    result_matrices = []
 
-    return P
+    for basis in bases:
+        result_matrices.append(basis)
+
+    for i, j in combinations(range(num_bases), 2):
+        interaction = _compute_basis_interaction([bases[i], bases[j]])
+        result_matrices.append(interaction)
+
+    for order in range(3, num_bases + 1):
+        for indices in combinations(range(num_bases), order):
+            selected_bases = [bases[idx] for idx in indices]
+            interaction = _compute_basis_interaction(selected_bases)
+            result_matrices.append(interaction)
+
+    if result_matrices:
+        return np.hstack(result_matrices)
+    return np.ones((n_obs, 1))
+
+
+def _compute_basis_interaction(bases):
+    """Compute interaction terms between basis functions.
+
+    Parameters
+    ----------
+    bases : list of ndarray
+        List of basis matrices to interact.
+
+    Returns
+    -------
+    ndarray
+        Matrix of interaction terms.
+    """
+    if len(bases) == 1:
+        return bases[0]
+
+    n_obs = bases[0].shape[0]
+
+    dims = [basis.shape[1] for basis in bases]
+    total_interactions = int(np.prod(dims))
+
+    result = np.empty((n_obs, total_interactions))
+
+    col_idx = 0
+
+    for indices in product(*[range(dim) for dim in dims]):
+        interaction_col = np.ones(n_obs)
+        for basis_idx, func_idx in enumerate(indices):
+            interaction_col *= bases[basis_idx][:, func_idx]
+
+        result[:, col_idx] = interaction_col
+        col_idx += 1
+
+    return result
