@@ -226,33 +226,6 @@ def _glp_model_matrix_impl(bases_flat, n_obs, dims):
 if HAS_NUMBA:
 
     @nb.njit(cache=True)
-    def _check_full_rank_crossprod_impl(x, tol=None):
-        """Check if :math:`X'X` has full rank using eigenvalue decomposition."""
-        xtx = np.zeros((x.shape[1], x.shape[1]))
-        for i in range(x.shape[0]):
-            for j in range(x.shape[1]):
-                for k in range(x.shape[1]):
-                    xtx[j, k] += x[i, j] * x[i, k]
-
-        eigenvalues = np.linalg.eigvals(xtx).real
-        eigenvalues = np.sort(eigenvalues)
-
-        n, p = x.shape
-        max_dim = max(n, p)
-
-        min_eig = eigenvalues[0]
-        max_eig = eigenvalues[-1]
-
-        if tol is None:
-            max_sqrt_eig = np.sqrt(np.max(np.abs(eigenvalues)))
-            tol = max_dim * max_sqrt_eig * np.finfo(np.float64).eps
-
-        is_full_rank = max_eig > 0 and np.abs(min_eig / max_eig) > tol
-        condition_number = np.abs(max_eig / min_eig) if min_eig != 0 else np.inf
-
-        return is_full_rank, condition_number, min_eig, max_eig
-
-    @nb.njit(cache=True)
     def _compute_rsquared_impl(y, y_pred):
         """Compute R-squared between observed and predicted values."""
         y_mean = 0.0
@@ -280,33 +253,6 @@ if HAS_NUMBA:
         if r_squared > 1.0:
             return 1.0
         return r_squared
-
-    @nb.njit(cache=True)
-    def _matrix_sqrt_eigendecomp_impl(x):
-        """Compute matrix square root using eigendecomposition."""
-        eigenvalues, eigenvectors = np.linalg.eig(x)
-        eigenvalues = eigenvalues.real
-        eigenvectors = eigenvectors.real
-
-        sqrt_eigenvalues = np.zeros_like(eigenvalues)
-        for i, eigenvalue in enumerate(eigenvalues):
-            if eigenvalue > 0:
-                sqrt_eigenvalues[i] = np.sqrt(eigenvalue)
-
-        n = x.shape[0]
-        temp = np.zeros((n, n))
-        result = np.zeros((n, n))
-
-        for i in range(n):
-            for j in range(n):
-                temp[i, j] = eigenvectors[i, j] * sqrt_eigenvalues[j]
-
-        for i in range(n):
-            for j in range(n):
-                for k in range(n):
-                    result[i, j] += temp[i, k] * eigenvectors[j, k]
-
-        return result
 
     @nb.njit(cache=True)
     def _create_nonzero_divisor_impl(a, eps):
