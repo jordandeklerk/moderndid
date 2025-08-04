@@ -203,9 +203,8 @@ def test_tensor_prod_model_matrix(basis_list):
 
 
 def test_tensor_prod_empty():
-    result = tensor_prod_model_matrix([])
-    assert result.shape == (1, 1)
-    assert result[0, 0] == 1.0
+    with pytest.raises(ValueError, match="bases cannot be empty"):
+        tensor_prod_model_matrix([])
 
 
 def test_glp_model_matrix_basic():
