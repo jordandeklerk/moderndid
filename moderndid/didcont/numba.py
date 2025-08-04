@@ -25,8 +25,6 @@ __all__ = [
     "glp_model_matrix",
 ]
 
-# TODO: Add tests for numba functions
-
 
 def _check_full_rank_crossprod_impl(x, tol=None):
     """Check if :math:`X'X` has full rank using eigenvalue decomposition."""
