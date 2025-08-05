@@ -5,14 +5,53 @@ Continuous Treatment DiD
 
 Placeholder for background.
 
-Theoretical Background
-----------------------
+Background
+----------
 
 .. note::
    Theoretical background for continuous treatment DiD to be added.
 
-Functions
----------
+Top Level Functions
+-------------------
 
-.. note::
-   API documentation for main functions will be added as they are implemented.
+.. currentmodule:: moderndid
+
+.. autosummary::
+   :toctree: generated/
+
+   npiv
+
+Confidence Bands
+----------------
+
+.. autosummary::
+   :toctree: generated/
+
+   compute_cck_ucb
+   compute_ucb
+
+Estimators
+----------
+
+.. autosummary::
+   :toctree: generated/
+
+   npiv_est
+
+Dimension Selection
+-------------------
+
+.. autosummary::
+   :toctree: generated/
+
+   npiv_choose_j
+   npiv_j
+   npiv_jhat_max
+
+Splines
+-------
+
+.. autosummary::
+   :toctree: generated/
+
+   prodspline

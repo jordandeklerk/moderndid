@@ -3,7 +3,12 @@
 from .npiv import (
     BSplineBasis,
     MultivariateBasis,
+    NPIVResult,
+    compute_ucb,
     gsl_bs,
+    npiv,
+    npiv_choose_j,
+    npiv_est,
     predict_gsl_bs,
     prodspline,
 )
@@ -16,7 +21,15 @@ from .utils import (
 )
 
 __all__ = [
-    # NPIV functions
+    # Main NPIV estimation functions
+    "npiv",
+    "npiv_est",
+    "compute_ucb",
+    # Dimension selection functions
+    "npiv_choose_j",
+    # Result types
+    "NPIVResult",
+    # B-spline and basis construction
     "BSplineBasis",
     "MultivariateBasis",
     "gsl_bs",

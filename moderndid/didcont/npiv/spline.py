@@ -147,7 +147,7 @@ def prodspline(
                 if knots == "uniform":
                     knots_vec = None
                 else:
-                    probs = np.linspace(0, 1, K[i, 1] + 1)
+                    probs = np.linspace(0, 1, K[i, 1] + 2)
                     knots_vec = np.quantile(x[:, i], probs)
                     knots_vec = knots_vec + np.linspace(
                         0,
@@ -159,7 +159,7 @@ def prodspline(
                     basis_obj = gsl_bs(
                         x=x[:, i],
                         degree=K[i, 0],
-                        nbreak=K[i, 1] + 1,
+                        nbreak=K[i, 1] + 2,
                         knots=knots_vec,
                         deriv=deriv,
                         x_min=x_min[i] if x_min is not None else None,
@@ -170,7 +170,7 @@ def prodspline(
                     basis_obj = gsl_bs(
                         x=x[:, i],
                         degree=K[i, 0],
-                        nbreak=K[i, 1] + 1,
+                        nbreak=K[i, 1] + 2,
                         knots=knots_vec,
                         x_min=x_min[i] if x_min is not None else None,
                         x_max=x_max[i] if x_max is not None else None,
