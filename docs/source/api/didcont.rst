@@ -21,6 +21,14 @@ Top Level Functions
 
    npiv
 
+Estimators
+----------
+
+.. autosummary::
+   :toctree: generated/
+
+   npiv_est
+
 Confidence Bands
 ----------------
 
@@ -29,14 +37,6 @@ Confidence Bands
 
    compute_cck_ucb
    compute_ucb
-
-Estimators
-----------
-
-.. autosummary::
-   :toctree: generated/
-
-   npiv_est
 
 Dimension Selection
 -------------------

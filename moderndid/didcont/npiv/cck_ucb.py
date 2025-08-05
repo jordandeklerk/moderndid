@@ -1,4 +1,4 @@
-"""Uniform confidence bands for data-driven nonparametric instrumental variables."""
+"""Honest uniform confidence bands."""
 
 import numpy as np
 
@@ -30,7 +30,7 @@ def compute_cck_ucb(
     seed=None,
     selection_result=None,
 ):
-    r"""Compute UCBs using a data-driven procedure.
+    r"""Compute honest and adaptive UCBs.
 
     Implements the data-driven uniform confidence band (UCB) construction from [1]_.
     These UCBs are honest, guaranteeing uniform coverage over a class of data-generating
@@ -110,6 +110,10 @@ def compute_cck_ucb(
     -------
     NPIVResult
         NPIV results with CCK uniform confidence bands.
+
+    See Also
+    --------
+    compute_ucb : Compute UCBs using under-smoothing
 
     References
     ----------

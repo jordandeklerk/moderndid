@@ -114,6 +114,10 @@ def compute_ucb(
     NPIVResult
         NPIV results with uniform confidence bands included.
 
+    See Also
+    --------
+    compute_cck_ucb : Compute honest and adaptive UCBs
+
     References
     ----------
 

@@ -38,9 +38,12 @@ def npiv(
     r"""Estimate nonparametric instrumental variables model with uniform confidence bands.
 
     Estimates the structural function :math:`h_0(x)` in the nonparametric IV model
-    :math:`\mathbb{E}[Y - h_0(X) \mid W] = 0` using B-spline sieves. Provides
-    data-driven dimension selection when sieve dimensions are not specified, and
-    constructs uniform confidence bands via multiplier bootstrap.
+
+    .. math::
+        \mathbb{E}[Y - h_0(X) \mid W] = 0
+
+    using B-spline sieves. Provides data-driven dimension selection when sieve dimensions
+    are not specified, and constructs uniform confidence bands via multiplier bootstrap.
 
     Parameters
     ----------
@@ -104,25 +107,28 @@ def npiv(
     NPIVResult
         NPIVResult object containing:
 
-        - h: Function estimates
-        - h_lower, h_upper: Uniform confidence bands for function estimates
-        - deriv: Derivative estimates
-        - h_lower_deriv, h_upper_deriv: Uniform confidence bands for derivative estimates
-        - beta: Coefficient vector
-        - asy_se, deriv_asy_se: Asymptotic standard errors
-        - cv, cv_deriv: Critical values for confidence bands
-        - residuals: Model residuals
-        - j_x_degree, j_x_segments: :math:`X` basis parameters
-        - k_w_degree, k_w_segments: :math:`W` basis parameters
-        - args: Additional diagnostic information
+        - **h**: Function estimates
+        - **h_lower**, **h_upper**: Uniform confidence bands for function estimates
+        - **deriv**: Derivative estimates
+        - **h_lower_deriv**, **h_upper_deriv**: Uniform confidence bands for derivative estimates
+        - **beta**: Coefficient vector
+        - **asy_se**, **deriv_asy_se**: Asymptotic standard errors
+        - **cv**, **cv_deriv**: Critical values for confidence bands
+        - **residuals**: Model residuals
+        - **j_x_degree**, **j_x_segments**: :math:`X` basis parameters
+        - **k_w_degree**, **k_w_segments**: :math:`W` basis parameters
+        - **args**: Additional diagnostic information
 
     Notes
     -----
-    The NPIV estimator solves the population moment condition :math:`\mathbb{E}[W \epsilon] = 0` by
-    projecting onto the space spanned by the instrument basis functions.
+    The NPIV estimator solves the population moment condition
 
-    For the choice of basis dimensions, when `j_x_segments` is not provided,
-    the function uses Lepski's method for data-driven selection following [1]_.
+    .. math::
+        \mathbb{E}[W \epsilon] = 0
+
+    by projecting onto the space spanned by the instrument basis functions. For the
+    choice of basis dimensions, when `j_x_segments` is not provided, the function uses
+    Lepski's method for data-driven selection following [1]_.
 
     The uniform confidence bands are constructed using the supremum of
     studentized bootstrap statistics, providing simultaneous coverage

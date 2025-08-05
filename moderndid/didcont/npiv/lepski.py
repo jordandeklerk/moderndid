@@ -28,7 +28,7 @@ def npiv_j(
     check_is_fullrank=False,
     seed=None,
 ):
-    r"""Implement Lepski's method for optimal :math:`J` selection.
+    r"""Implement Lepski's method for optimal sieve dimension selection.
 
     Implements the bootstrap-based test from [1]_ for selecting the optimal number of
     B-spline basis functions in nonparametric instrumental variables (NPIV) estimation.
@@ -96,12 +96,17 @@ def npiv_j(
     dict
         Dictionary containing:
 
-        - "j_tilde": Selected J value
-        - "j_hat": Unadjusted Lepski choice
-        - "j_hat_n": Truncated value
-        - "j_x_seg": Final selected J segments
-        - "k_w_seg": Corresponding K segments
-        - "theta_star": Bootstrap critical value
+        - **j_tilde**: Selected J value
+        - **j_hat**: Unadjusted Lepski choice
+        - **j_hat_n**: Truncated value
+        - **j_x_seg**: Final selected J segments
+        - **k_w_seg**: Corresponding K segments
+        - **theta_star**: Bootstrap critical value
+
+    See Also
+    --------
+    npiv_choose_j : Full data-driven selection procedure
+    npiv_jhat_max : Compute maximum feasible dimension
 
     References
     ----------
@@ -398,10 +403,15 @@ def npiv_jhat_max(
     dict
         Dictionary containing:
 
-        - "j_x_segments_set": Array of J values to test
-        - "k_w_segments_set": Corresponding K values
-        - "j_hat_max": Maximum feasible dimension
-        - "alpha_hat": Recommended alpha for testing
+        - **j_x_segments_set**: Array of J values to test
+        - **k_w_segments_set**: Corresponding K values
+        - **j_hat_max**: Maximum feasible dimension
+        - **alpha_hat**: Recommended alpha for testing
+
+    See Also
+    --------
+    npiv_choose_j : Full data-driven selection procedure
+    npiv_j : Lepski-style selection procedure
 
     References
     ----------
