@@ -80,11 +80,11 @@ def prodspline(
     MultivariateBasis
         NamedTuple containing:
 
-        - basis: Complete basis matrix
-        - dim_no_tensor: Number of columns before tensor product
-        - degree_matrix: Copy of K matrix
-        - n_segments: Number of segments for each variable
-        - basis_type: Type of basis used
+        - **basis**: Complete basis matrix
+        - **dim_no_tensor**: Number of columns before tensor product
+        - **degree_matrix**: Copy of K matrix
+        - **n_segments**: Number of segments for each variable
+        - **basis_type**: Type of basis used
 
     References
     ----------

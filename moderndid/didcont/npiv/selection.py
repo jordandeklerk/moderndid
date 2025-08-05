@@ -29,11 +29,13 @@ def npiv_choose_j(
     data-driven sieve dimension, :math:`\tilde{J}`, that is sup-norm rate-adaptive. This means
     it adapts to unknown features of the data-generating process (e.g., smoothness of
     :math:`h_0`, instrument strength) to achieve the minimax optimal convergence rate in sup-norm,
-    :math:`\sup_x |\hat{h}_{\tilde{J}}(x) - h_0(x)|`.
+
+    .. math::
+        \sup_x |\hat{h}_{\tilde{J}}(x) - h_0(x)|.
 
     The procedure involves two main steps. First, determine a maximum feasible dimension, :math:`\hat{J}_{\max}`,
     based on the sample size and an estimate of the sieve measure of ill-posedness, :math:`\hat{s}_J^{-1}`.
-    This step defines the search grid :math:`\hat{\mathcal{J}}`, e.g.,
+    This step defines the search grid :math:`\hat{\mathcal{J}}` as
 
     .. math::
         \hat{J}_{\max} = \min \left\{ J \in \mathcal{T} : J \sqrt{\log J} \hat{s}_J^{-1} \leq c \sqrt{n} \right\}.
@@ -89,12 +91,17 @@ def npiv_choose_j(
     dict
         Dictionary containing:
 
-        - "j_x_segments": Selected number of segments for :math:`X`
-        - "k_w_segments": Corresponding segments for :math:`W`
-        - "j_tilde": Selected dimension
-        - "theta_star": Bootstrap critical value
-        - "j_hat_max": Maximum feasible dimension
+        - **j_x_segments**: Selected number of segments for :math:`X`
+        - **k_w_segments**: Corresponding segments for :math:`W`
+        - **j_tilde**: Selected dimension
+        - **theta_star**: Bootstrap critical value
+        - **j_hat_max**: Maximum feasible dimension
         - Additional diagnostic information
+
+    See Also
+    --------
+    npiv_jhat_max : Compute maximum feasible dimension
+    npiv_j : Lepski-style test for dimension selection
 
     References
     ----------

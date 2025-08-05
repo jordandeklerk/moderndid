@@ -13,7 +13,17 @@ def aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps=None):
 
     For panel data settings (where the same units are observed before and after treatment),
     this estimator combines inverse propensity weighting with outcome regression approaches
-    to achieve double robustness.
+    to achieve double robustness. The estimator is given by equation (3.7) in [1]_ as
+
+    .. math::
+        \widehat{\tau}_{imp}^{dr, p} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{p}(D) -
+        \widehat{w}_{0}^{p}(D, X ; \widehat{\gamma}^{ipt})\right)
+        \left(\Delta Y - \mu_{0, \Delta}^{lin, p}(X ; \widehat{\beta}_{0, \Delta}^{wls, p})\right)\right],
+
+    where :math:`\widehat{w}_{1}^{p}(D)` and :math:`\widehat{w}_{0}^{p}(D, X ; \widehat{\gamma}^{ipt})`
+    are normalized weights for the treated and control groups, respectively, :math:`\Delta Y` is the
+    change in outcomes, and :math:`\mu_{0, \Delta}^{lin, p}` is the predicted outcome change for the
+    control group from a weighted least squares regression.
 
     Parameters
     ----------
@@ -116,7 +126,16 @@ def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights, trim_ps=None):
     For repeated cross-section settings (where different units are observed in pre and post periods),
     this improved estimator provides a doubly robust approach that combines inverse propensity
     weighting with outcome regression. It only requires modeling the outcomes for control units and
-    does not model outcomes for the treated group.
+    does not model outcomes for the treated group. The estimator is given by equation (3.9) in [1]_ as
+
+    .. math::
+        \widehat{\tau}_{1,imp}^{dr,rc} = \mathbb{E}_{n}\left[\left(\widehat{w}_{1}^{rc}(D,T) -
+        \widehat{w}_{0}^{rc}(D,T,X;\widehat{\gamma}^{ipt})\right)
+        (Y - \mu_{0,Y}^{lin,rc}(X;\widehat{\beta}_{0,1}^{wls,rc}, \widehat{\beta}_{0,0}^{wls,rc}))\right],
+
+    where the weights :math:`\widehat{w}` are functions of the treatment status :math:`D` and time
+    period :math:`T`, and :math:`\mu_{0,Y}^{lin,rc}` is the predicted outcome for the control group
+    from a weighted least squares regression. This estimator is doubly robust but not locally efficient.
 
     Parameters
     ----------
@@ -229,7 +248,19 @@ def aipw_did_rc_imp2(
 
     For repeated cross-section settings (where different units are observed in pre and post periods),
     this estimator achieves local efficiency by incorporating all four outcome regression predictions
-    (for treated and control units in both time periods).
+    (for treated and control units in both time periods). The estimator is given by equation (3.10)
+    in [1]_ as
+
+    .. math::
+        \widehat{\tau}_{2,imp}^{dr,rc} = \widehat{\tau}_{1,imp}^{dr,rc} +
+        \mathbb{E}_{n}\left[\left(\frac{D}{\mathbb{E}_{n}[D]} - \widehat{w}_{1,1}^{rc}(D,T)\right)
+        (\mu_{1,1}^{rc}(X) - \mu_{0,1}^{rc}(X))\right]
+        \\
+        - \mathbb{E}_{n}\left[\left(\frac{D}{\mathbb{E}_{n}[D]} - \widehat{w}_{1,0}^{rc}(D,T)\right)
+        (\mu_{1,0}^{rc}(X) - \mu_{0,0}^{rc}(X))\right],
+
+    where :math:`\widehat{\tau}_{1,imp}^{dr,rc}` is the simplified AIPW estimator, and the additional
+    terms provide an adjustment that makes the estimator locally efficient.
 
     Parameters
     ----------

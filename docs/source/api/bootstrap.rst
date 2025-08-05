@@ -3,14 +3,6 @@
 Bootstrap Methods
 =================
 
-Placeholder for background.
-
-Theoretical Background
-----------------------
-
-.. note::
-   Theoretical background for bootstrap inference methods in DiD to be added.
-
 Functions
 ---------
 
@@ -18,8 +10,6 @@ Functions
 
 Panel Data Bootstrap
 ~~~~~~~~~~~~~~~~~~~~
-
-Bootstrap methods specifically designed for panel data structures:
 
 .. autosummary::
    :toctree: generated/
@@ -33,8 +23,6 @@ Bootstrap methods specifically designed for panel data structures:
 
 Repeated Cross-Section Bootstrap
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Bootstrap methods for repeated cross-sectional data:
 
 .. autosummary::
    :toctree: generated/
@@ -50,8 +38,6 @@ Bootstrap methods for repeated cross-sectional data:
 
 Multiplier Bootstrap
 ~~~~~~~~~~~~~~~~~~~~
-
-Multiplier bootstrap methods for inference based on influence functions:
 
 .. autosummary::
    :toctree: generated/

@@ -10,13 +10,36 @@ import statsmodels.api as sm
 
 
 def calculate_pscore_ipt(D, X, iw, quantiles=None):
-    """Calculate propensity scores using Inverse Probability Tilting.
+    r"""Calculate propensity scores using Inverse Probability Tilting for the ATT.
 
-    Inverse probability tilting (IPT) described in [1]_ involves specifying estimating
-    equations that fit the parameters of two or more generalized linear models with a
-    modification that ensures exact balance on the co-variate means. These estimating
-    equations are solved, and the estimated parameters are used in the (generalized)
-    propensity score, which is used to compute the weights.
+    Inverse Probability Tilting (IPT), as introduced by [1]_, is a semiparametric
+    method for covariate adjustment. The core idea is to reweight observations to
+    enforce balance in the moments of the covariate distribution between different
+    groups.
+
+    This function implements a specific variant of IPT tailored for estimating the
+    Average Treatment Effect on the Treated (ATT). Instead of re-weighting both
+    the treated and control groups to match the full sample, it estimates a
+    propensity score model that implies a re-weighting of the control group to
+    match the covariate distribution of the treated group. This is achieved by
+    solving the following optimization problem for the propensity score
+    parameters :math:`\gamma` given by
+
+    .. math::
+        \widehat{\gamma}^{ipt} = \arg\max_{\gamma \in \Gamma} \mathbb{E}_{n}
+        \left[D X^{\prime} \gamma - (1-D) \exp(X^{\prime} \gamma)\right].
+
+    The first-order condition of this problem implies the balancing property
+
+    .. math::
+        \sum_{i: D_i=1} w_i X_i = \sum_{i: D_i=0} w_i
+        \frac{\widehat{p}(X_i)}{1-\widehat{p}(X_i)} X_i,
+
+    where :math:`\widehat{p}(X) = \text{expit}(X'\widehat{\gamma}^{ipt})` is the estimated
+    propensity score (i.e., the logistic function, :math:`\exp(v) / (1 + \exp(v))`)
+    and :math:`w_i` are the observation weights. This property ensures that the
+    weighted average of covariates in the control group matches the weighted
+    average in the treated group, which is a key condition for identifying the ATT.
 
     Parameters
     ----------
@@ -36,11 +59,40 @@ def calculate_pscore_ipt(D, X, iw, quantiles=None):
     ndarray
         Propensity scores.
 
+    Notes
+    -----
+    The general IPT framework described in [1]_ for the ATE involves solving
+    two separate moment equations to find weights for the treated and control
+    groups that balance covariates with the full sample. These are given by
+    equations (8) and (11) in their paper
+
+    .. math::
+        \frac{1}{N} \sum_{i=1}^{N}\left\{\frac{D_{i}}
+        {G\left(t\left(X_{i}\right)^{\prime} \delta_{I P T}^{1}\right)}-1\right\}
+        t\left(X_{i}\right)=0
+
+    and
+
+    .. math::
+        \frac{1}{N} \sum_{i=1}^{N}\left\{\frac{1-D_{i}}
+        {1-G\left(t\left(X_{i}\right)^{\prime} \delta_{I P T}^{0}\right)}-1\right\}
+        t\left(X_{i}\right)=0.
+
+    This implementation, following [2]_, uses a single objective function tailored for
+    ATT estimation. The function attempts to solve this using a trust-constr optimizer,
+    falling back to a BFGS optimization of a modified loss function, and finally to a
+    standard logit model if the IPT optimizations fail.
+
     References
     ----------
+
     .. [1] Graham, B., Pinto, C., and Egel, D. (2012), "Inverse Probability Tilting for Moment
         Condition Models with Missing Data," The Review of Economic Studies, 79(3), 1053-1079.
         https://doi.org/10.1093/restud/rdr047
+
+    .. [2] Sant'Anna, P. H., and Zhao, J. (2020), "Inverse Probability Weighting with
+        Missing Data," Journal of the American Statistical Association, 115(530), 1542-1552.
+        https://doi.org/10.1080/01621459.2019.1635520
     """
     if np.all(iw == 0):
         warnings.warn(
