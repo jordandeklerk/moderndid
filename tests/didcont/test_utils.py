@@ -13,30 +13,6 @@ from moderndid.didcont import (
 )
 
 
-@pytest.fixture
-def rng():
-    return np.random.RandomState(42)
-
-
-@pytest.fixture
-def simple_matrix(rng):
-    return rng.randn(100, 5)
-
-
-@pytest.fixture
-def rank_deficient_matrix(rng):
-    x = np.ones((100, 3))
-    x[:, 1] = 2 * x[:, 0]
-    x[:, 2] = rng.randn(100)
-    return x
-
-
-@pytest.fixture
-def symmetric_psd_matrix(rng):
-    A = rng.randn(5, 5)
-    return A @ A.T
-
-
 def test_is_full_rank_basic(simple_matrix):
     result = is_full_rank(simple_matrix)
     assert result.is_full_rank is True
