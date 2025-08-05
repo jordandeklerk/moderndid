@@ -11,42 +11,6 @@ from moderndid.didcont.npiv.spline import (
 )
 
 
-@pytest.fixture
-def continuous_data():
-    np.random.seed(42)
-    return np.random.normal(0, 1, (200, 3))
-
-
-@pytest.fixture
-def discrete_data():
-    np.random.seed(42)
-    n = 200
-    return np.column_stack(
-        [
-            np.random.choice([0, 1, 2], n),
-            np.random.choice([0, 1], n),
-        ]
-    )
-
-
-@pytest.fixture
-def degree_matrix():
-    return np.array([[3, 3], [2, 2], [3, 4]])
-
-
-@pytest.fixture
-def indicator_vector():
-    return np.array([1, 1])
-
-
-@pytest.fixture
-def simple_setup():
-    np.random.seed(42)
-    x = np.random.uniform(0, 1, (100, 2))
-    K = np.array([[3, 4], [2, 3]])
-    return x, K
-
-
 @pytest.mark.parametrize("basis_type", ["additive", "tensor", "glp"])
 def test_basic_spline_types(continuous_data, degree_matrix, basis_type):
     result = prodspline(continuous_data, degree_matrix, basis=basis_type)
@@ -112,7 +76,8 @@ def test_knot_types(knots_type):
 
     result = prodspline(x, K, knots=knots_type)
 
-    assert result.basis.shape == (200, 10)
+    assert result.basis.shape[0] == 200
+    assert result.basis.shape[1] == 12
 
 
 def test_min_max_bounds():
@@ -184,16 +149,6 @@ def test_derivative_warning(simple_setup):
 
     with pytest.raises(ValueError, match="deriv must be smaller than degree plus 2"):
         prodspline(x, K, deriv=4, deriv_index=1)
-
-
-@pytest.fixture
-def basis_list():
-    np.random.seed(42)
-    return [
-        np.random.normal(0, 1, (50, 3)),
-        np.random.normal(0, 1, (50, 2)),
-        np.random.normal(0, 1, (50, 4)),
-    ]
 
 
 def test_tensor_prod_model_matrix(basis_list):

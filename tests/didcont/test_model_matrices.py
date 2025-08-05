@@ -7,23 +7,6 @@ import pytest
 from moderndid.didcont.npiv.spline import glp_model_matrix, tensor_prod_model_matrix
 
 
-@pytest.fixture
-def simple_bases():
-    return [
-        np.array([[1, 2], [3, 4], [5, 6]]),
-        np.array([[0.5, 1.5], [2.5, 3.5], [4.5, 5.5]]),
-    ]
-
-
-@pytest.fixture
-def three_bases():
-    return [
-        np.array([[1, 2], [3, 4]]),
-        np.array([[1], [2]]),
-        np.array([[0.5, 1.5, 2.5], [3.5, 4.5, 5.5]]),
-    ]
-
-
 def test_tensor_prod_basic_functionality(simple_bases):
     result = tensor_prod_model_matrix(simple_bases)
 

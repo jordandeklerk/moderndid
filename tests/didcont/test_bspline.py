@@ -7,24 +7,8 @@ import pytest
 from moderndid.didcont.npiv.gsl_bspline import gsl_bs, predict_gsl_bs
 
 
-@pytest.fixture
-def simple_data():
-    return np.linspace(0, 1, 100)
-
-
-@pytest.fixture
-def random_data():
-    np.random.seed(42)
-    return np.random.uniform(0, 10, 200)
-
-
-@pytest.fixture
-def sparse_data():
-    return np.array([0.1, 0.1, 0.1, 0.9, 0.9, 0.9])
-
-
-def test_basic_bspline_construction(simple_data):
-    result = gsl_bs(simple_data, degree=3, nbreak=4)
+def test_basic_bspline_construction(bspline_simple_data):
+    result = gsl_bs(bspline_simple_data, degree=3, nbreak=4)
 
     assert result.basis.shape == (100, 5)
     assert result.degree == 3
@@ -53,21 +37,21 @@ def test_bspline_with_intercept(degree, nbreak, intercept, expected_shape):
 
 
 @pytest.mark.parametrize("deriv", [0, 1, 2, 3])
-def test_bspline_derivatives(simple_data, deriv):
-    result = gsl_bs(simple_data, degree=3, nbreak=5, deriv=deriv)
+def test_bspline_derivatives(bspline_simple_data, deriv):
+    result = gsl_bs(bspline_simple_data, degree=3, nbreak=5, deriv=deriv)
 
     assert result.basis.shape == (100, 6)
     assert result.deriv == deriv
 
     if deriv > 0:
-        result0 = gsl_bs(simple_data, degree=3, nbreak=5, deriv=0)
+        result0 = gsl_bs(bspline_simple_data, degree=3, nbreak=5, deriv=0)
         assert not np.allclose(result.basis, result0.basis)
 
 
-def test_custom_knots(random_data):
+def test_custom_knots(random_uniform_data):
     custom_knots = np.array([0, 2.5, 5, 7.5, 10])
 
-    result = gsl_bs(random_data, degree=3, nbreak=5, knots=custom_knots)
+    result = gsl_bs(random_uniform_data, degree=3, nbreak=5, knots=custom_knots)
 
     assert result.nbreak == 5
     assert np.allclose(result.knots, custom_knots)
@@ -98,8 +82,8 @@ def test_boundary_extrapolation():
 
 
 @pytest.fixture
-def basis_obj(simple_data):
-    return gsl_bs(simple_data, degree=3, nbreak=5)
+def basis_obj(bspline_simple_data):
+    return gsl_bs(bspline_simple_data, degree=3, nbreak=5)
 
 
 def test_predict_gsl_bs(basis_obj):
@@ -136,9 +120,9 @@ def test_high_degree_derivative_warning():
         ({"x_min": 1.0, "x_max": 0.0}, "x_min must be less than x_max"),
     ],
 )
-def test_input_validation(simple_data, bad_input, error_match):
+def test_input_validation(bspline_simple_data, bad_input, error_match):
     with pytest.raises(ValueError, match=error_match):
-        gsl_bs(simple_data, **bad_input)
+        gsl_bs(bspline_simple_data, **bad_input)
 
 
 def test_knot_adjustment_warning():
@@ -188,8 +172,8 @@ def test_various_data_sizes(n_points, expected_shape):
     assert result.basis.shape == expected_shape
 
 
-def test_basis_sum_to_one(simple_data):
-    result = gsl_bs(simple_data, degree=3, nbreak=4, intercept=True)
+def test_basis_sum_to_one(bspline_simple_data):
+    result = gsl_bs(bspline_simple_data, degree=3, nbreak=4, intercept=True)
 
     row_sums = np.sum(result.basis, axis=1)
     assert np.allclose(row_sums, 1.0, rtol=1e-10)

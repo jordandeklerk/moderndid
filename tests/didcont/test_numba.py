@@ -9,43 +9,6 @@ import pytest
 from moderndid.didcont import numba as nb_module
 
 
-@pytest.fixture
-def matrices_small():
-    np.random.seed(42)
-    n = 50
-    x = np.random.randn(n, 10)
-    y = np.random.randn(n)
-    y_pred = y + 0.1 * np.random.randn(n)
-    symmetric_matrix = np.eye(5) + 0.1 * np.random.randn(5, 5)
-    symmetric_matrix = (symmetric_matrix + symmetric_matrix.T) / 2
-    return x, y, y_pred, symmetric_matrix
-
-
-@pytest.fixture
-def matrices_large():
-    np.random.seed(42)
-    n = 5000
-    p = 100
-    x = np.random.randn(n, p)
-    y = np.random.randn(n)
-    y_pred = y + 0.1 * np.random.randn(n)
-    symmetric_matrix = np.eye(50) + 0.1 * np.random.randn(50, 50)
-    symmetric_matrix = (symmetric_matrix + symmetric_matrix.T) / 2
-    return x, y, y_pred, symmetric_matrix
-
-
-@pytest.fixture
-def basis_matrices():
-    np.random.seed(42)
-    n_obs = 100
-    bases = [
-        np.random.randn(n_obs, 3),
-        np.random.randn(n_obs, 4),
-        np.random.randn(n_obs, 2),
-    ]
-    return bases
-
-
 def test_check_full_rank_crossprod_correctness(matrices_small):
     x, _, _, _ = matrices_small
 
