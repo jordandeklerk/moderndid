@@ -189,15 +189,19 @@ def test_basis_dimension_additive(degree_segments):
 def test_basis_dimension_tensor(degree_segments):
     degree, segments = degree_segments
     dim = basis_dimension("tensor", degree, segments)
-    expected = (2 + 1) * (3 + 2) * (4 + 3)
-    assert dim == expected
+    assert dim == 105
 
 
 def test_basis_dimension_glp():
     degree = np.array([2, 3])
     segments = np.array([1, 1])
     dim = basis_dimension("glp", degree, segments)
-    assert dim > 0
+    assert dim == 7
+
+    degree2 = np.array([3, 3, 3])
+    segments2 = np.array([1, 1, 1])
+    dim2 = basis_dimension("glp", degree2, segments2)
+    assert dim2 == 19
 
 
 def test_basis_dimension_zero_degree():
@@ -220,7 +224,8 @@ def test_basis_dimension_mismatched_inputs():
 
 
 def test_basis_dimension_missing_inputs():
-    assert basis_dimension("additive", None, None) == 0
+    with pytest.raises(ValueError, match="Both degree and segments must be provided"):
+        basis_dimension("additive", None, None)
 
     with pytest.raises(ValueError, match="Both degree and segments"):
         basis_dimension("additive", np.array([1]), None)

@@ -79,7 +79,7 @@ To construct tests, ARP exploits a conditional asymptotic approximation. Under m
 
 .. math::
 
-   Y_{n,0} - X_{n,0}\delta | \{Z_i\} \approx^d N \big(\mu_{n,0} - X_{n,0}\delta, \Sigma_0 \big).
+   Y_{n,0} - X_{n,0}\delta | \{Z_i\} \approx^d N \big(\mu_{n,0} - X_{n,0}\delta, \Sigma_0 \big)
 
 where :math:`Y_{n,0} = \frac{1}{\sqrt{n}}\sum_i Y_i(\beta_0)`, :math:`X_{n,0} = \frac{1}{\sqrt{n}}\sum_i X_i(\beta_0)`, :math:`\mu_{n,0} = \frac{1}{\sqrt{n}}\sum_i E_{P_{D|Z}}[Y_i(\beta_0)|Z_i]`, and :math:`\Sigma_0 = E_P[\text{Var}_{P_{D|Z}}(Y_i(\beta_0)|Z_i)]`. Crucially, the variance :math:`\Sigma_0` does not depend on :math:`\delta`, which substantially simplifies inference.
 

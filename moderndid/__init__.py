@@ -31,6 +31,16 @@ from moderndid.didcont import (
     is_full_rank,
     matrix_sqrt,
 )
+from moderndid.didcont.npiv import (
+    compute_cck_ucb,
+    compute_ucb,
+    npiv,
+    npiv_choose_j,
+    npiv_est,
+    npiv_j,
+    npiv_jhat_max,
+    prodspline,
+)
 from moderndid.didhonest import (
     APRCIResult,
     ARPNuisanceCIResult,
@@ -349,4 +359,13 @@ __all__ = [
     "matrix_sqrt",
     "avoid_zero_division",
     "basis_dimension",
+    # Continuous treatment DiD estimators
+    "npiv",
+    "npiv_est",
+    "npiv_choose_j",
+    "npiv_j",
+    "npiv_jhat_max",
+    "compute_cck_ucb",
+    "compute_ucb",
+    "prodspline",
 ]

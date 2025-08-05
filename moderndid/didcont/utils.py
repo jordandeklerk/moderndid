@@ -6,7 +6,6 @@ import numpy as np
 
 from .numba import (
     check_full_rank_crossprod,
-    compute_basis_dimension,
     compute_rsquared,
     create_nonzero_divisor,
     matrix_sqrt_eigendecomp,
@@ -184,22 +183,101 @@ def basis_dimension(basis="additive", degree=None, segments=None):
     if basis not in ("additive", "tensor", "glp"):
         raise ValueError("basis must be one of: 'additive', 'tensor', 'glp'")
 
-    if degree is None and segments is None:
-        return 0
-
     if degree is None or segments is None:
         raise ValueError("Both degree and segments must be provided")
 
-    degree = np.asarray(degree, dtype=np.int32)
-    segments = np.asarray(segments, dtype=np.int32)
+    degree = np.asarray(degree)
+    segments = np.asarray(segments)
 
     if degree.shape != segments.shape:
         raise ValueError("degree and segments must have the same shape")
 
-    degree = degree.ravel()
-    segments = segments.ravel()
+    K = np.column_stack([degree, segments])
 
-    if len(degree) == 0:
+    K_filtered = K[K[:, 0] > 0]
+
+    if K_filtered.shape[0] == 0:
         return 0
 
-    return int(compute_basis_dimension(basis, degree, segments))
+    if basis == "additive":
+        return int(np.sum(np.sum(K_filtered, axis=1) - 1))
+
+    if basis == "tensor":
+        return int(np.prod(np.sum(K_filtered, axis=1)))
+
+    if basis == "glp":
+        dimen = np.sum(K_filtered, axis=1) - 1
+        dimen = dimen[dimen > 0]
+        dimen = np.sort(dimen)[::-1]
+        k = len(dimen)
+
+        if k == 0:
+            return 0
+
+        nd1 = np.ones(dimen[0], dtype=int)
+        nd1[dimen[0] - 1] = 0
+
+        ncol_bs = dimen[0]
+
+        if k > 1:
+            for i in range(1, k):
+                dim_rt = _compute_glp_dimension_step(dimen[0], dimen[i], nd1, ncol_bs)
+                nd1 = dim_rt["nd1"]
+                ncol_bs = dim_rt["d12"]
+            ncol_bs += k - 1
+
+        return int(ncol_bs)
+
+    return 0
+
+
+def _compute_glp_dimension_step(d1, d2, nd1, pd12):
+    """Compute a step in the GLP dimension calculation."""
+    if d2 == 1:
+        return {"d12": pd12, "nd1": nd1}
+
+    d12 = d2
+    if d1 - d2 > 0:
+        for i in range(1, d1 - d2 + 1):
+            d12 += d2 * nd1[i - 1]
+
+    if d2 > 1:
+        for i in range(2, d2 + 1):
+            d12 += i * nd1[d1 - i]
+
+    d12 += nd1[d1 - 1]
+
+    nd2 = nd1.copy()
+    if d1 > 1:
+        for j_idx in range(d1 - 1):
+            j = j_idx + 1
+            nd2[j_idx] = 0
+            start_i = j
+            end_i = max(0, j - d2 + 1)
+            for i in range(start_i, end_i - 1, -1):
+                if i > 0:
+                    nd2[j_idx] += nd1[i - 1]
+                else:
+                    nd2[j_idx] += 1
+
+    if d2 > 1:
+        nd2[d1 - 1] = nd1[d1 - 1]
+        for i in range(d1 - d2 + 1, d1):
+            nd2[d1 - 1] += nd1[i - 1]
+    else:
+        nd2[d1 - 1] = nd1[d1 - 1]
+
+    return {"d12": d12, "nd1": nd2}
+
+
+def _quantile_basis(x, q):
+    """Compute quantiles for uniform confidence bands."""
+    x = np.asarray(x)
+    x_sorted = np.sort(x)
+    n = len(x_sorted)
+
+    index = q * n + 0.5
+    j = int(np.floor(index))
+    j_clamped = max(0, min(j - 1, n - 1))
+
+    return x_sorted[j_clamped]
