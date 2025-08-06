@@ -186,107 +186,26 @@ def npiv_j(
                 x_max=x_max,
             )
 
-            K_x_j1 = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j1 - 1)])
-            K_w_j1 = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k1 - 1)])
-            K_x_j2 = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j2 - 1)])
-            K_w_j2 = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k2 - 1)])
+            # basis and influence matrices for j1
+            psi_x_j1_eval, tmp_j1 = _compute_basis_and_influence(
+                x, w, x_grid, j1, k1, j_x_degree, k_w_degree, p_x, p_w, knots, basis, x_min, x_max, w_min, w_max
+            )
 
-            psi_x_j1 = prodspline(
-                x=x,
-                K=K_x_j1,
-                knots=knots,
-                basis=basis,
-                x_min=np.full(p_x, x_min) if x_min else None,
-                x_max=np.full(p_x, x_max) if x_max else None,
-            ).basis
-            b_w_j1 = prodspline(
-                x=w,
-                K=K_w_j1,
-                knots=knots,
-                basis=basis,
-                x_min=np.full(p_w, w_min) if w_min else None,
-                x_max=np.full(p_w, w_max) if w_max else None,
-            ).basis
+            # basis and influence matrices for j2
+            psi_x_j2_eval, tmp_j2 = _compute_basis_and_influence(
+                x, w, x_grid, j2, k2, j_x_degree, k_w_degree, p_x, p_w, knots, basis, x_min, x_max, w_min, w_max
+            )
 
-            psi_x_j2 = prodspline(
-                x=x,
-                K=K_x_j2,
-                knots=knots,
-                basis=basis,
-                x_min=np.full(p_x, x_min) if x_min else None,
-                x_max=np.full(p_x, x_max) if x_max else None,
-            ).basis
-            b_w_j2 = prodspline(
-                x=w,
-                K=K_w_j2,
-                knots=knots,
-                basis=basis,
-                x_min=np.full(p_w, w_min) if w_min else None,
-                x_max=np.full(p_w, w_max) if w_max else None,
-            ).basis
-
-            psi_x_j1_eval = prodspline(
-                x=x,
-                xeval=x_grid,
-                K=K_x_j1,
-                knots=knots,
-                basis=basis,
-                x_min=np.full(p_x, x_min) if x_min else None,
-                x_max=np.full(p_x, x_max) if x_max else None,
-            ).basis
-            psi_x_j2_eval = prodspline(
-                x=x,
-                xeval=x_grid,
-                K=K_x_j2,
-                knots=knots,
-                basis=basis,
-                x_min=np.full(p_x, x_min) if x_min else None,
-                x_max=np.full(p_x, x_max) if x_max else None,
-            ).basis
-
-            # Compute the influence matrices
-            btb_inv_j1 = np.linalg.pinv(b_w_j1.T @ b_w_j1)
-            design_matrix_j1 = psi_x_j1.T @ b_w_j1 @ btb_inv_j1 @ b_w_j1.T
-            gram_inv_j1 = np.linalg.pinv(design_matrix_j1 @ psi_x_j1)
-            tmp_j1 = gram_inv_j1 @ design_matrix_j1
-
-            btb_inv_j2 = np.linalg.pinv(b_w_j2.T @ b_w_j2)
-            design_matrix_j2 = psi_x_j2.T @ b_w_j2 @ btb_inv_j2 @ b_w_j2.T
-            gram_inv_j2 = np.linalg.pinv(design_matrix_j2 @ psi_x_j2)
-            tmp_j2 = gram_inv_j2 @ design_matrix_j2
-
-            # Compute the asymptotic covariance
             u_j1 = result_j1.residuals
             u_j2 = result_j2.residuals
 
-            # Variance-covariance matrices
-            D_j1_inv_rho = tmp_j1.T * u_j1[:, np.newaxis]
-            D_j1_var = D_j1_inv_rho.T @ D_j1_inv_rho
-            var_j1 = np.diag(psi_x_j1_eval @ D_j1_var @ psi_x_j1_eval.T)
+            z_sup[pair_idx], asy_se, (tmp_j1, tmp_j2, u_j1, u_j2) = _compute_test_statistic(
+                result_j1, result_j2, psi_x_j1_eval, psi_x_j2_eval, tmp_j1, tmp_j2, u_j1, u_j2
+            )
 
-            D_j2_inv_rho = tmp_j2.T * u_j2[:, np.newaxis]
-            D_j2_var = D_j2_inv_rho.T @ D_j2_inv_rho
-            var_j2 = np.diag(psi_x_j2_eval @ D_j2_var @ psi_x_j2_eval.T)
-
-            # Cross-covariance
-            cov_j1_j2 = np.diag(psi_x_j1_eval @ (D_j1_inv_rho.T @ D_j2_inv_rho) @ psi_x_j2_eval.T)
-
-            # Asymptotic standard error of difference
-            asy_var_diff = var_j1 + var_j2 - 2 * cov_j1_j2
-            asy_se = np.sqrt(np.maximum(asy_var_diff, 0))
-
-            # Sup t-statistic
-            diff = result_j1.h - result_j2.h
-            z_sup[pair_idx] = np.max(np.abs(diff) / avoid_zero_division(asy_se))
-
-            # Bootstrap
-            for b in range(boot_num):
-                boot_draws = boot_draws_all[b]
-                boot_diff_j1 = psi_x_j1_eval @ (tmp_j1 @ (u_j1 * boot_draws))
-                boot_diff_j2 = psi_x_j2_eval @ (tmp_j2 @ (u_j2 * boot_draws))
-                boot_diff = boot_diff_j1 - boot_diff_j2
-
-                z_sup_boot[b, pair_idx] = np.max(np.abs(boot_diff) / avoid_zero_division(asy_se))
+            z_sup_boot[:, pair_idx] = _bootstrap_comparison(
+                psi_x_j1_eval, psi_x_j2_eval, tmp_j1, tmp_j2, u_j1, u_j2, asy_se, boot_draws_all, boot_num
+            )
 
         except (ValueError, np.linalg.LinAlgError):
             z_sup[pair_idx] = np.inf
@@ -296,22 +215,7 @@ def npiv_j(
     theta_star = _quantile_basis(z_boot_max, 1 - alpha)
 
     # Lepski selection
-    num_j = len(j_x_segments_set)
-    test_mat = np.full((num_j, num_j), np.nan)
-
-    for pair_idx, (i, j, j1, j2) in enumerate(j1_j2_pairs):
-        test_mat[i, j] = z_sup[pair_idx] <= 1.1 * theta_star
-
-    test_vec = np.zeros(num_j - 1)
-    for i in range(num_j - 1):
-        test_vec[i] = np.all(test_mat[i, (i + 1) : num_j] == 1)
-
-    if np.any(test_vec == 1):
-        j_seg = j_x_segments_set[np.where(test_vec == 1)[0][0]]
-    elif np.all(test_vec == 0) or np.all(np.isnan(test_vec)):
-        j_seg = j_x_segments_set[-1]
-    else:
-        j_seg = j_x_segments_set[0]
+    j_seg, test_mat = _select_optimal_dimension(z_sup, j1_j2_pairs, j_x_segments_set, theta_star)
 
     j_hat = basis_dimension(
         basis=basis,
@@ -319,7 +223,7 @@ def npiv_j(
         segments=np.full(p_x, j_seg),
     )
 
-    # Truncated value (second-largest J)
+    # truncated value (second-largest j)
     if len(j_x_segments_set) > 1:
         j_seg_n = j_x_segments_set[-2]
     else:
@@ -428,7 +332,6 @@ def npiv_jhat_max(
 
     is_regression = np.array_equal(x, w)
 
-    # Maximum resolution level
     L_max = max(int(np.floor(np.log(n) / np.log(2 * p_x))), 3)
     j_x_segments_set = 2 ** np.arange(L_max + 1)
     k_w_segments_set = 2 ** (np.arange(L_max + 1) + k_w_smooth)
@@ -443,35 +346,23 @@ def npiv_jhat_max(
             if is_regression:
                 s_hat_j = max(1, (0.1 * np.log(n)) ** 4)
             else:
-                try:
-                    K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_x_segments - 1)])
-                    K_w = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k_w_segments - 1)])
-
-                    psi_x = prodspline(
-                        x=x,
-                        K=K_x,
-                        knots=knots,
-                        basis=basis,
-                        x_min=np.full(p_x, x_min) if x_min else None,
-                        x_max=np.full(p_x, x_max) if x_max else None,
-                    ).basis
-                    b_w = prodspline(
-                        x=w,
-                        K=K_w,
-                        knots=knots,
-                        basis=basis,
-                        x_min=np.full(p_w, w_min) if w_min else None,
-                        x_max=np.full(p_w, w_max) if w_max else None,
-                    ).basis
-
-                    psi_x_gram_sqrt = matrix_sqrt(np.linalg.pinv(psi_x.T @ psi_x))
-                    b_w_gram_sqrt = matrix_sqrt(np.linalg.pinv(b_w.T @ b_w))
-
-                    svd_matrix = psi_x_gram_sqrt @ (psi_x.T @ b_w) @ b_w_gram_sqrt
-                    s_hat_j = np.min(np.linalg.svd(svd_matrix, compute_uv=False))
-
-                except (ValueError, np.linalg.LinAlgError):
-                    s_hat_j = max(1, (0.1 * np.log(n)) ** 4)
+                s_hat_j = _compute_sieve_measure(
+                    x,
+                    w,
+                    j_x_segments,
+                    k_w_segments,
+                    j_x_degree,
+                    k_w_degree,
+                    p_x,
+                    p_w,
+                    knots,
+                    basis,
+                    x_min,
+                    x_max,
+                    w_min,
+                    w_max,
+                    n,
+                )
 
             j_x_dim = basis_dimension(
                 basis=basis,
@@ -507,3 +398,146 @@ def npiv_jhat_max(
         "j_hat_max": j_hat_max,
         "alpha_hat": alpha_hat,
     }
+
+
+def _compute_sieve_measure(
+    x, w, j_x_segments, k_w_segments, j_x_degree, k_w_degree, p_x, p_w, knots, basis, x_min, x_max, w_min, w_max, n
+):
+    """Compute sieve measure of ill-posedness."""
+    try:
+        K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_x_segments - 1)])
+        K_w = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k_w_segments - 1)])
+
+        psi_x = prodspline(
+            x=x,
+            K=K_x,
+            knots=knots,
+            basis=basis,
+            x_min=np.full(p_x, x_min) if x_min else None,
+            x_max=np.full(p_x, x_max) if x_max else None,
+        ).basis
+        b_w = prodspline(
+            x=w,
+            K=K_w,
+            knots=knots,
+            basis=basis,
+            x_min=np.full(p_w, w_min) if w_min else None,
+            x_max=np.full(p_w, w_max) if w_max else None,
+        ).basis
+
+        psi_x_gram_sqrt = matrix_sqrt(np.linalg.pinv(psi_x.T @ psi_x))
+        b_w_gram_sqrt = matrix_sqrt(np.linalg.pinv(b_w.T @ b_w))
+
+        svd_matrix = psi_x_gram_sqrt @ (psi_x.T @ b_w) @ b_w_gram_sqrt
+        s_hat_j = np.min(np.linalg.svd(svd_matrix, compute_uv=False))
+
+    except (ValueError, np.linalg.LinAlgError):
+        s_hat_j = max(1, (0.1 * np.log(n)) ** 4)
+
+    return s_hat_j
+
+
+def _compute_basis_and_influence(
+    x, w, x_grid, j_seg, k_seg, j_x_degree, k_w_degree, p_x, p_w, knots, basis, x_min, x_max, w_min, w_max
+):
+    """Compute basis matrices and influence components for a given dimension pair."""
+    K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_seg - 1)])
+    K_w = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k_seg - 1)])
+
+    psi_x = prodspline(
+        x=x,
+        K=K_x,
+        knots=knots,
+        basis=basis,
+        x_min=np.full(p_x, x_min) if x_min else None,
+        x_max=np.full(p_x, x_max) if x_max else None,
+    ).basis
+
+    b_w = prodspline(
+        x=w,
+        K=K_w,
+        knots=knots,
+        basis=basis,
+        x_min=np.full(p_w, w_min) if w_min else None,
+        x_max=np.full(p_w, w_max) if w_max else None,
+    ).basis
+
+    psi_x_eval = prodspline(
+        x=x,
+        xeval=x_grid,
+        K=K_x,
+        knots=knots,
+        basis=basis,
+        x_min=np.full(p_x, x_min) if x_min else None,
+        x_max=np.full(p_x, x_max) if x_max else None,
+    ).basis
+
+    # influence matrices
+    btb_inv = np.linalg.pinv(b_w.T @ b_w)
+    design_matrix = psi_x.T @ b_w @ btb_inv @ b_w.T
+    gram_inv = np.linalg.pinv(design_matrix @ psi_x)
+    tmp_matrix = gram_inv @ design_matrix
+
+    return psi_x_eval, tmp_matrix
+
+
+def _compute_test_statistic(result_j1, result_j2, psi_x_eval_j1, psi_x_eval_j2, tmp_j1, tmp_j2, u_j1, u_j2):
+    """Compute sup-t test statistic for comparing two estimators."""
+    # variance components
+    D_j1_inv_rho = tmp_j1.T * u_j1[:, np.newaxis]
+    D_j1_var = D_j1_inv_rho.T @ D_j1_inv_rho
+    var_j1 = np.diag(psi_x_eval_j1 @ D_j1_var @ psi_x_eval_j1.T)
+
+    D_j2_inv_rho = tmp_j2.T * u_j2[:, np.newaxis]
+    D_j2_var = D_j2_inv_rho.T @ D_j2_inv_rho
+    var_j2 = np.diag(psi_x_eval_j2 @ D_j2_var @ psi_x_eval_j2.T)
+
+    # cross-covariance
+    cov_j1_j2 = np.diag(psi_x_eval_j1 @ (D_j1_inv_rho.T @ D_j2_inv_rho) @ psi_x_eval_j2.T)
+
+    asy_var_diff = var_j1 + var_j2 - 2 * cov_j1_j2
+    asy_se = np.sqrt(np.maximum(asy_var_diff, 0))
+
+    # sup t-statistic
+    diff = result_j1.h - result_j2.h
+    z_sup = np.max(np.abs(diff) / avoid_zero_division(asy_se))
+
+    return z_sup, asy_se, (tmp_j1, tmp_j2, u_j1, u_j2)
+
+
+def _bootstrap_comparison(psi_x_eval_j1, psi_x_eval_j2, tmp_j1, tmp_j2, u_j1, u_j2, asy_se, boot_draws_all, boot_num):
+    """Perform bootstrap test for dimension pair comparison."""
+    z_boot = np.zeros(boot_num)
+
+    for b in range(boot_num):
+        boot_draws = boot_draws_all[b]
+        boot_diff_j1 = psi_x_eval_j1 @ (tmp_j1 @ (u_j1 * boot_draws))
+        boot_diff_j2 = psi_x_eval_j2 @ (tmp_j2 @ (u_j2 * boot_draws))
+        boot_diff = boot_diff_j1 - boot_diff_j2
+
+        z_boot[b] = np.max(np.abs(boot_diff) / avoid_zero_division(asy_se))
+
+    return z_boot
+
+
+def _select_optimal_dimension(z_sup, j1_j2_pairs, j_x_segments_set, theta_star):
+    """Apply Lepski selection criterion to choose optimal dimension."""
+    num_j = len(j_x_segments_set)
+    test_mat = np.full((num_j, num_j), np.nan)
+
+    for pair_idx, (i, j, _, _) in enumerate(j1_j2_pairs):
+        test_mat[i, j] = z_sup[pair_idx] <= 1.1 * theta_star
+
+    # check which j values pass the test
+    test_vec = np.zeros(num_j - 1)
+    for i in range(num_j - 1):
+        test_vec[i] = np.all(test_mat[i, (i + 1) : num_j] == 1)
+
+    if np.any(test_vec == 1):
+        j_seg = j_x_segments_set[np.where(test_vec == 1)[0][0]]
+    elif np.all(test_vec == 0) or np.all(np.isnan(test_vec)):
+        j_seg = j_x_segments_set[-1]
+    else:
+        j_seg = j_x_segments_set[0]
+
+    return j_seg, test_mat

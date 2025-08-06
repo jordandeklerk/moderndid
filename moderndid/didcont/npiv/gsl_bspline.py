@@ -143,6 +143,43 @@ def gsl_bs(
     )
 
 
+def predict_gsl_bs(
+    basis_obj,
+    newx=None,
+):
+    """Evaluate B-spline basis on new data points.
+
+    Parameters
+    ----------
+    basis_obj : BSplineBasis
+        Previously computed B-spline basis object.
+    newx : ndarray, optional
+        New data points. If None, returns the original basis.
+
+    Returns
+    -------
+    ndarray
+        B-spline basis matrix evaluated at new points.
+    """
+    if newx is None:
+        return basis_obj.basis
+
+    newx = np.asarray(newx).ravel()
+
+    new_basis = gsl_bs(
+        x=newx,
+        degree=basis_obj.degree,
+        nbreak=basis_obj.nbreak,
+        deriv=basis_obj.deriv,
+        x_min=basis_obj.x_min,
+        x_max=basis_obj.x_max,
+        intercept=basis_obj.intercept,
+        knots=basis_obj.knots,
+    )
+
+    return new_basis.basis
+
+
 def _compute_bspline_basis(
     x,
     degree,
@@ -237,40 +274,3 @@ def _compute_bspline_basis(
             B[or_, :] = xr @ (tt / scalef)
 
     return B
-
-
-def predict_gsl_bs(
-    basis_obj,
-    newx=None,
-):
-    """Evaluate B-spline basis on new data points.
-
-    Parameters
-    ----------
-    basis_obj : BSplineBasis
-        Previously computed B-spline basis object.
-    newx : ndarray, optional
-        New data points. If None, returns the original basis.
-
-    Returns
-    -------
-    ndarray
-        B-spline basis matrix evaluated at new points.
-    """
-    if newx is None:
-        return basis_obj.basis
-
-    newx = np.asarray(newx).ravel()
-
-    new_basis = gsl_bs(
-        x=newx,
-        degree=basis_obj.degree,
-        nbreak=basis_obj.nbreak,
-        deriv=basis_obj.deriv,
-        x_min=basis_obj.x_min,
-        x_max=basis_obj.x_max,
-        intercept=basis_obj.intercept,
-        knots=basis_obj.knots,
-    )
-
-    return new_basis.basis

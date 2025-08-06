@@ -1,3 +1,5 @@
+.. _contributing:
+
 =======================
 Contributing guidelines
 =======================
@@ -58,3 +60,11 @@ We follow the PEP 8 style guide. You can check your code with:
 .. code-block:: bash
 
    tox -e check
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Development
+   :hidden:
+
+   self
+   testing
