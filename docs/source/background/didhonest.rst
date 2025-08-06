@@ -1,19 +1,13 @@
-.. _didhonest:
+.. _background-didhonest:
 
 Honest DiD Sensitivity Analysis
 ===============================
 
-.. note::
-   Top level functions are designed to be accessible by the user. The low level API functions which power the top level functions are intended for advanced users who want to customize their sensitivity analysis beyond the provided wrappers and are displayed in the API reference for clarity.
-
 The ``didhonest`` module provides tools for conducting sensitivity analysis in difference-in-differences (DiD) models based on the work of `Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_. These methods allow researchers to assess how violations of the parallel trends assumption might affect their conclusions.
 This approach addresses the shortcomings of traditional pre-trends tests, which can suffer from low power against meaningful violations of parallel trends and can introduce statistical distortions from pre-testing.
 
-Background
-----------
-
 Model Setup and Causal Decomposition
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+------------------------------------
 
 The functionality of this module is based on a vector of "event-study coefficients", :math:`\hat{\boldsymbol{\beta}} \in \mathbb{R}^{\underline{T}+\bar{T}}`, which can be partitioned into coefficients for pre-treatment and post-treatment periods, :math:`\hat{\boldsymbol{\beta}} = (\hat{\boldsymbol{\beta}}_{pre}', \hat{\boldsymbol{\beta}}_{post}')'`. These coefficients can be obtained from various DiD estimators, such as the simple difference-in-differences in a non-staggered design, or more advanced estimators for staggered treatment adoption settings (e.g., `Callaway and Sant'Anna (2020) <https://psantanna.com/files/Callaway_SantAnna_2020.pdf>`_ or `Sun and Abraham (2020) <https://arxiv.org/pdf/1804.05785>`_).
 
@@ -28,7 +22,7 @@ The first term, :math:`\boldsymbol{\tau}`, represents the treatment effects of i
 The conventional parallel trends assumption imposes the strong restriction that :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`. This methods developed here relax that assumption.
 
 Partial Identification and the Restriction Set
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--------------------------------------------
 
 The goal is to conduct inference on a scalar parameter of interest, typically a linear combination of post-treatment effects, :math:`\theta = \mathbf{\ell}' \boldsymbol{\tau}_{post}`. Without assuming :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`, the parameter :math:`\theta` is only partially identified. Identification is achieved by assuming that the true trend violation, :math:`\boldsymbol{\delta}`, lies within a researcher-specified set :math:`\Delta`. The identified set for :math:`\theta` is the set of all values consistent with the data and the restriction :math:`\boldsymbol{\delta} \in \Delta`. This set is given by
 
@@ -59,7 +53,7 @@ The choice of :math:`\Delta` is critical and must be guided by economic context.
 - **Combined and Shape Restrictions**: The framework is flexible and can accommodate other assumptions, such as combining the RM and SD restrictions (**SDRM**), or imposing **Sign and Monotonicity Restrictions** based on knowledge of the economic setting (e.g., if the bias is known to be positive or increasing). If you believe that trends change smoothly over time, but are unsure about the exact level of smoothness, you can combine the smoothness and relative magnitude bounds approaches to set reasonable limits on trend changes.
 
 Inference Methods
-~~~~~~~~~~~~~~~~~
+-----------------
 
 The module provides two primary methods for constructing uniformly valid confidence sets for :math:`\theta` under the chosen restriction :math:`\boldsymbol{\delta} \in \Delta`.
 
@@ -104,12 +98,12 @@ where :math:`\sigma_0 = (\sigma_{0,1}, \ldots, \sigma_{0,k})'`. The dual represe
 The maximum is obtained at one of the finite set of vertices :math:`V(X_{n,0}, \sigma_0)` of the feasible set.
 
 ARP Testing Approaches
-~~~~~~~~~~~~~~~~~~~~~~
+----------------------
 
 ARP develops three testing approaches based on this structure. Each approach offers different trade-offs in terms of power and robustness.
 
 Least Favorable (LF) Test
-^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The least favorable (LF) test uses the critical value :math:`c_{\alpha,LF}` defined as the :math:`1-\alpha` quantile of
 
@@ -120,7 +114,7 @@ The least favorable (LF) test uses the critical value :math:`c_{\alpha,LF}` defi
 This test has exact asymptotic size when all moments bind simultaneously in population, but can be conservative when some moments are far from binding.
 
 Conditional Test
-^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~
 
 The conditional test addresses the conservativeness of the LF test by conditioning on the identity of the optimal vertex
 
@@ -144,7 +138,7 @@ where :math:`S_{n,0,\gamma} = (I - \frac{\Sigma_0 \gamma \gamma'}{\gamma' \Sigma
 This test has the property of being insensitive to slack moments in the strong sense that as a subset of moments becomes arbitrarily slack, the conditional test converges to the test that drops these moments ex-ante.
 
 Hybrid Test
-^^^^^^^^^^^
+~~~~~~~~~~~
 
 The hybrid test combines the strengths of both approaches. For some :math:`0 < \kappa < \alpha`, it first performs a size :math:`\kappa` LF test. If this rejects, the hybrid test rejects. Otherwise, it performs a size :math:`\frac{\alpha-\kappa}{1-\kappa}` test that conditions on both :math:`\hat{\gamma} = \gamma` and the event that the LF test did not reject. The critical value uses a modified upper truncation point
 
@@ -157,7 +151,7 @@ The recommended approach in ARP is to set :math:`\kappa = \alpha/10`.
 This approach is computationally tractable even with many post-treatment periods and has strong theoretical guarantees. The resulting confidence sets are uniformly valid, consistent (having power approaching 1 against fixed alternatives outside the identified set), and have optimal local asymptotic power under a linear independence constraint qualification.
 
 Fixed-Length Confidence Intervals
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------------
 
 This method constructs confidence intervals of the form :math:`(a + \mathbf{v}' \hat{\boldsymbol{\beta}}) \pm \chi`, where the half-length :math:`\chi` is fixed. The affine estimator :math:`a + \mathbf{v}' \hat{\boldsymbol{\beta}}` and the length :math:`\chi` are chosen to minimize the interval's length while maintaining valid coverage.
 
@@ -165,120 +159,3 @@ For certain choices of :math:`\Delta` that are convex and centro-symmetric, :mat
 
 .. note::
    The recommended practice is to use the hybrid moment inequality approach for general forms of :math:`\Delta`, as it is broadly valid and has strong asymptotic properties. The FLCI approach should be preferred only in special cases (like for :math:`\Delta^{SD}`) where its conditions for optimality and consistency are met.
-
-Top Level Functions
--------------------
-
-.. currentmodule:: moderndid
-
-Sensitivity Analysis - Wrapper
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   honest_did
-
-Sensitivity Analysis - Low Level API
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   construct_original_cs
-   create_sensitivity_results_rm
-   create_sensitivity_results_sm
-
-Confidence Interval Methods
----------------------------
-
-ARP Confidence Intervals
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   compute_arp_ci
-   compute_arp_nuisance_ci
-   compute_least_favorable_cv
-   compute_vlo_vup_dual
-   lp_conditional_test
-   test_in_identified_set
-   test_in_identified_set_flci_hybrid
-   test_in_identified_set_lf_hybrid
-
-Fixed Length Confidence Intervals
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   compute_flci
-   folded_normal_quantile
-   maximize_bias
-   minimize_variance
-
-Delta Methods
--------------
-
-Delta Methods - Relative Magnitudes (RM)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   compute_conditional_cs_rm
-   compute_conditional_cs_rmb
-   compute_conditional_cs_rmm
-   compute_identified_set_rm
-   compute_identified_set_rmb
-   compute_identified_set_rmm
-
-Delta Methods - Second Differences (SD)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   compute_conditional_cs_sd
-   compute_conditional_cs_sdb
-   compute_conditional_cs_sdm
-   compute_identified_set_sd
-   compute_identified_set_sdb
-   compute_identified_set_sdm
-
-Delta Methods - Combined (SDRM)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   compute_conditional_cs_sdrm
-   compute_conditional_cs_sdrmb
-   compute_conditional_cs_sdrmm
-   compute_identified_set_sdrm
-   compute_identified_set_sdrmb
-   compute_identified_set_sdrmm
-
-Bounds and Constraints
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   compute_delta_sd_lowerbound_m
-   compute_delta_sd_upperbound_m
-   create_monotonicity_constraint_matrix
-   create_pre_period_constraint_matrix
-   create_second_difference_matrix
-   create_sign_constraint_matrix
-
-Plotting
---------
-
-.. autosummary::
-   :toctree: generated/
-
-   event_study_plot
-   plot_sensitivity_rm
-   plot_sensitivity_sm

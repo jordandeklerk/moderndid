@@ -147,99 +147,42 @@ def npiv_est(
 
     is_regression_case = np.array_equal(x, w)
 
-    if not data_driven:
-        if j_x_segments is None:
-            j_x_segments = max(3, min(int(np.ceil(n ** (1 / (2 * j_x_degree + p_x)))), 10))
-        if k_w_segments is None:
-            if is_regression_case:
-                k_w_segments = j_x_segments
-            else:
-                k_w_segments = max(3, min(int(np.ceil(n ** (1 / (2 * k_w_degree + p_w)))), 10))
-
-    if is_regression_case:
-        k_w_degree = j_x_degree
-        if not data_driven:
-            k_w_segments = j_x_segments
+    j_x_segments, k_w_segments, k_w_degree = _determine_segments(
+        j_x_segments, k_w_segments, j_x_degree, k_w_degree, n, p_x, p_w, is_regression_case, data_driven
+    )
 
     K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_x_segments - 1)])
-
     K_w = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k_w_segments - 1)])
 
     try:
-        psi_x_result = prodspline(
-            x=x,
-            K=K_x,
-            knots=knots,
-            basis=basis,
-            x_min=np.full(p_x, x_min) if x_min is not None else None,
-            x_max=np.full(p_x, x_max) if x_max is not None else None,
+        basis_matrices = _construct_basis_matrices(
+            x,
+            w,
+            x_eval,
+            K_x,
+            K_w,
+            knots,
+            basis,
+            x_min,
+            x_max,
+            w_min,
+            w_max,
+            deriv_index,
+            deriv_order,
+            n,
+            n_eval,
+            p_x,
+            p_w,
+            train_is_eval,
         )
-        psi_x = psi_x_result.basis
-
-        if train_is_eval:
-            psi_x_eval = psi_x.copy()
-        else:
-            psi_x_eval_result = prodspline(
-                x=x,
-                K=K_x,
-                xeval=x_eval,
-                knots=knots,
-                basis=basis,
-                x_min=np.full(p_x, x_min) if x_min is not None else None,
-                x_max=np.full(p_x, x_max) if x_max is not None else None,
-            )
-            psi_x_eval = psi_x_eval_result.basis
-
-        psi_x_deriv_result = prodspline(
-            x=x,
-            K=K_x,
-            xeval=x,
-            knots=knots,
-            basis=basis,
-            deriv_index=deriv_index,
-            deriv=deriv_order,
-            x_min=np.full(p_x, x_min) if x_min is not None else None,
-            x_max=np.full(p_x, x_max) if x_max is not None else None,
-        )
-        psi_x_deriv = psi_x_deriv_result.basis
-
-        if train_is_eval:
-            psi_x_deriv_eval = psi_x_deriv.copy()
-        else:
-            psi_x_deriv_eval_result = prodspline(
-                x=x,
-                K=K_x,
-                xeval=x_eval,
-                knots=knots,
-                basis=basis,
-                deriv_index=deriv_index,
-                deriv=deriv_order,
-                x_min=np.full(p_x, x_min) if x_min is not None else None,
-                x_max=np.full(p_x, x_max) if x_max is not None else None,
-            )
-            psi_x_deriv_eval = psi_x_deriv_eval_result.basis
-
-        b_w_result = prodspline(
-            x=w,
-            K=K_w,
-            knots=knots,
-            basis=basis,
-            x_min=np.full(p_w, w_min) if w_min is not None else None,
-            x_max=np.full(p_w, w_max) if w_max is not None else None,
-        )
-        b_w = b_w_result.basis
-
+        psi_x = basis_matrices["psi_x"]
+        psi_x_eval = basis_matrices["psi_x_eval"]
+        psi_x_deriv_eval = basis_matrices["psi_x_deriv_eval"]
+        b_w = basis_matrices["b_w"]
     except ValueError as e:
         raise ValueError(f"Invalid parameters for B-spline construction: {e}") from e
     except np.linalg.LinAlgError as e:
         raise RuntimeError(f"Numerical error constructing B-spline bases: {e}") from e
-
-    if basis in ("additive", "glp"):
-        psi_x = np.c_[np.ones(n), psi_x]
-        psi_x_eval = np.c_[np.ones(n_eval), psi_x_eval]
-        psi_x_deriv = np.c_[np.zeros(n), psi_x_deriv]
-        psi_x_deriv_eval = np.c_[np.zeros(n_eval), psi_x_deriv_eval]
-        b_w = np.c_[np.ones(n), b_w]
 
     if check_is_fullrank:
         rank_check_psi = is_full_rank(psi_x)
@@ -259,18 +202,7 @@ def npiv_est(
 
     # NPIV estimation
     try:
-        btb = b_w.T @ b_w
-        btb_inv = np.linalg.pinv(btb)
-
-        p_w = b_w @ btb_inv @ b_w.T
-
-        design_matrix = psi_x.T @ p_w
-
-        gram_matrix = design_matrix @ psi_x
-        gram_inv = np.linalg.pinv(gram_matrix)
-
-        beta = gram_inv @ design_matrix @ y
-
+        beta, gram_inv, design_matrix = _perform_tsls_estimation(psi_x, b_w, y)
     except np.linalg.LinAlgError as e:
         raise RuntimeError(f"Numerical error in NPIV estimation: {e}") from e
 
@@ -278,26 +210,9 @@ def npiv_est(
     deriv_estimates = psi_x_deriv_eval @ beta
     residuals = y - psi_x @ beta
 
-    try:
-        tmp = gram_inv @ design_matrix
-
-        weighted_tmp = tmp.T * residuals[:, np.newaxis]
-        D_inv_rho_D_inv = weighted_tmp.T @ weighted_tmp
-
-        var_matrix = psi_x_eval @ D_inv_rho_D_inv @ psi_x_eval.T
-        asy_se = np.sqrt(np.abs(np.diag(var_matrix)))
-
-        var_matrix_deriv = psi_x_deriv_eval @ D_inv_rho_D_inv @ psi_x_deriv_eval.T
-        deriv_asy_se = np.sqrt(np.abs(np.diag(var_matrix_deriv)))
-
-    except np.linalg.LinAlgError as e:
-        asy_se = np.full(n_eval, np.nan)
-        deriv_asy_se = np.full(n_eval, np.nan)
-        warnings.warn(f"Linear algebra error computing asymptotic standard errors: {e}", UserWarning)
-    except ValueError as e:
-        asy_se = np.full(n_eval, np.nan)
-        deriv_asy_se = np.full(n_eval, np.nan)
-        warnings.warn(f"Value error computing asymptotic standard errors: {e}", UserWarning)
+    asy_se, deriv_asy_se, tmp = _compute_asymptotic_standard_errors(
+        psi_x_eval, psi_x_deriv_eval, gram_inv, design_matrix, residuals, n_eval
+    )
 
     args = {
         "n_obs": n,
@@ -334,3 +249,163 @@ def npiv_est(
         k_w_segments=k_w_segments,
         args=args,
     )
+
+
+def _construct_basis_matrices(
+    x,
+    w,
+    x_eval,
+    K_x,
+    K_w,
+    knots,
+    basis,
+    x_min,
+    x_max,
+    w_min,
+    w_max,
+    deriv_index,
+    deriv_order,
+    n,
+    n_eval,
+    p_x,
+    p_w,
+    train_is_eval,
+):
+    """Construct all B-spline basis matrices needed for NPIV estimation."""
+    psi_x_result = prodspline(
+        x=x,
+        K=K_x,
+        knots=knots,
+        basis=basis,
+        x_min=np.full(p_x, x_min) if x_min is not None else None,
+        x_max=np.full(p_x, x_max) if x_max is not None else None,
+    )
+    psi_x = psi_x_result.basis
+
+    if train_is_eval:
+        psi_x_eval = psi_x.copy()
+    else:
+        psi_x_eval_result = prodspline(
+            x=x,
+            K=K_x,
+            xeval=x_eval,
+            knots=knots,
+            basis=basis,
+            x_min=np.full(p_x, x_min) if x_min is not None else None,
+            x_max=np.full(p_x, x_max) if x_max is not None else None,
+        )
+        psi_x_eval = psi_x_eval_result.basis
+
+    psi_x_deriv_result = prodspline(
+        x=x,
+        K=K_x,
+        xeval=x,
+        knots=knots,
+        basis=basis,
+        deriv_index=deriv_index,
+        deriv=deriv_order,
+        x_min=np.full(p_x, x_min) if x_min is not None else None,
+        x_max=np.full(p_x, x_max) if x_max is not None else None,
+    )
+    psi_x_deriv = psi_x_deriv_result.basis
+
+    if train_is_eval:
+        psi_x_deriv_eval = psi_x_deriv.copy()
+    else:
+        psi_x_deriv_eval_result = prodspline(
+            x=x,
+            K=K_x,
+            xeval=x_eval,
+            knots=knots,
+            basis=basis,
+            deriv_index=deriv_index,
+            deriv=deriv_order,
+            x_min=np.full(p_x, x_min) if x_min is not None else None,
+            x_max=np.full(p_x, x_max) if x_max is not None else None,
+        )
+        psi_x_deriv_eval = psi_x_deriv_eval_result.basis
+
+    b_w_result = prodspline(
+        x=w,
+        K=K_w,
+        knots=knots,
+        basis=basis,
+        x_min=np.full(p_w, w_min) if w_min is not None else None,
+        x_max=np.full(p_w, w_max) if w_max is not None else None,
+    )
+    b_w = b_w_result.basis
+
+    if basis in ("additive", "glp"):
+        psi_x = np.c_[np.ones(n), psi_x]
+        psi_x_eval = np.c_[np.ones(n_eval), psi_x_eval]
+        psi_x_deriv = np.c_[np.zeros(n), psi_x_deriv]
+        psi_x_deriv_eval = np.c_[np.zeros(n_eval), psi_x_deriv_eval]
+        b_w = np.c_[np.ones(n), b_w]
+
+    return {
+        "psi_x": psi_x,
+        "psi_x_eval": psi_x_eval,
+        "psi_x_deriv": psi_x_deriv,
+        "psi_x_deriv_eval": psi_x_deriv_eval,
+        "b_w": b_w,
+    }
+
+
+def _perform_tsls_estimation(psi_x, b_w, y):
+    """Perform two-stage least squares estimation."""
+    btb = b_w.T @ b_w
+    btb_inv = np.linalg.pinv(btb)
+
+    # projection matrix onto instrument space
+    p_w = b_w @ btb_inv @ b_w.T
+
+    design_matrix = psi_x.T @ p_w
+
+    gram_matrix = design_matrix @ psi_x
+    gram_inv = np.linalg.pinv(gram_matrix)
+
+    beta = gram_inv @ design_matrix @ y
+
+    return beta, gram_inv, design_matrix
+
+
+def _compute_asymptotic_standard_errors(psi_x_eval, psi_x_deriv_eval, gram_inv, design_matrix, residuals, n_eval):
+    """Compute asymptotic standard errors for estimates and derivatives."""
+    try:
+        tmp = gram_inv @ design_matrix
+
+        weighted_tmp = tmp.T * residuals[:, np.newaxis]
+        D_inv_rho_D_inv = weighted_tmp.T @ weighted_tmp
+
+        var_matrix = psi_x_eval @ D_inv_rho_D_inv @ psi_x_eval.T
+        asy_se = np.sqrt(np.abs(np.diag(var_matrix)))
+
+        var_matrix_deriv = psi_x_deriv_eval @ D_inv_rho_D_inv @ psi_x_deriv_eval.T
+        deriv_asy_se = np.sqrt(np.abs(np.diag(var_matrix_deriv)))
+
+        return asy_se, deriv_asy_se, tmp
+
+    except (np.linalg.LinAlgError, ValueError) as e:
+        warnings.warn(f"Error computing asymptotic standard errors: {e}", UserWarning)
+        return np.full(n_eval, np.nan), np.full(n_eval, np.nan), None
+
+
+def _determine_segments(
+    j_x_segments, k_w_segments, j_x_degree, k_w_degree, n, p_x, p_w, is_regression_case, data_driven
+):
+    """Determine the number of segments for basis functions."""
+    if not data_driven:
+        if j_x_segments is None:
+            j_x_segments = max(3, min(int(np.ceil(n ** (1 / (2 * j_x_degree + p_x)))), 10))
+        if k_w_segments is None:
+            if is_regression_case:
+                k_w_segments = j_x_segments
+            else:
+                k_w_segments = max(3, min(int(np.ceil(n ** (1 / (2 * k_w_degree + p_w)))), 10))
+
+    if is_regression_case:
+        k_w_degree = j_x_degree
+        if not data_driven:
+            k_w_segments = j_x_segments
+
+    return j_x_segments, k_w_segments, k_w_degree
