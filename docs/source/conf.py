@@ -164,7 +164,10 @@ html_theme = "pydata_sphinx_theme"
 html_logo = "_static/logo.svg"
 html_favicon = "_static/favicon.ico"
 
-html_sidebars = {"**": ["sidebar-nav-bs"]}
+html_sidebars = {
+    "index": [],  # Hide sidebar on index page
+    "**": ["sidebar-nav-bs"],
+}
 
 html_theme_options = {
     "header_links_before_dropdown": 6,
@@ -176,7 +179,7 @@ html_theme_options = {
         },
     ],
     "logo": {
-        "text": "moderndid",
+        "text": "ModernDiD",
         "image_light": "_static/logo.svg",
         "image_dark": "_static/logo.svg",
     },

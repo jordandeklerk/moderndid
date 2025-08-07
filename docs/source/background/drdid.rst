@@ -1,18 +1,12 @@
-.. _drdid:
+.. _background-drdid:
 
 Doubly Robust DiD
 =================
 
-.. note::
-   Top level functions are designed to be accessible by the user. The low level API functions which power the top level functions are intended for advanced users who want to customize their estimators beyond the provided wrappers and are displayed in the API reference for clarity.
-
 The ``drdid`` module provides doubly robust estimators for the average treatment effect on the treated (ATT) in difference-in-differences (DID) designs, based on the work of `Sant'Anna and Zhao (2020) <https://psantanna.com/files/SantAnna_Zhao_DRDID.pdf>`_. These estimators are consistent if either a propensity score model or an outcome regression model is correctly specified, but not necessarily both, offering robustness against model misspecification.
 
-Background
-----------
-
 Setup and Notation
-~~~~~~~~~~~~~~~~~~
+------------------
 
 We consider a setting with two groups and two time periods. Let :math:`Y_{it}` be the outcome for unit :math:`i` at time :math:`t`, where :math:`t=0` is the pre-treatment period and :math:`t=1` is the post-treatment period. Let :math:`D_i` be an indicator for treatment status, where :math:`D_i=1` if the unit is in the treatment group and :math:`D_i=0` for the comparison group. We assume treatment happens between :math:`t=0` and :math:`t=1`, so :math:`D_{i0}=0` for all :math:`i`. We also observe a vector of pre-treatment covariates :math:`X_i`.
 
@@ -31,7 +25,7 @@ Since :math:`Y_1(1)` is observed for the treated group, we can write
 The main identification challenge is to estimate the counterfactual term :math:`\mathbb{E}[Y_1(0) | D=1]`.
 
 Identification
-~~~~~~~~~~~~~~
+--------------
 
 The key identifying assumptions are:
 
@@ -52,7 +46,7 @@ The key identifying assumptions are:
        \mathbb{P}(D=1|X) < 1-\varepsilon \text{ for some } \varepsilon > 0.
 
 Doubly Robust Estimands
-~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
 The doubly robust estimators combine the strengths of the outcome regression (OR) and inverse probability weighting (IPW) approaches. The resulting estimator for the ATT is consistent if either the outcome regression model or the propensity score model is correctly specified, but not necessarily both.
 
@@ -103,46 +97,3 @@ Both estimands are consistent for the ATT under the same doubly robust condition
 
 .. note::
    For the full theoretical details, including efficiency bounds and asymptotic properties, please refer to the original paper by `Sant'Anna and Zhao (2020) <https://psantanna.com/files/SantAnna_Zhao_DRDID.pdf>`_.
-
-Top Level Functions
--------------------
-
-.. currentmodule:: moderndid
-
-.. autosummary::
-   :toctree: generated/
-   :recursive:
-
-   drdid
-   ipwdid
-   ordid
-
-Panel Data Estimators
----------------------
-
-.. autosummary::
-   :toctree: generated/
-   :recursive:
-
-   drdid_imp_panel
-   drdid_panel
-   ipw_did_panel
-   reg_did_panel
-   std_ipw_did_panel
-   twfe_did_panel
-
-Repeated Cross-Sections Estimators
-----------------------------------
-
-.. autosummary::
-   :toctree: generated/
-   :recursive:
-
-   drdid_imp_local_rc
-   drdid_imp_rc
-   drdid_rc
-   drdid_trad_rc
-   ipw_did_rc
-   reg_did_rc
-   std_ipw_did_rc
-   twfe_did_rc

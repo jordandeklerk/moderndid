@@ -1,19 +1,13 @@
-.. _did:
+.. _background-did:
 
 DiD with Multiple Time Periods
 ==============================
 
-.. note::
-   Top level functions are designed to be accessible by the user. The low level API functions which power the top level functions are intended for advanced users who want to customize their estimators beyond the provided wrappers and are displayed in the API reference for clarity.
-
 The ``did`` module implements the difference-in-differences (DiD) methodology for settings with multiple time periods and variation in treatment timing from the work of `Callaway and Sant'Anna (2020) <https://psantanna.com/files/Callaway_SantAnna_2020.pdf>`_.
 This approach addresses the challenges of staggered DiD designs by providing flexible estimators for group-time average treatment effects and various aggregation schemes to summarize treatment effect heterogeneity.
 
-Background
-----------
-
 Setup and Notation
-~~~~~~~~~~~~~~~~~~
+------------------
 
 We consider a setup with :math:`\mathcal{T}` time periods. Let :math:`D_{it}` be a binary variable indicating if unit :math:`i` is treated in period :math:`t`.
 The treatment adoption process follows two key assumptions:
@@ -32,7 +26,7 @@ The potential outcome under no treatment is :math:`Y_{it}(0)`. The observed outc
    Y_{it} = Y_{it}(0) + \sum_{g=2}^{\mathcal{T}} (Y_{it}(g) - Y_{it}(0)) \cdot \mathbf{1}\{G_i = g\}.
 
 The Group-Time Average Treatment Effect
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+----------------------------------------
 
 The fundamental parameter of interest is the **group-time average treatment effect**, :math:`ATT(g, t)`, which is the average treatment effect for group :math:`g` at time :math:`t` given by
 
@@ -43,7 +37,7 @@ The fundamental parameter of interest is the **group-time average treatment effe
 This parameter is flexible and does not impose homogeneity across groups or time. The set of all :math:`ATT(g, t)`'s can be used to understand treatment effect dynamics and heterogeneity.
 
 Identifying Assumptions
-~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
 The identification of :math:`ATT(g, t)` relies on the following key assumptions:
 
@@ -81,12 +75,12 @@ The identification of :math:`ATT(g, t)` relies on the following key assumptions:
     is bounded away from 1.
 
 Nonparametric Identification of ATT(g,t)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------------------
 
 Under the assumptions above, :math:`ATT(g, t)` is non-parametrically identified. The paper provides three types of estimands that can be used to identify these effects, each with different strengths and properties. For what follows, let :math:`\Delta Y_{t,g,\delta} = Y_t - Y_{g-\delta-1}` denote the change in outcomes from the pre-treatment base period to the current period.
 
 Never-Treated Comparison Group Estimands
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When using never-treated units as the comparison group, we first define the following key quantities. The propensity score for being in group :math:`g` conditional on being either in group :math:`g` or never-treated is
 
@@ -131,7 +125,7 @@ The DR estimand combines both IPW and OR approaches, providing consistency if ei
 This estimand offers the best of both worlds, providing robustness against model mis-specification and improved efficiency properties.
 
 Not-Yet-Treated Comparison Group Estimands
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When using not-yet-treated units as the comparison group, we work with different propensity score and outcome regression functions given by
 
@@ -172,12 +166,12 @@ The DR estimand for not-yet-treated comparisons combines both approaches and is 
 The choice between never-treated and not-yet-treated comparison groups depends on the specific empirical context. Never-treated comparisons may be more stable but require the existence of a sufficiently large never-treated group. Not-yet-treated comparisons can utilize more data but may be less appropriate when treatment timing is endogenous.
 
 Aggregation of Effects
-~~~~~~~~~~~~~~~~~~~~~~
+----------------------
 
 A key feature of this methodology is the ability to aggregate the :math:`ATT(g, t)`'s into meaningful summary measures. This allows researchers to answer specific policy questions and understand different dimensions of treatment effect heterogeneity.
 
 Event-Study Aggregation
-^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Event-study plots aggregate effects by length of exposure to treatment, where :math:`e = t - g` represents the time elapsed since treatment adoption. This aggregation reveals how treatment effects evolve dynamically after implementation. The event-study parameter is
 
@@ -188,7 +182,7 @@ Event-study plots aggregate effects by length of exposure to treatment, where :m
 This parameter weights the group-time effects by the relative size of each group among those observed :math:`e` periods after treatment, providing insights into whether effects strengthen, weaken, or remain stable over time.
 
 Group-Specific Effects
-^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~
 
 To understand whether treatment timing matters, we can average effects over time for each group. This allows us to understand whether early adopters experience different treatment effects compared to late adopters. For a specific group :math:`\tilde{g}`, the average effect is
 
@@ -199,7 +193,7 @@ To understand whether treatment timing matters, we can average effects over time
 This measure helps identify whether there are advantages or disadvantages to adopting treatment earlier versus later in the sample period.
 
 Calendar-Time Effects
-^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~
 
 Calendar-time aggregation averages effects across all treated groups for each time period, revealing how treatment effects vary with time-specific factors such as macroeconomic conditions or concurrent policy changes. For a specific time period :math:`\tilde{t}`, the calendar-time effect is
 
@@ -210,7 +204,7 @@ Calendar-time aggregation averages effects across all treated groups for each ti
 This aggregation weights each group's contribution by its relative size among all groups treated by time :math:`\tilde{t}`.
 
 Overall Average Treatment Effect
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When a single summary measure is needed, we can compute an overall average that aggregates across all groups and post-treatment time periods. One such measure weights group-specific effects by the distribution of treatment timing
 
@@ -225,24 +219,3 @@ These aggregations provide transparent and interpretable ways to summarize treat
 .. note::
 
    For the full theoretical details, including efficiency bounds and asymptotic properties, please refer to the original paper by `Callaway and Sant'Anna (2020) <https://psantanna.com/files/Callaway_SantAnna_2020.pdf>`_.
-
-Top Level Functions
--------------------
-
-.. currentmodule:: moderndid
-
-ATT Estimation
-~~~~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   att_gt
-
-Aggregation
-~~~~~~~~~~~
-
-.. autosummary::
-   :toctree: generated/
-
-   aggte
