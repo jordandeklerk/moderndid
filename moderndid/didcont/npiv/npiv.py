@@ -77,7 +77,7 @@ def npiv(
         Number of segments for the instrument basis. If None, chosen proportionally to the number
         of segments for the :math:`X` basis.
     k_w_smooth : int, default=2
-        Smoothness parameter for automatic K selection (currently unused).
+        Smoothness parameter for automatic K selection.
     knots : {"uniform", "quantiles"}, default="uniform"
         Knot placement method:
 
