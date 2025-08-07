@@ -113,7 +113,7 @@ def npiv_j(
 
     .. [1] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
         Adaptive Estimation and Uniform Confidence Bands for Nonparametric
-        Structural Functions and Elasticities.
+        Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
     """
     y = np.asarray(y).ravel()
     x = np.atleast_2d(x)
@@ -322,7 +322,7 @@ def npiv_jhat_max(
 
     .. [1] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
         Adaptive Estimation and Uniform Confidence Bands for Nonparametric
-        Structural Functions and Elasticities.
+        Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
     """
     x = np.atleast_2d(x)
     w = np.atleast_2d(w)
