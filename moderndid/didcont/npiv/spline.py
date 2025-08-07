@@ -322,8 +322,8 @@ def glp_model_matrix(bases):
     References
     ----------
 
-    .. [1] Hall, P., & Racine, J. S. (2015). Cross-validated generalized
-        local polynomial regression. Journal of Econometrics, 184(2), 328-346.
+    .. [1] Hall, P., & Racine, J. S. (2015). Infinite order cross-validated
+        local polynomial regression. Journal of Econometrics, 185(2), 510-525.
     """
     if not bases:
         raise ValueError("bases cannot be empty")

@@ -137,13 +137,13 @@ def npiv(
     References
     ----------
 
-    .. [1] Chen, X., & Christensen, T. M. (2018). Optimal sup-norm rates and uniform
-        inference on nonlinear functionals of nonparametric IV regression.
-        Quantitative Economics, 9(1), 39-84.
+    .. [1] Chen, X., & Christensen, T. M. (2018). Optimal sup-norm rates and
+        uniform inference on nonlinear functionals of nonparametric IV regression.
+        Quantitative Economics, 9(1), 39-84. https://arxiv.org/abs/1508.03365.
 
     .. [2] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
         Adaptive Estimation and Uniform Confidence Bands for Nonparametric
-        Structural Functions and Elasticities.
+        Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
 
     .. [3] Newey, W. K., & Powell, J. L. (2003). Instrumental variable estimation of
         nonparametric models. Econometrica, 71(5), 1565-1578.
