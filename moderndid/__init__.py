@@ -32,6 +32,8 @@ from moderndid.didcont import (
     matrix_sqrt,
 )
 from moderndid.didcont.npiv import (
+    NPIVResult,
+    MultivariateBasis,
     compute_cck_ucb,
     compute_ucb,
     npiv,
@@ -360,6 +362,8 @@ __all__ = [
     "avoid_zero_division",
     "basis_dimension",
     # Continuous treatment DiD estimators
+    "NPIVResult",
+    "MultivariateBasis",
     "npiv",
     "npiv_est",
     "npiv_choose_j",
