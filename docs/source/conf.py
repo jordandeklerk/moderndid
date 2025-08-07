@@ -110,6 +110,9 @@ nitpick_ignore = [
     ("py:obj", "boot_drdid_rc"),
     ("py:obj", "wboot_drdid_rc_imp2"),
     ("py:obj", "wboot_aipw_rc"),
+    ("py:obj", "wols_panel"),
+    ("py:obj", "NPIVResult"),
+    ("py:obj", "MultivariateBasis"),
 ]
 
 # -- Options for extensions
