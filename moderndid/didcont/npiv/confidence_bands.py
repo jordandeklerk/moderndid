@@ -123,11 +123,11 @@ def compute_ucb(
 
     .. [1] Chen, X., & Christensen, T. M. (2018). Optimal sup-norm rates and uniform
         inference on nonlinear functionals of nonparametric IV regression.
-        Quantitative Economics, 9(1), 39-84.
+        Quantitative Economics, 9(1), 39-84. https://arxiv.org/abs/1508.03365.
 
     .. [2] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
         Adaptive Estimation and Uniform Confidence Bands for Nonparametric
-        Structural Functions and Elasticities.
+        Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
     """
     main_result = npiv_est(
         y=y,

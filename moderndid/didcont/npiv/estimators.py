@@ -116,10 +116,10 @@ def npiv_est(
 
     .. [1] Chen, X., & Christensen, T. M. (2018). Optimal sup-norm rates and
         uniform inference on nonlinear functionals of nonparametric IV regression.
-        Quantitative Economics, 9(1), 39-84.
+        Quantitative Economics, 9(1), 39-84. https://arxiv.org/abs/1508.03365.
 
-    .. [2] Chen, X., Christensen, T. M., & Tamer, E. (2024). Monte Carlo confidence
-        sets for identified sets. Econometrica (forthcoming).
+    .. [2] Chen, X., Christensen, T. M., & Tamer, E. (2018). Monte Carlo confidence
+        sets for identified sets. Econometrica, 86(6), 1965-2018.
     """
     y = np.asarray(y).ravel()
     x = np.atleast_2d(x)

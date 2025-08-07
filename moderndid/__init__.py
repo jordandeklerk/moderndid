@@ -32,8 +32,8 @@ from moderndid.didcont import (
     matrix_sqrt,
 )
 from moderndid.didcont.npiv import (
-    NPIVResult,
     MultivariateBasis,
+    NPIVResult,
     compute_cck_ucb,
     compute_ucb,
     npiv,
