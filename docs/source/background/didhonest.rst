@@ -22,7 +22,7 @@ The first term, :math:`\boldsymbol{\tau}`, represents the treatment effects of i
 The conventional parallel trends assumption imposes the strong restriction that :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`. This methods developed here relax that assumption.
 
 Partial Identification and the Restriction Set
---------------------------------------------
+----------------------------------------------
 
 The goal is to conduct inference on a scalar parameter of interest, typically a linear combination of post-treatment effects, :math:`\theta = \mathbf{\ell}' \boldsymbol{\tau}_{post}`. Without assuming :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`, the parameter :math:`\theta` is only partially identified. Identification is achieved by assuming that the true trend violation, :math:`\boldsymbol{\delta}`, lies within a researcher-specified set :math:`\Delta`. The identified set for :math:`\theta` is the set of all values consistent with the data and the restriction :math:`\boldsymbol{\delta} \in \Delta`. This set is given by
 
