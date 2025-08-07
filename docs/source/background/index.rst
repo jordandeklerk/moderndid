@@ -19,7 +19,6 @@ for different DiD methods.
    did
    drdid
    didhonest
-   didcont
 
 Acknowledgements
 ================
