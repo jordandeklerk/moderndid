@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 
+from moderndid.data import load_engel
+
 
 @pytest.fixture
 def simple_data():
@@ -160,6 +162,18 @@ def basis_matrices():
         np.random.randn(n_obs, 2),
     ]
     return bases
+
+
+@pytest.fixture
+def engel_data():
+    engel_df = load_engel()
+    engel_df = engel_df.sort_values("logexp")
+
+    return {
+        "food": engel_df["food"].values,
+        "logexp": engel_df["logexp"].values.reshape(-1, 1),
+        "logwages": engel_df["logwages"].values.reshape(-1, 1),
+    }
 
 
 @pytest.fixture
