@@ -24,6 +24,23 @@ from moderndid.did.plots import (
 )
 from moderndid.did.preprocess import DIDData
 from moderndid.did.preprocess_did import preprocess_did
+from moderndid.didcont import (
+    avoid_zero_division,
+    basis_dimension,
+    compute_r_squared,
+    is_full_rank,
+    matrix_sqrt,
+)
+from moderndid.didcont.npiv import (
+    compute_cck_ucb,
+    compute_ucb,
+    npiv,
+    npiv_choose_j,
+    npiv_est,
+    npiv_j,
+    npiv_jhat_max,
+    prodspline,
+)
 from moderndid.didhonest import (
     APRCIResult,
     ARPNuisanceCIResult,
@@ -336,4 +353,19 @@ __all__ = [
     "plot_att_gt",
     "plot_event_study",
     "plot_did",
+    # Continuous treatment DiD utilities
+    "is_full_rank",
+    "compute_r_squared",
+    "matrix_sqrt",
+    "avoid_zero_division",
+    "basis_dimension",
+    # Continuous treatment DiD estimators
+    "npiv",
+    "npiv_est",
+    "npiv_choose_j",
+    "npiv_j",
+    "npiv_jhat_max",
+    "compute_cck_ucb",
+    "compute_ucb",
+    "prodspline",
 ]

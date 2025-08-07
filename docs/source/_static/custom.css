@@ -1,4 +1,15 @@
-/* Navbar alignment with content like NumPy */
+html[data-theme="light"] {
+  --pst-color-primary: rgb(93, 154, 181);
+  --pst-color-secondary: rgb(93, 154, 181);
+  --pst-color-secondary-bg: rgb(223, 235, 240);
+}
+
+html[data-theme="dark"] {
+  --pst-color-primary: rgb(93, 155, 182);
+  --pst-color-secondary: rgb(93, 155, 182);
+  --pst-color-secondary-bg: rgb(33, 45, 51);
+}
+
 .navbar-brand img {
   height: 75px;
 }
@@ -7,13 +18,10 @@
   height: 75px;
 }
 
-/* Making sure the navbar shows correctly in one line
-   Reduces the space between the top-left logo and the navbar section titles */
 .col-lg-3 {
   width: 15%;
 }
 
-/* Version switcher from PyData Sphinx Theme */
 .version-switcher__menu a.list-group-item {
   font-size: small;
 }
@@ -24,8 +32,6 @@ button.btn.version-switcher__button:hover {
   font-size: small;
 }
 
-/* Main index page overview cards */
-
 .sd-card .sd-card-img-top {
   height: 60px;
   width: 60px;
@@ -34,13 +40,9 @@ button.btn.version-switcher__button:hover {
   margin-top: 10px;
 }
 
-/* Main index page overview images */
-
 html[data-theme=dark] .sd-card img[src*='.svg'] {
   filter: invert(0.82) brightness(0.8) contrast(1.2);
 }
-
-/* Legacy admonition */
 
 div.admonition-legacy {
   border-color: var(--pst-color-warning);
@@ -54,22 +56,19 @@ div.admonition-legacy>.admonition-title {
   background-color: var(--pst-color-warning-bg);
 }
 
-/* Buttons for JupyterLite-enabled interactive examples */
-
 .try_examples_button {
   color: white;
   background-color: var(--pst-color-info);
   border: none;
   padding: 5px 10px;
   border-radius: 0.25rem;
-  margin-top: 3px;  /* better alignment under admonitions */
-  margin-bottom: 5px !important; /* fix uneven button sizes under admonitions */
+  margin-top: 3px;
+  margin-bottom: 5px !important;
   box-shadow: 0 2px 5px rgba(108, 108, 108, 0.2);
   font-weight: bold;
   font-size: small;
 }
 
-/* Use more accessible colours for text in dark mode */
 [data-theme=dark] .try_examples_button {
   color: black;
 }
@@ -87,23 +86,18 @@ div.admonition-legacy>.admonition-title {
   margin-bottom: 20px;
 }
 
-/* Better gaps for examples buttons under admonitions */
-
 .try_examples_outer_iframe {
   margin-top: 0.4em;
 }
 
-/* Wrap long titles in pages */
 h1 {
   word-wrap: break-word;
 }
 
-/* Bold main documentation title like NumPy */
 h1#moderndid-documentation {
   font-weight: bold;
 }
 
-/* Align navigation tabs with content */
 .bd-container {
   max-width: 100%;
 }
@@ -120,7 +114,6 @@ h1#moderndid-documentation {
   margin: 0 auto;
 }
 
-/* Monospace titles for API docs */
 div.empty + section>h1 {
   font-family: var(--pst-font-family-monospace);
 }
@@ -144,4 +137,86 @@ ul.bd-navbar-elements {
 
 .navbar-nav {
   margin-left: 1rem;
+}
+
+.wy-nav-side p.caption {
+  color: #F5F5F5;
+}
+
+div.wy-side-nav-search {
+  background: #757575;
+}
+
+div.wy-side-nay {
+  background: #212121;
+}
+
+table.field-list td li {
+  line-height: 18px;
+}
+
+table.docutils td p {
+  font-size: 14px !important;
+  margin-bottom: 6px;
+}
+
+table.docutils td li {
+  line-height: 18px;
+}
+
+table td.vl-type-def {
+  max-width: 170px;
+  overflow-x: clip;
+}
+
+#rtd-footer-container {
+  display: none;
+}
+
+.bd-sidebar-primary {
+  max-width: 20%
+}
+
+@media (max-width: 959.98px) {
+  .bd-sidebar-primary {
+      max-width: 350px;
+  }
+}
+
+.properties-example .vega-bind-name {
+  display: inline-block;
+  min-width: 150px;
+}
+
+.properties-example .vega-bindings {
+  padding-left: 20px;
+  padding-bottom: 10px;
+}
+
+.properties-example .vega-bindings select {
+  max-width: 180px;
+}
+
+.properties-example .vega-bindings input {
+  vertical-align: text-bottom;
+  margin-right: 3px;
+}
+
+.full-width-plot {
+  width: 100%;
+}
+
+.search-button-field > .search-button__kbd-shortcut {
+    display: none;
+}
+
+.lead {
+  font-size: 1.3em;
+  font-weight: 300;
+  margin-top: 22px;
+  margin-bottom: 22px;
+}
+
+.lead strong {
+  font-weight: bold;
 }

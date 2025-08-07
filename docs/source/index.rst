@@ -1,116 +1,58 @@
-.. _moderndid_docs_mainpage:
+:html_theme.sidebar_secondary.remove:
 
-#########################
-moderndid documentation
-#########################
+ModernDiD: Modern Difference-in-Differences in Python
+======================================================
+
+.. role:: raw-html(raw)
+   :format: html
+
+.. rst-class:: lead
+
+   **ModernDiD** is a unified Python implementation of modern difference-in-differences (DiD) methodologies built on leading econometric research. It brings together the fragmented landscape of DiD estimators into a single, coherent framework with a consistent and intuitive API.
+
+
+.. grid:: 1 1 2 2
+   :padding: 0 2 3 5
+   :gutter: 2 2 3 3
+   :class-container: startpage-grid
+
+   .. grid-item-card:: Getting Started
+      :link: overview
+      :link-type: ref
+      :link-alt: Getting started
+
+      Find installation instructions and learn about the core concepts of difference-in-differences methodology.
+
+   .. grid-item-card:: User Guide
+      :link: user-guide
+      :link-type: ref
+      :link-alt: User guide
+
+      Check out the User Guide for in-depth information on implementing DiD estimators and understanding the underlying econometrics.
+
+   .. grid-item-card:: Examples
+      :link: examples/index
+      :link-type: doc
+      :link-alt: Examples
+
+      The Examples gallery contains practical demonstrations of different DiD estimators with real-world data scenarios.
+
+   .. grid-item-card:: API Reference
+      :link: api/api
+      :link-type: doc
+      :link-alt: API
+
+      The API reference guide contains detailed information on all of moderndid's estimators, methods, and classes.
+
 
 .. toctree::
    :maxdepth: 1
    :hidden:
 
-   User Guide <user_guide>
+   Getting Started <getting_started/overview>
+   User Guide <user_guide/user_guide>
    Examples <examples/index>
-   API reference <api/index>
-   Development <dev/index>
-   release/index
-   installing
-
-
-**Version**: |version|
-
-**Download documentation**:
-`Historical versions of documentation <https://github.com/jordandeklerk/moderndid/releases>`_
-
-**Useful links**:
-`Installation <installing.html>`_ |
-`Source Repository <https://github.com/jordandeklerk/moderndid>`_ |
-`Issue Tracker <https://github.com/jordandeklerk/moderndid/issues>`_ |
-
-
-moderndid is a unified Python implementation of modern difference-in-differences (DiD)
-methodologies, bringing together the fragmented landscape of DiD estimators into a single,
-coherent framework. This package consolidates methods from leading econometric research and
-various R packages into one comprehensive Python library with a consistent API.
-
-
-
-.. grid:: 1 1 2 2
-    :gutter: 2 3 4 4
-
-    .. grid-item-card::
-        :img-top: _static/user_guide.svg
-        :text-align: center
-
-        User guide
-        ^^^
-
-        The user guide provides in-depth information on the
-        key concepts of moderndid with useful background information and explanation.
-
-        +++
-
-        .. button-ref:: user_guide
-            :expand:
-            :color: secondary
-            :click-parent:
-
-            To the user guide
-
-    .. grid-item-card::
-        :img-top: _static/api_reference.svg
-        :text-align: center
-
-        API reference
-        ^^^
-
-        The reference guide contains a detailed description of the functions,
-        modules, and objects included in moderndid. The reference describes how the
-        methods work and which parameters can be used.
-
-        +++
-
-        .. button-ref:: api/index
-            :expand:
-            :color: secondary
-            :click-parent:
-
-            To the reference guide
-
-    .. grid-item-card::
-        :img-top: _static/tutorial.svg
-        :text-align: center
-
-        Example gallery
-        ^^^
-
-        New to moderndid? Check out the example gallery for practical demonstrations
-        of how to use the package's DiD estimators with real-world data scenarios.
-
-        +++
-
-        .. button-ref:: examples/index
-            :expand:
-            :color: secondary
-            :click-parent:
-
-            To the example gallery
-
-    .. grid-item-card::
-        :img-top: _static/developer.svg
-        :text-align: center
-
-        Contributor's guide
-        ^^^
-
-        Want to add to the codebase? Can help add functionality or improve the
-        documentation? The contributing guidelines will guide you through the
-        process of improving moderndid.
-
-        +++
-
-        .. button-ref:: dev/index
-            :expand:
-            :color: secondary
-            :click-parent:
-
-            To the contributor's guide
+   Background <background/index>
+   API <api/api>
+   Development <dev/contributing>
+   Release Notes <release/index>
