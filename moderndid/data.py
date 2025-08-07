@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-__all__ = ["load_nsw", "load_mpdta", "load_ehec"]
+__all__ = ["load_nsw", "load_mpdta", "load_ehec", "load_engel"]
 
 
 def load_nsw() -> pd.DataFrame:
@@ -155,3 +155,53 @@ def load_ehec() -> pd.DataFrame:
         ehec_data = pickle.load(f)
 
     return ehec_data
+
+
+def load_engel() -> pd.DataFrame:
+    """Load the Engel household expenditure dataset.
+
+    This dataset contains household expenditure data used to study Engel curves,
+    which describe how household expenditure on different goods varies with income.
+    The data includes expenditure shares on various categories and household
+    characteristics.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with the following columns:
+
+        - *food*: Food expenditure share
+        - *catering*: Catering expenditure share
+        - *alcohol*: Alcohol expenditure share
+        - *fuel*: Fuel expenditure share
+        - *motor*: Motor expenditure share
+        - *fares*: Transportation fares expenditure share
+        - *leisure*: Leisure expenditure share
+        - *logexp*: Log of total expenditure
+        - *logwages*: Log of wages
+        - *nkids*: Number of children
+
+    Notes
+    -----
+    This dataset is commonly used for demonstrating nonparametric methods,
+    particularly for estimating Engel curves and testing for monotonicity
+    or shape restrictions in consumer demand.
+
+    References
+    ----------
+
+    .. [1] Engel, E. (1857). Die Lebenskosten belgischer Arbeiter-Familien.
+        Dresden: C. Heinrich.
+    """
+    data_path = Path(__file__).parent / "_data" / "engel.pkl.gz"
+
+    if not data_path.exists():
+        raise FileNotFoundError(
+            f"Engel data file not found at {data_path}. "
+            "Please ensure the data file is included in the moderndid installation."
+        )
+
+    with gzip.open(data_path, "rb") as f:
+        engel_data = pickle.load(f)
+
+    return engel_data
