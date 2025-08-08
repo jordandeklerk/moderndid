@@ -315,8 +315,6 @@ class TestCreateStringSequence:
 
 
 class TestIntegration:
-    """Integration tests combining multiple utility functions."""
-
     def test_array_processing_pipeline(self):
         x = np.array([[1, 2, 3, 4], [5, 6, 7, 8]])
 
