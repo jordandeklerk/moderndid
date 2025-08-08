@@ -1,5 +1,5 @@
 # pylint: disable=redefined-outer-name, protected-access
-"""Test the SplineBase class."""
+"""Test the base class for spline basis functions."""
 
 import warnings
 
