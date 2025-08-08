@@ -43,6 +43,11 @@ from moderndid.didcont.npiv import (
     npiv_jhat_max,
     prodspline,
 )
+from moderndid.didcont.spline import (
+    Bernstein,
+    BSpline,
+    SplineBase,
+)
 from moderndid.didhonest import (
     APRCIResult,
     ARPNuisanceCIResult,
@@ -372,4 +377,7 @@ __all__ = [
     "compute_cck_ucb",
     "compute_ucb",
     "prodspline",
+    "SplineBase",
+    "Bernstein",
+    "BSpline",
 ]

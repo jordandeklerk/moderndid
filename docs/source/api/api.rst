@@ -182,6 +182,9 @@ Combined Restrictions
 
 Continuous Treatment DiD
 ------------------------
+
+Non-Parametric Instrumental Variables
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. currentmodule:: moderndid
 
 .. autosummary::
@@ -196,6 +199,20 @@ Continuous Treatment DiD
    compute_cck_ucb
    compute_ucb
    prodspline
+
+.. _api-didcont-spline:
+
+Spline Basis Functions
+^^^^^^^^^^^^^^^^^^^^^^
+.. currentmodule:: moderndid
+
+.. autosummary::
+   :toctree: generated/didcont/spline/
+   :nosignatures:
+
+   SplineBase
+   BSpline
+   Bernstein
 
 .. _api-propensity:
 
