@@ -12,6 +12,11 @@ from .npiv import (
     predict_gsl_bs,
     prodspline,
 )
+from .setup import (
+    PTEParams,
+    setup_pte,
+    setup_pte_basic,
+)
 from .utils import (
     avoid_zero_division,
     basis_dimension,
@@ -41,4 +46,8 @@ __all__ = [
     "matrix_sqrt",
     "avoid_zero_division",
     "basis_dimension",
+    # Panel treatment effects
+    "PTEParams",
+    "setup_pte",
+    "setup_pte_basic",
 ]
