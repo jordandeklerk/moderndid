@@ -25,11 +25,14 @@ from moderndid.did.plots import (
 from moderndid.did.preprocess import DIDData
 from moderndid.did.preprocess_did import preprocess_did
 from moderndid.didcont import (
+    PTEParams,
     avoid_zero_division,
     basis_dimension,
     compute_r_squared,
     is_full_rank,
     matrix_sqrt,
+    setup_pte,
+    setup_pte_basic,
 )
 from moderndid.didcont.npiv import (
     MultivariateBasis,
@@ -365,6 +368,10 @@ __all__ = [
     "matrix_sqrt",
     "avoid_zero_division",
     "basis_dimension",
+    # Panel treatment effects
+    "PTEParams",
+    "setup_pte",
+    "setup_pte_basic",
     # Continuous treatment DiD estimators
     "NPIVResult",
     "MultivariateBasis",
