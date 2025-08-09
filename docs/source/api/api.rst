@@ -212,7 +212,6 @@ Spline Basis Functions
 
    SplineBase
    BSpline
-   Bernstein
 
 .. _api-propensity:
 
