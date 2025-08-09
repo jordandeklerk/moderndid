@@ -1,7 +1,6 @@
 """Spline Functions for Continuous Treatment DiD."""
 
 from .base import SplineBase
-from .bernstein import Bernstein
 from .bspline import BSpline
 from .utils import (
     append_zero_columns,
@@ -20,7 +19,6 @@ from .utils import (
 
 __all__ = [
     "SplineBase",
-    "Bernstein",
     "BSpline",
     "is_close",
     "arrays_almost_equal",

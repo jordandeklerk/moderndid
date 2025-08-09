@@ -44,7 +44,6 @@ from moderndid.didcont.npiv import (
     prodspline,
 )
 from moderndid.didcont.spline import (
-    Bernstein,
     BSpline,
     SplineBase,
 )
@@ -378,6 +377,5 @@ __all__ = [
     "compute_ucb",
     "prodspline",
     "SplineBase",
-    "Bernstein",
     "BSpline",
 ]
