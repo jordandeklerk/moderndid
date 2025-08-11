@@ -10,6 +10,10 @@ ModernDiD: Modern Difference-in-Differences in Python
 
    **ModernDiD** is a unified Python implementation of modern difference-in-differences (DiD) methodologies built on leading econometric research. It brings together the fragmented landscape of DiD estimators into a single, coherent framework with a consistent and intuitive API.
 
+.. warning::
+
+   This package is currently in active development and the API is subject to change.
+
 
 .. grid:: 1 1 2 2
    :padding: 0 2 3 5
