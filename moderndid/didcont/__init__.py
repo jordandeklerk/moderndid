@@ -14,8 +14,13 @@ from .npiv import (
 )
 from .setup import (
     PTEParams,
+    _get_first_difference,
+    _get_group,
+    _get_group_inner,
+    _make_balanced_panel,
     setup_pte,
     setup_pte_basic,
+    setup_pte_cont,
 )
 from .utils import (
     avoid_zero_division,
@@ -50,4 +55,10 @@ __all__ = [
     "PTEParams",
     "setup_pte",
     "setup_pte_basic",
+    "setup_pte_cont",
+    # Panel data helper functions
+    "_make_balanced_panel",
+    "_get_first_difference",
+    "_get_group",
+    "_get_group_inner",
 ]

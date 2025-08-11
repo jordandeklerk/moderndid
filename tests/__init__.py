@@ -1,1 +1,1 @@
-"""moderndid tests."""
+"""Tests for double-robust estimators."""

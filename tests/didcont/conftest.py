@@ -272,6 +272,28 @@ def panel_data_unbalanced():
 
 
 @pytest.fixture
+def staggered_treatment_panel():
+    data = {
+        "id": [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3],
+        "time": [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4],
+        "y": [10, 12, 15, 18, 20, 22, 25, 28, 30, 32, 35, 38],
+        "treat": [0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0],
+    }
+    return pd.DataFrame(data)
+
+
+@pytest.fixture
+def unbalanced_simple_panel():
+    data = {
+        "id": [1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4],
+        "time": [1, 2, 3, 1, 2, 3, 2, 3, 1, 2, 3],
+        "y": [10, 12, 15, 20, 22, 25, 32, 35, 40, 42, 45],
+        "treat": [0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0],
+    }
+    return pd.DataFrame(data)
+
+
+@pytest.fixture
 def panel_data_with_covariates():
     np.random.seed(42)
     n_units = 25
