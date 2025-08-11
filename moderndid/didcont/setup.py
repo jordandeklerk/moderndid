@@ -379,3 +379,42 @@ def _choose_knots_quantile(x, num_knots):
 def _time_to_int(val, time_map):
     """Convert an original time period to a sequential integer."""
     return time_map.get(val, val)
+
+
+def _make_balanced_panel(data, idname, tname):
+    """Convert an unbalanced panel into a balanced one."""
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("data must be a pandas DataFrame")
+
+    n_periods = data[tname].nunique()
+    balanced = data.groupby(idname).filter(lambda x: len(x) == n_periods)
+    return balanced.reset_index(drop=True)
+
+
+def _get_first_difference(df, idname, yname, tname):
+    """Compute first differences of outcome variable within units."""
+    df = df.sort_values([idname, tname])
+    lagged = df.groupby(idname)[yname].shift(1)
+    return df[yname] - lagged
+
+
+def _get_group_inner(unit_df, tname, treatname):
+    """Get first treatment period for a single unit."""
+    if (unit_df[treatname] == 0).all():
+        return 0
+
+    treated_df = unit_df[unit_df[treatname] > 0]
+    if len(treated_df) > 0:
+        return treated_df[tname].iloc[0]
+    return 0
+
+
+def _get_group(df, idname, tname, treatname):
+    """Identify first treatment period for each unit."""
+    df = df.sort_values([idname, tname])
+    groups = {}
+    for unit_id, unit_df in df.groupby(idname):
+        groups[unit_id] = _get_group_inner(unit_df, tname, treatname)
+    result = df[idname].map(groups)
+    result.name = None
+    return result
