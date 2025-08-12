@@ -163,6 +163,8 @@ def test_numpy_performance_matrix_sqrt(matrices_large):
 
 @pytest.mark.skipif(not nb_module.HAS_NUMBA, reason="Numba not installed")
 def test_numba_performance_tensor_product():
+    from numba.typed import List
+
     np.random.seed(42)
     n_obs = 1000
     bases = [
@@ -173,7 +175,12 @@ def test_numba_performance_tensor_product():
     dims = np.array([b.shape[1] for b in bases], dtype=np.int32)
     total_cols = int(np.prod(dims))
 
-    _ = nb_module._tensor_prod_model_matrix_impl(bases, n_obs, dims, total_cols)
+    # Convert to numba typed list to avoid reflection warning
+    bases_typed = List()
+    for basis in bases:
+        bases_typed.append(np.asarray(basis, dtype=np.float64))
+
+    _ = nb_module._tensor_prod_model_matrix_impl(bases_typed, n_obs, dims, total_cols)
 
     def pure_python_tensor():
         result = np.empty((n_obs, total_cols), dtype=np.float64)
@@ -188,7 +195,7 @@ def test_numba_performance_tensor_product():
     time_pure = timeit.timeit(pure_python_tensor, number=5)
 
     time_numba = timeit.timeit(
-        lambda: nb_module._tensor_prod_model_matrix_impl(bases, n_obs, dims, total_cols), number=5
+        lambda: nb_module._tensor_prod_model_matrix_impl(bases_typed, n_obs, dims, total_cols), number=5
     )
 
     speedup = time_pure / time_numba

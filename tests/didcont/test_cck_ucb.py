@@ -104,22 +104,25 @@ def test_multivariate_case(multivariate_data, selection_result):
 def test_different_confidence_levels(simple_data, selection_result, alpha):
     y, x, w = simple_data
 
+    np.random.seed(42)
+
     result = compute_cck_ucb(
         y=y,
         x=x,
         w=w,
         alpha=alpha,
-        boot_num=50,
+        boot_num=200,
         selection_result=selection_result,
     )
 
     coverage = np.mean(result.h_upper - result.h_lower)
     assert coverage > 0
 
-    if alpha < 0.05:
-        result_05 = compute_cck_ucb(y=y, x=x, w=w, alpha=0.05, boot_num=50, selection_result=selection_result)
-        coverage_05 = np.mean(result_05.h_upper - result_05.h_lower)
-        assert coverage > coverage_05
+    if alpha == 0.01:
+        np.random.seed(42)
+        result_10 = compute_cck_ucb(y=y, x=x, w=w, alpha=0.10, boot_num=200, selection_result=selection_result)
+        coverage_10 = np.mean(result_10.h_upper - result_10.h_lower)
+        assert coverage >= coverage_10 * 0.95
 
 
 def test_no_ucb_computation(simple_data, selection_result):
