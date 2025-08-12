@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import scipy.stats
 
-from moderndid.didcont.process import (
+from moderndid.didcont.panel import (
     GroupTimeATTResult,
     multiplier_bootstrap,
     process_att_gt,
@@ -149,7 +149,7 @@ def test_process_att_gt_with_real_mp_result(att_gt_result):
         "extra_gt_returns": [],
     }
 
-    from moderndid.didcont.process import PTEParams
+    from moderndid.didcont.panel import PTEParams
 
     pte_params = PTEParams(
         yname="lemp",

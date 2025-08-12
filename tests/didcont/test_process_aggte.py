@@ -4,12 +4,12 @@ import numpy as np
 import pytest
 import scipy.stats
 
-from moderndid.didcont.process import (
+from moderndid.didcont.panel import (
     PTEAggteResult,
     aggregate_att_gt,
     overall_weights,
 )
-from moderndid.didcont.process.process_aggte import (
+from moderndid.didcont.panel.process_aggte import (
     check_critical_value,
     get_aggregated_influence_function,
     get_se,

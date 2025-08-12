@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from moderndid import att_gt, load_engel, load_mpdta
-from moderndid.didcont.process import PTEParams, process_att_gt
+from moderndid.didcont.panel import PTEParams, process_att_gt
 
 
 @pytest.fixture
