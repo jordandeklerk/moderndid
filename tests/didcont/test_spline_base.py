@@ -9,7 +9,7 @@ import pytest
 from moderndid.didcont.spline.base import SplineBase
 
 
-class TestSpline(SplineBase):
+class MockSpline(SplineBase):
     def basis(self, complete_basis=True):
         if self.x is None or self.spline_df is None:
             return None
@@ -34,7 +34,7 @@ def x_data():
 def test_init_with_internal_knots(x_data):
     internal_knots = [2.5, 5.0, 7.5]
     boundary_knots = [0, 10]
-    spline = TestSpline(x=x_data, internal_knots=internal_knots, boundary_knots=boundary_knots, degree=3)
+    spline = MockSpline(x=x_data, internal_knots=internal_knots, boundary_knots=boundary_knots, degree=3)
 
     assert np.array_equal(spline.internal_knots, internal_knots)
     assert np.array_equal(spline.boundary_knots, boundary_knots)
@@ -46,7 +46,7 @@ def test_init_with_internal_knots(x_data):
 
 
 def test_init_with_df(x_data):
-    spline = TestSpline(x=x_data, df=10, degree=3)
+    spline = MockSpline(x=x_data, df=10, degree=3)
 
     assert spline.degree == 3
     assert spline.order == 4
@@ -58,7 +58,7 @@ def test_init_with_df(x_data):
 
 def test_init_with_knot_sequence(x_data):
     knot_sequence = np.array([0, 0, 0, 0, 2, 4, 6, 8, 10, 10, 10, 10])
-    spline = TestSpline(x=x_data, knot_sequence=knot_sequence, degree=3)
+    spline = MockSpline(x=x_data, knot_sequence=knot_sequence, degree=3)
 
     assert spline.degree == 3
     assert np.array_equal(spline.boundary_knots, [0, 10])
@@ -69,7 +69,7 @@ def test_init_with_knot_sequence(x_data):
 
 def test_init_with_extended_knot_sequence(x_data):
     knot_sequence = np.array([-1, 0, 0, 0, 5, 10, 10, 10, 11])
-    spline = TestSpline(x=x_data, knot_sequence=knot_sequence, degree=3)
+    spline = MockSpline(x=x_data, knot_sequence=knot_sequence, degree=3)
 
     assert spline.degree == 3
     assert np.array_equal(spline.boundary_knots, [0, 10])
@@ -79,7 +79,7 @@ def test_init_with_extended_knot_sequence(x_data):
 
 
 def test_init_with_redundant_boundary_knots(x_data):
-    spline = TestSpline(x=x_data, boundary_knots=[0, 10, 0, 10])
+    spline = MockSpline(x=x_data, boundary_knots=[0, 10, 0, 10])
     assert np.array_equal(spline.boundary_knots, [0, 10])
 
 
@@ -96,11 +96,11 @@ def test_init_with_redundant_boundary_knots(x_data):
 )
 def test_init_errors(kwargs, error_type, error_match):
     with pytest.raises(error_type, match=error_match):
-        TestSpline(**kwargs)
+        MockSpline(**kwargs)
 
 
 def test_set_degree_and_order(x_data):
-    spline = TestSpline(x=x_data, df=10, degree=3)
+    spline = MockSpline(x=x_data, df=10, degree=3)
     assert spline.degree == 3
     assert spline.order == 4
 
@@ -117,7 +117,7 @@ def test_set_degree_and_order(x_data):
 
 
 def test_set_knots(x_data):
-    spline = TestSpline(x=x_data, df=10, degree=3)
+    spline = MockSpline(x=x_data, df=10, degree=3)
     old_ik = spline.internal_knots.copy()
 
     spline.set_internal_knots([1, 2, 3, 4, 5, 6])
@@ -134,7 +134,7 @@ def test_set_knots(x_data):
 def test_generate_default_knots_fallback(sparse_data):
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
-        spline = TestSpline(x=sparse_data, df=5, degree=2)
+        spline = MockSpline(x=sparse_data, df=5, degree=2)
         assert len(w) >= 1
         warning_text = str(w[0].message)
         assert "Duplicated knots" in warning_text or "On-boundary knots" in warning_text
@@ -145,7 +145,7 @@ def test_generate_default_knots_fallback(sparse_data):
 
 def test_update_x_index(x_data):
     internal_knots = [2.5, 5.0, 7.5]
-    spline = TestSpline(x=x_data, internal_knots=internal_knots, degree=3)
+    spline = MockSpline(x=x_data, internal_knots=internal_knots, degree=3)
     spline._update_x_index()
 
     assert spline.x_index is not None
@@ -157,7 +157,7 @@ def test_update_x_index(x_data):
 
 
 def test_property_setters(x_data):
-    spline = TestSpline()
+    spline = MockSpline()
     spline.x = x_data
     assert np.array_equal(spline.x, x_data)
 
@@ -180,11 +180,11 @@ def test_property_setters(x_data):
 
 
 def test_simplify_knots_no_x():
-    spline = TestSpline(internal_knots=[1, 2], boundary_knots=[0, 3])
+    spline = MockSpline(internal_knots=[1, 2], boundary_knots=[0, 3])
     assert spline.internal_knots is not None
     assert spline.boundary_knots is not None
 
 
 def test_has_internal_multiplicity(x_data):
-    spline = TestSpline(x=x_data, internal_knots=[2, 2, 5])
+    spline = MockSpline(x=x_data, internal_knots=[2, 2, 5])
     assert spline._has_internal_multiplicity

@@ -182,7 +182,7 @@ def setup_pte(
     call=None,
     xformla="~1",
 ):
-    """Perform generic setup for panel treatment effects."""
+    """Perform setup for panel treatment effects."""
     data = data.copy()
 
     g_series = data[gname]
@@ -212,11 +212,11 @@ def setup_pte(
     sorted_original_time_periods = np.sort(original_time_periods)
     time_map = {orig: i + 1 for i, orig in enumerate(sorted_original_time_periods)}
 
-    data["period"] = np.array([_time_to_int(t, time_map) for t in period_series])
-    data["G"] = np.array([_time_to_int(g, time_map) for g in g_series])
+    data["period"] = _map_to_idx(period_series, time_map)
+    data["G"] = _map_to_idx(g_series, time_map)
 
-    recoded_time_periods = np.array([_time_to_int(t, time_map) for t in sorted_original_time_periods])
-    recoded_groups = np.array([_time_to_int(g, time_map) for g in original_groups if g in time_map])
+    recoded_time_periods = _map_to_idx(sorted_original_time_periods, time_map)
+    recoded_groups = _map_to_idx([g for g in original_groups if g in time_map], time_map)
 
     if base_period == "universal":
         t_list = np.sort(recoded_time_periods)
@@ -296,7 +296,7 @@ def setup_pte_cont(
     num_knots=0,
     **kwargs,
 ):
-    """Set up for DiD with a Continuous Treatment."""
+    """Perform setup for DiD with a continuous treatment."""
     data = data.copy()
     data["D"] = data[dname]
 
@@ -362,6 +362,15 @@ def setup_pte_cont(
     return PTEParams(**pte_params_dict)
 
 
+def _map_to_idx(vals, time_map):
+    """Map original time/group values to contiguous integer indices."""
+    vals_arr = np.asarray(vals)
+    if vals_arr.ndim == 0:
+        val_item = vals_arr.item()
+        return time_map.get(val_item, val_item)
+    return np.array([time_map.get(v, v) for v in vals_arr], dtype=int)
+
+
 def _choose_knots_quantile(x, num_knots):
     """Choose knots for splines based on quantiles of x."""
     if num_knots <= 0:
@@ -374,11 +383,6 @@ def _choose_knots_quantile(x, num_knots):
     probs = np.linspace(0, 1, num_knots + 2)
     quantiles = np.quantile(x, probs)
     return quantiles[1:-1]
-
-
-def _time_to_int(val, time_map):
-    """Convert an original time period to a sequential integer."""
-    return time_map.get(val, val)
 
 
 def _make_balanced_panel(data, idname, tname):

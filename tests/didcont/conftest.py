@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from moderndid.data import load_engel
+from moderndid import att_gt, load_engel, load_mpdta
+from moderndid.didcont.process import PTEParams, process_att_gt
 
 
 @pytest.fixture
@@ -363,3 +364,196 @@ def panel_data_with_weights():
     return pd.DataFrame(
         {"unit_id": unit_ids, "time_id": time_ids, "y": y, "d": d, "stratum": stratum, "weights": weights}
     )
+
+
+@pytest.fixture
+def mpdta():
+    return load_mpdta()
+
+
+@pytest.fixture
+def att_gt_result(mpdta):
+    return att_gt(
+        data=mpdta,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        est_method="reg",
+        bstrap=False,
+    )
+
+
+@pytest.fixture
+def att_gt_result_bootstrap(mpdta):
+    unique_counties = mpdta["countyreal"].unique()[:50]
+    mpdta_subset = mpdta[mpdta["countyreal"].isin(unique_counties)]
+
+    return att_gt(
+        data=mpdta_subset,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        est_method="reg",
+        bstrap=True,
+        biters=100,
+        cband=True,
+    )
+
+
+@pytest.fixture
+def simple_influence_func():
+    np.random.seed(42)
+    n_obs = 100
+    n_params = 5
+    return np.random.randn(n_obs, n_params)
+
+
+@pytest.fixture
+def att_gt_raw_results():
+    np.random.seed(42)
+    n_groups = 3
+    n_times = 4
+    n_gt = n_groups * n_times
+
+    attgt_list = []
+    for g in [2004, 2006, 2007]:
+        for t in [2003, 2004, 2005, 2006]:
+            att_value = np.random.normal(0.1, 0.05) if g > t else np.random.normal(0, 0.02)
+            attgt_list.append({"att": att_value, "group": g, "time_period": t})
+
+    n_units = 200
+    influence_func = np.random.randn(n_units, n_gt) * 0.1
+
+    return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": []}
+
+
+@pytest.fixture
+def pte_params_basic():
+    data = pd.DataFrame(
+        {
+            "id": np.repeat(np.arange(1, 51), 4),
+            "time": np.tile([2003, 2004, 2005, 2006], 50),
+            "y": np.random.randn(200),
+            "G": np.repeat(np.random.choice([0, 2004, 2006, 2007], 50), 4),
+        }
+    )
+
+    return PTEParams(
+        yname="y",
+        gname="G",
+        tname="time",
+        idname="id",
+        data=data,
+        g_list=np.array([2004, 2006, 2007]),
+        t_list=np.array([2003, 2004, 2005, 2006]),
+        cband=True,
+        alp=0.05,
+        boot_type="multiplier",
+        anticipation=0,
+        base_period="varying",
+        weightsname=None,
+        control_group="nevertreated",
+        gt_type="att",
+        ret_quantile=0.5,
+        biters=100,
+        cl=1,
+        call="test_call",
+        dname=None,
+        degree=None,
+        num_knots=None,
+        knots=None,
+        dvals=None,
+        target_parameter=None,
+        aggregation=None,
+        treatment_type=None,
+        xformla="~1",
+    )
+
+
+@pytest.fixture
+def mock_att_gt_result(att_gt_raw_results, pte_params_basic):
+    processed = process_att_gt(att_gt_raw_results, pte_params_basic)
+
+    class MockATTGTResult:
+        def __init__(self):
+            self.group = processed.groups
+            self.t = processed.times
+            self.att = processed.att
+            self.inf_func = processed.influence_func
+            self.pte_params = pte_params_basic
+
+    return MockATTGTResult()
+
+
+@pytest.fixture
+def att_gt_result_with_data():
+    np.random.seed(42)
+
+    n_units = 100
+    periods = [1, 2, 3, 4]
+    groups = [0, 2, 3]
+
+    unit_groups = np.random.choice(groups, n_units)
+    data_list = []
+
+    for period in periods:
+        data_list.append(
+            pd.DataFrame({"period": period, ".w": np.random.uniform(0.5, 2.0, n_units), "group": unit_groups})
+        )
+
+    data = pd.concat(data_list, ignore_index=True)
+
+    att_values = []
+    group_values = []
+    time_values = []
+
+    for g in [2, 3]:
+        for t in periods:
+            att_values.append(np.random.normal(0.1, 0.05))
+            group_values.append(g)
+            time_values.append(t)
+
+    inf_func = np.random.randn(n_units, len(att_values)) * 0.1
+
+    pte_params = PTEParams(
+        yname="y",
+        gname="group",
+        tname="period",
+        idname="id",
+        data=data,
+        g_list=np.array([2, 3]),
+        t_list=np.array(periods),
+        cband=True,
+        alp=0.05,
+        boot_type="multiplier",
+        anticipation=0,
+        base_period="varying",
+        weightsname=None,
+        control_group="nevertreated",
+        gt_type="att",
+        ret_quantile=0.5,
+        biters=100,
+        cl=1,
+        call="test",
+        dname=None,
+        degree=None,
+        num_knots=None,
+        knots=None,
+        dvals=None,
+        target_parameter=None,
+        aggregation=None,
+        treatment_type=None,
+        xformla="~1",
+    )
+
+    class MockATTGTResult:
+        def __init__(self):
+            self.group = np.array(group_values)
+            self.t = np.array(time_values)
+            self.att = np.array(att_values)
+            self.inf_func = inf_func
+            self.pte_params = pte_params
+
+    return MockATTGTResult()
