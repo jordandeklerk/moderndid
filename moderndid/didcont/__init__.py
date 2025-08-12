@@ -12,7 +12,7 @@ from .npiv import (
     predict_gsl_bs,
     prodspline,
 )
-from .process import (
+from .panel import (
     GroupTimeATTResult,
     PTEAggteResult,
     PTEParams,

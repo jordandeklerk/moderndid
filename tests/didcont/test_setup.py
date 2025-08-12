@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from moderndid.didcont.process.process_panel import (
+from moderndid.didcont.panel.process_panel import (
     PTEParams,
     _choose_knots_quantile,
     _get_first_difference,
