@@ -7,11 +7,13 @@ import numpy as np
 
 try:
     import numba as nb
+    from numba.typed import List
 
     HAS_NUMBA = True
 except ImportError:
     HAS_NUMBA = False
     nb = None
+    List = None
 
 
 __all__ = [
@@ -23,6 +25,9 @@ __all__ = [
     "compute_basis_dimension",
     "tensor_prod_model_matrix",
     "glp_model_matrix",
+    "cox_de_boor_basis",
+    "bspline_derivative",
+    "bspline_integral",
 ]
 
 
@@ -178,6 +183,108 @@ def _tensor_prod_model_matrix_impl(bases_flat, n_obs, total_cols):
     return result
 
 
+def _cox_de_boor_basis_impl(x, x_index, knot_sequence, degree, spline_df):
+    """Cox-de Boor recursion for B-spline basis computation."""
+    n = len(x)
+    b_mat = np.zeros((n, spline_df), dtype=np.float64)
+
+    for i in range(n):
+        b_mat[i, x_index[i]] = 1.0
+
+    order = degree + 1
+    for k in range(1, degree + 1):
+        k_offset = degree - k
+        for i in range(n):
+            saved = 0.0
+            for j in range(k):
+                j_index = x_index[i] + j
+                i1 = j_index + k_offset + 1
+                i2 = j_index + order
+                den = knot_sequence[i2] - knot_sequence[i1]
+
+                if abs(den) < 1e-15:
+                    if j != 0 or knot_sequence[i2] - x[i] != 0:
+                        b_mat[i, j_index] = saved
+                    saved = 0.0
+                else:
+                    term = b_mat[i, j_index] / den
+                    b_mat[i, j_index] = saved + (knot_sequence[i2] - x[i]) * term
+                    saved = (x[i] - knot_sequence[i1]) * term
+
+            b_mat[i, x_index[i] + k] = saved
+
+    return b_mat
+
+
+def _bspline_derivative_impl(x, x_index, knot_sequence, degree, derivs, spline_df):
+    """Compute B-spline derivatives."""
+    n = len(x)
+    order = degree + 1
+
+    d_mat = _cox_de_boor_basis_impl(x, x_index, knot_sequence, degree - derivs, spline_df)
+
+    reduced_df = degree - derivs + len(np.unique(knot_sequence[degree + 1 : -degree - 1]))
+    if spline_df > reduced_df:
+        padded = np.zeros((n, spline_df), dtype=np.float64)
+        padded[:, :reduced_df] = d_mat[:, :reduced_df]
+        d_mat = padded
+
+    for k in range(1, derivs + 1):
+        k_offset = derivs - k
+        numer = degree - k_offset
+        for i in range(n):
+            saved = 0.0
+            for j in range(numer):
+                j_index = x_index[i] + j
+                i1 = j_index + k_offset + 1
+                i2 = j_index + order
+                den = knot_sequence[i2] - knot_sequence[i1]
+
+                if abs(den) < 1e-15:
+                    d_mat[i, j_index] = saved
+                    saved = 0.0
+                else:
+                    term = numer * d_mat[i, j_index] / den
+                    d_mat[i, j_index] = saved - term
+                    saved = term
+
+            d_mat[i, x_index[i] + numer] = saved
+
+    return d_mat
+
+
+def _bspline_integral_impl(x, x_index, knot_sequence_higher, basis_higher, degree):
+    """Compute B-spline integrals."""
+    n = len(x)
+    order = degree + 1
+    order_higher = order + 1
+    i_mat = basis_higher.copy()
+
+    n_cols = i_mat.shape[1]
+    numer1 = np.zeros(n_cols, dtype=np.float64)
+    for j in range(n_cols):
+        numer1[j] = knot_sequence_higher[j + order_higher] - knot_sequence_higher[j + 1]
+
+    for i in range(n):
+        k1 = x_index[i]
+        k2 = k1 + degree
+
+        numer2 = np.zeros(degree + 1, dtype=np.float64)
+        numer2[degree] = i_mat[i, k2]
+        for j in range(degree - 1, -1, -1):
+            numer2[j] = numer2[j + 1] + i_mat[i, k1 + j]
+
+        for j in range(n_cols):
+            if j > k2:
+                i_mat[i, j] = 0.0
+            elif j >= k1:
+                i_mat[i, j] = numer2[j - k1] * numer1[j] / order
+            else:
+                i_mat[i, j] = numer1[j] / order
+
+    return i_mat
+
+
 def _glp_model_matrix_impl(bases_flat, n_obs, dims):
     """GLP model matrix computation."""
     num_bases = len(dims)
@@ -252,24 +359,12 @@ if HAS_NUMBA:
             return 1.0
         return r_squared
 
-    @nb.njit(cache=True)
+    @nb.vectorize([nb.float64(nb.float64, nb.float64)], cache=True)
     def _create_nonzero_divisor_impl(a, eps):
         """Ensure values are bounded away from zero."""
-        if a.ndim == 0:
-            a_val = a.item()
-            if a_val < 0:
-                return a_val if a_val < -eps else -eps
-            return a_val if a_val > eps else eps
-
-        result = np.empty_like(a)
-
-        for i in range(a.shape[0]):
-            if a[i] < 0:
-                result[i] = a[i] if a[i] < -eps else -eps
-            else:
-                result[i] = a[i] if a[i] > eps else eps
-
-        return result
+        if a < 0:
+            return min(a, -eps)
+        return max(a, eps)
 
     @nb.njit(cache=True)
     def _compute_additive_dimension(degree, segments):
@@ -449,6 +544,117 @@ if HAS_NUMBA:
 
     _glp_model_matrix_impl = _glp_model_matrix_numba_impl
 
+    @nb.njit(cache=True)
+    def _cox_de_boor_basis_impl(x, x_index, knot_sequence, degree, spline_df):
+        """Cox-de Boor recursion for B-spline basis computation."""
+        n = len(x)
+        b_mat = np.zeros((n, spline_df), dtype=np.float64)
+
+        for i in range(n):
+            b_mat[i, x_index[i]] = 1.0
+
+        order = degree + 1
+        for k in range(1, degree + 1):
+            k_offset = degree - k
+            for i in range(n):
+                saved = 0.0
+                for j in range(k):
+                    j_index = x_index[i] + j
+                    i1 = j_index + k_offset + 1
+                    i2 = j_index + order
+                    den = knot_sequence[i2] - knot_sequence[i1]
+
+                    if abs(den) < 1e-15:
+                        if j != 0 or knot_sequence[i2] - x[i] != 0:
+                            b_mat[i, j_index] = saved
+                        saved = 0.0
+                    else:
+                        term = b_mat[i, j_index] / den
+                        b_mat[i, j_index] = saved + (knot_sequence[i2] - x[i]) * term
+                        saved = (x[i] - knot_sequence[i1]) * term
+
+                b_mat[i, x_index[i] + k] = saved
+
+        return b_mat
+
+    @nb.njit(cache=True)
+    def _bspline_derivative_impl(x, x_index, knot_sequence, degree, derivs, spline_df):
+        """Compute B-spline derivatives."""
+        n = len(x)
+        order = degree + 1
+
+        d_mat = _cox_de_boor_basis_impl(x, x_index, knot_sequence, degree - derivs, spline_df)
+
+        for k in range(1, derivs + 1):
+            k_offset = derivs - k
+            numer = degree - k_offset
+            for i in range(n):
+                saved = 0.0
+                for j in range(numer):
+                    j_index = x_index[i] + j
+                    i1 = j_index + k_offset + 1
+                    i2 = j_index + order
+                    den = knot_sequence[i2] - knot_sequence[i1]
+
+                    if abs(den) < 1e-15:
+                        d_mat[i, j_index] = saved
+                        saved = 0.0
+                    else:
+                        term = numer * d_mat[i, j_index] / den
+                        d_mat[i, j_index] = saved - term
+                        saved = term
+
+                d_mat[i, x_index[i] + numer] = saved
+
+        return d_mat
+
+    @nb.guvectorize(
+        ["void(int32, float64[:], float64[:], int32[:], float64[:])"],
+        "(),(k),(s),(d)->(s)",
+        cache=True,
+    )
+    def _bspline_integral_gufunc(
+        x_idx_scalar,
+        knot_sequence_higher,
+        basis_higher_row,
+        degree_array,
+        out_i_mat_row,
+    ):
+        """Compute B-spline integral for a single observation."""
+        degree = degree_array[0]
+        order = degree + 1
+        order_higher = order + 1
+
+        n_cols = len(basis_higher_row)
+        for j in range(n_cols):
+            out_i_mat_row[j] = basis_higher_row[j]
+
+        numer1 = np.zeros(n_cols, dtype=np.float64)
+        for j in range(n_cols):
+            numer1[j] = knot_sequence_higher[j + order_higher] - knot_sequence_higher[j + 1]
+
+        k1 = x_idx_scalar
+        k2 = k1 + degree
+
+        numer2 = np.zeros(degree + 1, dtype=np.float64)
+        numer2[degree] = out_i_mat_row[k2]
+        for j in range(degree - 1, -1, -1):
+            numer2[j] = numer2[j + 1] + out_i_mat_row[k1 + j]
+
+        for j in range(n_cols):
+            if j > k2:
+                out_i_mat_row[j] = 0.0
+            elif j >= k1:
+                out_i_mat_row[j] = numer2[j - k1] * numer1[j] / order
+            else:
+                out_i_mat_row[j] = numer1[j] / order
+
+    def _bspline_integral_impl(x_index, knot_sequence_higher, basis_higher, degree_array):
+        """Compute B-spline integrals."""
+        i_mat = np.empty_like(basis_higher)
+        _bspline_integral_gufunc(x_index, knot_sequence_higher, basis_higher, degree_array, i_mat)
+        return i_mat
+
 
 def check_full_rank_crossprod(x, tol=None):
     """Check if :math:`X'X` has full rank using eigenvalue decomposition."""
@@ -507,13 +713,16 @@ def tensor_prod_model_matrix(bases):
                 f"All matrices must have same number of rows. bases[0] has {n_obs}, bases[{i}] has {basis.shape[0]}"
             )
 
-    bases_typed = []
-    dims = []
-    for basis in bases:
-        bases_typed.append(np.asarray(basis, dtype=np.float64))
-        dims.append(basis.shape[1])
+    if HAS_NUMBA:
+        bases_typed = List()
+        for basis in bases:
+            bases_typed.append(np.asarray(basis, dtype=np.float64))
+    else:
+        bases_typed = []
+        for basis in bases:
+            bases_typed.append(np.asarray(basis, dtype=np.float64))
 
-    dims = np.array(dims, dtype=np.int32)
+    dims = np.array([basis.shape[1] for basis in bases], dtype=np.int32)
     total_cols = int(np.prod(dims))
 
     return _tensor_prod_model_matrix_impl(bases_typed, n_obs, dims, total_cols)
@@ -540,17 +749,44 @@ def glp_model_matrix(bases):
     if n_obs == 0:
         return np.empty((0, 0))
 
-    bases_typed = []
-    dims = []
-    for basis in bases:
-        bases_typed.append(np.asarray(basis, dtype=np.float64))
-        dims.append(basis.shape[1])
+    dims = np.array([basis.shape[1] for basis in bases], dtype=np.int32)
 
-    dims = np.array(dims, dtype=np.int32)
-
-    # The Numba implementation is specialized for up to 3-way interactions.
-    # Fall back to the pure Python version for more complex cases.
     if HAS_NUMBA and len(bases) <= 3:
+        bases_typed = List()
+        for basis in bases:
+            bases_typed.append(np.asarray(basis, dtype=np.float64))
         return _glp_model_matrix_numba_impl(bases_typed, n_obs, dims)
 
+    bases_typed = []
+    for basis in bases:
+        bases_typed.append(np.asarray(basis, dtype=np.float64))
+
     return _glp_model_matrix_impl(bases_typed, n_obs, dims)
+
+
+def cox_de_boor_basis(x, x_index, knot_sequence, degree, spline_df):
+    """Cox-de Boor recursion for B-spline basis computation."""
+    x = np.asarray(x, dtype=np.float64)
+    x_index = np.asarray(x_index, dtype=np.int32)
+    knot_sequence = np.asarray(knot_sequence, dtype=np.float64)
+
+    return _cox_de_boor_basis_impl(x, x_index, knot_sequence, degree, spline_df)
+
+
+def bspline_derivative(x, x_index, knot_sequence, degree, derivs, spline_df):
+    """Compute B-spline derivatives."""
+    x = np.asarray(x, dtype=np.float64)
+    x_index = np.asarray(x_index, dtype=np.int32)
+    knot_sequence = np.asarray(knot_sequence, dtype=np.float64)
+
+    return _bspline_derivative_impl(x, x_index, knot_sequence, degree, derivs, spline_df)
+
+
+def bspline_integral(x_index, knot_sequence_higher, basis_higher, degree):
+    """Compute B-spline integrals."""
+    x_index = np.asarray(x_index, dtype=np.int32)
+    knot_sequence_higher = np.asarray(knot_sequence_higher, dtype=np.float64)
+    basis_higher = np.asarray(basis_higher, dtype=np.float64)
+    degree_array = np.array([degree], dtype=np.int32)
+
+    return _bspline_integral_impl(x_index, knot_sequence_higher, basis_higher, degree_array)
