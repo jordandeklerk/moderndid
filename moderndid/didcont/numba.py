@@ -7,11 +7,13 @@ import numpy as np
 
 try:
     import numba as nb
+    from numba.typed import List
 
     HAS_NUMBA = True
 except ImportError:
     HAS_NUMBA = False
     nb = None
+    List = None
 
 
 __all__ = [
@@ -711,13 +713,16 @@ def tensor_prod_model_matrix(bases):
                 f"All matrices must have same number of rows. bases[0] has {n_obs}, bases[{i}] has {basis.shape[0]}"
             )
 
-    bases_typed = []
-    dims = []
-    for basis in bases:
-        bases_typed.append(np.asarray(basis, dtype=np.float64))
-        dims.append(basis.shape[1])
+    if HAS_NUMBA:
+        bases_typed = List()
+        for basis in bases:
+            bases_typed.append(np.asarray(basis, dtype=np.float64))
+    else:
+        bases_typed = []
+        for basis in bases:
+            bases_typed.append(np.asarray(basis, dtype=np.float64))
 
-    dims = np.array(dims, dtype=np.int32)
+    dims = np.array([basis.shape[1] for basis in bases], dtype=np.int32)
     total_cols = int(np.prod(dims))
 
     return _tensor_prod_model_matrix_impl(bases_typed, n_obs, dims, total_cols)
@@ -744,18 +749,17 @@ def glp_model_matrix(bases):
     if n_obs == 0:
         return np.empty((0, 0))
 
+    dims = np.array([basis.shape[1] for basis in bases], dtype=np.int32)
+
+    if HAS_NUMBA and len(bases) <= 3:
+        bases_typed = List()
+        for basis in bases:
+            bases_typed.append(np.asarray(basis, dtype=np.float64))
+        return _glp_model_matrix_numba_impl(bases_typed, n_obs, dims)
+
     bases_typed = []
-    dims = []
     for basis in bases:
         bases_typed.append(np.asarray(basis, dtype=np.float64))
-        dims.append(basis.shape[1])
-
-    dims = np.array(dims, dtype=np.int32)
-
-    # The Numba implementation is specialized for up to 3-way interactions.
-    # Fall back to the pure Python version for more complex cases.
-    if HAS_NUMBA and len(bases) <= 3:
-        return _glp_model_matrix_numba_impl(bases_typed, n_obs, dims)
 
     return _glp_model_matrix_impl(bases_typed, n_obs, dims)
 

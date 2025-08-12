@@ -1,5 +1,5 @@
 # pylint: disable=redefined-outer-name
-"""Tests for setup functions."""
+"""Tests for processing panel data."""
 
 import numpy as np
 import pandas as pd
