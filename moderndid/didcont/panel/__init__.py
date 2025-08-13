@@ -10,6 +10,11 @@ from .process_attgt import (
     multiplier_bootstrap,
     process_att_gt,
 )
+from .process_dose import (
+    DoseResult,
+    _summary_dose_result,
+    process_dose_gt,
+)
 from .process_panel import (
     PTEParams,
     _choose_knots_quantile,
@@ -34,6 +39,9 @@ __all__ = [
     "GroupTimeATTResult",
     "aggregate_att_gt",
     "PTEAggteResult",
+    "process_dose_gt",
+    "DoseResult",
+    "_summary_dose_result",
     "overall_weights",
     "multiplier_bootstrap",
     # Helper functions

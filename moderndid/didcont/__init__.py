@@ -13,6 +13,7 @@ from .npiv import (
     prodspline,
 )
 from .panel import (
+    DoseResult,
     GroupTimeATTResult,
     PTEAggteResult,
     PTEParams,
@@ -20,10 +21,12 @@ from .panel import (
     _get_group,
     _get_group_inner,
     _make_balanced_panel,
+    _summary_dose_result,
     aggregate_att_gt,
     multiplier_bootstrap,
     overall_weights,
     process_att_gt,
+    process_dose_gt,
     setup_pte,
     setup_pte_basic,
     setup_pte_cont,
@@ -47,6 +50,7 @@ __all__ = [
     "NPIVResult",
     "GroupTimeATTResult",
     "PTEAggteResult",
+    "DoseResult",
     # B-spline and basis construction
     "BSplineBasis",
     "MultivariateBasis",
@@ -66,7 +70,9 @@ __all__ = [
     "setup_pte_cont",
     # Processing functions
     "process_att_gt",
+    "process_dose_gt",
     "aggregate_att_gt",
+    "_summary_dose_result",
     "overall_weights",
     "multiplier_bootstrap",
     "_get_first_difference",
