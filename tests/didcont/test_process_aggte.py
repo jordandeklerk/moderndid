@@ -54,7 +54,7 @@ def test_aggregate_att_gt_group(mock_att_gt_result):
     assert result.event_times is not None
     assert result.att_by_event is not None
     assert result.se_by_event is not None
-    assert len(result.att_by_event) == len(np.unique(mock_att_gt_result.group[mock_att_gt_result.group > 0]))
+    assert len(result.att_by_event) == len(np.unique(mock_att_gt_result.groups[mock_att_gt_result.groups > 0]))
 
 
 def test_aggregate_att_gt_balanced_event(mock_att_gt_result):
@@ -304,7 +304,7 @@ def test_aggregate_att_gt_all_types(mock_att_gt_result, aggregation_type):
 
 def test_aggregate_att_gt_preserves_original(mock_att_gt_result):
     original_att = mock_att_gt_result.att.copy()
-    original_inf = mock_att_gt_result.inf_func.copy()
+    original_inf = mock_att_gt_result.influence_func.copy()
 
     result = aggregate_att_gt(mock_att_gt_result, aggregation_type="overall")
 
@@ -313,7 +313,7 @@ def test_aggregate_att_gt_preserves_original(mock_att_gt_result):
     assert result.overall_se is not None
 
     assert np.allclose(mock_att_gt_result.att, original_att)
-    assert np.allclose(mock_att_gt_result.inf_func, original_inf)
+    assert np.allclose(mock_att_gt_result.influence_func, original_inf)
 
 
 def test_aggregate_att_gt_dynamic_empty_event_range(mock_att_gt_result):
@@ -327,7 +327,7 @@ def test_aggregate_att_gt_dynamic_empty_event_range(mock_att_gt_result):
 
 
 def test_aggregate_att_gt_group_no_positive_groups(mock_att_gt_result):
-    mock_att_gt_result.group = np.zeros_like(mock_att_gt_result.group)
+    mock_att_gt_result.groups = np.zeros_like(mock_att_gt_result.groups)
 
     result = aggregate_att_gt(mock_att_gt_result, aggregation_type="group")
 

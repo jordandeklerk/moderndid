@@ -87,11 +87,11 @@ def aggregate_att_gt(
     PTEAggteResult
         Aggregated effects, standard errors, influence functions, and metadata.
     """
-    original_group = np.asarray(att_gt_result.group)
-    original_time = np.asarray(att_gt_result.t)
+    original_group = np.asarray(att_gt_result.groups)
+    original_time = np.asarray(att_gt_result.times)
 
     att = np.asarray(att_gt_result.att, dtype=float)
-    inf_func = np.asarray(att_gt_result.inf_func)
+    inf_func = np.asarray(att_gt_result.influence_func)
     pte_params = att_gt_result.pte_params
 
     if pte_params is None:
@@ -139,12 +139,14 @@ def aggregate_att_gt(
 
     if aggregation_type == "group":
         att_by_group, se_by_group, inf_by_group_cols = [], [], []
+
         for g_idx in glist_idx:
             which_g = (
                 (group_idx == g_idx)
                 & (g_idx <= time_idx)
                 & (time_idx <= (group_idx + (int(max_event_time) if np.isfinite(max_event_time) else max_t)))
             )
+
             if not np.any(which_g):
                 att_by_group.append(np.nan)
                 se_by_group.append(np.nan)
@@ -169,17 +171,20 @@ def aggregate_att_gt(
 
         crit_val = pointwise_z
         valid_cols = ~np.isnan(att_by_group)
+
         if confidence_band and np.any(valid_cols):
             mb_result = multiplier_bootstrap(inf_by_group[:, valid_cols], biters=bootstrap_iterations, alpha=alpha)
             crit_val = check_critical_value(float(mb_result["critical_value"]), alpha)
 
         pg_groups_valid = pg_groups
         valid_groups = ~np.isnan(att_by_group)
+
         if np.any(valid_groups):
             overall_att = float(
                 np.sum(att_by_group[valid_groups] * pg_groups_valid[valid_groups])
                 / np.sum(pg_groups_valid[valid_groups])
             )
+
             if (weights_ind is not None) and (g_units_idx is not None):
                 wif_overall = weight_influence_function_from_groups(
                     pg_comp=pg_groups_valid[valid_groups],
@@ -191,6 +196,7 @@ def aggregate_att_gt(
                 wif_overall = None
 
             weights_agg_overall = safe_normalize(pg_groups_valid[valid_groups])
+
             inf_overall = get_aggregated_influence_function(
                 att_by_group[valid_groups],
                 inf_by_group[:, valid_groups],
@@ -198,6 +204,7 @@ def aggregate_att_gt(
                 weights_agg_overall,
                 wif_overall,
             ).astype(float)
+
             overall_se = float(
                 get_se(
                     inf_overall[:, None], bootstrap=bootstrap, bootstrap_iterations=bootstrap_iterations, alpha=alpha
@@ -354,6 +361,7 @@ def aggregate_att_gt(
     inf_overall = get_aggregated_influence_function(
         att, inf_func, np.where(keepers_mask)[0], weights_agg, wif_overall
     ).astype(float)
+
     overall_se = float(
         get_se(inf_overall[:, None], bootstrap=bootstrap, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
     )
@@ -398,8 +406,8 @@ def overall_weights(att_gt_result, balance_event=None, min_event_time=-np.inf, m
         **times**: Original time periods.
         **weights**: Weighted group probabilities.
     """
-    original_group = np.asarray(att_gt_result.group)
-    original_time = np.asarray(att_gt_result.t)
+    original_group = np.asarray(att_gt_result.groups)
+    original_time = np.asarray(att_gt_result.times)
     pte_params = att_gt_result.pte_params
 
     if pte_params is None or pte_params.data is None:
@@ -448,7 +456,10 @@ def overall_weights(att_gt_result, balance_event=None, min_event_time=-np.inf, m
 
     total = float(np.sum(output_weights))
     if not np.isclose(total, 1.0, atol=1e-10):
-        raise RuntimeError(f"overall weights should sum to 1 (sum={total}).")
+        if total > 0:
+            output_weights = output_weights / total
+        else:
+            raise RuntimeError("overall weights sum to 0, cannot normalize.")
 
     return {"groups": original_group, "times": original_time, "weights": output_weights}
 
