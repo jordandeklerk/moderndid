@@ -32,11 +32,16 @@ from .panel import (
     setup_pte_cont,
 )
 from .utils import (
+    _quantile_basis,
     avoid_zero_division,
     basis_dimension,
+    bread,
     compute_r_squared,
+    estfun,
     is_full_rank,
     matrix_sqrt,
+    meat,
+    sandwich_vcov,
 )
 
 __all__ = [
@@ -63,6 +68,11 @@ __all__ = [
     "matrix_sqrt",
     "avoid_zero_division",
     "basis_dimension",
+    "bread",
+    "estfun",
+    "meat",
+    "sandwich_vcov",
+    "_quantile_basis",
     # Panel treatment effects setup
     "PTEParams",
     "setup_pte",

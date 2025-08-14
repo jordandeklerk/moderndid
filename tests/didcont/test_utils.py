@@ -5,11 +5,16 @@ import numpy as np
 import pytest
 
 from moderndid.didcont import (
+    _quantile_basis,
     avoid_zero_division,
     basis_dimension,
+    bread,
     compute_r_squared,
+    estfun,
     is_full_rank,
     matrix_sqrt,
+    meat,
+    sandwich_vcov,
 )
 
 
@@ -21,17 +26,18 @@ def test_is_full_rank_basic(simple_matrix):
     assert result.max_eigenvalue > result.min_eigenvalue
 
 
-def test_is_full_rank_single_column():
-    x = np.array([[1], [2], [3], [4], [5]])
+@pytest.mark.parametrize(
+    "x, expected_full_rank, expected_condition",
+    [
+        (np.array([[1], [2], [3], [4], [5]]), True, 5.0),
+        (np.zeros((10, 1)), False, None),
+    ],
+)
+def test_is_full_rank_special_cases(x, expected_full_rank, expected_condition):
     result = is_full_rank(x)
-    assert result.is_full_rank is True
-    assert result.condition_number == 5.0
-
-
-def test_is_full_rank_zero_column():
-    x = np.zeros((10, 1))
-    result = is_full_rank(x)
-    assert result.is_full_rank is False
+    assert result.is_full_rank is expected_full_rank
+    if expected_condition is not None:
+        assert result.condition_number == expected_condition
 
 
 def test_is_full_rank_deficient(rank_deficient_matrix):
@@ -46,18 +52,17 @@ def test_is_full_rank_custom_tolerance(simple_matrix, tol):
     assert isinstance(result.is_full_rank, bool)
 
 
-def test_compute_r_squared_perfect_fit():
-    y = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    y_pred = y.copy()
+@pytest.mark.parametrize(
+    "y, y_pred_func, expected_r2",
+    [
+        (np.array([1.0, 2.0, 3.0, 4.0, 5.0]), lambda y: y.copy(), 1.0),
+        (np.array([1.0, 2.0, 3.0, 4.0, 5.0]), lambda y: np.mean(y) * np.ones_like(y), 0.0),
+    ],
+)
+def test_compute_r_squared_fits(y, y_pred_func, expected_r2):
+    y_pred = y_pred_func(y)
     r2 = compute_r_squared(y, y_pred)
-    assert np.isclose(r2, 1.0)
-
-
-def test_compute_r_squared_no_fit():
-    y = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    y_pred = np.mean(y) * np.ones_like(y)
-    r2 = compute_r_squared(y, y_pred)
-    assert np.isclose(r2, 0.0)
+    assert np.isclose(r2, expected_r2)
 
 
 def test_compute_r_squared_with_weights(rng):
@@ -74,13 +79,17 @@ def test_compute_r_squared_with_weights(rng):
     assert r2_unweighted != r2_weighted
 
 
-def test_compute_r_squared_constant_y():
+@pytest.mark.parametrize(
+    "y_pred_multiplier, expected_r2",
+    [
+        (1.0, 1.0),
+        (2.0, 0.0),
+    ],
+)
+def test_compute_r_squared_constant_y(y_pred_multiplier, expected_r2):
     y_constant = np.ones(10)
-    y_pred = np.ones(10)
-    assert compute_r_squared(y_constant, y_pred) == 1.0
-
-    y_pred_diff = np.ones(10) * 2
-    assert compute_r_squared(y_constant, y_pred_diff) == 0.0
+    y_pred = np.ones(10) * y_pred_multiplier
+    assert compute_r_squared(y_constant, y_pred) == expected_r2
 
 
 def test_compute_r_squared_mismatched_weights_length(rng):
@@ -180,13 +189,11 @@ def test_basis_dimension_glp():
     assert dim2 == 19
 
 
-def test_basis_dimension_zero_degree():
+@pytest.mark.parametrize("basis_type", ["additive", "tensor", "glp"])
+def test_basis_dimension_zero_degree(basis_type):
     degree = np.array([0, 0, 0])
     segments = np.array([1, 1, 1])
-
-    assert basis_dimension("additive", degree, segments) == 0
-    assert basis_dimension("tensor", degree, segments) == 0
-    assert basis_dimension("glp", degree, segments) == 0
+    assert basis_dimension(basis_type, degree, segments) == 0
 
 
 def test_basis_dimension_invalid_basis():
@@ -199,12 +206,16 @@ def test_basis_dimension_mismatched_inputs():
         basis_dimension("additive", np.array([1, 2]), np.array([1]))
 
 
-def test_basis_dimension_missing_inputs():
-    with pytest.raises(ValueError, match="Both degree and segments must be provided"):
-        basis_dimension("additive", None, None)
-
+@pytest.mark.parametrize(
+    "degree, segments",
+    [
+        (None, None),
+        (np.array([1]), None),
+    ],
+)
+def test_basis_dimension_missing_inputs(degree, segments):
     with pytest.raises(ValueError, match="Both degree and segments"):
-        basis_dimension("additive", np.array([1]), None)
+        basis_dimension("additive", degree, segments)
 
 
 @pytest.mark.parametrize("basis_type", ["additive", "tensor", "glp"])
@@ -219,3 +230,167 @@ def test_basis_dimension_single_variable(basis_type):
         assert dim == 3 + 2
     else:
         assert dim == 3 + 2 - 1
+
+
+def test_bread_basic():
+    X = np.array([[1, 0], [0, 1], [1, 1], [2, 1]])
+    B = bread(X)
+
+    XtX = X.T @ X
+    XtX_inv = np.linalg.inv(XtX)
+    expected = XtX_inv * 4
+
+    assert np.allclose(B, expected)
+    assert B.shape == (2, 2)
+
+
+def test_bread_singular_matrix():
+    X = np.array([[1, 2], [2, 4], [3, 6]])
+    B = bread(X)
+
+    assert B.shape == (2, 2)
+    assert not np.isnan(B).any()
+
+
+def test_estfun_basic():
+    X = np.array([[1, 0], [0, 1], [1, 1]])
+    residuals = np.array([0.5, -0.3, 0.2])
+
+    scores = estfun(X, residuals)
+
+    assert scores.shape == (3, 2)
+    assert np.allclose(scores[0], [0.5, 0.0])
+    assert np.allclose(scores[1], [0.0, -0.3])
+    assert np.allclose(scores[2], [0.2, 0.2])
+
+
+def test_estfun_with_weights():
+    X = np.array([[1, 0], [0, 1]])
+    residuals = np.array([1.0, 1.0])
+    weights = np.array([2.0, 0.5])
+
+    scores = estfun(X, residuals, weights)
+
+    assert scores.shape == (2, 2)
+    assert np.allclose(scores[0], [2.0, 0.0])
+    assert np.allclose(scores[1], [0.0, 0.5])
+
+
+@pytest.mark.parametrize(
+    "omega_type, omega_value",
+    [
+        ("HC0", 1.0),
+        ("HC1", 3.0),
+    ],
+)
+def test_meat_hc_basic(omega_type, omega_value):
+    scores = np.array([[1, 0], [0, 1], [1, 1]])
+    M = meat(scores, omega_type=omega_type)
+
+    if omega_type == "HC0":
+        expected = scores.T @ scores / 3
+    else:  # HC1
+        weighted_scores = scores * np.sqrt(omega_value)
+        expected = weighted_scores.T @ weighted_scores / 3
+
+    assert np.allclose(M, expected)
+
+
+@pytest.mark.parametrize(
+    "omega_type, omega_func",
+    [
+        ("HC2", lambda h: 1 / (1 - h)),
+        ("HC3", lambda h: 1 / (1 - h) ** 2),
+    ],
+)
+def test_meat_hc_with_hat_values(omega_type, omega_func):
+    scores = np.array([[1, 0], [0, 1]])
+    hat_values = np.array([0.5, 0.3])
+
+    M = meat(scores, omega_type=omega_type, hat_values=hat_values)
+
+    omega = omega_func(hat_values)
+    weighted_scores = scores * np.sqrt(omega[:, np.newaxis])
+    expected = weighted_scores.T @ weighted_scores / 2
+    assert np.allclose(M, expected)
+
+
+def test_meat_invalid_type():
+    scores = np.array([[1, 0], [0, 1]])
+
+    with pytest.raises(ValueError, match="Unknown omega_type"):
+        meat(scores, omega_type="HC99")
+
+
+@pytest.mark.parametrize("omega_type", ["HC2", "HC3"])
+def test_meat_missing_hat_values(omega_type):
+    scores = np.array([[1, 0], [0, 1]])
+
+    with pytest.raises(ValueError, match="hat_values required"):
+        meat(scores, omega_type=omega_type)
+
+
+def test_sandwich_vcov_basic():
+    np.random.seed(42)
+    n = 100
+    X = np.column_stack([np.ones(n), np.random.randn(n)])
+    true_beta = np.array([1.0, 2.0])
+    y = X @ true_beta + np.random.randn(n) * 0.5
+
+    beta_hat = np.linalg.lstsq(X, y, rcond=None)[0]
+    residuals = y - X @ beta_hat
+
+    vcov = sandwich_vcov(X, residuals)
+
+    assert vcov.shape == (2, 2)
+    assert np.all(np.diag(vcov) > 0)
+    assert np.allclose(vcov, vcov.T)
+
+
+def test_sandwich_vcov_with_weights():
+    X = np.array([[1, 0], [1, 1], [1, 2]])
+    residuals = np.array([0.1, -0.2, 0.15])
+    weights = np.array([1.0, 2.0, 0.5])
+
+    vcov = sandwich_vcov(X, residuals, weights=weights)
+
+    assert vcov.shape == (2, 2)
+    assert np.all(np.diag(vcov) > 0)
+    assert np.allclose(vcov, vcov.T)
+
+
+def test_sandwich_vcov_different_omega_types():
+    np.random.seed(123)
+    n = 50
+    X = np.column_stack([np.ones(n), np.random.randn(n)])
+    residuals = np.random.randn(n) * 0.3
+
+    vcov_hc0 = sandwich_vcov(X, residuals, omega_type="HC0")
+    vcov_hc1 = sandwich_vcov(X, residuals, omega_type="HC1")
+
+    assert np.all(np.diag(vcov_hc1) >= np.diag(vcov_hc0))
+
+    assert np.all(np.linalg.eigvals(vcov_hc0) > 0)
+    assert np.all(np.linalg.eigvals(vcov_hc1) > 0)
+
+
+@pytest.mark.parametrize(
+    "quantile, expected_value",
+    [
+        (0.0, 1),
+        (0.25, 3),
+        (0.5, 5),
+        (0.75, 7),
+        (1.0, 10),
+    ],
+)
+def test_quantile_basis(quantile, expected_value):
+    x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    result = _quantile_basis(x, quantile)
+    assert result == expected_value
+
+
+def test_quantile_basis_empty():
+    x = np.array([])
+    result = _quantile_basis(x, 0.5)
+    assert result == 0
