@@ -629,6 +629,30 @@ def mock_gt_results_no_dose(att_gt_raw_results):
     return att_gt_raw_results
 
 
+@pytest.fixture
+def contdid_data():
+    from tests.didcont.dgp import simulate_contdid_data
+
+    return simulate_contdid_data(n=1000, seed=12345)
+
+
+@pytest.fixture
+def panel_data_with_group(panel_data_balanced):
+    data = panel_data_balanced.copy()
+
+    def assign_group(unit):
+        if unit <= 10:
+            return 2011
+        if unit <= 15:
+            return 2012
+        return 0
+
+    data["group"] = data["unit_id"].apply(assign_group)
+    data.loc[data["time_id"] < data["group"], "d"] = 0
+    data.loc[data["group"] == 0, "d"] = 0
+    return data
+
+
 def create_mock_gt_results_with_correct_dimensions(degree, knots, n_doses=20):
     if knots is None:
         n_knots = 0

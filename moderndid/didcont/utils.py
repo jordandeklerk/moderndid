@@ -21,6 +21,129 @@ class FullRankCheckResult(NamedTuple):
     max_eigenvalue: float
 
 
+def bread(X, n_obs=None):
+    """Compute bread matrix for sandwich estimator.
+
+    Parameters
+    ----------
+    X : ndarray
+        Design matrix (n x p).
+    n_obs : int, optional
+        Number of observations. If None, uses X.shape[0].
+
+    Returns
+    -------
+    ndarray
+        Bread matrix :math:`B` (p x p).
+    """
+    if n_obs is None:
+        n_obs = X.shape[0]
+
+    xtx = X.T @ X
+    try:
+        xtx_inv = np.linalg.inv(xtx)
+    except np.linalg.LinAlgError:
+        xtx_inv = np.linalg.pinv(xtx)
+    return xtx_inv * n_obs
+
+
+def estfun(X, residuals, weights=None):
+    """Compute estimating functions.
+
+    Parameters
+    ----------
+    X : ndarray
+        Design matrix (n x p).
+    residuals : ndarray
+        Model residuals (n,).
+    weights : ndarray, optional
+        Observation weights. If None, uses unit weights.
+
+    Returns
+    -------
+    ndarray
+        Matrix of score contributions :math:`S` (n x p).
+    """
+    if weights is None:
+        weights = np.ones(len(residuals))
+    return residuals[:, np.newaxis] * weights[:, np.newaxis] * X
+
+
+def meat(scores, omega_type="HC0", hat_values=None):
+    """Compute meat matrix for sandwich estimator.
+
+    Parameters
+    ----------
+    scores : ndarray
+        Matrix of score contributions (n x p) from estfun().
+    omega_type : str, default="HC0"
+        Type of heteroskedasticity correction:
+
+        - **HC0**: No finite-sample correction
+        - **HC1**: Correction by n/(n-k)
+        - **HC2**: Uses leverage values (1 - h_ii)
+        - **HC3**: Uses leverage values (1 - h_ii)^2
+    hat_values : ndarray, optional
+        Diagonal of hat matrix. Required for HC2 and HC3.
+
+    Returns
+    -------
+    ndarray
+        Meat matrix :math:`M` (p x p).
+    """
+    n = scores.shape[0]
+
+    if omega_type == "HC0":
+        omega = np.ones(n)
+    elif omega_type == "HC1":
+        k = scores.shape[1]
+        omega = np.ones(n) * n / (n - k)
+    elif omega_type == "HC2":
+        if hat_values is None:
+            raise ValueError("hat_values required for HC2")
+        omega = 1 / (1 - hat_values)
+    elif omega_type == "HC3":
+        if hat_values is None:
+            raise ValueError("hat_values required for HC3")
+        omega = 1 / (1 - hat_values) ** 2
+    else:
+        raise ValueError(f"Unknown omega_type: {omega_type}")
+
+    weighted_scores = scores * np.sqrt(omega[:, np.newaxis])
+    return weighted_scores.T @ weighted_scores / n
+
+
+def sandwich_vcov(X, residuals, weights=None, omega_type="HC0", hat_values=None):
+    """Compute heteroskedasticity-consistent standard errors.
+
+    Parameters
+    ----------
+    X : ndarray
+        Design matrix :math:`X` (n x p).
+    residuals : ndarray
+        Model residuals :math:`e` (n,).
+    weights : ndarray, optional
+        Observation weights :math:`w`.
+    omega_type : str, default="HC0"
+        Type of heteroskedasticity correction.
+    hat_values : ndarray, optional
+        Diagonal of hat matrix for HC2/HC3.
+
+    Returns
+    -------
+    ndarray
+        Sandwich covariance matrix :math:`vcov` (p x p).
+    """
+    n = X.shape[0]
+
+    bread_mat = bread(X, n)
+    scores = estfun(X, residuals, weights)
+    meat_mat = meat(scores, omega_type, hat_values)
+
+    vcov = bread_mat @ meat_mat @ bread_mat / n
+    return vcov
+
+
 def is_full_rank(x, tol=None):
     """Check if a matrix has full rank using eigenvalue decomposition.
 
@@ -273,11 +396,7 @@ def _compute_glp_dimension_step(d1, d2, nd1, pd12):
 def _quantile_basis(x, q):
     """Compute quantiles for uniform confidence bands."""
     x = np.asarray(x)
-    x_sorted = np.sort(x)
-    n = len(x_sorted)
+    if x.size == 0:
+        return 0
 
-    index = q * n + 0.5
-    j = int(np.floor(index))
-    j_clamped = max(0, min(j - 1, n - 1))
-
-    return x_sorted[j_clamped]
+    return np.quantile(x, q, method="lower")

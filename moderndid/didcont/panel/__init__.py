@@ -29,12 +29,10 @@ from .process_panel import (
 )
 
 __all__ = [
-    # Setup functions
     "PTEParams",
     "setup_pte",
     "setup_pte_basic",
     "setup_pte_cont",
-    # Processing functions
     "process_att_gt",
     "GroupTimeATTResult",
     "aggregate_att_gt",
@@ -44,7 +42,6 @@ __all__ = [
     "_summary_dose_result",
     "overall_weights",
     "multiplier_bootstrap",
-    # Helper functions
     "_make_balanced_panel",
     "_get_first_difference",
     "_get_group",
