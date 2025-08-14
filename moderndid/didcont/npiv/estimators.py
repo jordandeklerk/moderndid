@@ -5,8 +5,8 @@ import warnings
 import numpy as np
 
 from ..utils import is_full_rank
+from .pspline import prodspline
 from .results import NPIVResult
-from .spline import prodspline
 
 
 def npiv_est(

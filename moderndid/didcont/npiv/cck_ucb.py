@@ -4,8 +4,8 @@ import numpy as np
 
 from ..utils import _quantile_basis, avoid_zero_division
 from .estimators import npiv_est
+from .pspline import prodspline
 from .results import NPIVResult
-from .spline import prodspline
 
 
 def compute_cck_ucb(
