@@ -167,11 +167,11 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
     else:
         bspline = BSpline(x=dose_values, degree=degree)
 
-    basis_matrix = bspline.basis(complete_basis=True)
+    basis_matrix = bspline.basis(complete_basis=False)
     basis_matrix = np.column_stack([np.ones(len(dose_values)), basis_matrix])
 
     if degree > 0:
-        derivative_matrix = bspline.derivative(derivs=1, complete_basis=True)
+        derivative_matrix = bspline.derivative(derivs=1, complete_basis=False)
         derivative_matrix = np.column_stack([np.zeros(len(dose_values)), derivative_matrix])
     else:
         derivative_matrix = np.zeros((len(dose_values), basis_matrix.shape[1]))

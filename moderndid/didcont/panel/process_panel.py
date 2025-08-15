@@ -548,7 +548,8 @@ def setup_pte_cont(
     knots = _choose_knots_quantile(positive_doses, num_knots)
     if dvals is None:
         if len(positive_doses) > 0:
-            dvals = np.quantile(positive_doses, np.arange(0.1, 1.0, 0.01))
+            # Following R code: create a sequence from min to max
+            dvals = np.linspace(positive_doses.min(), positive_doses.max(), 50)
         else:
             dvals = np.array([])
 
@@ -568,6 +569,53 @@ def setup_pte_cont(
     )
 
     return PTEParams(**pte_params_dict)
+
+
+def _two_by_two_subset(
+    data,
+    g,
+    tp,
+    control_group="notyettreated",
+    anticipation=0,
+    base_period="varying",
+    **kwargs,
+):
+    """Compute 2x2 subset for binary treatment DiD."""
+    main_base_period = g - anticipation - 1
+
+    if base_period == "varying":
+        if tp < (g - anticipation):
+            base_period_val = tp - 1
+        else:
+            base_period_val = main_base_period
+    else:
+        base_period_val = main_base_period
+
+    gname = kwargs.get("gname", "G")
+    tname = kwargs.get("tname", "period")
+    idname = kwargs.get("idname", "id")
+
+    if control_group == "notyettreated":
+        this_data = data[(data[gname] == g) | (data[gname] > tp) | (data[gname] == 0)].copy()
+    else:
+        this_data = data[(data[gname] == g) | (data[gname] == 0)].copy()
+
+    this_data = this_data[(this_data[tname] == tp) | (this_data[tname] == base_period_val)]
+    this_data["name"] = np.where(this_data[tname] == tp, "post", "pre")
+    this_data["D"] = 1 * (this_data[gname] == g)
+
+    yname = kwargs.get("yname", "Y")
+    rename_dict = {tname: "period", idname: "id"}
+    if yname in this_data.columns:
+        rename_dict[yname] = "Y"
+    this_data = this_data.rename(columns=rename_dict)
+
+    n1 = this_data["id"].nunique()
+    all_ids = data[idname].unique()
+    subset_ids = this_data["id"].unique()
+    disidx = np.isin(all_ids, subset_ids)
+
+    return {"gt_data": this_data, "n1": n1, "disidx": disidx}
 
 
 def _map_to_idx(vals, time_map):

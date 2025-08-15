@@ -603,7 +603,7 @@ def mock_gt_results_with_dose():
             att_value = np.random.normal(0.1, 0.05) if g > t else np.random.normal(0, 0.02)
             attgt_list.append({"att": att_value, "group": g, "time_period": t})
 
-            n_basis = 6
+            n_basis = 5
             dose_results = {
                 "group": g,
                 "time_period": t,
@@ -659,7 +659,7 @@ def create_mock_gt_results_with_correct_dimensions(degree, knots, n_doses=20):
     else:
         n_knots = len(knots) if hasattr(knots, "__len__") else 0
 
-    n_basis = 2 + degree + n_knots
+    n_basis = 1 + degree + n_knots
 
     n_groups = 3
     n_times = 4
@@ -693,3 +693,79 @@ def create_mock_gt_results_with_correct_dimensions(degree, knots, n_doses=20):
     influence_func = np.random.randn(n_units, n_gt) * 0.1
 
     return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": extra_gt_returns}
+
+
+@pytest.fixture
+def simple_panel_data():
+    np.random.seed(42)
+    n_units = 100
+
+    id_vals = np.repeat(np.arange(n_units), 2)
+    period_vals = np.tile([0, 1], n_units)
+    name_vals = np.tile(["pre", "post"], n_units)
+
+    treatment = np.repeat(np.random.binomial(1, 0.5, n_units), 2)
+
+    pre_outcome = np.random.normal(0, 1, n_units)
+    post_outcome = pre_outcome + 2 * treatment[:n_units] + np.random.normal(0, 1, n_units)
+    y_vals = np.empty(2 * n_units)
+    y_vals[::2] = pre_outcome
+    y_vals[1::2] = post_outcome
+
+    df = pd.DataFrame({"id": id_vals, "D": treatment, "period": period_vals, "name": name_vals, "Y": y_vals})
+
+    return df
+
+
+@pytest.fixture
+def panel_data_with_covariates_estimators():
+    np.random.seed(42)
+    n_units = 100
+
+    id_vals = np.repeat(np.arange(n_units), 2)
+    period_vals = np.tile([0, 1], n_units)
+    name_vals = np.tile(["pre", "post"], n_units)
+
+    x1 = np.repeat(np.random.normal(0, 1, n_units), 2)
+    x2 = np.repeat(np.random.normal(0, 1, n_units), 2)
+
+    propensity = 1 / (1 + np.exp(-(x1[:n_units] + x2[:n_units])))
+    treatment = np.repeat((np.random.uniform(size=n_units) < propensity).astype(int), 2)
+
+    pre_outcome = x1[:n_units] + x2[:n_units] + np.random.normal(0, 1, n_units)
+    post_outcome = pre_outcome + 2 * treatment[:n_units] + np.random.normal(0, 1, n_units)
+    y_vals = np.empty(2 * n_units)
+    y_vals[::2] = pre_outcome
+    y_vals[1::2] = post_outcome
+
+    df = pd.DataFrame(
+        {"id": id_vals, "D": treatment, "period": period_vals, "name": name_vals, "Y": y_vals, "x1": x1, "x2": x2}
+    )
+
+    return df
+
+
+@pytest.fixture
+def panel_data_with_groups():
+    np.random.seed(42)
+    n_units = 100
+
+    id_vals = np.repeat(np.arange(n_units), 2)
+    period_vals = np.tile([0, 1], n_units)
+    name_vals = np.tile(["pre", "post"], n_units)
+
+    group_vals = np.repeat(np.random.choice([2004, 2005, 2006], n_units), 2)
+
+    treatment = np.repeat(np.random.binomial(1, 0.5, n_units), 2)
+
+    pre_outcome = np.random.normal(0, 1, n_units)
+    post_outcome = pre_outcome + 2 * treatment[:n_units] + np.random.normal(0, 1, n_units)
+    y_vals = np.empty(2 * n_units)
+    y_vals[::2] = pre_outcome
+    y_vals[1::2] = post_outcome
+
+    df = pd.DataFrame(
+        {"id": id_vals, "D": treatment, "G": group_vals, "period": period_vals, "name": name_vals, "Y": y_vals}
+    )
+
+    return df

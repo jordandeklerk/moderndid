@@ -106,7 +106,7 @@ def test_process_dose_gt_zero_degree(mock_pte_params_with_dose):
     params_dict["degree"] = 0
     params = PTEParams(**params_dict)
 
-    n_basis = 4
+    n_basis = 3
     n_groups = 3
     n_times = 4
     n_gt = n_groups * n_times
@@ -531,9 +531,9 @@ def test_process_dose_gt_nan_in_dose_results(pte_params_basic):
                 "acrt_dose": np.full(n_doses, np.nan) if i == 0 else np.random.normal(0.05, 0.01, n_doses),
                 "att_overall": np.nan if i == 0 else np.random.normal(0.1, 0.02),
                 "acrt_overall": np.nan if i == 0 else np.random.normal(0.05, 0.01),
-                "beta": np.random.randn(3),
-                "bread": np.random.randn(3, 3),
-                "x_expanded": np.random.randn(20, 3),
+                "beta": np.random.randn(2),
+                "bread": np.random.randn(2, 2),
+                "x_expanded": np.random.randn(20, 2),
             },
         }
         extra_gt_returns.append(dose_results)
