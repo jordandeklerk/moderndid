@@ -60,60 +60,6 @@ rst_prolog = r"""
 .. |l_vec| replace:: :math:`\ell_{vec}`
 """
 
-# Ensure all our internal links work
-nitpicky = True
-nitpick_ignore = [
-    # Common type annotation issues
-    ("py:class", "ndarray"),
-    ("py:class", "array_like"),
-    ("py:class", "optional"),
-    # Ignore custom result objects that aren't part of the public API
-    ("py:obj", "MPResult"),
-    ("py:obj", "AGGTEResult"),
-    ("py:obj", "APRCIResult"),
-    ("py:obj", "ARPNuisanceCIResult"),
-    ("py:obj", "FLCIResult"),
-    ("py:obj", "DeltaRMResult"),
-    ("py:obj", "DeltaRMBResult"),
-    ("py:obj", "DeltaRMMResult"),
-    ("py:obj", "DeltaSDResult"),
-    ("py:obj", "DeltaSDBResult"),
-    ("py:obj", "DeltaSDMResult"),
-    ("py:obj", "DeltaSDRMResult"),
-    ("py:obj", "DeltaSDRMBResult"),
-    ("py:obj", "DeltaSDRMMResult"),
-    ("py:obj", "OriginalCSResult"),
-    ("py:obj", "DRDIDResult"),
-    ("py:obj", "DRDIDLocalRCResult"),
-    ("py:obj", "DRDIDPanelResult"),
-    ("py:obj", "DRDIDRCResult"),
-    ("py:obj", "DRDIDTradRCResult"),
-    ("py:obj", "HonestDiDResult"),
-    ("py:obj", "IPWDIDPanelResult"),
-    ("py:obj", "IPWDIDRCResult"),
-    ("py:obj", "IPWDIDResult"),
-    ("py:obj", "ORDIDResult"),
-    ("py:obj", "RegDIDPanelResult"),
-    ("py:obj", "RegDIDRCResult"),
-    ("py:obj", "StdIPWDIDPanelResult"),
-    ("py:obj", "StdIPWDIDRCResult"),
-    ("py:obj", "TWFEDIDPanelResult"),
-    ("py:obj", "TWFEDIDRCResult"),
-    ("py:obj", "WOLSResult"),
-    # Ignore miscellaneous words that are misinterpreted
-    ("py:obj", "instance"),
-    ("py:obj", "from"),
-    ("py:obj", "parallel"),
-    ("py:obj", "similar"),
-    ("py:obj", "Additional"),
-    ("py:obj", "parameters"),
-    ("py:obj", "boot_drdid_rc"),
-    ("py:obj", "wboot_drdid_rc_imp2"),
-    ("py:obj", "wboot_aipw_rc"),
-    ("py:obj", "wols_panel"),
-    ("py:obj", "NPIVResult"),
-    ("py:obj", "MultivariateBasis"),
-]
 
 # -- Options for extensions
 
@@ -134,9 +80,12 @@ autosummary_generate = True
 autodoc_typehints = "signature"
 autodoc_default_options = {
     "members": False,
+    "undoc-members": False,
+    "show-inheritance": False,
 }
 
 numpydoc_show_class_members = False
+numpydoc_validation_checks = {"all"} - {"GL08"}
 numpydoc_xref_param_type = True
 numpydoc_xref_ignore = {"of", "or", "optional", "scalar", "default"}
 singulars = ("int", "list", "dict", "float")
