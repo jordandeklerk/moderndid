@@ -1,120 +1,12 @@
 """Functions for panel treatment effects."""
 
 import warnings
-from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
 
-
-class PTEParams(NamedTuple):
-    """Parameters for panel treatment effects.
-
-    Attributes
-    ----------
-    yname : str
-        Name of the outcome variable.
-    gname : str
-        Name of the group variable (first treatment period).
-    tname : str
-        Name of the time period variable.
-    idname : str
-        Name of the id variable.
-    data : pd.DataFrame
-        Panel data as a pandas DataFrame.
-    g_list : ndarray
-        Array of unique group identifiers.
-    t_list : ndarray
-        Array of unique time period identifiers.
-    cband : bool
-        Whether to compute a uniform confidence band.
-    alp : float
-        Significance level for confidence intervals.
-    boot_type : str
-        Method for bootstrapping.
-    anticipation : int
-        Number of periods of anticipation.
-    base_period : str
-        Base period for computing ATT(g,t).
-    weightsname : str
-        Name of the weights variable.
-    control_group : str
-        Which units to use as the control group.
-    gt_type : str
-        Type of group-time average treatment effect.
-    ret_quantile : float
-        Quantile to return for conditional distribution.
-    biters : int
-        Number of bootstrap iterations.
-    cl : int
-        Cluster ID for bootstrap.
-    call : str
-        The function call.
-    dname : str
-        Name of the continuous treatment variable.
-    degree : int
-        Degree of the spline for continuous treatment.
-    num_knots : int
-        Number of knots for the spline.
-    knots : ndarray
-        Array of knot locations for the spline.
-    dvals : ndarray
-        Values of the dose to evaluate the dose-response function.
-    target_parameter : str
-        The target parameter of interest.
-    aggregation : str
-        Type of aggregation for results.
-    treatment_type : str
-        Type of treatment (e.g., 'continuous').
-    xformla : str
-        Formula for covariates.
-    """
-
-    yname: str
-    gname: str
-    tname: str
-    idname: str
-    data: pd.DataFrame
-    g_list: np.ndarray
-    t_list: np.ndarray
-    cband: bool
-    alp: float
-    boot_type: str
-    anticipation: int
-    base_period: str
-    weightsname: str
-    control_group: str
-    gt_type: str
-    ret_quantile: float
-    biters: int
-    cl: int
-    call: str
-    dname: str
-    degree: int
-    num_knots: int
-    knots: np.ndarray
-    dvals: np.ndarray
-    target_parameter: str
-    aggregation: str
-    treatment_type: str
-    xformla: str
-
-
-class AttgtResult(NamedTuple):
-    """Container for a single ATT(g,t) result with influence function."""
-
-    attgt: float
-    inf_func: np.ndarray | None
-    extra_gt_returns: dict | None
-
-
-class PTEResult(NamedTuple):
-    """Container for panel treatment effects results."""
-
-    att_gt: object
-    overall_att: object | None
-    event_study: object | None
-    ptep: PTEParams
+from .container import PTEParams, PTEResult
+from .estimators import pte_attgt
 
 
 def pte(
@@ -365,7 +257,7 @@ def setup_pte_basic(
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": "~1",
+        "xformula": "~1",
     }
     return PTEParams(**params_dict)
 
@@ -388,7 +280,7 @@ def setup_pte(
     biters=100,
     cl=1,
     call=None,
-    xformla="~1",
+    xformula="~1",
 ):
     """Perform setup for panel treatment effects."""
     data = data.copy()
@@ -473,9 +365,60 @@ def setup_pte(
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": xformla,
+        "xformula": xformula,
     }
     return PTEParams(**params_dict)
+
+
+def pte_default(
+    yname,
+    gname,
+    tname,
+    idname,
+    data,
+    xformula="~1",
+    d_outcome=False,
+    d_covs_formula="~ -1",
+    lagged_outcome_cov=False,
+    est_method="dr",
+    anticipation=0,
+    base_period="varying",
+    control_group="notyettreated",
+    weightsname=None,
+    cband=True,
+    alp=0.05,
+    boot_type="multiplier",
+    biters=100,
+    cl=1,
+    **kwargs,
+):
+    """Compute panel treatment effects with default settings."""
+    res = pte(
+        yname=yname,
+        gname=gname,
+        tname=tname,
+        idname=idname,
+        data=data,
+        setup_pte_fun=setup_pte,
+        subset_fun=_two_by_two_subset,
+        attgt_fun=pte_attgt,
+        xformula=xformula,
+        d_outcome=d_outcome,
+        d_covs_formula=d_covs_formula,
+        lagged_outcome_cov=lagged_outcome_cov,
+        est_method=est_method,
+        anticipation=anticipation,
+        base_period=base_period,
+        control_group=control_group,
+        weightsname=weightsname,
+        cband=cband,
+        alp=alp,
+        boot_type=boot_type,
+        biters=biters,
+        cl=cl,
+        **kwargs,
+    )
+    return res
 
 
 def setup_pte_cont(
@@ -485,7 +428,7 @@ def setup_pte_cont(
     tname,
     idname,
     dname,
-    xformla="~1",
+    xformula="~1",
     target_parameter="ATT",
     aggregation="simple",
     treatment_type="continuous",
@@ -530,7 +473,7 @@ def setup_pte_cont(
         tname=tname,
         idname=idname,
         data=data,
-        xformla=xformla,
+        xformula=xformula,
         cband=cband,
         alp=alp,
         boot_type=boot_type,
@@ -548,7 +491,6 @@ def setup_pte_cont(
     knots = _choose_knots_quantile(positive_doses, num_knots)
     if dvals is None:
         if len(positive_doses) > 0:
-            # Following R code: create a sequence from min to max
             dvals = np.linspace(positive_doses.min(), positive_doses.max(), 50)
         else:
             dvals = np.array([])
@@ -580,7 +522,7 @@ def _two_by_two_subset(
     base_period="varying",
     **kwargs,
 ):
-    """Compute 2x2 subset for binary treatment DiD."""
+    """Compute two-by-two subset for binary treatment DiD."""
     main_base_period = g - anticipation - 1
 
     if base_period == "varying":

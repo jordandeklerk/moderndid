@@ -1,5 +1,6 @@
 """Difference-in-differences with a continuous treatment."""
 
+from .cont_did import cont_did
 from .npiv import (
     BSplineBasis,
     MultivariateBasis,
@@ -47,6 +48,7 @@ from .utils import (
 )
 
 __all__ = [
+    "cont_did",
     # Main NPIV estimation functions
     "npiv",
     "npiv_est",
