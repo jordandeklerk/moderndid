@@ -1,75 +1,18 @@
 """Processing functions for continuous treatment dose-response results."""
 
 import warnings
-from typing import NamedTuple
 
 import numpy as np
 import scipy.stats as st
 
 from ..spline import BSpline
+from .container import DoseResult
 from .process_aggte import (
     check_critical_value,
     get_se,
     overall_weights,
 )
 from .process_attgt import process_att_gt
-
-
-class DoseResult(NamedTuple):
-    """Container for continuous treatment dose-response results.
-
-    Attributes
-    ----------
-    dose : ndarray
-        Vector containing the values of the dose used in estimation.
-    overall_att : float
-        Estimate of the overall ATT, the mean of ATT(D) given D > 0.
-    overall_att_se : float
-        The standard error of the estimate of overall_att.
-    overall_att_inffunc : ndarray
-        The influence function for estimating overall_att.
-    overall_acrt : float
-        Estimate of the overall ACRT, the mean of ACRT(D|D) given D > 0.
-    overall_acrt_se : float
-        The standard error for the estimate of overall_acrt.
-    overall_acrt_inffunc : ndarray
-        The influence function for estimating overall_acrt.
-    att_dose : ndarray
-        Estimates of ATT(d) for each value of dose.
-    att_dose_se : ndarray
-        Standard error of ATT(d) for each value of dose.
-    att_dose_crit_val : float
-        Critical value to produce pointwise or uniform confidence interval for ATT(d).
-    att_dose_inffunc : ndarray
-        Matrix containing the influence function from estimating ATT(d).
-    acrt_dose : ndarray
-        Estimates of ACRT(d) for each value of dose.
-    acrt_dose_se : ndarray
-        Standard error of ACRT(d) for each value of dose.
-    acrt_dose_crit_val : float
-        Critical value to produce pointwise or uniform confidence interval for ACRT(d).
-    acrt_dose_inffunc : ndarray
-        Matrix containing the influence function from estimating ACRT(d).
-    pte_params : object
-        A PTEParams object containing other parameters passed to the function.
-    """
-
-    dose: np.ndarray
-    overall_att: float | None = None
-    overall_att_se: float | None = None
-    overall_att_inffunc: np.ndarray | None = None
-    overall_acrt: float | None = None
-    overall_acrt_se: float | None = None
-    overall_acrt_inffunc: np.ndarray | None = None
-    att_dose: np.ndarray | None = None
-    att_dose_se: np.ndarray | None = None
-    att_dose_crit_val: float | None = None
-    att_dose_inffunc: np.ndarray | None = None
-    acrt_dose: np.ndarray | None = None
-    acrt_dose_se: np.ndarray | None = None
-    acrt_dose_crit_val: float | None = None
-    acrt_dose_inffunc: np.ndarray | None = None
-    pte_params: object | None = None
 
 
 def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-np.inf, max_event_time=np.inf):
@@ -117,8 +60,8 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
 
     inner_extra_gt_returns = [item.get("extra_gt_returns", {}) for item in all_extra_gt_returns]
 
-    att_dose_by_group = [item.get("att_dose") for item in inner_extra_gt_returns]
-    acrt_dose_by_group = [item.get("acrt_dose") for item in inner_extra_gt_returns]
+    att_d_by_group = [item.get("att_d") for item in inner_extra_gt_returns]
+    acrt_d_by_group = [item.get("acrt_d") for item in inner_extra_gt_returns]
     att_overall_by_group = np.array([item.get("att_overall", np.nan) for item in inner_extra_gt_returns])
     acrt_overall_by_group = np.array([item.get("acrt_overall", np.nan) for item in inner_extra_gt_returns])
 
@@ -134,15 +77,15 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
     overall_att = float(np.nansum(att_overall_by_group * weights_dict["weights"]))
 
     att_influence_matrix = att_gt.influence_func
-    overall_att_inffunc = _compute_overall_att_inffunc(weights_dict["weights"], att_influence_matrix)
+    overall_att_inf_func = _compute_overall_att_inf_func(weights_dict["weights"], att_influence_matrix)
     overall_att_se = float(
-        get_se(overall_att_inffunc[:, None], bootstrap=True, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
+        get_se(overall_att_inf_func[:, None], bootstrap=True, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
     )
 
     overall_acrt = float(np.nansum(acrt_overall_by_group * weights_dict["weights"]))
-    overall_acrt_inffunc = np.sum(acrt_influence_matrix * weights_dict["weights"][np.newaxis, :], axis=1)
+    overall_acrt_inf_func = np.sum(acrt_influence_matrix * weights_dict["weights"][np.newaxis, :], axis=1)
     overall_acrt_se = float(
-        get_se(overall_acrt_inffunc[:, None], bootstrap=True, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
+        get_se(overall_acrt_inf_func[:, None], bootstrap=True, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
     )
 
     dose_values = pte_params.dvals
@@ -152,10 +95,10 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
             dose=np.array([]),
             overall_att=overall_att,
             overall_att_se=overall_att_se,
-            overall_att_inffunc=overall_att_inffunc,
+            overall_att_inf_func=overall_att_inf_func,
             overall_acrt=overall_acrt,
             overall_acrt_se=overall_acrt_se,
-            overall_acrt_inffunc=overall_acrt_inffunc,
+            overall_acrt_inf_func=overall_acrt_inf_func,
             pte_params=pte_params,
         )
 
@@ -176,17 +119,17 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
     else:
         derivative_matrix = np.zeros((len(dose_values), basis_matrix.shape[1]))
 
-    if att_dose_by_group and all(x is not None for x in att_dose_by_group):
-        att_dose = _weighted_combine_arrays(att_dose_by_group, weights_dict["weights"])
+    if att_d_by_group and all(x is not None for x in att_d_by_group):
+        att_d = _weighted_combine_arrays(att_d_by_group, weights_dict["weights"])
     else:
-        att_dose = np.full(len(dose_values), np.nan)
+        att_d = np.full(len(dose_values), np.nan)
 
-    if acrt_dose_by_group and all(x is not None for x in acrt_dose_by_group):
-        acrt_dose = _weighted_combine_arrays(acrt_dose_by_group, weights_dict["weights"])
+    if acrt_d_by_group and all(x is not None for x in acrt_d_by_group):
+        acrt_d = _weighted_combine_arrays(acrt_d_by_group, weights_dict["weights"])
     else:
-        acrt_dose = np.full(len(dose_values), np.nan)
+        acrt_d = np.full(len(dose_values), np.nan)
 
-    att_dose_inffunc, acrt_dose_inffunc = _compute_dose_influence_functions(
+    att_d_inf_func, acrt_d_inf_func = _compute_dose_influence_functions(
         x_expanded_by_group,
         bread_matrices,
         basis_matrix,
@@ -197,40 +140,40 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
         n_obs,
     )
 
-    if att_dose_inffunc is not None:
-        boot_res = _multiplier_bootstrap_dose(att_dose_inffunc, biters=bootstrap_iterations, alpha=alpha)
-        att_dose_se = boot_res["se"]
-        att_dose_crit_val = boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
-        att_dose_crit_val = check_critical_value(att_dose_crit_val, alpha)
+    if att_d_inf_func is not None:
+        boot_res = _multiplier_bootstrap_dose(att_d_inf_func, biters=bootstrap_iterations, alpha=alpha)
+        att_d_se = boot_res["se"]
+        att_d_crit_val = boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
+        att_d_crit_val = check_critical_value(att_d_crit_val, alpha)
     else:
-        att_dose_se = np.full(len(dose_values), np.nan)
-        att_dose_crit_val = st.norm.ppf(1 - alpha / 2)
+        att_d_se = np.full(len(dose_values), np.nan)
+        att_d_crit_val = st.norm.ppf(1 - alpha / 2)
 
-    if acrt_dose_inffunc is not None:
-        acrt_boot_res = _multiplier_bootstrap_dose(acrt_dose_inffunc, biters=bootstrap_iterations, alpha=alpha)
-        acrt_dose_se = acrt_boot_res["se"]
-        acrt_dose_crit_val = acrt_boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
-        acrt_dose_crit_val = check_critical_value(acrt_dose_crit_val, alpha)
+    if acrt_d_inf_func is not None:
+        acrt_boot_res = _multiplier_bootstrap_dose(acrt_d_inf_func, biters=bootstrap_iterations, alpha=alpha)
+        acrt_d_se = acrt_boot_res["se"]
+        acrt_d_crit_val = acrt_boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
+        acrt_d_crit_val = check_critical_value(acrt_d_crit_val, alpha)
     else:
-        acrt_dose_se = np.full(len(dose_values), np.nan)
-        acrt_dose_crit_val = st.norm.ppf(1 - alpha / 2)
+        acrt_d_se = np.full(len(dose_values), np.nan)
+        acrt_d_crit_val = st.norm.ppf(1 - alpha / 2)
 
     return DoseResult(
         dose=dose_values,
         overall_att=overall_att,
         overall_att_se=overall_att_se,
-        overall_att_inffunc=overall_att_inffunc,
+        overall_att_inf_func=overall_att_inf_func,
         overall_acrt=overall_acrt,
         overall_acrt_se=overall_acrt_se,
-        overall_acrt_inffunc=overall_acrt_inffunc,
-        att_dose=att_dose,
-        att_dose_se=att_dose_se,
-        att_dose_crit_val=att_dose_crit_val,
-        att_dose_inffunc=att_dose_inffunc,
-        acrt_dose=acrt_dose,
-        acrt_dose_se=acrt_dose_se,
-        acrt_dose_crit_val=acrt_dose_crit_val,
-        acrt_dose_inffunc=acrt_dose_inffunc,
+        overall_acrt_inf_func=overall_acrt_inf_func,
+        att_d=att_d,
+        att_d_se=att_d_se,
+        att_d_crit_val=att_d_crit_val,
+        att_d_inf_func=att_d_inf_func,
+        acrt_d=acrt_d,
+        acrt_d_se=acrt_d_se,
+        acrt_d_crit_val=acrt_d_crit_val,
+        acrt_d_inf_func=acrt_d_inf_func,
         pte_params=pte_params,
     )
 
@@ -269,13 +212,13 @@ def _compute_dose_influence_functions(
     Returns
     -------
     tuple of ndarray
-        (att_dose_influence, acrt_dose_influence) - Influence functions for ATT(d) and ACRT(d).
+        (att_d_influence, acrt_d_influence) - Influence functions for ATT(d) and ACRT(d).
     """
     n_doses = basis_matrix.shape[0]
     n_groups = acrt_influence_matrix.shape[1]
 
-    att_dose_influence = np.zeros((n_obs, n_doses))
-    acrt_dose_influence = np.zeros((n_obs, n_doses))
+    att_d_influence = np.zeros((n_obs, n_doses))
+    acrt_d_influence = np.zeros((n_obs, n_doses))
 
     treated_mask = acrt_influence_matrix != 0
     all_involved_mask = att_influence_matrix != 0
@@ -299,12 +242,12 @@ def _compute_dose_influence_functions(
 
             for i in range(n_treated_to_use):
                 idx = treated_indices[i]
-                att_dose_influence[idx, :] += (
+                att_d_influence[idx, :] += (
                     weights[group_idx] * (n_obs / n_treated_by_group[group_idx]) * treated_contribution[i, :]
                 )
 
             comparison_influence = att_influence_matrix[comparison_mask[:, group_idx], group_idx]
-            att_dose_influence[comparison_mask[:, group_idx], :] -= weights[group_idx] * np.tile(
+            att_d_influence[comparison_mask[:, group_idx], :] -= weights[group_idx] * np.tile(
                 comparison_influence[:, np.newaxis], (1, n_doses)
             )
 
@@ -312,11 +255,11 @@ def _compute_dose_influence_functions(
 
             for i in range(n_treated_to_use):
                 idx = treated_indices[i]
-                acrt_dose_influence[idx, :] += (
+                acrt_d_influence[idx, :] += (
                     weights[group_idx] * (n_obs / n_treated_by_group[group_idx]) * acrt_contribution[i, :]
                 )
 
-    return att_dose_influence, acrt_dose_influence
+    return att_d_influence, acrt_d_influence
 
 
 def _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.05):
@@ -389,7 +332,7 @@ def _weighted_combine_arrays(array_list, weights):
     return result
 
 
-def _compute_overall_att_inffunc(weights, att_influence_matrix):
+def _compute_overall_att_inf_func(weights, att_influence_matrix):
     """Compute influence function for overall ATT by aggregating group-time influence functions."""
     if att_influence_matrix is None:
         return None
@@ -407,12 +350,12 @@ def _summary_dose_result(dose_result):
         "overall_att_se": dose_result.overall_att_se,
         "overall_acrt": dose_result.overall_acrt,
         "overall_acrt_se": dose_result.overall_acrt_se,
-        "att_dose": dose_result.att_dose,
-        "att_dose_se": dose_result.att_dose_se,
-        "att_dose_crit_val": dose_result.att_dose_crit_val,
-        "acrt_dose": dose_result.acrt_dose,
-        "acrt_dose_se": dose_result.acrt_dose_se,
-        "acrt_dose_crit_val": dose_result.acrt_dose_crit_val,
+        "att_d": dose_result.att_d,
+        "att_d_se": dose_result.att_d_se,
+        "att_d_crit_val": dose_result.att_d_crit_val,
+        "acrt_d": dose_result.acrt_d,
+        "acrt_d_se": dose_result.acrt_d_se,
+        "acrt_d_crit_val": dose_result.acrt_d_crit_val,
     }
 
     if dose_result.pte_params:

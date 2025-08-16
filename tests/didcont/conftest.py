@@ -472,7 +472,7 @@ def pte_params_basic():
         target_parameter=None,
         aggregation=None,
         treatment_type=None,
-        xformla="~1",
+        xformula="~1",
     )
 
 
@@ -549,7 +549,7 @@ def att_gt_result_with_data():
         target_parameter=None,
         aggregation=None,
         treatment_type=None,
-        xformla="~1",
+        xformula="~1",
     )
 
     class MockATTGTResult:

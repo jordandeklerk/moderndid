@@ -5,11 +5,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from moderndid.didcont.panel.process_dose import DoseResult
-from moderndid.didcont.panel.process_panel import (
+from moderndid.didcont.panel.container import (
     AttgtResult,
+    DoseResult,
     PTEParams,
     PTEResult,
+)
+from moderndid.didcont.panel.process_panel import (
     _choose_knots_quantile,
     _get_first_difference,
     _get_group,
@@ -317,7 +319,7 @@ def test_pte_result_creation():
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": "~1",
+        "xformula": "~1",
     }
     ptep = PTEParams(**params_dict)
 
@@ -368,7 +370,7 @@ def test_compute_pte_basic():
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": "~1",
+        "xformula": "~1",
     }
     ptep = PTEParams(**params_dict)
 
@@ -430,7 +432,7 @@ def test_compute_pte_universal_base_period():
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": "~1",
+        "xformula": "~1",
     }
     ptep = PTEParams(**params_dict)
 
@@ -488,7 +490,7 @@ def test_pte_dose_type():
             "target_parameter": "ATT",
             "aggregation": "dose",
             "treatment_type": "continuous",
-            "xformla": "~1",
+            "xformula": "~1",
         }
         return PTEParams(**params_dict)
 
@@ -551,7 +553,7 @@ def test_pte_empirical_bootstrap_warning():
             "target_parameter": None,
             "aggregation": None,
             "treatment_type": None,
-            "xformla": "~1",
+            "xformula": "~1",
         }
         return PTEParams(**params_dict)
 

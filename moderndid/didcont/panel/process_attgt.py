@@ -1,62 +1,11 @@
 """Processing functions for ATT(g,t) results."""
 
 import warnings
-from typing import NamedTuple
 
 import numpy as np
 import scipy.stats
 
-
-class GroupTimeATTResult(NamedTuple):
-    """Container for group-time average treatment effect results.
-
-    Attributes
-    ----------
-    groups : ndarray
-        Which group (defined by period first treated) each group-time ATT is for.
-    times : ndarray
-        Which time period each group-time ATT is for.
-    att : ndarray
-        The group-time average treatment effects for each group-time combination.
-    vcov_analytical : ndarray
-        Analytical estimator for the asymptotic variance-covariance matrix.
-    se : ndarray
-        Standard errors for group-time ATTs. If bootstrap used, provides bootstrap-based SE.
-    critical_value : float
-        Critical value - simultaneous if obtaining simultaneous confidence bands,
-        otherwise based on pointwise normal approximation.
-    influence_func : ndarray
-        The influence function for estimating group-time average treatment effects.
-    n_units : int
-        The number of unique cross-sectional units.
-    wald_stat : float, optional
-        The Wald statistic for pre-testing the common trends assumption.
-    wald_pvalue : float, optional
-        The p-value of the Wald statistic for pre-testing common trends.
-    cband : bool
-        Whether uniform confidence band was computed.
-    alpha : float
-        The significance level.
-    pte_params : object
-        The PTE parameters object containing estimation settings.
-    extra_gt_returns : list
-        List of extra returns from gt-specific calculations.
-    """
-
-    groups: np.ndarray
-    times: np.ndarray
-    att: np.ndarray
-    vcov_analytical: np.ndarray
-    se: np.ndarray
-    critical_value: float
-    influence_func: np.ndarray
-    n_units: int
-    wald_stat: float | None = None
-    wald_pvalue: float | None = None
-    cband: bool = True
-    alpha: float = 0.05
-    pte_params: object | None = None
-    extra_gt_returns: list | None = None
+from .container import GroupTimeATTResult
 
 
 def process_att_gt(att_gt_results, pte_params):

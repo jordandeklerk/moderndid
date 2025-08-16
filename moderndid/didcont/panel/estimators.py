@@ -10,7 +10,7 @@ from scipy.linalg import qr
 
 from ...drdid.estimators.drdid_panel import drdid_panel
 from ...drdid.estimators.reg_did_panel import reg_did_panel
-from .process_panel import AttgtResult
+from .container import AttgtResult
 
 
 def did_attgt(gt_data, xformula="~1", **kwargs):

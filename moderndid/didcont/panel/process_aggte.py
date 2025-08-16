@@ -2,64 +2,13 @@
 """Aggregation functions for continuous-treatment DiD."""
 
 import warnings
-from typing import Literal, NamedTuple
 
 import numpy as np
 import scipy.stats as st
 
+from .container import PTEAggteResult
 from .process_attgt import multiplier_bootstrap
 from .process_panel import _map_to_idx
-
-
-class PTEAggteResult(NamedTuple):
-    """Container for aggregated panel treatment effect parameters.
-
-    Attributes
-    ----------
-    overall_att : float
-        The estimated overall average treatment effect on the treated.
-    overall_se : float
-        Standard error for overall ATT.
-    aggregation_type : {'overall', 'dynamic', 'group'}
-        Type of aggregation performed.
-    event_times : ndarray, optional
-        Event/group values depending on aggregation type:
-
-        - For dynamic effects: length of exposure (event time)
-        - For group effects: treatment group indicators
-    att_by_event : ndarray, optional
-        ATT estimates specific to each event time value.
-    se_by_event : ndarray, optional
-        Standard errors specific to each event time value.
-    critical_value : float, optional
-        Critical value for uniform confidence bands.
-    influence_func : dict, optional
-        Dictionary containing influence functions:
-
-        - **overall**: Overall ATT influence function
-        - **by_event**: Event-specific influence functions
-    min_event_time : int, optional
-        Minimum event time (for dynamic effects).
-    max_event_time : int, optional
-        Maximum event time (for dynamic effects).
-    balance_event : int, optional
-        Balanced event time threshold.
-    att_gt_result : object
-        Original group-time ATT result object.
-    """
-
-    overall_att: float
-    overall_se: float
-    aggregation_type: Literal["overall", "dynamic", "group"]
-    event_times: np.ndarray | None = None
-    att_by_event: np.ndarray | None = None
-    se_by_event: np.ndarray | None = None
-    critical_value: float | None = None
-    influence_func: dict | None = None
-    min_event_time: int | None = None
-    max_event_time: int | None = None
-    balance_event: int | None = None
-    att_gt_result: object | None = None
 
 
 def aggregate_att_gt(
