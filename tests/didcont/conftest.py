@@ -423,7 +423,7 @@ def att_gt_raw_results():
             att_value = np.random.normal(0.1, 0.05) if g > t else np.random.normal(0, 0.02)
             attgt_list.append({"att": att_value, "group": g, "time_period": t})
 
-    n_units = 200
+    n_units = 50
     influence_func = np.random.randn(n_units, n_gt) * 0.1
 
     return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": []}
@@ -439,6 +439,10 @@ def pte_params_basic():
             "G": np.repeat(np.random.choice([0, 2004, 2006, 2007], 50), 4),
         }
     )
+    time_vals = data["time"].unique()
+    time_map = {v: i + 1 for i, v in enumerate(sorted(time_vals))}
+    data["period"] = data["time"].map(time_map).astype(int)
+    data[".w"] = 1.0
 
     return PTEParams(
         yname="y",
@@ -478,10 +482,10 @@ def mock_att_gt_result(att_gt_raw_results, pte_params_basic):
 
     class MockATTGTResult:
         def __init__(self):
-            self.group = processed.groups
-            self.t = processed.times
+            self.groups = processed.groups
+            self.times = processed.times
             self.att = processed.att
-            self.inf_func = processed.influence_func
+            self.influence_func = processed.influence_func
             self.pte_params = pte_params_basic
 
     return MockATTGTResult()
@@ -550,10 +554,218 @@ def att_gt_result_with_data():
 
     class MockATTGTResult:
         def __init__(self):
-            self.group = np.array(group_values)
-            self.t = np.array(time_values)
+            self.groups = np.array(group_values)
+            self.times = np.array(time_values)
             self.att = np.array(att_values)
-            self.inf_func = inf_func
+            self.influence_func = inf_func
             self.pte_params = pte_params
 
     return MockATTGTResult()
+
+
+@pytest.fixture
+def dose_values():
+    return np.linspace(0.1, 2.0, 20)
+
+
+@pytest.fixture
+def mock_pte_params_with_dose(pte_params_basic, dose_values):
+    params_dict = pte_params_basic._asdict()
+    params_dict.update(
+        {
+            "dname": "dose",
+            "degree": 2,
+            "num_knots": 2,
+            "knots": np.array([0.7, 1.3]),
+            "dvals": dose_values,
+            "target_parameter": "ATT",
+            "aggregation": "simple",
+            "treatment_type": "continuous",
+        }
+    )
+    return PTEParams(**params_dict)
+
+
+@pytest.fixture
+def mock_gt_results_with_dose():
+    np.random.seed(42)
+    n_groups = 3
+    n_times = 4
+    n_gt = n_groups * n_times
+    n_units = 200
+    n_doses = 20
+
+    attgt_list = []
+    extra_gt_returns = []
+
+    for g in [2004, 2006, 2007]:
+        for t in [2003, 2004, 2005, 2006]:
+            att_value = np.random.normal(0.1, 0.05) if g > t else np.random.normal(0, 0.02)
+            attgt_list.append({"att": att_value, "group": g, "time_period": t})
+
+            n_basis = 5
+            dose_results = {
+                "group": g,
+                "time_period": t,
+                "extra_gt_returns": {
+                    "att_dose": np.random.normal(0.1, 0.02, n_doses),
+                    "acrt_dose": np.random.normal(0.05, 0.01, n_doses),
+                    "att_overall": np.random.normal(0.1, 0.02),
+                    "acrt_overall": np.random.normal(0.05, 0.01),
+                    "beta": np.random.randn(n_basis),
+                    "bread": np.random.randn(n_basis, n_basis),
+                    "x_expanded": np.random.randn(50, n_basis),
+                },
+            }
+            extra_gt_returns.append(dose_results)
+
+    influence_func = np.random.randn(n_units, n_gt) * 0.1
+
+    return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": extra_gt_returns}
+
+
+@pytest.fixture
+def mock_gt_results_no_dose(att_gt_raw_results):
+    return att_gt_raw_results
+
+
+@pytest.fixture
+def contdid_data():
+    from tests.didcont.dgp import simulate_contdid_data
+
+    return simulate_contdid_data(n=1000, seed=12345)
+
+
+@pytest.fixture
+def panel_data_with_group(panel_data_balanced):
+    data = panel_data_balanced.copy()
+
+    def assign_group(unit):
+        if unit <= 10:
+            return 2011
+        if unit <= 15:
+            return 2012
+        return 0
+
+    data["group"] = data["unit_id"].apply(assign_group)
+    data.loc[data["time_id"] < data["group"], "d"] = 0
+    data.loc[data["group"] == 0, "d"] = 0
+    return data
+
+
+def create_mock_gt_results_with_correct_dimensions(degree, knots, n_doses=20):
+    if knots is None:
+        n_knots = 0
+    else:
+        n_knots = len(knots) if hasattr(knots, "__len__") else 0
+
+    n_basis = 1 + degree + n_knots
+
+    n_groups = 3
+    n_times = 4
+    n_gt = n_groups * n_times
+    n_units = 200
+
+    np.random.seed(42)
+    attgt_list = []
+    extra_gt_returns = []
+
+    for g in [2004, 2006, 2007]:
+        for t in [2003, 2004, 2005, 2006]:
+            att_value = np.random.normal(0.1, 0.05) if g > t else np.random.normal(0, 0.02)
+            attgt_list.append({"att": att_value, "group": g, "time_period": t})
+
+            dose_results = {
+                "group": g,
+                "time_period": t,
+                "extra_gt_returns": {
+                    "att_dose": np.random.normal(0.1, 0.02, n_doses),
+                    "acrt_dose": np.random.normal(0.05, 0.01, n_doses),
+                    "att_overall": np.random.normal(0.1, 0.02),
+                    "acrt_overall": np.random.normal(0.05, 0.01),
+                    "beta": np.random.randn(n_basis),
+                    "bread": np.random.randn(n_basis, n_basis),
+                    "x_expanded": np.random.randn(50, n_basis),
+                },
+            }
+            extra_gt_returns.append(dose_results)
+
+    influence_func = np.random.randn(n_units, n_gt) * 0.1
+
+    return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": extra_gt_returns}
+
+
+@pytest.fixture
+def simple_panel_data():
+    np.random.seed(42)
+    n_units = 100
+
+    id_vals = np.repeat(np.arange(n_units), 2)
+    period_vals = np.tile([0, 1], n_units)
+    name_vals = np.tile(["pre", "post"], n_units)
+
+    treatment = np.repeat(np.random.binomial(1, 0.5, n_units), 2)
+
+    pre_outcome = np.random.normal(0, 1, n_units)
+    post_outcome = pre_outcome + 2 * treatment[:n_units] + np.random.normal(0, 1, n_units)
+    y_vals = np.empty(2 * n_units)
+    y_vals[::2] = pre_outcome
+    y_vals[1::2] = post_outcome
+
+    df = pd.DataFrame({"id": id_vals, "D": treatment, "period": period_vals, "name": name_vals, "Y": y_vals})
+
+    return df
+
+
+@pytest.fixture
+def panel_data_with_covariates_estimators():
+    np.random.seed(42)
+    n_units = 100
+
+    id_vals = np.repeat(np.arange(n_units), 2)
+    period_vals = np.tile([0, 1], n_units)
+    name_vals = np.tile(["pre", "post"], n_units)
+
+    x1 = np.repeat(np.random.normal(0, 1, n_units), 2)
+    x2 = np.repeat(np.random.normal(0, 1, n_units), 2)
+
+    propensity = 1 / (1 + np.exp(-(x1[:n_units] + x2[:n_units])))
+    treatment = np.repeat((np.random.uniform(size=n_units) < propensity).astype(int), 2)
+
+    pre_outcome = x1[:n_units] + x2[:n_units] + np.random.normal(0, 1, n_units)
+    post_outcome = pre_outcome + 2 * treatment[:n_units] + np.random.normal(0, 1, n_units)
+    y_vals = np.empty(2 * n_units)
+    y_vals[::2] = pre_outcome
+    y_vals[1::2] = post_outcome
+
+    df = pd.DataFrame(
+        {"id": id_vals, "D": treatment, "period": period_vals, "name": name_vals, "Y": y_vals, "x1": x1, "x2": x2}
+    )
+
+    return df
+
+
+@pytest.fixture
+def panel_data_with_groups():
+    np.random.seed(42)
+    n_units = 100
+
+    id_vals = np.repeat(np.arange(n_units), 2)
+    period_vals = np.tile([0, 1], n_units)
+    name_vals = np.tile(["pre", "post"], n_units)
+
+    group_vals = np.repeat(np.random.choice([2004, 2005, 2006], n_units), 2)
+
+    treatment = np.repeat(np.random.binomial(1, 0.5, n_units), 2)
+
+    pre_outcome = np.random.normal(0, 1, n_units)
+    post_outcome = pre_outcome + 2 * treatment[:n_units] + np.random.normal(0, 1, n_units)
+    y_vals = np.empty(2 * n_units)
+    y_vals[::2] = pre_outcome
+    y_vals[1::2] = post_outcome
+
+    df = pd.DataFrame(
+        {"id": id_vals, "D": treatment, "G": group_vals, "period": period_vals, "name": name_vals, "Y": y_vals}
+    )
+
+    return df

@@ -13,6 +13,7 @@ from .npiv import (
     prodspline,
 )
 from .panel import (
+    DoseResult,
     GroupTimeATTResult,
     PTEAggteResult,
     PTEParams,
@@ -20,20 +21,29 @@ from .panel import (
     _get_group,
     _get_group_inner,
     _make_balanced_panel,
+    _summary_dose_result,
     aggregate_att_gt,
+    did_attgt,
     multiplier_bootstrap,
     overall_weights,
     process_att_gt,
+    process_dose_gt,
+    pte_attgt,
     setup_pte,
     setup_pte_basic,
     setup_pte_cont,
 )
 from .utils import (
+    _quantile_basis,
     avoid_zero_division,
     basis_dimension,
+    bread,
     compute_r_squared,
+    estfun,
     is_full_rank,
     matrix_sqrt,
+    meat,
+    sandwich_vcov,
 )
 
 __all__ = [
@@ -47,6 +57,7 @@ __all__ = [
     "NPIVResult",
     "GroupTimeATTResult",
     "PTEAggteResult",
+    "DoseResult",
     # B-spline and basis construction
     "BSplineBasis",
     "MultivariateBasis",
@@ -59,6 +70,11 @@ __all__ = [
     "matrix_sqrt",
     "avoid_zero_division",
     "basis_dimension",
+    "bread",
+    "estfun",
+    "meat",
+    "sandwich_vcov",
+    "_quantile_basis",
     # Panel treatment effects setup
     "PTEParams",
     "setup_pte",
@@ -66,11 +82,15 @@ __all__ = [
     "setup_pte_cont",
     # Processing functions
     "process_att_gt",
+    "process_dose_gt",
     "aggregate_att_gt",
+    "_summary_dose_result",
     "overall_weights",
     "multiplier_bootstrap",
     "_get_first_difference",
     "_get_group",
     "_get_group_inner",
     "_make_balanced_panel",
+    "did_attgt",
+    "pte_attgt",
 ]

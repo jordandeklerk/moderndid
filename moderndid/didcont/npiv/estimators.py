@@ -5,8 +5,8 @@ import warnings
 import numpy as np
 
 from ..utils import is_full_rank
+from .pspline import prodspline
 from .results import NPIVResult
-from .spline import prodspline
 
 
 def npiv_est(
@@ -228,6 +228,8 @@ def npiv_est(
         "tmp": tmp,
         "psi_x_eval": psi_x_eval,
         "psi_x_deriv_eval": psi_x_deriv_eval,
+        "b_w": b_w,
+        "b_w_deriv": basis_matrices["b_w_deriv"],
     }
 
     return NPIVResult(
@@ -335,12 +337,26 @@ def _construct_basis_matrices(
     )
     b_w = b_w_result.basis
 
+    b_w_deriv_result = prodspline(
+        x=w,
+        K=K_w,
+        xeval=w,
+        knots=knots,
+        basis=basis,
+        deriv_index=1,
+        deriv=1,
+        x_min=np.full(p_w, w_min) if w_min is not None else None,
+        x_max=np.full(p_w, w_max) if w_max is not None else None,
+    )
+    b_w_deriv = b_w_deriv_result.basis
+
     if basis in ("additive", "glp"):
         psi_x = np.c_[np.ones(n), psi_x]
         psi_x_eval = np.c_[np.ones(n_eval), psi_x_eval]
         psi_x_deriv = np.c_[np.zeros(n), psi_x_deriv]
         psi_x_deriv_eval = np.c_[np.zeros(n_eval), psi_x_deriv_eval]
         b_w = np.c_[np.ones(n), b_w]
+        b_w_deriv = np.c_[np.zeros(n), b_w_deriv]
 
     return {
         "psi_x": psi_x,
@@ -348,6 +364,7 @@ def _construct_basis_matrices(
         "psi_x_deriv": psi_x_deriv,
         "psi_x_deriv_eval": psi_x_deriv_eval,
         "b_w": b_w,
+        "b_w_deriv": b_w_deriv,
     }
 
 

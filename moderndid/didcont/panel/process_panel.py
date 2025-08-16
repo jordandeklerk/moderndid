@@ -100,6 +100,214 @@ class PTEParams(NamedTuple):
     xformla: str
 
 
+class AttgtResult(NamedTuple):
+    """Container for a single ATT(g,t) result with influence function."""
+
+    attgt: float
+    inf_func: np.ndarray | None
+    extra_gt_returns: dict | None
+
+
+class PTEResult(NamedTuple):
+    """Container for panel treatment effects results."""
+
+    att_gt: object
+    overall_att: object | None
+    event_study: object | None
+    ptep: PTEParams
+
+
+def pte(
+    yname,
+    gname,
+    tname,
+    idname,
+    data,
+    setup_pte_fun,
+    subset_fun,
+    attgt_fun,
+    cband=True,
+    alp=0.05,
+    boot_type="multiplier",
+    weightsname=None,
+    gt_type="att",
+    ret_quantile=None,
+    process_dose_gt_fun=None,
+    biters=100,
+    cl=1,
+    call=None,
+    **kwargs,
+):
+    """Compute panel treatment effects.
+
+    Parameters
+    ----------
+    yname : str
+        Name of outcome variable.
+    gname : str
+        Name of group variable (first treatment period).
+    tname : str
+        Name of time period variable.
+    idname : str
+        Name of unit ID variable.
+    data : pd.DataFrame
+        Panel data.
+    setup_pte_fun : callable
+        Function to setup PTE parameters.
+    subset_fun : callable
+        Function to create data subsets for each (g,t).
+    attgt_fun : callable
+        Function to compute ATT for single group-time.
+    cband : bool, default=True
+        Whether to compute uniform confidence bands.
+    alp : float, default=0.05
+        Significance level.
+    boot_type : str, default="multiplier"
+        Bootstrap type ("multiplier" or "empirical").
+    weightsname : str, optional
+        Name of weights variable.
+    gt_type : str, default="att"
+        Type of group-time effect ("att" or "dose").
+    ret_quantile : float, optional
+        Quantile for distributional results.
+    process_dose_gt_fun : callable, optional
+        Function to process dose results.
+    biters : int, default=100
+        Number of bootstrap iterations.
+    cl : int, default=1
+        Number of clusters for parallel computation.
+    call : str, optional
+        Function call string for reference.
+    **kwargs
+        Additional arguments passed through.
+
+    Returns
+    -------
+    PTEResult or DoseResult
+        Results object depending on gt_type.
+    """
+    ptep = setup_pte_fun(
+        yname=yname,
+        gname=gname,
+        tname=tname,
+        idname=idname,
+        data=data,
+        cband=cband,
+        alp=alp,
+        boot_type=boot_type,
+        gt_type=gt_type,
+        weightsname=weightsname,
+        ret_quantile=ret_quantile,
+        biters=biters,
+        cl=cl,
+        call=call,
+        **kwargs,
+    )
+
+    res = compute_pte(ptep=ptep, subset_fun=subset_fun, attgt_fun=attgt_fun, **kwargs)
+
+    if gt_type == "dose":
+        from moderndid.didcont.panel.process_dose import process_dose_gt
+
+        if process_dose_gt_fun is None:
+            process_dose_gt_fun = process_dose_gt
+
+        return process_dose_gt_fun(res, ptep, **kwargs)
+
+    if np.all(np.isnan(res["inffunc"])) or ptep.boot_type == "empirical":
+        warnings.warn("Empirical bootstrap not yet implemented, returning raw results")
+        return res
+
+    from moderndid.did.aggte import aggte
+
+    from .process_attgt import process_att_gt
+
+    att_gt = process_att_gt(res, ptep)
+    overall_att = aggte(att_gt, type="group", bstrap=True, cband=cband, alp=ptep.alp)
+
+    min_e = kwargs.get("min_e", -np.inf)
+    max_e = kwargs.get("max_e", np.inf)
+    balance_e = kwargs.get("balance_e")
+
+    event_study = aggte(
+        att_gt, type="dynamic", bstrap=True, cband=cband, alp=ptep.alp, min_e=min_e, max_e=max_e, balance_e=balance_e
+    )
+
+    return PTEResult(att_gt=att_gt, overall_att=overall_att, event_study=event_study, ptep=ptep)
+
+
+def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
+    """Compute panel treatment effects for all group-time combinations.
+
+    Parameters
+    ----------
+    ptep : PTEParams
+        Parameters object containing all settings.
+    subset_fun : callable
+        Function to create appropriate data subset for each (g,t).
+    attgt_fun : callable
+        Function to compute ATT for a single group-time.
+    **kwargs
+        Additional arguments passed to subset_fun and attgt_fun.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+
+        - **attgt_list**: List of ATT(g,t) estimates
+        - **inffunc**: Influence function matrix
+        - **extra_gt_returns**: List of extra returns from gt-specific calculations
+    """
+    data = ptep.data
+    idname = ptep.idname
+    base_period = ptep.base_period
+    anticipation = ptep.anticipation
+
+    n_units = data[idname].nunique()
+
+    time_periods = ptep.t_list
+    groups = ptep.g_list
+
+    attgt_list = []
+    counter = 0
+    n_groups = len(groups)
+    n_times = len(time_periods)
+    inffunc = np.full((n_units, n_groups * n_times), np.nan)
+    extra_gt_returns = []
+
+    for tp in time_periods:
+        for g in groups:
+            if base_period == "universal":
+                if tp == (g - 1 - anticipation):
+                    attgt_list.append({"att": 0, "group": g, "time_period": tp})
+                    extra_gt_returns.append({"extra_gt_returns": None, "group": g, "time_period": tp})
+                    counter += 1
+                    continue
+
+            gt_subset = subset_fun(data, g, tp, **kwargs)
+            gt_data = gt_subset["gt_data"]
+            n1 = gt_subset["n1"]
+            disidx = gt_subset["disidx"]
+
+            attgt_result = attgt_fun(gt_data=gt_data, **kwargs)
+
+            attgt_list.append({"att": attgt_result.attgt, "group": g, "time_period": tp})
+
+            extra_gt_returns.append({"extra_gt_returns": attgt_result.extra_gt_returns, "group": g, "time_period": tp})
+
+            if attgt_result.inf_func is not None:
+                adjusted_inf_func = (n_units / n1) * attgt_result.inf_func
+
+                this_inf_func = np.zeros(n_units)
+                this_inf_func[disidx] = adjusted_inf_func
+                inffunc[:, counter] = this_inf_func
+
+            counter += 1
+
+    return {"attgt_list": attgt_list, "inffunc": inffunc, "extra_gt_returns": extra_gt_returns}
+
+
 def setup_pte_basic(
     data,
     yname,
@@ -340,7 +548,8 @@ def setup_pte_cont(
     knots = _choose_knots_quantile(positive_doses, num_knots)
     if dvals is None:
         if len(positive_doses) > 0:
-            dvals = np.quantile(positive_doses, np.arange(0.1, 1.0, 0.01))
+            # Following R code: create a sequence from min to max
+            dvals = np.linspace(positive_doses.min(), positive_doses.max(), 50)
         else:
             dvals = np.array([])
 
@@ -360,6 +569,53 @@ def setup_pte_cont(
     )
 
     return PTEParams(**pte_params_dict)
+
+
+def _two_by_two_subset(
+    data,
+    g,
+    tp,
+    control_group="notyettreated",
+    anticipation=0,
+    base_period="varying",
+    **kwargs,
+):
+    """Compute 2x2 subset for binary treatment DiD."""
+    main_base_period = g - anticipation - 1
+
+    if base_period == "varying":
+        if tp < (g - anticipation):
+            base_period_val = tp - 1
+        else:
+            base_period_val = main_base_period
+    else:
+        base_period_val = main_base_period
+
+    gname = kwargs.get("gname", "G")
+    tname = kwargs.get("tname", "period")
+    idname = kwargs.get("idname", "id")
+
+    if control_group == "notyettreated":
+        this_data = data[(data[gname] == g) | (data[gname] > tp) | (data[gname] == 0)].copy()
+    else:
+        this_data = data[(data[gname] == g) | (data[gname] == 0)].copy()
+
+    this_data = this_data[(this_data[tname] == tp) | (this_data[tname] == base_period_val)]
+    this_data["name"] = np.where(this_data[tname] == tp, "post", "pre")
+    this_data["D"] = 1 * (this_data[gname] == g)
+
+    yname = kwargs.get("yname", "Y")
+    rename_dict = {tname: "period", idname: "id"}
+    if yname in this_data.columns:
+        rename_dict[yname] = "Y"
+    this_data = this_data.rename(columns=rename_dict)
+
+    n1 = this_data["id"].nunique()
+    all_ids = data[idname].unique()
+    subset_ids = this_data["id"].unique()
+    disidx = np.isin(all_ids, subset_ids)
+
+    return {"gt_data": this_data, "n1": n1, "disidx": disidx}
 
 
 def _map_to_idx(vals, time_map):
