@@ -1,5 +1,9 @@
 """Preprocessing functions for continuous treatment DiD."""
 
+from .estimators import (
+    did_attgt,
+    pte_attgt,
+)
 from .process_aggte import (
     PTEAggteResult,
     aggregate_att_gt,
@@ -10,37 +14,50 @@ from .process_attgt import (
     multiplier_bootstrap,
     process_att_gt,
 )
+from .process_dose import (
+    DoseResult,
+    _summary_dose_result,
+    process_dose_gt,
+)
 from .process_panel import (
+    AttgtResult,
     PTEParams,
+    PTEResult,
     _choose_knots_quantile,
     _get_first_difference,
     _get_group,
     _get_group_inner,
     _make_balanced_panel,
     _map_to_idx,
+    pte,
     setup_pte,
     setup_pte_basic,
     setup_pte_cont,
 )
 
 __all__ = [
-    # Setup functions
-    "PTEParams",
-    "setup_pte",
-    "setup_pte_basic",
-    "setup_pte_cont",
-    # Processing functions
-    "process_att_gt",
+    "AttgtResult",
+    "DoseResult",
     "GroupTimeATTResult",
-    "aggregate_att_gt",
     "PTEAggteResult",
-    "overall_weights",
-    "multiplier_bootstrap",
-    # Helper functions
-    "_make_balanced_panel",
+    "PTEParams",
+    "PTEResult",
+    "_choose_knots_quantile",
     "_get_first_difference",
     "_get_group",
     "_get_group_inner",
+    "_make_balanced_panel",
     "_map_to_idx",
-    "_choose_knots_quantile",
+    "_summary_dose_result",
+    "aggregate_att_gt",
+    "did_attgt",
+    "multiplier_bootstrap",
+    "overall_weights",
+    "process_att_gt",
+    "process_dose_gt",
+    "pte",
+    "pte_attgt",
+    "setup_pte",
+    "setup_pte_basic",
+    "setup_pte_cont",
 ]
