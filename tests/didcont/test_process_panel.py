@@ -383,7 +383,7 @@ def test_compute_pte_basic():
     result = compute_pte(ptep, mock_subset_fun, mock_attgt_fun)
 
     assert "attgt_list" in result
-    assert "inffunc" in result
+    assert "influence_func" in result
     assert "extra_gt_returns" in result
 
     assert len(result["attgt_list"]) == 1
@@ -391,7 +391,7 @@ def test_compute_pte_basic():
     assert result["attgt_list"][0]["group"] == 2
     assert result["attgt_list"][0]["time_period"] == 2
 
-    assert result["inffunc"].shape == (3, 1)
+    assert result["influence_func"].shape == (3, 1)
 
 
 def test_compute_pte_universal_base_period():

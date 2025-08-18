@@ -1,10 +1,17 @@
 """Preprocessing functions for continuous treatment DiD."""
 
+from .bootstrap import (
+    attgt_pte_aggregations,
+    panel_empirical_bootstrap,
+    qott_pte_aggregations,
+    qtt_pte_aggregations,
+)
 from .container import (
     AttgtResult,
     DoseResult,
     GroupTimeATTResult,
     PTEAggteResult,
+    PteEmpBootResult,
     PTEParams,
     PTEResult,
 )
@@ -45,6 +52,7 @@ __all__ = [
     "PTEAggteResult",
     "PTEParams",
     "PTEResult",
+    "PteEmpBootResult",
     "_choose_knots_quantile",
     "_get_first_difference",
     "_get_group",
@@ -64,4 +72,8 @@ __all__ = [
     "setup_pte_basic",
     "setup_pte_cont",
     "pte_default",
+    "panel_empirical_bootstrap",
+    "attgt_pte_aggregations",
+    "qtt_pte_aggregations",
+    "qott_pte_aggregations",
 ]

@@ -91,7 +91,9 @@ def pte_attgt(
         - **inf_func**: The influence function
         - **extra_gt_returns**: Additional return values (None for this estimator)
     """
-    if gt_data.empty or gt_data["D"].nunique() < 2:
+    if gt_data.empty:
+        raise ValueError("Cannot compute ATT(g,t) with empty data")
+    if gt_data["D"].nunique() < 2:
         return AttgtResult(attgt=0.0, inf_func=np.zeros(gt_data["id"].nunique()), extra_gt_returns=None)
 
     post_data = gt_data[gt_data["name"] == "post"]
