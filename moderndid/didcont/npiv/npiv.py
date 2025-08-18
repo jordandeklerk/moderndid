@@ -168,7 +168,6 @@ def npiv(
 
     if x_eval is None and x_grid is not None:
         x_eval = x_grid
-        warnings.warn("Using x_grid as x_eval for R compatibility", UserWarning)
 
     if x_eval is not None:
         x_eval = np.atleast_2d(x_eval)

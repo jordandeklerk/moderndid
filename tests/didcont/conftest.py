@@ -637,6 +637,36 @@ def contdid_data():
 
 
 @pytest.fixture
+def cck_test_data():
+    np.random.seed(42)
+    n = 500
+
+    id_vals = np.repeat(np.arange(1, n + 1), 2)
+    time_vals = np.tile([1, 2], n)
+    group_vals = np.repeat(np.random.choice([0, 1], n, p=[0.5, 0.5]), 2)
+
+    pre_y = np.random.normal(0, 1, n)
+    dose = np.where(group_vals[::2] == 1, np.random.uniform(0, 2, n), 0)
+    post_y = pre_y + 2 * dose + np.random.normal(0, 1, n)
+
+    y = np.empty(2 * n)
+    y[::2] = pre_y
+    y[1::2] = post_y
+
+    d = np.repeat(dose, 2)
+
+    return pd.DataFrame(
+        {
+            "id": id_vals,
+            "time": time_vals,
+            "y": y,
+            "d": d,
+            "g": group_vals,
+        }
+    )
+
+
+@pytest.fixture
 def panel_data_with_group(panel_data_balanced):
     data = panel_data_balanced.copy()
 

@@ -1,3 +1,4 @@
+# pylint: disable=unused-argument
 """Functions for panel treatment effects."""
 
 import warnings
@@ -104,25 +105,31 @@ def pte(
         if process_dose_gt_fun is None:
             process_dose_gt_fun = process_dose_gt
 
-        return process_dose_gt_fun(res, ptep, **kwargs)
+        filtered_kwargs = {}
+        if "balance_event" in kwargs:
+            filtered_kwargs["balance_event"] = kwargs["balance_event"]
+        if "min_event_time" in kwargs:
+            filtered_kwargs["min_event_time"] = kwargs["min_event_time"]
+        if "max_event_time" in kwargs:
+            filtered_kwargs["max_event_time"] = kwargs["max_event_time"]
+        return process_dose_gt_fun(res, ptep, **filtered_kwargs)
 
-    if np.all(np.isnan(res["inffunc"])) or ptep.boot_type == "empirical":
+    if np.all(np.isnan(res["influence_func"])) or ptep.boot_type == "empirical":
         warnings.warn("Empirical bootstrap not yet implemented, returning raw results")
         return res
 
-    from moderndid.did.aggte import aggte
-
+    from .process_aggte import aggregate_att_gt
     from .process_attgt import process_att_gt
 
     att_gt = process_att_gt(res, ptep)
-    overall_att = aggte(att_gt, type="group", bstrap=True, cband=cband, alp=ptep.alp)
+    overall_att = aggregate_att_gt(att_gt, aggregation_type="overall")
 
     min_e = kwargs.get("min_e", -np.inf)
     max_e = kwargs.get("max_e", np.inf)
     balance_e = kwargs.get("balance_e")
 
-    event_study = aggte(
-        att_gt, type="dynamic", bstrap=True, cband=cband, alp=ptep.alp, min_e=min_e, max_e=max_e, balance_e=balance_e
+    event_study = aggregate_att_gt(
+        att_gt, aggregation_type="dynamic", balance_event=balance_e, min_event_time=min_e, max_event_time=max_e
     )
 
     return PTEResult(att_gt=att_gt, overall_att=overall_att, event_study=event_study, ptep=ptep)
@@ -182,7 +189,10 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
             n1 = gt_subset["n1"]
             disidx = gt_subset["disidx"]
 
-            attgt_result = attgt_fun(gt_data=gt_data, **kwargs)
+            if gt_data.empty:
+                attgt_result = pte_attgt(gt_data=gt_data, **kwargs)
+            else:
+                attgt_result = attgt_fun(gt_data=gt_data, **kwargs)
 
             attgt_list.append({"att": attgt_result.attgt, "group": g, "time_period": tp})
 
@@ -197,7 +207,7 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
 
             counter += 1
 
-    return {"attgt_list": attgt_list, "inffunc": inffunc, "extra_gt_returns": extra_gt_returns}
+    return {"attgt_list": attgt_list, "influence_func": inffunc, "extra_gt_returns": extra_gt_returns}
 
 
 def setup_pte_basic(
@@ -281,6 +291,7 @@ def setup_pte(
     cl=1,
     call=None,
     xformula="~1",
+    **kwargs,
 ):
     """Perform setup for panel treatment effects."""
     data = data.copy()
@@ -467,6 +478,12 @@ def setup_pte_cont(
 
     dose_values = data.loc[(data[gname] > 0) & (data[tname] >= data[gname]), dname].values
 
+    setup_pte_kwargs = {}
+    if "call" in kwargs:
+        setup_pte_kwargs["call"] = kwargs["call"]
+    if "ret_quantile" in kwargs:
+        setup_pte_kwargs["ret_quantile"] = kwargs["ret_quantile"]
+
     pte_params = setup_pte(
         yname=yname,
         gname=gname,
@@ -484,7 +501,7 @@ def setup_pte_cont(
         required_pre_periods=required_pre_periods,
         anticipation=anticipation,
         base_period=base_period,
-        **kwargs,
+        **setup_pte_kwargs,
     )
 
     positive_doses = dose_values[dose_values > 0]
@@ -545,6 +562,9 @@ def _two_by_two_subset(
     this_data = this_data[(this_data[tname] == tp) | (this_data[tname] == base_period_val)]
     this_data["name"] = np.where(this_data[tname] == tp, "post", "pre")
     this_data["D"] = 1 * (this_data[gname] == g)
+
+    if this_data["D"].nunique() < 2:
+        return {"gt_data": pd.DataFrame(), "n1": 0, "disidx": np.array([])}
 
     yname = kwargs.get("yname", "Y")
     rename_dict = {tname: "period", idname: "id"}
