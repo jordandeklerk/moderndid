@@ -776,6 +776,139 @@ def panel_data_with_covariates_estimators():
 
 
 @pytest.fixture
+def balanced_panel_data_bootstrap():
+    """Create balanced panel data for bootstrap testing."""
+    np.random.seed(42)
+    return pd.DataFrame(
+        {
+            "id": np.repeat([1, 2, 3], 4),
+            "time": np.tile([2010, 2011, 2012, 2013], 3),
+            "y": np.random.randn(12),
+            "x": np.random.randn(12),
+        }
+    )
+
+
+@pytest.fixture
+def unbalanced_panel_data_bootstrap():
+    """Create unbalanced panel data for bootstrap testing."""
+    return pd.DataFrame(
+        {
+            "id": [1, 1, 1, 2, 2, 3, 3, 3, 3],
+            "time": [1, 2, 3, 1, 3, 1, 2, 3, 4],
+            "y": np.random.randn(9),
+        }
+    )
+
+
+@pytest.fixture
+def basic_attgt_data():
+    """Basic ATT(g,t) data for testing."""
+    return [
+        {"att": 0.1, "group": 2004, "time_period": 2003},
+        {"att": 0.2, "group": 2004, "time_period": 2004},
+        {"att": 0.15, "group": 2004, "time_period": 2005},
+        {"att": 0.05, "group": 2006, "time_period": 2005},
+        {"att": 0.12, "group": 2006, "time_period": 2006},
+    ]
+
+
+@pytest.fixture
+def create_pte_params():
+    """Factory for creating PTE parameters."""
+
+    def _create(n_units=20, groups=None, times=None, gt_type="att", ret_quantile=0.5):
+        if groups is None:
+            groups = [2004, 2006]
+        if times is None:
+            times = [2003, 2004, 2005, 2006]
+
+        data = pd.DataFrame(
+            {
+                "id": np.repeat(np.arange(1, n_units + 1), len(times)),
+                "time": np.tile(times, n_units),
+                "y": np.random.randn(n_units * len(times)),
+                "G": np.repeat(np.random.choice([0] + groups, n_units), len(times)),
+            }
+        )
+
+        return PTEParams(
+            yname="y",
+            gname="G",
+            tname="time",
+            idname="id",
+            data=data,
+            g_list=np.array(groups),
+            t_list=np.array(times),
+            cband=False,
+            alp=0.05,
+            boot_type="weighted",
+            anticipation=0,
+            base_period="varying",
+            weightsname=None,
+            control_group="nevertreated",
+            gt_type=gt_type,
+            ret_quantile=ret_quantile,
+            biters=100,
+            cl=1,
+            call="test",
+            dname=None,
+            degree=None,
+            num_knots=None,
+            knots=None,
+            dvals=None,
+            target_parameter=None,
+            aggregation=None,
+            treatment_type=None,
+            xformula="~1",
+        )
+
+    return _create
+
+
+@pytest.fixture
+def quantile_test_data():
+    """Data for quantile aggregation tests."""
+    np.random.seed(42)
+    return {
+        "attgt_list": [
+            {"att": 0.1, "group": 2004, "time_period": 2003},
+            {"att": 0.2, "group": 2004, "time_period": 2004},
+        ],
+        "extra_gt_returns_qtt": [
+            {
+                "group": 2004,
+                "time_period": 2003,
+                "extra_gt_returns": {
+                    "F0": np.random.randn(100),
+                    "F1": np.random.randn(100) + 0.5,
+                },
+            },
+            {
+                "group": 2004,
+                "time_period": 2004,
+                "extra_gt_returns": {
+                    "F0": np.random.randn(100),
+                    "F1": np.random.randn(100) + 0.3,
+                },
+            },
+        ],
+        "extra_gt_returns_qott": [
+            {
+                "group": 2004,
+                "time_period": 2003,
+                "extra_gt_returns": {"Fte": np.random.randn(100)},
+            },
+            {
+                "group": 2004,
+                "time_period": 2004,
+                "extra_gt_returns": {"Fte": np.random.randn(100) + 0.2},
+            },
+        ],
+    }
+
+
+@pytest.fixture
 def panel_data_with_groups():
     np.random.seed(42)
     n_units = 100

@@ -246,6 +246,30 @@ class GroupTimeATTResult:
         return None
 
 
+class PteEmpBootResult(NamedTuple):
+    """Container for empirical bootstrap results.
+
+    Attributes
+    ----------
+    attgt_results : pd.DataFrame
+        ATT(g,t) estimates with standard errors.
+    overall_results : dict
+        Overall ATT estimate and standard error.
+    group_results : pd.DataFrame | None
+        Group-specific ATT estimates and standard errors.
+    dyn_results : pd.DataFrame | None
+        Dynamic (event-time) ATT estimates and standard errors.
+    extra_gt_returns : list | None
+        Extra returns from group-time calculations.
+    """
+
+    attgt_results: pd.DataFrame
+    overall_results: dict
+    group_results: pd.DataFrame | None = None
+    dyn_results: pd.DataFrame | None = None
+    extra_gt_returns: list | None = None
+
+
 class DoseResult(NamedTuple):
     """Container for continuous treatment dose-response results.
 

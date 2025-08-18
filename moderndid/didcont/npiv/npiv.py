@@ -167,6 +167,7 @@ def npiv(
     p_x = x.shape[1]
 
     if x_eval is None and x_grid is not None:
+        warnings.warn("Using x_grid as x_eval", UserWarning)
         x_eval = x_grid
 
     if x_eval is not None:
