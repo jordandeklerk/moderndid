@@ -164,6 +164,7 @@ def cont_did(
     required_cols = [yname, dname, tname, idname]
     if gname is not None:
         required_cols.append(gname)
+
     missing_cols = [col for col in required_cols if col not in data.columns]
     if missing_cols:
         raise ValueError(f"Missing columns in data: {missing_cols}")
@@ -195,20 +196,8 @@ def cont_did(
         gname = ".G"
 
     if dose_est_method == "cck":
-        unique_groups = data[gname].unique()
-        unique_times = data[tname].unique()
-
-        if len(unique_groups) != 2:
-            raise ValueError("CCK estimator requires exactly 2 groups (treated and control)")
-
-        if len(unique_times) != 2:
-            raise ValueError(
-                "CCK estimator requires exactly 2 time periods. "
-                "Consider averaging across pre and post treatment periods."
-            )
-
         if aggregation != "dose":
-            raise ValueError("Event study not supported with CCK estimator")
+            raise ValueError("Event study not supported with CCK estimator yet, use aggregation='dose'")
 
         return _cck_estimator(
             data=data,
@@ -324,9 +313,13 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
                 return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
         if knots is None:
-            if kwargs.get("num_knots", 0) > 0:
-                num_knots = kwargs.get("num_knots", 0)
-                knots = np.quantile(dose[dose > 0], np.linspace(0.1, 0.9, num_knots))
+            num_knots = kwargs.get("num_knots", 0)
+            if num_knots > 0:
+                positive_doses = dose[dose > 0]
+                if len(positive_doses) > 0:
+                    knots = np.quantile(positive_doses, np.linspace(0.1, 0.9, num_knots))
+                else:
+                    knots = []
             else:
                 knots = []
 
@@ -334,9 +327,16 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     if not np.any(treated_mask):
         return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
-    bspline = BSpline(degree=degree, internal_knots=knots)
+    positive_doses = dose[treated_mask]
+    if len(np.unique(positive_doses)) < 2:
+        return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
-    x_treated = bspline.basis(dose[treated_mask])
+    boundary_knots = [np.min(positive_doses), np.max(positive_doses)]
+    if len(np.unique(boundary_knots)) < 2:
+        boundary_knots = None
+
+    bspline_treated = BSpline(x=dose[treated_mask], degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
+    x_treated = bspline_treated.basis()
     y_treated = dy[treated_mask]
 
     x_treated = np.column_stack([np.ones(x_treated.shape[0]), x_treated])
@@ -348,18 +348,18 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     except (np.linalg.LinAlgError, ValueError):
         return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
-    x_grid = bspline.basis(dvals)
+    bspline_grid = BSpline(x=dvals, degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
+    x_grid = bspline_grid.basis()
     x_grid = np.column_stack([np.ones(x_grid.shape[0]), x_grid])
     att_d = x_grid @ coef - np.mean(dy[dose == 0])
 
-    x_deriv = bspline.derivative_basis(dvals, deriv=1)
+    x_deriv = bspline_grid.derivative(derivs=1)
     acrt_d = x_deriv @ coef[1:]
 
-    x_overall = bspline.basis(dose[treated_mask])
-    x_overall = np.column_stack([np.ones(x_overall.shape[0]), x_overall])
+    x_overall = x_treated
     att_overall = np.mean(x_overall @ coef) - np.mean(dy[dose == 0])
 
-    x_deriv_overall = bspline.derivative_basis(dose[treated_mask], deriv=1)
+    x_deriv_overall = bspline_treated.derivative(derivs=1)
     acrt_overall = np.mean(x_deriv_overall @ coef[1:])
 
     inf_func1 = x_deriv_overall @ coef[1:] - acrt_overall
@@ -443,25 +443,32 @@ def cont_two_by_two_subset(
     else:
         unit_mask = (data[gname] == g) | (data[gname] == 0)
 
-    this_data = data[unit_mask].copy()
+    subset_data = data[unit_mask].copy()
 
-    time_mask = (this_data[tname] == tp) | (this_data[tname] == base_period_val)
-    this_data = this_data[time_mask].copy()
+    time_mask = (subset_data[tname] == tp) | (subset_data[tname] == base_period_val)
+    subset_data = subset_data[time_mask].copy()
 
-    this_data["name"] = np.where(this_data[tname] == tp, "post", "pre")
+    subset_data["name"] = np.where(subset_data[tname] == tp, "post", "pre")
+    subset_data["D"] = subset_data[dname] * (subset_data[gname] == g)
 
-    this_data["D"] = this_data[dname] * (this_data[gname] == g)
-
-    n1 = this_data[idname].nunique()
+    n1 = subset_data[idname].nunique()
     all_ids = data[idname].unique()
-    subset_ids = this_data[idname].unique()
+    subset_ids = subset_data[idname].unique()
     disidx = np.isin(all_ids, subset_ids)
 
-    return {"gt_data": this_data, "n1": n1, "disidx": disidx}
+    return {"gt_data": subset_data, "n1": n1, "disidx": disidx}
 
 
 def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, target_parameter, **kwargs):
     """Compute the CCK non-parametric estimator for continuous treatment."""
+    unique_groups = data[gname].unique()
+    if len(unique_groups) != 2:
+        raise ValueError("CCK estimator requires exactly 2 groups")
+
+    unique_times = data[tname].unique()
+    if len(unique_times) != 2:
+        raise ValueError("CCK estimator requires exactly 2 time periods")
+
     data = _make_balanced_panel(data, idname, tname)
     data[".dy"] = _get_first_difference(data, idname, yname, tname)
 
@@ -481,10 +488,12 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
         else:
             raise ValueError("No treated units found")
 
+    dvals = np.asarray(dvals).reshape(-1, 1)
+
     cck_res = npiv(
         y=dy_centered[dose > 0],
-        x=dose[dose > 0],
-        w=dose[dose > 0],
+        x=dose[dose > 0].reshape(-1, 1),
+        w=dose[dose > 0].reshape(-1, 1),
         x_grid=dvals,
         knots="quantiles",
         boot_num=999,
@@ -511,6 +520,7 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
         tname=tname,
         idname=idname,
         data=data,
+        dname=dname,
         target_parameter=target_parameter,
         aggregation="dose",
         treatment_type="continuous",
@@ -537,39 +547,60 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
         alp=ptep.alp,
     )
 
-    w_treated = cck_res.W
-    knots = np.quantile(w_treated, np.linspace(0, 1, cck_res.K_w_segments + 1))
+    w_treated = dose[dose > 0]
+    n_breaks = cck_res.j_x_segments + 1
 
-    spline_dosage = gsl_bs(
+    knots = np.quantile(w_treated, np.linspace(0, 1, n_breaks))
+    spline_dosage_result = gsl_bs(
         w_treated,
-        degree=cck_res.K_w_degree,
+        degree=cck_res.j_x_degree,
         knots=knots,
+        nbreak=n_breaks,
         deriv=0,
         intercept=True,
     )
+    spline_dosage = spline_dosage_result.basis
 
-    n_treated_val = len(cck_res.Y)
-    infl_reg = (cck_res.Y - cck_res.h)[:, np.newaxis] * (
+    y_treated = dy_centered[dose > 0]
+    n_treated_val = len(y_treated)
+
+    beta_array = cck_res.beta.flatten() if cck_res.beta.ndim > 1 else cck_res.beta
+
+    h_hat_w_treated = spline_dosage @ beta_array
+    infl_reg = (y_treated - h_hat_w_treated.flatten())[:, np.newaxis] * (
         spline_dosage @ np.linalg.pinv(spline_dosage.T @ spline_dosage / n_treated_val)
     )
 
-    average_spline_deriv = gsl_bs(
+    deriv_spline_basis_w = gsl_bs(
         w_treated,
-        degree=cck_res.K_w_degree,
+        degree=cck_res.j_x_degree,
         knots=knots,
+        nbreak=n_breaks,
         deriv=1,
         intercept=True,
-    ).mean(axis=0)
+    ).basis
 
-    infl_avg_acr = (cck_res.deriv - np.mean(cck_res.deriv)) + infl_reg @ average_spline_deriv
+    average_spline_deriv = deriv_spline_basis_w.mean(axis=0)
+    deriv_at_w = (deriv_spline_basis_w @ beta_array).flatten()
+
+    average_acr = np.mean(deriv_at_w)
+    infl_avg_acr = (deriv_at_w - average_acr) + infl_reg @ average_spline_deriv
     se_avg_acr = np.std(infl_avg_acr) / np.sqrt(n_treated_val)
-    average_acr = np.mean(acrt_d)
+
+    if hasattr(overall_att_res, "overall_att"):
+        overall_att = overall_att_res.overall_att.att
+        overall_att_se = overall_att_res.overall_att.se
+        overall_att_inf_func = overall_att_res.overall_att.inf_func
+    else:
+        overall_att = np.nan
+        overall_att_se = np.nan
+        overall_att_inf_func = None
 
     result = DoseResult(
-        dose=dvals,
-        overall_att=overall_att_res.overall_att.att,
-        overall_att_se=overall_att_res.overall_att.se,
-        overall_att_inf_func=overall_att_res.overall_att.inf_func,
+        dose=dvals.flatten() if dvals.ndim > 1 else dvals,
+        overall_att=overall_att,
+        overall_att_se=overall_att_se,
+        overall_att_inf_func=overall_att_inf_func,
         overall_acrt=average_acr,
         overall_acrt_se=se_avg_acr,
         overall_acrt_inf_func=infl_avg_acr,

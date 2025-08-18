@@ -141,12 +141,12 @@ def reg_did_panel(
 
     if mean_w_cont == 0:
         # No control units
-        eta_treat = np.mean(reg_att_treat) / mean_w_treat
+        eta_treat = np.nanmean(reg_att_treat) / mean_w_treat
         eta_cont = np.nan
         reg_att = np.nan
     else:
-        eta_treat = np.mean(reg_att_treat) / mean_w_treat
-        eta_cont = np.mean(reg_att_cont) / mean_w_cont
+        eta_treat = np.nanmean(reg_att_treat) / mean_w_treat
+        eta_cont = np.nanmean(reg_att_cont) / mean_w_cont
         reg_att = eta_treat - eta_cont
 
     # Check if reg_att is NaN (happens when all units are treated)
@@ -273,6 +273,10 @@ def _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights):
 def _fit_outcome_regression(delta_y, d, int_cov, i_weights):
     """Fit outcome regression model on control units."""
     control_filter = d == 0
+
+    valid_mask = ~np.isnan(delta_y)
+    control_filter = control_filter & valid_mask
+
     n_control = np.sum(control_filter)
 
     if n_control == 0:

@@ -58,15 +58,19 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
 
     weights_dict = overall_weights(att_gt, balance_event, min_event_time, max_event_time)
 
-    inner_extra_gt_returns = [item.get("extra_gt_returns", {}) for item in all_extra_gt_returns]
+    inner_extra_gt_returns = [item.get("extra_gt_returns") for item in all_extra_gt_returns]
 
-    att_d_by_group = [item.get("att_d") for item in inner_extra_gt_returns]
-    acrt_d_by_group = [item.get("acrt_d") for item in inner_extra_gt_returns]
-    att_overall_by_group = np.array([item.get("att_overall", np.nan) for item in inner_extra_gt_returns])
-    acrt_overall_by_group = np.array([item.get("acrt_overall", np.nan) for item in inner_extra_gt_returns])
+    att_d_by_group = [(item.get("att_d") if item else None) for item in inner_extra_gt_returns]
+    acrt_d_by_group = [(item.get("acrt_d") if item else None) for item in inner_extra_gt_returns]
+    att_overall_by_group = np.array(
+        [(item.get("att_overall", np.nan) if item else np.nan) for item in inner_extra_gt_returns]
+    )
+    acrt_overall_by_group = np.array(
+        [(item.get("acrt_overall", np.nan) if item else np.nan) for item in inner_extra_gt_returns]
+    )
 
-    bread_matrices = [item.get("bread") for item in inner_extra_gt_returns]
-    x_expanded_by_group = [item.get("x_expanded") for item in inner_extra_gt_returns]
+    bread_matrices = [(item.get("bread") if item else None) for item in inner_extra_gt_returns]
+    x_expanded_by_group = [(item.get("x_expanded") if item else None) for item in inner_extra_gt_returns]
 
     acrt_influence_matrix = gt_results["influence_func"]
     n_obs = acrt_influence_matrix.shape[0]

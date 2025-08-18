@@ -1,5 +1,6 @@
 """Containers for panel treatment effects."""
 
+from dataclasses import dataclass
 from typing import Literal, NamedTuple
 
 import numpy as np
@@ -167,7 +168,8 @@ class PTEAggteResult(NamedTuple):
     att_gt_result: object | None = None
 
 
-class GroupTimeATTResult(NamedTuple):
+@dataclass
+class GroupTimeATTResult:
     """Container for group-time average treatment effect results.
 
     Attributes
@@ -217,6 +219,31 @@ class GroupTimeATTResult(NamedTuple):
     alpha: float = 0.05
     pte_params: object | None = None
     extra_gt_returns: list | None = None
+
+    @property
+    def att_gt(self):
+        """Alias for att field to maintain compatibility with aggte."""
+        return self.att
+
+    @property
+    def se_gt(self):
+        """Alias for se field to maintain compatibility with aggte."""
+        return self.se
+
+    @property
+    def estimation_params(self):
+        """Return estimation parameters for aggte compatibility."""
+        return {
+            "bootstrap": True,
+            "biters": 999,
+            "uniform_bands": self.cband,
+            "alpha": self.alpha,
+        }
+
+    @property
+    def G(self):
+        """Unit-level group assignments (not tracked in continuous DiD)."""
+        return None
 
 
 class DoseResult(NamedTuple):
