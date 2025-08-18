@@ -123,12 +123,12 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
     else:
         derivative_matrix = np.zeros((len(dose_values), basis_matrix.shape[1]))
 
-    if att_d_by_group and all(x is not None for x in att_d_by_group):
+    if att_d_by_group and any(x is not None for x in att_d_by_group):
         att_d = _weighted_combine_arrays(att_d_by_group, weights_dict["weights"])
     else:
         att_d = np.full(len(dose_values), np.nan)
 
-    if acrt_d_by_group and all(x is not None for x in acrt_d_by_group):
+    if acrt_d_by_group and any(x is not None for x in acrt_d_by_group):
         acrt_d = _weighted_combine_arrays(acrt_d_by_group, weights_dict["weights"])
     else:
         acrt_d = np.full(len(dose_values), np.nan)

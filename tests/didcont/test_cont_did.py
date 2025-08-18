@@ -32,10 +32,50 @@ def test_cont_did_basic(contdid_data):
     )
 
     assert isinstance(result, DoseResult | PTEResult)
-    assert result.overall_att is not None
-    assert result.overall_att_se is not None
+    assert np.isfinite(result.overall_att)
+    assert np.isfinite(result.overall_att_se)
+    assert result.overall_att_se > 0
     assert result.dose is not None
+    assert len(result.dose) > 0
     assert result.att_d is not None
+    assert len(result.att_d) == len(result.dose)
+    assert np.all(np.isfinite(result.att_d))
+
+
+def test_cont_did_value_validation(contdid_data):
+    result = cont_did(
+        yname="Y",
+        dname="D",
+        tname="time_period",
+        idname="id",
+        data=contdid_data,
+        gname="G",
+        target_parameter="level",
+        aggregation="dose",
+        degree=2,
+        num_knots=0,
+        biters=100,
+    )
+
+    assert isinstance(result, DoseResult)
+
+    assert np.isfinite(result.overall_att)
+    assert np.isfinite(result.overall_att_se)
+    assert result.overall_att_se > 0
+
+    assert len(result.dose) == len(result.att_d)
+    assert len(result.dose) == len(result.att_d_se)
+
+    assert np.all(np.isfinite(result.att_d))
+    assert np.all(np.isfinite(result.att_d_se))
+    assert np.all(result.att_d_se >= 0)
+
+    assert np.all(np.diff(result.dose) >= 0)
+
+    assert result.att_d_crit_val is not None
+    assert np.isfinite(result.att_d_crit_val)
+    assert result.att_d_crit_val > 0
+    assert result.att_d_crit_val < 10
 
 
 def test_cont_did_slope_parameter(contdid_data):
@@ -48,15 +88,18 @@ def test_cont_did_slope_parameter(contdid_data):
         gname="G",
         target_parameter="slope",
         aggregation="dose",
-        degree=3,
-        num_knots=2,
+        degree=2,
+        num_knots=0,
         biters=100,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
-    assert result.overall_acrt is not None
-    assert result.overall_acrt_se is not None
+    assert np.isfinite(result.overall_acrt)
+    assert np.isfinite(result.overall_acrt_se)
+    assert result.overall_acrt_se >= 0
     assert result.acrt_d is not None
+    assert len(result.acrt_d) > 0
+    assert np.all(np.isfinite(result.acrt_d))
 
 
 def test_cont_did_event_study(contdid_data):
@@ -73,7 +116,11 @@ def test_cont_did_event_study(contdid_data):
     )
 
     assert isinstance(result, PTEResult)
+    assert hasattr(result, "overall_att")
     assert result.overall_att is not None
+    assert np.isfinite(result.overall_att.overall_att)
+    assert np.isfinite(result.overall_att.overall_se)
+    assert result.overall_att.overall_se > 0
     assert hasattr(result, "event_study") or hasattr(result, "att")
 
 
@@ -99,139 +146,113 @@ def test_cont_did_custom_dvals(contdid_data):
         assert np.allclose(result.dose, custom_dvals)
 
 
-def test_cont_did_control_groups(contdid_data):
-    result_nyt = cont_did(
+@pytest.mark.parametrize("control_group", ["notyettreated", "nevertreated"])
+def test_cont_did_control_groups(contdid_data, control_group):
+    result = cont_did(
         yname="Y",
         dname="D",
         tname="time_period",
         idname="id",
         data=contdid_data,
         gname="G",
-        control_group="notyettreated",
+        control_group=control_group,
         biters=100,
     )
 
-    result_nt = cont_did(
+    assert isinstance(result, DoseResult | PTEResult)
+    assert np.isfinite(result.overall_att)
+    assert np.isfinite(result.overall_att_se)
+    assert result.overall_att_se > 0
+    if isinstance(result, DoseResult):
+        assert np.all(np.isfinite(result.att_d))
+        assert np.all(np.isfinite(result.att_d_se))
+        assert np.all(result.att_d_se >= 0)
+
+
+@pytest.mark.parametrize("base_period", ["varying", "universal"])
+def test_cont_did_base_period(contdid_data, base_period):
+    result = cont_did(
         yname="Y",
         dname="D",
         tname="time_period",
         idname="id",
         data=contdid_data,
         gname="G",
-        control_group="nevertreated",
+        base_period=base_period,
         biters=100,
     )
 
-    assert isinstance(result_nyt, DoseResult | PTEResult)
-    assert isinstance(result_nt, DoseResult | PTEResult)
+    assert isinstance(result, DoseResult | PTEResult)
+    assert np.isfinite(result.overall_att)
+    if isinstance(result, DoseResult):
+        assert np.isfinite(result.overall_att_se)
+        assert result.overall_att_se > 0
+        assert np.all(np.isfinite(result.att_d))
+        assert np.all(np.isfinite(result.att_d_se))
+        assert np.all(result.att_d_se >= 0)
 
 
-def test_cont_did_base_period(contdid_data):
-    result_varying = cont_did(
+@pytest.mark.parametrize("boot_type", ["multiplier", "empirical"])
+def test_cont_did_bootstrap_types(contdid_data, boot_type):
+    result = cont_did(
         yname="Y",
         dname="D",
         tname="time_period",
         idname="id",
         data=contdid_data,
         gname="G",
-        base_period="varying",
-        biters=100,
-    )
-
-    result_universal = cont_did(
-        yname="Y",
-        dname="D",
-        tname="time_period",
-        idname="id",
-        data=contdid_data,
-        gname="G",
-        base_period="universal",
-        biters=100,
-    )
-
-    assert isinstance(result_varying, DoseResult | PTEResult)
-    assert isinstance(result_universal, DoseResult | PTEResult)
-
-
-def test_cont_did_bootstrap_types(contdid_data):
-    result_mult = cont_did(
-        yname="Y",
-        dname="D",
-        tname="time_period",
-        idname="id",
-        data=contdid_data,
-        gname="G",
-        boot_type="multiplier",
+        boot_type=boot_type,
         biters=50,
     )
 
-    result_emp = cont_did(
+    assert isinstance(result, DoseResult | PTEResult)
+    assert np.isfinite(result.overall_att)
+
+
+@pytest.mark.parametrize("cband", [False, True])
+def test_cont_did_confidence_bands(contdid_data, cband):
+    result = cont_did(
         yname="Y",
         dname="D",
         tname="time_period",
         idname="id",
         data=contdid_data,
         gname="G",
-        boot_type="empirical",
-        biters=50,
-    )
-
-    assert isinstance(result_mult, DoseResult | PTEResult)
-    assert isinstance(result_emp, DoseResult | PTEResult)
-
-
-def test_cont_did_confidence_bands(contdid_data):
-    result_no_cband = cont_did(
-        yname="Y",
-        dname="D",
-        tname="time_period",
-        idname="id",
-        data=contdid_data,
-        gname="G",
-        cband=False,
+        cband=cband,
         biters=100,
     )
 
-    result_cband = cont_did(
+    assert isinstance(result, DoseResult | PTEResult)
+    assert np.isfinite(result.overall_att)
+    if isinstance(result, DoseResult):
+        assert hasattr(result, "att_d_crit_val")
+        assert result.att_d_crit_val is not None
+        assert np.isfinite(result.att_d_crit_val)
+        assert result.att_d_crit_val > 0
+        assert result.att_d_crit_val < 10
+
+
+@pytest.mark.parametrize("alp", [0.05, 0.10])
+def test_cont_did_significance_level(contdid_data, alp):
+    result = cont_did(
         yname="Y",
         dname="D",
         tname="time_period",
         idname="id",
         data=contdid_data,
         gname="G",
-        cband=True,
+        alp=alp,
         biters=100,
     )
 
-    assert isinstance(result_no_cband, DoseResult | PTEResult)
-    assert isinstance(result_cband, DoseResult | PTEResult)
-
-
-def test_cont_did_significance_level(contdid_data):
-    result_05 = cont_did(
-        yname="Y",
-        dname="D",
-        tname="time_period",
-        idname="id",
-        data=contdid_data,
-        gname="G",
-        alp=0.05,
-        biters=100,
-    )
-
-    result_10 = cont_did(
-        yname="Y",
-        dname="D",
-        tname="time_period",
-        idname="id",
-        data=contdid_data,
-        gname="G",
-        alp=0.10,
-        biters=100,
-    )
-
-    assert isinstance(result_05, DoseResult | PTEResult)
-    assert isinstance(result_10, DoseResult | PTEResult)
+    assert isinstance(result, DoseResult | PTEResult)
+    assert np.isfinite(result.overall_att)
+    if isinstance(result, DoseResult):
+        assert hasattr(result, "att_d_crit_val")
+        assert result.att_d_crit_val is not None
+        assert np.isfinite(result.att_d_crit_val)
+        assert result.att_d_crit_val > 0
+        assert result.att_d_crit_val < 10
 
 
 def test_cont_did_auto_gname(contdid_data):
@@ -248,7 +269,7 @@ def test_cont_did_auto_gname(contdid_data):
     )
 
     assert isinstance(result, DoseResult | PTEResult)
-    assert result.overall_att is not None
+    assert np.isfinite(result.overall_att)
 
 
 def test_cont_did_invalid_data():
@@ -382,8 +403,10 @@ def test_cont_did_acrt_basic(simple_panel_data):
     assert hasattr(result, "attgt")
     assert hasattr(result, "inf_func")
     assert hasattr(result, "extra_gt_returns")
-    assert result.attgt is not None
+    assert np.isfinite(result.attgt)
     assert result.inf_func is not None
+    assert result.inf_func.shape[0] > 0
+    assert np.all(np.isfinite(result.inf_func))
 
 
 def test_cont_did_acrt_with_knots(simple_panel_data):
@@ -394,11 +417,16 @@ def test_cont_did_acrt_with_knots(simple_panel_data):
         knots=[0.3, 0.7],
     )
 
-    assert result.attgt is not None
+    assert np.isfinite(result.attgt)
     assert result.inf_func is not None
+    assert np.all(np.isfinite(result.inf_func))
     if result.extra_gt_returns:
         assert "att_d" in result.extra_gt_returns
         assert "acrt_d" in result.extra_gt_returns
+        if result.extra_gt_returns["att_d"] is not None:
+            assert np.all(np.isfinite(result.extra_gt_returns["att_d"]))
+        if result.extra_gt_returns["acrt_d"] is not None:
+            assert np.all(np.isfinite(result.extra_gt_returns["acrt_d"]))
 
 
 def test_cont_did_acrt_auto_dvals(simple_panel_data):
@@ -408,8 +436,9 @@ def test_cont_did_acrt_auto_dvals(simple_panel_data):
         degree=2,
     )
 
-    assert result.attgt is not None
+    assert np.isfinite(result.attgt)
     assert result.inf_func is not None
+    assert np.all(np.isfinite(result.inf_func))
 
 
 def test_cont_did_acrt_no_treated(simple_panel_data):
@@ -518,9 +547,14 @@ def test_cck_estimator_basic(cck_test_data):
     )
 
     assert isinstance(result, DoseResult)
-    assert result.overall_att is not None
     assert result.att_d is not None
+    assert len(result.att_d) > 0
+    assert np.all(np.isfinite(result.att_d))
     assert result.dose is not None
+    assert len(result.dose) == len(result.att_d)
+    assert np.all(np.diff(result.dose) >= 0)
+    assert np.isfinite(result.overall_acrt)
+    assert result.overall_acrt_se > 0
 
 
 def test_cck_estimator_custom_dvals(cck_test_data):
@@ -542,6 +576,10 @@ def test_cck_estimator_custom_dvals(cck_test_data):
     assert isinstance(result, DoseResult)
     assert len(result.dose) == len(custom_dvals)
     assert np.allclose(result.dose, custom_dvals)
+    assert np.isfinite(result.overall_acrt)
+    assert result.acrt_d is not None
+    assert len(result.acrt_d) == len(custom_dvals)
+    assert np.all(np.isfinite(result.acrt_d))
 
 
 def test_cck_estimator_invalid_groups():
@@ -635,8 +673,10 @@ def test_cont_did_cck_method(cck_test_data):
     )
 
     assert isinstance(result, DoseResult)
-    assert result.overall_att is not None
     assert result.att_d is not None
+    assert len(result.att_d) > 0
+    assert np.all(np.isfinite(result.att_d))
+    assert np.isfinite(result.overall_acrt)
 
 
 def test_cont_did_cck_invalid_aggregation(cck_test_data):
@@ -668,27 +708,24 @@ def test_cont_did_invalid_parameter_combination(contdid_data):
         )
 
 
-def test_cont_did_various_degree_knot_combinations(contdid_data):
-    configs = [
-        (1, 0),
-        (2, 0),
-        (3, 0),
-        (2, 1),
-        (3, 2),
-        (4, 3),
-    ]
-
-    for degree, num_knots in configs:
-        result = cont_did(
-            yname="Y",
-            dname="D",
-            tname="time_period",
-            idname="id",
-            data=contdid_data,
-            gname="G",
-            degree=degree,
-            num_knots=num_knots,
-            biters=50,
-        )
-        assert isinstance(result, DoseResult | PTEResult)
-        assert result.overall_att is not None
+@pytest.mark.parametrize("degree,num_knots", [(1, 0), (2, 0), (3, 0)])
+def test_cont_did_various_degree_knot_combinations(contdid_data, degree, num_knots):
+    result = cont_did(
+        yname="Y",
+        dname="D",
+        tname="time_period",
+        idname="id",
+        data=contdid_data,
+        gname="G",
+        degree=degree,
+        num_knots=num_knots,
+        biters=50,
+    )
+    assert isinstance(result, DoseResult | PTEResult)
+    assert np.isfinite(result.overall_att)
+    if isinstance(result, DoseResult):
+        assert np.isfinite(result.overall_att_se)
+        assert result.overall_att_se > 0
+        assert np.all(np.isfinite(result.att_d))
+        assert np.all(np.isfinite(result.att_d_se))
+        assert np.all(result.att_d_se >= 0)

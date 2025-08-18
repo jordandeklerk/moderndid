@@ -269,6 +269,7 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     ----------
     gt_data : pd.DataFrame
         Data subset for this group-time combination with columns:
+
         - id: Unit identifier
         - Y: Outcome variable
         - D: Treatment dose
@@ -427,6 +428,7 @@ def cont_two_by_two_subset(
     tname = kwargs.get("tname", "period")
     idname = kwargs.get("idname", "id")
     dname = kwargs.get("dname", "D")
+    yname = kwargs.get("yname", "Y")
 
     main_base_period = g - anticipation - 1
 
@@ -451,9 +453,14 @@ def cont_two_by_two_subset(
     subset_data["name"] = np.where(subset_data[tname] == tp, "post", "pre")
     subset_data["D"] = subset_data[dname] * (subset_data[gname] == g)
 
-    n1 = subset_data[idname].nunique()
+    rename_dict = {tname: "period", idname: "id"}
+    if yname in subset_data.columns:
+        rename_dict[yname] = "Y"
+    subset_data = subset_data.rename(columns=rename_dict)
+
+    n1 = subset_data["id"].nunique()
     all_ids = data[idname].unique()
-    subset_ids = subset_data[idname].unique()
+    subset_ids = subset_data["id"].unique()
     disidx = np.isin(all_ids, subset_ids)
 
     return {"gt_data": subset_data, "n1": n1, "disidx": disidx}
@@ -587,10 +594,10 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
     infl_avg_acr = (deriv_at_w - average_acr) + infl_reg @ average_spline_deriv
     se_avg_acr = np.std(infl_avg_acr) / np.sqrt(n_treated_val)
 
-    if hasattr(overall_att_res, "overall_att"):
-        overall_att = overall_att_res.overall_att.att
-        overall_att_se = overall_att_res.overall_att.se
-        overall_att_inf_func = overall_att_res.overall_att.inf_func
+    if hasattr(overall_att_res, "overall_att") and overall_att_res.overall_att is not None:
+        overall_att = overall_att_res.overall_att.overall_att
+        overall_att_se = overall_att_res.overall_att.overall_se
+        overall_att_inf_func = overall_att_res.overall_att.influence_func
     else:
         overall_att = np.nan
         overall_att_se = np.nan
