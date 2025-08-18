@@ -114,6 +114,8 @@ def pte(
             filtered_kwargs["max_event_time"] = kwargs["max_event_time"]
         return process_dose_gt_fun(res, ptep, **filtered_kwargs)
 
+    # TODO: Implement empirical bootstrap for PTE
+    # NOTE: This is causing NaN issues right now
     if np.all(np.isnan(res["influence_func"])) or ptep.boot_type == "empirical":
         warnings.warn("Empirical bootstrap not yet implemented, returning raw results")
         return res
@@ -181,6 +183,7 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
                 if tp == (g - 1 - anticipation):
                     attgt_list.append({"att": 0, "group": g, "time_period": tp})
                     extra_gt_returns.append({"extra_gt_returns": None, "group": g, "time_period": tp})
+                    inffunc[:, counter] = 0
                     counter += 1
                     continue
 
