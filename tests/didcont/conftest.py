@@ -684,7 +684,7 @@ def panel_data_with_group(panel_data_balanced):
     return data
 
 
-def create_mock_gt_results_with_correct_dimensions(degree, knots, n_doses=20):
+def mock_gt_results(degree, knots, n_doses=20):
     if knots is None:
         n_knots = 0
     else:
@@ -778,7 +778,6 @@ def panel_data_with_covariates_estimators():
 
 @pytest.fixture
 def balanced_panel_data_bootstrap():
-    """Create balanced panel data for bootstrap testing."""
     np.random.seed(42)
     return pd.DataFrame(
         {
@@ -792,7 +791,6 @@ def balanced_panel_data_bootstrap():
 
 @pytest.fixture
 def unbalanced_panel_data_bootstrap():
-    """Create unbalanced panel data for bootstrap testing."""
     return pd.DataFrame(
         {
             "id": [1, 1, 1, 2, 2, 3, 3, 3, 3],
@@ -804,7 +802,6 @@ def unbalanced_panel_data_bootstrap():
 
 @pytest.fixture
 def basic_attgt_data():
-    """Basic ATT(g,t) data for testing."""
     return [
         {"att": 0.1, "group": 2004, "time_period": 2003},
         {"att": 0.2, "group": 2004, "time_period": 2004},
@@ -816,8 +813,6 @@ def basic_attgt_data():
 
 @pytest.fixture
 def create_pte_params():
-    """Factory for creating PTE parameters."""
-
     def _create(n_units=20, groups=None, times=None, gt_type="att", ret_quantile=0.5):
         if groups is None:
             groups = [2004, 2006]
@@ -869,7 +864,6 @@ def create_pte_params():
 
 @pytest.fixture
 def quantile_test_data():
-    """Data for quantile aggregation tests."""
     np.random.seed(42)
     return {
         "attgt_list": [
