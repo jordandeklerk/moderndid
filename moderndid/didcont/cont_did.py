@@ -372,11 +372,7 @@ def cont_two_by_two_subset(
     base_period="varying",
     **kwargs,
 ):
-    """Create a two-by-two subset for continuous treatment DiD.
-
-    This function relies on standardized column names ('G', 'period', 'id', 'D', 'Y')
-    which are created in the setup_pte functions.
-    """
+    """Create a two-by-two subset for continuous treatment DiD."""
     main_base_period = g - anticipation - 1
 
     if base_period == "varying":

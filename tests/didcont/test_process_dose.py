@@ -16,7 +16,7 @@ from moderndid.didcont.panel.process_dose import (
     _multiplier_bootstrap_dose,
     _weighted_combine_arrays,
 )
-from tests.didcont.conftest import create_mock_gt_results_with_correct_dimensions
+from tests.didcont.conftest import mock_gt_results
 
 
 def test_dose_result_creation():
@@ -139,9 +139,9 @@ def test_process_dose_gt_zero_degree(mock_pte_params_with_dose):
 
     influence_func = np.random.randn(n_units, n_gt) * 0.1
 
-    mock_gt_results = {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": extra_gt_returns}
+    gt_results = {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": extra_gt_returns}
 
-    result = process_dose_gt(mock_gt_results, params)
+    result = process_dose_gt(gt_results, params)
 
     assert isinstance(result, DoseResult)
     assert result.overall_att is not None
@@ -152,11 +152,9 @@ def test_process_dose_gt_no_knots(mock_pte_params_with_dose):
     params_dict["knots"] = None
     params = PTEParams(**params_dict)
 
-    mock_gt_results = create_mock_gt_results_with_correct_dimensions(
-        degree=params_dict["degree"], knots=None, n_doses=len(params_dict["dvals"])
-    )
+    gt_results = mock_gt_results(degree=params_dict["degree"], knots=None, n_doses=len(params_dict["dvals"]))
 
-    result = process_dose_gt(mock_gt_results, params)
+    result = process_dose_gt(gt_results, params)
 
     assert isinstance(result, DoseResult)
     assert result.overall_att is not None
@@ -477,11 +475,9 @@ def test_process_dose_gt_different_degrees(mock_pte_params_with_dose, degree):
     params_dict["degree"] = degree
     params = PTEParams(**params_dict)
 
-    mock_gt_results = create_mock_gt_results_with_correct_dimensions(
-        degree=degree, knots=params_dict["knots"], n_doses=len(params_dict["dvals"])
-    )
+    gt_results = mock_gt_results(degree=degree, knots=params_dict["knots"], n_doses=len(params_dict["dvals"]))
 
-    result = process_dose_gt(mock_gt_results, params)
+    result = process_dose_gt(gt_results, params)
 
     assert isinstance(result, DoseResult)
     assert result.overall_att is not None
@@ -498,11 +494,11 @@ def test_process_dose_gt_different_knots(mock_pte_params_with_dose, n_knots):
     params_dict["num_knots"] = n_knots
     params = PTEParams(**params_dict)
 
-    mock_gt_results = create_mock_gt_results_with_correct_dimensions(
+    gt_results = mock_gt_results(
         degree=params_dict["degree"], knots=params_dict["knots"], n_doses=len(params_dict["dvals"])
     )
 
-    result = process_dose_gt(mock_gt_results, params)
+    result = process_dose_gt(gt_results, params)
 
     assert isinstance(result, DoseResult)
     assert result.overall_att is not None
