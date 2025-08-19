@@ -369,38 +369,36 @@ def test_panel_empirical_bootstrap(create_pte_params, n_boot, gt_type):
             "extra_gt_returns": extra_gt_returns,
         }
 
-    from unittest.mock import patch
+    result = panel_empirical_bootstrap(
+        attgt_list=attgt_list,
+        pte_params=pte_params,
+        setup_pte_fun=mock_setup_pte,
+        subset_fun=mock_subset_fun,
+        attgt_fun=mock_attgt_fun,
+        extra_gt_returns=extra_gt_returns,
+        compute_pte_fun=mock_compute_pte,
+    )
 
-    with patch("moderndid.didcont.panel.process_panel.compute_pte", mock_compute_pte):
-        result = panel_empirical_bootstrap(
-            attgt_list=attgt_list,
-            pte_params=pte_params,
-            setup_pte_fun=mock_setup_pte,
-            subset_fun=mock_subset_fun,
-            attgt_fun=mock_attgt_fun,
-            extra_gt_returns=extra_gt_returns,
-        )
+    assert isinstance(result, PteEmpBootResult)
+    assert result.attgt_results is not None
+    assert "se" in result.attgt_results.columns
+    assert result.overall_results is not None
+    assert "se" in result.overall_results
 
-        assert isinstance(result, PteEmpBootResult)
-        assert result.attgt_results is not None
-        assert "se" in result.attgt_results.columns
-        assert result.overall_results is not None
-        assert "se" in result.overall_results
+    se_values = result.attgt_results["se"].dropna()
+    if len(se_values) > 0:
+        assert all(se_values >= 0)
+        assert all(se_values < 1.0)
+        if n_boot >= 10:
+            assert all(se_values > 0)
 
-        se_values = result.attgt_results["se"].dropna()
-        if len(se_values) > 0:
-            assert all(se_values >= 0)
-            assert all(se_values < 1.0)
-            if n_boot >= 10:
-                assert all(se_values > 0)
+    assert np.isfinite(result.overall_results["att"])
+    assert -10 <= result.overall_results["att"] <= 10
+    assert result.overall_results["se"] >= 0
+    assert result.overall_results["se"] < 1.0
 
+    if gt_type in ["qtt", "qott"]:
         assert np.isfinite(result.overall_results["att"])
-        assert -10 <= result.overall_results["att"] <= 10
-        assert result.overall_results["se"] >= 0
-        assert result.overall_results["se"] < 1.0
-
-        if gt_type in ["qtt", "qott"]:
-            assert np.isfinite(result.overall_results["att"])
 
 
 def test_panel_empirical_bootstrap_with_warnings(create_pte_params):
@@ -436,17 +434,15 @@ def test_panel_empirical_bootstrap_with_warnings(create_pte_params):
             "extra_gt_returns": [],
         }
 
-    from unittest.mock import patch
+    with pytest.warns(UserWarning, match="dropping some"):
+        result = panel_empirical_bootstrap(
+            attgt_list=attgt_list,
+            pte_params=pte_params,
+            setup_pte_fun=mock_setup_pte,
+            subset_fun=mock_subset_fun,
+            attgt_fun=mock_attgt_fun,
+            extra_gt_returns=[],
+            compute_pte_fun=mock_compute_pte,
+        )
 
-    with patch("moderndid.didcont.panel.process_panel.compute_pte", mock_compute_pte):
-        with pytest.warns(UserWarning, match="dropping some"):
-            result = panel_empirical_bootstrap(
-                attgt_list=attgt_list,
-                pte_params=pte_params,
-                setup_pte_fun=mock_setup_pte,
-                subset_fun=mock_subset_fun,
-                attgt_fun=mock_attgt_fun,
-                extra_gt_returns=[],
-            )
-
-            assert isinstance(result, PteEmpBootResult)
+        assert isinstance(result, PteEmpBootResult)

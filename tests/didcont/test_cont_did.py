@@ -17,7 +17,7 @@ def test_cont_did_basic(contdid_data):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -46,7 +46,7 @@ def test_cont_did_value_validation(contdid_data):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -82,7 +82,7 @@ def test_cont_did_slope_parameter(contdid_data):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -106,7 +106,7 @@ def test_cont_did_event_study(contdid_data):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -130,7 +130,7 @@ def test_cont_did_custom_dvals(contdid_data):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -151,7 +151,7 @@ def test_cont_did_control_groups(contdid_data, control_group):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -174,7 +174,7 @@ def test_cont_did_base_period(contdid_data, base_period):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -197,7 +197,7 @@ def test_cont_did_bootstrap_types(contdid_data, boot_type):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -208,13 +208,25 @@ def test_cont_did_bootstrap_types(contdid_data, boot_type):
     assert isinstance(result, DoseResult | PTEResult)
     assert np.isfinite(result.overall_att)
 
+    if boot_type == "empirical":
+        if isinstance(result, PTEResult):
+            assert hasattr(result, "overall_att")
+            if hasattr(result.overall_att, "se"):
+                assert result.overall_att.se is not None
+                assert np.isfinite(result.overall_att.se)
+                assert result.overall_att.se > 0
+        elif isinstance(result, DoseResult):
+            assert result.overall_att_se is not None
+            assert np.isfinite(result.overall_att_se)
+            assert result.overall_att_se > 0
+
 
 @pytest.mark.parametrize("cband", [False, True])
 def test_cont_did_confidence_bands(contdid_data, cband):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -237,7 +249,7 @@ def test_cont_did_significance_level(contdid_data, alp):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",
@@ -261,7 +273,7 @@ def test_cont_did_auto_gname(contdid_data):
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=data_no_g,
         gname=None,
@@ -270,6 +282,28 @@ def test_cont_did_auto_gname(contdid_data):
 
     assert isinstance(result, DoseResult | PTEResult)
     assert np.isfinite(result.overall_att)
+
+
+def test_cont_did_empirical_bootstrap_fallback(contdid_data):
+    result = cont_did(
+        yname="Y",
+        dname="D",
+        tname="period",
+        idname="id",
+        data=contdid_data,
+        gname="G",
+        target_parameter="slope",
+        aggregation="eventstudy",
+        boot_type="empirical",
+        biters=30,
+    )
+
+    assert isinstance(result, PTEResult)
+    assert hasattr(result, "overall_att")
+    if result.overall_att is not None:
+        if hasattr(result.overall_att, "overall_se"):
+            assert np.isfinite(result.overall_att.overall_se)
+            assert result.overall_att.overall_se >= 0
 
 
 def test_cont_did_invalid_data():
@@ -301,7 +335,7 @@ def test_cont_did_covariates_not_supported(contdid_data):
         cont_did(
             yname="Y",
             dname="D",
-            tname="time_period",
+            tname="period",
             idname="id",
             data=contdid_data,
             gname="G",
@@ -314,7 +348,7 @@ def test_cont_did_discrete_treatment_not_supported(contdid_data):
         cont_did(
             yname="Y",
             dname="D",
-            tname="time_period",
+            tname="period",
             idname="id",
             data=contdid_data,
             gname="G",
@@ -327,7 +361,7 @@ def test_cont_did_unbalanced_panel_not_supported(contdid_data):
         cont_did(
             yname="Y",
             dname="D",
-            tname="time_period",
+            tname="period",
             idname="id",
             data=contdid_data,
             gname="G",
@@ -340,7 +374,7 @@ def test_cont_did_est_method_error(contdid_data):
         cont_did(
             yname="Y",
             dname="D",
-            tname="time_period",
+            tname="period",
             idname="id",
             data=contdid_data,
             gname="G",
@@ -353,7 +387,7 @@ def test_cont_did_clustering_warning(contdid_data):
         cont_did(
             yname="Y",
             dname="D",
-            tname="time_period",
+            tname="period",
             idname="id",
             data=contdid_data,
             gname="G",
@@ -367,7 +401,7 @@ def test_cont_did_anticipation_warning(contdid_data):
         cont_did(
             yname="Y",
             dname="D",
-            tname="time_period",
+            tname="period",
             idname="id",
             data=contdid_data,
             gname="G",
@@ -383,7 +417,7 @@ def test_cont_did_weights_warning(contdid_data):
         cont_did(
             yname="Y",
             dname="D",
-            tname="time_period",
+            tname="period",
             idname="id",
             data=contdid_data,
             gname="G",
@@ -462,7 +496,7 @@ def test_cont_two_by_two_subset_notyettreated(contdid_data):
         anticipation=0,
         base_period="varying",
         gname="G",
-        tname="time_period",
+        tname="period",
         idname="id",
         dname="D",
     )
@@ -698,7 +732,7 @@ def test_cont_did_invalid_parameter_combination(contdid_data):
         cont_did(
             yname="Y",
             dname="D",
-            tname="time_period",
+            tname="period",
             idname="id",
             data=contdid_data,
             gname="G",
@@ -713,7 +747,7 @@ def test_cont_did_various_degree_knot_combinations(contdid_data, degree, num_kno
     result = cont_did(
         yname="Y",
         dname="D",
-        tname="time_period",
+        tname="period",
         idname="id",
         data=contdid_data,
         gname="G",

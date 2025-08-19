@@ -9,7 +9,9 @@ from ..utils import _quantile_basis
 from .container import PteEmpBootResult
 
 
-def panel_empirical_bootstrap(attgt_list, pte_params, setup_pte_fun, subset_fun, attgt_fun, extra_gt_returns, **kwargs):
+def panel_empirical_bootstrap(
+    attgt_list, pte_params, setup_pte_fun, subset_fun, attgt_fun, extra_gt_returns, compute_pte_fun, **kwargs
+):
     """Compute empirical bootstrap standard errors for panel treatment effects.
 
     Parameters
@@ -26,6 +28,8 @@ def panel_empirical_bootstrap(attgt_list, pte_params, setup_pte_fun, subset_fun,
         Function to compute ATT for single group-time.
     extra_gt_returns : list
         Extra returns from group-time calculations.
+    compute_pte_fun : callable
+        Function to compute PTE for bootstrap samples.
     **kwargs
         Additional arguments passed through.
 
@@ -71,9 +75,7 @@ def panel_empirical_bootstrap(attgt_list, pte_params, setup_pte_fun, subset_fun,
             **kwargs,
         )
 
-        from .process_panel import compute_pte
-
-        boot_gt_results = compute_pte(ptep=boot_params, subset_fun=subset_fun, attgt_fun=attgt_fun, **kwargs)
+        boot_gt_results = compute_pte_fun(ptep=boot_params, subset_fun=subset_fun, attgt_fun=attgt_fun, **kwargs)
 
         if gt_type == "qtt":
             boot_aggte = qtt_pte_aggregations(
@@ -179,6 +181,18 @@ def attgt_pte_aggregations(attgt_list, pte_params):
     original_periods = np.sort(data[pte_params.tname].unique())
 
     attgt_df = pd.DataFrame(attgt_list)
+
+    if attgt_df.empty or "att" not in attgt_df.columns:
+        return {
+            "attgt_results": pd.DataFrame(columns=["group", "time_period", "att"]),
+            "dyn_results": None,
+            "dyn_weights": [],
+            "group_results": None,
+            "group_weights": [],
+            "overall_results": np.nan,
+            "overall_weights": np.array([]),
+        }
+
     attgt_df = attgt_df.dropna(subset=["att"]).reset_index(drop=True)
 
     if not np.array_equal(time_periods, original_periods):

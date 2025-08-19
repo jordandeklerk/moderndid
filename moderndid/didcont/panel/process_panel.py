@@ -2,12 +2,15 @@
 """Functions for panel treatment effects."""
 
 import warnings
+from collections import namedtuple
 
 import numpy as np
 import pandas as pd
 
 from .container import PTEParams, PTEResult
 from .estimators import pte_attgt
+
+OverallResult = namedtuple("OverallResult", ["overall_att", "overall_se", "influence_func"])
 
 
 def pte(
@@ -114,11 +117,62 @@ def pte(
             filtered_kwargs["max_event_time"] = kwargs["max_event_time"]
         return process_dose_gt_fun(res, ptep, **filtered_kwargs)
 
-    # TODO: Implement empirical bootstrap for PTE
-    # NOTE: This is causing NaN issues right now
-    if np.all(np.isnan(res["influence_func"])) or ptep.boot_type == "empirical":
-        warnings.warn("Empirical bootstrap not yet implemented, returning raw results")
-        return res
+    if len(res.get("attgt_list", [])) == 0:
+        return PTEResult(
+            att_gt={"att": [], "group": [], "time_period": [], "se": [], "influence_func": None},
+            overall_att=OverallResult(overall_att=np.nan, overall_se=np.nan, influence_func=None),
+            event_study=None,
+            ptep=ptep,
+        )
+
+    if ptep.boot_type == "empirical" or np.all(np.isnan(res["influence_func"])):
+        from .bootstrap import panel_empirical_bootstrap
+
+        bootstrap_result = panel_empirical_bootstrap(
+            attgt_list=res["attgt_list"],
+            pte_params=ptep,
+            setup_pte_fun=setup_pte,
+            subset_fun=subset_fun,
+            attgt_fun=attgt_fun,
+            extra_gt_returns=res.get("extra_gt_returns", []),
+            compute_pte_fun=compute_pte,
+            **kwargs,
+        )
+
+        att_gt_data = {
+            "att": bootstrap_result.attgt_results["att"].values,
+            "group": bootstrap_result.attgt_results["group"].values,
+            "time_period": bootstrap_result.attgt_results["time_period"].values,
+            "se": bootstrap_result.attgt_results.get(
+                "se", np.nan * np.ones(len(bootstrap_result.attgt_results))
+            ).values,
+        }
+
+        att_gt_result = {
+            "att": att_gt_data["att"],
+            "group": att_gt_data["group"],
+            "time_period": att_gt_data["time_period"],
+            "se": att_gt_data["se"],
+            "influence_func": None,
+        }
+
+        overall_att = OverallResult(
+            overall_att=bootstrap_result.overall_results["att"],
+            overall_se=bootstrap_result.overall_results["se"],
+            influence_func=None,
+        )
+
+        event_study = None
+        if bootstrap_result.dyn_results is not None:
+            event_study = {
+                "e": bootstrap_result.dyn_results["e"].values,
+                "att_e": bootstrap_result.dyn_results["att_e"].values,
+                "se": bootstrap_result.dyn_results.get(
+                    "se", np.nan * np.ones(len(bootstrap_result.dyn_results))
+                ).values,
+            }
+
+        return PTEResult(att_gt=att_gt_result, overall_att=overall_att, event_study=event_study, ptep=ptep)
 
     from .process_aggte import aggregate_att_gt
     from .process_attgt import process_att_gt
@@ -192,13 +246,19 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
             n1 = gt_subset["n1"]
             disidx = gt_subset["disidx"]
 
-            if gt_data.empty:
-                attgt_result = pte_attgt(gt_data=gt_data, **kwargs)
-            else:
-                attgt_result = attgt_fun(gt_data=gt_data, **kwargs)
+            attgt_kwargs = kwargs.copy()
+            if ptep.gt_type == "dose":
+                attgt_kwargs.update(
+                    {
+                        "dvals": ptep.dvals,
+                        "knots": ptep.knots,
+                        "degree": ptep.degree,
+                        "num_knots": ptep.num_knots,
+                    }
+                )
 
+            attgt_result = attgt_fun(gt_data=gt_data, **attgt_kwargs)
             attgt_list.append({"att": attgt_result.attgt, "group": g, "time_period": tp})
-
             extra_gt_returns.append({"extra_gt_returns": attgt_result.extra_gt_returns, "group": g, "time_period": tp})
 
             if attgt_result.inf_func is not None:
@@ -301,10 +361,7 @@ def setup_pte(
 
     g_series = data[gname]
     period_series = data[tname]
-    if weightsname is None:
-        weights_series = np.ones(len(data))
-    else:
-        weights_series = data[weightsname].values
+    weights_series = data[weightsname].values if weightsname else np.ones(len(data))
 
     data["G"] = g_series
     data["id"] = data[idname]
@@ -318,10 +375,9 @@ def setup_pte(
         and np.all(original_time_periods == np.floor(original_time_periods))
         and np.all(original_time_periods > 0)
     ):
-        raise ValueError("time periods must be positive integers.")
+        raise ValueError("Time periods must be positive integers.")
 
-    original_groups = np.unique(data["G"])
-    original_groups = np.sort(original_groups)[1:]
+    original_groups = np.sort(np.unique(data["G"]))[1:]
 
     sorted_original_time_periods = np.sort(original_time_periods)
     time_map = {orig: i + 1 for i, orig in enumerate(sorted_original_time_periods)}
@@ -334,22 +390,16 @@ def setup_pte(
 
     if base_period == "universal":
         t_list = np.sort(recoded_time_periods)
-        g_list = recoded_groups[np.isin(recoded_groups, t_list[1:])]
-        if len(t_list) > 1:
-            g_list = g_list[g_list >= (t_list[1] + anticipation)]
-        else:
-            g_list = np.array([])
-        groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
-        data = data[~data["G"].isin(groups_to_drop)]
-    else:
+        min_t_for_g = t_list[1] if len(t_list) > 1 else np.inf
+    else:  # varying
         t_list = np.sort(recoded_time_periods)[required_pre_periods:]
-        g_list = recoded_groups[np.isin(recoded_groups, t_list)]
-        if len(t_list) > 0:
-            g_list = g_list[g_list >= (np.min(t_list) + anticipation)]
-        else:
-            g_list = np.array([])
-        groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
-        data = data[~data["G"].isin(groups_to_drop)]
+        min_t_for_g = np.min(t_list) if len(t_list) > 0 else np.inf
+
+    g_list = recoded_groups[np.isin(recoded_groups, t_list)]
+    g_list = g_list[g_list >= (min_t_for_g + anticipation)]
+
+    groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
+    data = data[~data["G"].isin(groups_to_drop)]
 
     params_dict = {
         "yname": yname,
@@ -481,12 +531,6 @@ def setup_pte_cont(
 
     dose_values = data.loc[(data[gname] > 0) & (data[tname] >= data[gname]), dname].values
 
-    setup_pte_kwargs = {}
-    if "call" in kwargs:
-        setup_pte_kwargs["call"] = kwargs["call"]
-    if "ret_quantile" in kwargs:
-        setup_pte_kwargs["ret_quantile"] = kwargs["ret_quantile"]
-
     pte_params = setup_pte(
         yname=yname,
         gname=gname,
@@ -504,7 +548,7 @@ def setup_pte_cont(
         required_pre_periods=required_pre_periods,
         anticipation=anticipation,
         base_period=base_period,
-        **setup_pte_kwargs,
+        **kwargs,
     )
 
     positive_doses = dose_values[dose_values > 0]
@@ -546,37 +590,28 @@ def _two_by_two_subset(
     main_base_period = g - anticipation - 1
 
     if base_period == "varying":
-        if tp < (g - anticipation):
-            base_period_val = tp - 1
-        else:
-            base_period_val = main_base_period
-    else:
+        base_period_val = tp - 1 if tp < (g - anticipation) else main_base_period
+    else:  # universal
         base_period_val = main_base_period
 
-    gname = kwargs.get("gname", "G")
-    tname = kwargs.get("tname", "period")
-    idname = kwargs.get("idname", "id")
-
     if control_group == "notyettreated":
-        this_data = data[(data[gname] == g) | (data[gname] > tp) | (data[gname] == 0)].copy()
-    else:
-        this_data = data[(data[gname] == g) | (data[gname] == 0)].copy()
+        unit_mask = (data["G"] == g) | (data["G"] > tp) | (data["G"] == 0)
+    else:  # 'nevertreated'
+        unit_mask = (data["G"] == g) | (data["G"] == 0)
 
-    this_data = this_data[(this_data[tname] == tp) | (this_data[tname] == base_period_val)]
-    this_data["name"] = np.where(this_data[tname] == tp, "post", "pre")
-    this_data["D"] = 1 * (this_data[gname] == g)
+    this_data = data.loc[unit_mask].copy()
+
+    time_mask = (this_data["period"] == tp) | (this_data["period"] == base_period_val)
+    this_data = this_data.loc[time_mask]
+
+    this_data["name"] = np.where(this_data["period"] == tp, "post", "pre")
+    this_data["D"] = 1 * (this_data["G"] == g)
 
     if this_data["D"].nunique() < 2:
         return {"gt_data": pd.DataFrame(), "n1": 0, "disidx": np.array([])}
 
-    yname = kwargs.get("yname", "Y")
-    rename_dict = {tname: "period", idname: "id"}
-    if yname in this_data.columns:
-        rename_dict[yname] = "Y"
-    this_data = this_data.rename(columns=rename_dict)
-
     n1 = this_data["id"].nunique()
-    all_ids = data[idname].unique()
+    all_ids = data["id"].unique()
     subset_ids = this_data["id"].unique()
     disidx = np.isin(all_ids, subset_ids)
 
@@ -623,23 +658,13 @@ def _get_first_difference(df, idname, yname, tname):
     return df[yname] - lagged
 
 
-def _get_group_inner(unit_df, tname, treatname):
-    """Get first treatment period for a single unit."""
-    if (unit_df[treatname] == 0).all():
-        return 0
-
-    treated_df = unit_df[unit_df[treatname] > 0]
-    if len(treated_df) > 0:
-        return treated_df[tname].iloc[0]
-    return 0
-
-
 def _get_group(df, idname, tname, treatname):
-    """Identify first treatment period for each unit."""
-    df = df.sort_values([idname, tname])
-    groups = {}
-    for unit_id, unit_df in df.groupby(idname):
-        groups[unit_id] = _get_group_inner(unit_df, tname, treatname)
-    result = df[idname].map(groups)
-    result.name = None
-    return result
+    """Identify first treatment period for each unit using a vectorized approach."""
+    df_sorted = df.sort_values([idname, tname])
+
+    is_treated = df_sorted[treatname] > 0
+    first_treat_mask = (is_treated.groupby(df_sorted[idname]).cumsum() == 1) & is_treated
+
+    id_to_group = df_sorted[df_sorted[tname].where(first_treat_mask).notna()].groupby(idname)[tname].first()
+
+    return df[idname].map(id_to_group).fillna(0).astype(int)

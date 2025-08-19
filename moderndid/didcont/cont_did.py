@@ -1,3 +1,4 @@
+# pylint: disable=unused-argument
 """Continuous treatment difference-in-differences estimation."""
 
 import warnings
@@ -213,18 +214,12 @@ def cont_did(
             **kwargs,
         )
 
-    if treatment_type == "continuous" and aggregation == "dose" and target_parameter == "slope":
-        attgt_fun = cont_did_acrt
-        gt_type = "dose"
-    elif treatment_type == "continuous" and aggregation == "dose" and target_parameter == "level":
-        attgt_fun = cont_did_acrt
-        gt_type = "dose"
-    elif treatment_type == "continuous" and aggregation == "eventstudy" and target_parameter == "slope":
-        attgt_fun = cont_did_acrt
-        gt_type = "att"
-    elif treatment_type == "continuous" and aggregation == "eventstudy" and target_parameter == "level":
+    if aggregation == "eventstudy" and target_parameter == "level":
         attgt_fun = pte_attgt
         gt_type = "att"
+    elif target_parameter in ["level", "slope"]:
+        attgt_fun = cont_did_acrt
+        gt_type = "dose" if aggregation == "dose" else "att"
     else:
         raise ValueError(f"Invalid combination of parameters: {target_parameter}, {aggregation}, {treatment_type}")
     return pte(
@@ -302,27 +297,8 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     dose = post_data["D"].values
     dy = post_data["dy"].values
 
-    if "knots" in kwargs and "dvals" in kwargs:
-        knots = kwargs["knots"]
-        dvals = kwargs["dvals"]
-    else:
-        if dvals is None:
-            positive_doses = dose[dose > 0]
-            if len(positive_doses) > 0:
-                dvals = np.quantile(positive_doses, np.linspace(0.1, 0.9, 50))
-            else:
-                return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
-
-        if knots is None:
-            num_knots = kwargs.get("num_knots", 0)
-            if num_knots > 0:
-                positive_doses = dose[dose > 0]
-                if len(positive_doses) > 0:
-                    knots = np.quantile(positive_doses, np.linspace(0.1, 0.9, num_knots))
-                else:
-                    knots = []
-            else:
-                knots = []
+    if dvals is None or len(dvals) == 0:
+        return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
     treated_mask = dose > 0
     if not np.any(treated_mask):
@@ -398,38 +374,9 @@ def cont_two_by_two_subset(
 ):
     """Create a two-by-two subset for continuous treatment DiD.
 
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Full panel dataset.
-    g : float
-        Timing group (period when treatment starts).
-    tp : float
-        Current time period.
-    control_group : {"notyettreated", "nevertreated"}, default="notyettreated"
-        Which units to use as controls.
-    anticipation : int, default=0
-        Number of anticipation periods.
-    base_period : {"varying", "universal"}, default="varying"
-        How to select the base period.
-    **kwargs
-        Additional arguments including column names.
-
-    Returns
-    -------
-    dict
-        Dictionary containing:
-
-        - gt_data: DataFrame with the subset of data
-        - n1: Number of unique units in subset
-        - disidx: Boolean array indicating which units are included
+    This function relies on standardized column names ('G', 'period', 'id', 'D', 'Y')
+    which are created in the setup_pte functions.
     """
-    gname = kwargs.get("gname", "G")
-    tname = kwargs.get("tname", "period")
-    idname = kwargs.get("idname", "id")
-    dname = kwargs.get("dname", "D")
-    yname = kwargs.get("yname", "Y")
-
     main_base_period = g - anticipation - 1
 
     if base_period == "varying":
@@ -441,25 +388,20 @@ def cont_two_by_two_subset(
         base_period_val = main_base_period
 
     if control_group == "notyettreated":
-        unit_mask = (data[gname] == g) | (data[gname] > tp) | (data[gname] == 0)
-    else:
-        unit_mask = (data[gname] == g) | (data[gname] == 0)
+        unit_mask = (data["G"] == g) | (data["G"] > tp) | (data["G"] == 0)
+    else:  # 'nevertreated'
+        unit_mask = (data["G"] == g) | (data["G"] == 0)
 
-    subset_data = data[unit_mask].copy()
+    subset_data = data.loc[unit_mask].copy()
 
-    time_mask = (subset_data[tname] == tp) | (subset_data[tname] == base_period_val)
-    subset_data = subset_data[time_mask].copy()
+    time_mask = (subset_data["period"] == tp) | (subset_data["period"] == base_period_val)
+    subset_data = subset_data.loc[time_mask].copy()
 
-    subset_data["name"] = np.where(subset_data[tname] == tp, "post", "pre")
-    subset_data["D"] = subset_data[dname] * (subset_data[gname] == g)
-
-    rename_dict = {tname: "period", idname: "id"}
-    if yname in subset_data.columns:
-        rename_dict[yname] = "Y"
-    subset_data = subset_data.rename(columns=rename_dict)
+    subset_data["name"] = np.where(subset_data["period"] == tp, "post", "pre")
+    subset_data["D"] = subset_data["D"] * (subset_data["G"] == g)
 
     n1 = subset_data["id"].nunique()
-    all_ids = data[idname].unique()
+    all_ids = data["id"].unique()
     subset_ids = subset_data["id"].unique()
     disidx = np.isin(all_ids, subset_ids)
 
@@ -518,8 +460,13 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
     else:
         att_d_crit_val = stats.norm.ppf(1 - alp / 2)
 
-    acrt_d = cck_res.deriv if hasattr(cck_res, "deriv") else np.gradient(att_d, dvals)
-    acrt_d_se = cck_res.deriv_asy_se if hasattr(cck_res, "deriv_asy_se") else np.ones_like(acrt_d) * np.nan
+    acrt_d = cck_res.deriv if hasattr(cck_res, "deriv") else np.gradient(att_d, dvals.flatten())
+    acrt_d_se = cck_res.deriv_asy_se if hasattr(cck_res, "deriv_asy_se") else np.full_like(acrt_d, np.nan)
+
+    if cband and hasattr(cck_res, "h_upper_deriv") and acrt_d_se[0] > 0:
+        acrt_d_crit_val = (cck_res.h_upper_deriv[0] - acrt_d[0]) / acrt_d_se[0]
+    else:
+        acrt_d_crit_val = att_d_crit_val
 
     ptep = setup_pte_cont(
         yname=yname,
@@ -550,6 +497,7 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
         base_period=ptep.base_period,
         control_group=ptep.control_group,
         weightsname=ptep.weightsname,
+        boot_type="multiplier",
         biters=ptep.biters,
         alp=ptep.alp,
     )
@@ -594,14 +542,9 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
     infl_avg_acr = (deriv_at_w - average_acr) + infl_reg @ average_spline_deriv
     se_avg_acr = np.std(infl_avg_acr) / np.sqrt(n_treated_val)
 
-    if hasattr(overall_att_res, "overall_att") and overall_att_res.overall_att is not None:
-        overall_att = overall_att_res.overall_att.overall_att
-        overall_att_se = overall_att_res.overall_att.overall_se
-        overall_att_inf_func = overall_att_res.overall_att.influence_func
-    else:
-        overall_att = np.nan
-        overall_att_se = np.nan
-        overall_att_inf_func = None
+    overall_att = overall_att_res.overall_att.overall_att
+    overall_att_se = overall_att_res.overall_att.overall_se
+    overall_att_inf_func = overall_att_res.overall_att.influence_func
 
     result = DoseResult(
         dose=dvals.flatten() if dvals.ndim > 1 else dvals,
@@ -617,7 +560,7 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
         att_d_inf_func=None,
         acrt_d=acrt_d,
         acrt_d_se=acrt_d_se,
-        acrt_d_crit_val=att_d_crit_val,
+        acrt_d_crit_val=acrt_d_crit_val,
         acrt_d_inf_func=None,
         pte_params=ptep,
     )
