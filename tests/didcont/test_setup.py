@@ -10,7 +10,6 @@ from moderndid.didcont.panel.process_panel import (
     _choose_knots_quantile,
     _get_first_difference,
     _get_group,
-    _get_group_inner,
     _make_balanced_panel,
     _map_to_idx,
     setup_pte,
@@ -22,7 +21,8 @@ from tests.didcont.dgp import simulate_contdid_data
 
 @pytest.fixture
 def contdid_data():
-    return simulate_contdid_data(n=1000, seed=12345)
+    data = simulate_contdid_data(n=1000, seed=12345)
+    return data.rename(columns={"time_period": "period"})
 
 
 @pytest.fixture
@@ -131,7 +131,7 @@ def test_setup_pte_anticipation(panel_data_with_group):
 def test_setup_pte_error_non_integer_time(panel_data_with_group):
     data = panel_data_with_group.copy()
     data["time_id"] = data["time_id"].astype(float) + 0.5
-    with pytest.raises(ValueError, match="time periods must be positive integers"):
+    with pytest.raises(ValueError, match="Time periods must be positive integers."):
         setup_pte(data=data, yname="y", gname="group", tname="time_id", idname="unit_id")
 
 
@@ -141,7 +141,7 @@ def test_setup_pte_cont_base_periods(contdid_data, base_period):
         data=contdid_data,
         yname="Y",
         gname="G",
-        tname="time_period",
+        tname="period",
         idname="id",
         dname="D",
         base_period=base_period,
@@ -155,7 +155,7 @@ def test_setup_pte_cont_anticipation(contdid_data, anticipation):
         data=contdid_data,
         yname="Y",
         gname="G",
-        tname="time_period",
+        tname="period",
         idname="id",
         dname="D",
         anticipation=anticipation,
@@ -168,7 +168,7 @@ def test_setup_pte_cont_knots(contdid_data):
         data=contdid_data,
         yname="Y",
         gname="G",
-        tname="time_period",
+        tname="period",
         idname="id",
         dname="D",
         num_knots=4,
@@ -184,7 +184,7 @@ def test_setup_pte_cont_dvals(contdid_data):
         data=contdid_data,
         yname="Y",
         gname="G",
-        tname="time_period",
+        tname="period",
         idname="id",
         dname="D",
         dvals=dvals,
@@ -234,28 +234,10 @@ def test_get_first_difference_single_period():
     assert result.isna().all()
 
 
-def test_get_group_inner_never_treated():
-    unit_df = pd.DataFrame({"time": [1, 2, 3], "treat": [0, 0, 0]})
-    result = _get_group_inner(unit_df, "time", "treat")
-    assert result == 0
-
-
-def test_get_group_inner_always_treated():
-    unit_df = pd.DataFrame({"time": [1, 2, 3], "treat": [1, 1, 1]})
-    result = _get_group_inner(unit_df, "time", "treat")
-    assert result == 1
-
-
-def test_get_group_inner_staggered():
-    unit_df = pd.DataFrame({"time": [1, 2, 3, 4], "treat": [0, 0, 1, 1]})
-    result = _get_group_inner(unit_df, "time", "treat")
-    assert result == 3
-
-
 def test_get_group_basic(staggered_treatment_panel):
     result = _get_group(staggered_treatment_panel, "id", "time", "treat")
     expected = pd.Series([3, 3, 3, 3, 2, 2, 2, 2, 0, 0, 0, 0])
-    pd.testing.assert_series_equal(result.reset_index(drop=True), expected)
+    pd.testing.assert_series_equal(result.rename(None).reset_index(drop=True), expected)
 
 
 def test_get_group_all_treated():
