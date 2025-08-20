@@ -214,14 +214,19 @@ def cont_did(
             **kwargs,
         )
 
-    if aggregation == "eventstudy" and target_parameter == "level":
+    if aggregation == "eventstudy":
         attgt_fun = pte_attgt
         gt_type = "att"
     elif target_parameter in ["level", "slope"]:
         attgt_fun = cont_did_acrt
-        gt_type = "dose" if aggregation == "dose" else "att"
+        gt_type = "dose"
     else:
         raise ValueError(f"Invalid combination of parameters: {target_parameter}, {aggregation}, {treatment_type}")
+
+    pte_kwargs = kwargs.copy()
+    if aggregation == "eventstudy":
+        pte_kwargs["d_outcome"] = True
+
     return pte(
         yname=yname,
         gname=gname,
@@ -250,7 +255,7 @@ def cont_did(
         control_group=control_group,
         base_period=base_period,
         weightsname=weightsname,
-        **kwargs,
+        **pte_kwargs,
     )
 
 
@@ -313,7 +318,7 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
         boundary_knots = None
 
     bspline_treated = BSpline(x=dose[treated_mask], degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_treated = bspline_treated.basis()
+    x_treated = bspline_treated.basis(complete_basis=False)
     y_treated = dy[treated_mask]
 
     x_treated = np.column_stack([np.ones(x_treated.shape[0]), x_treated])
@@ -326,17 +331,17 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
         return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
     bspline_grid = BSpline(x=dvals, degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_grid = bspline_grid.basis()
+    x_grid = bspline_grid.basis(complete_basis=False)
     x_grid = np.column_stack([np.ones(x_grid.shape[0]), x_grid])
     att_d = x_grid @ coef - np.mean(dy[dose == 0])
 
-    x_deriv = bspline_grid.derivative(derivs=1)
+    x_deriv = bspline_grid.derivative(derivs=1, complete_basis=False)
     acrt_d = x_deriv @ coef[1:]
 
     x_overall = x_treated
     att_overall = np.mean(x_overall @ coef) - np.mean(dy[dose == 0])
 
-    x_deriv_overall = bspline_treated.derivative(derivs=1)
+    x_deriv_overall = bspline_treated.derivative(derivs=1, complete_basis=False)
     acrt_overall = np.mean(x_deriv_overall @ coef[1:])
 
     inf_func1 = x_deriv_overall @ coef[1:] - acrt_overall
@@ -394,7 +399,13 @@ def cont_two_by_two_subset(
     subset_data = subset_data.loc[time_mask].copy()
 
     subset_data["name"] = np.where(subset_data["period"] == tp, "post", "pre")
-    subset_data["D"] = subset_data["D"] * (subset_data["G"] == g)
+
+    aggregation = kwargs.get("aggregation", "dose")
+
+    if aggregation == "eventstudy":
+        subset_data["D"] = (subset_data["G"] == g).astype(int)
+    else:
+        subset_data["D"] = subset_data["D"] * (subset_data["G"] == g)
 
     n1 = subset_data["id"].nunique()
     all_ids = data["id"].unique()
