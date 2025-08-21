@@ -215,8 +215,12 @@ def cont_did(
         )
 
     if aggregation == "eventstudy":
-        attgt_fun = pte_attgt
-        gt_type = "att"
+        if target_parameter == "slope":
+            attgt_fun = cont_did_acrt
+            gt_type = "att"
+        else:
+            attgt_fun = pte_attgt
+            gt_type = "att"
     elif target_parameter in ["level", "slope"]:
         attgt_fun = cont_did_acrt
         gt_type = "dose"
@@ -403,7 +407,10 @@ def cont_two_by_two_subset(
     aggregation = kwargs.get("aggregation", "dose")
 
     if aggregation == "eventstudy":
-        subset_data["D"] = (subset_data["G"] == g).astype(int)
+        # NOTE: For event study I think R's cont_did has a bug where it keeps continuous dose values
+        # I believe this should be binarized for event study when passed to drdid_panel
+        # TODO: Should binarize for event study
+        subset_data["D"] = subset_data["D"] * (subset_data["G"] == g)
     else:
         subset_data["D"] = subset_data["D"] * (subset_data["G"] == g)
 
