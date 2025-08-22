@@ -6,7 +6,7 @@ from .estimators import npiv_est
 from .gsl_bspline import BSplineBasis, gsl_bs, predict_gsl_bs
 from .lepski import npiv_j, npiv_jhat_max
 from .npiv import npiv
-from .pspline import MultivariateBasis, glp_model_matrix, prodspline, tensor_prod_model_matrix
+from .prodspline import MultivariateBasis, glp_model_matrix, prodspline, tensor_prod_model_matrix
 from .results import NPIVResult
 from .selection import npiv_choose_j
 

@@ -4,7 +4,7 @@ import numpy as np
 
 from ..utils import _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
 from .estimators import _ginv, npiv_est
-from .pspline import prodspline
+from .prodspline import prodspline
 
 
 def npiv_j(
