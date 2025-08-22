@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 
 from ..utils import is_full_rank
-from .pspline import prodspline
+from .prodspline import prodspline
 from .results import NPIVResult
 
 
