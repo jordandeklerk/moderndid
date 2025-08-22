@@ -477,9 +477,7 @@ def _make_ecdf(y_values, cdf_values):
     """Create an empirical CDF function from values and probabilities."""
 
     def ecdf(x):
-        """Evaluate empirical CDF at point x."""
-        if np.isscalar(x):
-            return np.interp(x, y_values, cdf_values, left=0, right=1)
+        """Evaluate empirical CDF at point :math:`x`."""
         return np.interp(x, y_values, cdf_values, left=0, right=1)
 
     return ecdf
