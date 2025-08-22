@@ -136,10 +136,11 @@ def cont_did(
     DoseResult or PTEResult
         Results object containing:
 
-        - Dose-specific or event-study estimates
-        - Standard errors and confidence intervals
-        - Overall treatment effects
-        - Bootstrap results if requested
+        - **dose** : Dose-specific or event-study estimates
+        - **se** : Standard errors for the estimates
+        - **ci** : Confidence intervals
+        - **overall_att** : Overall average treatment effect
+        - **boots** : Bootstrap results if requested
 
     Notes
     -----
@@ -416,12 +417,13 @@ def cont_two_by_two_subset(
 def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, target_parameter, **kwargs):
     """Compute the CCK non-parametric estimator for continuous treatment."""
     unique_groups = data[gname].unique()
-    if len(unique_groups) != 2:
-        raise ValueError("CCK estimator requires exactly 2 groups")
-
     unique_times = data[tname].unique()
-    if len(unique_times) != 2:
-        raise ValueError("CCK estimator requires exactly 2 time periods")
+
+    if len(unique_groups) != 2 or len(unique_times) != 2:
+        raise ValueError(
+            f"CCK estimator requires exactly 2 groups and 2 time periods "
+            f"(found {len(unique_groups)} groups and {len(unique_times)} periods)"
+        )
 
     data = _make_balanced_panel(data, idname, tname)
     data[".dy"] = _get_first_difference(data, idname, yname, tname)
