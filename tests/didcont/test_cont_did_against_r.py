@@ -121,7 +121,6 @@ def test_slope_eventstudy_with_r_data():
 
 
 def test_cck_estimator_with_r_data():
-    """Test CCK non-parametric estimator with 2 periods, 2 groups, quadratic effect."""
     df = load_cck_data()
 
     result = cont_did(
