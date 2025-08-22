@@ -3,7 +3,7 @@
 import numpy as np
 
 from ..utils import _quantile_basis, avoid_zero_division
-from .estimators import npiv_est
+from .estimators import _ginv, npiv_est
 from .pspline import prodspline
 from .results import NPIVResult
 
@@ -230,9 +230,9 @@ def compute_cck_ucb(
                     psi_x_deriv_eval = np.c_[np.zeros(x_eval.shape[0]), psi_x_deriv_eval]
                 b_w = np.c_[np.ones(n), b_w]
 
-            btb_inv = np.linalg.pinv(b_w.T @ b_w)
+            btb_inv = _ginv(b_w.T @ b_w)
             design_matrix = psi_x.T @ b_w @ btb_inv @ b_w.T
-            gram_inv = np.linalg.pinv(design_matrix @ psi_x)
+            gram_inv = _ginv(design_matrix @ psi_x)
             tmp = gram_inv @ design_matrix
 
             beta = tmp @ y

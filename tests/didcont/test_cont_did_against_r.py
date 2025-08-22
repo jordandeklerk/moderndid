@@ -12,6 +12,12 @@ def load_r_data():
     return df
 
 
+def load_cck_data():
+    df = pd.read_csv("tests/didcont/data/cont_test_data_cck.csv.gz", compression="gzip")
+    df.loc[df["G"] == 0, "D"] = 0
+    return df
+
+
 def test_slope_dose_with_r_data():
     df = load_r_data()
 
@@ -112,3 +118,35 @@ def test_slope_eventstudy_with_r_data():
         r_val = r_dynamic.get(e)
         if r_val is not None:
             assert np.allclose(att, r_val, atol=0.01)
+
+
+def test_cck_estimator_with_r_data():
+    """Test CCK non-parametric estimator with 2 periods, 2 groups, quadratic effect."""
+    df = load_cck_data()
+
+    result = cont_did(
+        yname="Y",
+        tname="time_period",
+        idname="id",
+        dname="D",
+        data=df,
+        gname="G",
+        target_parameter="level",
+        aggregation="dose",
+        treatment_type="continuous",
+        dose_est_method="cck",
+        control_group="notyettreated",
+        biters=100,
+        cband=True,
+    )
+
+    r_att = 0.3399
+    r_att_se = 0.037
+    r_acrt = 0.6595
+    r_acrt_se = 0.1853
+
+    assert np.allclose(result.overall_att, r_att, atol=0.01)
+    assert np.allclose(result.overall_att_se, r_att_se, atol=0.01)
+
+    assert np.allclose(result.overall_acrt, r_acrt, atol=0.1)
+    assert np.allclose(result.overall_acrt_se, r_acrt_se, atol=0.05)
