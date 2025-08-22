@@ -160,12 +160,12 @@ def panel_empirical_bootstrap(
 
 
 def attgt_pte_aggregations(attgt_list, pte_params):
-    """Aggregate ATT(g,t) into overall, group, and dynamic effects.
+    """Aggregate average treatment effects into overall, group, and dynamic effects.
 
     Parameters
     ----------
     attgt_list : list
-        List of ATT(g,t) dictionaries with 'att', 'group', 'time_period'.
+        List of average treatment effects with 'att', 'group', 'time_period'.
     pte_params : PTEParams
         Parameters object containing data and settings.
 
@@ -289,12 +289,12 @@ def attgt_pte_aggregations(attgt_list, pte_params):
 
 
 def qtt_pte_aggregations(attgt_list, pte_params, extra_gt_returns):
-    """Aggregate QTT distributions into overall, group, and dynamic effects.
+    """Aggregate QTT (quantile of treatment effect) distributions into overall, group, and dynamic effects.
 
     Parameters
     ----------
     attgt_list : list
-        List of ATT(g,t) results.
+        List of average treatment effects.
     pte_params : PTEParams
         Parameters with ret_quantile specifying which quantile to compute.
     extra_gt_returns : list
@@ -382,7 +382,7 @@ def qott_pte_aggregations(attgt_list, pte_params, extra_gt_returns):
     Parameters
     ----------
     attgt_list : list
-        List of ATT(g,t) results.
+        List of average treatment effects.
     pte_params : PTEParams
         Parameters with ret_quantile.
     extra_gt_returns : list
