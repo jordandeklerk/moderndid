@@ -3,7 +3,7 @@
 import numpy as np
 
 from ..utils import _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
-from .estimators import npiv_est
+from .estimators import _ginv, npiv_est
 from .pspline import prodspline
 
 
@@ -425,8 +425,8 @@ def _compute_sieve_measure(
             x_max=np.full(p_w, w_max) if w_max else None,
         ).basis
 
-        psi_x_gram_sqrt = matrix_sqrt(np.linalg.pinv(psi_x.T @ psi_x))
-        b_w_gram_sqrt = matrix_sqrt(np.linalg.pinv(b_w.T @ b_w))
+        psi_x_gram_sqrt = matrix_sqrt(_ginv(psi_x.T @ psi_x))
+        b_w_gram_sqrt = matrix_sqrt(_ginv(b_w.T @ b_w))
 
         svd_matrix = psi_x_gram_sqrt @ (psi_x.T @ b_w) @ b_w_gram_sqrt
         s_hat_j = np.min(np.linalg.svd(svd_matrix, compute_uv=False))
@@ -473,9 +473,9 @@ def _compute_basis_and_influence(
     ).basis
 
     # influence matrices
-    btb_inv = np.linalg.pinv(b_w.T @ b_w)
+    btb_inv = _ginv(b_w.T @ b_w)
     design_matrix = psi_x.T @ b_w @ btb_inv @ b_w.T
-    gram_inv = np.linalg.pinv(design_matrix @ psi_x)
+    gram_inv = _ginv(design_matrix @ psi_x)
     tmp_matrix = gram_inv @ design_matrix
 
     return psi_x_eval, tmp_matrix

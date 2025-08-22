@@ -371,7 +371,7 @@ def _construct_basis_matrices(
 def _perform_tsls_estimation(psi_x, b_w, y):
     """Perform two-stage least squares estimation."""
     btb = b_w.T @ b_w
-    btb_inv = np.linalg.pinv(btb)
+    btb_inv = _ginv(btb)
 
     # projection matrix onto instrument space
     p_w = b_w @ btb_inv @ b_w.T
@@ -379,7 +379,7 @@ def _perform_tsls_estimation(psi_x, b_w, y):
     design_matrix = psi_x.T @ p_w
 
     gram_matrix = design_matrix @ psi_x
-    gram_inv = np.linalg.pinv(gram_matrix)
+    gram_inv = _ginv(gram_matrix)
 
     beta = gram_inv @ design_matrix @ y
 
@@ -426,3 +426,20 @@ def _determine_segments(
             k_w_segments = j_x_segments
 
     return j_x_segments, k_w_segments, k_w_degree
+
+
+def _ginv(X, tol=None):
+    """Generalized matrix inverse."""
+    if tol is None:
+        tol = np.sqrt(np.finfo(float).eps)
+
+    U, s, Vt = np.linalg.svd(X, full_matrices=False)
+    V = Vt.T
+
+    positive = s > max(tol * s[0] if len(s) > 0 else 0, 0)
+
+    if np.all(positive):
+        return V @ np.diag(1 / s) @ U.T
+    if not np.any(positive):
+        return np.zeros((X.shape[1], X.shape[0]))
+    return V[:, positive] @ np.diag(1 / s[positive]) @ U[:, positive].T
