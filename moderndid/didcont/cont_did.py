@@ -217,7 +217,7 @@ def cont_did(
     if aggregation == "eventstudy":
         if target_parameter == "slope":
             attgt_fun = cont_did_acrt
-            gt_type = "att"
+            gt_type = "dose"
         else:
             attgt_fun = pte_attgt
             gt_type = "att"

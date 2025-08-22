@@ -102,7 +102,8 @@ def pte(
 
     res = compute_pte(ptep=ptep, subset_fun=subset_fun, attgt_fun=attgt_fun, **kwargs)
 
-    if gt_type == "dose":
+    aggregation = kwargs.get("aggregation", "dose")
+    if gt_type == "dose" and aggregation == "dose":
         from moderndid.didcont.panel.process_dose import process_dose_gt
 
         if process_dose_gt_fun is None:
@@ -178,7 +179,6 @@ def pte(
     from .process_attgt import process_att_gt
 
     att_gt = process_att_gt(res, ptep)
-    overall_att = aggregate_att_gt(att_gt, aggregation_type="overall")
 
     min_e = kwargs.get("min_e", -np.inf)
     max_e = kwargs.get("max_e", np.inf)
@@ -187,6 +187,16 @@ def pte(
     event_study = aggregate_att_gt(
         att_gt, aggregation_type="dynamic", balance_event=balance_e, min_event_time=min_e, max_event_time=max_e
     )
+
+    aggregation = kwargs.get("aggregation", "dose")
+    if aggregation == "eventstudy":
+        overall_att = OverallResult(
+            overall_att=event_study.overall_att,
+            overall_se=event_study.overall_se,
+            influence_func=event_study.influence_func.get("overall") if event_study.influence_func else None,
+        )
+    else:
+        overall_att = aggregate_att_gt(att_gt, aggregation_type="overall")
 
     return PTEResult(att_gt=att_gt, overall_att=overall_att, event_study=event_study, ptep=ptep)
 
