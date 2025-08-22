@@ -150,8 +150,10 @@ def cont_did(
     - `target_parameter="slope"` + `aggregation="dose"`: Average Causal Response
       on the Treated (ACRT) as a function of dose
     - `target_parameter="level"` + `aggregation="dose"`: ATT as a function of dose
-    - `target_parameter="level"` + `aggregation="eventstudy"`: Event study with
-      binarized treatment
+    - `target_parameter="slope"` + `aggregation="eventstudy"`: ACRT-based event study
+    - `target_parameter="level"` + `aggregation="eventstudy"`: ATT-based event study
+
+    When using `dose_est_method="cck"`, only `aggregation="dose"` is currently supported.
 
     References
     ----------
