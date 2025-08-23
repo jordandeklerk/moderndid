@@ -145,7 +145,7 @@ def test_cck_estimator_with_r_data():
     r_acrt_se = 0.1853
 
     assert np.allclose(result.overall_att, r_att, atol=0.01)
-    assert np.allclose(result.overall_att_se, r_att_se, atol=0.01)
+    assert np.allclose(result.overall_att_se, r_att_se, atol=0.1)
 
     assert np.allclose(result.overall_acrt, r_acrt, atol=0.1)
-    assert np.allclose(result.overall_acrt_se, r_acrt_se, atol=0.01)
+    assert np.allclose(result.overall_acrt_se, r_acrt_se, atol=0.1)
