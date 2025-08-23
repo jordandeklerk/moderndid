@@ -168,39 +168,39 @@ def cont_did(
         In [1]: import numpy as np
            ...: import pandas as pd
            ...: import moderndid
-           ....:
+           ...:
            ...: np.random.seed(42)
            ...: n = 1000
            ...: n_periods = 4
            ...: rng = np.random.default_rng(42)
-           ....:
+           ...:
            ...: time_periods = np.arange(1, n_periods + 1)
            ...: groups = np.concatenate(([0], time_periods[1:]))
            ...: p = np.repeat(1/len(groups), len(groups))
            ...: group = rng.choice(groups, n, replace=True, p=p)
            ...: dose = rng.uniform(0, 1, n)
-           ....:
+           ...:
            ...: eta = rng.normal(loc=group, scale=1, size=n)
            ...: time_effects = np.arange(1, n_periods + 1)
            ...: y0_t = time_effects + eta[:, np.newaxis] + rng.normal(size=(n, n_periods))
-           ....:
+           ...:
            ...: dose_effect = 0.5
            ...: y1_t = (dose_effect * dose[:, np.newaxis] + time_effects +
            ...:         eta[:, np.newaxis] + rng.normal(size=(n, n_periods)))
-           ....:
+           ...:
            ...: post_matrix = (group[:, np.newaxis] <= time_periods) & (group[:, np.newaxis] != 0)
            ...: y = post_matrix * y1_t + (1 - post_matrix) * y0_t
-           ....:
+           ...:
            ...: df = pd.DataFrame(y, columns=[f"Y_{t}" for t in time_periods])
            ...: df["id"] = np.arange(1, n + 1)
            ...: df["G"] = group
            ...: df["D"] = dose
-           ....:
+           ...:
            ...: df_long = pd.melt(df, id_vars=["id", "G", "D"],
            ...:                   value_vars=[f"Y_{t}" for t in time_periods],
            ...:                   var_name="time_period", value_name="Y")
            ...: df_long["time_period"] = df_long["time_period"].str.replace("Y_", "").astype(int)
-           ....:
+           ...:
            ...: df_long.loc[df_long["G"] == 0, "D"] = 0
            ...: df_long.loc[df_long["time_period"] < df_long["G"], "D"] = 0
            ...: data = df_long.sort_values(["id", "time_period"]).reset_index(drop=True)
@@ -234,31 +234,31 @@ def cont_did(
         In [3]: np.random.seed(42)
            ...: n = 1000
            ...: rng = np.random.default_rng(42)
-           ....:
+           ...:
            ...: group = rng.choice([0, 2], n, replace=True, p=[0.5, 0.5])
            ...: dose = rng.uniform(0, 1, n)
            ...: time_periods = [1, 2]
-           ....:
+           ...:
            ...: eta = rng.normal(size=n)
            ...: y0_t = np.array(time_periods) + eta[:, np.newaxis] + rng.normal(size=(n, 2))
-           ....:
+           ...:
            ...: dose_effect = 0.5
            ...: y1_t = (dose_effect * dose[:, np.newaxis] + np.array(time_periods) +
            ...:         eta[:, np.newaxis] + rng.normal(size=(n, 2)))
-           ....:
+           ...:
            ...: post_matrix = (group[:, np.newaxis] == 2) & (np.array(time_periods) >= 2)
            ...: y = post_matrix * y1_t + (1 - post_matrix) * y0_t
-           ....:
+           ...:
            ...: df_cck = pd.DataFrame(y, columns=["Y_1", "Y_2"])
            ...: df_cck["id"] = np.arange(1, n + 1)
            ...: df_cck["G"] = group
            ...: df_cck["D"] = dose
-           ....:
+           ...:
            ...: df_cck_long = pd.melt(df_cck, id_vars=["id", "G", "D"],
            ...:                       value_vars=["Y_1", "Y_2"],
            ...:                       var_name="time_period", value_name="Y")
            ...: df_cck_long["time_period"] = df_cck_long["time_period"].str.replace("Y_", "").astype(int)
-           ....:
+           ...:
            ...: df_cck_long.loc[df_cck_long["G"] == 0, "D"] = 0
            ...: df_cck_long.loc[df_cck_long["time_period"] < df_cck_long["G"], "D"] = 0
            ...: data_cck = df_cck_long.sort_values(["id", "time_period"]).reset_index(drop=True)
