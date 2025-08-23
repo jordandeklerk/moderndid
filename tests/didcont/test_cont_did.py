@@ -627,7 +627,9 @@ def test_cck_estimator_invalid_groups():
         }
     )
 
-    with pytest.raises(ValueError, match="CCK estimator requires exactly 2 groups"):
+    with pytest.raises(
+        ValueError, match=r"CCK estimator requires exactly 2 groups and 2 time periods \(found 3 groups and 2 periods\)"
+    ):
         _cck_estimator(
             data=data,
             yname="y",
@@ -653,7 +655,9 @@ def test_cck_estimator_invalid_times():
         }
     )
 
-    with pytest.raises(ValueError, match="CCK estimator requires exactly 2 time periods"):
+    with pytest.raises(
+        ValueError, match=r"CCK estimator requires exactly 2 groups and 2 time periods \(found 2 groups and 3 periods\)"
+    ):
         _cck_estimator(
             data=data,
             yname="y",
