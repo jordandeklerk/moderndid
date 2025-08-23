@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from moderndid.didcont.npiv.pspline import (
+from moderndid.didcont.npiv.prodspline import (
     glp_model_matrix,
     prodspline,
     tensor_prod_model_matrix,

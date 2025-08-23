@@ -2,18 +2,18 @@
 """B-spline basis functions."""
 
 import numpy as np
+from scipy.interpolate import BSpline as ScipyBSpline
 
-from ..numba import bspline_derivative, bspline_integral, cox_de_boor_basis
 from .base import SplineBase
 from .utils import drop_first_column
 
 
 class BSpline(SplineBase):
-    r"""Class for B-spline basis functions.
+    r"""B-spline basis functions.
 
     The B-spline basis of degree :math:`d` is defined by a sequence of knots
-    :math:`t_0, t_1, \ldots, t_{m}`. The basis functions
-    :math:`B_{i,d}(x)` are defined recursively as
+    :math:`t_0, t_1, \ldots, t_{m}`. The basis functions :math:`B_{i,d}(x)` are
+    defined recursively as
 
     .. math::
         B_{i,0}(x) = 1 \quad \text{if } t_i \le x < t_{i+1}, \text{ and } 0 \text{ otherwise,}
@@ -64,26 +64,11 @@ class BSpline(SplineBase):
         """Return spline order."""
         return self.degree + 1
 
-    def _basis_simple(self):
-        """Compute B-spline basis for a simple knot sequence."""
-        self._update_spline_df()
-        self._update_x_index()
-
-        if self.degree > 0:
-            self._update_knot_sequence()
-
-        return cox_de_boor_basis(self.x, self.x_index, self.knot_sequence, self.degree, self._spline_df)
-
-    def _basis_extended(self):
-        """Compute B-spline basis for an extended knot sequence."""
-        bsp_obj = BSpline(
-            x=self.x,
-            internal_knots=self._surrogate_internal_knots,
-            degree=self.degree,
-            boundary_knots=self._surrogate_boundary_knots,
-        )
-        out = bsp_obj._basis_simple()
-        return out[:, self.degree : out.shape[1] - self.degree]
+    @staticmethod
+    def _get_design_matrix(x, knot_seq, degree):
+        """Get the design matrix."""
+        design_sparse = ScipyBSpline.design_matrix(x, knot_seq, degree, extrapolate=True)
+        return design_sparse.toarray()
 
     def basis(self, complete_basis=True):
         """Compute B-spline basis functions.
@@ -102,33 +87,15 @@ class BSpline(SplineBase):
         if self.x is None:
             raise ValueError("x values must be provided")
 
+        self._update_knot_sequence()
+        basis_mat = self._get_design_matrix(self.x, self.knot_sequence, self.degree)
+
         if self._is_extended_knot_sequence:
-            b_mat = self._basis_extended()
-        else:
-            b_mat = self._basis_simple()
+            basis_mat = basis_mat[:, self.degree : basis_mat.shape[1] - self.degree]
 
         if complete_basis:
-            return b_mat
-        return drop_first_column(b_mat)
-
-    def _derivative_simple(self, derivs=1):
-        """Compute derivative for a simple knot sequence."""
-        self._update_knot_sequence()
-        self._update_x_index()
-        self._update_spline_df()
-
-        return bspline_derivative(self.x, self.x_index, self.knot_sequence, self.degree, derivs, self._spline_df)
-
-    def _derivative_extended(self, derivs=1):
-        """Compute derivative for an extended knot sequence."""
-        bsp_obj = BSpline(
-            x=self.x,
-            internal_knots=self._surrogate_internal_knots,
-            degree=self.degree,
-            boundary_knots=self._surrogate_boundary_knots,
-        )
-        out = bsp_obj._derivative_simple(derivs)
-        return out[:, self.degree : out.shape[1] - self.degree]
+            return basis_mat
+        return drop_first_column(basis_mat)
 
     def derivative(self, derivs=1, complete_basis=True):
         """Compute derivatives of B-spline basis functions.
@@ -153,6 +120,8 @@ class BSpline(SplineBase):
             raise ValueError("'derivs' must be a positive integer.")
 
         self._update_spline_df()
+        self._update_knot_sequence()
+
         if self.degree < derivs:
             n_cols = self._spline_df
             if not complete_basis:
@@ -161,39 +130,24 @@ class BSpline(SplineBase):
                 n_cols -= 1
             return np.zeros((len(self.x), n_cols))
 
+        n_basis = len(self.knot_sequence) - self.degree - 1
+        deriv_mat = np.zeros((len(self.x), n_basis))
+
+        for i in range(n_basis):
+            c = np.zeros(n_basis)
+            c[i] = 1.0
+
+            spl = ScipyBSpline(self.knot_sequence, c, self.degree, extrapolate=True)
+
+            deriv_spl = spl.derivative(nu=derivs)
+            deriv_mat[:, i] = deriv_spl(self.x)
+
         if self._is_extended_knot_sequence:
-            d_mat = self._derivative_extended(derivs)
-        else:
-            d_mat = self._derivative_simple(derivs)
+            deriv_mat = deriv_mat[:, self.degree : deriv_mat.shape[1] - self.degree]
 
         if complete_basis:
-            return d_mat
-        return drop_first_column(d_mat)
-
-    def _integral_simple(self):
-        """Compute integral for a simple knot sequence."""
-        bsp_obj = BSpline(
-            x=self.x,
-            internal_knots=self.internal_knots,
-            boundary_knots=self.boundary_knots,
-            degree=self.degree + 1,
-        )
-        i_mat = bsp_obj.basis(complete_basis=False)
-        knot_sequence_ord = bsp_obj.get_knot_sequence()
-        self._update_x_index()
-
-        return bspline_integral(self.x_index, knot_sequence_ord, i_mat, self.degree)
-
-    def _integral_extended(self):
-        """Compute integral for an extended knot sequence."""
-        bsp_obj = BSpline(
-            x=self.x,
-            internal_knots=self._surrogate_internal_knots,
-            degree=self.degree,
-            boundary_knots=self._surrogate_boundary_knots,
-        )
-        out = bsp_obj._integral_simple()
-        return out[:, self.degree : out.shape[1] - self.degree]
+            return deriv_mat
+        return drop_first_column(deriv_mat)
 
     def integral(self, complete_basis=True):
         """Compute integrals of B-spline basis functions.
@@ -212,11 +166,23 @@ class BSpline(SplineBase):
         if self.x is None:
             raise ValueError("x values must be provided")
 
+        self._update_knot_sequence()
+
+        n_basis = len(self.knot_sequence) - self.degree - 1
+        integral_mat = np.zeros((len(self.x), n_basis))
+
+        for i in range(n_basis):
+            c = np.zeros(n_basis)
+            c[i] = 1.0
+
+            spl = ScipyBSpline(self.knot_sequence, c, self.degree, extrapolate=True)
+
+            integral_spl = spl.antiderivative(nu=1)
+            integral_mat[:, i] = integral_spl(self.x)
+
         if self._is_extended_knot_sequence:
-            i_mat = self._integral_extended()
-        else:
-            i_mat = self._integral_simple()
+            integral_mat = integral_mat[:, self.degree : integral_mat.shape[1] - self.degree]
 
         if complete_basis:
-            return i_mat
-        return drop_first_column(i_mat)
+            return integral_mat
+        return drop_first_column(integral_mat)

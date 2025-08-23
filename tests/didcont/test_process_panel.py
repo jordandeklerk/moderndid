@@ -5,15 +5,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from moderndid.didcont.panel.process_dose import DoseResult
-from moderndid.didcont.panel.process_panel import (
+from moderndid.didcont.panel.container import (
     AttgtResult,
+    DoseResult,
     PTEParams,
     PTEResult,
+)
+from moderndid.didcont.panel.process_panel import (
     _choose_knots_quantile,
     _get_first_difference,
     _get_group,
-    _get_group_inner,
     _make_balanced_panel,
     _map_to_idx,
     compute_pte,
@@ -113,7 +114,7 @@ def test_setup_pte_anticipation(panel_data_with_group):
 def test_setup_pte_error_non_integer_time(panel_data_with_group):
     data = panel_data_with_group.copy()
     data["time_id"] = data["time_id"].astype(float) + 0.5
-    with pytest.raises(ValueError, match="time periods must be positive integers"):
+    with pytest.raises(ValueError, match="Time periods must be positive integers."):
         setup_pte(data=data, yname="y", gname="group", tname="time_id", idname="unit_id")
 
 
@@ -123,7 +124,7 @@ def test_setup_pte_cont_base_periods(contdid_data, base_period):
         data=contdid_data,
         yname="Y",
         gname="G",
-        tname="time_period",
+        tname="period",
         idname="id",
         dname="D",
         base_period=base_period,
@@ -137,7 +138,7 @@ def test_setup_pte_cont_anticipation(contdid_data, anticipation):
         data=contdid_data,
         yname="Y",
         gname="G",
-        tname="time_period",
+        tname="period",
         idname="id",
         dname="D",
         anticipation=anticipation,
@@ -150,7 +151,7 @@ def test_setup_pte_cont_knots(contdid_data):
         data=contdid_data,
         yname="Y",
         gname="G",
-        tname="time_period",
+        tname="period",
         idname="id",
         dname="D",
         num_knots=4,
@@ -166,7 +167,7 @@ def test_setup_pte_cont_dvals(contdid_data):
         data=contdid_data,
         yname="Y",
         gname="G",
-        tname="time_period",
+        tname="period",
         idname="id",
         dname="D",
         dvals=dvals,
@@ -216,28 +217,10 @@ def test_get_first_difference_single_period():
     assert result.isna().all()
 
 
-def test_get_group_inner_never_treated():
-    unit_df = pd.DataFrame({"time": [1, 2, 3], "treat": [0, 0, 0]})
-    result = _get_group_inner(unit_df, "time", "treat")
-    assert result == 0
-
-
-def test_get_group_inner_always_treated():
-    unit_df = pd.DataFrame({"time": [1, 2, 3], "treat": [1, 1, 1]})
-    result = _get_group_inner(unit_df, "time", "treat")
-    assert result == 1
-
-
-def test_get_group_inner_staggered():
-    unit_df = pd.DataFrame({"time": [1, 2, 3, 4], "treat": [0, 0, 1, 1]})
-    result = _get_group_inner(unit_df, "time", "treat")
-    assert result == 3
-
-
 def test_get_group_basic(staggered_treatment_panel):
     result = _get_group(staggered_treatment_panel, "id", "time", "treat")
     expected = pd.Series([3, 3, 3, 3, 2, 2, 2, 2, 0, 0, 0, 0])
-    pd.testing.assert_series_equal(result.reset_index(drop=True), expected)
+    pd.testing.assert_series_equal(result.rename(None).reset_index(drop=True), expected)
 
 
 def test_get_group_all_treated():
@@ -317,7 +300,7 @@ def test_pte_result_creation():
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": "~1",
+        "xformula": "~1",
     }
     ptep = PTEParams(**params_dict)
 
@@ -368,7 +351,7 @@ def test_compute_pte_basic():
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": "~1",
+        "xformula": "~1",
     }
     ptep = PTEParams(**params_dict)
 
@@ -381,7 +364,7 @@ def test_compute_pte_basic():
     result = compute_pte(ptep, mock_subset_fun, mock_attgt_fun)
 
     assert "attgt_list" in result
-    assert "inffunc" in result
+    assert "influence_func" in result
     assert "extra_gt_returns" in result
 
     assert len(result["attgt_list"]) == 1
@@ -389,7 +372,7 @@ def test_compute_pte_basic():
     assert result["attgt_list"][0]["group"] == 2
     assert result["attgt_list"][0]["time_period"] == 2
 
-    assert result["inffunc"].shape == (3, 1)
+    assert result["influence_func"].shape == (3, 1)
 
 
 def test_compute_pte_universal_base_period():
@@ -430,7 +413,7 @@ def test_compute_pte_universal_base_period():
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": "~1",
+        "xformula": "~1",
     }
     ptep = PTEParams(**params_dict)
 
@@ -446,6 +429,102 @@ def test_compute_pte_universal_base_period():
 
     boundary_result = [r for r in result["attgt_list"] if r["time_period"] == 2][0]
     assert boundary_result["att"] == 0
+
+
+def test_bootstrap_logic():
+    data = pd.DataFrame(
+        {
+            "y": np.random.randn(12),
+            "id": [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4],
+            "time": [1, 2, 3] * 4,
+            "group": [0, 0, 0, 2, 2, 2, 0, 0, 0, 2, 2, 2],
+        }
+    )
+
+    def mock_setup_pte(yname, gname, tname, idname, data, **kwargs):
+        params_dict = {
+            "yname": yname,
+            "gname": gname,
+            "tname": tname,
+            "idname": idname,
+            "data": data,
+            "g_list": np.array([2]),
+            "t_list": np.array([2, 3]),
+            "cband": kwargs.get("cband", True),
+            "alp": kwargs.get("alp", 0.05),
+            "boot_type": kwargs.get("boot_type", "multiplier"),
+            "anticipation": 0,
+            "base_period": "varying",
+            "weightsname": kwargs.get("weightsname"),
+            "control_group": "notyettreated",
+            "gt_type": kwargs.get("gt_type", "att"),
+            "ret_quantile": kwargs.get("ret_quantile", 0.5),
+            "biters": kwargs.get("biters", 100),
+            "cl": kwargs.get("cl", 1),
+            "call": kwargs.get("call"),
+            "dname": None,
+            "degree": None,
+            "num_knots": None,
+            "knots": None,
+            "dvals": None,
+            "target_parameter": None,
+            "aggregation": None,
+            "treatment_type": None,
+            "xformula": "~1",
+        }
+        return PTEParams(**params_dict)
+
+    def mock_subset_fun(data, g, tp, **kwargs):
+        return {"gt_data": data.head(4), "n1": 2, "disidx": np.array([True, True, False, False])}
+
+    def mock_attgt_with_inf(gt_data, **kwargs):
+        return AttgtResult(attgt=0.5, inf_func=np.array([0.1, 0.2]), extra_gt_returns=None)
+
+    def mock_attgt_no_inf(gt_data, **kwargs):
+        return AttgtResult(attgt=0.5, inf_func=None, extra_gt_returns=None)
+
+    result_empirical = pte(
+        yname="y",
+        gname="group",
+        tname="time",
+        idname="id",
+        data=data,
+        setup_pte_fun=mock_setup_pte,
+        subset_fun=mock_subset_fun,
+        attgt_fun=mock_attgt_with_inf,
+        boot_type="empirical",
+        biters=10,
+    )
+    assert result_empirical.att_gt["influence_func"] is None
+
+    result_multiplier = pte(
+        yname="y",
+        gname="group",
+        tname="time",
+        idname="id",
+        data=data,
+        setup_pte_fun=mock_setup_pte,
+        subset_fun=mock_subset_fun,
+        attgt_fun=mock_attgt_with_inf,
+        boot_type="multiplier",
+        biters=10,
+    )
+    assert hasattr(result_multiplier.att_gt, "influence_func")
+    assert result_multiplier.att_gt.influence_func is not None
+
+    result_fallback = pte(
+        yname="y",
+        gname="group",
+        tname="time",
+        idname="id",
+        data=data,
+        setup_pte_fun=mock_setup_pte,
+        subset_fun=mock_subset_fun,
+        attgt_fun=mock_attgt_no_inf,
+        boot_type="multiplier",
+        biters=10,
+    )
+    assert result_fallback.att_gt["influence_func"] is None
 
 
 def test_pte_dose_type():
@@ -488,7 +567,7 @@ def test_pte_dose_type():
             "target_parameter": "ATT",
             "aggregation": "dose",
             "treatment_type": "continuous",
-            "xformla": "~1",
+            "xformula": "~1",
         }
         return PTEParams(**params_dict)
 
@@ -517,65 +596,3 @@ def test_pte_dose_type():
     assert isinstance(result, DoseResult)
     assert result.overall_att == 0.3
     assert result.overall_att_se == 0.1
-
-
-def test_pte_empirical_bootstrap_warning():
-    data = pd.DataFrame({"y": [1, 2, 3, 4], "id": [1, 1, 2, 2], "time": [1, 2, 1, 2], "group": [0, 0, 2, 2]})
-
-    def mock_setup_pte(yname, gname, tname, idname, data, **kwargs):
-        params_dict = {
-            "yname": yname,
-            "gname": gname,
-            "tname": tname,
-            "idname": idname,
-            "data": data,
-            "g_list": np.array([2]),
-            "t_list": np.array([2]),
-            "cband": kwargs.get("cband", True),
-            "alp": kwargs.get("alp", 0.05),
-            "boot_type": "empirical",
-            "anticipation": 0,
-            "base_period": "varying",
-            "weightsname": kwargs.get("weightsname"),
-            "control_group": "notyettreated",
-            "gt_type": kwargs.get("gt_type", "att"),
-            "ret_quantile": kwargs.get("ret_quantile", 0.5),
-            "biters": kwargs.get("biters", 100),
-            "cl": kwargs.get("cl", 1),
-            "call": kwargs.get("call"),
-            "dname": None,
-            "degree": None,
-            "num_knots": None,
-            "knots": None,
-            "dvals": None,
-            "target_parameter": None,
-            "aggregation": None,
-            "treatment_type": None,
-            "xformla": "~1",
-        }
-        return PTEParams(**params_dict)
-
-    def mock_subset_fun(data, g, tp, **kwargs):
-        return {"gt_data": data, "n1": 2, "disidx": np.ones(2, dtype=bool)}
-
-    def mock_attgt_fun(gt_data, **kwargs):
-        return AttgtResult(attgt=0.3, inf_func=None, extra_gt_returns=None)
-
-    import warnings
-
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        result = pte(
-            yname="y",
-            gname="group",
-            tname="time",
-            idname="id",
-            data=data,
-            setup_pte_fun=mock_setup_pte,
-            subset_fun=mock_subset_fun,
-            attgt_fun=mock_attgt_fun,
-        )
-
-        assert len(w) == 1
-        assert "Empirical bootstrap not yet implemented" in str(w[0].message)
-        assert isinstance(result, dict)

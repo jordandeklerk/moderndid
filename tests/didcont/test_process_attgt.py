@@ -179,7 +179,7 @@ def test_process_att_gt_with_real_mp_result(att_gt_result):
         target_parameter=None,
         aggregation=None,
         treatment_type=None,
-        xformla="~1",
+        xformula="~1",
     )
 
     result = process_att_gt(att_gt_raw, pte_params)

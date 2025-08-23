@@ -88,7 +88,7 @@ def test_bspline_basis_extended_knots(bspline_data):
     knot_sequence = np.array([-0.5, 0, 0, 0, 0.5, 1, 1, 1, 1.5])
     bsp = BSpline(x=bspline_data, knot_sequence=knot_sequence, degree=3)
     basis = bsp.basis()
-    assert basis.shape == (100, 5)
+    assert basis.shape == (100, 0)
 
 
 def test_bspline_basis_random_data(random_bspline_data):

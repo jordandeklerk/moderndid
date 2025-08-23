@@ -1,5 +1,6 @@
 """Difference-in-differences with a continuous treatment."""
 
+from .cont_did import cont_did
 from .npiv import (
     BSplineBasis,
     MultivariateBasis,
@@ -19,7 +20,6 @@ from .panel import (
     PTEParams,
     _get_first_difference,
     _get_group,
-    _get_group_inner,
     _make_balanced_panel,
     _summary_dose_result,
     aggregate_att_gt,
@@ -47,6 +47,7 @@ from .utils import (
 )
 
 __all__ = [
+    "cont_did",
     # Main NPIV estimation functions
     "npiv",
     "npiv_est",
@@ -89,7 +90,6 @@ __all__ = [
     "multiplier_bootstrap",
     "_get_first_difference",
     "_get_group",
-    "_get_group_inner",
     "_make_balanced_panel",
     "did_attgt",
     "pte_attgt",
