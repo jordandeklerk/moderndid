@@ -47,40 +47,47 @@ def cont_did(
     clustervars=None,
     est_method=None,
     base_period="varying",
-    cl=1,
     **kwargs,
 ):
     r"""Compute difference-in-differences with a continuous treatment.
 
-    Implements difference-in-differences estimation for settings with continuous
-    treatment variables in a staggered treatment adoption framework. Supports both
-    parametric and non-parametric estimation of dose-response functions using B-splines.
+    Implements difference-in-differences estimation for settings with continuous treatment
+    variables in a staggered treatment adoption framework. It extends traditional DiD methods
+    to handle treatment intensity or dose, supporting both parametric estimation using B-splines
+    and non-parametric estimation following the methods in [2]_.
 
     Parameters
     ----------
     yname : str
-        Name of the outcome variable in the data.
+        Name of the column containing the outcome variable.
     dname : str
-        Name of the continuous treatment variable in the data. This should represent
-        the "dose" or amount of treatment, and should be constant across time periods
-        for each unit (set to 0 for never-treated units).
+        Name of the column containing the continuous treatment variable.
+        This should represent the "dose" or amount of treatment received,
+        and should be constant across time periods for each unit.
+        Use 0 for never-treated units.
     tname : str
-        Name of the time period variable.
+        Name of the column containing the time period variable.
     idname : str
-        Name of the unit ID variable.
+        Name of the column containing the unit ID variable.
     data : pd.DataFrame
-        Panel data containing all variables.
+        The input panel data containing outcome, treatment, time, unit ID,
+        and optionally covariates and weights. Should be in long format with
+        each row representing a unit-time observation.
     gname : str, optional
-        Name of the timing-group variable indicating when treatment starts for
-        each unit. If None, it will be computed from the treatment variable.
-        Should be 0 for never-treated units.
+        Name of the column containing the timing-group variable indicating
+        when treatment starts for each unit. If None, it will be computed
+        from the treatment variable. Should be 0 for never-treated units.
     xformula : str, default="~1"
-        Formula for additional covariates. Currently only "~1" (no covariates)
-        is supported.
+        A formula for the covariates to include in the model.
+        Should be of the form "~ X1 + X2" (intercept is always included).
+        Currently only "~1" (no covariates) is supported.
     target_parameter : {"level", "slope"}, default="level"
-        Whether to report level effects (ATT) or slope effects (ACRT).
+        Type of treatment effect to estimate:
+
+        - "level": Average treatment effect (ATT) at different dose levels
+        - "slope": Average causal response (ACRT), the derivative of the dose-response curve
     aggregation : {"dose", "eventstudy"}, default="dose"
-        How to aggregate results:
+        How to aggregate the treatment effects:
 
         - "dose": Average across timing-groups and time periods, report by dose
         - "eventstudy": Average across timing-groups and doses, report by event time
@@ -90,13 +97,13 @@ def cont_did(
         Method for estimating dose-specific effects:
 
         - "parametric": Use B-splines with specified degree and knots
-        - "cck": Use non-parametric method based on Chen, Christensen & Kankanala (2025)
+        - "cck": Use non-parametric method based on [2]_.
     dvals : array-like, optional
-        Values of the treatment dose at which to compute effects. If None,
-        uses percentiles of the dose distribution among treated units.
+        Values of the treatment dose at which to compute effects.
+        If None, uses quantiles of the dose distribution among treated units.
     degree : int, default=3
-        Degree of the B-spline. Combined with num_knots=0 (default), this
-        fits a global polynomial of the specified degree.
+        Degree of the B-spline basis functions. Combined with num_knots=0 (default),
+        this fits a global polynomial of the specified degree.
     num_knots : int, default=0
         Number of interior knots for the B-spline. More knots allow more
         flexibility but may increase variance.
@@ -110,57 +117,214 @@ def cont_did(
     anticipation : int, default=0
         Number of time periods before treatment where effects may appear.
     weightsname : str, optional
-        Name of the sampling weights variable.
+        Name of the column containing sampling weights.
+        If None, all observations have equal weight.
     alp : float, default=0.05
-        Significance level for confidence intervals.
+        Significance level for confidence intervals (e.g., 0.05 for 95% CI).
     cband : bool, default=False
-        Whether to compute uniform confidence bands.
+        Whether to compute uniform confidence bands over all dose values.
     boot_type : str, default="multiplier"
-        Type of bootstrap ("multiplier" or "empirical").
+        Type of bootstrap to perform ("multiplier" or "empirical").
     biters : int, default=1000
-        Number of bootstrap iterations.
+        Number of bootstrap iterations for inference.
     clustervars : str, optional
         Variable(s) for clustering standard errors. Not currently supported.
     est_method : str, optional
-        Estimation method for the outcome model. Must be None (covariates not
-        supported).
+        Estimation method for the outcome model. Must be None as covariates
+        are not currently supported.
     base_period : {"varying", "universal"}, default="varying"
-        How to choose the base period for comparisons.
-    cl : int, default=1
-        Number of clusters for parallel computation.
+        How to choose the base period for comparisons:
+
+        - "varying": Use different base periods for different timing groups
+        - "universal": Use the same base period for all comparisons
     **kwargs
-        Additional arguments.
+        Additional keyword arguments passed to internal functions.
 
     Returns
     -------
     DoseResult or PTEResult
         Results object containing:
 
-        - **dose** : Dose-specific or event-study estimates
-        - **se** : Standard errors for the estimates
-        - **ci** : Confidence intervals
+        - **dose** : Array of dose values at which effects are evaluated
+        - **att_d** : Dose-specific ATT estimates
+        - **att_d_se** : Standard errors for dose-specific ATT
+        - **acrt_d** : Dose-specific ACRT estimates (if target_parameter="slope")
+        - **acrt_d_se** : Standard errors for dose-specific ACRT
         - **overall_att** : Overall average treatment effect
-        - **boots** : Bootstrap results if requested
+        - **overall_att_se** : Standard error for overall ATT
+        - **overall_acrt** : Overall average causal response (if applicable)
+        - **overall_acrt_se** : Standard error for overall ACRT
+
+    Examples
+    --------
+    We can estimate the dose-response function for a continuous treatment using simulated
+    data where units receive different treatment intensities at different times.
+
+    First, we need to generate simulated data with a continuous treatment:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import numpy as np
+           ...: import pandas as pd
+           ...: import moderndid
+           ...:
+           ...: np.random.seed(42)
+           ...: n = 1000
+           ...: n_periods = 4
+           ...: rng = np.random.default_rng(42)
+           ...:
+           ...: time_periods = np.arange(1, n_periods + 1)
+           ...: groups = np.concatenate(([0], time_periods[1:]))
+           ...: p = np.repeat(1/len(groups), len(groups))
+           ...: group = rng.choice(groups, n, replace=True, p=p)
+           ...: dose = rng.uniform(0, 1, n)
+           ...:
+           ...: eta = rng.normal(loc=group, scale=1, size=n)
+           ...: time_effects = np.arange(1, n_periods + 1)
+           ...: y0_t = time_effects + eta[:, np.newaxis] + rng.normal(size=(n, n_periods))
+           ...:
+           ...: dose_effect = 0.5
+           ...: y1_t = (dose_effect * dose[:, np.newaxis] + time_effects +
+           ...:         eta[:, np.newaxis] + rng.normal(size=(n, n_periods)))
+           ...:
+           ...: post_matrix = (group[:, np.newaxis] <= time_periods) & (group[:, np.newaxis] != 0)
+           ...: y = post_matrix * y1_t + (1 - post_matrix) * y0_t
+           ...:
+           ...: df = pd.DataFrame(y, columns=[f"Y_{t}" for t in time_periods])
+           ...: df["id"] = np.arange(1, n + 1)
+           ...: df["G"] = group
+           ...: df["D"] = dose
+           ...:
+           ...: df_long = pd.melt(df, id_vars=["id", "G", "D"],
+           ...:                   value_vars=[f"Y_{t}" for t in time_periods],
+           ...:                   var_name="time_period", value_name="Y")
+           ...: df_long["time_period"] = df_long["time_period"].str.replace("Y_", "").astype(int)
+           ...:
+           ...: df_long.loc[df_long["G"] == 0, "D"] = 0
+           ...: df_long.loc[df_long["time_period"] < df_long["G"], "D"] = 0
+           ...: data = df_long.sort_values(["id", "time_period"]).reset_index(drop=True)
+
+    Now we can estimate the dose-response function using the parametric estimator which
+    uses B-splines to approximate the dose-response function:
+
+    .. ipython::
+        :okwarning:
+
+        In [2]: dose_result = moderndid.cont_did(
+           ...:     yname="Y",
+           ...:     dname="D",
+           ...:     tname="time_period",
+           ...:     idname="id",
+           ...:     gname="G",
+           ...:     data=data,
+           ...:     target_parameter="level",
+           ...:     aggregation="dose",
+           ...:     degree=3,
+           ...:     biters=100
+           ...: )
+           ...: dose_result
+
+    For the non-parametric CCK estimator, we need exactly 2 groups and 2 time periods,
+    which we can simulate as follows:
+
+    .. ipython::
+        :okwarning:
+
+        In [3]: np.random.seed(42)
+           ...: n = 1000
+           ...: rng = np.random.default_rng(42)
+           ...:
+           ...: group = rng.choice([0, 2], n, replace=True, p=[0.5, 0.5])
+           ...: dose = rng.uniform(0, 1, n)
+           ...: time_periods = [1, 2]
+           ...:
+           ...: eta = rng.normal(size=n)
+           ...: y0_t = np.array(time_periods) + eta[:, np.newaxis] + rng.normal(size=(n, 2))
+           ...:
+           ...: dose_effect = 0.5
+           ...: y1_t = (dose_effect * dose[:, np.newaxis] + np.array(time_periods) +
+           ...:         eta[:, np.newaxis] + rng.normal(size=(n, 2)))
+           ...:
+           ...: post_matrix = (group[:, np.newaxis] == 2) & (np.array(time_periods) >= 2)
+           ...: y = post_matrix * y1_t + (1 - post_matrix) * y0_t
+           ...:
+           ...: df_cck = pd.DataFrame(y, columns=["Y_1", "Y_2"])
+           ...: df_cck["id"] = np.arange(1, n + 1)
+           ...: df_cck["G"] = group
+           ...: df_cck["D"] = dose
+           ...:
+           ...: df_cck_long = pd.melt(df_cck, id_vars=["id", "G", "D"],
+           ...:                       value_vars=["Y_1", "Y_2"],
+           ...:                       var_name="time_period", value_name="Y")
+           ...: df_cck_long["time_period"] = df_cck_long["time_period"].str.replace("Y_", "").astype(int)
+           ...:
+           ...: df_cck_long.loc[df_cck_long["G"] == 0, "D"] = 0
+           ...: df_cck_long.loc[df_cck_long["time_period"] < df_cck_long["G"], "D"] = 0
+           ...: data_cck = df_cck_long.sort_values(["id", "time_period"]).reset_index(drop=True)
+
+    Now we can estimate the dose-response function using the non-parametric CCK estimator,
+    which is a non-parametric estimator that does not require any assumptions about the
+    dose-response function:
+
+    .. ipython::
+        :okwarning:
+
+        In [4]: cck_result = moderndid.cont_did(
+           ...:     yname="Y",
+           ...:     dname="D",
+           ...:     tname="time_period",
+           ...:     idname="id",
+           ...:     gname="G",
+           ...:     data=data_cck,
+           ...:     dose_est_method="cck",
+           ...:     target_parameter="level",
+           ...:     aggregation="dose",
+           ...:     biters=100
+           ...: )
+           ...: cck_result
 
     Notes
     -----
+    The estimator accommodates settings where treatment intensity varies across
+    treated units but remains constant over time for each unit. This is common
+    in policy evaluations where different regions or units receive different
+    levels of treatment (e.g., different minimum wage increases, varying subsidy
+    amounts, or different policy intensities).
+
     The combination of `target_parameter` and `aggregation` determines the
-    analysis type:
+    specific analysis:
 
-    - `target_parameter="slope"` + `aggregation="dose"`: Average Causal Response
-      on the Treated (ACRT) as a function of dose
-    - `target_parameter="level"` + `aggregation="dose"`: ATT as a function of dose
-    - `target_parameter="slope"` + `aggregation="eventstudy"`: ACRT-based event study
-    - `target_parameter="level"` + `aggregation="eventstudy"`: ATT-based event study
+    - `target_parameter="level"` + `aggregation="dose"`: Estimates ATT as a
+      function of dose, showing how treatment effects vary with treatment intensity
+    - `target_parameter="slope"` + `aggregation="dose"`: Estimates ACRT, the
+      marginal effect of increasing treatment intensity
+    - `target_parameter="level"` + `aggregation="eventstudy"`: Event study
+      showing ATT over time, averaged across doses
+    - `target_parameter="slope"` + `aggregation="eventstudy"`: Event study
+      showing ACRT over time
 
-    When using `dose_est_method="cck"`, only `aggregation="dose"` is currently supported.
+    When using `dose_est_method="parametric"` (default), the dose-response function
+    is approximated using B-splines. The flexibility of the approximation is
+    controlled by the `degree` and `num_knots` parameters. With `num_knots=0`,
+    a global polynomial of the specified degree is fit.
+
+    When using `dose_est_method="cck"`, the non-parametric estimator from
+    [2]_ is used. This method requires exactly 2 groups and 2 time periods and
+    currently only supports `aggregation="dose"`.
 
     References
     ----------
 
     .. [1] Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. (2024).
-        Difference-in-differences with a continuous treatment.
-        https://arxiv.org/abs/2107.02637
+           "Difference-in-differences with a continuous treatment."
+           Journal of Econometrics, forthcoming.
+           https://arxiv.org/abs/2107.02637
+
+    .. [2] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
+           "Adaptive Estimation and Uniform Confidence Bands for Nonparametric
+           Structural Functions and Elasticities."
+           https://arxiv.org/abs/2107.11869
     """
     if not isinstance(data, pd.DataFrame):
         raise TypeError("data must be a pandas DataFrame")
@@ -254,7 +418,6 @@ def cont_did(
         alp=alp,
         boot_type=boot_type,
         biters=biters,
-        cl=cl,
         dname=dname,
         degree=degree,
         num_knots=num_knots,

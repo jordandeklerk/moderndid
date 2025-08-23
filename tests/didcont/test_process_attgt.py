@@ -169,8 +169,6 @@ def test_process_att_gt_with_real_mp_result(att_gt_result):
         gt_type="att",
         ret_quantile=0.5,
         biters=100,
-        cl=1,
-        call="test",
         dname=None,
         degree=None,
         num_knots=None,

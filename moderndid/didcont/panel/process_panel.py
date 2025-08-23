@@ -30,8 +30,6 @@ def pte(
     ret_quantile=None,
     process_dose_gt_fun=None,
     biters=100,
-    cl=1,
-    call=None,
     **kwargs,
 ):
     """Compute panel treatment effects.
@@ -70,10 +68,6 @@ def pte(
         Function to process dose results.
     biters : int, default=100
         Number of bootstrap iterations.
-    cl : int, default=1
-        Number of clusters for parallel computation.
-    call : str, optional
-        Function call string for reference.
     **kwargs
         Additional arguments passed through.
 
@@ -95,8 +89,6 @@ def pte(
         weightsname=weightsname,
         ret_quantile=ret_quantile,
         biters=biters,
-        cl=cl,
-        call=call,
         **kwargs,
     )
 
@@ -295,8 +287,6 @@ def setup_pte_basic(
     gt_type="att",
     ret_quantile=0.5,
     biters=100,
-    cl=1,
-    call=None,
 ):
     """Perform basic setup for panel treatment effects."""
     data = data.copy()
@@ -326,8 +316,6 @@ def setup_pte_basic(
         "gt_type": gt_type,
         "ret_quantile": ret_quantile,
         "biters": biters,
-        "cl": cl,
-        "call": call,
         "anticipation": 0,
         "base_period": "varying",
         "weightsname": None,
@@ -361,8 +349,6 @@ def setup_pte(
     gt_type="att",
     ret_quantile=0.5,
     biters=100,
-    cl=1,
-    call=None,
     xformula="~1",
     **kwargs,
 ):
@@ -425,8 +411,6 @@ def setup_pte(
         "gt_type": gt_type,
         "ret_quantile": ret_quantile,
         "biters": biters,
-        "cl": cl,
-        "call": call,
         "anticipation": anticipation,
         "base_period": base_period,
         "weightsname": weightsname,
@@ -463,7 +447,6 @@ def pte_default(
     alp=0.05,
     boot_type="multiplier",
     biters=100,
-    cl=1,
     **kwargs,
 ):
     """Compute panel treatment effects with default settings."""
@@ -489,7 +472,6 @@ def pte_default(
         alp=alp,
         boot_type=boot_type,
         biters=biters,
-        cl=cl,
         **kwargs,
     )
     return res
@@ -515,7 +497,6 @@ def setup_pte_cont(
     weightsname=None,
     gt_type="att",
     biters=100,
-    cl=1,
     dvals=None,
     degree=1,
     num_knots=0,
@@ -554,7 +535,6 @@ def setup_pte_cont(
         gt_type=gt_type,
         weightsname=weightsname,
         biters=biters,
-        cl=cl,
         required_pre_periods=required_pre_periods,
         anticipation=anticipation,
         base_period=base_period,

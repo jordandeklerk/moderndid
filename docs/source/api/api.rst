@@ -183,6 +183,16 @@ Combined Restrictions
 Continuous Treatment DiD
 ------------------------
 
+Main Function
+^^^^^^^^^^^^^
+.. currentmodule:: moderndid
+
+.. autosummary::
+   :toctree: generated/didcont/
+   :nosignatures:
+
+   cont_did
+
 Non-Parametric Instrumental Variables
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. currentmodule:: moderndid
@@ -210,7 +220,6 @@ Spline Basis Functions
    :toctree: generated/didcont/spline/
    :nosignatures:
 
-   SplineBase
    BSpline
 
 .. _api-propensity:
