@@ -33,6 +33,8 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 **[`moderndid.didinter`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didinter)** — Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags [Chaisemartin & D'Haultfœuille, 2024](https://arxiv.org/pdf/2007.04267)
 
+**[`moderndid.didtriple`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didtriple)** - Triple difference-in-differneces estimators with regression adjustment, inverse probability weighting, and doubly robust estimators that remain valid under covariate-adjusted DDD parallel trends [Ortiz-Villavicencio & Sant'Anna, 2025](https://arxiv.org/pdf/2505.09942)
+
 **[`moderndid.didml`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didml)** — Modern machine learning approaches to DiD for estimation of time-varying conditional average treatment effects on the treated [Hatamyar et al., 2023](https://arxiv.org/pdf/2310.11962)
 
 **[`moderndid.didbacon`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didbacon)** — Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons [Goodman-Bacon, 2019](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf)
