@@ -46,10 +46,6 @@ class PTEParams(NamedTuple):
         Quantile to return for conditional distribution.
     biters : int
         Number of bootstrap iterations.
-    cl : int
-        Cluster ID for bootstrap.
-    call : str
-        The function call.
     dname : str
         Name of the continuous treatment variable.
     degree : int
@@ -87,8 +83,6 @@ class PTEParams(NamedTuple):
     gt_type: str
     ret_quantile: float
     biters: int
-    cl: int
-    call: str
     dname: str
     degree: int
     num_knots: int

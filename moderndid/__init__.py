@@ -32,6 +32,7 @@ from moderndid.didcont import (
     avoid_zero_division,
     basis_dimension,
     compute_r_squared,
+    cont_did,
     is_full_rank,
     matrix_sqrt,
     setup_pte,
@@ -184,6 +185,7 @@ from moderndid.utils import (
 )
 
 __all__ = [
+    "cont_did",
     "AGGTEResult",
     "APRCIResult",
     "ARPNuisanceCIResult",
