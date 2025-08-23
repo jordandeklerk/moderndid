@@ -42,7 +42,6 @@ def panel_empirical_bootstrap(
     idname = pte_params.idname
     boot_type = pte_params.boot_type
     n_boot = pte_params.biters
-    n_clusters = pte_params.cl
     gt_type = pte_params.gt_type
 
     if gt_type == "qtt":
@@ -71,7 +70,6 @@ def panel_empirical_bootstrap(
             boot_type=boot_type,
             gt_type=gt_type,
             biters=pte_params.biters,
-            cl=n_clusters,
             **kwargs,
         )
 
