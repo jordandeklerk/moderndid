@@ -21,30 +21,34 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 ### Core Implementations
 
-**[`moderndid.did`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/did)** — Multiple time periods and variation in treatment timing with group-time effects and flexible aggregation schemes [Callaway & Sant'Anna, 2021](https://arxiv.org/pdf/1803.09015)
+**[`moderndid.did`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/did)** — Multiple time periods and variation in treatment timing with group-time effects and flexible aggregation schemes ([Callaway & Sant'Anna, 2021](https://arxiv.org/pdf/1803.09015)).
 
-**[`moderndid.drdid`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/drdid)** — Doubly robust difference-in-differences estimators for panel and repeated cross-section data with improved efficiency and robustness [Sant'Anna & Zhao, 2020](https://arxiv.org/pdf/1812.01723)
+**[`moderndid.drdid`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/drdid)** — Doubly robust difference-in-differences estimators for panel and repeated cross-section data with improved efficiency and robustness ([Sant'Anna & Zhao, 2020](https://arxiv.org/pdf/1812.01723)).
 
-**[`moderndid.didhonest`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didhonest)** — Sensitivity analysis for violations of parallel trends with multiple restriction types [Rambachan & Roth, 2023](https://asheshrambachan.github.io/assets/files/hpt-draft.pdf)
+**[`moderndid.didhonest`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didhonest)** — Sensitivity analysis for violations of parallel trends with multiple restriction types ([Rambachan & Roth, 2023](https://asheshrambachan.github.io/assets/files/hpt-draft.pdf)).
 
-### In Development
+### Active Development
 
-**[`moderndid.didcont`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcont)** — Continuous treatment DiD for dose-response relationships and non-binary treatments [Callaway et al., 2024](https://arxiv.org/pdf/2107.02637)
+**[`moderndid.didcont`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcont)** — Continuous treatment DiD for dose-response relationships and non-binary treatments ([Callaway et al., 2024](https://arxiv.org/pdf/2107.02637)).
 
-**[`moderndid.didinter`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didinter)** — Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags [Chaisemartin & D'Haultfœuille, 2024](https://arxiv.org/pdf/2007.04267)
+### Planned Development
 
-**[`moderndid.didtriple`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didtriple)** - Triple difference-in-differneces estimators with regression adjustment, inverse probability weighting, and doubly robust estimators that remain valid under covariate-adjusted DDD parallel trends [Ortiz-Villavicencio & Sant'Anna, 2025](https://arxiv.org/pdf/2505.09942)
+**[`moderndid.didinter`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didinter)** — Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags ([Chaisemartin & D'Haultfœuille, 2024](https://arxiv.org/pdf/2007.04267)).
 
-**[`moderndid.didml`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didml)** — Modern machine learning approaches to DiD for estimation of time-varying conditional average treatment effects on the treated [Hatamyar et al., 2023](https://arxiv.org/pdf/2310.11962)
+**[`moderndid.didtriple`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didtriple)** - Triple difference-in-differneces estimators with regression adjustment, inverse probability weighting, and doubly robust estimators that remain valid under covariate-adjusted DDD parallel trends ([Ortiz-Villavicencio & Sant'Anna, 2025](https://arxiv.org/pdf/2505.09942)).
 
-**[`moderndid.didbacon`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didbacon)** — Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons [Goodman-Bacon, 2019](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf)
+**[`moderndid.didml`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didml)** — Modern machine learning approaches to DiD for estimation of time-varying conditional average treatment effects on the treated ([Hatamyar et al., 2023](https://arxiv.org/pdf/2310.11962)).
 
-**[`moderndid.drdidweak`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/drdidweak)** — Doubly robust estimators for treatment effect estimands that is also robust against weak covariate overlap [Ma et al., 2023](https://arxiv.org/pdf/2304.08974)
+**[`moderndid.drdidweak`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/drdidweak)** — Doubly robust estimators for treatment effect estimands that is also robust against weak covariate overlap ([Ma et al., 2023](https://arxiv.org/pdf/2304.08974)).
 
-**[`moderndid.didcomp`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcomp)** — DiD setups with repeated cross-sectional data and potential compositional changes across time periods [Sant'Anna & Xu, 2025](https://arxiv.org/pdf/2304.13925)
+**[`moderndid.didcomp`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcomp)** — DiD setups with repeated cross-sectional data and potential compositional changes across time periods ([Sant'Anna & Xu, 2025](https://arxiv.org/pdf/2304.13925)).
 
-**[`moderndid.didlocal`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didlocal)** — Local projections DiD to address possible biases arising from negative weighting [Dube et al., 2025](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf)
+**[`moderndid.didimpute`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didimpute)** — Differnece-in-Differences designs with staggered treatment adoption and heterogeneous causal effects via efficient imputation-based estimators ([Borusyak, Jaravel, & Spiess, 2024](https://arxiv.org/pdf/2108.12419)).
 
-**[`moderndid.did2s`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/did2s)** — Two-stage DiD for estimating TWFE models while avoiding issues with staggered treatment adoption [Gardner, 2021](https://jrgcmu.github.io/2sdd_current.pdf)
+**[`moderndid.didbacon`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didbacon)** — Goodman-Bacon decomposition to understand two-way fixed effects estimates as weighted averages of all possible 2x2 DiD comparisons ([Goodman-Bacon, 2019](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf)).
 
-**[`moderndid.functional`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/functional)** — Specification tests for functional form assumptions in DiD models [Roth & Sant'Anna, 2023](https://arxiv.org/pdf/2010.04814)
+**[`moderndid.didlocal`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didlocal)** — Local projections DiD to address possible biases arising from negative weighting ([Dube et al., 2025](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf)).
+
+**[`moderndid.did2s`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/did2s)** — Two-stage DiD for estimating TWFE models while avoiding issues with staggered treatment adoption ([Gardner, 2021](https://jrgcmu.github.io/2sdd_current.pdf)).
+
+**[`moderndid.functional`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/functional)** — Specification tests for functional form assumptions in DiD models ([Roth & Sant'Anna, 2023](https://arxiv.org/pdf/2010.04814)).
