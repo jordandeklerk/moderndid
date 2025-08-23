@@ -4,7 +4,7 @@
 import numpy as np
 import pytest
 
-from moderndid.didcont.npiv.pspline import glp_model_matrix, tensor_prod_model_matrix
+from moderndid.didcont.npiv.prodspline import glp_model_matrix, tensor_prod_model_matrix
 
 
 def test_tensor_prod_basic_functionality(simple_bases):

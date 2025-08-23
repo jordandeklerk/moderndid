@@ -6,11 +6,10 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 from formulaic import model_matrix
-from scipy.linalg import qr
 
 from ...drdid.estimators.drdid_panel import drdid_panel
 from ...drdid.estimators.reg_did_panel import reg_did_panel
-from .process_panel import AttgtResult
+from .container import AttgtResult
 
 
 def did_attgt(gt_data, xformula="~1", **kwargs):
@@ -92,8 +91,14 @@ def pte_attgt(
         - **inf_func**: The influence function
         - **extra_gt_returns**: Additional return values (None for this estimator)
     """
+    if gt_data.empty:
+        raise ValueError("Cannot compute ATT(g,t) with empty data")
+    if gt_data["D"].nunique() < 2:
+        return AttgtResult(attgt=0.0, inf_func=np.zeros(gt_data["id"].nunique()), extra_gt_returns=None)
+
     post_data = gt_data[gt_data["name"] == "post"]
     treated_post = post_data[post_data["D"] == 1]
+
     if "G" in treated_post.columns and len(treated_post) > 0:
         this_g = treated_post["G"].iloc[0]
     else:
@@ -134,24 +139,11 @@ def pte_attgt(
     else:
         y = y_post
 
-    control_covs = covariates[d == 0]
     n_control = np.sum(d == 0)
-
-    if n_control > 0 and covariates.shape[1] > 1:
-        try:
-            _, r_matrix, p_matrix = qr(control_covs, pivoting=True)
-
-            diag_r = np.abs(np.diag(r_matrix))
-            if len(diag_r) > 0:
-                tol = diag_r[0] * max(control_covs.shape) * np.finfo(r_matrix.dtype).eps
-                rank = np.sum(diag_r > tol)
-
-                if rank < covariates.shape[1]:
-                    keep_cols_indices = p_matrix[:rank]
-                    keep_cols_indices.sort()
-                    covariates = covariates[:, keep_cols_indices]
-        except (ValueError, np.linalg.LinAlgError):
-            pass
+    if n_control > 0:
+        control_covs = covariates[d == 0]
+        if np.linalg.matrix_rank(control_covs) < control_covs.shape[1]:
+            return AttgtResult(attgt=0.0, inf_func=np.zeros(len(gt_data_wide)), extra_gt_returns=None)
 
     if est_method == "dr" and n_control > 0 and np.sum(d) > 0:
         try:
@@ -179,10 +171,47 @@ def pte_attgt(
     y0 = np.zeros(len(gt_data_wide))
 
     if est_method == "dr":
-        result = drdid_panel(y1=y, y0=y0, d=d, covariates=covariates, i_weights=weights_aligned, influence_func=True)
+        try:
+            result = drdid_panel(
+                y1=y, y0=y0, d=d, covariates=covariates, i_weights=weights_aligned, influence_func=True
+            )
+        except (ValueError, np.linalg.LinAlgError) as e:
+            if "Failed to solve linear system" in str(e) or "singular" in str(e).lower():
+                warnings.warn(
+                    f"DR estimator failed due to singularity issues for group {this_g} in period {this_tp}. "
+                    f"Switching to regression adjustment.",
+                    UserWarning,
+                )
+                result = reg_did_panel(
+                    y1=y, y0=y0, d=d, covariates=covariates, i_weights=weights_aligned, influence_func=True
+                )
+            else:
+                raise
     elif est_method == "reg":
         result = reg_did_panel(y1=y, y0=y0, d=d, covariates=covariates, i_weights=weights_aligned, influence_func=True)
     else:
         raise ValueError(f"Unsupported estimation method: {est_method}")
 
-    return AttgtResult(attgt=result.att, inf_func=result.att_inf_func, extra_gt_returns=None)
+    if result.att_inf_func is not None:
+        unique_ids = gt_data["id"].unique()
+        n_unique = len(unique_ids)
+
+        valid_mask = ~(np.isnan(y_post) | np.isnan(y_pre))
+        valid_ids = gt_data_wide.loc[valid_mask, "id"].values
+
+        inf_func_final = np.zeros(n_unique)
+
+        if np.sum(valid_mask) > 0:
+            valid_inf_func = (
+                result.att_inf_func[valid_mask]
+                if len(result.att_inf_func) == len(valid_mask)
+                else result.att_inf_func[: np.sum(valid_mask)]
+            )
+            for i, uid in enumerate(unique_ids):
+                mask = valid_ids == uid
+                if np.any(mask):
+                    inf_func_final[i] = np.mean(valid_inf_func[mask])
+    else:
+        inf_func_final = None
+
+    return AttgtResult(attgt=result.att, inf_func=inf_func_final, extra_gt_returns=None)

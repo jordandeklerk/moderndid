@@ -472,7 +472,7 @@ def pte_params_basic():
         target_parameter=None,
         aggregation=None,
         treatment_type=None,
-        xformla="~1",
+        xformula="~1",
     )
 
 
@@ -549,7 +549,7 @@ def att_gt_result_with_data():
         target_parameter=None,
         aggregation=None,
         treatment_type=None,
-        xformla="~1",
+        xformula="~1",
     )
 
     class MockATTGTResult:
@@ -633,7 +633,38 @@ def mock_gt_results_no_dose(att_gt_raw_results):
 def contdid_data():
     from tests.didcont.dgp import simulate_contdid_data
 
-    return simulate_contdid_data(n=1000, seed=12345)
+    data = simulate_contdid_data(n=1000, seed=12345)
+    return data.rename(columns={"time_period": "period"})
+
+
+@pytest.fixture
+def cck_test_data():
+    np.random.seed(42)
+    n = 500
+
+    id_vals = np.repeat(np.arange(1, n + 1), 2)
+    time_vals = np.tile([1, 2], n)
+    group_vals = np.repeat(np.random.choice([0, 1], n, p=[0.5, 0.5]), 2)
+
+    pre_y = np.random.normal(0, 1, n)
+    dose = np.where(group_vals[::2] == 1, np.random.uniform(0, 2, n), 0)
+    post_y = pre_y + 2 * dose + np.random.normal(0, 1, n)
+
+    y = np.empty(2 * n)
+    y[::2] = pre_y
+    y[1::2] = post_y
+
+    d = np.repeat(dose, 2)
+
+    return pd.DataFrame(
+        {
+            "id": id_vals,
+            "time": time_vals,
+            "y": y,
+            "d": d,
+            "g": group_vals,
+        }
+    )
 
 
 @pytest.fixture
@@ -653,7 +684,7 @@ def panel_data_with_group(panel_data_balanced):
     return data
 
 
-def create_mock_gt_results_with_correct_dimensions(degree, knots, n_doses=20):
+def mock_gt_results(degree, knots, n_doses=20):
     if knots is None:
         n_knots = 0
     else:
@@ -743,6 +774,133 @@ def panel_data_with_covariates_estimators():
     )
 
     return df
+
+
+@pytest.fixture
+def balanced_panel_data_bootstrap():
+    np.random.seed(42)
+    return pd.DataFrame(
+        {
+            "id": np.repeat([1, 2, 3], 4),
+            "time": np.tile([2010, 2011, 2012, 2013], 3),
+            "y": np.random.randn(12),
+            "x": np.random.randn(12),
+        }
+    )
+
+
+@pytest.fixture
+def unbalanced_panel_data_bootstrap():
+    return pd.DataFrame(
+        {
+            "id": [1, 1, 1, 2, 2, 3, 3, 3, 3],
+            "time": [1, 2, 3, 1, 3, 1, 2, 3, 4],
+            "y": np.random.randn(9),
+        }
+    )
+
+
+@pytest.fixture
+def basic_attgt_data():
+    return [
+        {"att": 0.1, "group": 2004, "time_period": 2003},
+        {"att": 0.2, "group": 2004, "time_period": 2004},
+        {"att": 0.15, "group": 2004, "time_period": 2005},
+        {"att": 0.05, "group": 2006, "time_period": 2005},
+        {"att": 0.12, "group": 2006, "time_period": 2006},
+    ]
+
+
+@pytest.fixture
+def create_pte_params():
+    def _create(n_units=20, groups=None, times=None, gt_type="att", ret_quantile=0.5):
+        if groups is None:
+            groups = [2004, 2006]
+        if times is None:
+            times = [2003, 2004, 2005, 2006]
+
+        data = pd.DataFrame(
+            {
+                "id": np.repeat(np.arange(1, n_units + 1), len(times)),
+                "time": np.tile(times, n_units),
+                "y": np.random.randn(n_units * len(times)),
+                "G": np.repeat(np.random.choice([0] + groups, n_units), len(times)),
+            }
+        )
+
+        return PTEParams(
+            yname="y",
+            gname="G",
+            tname="time",
+            idname="id",
+            data=data,
+            g_list=np.array(groups),
+            t_list=np.array(times),
+            cband=False,
+            alp=0.05,
+            boot_type="weighted",
+            anticipation=0,
+            base_period="varying",
+            weightsname=None,
+            control_group="nevertreated",
+            gt_type=gt_type,
+            ret_quantile=ret_quantile,
+            biters=100,
+            cl=1,
+            call="test",
+            dname=None,
+            degree=None,
+            num_knots=None,
+            knots=None,
+            dvals=None,
+            target_parameter=None,
+            aggregation=None,
+            treatment_type=None,
+            xformula="~1",
+        )
+
+    return _create
+
+
+@pytest.fixture
+def quantile_test_data():
+    np.random.seed(42)
+    return {
+        "attgt_list": [
+            {"att": 0.1, "group": 2004, "time_period": 2003},
+            {"att": 0.2, "group": 2004, "time_period": 2004},
+        ],
+        "extra_gt_returns_qtt": [
+            {
+                "group": 2004,
+                "time_period": 2003,
+                "extra_gt_returns": {
+                    "F0": np.random.randn(100),
+                    "F1": np.random.randn(100) + 0.5,
+                },
+            },
+            {
+                "group": 2004,
+                "time_period": 2004,
+                "extra_gt_returns": {
+                    "F0": np.random.randn(100),
+                    "F1": np.random.randn(100) + 0.3,
+                },
+            },
+        ],
+        "extra_gt_returns_qott": [
+            {
+                "group": 2004,
+                "time_period": 2003,
+                "extra_gt_returns": {"Fte": np.random.randn(100)},
+            },
+            {
+                "group": 2004,
+                "time_period": 2004,
+                "extra_gt_returns": {"Fte": np.random.randn(100) + 0.2},
+            },
+        ],
+    }
 
 
 @pytest.fixture

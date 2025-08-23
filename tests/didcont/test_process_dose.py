@@ -12,11 +12,11 @@ from moderndid.didcont.panel import (
 )
 from moderndid.didcont.panel.process_dose import (
     _compute_dose_influence_functions,
-    _compute_overall_att_inffunc,
+    _compute_overall_att_inf_func,
     _multiplier_bootstrap_dose,
     _weighted_combine_arrays,
 )
-from tests.didcont.conftest import create_mock_gt_results_with_correct_dimensions
+from tests.didcont.conftest import mock_gt_results
 
 
 def test_dose_result_creation():
@@ -25,18 +25,18 @@ def test_dose_result_creation():
         dose=dose_vals,
         overall_att=0.15,
         overall_att_se=0.02,
-        overall_att_inffunc=np.random.randn(100),
+        overall_att_inf_func=np.random.randn(100),
         overall_acrt=0.08,
         overall_acrt_se=0.01,
-        overall_acrt_inffunc=np.random.randn(100),
-        att_dose=np.array([0.1, 0.15, 0.2]),
-        att_dose_se=np.array([0.02, 0.025, 0.03]),
-        att_dose_crit_val=1.96,
-        att_dose_inffunc=np.random.randn(100, 3),
-        acrt_dose=np.array([0.05, 0.08, 0.10]),
-        acrt_dose_se=np.array([0.01, 0.012, 0.015]),
-        acrt_dose_crit_val=1.96,
-        acrt_dose_inffunc=np.random.randn(100, 3),
+        overall_acrt_inf_func=np.random.randn(100),
+        att_d=np.array([0.1, 0.15, 0.2]),
+        att_d_se=np.array([0.02, 0.025, 0.03]),
+        att_d_crit_val=1.96,
+        att_d_inf_func=np.random.randn(100, 3),
+        acrt_d=np.array([0.05, 0.08, 0.10]),
+        acrt_d_se=np.array([0.01, 0.012, 0.015]),
+        acrt_d_crit_val=1.96,
+        acrt_d_inf_func=np.random.randn(100, 3),
         pte_params=None,
     )
 
@@ -44,8 +44,8 @@ def test_dose_result_creation():
     assert len(result.dose) == 3
     assert result.overall_att == 0.15
     assert result.overall_att_se == 0.02
-    assert len(result.att_dose) == 3
-    assert len(result.acrt_dose) == 3
+    assert len(result.att_d) == 3
+    assert len(result.acrt_d) == 3
 
 
 def test_dose_result_minimal():
@@ -66,10 +66,10 @@ def test_process_dose_gt_basic(mock_gt_results_with_dose, mock_pte_params_with_d
     assert result.overall_acrt is not None
     assert result.overall_acrt_se is not None
     assert len(result.dose) == len(mock_pte_params_with_dose.dvals)
-    assert result.att_dose is not None
-    assert result.acrt_dose is not None
-    assert len(result.att_dose) == len(result.dose)
-    assert len(result.acrt_dose) == len(result.dose)
+    assert result.att_d is not None
+    assert result.acrt_d is not None
+    assert len(result.att_d) == len(result.dose)
+    assert len(result.acrt_d) == len(result.dose)
 
 
 def test_process_dose_gt_no_extra_returns(mock_gt_results_no_dose, mock_pte_params_with_dose):
@@ -139,9 +139,9 @@ def test_process_dose_gt_zero_degree(mock_pte_params_with_dose):
 
     influence_func = np.random.randn(n_units, n_gt) * 0.1
 
-    mock_gt_results = {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": extra_gt_returns}
+    gt_results = {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": extra_gt_returns}
 
-    result = process_dose_gt(mock_gt_results, params)
+    result = process_dose_gt(gt_results, params)
 
     assert isinstance(result, DoseResult)
     assert result.overall_att is not None
@@ -152,11 +152,9 @@ def test_process_dose_gt_no_knots(mock_pte_params_with_dose):
     params_dict["knots"] = None
     params = PTEParams(**params_dict)
 
-    mock_gt_results = create_mock_gt_results_with_correct_dimensions(
-        degree=params_dict["degree"], knots=None, n_doses=len(params_dict["dvals"])
-    )
+    gt_results = mock_gt_results(degree=params_dict["degree"], knots=None, n_doses=len(params_dict["dvals"]))
 
-    result = process_dose_gt(mock_gt_results, params)
+    result = process_dose_gt(gt_results, params)
 
     assert isinstance(result, DoseResult)
     assert result.overall_att is not None
@@ -169,8 +167,8 @@ def test_process_dose_gt_confidence_band_false(mock_gt_results_with_dose, mock_p
 
     result = process_dose_gt(mock_gt_results_with_dose, params)
 
-    assert result.att_dose_crit_val == st.norm.ppf(1 - params.alp / 2)
-    assert result.acrt_dose_crit_val == st.norm.ppf(1 - params.alp / 2)
+    assert result.att_d_crit_val == st.norm.ppf(1 - params.alp / 2)
+    assert result.acrt_d_crit_val == st.norm.ppf(1 - params.alp / 2)
 
 
 def test_weighted_combine_arrays_basic():
@@ -217,7 +215,7 @@ def test_compute_overall_att_inffunc_basic():
     att_influence_matrix = np.random.randn(n_obs, n_groups)
     weights = np.array([0.1, 0.2, 0.3, 0.25, 0.15])
 
-    result = _compute_overall_att_inffunc(weights, att_influence_matrix)
+    result = _compute_overall_att_inf_func(weights, att_influence_matrix)
 
     assert result.shape == (n_obs,)
     expected = np.sum(att_influence_matrix * weights[np.newaxis, :], axis=1)
@@ -227,7 +225,7 @@ def test_compute_overall_att_inffunc_basic():
 def test_compute_overall_att_inffunc_none():
     weights = np.array([0.5, 0.5])
 
-    result = _compute_overall_att_inffunc(weights, None)
+    result = _compute_overall_att_inf_func(weights, None)
 
     assert result is None
 
@@ -366,18 +364,18 @@ def test_summary_dose_result():
         dose=dose_vals,
         overall_att=0.15,
         overall_att_se=0.02,
-        overall_att_inffunc=None,
+        overall_att_inf_func=None,
         overall_acrt=0.08,
         overall_acrt_se=0.01,
-        overall_acrt_inffunc=None,
-        att_dose=np.array([0.1, 0.15, 0.2]),
-        att_dose_se=np.array([0.02, 0.025, 0.03]),
-        att_dose_crit_val=1.96,
-        att_dose_inffunc=None,
-        acrt_dose=np.array([0.05, 0.08, 0.10]),
-        acrt_dose_se=np.array([0.01, 0.012, 0.015]),
-        acrt_dose_crit_val=1.96,
-        acrt_dose_inffunc=None,
+        overall_acrt_inf_func=None,
+        att_d=np.array([0.1, 0.15, 0.2]),
+        att_d_se=np.array([0.02, 0.025, 0.03]),
+        att_d_crit_val=1.96,
+        att_d_inf_func=None,
+        acrt_d=np.array([0.05, 0.08, 0.10]),
+        acrt_d_se=np.array([0.01, 0.012, 0.015]),
+        acrt_d_crit_val=1.96,
+        acrt_d_inf_func=None,
         pte_params=None,
     )
 
@@ -388,10 +386,10 @@ def test_summary_dose_result():
     assert "overall_att_se" in summary
     assert "overall_acrt" in summary
     assert "overall_acrt_se" in summary
-    assert "att_dose" in summary
-    assert "att_dose_se" in summary
-    assert "acrt_dose" in summary
-    assert "acrt_dose_se" in summary
+    assert "att_d" in summary
+    assert "att_d_se" in summary
+    assert "acrt_d" in summary
+    assert "acrt_d_se" in summary
     assert summary["overall_att"] == 0.15
     assert summary["overall_acrt"] == 0.08
 
@@ -477,11 +475,9 @@ def test_process_dose_gt_different_degrees(mock_pte_params_with_dose, degree):
     params_dict["degree"] = degree
     params = PTEParams(**params_dict)
 
-    mock_gt_results = create_mock_gt_results_with_correct_dimensions(
-        degree=degree, knots=params_dict["knots"], n_doses=len(params_dict["dvals"])
-    )
+    gt_results = mock_gt_results(degree=degree, knots=params_dict["knots"], n_doses=len(params_dict["dvals"]))
 
-    result = process_dose_gt(mock_gt_results, params)
+    result = process_dose_gt(gt_results, params)
 
     assert isinstance(result, DoseResult)
     assert result.overall_att is not None
@@ -498,11 +494,11 @@ def test_process_dose_gt_different_knots(mock_pte_params_with_dose, n_knots):
     params_dict["num_knots"] = n_knots
     params = PTEParams(**params_dict)
 
-    mock_gt_results = create_mock_gt_results_with_correct_dimensions(
+    gt_results = mock_gt_results(
         degree=params_dict["degree"], knots=params_dict["knots"], n_doses=len(params_dict["dvals"])
     )
 
-    result = process_dose_gt(mock_gt_results, params)
+    result = process_dose_gt(gt_results, params)
 
     assert isinstance(result, DoseResult)
     assert result.overall_att is not None

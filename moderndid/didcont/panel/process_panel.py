@@ -1,120 +1,16 @@
+# pylint: disable=unused-argument
 """Functions for panel treatment effects."""
 
 import warnings
-from typing import NamedTuple
+from collections import namedtuple
 
 import numpy as np
 import pandas as pd
 
+from .container import PTEParams, PTEResult
+from .estimators import pte_attgt
 
-class PTEParams(NamedTuple):
-    """Parameters for panel treatment effects.
-
-    Attributes
-    ----------
-    yname : str
-        Name of the outcome variable.
-    gname : str
-        Name of the group variable (first treatment period).
-    tname : str
-        Name of the time period variable.
-    idname : str
-        Name of the id variable.
-    data : pd.DataFrame
-        Panel data as a pandas DataFrame.
-    g_list : ndarray
-        Array of unique group identifiers.
-    t_list : ndarray
-        Array of unique time period identifiers.
-    cband : bool
-        Whether to compute a uniform confidence band.
-    alp : float
-        Significance level for confidence intervals.
-    boot_type : str
-        Method for bootstrapping.
-    anticipation : int
-        Number of periods of anticipation.
-    base_period : str
-        Base period for computing ATT(g,t).
-    weightsname : str
-        Name of the weights variable.
-    control_group : str
-        Which units to use as the control group.
-    gt_type : str
-        Type of group-time average treatment effect.
-    ret_quantile : float
-        Quantile to return for conditional distribution.
-    biters : int
-        Number of bootstrap iterations.
-    cl : int
-        Cluster ID for bootstrap.
-    call : str
-        The function call.
-    dname : str
-        Name of the continuous treatment variable.
-    degree : int
-        Degree of the spline for continuous treatment.
-    num_knots : int
-        Number of knots for the spline.
-    knots : ndarray
-        Array of knot locations for the spline.
-    dvals : ndarray
-        Values of the dose to evaluate the dose-response function.
-    target_parameter : str
-        The target parameter of interest.
-    aggregation : str
-        Type of aggregation for results.
-    treatment_type : str
-        Type of treatment (e.g., 'continuous').
-    xformla : str
-        Formula for covariates.
-    """
-
-    yname: str
-    gname: str
-    tname: str
-    idname: str
-    data: pd.DataFrame
-    g_list: np.ndarray
-    t_list: np.ndarray
-    cband: bool
-    alp: float
-    boot_type: str
-    anticipation: int
-    base_period: str
-    weightsname: str
-    control_group: str
-    gt_type: str
-    ret_quantile: float
-    biters: int
-    cl: int
-    call: str
-    dname: str
-    degree: int
-    num_knots: int
-    knots: np.ndarray
-    dvals: np.ndarray
-    target_parameter: str
-    aggregation: str
-    treatment_type: str
-    xformla: str
-
-
-class AttgtResult(NamedTuple):
-    """Container for a single ATT(g,t) result with influence function."""
-
-    attgt: float
-    inf_func: np.ndarray | None
-    extra_gt_returns: dict | None
-
-
-class PTEResult(NamedTuple):
-    """Container for panel treatment effects results."""
-
-    att_gt: object
-    overall_att: object | None
-    event_study: object | None
-    ptep: PTEParams
+OverallResult = namedtuple("OverallResult", ["overall_att", "overall_se", "influence_func"])
 
 
 def pte(
@@ -206,32 +102,101 @@ def pte(
 
     res = compute_pte(ptep=ptep, subset_fun=subset_fun, attgt_fun=attgt_fun, **kwargs)
 
-    if gt_type == "dose":
+    aggregation = kwargs.get("aggregation", "dose")
+    if gt_type == "dose" and aggregation == "dose":
         from moderndid.didcont.panel.process_dose import process_dose_gt
 
         if process_dose_gt_fun is None:
             process_dose_gt_fun = process_dose_gt
 
-        return process_dose_gt_fun(res, ptep, **kwargs)
+        filtered_kwargs = {}
+        if "balance_event" in kwargs:
+            filtered_kwargs["balance_event"] = kwargs["balance_event"]
+        if "min_event_time" in kwargs:
+            filtered_kwargs["min_event_time"] = kwargs["min_event_time"]
+        if "max_event_time" in kwargs:
+            filtered_kwargs["max_event_time"] = kwargs["max_event_time"]
+        return process_dose_gt_fun(res, ptep, **filtered_kwargs)
 
-    if np.all(np.isnan(res["inffunc"])) or ptep.boot_type == "empirical":
-        warnings.warn("Empirical bootstrap not yet implemented, returning raw results")
-        return res
+    if len(res.get("attgt_list", [])) == 0:
+        return PTEResult(
+            att_gt={"att": [], "group": [], "time_period": [], "se": [], "influence_func": None},
+            overall_att=OverallResult(overall_att=np.nan, overall_se=np.nan, influence_func=None),
+            event_study=None,
+            ptep=ptep,
+        )
 
-    from moderndid.did.aggte import aggte
+    if ptep.boot_type == "empirical" or np.all(np.isnan(res["influence_func"])):
+        from .bootstrap import panel_empirical_bootstrap
 
+        bootstrap_result = panel_empirical_bootstrap(
+            attgt_list=res["attgt_list"],
+            pte_params=ptep,
+            setup_pte_fun=setup_pte,
+            subset_fun=subset_fun,
+            attgt_fun=attgt_fun,
+            extra_gt_returns=res.get("extra_gt_returns", []),
+            compute_pte_fun=compute_pte,
+            **kwargs,
+        )
+
+        att_gt_data = {
+            "att": bootstrap_result.attgt_results["att"].values,
+            "group": bootstrap_result.attgt_results["group"].values,
+            "time_period": bootstrap_result.attgt_results["time_period"].values,
+            "se": bootstrap_result.attgt_results.get(
+                "se", np.nan * np.ones(len(bootstrap_result.attgt_results))
+            ).values,
+        }
+
+        att_gt_result = {
+            "att": att_gt_data["att"],
+            "group": att_gt_data["group"],
+            "time_period": att_gt_data["time_period"],
+            "se": att_gt_data["se"],
+            "influence_func": None,
+        }
+
+        overall_att = OverallResult(
+            overall_att=bootstrap_result.overall_results["att"],
+            overall_se=bootstrap_result.overall_results["se"],
+            influence_func=None,
+        )
+
+        event_study = None
+        if bootstrap_result.dyn_results is not None:
+            event_study = {
+                "e": bootstrap_result.dyn_results["e"].values,
+                "att_e": bootstrap_result.dyn_results["att_e"].values,
+                "se": bootstrap_result.dyn_results.get(
+                    "se", np.nan * np.ones(len(bootstrap_result.dyn_results))
+                ).values,
+            }
+
+        return PTEResult(att_gt=att_gt_result, overall_att=overall_att, event_study=event_study, ptep=ptep)
+
+    from .process_aggte import aggregate_att_gt
     from .process_attgt import process_att_gt
 
     att_gt = process_att_gt(res, ptep)
-    overall_att = aggte(att_gt, type="group", bstrap=True, cband=cband, alp=ptep.alp)
 
     min_e = kwargs.get("min_e", -np.inf)
     max_e = kwargs.get("max_e", np.inf)
     balance_e = kwargs.get("balance_e")
 
-    event_study = aggte(
-        att_gt, type="dynamic", bstrap=True, cband=cband, alp=ptep.alp, min_e=min_e, max_e=max_e, balance_e=balance_e
+    event_study = aggregate_att_gt(
+        att_gt, aggregation_type="dynamic", balance_event=balance_e, min_event_time=min_e, max_event_time=max_e
     )
+
+    aggregation = kwargs.get("aggregation", "dose")
+    if aggregation == "eventstudy":
+        overall_att = OverallResult(
+            overall_att=event_study.overall_att,
+            overall_se=event_study.overall_se,
+            influence_func=event_study.influence_func.get("overall") if event_study.influence_func else None,
+        )
+    else:
+        overall_att = aggregate_att_gt(att_gt, aggregation_type="overall")
 
     return PTEResult(att_gt=att_gt, overall_att=overall_att, event_study=event_study, ptep=ptep)
 
@@ -282,6 +247,7 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
                 if tp == (g - 1 - anticipation):
                     attgt_list.append({"att": 0, "group": g, "time_period": tp})
                     extra_gt_returns.append({"extra_gt_returns": None, "group": g, "time_period": tp})
+                    inffunc[:, counter] = 0
                     counter += 1
                     continue
 
@@ -290,10 +256,19 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
             n1 = gt_subset["n1"]
             disidx = gt_subset["disidx"]
 
-            attgt_result = attgt_fun(gt_data=gt_data, **kwargs)
+            attgt_kwargs = kwargs.copy()
+            if ptep.gt_type == "dose":
+                attgt_kwargs.update(
+                    {
+                        "dvals": ptep.dvals,
+                        "knots": ptep.knots,
+                        "degree": ptep.degree,
+                        "num_knots": ptep.num_knots,
+                    }
+                )
 
+            attgt_result = attgt_fun(gt_data=gt_data, **attgt_kwargs)
             attgt_list.append({"att": attgt_result.attgt, "group": g, "time_period": tp})
-
             extra_gt_returns.append({"extra_gt_returns": attgt_result.extra_gt_returns, "group": g, "time_period": tp})
 
             if attgt_result.inf_func is not None:
@@ -305,7 +280,7 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
 
             counter += 1
 
-    return {"attgt_list": attgt_list, "inffunc": inffunc, "extra_gt_returns": extra_gt_returns}
+    return {"attgt_list": attgt_list, "influence_func": inffunc, "extra_gt_returns": extra_gt_returns}
 
 
 def setup_pte_basic(
@@ -365,7 +340,7 @@ def setup_pte_basic(
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": "~1",
+        "xformula": "~1",
     }
     return PTEParams(**params_dict)
 
@@ -388,17 +363,15 @@ def setup_pte(
     biters=100,
     cl=1,
     call=None,
-    xformla="~1",
+    xformula="~1",
+    **kwargs,
 ):
     """Perform setup for panel treatment effects."""
     data = data.copy()
 
     g_series = data[gname]
     period_series = data[tname]
-    if weightsname is None:
-        weights_series = np.ones(len(data))
-    else:
-        weights_series = data[weightsname].values
+    weights_series = data[weightsname].values if weightsname else np.ones(len(data))
 
     data["G"] = g_series
     data["id"] = data[idname]
@@ -412,10 +385,9 @@ def setup_pte(
         and np.all(original_time_periods == np.floor(original_time_periods))
         and np.all(original_time_periods > 0)
     ):
-        raise ValueError("time periods must be positive integers.")
+        raise ValueError("Time periods must be positive integers.")
 
-    original_groups = np.unique(data["G"])
-    original_groups = np.sort(original_groups)[1:]
+    original_groups = np.sort(np.unique(data["G"]))[1:]
 
     sorted_original_time_periods = np.sort(original_time_periods)
     time_map = {orig: i + 1 for i, orig in enumerate(sorted_original_time_periods)}
@@ -428,22 +400,16 @@ def setup_pte(
 
     if base_period == "universal":
         t_list = np.sort(recoded_time_periods)
-        g_list = recoded_groups[np.isin(recoded_groups, t_list[1:])]
-        if len(t_list) > 1:
-            g_list = g_list[g_list >= (t_list[1] + anticipation)]
-        else:
-            g_list = np.array([])
-        groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
-        data = data[~data["G"].isin(groups_to_drop)]
-    else:
+        min_t_for_g = t_list[1] if len(t_list) > 1 else np.inf
+    else:  # varying
         t_list = np.sort(recoded_time_periods)[required_pre_periods:]
-        g_list = recoded_groups[np.isin(recoded_groups, t_list)]
-        if len(t_list) > 0:
-            g_list = g_list[g_list >= (np.min(t_list) + anticipation)]
-        else:
-            g_list = np.array([])
-        groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
-        data = data[~data["G"].isin(groups_to_drop)]
+        min_t_for_g = np.min(t_list) if len(t_list) > 0 else np.inf
+
+    g_list = recoded_groups[np.isin(recoded_groups, t_list)]
+    g_list = g_list[g_list >= (min_t_for_g + anticipation)]
+
+    groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
+    data = data[~data["G"].isin(groups_to_drop)]
 
     params_dict = {
         "yname": yname,
@@ -473,9 +439,60 @@ def setup_pte(
         "target_parameter": None,
         "aggregation": None,
         "treatment_type": None,
-        "xformla": xformla,
+        "xformula": xformula,
     }
     return PTEParams(**params_dict)
+
+
+def pte_default(
+    yname,
+    gname,
+    tname,
+    idname,
+    data,
+    xformula="~1",
+    d_outcome=False,
+    d_covs_formula="~ -1",
+    lagged_outcome_cov=False,
+    est_method="dr",
+    anticipation=0,
+    base_period="varying",
+    control_group="notyettreated",
+    weightsname=None,
+    cband=True,
+    alp=0.05,
+    boot_type="multiplier",
+    biters=100,
+    cl=1,
+    **kwargs,
+):
+    """Compute panel treatment effects with default settings."""
+    res = pte(
+        yname=yname,
+        gname=gname,
+        tname=tname,
+        idname=idname,
+        data=data,
+        setup_pte_fun=setup_pte,
+        subset_fun=_two_by_two_subset,
+        attgt_fun=pte_attgt,
+        xformula=xformula,
+        d_outcome=d_outcome,
+        d_covs_formula=d_covs_formula,
+        lagged_outcome_cov=lagged_outcome_cov,
+        est_method=est_method,
+        anticipation=anticipation,
+        base_period=base_period,
+        control_group=control_group,
+        weightsname=weightsname,
+        cband=cband,
+        alp=alp,
+        boot_type=boot_type,
+        biters=biters,
+        cl=cl,
+        **kwargs,
+    )
+    return res
 
 
 def setup_pte_cont(
@@ -485,7 +502,7 @@ def setup_pte_cont(
     tname,
     idname,
     dname,
-    xformla="~1",
+    xformula="~1",
     target_parameter="ATT",
     aggregation="simple",
     treatment_type="continuous",
@@ -530,7 +547,7 @@ def setup_pte_cont(
         tname=tname,
         idname=idname,
         data=data,
-        xformla=xformla,
+        xformula=xformula,
         cband=cband,
         alp=alp,
         boot_type=boot_type,
@@ -548,7 +565,6 @@ def setup_pte_cont(
     knots = _choose_knots_quantile(positive_doses, num_knots)
     if dvals is None:
         if len(positive_doses) > 0:
-            # Following R code: create a sequence from min to max
             dvals = np.linspace(positive_doses.min(), positive_doses.max(), 50)
         else:
             dvals = np.array([])
@@ -580,38 +596,32 @@ def _two_by_two_subset(
     base_period="varying",
     **kwargs,
 ):
-    """Compute 2x2 subset for binary treatment DiD."""
+    """Compute two-by-two subset for binary treatment DiD."""
     main_base_period = g - anticipation - 1
 
     if base_period == "varying":
-        if tp < (g - anticipation):
-            base_period_val = tp - 1
-        else:
-            base_period_val = main_base_period
-    else:
+        base_period_val = tp - 1 if tp < (g - anticipation) else main_base_period
+    else:  # universal
         base_period_val = main_base_period
 
-    gname = kwargs.get("gname", "G")
-    tname = kwargs.get("tname", "period")
-    idname = kwargs.get("idname", "id")
-
     if control_group == "notyettreated":
-        this_data = data[(data[gname] == g) | (data[gname] > tp) | (data[gname] == 0)].copy()
-    else:
-        this_data = data[(data[gname] == g) | (data[gname] == 0)].copy()
+        unit_mask = (data["G"] == g) | (data["G"] > tp) | (data["G"] == 0)
+    else:  # 'nevertreated'
+        unit_mask = (data["G"] == g) | (data["G"] == 0)
 
-    this_data = this_data[(this_data[tname] == tp) | (this_data[tname] == base_period_val)]
-    this_data["name"] = np.where(this_data[tname] == tp, "post", "pre")
-    this_data["D"] = 1 * (this_data[gname] == g)
+    this_data = data.loc[unit_mask].copy()
 
-    yname = kwargs.get("yname", "Y")
-    rename_dict = {tname: "period", idname: "id"}
-    if yname in this_data.columns:
-        rename_dict[yname] = "Y"
-    this_data = this_data.rename(columns=rename_dict)
+    time_mask = (this_data["period"] == tp) | (this_data["period"] == base_period_val)
+    this_data = this_data.loc[time_mask]
+
+    this_data["name"] = np.where(this_data["period"] == tp, "post", "pre")
+    this_data["D"] = 1 * (this_data["G"] == g)
+
+    if this_data["D"].nunique() < 2:
+        return {"gt_data": pd.DataFrame(), "n1": 0, "disidx": np.array([])}
 
     n1 = this_data["id"].nunique()
-    all_ids = data[idname].unique()
+    all_ids = data["id"].unique()
     subset_ids = this_data["id"].unique()
     disidx = np.isin(all_ids, subset_ids)
 
@@ -658,23 +668,13 @@ def _get_first_difference(df, idname, yname, tname):
     return df[yname] - lagged
 
 
-def _get_group_inner(unit_df, tname, treatname):
-    """Get first treatment period for a single unit."""
-    if (unit_df[treatname] == 0).all():
-        return 0
-
-    treated_df = unit_df[unit_df[treatname] > 0]
-    if len(treated_df) > 0:
-        return treated_df[tname].iloc[0]
-    return 0
-
-
 def _get_group(df, idname, tname, treatname):
-    """Identify first treatment period for each unit."""
-    df = df.sort_values([idname, tname])
-    groups = {}
-    for unit_id, unit_df in df.groupby(idname):
-        groups[unit_id] = _get_group_inner(unit_df, tname, treatname)
-    result = df[idname].map(groups)
-    result.name = None
-    return result
+    """Identify first treatment period for each unit using a vectorized approach."""
+    df_sorted = df.sort_values([idname, tname])
+
+    is_treated = df_sorted[treatname] > 0
+    first_treat_mask = (is_treated.groupby(df_sorted[idname]).cumsum() == 1) & is_treated
+
+    id_to_group = df_sorted[df_sorted[tname].where(first_treat_mask).notna()].groupby(idname)[tname].first()
+
+    return df[idname].map(id_to_group).fillna(0).astype(int)
