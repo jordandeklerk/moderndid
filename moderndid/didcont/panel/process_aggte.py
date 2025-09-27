@@ -542,8 +542,12 @@ def _format_pte_aggregation_result(result):
     lower_bound = result.overall_att - z * result.overall_se
     upper_bound = result.overall_att + z * result.overall_se
     star = "*" if (lower_bound > 0 or upper_bound < 0) else ""
-    lines.append("\nOverall summary of ATT's:")
-    lines.append(f"\n   {'ATT':<12} {'Std. Error':<12} [{conf_level}% Conf. Interval]")
+    effect_label = "ATT"
+    if pte_params and getattr(pte_params, "target_parameter", None) == "slope":
+        effect_label = "ACRT"
+
+    lines.append(f"\nOverall summary of {effect_label}'s:")
+    lines.append(f"\n   {effect_label:<12} {'Std. Error':<12} [{conf_level}% Conf. Interval]")
     lines.append(
         f"   {result.overall_att:<12.4f} {result.overall_se:<12.4f} [{lower_bound:7.4f}, {upper_bound:7.4f}] {star}"
     )
