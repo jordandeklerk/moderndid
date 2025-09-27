@@ -19,6 +19,13 @@ PLOT_CONFIG = {
     "axis_color": "#2c3e50",
     "spine_linewidth": 1.5,
     "spine_linewidth_event_study": 2,
+    "event_study_ci_style": {
+        "fmt": "none",
+        "capsize": 5,
+        "capthick": 1.5,
+        "elinewidth": 2,
+        "alpha": 0.8,
+    },
     "legend_style": {
         "loc": "best",
         "frameon": True,
@@ -40,8 +47,8 @@ COLOR_PALETTES = {
         "overall": "#e74c3c",
     },
     "event_study": {
-        "main": "#e74c3c",
-        "ci": "#3498db",
+        "main": "red",
+        "ci": "blue",
         "zero_line": "#2c3e50",
         "treatment_line": "#7f8c8d",
     },
@@ -55,12 +62,10 @@ def plot_cont_did(
     show_overall=False,
     show_confidence_bands=True,
     rescale_factor=1.0,
+    ax=None,
     **kwargs,
 ):
     """Plot results from continuous treatment DiD estimation.
-
-    Creates visualizations for continuous treatment DiD results, either
-    showing treatment effects as a function of dose or as an event study.
 
     Parameters
     ----------
@@ -88,7 +93,7 @@ def plot_cont_did(
         Matplotlib figure object containing the plot.
     """
     if hasattr(dose_obj, "event_study") and dose_obj.event_study is not None:
-        return _plot_pte_event_study(dose_obj, type=type, alpha=alpha, **kwargs)
+        return _plot_pte_event_study(dose_obj, type=type, alpha=alpha, ax=ax, **kwargs)
 
     if not hasattr(dose_obj, "dose"):
         raise ValueError("Input must be a DoseResult or PTEResult object from cont_did")
@@ -100,6 +105,7 @@ def plot_cont_did(
         show_overall=show_overall,
         show_confidence_bands=show_confidence_bands,
         rescale_factor=rescale_factor,
+        ax=ax,
         **kwargs,
     )
 
@@ -112,94 +118,106 @@ def _plot_dose_response(
     show_confidence_bands=True,
     rescale_factor=1.0,
     smooth=True,
+    smooth_line=None,
+    smooth_band=True,
+    ax=None,
     **kwargs,
 ):
     """Plot dose-response function for continuous treatment."""
-    sns.set_style("white")
-    sns.set_context("notebook", font_scale=1.2)
+    sns.set_style("whitegrid")
+    sns.set_context("notebook", font_scale=1.15)
 
     if type == "att":
         dose_values = dose_result.dose * rescale_factor
         effects = dose_result.att_d * rescale_factor
-        se = dose_result.att_d_se * rescale_factor if dose_result.att_d_se is not None else None
+        se = dose_result.att_d_se * rescale_factor if getattr(dose_result, "att_d_se", None) is not None else None
+        if (se is None) or (not np.all(np.isfinite(se))) or np.allclose(se, 0):
+            se = _se_from_inf(getattr(dose_result, "att_d_inf_func", None))
+
+            if se is not None:
+                se = se * rescale_factor
         crit_val = dose_result.att_d_crit_val
         overall_effect = dose_result.overall_att * rescale_factor if show_overall else None
-        ylabel = "att" if type == "att" else "ATT(d)"
+        ylabel = "att d"
     elif type == "acrt":
         dose_values = dose_result.dose * rescale_factor
         effects = dose_result.acrt_d * rescale_factor
-        se = dose_result.acrt_d_se * rescale_factor if dose_result.acrt_d_se is not None else None
+        se = dose_result.acrt_d_se * rescale_factor if getattr(dose_result, "acrt_d_se", None) is not None else None
+
+        if (se is None) or (not np.all(np.isfinite(se))) or np.allclose(se, 0):
+            se = _se_from_inf(getattr(dose_result, "acrt_d_inf_func", None))
+            if se is not None:
+                se = se * rescale_factor
         crit_val = dose_result.acrt_d_crit_val
         overall_effect = dose_result.overall_acrt * rescale_factor if show_overall else None
-        ylabel = "acrt" if type == "acrt" else "ACRT(d)"
+        ylabel = "acrt d"
     else:
         raise ValueError(f"Invalid type: {type}. Must be 'att' or 'acrt'")
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    created_here = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(9, 5.5))
+        created_here = True
+    else:
+        fig = ax.figure
 
-    if smooth and len(dose_values) > 3:
-        dose_fine = np.linspace(dose_values.min(), dose_values.max(), 200)
+    if smooth_line is None:
+        smooth_line = smooth
 
-        f_effects = interp1d(dose_values, effects, kind="cubic", fill_value="extrapolate")
-        effects_smooth = f_effects(dose_fine)
+    if show_confidence_bands and se is not None:
+        if crit_val is not None and not np.isnan(crit_val):
+            z_crit = crit_val
+        else:
+            z_crit = stats.norm.ppf(1 - alpha / 2)
 
-        if show_confidence_bands and se is not None:
+        if smooth_band and len(dose_values) > 3:
+            x_band = np.linspace(dose_values.min(), dose_values.max(), 200)
+            f_eff = interp1d(dose_values, effects, kind="cubic", fill_value="extrapolate")
             f_se = interp1d(dose_values, se, kind="cubic", fill_value="extrapolate")
-            se_smooth = f_se(dose_fine)
+            band_eff = f_eff(x_band)
+            band_se = f_se(x_band)
+            lb = band_eff - z_crit * band_se
+            ub = band_eff + z_crit * band_se
+        else:
+            order = np.argsort(dose_values)
+            x_band = dose_values[order]
+            band_eff = effects[order]
+            band_se = se[order]
+            lb = band_eff - z_crit * band_se
+            ub = band_eff + z_crit * band_se
 
-            if crit_val is not None and not np.isnan(crit_val):
-                z_crit = crit_val
-            else:
-                z_crit = stats.norm.ppf(1 - alpha / 2)
-
-            lower_bound = effects_smooth - z_crit * se_smooth
-            upper_bound = effects_smooth + z_crit * se_smooth
-
+        finite = _finite_interval(x_band, lb, ub)
+        if finite is not None:
+            xfb, lb, ub = finite
             ax.fill_between(
-                dose_fine,
-                lower_bound,
-                upper_bound,
-                color="#CCCCCC",
-                alpha=0.7,
+                xfb,
+                lb,
+                ub,
+                color="#bfbfbf",
+                alpha=0.5,
                 linewidth=0,
                 edgecolor="none",
+                zorder=1,
             )
 
-        ax.plot(
-            dose_fine,
-            effects_smooth,
-            color="#404040",
-            linewidth=2.5,
-            solid_capstyle="round",
-            solid_joinstyle="round",
-        )
+    if smooth_line and len(dose_values) > 3:
+        x_line = np.linspace(dose_values.min(), dose_values.max(), 200)
+        f_eff = interp1d(dose_values, effects, kind="cubic", fill_value="extrapolate")
+        y_line = f_eff(x_line)
     else:
-        if show_confidence_bands and se is not None:
-            if crit_val is not None and not np.isnan(crit_val):
-                z_crit = crit_val
-            else:
-                z_crit = stats.norm.ppf(1 - alpha / 2)
+        order = np.argsort(dose_values)
+        x_line = dose_values[order]
+        y_line = effects[order]
 
-            lower_bound = effects - z_crit * se
-            upper_bound = effects + z_crit * se
-
-            ax.fill_between(
-                dose_values,
-                lower_bound,
-                upper_bound,
-                color="#CCCCCC",
-                alpha=0.7,
-                linewidth=0,
-            )
-
-        ax.plot(
-            dose_values,
-            effects,
-            color="#404040",
-            linewidth=2.5,
-            solid_capstyle="round",
-            solid_joinstyle="round",
-        )
+    ax.plot(
+        x_line,
+        y_line,
+        color="#3a3a3a",
+        linewidth=2.8,
+        solid_capstyle="round",
+        solid_joinstyle="round",
+        zorder=2,
+    )
 
     if overall_effect is not None and show_overall:
         ax.axhline(
@@ -210,33 +228,32 @@ def _plot_dose_response(
             alpha=0.6,
         )
 
-    ax.axhline(y=0, color="#666666", linestyle="-", alpha=0.3, linewidth=0.8)
+    ax.axhline(y=0, color="#6b6b6b", linestyle="-", alpha=0.5, linewidth=1.1)
 
-    ax.set_xlabel("dose", fontsize=12, color="#333333")
-    ax.set_ylabel(ylabel, fontsize=12, color="#333333")
+    ax.set_xlabel("dose", fontsize=12, color="#2f2f2f")
+    ax.set_ylabel(ylabel, fontsize=12, color="#2f2f2f")
 
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_linewidth(0.8)
-    ax.spines["bottom"].set_linewidth(0.8)
-    ax.spines["left"].set_color("#666666")
-    ax.spines["bottom"].set_color("#666666")
+    for side in ["top", "right", "left", "bottom"]:
+        ax.spines[side].set_visible(True)
+        ax.spines[side].set_linewidth(0.9)
+        ax.spines[side].set_color("#8a8a8a")
 
-    ax.grid(True, alpha=0.2, linestyle="-", linewidth=0.5, color="#CCCCCC")
+    ax.grid(True, axis="both", alpha=0.18, linestyle="-", linewidth=0.5, color="#d9d9d9")
     ax.set_axisbelow(True)
 
     ax.tick_params(
         axis="both",
         which="major",
         labelsize=10,
-        colors="#666666",
+        colors="#4a4a4a",
         length=4,
         width=0.8,
     )
 
     ax.set_xlim(dose_values.min(), dose_values.max())
 
-    plt.tight_layout()
+    if created_here:
+        plt.tight_layout()
     return fig
 
 
@@ -244,6 +261,7 @@ def _plot_pte_event_study(
     pte_result: PTEResult,
     type="att",
     alpha=0.05,
+    ax=None,
     **kwargs,
 ):
     """Plot event study for continuous treatment PTEResult."""
@@ -267,22 +285,24 @@ def _plot_pte_event_study(
 
     ylabel = "ACRT" if is_acrt or type == "acrt" else "ATT"
 
-    fig, ax = plt.subplots(figsize=PLOT_CONFIG["figure_size_event_study"])
+    created_here = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=PLOT_CONFIG["figure_size_event_study"])
+        created_here = True
+    else:
+        fig = ax.figure
 
     z_crit = stats.norm.ppf(1 - alpha / 2)
     if hasattr(event_study, "critical_value") and event_study.critical_value is not None:
         z_crit = event_study.critical_value
 
+    ci_style = PLOT_CONFIG.get("event_study_ci_style", {})
     ax.errorbar(
         event_times,
         effects,
         yerr=z_crit * se,
-        fmt="none",
-        ecolor=COLOR_PALETTES["event_study"]["ci"],
-        elinewidth=2,
-        capsize=5,
-        capthick=1.5,
-        alpha=0.8,
+        color=COLOR_PALETTES["event_study"]["ci"],
+        **ci_style,
     )
 
     ax.scatter(
@@ -341,22 +361,23 @@ def _plot_pte_event_study(
     for text in legend.get_texts():
         text.set_color("#2c3e50")
 
-    plt.tight_layout()
+    if created_here:
+        plt.tight_layout()
     return fig
 
 
-def _apply_axis_styling(ax):
-    """Apply consistent axis styling."""
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_linewidth(PLOT_CONFIG["spine_linewidth"])
-    ax.spines["bottom"].set_linewidth(PLOT_CONFIG["spine_linewidth"])
-    ax.spines["left"].set_color(PLOT_CONFIG["axis_color"])
-    ax.spines["bottom"].set_color(PLOT_CONFIG["axis_color"])
-    ax.grid(True, alpha=0.3, linestyle="--", linewidth=0.5)
-    ax.tick_params(
-        axis="both",
-        which="major",
-        labelsize=PLOT_CONFIG["tick_labelsize"],
-        colors=PLOT_CONFIG["axis_color"],
-    )
+def _se_from_inf(inf):
+    """Compute standard error from influence functions when provided."""
+    if inf is None:
+        return None
+    if isinstance(inf, np.ndarray) and inf.ndim == 2 and inf.size > 0:
+        n = inf.shape[0]
+        return np.std(inf, axis=0) / np.sqrt(max(n, 1))
+    return None
+
+
+def _finite_interval(x_values, lower, upper):
+    mask = np.isfinite(x_values) & np.isfinite(lower) & np.isfinite(upper)
+    if not np.any(mask):
+        return None
+    return x_values[mask], lower[mask], upper[mask]

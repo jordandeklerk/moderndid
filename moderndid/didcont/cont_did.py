@@ -517,7 +517,13 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     inf_func1 = x_deriv_overall @ coef[1:] - acrt_overall
 
     score = results.resid[:, np.newaxis] * x_treated
-    bread = np.linalg.inv(x_treated.T @ x_treated / len(x_treated))
+    # IF_i(beta) ≈ bread @ (x_i epsilon_i), where bread ≈ (X'X / n)^(-1).
+    # We pass per-observation 'score' so downstream code can apply bread and
+    # aggregate with group/time weights appropriately.
+    n_treated = len(x_treated)
+    bread = np.linalg.inv(x_treated.T @ x_treated / n_treated)
+
+    x_expanded = score
     avg_deriv = np.mean(x_deriv_overall, axis=0)
     inf_func2 = score @ bread @ np.concatenate([[0], avg_deriv])
 
@@ -532,6 +538,7 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
         "dvals": dvals,
         "coef": coef,
         "bread": bread,
+        "x_expanded": x_expanded,
         "score": score,
     }
 
@@ -569,7 +576,14 @@ def cont_two_by_two_subset(
     subset_data = subset_data.loc[time_mask].copy()
 
     subset_data["name"] = np.where(subset_data["period"] == tp, "post", "pre")
-    subset_data["D"] = subset_data["D"] * (subset_data["G"] == g)
+    # Use binary group indicator for level event studies; keep continuous dose for slope paths
+    target_parameter = kwargs.get("target_parameter", None)
+    aggregation = kwargs.get("aggregation", None)
+    if aggregation == "eventstudy" and target_parameter == "level":
+        subset_data["D"] = (subset_data["G"] == g).astype(int)
+    else:
+        # Keep continuous dose but zero it out for units not in cohort g
+        subset_data["D"] = subset_data["D"] * (subset_data["G"] == g)
 
     n1 = subset_data["id"].nunique()
     all_ids = data["id"].unique()
