@@ -27,15 +27,15 @@ Each subpackage below is designed as a self-contained module with its own estima
 
 **[`moderndid.didhonest`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didhonest)** — Sensitivity analysis for violations of parallel trends with multiple restriction types ([Rambachan & Roth, 2023](https://asheshrambachan.github.io/assets/files/hpt-draft.pdf)).
 
+**[`moderndid.didcont`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcont)** — Continuous treatment DiD for dose-response relationships and non-binary treatments ([Callaway et al., 2024](https://arxiv.org/pdf/2107.02637)).
+
 ### Active Development
 
-**[`moderndid.didcont`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcont)** — Continuous treatment DiD for dose-response relationships and non-binary treatments ([Callaway et al., 2024](https://arxiv.org/pdf/2107.02637)).
+**[`moderndid.didtriple`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didtriple)** - Triple DiD estimators with regression adjustment, inverse probability weighting, and doubly robust estimators that remain valid under covariate-adjusted DDD parallel trends ([Ortiz-Villavicencio & Sant'Anna, 2025](https://arxiv.org/pdf/2505.09942)).
 
 ### Planned Development
 
 **[`moderndid.didinter`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didinter)** — Intertemporal DiD for treatment effects where the treatment may be non-binary, non-absorbing, and the outcome may be affected by treatment lags ([Chaisemartin & D'Haultfœuille, 2024](https://arxiv.org/pdf/2007.04267)).
-
-**[`moderndid.didtriple`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didtriple)** - Triple DiD estimators with regression adjustment, inverse probability weighting, and doubly robust estimators that remain valid under covariate-adjusted DDD parallel trends ([Ortiz-Villavicencio & Sant'Anna, 2025](https://arxiv.org/pdf/2505.09942)).
 
 **[`moderndid.didml`](https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didml)** — Modern machine learning approaches to DiD for estimation of time-varying conditional average treatment effects on the treated ([Hatamyar et al., 2023](https://arxiv.org/pdf/2310.11962)).
 
