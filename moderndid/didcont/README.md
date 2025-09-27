@@ -4,8 +4,8 @@ The `moderndid.didcont` module extends difference-in-differences estimators to s
 
 [Callaway, Goodman-Bacon, and Sant'Anna (2024)](https://arxiv.org/abs/2107.02637) develop estimators for identifying dose-specific treatment effects when treatment intensity varies continuously, and the implementation here follows their framework.
 
-> [!NOTE]
-> **Status: Alpha.** The core estimators are implemented and tested, but APIs may still evolve and additional features remain under development. Feedback and bug reports are welcome.
+> [!WARNING]
+> The core estimators are implemented and tested, but APIs may still evolve and additional features remain under development. Feedback and bug reports are welcome.
 
 ## Capabilities
 
@@ -26,7 +26,7 @@ The `moderndid.didcont` module extends difference-in-differences estimators to s
 
 ## Core Concepts
 
-The main entry point is `cont_did`, which expects a balanced panel in long format. Key requirements:
+The main entry point is `cont_did()`, which expects a balanced panel in long format. Key requirements:
 
 1. **Dose values are time-invariant.** For units that never receive treatment, set the dose to its never-treated value (typically 0) in every period.
 2. **Pre-period convention.** For treated units, set the dose equal to its eventual value even before adoption. This keeps the treatment definition consistent in every period.
@@ -119,11 +119,14 @@ fig_acrt = plot_cont_did(cd_res, type='acrt', show_confidence_bands=True)
 
 The first plot reports the estimated dose-response curve `ATT(d)` with simultaneous confidence bands. The second plot shows the derivative `ACRT(d)`, interpreted as the average causal response to a marginal increase in the dose.
 
-#### Event-study Aggregations
+### Event Study Aggregations
+
+#### Event Study for ATT
 
 We can also consider event study aggregations. The first is an event study aggregation for `ATT`. The second is an event study aggregation for `ACRT`:
 
 ```python
+# Event Study
 cd_res_es_level = cont_did(
   yname = "Y",
   tname = "time_period",
@@ -173,7 +176,7 @@ Estimation Method: att
 
 ![Event Study ATT](/assets/cont_event_study_att.png)
 
-#### Event-study ACRT
+#### Event Study for ACRT
 
 The event-study view averages across doses to show how effects evolve relative to time of treatment. The ATT plot targets level effects, while the ACRT plot focuses on how the marginal response changes over exposure length.
 
