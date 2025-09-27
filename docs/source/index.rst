@@ -42,7 +42,7 @@ ModernDiD: Modern Difference-in-Differences in Python
       The Examples gallery contains practical demonstrations of different DiD estimators with real-world data scenarios.
 
    .. grid-item-card:: API Reference
-      :link: api/api
+      :link: api/index
       :link-type: doc
       :link-alt: API
 
@@ -57,6 +57,6 @@ ModernDiD: Modern Difference-in-Differences in Python
    User Guide <user_guide/user_guide>
    Examples <examples/index>
    Background <background/index>
-   API <api/api>
+   API <api/index>
    Development <dev/contributing>
    Release Notes <release/index>
