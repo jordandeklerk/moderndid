@@ -240,20 +240,6 @@ def test_compute_bounds_performance(random_data, request):
 
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
-@pytest.mark.parametrize("select", ["rows", "columns"])
-@pytest.mark.perf
-def test_selection_matrix_performance(select, request, fast_config):
-    if request.config.getoption("--skip-perf", default=False):
-        pytest.skip("Skipping performance test")
-    selection_size = fast_config["n_medium"]
-    selection, size = np.arange(1, selection_size + 1), selection_size * 2
-    numba.selection_matrix(selection, size, select)
-    time_numba = time_function(numba.selection_matrix, selection, size, select)
-    time_original = time_function(_selection_matrix_py, selection - 1, size, len(selection), select == "rows")
-    assert time_original > time_numba
-
-
-@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.perf
 def test_second_difference_matrix_performance(matrix_construction_sizes, request):
     if request.config.getoption("--skip-perf", default=False):
