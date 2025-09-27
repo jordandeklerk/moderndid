@@ -1,8 +1,6 @@
 # Difference-in-Differences with Continuous Treatments
 
-The `moderndid.didcont` module extends difference-in-differences estimators to settings where treatment intensity is continuous ("dose") and adoption can be staggered across groups. It implements the estimators in Callaway, Goodman-Bacon, and Sant'Anna (2024) and provides plotting utilities aligned with the documentation style used across `moderndid`.
-
-[Callaway, Goodman-Bacon, and Sant'Anna (2024)](https://arxiv.org/abs/2107.02637) develop estimators for identifying dose-specific treatment effects when treatment intensity varies continuously, and the implementation here follows their framework.
+The `moderndid.didcont` module extends difference-in-differences estimators to settings where treatment intensity is continuous ("dose") and adoption can be staggered across groups. It implements the estimators in [Callaway, Goodman-Bacon, and Sant'Anna (2024)](https://arxiv.org/abs/2107.02637).
 
 > [!WARNING]
 > The core estimators are implemented and tested, but APIs may still evolve and additional features remain under development. Feedback and bug reports are welcome.
