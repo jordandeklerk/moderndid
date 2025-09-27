@@ -33,6 +33,7 @@ from .panel import (
     setup_pte_basic,
     setup_pte_cont,
 )
+from .plots import plot_cont_did
 from .utils import (
     _quantile_basis,
     avoid_zero_division,
@@ -48,6 +49,7 @@ from .utils import (
 
 __all__ = [
     "cont_did",
+    "plot_cont_did",
     # Main NPIV estimation functions
     "npiv",
     "npiv_est",
