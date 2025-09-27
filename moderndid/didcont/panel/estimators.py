@@ -102,7 +102,9 @@ def pte_attgt(
     if "G" in treated_post.columns and len(treated_post) > 0:
         this_g = treated_post["G"].iloc[0]
     else:
-        this_g = None
+        # try to infer group from any treated rows (pre or post)
+        treated_any = gt_data[gt_data["D"] == 1]
+        this_g = treated_any["G"].iloc[0] if ("G" in treated_any.columns and len(treated_any) > 0) else None
     this_tp = post_data["period"].unique()[0] if len(post_data) > 0 else None
 
     pre_data = gt_data[gt_data["name"] == "pre"].copy()
@@ -177,9 +179,11 @@ def pte_attgt(
             )
         except (ValueError, np.linalg.LinAlgError) as e:
             if "Failed to solve linear system" in str(e) or "singular" in str(e).lower():
+                where = ""
+                if this_g is not None and this_tp is not None:
+                    where = f" for group {this_g} in period {this_tp}"
                 warnings.warn(
-                    f"DR estimator failed due to singularity issues for group {this_g} in period {this_tp}. "
-                    f"Switching to regression adjustment.",
+                    f"DR estimator failed due to singularity issues{where}. Switching to regression adjustment.",
                     UserWarning,
                 )
                 result = reg_did_panel(

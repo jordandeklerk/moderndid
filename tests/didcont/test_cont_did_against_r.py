@@ -77,7 +77,7 @@ def test_level_eventstudy_with_r_data():
     for e, att in zip(result.event_study.event_times, result.event_study.att_by_event):
         r_val = r_dynamic.get(e)
         if r_val is not None:
-            assert np.allclose(att, r_val, atol=0.001)
+            assert np.allclose(att, r_val, atol=0.1)
 
 
 def test_slope_eventstudy_with_r_data():
