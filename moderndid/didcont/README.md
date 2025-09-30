@@ -7,7 +7,7 @@ The `moderndid.didcont` module extends difference-in-differences estimators to s
 
 ## Capabilities
 
-### ✅ Currently Supported
+### Currently Supported
 - Continuous, time-invariant treatment doses with staggered adoption
 - Average treatment effects by dose (`ATT(d)`) and average causal response functions (`ACRT(d)`, derivatives of the dose-response)
 - Aggregation across event time (event-study views) or across doses (dose-response views)
@@ -15,7 +15,7 @@ The `moderndid.didcont` module extends difference-in-differences estimators to s
 - Nonparametric estimation using the Chen–Christensen–Kankanala (CCK) procedure for two-period settings
 - Uniform confidence bands via multiplier bootstrap
 
-### 🚧 Not Yet Supported
+### Not Yet Supported
 - Discrete-only treatments (can be handled by other modules)
 - Data-driven dose models with staggered adoption (CCK currently limited to two periods)
 - Repeated cross-sections or unbalanced panels
