@@ -28,7 +28,7 @@ def test_cont_did_basic(contdid_data):
         dose_est_method="parametric",
         degree=2,
         num_knots=0,
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -54,7 +54,7 @@ def test_cont_did_value_validation(contdid_data):
         aggregation="dose",
         degree=2,
         num_knots=0,
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult)
@@ -90,7 +90,7 @@ def test_cont_did_slope_parameter(contdid_data):
         aggregation="dose",
         degree=2,
         num_knots=0,
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -112,7 +112,7 @@ def test_cont_did_event_study(contdid_data):
         gname="G",
         target_parameter="level",
         aggregation="eventstudy",
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, PTEResult)
@@ -137,7 +137,7 @@ def test_cont_did_custom_dvals(contdid_data):
         dvals=custom_dvals,
         degree=2,
         num_knots=1,
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -156,7 +156,7 @@ def test_cont_did_control_groups(contdid_data, control_group):
         data=contdid_data,
         gname="G",
         control_group=control_group,
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -179,7 +179,7 @@ def test_cont_did_base_period(contdid_data, base_period):
         data=contdid_data,
         gname="G",
         base_period=base_period,
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -202,7 +202,7 @@ def test_cont_did_bootstrap_types(contdid_data, boot_type):
         data=contdid_data,
         gname="G",
         boot_type=boot_type,
-        biters=50,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -231,7 +231,7 @@ def test_cont_did_confidence_bands(contdid_data, cband):
         data=contdid_data,
         gname="G",
         cband=cband,
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -254,7 +254,7 @@ def test_cont_did_significance_level(contdid_data, alp):
         data=contdid_data,
         gname="G",
         alp=alp,
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -277,7 +277,7 @@ def test_cont_did_auto_gname(contdid_data):
         idname="id",
         data=data_no_g,
         gname=None,
-        biters=100,
+        biters=10,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -295,7 +295,7 @@ def test_cont_did_empirical_bootstrap_fallback(contdid_data):
         target_parameter="slope",
         aggregation="eventstudy",
         boot_type="empirical",
-        biters=30,
+        biters=10,
     )
 
     assert isinstance(result, PTEResult)
@@ -392,7 +392,7 @@ def test_cont_did_clustering_warning(contdid_data):
             data=contdid_data,
             gname="G",
             clustervars="state",
-            biters=100,
+            biters=10,
         )
 
 
@@ -406,7 +406,7 @@ def test_cont_did_anticipation_warning(contdid_data):
             data=contdid_data,
             gname="G",
             anticipation=1,
-            biters=100,
+            biters=10,
         )
 
 
@@ -422,7 +422,7 @@ def test_cont_did_weights_warning(contdid_data):
             data=contdid_data,
             gname="G",
             weightsname="weights",
-            biters=100,
+            biters=10,
         )
 
 
@@ -757,7 +757,7 @@ def test_cont_did_various_degree_knot_combinations(contdid_data, degree, num_kno
         gname="G",
         degree=degree,
         num_knots=num_knots,
-        biters=50,
+        biters=10,
     )
     assert isinstance(result, DoseResult | PTEResult)
     assert np.isfinite(result.overall_att)

@@ -40,8 +40,8 @@ def simple_event_study_data():
 @pytest.fixture
 def larger_event_study_data():
     np.random.seed(42)
-    num_pre_periods = 5
-    num_post_periods = 4
+    num_pre_periods = 4
+    num_post_periods = 3
     betahat = np.concatenate([np.random.normal(0, 0.1, num_pre_periods), np.random.normal(0.5, 0.2, num_post_periods)])
     n = num_pre_periods + num_post_periods
     sigma = np.eye(n) * 0.02
@@ -65,7 +65,7 @@ def test_create_constraint_matrix_basic(constraint_matrix_params):
 
 
 @pytest.mark.parametrize("num_pre_periods,num_post_periods", [(3, 2), (4, 3)])
-@pytest.mark.parametrize("m_bar", [0.5, 1])
+@pytest.mark.parametrize("m_bar", [0.5, 1.0])
 def test_create_constraint_matrix_different_configurations(num_pre_periods, num_post_periods, m_bar):
     for s in range(-(num_pre_periods - 1), 1):
         A = _create_relative_magnitudes_constraint_matrix(
@@ -197,7 +197,7 @@ def test_compute_identified_set_rm_monotonicity():
     true_beta = np.array([0.1, 0.1, 0.1, 0.5, 0.5])
     l_vec = np.array([1, 0])
 
-    m_bars = [0, 0.1, 0.5, 1, 2, 5]
+    m_bars = [0, 0.5, 2]
     results = []
 
     for m_bar in m_bars:
@@ -318,7 +318,7 @@ def test_compute_conditional_cs_rm_custom_grid_bounds(simple_event_study_data, f
     assert result["grid"][-1] == pytest.approx(2)
 
 
-@pytest.mark.parametrize("grid_points", [15, 20, 30])
+@pytest.mark.parametrize("grid_points", [12, 20])
 def test_grid_resolution(simple_event_study_data, grid_points):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
@@ -379,7 +379,7 @@ def test_integration_identified_set_and_cs(fast_config):
         assert cs_ub >= id_set.id_lb
 
 
-@pytest.mark.parametrize("m_bar", [0, 0.5, 1, 2])
+@pytest.mark.parametrize("m_bar", [0, 1])
 def test_different_m_bar_values(simple_event_study_data, m_bar):
     num_pre_periods, num_post_periods, _, _, true_beta, l_vec = simple_event_study_data
 

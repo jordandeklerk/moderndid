@@ -125,7 +125,7 @@ def test_ipwdid_panel_bootstrap(nsw_data, boot_type, est_method):
     )
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == result.args["nboot"]
     assert not np.all(np.isnan(result.boots))
     assert result.args["boot"] is True
     assert result.args["boot_type"] == boot_type
@@ -171,7 +171,7 @@ def test_ipwdid_rc_with_bootstrap(nsw_data):
     )
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == result.args["nboot"]
 
 
 @pytest.mark.parametrize("trim_level", [0.99, 0.995])

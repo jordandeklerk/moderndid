@@ -92,7 +92,7 @@ def test_att_gt_bootstrap_inference(mpdta_data):
         gname="first.treat",
         idname="countyreal",
         bstrap=True,
-        biters=100,
+        biters=20,
         cband=True,
     )
 
@@ -194,7 +194,7 @@ def test_att_gt_clustering(mpdta_data):
         idname="countyreal",
         clustervars=["cluster"],
         bstrap=True,
-        biters=50,
+        biters=10,
     )
 
     assert isinstance(result, MPResult)

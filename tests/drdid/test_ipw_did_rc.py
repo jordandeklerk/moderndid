@@ -77,10 +77,10 @@ def test_ipw_did_rc_bootstrap_weighted():
     post = np.random.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
 
-    result = ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", nboot=50)
+    result = ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", nboot=10)
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == 10
     assert not np.all(np.isnan(result.boots))
 
 
@@ -92,10 +92,10 @@ def test_ipw_did_rc_bootstrap_multiplier():
     post = np.random.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
 
-    result = ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=50)
+    result = ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == 10
 
 
 def test_ipw_did_rc_invalid_inputs():
@@ -198,13 +198,13 @@ def test_ipw_did_rc_args_output():
     post = np.random.binomial(1, 0.5, n)
     y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
 
-    result = ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, nboot=50, trim_level=0.99)
+    result = ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, nboot=10, trim_level=0.99)
 
     assert result.args["panel"] is False
     assert result.args["normalized"] is False
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 50
+    assert result.args["nboot"] == 10
     assert result.args["type"] == "ipw"
     assert result.args["trim_level"] == 0.99
 

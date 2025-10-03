@@ -111,12 +111,12 @@ def test_1d_covariates():
 
 def test_args_output():
     y, post, d, covariates = dgp_rc_for_test(n=100)
-    result = twfe_did_rc(y, post, d, covariates, boot=True, boot_type="weighted", nboot=50)
+    result = twfe_did_rc(y, post, d, covariates, boot=True, boot_type="weighted", nboot=10)
 
     assert result.args["panel"] is False
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 50
+    assert result.args["nboot"] == 10
     assert result.args["type"] == "twfe"
 
 

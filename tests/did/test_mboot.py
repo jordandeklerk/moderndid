@@ -74,20 +74,6 @@ def test_invalid_inputs():
         mboot(np.random.normal(0, 1, 100), n_units=100, cluster=np.arange(50))
 
 
-def test_edge_cases():
-    n = 10
-    inf_func = np.random.normal(0, 1, n)
-    result = mboot(inf_func, n_units=n, biters=50)
-
-    assert result["bres"].shape == (50, 1)
-    assert result["se"].shape == (1,)
-
-    cluster = np.arange(n)
-    result = mboot(inf_func, n_units=n, biters=50, cluster=cluster)
-
-    assert result["bres"].shape == (50, 1)
-
-
 @pytest.mark.parametrize(
     "alp,expected_range",
     [

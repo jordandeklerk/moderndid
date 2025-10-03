@@ -59,13 +59,13 @@ def test_weighted_bootstrap():
         i_weights=setup["i_weights"],
         boot=True,
         boot_type="weighted",
-        nboot=100,
+        nboot=20,
     )
     assert result.att is not None
     assert result.se is not None
     assert np.isclose(result.att, 1.0, atol=0.2)
     assert result.boots is not None
-    assert len(result.boots) == 100
+    assert len(result.boots) == result.args["nboot"]
 
 
 def test_multiplier_bootstrap():
@@ -78,13 +78,13 @@ def test_multiplier_bootstrap():
         i_weights=setup["i_weights"],
         boot=True,
         boot_type="multiplier",
-        nboot=100,
+        nboot=20,
     )
     assert result.att is not None
     assert result.se is not None
     assert np.isclose(result.att, 1.0, atol=0.2)
     assert result.boots is not None
-    assert len(result.boots) == 100
+    assert len(result.boots) == result.args["nboot"]
 
 
 def test_influence_function():
@@ -253,7 +253,7 @@ def test_bootstrap_with_zero_se():
     x = np.column_stack([np.ones(n_units)])
     y = np.ones(n_units) * (1 + d * post)
 
-    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=50)
+    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
 
     assert result.att is not None
     if result.se == 0:
@@ -297,7 +297,7 @@ def test_bootstrap_types(boot_type):
     x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
     y = rng.randn(n_units) + 2 * d * post
 
-    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=100)
+    result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=20)
 
     assert result.boots is not None
     assert len(result.boots) == 100

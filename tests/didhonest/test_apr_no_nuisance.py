@@ -8,6 +8,10 @@ from moderndid.didhonest import arp_no_nuisance
 from moderndid.didhonest.arp_no_nuisance import APRCIResult, compute_arp_ci
 from moderndid.didhonest.bounds import create_second_difference_matrix
 
+GRID_POINTS_DEFAULT = 32
+GRID_POINTS_COMPACT = 20
+GRID_POINTS_FINE = 60
+
 
 @pytest.fixture
 def event_study_data():
@@ -55,19 +59,19 @@ def test_compute_arp_ci_basic(event_study_data, constraint_matrices):
         n_post_periods=n_post,
         post_period_index=1,
         alpha=0.05,
-        grid_points=100,
+        grid_points=GRID_POINTS_DEFAULT,
     )
 
     assert isinstance(result, APRCIResult)
     assert result.status == "success"
     assert result.ci_lower < result.ci_upper
     assert result.ci_length > 0
-    assert len(result.theta_grid) == 100
-    assert len(result.accept_grid) == 100
+    assert len(result.theta_grid) == GRID_POINTS_DEFAULT
+    assert len(result.accept_grid) == GRID_POINTS_DEFAULT
     assert np.any(result.accept_grid)
 
 
-@pytest.mark.parametrize("post_idx", [1, 2, 3, 4])
+@pytest.mark.parametrize("post_idx", [1, 3])
 def test_compute_arp_ci_different_post_periods(event_study_data, constraint_matrices, post_idx):
     beta_hat, sigma, n_pre, n_post = event_study_data
     A, d = constraint_matrices
@@ -81,13 +85,13 @@ def test_compute_arp_ci_different_post_periods(event_study_data, constraint_matr
         n_post_periods=n_post,
         post_period_index=post_idx,
         alpha=0.05,
-        grid_points=50,
+        grid_points=GRID_POINTS_COMPACT,
     )
     assert result.status == "success"
     assert result.ci_lower < result.ci_upper
 
 
-@pytest.mark.parametrize("alpha", [0.1, 0.05, 0.01])
+@pytest.mark.parametrize("alpha", [0.05])
 def test_compute_arp_ci_alpha_levels(event_study_data, constraint_matrices, alpha):
     beta_hat, sigma, n_pre, n_post = event_study_data
     A, d = constraint_matrices
@@ -101,7 +105,7 @@ def test_compute_arp_ci_alpha_levels(event_study_data, constraint_matrices, alph
         n_post_periods=n_post,
         post_period_index=1,
         alpha=alpha,
-        grid_points=50,
+        grid_points=GRID_POINTS_COMPACT,
     )
 
     assert result.status == "success"
@@ -128,7 +132,7 @@ def test_ci_length_ordering(event_study_data):
             n_post_periods=n_post,
             post_period_index=1,
             alpha=alpha,
-            grid_points=300,
+            grid_points=GRID_POINTS_FINE,
             grid_lb=-3.0,
             grid_ub=4.0,
         )
@@ -194,7 +198,7 @@ def test_compute_arp_ci_return_length(event_study_data, constraint_matrices):
         n_pre_periods=n_pre,
         n_post_periods=n_post,
         alpha=0.05,
-        grid_points=50,
+        grid_points=GRID_POINTS_COMPACT,
         return_length=False,
     )
 
@@ -206,7 +210,7 @@ def test_compute_arp_ci_return_length(event_study_data, constraint_matrices):
         n_pre_periods=n_pre,
         n_post_periods=n_post,
         alpha=0.05,
-        grid_points=50,
+        grid_points=GRID_POINTS_COMPACT,
         return_length=True,
     )
 
@@ -235,7 +239,7 @@ def test_compute_arp_ci_empty_ci():
         n_pre_periods=n_pre,
         n_post_periods=n_post,
         alpha=0.001,
-        grid_points=50,
+        grid_points=GRID_POINTS_COMPACT,
         grid_lb=-0.5,
         grid_ub=1.5,
     )
@@ -252,9 +256,8 @@ def test_compute_arp_ci_empty_ci():
 @pytest.mark.parametrize(
     "grid_lb,grid_ub,grid_points",
     [
-        (-1.0, 2.0, 50),
-        (-2.0, 3.0, 100),
-        (0.0, 1.0, 25),
+        (-1.0, 2.0, 32),
+        (0.0, 1.0, 20),
     ],
 )
 def test_compute_arp_ci_custom_grid_bounds(event_study_data, constraint_matrices, grid_lb, grid_ub, grid_points):

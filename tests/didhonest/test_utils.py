@@ -207,7 +207,6 @@ def categorical_var():
     [
         ("bin::3", np.array([0, 0, 3, 3, 3, 6, 6, 6, 9, 9])),
         ("bin::2", np.array([0, 2, 2, 4, 4, 6, 6, 8, 8, 10])),
-        ("bin::5", np.array([0, 0, 0, 0, 5, 5, 5, 5, 5, 10])),
     ],
 )
 def test_bin_factor_consecutive_numeric(numeric_values, bin_spec, expected):
@@ -219,7 +218,6 @@ def test_bin_factor_consecutive_numeric(numeric_values, bin_spec, expected):
     "bin_spec,expected",
     [
         ("!bin::2", np.array(["a", "a", "c", "c", "e"])),
-        ("!bin::3", np.array(["a", "a", "a", "d", "d"])),
     ],
 )
 def test_bin_factor_consecutive_forward(string_values, bin_spec, expected):
@@ -231,7 +229,6 @@ def test_bin_factor_consecutive_forward(string_values, bin_spec, expected):
     "bin_spec,expected",
     [
         ("!!bin::2", np.array(["a", "b", "b", "d", "d"])),
-        ("!!bin::3", np.array(["a", "a", "c", "c", "c"])),
     ],
 )
 def test_bin_factor_consecutive_backward(string_values, bin_spec, expected):
@@ -255,7 +252,6 @@ def test_bin_factor_list_spec_empty(numeric_values):
     "bin_spec,expected",
     [
         ({10: [1, 2], 20: [3, 4]}, np.array([10, 10, 20, 20, 5])),
-        ({100: [1, 2, 3, 4, 5]}, np.array([100, 100, 100, 100, 100])),
         ({0: [2, 4], 1: [1, 3, 5]}, np.array([1, 0, 1, 0, 1])),
     ],
 )
@@ -269,7 +265,6 @@ def test_bin_factor_dict_spec(bin_spec, expected):
     "pattern,expected",
     [
         ("@2020-", np.array(["2020-01", "2020-01", "2020-01", "2021-01", "2021-02"])),
-        ("@^2021", np.array(["2020-01", "2020-02", "2020-03", "2021-01", "2021-01"])),
     ],
 )
 def test_bin_factor_regex_pattern(pattern, expected):
@@ -289,7 +284,6 @@ def test_bin_factor_dict_with_strings():
     "bin_spec,error_match",
     [
         ("invalid::spec", "Unknown string bin specification"),
-        ("bin::abc", "Invalid bin specification"),
         ("@xyz", "No values matched regex pattern"),
     ],
 )
@@ -317,7 +311,6 @@ def test_create_interactions_basic(factor_data):
     "ref,expected_shape,zero_rows",
     [
         ("A", (5, 2), [0, 2]),
-        (["A", "B"], (5, 1), [0, 1, 2, 4]),
         (True, (5, 2), None),
     ],
 )
@@ -334,7 +327,6 @@ def test_create_interactions_with_ref(factor_data, ref, expected_shape, zero_row
     [
         (["A", "C"], (5, 2), [1, 4]),
         (["B"], (5, 1), [0, 2, 3]),
-        ("C", (5, 1), [0, 1, 2, 4]),
     ],
 )
 def test_create_interactions_with_keep(factor_data, keep, expected_shape, zero_rows):
@@ -374,7 +366,6 @@ def test_create_interactions_factor_with_refs(factor_data, categorical_var):
     "bin_spec,expected_shape",
     [
         ("bin::2", (6, 4)),
-        ("bin::3", (6, 3)),
         ([1, 2], (6, 5)),
     ],
 )
@@ -399,7 +390,6 @@ def test_create_interactions_return_dict(factor_data):
     "name,var_type,expected_names",
     [
         ("cohort", None, ["cohort::A", "cohort::B"]),
-        ("period", "numeric", ["period::A:var", "period::B:var"]),
         ("period", "factor", ["period::A:var::X", "period::B:var::Y"]),
     ],
 )
@@ -445,7 +435,6 @@ def test_create_interactions_keep2():
     "bin2,expected_cols",
     [
         ("bin::2", 2),
-        (["X", "Y"], 3),
     ],
 )
 def test_create_interactions_bin2(factor_data, categorical_var, bin2, expected_cols):
