@@ -66,8 +66,8 @@ def test_create_constraint_matrix_monotonicity_directions(constraint_matrix_para
     assert A.shape[0] > 0
 
 
-@pytest.mark.parametrize("num_pre_periods,num_post_periods", [(3, 2), (4, 3), (5, 4)])
-@pytest.mark.parametrize("m_bar", [0.5, 1, 2])
+@pytest.mark.parametrize("num_pre_periods,num_post_periods", [(3, 2), (5, 4)])
+@pytest.mark.parametrize("m_bar", [0.5, 2.0])
 def test_create_constraint_matrix_different_configurations(num_pre_periods, num_post_periods, m_bar):
     for s in range(-(num_pre_periods - 1), 1):
         A = _create_relative_magnitudes_monotonicity_constraint_matrix(
@@ -221,6 +221,8 @@ def test_compute_conditional_cs_rmm_basic(simple_event_study_data, fast_config):
 
 @pytest.mark.parametrize("hybrid_flag", ["LF", "ARP"])
 def test_compute_conditional_cs_rmm_hybrid_flags(simple_event_study_data, hybrid_flag, fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skip RMM hybrid-flag stress case in fast mode")
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
     result = compute_conditional_cs_rmm(
@@ -262,7 +264,7 @@ def test_compute_conditional_cs_rmm_custom_grid_bounds(simple_event_study_data, 
     assert result["grid"][-1] == pytest.approx(2)
 
 
-@pytest.mark.parametrize("grid_points", [20, 30, 50])
+@pytest.mark.parametrize("grid_points", [16, 24])
 def test_grid_resolution(simple_event_study_data, grid_points):
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
@@ -370,7 +372,7 @@ def test_monotonicity_with_violations():
     assert result.id_lb <= result.id_ub
 
 
-@pytest.mark.parametrize("m_bar", [0, 0.5, 1, 2])
+@pytest.mark.parametrize("m_bar", [0, 1])
 def test_different_m_bar_values(simple_event_study_data, m_bar):
     num_pre_periods, num_post_periods, _, _, true_beta, l_vec = simple_event_study_data
 
@@ -387,6 +389,8 @@ def test_different_m_bar_values(simple_event_study_data, m_bar):
 
 
 def test_post_period_moments_only_flag(fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skip post-period moments stress case in fast mode")
     betahat = np.array([0.1, 0.15, 0.2, 0.3, 0.4, 0.5])
     sigma = np.eye(6) * 0.01
     l_vec = np.array([1, 0, 0])

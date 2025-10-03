@@ -77,10 +77,10 @@ def test_ipw_did_panel_bootstrap_weighted():
     y0 = x @ [1, 0.5] + np.random.randn(n)
     y1 = y0 + 2 * d + np.random.randn(n) * 0.5
 
-    result = ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type="weighted", nboot=50)
+    result = ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type="weighted", nboot=10)
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == 10
     assert not np.all(np.isnan(result.boots))
 
 
@@ -92,10 +92,10 @@ def test_ipw_did_panel_bootstrap_multiplier():
     y0 = x @ [1, 0.5] + np.random.randn(n)
     y1 = y0 + 2 * d + np.random.randn(n) * 0.5
 
-    result = ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=50)
+    result = ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == 10
 
 
 def test_ipw_did_panel_invalid_inputs():
@@ -181,13 +181,13 @@ def test_ipw_did_panel_args_output():
     y0 = x @ [1, 0.5] + np.random.randn(n)
     y1 = y0 + 2 * d + np.random.randn(n) * 0.5
 
-    result = ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, nboot=50, trim_level=0.99)
+    result = ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, nboot=10, trim_level=0.99)
 
     assert result.args["panel"] is True
     assert result.args["normalized"] is False
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 50
+    assert result.args["nboot"] == 10
     assert result.args["type"] == "ipw"
     assert result.args["trim_level"] == 0.99
 

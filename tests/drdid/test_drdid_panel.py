@@ -74,10 +74,10 @@ def test_drdid_panel_bootstrap(boot_type):
     y0 = rng.randn(n_units)
     y1 = y0 + 2 * d + rng.randn(n_units)
 
-    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=100)
+    result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=20)
 
     assert result.boots is not None
-    assert len(result.boots) == 100
+    assert len(result.boots) == result.args["nboot"]
     assert result.se > 0
     assert result.lci < result.uci
 

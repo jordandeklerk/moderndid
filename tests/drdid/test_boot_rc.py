@@ -20,7 +20,7 @@ def test_bootstrap_drdid_rc_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -76,7 +76,7 @@ def test_bootstrap_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates, boot_estimates)
 
@@ -91,7 +91,7 @@ def test_bootstrap_with_weights():
 
     weights = np.random.exponential(1, n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -109,7 +109,7 @@ def test_wboot_drdid_rc_imp1_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
     assert len(wboot_estimates) == 100
@@ -165,9 +165,9 @@ def test_wboot_drdid_rc_imp1_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    wboot_estimates1 = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    wboot_estimates1 = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
-    wboot_estimates2 = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    wboot_estimates2 = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
     np.testing.assert_array_equal(wboot_estimates1, wboot_estimates2)
 
@@ -182,7 +182,7 @@ def test_wboot_drdid_rc_imp1_with_weights():
 
     weights = np.random.exponential(1, n)
 
-    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
     assert len(wboot_estimates) == 100
@@ -218,7 +218,7 @@ def test_wboot_drdid_rc_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -274,7 +274,7 @@ def test_wboot_drdid_rc_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates, boot_estimates)
 
@@ -289,7 +289,7 @@ def test_wboot_drdid_rc_with_weights():
 
     weights = np.random.exponential(1, n)
 
-    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100

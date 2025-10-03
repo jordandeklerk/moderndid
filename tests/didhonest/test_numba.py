@@ -229,7 +229,9 @@ def time_function(func, *args, **kwargs):
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.perf
-def test_compute_bounds_performance(random_data, request):
+def test_compute_bounds_performance(random_data, request, fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skipping numba perf test in fast mode")
     if request.config.getoption("--skip-perf", default=False):
         pytest.skip("Skipping performance test")
     eta, sigma, A, b, z = random_data
@@ -241,7 +243,9 @@ def test_compute_bounds_performance(random_data, request):
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.perf
-def test_second_difference_matrix_performance(matrix_construction_sizes, request):
+def test_second_difference_matrix_performance(matrix_construction_sizes, request, fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skipping numba perf test in fast mode")
     if request.config.getoption("--skip-perf", default=False):
         pytest.skip("Skipping performance test")
     num_pre, num_post = matrix_construction_sizes
@@ -254,7 +258,9 @@ def test_second_difference_matrix_performance(matrix_construction_sizes, request
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.perf
-def test_monotonicity_matrix_performance(matrix_construction_sizes, request):
+def test_monotonicity_matrix_performance(matrix_construction_sizes, request, fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skipping numba perf test in fast mode")
     if request.config.getoption("--skip-perf", default=False):
         pytest.skip("Skipping performance test")
     num_pre, num_post = matrix_construction_sizes
@@ -267,7 +273,9 @@ def test_monotonicity_matrix_performance(matrix_construction_sizes, request):
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.perf
-def test_first_differences_matrix_performance(matrix_construction_sizes, request):
+def test_first_differences_matrix_performance(matrix_construction_sizes, request, fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skipping numba perf test in fast mode")
     if request.config.getoption("--skip-perf", default=False):
         pytest.skip("Skipping performance test")
     num_pre, num_post = matrix_construction_sizes
@@ -280,7 +288,9 @@ def test_first_differences_matrix_performance(matrix_construction_sizes, request
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 @pytest.mark.perf
-def test_grid_search_performance(grid_search_sizes, request):
+def test_grid_search_performance(grid_search_sizes, request, fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skipping numba perf test in fast mode")
     if request.config.getoption("--skip-perf", default=False):
         pytest.skip("Skipping performance test")
     data = grid_search_sizes

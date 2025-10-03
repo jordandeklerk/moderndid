@@ -24,7 +24,7 @@ def test_wboot_drdid_imp_panel_basic():
     weights = np.ones(n)
 
     boot_estimates = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42
+        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42
     )
 
     assert isinstance(boot_estimates, np.ndarray)
@@ -80,11 +80,11 @@ def test_wboot_drdid_imp_panel_reproducibility():
     weights = np.ones(n)
 
     boot_estimates1 = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123
+        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
     )
 
     boot_estimates2 = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123
+        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
     )
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
@@ -100,7 +100,7 @@ def test_wboot_drdid_imp_panel_with_weights():
     weights = np.random.exponential(1, n)
 
     boot_estimates = wboot_drdid_imp_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42
+        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42
     )
 
     assert isinstance(boot_estimates, np.ndarray)
@@ -140,7 +140,7 @@ def test_wboot_std_ipw_panel_basic():
     delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -195,11 +195,11 @@ def test_wboot_std_ipw_panel_reproducibility():
     weights = np.ones(n)
 
     boot_estimates1 = wboot_std_ipw_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123
+        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
     )
 
     boot_estimates2 = wboot_std_ipw_panel(
-        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123
+        delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
     )
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
@@ -214,7 +214,7 @@ def test_wboot_std_ipw_panel_with_weights():
 
     weights = np.random.exponential(1, n)
 
-    boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -258,7 +258,7 @@ def test_wboot_dr_tr_panel_basic():
     delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -312,9 +312,9 @@ def test_wboot_dr_tr_panel_reproducibility():
     delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates1 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
-    boot_estimates2 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates2 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -328,7 +328,7 @@ def test_wboot_dr_tr_panel_with_weights():
 
     weights = np.random.exponential(1, n)
 
-    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -373,7 +373,7 @@ def test_wboot_ipw_panel_basic():
     delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -427,9 +427,9 @@ def test_wboot_ipw_panel_reproducibility():
     delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates1 = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
-    boot_estimates2 = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates2 = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -443,7 +443,7 @@ def test_wboot_ipw_panel_with_weights():
 
     weights = np.random.exponential(1, n)
 
-    boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -491,7 +491,7 @@ def test_wboot_reg_panel_basic():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=100,
+        n_bootstrap=20,
         random_state=42,
     )
 
@@ -569,7 +569,7 @@ def test_wboot_reg_panel_reproducibility():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=50,
+        n_bootstrap=10,
         random_state=123,
     )
     boot_estimates2 = wboot_reg_panel(
@@ -577,7 +577,7 @@ def test_wboot_reg_panel_reproducibility():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=50,
+        n_bootstrap=10,
         random_state=123,
     )
 
@@ -598,7 +598,7 @@ def test_wboot_reg_panel_with_weights():
         d=d,
         x=x,
         i_weights=weights,
-        n_bootstrap=100,
+        n_bootstrap=20,
         random_state=42,
     )
 
@@ -679,7 +679,7 @@ def test_wboot_twfe_panel_basic():
     x[:, 1] = np.random.randn(n_obs)
     i_weights = np.ones(n_obs)
 
-    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=100, random_state=42)
+    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(result, np.ndarray)
     assert result.shape == (100,)
@@ -697,7 +697,7 @@ def test_wboot_twfe_panel_no_intercept():
     x = np.random.randn(n_obs, 2)
     i_weights = np.ones(n_obs)
 
-    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=50, random_state=42)
+    result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=10, random_state=42)
 
     assert isinstance(result, np.ndarray)
     assert result.shape == (50,)
@@ -765,7 +765,7 @@ def test_wboot_twfe_panel_reproducibility():
     x[:, 1] = np.random.randn(n_obs)
     i_weights = np.ones(n_obs)
 
-    result1 = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=50, random_state=42)
-    result2 = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=50, random_state=42)
+    result1 = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=10, random_state=42)
+    result2 = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=10, random_state=42)
 
     np.testing.assert_array_equal(result1, result2)

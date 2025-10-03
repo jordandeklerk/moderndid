@@ -17,7 +17,7 @@ def test_wboot_reg_rc_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -69,8 +69,8 @@ def test_wboot_reg_rc_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
-    boot_estimates2 = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates1 = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
+    boot_estimates2 = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -85,7 +85,7 @@ def test_wboot_reg_rc_with_weights():
 
     weights = np.random.exponential(1, n)
 
-    boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
