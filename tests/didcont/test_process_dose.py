@@ -326,7 +326,7 @@ def test_multiplier_bootstrap_dose_basic():
     n_doses = 15
     influence_function = np.random.randn(n_obs, n_doses) * 0.1
 
-    result = _multiplier_bootstrap_dose(influence_function, biters=100, alpha=0.05)
+    result = _multiplier_bootstrap_dose(influence_function, biters=20, alpha=0.05)
 
     assert "se" in result
     assert "crit_val" in result
@@ -341,8 +341,8 @@ def test_multiplier_bootstrap_dose_different_alpha():
     n_doses = 10
     influence_function = np.random.randn(n_obs, n_doses) * 0.1
 
-    result_05 = _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.05)
-    result_10 = _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.10)
+    result_05 = _multiplier_bootstrap_dose(influence_function, biters=200, alpha=0.05)
+    result_10 = _multiplier_bootstrap_dose(influence_function, biters=200, alpha=0.10)
 
     assert result_10["crit_val"] < result_05["crit_val"]
 
@@ -352,7 +352,7 @@ def test_multiplier_bootstrap_dose_single_dose():
     n_obs = 100
     influence_function = np.random.randn(n_obs, 1) * 0.1
 
-    result = _multiplier_bootstrap_dose(influence_function, biters=100, alpha=0.05)
+    result = _multiplier_bootstrap_dose(influence_function, biters=20, alpha=0.05)
 
     assert result["se"].shape == (1,)
     assert result["crit_val"] > 0

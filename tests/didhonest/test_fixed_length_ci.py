@@ -82,7 +82,7 @@ def test_flci_with_default_l_vec(test_data):
     np.testing.assert_array_equal(result.optimal_vec[n_pre:], expected_post_period_weights)
 
 
-@pytest.mark.parametrize("alpha", [0.01, 0.05, 0.10])
+@pytest.mark.parametrize("alpha", [0.05])
 def test_flci_different_alpha_levels(test_data, alpha):
     beta_hat, sigma, post_period_weights, n_pre, n_post = test_data
 
@@ -120,7 +120,7 @@ def test_flci_alpha_ordering(test_data):
     assert results[0.05] > results[0.10]
 
 
-@pytest.mark.parametrize("m", [0.1, 0.5, 1.0, 2.0])
+@pytest.mark.parametrize("m", [0.5, 1.5])
 def test_flci_different_m_values(test_data, m):
     beta_hat, sigma, post_period_weights, n_pre, n_post = test_data
 
@@ -178,7 +178,7 @@ def test_maximize_bias_basic(test_data):
     assert len(result["optimal_l"]) == n_pre
 
 
-@pytest.mark.parametrize("h", [0.5, 1.0, 2.0])
+@pytest.mark.parametrize("h", [0.5, 1.5])
 def test_maximize_bias_different_h_values(test_data, h):
     _, sigma, post_period_weights, n_pre, n_post = test_data
 

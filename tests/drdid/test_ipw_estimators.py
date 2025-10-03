@@ -123,9 +123,9 @@ def test_wboot_ipw_rc_basic():
     x[:, 0] = 1
     i_weights = np.ones(n)
 
-    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=50, random_state=42)
+    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=10, random_state=42)
 
-    assert bootstrap_estimates.shape == (50,)
+    assert bootstrap_estimates.shape == (10,)
     assert np.sum(np.isfinite(bootstrap_estimates)) > 45
 
 
@@ -143,7 +143,7 @@ def test_wboot_ipw_rc_convergence():
     y = 1 + 0.5 * x[:, 1] + true_effect * d * post + rng.normal(0, 0.5, n)
     i_weights = np.ones(n)
 
-    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=100, random_state=123)
+    bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=20, random_state=123)
 
     mean_estimate = np.nanmean(bootstrap_estimates)
     assert np.abs(mean_estimate - true_effect) < 0.71

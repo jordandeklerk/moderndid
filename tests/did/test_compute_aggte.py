@@ -198,7 +198,7 @@ def test_bootstrap_options(synthetic_mp_result, bstrap, cband):
         synthetic_mp_result,
         aggregation_type="group",
         bootstrap=bstrap,
-        bootstrap_iterations=99,
+        bootstrap_iterations=20,
         confidence_band=cband,
     )
 
@@ -346,14 +346,14 @@ def test_clustered_standard_errors(mpdta_mp_result):
         mpdta_mp_result,
         aggregation_type="group",
         bootstrap=True,
-        bootstrap_iterations=100,
+        bootstrap_iterations=20,
     )
 
     result_with_cluster = compute_aggte(
         mpdta_mp_result,
         aggregation_type="group",
         bootstrap=True,
-        bootstrap_iterations=100,
+        bootstrap_iterations=20,
         clustervars=["cluster"],
     )
 

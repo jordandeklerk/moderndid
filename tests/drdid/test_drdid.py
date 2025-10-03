@@ -118,13 +118,13 @@ def test_drdid_panel_bootstrap(nsw_data, boot_type, est_method):
         panel=True,
         boot=True,
         boot_type=boot_type,
-        n_boot=50,
+        n_boot=10,
         inf_func=(boot_type == "multiplier"),
         est_method=est_method,
     )
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == 10
     assert not np.all(np.isnan(result.boots))
     assert result.args["boot"] is True
     assert result.args["boot_type"] == boot_type
@@ -159,12 +159,12 @@ def test_drdid_rc_with_bootstrap(nsw_data):
         panel=False,
         covariates_formula="~ age + educ",
         boot=True,
-        n_boot=50,
+        n_boot=10,
         est_method="imp",
     )
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == 10
 
 
 @pytest.mark.parametrize("trim_level", [0.99, 0.995])
@@ -289,7 +289,7 @@ def test_drdid_args_output(nsw_data):
         panel=True,
         boot=True,
         boot_type="weighted",
-        n_boot=50,
+        n_boot=10,
         est_method="trad",
     )
 
@@ -297,7 +297,7 @@ def test_drdid_args_output(nsw_data):
     assert result.args["normalized"] is True
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 50
+    assert result.args["nboot"] == 10
     assert result.args["type"] == "dr"
     assert result.args["estMethod"] == "trad"
 

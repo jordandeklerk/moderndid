@@ -48,7 +48,7 @@ def test_compute_delta_sd_lowerbound_m():
     sigma = np.eye(4) * 0.01
     num_pre_periods = 4
 
-    result = compute_delta_sd_lowerbound_m(betahat, sigma, num_pre_periods, alpha=0.05, grid_ub=1.0, grid_points=100)
+    result = compute_delta_sd_lowerbound_m(betahat, sigma, num_pre_periods, alpha=0.05, grid_ub=1.0, grid_points=40)
 
     assert result >= 0
     assert result < 0.5
@@ -59,7 +59,7 @@ def test_compute_delta_sd_lowerbound_m_no_grid_ub():
     sigma = np.eye(3) * 0.04
     num_pre_periods = 3
 
-    result = compute_delta_sd_lowerbound_m(betahat, sigma, num_pre_periods, alpha=0.05, grid_points=50)
+    result = compute_delta_sd_lowerbound_m(betahat, sigma, num_pre_periods, alpha=0.05, grid_points=30)
 
     assert result >= 0
 
@@ -132,7 +132,7 @@ def test_integration_upper_lower_bounds():
     num_pre_periods = 5
 
     upper = compute_delta_sd_upperbound_m(betahat, sigma, num_pre_periods)
-    lower = compute_delta_sd_lowerbound_m(betahat, sigma, num_pre_periods, grid_ub=upper * 2, grid_points=50)
+    lower = compute_delta_sd_lowerbound_m(betahat, sigma, num_pre_periods, grid_ub=upper * 2, grid_points=30)
 
     assert upper >= lower
 

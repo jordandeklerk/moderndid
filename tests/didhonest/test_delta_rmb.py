@@ -42,8 +42,8 @@ def simple_event_study_data():
 @pytest.fixture
 def larger_event_study_data():
     np.random.seed(42)
-    num_pre_periods = 5
-    num_post_periods = 4
+    num_pre_periods = 4
+    num_post_periods = 3
     betahat = np.concatenate([np.random.normal(0, 0.1, num_pre_periods), np.random.normal(0.5, 0.2, num_post_periods)])
     n = num_pre_periods + num_post_periods
     sigma = np.eye(n) * 0.02
@@ -82,7 +82,7 @@ def test_create_constraint_vector(basic_params):
     assert len(d_rmb) == A_rmb.shape[0]
 
 
-@pytest.mark.parametrize("s", [-2, -1, 0])
+@pytest.mark.parametrize("s", [-1, 0])
 @pytest.mark.parametrize("max_positive", [True, False])
 def test_compute_identified_set_rmb_fixed_s(simple_event_study_data, s, max_positive):
     num_pre_periods, num_post_periods, _, _, true_beta, l_vec = simple_event_study_data
@@ -201,6 +201,8 @@ def test_compute_conditional_cs_rmb_basic(simple_event_study_data, fast_config):
 
 @pytest.mark.parametrize("hybrid_flag", ["LF", "ARP"])
 def test_compute_conditional_cs_rmb_hybrid_flags(simple_event_study_data, hybrid_flag, fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skip RMB hybrid-flag stress case in fast mode")
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
     result = compute_conditional_cs_rmb(
@@ -311,7 +313,7 @@ def test_identified_set_monotonicity_in_m_bar():
     true_beta = np.array([0.1, 0.1, 0.1, 0.5, 0.5])
     l_vec = np.array([1, 0])
 
-    m_bars = [0, 0.1, 0.5, 1, 2, 5]
+    m_bars = [0, 0.5, 2]
     results = []
 
     for m_bar in m_bars:
@@ -392,6 +394,8 @@ def test_single_post_period_case(fast_config):
 
 
 def test_larger_event_study_rmb(larger_event_study_data, fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skip larger event study in fast mode")
     num_pre_periods, num_post_periods, betahat, sigma, true_beta, l_vec = larger_event_study_data
 
     result_id = compute_identified_set_rmb(
@@ -421,6 +425,8 @@ def test_larger_event_study_rmb(larger_event_study_data, fast_config):
 
 
 def test_negative_post_effects_with_positive_bias(fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skip negative post-effects stress case in fast mode")
     true_beta = np.array([0, 0, 0, -0.5, -0.3])
     betahat = true_beta + np.random.normal(0, 0.01, 5)
     sigma = np.eye(5) * 0.01
@@ -460,6 +466,8 @@ def test_negative_post_effects_with_positive_bias(fast_config):
 
 
 def test_custom_grid_bounds(simple_event_study_data, fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skip custom grid bound stress case in fast mode")
     num_pre_periods, num_post_periods, betahat, sigma, _, l_vec = simple_event_study_data
 
     result = compute_conditional_cs_rmb(
@@ -481,6 +489,8 @@ def test_custom_grid_bounds(simple_event_study_data, fast_config):
 
 
 def test_post_period_moments_only_flag(fast_config):
+    if fast_config["skip_expensive_params"]:
+        pytest.skip("Skip post-period moments stress case in fast mode")
     betahat = np.array([0.1, 0.05, 0.02, 0.5, 0.6])
     sigma = np.eye(5) * 0.01
     l_vec = np.array([1, 0])

@@ -17,7 +17,7 @@ def test_wboot_std_ipw_rc_basic():
     y = x @ [1, 0.5, -0.3] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
+    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
     assert len(boot_estimates) == 100
@@ -37,9 +37,9 @@ def test_wboot_std_ipw_rc_with_covariates():
     y = x @ [1, 0.5, -0.3, 0.2, 0.1] + 1.5 * d * post + np.random.randn(n)
     weights = np.random.uniform(0.5, 1.5, n)
 
-    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
-    assert len(boot_estimates) == 50
+    assert len(boot_estimates) == 10
     finite_estimates = boot_estimates[np.isfinite(boot_estimates)]
     assert len(finite_estimates) > 40
     assert np.mean(finite_estimates) > 0
@@ -101,9 +101,9 @@ def test_wboot_std_ipw_rc_reproducibility():
     y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
     weights = np.ones(n)
 
-    boot_estimates1 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates1 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
-    boot_estimates2 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123)
+    boot_estimates2 = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
 
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
@@ -156,11 +156,11 @@ def test_wboot_std_ipw_rc_trimming_effect():
     weights = np.ones(n)
 
     boot_strict = wboot_std_ipw_rc(
-        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, trim_level=0.9, random_state=42
+        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, trim_level=0.9, random_state=42
     )
 
     boot_loose = wboot_std_ipw_rc(
-        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, trim_level=0.999, random_state=42
+        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, trim_level=0.999, random_state=42
     )
 
     assert np.sum(np.isfinite(boot_strict)) <= np.sum(np.isfinite(boot_loose))

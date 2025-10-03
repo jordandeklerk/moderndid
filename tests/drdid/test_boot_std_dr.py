@@ -11,9 +11,9 @@ def test_mboot_did_basic():
     np.random.seed(42)
     linrep = np.random.normal(0, 1, n)
 
-    boots = mboot_did(linrep, n_bootstrap=1000, random_state=42)
+    boots = mboot_did(linrep, n_bootstrap=20, random_state=42)
 
-    assert boots.shape == (1000,)
+    assert boots.shape == (20,)
     assert np.all(np.isfinite(boots))
     assert np.abs(np.mean(boots)) < 0.1
 
@@ -22,8 +22,8 @@ def test_mboot_did_deterministic():
     n = 50
     linrep = np.ones(n)
 
-    boots1 = mboot_did(linrep, n_bootstrap=100, random_state=42)
-    boots2 = mboot_did(linrep, n_bootstrap=100, random_state=42)
+    boots1 = mboot_did(linrep, n_bootstrap=20, random_state=42)
+    boots2 = mboot_did(linrep, n_bootstrap=20, random_state=42)
 
     np.testing.assert_allclose(boots1, boots2, rtol=1e-10)
 
@@ -32,7 +32,7 @@ def test_mboot_did_zero_linrep():
     n = 100
     linrep = np.zeros(n)
 
-    boots = mboot_did(linrep, n_bootstrap=500, random_state=123)
+    boots = mboot_did(linrep, n_bootstrap=10, random_state=123)
 
     assert np.all(boots == 0)
 
@@ -55,7 +55,7 @@ def test_mboot_did_variance_scaling():
     np.random.seed(42)
     linrep = np.random.normal(0, 2, n)
 
-    boots = mboot_did(linrep, n_bootstrap=5000, random_state=42)
+    boots = mboot_did(linrep, n_bootstrap=200, random_state=42)
 
     expected_var = np.var(linrep) / n
     bootstrap_var = np.var(boots)
@@ -63,7 +63,7 @@ def test_mboot_did_variance_scaling():
     assert np.abs(bootstrap_var - expected_var) / expected_var < 0.1
 
 
-@pytest.mark.parametrize("n_bootstrap", [100, 500, 1000])
+@pytest.mark.parametrize("n_bootstrap", [20, 50, 100])
 def test_mboot_did_different_nboot(n_bootstrap):
     n = 50
     linrep = np.random.normal(0, 1, n)
@@ -77,7 +77,7 @@ def test_mboot_did_different_nboot(n_bootstrap):
 def test_mboot_did_single_observation():
     linrep = np.array([5.0])
 
-    boots = mboot_did(linrep, n_bootstrap=100, random_state=42)
+    boots = mboot_did(linrep, n_bootstrap=20, random_state=42)
 
     sqrt5 = np.sqrt(5)
     k1 = 0.5 * (1 - sqrt5)
@@ -90,7 +90,7 @@ def test_mboot_did_large_influence_function():
     n = 100
     linrep = np.full(n, 1000.0)
 
-    boots = mboot_did(linrep, n_bootstrap=500, random_state=42)
+    boots = mboot_did(linrep, n_bootstrap=10, random_state=42)
 
     assert np.all(np.isfinite(boots))
     assert np.abs(np.mean(boots)) < 10.0

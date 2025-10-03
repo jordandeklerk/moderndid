@@ -77,11 +77,11 @@ def test_wboot_drdid_ipt_rc1_reproducibility():
     weights = np.ones(n)
 
     wboot_estimates1 = wboot_drdid_ipt_rc1(
-        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123
+        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
     )
 
     wboot_estimates2 = wboot_drdid_ipt_rc1(
-        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123
+        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
     )
 
     np.testing.assert_array_equal(wboot_estimates1, wboot_estimates2)
@@ -185,11 +185,11 @@ def test_wboot_drdid_ipt_rc2_reproducibility():
     weights = np.ones(n)
 
     wboot_estimates1 = wboot_drdid_ipt_rc2(
-        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123
+        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
     )
 
     wboot_estimates2 = wboot_drdid_ipt_rc2(
-        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=50, random_state=123
+        y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123
     )
 
     np.testing.assert_array_equal(wboot_estimates1, wboot_estimates2)

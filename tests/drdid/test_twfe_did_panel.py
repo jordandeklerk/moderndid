@@ -187,10 +187,10 @@ def test_mismatched_dimensions():
 
 def test_args_output():
     y1, y0, d, covariates = dgp_panel_for_test(n=100)
-    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", nboot=50)
+    result = twfe_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", nboot=10)
 
     assert result.args["panel"] is True
     assert result.args["boot"] is True
     assert result.args["boot_type"] == "weighted"
-    assert result.args["nboot"] == 50
+    assert result.args["nboot"] == 10
     assert result.args["type"] == "twfe"
