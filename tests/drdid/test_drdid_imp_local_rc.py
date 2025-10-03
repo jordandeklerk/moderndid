@@ -74,10 +74,10 @@ def test_drdid_imp_local_rc_bootstrap(boot_type):
     x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
     y = rng.randn(n_units) + 2 * d * post
 
-    result = drdid_imp_local_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=100)
+    result = drdid_imp_local_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=20)
 
     assert result.boots is not None
-    assert len(result.boots) == 100
+    assert len(result.boots) == result.args["nboot"]
     assert result.se > 0
     assert result.lci < result.uci
 

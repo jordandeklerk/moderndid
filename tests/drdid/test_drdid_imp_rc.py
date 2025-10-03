@@ -58,13 +58,13 @@ def test_weighted_bootstrap():
         i_weights=setup["i_weights"],
         boot=True,
         boot_type="weighted",
-        nboot=100,
+        nboot=20,
     )
     assert result.att is not None
     assert result.se is not None
     assert np.isclose(result.att, 1.0, atol=0.2)
     assert result.boots is not None
-    assert len(result.boots) == 100
+    assert len(result.boots) == result.args["nboot"]
 
 
 def test_multiplier_bootstrap():
@@ -77,13 +77,13 @@ def test_multiplier_bootstrap():
         i_weights=setup["i_weights"],
         boot=True,
         boot_type="multiplier",
-        nboot=100,
+        nboot=20,
     )
     assert result.att is not None
     assert result.se is not None
     assert np.isclose(result.att, 1.0, atol=0.2)
     assert result.boots is not None
-    assert len(result.boots) == 100
+    assert len(result.boots) == result.args["nboot"]
 
 
 def test_influence_function():

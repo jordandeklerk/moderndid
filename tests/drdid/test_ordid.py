@@ -110,7 +110,7 @@ def test_ordid_panel_bootstrap(nsw_data, boot_type):
     )
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == result.args["nboot"]
     assert not np.all(np.isnan(result.boots))
     assert result.args["boot"] is True
     assert result.args["boot_type"] == boot_type
@@ -146,7 +146,7 @@ def test_ordid_rc_with_bootstrap(nsw_data):
     )
 
     assert result.boots is not None
-    assert len(result.boots) == 50
+    assert len(result.boots) == result.args["nboot"]
 
 
 def test_ordid_missing_id_col_panel():

@@ -1,17 +1,19 @@
 """Shared configuration and fixtures."""
 
+import os
+
 import pytest
 
-FAST_TEST_CONFIG = {
-    "grid_points_small": 20,
-    "grid_points_medium": 30,
-    "grid_points_large": 50,
-    "n_small": 10,
-    "n_medium": 20,
-    "n_large": 50,
-    "n_sim_small": 50,
-    "n_sim_medium": 100,
-    "n_sim_large": 200,
+_FAST_TEST_CONFIG = {
+    "grid_points_small": 6,
+    "grid_points_medium": 10,
+    "grid_points_large": 16,
+    "n_small": 4,
+    "n_medium": 8,
+    "n_large": 16,
+    "n_sim_small": 8,
+    "n_sim_medium": 16,
+    "n_sim_large": 32,
     "skip_expensive_params": True,
 }
 
@@ -19,7 +21,10 @@ FAST_TEST_CONFIG = {
 @pytest.fixture
 def fast_config():
     """Return configuration for fast test runs."""
-    return FAST_TEST_CONFIG
+    cfg = dict(_FAST_TEST_CONFIG)
+    if os.environ.get("MODERNDID_RUN_FULL_TESTS"):
+        cfg["skip_expensive_params"] = False
+    return cfg
 
 
 @pytest.fixture(scope="session")

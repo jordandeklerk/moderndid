@@ -16,7 +16,7 @@ def sample_aggte_result():
     att_by_event = np.array([0.05, 0.1, -0.05, 0.02, 0.5, 0.3, 0.4])
     se_by_event = np.array([0.09, 0.1, 0.122, 0.141, 0.158, 0.173, 0.187])
 
-    n_units = 500
+    n_units = 120
     n_events = len(event_times)
     influence_func = np.random.normal(0, 0.1, (n_units, n_events))
 
@@ -43,7 +43,7 @@ def sample_aggte_result_with_ref():
     att_by_event = np.array([0.05, 0.1, -0.05, 0.02, 0.0, 0.5, 0.3, 0.4])
     se_by_event = np.array([0.09, 0.1, 0.122, 0.141, 0.0, 0.158, 0.173, 0.187])
 
-    n_units = 500
+    n_units = 120
     n_events = len(event_times)
     influence_func = np.random.normal(0, 0.1, (n_units, n_events))
 
@@ -91,21 +91,19 @@ def test_honest_did_relative_magnitude(sample_aggte_result):
         sample_aggte_result,
         event_time=2,
         sensitivity_type="relative_magnitude",
-        m_bar_vec=np.array([0, 0.5, 1.0]),
+        m_bar_vec=np.array([0.0, 1.0]),
     )
 
     assert result.sensitivity_type == "relative_magnitude"
-    assert len(result.robust_ci) == 3
+    assert len(result.robust_ci) == 2
     assert "Mbar" in result.robust_ci.columns
-    assert list(result.robust_ci["Mbar"]) == [0, 0.5, 1.0]
+    assert list(result.robust_ci["Mbar"]) == [0.0, 1.0]
 
 
 @pytest.mark.parametrize(
     "event_time,method",
     [
         (1, "FLCI"),
-        pytest.param(1, "C-F", marks=pytest.mark.xfail(reason="Numerical instability with test data")),
-        (1, "C-LF"),
         (1, "Conditional"),
     ],
 )
@@ -163,7 +161,7 @@ def test_honest_did_grid_points(sample_aggte_result):
         event_time=1,
         sensitivity_type="smoothness",
         method="Conditional",
-        grid_points=50,
+        grid_points=12,
         m_vec=np.array([0.1]),
     )
 

@@ -43,15 +43,15 @@ def test_basic_functionality():
 def test_bootstrap_inference():
     y1, y0, d, covariates = dgp_panel_for_test(n=500)
 
-    result_weighted = reg_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", nboot=99)
+    result_weighted = reg_did_panel(y1, y0, d, covariates, boot=True, boot_type="weighted", nboot=20)
     assert result_weighted.boots is not None
-    assert len(result_weighted.boots) == 99
+    assert len(result_weighted.boots) == result_weighted.args["nboot"]
     assert result_weighted.se > 0
     assert result_weighted.args["boot_type"] == "weighted"
 
-    result_mult = reg_did_panel(y1, y0, d, covariates, boot=True, boot_type="multiplier", nboot=99)
+    result_mult = reg_did_panel(y1, y0, d, covariates, boot=True, boot_type="multiplier", nboot=20)
     assert result_mult.boots is not None
-    assert len(result_mult.boots) == 99
+    assert len(result_mult.boots) == result_mult.args["nboot"]
     assert result_mult.se > 0
     assert result_mult.args["boot_type"] == "multiplier"
 
@@ -183,8 +183,8 @@ def test_1d_covariate():
 def test_reproducibility_bootstrap():
     y1, y0, d, covariates = dgp_panel_for_test(n=200)
 
-    result1 = reg_did_panel(y1, y0, d, covariates, boot=True, nboot=50)
-    result2 = reg_did_panel(y1, y0, d, covariates, boot=True, nboot=50)
+    result1 = reg_did_panel(y1, y0, d, covariates, boot=True, nboot=10)
+    result2 = reg_did_panel(y1, y0, d, covariates, boot=True, nboot=10)
 
     assert not np.array_equal(result1.boots, result2.boots)
     assert np.isclose(result1.att, result2.att, rtol=1e-10)

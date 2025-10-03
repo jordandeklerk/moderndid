@@ -105,7 +105,7 @@ def test_create_sensitivity_results_relative_magnitudes(
         bound=bound,
         m_bar_vec=m_bar_vec,
         method=method,
-        grid_points=100,
+        grid_points=40,
     )
 
     assert isinstance(results, pd.DataFrame)

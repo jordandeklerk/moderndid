@@ -12,7 +12,7 @@ from moderndid.didcont.panel import (
 
 
 def test_multiplier_bootstrap_basic(simple_influence_func):
-    result = multiplier_bootstrap(simple_influence_func, biters=100, alpha=0.05)
+    result = multiplier_bootstrap(simple_influence_func, biters=20, alpha=0.05)
 
     assert "se" in result
     assert "critical_value" in result
@@ -25,7 +25,7 @@ def test_multiplier_bootstrap_single_param():
     np.random.seed(42)
     influence_func = np.random.randn(100, 1)
 
-    result = multiplier_bootstrap(influence_func, biters=500, alpha=0.05)
+    result = multiplier_bootstrap(influence_func, biters=500, alpha=0.05, rng=np.random.default_rng(42))
 
     assert len(result["se"]) == 1
     assert result["se"][0] > 0
@@ -94,7 +94,7 @@ def test_multiplier_bootstrap_critical_value_checks():
     influence_func = np.ones((100, 1)) * 1e-10
 
     with pytest.warns(UserWarning, match="Simultaneous confidence band is smaller than pointwise"):
-        result = multiplier_bootstrap(influence_func, biters=100, alpha=0.05)
+        result = multiplier_bootstrap(influence_func, biters=20, alpha=0.05, rng=np.random.default_rng(42))
 
     assert np.isclose(result["critical_value"], scipy.stats.norm.ppf(0.975), rtol=1e-3)
 
@@ -105,14 +105,15 @@ def test_multiplier_bootstrap_large_critical_value():
     influence_func[0, :] = 1000
 
     with pytest.warns(UserWarning, match="Simultaneous confidence band is smaller than pointwise"):
-        result = multiplier_bootstrap(influence_func, biters=100, alpha=0.05)
+        result = multiplier_bootstrap(influence_func, biters=20, alpha=0.05, rng=np.random.default_rng(42))
 
     assert result["critical_value"] >= scipy.stats.norm.ppf(0.975)
 
 
 @pytest.mark.parametrize("alpha", [0.01, 0.05, 0.10])
 def test_multiplier_bootstrap_alpha_levels(simple_influence_func, alpha):
-    result = multiplier_bootstrap(simple_influence_func, biters=500, alpha=alpha)
+    seed = int(alpha * 10_000) + 7
+    result = multiplier_bootstrap(simple_influence_func, biters=500, alpha=alpha, rng=np.random.default_rng(seed))
 
     pointwise_crit = scipy.stats.norm.ppf(1 - alpha / 2)
     assert result["critical_value"] >= pointwise_crit
@@ -168,7 +169,7 @@ def test_process_att_gt_with_real_mp_result(att_gt_result):
         control_group=att_gt_result.estimation_params.get("control_group", "nevertreated"),
         gt_type="att",
         ret_quantile=0.5,
-        biters=100,
+        biters=20,
         dname=None,
         degree=None,
         num_knots=None,

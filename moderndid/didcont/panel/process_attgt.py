@@ -105,7 +105,7 @@ def process_att_gt(att_gt_results, pte_params):
     )
 
 
-def multiplier_bootstrap(influence_func, biters=1000, alpha=0.05):
+def multiplier_bootstrap(influence_func, biters=1000, alpha=0.05, rng=None):
     """Multiplier bootstrap for inference.
 
     Parameters
@@ -117,6 +117,9 @@ def multiplier_bootstrap(influence_func, biters=1000, alpha=0.05):
         Number of bootstrap iterations.
     alpha : float, default=0.05
         Significance level for confidence intervals.
+    rng : numpy.random.Generator, optional
+        Generator used for resampling. If omitted, a fresh generator from
+        ``np.random.default_rng`` is created.
 
     Returns
     -------
@@ -128,8 +131,10 @@ def multiplier_bootstrap(influence_func, biters=1000, alpha=0.05):
     """
     n_obs = influence_func.shape[0]
 
+    if rng is None:
+        rng = np.random.default_rng()
+
     bootstrap_results = []
-    rng = np.random.RandomState(None)
 
     for _ in range(biters):
         weights = rng.choice([-1, 1], size=n_obs, replace=True)
