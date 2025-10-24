@@ -1,3 +1,4 @@
+# pylint: disable=function-redefined
 """Numba operations."""
 
 import numpy as np

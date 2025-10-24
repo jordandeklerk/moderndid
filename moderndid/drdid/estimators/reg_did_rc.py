@@ -107,10 +107,7 @@ def reg_did_rc(
     """
     y, post, d, int_cov, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Outcome regression
     out_y_pre, out_y_post = _fit_outcome_regressions(y, post, d, int_cov, i_weights)
-
-    # Weights and ATT components
     weights = _compute_weights(d, post, i_weights)
 
     reg_att_treat_pre = weights["w_treat_pre"] * y
@@ -123,10 +120,8 @@ def reg_did_rc(
 
     reg_att = (eta_treat_post - eta_treat_pre) - eta_cont
 
-    # Influence function quantities
     influence_quantities = _get_influence_quantities(y, post, d, int_cov, out_y_pre, out_y_post, i_weights, n_units)
 
-    # Influence function
     reg_att_inf_func = _compute_influence_function(
         reg_att_treat_pre,
         reg_att_treat_post,
@@ -139,8 +134,9 @@ def reg_did_rc(
         influence_quantities,
     )
 
+    # Inference
     if not boot:
-        se_reg_att = np.std(reg_att_inf_func, ddof=1) / np.sqrt(n_units)
+        se_reg_att = np.std(reg_att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = reg_att + 1.96 * se_reg_att
         lci = reg_att - 1.96 * se_reg_att
         reg_boot = None
