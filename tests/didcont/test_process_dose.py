@@ -341,8 +341,8 @@ def test_multiplier_bootstrap_dose_different_alpha():
     n_doses = 10
     influence_function = np.random.randn(n_obs, n_doses) * 0.1
 
-    result_05 = _multiplier_bootstrap_dose(influence_function, biters=200, alpha=0.05)
-    result_10 = _multiplier_bootstrap_dose(influence_function, biters=200, alpha=0.10)
+    result_05 = _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.05)
+    result_10 = _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.10)
 
     assert result_10["crit_val"] < result_05["crit_val"]
 

@@ -100,13 +100,11 @@ def drdid_trad_rc(
     """
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Propensity score estimation
     ps_fit, ps_weights = _compute_propensity_score(d, covariates, i_weights)
 
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Outcome regression for the control group at the pre-treatment period, using ols.
     out_reg_pre_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
     if np.any(np.isnan(out_reg_pre_result.coefficients)):
         raise ValueError(
@@ -115,7 +113,6 @@ def drdid_trad_rc(
         )
     out_y_pre = out_reg_pre_result.out_reg
 
-    # Outcome regression for the control group at the post-treatment period, using ols.
     out_reg_post_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
     if np.any(np.isnan(out_reg_post_result.coefficients)):
         raise ValueError(
@@ -125,29 +122,25 @@ def drdid_trad_rc(
     out_y_post = out_reg_post_result.out_reg
     out_y = post * out_y_post + (1 - post) * out_y_pre
 
-    # Weights
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Influence function components and ATT
     influence_components = _get_influence_components(y, out_y, weights)
 
-    # ATT estimator
     dr_att = (influence_components["att_treat_post"] - influence_components["att_treat_pre"]) - (
         influence_components["att_cont_post"] - influence_components["att_cont_pre"]
     )
 
-    # Influence function quantities
     influence_quantities = _get_influence_quantities(
         y, post, d, covariates, ps_fit, ps_weights, out_y_pre, out_y_post, i_weights, n_units
     )
 
-    # Influence function
     dr_att_inf_func = _compute_influence_function(
         y, post, out_y, covariates, weights, influence_components, influence_quantities
     )
 
+    # Inference
     if not boot:
-        se_dr_att = np.std(dr_att_inf_func, ddof=1) / np.sqrt(n_units)
+        se_dr_att = np.std(dr_att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = dr_att + 1.96 * se_dr_att
         lci = dr_att - 1.96 * se_dr_att
         dr_boot = None
