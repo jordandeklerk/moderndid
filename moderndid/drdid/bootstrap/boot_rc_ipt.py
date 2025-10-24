@@ -13,7 +13,7 @@ from ..utils import _validate_inputs
 def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute IPT bootstrap estimates for control-only doubly-robust DiD with repeated cross-sections.
 
-    This function implements the bootstrap inference for the doubly-robust difference-in-differences
+    Implements the bootstrap inference for the doubly-robust difference-in-differences
     estimator using inverse probability tilting (IPT) for propensity score estimation. This version
     uses outcome regression on control units only.
 
@@ -125,7 +125,7 @@ def wboot_drdid_ipt_rc1(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0
 def wboot_drdid_ipt_rc2(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute IPT bootstrap estimates for locally efficient doubly-robust DiD with repeated cross-sections.
 
-    This function implements the bootstrap inference for the locally efficient doubly-robust
+    Implements the bootstrap inference for the locally efficient doubly-robust
     difference-in-differences estimator using inverse probability tilting (IPT) for propensity
     score estimation. This version uses outcome regression on both treatment and control groups.
 

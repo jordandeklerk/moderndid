@@ -12,7 +12,7 @@ from ..utils import _validate_inputs
 def wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for IPW DiD with repeated cross-sections.
 
-    This function implements the bootstrap inference for the inverse propensity weighted
+    Implements the bootstrap inference for the inverse propensity weighted
     (IPW) difference-in-differences estimator with repeated cross-section data. Unlike
     doubly robust methods, this estimator relies only on the propensity score model.
 

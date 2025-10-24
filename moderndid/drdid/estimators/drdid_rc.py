@@ -107,18 +107,13 @@ def drdid_rc(
     """
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Propensity score estimation
     ps_fit = _compute_propensity_score(d, covariates, i_weights)
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Outcome regression for the control group at the pre-treatment period, using ols.
     out_y_cont_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
-    # Outcome regression for the control group at the post-treatment period, using ols.
     out_y_cont_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
-    # Outcome regression for the treated group at the pre-treatment period, using ols.
     out_y_treat_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=True)
-    # Outcome regression for the treated group at the post-treatment period, using ols.
     out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
 
     out_y_cont_pre = out_y_cont_pre_res.out_reg
@@ -126,17 +121,14 @@ def drdid_rc(
     out_y_treat_pre = out_y_treat_pre_res.out_reg
     out_y_treat_post = out_y_treat_post_res.out_reg
 
-    # Combine the ORs for control group
     out_y_cont = post * out_y_cont_post + (1 - post) * out_y_cont_pre
 
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Influence function components and ATT
     influence_components = _get_influence_components(
         y, out_y_cont, out_y_treat_pre, out_y_treat_post, out_y_cont_pre, out_y_cont_post, weights
     )
 
-    # ATT estimator
     dr_att = (
         (influence_components["att_treat_post"] - influence_components["att_treat_pre"])
         - (influence_components["att_cont_post"] - influence_components["att_cont_pre"])
@@ -144,7 +136,6 @@ def drdid_rc(
         - (influence_components["att_d_pre"] - influence_components["att_dt0_pre"])
     )
 
-    # Influence function quantities
     influence_quantities = _get_influence_quantities(
         y,
         post,
@@ -159,7 +150,6 @@ def drdid_rc(
         n_units,
     )
 
-    # Influence function
     att_inf_func = _compute_influence_function(
         y, post, out_y_cont, covariates, weights, influence_components, influence_quantities
     )
@@ -169,8 +159,9 @@ def drdid_rc(
     se_dr_att = np.nan
     dr_boot = None
 
+    # Inference
     if boot is False:
-        se_dr_att = np.std(att_inf_func, ddof=1) / np.sqrt(n_units)
+        se_dr_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = dr_att + 1.96 * se_dr_att
         lci = dr_att - 1.96 * se_dr_att
 
@@ -275,7 +266,6 @@ def _compute_propensity_score(d, covariates, i_weights):
 
 def _compute_weights(d, post, ps_fit, i_weights, trim_ps):
     """Compute weights for locally efficient DR-DiD estimator."""
-    # Treatment and control weights
     w_treat_pre = trim_ps * i_weights * d * (1 - post)
     w_treat_post = trim_ps * i_weights * d * post
 
@@ -286,7 +276,6 @@ def _compute_weights(d, post, ps_fit, i_weights, trim_ps):
     w_cont_pre = np.nan_to_num(w_cont_pre)
     w_cont_post = np.nan_to_num(w_cont_post)
 
-    # Additional weights for locally efficient estimator
     w_d = trim_ps * i_weights * d
     w_dt1 = trim_ps * i_weights * d * post
     w_dt0 = trim_ps * i_weights * d * (1 - post)

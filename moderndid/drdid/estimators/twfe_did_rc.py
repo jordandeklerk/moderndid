@@ -90,11 +90,10 @@ def twfe_did_rc(
            Journal of Econometrics, Vol. 219 (1), pp. 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
     """
     y, post, d, x, i_weights, n = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
-
     att, att_inf_func = _fit_twfe_regression(y, post, d, x, i_weights, n)
 
     if not boot:
-        se = np.std(att_inf_func) / np.sqrt(n)
+        se = np.std(att_inf_func, ddof=1) * np.sqrt(n - 1) / n
         uci = att + 1.96 * se
         lci = att - 1.96 * se
         boots = None

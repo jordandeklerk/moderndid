@@ -159,15 +159,12 @@ def drdid_imp_local_rc(
     out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
     out_y_treat_post = out_y_treat_post_res.out_reg
 
-    # ATT calculation using AIPW estimator (see Sant'Anna and Zhao (2020))
     dr_att = aipw_did_rc_imp2(
         y, post, d, ps_fit, out_y_cont_pre, out_y_cont_post, out_y_treat_pre, out_y_treat_post, i_weights, trim_ps
     )
 
-    # Weights for the influence function
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Influence function components
     influence_components = _get_influence_quantities(
         y, out_y_cont, out_y_treat_pre, out_y_treat_post, out_y_cont_pre, out_y_cont_post, weights
     )
@@ -177,7 +174,7 @@ def drdid_imp_local_rc(
     # Inference
     dr_boot = None
     if not boot:
-        se_dr_att = np.std(att_inf_func, ddof=1) / np.sqrt(n_units)
+        se_dr_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = dr_att + 1.96 * se_dr_att
         lci = dr_att - 1.96 * se_dr_att
     else:
@@ -273,11 +270,9 @@ def _compute_weights(
     trim_ps,
 ):
     """Compute weights for locally efficient and improved DR-DiD estimator."""
-    # Treatment group weights
     w_treat_pre = trim_ps * i_weights * d * (1 - post)
     w_treat_post = trim_ps * i_weights * d * post
 
-    # Control group weights
     with np.errstate(divide="ignore", invalid="ignore"):
         w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
         w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)

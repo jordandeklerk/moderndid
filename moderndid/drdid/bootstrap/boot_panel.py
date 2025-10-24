@@ -14,7 +14,7 @@ from ..utils import _validate_inputs
 def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute improved bootstrap estimates for doubly-robust DiD with panel data.
 
-    This function implements the improved bootstrap inference for the doubly-robust
+    Implements the improved bootstrap inference for the doubly-robust
     difference-in-differences estimator with panel data, using the inverse probability
     tilting method for propensity score estimation.
 
@@ -111,7 +111,7 @@ def wboot_drdid_imp_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level
 def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for IPW DiD with panel data.
 
-    This function implements a bootstrapped Inverse Probability Weighting (IPW)
+    Implements a bootstrapped Inverse Probability Weighting (IPW)
     difference-in-differences estimator for panel data. Unlike doubly-robust methods,
     this uses only propensity scores without outcome regression.
 
@@ -208,7 +208,7 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
 def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for standardized IPW DiD with panel data.
 
-    This function implements a bootstrapped standardized Inverse Probability Weighting (IPW)
+    Implements a bootstrapped standardized Inverse Probability Weighting (IPW)
     difference-in-differences estimator for panel data. This estimator uses
     standardized weights to compute separate means for treated and control groups.
 
@@ -309,7 +309,7 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0
 def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995, random_state=None):
     r"""Compute bootstrap estimates for traditional doubly-robust DiD with panel data.
 
-    This function implements a traditional bootstrap approach for doubly-robust
+    Implements a traditional bootstrap approach for doubly-robust
     difference-in-differences with panel data that uses standard logistic regression
     for propensity score estimation.
 

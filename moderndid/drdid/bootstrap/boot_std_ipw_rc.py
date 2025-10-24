@@ -20,7 +20,7 @@ def wboot_std_ipw_rc(
 ):
     r"""Compute bootstrap standardized IPW DiD estimator for repeated cross-sections.
 
-    This function implements the bootstrap procedure for computing standardized inverse
+    Implements the bootstrap procedure for computing standardized inverse
     probability weighted (IPW) difference-in-differences estimates with
     repeated cross-sectional data. The standardized IPW estimator normalizes
     the weighted outcomes by the sum of weights within each group-period cell.
