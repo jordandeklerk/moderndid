@@ -136,14 +136,12 @@ def drdid_imp_local_rc(
     """
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Propensity score estimation
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
 
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Outcome regression for the control group
     out_y_cont_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
     out_y_cont_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
     out_y_cont_pre = out_y_cont_pre_res.out_reg
@@ -151,11 +149,9 @@ def drdid_imp_local_rc(
 
     out_y_cont = post * out_y_cont_post + (1 - post) * out_y_cont_pre
 
-    # Outcome regression for the treated group at the pre-treatment period
     out_y_treat_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=True)
     out_y_treat_pre = out_y_treat_pre_res.out_reg
 
-    # Outcome regression for the treated group at the post-treatment period
     out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
     out_y_treat_post = out_y_treat_post_res.out_reg
 
