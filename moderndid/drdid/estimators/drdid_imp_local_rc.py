@@ -136,14 +136,12 @@ def drdid_imp_local_rc(
     """
     y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
 
-    # Propensity score estimation
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
 
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    # Outcome regression for the control group
     out_y_cont_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
     out_y_cont_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
     out_y_cont_pre = out_y_cont_pre_res.out_reg
@@ -151,23 +149,18 @@ def drdid_imp_local_rc(
 
     out_y_cont = post * out_y_cont_post + (1 - post) * out_y_cont_pre
 
-    # Outcome regression for the treated group at the pre-treatment period
     out_y_treat_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=True)
     out_y_treat_pre = out_y_treat_pre_res.out_reg
 
-    # Outcome regression for the treated group at the post-treatment period
     out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
     out_y_treat_post = out_y_treat_post_res.out_reg
 
-    # ATT calculation using AIPW estimator (see Sant'Anna and Zhao (2020))
     dr_att = aipw_did_rc_imp2(
         y, post, d, ps_fit, out_y_cont_pre, out_y_cont_post, out_y_treat_pre, out_y_treat_post, i_weights, trim_ps
     )
 
-    # Weights for the influence function
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    # Influence function components
     influence_components = _get_influence_quantities(
         y, out_y_cont, out_y_treat_pre, out_y_treat_post, out_y_cont_pre, out_y_cont_post, weights
     )
@@ -177,7 +170,7 @@ def drdid_imp_local_rc(
     # Inference
     dr_boot = None
     if not boot:
-        se_dr_att = np.std(att_inf_func, ddof=1) / np.sqrt(n_units)
+        se_dr_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = dr_att + 1.96 * se_dr_att
         lci = dr_att - 1.96 * se_dr_att
     else:
@@ -273,11 +266,9 @@ def _compute_weights(
     trim_ps,
 ):
     """Compute weights for locally efficient and improved DR-DiD estimator."""
-    # Treatment group weights
     w_treat_pre = trim_ps * i_weights * d * (1 - post)
     w_treat_post = trim_ps * i_weights * d * post
 
-    # Control group weights
     with np.errstate(divide="ignore", invalid="ignore"):
         w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
         w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)

@@ -109,10 +109,8 @@ def reg_did_panel(
     """
     y1, y0, d, int_cov, i_weights, n_units, delta_y = _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights)
 
-    # Outcome regression
     out_delta = _fit_outcome_regression(delta_y, d, int_cov, i_weights)
 
-    # Weights and ATT components
     weights = _compute_weights(d, i_weights)
 
     reg_att_treat = weights["w_treat"] * delta_y
@@ -122,7 +120,6 @@ def reg_did_panel(
     mean_w_cont = np.mean(weights["w_cont"])
 
     if mean_w_treat == 0:
-        # No treated units
         return RegDIDPanelResult(
             att=0.0,
             se=0.0,
@@ -140,7 +137,6 @@ def reg_did_panel(
         )
 
     if mean_w_cont == 0:
-        # No control units
         eta_treat = np.nanmean(reg_att_treat) / mean_w_treat
         eta_cont = np.nan
         reg_att = np.nan
@@ -179,10 +175,8 @@ def reg_did_panel(
             args=args,
         )
 
-    # Influence function quantities
     influence_quantities = _get_influence_quantities(delta_y, d, int_cov, out_delta, i_weights, n_units)
 
-    # Influence function
     reg_att_inf_func = _compute_influence_function(
         reg_att_treat,
         reg_att_cont,
@@ -195,8 +189,9 @@ def reg_did_panel(
         influence_quantities,
     )
 
+    # Inference
     if not boot:
-        se_reg_att = np.std(reg_att_inf_func, ddof=1) / np.sqrt(n_units)
+        se_reg_att = np.std(reg_att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
         uci = reg_att + 1.96 * se_reg_att
         lci = reg_att - 1.96 * se_reg_att
         reg_boot = None

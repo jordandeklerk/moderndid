@@ -1,4 +1,4 @@
-# pylint: disable=too-many-nested-blocks
+# pylint: disable=too-many-nested-blocks, function-redefined
 """Numba operations for continuous treatment DiD."""
 
 from itertools import combinations, product

@@ -11,7 +11,7 @@ from ..utils import _validate_inputs
 def wboot_reg_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):
     r"""Compute bootstrap estimates for regression-based robust DiD with repeated cross-sections.
 
-    This implements a regression-based difference-in-differences estimator that
+    Implements a regression-based difference-in-differences estimator that
     uses outcome regression on the control group only, without propensity scores.
     It is designed for settings with 2 time periods and 2 groups. The estimator
     fits separate regressions for pre and post periods using control units only,
