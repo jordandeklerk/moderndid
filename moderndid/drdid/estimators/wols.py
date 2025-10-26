@@ -223,6 +223,111 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
 
     sub_x = x[subs]
     sub_y = y[subs]
+
+    if treat:
+        sub_weights = i_weights[subs]
+    else:
+        ps_odds = sub_ps / (1 - sub_ps)
+        sub_weights = i_weights[subs] * ps_odds
+
+    _check_extreme_weights(sub_weights)
+
+    coefficients = np.full(n_features, np.nan)
+    fitted_values = np.full(y.shape[0], np.nan)
+
+    try:
+        wls_model = sm.WLS(sub_y, sub_x, weights=sub_weights)
+        results = wls_model.fit()
+        coefficients = results.params
+
+        _check_wls_condition_number(results, threshold_error=1e15, threshold_warn=1e10)
+        _check_coefficients_validity(coefficients)
+
+        fitted_values = x @ coefficients
+
+    except (np.linalg.LinAlgError, ValueError, RuntimeError) as e:
+        warnings.warn(f"Failed to fit weighted least squares model: {e}. Returning NaNs.", UserWarning)
+
+    return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
+
+
+def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
+    r"""Compute plain OLS regression parameters for traditional DR-DiD with repeated cross-sections.
+
+    Implements ordinary least squares regression for the outcome model component of the
+    traditional doubly-robust difference-in-differences estimator with repeated cross-section data.
+    Unlike wols_rc, this function does NOT apply propensity score weighting - it uses only
+    the observation weights i_weights.
+
+    Parameters
+    ----------
+    y : ndarray
+        A 1D array representing the outcome variable for each unit.
+    post : ndarray
+        A 1D array representing the post-treatment period indicator (1 for post, 0 for pre)
+        for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    x : ndarray
+        A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+    pre : bool or None
+        If True, select pre-treatment period; if False, select post-treatment period.
+        Must be specified.
+    treat : bool
+        If True, select treated units; if False, select control units.
+        Default is False (control units).
+
+    Returns
+    -------
+    WOLSResult
+        A named tuple containing:
+
+        - `out_reg` : ndarray
+        - `coefficients` : ndarray
+
+    See Also
+    --------
+    wols_rc : Weighted OLS for improved DR-DiD estimators (includes propensity score weighting).
+    wols_panel : Weighted OLS for panel data.
+    """
+    _validate_wols_arrays({"y": y, "post": post, "d": d, "i_weights": i_weights}, x, "ols_rc")
+
+    if pre is None:
+        raise ValueError("pre parameter must be specified (True for pre-treatment, False for post-treatment).")
+
+    if pre and treat:
+        subs = (d == 1) & (post == 0)
+    elif not pre and treat:
+        subs = (d == 1) & (post == 1)
+    elif pre and not treat:
+        subs = (d == 0) & (post == 0)
+    else:
+        subs = (d == 0) & (post == 1)
+
+    n_subs = np.sum(subs)
+    n_features = x.shape[1]
+
+    if n_subs == 0:
+        raise ValueError(f"No units found for pre={pre}, treat={treat}. Cannot perform regression.")
+
+    if n_subs < n_features:
+        warnings.warn(
+            f"Number of observations in subset ({n_subs}) is less than the number of features ({n_features}). "
+            "Cannot estimate regression coefficients. Returning NaNs.",
+            UserWarning,
+        )
+        nan_coeffs = np.full(n_features, np.nan)
+        nan_fitted_values = np.full(y.shape[0], np.nan)
+        return WOLSResult(out_reg=nan_fitted_values, coefficients=nan_coeffs)
+
+    if n_subs < 3:
+        warnings.warn(f"Only {n_subs} units available for regression. Results may be unreliable.", UserWarning)
+
+    sub_x = x[subs]
+    sub_y = y[subs]
     sub_weights = i_weights[subs]
 
     _check_extreme_weights(sub_weights)

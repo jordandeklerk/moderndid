@@ -156,7 +156,7 @@ def drdid_imp_local_rc(
     out_y_treat_post = out_y_treat_post_res.out_reg
 
     dr_att = aipw_did_rc_imp2(
-        y, post, d, ps_fit, out_y_cont_pre, out_y_cont_post, out_y_treat_pre, out_y_treat_post, i_weights, trim_ps
+        y, post, d, ps_fit, out_y_treat_post, out_y_treat_pre, out_y_cont_post, out_y_cont_pre, i_weights, trim_ps
     )
 
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
