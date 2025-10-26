@@ -8,7 +8,6 @@ from scipy import stats
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_drdid_imp_panel
-from ..propensity.aipw_estimators import aipw_did_panel
 from ..propensity.pscore_ipt import calculate_pscore_ipt
 from .wols import wols_panel
 
@@ -129,17 +128,11 @@ def drdid_imp_panel(
     outcome_reg = wols_panel(delta_y=delta_y, d=d, x=covariates, ps=ps_fit, i_weights=i_weights)
     out_delta = outcome_reg.out_reg
 
-    dr_att = aipw_did_panel(delta_y=delta_y, d=d, ps=ps_fit, out_reg=out_delta, i_weights=i_weights, trim_ps=trim_ps)
+    dr_att_summand_num = trim_ps * (1 - (1 - d) / (1 - ps_fit)) * (delta_y - out_delta)
+    dr_att = np.mean(i_weights * dr_att_summand_num) / np.mean(d * i_weights)
 
-    att_inf_func = _compute_influence_function(
-        delta_y=delta_y,
-        d=d,
-        ps_fit=ps_fit,
-        out_delta=out_delta,
-        i_weights=i_weights,
-        trim_ps=trim_ps,
-        dr_att=dr_att,
-    )
+    mean_d_weights = np.mean(d * i_weights)
+    att_inf_func = i_weights * trim_ps * (dr_att_summand_num - d * dr_att) / mean_d_weights
 
     # Inference
     dr_boot = None
@@ -226,24 +219,3 @@ def _validate_and_preprocess_inputs(
     i_weights /= np.mean(i_weights)
 
     return y1, y0, d, covariates, i_weights, n_units
-
-
-def _compute_influence_function(
-    delta_y,
-    d,
-    ps_fit,
-    out_delta,
-    i_weights,
-    trim_ps,
-    dr_att,
-):
-    """Compute the influence function for the ATT estimator."""
-    mean_d_weights = np.mean(d * i_weights)
-    if mean_d_weights == 0:
-        raise ValueError("No treated units with positive weights, cannot compute ATT.")
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        dr_att_summand_num = (1 - (1 - d) / (1 - ps_fit)) * (delta_y - out_delta)
-    att_inf_func = i_weights * trim_ps * (dr_att_summand_num - d * dr_att) / mean_d_weights
-
-    return att_inf_func

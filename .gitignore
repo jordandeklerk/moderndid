@@ -166,3 +166,4 @@ cython_debug/
 *.local.*
 .c*
 .m*
+uv.lock
