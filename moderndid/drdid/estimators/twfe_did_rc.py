@@ -93,7 +93,7 @@ def twfe_did_rc(
     att, att_inf_func = _fit_twfe_regression(y, post, d, x, i_weights, n)
 
     if not boot:
-        se = np.std(att_inf_func, ddof=1) * np.sqrt(n - 1) / n
+        se = np.std(att_inf_func, ddof=1) / np.sqrt(n)
         uci = att + 1.96 * se
         lci = att - 1.96 * se
         boots = None
