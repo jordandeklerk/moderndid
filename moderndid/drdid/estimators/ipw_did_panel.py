@@ -113,7 +113,7 @@ def ipw_did_panel(
     att_treat = weights["w_treat"] * delta_y
     att_cont = weights["w_cont"] * delta_y
 
-    mean_trim_weight_d = np.mean(trim_level * i_weights * d)
+    mean_trim_weight_d = np.mean(i_weights * d)
 
     if mean_trim_weight_d == 0:
         warnings.warn("No effectively treated units after trimming.", UserWarning)
