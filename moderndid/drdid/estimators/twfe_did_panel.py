@@ -114,7 +114,7 @@ def twfe_did_panel(
             att, att_inf_func = _fit_twfe_regression(y_stacked, d_stacked, post, x, i_weights_stacked)
 
             if not boot:
-                se = np.std(att_inf_func, ddof=1) * np.sqrt(len(att_inf_func) - 1) / len(att_inf_func)
+                se = np.std(att_inf_func, ddof=1) / np.sqrt(len(att_inf_func))
                 uci = att + 1.96 * se
                 lci = att - 1.96 * se
                 boots = None

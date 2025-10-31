@@ -106,9 +106,9 @@ def ipw_did_rc(
 
     weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
 
-    pi_hat = np.mean(trim_ps * i_weights * d)
-    lambda_hat = np.mean(trim_ps * i_weights * post)
-    one_minus_lambda_hat = np.mean(trim_ps * i_weights * (1 - post))
+    pi_hat = np.mean(i_weights * d)
+    lambda_hat = np.mean(i_weights * post)
+    one_minus_lambda_hat = np.mean(i_weights * (1 - post))
 
     if pi_hat == 0:
         warnings.warn("No treated units after trimming.", UserWarning)
@@ -241,8 +241,8 @@ def _compute_propensity_score(d, covariates, i_weights):
 
 def _compute_weights(d, post, ps_fit, i_weights, trim_ps):
     """Compute IPW weights."""
-    w_treat_pre = trim_ps * i_weights * d * (1 - post)
-    w_treat_post = trim_ps * i_weights * d * post
+    w_treat_pre = i_weights * d * (1 - post)
+    w_treat_post = i_weights * d * post
     w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
     w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
 

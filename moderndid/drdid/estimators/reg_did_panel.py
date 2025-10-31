@@ -307,7 +307,7 @@ def _fit_outcome_regression(delta_y, d, int_cov, i_weights):
 def _compute_weights(d, i_weights):
     """Compute weights for outcome regression DiD estimator."""
     w_treat = i_weights * d
-    w_cont = i_weights * (1 - d)
+    w_cont = i_weights * d
 
     return {
         "w_treat": w_treat,

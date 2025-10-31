@@ -9,7 +9,7 @@ from scipy import stats
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc import wboot_drdid_rc2
-from .wols import wols_rc
+from .wols import ols_rc
 
 
 class DRDIDRCResult(NamedTuple):
@@ -111,10 +111,10 @@ def drdid_rc(
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    out_y_cont_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
-    out_y_cont_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
-    out_y_treat_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=True)
-    out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
+    out_y_cont_pre_res = ols_rc(y, post, d, covariates, i_weights, pre=True, treat=False)
+    out_y_cont_post_res = ols_rc(y, post, d, covariates, i_weights, pre=False, treat=False)
+    out_y_treat_pre_res = ols_rc(y, post, d, covariates, i_weights, pre=True, treat=True)
+    out_y_treat_post_res = ols_rc(y, post, d, covariates, i_weights, pre=False, treat=True)
 
     out_y_cont_pre = out_y_cont_pre_res.out_reg
     out_y_cont_post = out_y_cont_post_res.out_reg
