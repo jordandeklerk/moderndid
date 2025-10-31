@@ -266,8 +266,8 @@ def _compute_weights(
     trim_ps,
 ):
     """Compute weights for locally efficient and improved DR-DiD estimator."""
-    w_treat_pre = trim_ps * i_weights * d * (1 - post)
-    w_treat_post = trim_ps * i_weights * d * post
+    w_treat_pre = i_weights * d * (1 - post)
+    w_treat_post = i_weights * d * post
 
     with np.errstate(divide="ignore", invalid="ignore"):
         w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
@@ -277,9 +277,9 @@ def _compute_weights(
     w_cont_post = np.nan_to_num(w_cont_post, nan=0.0, posinf=0.0, neginf=0.0)
 
     # Additional weights for locally efficient estimator
-    w_d = trim_ps * i_weights * d
-    w_dt1 = trim_ps * i_weights * d * post
-    w_dt0 = trim_ps * i_weights * d * (1 - post)
+    w_d = i_weights * d
+    w_dt1 = i_weights * d * post
+    w_dt0 = i_weights * d * (1 - post)
 
     return {
         "w_treat_pre": w_treat_pre,

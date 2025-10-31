@@ -12,12 +12,7 @@ import statsmodels.api as sm
 def calculate_pscore_ipt(D, X, iw, quantiles=None):
     r"""Calculate propensity scores using Inverse Probability Tilting for the ATT.
 
-    Inverse Probability Tilting (IPT), as introduced by [1]_, is a semiparametric
-    method for covariate adjustment. The core idea is to reweight observations to
-    enforce balance in the moments of the covariate distribution between different
-    groups.
-
-    This function implements a specific variant of IPT tailored for estimating the
+    Implements a specific variant of IPT tailored for estimating the
     Average Treatment Effect on the Treated (ATT). Instead of re-weighting both
     the treated and control groups to match the full sample, it estimates a
     propensity score model that implies a re-weighting of the control group to
@@ -253,9 +248,9 @@ def _loss_ps_ipt(gamma, D, X, iw, n_obs):
     phi = np.where(v < v_star, -v - np.exp(v_clipped), an + bn * v + 0.5 * cn * (v**2))
     phi1 = np.where(v < v_star, -1.0 - np.exp(v_clipped), bn + cn * v)
     phi2 = np.where(v < v_star, -np.exp(v_clipped), cn)
-    value = -np.sum((iw * (1 - D) * phi) + v)
+    value = -np.sum(iw * (1 - D) * phi + v)
 
-    grad_vec_term = iw * ((1 - D) * phi1 + 1.0)
+    grad_vec_term = iw * (1 - D) * phi1 + 1.0
     gradient = -(X.T @ grad_vec_term)
 
     hess_M_ipt_vector = (1 - D) * iw * phi2

@@ -10,7 +10,7 @@ from scipy import stats
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc import wboot_drdid_rc1
-from .wols import wols_rc
+from .wols import ols_rc
 
 
 class DRDIDTradRCResult(NamedTuple):
@@ -105,7 +105,7 @@ def drdid_trad_rc(
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    out_reg_pre_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
+    out_reg_pre_result = ols_rc(y, post, d, covariates, i_weights, pre=True, treat=False)
     if np.any(np.isnan(out_reg_pre_result.coefficients)):
         raise ValueError(
             "Outcome regression model coefficients have NA components. \n"
@@ -113,7 +113,7 @@ def drdid_trad_rc(
         )
     out_y_pre = out_reg_pre_result.out_reg
 
-    out_reg_post_result = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=False)
+    out_reg_post_result = ols_rc(y, post, d, covariates, i_weights, pre=False, treat=False)
     if np.any(np.isnan(out_reg_post_result.coefficients)):
         raise ValueError(
             "Outcome regression model coefficients have NA components. \n"
