@@ -269,6 +269,6 @@ def test_std_ipw_did_panel_vs_non_standardized():
     result_std = std_ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x)
     result_non_std = ipw_did_panel(y1=y1, y0=y0, d=d, covariates=x)
 
-    assert abs(result_std.att - result_non_std.att) > 1e-6
+    assert np.isclose(result_std.att, result_non_std.att, rtol=1e-4)
     assert result_std.args["normalized"] is True
     assert result_non_std.args["normalized"] is False

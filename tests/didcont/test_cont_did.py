@@ -382,6 +382,8 @@ def test_cont_did_est_method_error(contdid_data):
         )
 
 
+@pytest.mark.filterwarnings("ignore:Simultaneous confidence band:UserWarning")
+@pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
 def test_cont_did_clustering_warning(contdid_data):
     with pytest.warns(UserWarning, match="Two-way clustering not currently supported"):
         cont_did(
@@ -396,6 +398,8 @@ def test_cont_did_clustering_warning(contdid_data):
         )
 
 
+@pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
+@pytest.mark.filterwarnings("ignore:Simultaneous confidence band is smaller than pointwise:UserWarning")
 def test_cont_did_anticipation_warning(contdid_data):
     with pytest.warns(UserWarning, match="Anticipation not fully tested"):
         cont_did(
@@ -410,6 +414,9 @@ def test_cont_did_anticipation_warning(contdid_data):
         )
 
 
+@pytest.mark.filterwarnings("ignore:Simultaneous confidence band:UserWarning")
+@pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
+@pytest.mark.filterwarnings("ignore:Simultaneous critical value is arguably 'too large':UserWarning")
 def test_cont_did_weights_warning(contdid_data):
     contdid_data["weights"] = np.random.uniform(0.5, 2.0, len(contdid_data))
 

@@ -23,7 +23,7 @@ def test_bootstrap_drdid_rc_basic():
     boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     assert np.std(boot_estimates) > 0
 
@@ -94,7 +94,7 @@ def test_bootstrap_with_weights():
     boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
 
 
@@ -112,7 +112,7 @@ def test_wboot_drdid_rc_imp1_basic():
     wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
-    assert len(wboot_estimates) == 100
+    assert len(wboot_estimates) == 20
     assert not np.all(np.isnan(wboot_estimates))
     assert np.std(wboot_estimates) > 0
 
@@ -185,7 +185,7 @@ def test_wboot_drdid_rc_imp1_with_weights():
     wboot_estimates = wboot_drdid_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(wboot_estimates, np.ndarray)
-    assert len(wboot_estimates) == 100
+    assert len(wboot_estimates) == 20
     assert not np.all(np.isnan(wboot_estimates))
 
 
@@ -221,7 +221,7 @@ def test_wboot_drdid_rc_basic():
     boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     assert np.std(boot_estimates) > 0
 
@@ -292,5 +292,5 @@ def test_wboot_drdid_rc_with_weights():
     boot_estimates = wboot_drdid_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))

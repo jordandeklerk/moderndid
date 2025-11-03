@@ -77,6 +77,7 @@ def test_process_dose_gt_no_extra_returns(mock_gt_results_no_dose, mock_pte_para
         process_dose_gt(mock_gt_results_no_dose, mock_pte_params_with_dose)
 
 
+@pytest.mark.filterwarnings("ignore:Simultaneous confidence band:UserWarning")
 def test_process_dose_gt_no_dose_values(mock_gt_results_with_dose, pte_params_basic):
     params_dict = pte_params_basic._asdict()
     params_dict["dvals"] = None
@@ -90,6 +91,7 @@ def test_process_dose_gt_no_dose_values(mock_gt_results_with_dose, pte_params_ba
     assert result.overall_att_se is not None
 
 
+@pytest.mark.filterwarnings("ignore:Simultaneous confidence band:UserWarning")
 def test_process_dose_gt_empty_dose_values(mock_gt_results_with_dose, pte_params_basic):
     params_dict = pte_params_basic._asdict()
     params_dict["dvals"] = np.array([])

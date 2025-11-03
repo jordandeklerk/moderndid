@@ -28,7 +28,7 @@ def test_wboot_drdid_imp_panel_basic():
     )
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     if not np.all(np.isnan(boot_estimates)):
         assert np.nanstd(boot_estimates) > 0
@@ -104,7 +104,7 @@ def test_wboot_drdid_imp_panel_with_weights():
     )
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
 
 
@@ -143,7 +143,7 @@ def test_wboot_std_ipw_panel_basic():
     boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     if not np.all(np.isnan(boot_estimates)):
         assert np.nanstd(boot_estimates) > 0
@@ -217,7 +217,7 @@ def test_wboot_std_ipw_panel_with_weights():
     boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
 
 
@@ -261,7 +261,7 @@ def test_wboot_dr_tr_panel_basic():
     boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     if not np.all(np.isnan(boot_estimates)):
         assert np.nanstd(boot_estimates) > 0
@@ -331,7 +331,7 @@ def test_wboot_dr_tr_panel_with_weights():
     boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
 
 
@@ -376,7 +376,7 @@ def test_wboot_ipw_panel_basic():
     boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     if not np.all(np.isnan(boot_estimates)):
         assert np.nanstd(boot_estimates) > 0
@@ -446,7 +446,7 @@ def test_wboot_ipw_panel_with_weights():
     boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
 
 
@@ -496,7 +496,7 @@ def test_wboot_reg_panel_basic():
     )
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     if not np.all(np.isnan(boot_estimates)):
         assert np.nanstd(boot_estimates) > 0
@@ -519,6 +519,7 @@ def test_wboot_reg_panel_invalid_inputs():
         wboot_reg_panel(delta_y, d, x, weights, n_bootstrap=0)
 
 
+@pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
 def test_wboot_reg_panel_edge_cases():
     np.random.seed(42)
     n = 100
@@ -603,10 +604,11 @@ def test_wboot_reg_panel_with_weights():
     )
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
 
 
+@pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
 def test_wboot_reg_panel_no_treated_units():
     np.random.seed(42)
     n = 100
@@ -682,7 +684,7 @@ def test_wboot_twfe_panel_basic():
     result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(result, np.ndarray)
-    assert result.shape == (100,)
+    assert result.shape == (20,)
     assert not np.all(np.isnan(result))
 
 
@@ -700,7 +702,7 @@ def test_wboot_twfe_panel_no_intercept():
     result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=10, random_state=42)
 
     assert isinstance(result, np.ndarray)
-    assert result.shape == (50,)
+    assert result.shape == (10,)
 
 
 def test_wboot_twfe_panel_weighted():
