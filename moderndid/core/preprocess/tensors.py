@@ -8,8 +8,8 @@ import pandas as pd
 
 from moderndid.utils import extract_vars_from_formula
 
+from .config import DIDConfig
 from .constants import WEIGHTS_COLUMN, DataFormat
-from .models import DIDConfig
 
 
 class TensorFactory(Protocol):
@@ -32,18 +32,16 @@ class BaseTensorFactory(ABC):
 
     @staticmethod
     def create_time_invariant_data(data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Extract time-invariant data (one row per unit)."""
+        """Extract time-invariant data."""
         time_invariant_cols = [config.idname, config.gname, WEIGHTS_COLUMN]
 
         if config.clustervars:
             time_invariant_cols.extend(config.clustervars)
 
-        # Add time-invariant covariates if any
         if config.xformla and config.xformla != "~1":
             formula_vars = extract_vars_from_formula(config.xformla)
             formula_vars = [v for v in formula_vars if v != config.yname]
 
-            # Check which variables are time-invariant
             for var in formula_vars:
                 if var in data.columns:
                     var_counts = data.groupby(config.idname)[var].nunique()
@@ -62,16 +60,13 @@ class BaseTensorFactory(ABC):
     def create_summary_tables(
         data: pd.DataFrame, time_invariant_data: pd.DataFrame, config: DIDConfig
     ) -> dict[str, pd.DataFrame]:
-        """Create summary tables for cohorts and periods."""
-        # Cohort counts
+        """Create summary tables."""
         cohort_counts = time_invariant_data.groupby(config.gname).size().reset_index(name="cohort_size")
         cohort_counts.columns = ["cohort", "cohort_size"]
 
-        # Period counts
         period_counts = data.groupby(config.tname).size().reset_index(name="period_size")
         period_counts.columns = ["period", "period_size"]
 
-        # Crosstable counts
         crosstable = data.groupby([config.tname, config.gname]).size().reset_index(name="count")
         crosstable.columns = ["period", "cohort", "count"]
         crosstable_counts = crosstable.pivot(index="period", columns="cohort", values="count").fillna(0)
@@ -146,13 +141,11 @@ class UnbalancedPanelTensorFactory(BaseTensorFactory):
         formula_vars = extract_vars_from_formula(config.xformla)
         formula_vars = [v for v in formula_vars if v != config.yname]
 
-        # Filter to only time-invariant variables
         available_vars = []
         for var in formula_vars:
             if var in time_invariant_data.columns:
                 available_vars.append(var)
             else:
-                # Try to get from original data if truly time-invariant
                 var_counts = data.groupby(config.idname)[var].nunique()
                 if (var_counts == 1).all():
                     time_invariant_data[var] = data.groupby(config.idname)[var].first().values
