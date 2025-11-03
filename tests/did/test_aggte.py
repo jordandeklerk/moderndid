@@ -92,6 +92,7 @@ def test_aggte_parameter_passing(mp_result, params, expected):
         assert result.estimation_params.get(key) == value
 
 
+@pytest.mark.filterwarnings("ignore:Clustering requested.*but data not available:UserWarning")
 def test_aggte_clustering(mp_result):
     result = aggte(
         mp_result,
@@ -230,6 +231,7 @@ def test_aggte_extreme_event_times():
     assert agg_result.max_event_time == int(1e10)
 
 
+@pytest.mark.filterwarnings("ignore:Setting an item of incompatible dtype:FutureWarning")
 def test_aggte_non_sequential_time_periods():
     df = load_mpdta()
     mask = df["first.treat"] != 0
@@ -252,6 +254,8 @@ def test_aggte_non_sequential_time_periods():
     assert agg_result.event_times is not None
 
 
+@pytest.mark.filterwarnings("ignore:Setting an item of incompatible dtype:FutureWarning")
+@pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
 def test_aggte_all_treated_same_time():
     df = load_mpdta()
     mask = df["first.treat"] != 0

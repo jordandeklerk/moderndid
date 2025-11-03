@@ -300,6 +300,6 @@ def test_bootstrap_types(boot_type):
     result = drdid_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=20)
 
     assert result.boots is not None
-    assert len(result.boots) == 100
+    assert len(result.boots) == 20
     assert result.se > 0
     assert result.lci < result.uci

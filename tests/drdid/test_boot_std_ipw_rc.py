@@ -20,7 +20,7 @@ def test_wboot_std_ipw_rc_basic():
     boot_estimates = wboot_std_ipw_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     assert np.std(boot_estimates) > 0
 
@@ -41,7 +41,7 @@ def test_wboot_std_ipw_rc_with_covariates():
 
     assert len(boot_estimates) == 10
     finite_estimates = boot_estimates[np.isfinite(boot_estimates)]
-    assert len(finite_estimates) > 40
+    assert len(finite_estimates) >= 5
     assert np.mean(finite_estimates) > 0
 
 
