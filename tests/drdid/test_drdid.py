@@ -417,6 +417,9 @@ def test_drdid_categorical_covariates(nsw_data):
     assert result.se > 0
 
 
+@pytest.mark.filterwarnings("ignore:Missing values found:UserWarning")
+@pytest.mark.filterwarnings("ignore:Dropped.*rows due to missing values:UserWarning")
+@pytest.mark.filterwarnings("ignore:Panel data is unbalanced:UserWarning")
 def test_drdid_missing_values_error():
     df = pd.DataFrame(
         {
@@ -441,6 +444,8 @@ def test_drdid_missing_values_error():
         )
 
 
+@pytest.mark.filterwarnings("ignore:Small group size detected:UserWarning")
+@pytest.mark.filterwarnings("ignore:Only.*control units available:UserWarning")
 def test_drdid_unbalanced_panel_warning():
     df = pd.DataFrame(
         {

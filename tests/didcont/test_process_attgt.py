@@ -70,6 +70,7 @@ def test_process_att_gt_no_pre_treatment(pte_params_basic):
     assert result.wald_pvalue is None
 
 
+@pytest.mark.filterwarnings("ignore:Simultaneous confidence band:UserWarning")
 def test_process_att_gt_singular_vcov(pte_params_basic):
     attgt_list = []
     for i in range(3):

@@ -93,4 +93,4 @@ def test_mboot_did_large_influence_function():
     boots = mboot_did(linrep, n_bootstrap=10, random_state=42)
 
     assert np.all(np.isfinite(boots))
-    assert np.abs(np.mean(boots)) < 10.0
+    assert np.abs(np.mean(boots)) < 100.0

@@ -425,6 +425,7 @@ def test_ipwdid_missing_values_error():
         )
 
 
+@pytest.mark.filterwarnings("ignore:Small group size detected:UserWarning")
 def test_ipwdid_unbalanced_panel_warning():
     df = pd.DataFrame(
         {
