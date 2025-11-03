@@ -20,7 +20,7 @@ def test_wboot_reg_rc_basic():
     boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     assert np.std(boot_estimates) > 0
 
@@ -43,6 +43,7 @@ def test_wboot_reg_rc_invalid_inputs():
         wboot_reg_rc(y, post, d, x, weights, n_bootstrap=0)
 
 
+@pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
 def test_wboot_reg_rc_insufficient_control_units():
     np.random.seed(42)
     n = 20
@@ -88,10 +89,12 @@ def test_wboot_reg_rc_with_weights():
     boot_estimates = wboot_reg_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
 
 
+@pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
+@pytest.mark.filterwarnings("ignore:Insufficient control units in pre-period.*:UserWarning")
 def test_wboot_reg_rc_no_treated_in_period():
     np.random.seed(42)
     n = 100

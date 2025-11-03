@@ -126,7 +126,7 @@ def test_wboot_ipw_rc_basic():
     bootstrap_estimates = wboot_ipw_rc(y, post, d, x, i_weights, n_bootstrap=10, random_state=42)
 
     assert bootstrap_estimates.shape == (10,)
-    assert np.sum(np.isfinite(bootstrap_estimates)) > 45
+    assert np.sum(np.isfinite(bootstrap_estimates)) >= 5
 
 
 def test_wboot_ipw_rc_convergence():

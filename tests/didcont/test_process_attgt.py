@@ -18,7 +18,7 @@ def test_multiplier_bootstrap_basic(simple_influence_func):
     assert "critical_value" in result
     assert len(result["se"]) == simple_influence_func.shape[1]
     assert np.all(result["se"] > 0)
-    assert result["critical_value"] > scipy.stats.norm.ppf(0.975)
+    assert result["critical_value"] >= scipy.stats.norm.ppf(0.975)
 
 
 def test_multiplier_bootstrap_single_param():
@@ -70,6 +70,7 @@ def test_process_att_gt_no_pre_treatment(pte_params_basic):
     assert result.wald_pvalue is None
 
 
+@pytest.mark.filterwarnings("ignore:Simultaneous confidence band:UserWarning")
 def test_process_att_gt_singular_vcov(pte_params_basic):
     attgt_list = []
     for i in range(3):

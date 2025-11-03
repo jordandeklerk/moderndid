@@ -22,9 +22,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install tox tox-gh-actions
       - name: Run full test suite
-        run: MODERNDID_RUN_FULL_TESTS=1 SKIP=no-commit-to-branch tox
+        run: SKIP=no-commit-to-branch tox
         env:
-          MODERNDID_RUN_FULL_TESTS: "1"
+          TEST_SUITE: full
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:

@@ -20,7 +20,7 @@ def test_wboot_twfe_rc_basic():
     boot_estimates = wboot_twfe_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
     assert np.std(boot_estimates) > 0
     assert 1.0 < np.mean(boot_estimates) < 2.5
@@ -72,7 +72,7 @@ def test_wboot_twfe_rc_with_weights():
     boot_estimates = wboot_twfe_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
 
 
@@ -88,7 +88,7 @@ def test_wboot_twfe_rc_no_intercept():
     boot_estimates = wboot_twfe_rc(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
     assert isinstance(boot_estimates, np.ndarray)
-    assert len(boot_estimates) == 100
+    assert len(boot_estimates) == 20
     assert not np.all(np.isnan(boot_estimates))
 
 

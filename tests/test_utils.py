@@ -137,6 +137,8 @@ def test_preprocess_drdid_non_numeric_weights(panel_setting):
 
 
 @pytest.mark.parametrize("panel_setting", [True, False])
+@pytest.mark.filterwarnings("ignore:Small group size detected.*:UserWarning")
+@pytest.mark.filterwarnings("ignore:Mean of weights is zero or negative.*:UserWarning")
 def test_preprocess_drdid_negative_weights(panel_setting):
     data = pd.DataFrame(
         {
@@ -168,6 +170,7 @@ def test_preprocess_drdid_negative_weights(panel_setting):
 
 
 @pytest.mark.parametrize("panel_setting", [True, False])
+@pytest.mark.filterwarnings("ignore:Small group size detected.*:UserWarning")
 def test_preprocess_drdid_zero_weights(panel_setting):
     data = pd.DataFrame(
         {

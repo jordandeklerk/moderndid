@@ -45,7 +45,7 @@ def test_mboot_twfep_did_zero_influence():
     linrep = np.zeros(2 * n_units)
 
     result = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
-    np.testing.assert_allclose(result, np.zeros(100))
+    np.testing.assert_allclose(result, np.zeros(20))
 
 
 def test_mboot_twfep_did_constant_influence():
@@ -77,13 +77,13 @@ def test_mboot_twfep_did_panel_structure():
     linrep = np.concatenate([linrep_pre, linrep_post])
 
     result = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
-    assert len(result) == 100
+    assert len(result) == 20
     assert result.dtype == np.float64
 
 
 def test_mboot_twfep_did_edge_cases():
     result = mboot_twfep_did(np.array([1.0, 2.0]), n_units=1, n_bootstrap=10, random_state=42)
-    assert result.shape == (50,)
+    assert result.shape == (10,)
 
     large_linrep = np.random.normal(0, 1, 2000)
     result = mboot_twfep_did(large_linrep, n_units=1000, n_bootstrap=10, random_state=42)
