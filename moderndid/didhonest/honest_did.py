@@ -42,8 +42,8 @@ def honest_did(
 ):
     """Compute sensitivity analysis for event study estimates.
 
-    Implements the approach of Rambachan and Roth (2021) for robust inference
-    in difference-in-differences and event study designs.
+    Implements the approach of [1]_ for robust inference in difference-in-differences
+    and event study designs.
 
     Parameters
     ----------
