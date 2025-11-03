@@ -1,6 +1,7 @@
 # pylint: disable=wildcard-import
 """Modern difference-in-differences estimators."""
 
+from moderndid.core.preprocess import DIDData
 from moderndid.data import load_ehec, load_engel, load_mpdta, load_nsw
 from moderndid.did.aggte import aggte
 from moderndid.did.aggte_obj import AGGTEResult, format_aggte_result
@@ -22,7 +23,6 @@ from moderndid.did.plots import (
     plot_did,
     plot_event_study,
 )
-from moderndid.did.preprocess import DIDData
 from moderndid.did.preprocess_did import preprocess_did
 from moderndid.didcont import (
     PTEParams,

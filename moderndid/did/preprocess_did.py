@@ -1,8 +1,12 @@
 """DiD preprocessing."""
 
-from .preprocess.builders import DIDDataBuilder
-from .preprocess.constants import BasePeriod, ControlGroup, EstimationMethod
-from .preprocess.models import DIDConfig
+from moderndid.core.preprocess import (
+    BasePeriod,
+    ControlGroup,
+    DIDConfig,
+    EstimationMethod,
+    PreprocessDataBuilder,
+)
 
 
 def preprocess_did(
@@ -24,7 +28,6 @@ def preprocess_did(
     clustervars=None,
     est_method="dr",
     base_period="varying",
-    print_details=True,
     faster_mode=False,
     pl=False,
     cores=1,
@@ -71,8 +74,6 @@ def preprocess_did(
         Estimation method: doubly robust, IPW, or regression.
     base_period : {"universal", "varying"}, default "varying"
         How to choose base period for comparisons.
-    print_details : bool, default True
-        Whether to print progress messages.
     faster_mode : bool, default False
         Whether to use computational shortcuts.
     pl : bool, default False
@@ -112,13 +113,12 @@ def preprocess_did(
         clustervars=clustervars if clustervars is not None else [],
         est_method=est_method_enum,
         base_period=base_period_enum,
-        print_details=print_details,
         faster_mode=faster_mode,
         pl=pl,
         cores=cores,
     )
 
-    builder = DIDDataBuilder()
+    builder = PreprocessDataBuilder()
     did_data = builder.with_data(data).with_config(config).validate().transform().build()
 
     return did_data

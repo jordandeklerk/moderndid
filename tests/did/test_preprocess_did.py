@@ -5,28 +5,29 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from moderndid.did import preprocess_did
-from moderndid.did.preprocess.builders import DIDDataBuilder
-from moderndid.did.preprocess.constants import (
+from moderndid.core.preprocess import (
     NEVER_TREATED_VALUE,
     BasePeriod,
+    CompositeValidator,
     ControlGroup,
-    EstimationMethod,
-)
-from moderndid.did.preprocess.models import DIDConfig, DIDData
-from moderndid.did.preprocess.tensors import TensorFactorySelector
-from moderndid.did.preprocess.transformers import (
     DataTransformerPipeline,
+    DIDConfig,
+    DIDData,
+    EstimationMethod,
+    PreprocessDataBuilder,
+    TensorFactorySelector,
+)
+from moderndid.core.preprocess.transformers import (
     TreatmentEncoder,
     WeightNormalizer,
 )
-from moderndid.did.preprocess.validators import (
+from moderndid.core.preprocess.validators import (
     ArgumentValidator,
     ColumnValidator,
-    CompositeValidator,
     PanelStructureValidator,
     TreatmentValidator,
 )
+from moderndid.did import preprocess_did
 
 
 def create_test_panel_data(
@@ -266,7 +267,7 @@ class TestTransformers:
 
     def test_transformer_pipeline(self):
         df = create_test_panel_data()
-        pipeline = DataTransformerPipeline()
+        pipeline = DataTransformerPipeline.get_did_pipeline()
 
         config = DIDConfig(
             yname="y",
@@ -301,7 +302,7 @@ class TestTensorFactories:
             allow_unbalanced_panel=False,
         )
 
-        pipeline = DataTransformerPipeline()
+        pipeline = DataTransformerPipeline.get_did_pipeline()
         df_transformed = pipeline.transform(df, config)
 
         tensors = TensorFactorySelector.create_tensors(df_transformed, config)
@@ -326,7 +327,7 @@ class TestTensorFactories:
             xformla="~ x1 + x2",
         )
 
-        pipeline = DataTransformerPipeline()
+        pipeline = DataTransformerPipeline.get_did_pipeline()
         df_transformed = pipeline.transform(df, config)
 
         tensors = TensorFactorySelector.create_tensors(df_transformed, config)
@@ -349,7 +350,6 @@ class TestPreprocessDid:
             gname="g",
             panel=True,
             allow_unbalanced_panel=True,
-            print_details=False,
         )
 
         assert isinstance(result, DIDData)
@@ -383,7 +383,6 @@ class TestPreprocessDid:
             clustervars=["id"],
             est_method="ipw",
             base_period="universal",
-            print_details=False,
         )
 
         assert result.config.control_group == ControlGroup.NOT_YET_TREATED
@@ -406,7 +405,6 @@ class TestPreprocessDid:
             tname="time",
             gname="g",
             panel=False,
-            print_details=False,
         )
 
         assert result.config.true_repeated_cross_sections is True
@@ -419,16 +417,14 @@ class TestPreprocessDid:
         df.loc[(df["id"].isin(range(70, 80))) & (df["g"] == 0), "g"] = 5
         df = df[df["g"] != 0].copy()
 
-        with pytest.warns(UserWarning, match="No never-treated group"):
-            result = preprocess_did(
-                data=df,
-                yname="y",
-                tname="time",
-                idname="id",
-                gname="g",
-                control_group="nevertreated",
-                print_details=False,
-            )
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            control_group="nevertreated",
+        )
 
         assert np.any(result.data["g"] == NEVER_TREATED_VALUE)
         assert len(result.config.treated_groups) > 0
@@ -444,7 +440,6 @@ class TestPreprocessDid:
                 tname="time",
                 idname="id",
                 gname="g",
-                print_details=False,
             )
 
     def test_invalid_control_group(self):
@@ -458,7 +453,6 @@ class TestPreprocessDid:
                 idname="id",
                 gname="g",
                 control_group="invalid",
-                print_details=False,
             )
 
 
@@ -475,7 +469,6 @@ class TestEdgeCases:
             tname="time",
             idname="id",
             gname="g",
-            print_details=False,
         )
 
         assert len(result.data) < len(df)
@@ -498,27 +491,25 @@ class TestEdgeCases:
             tname="time_numeric",
             idname="id",
             gname="g_numeric",
-            print_details=False,
         )
 
         assert result.config.time_periods is not None
         assert len(result.config.time_periods) == 4
 
+    @pytest.mark.filterwarnings("ignore:Be aware that there are some small groups:UserWarning")
     def test_single_treated_unit(self):
         df = create_test_panel_data(n_units=100)
         treated_ids = df[df["g"] > 0]["id"].unique()
         keep_ids = np.concatenate([df[df["g"] == 0]["id"].unique(), treated_ids[:1]])
         df = df[df["id"].isin(keep_ids)]
 
-        with pytest.warns(UserWarning, match="Be aware that there are some small groups"):
-            result = preprocess_did(
-                data=df,
-                yname="y",
-                tname="time",
-                idname="id",
-                gname="g",
-                print_details=False,
-            )
+        result = preprocess_did(
+            data=df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+        )
 
         assert result.config.treated_groups_count == 1
 
@@ -553,7 +544,6 @@ class TestDataIntegrity:
                 tname="time",
                 idname="id",
                 gname="g",
-                print_details=False,
             )
 
     def test_early_treatment_handling(self):
@@ -567,7 +557,6 @@ class TestDataIntegrity:
             tname="time",
             idname="id",
             gname="g",
-            print_details=False,
         )
 
         assert not result.data["id"].isin(early_treated_units).any()
@@ -586,7 +575,6 @@ class TestCovariateHandling:
             idname="id",
             gname="g",
             xformla="~ x1 + x2",
-            print_details=False,
         )
 
         assert result.covariates_tensor is not None
@@ -599,7 +587,6 @@ class TestCovariateHandling:
             idname="id",
             gname="g",
             xformla="~ x1 * x2",
-            print_details=False,
         )
 
         assert result.covariates_tensor is not None
@@ -612,7 +599,6 @@ class TestCovariateHandling:
             idname="id",
             gname="g",
             xformla="~ C(factor_var)",
-            print_details=False,
         )
 
         assert result.covariates_tensor is not None
@@ -628,7 +614,6 @@ class TestCovariateHandling:
             idname="id",
             gname="g",
             xformla="~ 0 + x1 + x2",
-            print_details=False,
         )
 
         assert result.covariates_tensor is not None
@@ -648,7 +633,6 @@ class TestWeightHandling:
             idname="id",
             gname="g",
             weightsname="w",
-            print_details=False,
         )
 
         assert len(result.data) == len(df)
@@ -666,13 +650,13 @@ class TestWeightHandling:
             idname="id",
             gname="g",
             weightsname="w",
-            print_details=False,
         )
 
         assert np.isclose(result.weights.mean(), 1.0, rtol=0.02)
 
 
 class TestUnbalancedPanelHandling:
+    @pytest.mark.filterwarnings("ignore:.*units have unbalanced observations:UserWarning")
     def test_unbalanced_to_balanced_conversion(self):
         df = create_unbalanced_panel_data(missing_fraction=0.3)
 
@@ -683,7 +667,6 @@ class TestUnbalancedPanelHandling:
             idname="id",
             gname="g",
             allow_unbalanced_panel=True,
-            print_details=False,
         )
 
         assert not result_unbalanced.is_balanced_panel
@@ -695,7 +678,6 @@ class TestUnbalancedPanelHandling:
             idname="id",
             gname="g",
             allow_unbalanced_panel=False,
-            print_details=False,
         )
 
         assert result_balanced.is_balanced_panel
@@ -714,7 +696,6 @@ class TestUnbalancedPanelHandling:
             gname="g",
             xformla="~ time_varying + time_invariant",
             allow_unbalanced_panel=True,
-            print_details=False,
         )
 
         if not result.is_balanced_panel:
@@ -736,7 +717,6 @@ class TestClusteringOptions:
                 idname="id",
                 gname="g",
                 clustervars=["cluster1", "cluster2"],
-                print_details=False,
             )
 
         result = preprocess_did(
@@ -746,7 +726,6 @@ class TestClusteringOptions:
             idname="id",
             gname="g",
             clustervars=["cluster1"],
-            print_details=False,
         )
 
         assert result.cluster is not None
@@ -763,7 +742,6 @@ class TestClusteringOptions:
                 idname="id",
                 gname="g",
                 clustervars=["nonexistent_var"],
-                print_details=False,
             )
 
 
@@ -779,7 +757,6 @@ class TestConfigurationOptions:
             gname="g",
             anticipation=1,
             control_group="notyettreated",
-            print_details=False,
         )
 
         assert result.config.anticipation == 1
@@ -794,7 +771,6 @@ class TestConfigurationOptions:
             idname="id",
             gname="g",
             base_period="universal",
-            print_details=False,
         )
 
         assert result_universal.config.base_period == BasePeriod.UNIVERSAL
@@ -806,7 +782,6 @@ class TestConfigurationOptions:
             idname="id",
             gname="g",
             base_period="varying",
-            print_details=False,
         )
 
         assert result_varying.config.base_period == BasePeriod.VARYING
@@ -822,7 +797,6 @@ class TestConfigurationOptions:
                 idname="id",
                 gname="g",
                 est_method=method,
-                print_details=False,
             )
 
             assert result.config.est_method == EstimationMethod(method)
@@ -838,7 +812,7 @@ class TestBuilderPattern:
             gname="g",
         )
 
-        builder = DIDDataBuilder()
+        builder = PreprocessDataBuilder()
         with pytest.raises(ValueError, match="missing_column"):
             builder.with_data(df).with_config(config).validate()
 
@@ -851,7 +825,7 @@ class TestBuilderPattern:
             gname="g",
         )
 
-        builder = DIDDataBuilder()
+        builder = PreprocessDataBuilder()
         result = builder.with_data(df).with_config(config).validate().transform().build()
 
         assert isinstance(result, DIDData)

@@ -1,7 +1,6 @@
-"""Data transformation classes for DiD preprocessing."""
+"""Data transformation classes for preprocessing."""
 
 import warnings
-from abc import ABC, abstractmethod
 from typing import Protocol
 
 import numpy as np
@@ -9,6 +8,8 @@ import pandas as pd
 
 from moderndid.utils import extract_vars_from_formula
 
+from .base import BaseTransformer
+from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig
 from .constants import (
     NEVER_TREATED_VALUE,
     ROW_ID_COLUMN,
@@ -16,29 +17,20 @@ from .constants import (
     ControlGroup,
     DataFormat,
 )
-from .models import DIDConfig
 
 
 class DataTransformer(Protocol):
-    """Protocol for data transformers."""
+    """Data transformer."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Transform data according to configuration."""
-
-
-class BaseTransformer(ABC):
-    """Base class for data transformers."""
-
-    @abstractmethod
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Transform data according to configuration."""
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
 
 
 class ColumnSelector(BaseTransformer):
-    """Selects relevant columns based on configuration."""
+    """Column selector."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Select only relevant columns."""
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
         cols_to_keep = [config.yname, config.tname, config.gname]
 
         if config.idname:
@@ -55,6 +47,9 @@ class ColumnSelector(BaseTransformer):
             formula_vars = [v for v in formula_vars if v != config.yname]
             cols_to_keep.extend(formula_vars)
 
+        if isinstance(config, ContDIDConfig) and config.dname:
+            cols_to_keep.append(config.dname)
+
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
         cols_to_keep = [col for col in cols_to_keep if col is not None]
 
@@ -62,10 +57,10 @@ class ColumnSelector(BaseTransformer):
 
 
 class MissingDataHandler(BaseTransformer):
-    """Handles missing data by dropping rows with NaN values."""
+    """Missing data."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Drop rows with missing values."""
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
         n_orig = len(data)
         data_clean = data.dropna()
         n_new = len(data_clean)
@@ -77,10 +72,10 @@ class MissingDataHandler(BaseTransformer):
 
 
 class WeightNormalizer(BaseTransformer):
-    """Adds and normalizes sampling weights."""
+    """Weight normalizer."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Add normalized weights column."""
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
         data = data.copy()
 
         if config.weightsname is None:
@@ -94,11 +89,24 @@ class WeightNormalizer(BaseTransformer):
         return data
 
 
-class TreatmentEncoder(BaseTransformer):
-    """Encodes treatment groups according to DiD conventions."""
+class DataSorter(BaseTransformer):
+    """Data sorter."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Encode treatment groups (0 -> infinity for never-treated)."""
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
+        sort_cols = [config.tname, config.gname]
+
+        if config.idname:
+            sort_cols.append(config.idname)
+
+        return data.sort_values(sort_cols).copy()
+
+
+class TreatmentEncoder(BaseTransformer):
+    """Treatment encoder."""
+
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
         data = data.copy()
 
         data[config.gname] = data[config.gname].astype(float)
@@ -112,10 +120,10 @@ class TreatmentEncoder(BaseTransformer):
 
 
 class EarlyTreatmentFilter(BaseTransformer):
-    """Filters out units treated before the first valid period."""
+    """Early treatment filter."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Filter early-treated units."""
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
         data = data.copy()
 
         tlist = sorted(data[config.tname].unique())
@@ -139,10 +147,13 @@ class EarlyTreatmentFilter(BaseTransformer):
 
 
 class NeverTreatedHandler(BaseTransformer):
-    """Handles cases with no never-treated units."""
+    """Never treated handler."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Handle missing never-treated group."""
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDConfig):
+            return data
+
         data = data.copy()
 
         glist = sorted(data[config.gname].unique())
@@ -171,10 +182,10 @@ class NeverTreatedHandler(BaseTransformer):
 
 
 class PanelBalancer(BaseTransformer):
-    """Balances panel data by keeping only complete units."""
+    """Panel balancer."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Balance panel by keeping only units observed in all periods."""
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
         if not config.panel or config.allow_unbalanced_panel or not config.idname:
             return data
 
@@ -202,10 +213,10 @@ class PanelBalancer(BaseTransformer):
 
 
 class RepeatedCrossSectionHandler(BaseTransformer):
-    """Handles repeated cross-section data structure."""
+    """Repeated cross section handler."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Add row IDs for repeated cross-sections."""
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
         if config.panel:
             return data
 
@@ -224,25 +235,91 @@ class RepeatedCrossSectionHandler(BaseTransformer):
         return data
 
 
-class DataSorter(BaseTransformer):
-    """Sorts data for consistent processing."""
+class TimePeriodRecoder(BaseTransformer):
+    """Time period recoder."""
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Sort data by time, group, and id."""
-        sort_cols = [config.tname, config.gname]
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
+        if not isinstance(config, ContDIDConfig):
+            return data
 
-        if config.idname:
-            sort_cols.append(config.idname)
+        data = data.copy()
 
-        return data.sort_values(sort_cols).copy()
+        original_periods = sorted(data[config.tname].unique())
+
+        time_map = {t: i + 1 for i, t in enumerate(original_periods)}
+
+        data[config.tname] = data[config.tname].map(time_map)
+
+        config.time_map = time_map
+
+        return data
+
+
+class GroupFilter(BaseTransformer):
+    """Group filter."""
+
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
+        if not isinstance(config, ContDIDConfig):
+            return data
+
+        data = data.copy()
+
+        glist = sorted([g for g in data[config.gname].unique() if np.isfinite(g)])
+        tlist = sorted(data[config.tname].unique())
+
+        if not glist:
+            return data
+
+        min_valid_group = config.required_pre_periods + config.anticipation + min(tlist)
+
+        groups_to_drop = [g for g in glist if g < min_valid_group]
+
+        if groups_to_drop:
+            warnings.warn(
+                f"Dropped {len(groups_to_drop)} groups treated before period {min_valid_group} "
+                f"(required_pre_periods={config.required_pre_periods}, anticipation={config.anticipation})"
+            )
+            data = data[~data[config.gname].isin(groups_to_drop)].copy()
+
+        return data
+
+
+class DoseValidator(BaseTransformer):
+    """Dose validator."""
+
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
+        if not isinstance(config, ContDIDConfig) or not config.dname:
+            return data
+
+        data = data.copy()
+
+        never_treated = data[config.gname] == NEVER_TREATED_VALUE
+        if never_treated.any():
+            data.loc[never_treated, config.dname] = 0
+
+        treated_units = (data[config.gname] != NEVER_TREATED_VALUE) & np.isfinite(data[config.gname])
+        post_treatment = data[config.tname] >= data[config.gname]
+        no_dose = (data[config.dname] == 0) | data[config.dname].isna()
+
+        invalid_obs = treated_units & post_treatment & no_dose
+        n_invalid = invalid_obs.sum()
+
+        if n_invalid > 0:
+            warnings.warn(f"Dropped {n_invalid} post-treatment observations with missing or zero dose values")
+            data = data[~invalid_obs].copy()
+
+        return data
 
 
 class ConfigUpdater:
-    """Updates configuration with computed values from data."""
+    """Config updater."""
 
     @staticmethod
-    def update(data: pd.DataFrame, config: DIDConfig) -> None:
-        """Update config with computed values."""
+    def update(data: pd.DataFrame, config: BasePreprocessConfig) -> None:
+        """Update config."""
         tlist = sorted(data[config.tname].unique())
         glist = sorted(data[config.gname].unique())
 
@@ -276,29 +353,47 @@ class ConfigUpdater:
 
 
 class DataTransformerPipeline:
-    """Pipeline of data transformers."""
+    """Data transformer pipeline."""
 
     def __init__(self, transformers: list[BaseTransformer] | None = None):
-        """Initialize with list of transformers."""
-        self.transformers = transformers or self._get_default_transformers()
+        """Initialize data transformer pipeline."""
+        self.transformers = transformers or []
 
     @staticmethod
-    def _get_default_transformers() -> list[BaseTransformer]:
-        """Get default transformation pipeline."""
-        return [
-            ColumnSelector(),
-            MissingDataHandler(),
-            WeightNormalizer(),
-            TreatmentEncoder(),
-            EarlyTreatmentFilter(),
-            NeverTreatedHandler(),
-            PanelBalancer(),
-            RepeatedCrossSectionHandler(),
-            DataSorter(),
-        ]
+    def get_did_pipeline() -> "DataTransformerPipeline":
+        """Get DID pipeline."""
+        return DataTransformerPipeline(
+            [
+                ColumnSelector(),
+                MissingDataHandler(),
+                WeightNormalizer(),
+                TreatmentEncoder(),
+                EarlyTreatmentFilter(),
+                NeverTreatedHandler(),
+                PanelBalancer(),
+                RepeatedCrossSectionHandler(),
+                DataSorter(),
+            ]
+        )
 
-    def transform(self, data: pd.DataFrame, config: DIDConfig) -> pd.DataFrame:
-        """Apply all transformations in sequence."""
+    @staticmethod
+    def get_cont_did_pipeline() -> "DataTransformerPipeline":
+        """Get ContDID pipeline."""
+        return DataTransformerPipeline(
+            [
+                ColumnSelector(),
+                MissingDataHandler(),
+                WeightNormalizer(),
+                TimePeriodRecoder(),
+                GroupFilter(),
+                DoseValidator(),
+                PanelBalancer(),
+                DataSorter(),
+            ]
+        )
+
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+        """Transform data."""
         for transformer in self.transformers:
             data = transformer.transform(data, config)
 

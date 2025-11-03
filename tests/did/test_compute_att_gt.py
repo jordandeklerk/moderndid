@@ -7,6 +7,7 @@ import pytest
 import scipy.sparse as sp
 
 from moderndid import load_mpdta
+from moderndid.core.preprocess import DIDConfig
 from moderndid.did.compute_att_gt import (
     ATTgtResult,
     ComputeATTgtResult,
@@ -15,7 +16,6 @@ from moderndid.did.compute_att_gt import (
     run_att_gt_estimation,
     run_drdid,
 )
-from moderndid.did.preprocess.models import DIDConfig
 from moderndid.did.preprocess_did import preprocess_did
 
 

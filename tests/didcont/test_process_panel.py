@@ -5,6 +5,21 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from moderndid.core.preprocess import (
+    choose_knots_quantile as _choose_knots_quantile,
+)
+from moderndid.core.preprocess import (
+    get_first_difference as _get_first_difference,
+)
+from moderndid.core.preprocess import (
+    get_group as _get_group,
+)
+from moderndid.core.preprocess import (
+    make_balanced_panel as _make_balanced_panel,
+)
+from moderndid.core.preprocess import (
+    map_to_idx as _map_to_idx,
+)
 from moderndid.didcont.panel.container import (
     AttgtResult,
     DoseResult,
@@ -12,11 +27,6 @@ from moderndid.didcont.panel.container import (
     PTEResult,
 )
 from moderndid.didcont.panel.process_panel import (
-    _choose_knots_quantile,
-    _get_first_difference,
-    _get_group,
-    _make_balanced_panel,
-    _map_to_idx,
     compute_pte,
     pte,
     setup_pte,

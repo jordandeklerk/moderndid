@@ -7,6 +7,13 @@ from collections import namedtuple
 import numpy as np
 import pandas as pd
 
+from moderndid.core.preprocess import (
+    choose_knots_quantile as _choose_knots_quantile,
+)
+from moderndid.core.preprocess import (
+    map_to_idx as _map_to_idx,
+)
+
 from .container import PTEParams, PTEResult
 from .estimators import pte_attgt
 
@@ -606,55 +613,3 @@ def _two_by_two_subset(
     disidx = np.isin(all_ids, subset_ids)
 
     return {"gt_data": this_data, "n1": n1, "disidx": disidx}
-
-
-def _map_to_idx(vals, time_map):
-    """Map original time/group values to contiguous integer indices."""
-    vals_arr = np.asarray(vals)
-    if vals_arr.ndim == 0:
-        val_item = vals_arr.item()
-        return time_map.get(val_item, val_item)
-    return np.array([time_map.get(v, v) for v in vals_arr], dtype=int)
-
-
-def _choose_knots_quantile(x, num_knots):
-    """Choose knots for splines based on quantiles of x."""
-    if num_knots <= 0:
-        return np.array([])
-
-    x = np.asarray(x)
-    if len(x) == 0:
-        return np.array([])
-
-    probs = np.linspace(0, 1, num_knots + 2)
-    quantiles = np.quantile(x, probs)
-    return quantiles[1:-1]
-
-
-def _make_balanced_panel(data, idname, tname):
-    """Convert an unbalanced panel into a balanced one."""
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("data must be a pandas DataFrame")
-
-    n_periods = data[tname].nunique()
-    balanced = data.groupby(idname).filter(lambda x: len(x) == n_periods)
-    return balanced.reset_index(drop=True)
-
-
-def _get_first_difference(df, idname, yname, tname):
-    """Compute first differences of outcome variable within units."""
-    df = df.sort_values([idname, tname])
-    lagged = df.groupby(idname)[yname].shift(1)
-    return df[yname] - lagged
-
-
-def _get_group(df, idname, tname, treatname):
-    """Identify first treatment period for each unit using a vectorized approach."""
-    df_sorted = df.sort_values([idname, tname])
-
-    is_treated = df_sorted[treatname] > 0
-    first_treat_mask = (is_treated.groupby(df_sorted[idname]).cumsum() == 1) & is_treated
-
-    id_to_group = df_sorted[df_sorted[tname].where(first_treat_mask).notna()].groupby(idname)[tname].first()
-
-    return df[idname].map(id_to_group).fillna(0).astype(int)

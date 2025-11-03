@@ -1,5 +1,21 @@
 """Preprocessing functions for continuous treatment DiD."""
 
+from moderndid.core.preprocess import (
+    choose_knots_quantile as _choose_knots_quantile,
+)
+from moderndid.core.preprocess import (
+    get_first_difference as _get_first_difference,
+)
+from moderndid.core.preprocess import (
+    get_group as _get_group,
+)
+from moderndid.core.preprocess import (
+    make_balanced_panel as _make_balanced_panel,
+)
+from moderndid.core.preprocess import (
+    map_to_idx as _map_to_idx,
+)
+
 from .container import (
     AttgtResult,
     DoseResult,
@@ -26,11 +42,6 @@ from .process_dose import (
     process_dose_gt,
 )
 from .process_panel import (
-    _choose_knots_quantile,
-    _get_first_difference,
-    _get_group,
-    _make_balanced_panel,
-    _map_to_idx,
     pte,
     pte_default,
     setup_pte,

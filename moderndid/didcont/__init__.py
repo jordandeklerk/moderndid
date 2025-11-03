@@ -1,5 +1,15 @@
 """Difference-in-differences with a continuous treatment."""
 
+from moderndid.core.preprocess import (
+    get_first_difference as _get_first_difference,
+)
+from moderndid.core.preprocess import (
+    get_group as _get_group,
+)
+from moderndid.core.preprocess import (
+    make_balanced_panel as _make_balanced_panel,
+)
+
 from .cont_did import cont_did
 from .npiv import (
     BSplineBasis,
@@ -18,9 +28,6 @@ from .panel import (
     GroupTimeATTResult,
     PTEAggteResult,
     PTEParams,
-    _get_first_difference,
-    _get_group,
-    _make_balanced_panel,
     _summary_dose_result,
     aggregate_att_gt,
     did_attgt,
