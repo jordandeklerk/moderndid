@@ -6,10 +6,9 @@ from typing import Protocol
 import numpy as np
 import pandas as pd
 
-from moderndid.utils import extract_vars_from_formula
-
 from .config import DIDConfig
 from .constants import WEIGHTS_COLUMN, DataFormat
+from .utils import extract_vars_from_formula
 
 
 class TensorFactory(Protocol):

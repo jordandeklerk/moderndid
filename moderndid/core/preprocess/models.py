@@ -5,10 +5,9 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from moderndid.utils import extract_vars_from_formula
-
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig
 from .constants import DataFormat
+from .utils import extract_vars_from_formula
 
 
 @dataclass

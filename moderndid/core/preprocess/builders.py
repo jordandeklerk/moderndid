@@ -6,11 +6,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from moderndid.utils import extract_vars_from_formula
-
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig
 from .models import ContDIDData, DIDData
 from .transformers import DataTransformerPipeline
+from .utils import extract_vars_from_formula
 from .validators import CompositeValidator
 
 
