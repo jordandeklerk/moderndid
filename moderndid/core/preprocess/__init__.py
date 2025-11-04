@@ -19,6 +19,7 @@ from .constants import (
     DataFormat,
     EstimationMethod,
 )
+from .did import preprocess_did
 from .models import ContDIDData, DIDData, PreprocessedData, ValidationResult
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
@@ -35,6 +36,7 @@ from .utils import (
 from .validators import CompositeValidator
 
 __all__ = [
+    "preprocess_did",
     "PreprocessDataBuilder",
     "BasePreprocessConfig",
     "DIDConfig",

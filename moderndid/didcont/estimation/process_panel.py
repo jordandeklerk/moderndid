@@ -103,7 +103,7 @@ def pte(
 
     aggregation = kwargs.get("aggregation", "dose")
     if gt_type == "dose" and aggregation == "dose":
-        from moderndid.didcont.panel.process_dose import process_dose_gt
+        from moderndid.didcont.estimation.process_dose import process_dose_gt
 
         if process_dose_gt_fun is None:
             process_dose_gt_fun = process_dose_gt

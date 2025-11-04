@@ -1,12 +1,8 @@
 """DiD preprocessing."""
 
-from moderndid.core.preprocess import (
-    BasePeriod,
-    ControlGroup,
-    DIDConfig,
-    EstimationMethod,
-    PreprocessDataBuilder,
-)
+from .builders import PreprocessDataBuilder
+from .config import DIDConfig
+from .constants import BasePeriod, ControlGroup, EstimationMethod
 
 
 def preprocess_did(

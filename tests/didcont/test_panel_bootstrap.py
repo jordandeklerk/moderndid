@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from moderndid.didcont.panel.bootstrap import (
+from moderndid.didcont.estimation.bootstrap import (
     _combine_ecdfs,
     _convert_to_original_time,
     _make_ecdf,
@@ -15,7 +15,7 @@ from moderndid.didcont.panel.bootstrap import (
     qott_pte_aggregations,
     qtt_pte_aggregations,
 )
-from moderndid.didcont.panel.container import PteEmpBootResult
+from moderndid.didcont.estimation.container import PteEmpBootResult
 
 
 def test_block_boot_sample_balanced(balanced_panel_data_bootstrap):

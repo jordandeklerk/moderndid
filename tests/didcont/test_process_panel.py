@@ -20,13 +20,13 @@ from moderndid.core.preprocess import (
 from moderndid.core.preprocess import (
     map_to_idx as _map_to_idx,
 )
-from moderndid.didcont.panel.container import (
+from moderndid.didcont.estimation.container import (
     AttgtResult,
     DoseResult,
     PTEParams,
     PTEResult,
 )
-from moderndid.didcont.panel.process_panel import (
+from moderndid.didcont.estimation.process_panel import (
     compute_pte,
     pte,
     setup_pte,

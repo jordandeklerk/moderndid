@@ -18,15 +18,15 @@ from moderndid.core.preprocess import (
     make_balanced_panel as _make_balanced_panel,
 )
 
-from .npiv import gsl_bs, npiv
-from .panel import (
+from .estimation import (
     AttgtResult,
     pte,
     pte_default,
     setup_pte_cont,
 )
-from .panel.estimators import pte_attgt
-from .panel.process_dose import DoseResult
+from .estimation.estimators import pte_attgt
+from .estimation.process_dose import DoseResult
+from .npiv import gsl_bs, npiv
 from .spline import BSpline
 
 

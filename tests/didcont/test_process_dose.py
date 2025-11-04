@@ -4,13 +4,13 @@ import numpy as np
 import pytest
 import scipy.stats as st
 
-from moderndid.didcont.panel import (
+from moderndid.didcont.estimation import (
     DoseResult,
     PTEParams,
     _summary_dose_result,
     process_dose_gt,
 )
-from moderndid.didcont.panel.process_dose import (
+from moderndid.didcont.estimation.process_dose import (
     _compute_dose_influence_functions,
     _compute_overall_att_inf_func,
     _multiplier_bootstrap_dose,
