@@ -1,5 +1,7 @@
 """Utility functions for preprocessing."""
 
+import re
+
 import numpy as np
 import pandas as pd
 
@@ -135,3 +137,38 @@ def validate_dose_values(dose, treatment_group, never_treated_value=float("inf")
         "errors": errors,
         "warnings": warnings,
     }
+
+
+def parse_formula(formula):
+    """Parse formula string to extract components."""
+    parts = formula.split("~")
+    if len(parts) != 2:
+        raise ValueError("Formula must be in the form 'y ~ x1 + x2 + ...'")
+
+    outcome = parts[0].strip()
+    predictors_str = parts[1].strip()
+
+    var_pattern = r"\b[a-zA-Z_]\w*\b"
+    all_vars = re.findall(var_pattern, predictors_str)
+
+    exclude = {"C", "I", "Q", "bs", "ns", "log", "exp", "sqrt", "abs", "np"}
+    predictors = [v for v in all_vars if v not in exclude]
+
+    seen = set()
+    predictors = [x for x in predictors if not (x in seen or seen.add(x))]
+
+    return {
+        "outcome": outcome,
+        "predictors": predictors,
+        "formula": formula,
+    }
+
+
+def extract_vars_from_formula(formula):
+    """Extract all variable names from formula string."""
+    parsed = parse_formula(formula)
+    vars_list = []
+    if parsed["outcome"]:
+        vars_list.append(parsed["outcome"])
+    vars_list.extend(parsed["predictors"])
+    return vars_list

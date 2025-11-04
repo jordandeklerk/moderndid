@@ -6,8 +6,6 @@ from typing import Protocol
 import numpy as np
 import pandas as pd
 
-from moderndid.utils import extract_vars_from_formula
-
 from .base import BaseTransformer
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig
 from .constants import (
@@ -17,6 +15,7 @@ from .constants import (
     ControlGroup,
     DataFormat,
 )
+from .utils import extract_vars_from_formula
 
 
 class DataTransformer(Protocol):
