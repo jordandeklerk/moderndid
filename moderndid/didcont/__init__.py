@@ -11,19 +11,7 @@ from moderndid.core.preprocess import (
 )
 
 from .cont_did import cont_did
-from .npiv import (
-    BSplineBasis,
-    MultivariateBasis,
-    NPIVResult,
-    compute_ucb,
-    gsl_bs,
-    npiv,
-    npiv_choose_j,
-    npiv_est,
-    predict_gsl_bs,
-    prodspline,
-)
-from .panel import (
+from .estimation import (
     DoseResult,
     GroupTimeATTResult,
     PTEAggteResult,
@@ -39,6 +27,18 @@ from .panel import (
     setup_pte,
     setup_pte_basic,
     setup_pte_cont,
+)
+from .npiv import (
+    BSplineBasis,
+    MultivariateBasis,
+    NPIVResult,
+    compute_ucb,
+    gsl_bs,
+    npiv,
+    npiv_choose_j,
+    npiv_est,
+    predict_gsl_bs,
+    prodspline,
 )
 from .plots import plot_cont_did
 from .utils import (

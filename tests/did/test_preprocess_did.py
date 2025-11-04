@@ -16,6 +16,7 @@ from moderndid.core.preprocess import (
     EstimationMethod,
     PreprocessDataBuilder,
     TensorFactorySelector,
+    preprocess_did,
 )
 from moderndid.core.preprocess.transformers import (
     TreatmentEncoder,
@@ -27,7 +28,6 @@ from moderndid.core.preprocess.validators import (
     PanelStructureValidator,
     TreatmentValidator,
 )
-from moderndid.did import preprocess_did
 
 
 def create_test_panel_data(

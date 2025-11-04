@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from moderndid.didcont.panel.container import AttgtResult
-from moderndid.didcont.panel.estimators import did_attgt, pte_attgt
+from moderndid.didcont.estimation.container import AttgtResult
+from moderndid.didcont.estimation.estimators import did_attgt, pte_attgt
 
 
 def test_did_attgt_basic_functionality(simple_panel_data):
