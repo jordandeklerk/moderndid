@@ -1,6 +1,7 @@
 # pylint: disable=wildcard-import
 """Modern difference-in-differences estimators."""
 
+from moderndid.core import data
 from moderndid.core.data import load_ehec, load_engel, load_mpdta, load_nsw
 from moderndid.core.preprocess import DIDData, preprocess_did
 from moderndid.core.preprocess.utils import extract_vars_from_formula, parse_formula
@@ -166,6 +167,7 @@ from moderndid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
 
 __all__ = [
     "cont_did",
+    "data",
     "AGGTEResult",
     "APRCIResult",
     "ARPNuisanceCIResult",
