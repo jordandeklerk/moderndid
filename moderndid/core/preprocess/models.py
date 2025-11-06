@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
 from .constants import DataFormat
 from .utils import extract_vars_from_formula
 
@@ -98,6 +98,28 @@ class ContDIDData(PreprocessedData):
                 return np.array([reverse_map[t] for t in time_idx])
             return reverse_map[time_idx]
         return time_idx
+
+
+@dataclass
+class TwoPeriodDIDData:
+    """Two-period DiD data."""
+
+    y1: np.ndarray | None = None
+    y0: np.ndarray | None = None
+    y: np.ndarray | None = None
+    post: np.ndarray | None = None
+    D: np.ndarray = field(default_factory=lambda: np.array([]))
+    covariates: np.ndarray = field(default_factory=lambda: np.array([]))
+    weights: np.ndarray = field(default_factory=lambda: np.array([]))
+    covariate_names: list[str] = field(default_factory=list)
+    n_units: int = 0
+    n_obs: int = 0
+    config: TwoPeriodDIDConfig | None = None
+
+    @property
+    def is_panel(self) -> bool:
+        """Check if data is panel."""
+        return self.y1 is not None and self.y0 is not None
 
 
 @dataclass

@@ -1,7 +1,7 @@
 """Preprocessing functions."""
 
 from .builders import PreprocessDataBuilder
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
 from .constants import (
     DEFAULT_ALPHA,
     DEFAULT_ANTICIPATION_PERIODS,
@@ -19,8 +19,8 @@ from .constants import (
     DataFormat,
     EstimationMethod,
 )
-from .did import preprocess_did
-from .models import ContDIDData, DIDData, PreprocessedData, ValidationResult
+from .did import preprocess_did, preprocess_drdid
+from .models import ContDIDData, DIDData, PreprocessedData, TwoPeriodDIDData, ValidationResult
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
 from .utils import (
@@ -37,12 +37,15 @@ from .validators import CompositeValidator
 
 __all__ = [
     "preprocess_did",
+    "preprocess_drdid",
     "PreprocessDataBuilder",
     "BasePreprocessConfig",
     "DIDConfig",
     "ContDIDConfig",
+    "TwoPeriodDIDConfig",
     "DIDData",
     "ContDIDData",
+    "TwoPeriodDIDData",
     "PreprocessedData",
     "ValidationResult",
     "DataTransformerPipeline",

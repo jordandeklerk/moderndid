@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .base import BaseTransformer
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
 from .constants import (
     NEVER_TREATED_VALUE,
     ROW_ID_COLUMN,
@@ -65,6 +65,12 @@ class MissingDataHandler(BaseTransformer):
         n_new = len(data_clean)
 
         if n_orig > n_new:
+            if isinstance(config, TwoPeriodDIDConfig) and config.panel:
+                raise ValueError(
+                    f"Missing values found in panel data. Dropped {n_orig - n_new} rows. "
+                    "Panel data requires complete observations for all time periods. "
+                    "Please handle missing values before preprocessing."
+                )
             warnings.warn(f"Dropped {n_orig - n_new} rows from original data due to missing values")
 
         return data_clean
@@ -319,6 +325,22 @@ class ConfigUpdater:
     @staticmethod
     def update(data: pd.DataFrame, config: BasePreprocessConfig) -> None:
         """Update config."""
+        if isinstance(config, TwoPeriodDIDConfig):
+            tlist = sorted(data[config.tname].unique())
+            treat_list = sorted(data[config.treat_col].unique())
+
+            if config.idname:
+                n_units = data[config.idname].nunique()
+            else:
+                n_units = len(data)
+
+            config.time_periods = np.array(tlist)
+            config.time_periods_count = len(tlist)
+            config.treated_groups = np.array(treat_list)
+            config.treated_groups_count = len(treat_list)
+            config.id_count = n_units
+            return
+
         tlist = sorted(data[config.tname].unique())
         glist = sorted(data[config.gname].unique())
 
@@ -349,6 +371,117 @@ class ConfigUpdater:
 
         if len(tlist) == 2:
             config.cband = False
+
+
+class TwoPeriodColumnSelector(BaseTransformer):
+    """Two-period column selector."""
+
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
+        """Transform data."""
+        if not isinstance(config, TwoPeriodDIDConfig):
+            return data
+
+        cols_to_keep = [config.yname, config.tname, config.treat_col]
+
+        if config.idname:
+            cols_to_keep.append(config.idname)
+
+        if config.weightsname:
+            cols_to_keep.append(config.weightsname)
+
+        if config.xformla and config.xformla != "~1":
+            formula_vars = extract_vars_from_formula(config.xformla)
+            formula_vars = [v for v in formula_vars if v != config.yname]
+            cols_to_keep.extend(formula_vars)
+
+        cols_to_keep = list(dict.fromkeys(cols_to_keep))
+        cols_to_keep = [col for col in cols_to_keep if col is not None]
+
+        return data[cols_to_keep].copy()
+
+
+class TwoPeriodCovariateProcessor(BaseTransformer):
+    """Two-period covariate processor."""
+
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
+        """Transform data."""
+        if not isinstance(config, TwoPeriodDIDConfig):
+            return data
+
+        import formulaic as fml
+
+        covariates_formula = config.xformla if config.xformla else "~1"
+
+        try:
+            model_matrix_result = fml.model_matrix(
+                covariates_formula,
+                data,
+                output="pandas",
+            )
+            covariates_df = model_matrix_result
+
+            if hasattr(model_matrix_result, "model_spec") and model_matrix_result.model_spec:
+                original_cov_names = [var for var in model_matrix_result.model_spec.variables if var != "1"]
+            else:
+                original_cov_names = []
+                warnings.warn("Could not retrieve model_spec from formulaic output.", UserWarning)
+
+        except Exception as e:
+            raise ValueError(f"Error processing covariates_formula '{covariates_formula}' with formulaic: {e}") from e
+
+        cols_to_drop = [name for name in original_cov_names if name in data.columns]
+        data_processed = pd.concat([data.drop(columns=cols_to_drop), covariates_df], axis=1)
+
+        return data_processed
+
+
+class TwoPeriodPanelBalancer(BaseTransformer):
+    """Two-period panel balancer."""
+
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
+        """Transform data."""
+        if not isinstance(config, TwoPeriodDIDConfig) or not config.panel or not config.idname:
+            return data
+
+        n_times = data[config.tname].nunique()
+        obs_counts = data.groupby(config.idname).size()
+        ids_to_keep = obs_counts[obs_counts == n_times].index
+
+        if len(ids_to_keep) < len(obs_counts):
+            warnings.warn("Panel data is unbalanced. Dropping units with incomplete observations.", UserWarning)
+
+        return data[data[config.idname].isin(ids_to_keep)].copy()
+
+
+class TwoPeriodTimeInvarianceChecker(BaseTransformer):
+    """Two-period time invariance checker."""
+
+    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
+        """Transform data."""
+        if not isinstance(config, TwoPeriodDIDConfig) or not config.panel or not config.idname:
+            return data
+
+        time_periods = sorted(data[config.tname].unique())
+        if len(time_periods) != 2:
+            return data
+
+        pre_period, post_period = time_periods
+
+        pre_df = data[data[config.tname] == pre_period].set_index(config.idname)
+        post_df = data[data[config.tname] == post_period].set_index(config.idname)
+
+        common_ids = pre_df.index.intersection(post_df.index)
+        pre_df = pre_df.loc[common_ids]
+        post_df = post_df.loc[common_ids]
+
+        if not pre_df[config.treat_col].equals(post_df[config.treat_col]):
+            raise ValueError(f"Treatment indicator ('{config.treat_col}') must be time-invariant in panel data.")
+
+        if WEIGHTS_COLUMN in pre_df.columns and WEIGHTS_COLUMN in post_df.columns:
+            if not pre_df[WEIGHTS_COLUMN].equals(post_df[WEIGHTS_COLUMN]):
+                raise ValueError("Weights must be time-invariant in panel data.")
+
+        return data
 
 
 class DataTransformerPipeline:
@@ -388,6 +521,20 @@ class DataTransformerPipeline:
                 DoseValidator(),
                 PanelBalancer(),
                 DataSorter(),
+            ]
+        )
+
+    @staticmethod
+    def get_two_period_pipeline() -> "DataTransformerPipeline":
+        """Get two-period pipeline."""
+        return DataTransformerPipeline(
+            [
+                TwoPeriodColumnSelector(),
+                MissingDataHandler(),
+                TwoPeriodCovariateProcessor(),
+                WeightNormalizer(),
+                TwoPeriodPanelBalancer(),
+                TwoPeriodTimeInvarianceChecker(),
             ]
         )
 

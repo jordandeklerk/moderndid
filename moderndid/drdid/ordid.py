@@ -4,10 +4,11 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from moderndid.core.preprocess import preprocess_drdid
+
 from .estimators.reg_did_panel import reg_did_panel
 from .estimators.reg_did_rc import reg_did_rc
 from .print import print_did_result
-from .utils import preprocess_drdid
 
 
 class ORDIDResult(NamedTuple):
@@ -189,26 +190,26 @@ def ordid(
 
     dp = preprocess_drdid(
         data=data,
-        y_col=y_col,
-        time_col=time_col,
-        id_col=id_col if panel else "dummy_id",  # Dummy ID for RC data
+        yname=y_col,
+        tname=time_col,
         treat_col=treat_col,
-        covariates_formula=covariates_formula,
+        idname=id_col if panel else None,
+        xformla=covariates_formula,
         panel=panel,
-        weights_col=weights_col,
-        boot=boot,
+        weightsname=weights_col,
+        bstrap=boot,
         boot_type=boot_type,
-        n_boot=n_boot,
+        biters=n_boot,
         inf_func=inf_func,
     )
 
     if panel:
         result = reg_did_panel(
-            y1=dp["y1"],
-            y0=dp["y0"],
-            d=dp["D"],
-            covariates=dp["covariates"],
-            i_weights=dp["weights"],
+            y1=dp.y1,
+            y0=dp.y0,
+            d=dp.D,
+            covariates=dp.covariates,
+            i_weights=dp.weights,
             boot=boot,
             boot_type=boot_type,
             nboot=n_boot,
@@ -216,11 +217,11 @@ def ordid(
         )
     else:
         result = reg_did_rc(
-            y=dp["y"],
-            post=dp["post"],
-            d=dp["D"],
-            covariates=dp["covariates"],
-            i_weights=dp["weights"],
+            y=dp.y,
+            post=dp.post,
+            d=dp.D,
+            covariates=dp.covariates,
+            i_weights=dp.weights,
             boot=boot,
             boot_type=boot_type,
             nboot=n_boot,

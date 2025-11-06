@@ -5,7 +5,7 @@ from typing import Protocol
 import pandas as pd
 
 from .base import BaseValidator
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
 from .constants import BasePeriod, ControlGroup
 from .models import ValidationResult
 
@@ -264,6 +264,113 @@ class DoseValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
+class TwoPeriodColumnValidator(BaseValidator):
+    """Two-period column validator."""
+
+    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
+        """Validate data."""
+        errors = []
+        warnings = []
+        data_columns = data.columns.tolist()
+
+        if not isinstance(config, TwoPeriodDIDConfig):
+            return self._create_result(errors, warnings)
+
+        required_cols = {
+            "yname": config.yname,
+            "tname": config.tname,
+            "treat_col": config.treat_col,
+        }
+
+        if config.panel and config.idname:
+            required_cols["idname"] = config.idname
+
+        for col_type, col_name in required_cols.items():
+            if col_name not in data_columns:
+                errors.append(f"{col_type} = '{col_name}' must be a column in the dataset")
+
+        if config.weightsname and config.weightsname not in data_columns:
+            errors.append(f"weightsname = '{config.weightsname}' must be a column in the dataset")
+
+        if not errors:
+            if config.tname in data_columns and not pd.api.types.is_numeric_dtype(data[config.tname]):
+                errors.append(f"tname = '{config.tname}' is not numeric. Please convert it")
+
+            if config.treat_col in data_columns and not pd.api.types.is_numeric_dtype(data[config.treat_col]):
+                errors.append(f"treat_col = '{config.treat_col}' is not numeric. Please convert it")
+
+            if config.idname and config.idname in data_columns:
+                if not pd.api.types.is_numeric_dtype(data[config.idname]):
+                    errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
+
+        return self._create_result(errors, warnings)
+
+    @staticmethod
+    def _create_result(errors: list[str] | None = None, warnings: list[str] | None = None) -> ValidationResult:
+        """Create result."""
+        errors = errors or []
+        warnings = warnings or []
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
+class TwoPeriodValidator(BaseValidator):
+    """Two-period validator."""
+
+    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
+        """Validate data."""
+        errors = []
+        warnings = []
+
+        if not isinstance(config, TwoPeriodDIDConfig):
+            return self._create_result(errors, warnings)
+
+        time_periods = sorted(data[config.tname].unique())
+        if len(time_periods) != 2:
+            errors.append("This package currently supports only two time periods (pre and post).")
+
+        groups = sorted(data[config.treat_col].unique())
+        if len(groups) != 2 or not all(g in [0, 1] for g in groups):
+            errors.append("Treatment indicator column must contain only 0 (control) and 1 (treated).")
+
+        return self._create_result(errors, warnings)
+
+    @staticmethod
+    def _create_result(errors: list[str] | None = None, warnings: list[str] | None = None) -> ValidationResult:
+        """Create result."""
+        errors = errors or []
+        warnings = warnings or []
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
+class TwoPeriodPanelValidator(BaseValidator):
+    """Two-period panel validator."""
+
+    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
+        """Validate data."""
+        errors = []
+        warnings = []
+
+        if not isinstance(config, TwoPeriodDIDConfig) or not config.panel or not config.idname:
+            return self._create_result(errors, warnings)
+
+        treat_counts = data.groupby(config.idname)[config.treat_col].nunique()
+        if (treat_counts > 1).any():
+            invalid_ids = treat_counts[treat_counts > 1].index.tolist()
+            errors.append(
+                f"Treatment indicator ('{config.treat_col}') must be unique for each ID ('{config.idname}'). "
+                f"IDs with varying treatment: {invalid_ids}."
+            )
+
+        return self._create_result(errors, warnings)
+
+    @staticmethod
+    def _create_result(errors: list[str] | None = None, warnings: list[str] | None = None) -> ValidationResult:
+        """Create result."""
+        errors = errors or []
+        warnings = warnings or []
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
 class CompositeValidator(BaseValidator):
     """Composite validator."""
 
@@ -277,6 +384,13 @@ class CompositeValidator(BaseValidator):
     @staticmethod
     def _get_default_validators(config_type: str = "did") -> list[BaseValidator]:
         """Get default validators."""
+        if config_type == "two_period":
+            return [
+                TwoPeriodColumnValidator(),
+                TwoPeriodValidator(),
+                TwoPeriodPanelValidator(),
+            ]
+
         common_validators = [
             ArgumentValidator(),
             ColumnValidator(),
