@@ -249,13 +249,10 @@ class TimePeriodRecoder(BaseTransformer):
             return data
 
         data = data.copy()
-
         original_periods = sorted(data[config.tname].unique())
-
         time_map = {t: i + 1 for i, t in enumerate(original_periods)}
 
         data[config.tname] = data[config.tname].map(time_map)
-
         config.time_map = time_map
 
         return data
