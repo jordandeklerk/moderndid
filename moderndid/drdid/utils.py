@@ -4,6 +4,15 @@ import warnings
 
 import numpy as np
 
+__all__ = [
+    "_validate_inputs",
+    "_validate_wols_arrays",
+    "_check_extreme_weights",
+    "_check_wls_condition_number",
+    "_check_coefficients_validity",
+    "_weighted_sum",
+]
+
 
 def _validate_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=False):
     """Validate inputs for bootstrap functions."""
