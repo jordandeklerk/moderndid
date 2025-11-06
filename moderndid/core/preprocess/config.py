@@ -67,6 +67,37 @@ class DIDConfig(BasePreprocessConfig):
 
 
 @dataclass
+class TwoPeriodDIDConfig:
+    """Two-period DiD config."""
+
+    yname: str
+    tname: str
+    treat_col: str
+    idname: str | None = None
+    xformla: str = "~1"
+    panel: bool = True
+    weightsname: str | None = None
+    alp: float = DEFAULT_ALPHA
+    bstrap: bool = False
+    boot_type: BootstrapType = BootstrapType.WEIGHTED
+    biters: int = DEFAULT_BOOTSTRAP_ITERATIONS
+    est_method: str = "imp"
+    trim_level: float = 0.995
+    inf_func: bool = False
+    normalized: bool = True
+
+    time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
+    time_periods_count: int = 0
+    treated_groups: np.ndarray = field(default_factory=lambda: np.array([]))
+    treated_groups_count: int = 0
+    id_count: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {k: v.value if isinstance(v, Enum) else v for k, v in self.__dict__.items()}
+
+
+@dataclass
 class ContDIDConfig(BasePreprocessConfig):
     """ContDID config."""
 

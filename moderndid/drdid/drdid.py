@@ -4,6 +4,8 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from moderndid.core.preprocess import preprocess_drdid
+
 from .estimators.drdid_imp_local_rc import drdid_imp_local_rc
 from .estimators.drdid_imp_panel import drdid_imp_panel
 from .estimators.drdid_imp_rc import drdid_imp_rc
@@ -11,7 +13,6 @@ from .estimators.drdid_panel import drdid_panel
 from .estimators.drdid_rc import drdid_rc
 from .estimators.drdid_trad_rc import drdid_trad_rc
 from .print import print_did_result
-from .utils import preprocess_drdid
 
 
 class DRDIDResult(NamedTuple):
@@ -238,17 +239,19 @@ def drdid(
 
     dp = preprocess_drdid(
         data=data,
-        y_col=y_col,
-        time_col=time_col,
-        id_col=id_col if panel else "dummy_id",
+        yname=y_col,
+        tname=time_col,
         treat_col=treat_col,
-        covariates_formula=covariates_formula,
+        idname=id_col if panel else None,
+        xformla=covariates_formula,
         panel=panel,
-        weights_col=weights_col,
-        boot=boot,
+        weightsname=weights_col,
+        bstrap=boot,
         boot_type=boot_type,
-        n_boot=n_boot,
+        biters=n_boot,
         inf_func=inf_func,
+        est_method=est_method,
+        trim_level=trim_level,
     )
 
     if panel:
@@ -257,38 +260,38 @@ def drdid(
 
         if est_method == "imp":
             result = drdid_imp_panel(
-                y1=dp["y1"],
-                y0=dp["y0"],
-                d=dp["D"],
-                covariates=dp["covariates"],
-                i_weights=dp["weights"],
+                y1=dp.y1,
+                y0=dp.y0,
+                d=dp.D,
+                covariates=dp.covariates,
+                i_weights=dp.weights,
                 boot=boot,
                 boot_type=boot_type,
                 nboot=n_boot,
                 influence_func=inf_func,
                 trim_level=trim_level,
             )
-        else:  # "trad"
+        else:
             result = drdid_panel(
-                y1=dp["y1"],
-                y0=dp["y0"],
-                d=dp["D"],
-                covariates=dp["covariates"],
-                i_weights=dp["weights"],
+                y1=dp.y1,
+                y0=dp.y0,
+                d=dp.D,
+                covariates=dp.covariates,
+                i_weights=dp.weights,
                 boot=boot,
                 boot_type=boot_type,
                 nboot=n_boot,
                 influence_func=inf_func,
                 trim_level=trim_level,
             )
-    else:  # Repeated cross-section
+    else:
         if est_method == "imp":
             result = drdid_imp_rc(
-                y=dp["y"],
-                post=dp["post"],
-                d=dp["D"],
-                covariates=dp["covariates"],
-                i_weights=dp["weights"],
+                y=dp.y,
+                post=dp.post,
+                d=dp.D,
+                covariates=dp.covariates,
+                i_weights=dp.weights,
                 boot=boot,
                 boot_type=boot_type,
                 nboot=n_boot,
@@ -297,11 +300,11 @@ def drdid(
             )
         elif est_method == "trad":
             result = drdid_rc(
-                y=dp["y"],
-                post=dp["post"],
-                d=dp["D"],
-                covariates=dp["covariates"],
-                i_weights=dp["weights"],
+                y=dp.y,
+                post=dp.post,
+                d=dp.D,
+                covariates=dp.covariates,
+                i_weights=dp.weights,
                 boot=boot,
                 boot_type=boot_type,
                 nboot=n_boot,
@@ -310,24 +313,24 @@ def drdid(
             )
         elif est_method == "imp_local":
             result = drdid_imp_local_rc(
-                y=dp["y"],
-                post=dp["post"],
-                d=dp["D"],
-                covariates=dp["covariates"],
-                i_weights=dp["weights"],
+                y=dp.y,
+                post=dp.post,
+                d=dp.D,
+                covariates=dp.covariates,
+                i_weights=dp.weights,
                 boot=boot,
                 boot_type=boot_type,
                 nboot=n_boot,
                 influence_func=inf_func,
                 trim_level=trim_level,
             )
-        else:  # "trad_local"
+        else:
             result = drdid_trad_rc(
-                y=dp["y"],
-                post=dp["post"],
-                d=dp["D"],
-                covariates=dp["covariates"],
-                i_weights=dp["weights"],
+                y=dp.y,
+                post=dp.post,
+                d=dp.D,
+                covariates=dp.covariates,
+                i_weights=dp.weights,
                 boot=boot,
                 boot_type=boot_type,
                 nboot=n_boot,

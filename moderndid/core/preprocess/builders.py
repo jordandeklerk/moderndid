@@ -6,8 +6,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig
-from .models import ContDIDData, DIDData
+from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
+from .constants import WEIGHTS_COLUMN
+from .models import ContDIDData, DIDData, TwoPeriodDIDData
+from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
 from .utils import extract_vars_from_formula
 from .validators import CompositeValidator
@@ -48,7 +50,7 @@ class PreprocessDataBuilder:
         Parameters
         ----------
         config : BasePreprocessConfig
-            Configuration object (DIDConfig or ContDIDConfig).
+            Configuration object (DIDConfig, ContDIDConfig, or TwoPeriodDIDConfig).
 
         Returns
         -------
@@ -57,7 +59,10 @@ class PreprocessDataBuilder:
         """
         self._config = config
 
-        if isinstance(config, DIDConfig):
+        if isinstance(config, TwoPeriodDIDConfig):
+            self._validator = CompositeValidator(config_type="two_period")
+            self._transformer = DataTransformerPipeline.get_two_period_pipeline()
+        elif isinstance(config, DIDConfig):
             self._validator = CompositeValidator(config_type="did")
             self._transformer = DataTransformerPipeline.get_did_pipeline()
         elif isinstance(config, ContDIDConfig):
@@ -152,6 +157,9 @@ class PreprocessDataBuilder:
         if self._data is None or self._config is None:
             return
 
+        if isinstance(self._config, TwoPeriodDIDConfig):
+            return
+
         glist = self._config.treated_groups
         if len(glist) == 0:
             raise ValueError(
@@ -184,12 +192,12 @@ class PreprocessDataBuilder:
                 if NEVER_TREATED_VALUE in small_groups.index and self._config.control_group.value == "nevertreated":
                     raise ValueError("Never treated group is too small, try setting control_group='notyettreated'")
 
-    def build(self) -> DIDData | ContDIDData:
+    def build(self) -> DIDData | ContDIDData | TwoPeriodDIDData:
         """Build the final preprocessed data object.
 
         Returns
         -------
-        DIDData | ContDIDData
+        DIDData | ContDIDData | TwoPeriodDIDData
             Preprocessed data container (type depends on config).
 
         Raises
@@ -200,6 +208,8 @@ class PreprocessDataBuilder:
         if self._data is None or self._config is None:
             raise ValueError("Must set data and config before building")
 
+        if isinstance(self._config, TwoPeriodDIDConfig):
+            return self._build_two_period_did_data()
         if isinstance(self._config, DIDConfig):
             return self._build_did_data()
         if isinstance(self._config, ContDIDConfig):
@@ -208,8 +218,6 @@ class PreprocessDataBuilder:
 
     def _build_did_data(self) -> DIDData:
         """Build DIDData object with tensors."""
-        from .tensors import TensorFactorySelector
-
         tensor_factory = TensorFactorySelector()
         tensor_data = tensor_factory.create_tensors(self._data, self._config)
 
@@ -228,6 +236,68 @@ class PreprocessDataBuilder:
         )
 
         return did_data
+
+    def _build_two_period_did_data(self) -> TwoPeriodDIDData:
+        """Build TwoPeriodDIDData object."""
+        if not isinstance(self._config, TwoPeriodDIDConfig):
+            raise ValueError("Config must be TwoPeriodDIDConfig")
+
+        time_periods = sorted(self._data[self._config.tname].unique())
+        if len(time_periods) != 2:
+            raise ValueError("Data must have exactly 2 time periods")
+
+        pre_period, post_period = time_periods
+
+        covariate_columns = [
+            col
+            for col in self._data.columns
+            if col.startswith("Intercept")
+            or (
+                col
+                not in [
+                    self._config.yname,
+                    self._config.tname,
+                    self._config.treat_col,
+                    self._config.idname,
+                    self._config.weightsname,
+                    WEIGHTS_COLUMN,
+                ]
+            )
+        ]
+
+        if self._config.panel and self._config.idname:
+            df_processed = self._data.sort_values(by=[self._config.idname, self._config.tname])
+
+            post_data = df_processed[df_processed[self._config.tname] == post_period].set_index(self._config.idname)
+            pre_data = df_processed[df_processed[self._config.tname] == pre_period].set_index(self._config.idname)
+
+            common_ids = post_data.index.intersection(pre_data.index)
+            post_data = post_data.loc[common_ids]
+            pre_data = pre_data.loc[common_ids]
+
+            two_period_data = TwoPeriodDIDData(
+                y1=post_data[self._config.yname].values,
+                y0=pre_data[self._config.yname].values,
+                D=post_data[self._config.treat_col].values,
+                covariates=post_data[covariate_columns].values,
+                weights=post_data[WEIGHTS_COLUMN].values,
+                covariate_names=covariate_columns,
+                n_units=len(common_ids),
+                config=self._config,
+            )
+        else:
+            two_period_data = TwoPeriodDIDData(
+                y=self._data[self._config.yname].values,
+                D=self._data[self._config.treat_col].values,
+                post=(self._data[self._config.tname] == post_period).astype(int).values,
+                covariates=self._data[covariate_columns].values,
+                weights=self._data[WEIGHTS_COLUMN].values,
+                covariate_names=covariate_columns,
+                n_obs=len(self._data),
+                config=self._config,
+            )
+
+        return two_period_data
 
     def _build_cont_did_data(self) -> ContDIDData:
         """Build ContDIDData object."""
@@ -256,8 +326,6 @@ class PreprocessDataBuilder:
 
     def _create_time_invariant_data(self) -> pd.DataFrame:
         """Extract time-invariant data."""
-        from .constants import WEIGHTS_COLUMN
-
         time_invariant_cols = [self._config.idname, self._config.gname, WEIGHTS_COLUMN]
 
         if self._config.clustervars:
@@ -308,8 +376,6 @@ class PreprocessDataBuilder:
     @staticmethod
     def _extract_weights(time_invariant_data: pd.DataFrame) -> np.ndarray:
         """Extract normalized weights."""
-        from .constants import WEIGHTS_COLUMN
-
         return time_invariant_data[WEIGHTS_COLUMN].values
 
     def _get_did_summary(self, tensor_data: dict[str, Any]) -> str | None:
