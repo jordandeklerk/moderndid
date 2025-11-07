@@ -1,7 +1,10 @@
 # pylint: disable=wildcard-import
 """Modern difference-in-differences estimators."""
 
-from moderndid.data import load_ehec, load_engel, load_mpdta, load_nsw
+from moderndid.core import data
+from moderndid.core.data import load_ehec, load_engel, load_mpdta, load_nsw
+from moderndid.core.preprocess import DIDData, preprocess_did
+from moderndid.core.preprocess.utils import extract_vars_from_formula, parse_formula
 from moderndid.did.aggte import aggte
 from moderndid.did.aggte_obj import AGGTEResult, format_aggte_result
 from moderndid.did.att_gt import att_gt
@@ -22,8 +25,6 @@ from moderndid.did.plots import (
     plot_did,
     plot_event_study,
 )
-from moderndid.did.preprocess import DIDData
-from moderndid.did.preprocess_did import preprocess_did
 from moderndid.didcont import (
     PTEParams,
     _get_first_difference,
@@ -163,29 +164,10 @@ from moderndid.drdid.print import print_did_result
 from moderndid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from moderndid.drdid.propensity.ipw_estimators import ipw_rc
 from moderndid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
-from moderndid.utils import (
-    are_varying,
-    complete_data,
-    convert_panel_time_to_int,
-    create_relative_time_indicators,
-    datetime_to_int,
-    extract_vars_from_formula,
-    fill_panel_gaps,
-    is_panel_balanced,
-    is_repeated_cross_section,
-    long_panel,
-    make_panel_balanced,
-    panel_has_gaps,
-    panel_to_cross_section_diff,
-    parse_formula,
-    prepare_data_for_did,
-    unpanel,
-    validate_treatment_timing,
-    widen_panel,
-)
 
 __all__ = [
     "cont_did",
+    "data",
     "AGGTEResult",
     "APRCIResult",
     "ARPNuisanceCIResult",
@@ -220,14 +202,12 @@ __all__ = [
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
-    "are_varying",
     "att_gt",
     "avoid_zero_division",
     "basis_dimension",
     "basis_vector",
     "bin_factor",
     "calculate_pscore_ipt",
-    "complete_data",
     "compute_aggte",
     "compute_arp_ci",
     "compute_arp_nuisance_ci",
@@ -260,16 +240,13 @@ __all__ = [
     "compute_ucb",
     "compute_vlo_vup_dual",
     "construct_original_cs",
-    "convert_panel_time_to_int",
     "create_interactions",
     "create_monotonicity_constraint_matrix",
     "create_pre_period_constraint_matrix",
-    "create_relative_time_indicators",
     "create_second_difference_matrix",
     "create_sensitivity_results_rm",
     "create_sensitivity_results_sm",
     "create_sign_constraint_matrix",
-    "datetime_to_int",
     "drdid",
     "drdid_imp_local_rc",
     "drdid_imp_panel",
@@ -280,7 +257,6 @@ __all__ = [
     "estimate_lowerbound_m_conditional_test",
     "event_study_plot",
     "extract_vars_from_formula",
-    "fill_panel_gaps",
     "folded_normal_quantile",
     "format_aggte_result",
     "format_mp_pretest_result",
@@ -291,16 +267,12 @@ __all__ = [
     "ipw_rc",
     "ipwdid",
     "is_full_rank",
-    "is_panel_balanced",
-    "is_repeated_cross_section",
     "lee_coefficient",
     "load_ehec",
     "load_engel",
     "load_mpdta",
     "load_nsw",
-    "long_panel",
     "lp_conditional_test",
-    "make_panel_balanced",
     "matrix_sqrt",
     "maximize_bias",
     "mboot",
@@ -315,15 +287,12 @@ __all__ = [
     "npiv_j",
     "npiv_jhat_max",
     "ordid",
-    "panel_has_gaps",
-    "panel_to_cross_section_diff",
     "parse_formula",
     "plot_att_gt",
     "plot_did",
     "plot_event_study",
     "plot_sensitivity_rm",
     "plot_sensitivity_sm",
-    "prepare_data_for_did",
     "preprocess_did",
     "print_did_result",
     "prodspline",
@@ -342,10 +311,8 @@ __all__ = [
     "test_in_identified_set_max",
     "twfe_did_panel",
     "twfe_did_rc",
-    "unpanel",
     "validate_conformable",
     "validate_symmetric_psd",
-    "validate_treatment_timing",
     "wboot_dr_tr_panel",
     "wboot_drdid_imp_panel",
     "wboot_drdid_ipt_rc1",
@@ -360,7 +327,6 @@ __all__ = [
     "wboot_std_ipw_rc",
     "wboot_twfe_panel",
     "wboot_twfe_rc",
-    "widen_panel",
     "wols_panel",
     "wols_rc",
 ]

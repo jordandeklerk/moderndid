@@ -51,7 +51,7 @@ def load_nsw() -> pd.DataFrame:
         training programs with experimental data. American Economic Review,
         76(4), 604-620.
     """
-    data_path = Path(__file__).parent / "_data" / "nsw_long.pkl.gz"
+    data_path = Path(__file__).parent / "datasets" / "nsw_long.pkl.gz"
 
     if not data_path.exists():
         raise FileNotFoundError(
@@ -90,7 +90,7 @@ def load_mpdta() -> pd.DataFrame:
     .. [1] Callaway, B., & Sant'Anna, P. H. (2021). Difference-in-differences
         with multiple time periods. Journal of Econometrics, 225(2), 200-230.
     """
-    data_path = Path(__file__).parent / "_data" / "mpdta_long.pkl.gz"
+    data_path = Path(__file__).parent / "datasets" / "mpdta_long.pkl.gz"
 
     if not data_path.exists():
         raise FileNotFoundError(
@@ -143,7 +143,7 @@ def load_ehec() -> pd.DataFrame:
     .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
-    data_path = Path(__file__).parent / "_data" / "ehec_data.pkl.gz"
+    data_path = Path(__file__).parent / "datasets" / "ehec_data.pkl.gz"
 
     if not data_path.exists():
         raise FileNotFoundError(
@@ -193,7 +193,7 @@ def load_engel() -> pd.DataFrame:
     .. [1] Engel, E. (1857). Die Lebenskosten belgischer Arbeiter-Familien.
         Dresden: C. Heinrich.
     """
-    data_path = Path(__file__).parent / "_data" / "engel.pkl.gz"
+    data_path = Path(__file__).parent / "datasets" / "engel.pkl.gz"
 
     if not data_path.exists():
         raise FileNotFoundError(

@@ -327,7 +327,6 @@ def test_att_gt_print_details(mpdta_data):
         tname="year",
         gname="first.treat",
         idname="countyreal",
-        print_details=True,
         bstrap=False,
     )
 

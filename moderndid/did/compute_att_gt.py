@@ -8,14 +8,13 @@ from typing import NamedTuple
 import numpy as np
 import scipy.sparse as sp
 
+from moderndid.core.preprocess import ControlGroup, DIDData, EstimationMethod
 from moderndid.drdid.estimators.drdid_panel import drdid_panel
 from moderndid.drdid.estimators.drdid_rc import drdid_rc
 from moderndid.drdid.estimators.reg_did_panel import reg_did_panel
 from moderndid.drdid.estimators.reg_did_rc import reg_did_rc
 from moderndid.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
 from moderndid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
-
-from .preprocess.models import DIDData
 
 
 class ATTgtResult(NamedTuple):
@@ -229,7 +228,7 @@ def get_did_cohort_index(
     """
     if data.config.panel:
         # Determine control group boundaries
-        if data.config.control_group == "notyettreated":
+        if data.config.control_group == ControlGroup.NOT_YET_TREATED:
             # Find first cohort treated after the relevant period
             relevant_period = data.config.time_periods[
                 max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
@@ -272,9 +271,9 @@ def get_did_cohort_index(
 
         treated_flag = data.data[data.config.gname] == data.config.treated_groups[group_idx]
 
-        if data.config.control_group == "nevertreated":
+        if data.config.control_group == ControlGroup.NEVER_TREATED:
             control_flag = data.data[data.config.gname] == np.inf
-        else:  # notyettreated
+        else:  # NOT_YET_TREATED
             relevant_period = data.config.time_periods[
                 max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
             ]
@@ -334,15 +333,15 @@ def run_drdid(
 
         if callable(est_method):
             result = est_method(y1=y1, y0=y0, d=d, covariates=cov_valid, i_weights=weights, influence_func=True)
-        elif est_method == "ipw":
+        elif est_method == EstimationMethod.IPW:
             result = std_ipw_did_panel(
                 y1=y1, y0=y0, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )
-        elif est_method == "reg":
+        elif est_method == EstimationMethod.REGRESSION:
             result = reg_did_panel(
                 y1=y1, y0=y0, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )
-        else:  # doubly robust (default)
+        else:  # DOUBLY_ROBUST (default)
             result = drdid_panel(
                 y1=y1, y0=y0, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )
@@ -363,15 +362,15 @@ def run_drdid(
 
         if callable(est_method):
             result = est_method(y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, influence_func=True)
-        elif est_method == "ipw":
+        elif est_method == EstimationMethod.IPW:
             result = std_ipw_did_rc(
                 y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )
-        elif est_method == "reg":
+        elif est_method == EstimationMethod.REGRESSION:
             result = reg_did_rc(
                 y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )
-        else:  # doubly robust (default)
+        else:  # DOUBLY_ROBUST (default)
             result = drdid_rc(
                 y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )

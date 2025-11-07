@@ -7,7 +7,7 @@ import seaborn as sns
 from scipy import stats
 from scipy.interpolate import interp1d
 
-from moderndid.didcont.panel.container import DoseResult, PTEResult
+from moderndid.didcont.estimation.container import DoseResult, PTEResult
 
 PLOT_CONFIG = {
     "figure_size": (12, 7),

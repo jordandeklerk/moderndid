@@ -1,26 +1,21 @@
 """Difference-in-differences with a continuous treatment."""
 
-from .cont_did import cont_did
-from .npiv import (
-    BSplineBasis,
-    MultivariateBasis,
-    NPIVResult,
-    compute_ucb,
-    gsl_bs,
-    npiv,
-    npiv_choose_j,
-    npiv_est,
-    predict_gsl_bs,
-    prodspline,
+from moderndid.core.preprocess import (
+    get_first_difference as _get_first_difference,
 )
-from .panel import (
+from moderndid.core.preprocess import (
+    get_group as _get_group,
+)
+from moderndid.core.preprocess import (
+    make_balanced_panel as _make_balanced_panel,
+)
+
+from .cont_did import cont_did
+from .estimation import (
     DoseResult,
     GroupTimeATTResult,
     PTEAggteResult,
     PTEParams,
-    _get_first_difference,
-    _get_group,
-    _make_balanced_panel,
     _summary_dose_result,
     aggregate_att_gt,
     did_attgt,
@@ -32,6 +27,18 @@ from .panel import (
     setup_pte,
     setup_pte_basic,
     setup_pte_cont,
+)
+from .npiv import (
+    BSplineBasis,
+    MultivariateBasis,
+    NPIVResult,
+    compute_ucb,
+    gsl_bs,
+    npiv,
+    npiv_choose_j,
+    npiv_est,
+    predict_gsl_bs,
+    prodspline,
 )
 from .plots import plot_cont_did
 from .utils import (

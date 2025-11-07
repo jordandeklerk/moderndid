@@ -1,8 +1,91 @@
 """DiD preprocessing."""
 
-from .preprocess.builders import DIDDataBuilder
-from .preprocess.constants import BasePeriod, ControlGroup, EstimationMethod
-from .preprocess.models import DIDConfig
+from .preprocess.builders import PreprocessDataBuilder
+from .preprocess.config import DIDConfig, TwoPeriodDIDConfig
+from .preprocess.constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
+
+
+def preprocess_drdid(
+    data,
+    yname,
+    tname,
+    treat_col,
+    idname=None,
+    xformla=None,
+    panel=True,
+    weightsname=None,
+    bstrap=False,
+    boot_type="weighted",
+    biters=999,
+    inf_func=False,
+    est_method="imp",
+    trim_level=0.995,
+    normalized=True,
+):
+    """Process data for 2-period doubly robust DiD estimation.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Panel or repeated cross-section data.
+    yname : str
+        Name of outcome variable column.
+    tname : str
+        Name of time period column (must have exactly 2 periods).
+    treat_col : str
+        Name of treatment indicator column (0=control, 1=treated).
+        For panel data: time-invariant indicator.
+        For repeated cross-sections: treatment status in post-period.
+    idname : str | None, default None
+        Name of entity/unit identifier column. Required for panel data.
+    xformla : str | None, default None
+        Formula for covariates in Wilkinson notation (e.g., "~ x1 + x2").
+        If None, only intercept is included.
+    panel : bool, default True
+        Whether data is in panel format (vs repeated cross-sections).
+    weightsname : str | None, default None
+        Name of sampling weights column.
+    bstrap : bool, default False
+        Whether to use bootstrap for inference.
+    boot_type : {"weighted", "multiplier"}, default "weighted"
+        Type of bootstrap.
+    biters : int, default 999
+        Number of bootstrap iterations.
+    inf_func : bool, default False
+        Whether to compute influence functions.
+    est_method : {"imp", "trad"}, default "imp"
+        Estimation method for nuisance parameters.
+    trim_level : float, default 0.995
+        Propensity score trimming level.
+    normalized : bool, default True
+        Whether to normalize weights.
+
+    Returns
+    -------
+    TwoPeriodDIDData
+        Container with processed data for 2-period DiD estimation.
+    """
+    config = TwoPeriodDIDConfig(
+        yname=yname,
+        tname=tname,
+        treat_col=treat_col,
+        idname=idname,
+        xformla=xformla if xformla is not None else "~1",
+        panel=panel,
+        weightsname=weightsname,
+        bstrap=bstrap,
+        boot_type=BootstrapType(boot_type),
+        biters=biters,
+        est_method=est_method,
+        trim_level=trim_level,
+        inf_func=inf_func,
+        normalized=normalized,
+    )
+
+    builder = PreprocessDataBuilder()
+    two_period_data = builder.with_data(data).with_config(config).validate().transform().build()
+
+    return two_period_data
 
 
 def preprocess_did(
@@ -24,7 +107,6 @@ def preprocess_did(
     clustervars=None,
     est_method="dr",
     base_period="varying",
-    print_details=True,
     faster_mode=False,
     pl=False,
     cores=1,
@@ -71,8 +153,6 @@ def preprocess_did(
         Estimation method: doubly robust, IPW, or regression.
     base_period : {"universal", "varying"}, default "varying"
         How to choose base period for comparisons.
-    print_details : bool, default True
-        Whether to print progress messages.
     faster_mode : bool, default False
         Whether to use computational shortcuts.
     pl : bool, default False
@@ -112,13 +192,12 @@ def preprocess_did(
         clustervars=clustervars if clustervars is not None else [],
         est_method=est_method_enum,
         base_period=base_period_enum,
-        print_details=print_details,
         faster_mode=faster_mode,
         pl=pl,
         cores=cores,
     )
 
-    builder = DIDDataBuilder()
+    builder = PreprocessDataBuilder()
     did_data = builder.with_data(data).with_config(config).validate().transform().build()
 
     return did_data
