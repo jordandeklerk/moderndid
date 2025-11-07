@@ -264,8 +264,8 @@ class DoseValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
-class TwoPeriodColumnValidator(BaseValidator):
-    """Two-period column validator."""
+class PrePostColumnValidator(BaseValidator):
+    """Pre-post column validator."""
 
     def validate(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
         """Validate data."""
@@ -313,8 +313,8 @@ class TwoPeriodColumnValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
-class TwoPeriodValidator(BaseValidator):
-    """Two-period validator."""
+class PrePostDataValidator(BaseValidator):
+    """Pre-post data validator."""
 
     def validate(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
         """Validate data."""
@@ -342,8 +342,8 @@ class TwoPeriodValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
-class TwoPeriodPanelValidator(BaseValidator):
-    """Two-period panel validator."""
+class PrePostPanelValidator(BaseValidator):
+    """Pre-post panel validator."""
 
     def validate(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
         """Validate data."""
@@ -386,9 +386,9 @@ class CompositeValidator(BaseValidator):
         """Get default validators."""
         if config_type == "two_period":
             return [
-                TwoPeriodColumnValidator(),
-                TwoPeriodValidator(),
-                TwoPeriodPanelValidator(),
+                PrePostColumnValidator(),
+                PrePostDataValidator(),
+                PrePostPanelValidator(),
             ]
 
         common_validators = [
