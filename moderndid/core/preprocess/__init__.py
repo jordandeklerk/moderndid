@@ -1,5 +1,6 @@
 """Preprocessing functions."""
 
+from ..preprocessing import preprocess_did, preprocess_drdid
 from .builders import PreprocessDataBuilder
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
 from .constants import (
@@ -19,7 +20,6 @@ from .constants import (
     DataFormat,
     EstimationMethod,
 )
-from .did import preprocess_did, preprocess_drdid
 from .models import ContDIDData, DIDData, PreprocessedData, TwoPeriodDIDData, ValidationResult
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline

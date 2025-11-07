@@ -1,8 +1,8 @@
 """DiD preprocessing."""
 
-from .builders import PreprocessDataBuilder
-from .config import DIDConfig, TwoPeriodDIDConfig
-from .constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
+from .preprocess.builders import PreprocessDataBuilder
+from .preprocess.config import DIDConfig, TwoPeriodDIDConfig
+from .preprocess.constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
 
 
 def preprocess_drdid(
