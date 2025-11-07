@@ -9,10 +9,17 @@ import pandas as pd
 import scipy.linalg as la
 import scipy.stats
 
+from moderndid.core.preprocess import (
+    BasePeriod,
+    ControlGroup,
+    DIDConfig,
+    EstimationMethod,
+    PreprocessDataBuilder,
+)
+
 from .compute_att_gt import compute_att_gt
 from .mboot import mboot
 from .multiperiod_obj import mp
-from .preprocess_did import preprocess_did
 
 
 def att_gt(
@@ -34,7 +41,6 @@ def att_gt(
     control_group="nevertreated",
     anticipation=0,
     base_period="varying",
-    print_details=False,
 ):
     r"""Compute group-time average treatment effects.
 
@@ -100,8 +106,6 @@ def att_gt(
         their untreated potential outcomes.
     base_period : {"varying", "universal"}, default="varying"
         Whether to use a "varying" base period or a "universal" base period.
-    print_details : bool, default=False
-        Whether or not to show details/progress of computations.
 
     Returns
     -------
@@ -149,27 +153,32 @@ def att_gt(
     .. [1] Callaway, B., & Sant'Anna, P. H. (2021). "Difference-in-differences
            with multiple time periods." Journal of Econometrics, 225(2), 200-230.
     """
-    dp = preprocess_did(
-        data=data,
+    control_group_enum = ControlGroup(control_group)
+    est_method_enum = EstimationMethod(est_method) if isinstance(est_method, str) else est_method
+    base_period_enum = BasePeriod(base_period)
+
+    config = DIDConfig(
         yname=yname,
         tname=tname,
         idname=idname,
         gname=gname,
-        xformla=xformla,
+        xformla=xformla if xformla is not None else "~1",
         panel=panel,
         allow_unbalanced_panel=allow_unbalanced_panel,
-        control_group=control_group,
+        control_group=control_group_enum,
         anticipation=anticipation,
         weightsname=weightsname,
         alp=alp,
         bstrap=bstrap,
         cband=cband,
         biters=biters,
-        clustervars=clustervars,
-        est_method=est_method,
-        base_period=base_period,
-        print_details=print_details,
+        clustervars=clustervars if clustervars is not None else [],
+        est_method=est_method_enum,
+        base_period=base_period_enum,
     )
+
+    builder = PreprocessDataBuilder()
+    dp = builder.with_data(data).with_config(config).validate().transform().build()
     results = compute_att_gt(dp)
 
     att_gt_list = results.attgt_list
@@ -252,8 +261,7 @@ def att_gt(
     pre_treatment_variance = variance_matrix[np.ix_(pre_treatment_indices, pre_treatment_indices)]
 
     if len(pre_treatment_indices) == 0:
-        if print_details:
-            warnings.warn("No pre-treatment periods to test", UserWarning)
+        warnings.warn("No pre-treatment periods to test", UserWarning)
         wald_statistic = None
         wald_pvalue = None
     if np.any(np.isnan(pre_treatment_variance)):

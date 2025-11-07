@@ -10,7 +10,7 @@ from moderndid.didcont.cont_did import (
     cont_did_acrt,
     cont_two_by_two_subset,
 )
-from moderndid.didcont.panel import DoseResult, PTEResult
+from moderndid.didcont.estimation import DoseResult, PTEResult
 
 
 def test_cont_did_basic(contdid_data):

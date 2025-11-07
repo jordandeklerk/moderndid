@@ -1,17 +1,17 @@
-"""Constants and enums for DiD preprocessing."""
+"""Constants and enums for preprocessing."""
 
 from enum import Enum
 
 
 class ControlGroup(str, Enum):
-    """Control group options for DiD analysis."""
+    """Control group."""
 
     NEVER_TREATED = "nevertreated"
     NOT_YET_TREATED = "notyettreated"
 
 
 class EstimationMethod(str, Enum):
-    """Estimation method options."""
+    """Estimation method."""
 
     DOUBLY_ROBUST = "dr"
     IPW = "ipw"
@@ -19,21 +19,21 @@ class EstimationMethod(str, Enum):
 
 
 class BasePeriod(str, Enum):
-    """Base period selection strategy."""
+    """Base period."""
 
     UNIVERSAL = "universal"
     VARYING = "varying"
 
 
 class BootstrapType(str, Enum):
-    """Bootstrap type options."""
+    """Bootstrap type."""
 
     WEIGHTED = "weighted"
     MULTIPLIER = "multiplier"
 
 
 class DataFormat(str, Enum):
-    """Data format types."""
+    """Data format."""
 
     PANEL = "panel"
     REPEATED_CROSS_SECTION = "repeated_cross_section"
@@ -53,3 +53,6 @@ NEVER_TREATED_VALUE = float("inf")
 
 MIN_GROUP_SIZE_BASE = 5
 MIN_GROUP_SIZE_PER_COVARIATE = 1
+
+DEFAULT_SPLINE_DEGREE = 2
+DEFAULT_NUM_KNOTS = 3

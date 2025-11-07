@@ -6,9 +6,10 @@ import warnings
 import numpy as np
 import scipy.stats as st
 
+from moderndid.core.preprocess import map_to_idx as _map_to_idx
+
 from .container import PTEAggteResult
 from .process_attgt import multiplier_bootstrap
-from .process_panel import _map_to_idx
 
 
 def aggregate_att_gt(

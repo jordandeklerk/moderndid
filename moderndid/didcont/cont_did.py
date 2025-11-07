@@ -8,16 +8,25 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy import stats
 
-from .npiv import gsl_bs, npiv
-from .panel import (
+from moderndid.core.preprocess import (
+    get_first_difference as _get_first_difference,
+)
+from moderndid.core.preprocess import (
+    get_group,
+)
+from moderndid.core.preprocess import (
+    make_balanced_panel as _make_balanced_panel,
+)
+
+from .estimation import (
     AttgtResult,
     pte,
     pte_default,
     setup_pte_cont,
 )
-from .panel.estimators import pte_attgt
-from .panel.process_dose import DoseResult
-from .panel.process_panel import _get_first_difference, _get_group, _make_balanced_panel
+from .estimation.estimators import pte_attgt
+from .estimation.process_dose import DoseResult
+from .npiv import gsl_bs, npiv
 from .spline import BSpline
 
 
@@ -360,7 +369,7 @@ def cont_did(
 
     if gname is None:
         data = data.copy()
-        data[".G"] = _get_group(data, idname=idname, tname=tname, treatname=dname)
+        data[".G"] = get_group(data, idname=idname, tname=tname, treatname=dname)
         gname = ".G"
 
     if dose_est_method == "cck":

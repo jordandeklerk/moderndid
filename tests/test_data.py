@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from moderndid.data import load_ehec, load_mpdta, load_nsw
+from moderndid.core.data import load_ehec, load_mpdta, load_nsw
 
 
 def test_load_nsw():
