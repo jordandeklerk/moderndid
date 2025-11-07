@@ -151,8 +151,8 @@ class EarlyTreatmentFilter(BaseTransformer):
         return data
 
 
-class NeverTreatedHandler(BaseTransformer):
-    """Never treated handler."""
+class ControlGroupCreator(BaseTransformer):
+    """Control group creator."""
 
     def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
         """Transform data."""
@@ -258,8 +258,8 @@ class TimePeriodRecoder(BaseTransformer):
         return data
 
 
-class GroupFilter(BaseTransformer):
-    """Group filter."""
+class EarlyTreatmentGroupFilter(BaseTransformer):
+    """Early treatment group filter."""
 
     def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
         """Transform data."""
@@ -370,8 +370,8 @@ class ConfigUpdater:
             config.cband = False
 
 
-class TwoPeriodColumnSelector(BaseTransformer):
-    """Two-period column selector."""
+class PrePostColumnSelector(BaseTransformer):
+    """Pre-post column selector."""
 
     def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
         """Transform data."""
@@ -397,8 +397,8 @@ class TwoPeriodColumnSelector(BaseTransformer):
         return data[cols_to_keep].copy()
 
 
-class TwoPeriodCovariateProcessor(BaseTransformer):
-    """Two-period covariate processor."""
+class PrePostCovariateProcessor(BaseTransformer):
+    """Pre-post covariate processor."""
 
     def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
         """Transform data."""
@@ -432,8 +432,8 @@ class TwoPeriodCovariateProcessor(BaseTransformer):
         return data_processed
 
 
-class TwoPeriodPanelBalancer(BaseTransformer):
-    """Two-period panel balancer."""
+class PrePostPanelBalancer(BaseTransformer):
+    """Pre-post panel balancer."""
 
     def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
         """Transform data."""
@@ -450,8 +450,8 @@ class TwoPeriodPanelBalancer(BaseTransformer):
         return data[data[config.idname].isin(ids_to_keep)].copy()
 
 
-class TwoPeriodTimeInvarianceChecker(BaseTransformer):
-    """Two-period time invariance checker."""
+class PrePostInvarianceChecker(BaseTransformer):
+    """Pre-post invariance checker."""
 
     def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
         """Transform data."""
@@ -498,7 +498,7 @@ class DataTransformerPipeline:
                 WeightNormalizer(),
                 TreatmentEncoder(),
                 EarlyTreatmentFilter(),
-                NeverTreatedHandler(),
+                ControlGroupCreator(),
                 PanelBalancer(),
                 RepeatedCrossSectionHandler(),
                 DataSorter(),
@@ -514,7 +514,7 @@ class DataTransformerPipeline:
                 MissingDataHandler(),
                 WeightNormalizer(),
                 TimePeriodRecoder(),
-                GroupFilter(),
+                EarlyTreatmentGroupFilter(),
                 DoseValidator(),
                 PanelBalancer(),
                 DataSorter(),
@@ -526,12 +526,12 @@ class DataTransformerPipeline:
         """Get two-period pipeline."""
         return DataTransformerPipeline(
             [
-                TwoPeriodColumnSelector(),
+                PrePostColumnSelector(),
                 MissingDataHandler(),
-                TwoPeriodCovariateProcessor(),
+                PrePostCovariateProcessor(),
                 WeightNormalizer(),
-                TwoPeriodPanelBalancer(),
-                TwoPeriodTimeInvarianceChecker(),
+                PrePostPanelBalancer(),
+                PrePostInvarianceChecker(),
             ]
         )
 
