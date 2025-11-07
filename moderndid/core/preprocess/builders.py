@@ -26,7 +26,7 @@ class PreprocessDataBuilder:
         self._transformer: DataTransformerPipeline | None = None
         self._warnings: list[str] = []
 
-    def with_data(self, data: pd.DataFrame) -> "PreprocessDataBuilder":
+    def with_data(self, data):
         """Set the data.
 
         Parameters
@@ -44,7 +44,7 @@ class PreprocessDataBuilder:
         self._data = data
         return self
 
-    def with_config(self, config: BasePreprocessConfig) -> "PreprocessDataBuilder":
+    def with_config(self, config):
         """Set the configuration.
 
         Parameters
@@ -74,7 +74,7 @@ class PreprocessDataBuilder:
 
         return self
 
-    def with_config_dict(self, config_type: str = "did", **kwargs: Any) -> "PreprocessDataBuilder":
+    def with_config_dict(self, config_type="did", **kwargs):
         """Set configuration from keyword arguments.
 
         Parameters
