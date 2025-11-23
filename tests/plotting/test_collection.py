@@ -1,6 +1,5 @@
-"""Tests for PlotCollection class."""
-
 # pylint: disable=redefined-outer-name
+"""Tests for PlotCollection class."""
 
 import matplotlib
 import matplotlib.pyplot as plt
