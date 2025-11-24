@@ -1,10 +1,6 @@
 # pylint: disable=too-many-nested-blocks
 """Data container utilities for PlotCollection."""
 
-from __future__ import annotations
-
-from typing import Any
-
 import numpy as np
 
 
@@ -40,10 +36,10 @@ class DataArray:
 
     def __init__(
         self,
-        values: np.ndarray,
-        dims: list[str],
-        coords: dict[str, np.ndarray] | None = None,
-        name: str | None = None,
+        values,
+        dims,
+        coords=None,
+        name=None,
     ):
         self.values = np.asarray(values)
         self.dims = tuple(dims)
@@ -65,21 +61,21 @@ class DataArray:
                     )
 
     @property
-    def shape(self) -> tuple[int, ...]:
+    def shape(self):
         """Shape of the array."""
         return self.values.shape
 
     @property
-    def ndim(self) -> int:
+    def ndim(self):
         """Number of dimensions."""
         return self.values.ndim
 
     @property
-    def size(self) -> int:
+    def size(self):
         """Total number of elements."""
         return self.values.size
 
-    def sel(self, indexers: dict[str, Any]) -> DataArray:
+    def sel(self, indexers):
         """Select subset based on coordinate values.
 
         Parameters
@@ -165,8 +161,8 @@ class Dataset:
 
     def __init__(
         self,
-        data_vars: dict[str, DataArray | dict],
-        coords: dict[str, np.ndarray] | None = None,
+        data_vars,
+        coords=None,
     ):
         self.data_vars = {}
         self.coords = coords.copy() if coords is not None else {}
@@ -181,22 +177,22 @@ class Dataset:
                 self.data_vars[name] = var
 
     @property
-    def dims(self) -> set[str]:
+    def dims(self):
         """All dimension names across all variables."""
         all_dims = set()
         for da in self.data_vars.values():
             all_dims.update(da.dims)
         return all_dims
 
-    def __getitem__(self, key: str) -> DataArray:
+    def __getitem__(self, key):
         """Get a data variable by name."""
         return self.data_vars[key]
 
-    def __contains__(self, key: str) -> bool:
+    def __contains__(self, key):
         """Check if variable exists."""
         return key in self.data_vars
 
-    def sel(self, indexers: dict[str, Any]) -> Dataset:
+    def sel(self, indexers):
         """Select subset from all variables.
 
         Parameters
@@ -238,7 +234,7 @@ class Dataset:
         return f"Dataset(variables=[{vars_str}], dims=[{dims_str}])"
 
 
-def process_facet_dims(data: Dataset, facet_dims: list[str]) -> tuple[int, dict]:
+def process_facet_dims(data, facet_dims):
     """Calculate number of facets needed for given dimensions.
 
     Parameters
@@ -289,7 +285,7 @@ def process_facet_dims(data: Dataset, facet_dims: list[str]) -> tuple[int, dict]
     return n_facets, facets_per_var
 
 
-def iterate_over_selection(data: Dataset, skip_dims: set[str] | None = None) -> list[tuple[str, dict, dict]]:
+def iterate_over_selection(data, skip_dims=None):
     """Generate iterator over all coordinate combinations in dataset.
 
     Parameters

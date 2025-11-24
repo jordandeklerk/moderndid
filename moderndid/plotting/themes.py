@@ -1,7 +1,5 @@
 """Theming system for moderndid plots."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 import numpy as np
@@ -64,7 +62,7 @@ class PlotTheme:
     linestyle: str = "-"
     ci_alpha: float = 0.3
     ci_linewidth: float = 0.7
-    figsize: tuple[float, float] = (10, 6)
+    figsize: tuple = (10, 6)
     dpi: int = 100
     grid: bool = True
     grid_alpha: float = 0.3
@@ -120,7 +118,7 @@ THEMES = {
 }
 
 
-def apply_theme(plot_collection, theme_name: str | PlotTheme):
+def apply_theme(plot_collection, theme_name):
     """Apply a theme to a PlotCollection.
 
     Parameters
