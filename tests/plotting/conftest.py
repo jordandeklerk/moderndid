@@ -1,0 +1,139 @@
+"""Shared fixtures for plotting tests."""
+
+import pytest
+
+matplotlib = pytest.importorskip("matplotlib")
+matplotlib.use("Agg")
+plt = pytest.importorskip("matplotlib.pyplot")
+np = pytest.importorskip("numpy")
+pd = pytest.importorskip("pandas")
+
+from moderndid.did.aggte_obj import AGGTEResult
+from moderndid.did.multiperiod_obj import MPResult
+from moderndid.didcont.estimation.container import DoseResult
+from moderndid.didhonest.honest_did import HonestDiDResult
+from moderndid.didhonest.sensitivity import OriginalCSResult
+from moderndid.plotting.containers import DataArray, Dataset
+
+
+@pytest.fixture
+def simple_data():
+    return DataArray(np.array([1, 2, 3, 4, 5]), ["x"], {"x": np.array([0, 1, 2, 3, 4])})
+
+
+@pytest.fixture
+def ax():
+    fig, axes = plt.subplots()
+    yield axes
+    plt.close(fig)
+
+
+@pytest.fixture
+def simple_dataset():
+    data_vars = {"a": {"values": np.array([1, 2, 3]), "dims": ["x"], "coords": {"x": np.array([0, 1, 2])}}}
+    return Dataset(data_vars)
+
+
+@pytest.fixture
+def multidim_dataset():
+    data_vars = {
+        "a": {
+            "values": np.array([[1, 2], [3, 4]]),
+            "dims": ["x", "y"],
+            "coords": {"x": np.array([0, 1]), "y": np.array([10, 20])},
+        }
+    }
+    return Dataset(data_vars)
+
+
+@pytest.fixture
+def multivar_dataset():
+    data_vars = {
+        "a": {"values": np.array([1, 2]), "dims": ["x"], "coords": {"x": np.array([0, 1])}},
+        "b": {"values": np.array([3, 4]), "dims": ["x"], "coords": {"x": np.array([0, 1])}},
+    }
+    return Dataset(data_vars)
+
+
+@pytest.fixture
+def mp_result():
+    groups = np.array([2000, 2000, 2000, 2007, 2007, 2007])
+    times = np.array([2004, 2006, 2007, 2004, 2006, 2007])
+    att_gt = np.array([0.5, 0.8, 1.2, 0.3, 0.6, 0.9])
+    se_gt = np.array([0.1, 0.12, 0.15, 0.08, 0.11, 0.13])
+    vcov = np.eye(6)
+    influence_func = np.random.randn(100, 6)
+
+    return MPResult(
+        groups=groups,
+        times=times,
+        att_gt=att_gt,
+        vcov_analytical=vcov,
+        se_gt=se_gt,
+        critical_value=1.96,
+        influence_func=influence_func,
+    )
+
+
+@pytest.fixture
+def aggte_result_dynamic():
+    event_times = np.array([-2, -1, 0, 1, 2])
+    att = np.array([0.1, 0.05, 0.8, 1.2, 1.5])
+    se = np.array([0.1, 0.09, 0.12, 0.15, 0.18])
+
+    return AGGTEResult(
+        overall_att=0.7,
+        overall_se=0.15,
+        aggregation_type="dynamic",
+        event_times=event_times,
+        att_by_event=att,
+        se_by_event=se,
+    )
+
+
+@pytest.fixture
+def aggte_result_simple():
+    return AGGTEResult(
+        overall_att=0.75,
+        overall_se=0.12,
+        aggregation_type="simple",
+    )
+
+
+@pytest.fixture
+def dose_result():
+    dose = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    att_d = np.array([0.5, 1.0, 1.5, 2.0, 2.5])
+    att_d_se = np.array([0.1, 0.12, 0.15, 0.18, 0.20])
+    acrt_d = np.array([0.4, 0.8, 1.2, 1.6, 2.0])
+    acrt_d_se = np.array([0.08, 0.10, 0.12, 0.14, 0.16])
+
+    return DoseResult(
+        dose=dose,
+        overall_att=1.5,
+        overall_att_se=0.15,
+        overall_att_inf_func=np.random.randn(100),
+        overall_acrt=1.2,
+        overall_acrt_se=0.12,
+        overall_acrt_inf_func=np.random.randn(100),
+        att_d=att_d,
+        att_d_se=att_d_se,
+        acrt_d=acrt_d,
+        acrt_d_se=acrt_d_se,
+    )
+
+
+@pytest.fixture
+def honest_result():
+    df = pd.DataFrame({"M": [0.0, 0.5, 1.0], "lb": [0.1, 0.0, -0.1], "ub": [0.9, 0.8, 0.7]})
+
+    original_ci = OriginalCSResult(
+        lb=0.3,
+        ub=0.7,
+    )
+
+    return HonestDiDResult(
+        robust_ci=df,
+        original_ci=original_ci,
+        sensitivity_type="smoothness",
+    )

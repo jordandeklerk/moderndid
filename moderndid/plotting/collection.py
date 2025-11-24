@@ -1,11 +1,6 @@
 # pylint: disable=too-many-nested-blocks
 """PlotCollection class for unified plotting in moderndid."""
 
-from __future__ import annotations
-
-from collections.abc import Callable
-from typing import Any
-
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -15,6 +10,12 @@ from .containers import (
     Dataset,
     iterate_over_selection,
     process_facet_dims,
+)
+from .converters import (
+    aggte_to_dataset,
+    doseresult_to_dataset,
+    honestdid_to_dataset,
+    mpresult_to_dataset,
 )
 
 
@@ -48,10 +49,10 @@ class PlotCollection:
 
     def __init__(
         self,
-        data: Dataset,
-        viz: dict,
-        aes: dict | None = None,
-        backend: str = "matplotlib",
+        data,
+        viz,
+        aes=None,
+        backend="matplotlib",
     ):
         self.data = data
         self.viz = viz
@@ -60,12 +61,12 @@ class PlotCollection:
         self.coords = None
 
     @property
-    def aes_set(self) -> set[str]:
+    def aes_set(self):
         """Set of all aesthetic keys with mappings defined."""
         return set(self.aes.keys())
 
     @property
-    def facet_dims(self) -> set[str]:
+    def facet_dims(self):
         """Dimensions used for faceting."""
         if "plot" not in self.viz:
             return set()
@@ -84,13 +85,13 @@ class PlotCollection:
     @classmethod
     def grid(
         cls,
-        data: Dataset,
-        cols: list[str] | None = None,
-        rows: list[str] | None = None,
-        aes: dict[str, list[str]] | None = None,
-        figure_kwargs: dict | None = None,
+        data,
+        cols=None,
+        rows=None,
+        aes=None,
+        figure_kwargs=None,
         **aes_kwargs,
-    ) -> PlotCollection:
+    ):
         """Create PlotCollection with grid layout.
 
         Parameters
@@ -219,13 +220,13 @@ class PlotCollection:
     @classmethod
     def wrap(
         cls,
-        data: Dataset,
-        cols: list[str] | None = None,
-        col_wrap: int = 4,
-        aes: dict[str, list[str]] | None = None,
-        figure_kwargs: dict | None = None,
+        data,
+        cols=None,
+        col_wrap=4,
+        aes=None,
+        figure_kwargs=None,
         **aes_kwargs,
-    ) -> PlotCollection:
+    ):
         """Create PlotCollection with wrapped layout.
 
         Parameters
@@ -339,14 +340,83 @@ class PlotCollection:
 
         return cls(data, viz, aes_dict, backend="matplotlib")
 
+    @classmethod
+    def from_result(
+        cls,
+        result,
+        cols=None,
+        rows=None,
+        col_wrap=None,
+        aes=None,
+        figure_kwargs=None,
+        **aes_kwargs,
+    ):
+        """Create PlotCollection from a DiD result object.
+
+        Parameters
+        ----------
+        result : MPResult, AGGTEResult, DoseResult, or HonestDiDResult
+            DiD result object to plot.
+        cols : list of str, optional
+            Dimensions to facet across columns. Can include '__variable__'.
+        rows : list of str, optional
+            Dimensions to facet across rows. Only used if col_wrap is None.
+        col_wrap : int, optional
+            Wrap columns after this many facets (creates wrapped layout).
+        aes : dict, optional
+            Aesthetic mappings like {"color": ["group"], "marker": ["__variable__"]}.
+        figure_kwargs : dict, optional
+            Keyword arguments passed to matplotlib figure creation.
+        **aes_kwargs
+            Aesthetic values like color=["red", "blue"], marker=["o", "s"].
+
+        Returns
+        -------
+        PlotCollection
+            New PlotCollection instance with converted data.
+        """
+        result_type = type(result).__name__
+
+        if result_type == "MPResult":
+            dataset = mpresult_to_dataset(result)
+        elif result_type == "AGGTEResult":
+            dataset = aggte_to_dataset(result)
+        elif result_type == "DoseResult":
+            dataset = doseresult_to_dataset(result)
+        elif result_type == "HonestDiDResult":
+            dataset = honestdid_to_dataset(result)
+        else:
+            raise TypeError(
+                f"Unsupported result type: {result_type}. "
+                "Supported types: MPResult, AGGTEResult, DoseResult, HonestDiDResult"
+            )
+
+        if col_wrap is not None:
+            return cls.wrap(
+                dataset,
+                cols=cols,
+                col_wrap=col_wrap,
+                aes=aes,
+                figure_kwargs=figure_kwargs,
+                **aes_kwargs,
+            )
+        return cls.grid(
+            dataset,
+            cols=cols,
+            rows=rows,
+            aes=aes,
+            figure_kwargs=figure_kwargs,
+            **aes_kwargs,
+        )
+
     def map(
         self,
-        func: Callable,
-        func_label: str | None = None,
-        data: str | Dataset | None = None,
-        coords: dict | None = None,
-        ignore_aes: set[str] | str = frozenset(),
-        store_artist: bool = True,
+        func,
+        func_label=None,
+        data=None,
+        coords=None,
+        ignore_aes=frozenset(),
+        store_artist=True,
         **kwargs,
     ):
         """Apply a plotting function across all facets and aesthetic combinations.
@@ -460,7 +530,7 @@ class PlotCollection:
 
         return self
 
-    def _get_target(self, var_name: str | None, selection: dict) -> Any:
+    def _get_target(self, var_name, selection):
         """Get the target axes for a given variable and selection.
 
         Parameters
@@ -500,7 +570,7 @@ class PlotCollection:
         if "figure" in self.viz:
             plt.show()
 
-    def savefig(self, filename: str, **kwargs):
+    def savefig(self, filename, **kwargs):
         """Save the figure to file.
 
         Parameters

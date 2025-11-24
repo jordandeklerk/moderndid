@@ -1,13 +1,10 @@
 """Aesthetic mapping system for PlotCollection."""
 
-from __future__ import annotations
-
 from itertools import cycle
-from typing import Any
 
 import numpy as np
 
-from moderndid.plotting.containers import DataArray, Dataset
+from moderndid.plotting.containers import DataArray
 
 DEFAULT_AES = {
     "color": ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"],
@@ -19,7 +16,7 @@ DEFAULT_AES = {
 }
 
 
-def get_default_aes_values(aes_key: str, n_values: int, kwargs: dict) -> list:
+def get_default_aes_values(aes_key, n_values, kwargs):
     """Get default aesthetic values for a given aesthetic.
 
     Parameters
@@ -53,10 +50,10 @@ def get_default_aes_values(aes_key: str, n_values: int, kwargs: dict) -> list:
 
 
 def generate_aes_mappings(
-    aes: dict[str, list[str] | bool],
-    data: Dataset,
+    aes,
+    data,
     **kwargs,
-) -> dict[str, dict]:
+):
     """Generate aesthetic mappings from dimension specifications.
 
     Parameters
@@ -183,11 +180,11 @@ def generate_aes_mappings(
 
 
 def get_aes_kwargs(
-    aes_dict: dict[str, dict],
-    aes_keys: list[str],
-    var_name: str,
-    selection: dict[str, Any],
-) -> dict[str, Any]:
+    aes_dict,
+    aes_keys,
+    var_name,
+    selection,
+):
     """Extract aesthetic values for a specific variable and selection.
 
     Parameters

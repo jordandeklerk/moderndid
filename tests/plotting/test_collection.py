@@ -1,42 +1,13 @@
-# pylint: disable=redefined-outer-name
 """Tests for PlotCollection class."""
 
-import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
 import pytest
+
+matplotlib = pytest.importorskip("matplotlib")
+plt = pytest.importorskip("matplotlib.pyplot")
+np = pytest.importorskip("numpy")
 
 from moderndid.plotting.collection import PlotCollection
 from moderndid.plotting.containers import Dataset
-
-matplotlib.use("Agg")
-
-
-@pytest.fixture
-def simple_dataset():
-    data_vars = {"a": {"values": np.array([1, 2, 3]), "dims": ["x"], "coords": {"x": np.array([0, 1, 2])}}}
-    return Dataset(data_vars)
-
-
-@pytest.fixture
-def multidim_dataset():
-    data_vars = {
-        "a": {
-            "values": np.array([[1, 2], [3, 4]]),
-            "dims": ["x", "y"],
-            "coords": {"x": np.array([0, 1]), "y": np.array([10, 20])},
-        }
-    }
-    return Dataset(data_vars)
-
-
-@pytest.fixture
-def multivar_dataset():
-    data_vars = {
-        "a": {"values": np.array([1, 2]), "dims": ["x"], "coords": {"x": np.array([0, 1])}},
-        "b": {"values": np.array([3, 4]), "dims": ["x"], "coords": {"x": np.array([0, 1])}},
-    }
-    return Dataset(data_vars)
 
 
 def test_plotcollection_grid_simple(simple_dataset):
