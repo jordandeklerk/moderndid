@@ -11,9 +11,9 @@ from matplotlib.lines import Line2D
 
 from moderndid.did.aggte_obj import AGGTEResult
 from moderndid.did.multiperiod_obj import MPResult
-from moderndid.plotting import PlotCollection
-from moderndid.plotting.converters import aggte_to_dataset, mpresult_to_dataset
-from moderndid.plotting.themes import THEMES, PlotTheme, apply_theme
+from moderndid.plots import PlotCollection
+from moderndid.plots.converters import aggte_to_dataset, mpresult_to_dataset
+from moderndid.plots.themes import THEMES, PlotTheme, apply_theme
 
 
 def plot_att_gt(

@@ -10,9 +10,9 @@ from scipy import stats
 from scipy.interpolate import interp1d
 
 from moderndid.didcont.estimation.container import DoseResult, PTEResult
-from moderndid.plotting import PlotCollection
-from moderndid.plotting.converters import doseresult_to_dataset, pteresult_to_dataset
-from moderndid.plotting.themes import THEMES, PlotTheme, apply_theme
+from moderndid.plots import PlotCollection
+from moderndid.plots.converters import doseresult_to_dataset, pteresult_to_dataset
+from moderndid.plots.themes import THEMES, PlotTheme, apply_theme
 
 
 def plot_cont_did(
