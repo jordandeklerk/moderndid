@@ -21,6 +21,10 @@ class PlotTheme:
         Color for post-treatment periods.
     reference_color : str
         Color for reference lines.
+    line_color : str
+        Color for main plot lines.
+    ci_color : str
+        Color for confidence interval bands.
     marker : str
         Default marker style.
     marker_size : float
@@ -56,11 +60,13 @@ class PlotTheme:
     pre_treatment_color: str = "#3498db"
     post_treatment_color: str = "#e74c3c"
     reference_color: str = "gray"
+    line_color: str = "#3a3a3a"
+    ci_color: str = "#bfbfbf"
     marker: str = "o"
     marker_size: float = 6.0
-    line_width: float = 1.5
+    line_width: float = 2.5
     linestyle: str = "-"
-    ci_alpha: float = 0.3
+    ci_alpha: float = 0.5
     ci_linewidth: float = 0.7
     figsize: tuple = (10, 6)
     dpi: int = 100

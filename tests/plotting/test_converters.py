@@ -6,6 +6,7 @@ np = pytest.importorskip("numpy")
 pd = pytest.importorskip("pandas")
 
 from moderndid.did.aggte_obj import AGGTEResult
+from moderndid.didcont.estimation.container import PTEResult
 from moderndid.didhonest.honest_did import HonestDiDResult
 from moderndid.didhonest.sensitivity import OriginalCSResult
 from moderndid.plotting.converters import (
@@ -13,6 +14,8 @@ from moderndid.plotting.converters import (
     doseresult_to_dataset,
     honestdid_to_dataset,
     mpresult_to_dataset,
+    pteresult_to_dataset,
+    sensitivity_to_dataset,
 )
 
 
@@ -204,3 +207,111 @@ def test_aggte_with_critical_values():
 
     assert ci_lower.item() == pytest.approx(expected_lower)
     assert ci_upper.item() == pytest.approx(expected_upper)
+
+
+def test_pteresult_to_dataset(pte_result_with_event_study):
+    ds = pteresult_to_dataset(pte_result_with_event_study)
+
+    assert "att" in ds.data_vars
+    assert "se" in ds.data_vars
+    assert "ci_lower" in ds.data_vars
+    assert "ci_upper" in ds.data_vars
+    assert "treatment_status" in ds.data_vars
+
+    assert ds["att"].dims == ("event",)
+    assert len(ds["att"].coords["event"]) == 5
+
+    treatment_status = ds["treatment_status"].values
+    assert treatment_status[0] == "pre"
+    assert treatment_status[1] == "pre"
+    assert treatment_status[2] == "post"
+    assert treatment_status[3] == "post"
+    assert treatment_status[4] == "post"
+
+
+def test_pteresult_to_dataset_no_event_study():
+    result = PTEResult(
+        att_gt=None,
+        overall_att=None,
+        event_study=None,
+        ptep=None,
+    )
+
+    with pytest.raises(ValueError, match="does not contain event study"):
+        pteresult_to_dataset(result)
+
+
+def test_sensitivity_to_dataset(sensitivity_robust_results, sensitivity_original_result):
+    ds = sensitivity_to_dataset(sensitivity_robust_results, sensitivity_original_result, param_col="M")
+
+    assert "lb" in ds.data_vars
+    assert "ub" in ds.data_vars
+    assert "midpoint" in ds.data_vars
+    assert "halfwidth" in ds.data_vars
+
+    assert ds["lb"].dims == ("param_value", "method")
+
+    param_values = ds["lb"].coords["param_value"]
+    methods = ds["lb"].coords["method"]
+
+    assert len(param_values) == 4
+    assert len(methods) == 3
+
+
+def test_sensitivity_to_dataset_includes_original(sensitivity_robust_results, sensitivity_original_result):
+    ds = sensitivity_to_dataset(sensitivity_robust_results, sensitivity_original_result, param_col="M")
+
+    param_values = ds["lb"].coords["param_value"]
+    min_robust_m = 0.5
+
+    assert param_values[0] < min_robust_m
+
+
+def test_sensitivity_to_dataset_midpoint_halfwidth(sensitivity_robust_results, sensitivity_original_result):
+    ds = sensitivity_to_dataset(sensitivity_robust_results, sensitivity_original_result, param_col="M")
+
+    lb = ds["lb"].values
+    ub = ds["ub"].values
+    midpoint = ds["midpoint"].values
+    halfwidth = ds["halfwidth"].values
+
+    valid_mask = ~np.isnan(lb) & ~np.isnan(ub)
+    expected_midpoint = (lb[valid_mask] + ub[valid_mask]) / 2
+    expected_halfwidth = (ub[valid_mask] - lb[valid_mask]) / 2
+
+    assert np.allclose(midpoint[valid_mask], expected_midpoint)
+    assert np.allclose(halfwidth[valid_mask], expected_halfwidth)
+
+
+def test_mpresult_treatment_status(mp_result):
+    ds = mpresult_to_dataset(mp_result)
+
+    assert "treatment_status" in ds.data_vars
+    assert ds["treatment_status"].dims == ("group", "time")
+
+    status = ds["treatment_status"].values
+
+    groups = ds["treatment_status"].coords["group"]
+    times = ds["treatment_status"].coords["time"]
+    group_idx = np.where(groups == 2007)[0][0]
+
+    time_2004_idx = np.where(times == 2004)[0][0]
+    time_2006_idx = np.where(times == 2006)[0][0]
+    time_2007_idx = np.where(times == 2007)[0][0]
+
+    assert status[group_idx, time_2004_idx] == "pre"
+    assert status[group_idx, time_2006_idx] == "pre"
+    assert status[group_idx, time_2007_idx] == "post"
+
+
+def test_aggte_dynamic_treatment_status(aggte_result_dynamic):
+    ds = aggte_to_dataset(aggte_result_dynamic)
+
+    assert "treatment_status" in ds.data_vars
+
+    status = ds["treatment_status"].values
+    event_times = ds["treatment_status"].coords["event"]
+
+    for i, e in enumerate(event_times):
+        expected = "pre" if e < 0 else "post"
+        assert status[i] == expected, f"Event time {e} should be {expected}, got {status[i]}"

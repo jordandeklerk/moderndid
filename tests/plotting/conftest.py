@@ -137,3 +137,42 @@ def honest_result():
         original_ci=original_ci,
         sensitivity_type="smoothness",
     )
+
+
+@pytest.fixture
+def pte_result_with_event_study():
+    from moderndid.didcont.estimation.container import PTEAggteResult, PTEResult
+
+    event_study = PTEAggteResult(
+        overall_att=0.5,
+        overall_se=0.1,
+        aggregation_type="dynamic",
+        event_times=np.array([-2, -1, 0, 1, 2]),
+        att_by_event=np.array([0.1, 0.05, 0.5, 0.8, 1.0]),
+        se_by_event=np.array([0.08, 0.07, 0.1, 0.12, 0.15]),
+        critical_value=1.96,
+    )
+
+    return PTEResult(
+        att_gt=None,
+        overall_att=None,
+        event_study=event_study,
+        ptep=None,
+    )
+
+
+@pytest.fixture
+def sensitivity_robust_results():
+    return pd.DataFrame(
+        {
+            "M": [0.5, 1.0, 1.5, 0.5, 1.0, 1.5],
+            "lb": [0.2, 0.1, 0.0, 0.15, 0.05, -0.05],
+            "ub": [0.8, 0.9, 1.0, 0.75, 0.85, 0.95],
+            "method": ["FLCI", "FLCI", "FLCI", "Conditional", "Conditional", "Conditional"],
+        }
+    )
+
+
+@pytest.fixture
+def sensitivity_original_result():
+    return OriginalCSResult(lb=0.3, ub=0.7, method="Original")

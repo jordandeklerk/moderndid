@@ -24,6 +24,7 @@ theoretical explanations and the :ref:`user_guide` for practical examples.
    didcont
    propensity
    bootstrap
+   plotting
 
 .. note::
    The API is stable for all documented functions. Additional modules under development
