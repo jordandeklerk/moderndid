@@ -4,7 +4,7 @@ from itertools import cycle
 
 import numpy as np
 
-from moderndid.plotting.containers import DataArray
+from moderndid.plots.containers import DataArray
 
 DEFAULT_AES = {
     "color": ["C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9"],

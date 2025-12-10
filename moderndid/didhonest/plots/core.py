@@ -8,9 +8,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from moderndid.plotting import PlotCollection
-from moderndid.plotting.converters import sensitivity_to_dataset
-from moderndid.plotting.themes import THEMES, PlotTheme, apply_theme
+from moderndid.plots import PlotCollection
+from moderndid.plots.converters import sensitivity_to_dataset
+from moderndid.plots.themes import THEMES, PlotTheme, apply_theme
 
 METHOD_COLORS = {
     "sensitivity": {
@@ -508,7 +508,7 @@ def plot_sensitivity_event_study(
 
     theme_obj = _get_theme(theme)
 
-    from moderndid.plotting.containers import Dataset
+    from moderndid.plots.containers import Dataset
 
     coords = {"time": plot_times}
     data_vars = {

@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from moderndid.plotting.containers import Dataset
+from moderndid.plots.containers import Dataset
 
 
 def mpresult_to_dataset(result):
