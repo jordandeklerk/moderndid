@@ -17,12 +17,14 @@ def mpresult_to_dataset(result):
     -------
     Dataset
         Dataset with variables:
+
         - att: group-time ATT estimates
         - se: standard errors
         - ci_lower: lower confidence interval
         - ci_upper: upper confidence interval
 
         Dimensions: (group, time)
+        Coordinates include treatment_status ("pre" or "post") for aesthetic mapping.
     """
     unique_groups = np.unique(result.groups)
     unique_times = np.unique(result.times)
@@ -44,26 +46,38 @@ def mpresult_to_dataset(result):
     ci_lower = att_array - margin
     ci_upper = att_array + margin
 
+    treatment_status = np.array(
+        [["pre" if t < g else "post" for t in unique_times] for g in unique_groups],
+        dtype=object,
+    )
+
+    coords = {"group": unique_groups, "time": unique_times}
+
     data_vars = {
         "att": {
             "values": att_array,
             "dims": ["group", "time"],
-            "coords": {"group": unique_groups, "time": unique_times},
+            "coords": coords,
         },
         "se": {
             "values": se_array,
             "dims": ["group", "time"],
-            "coords": {"group": unique_groups, "time": unique_times},
+            "coords": coords,
         },
         "ci_lower": {
             "values": ci_lower,
             "dims": ["group", "time"],
-            "coords": {"group": unique_groups, "time": unique_times},
+            "coords": coords,
         },
         "ci_upper": {
             "values": ci_upper,
             "dims": ["group", "time"],
-            "coords": {"group": unique_groups, "time": unique_times},
+            "coords": coords,
+        },
+        "treatment_status": {
+            "values": treatment_status,
+            "dims": ["group", "time"],
+            "coords": coords,
         },
     }
 
@@ -134,28 +148,38 @@ def aggte_to_dataset(result):
     elif result.aggregation_type == "calendar":
         dim_name = "time"
 
+    coords = {dim_name: event_times}
+
     data_vars = {
         "att": {
             "values": att,
             "dims": [dim_name],
-            "coords": {dim_name: event_times},
+            "coords": coords,
         },
         "se": {
             "values": se,
             "dims": [dim_name],
-            "coords": {dim_name: event_times},
+            "coords": coords,
         },
         "ci_lower": {
             "values": ci_lower,
             "dims": [dim_name],
-            "coords": {dim_name: event_times},
+            "coords": coords,
         },
         "ci_upper": {
             "values": ci_upper,
             "dims": [dim_name],
-            "coords": {dim_name: event_times},
+            "coords": coords,
         },
     }
+
+    if result.aggregation_type == "dynamic":
+        treatment_status = np.array(["pre" if e < 0 else "post" for e in event_times], dtype=object)
+        data_vars["treatment_status"] = {
+            "values": treatment_status,
+            "dims": [dim_name],
+            "coords": coords,
+        }
 
     return Dataset(data_vars)
 
@@ -172,6 +196,7 @@ def doseresult_to_dataset(result):
     -------
     Dataset
         Dataset with variables:
+
         - att_d: ATT at each dose level
         - se_d: standard errors for ATT(D)
         - acrt_d: ACRT at each dose level
@@ -262,6 +287,182 @@ def doseresult_to_dataset(result):
             "dims": ["_"],
             "coords": {"_": np.array([0])},
         }
+
+    return Dataset(data_vars)
+
+
+def pteresult_to_dataset(result):
+    """Convert PTEResult event study to Dataset for plotting.
+
+    Parameters
+    ----------
+    result : PTEResult
+        Panel treatment effects result with event_study.
+
+    Returns
+    -------
+    Dataset
+        Dataset with variables:
+
+        - att: event-time ATT estimates
+        - se: standard errors
+        - ci_lower: lower confidence interval
+        - ci_upper: upper confidence interval
+        - treatment_status: "pre" if event_time < 0, "post" otherwise
+
+        Dimension: (event,)
+    """
+    if result.event_study is None:
+        raise ValueError("PTEResult does not contain event study results")
+
+    event_study = result.event_study
+    event_times = event_study.event_times
+    att = event_study.att_by_event
+    se = event_study.se_by_event
+
+    if hasattr(event_study, "critical_value") and event_study.critical_value is not None:
+        crit_val = event_study.critical_value
+    else:
+        crit_val = 1.96
+
+    margin = crit_val * se
+    ci_lower = att - margin
+    ci_upper = att + margin
+
+    treatment_status = np.array(["pre" if e < 0 else "post" for e in event_times], dtype=object)
+
+    coords = {"event": event_times}
+
+    data_vars = {
+        "att": {
+            "values": att,
+            "dims": ["event"],
+            "coords": coords,
+        },
+        "se": {
+            "values": se,
+            "dims": ["event"],
+            "coords": coords,
+        },
+        "ci_lower": {
+            "values": ci_lower,
+            "dims": ["event"],
+            "coords": coords,
+        },
+        "ci_upper": {
+            "values": ci_upper,
+            "dims": ["event"],
+            "coords": coords,
+        },
+        "treatment_status": {
+            "values": treatment_status,
+            "dims": ["event"],
+            "coords": coords,
+        },
+    }
+
+    return Dataset(data_vars)
+
+
+def sensitivity_to_dataset(robust_df, original_result, param_col="M"):
+    """Convert sensitivity results to Dataset for plotting.
+
+    Parameters
+    ----------
+    robust_df : pd.DataFrame
+        DataFrame with sensitivity results. Columns: lb, ub, method, M (or Mbar).
+    original_result : NamedTuple
+        Original confidence interval result with lb, ub, method.
+    param_col : str, default="M"
+        Name of the parameter column ("M" for smoothness, "Mbar" for relative magnitude).
+
+    Returns
+    -------
+    Dataset
+        Dataset with variables:
+
+        - lb: lower bounds
+        - ub: upper bounds
+        - midpoint: (lb + ub) / 2
+        - halfwidth: (ub - lb) / 2
+
+        Dimensions: (param_value, method)
+    """
+    import pandas as pd
+
+    m_col = param_col if param_col in robust_df.columns else param_col.lower()
+    if m_col not in robust_df.columns:
+        if "M" in robust_df.columns:
+            m_col = "M"
+        elif "Mbar" in robust_df.columns:
+            m_col = "Mbar"
+        elif "m" in robust_df.columns:
+            m_col = "m"
+        else:
+            raise ValueError(f"Parameter column not found in DataFrame: {robust_df.columns}")
+
+    m_values = np.sort(robust_df[m_col].unique())
+
+    m_gap = np.min(np.diff(m_values)) if len(m_values) > 1 else 1
+    m_min = np.min(m_values)
+    original_m = m_min - m_gap
+
+    original_df = pd.DataFrame(
+        [
+            {
+                m_col: original_m,
+                "lb": original_result.lb,
+                "ub": original_result.ub,
+                "method": original_result.method,
+            }
+        ]
+    )
+    df = pd.concat([original_df, robust_df], ignore_index=True)
+
+    all_m_values = np.sort(df[m_col].unique())
+    all_methods = df["method"].unique()
+
+    n_params = len(all_m_values)
+    n_methods = len(all_methods)
+
+    lb_array = np.full((n_params, n_methods), np.nan)
+    ub_array = np.full((n_params, n_methods), np.nan)
+
+    for i, m_val in enumerate(all_m_values):
+        for j, method in enumerate(all_methods):
+            mask = (df[m_col] == m_val) & (df["method"] == method)
+            if mask.any():
+                lb_array[i, j] = df.loc[mask, "lb"].values[0]
+                ub_array[i, j] = df.loc[mask, "ub"].values[0]
+
+    midpoint_array = (lb_array + ub_array) / 2
+    halfwidth_array = (ub_array - lb_array) / 2
+
+    dim_name = "param_value"
+    coords = {"param_value": all_m_values, "method": all_methods}
+
+    data_vars = {
+        "lb": {
+            "values": lb_array,
+            "dims": [dim_name, "method"],
+            "coords": coords,
+        },
+        "ub": {
+            "values": ub_array,
+            "dims": [dim_name, "method"],
+            "coords": coords,
+        },
+        "midpoint": {
+            "values": midpoint_array,
+            "dims": [dim_name, "method"],
+            "coords": coords,
+        },
+        "halfwidth": {
+            "values": halfwidth_array,
+            "dims": [dim_name, "method"],
+            "coords": coords,
+        },
+    }
 
     return Dataset(data_vars)
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from moderndid.didcont.cont_did import cont_did
 from moderndid.didcont.plots import plot_cont_did
+from moderndid.plotting import PlotCollection
 from tests.helpers import importorskip
 
 np = importorskip("numpy")
@@ -44,12 +45,15 @@ def test_dose_response_plot_produces_finite_outputs():
     assert np.all(np.isfinite(result.dose))
     assert np.all(np.isfinite(result.att_d))
 
-    fig_att, ax_att = plt.subplots(figsize=(9, 5.5))
-    returned = plot_cont_did(result, type="att", show_confidence_bands=True, ax=ax_att)
-    assert returned is fig_att
+    pc_att = plot_cont_did(result, type="att", show_ci=True)
+    assert isinstance(pc_att, PlotCollection)
+    fig_att = pc_att.viz["figure"]
+    assert fig_att.axes
     plt.close(fig_att)
 
-    fig_acrt = plot_cont_did(result, type="acrt", show_confidence_bands=True)
+    pc_acrt = plot_cont_did(result, type="acrt", show_ci=True)
+    assert isinstance(pc_acrt, PlotCollection)
+    fig_acrt = pc_acrt.viz["figure"]
     assert fig_acrt.axes
     plt.close(fig_acrt)
 
@@ -81,7 +85,9 @@ def test_event_study_plots_have_consistent_dimensions():
     assert np.all(np.isfinite(level_event.att_by_event))
     assert np.all(level_event.se_by_event >= 0)
 
-    fig_level = plot_cont_did(level_result)
+    pc_level = plot_cont_did(level_result)
+    assert isinstance(pc_level, PlotCollection)
+    fig_level = pc_level.viz["figure"]
     assert fig_level.axes
     plt.close(fig_level)
 
@@ -108,7 +114,9 @@ def test_event_study_plots_have_consistent_dimensions():
     assert slope_event.att_by_event.shape == slope_event.se_by_event.shape
     assert np.all(np.isfinite(slope_event.att_by_event))
 
-    fig_slope = plot_cont_did(slope_result, type="acrt")
+    pc_slope = plot_cont_did(slope_result, type="acrt")
+    assert isinstance(pc_slope, PlotCollection)
+    fig_slope = pc_slope.viz["figure"]
     assert fig_slope.axes
     plt.close(fig_slope)
 
@@ -138,7 +146,9 @@ def test_cck_dose_response_is_well_defined():
     assert np.isfinite(result.overall_att)
     assert np.isfinite(result.overall_acrt)
 
-    fig = plot_cont_did(result, type="att", show_confidence_bands=True)
+    pc = plot_cont_did(result, type="att", show_ci=True)
+    assert isinstance(pc, PlotCollection)
+    fig = pc.viz["figure"]
     assert fig.axes
     plt.close(fig)
 

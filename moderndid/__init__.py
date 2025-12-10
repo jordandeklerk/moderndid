@@ -52,6 +52,7 @@ from moderndid.didcont.npiv import (
     npiv_jhat_max,
     prodspline,
 )
+from moderndid.didcont.plots import plot_cont_did
 from moderndid.didcont.spline import (
     BSpline,
     SplineBase,
@@ -110,13 +111,13 @@ from moderndid.didhonest import (
     create_sensitivity_results_sm,
     create_sign_constraint_matrix,
     estimate_lowerbound_m_conditional_test,
-    event_study_plot,
     folded_normal_quantile,
     honest_did,
     lee_coefficient,
     lp_conditional_test,
     maximize_bias,
     minimize_variance,
+    plot_sensitivity_event_study,
     plot_sensitivity_rm,
     plot_sensitivity_sm,
     selection_matrix,
@@ -164,6 +165,7 @@ from moderndid.drdid.print import print_did_result
 from moderndid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from moderndid.drdid.propensity.ipw_estimators import ipw_rc
 from moderndid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
+from moderndid.plotting.themes import PlotTheme
 
 __all__ = [
     "cont_did",
@@ -255,7 +257,7 @@ __all__ = [
     "drdid_rc",
     "drdid_trad_rc",
     "estimate_lowerbound_m_conditional_test",
-    "event_study_plot",
+    "plot_sensitivity_event_study",
     "extract_vars_from_formula",
     "folded_normal_quantile",
     "format_aggte_result",
@@ -289,10 +291,12 @@ __all__ = [
     "ordid",
     "parse_formula",
     "plot_att_gt",
+    "plot_cont_did",
     "plot_did",
     "plot_event_study",
     "plot_sensitivity_rm",
     "plot_sensitivity_sm",
+    "PlotTheme",
     "preprocess_did",
     "print_did_result",
     "prodspline",
