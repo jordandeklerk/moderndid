@@ -1,7 +1,6 @@
 """Tests for aesthetic mapping system."""
 
 import numpy as np
-
 from moderndid.plotting.aesthetics import (
     generate_aes_mappings,
     get_aes_kwargs,
