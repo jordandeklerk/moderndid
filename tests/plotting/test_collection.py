@@ -6,8 +6,8 @@ matplotlib = pytest.importorskip("matplotlib")
 plt = pytest.importorskip("matplotlib.pyplot")
 np = pytest.importorskip("numpy")
 
-from moderndid.plotting.collection import PlotCollection
-from moderndid.plotting.containers import Dataset
+from moderndid.plots.collection import PlotCollection
+from moderndid.plots.containers import Dataset
 
 
 def test_plotcollection_grid_simple(simple_dataset):

@@ -4,8 +4,8 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
-from moderndid.plotting.containers import DataArray
-from moderndid.plotting.visuals import (
+from moderndid.plots.containers import DataArray
+from moderndid.plots.visuals import (
     errorbar,
     fill_between,
     hline,

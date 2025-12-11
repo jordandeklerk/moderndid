@@ -5,7 +5,11 @@ import pytest
 np = pytest.importorskip("numpy")
 pd = pytest.importorskip("pandas")
 
-from moderndid.plotting.converters import (
+from moderndid.did.aggte_obj import AGGTEResult
+from moderndid.didcont.estimation.container import PTEResult
+from moderndid.didhonest.honest_did import HonestDiDResult
+from moderndid.didhonest.sensitivity import OriginalCSResult
+from moderndid.plots.converters import (
     aggte_to_dataset,
     doseresult_to_dataset,
     honestdid_to_dataset,
@@ -13,11 +17,6 @@ from moderndid.plotting.converters import (
     pteresult_to_dataset,
     sensitivity_to_dataset,
 )
-
-from moderndid.did.aggte_obj import AGGTEResult
-from moderndid.didcont.estimation.container import PTEResult
-from moderndid.didhonest.honest_did import HonestDiDResult
-from moderndid.didhonest.sensitivity import OriginalCSResult
 
 
 def test_mpresult_to_dataset(mp_result):

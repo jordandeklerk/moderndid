@@ -8,13 +8,12 @@ plt = pytest.importorskip("matplotlib.pyplot")
 np = pytest.importorskip("numpy")
 pd = pytest.importorskip("pandas")
 
-from moderndid.plotting.containers import DataArray, Dataset
-
 from moderndid.did.aggte_obj import AGGTEResult
 from moderndid.did.multiperiod_obj import MPResult
 from moderndid.didcont.estimation.container import DoseResult
 from moderndid.didhonest.honest_did import HonestDiDResult
 from moderndid.didhonest.sensitivity import OriginalCSResult
+from moderndid.plots.containers import DataArray, Dataset
 
 
 @pytest.fixture

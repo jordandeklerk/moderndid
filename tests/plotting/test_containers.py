@@ -2,7 +2,8 @@
 
 import numpy as np
 import pytest
-from moderndid.plotting.containers import (
+
+from moderndid.plots.containers import (
     DataArray,
     Dataset,
     iterate_over_selection,
