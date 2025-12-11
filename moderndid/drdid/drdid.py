@@ -133,7 +133,7 @@ def drdid(
         :okwarning:
 
         In [1]: import moderndid
-           ...: from moderndid.data import load_nsw
+           ...: from moderndid import load_nsw
            ...:
            ...: nsw_data = load_nsw()
            ...:
