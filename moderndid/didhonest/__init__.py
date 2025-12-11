@@ -88,11 +88,6 @@ from .numba import (
     lee_coefficient,
     selection_matrix,
 )
-from .plots.core import (
-    plot_sensitivity_event_study,
-    plot_sensitivity_rm,
-    plot_sensitivity_sm,
-)
 from .sensitivity import (
     OriginalCSResult,
     SensitivityResult,
@@ -196,10 +191,6 @@ __all__ = [
     "construct_original_cs",
     "create_sensitivity_results_sm",
     "create_sensitivity_results_rm",
-    # Plotting functions
-    "plot_sensitivity_event_study",
-    "plot_sensitivity_sm",
-    "plot_sensitivity_rm",
     # Wrapper utilities
     "DeltaMethodSelector",
     "get_delta_method",
