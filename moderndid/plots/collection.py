@@ -1,7 +1,13 @@
 # pylint: disable=too-many-nested-blocks
 """PlotCollection class for unified plotting in moderndid."""
 
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError as e:
+    raise ImportError(
+        "matplotlib is required for plotting functionality. Install it with: pip install moderndid[plots]"
+    ) from e
+
 import numpy as np
 
 from .aesthetics import generate_aes_mappings, get_aes_kwargs
