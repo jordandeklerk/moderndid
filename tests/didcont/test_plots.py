@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from moderndid.plotting import PlotCollection
-
 from moderndid.didcont.cont_did import cont_did
 from moderndid.didcont.plots import plot_cont_did
+from moderndid.plots import PlotCollection
 from tests.helpers import importorskip
 
 np = importorskip("numpy")

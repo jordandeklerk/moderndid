@@ -1,12 +1,13 @@
 """Tests for aesthetic mapping system."""
 
 import numpy as np
-from moderndid.plotting.aesthetics import (
+
+from moderndid.plots.aesthetics import (
     generate_aes_mappings,
     get_aes_kwargs,
     get_default_aes_values,
 )
-from moderndid.plotting.containers import Dataset
+from moderndid.plots.containers import Dataset
 
 
 def test_get_default_aes_values_from_defaults():
