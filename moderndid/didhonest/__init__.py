@@ -89,7 +89,7 @@ from .numba import (
     selection_matrix,
 )
 from .plots.core import (
-    event_study_plot,
+    plot_sensitivity_event_study,
     plot_sensitivity_rm,
     plot_sensitivity_sm,
 )
@@ -197,7 +197,7 @@ __all__ = [
     "create_sensitivity_results_sm",
     "create_sensitivity_results_rm",
     # Plotting functions
-    "event_study_plot",
+    "plot_sensitivity_event_study",
     "plot_sensitivity_sm",
     "plot_sensitivity_rm",
     # Wrapper utilities
