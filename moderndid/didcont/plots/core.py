@@ -5,7 +5,14 @@ from __future__ import annotations
 from typing import Any, Literal
 
 import numpy as np
-from matplotlib.lines import Line2D
+
+try:
+    from matplotlib.lines import Line2D
+except ImportError as e:
+    raise ImportError(
+        "matplotlib is required for plotting functionality. Install it with: pip install moderndid[plots]"
+    ) from e
+
 from scipy import stats
 from scipy.interpolate import interp1d
 
