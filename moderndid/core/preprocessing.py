@@ -1,7 +1,9 @@
 """DiD preprocessing."""
 
+import numpy as np
+
 from .preprocess.builders import PreprocessDataBuilder
-from .preprocess.config import DIDConfig, TwoPeriodDIDConfig
+from .preprocess.config import ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
 from .preprocess.constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
 
 
@@ -201,3 +203,152 @@ def preprocess_did(
     did_data = builder.with_data(data).with_config(config).validate().transform().build()
 
     return did_data
+
+
+def preprocess_cont_did(
+    data,
+    yname,
+    tname,
+    gname,
+    dname,
+    idname=None,
+    xformla=None,
+    panel=True,
+    allow_unbalanced_panel=False,
+    control_group="notyettreated",
+    anticipation=0,
+    weightsname=None,
+    alp=0.05,
+    bstrap=False,
+    cband=False,
+    biters=1000,
+    clustervars=None,
+    degree=3,
+    num_knots=0,
+    dvals=None,
+    target_parameter="level",
+    aggregation="dose",
+    base_period="varying",
+    boot_type="multiplier",
+    required_pre_periods=0,
+):
+    """Process data for continuous treatment difference-in-differences.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Panel or repeated cross-section data.
+    yname : str
+        Name of outcome variable column.
+    tname : str
+        Name of time period column.
+    gname : str
+        Name of treatment group column. Should contain the time period
+        when a unit is first treated (0 for never-treated).
+    dname : str
+        Name of the column containing the continuous treatment dose.
+        Should be constant across time periods for each unit.
+        Use 0 for never-treated units.
+    idname : str | None, default None
+        Name of entity/unit identifier column. Required for panel data.
+    xformla : str | None, default None
+        Formula for covariates in Wilkinson notation (e.g., "~ x1 + x2").
+        If None, no covariates are included. Currently only "~1" is supported.
+    panel : bool, default True
+        Whether data is in panel format (vs repeated cross-sections).
+    allow_unbalanced_panel : bool, default False
+        Whether to allow unbalanced panels. Currently not supported.
+    control_group : {"nevertreated", "notyettreated"}, default "notyettreated"
+        Which units to use as control group.
+    anticipation : int, default 0
+        Number of time periods before treatment where effects may appear.
+    weightsname : str | None, default None
+        Name of sampling weights column.
+    alp : float, default 0.05
+        Significance level for confidence intervals.
+    bstrap : bool, default False
+        Whether to use bootstrap for inference.
+    cband : bool, default False
+        Whether to compute uniform confidence bands.
+    biters : int, default 1000
+        Number of bootstrap iterations.
+    clustervars : list[str] | None, default None
+        Variables to cluster standard errors on.
+    degree : int, default 3
+        Degree of the B-spline basis functions for dose-response estimation.
+    num_knots : int, default 0
+        Number of interior knots for the B-spline.
+    dvals : array-like | None, default None
+        Values of the treatment dose at which to compute effects.
+        If None, uses quantiles of the dose distribution among treated units.
+    target_parameter : {"level", "slope"}, default "level"
+        Type of treatment effect to estimate:
+        - "level": Average treatment effect (ATT) at different dose levels
+        - "slope": Average causal response (ACRT), the derivative of dose-response
+    aggregation : {"dose", "eventstudy"}, default "dose"
+        How to aggregate treatment effects:
+        - "dose": Average across timing-groups and time, report by dose
+        - "eventstudy": Average across timing-groups and doses, report by event time
+    base_period : {"universal", "varying"}, default "varying"
+        How to choose base period for comparisons.
+    boot_type : {"multiplier", "weighted"}, default "multiplier"
+        Type of bootstrap to perform.
+    required_pre_periods : int, default 0
+        Minimum number of pre-treatment periods required.
+
+    Returns
+    -------
+    ContDIDData
+        Container with all preprocessed data and parameters including:
+
+        - data: Standardized panel/cross-section data with recoded time periods
+        - time_invariant_data: Unit-level data with group and dose info
+        - weights: Normalized sampling weights
+        - config: Configuration with all settings
+        - time_map: Mapping from original to recoded time periods
+        - cohort_counts: Count of units in each treatment cohort
+        - period_counts: Count of observations in each time period
+    """
+    control_group_enum = ControlGroup(control_group)
+    base_period_enum = BasePeriod(base_period)
+    boot_type_enum = BootstrapType(boot_type)
+    dvals_array = np.asarray(dvals) if dvals is not None else None
+
+    if clustervars is None:
+        clustervars_list: list[str] = []
+    elif isinstance(clustervars, str):
+        clustervars_list = [clustervars]
+    else:
+        clustervars_list = list(clustervars)
+
+    config = ContDIDConfig(
+        yname=yname,
+        tname=tname,
+        gname=gname,
+        dname=dname,
+        idname=idname,
+        xformla=xformla if xformla is not None else "~1",
+        panel=panel,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+        control_group=control_group_enum,
+        anticipation=anticipation,
+        weightsname=weightsname,
+        alp=alp,
+        bstrap=bstrap,
+        cband=cband,
+        biters=biters,
+        clustervars=clustervars_list,
+        degree=degree,
+        num_knots=num_knots,
+        dvals=dvals_array,
+        target_parameter=target_parameter,
+        aggregation=aggregation,
+        base_period=base_period_enum,
+        boot_type=boot_type_enum,
+        required_pre_periods=required_pre_periods,
+    )
+
+    builder = PreprocessDataBuilder()
+    cont_did_data = builder.with_data(data).with_config(config).validate().transform().build()
+
+    return cont_did_data

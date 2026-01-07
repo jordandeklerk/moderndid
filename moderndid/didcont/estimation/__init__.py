@@ -42,6 +42,7 @@ from .process_dose import (
     process_dose_gt,
 )
 from .process_panel import (
+    _build_pte_params,
     pte,
     pte_default,
     setup_pte,
@@ -74,5 +75,6 @@ __all__ = [
     "setup_pte",
     "setup_pte_basic",
     "setup_pte_cont",
+    "_build_pte_params",
     "pte_default",
 ]

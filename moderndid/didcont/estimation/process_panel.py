@@ -2,7 +2,7 @@
 """Functions for panel treatment effects."""
 
 import warnings
-from collections import namedtuple
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -13,11 +13,22 @@ from moderndid.core.preprocess import (
 from moderndid.core.preprocess import (
     map_to_idx as _map_to_idx,
 )
+from moderndid.core.preprocess.models import ContDIDData
 
+from .bootstrap import panel_empirical_bootstrap
 from .container import PTEParams, PTEResult
 from .estimators import pte_attgt
+from .process_aggte import aggregate_att_gt
+from .process_attgt import process_att_gt
+from .process_dose import process_dose_gt
 
-OverallResult = namedtuple("OverallResult", ["overall_att", "overall_se", "influence_func"])
+
+class OverallResult(NamedTuple):
+    """Overall result."""
+
+    overall_att: float
+    overall_se: float
+    influence_func: np.ndarray
 
 
 def pte(
@@ -103,8 +114,6 @@ def pte(
 
     aggregation = kwargs.get("aggregation", "dose")
     if gt_type == "dose" and aggregation == "dose":
-        from moderndid.didcont.estimation.process_dose import process_dose_gt
-
         if process_dose_gt_fun is None:
             process_dose_gt_fun = process_dose_gt
 
@@ -126,8 +135,6 @@ def pte(
         )
 
     if ptep.boot_type == "empirical" or np.all(np.isnan(res["influence_func"])):
-        from .bootstrap import panel_empirical_bootstrap
-
         bootstrap_result = panel_empirical_bootstrap(
             attgt_list=res["attgt_list"],
             pte_params=ptep,
@@ -173,9 +180,6 @@ def pte(
             }
 
         return PTEResult(att_gt=att_gt_result, overall_att=overall_att, event_study=event_study, ptep=ptep)
-
-    from .process_aggte import aggregate_att_gt
-    from .process_attgt import process_att_gt
 
     att_gt = process_att_gt(res, ptep)
 
@@ -574,6 +578,114 @@ def setup_pte_cont(
     return PTEParams(**pte_params_dict)
 
 
+def _build_pte_params(
+    cont_did_data: ContDIDData,
+    gt_type="att",
+    ret_quantile=0.5,
+    **kwargs,
+):
+    """Create PTEParams from ContDIDData.
+
+    Parameters
+    ----------
+    cont_did_data : ContDIDData
+        Preprocessed data from preprocess_cont_did.
+    gt_type : str, default="att"
+        Type of group-time effect ("att" or "dose").
+    ret_quantile : float, default=0.5
+        Quantile for distributional results.
+    **kwargs
+        Additional arguments (unused, for compatibility).
+
+    Returns
+    -------
+    PTEParams
+        Parameters object for panel treatment effects estimation.
+    """
+    config = cont_did_data.config
+    data = cont_did_data.data.copy()
+
+    data["G"] = data[config.gname]
+    data["id"] = data[config.idname]
+    data["period"] = data[config.tname]
+    data["Y"] = data[config.yname]
+    data["D"] = data[config.dname] if config.dname else 0
+
+    if config.weightsname:
+        weight_map = dict(zip(cont_did_data.time_invariant_data[config.idname], cont_did_data.weights))
+        data[".w"] = data[config.idname].map(weight_map)
+    else:
+        data[".w"] = 1.0
+
+    time_periods = config.time_periods
+    groups = config.treated_groups
+
+    base_period = config.base_period.value if hasattr(config.base_period, "value") else config.base_period
+    required_pre_periods = config.required_pre_periods
+    anticipation = config.anticipation
+
+    if base_period == "universal":
+        t_list = np.sort(time_periods)
+        min_t_for_g = t_list[1] if len(t_list) > 1 else np.inf
+    else:  # varying
+        t_list = np.sort(time_periods)[required_pre_periods:]
+        min_t_for_g = np.min(t_list) if len(t_list) > 0 else np.inf
+
+    g_list = groups[np.isin(groups, t_list)]
+    g_list = g_list[g_list >= (min_t_for_g + anticipation)]
+
+    groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
+    data = data[~data["G"].isin(groups_to_drop)]
+
+    is_treated = np.isfinite(data["G"])
+    is_post_treatment = data["period"] >= data["G"]
+    dose_values = data.loc[is_treated & is_post_treatment, "D"].values
+    positive_doses = dose_values[dose_values > 0]
+
+    knots = _choose_knots_quantile(positive_doses, config.num_knots)
+
+    dvals = config.dvals
+    if dvals is None:
+        if len(positive_doses) > 0:
+            dvals = np.linspace(positive_doses.min(), positive_doses.max(), 50)
+        else:
+            dvals = np.array([])
+
+    control_group = config.control_group.value if hasattr(config.control_group, "value") else config.control_group
+    boot_type = config.boot_type.value if hasattr(config.boot_type, "value") else config.boot_type
+
+    params_dict = {
+        "yname": config.yname,
+        "gname": config.gname,
+        "tname": config.tname,
+        "idname": config.idname,
+        "data": data,
+        "g_list": g_list,
+        "t_list": t_list,
+        "cband": config.cband,
+        "alp": config.alp,
+        "boot_type": boot_type,
+        "gt_type": gt_type,
+        "ret_quantile": ret_quantile,
+        "biters": config.biters,
+        "anticipation": config.anticipation,
+        "base_period": base_period,
+        "weightsname": config.weightsname,
+        "control_group": control_group,
+        "dname": config.dname,
+        "degree": config.degree,
+        "num_knots": config.num_knots,
+        "knots": knots,
+        "dvals": dvals,
+        "target_parameter": config.target_parameter,
+        "aggregation": config.aggregation,
+        "treatment_type": config.treatment_type,
+        "xformula": config.xformla,
+    }
+
+    return PTEParams(**params_dict)
+
+
 def _two_by_two_subset(
     data,
     g,
@@ -593,8 +705,8 @@ def _two_by_two_subset(
 
     if control_group == "notyettreated":
         unit_mask = (data["G"] == g) | (data["G"] > tp) | (data["G"] == 0)
-    else:  # 'nevertreated'
-        unit_mask = (data["G"] == g) | (data["G"] == 0)
+    else:
+        unit_mask = (data["G"] == g) | np.isinf(data["G"]) | (data["G"] == 0)
 
     this_data = data.loc[unit_mask].copy()
 
