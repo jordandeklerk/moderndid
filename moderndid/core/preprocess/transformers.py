@@ -513,6 +513,7 @@ class DataTransformerPipeline:
                 ColumnSelector(),
                 MissingDataHandler(),
                 WeightNormalizer(),
+                TreatmentEncoder(),
                 TimePeriodRecoder(),
                 EarlyTreatmentGroupFilter(),
                 DoseValidator(),

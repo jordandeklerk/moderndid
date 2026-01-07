@@ -8,11 +8,23 @@ import pandas as pd
 
 def map_to_idx(vals, time_map):
     """Map values to indices."""
-    vals_arr = np.asarray(vals)
+    vals_arr = np.asarray(vals, dtype=float)
     if vals_arr.ndim == 0:
         val_item = vals_arr.item()
+        if np.isinf(val_item):
+            return val_item
         return time_map.get(val_item, val_item)
-    return np.array([time_map.get(v, v) for v in vals_arr], dtype=int)
+
+    result = np.empty(len(vals_arr), dtype=float)
+    for i, v in enumerate(vals_arr):
+        if np.isinf(v):
+            result[i] = v
+        else:
+            result[i] = time_map.get(v, v)
+
+    if not np.any(np.isinf(result)):
+        return result.astype(int)
+    return result
 
 
 def make_balanced_panel(data, idname, tname):
@@ -61,9 +73,9 @@ def two_by_two_subset(
         base_period_val = main_base_period
 
     if control_group == "notyettreated":
-        unit_mask = (data["G"] == g) | (data["G"] > tp) | (data["G"] == 0)
+        unit_mask = (data["G"] == g) | (data["G"] > tp)
     else:
-        unit_mask = (data["G"] == g) | (data["G"] == 0)
+        unit_mask = (data["G"] == g) | np.isinf(data["G"])
 
     this_data = data.loc[unit_mask].copy()
 
