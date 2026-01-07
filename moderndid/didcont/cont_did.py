@@ -2,6 +2,7 @@
 """Continuous treatment difference-in-differences estimation."""
 
 import warnings
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -17,12 +18,13 @@ from moderndid.core.preprocess import (
 from moderndid.core.preprocess import (
     make_balanced_panel as _make_balanced_panel,
 )
+from moderndid.core.preprocessing import preprocess_cont_did
 
 from .estimation import (
     AttgtResult,
+    _build_pte_params,
     pte,
     pte_default,
-    setup_pte_cont,
 )
 from .estimation.estimators import pte_attgt
 from .estimation.process_dose import DoseResult
@@ -338,14 +340,6 @@ def cont_did(
     if not isinstance(data, pd.DataFrame):
         raise TypeError("data must be a pandas DataFrame")
 
-    required_cols = [yname, dname, tname, idname]
-    if gname is not None:
-        required_cols.append(gname)
-
-    missing_cols = [col for col in required_cols if col not in data.columns]
-    if missing_cols:
-        raise ValueError(f"Missing columns in data: {missing_cols}")
-
     if xformula != "~1":
         raise NotImplementedError("Covariates not currently supported, use xformula='~1'")
 
@@ -357,6 +351,7 @@ def cont_did(
 
     if clustervars is not None:
         warnings.warn("Two-way clustering not currently supported", UserWarning)
+        clustervars = None
 
     if est_method is not None:
         raise ValueError("Covariates not supported yet, set est_method=None")
@@ -367,26 +362,57 @@ def cont_did(
     if weightsname is not None:
         warnings.warn("Sampling weights not fully tested yet", UserWarning)
 
+    if dose_est_method == "cck":
+        if aggregation != "dose":
+            raise ValueError("Event study not supported with CCK estimator yet, use aggregation='dose'")
+
+    missing_cols = []
+    required_cols = [yname, dname, tname, idname]
+    for col in required_cols:
+        if col not in data.columns:
+            missing_cols.append(col)
+    if missing_cols:
+        raise ValueError(f"Missing columns in data: {missing_cols}")
+
     if gname is None:
         data = data.copy()
         data[".G"] = get_group(data, idname=idname, tname=tname, treatname=dname)
         gname = ".G"
 
-    if dose_est_method == "cck":
-        if aggregation != "dose":
-            raise ValueError("Event study not supported with CCK estimator yet, use aggregation='dose'")
+    req_pre_periods = 0 if dose_est_method == "cck" else 1
 
-        return _cck_estimator(
-            data=data,
-            yname=yname,
-            dname=dname,
-            gname=gname,
-            tname=tname,
-            idname=idname,
-            dvals=dvals,
-            alp=alp,
-            cband=cband,
-            target_parameter=target_parameter,
+    cont_did_data = preprocess_cont_did(
+        data=data,
+        yname=yname,
+        tname=tname,
+        gname=gname,
+        dname=dname,
+        idname=idname,
+        xformla=xformula,
+        panel=True,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+        control_group=control_group,
+        anticipation=anticipation,
+        weightsname=weightsname,
+        alp=alp,
+        bstrap=False,
+        cband=cband,
+        biters=biters,
+        clustervars=clustervars,
+        degree=degree,
+        num_knots=num_knots,
+        dvals=dvals,
+        target_parameter=target_parameter,
+        aggregation=aggregation,
+        base_period=base_period,
+        boot_type=boot_type,
+        required_pre_periods=req_pre_periods,
+    )
+
+    if dose_est_method == "cck":
+        return _estimate_cck(
+            cont_did_data=cont_did_data,
+            original_data=data,
             **kwargs,
         )
 
@@ -407,13 +433,15 @@ def cont_did(
     if aggregation == "eventstudy":
         pte_kwargs["d_outcome"] = True
 
+    setup_fn = partial(_build_pte_params, cont_did_data, gt_type=gt_type)
+
     return pte(
-        yname=yname,
-        gname=gname,
-        tname=tname,
-        idname=idname,
-        data=data,
-        setup_pte_fun=setup_pte_cont,
+        yname=cont_did_data.config.yname,
+        gname=cont_did_data.config.gname,
+        tname=cont_did_data.config.tname,
+        idname=cont_did_data.config.idname,
+        data=cont_did_data.data,
+        setup_pte_fun=setup_fn,
         subset_fun=cont_two_by_two_subset,
         attgt_fun=attgt_fun,
         xformula=xformula,
@@ -575,9 +603,9 @@ def cont_two_by_two_subset(
         base_period_val = main_base_period
 
     if control_group == "notyettreated":
-        unit_mask = (data["G"] == g) | (data["G"] > tp) | (data["G"] == 0)
-    else:  # 'nevertreated'
-        unit_mask = (data["G"] == g) | (data["G"] == 0)
+        unit_mask = (data["G"] == g) | (data["G"] > tp)
+    else:
+        unit_mask = (data["G"] == g) | np.isinf(data["G"])
 
     subset_data = data.loc[unit_mask].copy()
 
@@ -585,13 +613,11 @@ def cont_two_by_two_subset(
     subset_data = subset_data.loc[time_mask].copy()
 
     subset_data["name"] = np.where(subset_data["period"] == tp, "post", "pre")
-    # Use binary group indicator for level event studies; keep continuous dose for slope paths
     target_parameter = kwargs.get("target_parameter", None)
     aggregation = kwargs.get("aggregation", None)
     if aggregation == "eventstudy" and target_parameter == "level":
         subset_data["D"] = (subset_data["G"] == g).astype(int)
     else:
-        # Keep continuous dose but zero it out for units not in cohort g
         subset_data["D"] = subset_data["D"] * (subset_data["G"] == g)
 
     n1 = subset_data["id"].nunique()
@@ -602,29 +628,34 @@ def cont_two_by_two_subset(
     return {"gt_data": subset_data, "n1": n1, "disidx": disidx}
 
 
-def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, target_parameter, **kwargs):
-    """Compute the CCK non-parametric estimator for continuous treatment."""
-    unique_groups = data[gname].unique()
-    unique_times = data[tname].unique()
+def _estimate_cck(cont_did_data, original_data, **kwargs):
+    """Compute the CCK non-parametric estimator."""
+    config = cont_did_data.config
+    data = cont_did_data.data.copy()
 
-    if len(unique_groups) != 2 or len(unique_times) != 2:
+    unique_groups = config.treated_groups
+    unique_times = config.time_periods
+
+    n_groups = len(unique_groups) + 1
+    if n_groups != 2 or len(unique_times) != 2:
         raise ValueError(
             f"CCK estimator requires exactly 2 groups and 2 time periods "
-            f"(found {len(unique_groups)} groups and {len(unique_times)} periods)"
+            f"(found {n_groups} groups and {len(unique_times)} periods)"
         )
 
-    data = _make_balanced_panel(data, idname, tname)
-    data[".dy"] = _get_first_difference(data, idname, yname, tname)
+    data = _make_balanced_panel(data, config.idname, config.tname)
+    data[".dy"] = _get_first_difference(data, config.idname, config.yname, config.tname)
 
-    max_t = data[tname].max()
-    post_data = data[data[tname] == max_t].copy()
+    max_t = data[config.tname].max()
+    post_data = data[data[config.tname] == max_t].copy()
 
-    dose = post_data[dname].values
+    dose = post_data[config.dname].values
     dy = post_data[".dy"].values
 
     m0 = np.mean(dy[dose == 0])
     dy_centered = dy - m0
 
+    dvals = config.dvals
     if dvals is None:
         positive_doses = dose[dose > 0]
         if len(positive_doses) > 0:
@@ -648,6 +679,9 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
     att_d = cck_res.h
     att_d_se = cck_res.asy_se
 
+    alp = config.alp
+    cband = config.cband
+
     if cband:
         att_d_crit_val = (
             (cck_res.h_upper[0] - att_d[0]) / att_d_se[0] if att_d_se[0] > 0 else stats.norm.ppf(1 - alp / 2)
@@ -663,38 +697,22 @@ def _cck_estimator(data, yname, dname, gname, tname, idname, dvals, alp, cband, 
     else:
         acrt_d_crit_val = att_d_crit_val
 
-    ptep = setup_pte_cont(
-        yname=yname,
-        gname=gname,
-        tname=tname,
-        idname=idname,
-        data=data,
-        dname=dname,
-        target_parameter=target_parameter,
-        aggregation="dose",
-        treatment_type="continuous",
-        dose_est_method="cck",
-        cband=cband,
-        alp=alp,
-        boot_type="multiplier",
-        gt_type="att",
-        **kwargs,
-    )
+    ptep = _build_pte_params(cont_did_data, gt_type="att")
 
     overall_att_res = pte_default(
-        yname=ptep.yname,
-        gname=ptep.gname,
-        tname=ptep.tname,
-        idname=ptep.idname,
-        data=ptep.data,
+        yname=config.yname,
+        gname=config.gname,
+        tname=config.tname,
+        idname=config.idname,
+        data=original_data,
         d_outcome=True,
-        anticipation=ptep.anticipation,
-        base_period=ptep.base_period,
-        control_group=ptep.control_group,
-        weightsname=ptep.weightsname,
+        anticipation=config.anticipation,
+        base_period=config.base_period.value if hasattr(config.base_period, "value") else config.base_period,
+        control_group=config.control_group.value if hasattr(config.control_group, "value") else config.control_group,
+        weightsname=config.weightsname,
         boot_type="multiplier",
-        biters=ptep.biters,
-        alp=ptep.alp,
+        biters=config.biters,
+        alp=config.alp,
     )
 
     w_treated = dose[dose > 0]

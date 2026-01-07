@@ -1,5 +1,5 @@
 # pylint: disable=unused-argument
-"""Aggregation functions for continuous-treatment DiD."""
+"""Aggregation functions for continuous treatment DiD."""
 
 import warnings
 
@@ -69,7 +69,12 @@ def aggregate_att_gt(
         first_period_idx = int(np.min(time_idx))
         first_period_data = data.loc[data["period"] == first_period_idx]
         weights_ind = np.asarray(first_period_data[".w"], dtype=float)
-        g_units_idx = _map_to_idx(first_period_data[pte_params.gname].to_numpy(), time_map)
+        g_values = first_period_data[pte_params.gname].to_numpy()
+        finite_mask = np.isfinite(g_values)
+        g_units_idx = np.zeros(len(g_values), dtype=int)
+
+        if finite_mask.any():
+            g_units_idx[finite_mask] = _map_to_idx(g_values[finite_mask], time_map)
         pg_groups = np.array(
             [np.mean(weights_ind * (first_period_data[pte_params.gname].to_numpy() == g)) for g in glist_original],
             dtype=float,
