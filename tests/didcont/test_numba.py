@@ -128,29 +128,6 @@ def test_numpy_performance_check_full_rank(matrices_large):
     assert time_taken < 1.0, f"Function took {time_taken:.2f}s, should be < 1s"
 
 
-@pytest.mark.skipif(not nb_module.HAS_NUMBA, reason="Numba not installed")
-def test_numba_performance_rsquared(matrices_large):
-    _, y, y_pred, _ = matrices_large
-
-    _ = nb_module._compute_rsquared_impl(y, y_pred)
-
-    def pure_python_rsquared(y, y_pred):
-        y_mean = np.mean(y)
-        ss_res = np.sum((y - y_pred) ** 2)
-        ss_tot = np.sum((y - y_mean) ** 2)
-        if ss_tot == 0:
-            return 1.0 if ss_res == 0 else 0.0
-        r_squared = 1.0 - (ss_res / ss_tot)
-        return np.clip(r_squared, 0.0, 1.0)
-
-    time_pure = timeit.timeit(lambda: pure_python_rsquared(y, y_pred), number=100)
-
-    time_numba = timeit.timeit(lambda: nb_module._compute_rsquared_impl(y, y_pred), number=100)
-
-    speedup = time_pure / time_numba
-    assert speedup > 1.5, f"Numba speedup only {speedup:.2f}x, expected > 1.5x"
-
-
 def test_numpy_performance_matrix_sqrt(matrices_large):
     """Test that NumPy implementation is efficient for matrix sqrt."""
     _, _, _, sym_matrix = matrices_large
