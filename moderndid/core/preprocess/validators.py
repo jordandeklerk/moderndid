@@ -95,7 +95,7 @@ class TreatmentValidator(BaseValidator):
             )
 
         first_period = data[config.tname].min()
-        treated_first = data[config.gname] <= first_period
+        treated_first = (data[config.gname] > 0) & (data[config.gname] <= first_period)
 
         if config.idname:
             n_first_period = data.loc[treated_first, config.idname].nunique()
@@ -217,8 +217,8 @@ class ArgumentValidator(BaseValidator):
             if config.degree < 1:
                 errors.append("degree must be at least 1")
 
-            if config.num_knots < 1:
-                errors.append("num_knots must be at least 1")
+            if config.num_knots < 0:
+                errors.append("num_knots must be non-negative")
 
             if config.required_pre_periods < 0:
                 errors.append("required_pre_periods must be non-negative")

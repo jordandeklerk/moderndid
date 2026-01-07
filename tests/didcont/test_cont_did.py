@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 
 from moderndid.didcont.cont_did import (
-    _cck_estimator,
     cont_did,
     cont_did_acrt,
     cont_two_by_two_subset,
@@ -574,14 +573,14 @@ def test_cont_two_by_two_subset_universal_base(contdid_data):
 
 
 def test_cck_estimator_basic(cck_test_data):
-    result = _cck_estimator(
+    result = cont_did(
         data=cck_test_data,
         yname="y",
         dname="d",
         gname="g",
         tname="time",
         idname="id",
-        dvals=None,
+        dose_est_method="cck",
         alp=0.05,
         cband=False,
         target_parameter="level",
@@ -601,13 +600,14 @@ def test_cck_estimator_basic(cck_test_data):
 def test_cck_estimator_custom_dvals(cck_test_data):
     custom_dvals = np.linspace(0.1, 1.9, 20)
 
-    result = _cck_estimator(
+    result = cont_did(
         data=cck_test_data,
         yname="y",
         dname="d",
         gname="g",
         tname="time",
         idname="id",
+        dose_est_method="cck",
         dvals=custom_dvals,
         alp=0.05,
         cband=True,
@@ -626,25 +626,23 @@ def test_cck_estimator_custom_dvals(cck_test_data):
 def test_cck_estimator_invalid_groups():
     data = pd.DataFrame(
         {
-            "id": [1, 1, 2, 2, 3, 3],
-            "time": [1, 2, 1, 2, 1, 2],
-            "y": [1, 2, 3, 4, 5, 6],
-            "d": [0, 0, 1, 1, 2, 2],
-            "g": [0, 0, 1, 1, 2, 2],
+            "id": [1, 1, 1, 2, 2, 2, 3, 3, 3],
+            "time": [1, 2, 3, 1, 2, 3, 1, 2, 3],
+            "y": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "d": [0, 0, 0, 1, 1, 1, 2, 2, 2],
+            "g": [0, 0, 0, 2, 2, 2, 3, 3, 3],
         }
     )
 
-    with pytest.raises(
-        ValueError, match=r"CCK estimator requires exactly 2 groups and 2 time periods \(found 3 groups and 2 periods\)"
-    ):
-        _cck_estimator(
+    with pytest.raises(ValueError, match=r"CCK estimator requires exactly 2 groups and 2 time periods"):
+        cont_did(
             data=data,
             yname="y",
             dname="d",
             gname="g",
             tname="time",
             idname="id",
-            dvals=None,
+            dose_est_method="cck",
             alp=0.05,
             cband=False,
             target_parameter="level",
@@ -658,21 +656,19 @@ def test_cck_estimator_invalid_times():
             "time": [1, 2, 3, 1, 2, 3],
             "y": [1, 2, 3, 4, 5, 6],
             "d": [0, 0, 0, 1, 1, 1],
-            "g": [0, 0, 0, 1, 1, 1],
+            "g": [0, 0, 0, 2, 2, 2],
         }
     )
 
-    with pytest.raises(
-        ValueError, match=r"CCK estimator requires exactly 2 groups and 2 time periods \(found 2 groups and 3 periods\)"
-    ):
-        _cck_estimator(
+    with pytest.raises(ValueError, match=r"CCK estimator requires exactly 2 groups and 2 time periods"):
+        cont_did(
             data=data,
             yname="y",
             dname="d",
             gname="g",
             tname="time",
             idname="id",
-            dvals=None,
+            dose_est_method="cck",
             alp=0.05,
             cband=False,
             target_parameter="level",
@@ -686,19 +682,19 @@ def test_cck_estimator_no_treated():
             "time": [1, 2, 1, 2, 1, 2, 1, 2],
             "y": [1, 2, 3, 4, 5, 6, 7, 8],
             "d": [0, 0, 0, 0, 0, 0, 0, 0],
-            "g": [0, 0, 0, 0, 1, 1, 1, 1],
+            "g": [0, 0, 0, 0, 2, 2, 2, 2],
         }
     )
 
-    with pytest.raises(ValueError, match="No treated units found"):
-        _cck_estimator(
+    with pytest.raises(ValueError, match="No valid groups"):
+        cont_did(
             data=data,
             yname="y",
             dname="d",
             gname="g",
             tname="time",
             idname="id",
-            dvals=None,
+            dose_est_method="cck",
             alp=0.05,
             cband=False,
             target_parameter="level",

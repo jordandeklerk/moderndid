@@ -30,6 +30,7 @@ class BootstrapType(str, Enum):
 
     WEIGHTED = "weighted"
     MULTIPLIER = "multiplier"
+    EMPIRICAL = "empirical"
 
 
 class DataFormat(str, Enum):
