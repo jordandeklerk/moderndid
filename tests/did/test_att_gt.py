@@ -331,3 +331,34 @@ def test_att_gt_print_details(mpdta_data):
     )
 
     assert isinstance(result, MPResult)
+
+
+def test_att_gt_bootstrap_reproducibility(mpdta_data):
+    unique_counties = mpdta_data["countyreal"].unique()[:100]
+    data = mpdta_data[mpdta_data["countyreal"].isin(unique_counties)]
+
+    result1 = att_gt(
+        data=data,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        bstrap=True,
+        biters=50,
+        random_state=42,
+    )
+
+    result2 = att_gt(
+        data=data,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        bstrap=True,
+        biters=50,
+        random_state=42,
+    )
+
+    np.testing.assert_array_equal(result1.se_gt, result2.se_gt)
+    assert result1.critical_value == result2.critical_value
+    assert result1.estimation_params.get("random_state") == 42
