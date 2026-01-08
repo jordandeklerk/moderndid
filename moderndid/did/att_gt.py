@@ -41,6 +41,7 @@ def att_gt(
     control_group="nevertreated",
     anticipation=0,
     base_period="varying",
+    random_state=None,
 ):
     r"""Compute group-time average treatment effects.
 
@@ -106,6 +107,10 @@ def att_gt(
         their untreated potential outcomes.
     base_period : {"varying", "universal"}, default="varying"
         Whether to use a "varying" base period or a "universal" base period.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
 
     Returns
     -------
@@ -184,14 +189,9 @@ def att_gt(
     att_gt_list = results.attgt_list
     influence_functions = results.influence_functions
 
-    try:
-        groups = np.array([att.group for att in att_gt_list])
-        times = np.array([att.year for att in att_gt_list])
-        att_values = np.array([att.att for att in att_gt_list])
-    except Exception as e:
-        raise RuntimeError(
-            "An unexpected error occurred, normally associated with a singular matrix due to not enough control units."
-        ) from e
+    groups = np.array([att.group for att in att_gt_list])
+    times = np.array([att.year for att in att_gt_list])
+    att_values = np.array([att.att for att in att_gt_list])
 
     if hasattr(influence_functions, "toarray"):
         influence_functions_dense = influence_functions.toarray()
@@ -238,7 +238,7 @@ def att_gt(
             biters=biters,
             alp=alp,
             cluster=cluster,
-            random_state=None,
+            random_state=random_state,
         )
 
         if len(zero_na_sd_indices) > 0:
@@ -315,6 +315,8 @@ def att_gt(
         "base_period": base_period,
         "panel": panel,
         "clustervars": clustervars,
+        "biters": biters,
+        "random_state": random_state,
     }
 
     group_assignments = None
