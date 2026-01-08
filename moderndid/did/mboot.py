@@ -33,8 +33,10 @@ def mboot(
     cluster : ndarray, optional
         Cluster indicators for each unit. If provided, bootstrap is performed
         at the cluster level.
-    random_state : int, optional
-        Random state for reproducibility.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
 
     Returns
     -------
@@ -135,8 +137,10 @@ def _run_multiplier_bootstrap(
         Influence function matrix of shape (n, k).
     biters : int
         Number of bootstrap iterations.
-    random_state : int, optional
-        Random state for reproducibility.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
 
     Returns
     -------

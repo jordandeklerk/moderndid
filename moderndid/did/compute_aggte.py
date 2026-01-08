@@ -22,6 +22,7 @@ def compute_aggte(
     confidence_band=None,
     alpha=None,
     clustervars=None,
+    random_state=None,
 ):
     """Compute aggregated treatment effect parameters.
 
@@ -59,6 +60,10 @@ def compute_aggte(
         Significance level. If None, uses the value from mp_result.
     clustervars : list[str], optional
         Variables to cluster on. If None, uses the value from mp_result.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
 
     Returns
     -------
@@ -93,8 +98,14 @@ def compute_aggte(
     elif "clustervars" not in estimation_params:
         estimation_params["clustervars"] = None
 
+    if random_state is not None:
+        estimation_params["random_state"] = random_state
+    elif "random_state" not in estimation_params:
+        estimation_params["random_state"] = None
+
     bootstrap = estimation_params.get("bootstrap", False)
     bootstrap_iterations = bootstrap_iterations or estimation_params.get("biters", 999)
+    random_state = estimation_params.get("random_state")
 
     if aggregation_type not in ["simple", "dynamic", "group", "calendar"]:
         raise ValueError(
@@ -198,6 +209,7 @@ def compute_aggte(
             group_probabilities=group_probabilities,
             unit_level_groups=unit_level_groups_recoded,
             unit_level_weights=unit_level_weights,
+            random_state=random_state,
         )
 
     if aggregation_type == "group":
@@ -216,6 +228,7 @@ def compute_aggte(
             bootstrap_iterations=bootstrap_iterations,
             unit_level_groups=unit_level_groups_recoded,
             unit_level_weights=unit_level_weights,
+            random_state=random_state,
         )
 
     if aggregation_type == "dynamic":
@@ -240,6 +253,7 @@ def compute_aggte(
             unit_level_weights=unit_level_weights,
             unique_original_times_and_groups=unique_original_times_and_groups,
             recoded_times=recoded_times,
+            random_state=random_state,
         )
 
     if aggregation_type == "calendar":
@@ -260,6 +274,7 @@ def compute_aggte(
             unit_level_weights=unit_level_weights,
             unique_original_times_and_groups=unique_original_times_and_groups,
             recoded_times=recoded_times,
+            random_state=random_state,
         )
 
     raise ValueError(f"Unexpected aggregation_type: {aggregation_type}")
@@ -279,6 +294,7 @@ def _compute_simple_att(
     group_probabilities,
     unit_level_groups,
     unit_level_weights,
+    random_state=None,
 ):
     """Compute simple ATT by averaging all post-treatment effects."""
     # Simple ATT: weighted average of all post-treatment ATT(g,t)
@@ -317,6 +333,7 @@ def _compute_simple_att(
             estimation_params=estimation_params,
             bootstrap_iterations=bootstrap_iterations,
             alpha=alpha,
+            random_state=random_state,
         )
 
     return AGGTEResult(
@@ -345,6 +362,7 @@ def _compute_group_att(
     bootstrap_iterations,
     unit_level_groups,
     unit_level_weights,
+    random_state=None,
 ):
     """Compute group-specific ATTs."""
     group_att = np.zeros(len(unique_groups_recoded))
@@ -383,6 +401,7 @@ def _compute_group_att(
                 estimation_params=estimation_params,
                 bootstrap_iterations=bootstrap_iterations,
                 alpha=alpha,
+                random_state=random_state,
             )
         else:
             group_se[i] = np.nan
@@ -397,6 +416,7 @@ def _compute_group_att(
             n_units=n_units,
             biters=bootstrap_iterations,
             alp=alpha,
+            random_state=random_state,
         )
         critical_value = mboot_result["crit_val"]
 
@@ -438,6 +458,7 @@ def _compute_group_att(
         estimation_params=estimation_params,
         bootstrap_iterations=bootstrap_iterations,
         alpha=alpha,
+        random_state=random_state,
     )
 
     return AGGTEResult(
@@ -476,6 +497,7 @@ def _compute_dynamic_att(
     unit_level_weights,
     unique_original_times_and_groups,
     recoded_times,
+    random_state=None,
 ):
     """Compute dynamic (event-study) treatment effects."""
     event_times = original_times - original_groups
@@ -552,6 +574,7 @@ def _compute_dynamic_att(
                 estimation_params=estimation_params,
                 bootstrap_iterations=bootstrap_iterations,
                 alpha=alpha,
+                random_state=random_state,
             )
         else:
             dynamic_se[i] = np.nan
@@ -566,6 +589,7 @@ def _compute_dynamic_att(
             n_units=n_units,
             biters=bootstrap_iterations,
             alp=alpha,
+            random_state=random_state,
         )
         critical_value = mboot_result["crit_val"]
 
@@ -599,6 +623,7 @@ def _compute_dynamic_att(
             estimation_params=estimation_params,
             bootstrap_iterations=bootstrap_iterations,
             alpha=alpha,
+            random_state=random_state,
         )
     else:
         overall_att = np.nan
@@ -640,6 +665,7 @@ def _compute_calendar_att(
     unit_level_weights,
     unique_original_times_and_groups,
     recoded_times,
+    random_state=None,
 ):
     """Compute calendar time effects."""
     min_group = groups.min()
@@ -697,6 +723,7 @@ def _compute_calendar_att(
                 estimation_params=estimation_params,
                 bootstrap_iterations=bootstrap_iterations,
                 alpha=alpha,
+                random_state=random_state,
             )
         else:
             calendar_se[i] = np.nan
@@ -711,6 +738,7 @@ def _compute_calendar_att(
             n_units=n_units,
             biters=bootstrap_iterations,
             alp=alpha,
+            random_state=random_state,
         )
         critical_value = mboot_result["crit_val"]
 
@@ -744,6 +772,7 @@ def _compute_calendar_att(
             estimation_params=estimation_params,
             bootstrap_iterations=bootstrap_iterations,
             alpha=alpha,
+            random_state=random_state,
         )
     else:
         overall_att = np.nan
@@ -890,6 +919,7 @@ def _compute_se(
     estimation_params,
     bootstrap_iterations,
     alpha,
+    random_state=None,
 ):
     """Compute standard error from influence function.
 
@@ -905,6 +935,10 @@ def _compute_se(
         Number of bootstrap iterations.
     alpha : float
         Significance level.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
 
     Returns
     -------
@@ -932,6 +966,7 @@ def _compute_se(
             biters=bootstrap_iterations,
             alp=alpha,
             cluster=cluster,
+            random_state=random_state,
         )
         standard_error = mboot_result["se"][0]
     else:

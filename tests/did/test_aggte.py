@@ -430,3 +430,12 @@ def test_aggte_very_large_bootstrap_iterations():
 
     assert agg_result.aggregation_type == "simple"
     assert agg_result.estimation_params.get("biters") == 10
+
+
+def test_aggte_bootstrap_reproducibility(mp_result):
+    result1 = aggte(mp_result, type="dynamic", bstrap=True, biters=50, random_state=42)
+    result2 = aggte(mp_result, type="dynamic", bstrap=True, biters=50, random_state=42)
+
+    np.testing.assert_array_equal(result1.se_by_event, result2.se_by_event)
+    assert result1.overall_se == result2.overall_se
+    assert result1.estimation_params.get("random_state") == 42

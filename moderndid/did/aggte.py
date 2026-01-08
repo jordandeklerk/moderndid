@@ -19,6 +19,7 @@ def aggte(
     cband=None,
     alp=None,
     clustervars=None,
+    random_state=None,
 ):
     """Aggregate Group-Time Average Treatment Effects.
 
@@ -78,6 +79,10 @@ def aggte(
         variables (otherwise will throw an error) and one of these must be
         the same as idname which allows for clustering at the individual
         level. Default is the variables set in the MP object.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
 
     Returns
     -------
@@ -185,6 +190,7 @@ def aggte(
         confidence_band=cband,
         alpha=alp,
         clustervars=clustervars,
+        random_state=random_state,
     )
 
     result.call_info.update(call_info)
