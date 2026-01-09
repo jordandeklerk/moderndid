@@ -5,7 +5,13 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
+from .config import (
+    BasePreprocessConfig,
+    ContDIDConfig,
+    DDDConfig,
+    DIDConfig,
+    TwoPeriodDIDConfig,
+)
 from .constants import DataFormat
 from .utils import extract_vars_from_formula
 
@@ -120,6 +126,38 @@ class TwoPeriodDIDData:
     def is_panel(self) -> bool:
         """Check if data is panel."""
         return self.y1 is not None and self.y0 is not None
+
+
+@dataclass
+class DDDData:
+    """DDD data."""
+
+    y1: np.ndarray = field(default_factory=lambda: np.array([]))
+    y0: np.ndarray = field(default_factory=lambda: np.array([]))
+    treat: np.ndarray = field(default_factory=lambda: np.array([]))
+    partition: np.ndarray = field(default_factory=lambda: np.array([]))
+    subgroup: np.ndarray = field(default_factory=lambda: np.array([]))
+    covariates: np.ndarray = field(default_factory=lambda: np.array([]))
+    weights: np.ndarray = field(default_factory=lambda: np.array([]))
+    cluster: np.ndarray | None = None
+    n_units: int = 0
+    subgroup_counts: dict = field(default_factory=dict)
+    covariate_names: list[str] = field(default_factory=list)
+    config: DDDConfig = field(default_factory=DDDConfig)
+
+    @property
+    def has_covariates(self) -> bool:
+        """Check if data has covariates beyond intercept."""
+        return self.covariates.size > 0 and self.covariates.shape[1] > 0
+
+    @property
+    def has_cluster(self) -> bool:
+        """Check if data has cluster variable."""
+        return self.cluster is not None
+
+    def get_covariate_names(self) -> list[str]:
+        """Get covariate names."""
+        return self.covariate_names
 
 
 @dataclass
