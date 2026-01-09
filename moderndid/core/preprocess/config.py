@@ -22,7 +22,7 @@ from .constants import (
 
 
 class ConfigMixin:
-    """Mixin providing common config methods."""
+    """Mixin for config methods."""
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
