@@ -21,8 +21,16 @@ from .constants import (
 )
 
 
+class ConfigMixin:
+    """Mixin providing common config methods."""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {k: v.value if isinstance(v, Enum) else v for k, v in self.__dict__.items()}
+
+
 @dataclass
-class BasePreprocessConfig:
+class BasePreprocessConfig(ConfigMixin):
     """Base preprocess config."""
 
     yname: str
@@ -52,10 +60,6 @@ class BasePreprocessConfig:
     id_count: int = 0
     data_format: DataFormat = DataFormat.PANEL
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return {k: v.value if isinstance(v, Enum) else v for k, v in self.__dict__.items()}
-
 
 @dataclass
 class DIDConfig(BasePreprocessConfig):
@@ -67,7 +71,7 @@ class DIDConfig(BasePreprocessConfig):
 
 
 @dataclass
-class TwoPeriodDIDConfig:
+class TwoPeriodDIDConfig(ConfigMixin):
     """Two-period DiD config."""
 
     yname: str
@@ -92,10 +96,6 @@ class TwoPeriodDIDConfig:
     treated_groups_count: int = 0
     id_count: int = 0
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return {k: v.value if isinstance(v, Enum) else v for k, v in self.__dict__.items()}
-
 
 @dataclass
 class ContDIDConfig(BasePreprocessConfig):
@@ -116,3 +116,28 @@ class ContDIDConfig(BasePreprocessConfig):
     aggregation: str = "dose"
     treatment_type: str = "continuous"
     time_map: dict | None = None
+
+
+@dataclass
+class DDDConfig(ConfigMixin):
+    """Triple Difference-in-Differences config."""
+
+    yname: str = ""
+    tname: str = ""
+    idname: str = ""
+    gname: str = ""
+    pname: str = ""
+    xformla: str = "~1"
+    est_method: EstimationMethod = EstimationMethod.DOUBLY_ROBUST
+    weightsname: str | None = None
+    boot: bool = False
+    boot_type: BootstrapType = BootstrapType.MULTIPLIER
+    n_boot: int = DEFAULT_BOOTSTRAP_ITERATIONS
+    cluster: str | None = None
+    cband: bool = False
+    alp: float = DEFAULT_ALPHA
+    inf_func: bool = False
+
+    time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
+    time_periods_count: int = 0
+    n_units: int = 0
