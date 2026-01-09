@@ -1,10 +1,15 @@
 """DiD preprocessing."""
 
+import warnings
+
 import numpy as np
+import scipy.linalg
 
 from .preprocess.builders import PreprocessDataBuilder
-from .preprocess.config import ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
+from .preprocess.config import ContDIDConfig, DDDConfig, DIDConfig, TwoPeriodDIDConfig
 from .preprocess.constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
+from .preprocess.models import DDDData
+from .preprocess.utils import extract_vars_from_formula, make_balanced_panel
 
 
 def preprocess_drdid(
@@ -41,7 +46,7 @@ def preprocess_drdid(
     idname : str | None, default None
         Name of entity/unit identifier column. Required for panel data.
     xformla : str | None, default None
-        Formula for covariates in Wilkinson notation (e.g., "~ x1 + x2").
+        Formula for covariates as a string (e.g., "x1 + x2").
         If None, only intercept is included.
     panel : bool, default True
         Whether data is in panel format (vs repeated cross-sections).
@@ -252,7 +257,7 @@ def preprocess_cont_did(
     idname : str | None, default None
         Name of entity/unit identifier column. Required for panel data.
     xformla : str | None, default None
-        Formula for covariates in Wilkinson notation (e.g., "~ x1 + x2").
+        Formula for covariates as a string (e.g., "x1 + x2").
         If None, no covariates are included. Currently only "~1" is supported.
     panel : bool, default True
         Whether data is in panel format (vs repeated cross-sections).
@@ -352,3 +357,362 @@ def preprocess_cont_did(
     cont_did_data = builder.with_data(data).with_config(config).validate().transform().build()
 
     return cont_did_data
+
+
+def preprocess_ddd_2periods(
+    data,
+    yname,
+    tname,
+    idname,
+    gname,
+    pname,
+    xformla=None,
+    est_method="dr",
+    weightsname=None,
+    boot=False,
+    boot_type="multiplier",
+    n_boot=999,
+    cluster=None,
+    cband=False,
+    alp=0.05,
+    inf_func=False,
+):
+    """Preprocess data for 2-period DDD estimation.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Panel data with exactly 2 time periods.
+    yname : str
+        Name of outcome variable column.
+    tname : str
+        Name of time period column.
+    idname : str
+        Name of unit identifier column.
+    gname : str
+        Name of treatment group column. Should be 0 for never-treated and
+        positive for treated units.
+    pname : str
+        Name of partition/eligibility column (1=eligible, 0=ineligible).
+    xformla : str | None, default None
+        Formula for covariates as a string (e.g., "x1 + x2").
+        If None, no covariates are included.
+    est_method : {"dr", "reg", "ipw"}, default "dr"
+        Estimation method: doubly robust, regression, or IPW.
+    weightsname : str | None, default None
+        Name of sampling weights column.
+    boot : bool, default False
+        Whether to use bootstrap for inference.
+    boot_type : {"multiplier", "weighted"}, default "multiplier"
+        Type of bootstrap.
+    n_boot : int, default 999
+        Number of bootstrap iterations.
+    cluster : str | None, default None
+        Name of cluster variable for clustered standard errors.
+    cband : bool, default False
+        Whether to compute uniform confidence bands.
+    alp : float, default 0.05
+        Significance level for confidence intervals.
+    inf_func : bool, default False
+        Whether to compute influence functions.
+
+    Returns
+    -------
+    DDDData
+        Container with preprocessed data for DDD estimation including:
+
+        - y1, y0: Post and pre-treatment outcomes
+        - treat: Treatment indicator
+        - partition: Eligibility indicator
+        - subgroup: Subgroup assignment (1-4)
+        - covariates: Covariate matrix
+        - weights: Normalized sampling weights
+        - subgroup_counts: Count of units in each subgroup
+    """
+    if xformla is None:
+        xformla = "~1"
+
+    _validate_ddd_inputs(data, yname, tname, idname, gname, pname, xformla, cluster, weightsname)
+
+    config_params = _apply_ddd_defaults(
+        alp=alp,
+        boot=boot,
+        boot_type=boot_type,
+        n_boot=n_boot,
+        cluster=cluster,
+        cband=cband,
+        est_method=est_method,
+        inf_func=inf_func,
+    )
+
+    df = data.copy()
+
+    if weightsname is not None:
+        weights = df[weightsname].values.astype(float)
+        if np.any(np.isnan(weights)):
+            raise ValueError("Missing values in weights column.")
+        _check_weights_uniqueness(df, idname, weightsname)
+    else:
+        weights = np.ones(len(df))
+    weights = weights / np.mean(weights)
+    df["_weights"] = weights
+
+    tlist = np.sort(df[tname].unique())
+    if len(tlist) != 2:
+        raise ValueError(f"Data must have exactly 2 time periods, found {len(tlist)}.")
+
+    glist = np.sort(df[gname].unique())
+    if len(glist) != 2:
+        raise ValueError(f"Treatment variable must have exactly 2 values (0 and treated group), found {len(glist)}.")
+    if glist[0] != 0:
+        raise ValueError("Treatment variable must include 0 for never-treated units.")
+
+    df["_post"] = (df[tname] == tlist[1]).astype(int)
+
+    if xformla != "~1":
+        _check_covariates_time_invariant(df, xformla, idname)
+
+    df = df.sort_values([idname, tname]).reset_index(drop=True)
+    df = make_balanced_panel(df, idname, tname)
+
+    if len(df) == 0:
+        raise ValueError("No observations remain after creating balanced panel.")
+
+    treat_val = glist[1]
+    df["_subgroup"] = _create_subgroups(df[gname].values, df[pname].values, treat_val)
+
+    subgroup_counts = _compute_subgroup_counts(df, idname)
+    _validate_subgroup_sizes(subgroup_counts)
+
+    covariates, covariate_names = _extract_covariates(df, xformla)
+
+    cluster_arr = None
+    if config_params["cluster"] is not None:
+        _check_cluster_time_invariant(df, config_params["cluster"], idname)
+        cluster_arr = df.loc[df["_post"] == 0, config_params["cluster"]].values
+
+    y0 = df.loc[df["_post"] == 0, yname].values.astype(float)
+    y1 = df.loc[df["_post"] == 1, yname].values.astype(float)
+    treat = df.loc[df["_post"] == 0, gname].values
+    treat = (treat == treat_val).astype(int)
+    partition = df.loc[df["_post"] == 0, pname].values.astype(int)
+    subgroup = df.loc[df["_post"] == 0, "_subgroup"].values
+    weights_arr = df.loc[df["_post"] == 0, "_weights"].values
+
+    n_units = len(y0)
+
+    ddd_config = DDDConfig(
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        gname=gname,
+        pname=pname,
+        xformla=xformla,
+        est_method=EstimationMethod(config_params["est_method"]),
+        weightsname=weightsname,
+        boot=config_params["boot"],
+        boot_type=BootstrapType(config_params["boot_type"]),
+        n_boot=config_params["n_boot"],
+        cluster=config_params["cluster"],
+        cband=config_params["cband"],
+        alp=config_params["alp"],
+        inf_func=config_params["inf_func"],
+        time_periods=tlist,
+        time_periods_count=len(tlist),
+        n_units=n_units,
+    )
+
+    return DDDData(
+        y1=y1,
+        y0=y0,
+        treat=treat,
+        partition=partition,
+        subgroup=subgroup,
+        covariates=covariates,
+        weights=weights_arr,
+        cluster=cluster_arr,
+        n_units=n_units,
+        subgroup_counts=subgroup_counts,
+        covariate_names=covariate_names,
+        config=ddd_config,
+    )
+
+
+def _validate_ddd_inputs(data, yname, tname, idname, gname, pname, xformla, cluster, weightsname):
+    """Validate DDD input arguments."""
+    required_cols = [yname, tname, idname, gname, pname]
+    col_names = ["yname", "tname", "idname", "gname", "pname"]
+
+    for col, name in zip(required_cols, col_names):
+        if col not in data.columns:
+            raise ValueError(f"{name}='{col}' not found in data.")
+
+    if cluster is not None and cluster not in data.columns:
+        raise ValueError(f"cluster='{cluster}' not found in data.")
+
+    if weightsname is not None and weightsname not in data.columns:
+        raise ValueError(f"weightsname='{weightsname}' not found in data.")
+
+    if xformla != "~1":
+        try:
+            covariate_vars = extract_vars_from_formula(xformla)
+        except ValueError as e:
+            raise ValueError(f"Invalid formula: {e}") from e
+
+        for var in covariate_vars:
+            if var not in data.columns:
+                raise ValueError(f"Covariate '{var}' from formula not found in data.")
+
+    _check_partition_uniqueness(data, idname, pname)
+    _check_treatment_uniqueness(data, idname, gname)
+
+
+def _apply_ddd_defaults(alp, boot, boot_type, n_boot, cluster, cband, est_method, inf_func):
+    """Apply default values and handle parameter dependencies for DDD."""
+    if alp > 0.10:
+        warnings.warn(f"alp={alp} is high. Using alp=0.05.", stacklevel=3)
+        alp = 0.05
+
+    if boot and n_boot is None:
+        warnings.warn("n_boot not specified. Using 999.", stacklevel=3)
+        n_boot = 999
+
+    if boot and not cband:
+        warnings.warn("Setting cband=True for bootstrap.", stacklevel=3)
+        cband = True
+
+    if cluster is not None and not boot:
+        warnings.warn(
+            "Clustered SEs require bootstrap. Setting boot=True, cband=True.",
+            stacklevel=3,
+        )
+        boot = True
+        cband = True
+        if n_boot is None:
+            n_boot = 999
+
+    if est_method not in ["dr", "reg", "ipw"]:
+        raise ValueError(f"est_method must be 'dr', 'reg', or 'ipw', got '{est_method}'.")
+
+    return {
+        "alp": alp,
+        "boot": boot,
+        "boot_type": boot_type,
+        "n_boot": n_boot if n_boot is not None else 999,
+        "cluster": cluster,
+        "cband": cband,
+        "est_method": est_method,
+        "inf_func": inf_func,
+    }
+
+
+def _check_partition_uniqueness(df, idname, pname):
+    """Check that partition is time-invariant within units."""
+    partition_per_id = df.groupby(idname)[pname].nunique()
+    if (partition_per_id > 1).any():
+        raise ValueError(f"The value of {pname} must be the same across all periods for each unit.")
+
+
+def _check_treatment_uniqueness(df, idname, gname):
+    """Check that treatment status is time-invariant within units."""
+    treat_per_id = df.groupby(idname)[gname].nunique()
+    if (treat_per_id > 1).any():
+        raise ValueError(f"The value of {gname} must be the same across all periods for each unit.")
+
+
+def _check_weights_uniqueness(df, idname, weightsname):
+    """Check that weights are time-invariant within units."""
+    weights_per_id = df.groupby(idname)[weightsname].nunique()
+    if (weights_per_id > 1).any():
+        raise ValueError("Weights must be the same across all periods for each unit.")
+
+
+def _check_covariates_time_invariant(df, xformla, idname):
+    """Check that covariates are time-invariant."""
+    covariate_vars = extract_vars_from_formula(xformla)
+
+    for var in covariate_vars:
+        if var not in df.columns:
+            continue
+        var_per_id = df.groupby(idname)[var].nunique()
+        if (var_per_id > 1).any():
+            raise ValueError(f"Covariate '{var}' varies over time. Covariates must be time-invariant.")
+
+
+def _check_cluster_time_invariant(df, cluster, idname):
+    """Check that cluster variable is time-invariant."""
+    cluster_per_id = df.groupby(idname)[cluster].nunique()
+    if (cluster_per_id > 1).any():
+        raise ValueError("Cluster variable must be time-invariant within units.")
+
+
+def _create_subgroups(treat, partition, treat_val):
+    """Create subgroup assignments for DDD.
+
+    Subgroup definitions:
+    - 4: Treated AND Eligible (treat=g, partition=1)
+    - 3: Treated BUT Ineligible (treat=g, partition=0)
+    - 2: Eligible BUT Untreated (treat=0, partition=1)
+    - 1: Untreated AND Ineligible (treat=0, partition=0)
+    """
+    is_treated = treat == treat_val
+    is_eligible = partition == 1
+
+    subgroup = np.where(
+        is_treated & is_eligible,
+        4,
+        np.where(is_treated & ~is_eligible, 3, np.where(is_eligible, 2, 1)),
+    )
+    return subgroup
+
+
+def _compute_subgroup_counts(df, idname):
+    """Compute counts per subgroup."""
+    counts_df = df.groupby("_subgroup")[idname].nunique()
+    return {int(k): int(v) for k, v in counts_df.items()}
+
+
+def _validate_subgroup_sizes(subgroup_counts, min_size=5):
+    """Validate that each subgroup has sufficient observations."""
+    for sg, count in subgroup_counts.items():
+        if count < min_size:
+            raise ValueError(f"Subgroup {sg} has only {count} observations. Minimum required is {min_size}.")
+
+
+def _extract_covariates(df, xformla):
+    """Extract and process covariates from data."""
+    if xformla == "~1":
+        n_units = len(df[df["_post"] == 0])
+        return np.empty((n_units, 0)), []
+
+    covariate_vars = extract_vars_from_formula(xformla)
+
+    df_pre = df[df["_post"] == 0].copy()
+    cov_matrix = df_pre[covariate_vars].values.astype(float)
+
+    if np.any(np.isnan(cov_matrix)):
+        warnings.warn(
+            "Missing values in covariates. Rows with NaN will cause issues.",
+            stacklevel=3,
+        )
+
+    cov_matrix, kept_vars = _remove_collinear(cov_matrix, covariate_vars)
+
+    return cov_matrix, kept_vars
+
+
+def _remove_collinear(cov_matrix, var_names, tol=1e-6):
+    """Remove collinear columns from covariate matrix using QR decomposition."""
+    if cov_matrix.shape[1] == 0:
+        return cov_matrix, var_names
+
+    _, r, pivot = scipy.linalg.qr(cov_matrix, pivoting=True)
+
+    diag_r = np.abs(np.diag(r))
+    rank = np.sum(diag_r > tol * diag_r[0]) if len(diag_r) > 0 else 0
+
+    keep_indices = pivot[:rank]
+    keep_indices = np.sort(keep_indices)
+
+    kept_vars = [var_names[i] for i in keep_indices]
+    return cov_matrix[:, keep_indices], kept_vars
