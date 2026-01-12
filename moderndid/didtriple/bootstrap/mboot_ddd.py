@@ -12,7 +12,7 @@ def mboot_ddd(
     nboot=999,
     random_state=None,
 ):
-    r"""Compute multiplier bootstrap for DDD estimator using Rademacher weights.
+    """Compute multiplier bootstrap for DDD estimator using Rademacher weights.
 
     Parameters
     ----------
