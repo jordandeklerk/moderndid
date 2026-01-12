@@ -64,8 +64,14 @@ def ddd_panel(
 ):
     r"""Compute the doubly robust DDD estimator for the ATT with 2-period panel data.
 
-    Implements the triple difference-in-differences estimator from [1]_. The
-    target parameter is the Average Treatment Effect on the Treated (ATT)
+    Implements the triple difference-in-differences estimator from [1]_. The DDD
+    design exploits three dimensions of variation: treatment status :math:`S`
+    (treated vs untreated groups), eligibility :math:`Q` (eligible vs ineligible
+    for treatment), and time (pre vs post-treatment periods). This allows for
+    weaker identification assumptions than standard DiD by differencing out both
+    treatment-specific and eligibility-specific heterogeneous trends.
+
+    The target parameter is the Average Treatment Effect on the Treated (ATT)
 
     .. math::
         ATT(2, 2) = \mathbb{E}[Y_2(2) - Y_2(\infty) \mid S=2, Q=1],
@@ -166,14 +172,9 @@ def ddd_panel(
         &= \mathbb{E}[Y_t(\infty) - Y_{t-1}(\infty) \mid S=g', Q=1, X]
         - \mathbb{E}[Y_t(\infty) - Y_{t-1}(\infty) \mid S=g', Q=0, X].
 
-    This assumption is weaker than standard DiD parallel trends as it allows for
-    both treatment-specific and eligibility-specific heterogeneous trends.
-
-    The DDD design uses three dimensions of variation
-
-    - Treatment status :math:`S` (treated vs untreated groups)
-    - Eligibility :math:`Q` (eligible vs ineligible for treatment)
-    - Time (pre vs post-treatment periods)
+    The DR estimator is consistent if, for each of the three DiD components,
+    either the propensity score model or the outcome regression model is
+    correctly specified.
 
     References
     ----------
