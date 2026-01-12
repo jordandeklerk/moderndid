@@ -119,6 +119,13 @@ from moderndid.didhonest import (
     validate_conformable,
     validate_symmetric_psd,
 )
+from moderndid.didtriple import (
+    DDDPanelResult,
+    ddd_panel,
+    gen_dgp_2periods,
+    mboot_ddd,
+    wboot_ddd,
+)
 from moderndid.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
 from moderndid.drdid.bootstrap.boot_mult import mboot_did, mboot_twfep_did
 from moderndid.drdid.bootstrap.boot_panel import (
@@ -161,6 +168,8 @@ __all__ = [
     "cont_did",
     "data",
     "AGGTEResult",
+    "DDDPanelResult",
+    "ddd_panel",
     "APRCIResult",
     "ARPNuisanceCIResult",
     "ATTgtResult",
@@ -252,6 +261,7 @@ __all__ = [
     "format_aggte_result",
     "format_mp_pretest_result",
     "format_mp_result",
+    "gen_dgp_2periods",
     "honest_did",
     "ipw_did_panel",
     "ipw_did_rc",
@@ -267,6 +277,7 @@ __all__ = [
     "matrix_sqrt",
     "maximize_bias",
     "mboot",
+    "mboot_ddd",
     "mboot_did",
     "mboot_twfep_did",
     "minimize_variance",
@@ -299,6 +310,7 @@ __all__ = [
     "twfe_did_rc",
     "validate_conformable",
     "validate_symmetric_psd",
+    "wboot_ddd",
     "wboot_dr_tr_panel",
     "wboot_drdid_imp_panel",
     "wboot_drdid_ipt_rc1",
