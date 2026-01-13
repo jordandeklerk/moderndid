@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from moderndid import ddd_mp
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 from moderndid.didtriple.dgp import gen_dgp_2periods
 
@@ -77,3 +78,17 @@ def mp_ddd_data():
             records.append({"id": unit, "time": t, "y": y, "group": g, "partition": p})
 
     return pd.DataFrame(records)
+
+
+@pytest.fixture
+def mp_ddd_result(mp_ddd_data):
+    """Get multi-period DDD result for aggregation tests."""
+    return ddd_mp(
+        data=mp_ddd_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        est_method="reg",
+    )
