@@ -1,42 +1,99 @@
-"""Multiplier bootstrap for DDD estimators using Rademacher weights."""
+"""Multiplier bootstrap for DDD estimators."""
 
 from __future__ import annotations
+
+import warnings
+from typing import NamedTuple
 
 import numpy as np
 
 from ..nuisance import compute_all_did, compute_all_nuisances
 
 
+class MbootResult(NamedTuple):
+    """Result from the multiplier bootstrap.
+
+    Attributes
+    ----------
+    bres : ndarray
+        Bootstrap results matrix of shape (nboot, k).
+    se : ndarray
+        Standard errors for each parameter.
+    crit_val : float
+        Critical value for uniform confidence bands.
+    """
+
+    bres: np.ndarray
+    se: np.ndarray
+    crit_val: float
+
+
 def mboot_ddd(
     inf_func,
     nboot=999,
+    alpha=0.05,
     random_state=None,
 ):
-    """Compute multiplier bootstrap for DDD estimator using Rademacher weights.
+    """Compute multiplier bootstrap for DDD estimator.
 
     Parameters
     ----------
     inf_func : ndarray
-        Influence function of shape (n_units,).
+        Influence function matrix of shape (n_units,) or (n_units, k).
     nboot : int, default 999
         Number of bootstrap iterations.
+    alpha : float, default 0.05
+        Significance level for confidence intervals.
     random_state : int, Generator, or None, default None
         Controls random number generation for reproducibility.
 
     Returns
     -------
-    ndarray
-        Bootstrap estimates of shape (nboot,).
+    MbootResult
+        NamedTuple containing:
+
+        - bres: Bootstrap results matrix of shape (nboot, k)
+        - se: Standard errors for each parameter
+        - crit_val: Critical value for uniform confidence bands
+
+    References
+    ----------
+
+    .. [1] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025).
+           *Better Understanding Triple Differences Estimators.*
+           arXiv preprint arXiv:2505.09942.
     """
-    n = len(inf_func)
-    rng = np.random.default_rng(random_state)
-    boot_estimates = np.zeros(nboot)
+    if inf_func.ndim == 1:
+        inf_func = inf_func.reshape(-1, 1)
+    else:
+        inf_func = np.atleast_2d(inf_func)
 
-    for b in range(nboot):
-        u = rng.choice([-1, 1], size=n)
-        boot_estimates[b] = np.dot(inf_func, u) / n
+    n, k = inf_func.shape
+    bres = np.sqrt(n) * _multiplier_bootstrap(inf_func, nboot, random_state)
 
-    return boot_estimates
+    col_sums_sq = np.sum(bres**2, axis=0)
+    ndg_dim = (~np.isnan(col_sums_sq)) & (col_sums_sq > np.sqrt(np.finfo(float).eps) * 10)
+    bres_clean = bres[:, ndg_dim]
+
+    se_full = np.full(k, np.nan)
+    crit_val = np.nan
+
+    if bres_clean.shape[1] > 0:
+        q75 = np.percentile(bres_clean, 75, axis=0)
+        q25 = np.percentile(bres_clean, 25, axis=0)
+        b_sigma = (q75 - q25) / 1.3489795
+        b_sigma[b_sigma <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
+        se_full[ndg_dim] = b_sigma / np.sqrt(n)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            b_t = np.max(np.abs(bres_clean / b_sigma), axis=1)
+
+        b_t_finite = b_t[np.isfinite(b_t)]
+        if len(b_t_finite) > 0:
+            crit_val = np.percentile(b_t_finite, 100 * (1 - alpha))
+
+    return MbootResult(bres=bres, se=se_full, crit_val=crit_val)
 
 
 def wboot_ddd(
@@ -110,3 +167,22 @@ def wboot_ddd(
             boot_estimates[b] = np.nan
 
     return boot_estimates
+
+
+def _multiplier_bootstrap(inf_func, nboot, random_state):
+    """Run the multiplier bootstrap using Mammen weights."""
+    sqrt5 = np.sqrt(5)
+    k1 = 0.5 * (1 - sqrt5)
+    k2 = 0.5 * (1 + sqrt5)
+    p_kappa = 0.5 * (1 + sqrt5) / sqrt5
+
+    n, k = inf_func.shape
+    rng = np.random.default_rng(random_state)
+    bres = np.zeros((nboot, k))
+
+    for b in range(nboot):
+        v = rng.binomial(1, p_kappa, size=n)
+        v = np.where(v == 1, k1, k2)
+        bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
+
+    return bres

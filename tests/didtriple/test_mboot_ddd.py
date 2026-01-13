@@ -9,30 +9,34 @@ def test_mboot_ddd_basic():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
 
-    boots = mboot_ddd(inf_func, nboot=10, random_state=42)
+    result = mboot_ddd(inf_func, nboot=10, random_state=42)
 
-    assert boots.shape == (10,)
-    assert np.all(np.isfinite(boots))
+    assert result.bres.shape == (10, 1)
+    assert len(result.se) == 1
+    assert np.isfinite(result.se[0])
+    assert np.isfinite(result.crit_val)
 
 
 def test_mboot_ddd_reproducibility():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
 
-    boots1 = mboot_ddd(inf_func, nboot=10, random_state=123)
-    boots2 = mboot_ddd(inf_func, nboot=10, random_state=123)
+    result1 = mboot_ddd(inf_func, nboot=10, random_state=123)
+    result2 = mboot_ddd(inf_func, nboot=10, random_state=123)
 
-    assert np.allclose(boots1, boots2)
+    assert np.allclose(result1.bres, result2.bres)
+    assert np.allclose(result1.se, result2.se)
+    assert result1.crit_val == result2.crit_val
 
 
 def test_mboot_ddd_different_seeds():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
 
-    boots1 = mboot_ddd(inf_func, nboot=10, random_state=123)
-    boots2 = mboot_ddd(inf_func, nboot=10, random_state=456)
+    result1 = mboot_ddd(inf_func, nboot=10, random_state=123)
+    result2 = mboot_ddd(inf_func, nboot=10, random_state=456)
 
-    assert not np.allclose(boots1, boots2)
+    assert not np.allclose(result1.bres, result2.bres)
 
 
 def test_wboot_ddd_basic(ddd_data_no_covariates):
