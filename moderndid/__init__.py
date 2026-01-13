@@ -120,7 +120,12 @@ from moderndid.didhonest import (
     validate_symmetric_psd,
 )
 from moderndid.didtriple import (
+    ATTgtResult as DDDATTgtResult,
+)
+from moderndid.didtriple import (
+    DDDMultiPeriodResult,
     DDDPanelResult,
+    ddd_mp,
     ddd_panel,
     gen_dgp_2periods,
     mboot_ddd,
@@ -168,7 +173,10 @@ __all__ = [
     "cont_did",
     "data",
     "AGGTEResult",
+    "DDDATTgtResult",
+    "DDDMultiPeriodResult",
     "DDDPanelResult",
+    "ddd_mp",
     "ddd_panel",
     "APRCIResult",
     "ARPNuisanceCIResult",
