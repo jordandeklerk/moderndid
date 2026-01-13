@@ -226,15 +226,16 @@ def ddd_panel(
         lci = ddd_att - z_val * se_ddd
     else:
         if boot_type == "multiplier":
-            dr_boot = mboot_ddd(inf_func, nboot, random_state=random_state)
-            se_ddd = stats.iqr(dr_boot, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
-            if se_ddd > 0:
-                cv = np.nanquantile(np.abs(dr_boot / se_ddd), 1 - alpha)
+            boot_result = mboot_ddd(inf_func, nboot, alpha, random_state=random_state)
+            dr_boot = boot_result.bres.flatten()
+            se_ddd = boot_result.se[0]
+            cv = boot_result.crit_val if np.isfinite(boot_result.crit_val) else z_val
+            if np.isfinite(se_ddd) and se_ddd > 0:
                 uci = ddd_att + cv * se_ddd
                 lci = ddd_att - cv * se_ddd
             else:
                 uci = lci = ddd_att
-                warnings.warn("Bootstrap standard error is zero.", UserWarning)
+                warnings.warn("Bootstrap standard error is zero or NaN.", UserWarning)
         else:
             dr_boot = wboot_ddd(
                 y1=y1,
