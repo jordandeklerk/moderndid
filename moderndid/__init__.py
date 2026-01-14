@@ -123,8 +123,10 @@ from moderndid.didtriple import (
     ATTgtResult as DDDATTgtResult,
 )
 from moderndid.didtriple import (
+    DDDAggResult,
     DDDMultiPeriodResult,
     DDDPanelResult,
+    agg_ddd,
     ddd_mp,
     ddd_panel,
     gen_dgp_2periods,
@@ -173,9 +175,11 @@ __all__ = [
     "cont_did",
     "data",
     "AGGTEResult",
+    "DDDAggResult",
     "DDDATTgtResult",
     "DDDMultiPeriodResult",
     "DDDPanelResult",
+    "agg_ddd",
     "ddd_mp",
     "ddd_panel",
     "APRCIResult",
