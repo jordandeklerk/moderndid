@@ -191,3 +191,40 @@ def test_ddd_mp_never_treated_as_inf():
 
     assert len(result.att) > 0
     assert 3 in result.glist
+
+
+@pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
+def test_ddd_mp_print(mp_ddd_data, est_method):
+    result = ddd_mp(
+        data=mp_ddd_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        est_method=est_method,
+    )
+
+    output = str(result)
+    assert "Triple Difference-in-Differences" in output
+    assert "Multi-Period" in output
+    assert f"{est_method.upper()}-DDD" in output
+    assert "ATT(g,t)" in output
+    assert "Group" in output
+    assert "Time" in output
+
+
+@pytest.mark.parametrize("control_group,expected", [("nevertreated", "Never Treated"), ("notyettreated", "Not Yet")])
+def test_ddd_mp_print_control_group(mp_ddd_data, control_group, expected):
+    result = ddd_mp(
+        data=mp_ddd_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        control_group=control_group,
+    )
+
+    output = str(result)
+    assert expected in output

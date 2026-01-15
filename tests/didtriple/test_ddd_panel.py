@@ -184,3 +184,44 @@ def test_ddd_panel_reproducibility(ddd_data_with_covariates):
 
     assert np.allclose(result1.boots, result2.boots)
     assert result1.se == result2.se
+
+
+@pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
+def test_ddd_panel_print(ddd_data_with_covariates, est_method):
+    ddd_data, covariates = ddd_data_with_covariates
+
+    result = ddd_panel(
+        y1=ddd_data.y1,
+        y0=ddd_data.y0,
+        subgroup=ddd_data.subgroup,
+        covariates=covariates,
+        est_method=est_method,
+    )
+
+    output = str(result)
+    assert "Triple Difference-in-Differences" in output
+    assert f"{est_method.upper()}-DDD" in output
+    assert "ATT" in output
+    assert "Std. Error" in output
+    assert "treated-and-eligible" in output
+    assert "treated-but-ineligible" in output
+    assert "eligible-but-untreated" in output
+    assert "untreated-and-ineligible" in output
+
+
+def test_ddd_panel_print_bootstrap(ddd_data_with_covariates):
+    ddd_data, covariates = ddd_data_with_covariates
+
+    result = ddd_panel(
+        y1=ddd_data.y1,
+        y0=ddd_data.y0,
+        subgroup=ddd_data.subgroup,
+        covariates=covariates,
+        est_method="dr",
+        boot=True,
+        nboot=50,
+    )
+
+    output = str(result)
+    assert "Bootstrap standard errors" in output
+    assert "50 reps" in output
