@@ -8,6 +8,7 @@ from typing import NamedTuple
 import numpy as np
 from scipy import stats
 
+from ..bootstrap.mboot_ddd import mboot_ddd
 from .ddd_panel import ddd_panel
 
 
@@ -73,7 +74,12 @@ def ddd_mp(
     control_group="nevertreated",
     base_period="universal",
     est_method="dr",
+    boot=False,
+    nboot=999,
+    cband=False,
+    cluster=None,
     alpha=0.05,
+    random_state=None,
 ):
     r"""Compute the doubly robust DDD estimator for multiple periods with staggered adoption.
 
@@ -142,8 +148,20 @@ def ddd_mp(
         comparisons; "varying" uses period t-1 for each t.
     est_method : {"dr", "reg", "ipw"}, default "dr"
         Estimation method for each 2-period comparison.
+    boot : bool, default False
+        Whether to use multiplier bootstrap for inference.
+    nboot : int, default 999
+        Number of bootstrap repetitions (only used if boot=True).
+    cband : bool, default False
+        Whether to compute uniform confidence bands (only used if boot=True).
+    cluster : str or None, default None
+        Name of the column containing cluster identifiers for clustered
+        standard errors. If provided, the bootstrap resamples at the cluster
+        level (only used if boot=True).
     alpha : float, default 0.05
         Significance level for confidence intervals.
+    random_state : int, Generator, or None, default None
+        Controls random number generation for bootstrap reproducibility.
 
     Returns
     -------
@@ -235,15 +253,44 @@ def ddd_mp(
     groups_array = np.array([r.group for r in attgt_list])
     times_array = np.array([r.time for r in attgt_list])
 
-    V = inf_func_mat[:, : len(attgt_list)].T @ inf_func_mat[:, : len(attgt_list)] / n_units
-    se_computed = np.sqrt(np.diag(V) / n_units)
+    inf_func_trimmed = inf_func_mat[:, : len(attgt_list)]
 
-    valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
-    se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
+    cluster_vals = None
+    if cluster is not None:
+        first_period = tlist[0]
+        cluster_data = data[data[time_col] == first_period].sort_values(id_col)
+        cluster_vals = cluster_data[cluster].values
 
-    se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
+    if boot:
+        boot_result = mboot_ddd(
+            inf_func=inf_func_trimmed,
+            nboot=nboot,
+            alpha=alpha,
+            cluster=cluster_vals,
+            random_state=random_state,
+        )
+        se_computed = boot_result.se.copy()
 
-    cv = stats.norm.ppf(1 - alpha / 2)
+        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
+        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
+
+        se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
+
+        if cband and np.isfinite(boot_result.crit_val):
+            cv = boot_result.crit_val
+        else:
+            cv = stats.norm.ppf(1 - alpha / 2)
+    else:
+        V = inf_func_trimmed.T @ inf_func_trimmed / n_units
+        se_computed = np.sqrt(np.diag(V) / n_units)
+
+        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
+        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
+
+        se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
+
+        cv = stats.norm.ppf(1 - alpha / 2)
+
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
 
@@ -251,6 +298,10 @@ def ddd_mp(
         "control_group": control_group,
         "base_period": base_period,
         "est_method": est_method,
+        "boot": boot,
+        "nboot": nboot if boot else None,
+        "cband": cband if boot else None,
+        "cluster": cluster,
         "alpha": alpha,
     }
 
