@@ -7,7 +7,7 @@ import pytest
 
 from moderndid import ddd_mp
 from moderndid.core.preprocessing import preprocess_ddd_2periods
-from moderndid.didtriple.dgp import gen_dgp_2periods
+from moderndid.didtriple.dgp import gen_dgp_2periods, gen_dgp_mult_periods
 
 
 @pytest.fixture
@@ -92,3 +92,17 @@ def mp_ddd_result(mp_ddd_data):
         partition_col="partition",
         est_method="reg",
     )
+
+
+@pytest.fixture
+def two_period_df():
+    """Raw 2-period DataFrame for ddd() wrapper tests."""
+    dgp = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+    return dgp["data"]
+
+
+@pytest.fixture
+def multi_period_df():
+    """Raw multi-period DataFrame for ddd() wrapper tests."""
+    dgp = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    return dgp["data"]

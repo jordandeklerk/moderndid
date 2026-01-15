@@ -32,6 +32,7 @@ def mboot_ddd(
     inf_func,
     nboot=999,
     alpha=0.05,
+    cluster=None,
     random_state=None,
 ):
     """Compute multiplier bootstrap for DDD estimator.
@@ -44,6 +45,10 @@ def mboot_ddd(
         Number of bootstrap iterations.
     alpha : float, default 0.05
         Significance level for confidence intervals.
+    cluster : ndarray or None, default None
+        Cluster identifiers for each unit. If provided, the bootstrap
+        resamples at the cluster level by aggregating influence functions
+        within clusters before bootstrapping.
     random_state : int, Generator, or None, default None
         Controls random number generation for reproducibility.
 
@@ -69,7 +74,14 @@ def mboot_ddd(
         inf_func = np.atleast_2d(inf_func)
 
     n, k = inf_func.shape
-    bres = np.sqrt(n) * _multiplier_bootstrap(inf_func, nboot, random_state)
+
+    if cluster is not None:
+        inf_func_boot, n_eff = _aggregate_by_cluster(inf_func, cluster)
+    else:
+        inf_func_boot = inf_func
+        n_eff = n
+
+    bres = np.sqrt(n_eff) * _multiplier_bootstrap(inf_func_boot, nboot, random_state)
 
     col_sums_sq = np.sum(bres**2, axis=0)
     ndg_dim = (~np.isnan(col_sums_sq)) & (col_sums_sq > np.sqrt(np.finfo(float).eps) * 10)
@@ -83,7 +95,7 @@ def mboot_ddd(
         q25 = np.percentile(bres_clean, 25, axis=0)
         b_sigma = (q75 - q25) / 1.3489795
         b_sigma[b_sigma <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-        se_full[ndg_dim] = b_sigma / np.sqrt(n)
+        se_full[ndg_dim] = b_sigma / np.sqrt(n_eff)
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
@@ -186,3 +198,33 @@ def _multiplier_bootstrap(inf_func, nboot, random_state):
         bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
 
     return bres
+
+
+def _aggregate_by_cluster(inf_func, cluster):
+    """Aggregate influence functions by cluster for clustered bootstrap.
+
+    Parameters
+    ----------
+    inf_func : ndarray
+        Influence function matrix of shape (n_units, k).
+    cluster : ndarray
+        Cluster identifiers for each unit.
+
+    Returns
+    -------
+    cluster_mean_if : ndarray
+        Mean influence function for each cluster, shape (n_clusters, k).
+    n_clusters : int
+        Number of unique clusters.
+    """
+    unique_clusters = np.unique(cluster)
+    n_clusters = len(unique_clusters)
+    k = inf_func.shape[1]
+
+    cluster_mean_if = np.zeros((n_clusters, k))
+
+    for i, c in enumerate(unique_clusters):
+        mask = cluster == c
+        cluster_mean_if[i] = np.mean(inf_func[mask], axis=0)
+
+    return cluster_mean_if, n_clusters
