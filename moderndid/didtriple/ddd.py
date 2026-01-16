@@ -179,7 +179,7 @@ def ddd(
     score model is correctly specified.
 
     For two-period data, the DDD estimate can be expressed as a combination of three
-    DiD terms comparing treated-eligible units against: (1) treated-ineligible units,
+    DiD terms comparing treated-eligible units against (1) treated-ineligible units,
     (2) control-eligible units, and (3) control-ineligible units.
 
     For multi-period data with staggered adoption, the function computes group-time
