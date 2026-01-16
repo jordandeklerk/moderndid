@@ -13,8 +13,8 @@ Main Functions
 
 .. currentmodule:: moderndid
 
-High-Level Interface
-^^^^^^^^^^^^^^^^^^^^
+High-Level Wrapper
+^^^^^^^^^^^^^^^^^^
 
 .. autosummary::
    :toctree: generated/honestdid/
