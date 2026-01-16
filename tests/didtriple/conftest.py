@@ -106,3 +106,21 @@ def multi_period_df():
     """Raw multi-period DataFrame for ddd() wrapper tests."""
     dgp = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
     return dgp["data"]
+
+
+@pytest.fixture
+def two_period_dgp_result():
+    """Full 2-period DGP result including true ATT and oracle ATT."""
+    result = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+    return result["data"], result["true_att"], result["oracle_att"]
+
+
+def convert_r_array(arr):
+    """Convert R array to numpy array."""
+    result = []
+    for val in arr:
+        if val == "NA" or val is None:
+            result.append(np.nan)
+        else:
+            result.append(float(val))
+    return np.array(result)
