@@ -178,6 +178,10 @@ def ddd_mp(
         - n: Number of units
         - args: Estimation arguments
 
+    See Also
+    --------
+    ddd_panel : Two-period DDD estimator for panel data.
+
     Notes
     -----
     The influence functions are rescaled by :math:`n / n_{g,t}` where :math:`n_{g,t}`

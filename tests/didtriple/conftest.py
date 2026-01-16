@@ -124,3 +124,37 @@ def convert_r_array(arr):
         else:
             result.append(float(val))
     return np.array(result)
+
+
+@pytest.fixture
+def bootstrap_data():
+    """Bootstrap data for numba tests."""
+    rng = np.random.default_rng(42)
+    n = 100
+    k = 5
+    inf_func = rng.standard_normal((n, k))
+    return inf_func
+
+
+@pytest.fixture
+def cluster_data():
+    """Cluster data for numba tests."""
+    rng = np.random.default_rng(42)
+    n = 100
+    k = 5
+    inf_func = rng.standard_normal((n, k))
+    cluster = np.repeat(np.arange(10), 10)
+    return inf_func, cluster
+
+
+@pytest.fixture
+def agg_inf_func_data():
+    """Aggregation data for numba tests."""
+    rng = np.random.default_rng(42)
+    n = 100
+    num_gt_cells = 20
+    inf_func_mat = rng.standard_normal((n, num_gt_cells))
+    whichones = np.array([0, 3, 7, 12, 15])
+    weights = rng.random(len(whichones))
+    weights = weights / weights.sum()
+    return inf_func_mat, whichones, weights

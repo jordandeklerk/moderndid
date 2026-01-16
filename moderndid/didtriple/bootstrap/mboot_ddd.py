@@ -8,6 +8,7 @@ from typing import NamedTuple
 import numpy as np
 
 from ..nuisance import compute_all_did, compute_all_nuisances
+from ..numba import aggregate_by_cluster, multiplier_bootstrap
 
 
 class MbootResult(NamedTuple):
@@ -76,12 +77,12 @@ def mboot_ddd(
     n, k = inf_func.shape
 
     if cluster is not None:
-        inf_func_boot, n_eff = _aggregate_by_cluster(inf_func, cluster)
+        inf_func_boot, n_eff = aggregate_by_cluster(inf_func, cluster)
     else:
         inf_func_boot = inf_func
         n_eff = n
 
-    bres = np.sqrt(n_eff) * _multiplier_bootstrap(inf_func_boot, nboot, random_state)
+    bres = np.sqrt(n_eff) * multiplier_bootstrap(inf_func_boot, nboot, random_state)
 
     col_sums_sq = np.sum(bres**2, axis=0)
     ndg_dim = (~np.isnan(col_sums_sq)) & (col_sums_sq > np.sqrt(np.finfo(float).eps) * 10)
@@ -179,52 +180,3 @@ def wboot_ddd(
             boot_estimates[b] = np.nan
 
     return boot_estimates
-
-
-def _multiplier_bootstrap(inf_func, nboot, random_state):
-    """Run the multiplier bootstrap using Mammen weights."""
-    sqrt5 = np.sqrt(5)
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    p_kappa = 0.5 * (1 + sqrt5) / sqrt5
-
-    n, k = inf_func.shape
-    rng = np.random.default_rng(random_state)
-    bres = np.zeros((nboot, k))
-
-    for b in range(nboot):
-        v = rng.binomial(1, p_kappa, size=n)
-        v = np.where(v == 1, k1, k2)
-        bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
-
-    return bres
-
-
-def _aggregate_by_cluster(inf_func, cluster):
-    """Aggregate influence functions by cluster for clustered bootstrap.
-
-    Parameters
-    ----------
-    inf_func : ndarray
-        Influence function matrix of shape (n_units, k).
-    cluster : ndarray
-        Cluster identifiers for each unit.
-
-    Returns
-    -------
-    cluster_mean_if : ndarray
-        Mean influence function for each cluster, shape (n_clusters, k).
-    n_clusters : int
-        Number of unique clusters.
-    """
-    unique_clusters = np.unique(cluster)
-    n_clusters = len(unique_clusters)
-    k = inf_func.shape[1]
-
-    cluster_mean_if = np.zeros((n_clusters, k))
-
-    for i, c in enumerate(unique_clusters):
-        mask = cluster == c
-        cluster_mean_if[i] = np.mean(inf_func[mask], axis=0)
-
-    return cluster_mean_if, n_clusters
