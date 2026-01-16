@@ -30,6 +30,12 @@ def ddd(
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
 
+    Wrapper for triple difference-in-differences (DDD) estimators that automatically
+    detects whether the data has two periods or multiple periods with staggered treatment
+    adoption, calling the appropriate estimator. DDD extends standard DiD by incorporating
+    a partition variable that identifies eligible units within treatment groups, allowing
+    for both group-specific and partition-specific violations of parallel trends.
+
     Parameters
     ----------
     data : pd.DataFrame
@@ -104,9 +110,9 @@ def ddd(
 
     Examples
     --------
-    We can generate synthetic data for a 2-period DDD setup using ``gen_dgp_2periods``.
-    The data contains treatment status (``state``), eligibility (``partition``), and
-    covariates:
+    First, we generate synthetic data for a 2-period DDD setup. The data contains
+    treatment status (``state``), eligibility within treatment groups (``partition``),
+    and covariates.
 
     .. ipython::
 
@@ -115,9 +121,11 @@ def ddd(
            ...:
            ...: dgp = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
            ...: df = dgp["data"]
-           ...: print(df.head())
+           ...: df.head()
 
-    We can compute the DDD estimate using the doubly robust estimator with covariates:
+    Now we can compute the DDD estimate using the doubly robust estimator. The ``pname``
+    parameter identifies which units within a treatment group are eligible to receive
+    treatment, which is the key distinction from standard DiD.
 
     .. ipython::
         :okwarning:
@@ -132,9 +140,11 @@ def ddd(
            ...:     xformla="~ cov1 + cov2 + cov3 + cov4",
            ...:     est_method="dr",
            ...: )
-           ...: result.print()
+           ...: result
 
-    For multi-period data with staggered treatment adoption, use ``gen_dgp_mult_periods``:
+    The function automatically detects multi-period data with staggered treatment adoption.
+    When there are more than two time periods or treatment cohorts, it returns group-time
+    ATT estimates that can be aggregated using ``agg_ddd``.
 
     .. ipython::
         :okwarning:
@@ -154,6 +164,27 @@ def ddd(
            ...:     est_method="dr",
            ...: )
            ...: result_mp
+
+    Notes
+    -----
+    The DDD estimator identifies treatment effects in settings where units must satisfy
+    two criteria to be treated: belonging to a group that enables treatment (e.g., a state
+    that passes a policy) and being in an eligible partition (e.g., women eligible for
+    maternity benefits). This allows for violations of standard DiD parallel trends
+    assumptions, as long as these violations are stable across groups.
+
+    When ``est_method="dr"`` (the default), the function implements doubly robust
+    DDD estimators that combine outcome regression and inverse probability weighting.
+    These estimators are consistent if either the outcome model or the propensity
+    score model is correctly specified.
+
+    For two-period data, the DDD estimate can be expressed as a combination of three
+    DiD terms comparing treated-eligible units against: (1) treated-ineligible units,
+    (2) control-eligible units, and (3) control-ineligible units.
+
+    For multi-period data with staggered adoption, the function computes group-time
+    average treatment effects ATT(g,t) for each treatment cohort g and time period t.
+    These can be aggregated into summary measures using ``agg_ddd``.
 
     See Also
     --------
