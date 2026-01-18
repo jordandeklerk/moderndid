@@ -185,8 +185,7 @@ def ddd_panel(
 
     .. [1] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025).
         *Better Understanding Triple Differences Estimators.*
-        arXiv preprint arXiv:2505.09942.
-        https://arxiv.org/abs/2505.09942
+        arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
     y1, y0, subgroup, covariates, i_weights, n_units = _validate_inputs(y1, y0, subgroup, covariates, i_weights)
 

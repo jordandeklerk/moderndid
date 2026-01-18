@@ -267,7 +267,7 @@ and the effect is marginally statistically significant.
 ## References
 
 Callaway, B., & Sant'Anna, P. H. (2021). *Difference-in-differences with multiple time periods.*
-Journal of Econometrics, 225(2), 200-230.
+Journal of Econometrics, 225(2), 200-230. https://doi.org/10.1016/j.jeconom.2020.12.001
 
 Sant'Anna, P. H., & Zhao, J. (2020). *Doubly robust difference-in-differences estimators.*
-Journal of Econometrics, 219(1), 101-122.
+Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003

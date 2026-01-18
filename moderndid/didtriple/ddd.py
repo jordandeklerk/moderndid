@@ -189,8 +189,7 @@ def ddd(
 
     .. [1] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025).
         *Better Understanding Triple Differences Estimators.*
-        arXiv preprint arXiv:2505.09942.
-        https://arxiv.org/abs/2505.09942
+        arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
     multiple_periods = _multiple_periods(data, tname, gname)
 
