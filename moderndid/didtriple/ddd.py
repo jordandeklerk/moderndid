@@ -178,14 +178,6 @@ def ddd(
     These estimators are consistent if either the outcome model or the propensity
     score model is correctly specified.
 
-    For two-period data, the DDD estimate can be expressed as a combination of three
-    DiD terms comparing treated-eligible units against (1) treated-ineligible units,
-    (2) control-eligible units, and (3) control-ineligible units.
-
-    For multi-period data with staggered adoption, the function computes group-time
-    average treatment effects ATT(g,t) for each treatment cohort g and time period t.
-    These can be aggregated into summary measures using ``agg_ddd``.
-
     See Also
     --------
     ddd_panel : Two-period DDD estimator for panel data.
