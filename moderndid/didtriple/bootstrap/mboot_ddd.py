@@ -68,6 +68,7 @@ def mboot_ddd(
     .. [1] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025).
            *Better Understanding Triple Differences Estimators.*
            arXiv preprint arXiv:2505.09942.
+           https://arxiv.org/abs/2505.09942
     """
     if inf_func.ndim == 1:
         inf_func = inf_func.reshape(-1, 1)
