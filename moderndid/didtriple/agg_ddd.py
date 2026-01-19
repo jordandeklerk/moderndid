@@ -110,10 +110,12 @@ def agg_ddd(
     .. [1] Callaway, B., & Sant'Anna, P. H. C. (2021).
            *Difference-in-differences with multiple time periods.*
            Journal of Econometrics, 225(2), 200-230.
+           https://doi.org/10.1016/j.jeconom.2020.12.001
 
     .. [2] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025).
            *Better Understanding Triple Differences Estimators.*
            arXiv preprint arXiv:2505.09942.
+           https://arxiv.org/abs/2505.09942
     """
     return compute_agg_ddd(
         ddd_result=ddd_result,

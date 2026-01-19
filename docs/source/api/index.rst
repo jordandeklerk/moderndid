@@ -22,6 +22,7 @@ theoretical explanations and the :ref:`user_guide` for practical examples.
    drdid
    honestdid
    didcont
+   didtriple
    propensity
    bootstrap
    plotting

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-__all__ = ["gen_dgp_2periods", "generate_simple_ddd_data"]
+__all__ = ["gen_dgp_2periods", "gen_dgp_mult_periods", "generate_simple_ddd_data"]
 
 # Theoretical moments
 _MEAN_Z1 = np.exp(0.25 / 2)
@@ -175,6 +175,192 @@ def gen_dgp_2periods(
     }
 
 
+def gen_dgp_mult_periods(
+    n: int,
+    dgp_type: int = 1,
+    random_state=None,
+) -> dict:
+    """Generate panel data with staggered treatment adoption for multi-period DDD.
+
+    Generates panel data where units adopt treatment at different times across
+    three periods. The DGP has 3 timing groups (cohort=0 never treated, 2=treated
+    at period 2, 3=treated at period 3) and two partitions (eligible/ineligible).
+
+    Parameters
+    ----------
+    n : int
+        Number of units to simulate.
+    dgp_type : {1, 2, 3, 4}, default=1
+        Controls nuisance function specification:
+
+        - 1: Both propensity score and outcome regression use Z (both correct)
+        - 2: Propensity score uses X, outcome regression uses Z (OR correct)
+        - 3: Propensity score uses Z, outcome regression uses X (PS correct)
+        - 4: Both use X (both misspecified when estimating with Z)
+
+    random_state : int, Generator, or None, default=None
+        Controls randomness for reproducibility.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+
+        - *data*: pd.DataFrame in long format with columns [id, group, partition,
+          time, y, cov1, cov2, cov3, cov4, cluster]
+        - *data_wide*: pd.DataFrame in wide format with one row per unit
+        - *es_0_oracle*: Oracle event-study parameter at event time 0
+        - *prob_g2_p1*: Proportion of units with cohort=2 and eligibility
+        - *prob_g3_p1*: Proportion of units with cohort=3 and eligibility
+    """
+    if dgp_type not in [1, 2, 3, 4]:
+        raise ValueError(f"dgp_type must be 1, 2, 3, or 4, got {dgp_type}")
+
+    rng = np.random.default_rng(random_state)
+    xsi_ps = 0.4
+
+    x1 = rng.standard_normal(n)
+    x2 = rng.standard_normal(n)
+    x3 = rng.standard_normal(n)
+    x4 = rng.standard_normal(n)
+    x = np.column_stack([x1, x2, x3, x4])
+    z = _transform_covariates(x)
+
+    w1 = np.array([-1.0, 0.5, -0.25, -0.1])
+    w2 = np.array([-0.5, 1.0, -0.1, -0.25])
+    w3 = np.array([-0.25, 0.1, -1.0, -0.1])
+    b1 = np.array([27.4, 13.7, 13.7, 13.7])
+
+    if dgp_type == 1:
+        ps_covars, or_covars = z, z
+    elif dgp_type == 2:
+        ps_covars, or_covars = x, z
+    elif dgp_type == 3:
+        ps_covars, or_covars = z, x
+    else:
+        ps_covars, or_covars = x, x
+
+    # Generalized propensity score for 6 group-partition combinations
+    pi_2a = np.exp(_fps2(xsi_ps, w1, ps_covars, 1.25))
+    pi_2b = np.exp(_fps2(-xsi_ps, w1, ps_covars, -0.5))
+    pi_3a = np.exp(_fps2(xsi_ps, w2, ps_covars, 2.0))
+    pi_3b = np.exp(_fps2(-xsi_ps, w2, ps_covars, -1.25))
+    pi_0a = np.exp(_fps2(xsi_ps, w3, ps_covars, -0.5))
+
+    sum_pi = 1 + pi_2a + pi_2b + pi_3a + pi_3b + pi_0a
+    pi_2a = pi_2a / sum_pi
+    pi_2b = pi_2b / sum_pi
+    pi_3a = pi_3a / sum_pi
+    pi_3b = pi_3b / sum_pi
+    pi_0a = pi_0a / sum_pi
+    pi_0b = 1 - (pi_2a + pi_2b + pi_3a + pi_3b + pi_0a)
+
+    # group_types: 1=(cohort=2,partition=1), 2=(2,0), 3=(3,1), 4=(3,0), 5=(0,1), 6=(0,0)
+    probs_pscore = np.column_stack([pi_2a, pi_2b, pi_3a, pi_3b, pi_0a, pi_0b])
+    group_types = np.array([rng.choice(6, p=probs_pscore[i]) + 1 for i in range(n)])
+
+    partition = np.isin(group_types, [1, 3, 5]).astype(int)
+    cohort = np.where(
+        np.isin(group_types, [1, 2]),
+        2,
+        np.where(np.isin(group_types, [3, 4]), 3, 0),
+    )
+
+    index_lin = _freg(b1, or_covars)
+    index_partition = partition * index_lin
+    index_unobs_het = cohort * index_lin + index_partition
+    index_trend = index_lin
+
+    v = rng.normal(loc=index_unobs_het, scale=1.0)
+    index_pt_violation = v / 10
+
+    index_att_g2 = 10
+    index_att_g3 = 25
+
+    baseline_t1 = index_lin + index_partition + v
+    y_t1 = baseline_t1 + rng.standard_normal(n)
+
+    baseline_t2 = baseline_t1 + index_pt_violation + index_trend
+    y_t2_never = baseline_t2 + rng.standard_normal(n)
+    y_t2_g2 = baseline_t2 + rng.standard_normal(n) + index_att_g2 * partition
+
+    baseline_t3 = baseline_t1 + 2 * index_trend + 2 * index_pt_violation
+    y_t3_never = baseline_t3 + rng.standard_normal(n)
+    y_t3_g2 = baseline_t3 + rng.standard_normal(n) + 2 * index_att_g2 * partition
+    y_t3_g3 = baseline_t3 + rng.standard_normal(n) + index_att_g3 * partition
+
+    y_t2 = np.where((cohort == 2) & (partition == 1), y_t2_g2, y_t2_never)
+    y_t3 = np.where(
+        (cohort == 2) & (partition == 1),
+        y_t3_g2,
+        np.where((cohort == 3) & (partition == 1), y_t3_g3, y_t3_never),
+    )
+
+    mask_g2_p1 = group_types == 1
+    mask_g3_p1 = group_types == 3
+
+    if np.sum(mask_g2_p1) > 0:
+        att_g2_t2_unf = (np.sum(mask_g2_p1 * y_t2_g2) - np.sum(mask_g2_p1 * y_t2_never)) / np.sum(mask_g2_p1)
+    else:
+        att_g2_t2_unf = np.nan
+
+    if np.sum(mask_g3_p1) > 0:
+        att_g3_t3_unf = (np.sum(mask_g3_p1 * y_t3_g3) - np.sum(mask_g3_p1 * y_t3_never)) / np.sum(mask_g3_p1)
+    else:
+        att_g3_t3_unf = np.nan
+
+    prob_g2_p1 = np.mean(pi_2a / (pi_2a + pi_3a))
+    prob_g3_p1 = np.mean(pi_3a / (pi_2a + pi_3a))
+    es_0_oracle = att_g2_t2_unf * prob_g2_p1 + att_g3_t3_unf * prob_g3_p1
+
+    clusters = rng.integers(1, 51, size=n)
+
+    data_wide = pd.DataFrame(
+        {
+            "id": np.arange(1, n + 1),
+            "group": cohort,
+            "partition": partition,
+            "y_t1": y_t1,
+            "y_t2": y_t2,
+            "y_t3": y_t3,
+            "cov1": z[:, 0],
+            "cov2": z[:, 1],
+            "cov3": z[:, 2],
+            "cov4": z[:, 3],
+            "cluster": clusters,
+        }
+    )
+
+    df_list = []
+    for t, y_vals in enumerate([y_t1, y_t2, y_t3], start=1):
+        df_t = pd.DataFrame(
+            {
+                "id": np.arange(1, n + 1),
+                "group": cohort,
+                "partition": partition,
+                "time": t,
+                "y": y_vals,
+                "cov1": z[:, 0],
+                "cov2": z[:, 1],
+                "cov3": z[:, 2],
+                "cov4": z[:, 3],
+                "cluster": clusters,
+            }
+        )
+        df_list.append(df_t)
+
+    data = pd.concat(df_list, ignore_index=True)
+    data = data.sort_values(["id", "time"]).reset_index(drop=True)
+
+    return {
+        "data": data,
+        "data_wide": data_wide,
+        "es_0_oracle": es_0_oracle,
+        "prob_g2_p1": prob_g2_p1,
+        "prob_g3_p1": prob_g3_p1,
+    }
+
+
 def generate_simple_ddd_data(
     n,
     att,
@@ -276,10 +462,15 @@ def _transform_covariates(x: np.ndarray) -> np.ndarray:
 
 
 def _fps(psi: float, coefs: np.ndarray, xvars: np.ndarray) -> np.ndarray:
-    """Compute propensity score index: psi * (X @ coefs)."""
+    """Compute propensity score index."""
     return psi * (xvars @ coefs)
 
 
+def _fps2(psi: float, coefs: np.ndarray, xvars: np.ndarray, c: float) -> np.ndarray:
+    """Compute propensity score index with constant."""
+    return psi * (c + xvars @ coefs)
+
+
 def _freg(coefs: np.ndarray, xvars: np.ndarray) -> np.ndarray:
-    """Compute outcome regression index: 210 + X @ coefs."""
+    """Compute outcome regression index."""
     return 210 + xvars @ coefs

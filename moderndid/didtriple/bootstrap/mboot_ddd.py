@@ -8,6 +8,7 @@ from typing import NamedTuple
 import numpy as np
 
 from ..nuisance import compute_all_did, compute_all_nuisances
+from ..numba import aggregate_by_cluster, multiplier_bootstrap
 
 
 class MbootResult(NamedTuple):
@@ -32,6 +33,7 @@ def mboot_ddd(
     inf_func,
     nboot=999,
     alpha=0.05,
+    cluster=None,
     random_state=None,
 ):
     """Compute multiplier bootstrap for DDD estimator.
@@ -44,6 +46,10 @@ def mboot_ddd(
         Number of bootstrap iterations.
     alpha : float, default 0.05
         Significance level for confidence intervals.
+    cluster : ndarray or None, default None
+        Cluster identifiers for each unit. If provided, the bootstrap
+        resamples at the cluster level by aggregating influence functions
+        within clusters before bootstrapping.
     random_state : int, Generator, or None, default None
         Controls random number generation for reproducibility.
 
@@ -62,6 +68,7 @@ def mboot_ddd(
     .. [1] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025).
            *Better Understanding Triple Differences Estimators.*
            arXiv preprint arXiv:2505.09942.
+           https://arxiv.org/abs/2505.09942
     """
     if inf_func.ndim == 1:
         inf_func = inf_func.reshape(-1, 1)
@@ -69,7 +76,14 @@ def mboot_ddd(
         inf_func = np.atleast_2d(inf_func)
 
     n, k = inf_func.shape
-    bres = np.sqrt(n) * _multiplier_bootstrap(inf_func, nboot, random_state)
+
+    if cluster is not None:
+        inf_func_boot, n_eff = aggregate_by_cluster(inf_func, cluster)
+    else:
+        inf_func_boot = inf_func
+        n_eff = n
+
+    bres = np.sqrt(n_eff) * multiplier_bootstrap(inf_func_boot, nboot, random_state)
 
     col_sums_sq = np.sum(bres**2, axis=0)
     ndg_dim = (~np.isnan(col_sums_sq)) & (col_sums_sq > np.sqrt(np.finfo(float).eps) * 10)
@@ -83,7 +97,7 @@ def mboot_ddd(
         q25 = np.percentile(bres_clean, 25, axis=0)
         b_sigma = (q75 - q25) / 1.3489795
         b_sigma[b_sigma <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-        se_full[ndg_dim] = b_sigma / np.sqrt(n)
+        se_full[ndg_dim] = b_sigma / np.sqrt(n_eff)
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
@@ -167,22 +181,3 @@ def wboot_ddd(
             boot_estimates[b] = np.nan
 
     return boot_estimates
-
-
-def _multiplier_bootstrap(inf_func, nboot, random_state):
-    """Run the multiplier bootstrap using Mammen weights."""
-    sqrt5 = np.sqrt(5)
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    p_kappa = 0.5 * (1 + sqrt5) / sqrt5
-
-    n, k = inf_func.shape
-    rng = np.random.default_rng(random_state)
-    bres = np.zeros((nboot, k))
-
-    for b in range(nboot):
-        v = rng.binomial(1, p_kappa, size=n)
-        v = np.where(v == 1, k1, k2)
-        bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
-
-    return bres

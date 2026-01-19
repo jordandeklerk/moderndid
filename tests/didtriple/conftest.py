@@ -7,7 +7,7 @@ import pytest
 
 from moderndid import ddd_mp
 from moderndid.core.preprocessing import preprocess_ddd_2periods
-from moderndid.didtriple.dgp import gen_dgp_2periods
+from moderndid.didtriple.dgp import gen_dgp_2periods, gen_dgp_mult_periods
 
 
 @pytest.fixture
@@ -92,3 +92,69 @@ def mp_ddd_result(mp_ddd_data):
         partition_col="partition",
         est_method="reg",
     )
+
+
+@pytest.fixture
+def two_period_df():
+    """Raw 2-period DataFrame for ddd() wrapper tests."""
+    dgp = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+    return dgp["data"]
+
+
+@pytest.fixture
+def multi_period_df():
+    """Raw multi-period DataFrame for ddd() wrapper tests."""
+    dgp = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    return dgp["data"]
+
+
+@pytest.fixture
+def two_period_dgp_result():
+    """Full 2-period DGP result including true ATT and oracle ATT."""
+    result = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+    return result["data"], result["true_att"], result["oracle_att"]
+
+
+def convert_r_array(arr):
+    """Convert R array to numpy array."""
+    result = []
+    for val in arr:
+        if val == "NA" or val is None:
+            result.append(np.nan)
+        else:
+            result.append(float(val))
+    return np.array(result)
+
+
+@pytest.fixture
+def bootstrap_data():
+    """Bootstrap data for numba tests."""
+    rng = np.random.default_rng(42)
+    n = 100
+    k = 5
+    inf_func = rng.standard_normal((n, k))
+    return inf_func
+
+
+@pytest.fixture
+def cluster_data():
+    """Cluster data for numba tests."""
+    rng = np.random.default_rng(42)
+    n = 100
+    k = 5
+    inf_func = rng.standard_normal((n, k))
+    cluster = np.repeat(np.arange(10), 10)
+    return inf_func, cluster
+
+
+@pytest.fixture
+def agg_inf_func_data():
+    """Aggregation data for numba tests."""
+    rng = np.random.default_rng(42)
+    n = 100
+    num_gt_cells = 20
+    inf_func_mat = rng.standard_normal((n, num_gt_cells))
+    whichones = np.array([0, 3, 7, 12, 15])
+    weights = rng.random(len(whichones))
+    weights = weights / weights.sum()
+    return inf_func_mat, whichones, weights
