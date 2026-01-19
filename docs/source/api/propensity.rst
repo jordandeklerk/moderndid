@@ -8,7 +8,7 @@ scores and implementing augmented inverse probability weighting (AIPW) estimator
 These functions are used internally by the main DiD estimators but are also
 available for direct use.
 
-Core Functions
+Main Functions
 --------------
 
 .. currentmodule:: moderndid

@@ -159,6 +159,10 @@ def ddd_panel(
         - subgroup_counts: Number of units in each subgroup
         - args: Estimation arguments
 
+    See Also
+    --------
+    ddd_mp : Multi-period DDD estimator for staggered adoption.
+
     Notes
     -----
     The DDD estimator identifies the ATT under the DDD Conditional Parallel

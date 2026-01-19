@@ -12,7 +12,7 @@ Multiplier Bootstrap
 
 .. currentmodule:: moderndid
 
-Core Functions
+Main Functions
 ^^^^^^^^^^^^^^
 
 .. autosummary::

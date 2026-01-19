@@ -7,8 +7,8 @@ The continuous treatment DiD module provides methods for handling continuous
 treatment variables in difference-in-differences settings. This includes
 nonparametric instrumental variables (NPIV) estimation and spline-based methods.
 
-Main Function
--------------
+Main Functions
+--------------
 
 .. currentmodule:: moderndid
 
