@@ -506,22 +506,11 @@ def _get_crit_val(inf_func_mat, nboot, alpha, random_state):
 
 def _get_weight_influence(keepers, pg, unit_groups, glist):
     """Compute influence function for estimated weights."""
-    n = len(unit_groups)
-    k = len(keepers)
     sum_pg = pg[keepers].sum()
+    indicators = np.column_stack([(unit_groups == glist[ki]).astype(float) for ki in keepers])
 
-    if1 = np.zeros((n, k))
-    for idx, keeper_idx in enumerate(keepers):
-        g = glist[keeper_idx]
-        indicator = (unit_groups == g).astype(float)
-        if1[:, idx] = (indicator - pg[keeper_idx]) / sum_pg
-
-    row_sums = np.zeros(n)
-    for idx, keeper_idx in enumerate(keepers):
-        g = glist[keeper_idx]
-        indicator = (unit_groups == g).astype(float)
-        row_sums += indicator - pg[keeper_idx]
-
+    if1 = (indicators - pg[keepers]) / sum_pg
+    row_sums = (indicators - pg[keepers]).sum(axis=1)
     if2 = np.outer(row_sums, pg[keepers] / (sum_pg**2))
 
     return if1 - if2

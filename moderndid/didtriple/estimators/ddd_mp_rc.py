@@ -9,6 +9,7 @@ import numpy as np
 from scipy import stats
 
 from ..bootstrap.mboot_ddd import mboot_ddd
+from .ddd_mp import _gmm_aggregate
 from .ddd_rc import ddd_rc
 
 
@@ -519,7 +520,7 @@ def _process_multiple_controls_rc(
     if len(ddd_results) == 0:
         return None, None, None, None
 
-    att_gmm, if_gmm, se_gmm = _gmm_aggregate_rc(np.array(ddd_results), np.column_stack(inf_funcs_local), n_obs)
+    att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_funcs_local), n_obs)
     inf_func_scaled = (n_obs / n_cell) * if_gmm
     return att_gmm, inf_func_scaled, cell_obs_indices, se_gmm
 
@@ -572,24 +573,3 @@ def _compute_single_ddd_rc(
         return result.att, result.att_inf_func, obs_indices
     except (ValueError, np.linalg.LinAlgError):
         return None, None, None
-
-
-def _gmm_aggregate_rc(att_vals, inf_mat, n_total):
-    """Compute GMM-weighted aggregate of ATT estimates across control groups for RCS."""
-    omega = np.cov(inf_mat, rowvar=False)
-    if omega.ndim == 0:
-        omega = np.array([[omega]])
-
-    try:
-        inv_omega = np.linalg.inv(omega)
-    except np.linalg.LinAlgError:
-        inv_omega = np.linalg.pinv(omega)
-
-    ones = np.ones(len(att_vals))
-    w = inv_omega @ ones / (ones @ inv_omega @ ones)
-
-    att_gmm = np.sum(w * att_vals)
-    if_gmm = inf_mat @ w
-    se_gmm = np.sqrt(1 / (n_total * np.sum(inv_omega)))
-
-    return att_gmm, if_gmm, se_gmm
