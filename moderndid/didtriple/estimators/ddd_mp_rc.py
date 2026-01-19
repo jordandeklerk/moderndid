@@ -1,4 +1,4 @@
-"""Doubly robust DDD estimator for multi-period panel data with staggered adoption."""
+"""Doubly robust DDD estimator for multi-period repeated cross-section data with staggered adoption."""
 
 from __future__ import annotations
 
@@ -9,11 +9,11 @@ import numpy as np
 from scipy import stats
 
 from ..bootstrap.mboot_ddd import mboot_ddd
-from .ddd_panel import ddd_panel
+from .ddd_rc import ddd_rc
 
 
-class ATTgtResult(NamedTuple):
-    """Result for a single (g,t) cell from the multi-period DDD estimator."""
+class ATTgtRCResult(NamedTuple):
+    """Result for a single (g,t) cell from the multi-period DDD RCS estimator."""
 
     att: float
     group: int
@@ -21,8 +21,8 @@ class ATTgtResult(NamedTuple):
     post: int
 
 
-class DDDMultiPeriodResult(NamedTuple):
-    """Result from the multi-period DDD estimator.
+class DDDMultiPeriodRCResult(NamedTuple):
+    """Result from the multi-period DDD estimator for repeated cross-section data.
 
     Attributes
     ----------
@@ -43,13 +43,11 @@ class DDDMultiPeriodResult(NamedTuple):
     tlist : ndarray
         Unique time periods.
     inf_func_mat : ndarray
-        Matrix of influence functions (n_units x n_estimates).
+        Matrix of influence functions (n_obs x n_estimates).
     n : int
-        Number of units.
+        Number of observations (not units, since this is RCS).
     args : dict
         Arguments used for estimation.
-    unit_groups : ndarray
-        Array of treatment group for each unit (length n).
     """
 
     att: np.ndarray
@@ -63,10 +61,9 @@ class DDDMultiPeriodResult(NamedTuple):
     inf_func_mat: np.ndarray
     n: int
     args: dict
-    unit_groups: np.ndarray
 
 
-def ddd_mp(
+def ddd_mp_rc(
     data,
     y_col,
     time_col,
@@ -82,35 +79,36 @@ def ddd_mp(
     cband=False,
     cluster=None,
     alpha=0.05,
+    trim_level=0.995,
     random_state=None,
 ):
-    r"""Compute the multi-period doubly robust DDD estimator for the ATT with panel data.
+    r"""Compute the multi-period doubly robust DDD estimator for the ATT with repeated cross-section data.
 
-    Implements the multi-period triple difference-in-differences estimator from [1]_.
+    Implements the multi-period triple difference-in-differences estimator from [1]_
+    for repeated cross-section data. Unlike panel data, different samples are observed
+    in each period.
+
     The target parameters are the group-time average treatment effects
 
     .. math::
         ATT(g, t) = \mathbb{E}[Y_t(g) - Y_t(\infty) \mid S=g, Q=1]
 
-    for all treatment cohorts :math:`g \in \mathcal{G}_{trt}` and time periods
+    for all treatment cohorts :math:`g \in \mathcal{G}_{\mathrm{trt}}` and time periods
     :math:`t \in \{2, \ldots, T\}` such that :math:`t \geq g`.
 
-    For each (g,t) cell with comparison group :math:`g_{\mathrm{c}}`, the doubly robust
-    estimand (Equation 4.8 from [1]_) is
+    For repeated cross-sections, the estimator follows the approach of Sant'Anna
+    and Zhao (2020) [2]_, extending the DDD framework from [1]_. Unlike panel data
+    where outcomes are differenced within units, RCS requires fitting separate
+    outcome regression models for each (subgroup, time period) cell. Specifically,
+    4 outcome models are fit per comparison
 
-    .. math::
-        \widehat{ATT}_{\mathrm{dr},g_{\mathrm{c}}}(g,t) &= \mathbb{E}_n\left[
-            \left(\widehat{w}_{\mathrm{trt}}^{S=g,Q=1}(S,Q)
-            - \widehat{w}_{g,0}^{S=g,Q=1}(S,Q,X)\right)
-            \left(Y_t - Y_{g-1} - \widehat{m}_{Y_t-Y_{g-1}}^{S=g,Q=0}(X)\right)\right] \\
-        &+ \mathbb{E}_n\left[
-            \left(\widehat{w}_{\mathrm{trt}}^{S=g,Q=1}(S,Q)
-            - \widehat{w}_{g_{\mathrm{c}},1}^{S=g,Q=1}(S,Q,X)\right)
-            \left(Y_t - Y_{g-1} - \widehat{m}_{Y_t-Y_{g-1}}^{S=g_{\mathrm{c}},Q=1}(X)\right)\right] \\
-        &- \mathbb{E}_n\left[
-            \left(\widehat{w}_{\mathrm{trt}}^{S=g,Q=1}(S,Q)
-            - \widehat{w}_{g_{\mathrm{c}},0}^{S=g,Q=1}(S,Q,X)\right)
-            \left(Y_t - Y_{g-1} - \widehat{m}_{Y_t-Y_{g-1}}^{S=g_{\mathrm{c}},Q=0}(X)\right)\right].
+    - :math:`\widehat{m}_{Y}^{S=g_{\mathrm{c}},Q=q}(X, T=0)`: Pre-period, comparison subgroup
+    - :math:`\widehat{m}_{Y}^{S=g_{\mathrm{c}},Q=q}(X, T=1)`: Post-period, comparison subgroup
+    - :math:`\widehat{m}_{Y}^{S=g,Q=1}(X, T=0)`: Pre-period, treated subgroup (for local efficiency)
+    - :math:`\widehat{m}_{Y}^{S=g,Q=1}(X, T=1)`: Post-period, treated subgroup (for local efficiency)
+
+    The combined outcome regression prediction is then
+    :math:`\widehat{m}(X, T) = T \cdot \widehat{m}_{\mathrm{post}}(X) + (1-T) \cdot \widehat{m}_{\mathrm{pre}}(X)`.
 
     When multiple comparison groups are available (not-yet-treated setting), the
     estimator combines them using optimal GMM weights (Equation 4.11 from [1]_)
@@ -131,14 +129,15 @@ def ddd_mp(
     Parameters
     ----------
     data : DataFrame
-        Panel data in long format with columns for outcome, time, unit id,
-        treatment group, and partition.
+        Repeated cross-section data in long format with columns for outcome, time,
+        observation id, treatment group, and partition.
     y_col : str
         Name of the outcome variable column.
     time_col : str
         Name of the time period column.
     id_col : str
-        Name of the unit identifier column.
+        Name of the observation identifier column. For RCS, this can be a row index
+        since units are not tracked across periods.
     group_col : str
         Name of the treatment group column (first period when treatment enabled).
         Use 0 or np.inf for never-treated units.
@@ -166,12 +165,14 @@ def ddd_mp(
         level (only used if boot=True).
     alpha : float, default 0.05
         Significance level for confidence intervals.
+    trim_level : float, default 0.995
+        Trimming level for propensity scores.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
 
     Returns
     -------
-    DDDMultiPeriodResult
+    DDDMultiPeriodRCResult
         A NamedTuple containing:
 
         - att: Array of ATT(g,t) point estimates
@@ -180,28 +181,14 @@ def ddd_mp(
         - groups: Treatment cohort for each estimate
         - times: Time period for each estimate
         - glist, tlist: Unique cohorts and periods
-        - inf_func_mat: Influence function matrix (n x k)
-        - n: Number of units
+        - inf_func_mat: Influence function matrix (n_obs x k)
+        - n: Number of observations
         - args: Estimation arguments
 
     See Also
     --------
-    ddd_panel : Two-period DDD estimator for panel data.
-
-    Notes
-    -----
-    The influence functions are rescaled by :math:`n / n_{g,t}` where :math:`n_{g,t}`
-    is the number of units in each (g,t) cell, following the approach in [1]_.
-
-    The standard errors are computed from the influence function matrix as
-
-    .. math::
-        \widehat{V} = \frac{1}{n} \widehat{\Psi}' \widehat{\Psi}, \quad
-        \widehat{se}_{g,t} = \sqrt{\widehat{V}_{g,t,g,t} / n}
-
-    where :math:`\widehat{\Psi}` is the :math:`n \times k` matrix of influence
-    functions. For cells with GMM aggregation, the standard error formula from
-    Equation 4.12 is used instead.
+    ddd_rc : Two-period DDD estimator for repeated cross-section data.
+    ddd_mp : Multi-period DDD estimator for panel data.
 
     References
     ----------
@@ -209,12 +196,17 @@ def ddd_mp(
     .. [1] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025).
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
+
+    .. [2] Sant'Anna, P. H. C., & Zhao, J. (2020).
+        *Doubly robust difference-in-differences estimators.*
+        Journal of Econometrics, 219(1), 101-122.
+        https://doi.org/10.1016/j.jeconom.2020.06.003
     """
     tlist = np.sort(data[time_col].unique())
     glist_raw = data[group_col].unique()
     glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
 
-    n_units = data[id_col].nunique()
+    n_obs = len(data)
     n_periods = len(tlist)
     n_cohorts = len(glist)
 
@@ -222,38 +214,38 @@ def ddd_mp(
     tlist_length = n_periods - tfac
 
     attgt_list = []
-    inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
+    inf_func_mat = np.zeros((n_obs, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
-    unique_ids = data[id_col].unique()
-    id_to_idx = {uid: idx for idx, uid in enumerate(unique_ids)}
+    data_with_idx = data.copy()
+    data_with_idx["_obs_idx"] = np.arange(len(data))
 
     counter = 0
 
     for g in glist:
         for t_idx in range(tlist_length):
             t = tlist[t_idx + tfac]
-            counter = _process_gt_cell(
-                data,
-                g,
-                t,
-                t_idx,
-                tlist,
-                base_period,
-                control_group,
-                y_col,
-                time_col,
-                id_col,
-                group_col,
-                partition_col,
-                covariates,
-                est_method,
-                n_units,
-                attgt_list,
-                inf_func_mat,
-                se_array,
-                id_to_idx,
-                counter,
+            counter = _process_gt_cell_rc(
+                data=data_with_idx,
+                g=g,
+                t=t,
+                t_idx=t_idx,
+                tlist=tlist,
+                base_period=base_period,
+                control_group=control_group,
+                y_col=y_col,
+                time_col=time_col,
+                _id_col=id_col,
+                group_col=group_col,
+                partition_col=partition_col,
+                covariates=covariates,
+                est_method=est_method,
+                trim_level=trim_level,
+                n_obs=n_obs,
+                attgt_list=attgt_list,
+                inf_func_mat=inf_func_mat,
+                se_array=se_array,
+                counter=counter,
             )
 
     if len(attgt_list) == 0:
@@ -267,13 +259,7 @@ def ddd_mp(
 
     cluster_vals = None
     if cluster is not None:
-        first_period = tlist[0]
-        cluster_data = data[data[time_col] == first_period].sort_values(id_col)
-        cluster_vals = cluster_data[cluster].values
-
-    first_period = tlist[0]
-    unit_data = data[data[time_col] == first_period].sort_values(id_col)
-    unit_groups = unit_data[group_col].values
+        cluster_vals = data_with_idx[cluster].values
 
     if boot:
         boot_result = mboot_ddd(
@@ -295,8 +281,8 @@ def ddd_mp(
         else:
             cv = stats.norm.ppf(1 - alpha / 2)
     else:
-        V = inf_func_trimmed.T @ inf_func_trimmed / n_units
-        se_computed = np.sqrt(np.diag(V) / n_units)
+        V = inf_func_trimmed.T @ inf_func_trimmed / n_obs
+        se_computed = np.sqrt(np.diag(V) / n_obs)
 
         valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
         se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
@@ -309,6 +295,7 @@ def ddd_mp(
     lci = att_array - cv * se_computed
 
     args = {
+        "panel": False,
         "control_group": control_group,
         "base_period": base_period,
         "est_method": est_method,
@@ -317,9 +304,10 @@ def ddd_mp(
         "cband": cband if boot else None,
         "cluster": cluster,
         "alpha": alpha,
+        "trim_level": trim_level,
     }
 
-    return DDDMultiPeriodResult(
+    return DDDMultiPeriodRCResult(
         att=att_array,
         se=se_computed,
         uci=uci,
@@ -329,13 +317,12 @@ def ddd_mp(
         glist=glist,
         tlist=tlist,
         inf_func_mat=inf_func_mat[:, : len(attgt_list)],
-        n=n_units,
+        n=n_obs,
         args=args,
-        unit_groups=unit_groups,
     )
 
 
-def _process_gt_cell(
+def _process_gt_cell_rc(
     data,
     g,
     t,
@@ -345,20 +332,20 @@ def _process_gt_cell(
     control_group,
     y_col,
     time_col,
-    id_col,
+    _id_col,
     group_col,
     partition_col,
     covariates,
     est_method,
-    n_units,
+    trim_level,
+    n_obs,
     attgt_list,
     inf_func_mat,
     se_array,
-    id_to_idx,
     counter,
 ):
-    """Process a single (g,t) cell and update results."""
-    pret = _get_base_period(g, t_idx, tlist, base_period)
+    """Process a single (g,t) cell and update results for RCS."""
+    pret = _get_base_period_rc(g, t_idx, tlist, base_period)
     if pret is None:
         warnings.warn(f"No pre-treatment periods for group {g}. Skipping.", UserWarning)
         return counter + 1
@@ -371,23 +358,22 @@ def _process_gt_cell(
         pret = pre_periods[-1]
 
     if base_period == "universal" and pret == t:
-        attgt_list.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
+        attgt_list.append(ATTgtRCResult(att=0.0, group=int(g), time=int(t), post=0))
         inf_func_mat[:, counter] = 0.0
         return counter + 1
 
-    cell_data, available_controls = _get_cell_data(data, g, t, pret, control_group, time_col, group_col)
+    cell_data, available_controls = _get_cell_data_rc(data, g, t, pret, control_group, time_col, group_col)
 
     if cell_data is None or len(available_controls) == 0:
         return counter + 1
 
-    n_cell = len(cell_data[id_col].unique())
+    n_cell = len(cell_data)
 
     if len(available_controls) == 1:
-        result = _process_single_control(
+        result = _process_single_control_rc(
             cell_data,
             y_col,
             time_col,
-            id_col,
             group_col,
             partition_col,
             g,
@@ -395,20 +381,20 @@ def _process_gt_cell(
             pret,
             covariates,
             est_method,
-            n_units,
+            trim_level,
+            n_obs,
             n_cell,
         )
-        att_result, inf_func_scaled, cell_id_list = result
+        att_result, inf_func_scaled, obs_indices = result
         if att_result is not None:
-            attgt_list.append(ATTgtResult(att=att_result, group=int(g), time=int(t), post=post_treat))
-            _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter)
+            attgt_list.append(ATTgtRCResult(att=att_result, group=int(g), time=int(t), post=post_treat))
+            _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter)
     else:
-        result = _process_multiple_controls(
+        result = _process_multiple_controls_rc(
             cell_data,
             available_controls,
             y_col,
             time_col,
-            id_col,
             group_col,
             partition_col,
             g,
@@ -416,19 +402,20 @@ def _process_gt_cell(
             pret,
             covariates,
             est_method,
-            n_units,
+            trim_level,
+            n_obs,
             n_cell,
         )
         if result[0] is not None:
-            att_gmm, inf_func_scaled, cell_id_list, se_gmm = result
-            attgt_list.append(ATTgtResult(att=att_gmm, group=int(g), time=int(t), post=post_treat))
-            _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter)
+            att_gmm, inf_func_scaled, obs_indices, se_gmm = result
+            attgt_list.append(ATTgtRCResult(att=att_gmm, group=int(g), time=int(t), post=post_treat))
+            _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter)
             se_array[counter] = se_gmm
 
     return counter + 1
 
 
-def _get_base_period(g, t_idx, tlist, base_period):
+def _get_base_period_rc(g, t_idx, tlist, base_period):
     """Get the base (pre-treatment) period for comparison."""
     if base_period == "universal":
         pre_periods = tlist[tlist < g]
@@ -438,8 +425,8 @@ def _get_base_period(g, t_idx, tlist, base_period):
     return tlist[t_idx]
 
 
-def _get_cell_data(data, g, t, pret, control_group, time_col, group_col):
-    """Get data for a specific (g,t) cell and available controls."""
+def _get_cell_data_rc(data, g, t, pret, control_group, time_col, group_col):
+    """Get data for a specific (g,t) cell and available controls for RCS."""
     max_period = max(t, pret)
 
     if control_group == "nevertreated":
@@ -462,35 +449,33 @@ def _get_cell_data(data, g, t, pret, control_group, time_col, group_col):
     return cell_data, available_controls
 
 
-def _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter):
-    """Update influence function matrix with scaled values for a cell."""
-    for i, uid in enumerate(cell_id_list):
-        if uid in id_to_idx and i < len(inf_func_scaled):
-            inf_func_mat[id_to_idx[uid], counter] = inf_func_scaled[i]
+def _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter):
+    """Update influence function matrix with scaled values for a cell in RCS."""
+    for i, idx in enumerate(obs_indices):
+        if i < len(inf_func_scaled):
+            inf_func_mat[idx, counter] = inf_func_scaled[i]
 
 
-def _process_single_control(
-    cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariates, est_method, n_units, n_cell
+def _process_single_control_rc(
+    cell_data, y_col, time_col, group_col, partition_col, g, t, pret, covariates, est_method, trim_level, n_obs, n_cell
 ):
-    """Process a (g,t) cell with a single control group."""
-    att_result, inf_func = _compute_single_ddd(
-        cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariates, est_method
+    """Process a (g,t) cell with a single control group for RCS."""
+    att_result, inf_func, obs_indices = _compute_single_ddd_rc(
+        cell_data, y_col, time_col, group_col, partition_col, g, t, pret, covariates, est_method, trim_level
     )
 
     if att_result is None:
         return None, None, None
 
-    inf_func_scaled = (n_units / n_cell) * inf_func
-    cell_id_list = cell_data[cell_data[time_col] == t][id_col].values
-    return att_result, inf_func_scaled, cell_id_list
+    inf_func_scaled = (n_obs / n_cell) * inf_func
+    return att_result, inf_func_scaled, obs_indices
 
 
-def _process_multiple_controls(
+def _process_multiple_controls_rc(
     cell_data,
     available_controls,
     y_col,
     time_col,
-    id_col,
     group_col,
     partition_col,
     g,
@@ -498,52 +483,51 @@ def _process_multiple_controls(
     pret,
     covariates,
     est_method,
-    n_units,
+    trim_level,
+    n_obs,
     n_cell,
 ):
-    """Process a (g,t) cell with multiple control groups using GMM aggregation."""
+    """Process a (g,t) cell with multiple control groups using GMM aggregation for RCS."""
     ddd_results = []
     inf_funcs_local = []
+
+    cell_obs_indices = cell_data["_obs_idx"].values
+    cell_idx_to_local = {idx: i for i, idx in enumerate(cell_obs_indices)}
 
     for ctrl in available_controls:
         ctrl_mask = (cell_data[group_col] == g) | (cell_data[group_col] == ctrl)
         subset_data = cell_data[ctrl_mask].copy()
 
-        att_result, inf_func = _compute_single_ddd(
-            subset_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariates, est_method
+        att_result, inf_func, subset_obs_indices = _compute_single_ddd_rc(
+            subset_data, y_col, time_col, group_col, partition_col, g, t, pret, covariates, est_method, trim_level
         )
 
         if att_result is None:
             continue
 
-        n_subset = subset_data[id_col].nunique()
+        n_subset = len(subset_data)
         inf_func_scaled = (n_cell / n_subset) * inf_func
         ddd_results.append(att_result)
 
         inf_full = np.zeros(n_cell)
-        subset_ids = subset_data[subset_data[time_col] == t][id_col].values
-        cell_id_list = cell_data[cell_data[time_col] == t][id_col].unique()
-        cell_id_to_local = {uid: idx for idx, uid in enumerate(cell_id_list)}
-
-        for i, uid in enumerate(subset_ids):
-            if uid in cell_id_to_local and i < len(inf_func_scaled):
-                inf_full[cell_id_to_local[uid]] = inf_func_scaled[i]
+        for i, idx in enumerate(subset_obs_indices):
+            if idx in cell_idx_to_local and i < len(inf_func_scaled):
+                inf_full[cell_idx_to_local[idx]] = inf_func_scaled[i]
 
         inf_funcs_local.append(inf_full)
 
     if len(ddd_results) == 0:
         return None, None, None, None
 
-    att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_funcs_local), n_units)
-    inf_func_scaled = (n_units / n_cell) * if_gmm
-    cell_id_list = cell_data[cell_data[time_col] == t][id_col].unique()
-    return att_gmm, inf_func_scaled, cell_id_list, se_gmm
+    att_gmm, if_gmm, se_gmm = _gmm_aggregate_rc(np.array(ddd_results), np.column_stack(inf_funcs_local), n_obs)
+    inf_func_scaled = (n_obs / n_cell) * if_gmm
+    return att_gmm, inf_func_scaled, cell_obs_indices, se_gmm
 
 
-def _compute_single_ddd(
-    cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariates, est_method
+def _compute_single_ddd_rc(
+    cell_data, y_col, time_col, group_col, partition_col, g, t, _pret, covariates, est_method, trim_level
 ):
-    """Compute DDD for a single (g,t) cell with a single control group."""
+    """Compute DDD for a single (g,t) cell with a single control group using RCS."""
     cell_data = cell_data.copy()
     cell_data["treat"] = (cell_data[group_col] == g).astype(int)
 
@@ -554,37 +538,44 @@ def _compute_single_ddd(
         + 1 * (cell_data["treat"] == 0) * (cell_data[partition_col] == 0)
     )
 
-    post_data = cell_data[cell_data[time_col] == t].sort_values(id_col)
-    pre_data = cell_data[cell_data[time_col] == pret].sort_values(id_col)
+    post_indicator = (cell_data[time_col] == t).astype(int)
 
-    common_ids = set(post_data[id_col]) & set(pre_data[id_col])
-    if len(common_ids) == 0:
-        return None, None
-
-    post_data = post_data[post_data[id_col].isin(common_ids)].sort_values(id_col)
-    pre_data = pre_data[pre_data[id_col].isin(common_ids)].sort_values(id_col)
-
-    y1 = post_data[y_col].values
-    y0 = pre_data[y_col].values
-    subgroup = post_data["subgroup"].values
+    y = cell_data[y_col].values
+    post = post_indicator.values
+    subgroup = cell_data["subgroup"].values
+    obs_indices = cell_data["_obs_idx"].values
 
     if 4 not in set(subgroup):
-        return None, None
+        return None, None, None
 
     if covariates is None:
-        X = np.ones((len(y1), 1))
+        X = np.ones((len(y), 1))
     else:
-        X = covariates[post_data.index.values] if hasattr(covariates, "__getitem__") else np.ones((len(y1), 1))
+        if hasattr(covariates, "__getitem__"):
+            try:
+                X = covariates[cell_data.index.values]
+            except (KeyError, IndexError):
+                X = np.ones((len(y), 1))
+        else:
+            X = np.ones((len(y), 1))
 
     try:
-        result = ddd_panel(y1=y1, y0=y0, subgroup=subgroup, covariates=X, est_method=est_method, influence_func=True)
-        return result.att, result.att_inf_func
+        result = ddd_rc(
+            y=y,
+            post=post,
+            subgroup=subgroup,
+            covariates=X,
+            est_method=est_method,
+            trim_level=trim_level,
+            influence_func=True,
+        )
+        return result.att, result.att_inf_func, obs_indices
     except (ValueError, np.linalg.LinAlgError):
-        return None, None
+        return None, None, None
 
 
-def _gmm_aggregate(att_vals, inf_mat, n_total):
-    """Compute GMM-weighted aggregate of ATT estimates across control groups."""
+def _gmm_aggregate_rc(att_vals, inf_mat, n_total):
+    """Compute GMM-weighted aggregate of ATT estimates across control groups for RCS."""
     omega = np.cov(inf_mat, rowvar=False)
     if omega.ndim == 0:
         omega = np.array([[omega]])
