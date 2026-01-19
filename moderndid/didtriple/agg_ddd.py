@@ -28,14 +28,14 @@ def agg_ddd(
     effects at each event time :math:`e = t - g`
 
     .. math::
-        ES(e) = \sum_{g \in \mathcal{G}_{\text{trt}}}
-        \mathbb{P}(G=g \mid G+e \in [2, T]) \cdot ATT(g, g+e).
+        ES(e) = \sum_{g \in \mathcal{G}_{\mathrm{trt}}}
+        \mathbb{P}(G=g \mid G+e \in [2, T]) \, ATT(g, g+e).
 
     The simple aggregation computes a scalar summary by averaging all
     post-treatment event study coefficients
 
     .. math::
-        ES_{\text{avg}} = \frac{1}{N_E} \sum_{e \in \mathcal{E}} ES(e),
+        ES_{\mathrm{avg}} = \frac{1}{N_E} \sum_{e \in \mathcal{E}} ES(e),
 
     where :math:`\mathcal{E}` is the support of post-treatment event time
     and :math:`N_E` is its cardinality.
@@ -53,7 +53,7 @@ def agg_ddd(
     time period :math:`t` by averaging across all cohorts treated by time :math:`t` [1]_
 
     .. math::
-        \theta_t = \sum_{g \leq t} \mathbb{P}(G=g \mid G \leq t) \cdot ATT(g, t).
+        \theta_t = \sum_{g \leq t} \mathbb{P}(G=g \mid G \leq t) \, ATT(g, t).
 
     Parameters
     ----------

@@ -62,7 +62,7 @@ def ddd_panel(
     alpha=0.05,
     random_state=None,
 ):
-    r"""Compute the doubly robust DDD estimator for the ATT with 2-period panel data.
+    r"""Compute the 2-period doubly robust DDD estimator for the ATT with panel data.
 
     Implements the triple difference-in-differences estimator from [1]_. The DDD
     design exploits three dimensions of variation: treatment status :math:`S`
@@ -82,23 +82,26 @@ def ddd_panel(
     The doubly robust DDD estimand (Equation 3.5 from [1]_) combines three DiD comparisons
 
     .. math::
-        \widehat{ATT}_{dr}(2,2) &= \mathbb{E}_n\left[(\widehat{w}_{trt}^{S=2,Q=1}
-            - \widehat{w}_{comp}^{S=2,Q=0})(Y_2 - Y_1
-            - \widehat{m}_{Y_2-Y_1}^{S=2,Q=0}(X))\right] \\
-        &+ \mathbb{E}_n\left[(\widehat{w}_{trt}^{S=2,Q=1}
-            - \widehat{w}_{comp}^{S=\infty,Q=1})(Y_2 - Y_1
-            - \widehat{m}_{Y_2-Y_1}^{S=\infty,Q=1}(X))\right] \\
-        &- \mathbb{E}_n\left[(\widehat{w}_{trt}^{S=2,Q=1}
-            - \widehat{w}_{comp}^{S=\infty,Q=0})(Y_2 - Y_1
-            - \widehat{m}_{Y_2-Y_1}^{S=\infty,Q=0}(X))\right],
+        \widehat{ATT}_{\mathrm{dr}}(2,2) &= \mathbb{E}_n\left[
+            \left(\widehat{w}_{\mathrm{trt}}^{S=2,Q=1}(S,Q)
+            - \widehat{w}_{\mathrm{comp}}^{S=2,Q=0}(S,Q,X)\right)
+            \left(Y_2 - Y_1 - \widehat{m}_{Y_2-Y_1}^{S=2,Q=0}(X)\right)\right] \\
+        &+ \mathbb{E}_n\left[
+            \left(\widehat{w}_{\mathrm{trt}}^{S=2,Q=1}(S,Q)
+            - \widehat{w}_{\mathrm{comp}}^{S=\infty,Q=1}(S,Q,X)\right)
+            \left(Y_2 - Y_1 - \widehat{m}_{Y_2-Y_1}^{S=\infty,Q=1}(X)\right)\right] \\
+        &- \mathbb{E}_n\left[
+            \left(\widehat{w}_{\mathrm{trt}}^{S=2,Q=1}(S,Q)
+            - \widehat{w}_{\mathrm{comp}}^{S=\infty,Q=0}(S,Q,X)\right)
+            \left(Y_2 - Y_1 - \widehat{m}_{Y_2-Y_1}^{S=\infty,Q=0}(X)\right)\right],
 
     where the estimated weights are
 
     .. math::
-        \widehat{w}_{trt}^{S=2,Q=1}(S, Q) &\equiv \frac{\mathbf{1}\{S=2, Q=1\}}
-            {\mathbb{E}_n[\mathbf{1}\{S=2, Q=1\}]}, \\
-        \widehat{w}_{comp}^{S=g,Q=q}(S, Q, X) &\equiv \frac{
-            \frac{\mathbf{1}\{S=g, Q=q\} \cdot \widehat{p}^{S=2,Q=1}(X)}
+        \widehat{w}_{\mathrm{trt}}^{S=2,Q=1}(S,Q) &\equiv
+            \frac{\mathbf{1}\{S=2, Q=1\}}{\mathbb{E}_n[\mathbf{1}\{S=2, Q=1\}]}, \\
+        \widehat{w}_{\mathrm{comp}}^{S=g,Q=q}(S,Q,X) &\equiv
+            \frac{\frac{\mathbf{1}\{S=g, Q=q\} \cdot \widehat{p}^{S=2,Q=1}(X)}
             {\widehat{p}^{S=g,Q=q}(X)}}
             {\mathbb{E}_n\left[\frac{\mathbf{1}\{S=g, Q=q\} \cdot \widehat{p}^{S=2,Q=1}(X)}
             {\widehat{p}^{S=g,Q=q}(X)}\right]}.

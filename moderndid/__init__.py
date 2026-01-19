@@ -120,16 +120,23 @@ from moderndid.didhonest import (
     validate_symmetric_psd,
 )
 from moderndid.didtriple import (
+    ATTgtRCResult as DDDATTgtRCResult,
+)
+from moderndid.didtriple import (
     ATTgtResult as DDDATTgtResult,
 )
 from moderndid.didtriple import (
     DDDAggResult,
+    DDDMultiPeriodRCResult,
     DDDMultiPeriodResult,
     DDDPanelResult,
+    DDDRCResult,
     agg_ddd,
     ddd,
     ddd_mp,
+    ddd_mp_rc,
     ddd_panel,
+    ddd_rc,
     gen_dgp_2periods,
     gen_dgp_mult_periods,
     generate_simple_ddd_data,
@@ -179,13 +186,18 @@ __all__ = [
     "data",
     "AGGTEResult",
     "DDDAggResult",
+    "DDDATTgtRCResult",
     "DDDATTgtResult",
+    "DDDMultiPeriodRCResult",
     "DDDMultiPeriodResult",
     "DDDPanelResult",
+    "DDDRCResult",
     "agg_ddd",
     "ddd",
     "ddd_mp",
+    "ddd_mp_rc",
     "ddd_panel",
+    "ddd_rc",
     "APRCIResult",
     "ARPNuisanceCIResult",
     "ATTgtResult",

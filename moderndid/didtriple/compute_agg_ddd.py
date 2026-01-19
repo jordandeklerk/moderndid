@@ -82,6 +82,7 @@ def compute_agg_ddd(
     n = ddd_result.n
     tlist = ddd_result.tlist.copy()
     glist = ddd_result.glist.copy()
+    unit_groups = ddd_result.unit_groups.copy()
 
     args = {
         "aggregation_type": aggregation_type,
@@ -128,11 +129,11 @@ def compute_agg_ddd(
     tlist_recoded = np.unique(t)
     max_t = int(t.max())
 
-    pg = np.array([np.mean(group == g) for g in glist_recoded])
-    pgg = pg.copy()
+    pgg = np.array([np.mean(unit_groups == g) for g in orig_glist])
+    pg = pgg.copy()
     pg_obs = np.zeros(len(group))
     for i, g in enumerate(glist_recoded):
-        pg_obs[group == g] = pg[i]
+        pg_obs[group == g] = pgg[i]
 
     keepers = np.where((group <= t) & (t <= group + max_e))[0]
 
@@ -158,6 +159,7 @@ def compute_agg_ddd(
             cband,
             args,
             random_state,
+            unit_groups,
         )
 
     if aggregation_type == "calendar":
@@ -247,6 +249,7 @@ def _compute_group(
     cband,
     args,
     random_state,
+    unit_groups,
 ):
     """Compute group-specific ATT aggregation."""
     selective_att_g = np.zeros(len(glist_recoded))
@@ -278,7 +281,14 @@ def _compute_group(
     selective_att = np.sum(selective_att_g_clean * pgg) / pgg.sum()
 
     weights_overall = pgg / pgg.sum()
-    selective_inf_func = selective_inf_func_g @ weights_overall
+    wif = _get_weight_influence(
+        keepers=np.arange(len(glist_recoded)),
+        pg=pgg,
+        unit_groups=unit_groups,
+        glist=orig_glist,
+    )
+
+    selective_inf_func = selective_inf_func_g @ weights_overall + wif @ selective_att_g_clean
     selective_se = _compute_se(selective_inf_func, n, boot, nboot, alpha, random_state)
 
     return DDDAggResult(
@@ -492,6 +502,29 @@ def _get_crit_val(inf_func_mat, nboot, alpha, random_state):
         warnings.warn("Simultaneous critical value is arguably too large to be reliable.")
 
     return crit_val
+
+
+def _get_weight_influence(keepers, pg, unit_groups, glist):
+    """Compute influence function for estimated weights."""
+    n = len(unit_groups)
+    k = len(keepers)
+    sum_pg = pg[keepers].sum()
+
+    if1 = np.zeros((n, k))
+    for idx, keeper_idx in enumerate(keepers):
+        g = glist[keeper_idx]
+        indicator = (unit_groups == g).astype(float)
+        if1[:, idx] = (indicator - pg[keeper_idx]) / sum_pg
+
+    row_sums = np.zeros(n)
+    for idx, keeper_idx in enumerate(keepers):
+        g = glist[keeper_idx]
+        indicator = (unit_groups == g).astype(float)
+        row_sums += indicator - pg[keeper_idx]
+
+    if2 = np.outer(row_sums, pg[keepers] / (sum_pg**2))
+
+    return if1 - if2
 
 
 def _orig2t(orig, orig_gtlist, uniquet):
