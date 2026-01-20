@@ -87,20 +87,8 @@ output <- list(
 write_json(output, "{result_path}", auto_unbox = TRUE)
 """
         try:
-            proc = subprocess.run(
-                ["R", "--vanilla", "--quiet"],
-                input=r_script,
-                capture_output=True,
-                text=True,
-                timeout=60,
-                check=False,
-            )
-            if proc.returncode != 0:
-                return None
-
-            with open(result_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            return _run_r_script(r_script, result_path, timeout=60)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
             return None
 
 
@@ -141,20 +129,8 @@ output <- list(
 write_json(output, "{result_path}", auto_unbox = TRUE)
 """
         try:
-            proc = subprocess.run(
-                ["R", "--vanilla", "--quiet"],
-                input=r_script,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
-            if proc.returncode != 0:
-                return None
-
-            with open(result_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            return _run_r_script(r_script, result_path, timeout=120)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
             return None
 
 
@@ -232,20 +208,8 @@ if ("{agg_type}" == "simple") {{
 write_json(output, "{result_path}", auto_unbox = TRUE)
 """
         try:
-            proc = subprocess.run(
-                ["R", "--vanilla", "--quiet"],
-                input=r_script,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
-            if proc.returncode != 0:
-                return None
-
-            with open(result_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            return _run_r_script(r_script, result_path, timeout=120)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
             return None
 
 
@@ -287,20 +251,8 @@ output <- list(
 write_json(output, "{result_path}", auto_unbox = TRUE)
 """
         try:
-            proc = subprocess.run(
-                ["R", "--vanilla", "--quiet"],
-                input=r_script,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
-            if proc.returncode != 0:
-                return None
-
-            with open(result_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            return _run_r_script(r_script, result_path, timeout=120)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
             return None
 
 
@@ -372,20 +324,8 @@ output <- list(
 write_json(output, "{result_path}", auto_unbox = TRUE)
 """
         try:
-            proc = subprocess.run(
-                ["R", "--vanilla", "--quiet"],
-                input=r_script,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
-            if proc.returncode != 0:
-                return None
-
-            with open(result_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            return _run_r_script(r_script, result_path, timeout=120)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
             return None
 
 
@@ -418,11 +358,12 @@ def test_2period_point_estimates_match(two_period_dgp_result, est_method):
     if r_result is None:
         pytest.skip("R estimation failed")
 
-    rel_diff = abs(py_result.att - r_result["att"]) / max(abs(r_result["att"]), 0.01)
-    abs_diff = abs(py_result.att - r_result["att"])
-
-    assert rel_diff < 0.01 or abs_diff < 0.01, (
-        f"{est_method}: ATT differs - Python={py_result.att:.6f}, R={r_result['att']:.6f}"
+    np.testing.assert_allclose(
+        py_result.att,
+        r_result["att"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"{est_method}: ATT mismatch",
     )
 
 
@@ -437,9 +378,13 @@ def test_2period_standard_errors_match(two_period_dgp_result, est_method):
     if r_result is None:
         pytest.skip("R estimation failed")
 
-    rel_diff = abs(py_result.se - r_result["se"]) / max(r_result["se"], 0.01)
-
-    assert rel_diff < 0.01, f"{est_method}: SE differs - Python={py_result.se:.6f}, R={r_result['se']:.6f}"
+    np.testing.assert_allclose(
+        py_result.se,
+        r_result["se"],
+        rtol=1e-2,
+        atol=1e-3,
+        err_msg=f"{est_method}: SE mismatch",
+    )
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -452,11 +397,19 @@ def test_2period_confidence_intervals_match(two_period_dgp_result):
     if r_result is None:
         pytest.skip("R estimation failed")
 
-    assert abs(py_result.lci - r_result["lci"]) < 0.01, (
-        f"LCI differs - Python={py_result.lci:.4f}, R={r_result['lci']:.4f}"
+    np.testing.assert_allclose(
+        py_result.lci,
+        r_result["lci"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="LCI mismatch",
     )
-    assert abs(py_result.uci - r_result["uci"]) < 0.01, (
-        f"UCI differs - Python={py_result.uci:.4f}, R={r_result['uci']:.4f}"
+    np.testing.assert_allclose(
+        py_result.uci,
+        r_result["uci"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="UCI mismatch",
     )
 
 
@@ -472,11 +425,12 @@ def test_2period_dgp_types_match(dgp_type):
     if r_result is None:
         pytest.skip("R estimation failed")
 
-    rel_diff = abs(py_result.att - r_result["att"]) / max(abs(r_result["att"]), 0.01)
-    abs_diff = abs(py_result.att - r_result["att"])
-
-    assert rel_diff < 0.02 or abs_diff < 0.02, (
-        f"DGP type {dgp_type}: ATT differs - Python={py_result.att:.6f}, R={r_result['att']:.6f}"
+    np.testing.assert_allclose(
+        py_result.att,
+        r_result["att"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"DGP type {dgp_type}: ATT mismatch",
     )
 
 
@@ -503,9 +457,13 @@ def test_2period_bootstrap_se_reasonable(two_period_dgp_result):
     if r_result is None:
         pytest.skip("R bootstrap estimation failed")
 
-    rel_diff = abs(py_result.se - r_result["se"]) / max(r_result["se"], 0.01)
-
-    assert rel_diff < 0.3, f"Bootstrap SE differs too much - Python={py_result.se:.6f}, R={r_result['se']:.6f}"
+    np.testing.assert_allclose(
+        py_result.se,
+        r_result["se"],
+        rtol=0.2,
+        atol=0.05,
+        err_msg="Bootstrap SE mismatch",
+    )
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -554,12 +512,11 @@ def test_mp_att_gt_estimates_match(mp_ddd_data, est_method):
             if np.isnan(py_att) and np.isnan(r_att_val):
                 matches += 1
             elif not np.isnan(py_att) and not np.isnan(r_att_val):
-                rel_diff = abs(py_att - r_att_val) / max(abs(r_att_val), 0.01)
-                if rel_diff < 0.05 or abs(py_att - r_att_val) < 0.1:
+                if np.allclose(py_att, r_att_val, rtol=1e-4, atol=1e-4):
                     matches += 1
 
     match_rate = matches / len(py_result.att) if len(py_result.att) > 0 else 0
-    assert match_rate > 0.8, f"{est_method}: Only {match_rate:.1%} of ATT(g,t) estimates match"
+    assert match_rate > 0.95, f"{est_method}: Only {match_rate:.1%} of ATT(g,t) estimates match"
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -630,11 +587,12 @@ def test_ddd_wrapper_2period(two_period_dgp_result):
     if r_result is None:
         pytest.skip("R estimation failed")
 
-    rel_diff = abs(py_result.att - r_result["att"]) / max(abs(r_result["att"]), 0.01)
-    abs_diff = abs(py_result.att - r_result["att"])
-
-    assert rel_diff < 0.01 or abs_diff < 0.01, (
-        f"2-period wrapper ATT differs - Python={py_result.att:.6f}, R={r_result['att']:.6f}"
+    np.testing.assert_allclose(
+        py_result.att,
+        r_result["att"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="2-period wrapper ATT mismatch",
     )
 
 
@@ -682,10 +640,12 @@ def test_agg_overall_att_matches(mp_ddd_data, agg_type):
     if r_result is None:
         pytest.skip("R aggregation failed")
 
-    rel_diff = abs(py_agg.overall_att - r_result["overall_att"]) / max(abs(r_result["overall_att"]), 0.01)
-
-    assert rel_diff < 0.05 or abs(py_agg.overall_att - r_result["overall_att"]) < 0.1, (
-        f"{agg_type}: Overall ATT differs - Python={py_agg.overall_att:.4f}, R={r_result['overall_att']:.4f}"
+    np.testing.assert_allclose(
+        py_agg.overall_att,
+        r_result["overall_att"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"{agg_type}: Overall ATT mismatch",
     )
 
 
@@ -710,10 +670,12 @@ def test_agg_overall_se_matches(mp_ddd_data, agg_type):
     if r_result is None:
         pytest.skip("R aggregation failed")
 
-    rel_diff = abs(py_agg.overall_se - r_result["overall_se"]) / max(r_result["overall_se"], 0.01)
-
-    assert rel_diff < 0.1, (
-        f"{agg_type}: Overall SE differs - Python={py_agg.overall_se:.4f}, R={r_result['overall_se']:.4f}"
+    np.testing.assert_allclose(
+        py_agg.overall_se,
+        r_result["overall_se"],
+        rtol=0.05,
+        atol=1e-2,
+        err_msg=f"{agg_type}: Overall SE mismatch",
     )
 
 
@@ -757,9 +719,12 @@ def test_agg_disaggregated_effects_match(mp_ddd_data, agg_type):
         py_att = py_agg.att_egt[py_idx]
         r_att = r_att_egt[r_idx]
 
-        rel_diff = abs(py_att - r_att) / max(abs(r_att), 0.01)
-        assert rel_diff < 0.1 or abs(py_att - r_att) < 0.2, (
-            f"{agg_type} e={e}: ATT differs - Python={py_att:.4f}, R={r_att:.4f}"
+        np.testing.assert_allclose(
+            py_att,
+            r_att,
+            rtol=1e-4,
+            atol=1e-4,
+            err_msg=f"{agg_type} e={e}: ATT mismatch",
         )
 
 
@@ -791,15 +756,20 @@ def test_agg_with_bootstrap_matches(mp_ddd_data, agg_type):
     if r_result is None:
         pytest.skip("R aggregation with bootstrap failed")
 
-    rel_diff_att = abs(py_agg.overall_att - r_result["overall_att"]) / max(abs(r_result["overall_att"]), 0.01)
-    assert rel_diff_att < 0.05 or abs(py_agg.overall_att - r_result["overall_att"]) < 0.1, (
-        f"{agg_type} boot: Overall ATT differs - Python={py_agg.overall_att:.4f}, R={r_result['overall_att']:.4f}"
+    np.testing.assert_allclose(
+        py_agg.overall_att,
+        r_result["overall_att"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"{agg_type} boot: Overall ATT mismatch",
     )
 
-    rel_diff_se = abs(py_agg.overall_se - r_result["overall_se"]) / max(r_result["overall_se"], 0.01)
-    assert rel_diff_se < 0.3, (
-        f"{agg_type} boot: Overall SE differs significantly - "
-        f"Python={py_agg.overall_se:.4f}, R={r_result['overall_se']:.4f}"
+    np.testing.assert_allclose(
+        py_agg.overall_se,
+        r_result["overall_se"],
+        rtol=0.2,
+        atol=0.05,
+        err_msg=f"{agg_type} boot: Overall SE mismatch",
     )
 
 
@@ -829,9 +799,12 @@ def test_eventstudy_balance_e_matches(mp_ddd_data):
     if r_result is None:
         pytest.skip("R aggregation with balance_e failed")
 
-    rel_diff = abs(py_agg.overall_att - r_result["overall_att"]) / max(abs(r_result["overall_att"]), 0.01)
-    assert rel_diff < 0.1 or abs(py_agg.overall_att - r_result["overall_att"]) < 0.2, (
-        f"balance_e=1: Overall ATT differs - Python={py_agg.overall_att:.4f}, R={r_result['overall_att']:.4f}"
+    np.testing.assert_allclose(
+        py_agg.overall_att,
+        r_result["overall_att"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="balance_e=1: Overall ATT mismatch",
     )
 
 
@@ -895,9 +868,12 @@ def test_agg_alpha_levels_match(mp_ddd_data, alpha):
     if r_result is None:
         pytest.skip(f"R aggregation with alpha={alpha} failed")
 
-    rel_diff = abs(py_agg.overall_att - r_result["overall_att"]) / max(abs(r_result["overall_att"]), 0.01)
-    assert rel_diff < 0.05 or abs(py_agg.overall_att - r_result["overall_att"]) < 0.1, (
-        f"alpha={alpha}: Overall ATT differs - Python={py_agg.overall_att:.4f}, R={r_result['overall_att']:.4f}"
+    np.testing.assert_allclose(
+        py_agg.overall_att,
+        r_result["overall_att"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"alpha={alpha}: Overall ATT mismatch",
     )
 
 
@@ -944,9 +920,12 @@ def test_group_agg_all_groups_match(mp_ddd_data):
         py_group_att = py_agg.att_egt[py_idx]
         r_group_att = r_att[r_idx]
 
-        rel_diff = abs(py_group_att - r_group_att) / max(abs(r_group_att), 0.01)
-        assert rel_diff < 0.1 or abs(py_group_att - r_group_att) < 0.2, (
-            f"Group {g}: ATT differs - Python={py_group_att:.4f}, R={r_group_att:.4f}"
+        np.testing.assert_allclose(
+            py_group_att,
+            r_group_att,
+            rtol=1e-4,
+            atol=1e-4,
+            err_msg=f"Group {g}: ATT mismatch",
         )
 
 
@@ -993,9 +972,12 @@ def test_calendar_agg_all_times_match(mp_ddd_data):
         py_time_att = py_agg.att_egt[py_idx]
         r_time_att = r_att[r_idx]
 
-        rel_diff = abs(py_time_att - r_time_att) / max(abs(r_time_att), 0.01)
-        assert rel_diff < 0.1 or abs(py_time_att - r_time_att) < 0.2, (
-            f"Calendar time {t}: ATT differs - Python={py_time_att:.4f}, R={r_time_att:.4f}"
+        np.testing.assert_allclose(
+            py_time_att,
+            r_time_att,
+            rtol=1e-4,
+            atol=1e-4,
+            err_msg=f"Calendar time {t}: ATT mismatch",
         )
 
 
@@ -1040,8 +1022,13 @@ def test_agg_se_egt_matches(mp_ddd_data, agg_type):
         if np.isnan(py_se) or np.isnan(r_se):
             continue
 
-        rel_diff = abs(py_se - r_se) / max(r_se, 0.01)
-        assert rel_diff < 0.15, f"{agg_type} e={e}: SE differs - Python={py_se:.4f}, R={r_se:.4f}"
+        np.testing.assert_allclose(
+            py_se,
+            r_se,
+            rtol=0.05,
+            atol=1e-2,
+            err_msg=f"{agg_type} e={e}: SE mismatch",
+        )
 
 
 def test_dgp_produces_valid_structure():
@@ -1339,20 +1326,8 @@ output <- list(
 write_json(output, "{result_path}", auto_unbox = TRUE)
 """
         try:
-            proc = subprocess.run(
-                ["R", "--vanilla", "--quiet"],
-                input=r_script,
-                capture_output=True,
-                text=True,
-                timeout=60,
-                check=False,
-            )
-            if proc.returncode != 0:
-                return None
-
-            with open(result_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            return _run_r_script(r_script, result_path, timeout=60)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
             return None
 
 
@@ -1394,20 +1369,8 @@ output <- list(
 write_json(output, "{result_path}", auto_unbox = TRUE)
 """
         try:
-            proc = subprocess.run(
-                ["R", "--vanilla", "--quiet"],
-                input=r_script,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
-            if proc.returncode != 0:
-                return None
-
-            with open(result_path, encoding="utf-8") as f:
-                return json.load(f)
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            return _run_r_script(r_script, result_path, timeout=120)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
             return None
 
 
@@ -1453,12 +1416,12 @@ def test_2period_rcs_point_estimates_match(two_period_rcs_data, est_method):
     if r_result is None:
         pytest.skip("R RCS estimation failed")
 
-    rel_diff = abs(py_result.att - r_result["att"]) / max(abs(r_result["att"]), 0.01)
-    abs_diff = abs(py_result.att - r_result["att"])
-    tol = 0.10 if est_method == "reg" else 0.05
-
-    assert rel_diff < tol or abs_diff < tol, (
-        f"RCS {est_method}: ATT differs - Python={py_result.att:.6f}, R={r_result['att']:.6f}"
+    np.testing.assert_allclose(
+        py_result.att,
+        r_result["att"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg=f"RCS {est_method}: ATT mismatch",
     )
 
 
@@ -1473,11 +1436,13 @@ def test_2period_rcs_standard_errors_match(two_period_rcs_data, est_method):
     if r_result is None:
         pytest.skip("R RCS estimation failed")
 
-    rel_diff = abs(py_result.se - r_result["se"]) / max(r_result["se"], 0.01)
-
-    tol = 0.20 if est_method == "reg" else 0.10
-
-    assert rel_diff < tol, f"RCS {est_method}: SE differs - Python={py_result.se:.6f}, R={r_result['se']:.6f}"
+    np.testing.assert_allclose(
+        py_result.se,
+        r_result["se"],
+        rtol=0.05,
+        atol=0.02,
+        err_msg=f"RCS {est_method}: SE mismatch",
+    )
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -1490,11 +1455,19 @@ def test_2period_rcs_confidence_intervals_match(two_period_rcs_data):
     if r_result is None:
         pytest.skip("R RCS estimation failed")
 
-    assert abs(py_result.lci - r_result["lci"]) < 0.1, (
-        f"RCS LCI differs - Python={py_result.lci:.4f}, R={r_result['lci']:.4f}"
+    np.testing.assert_allclose(
+        py_result.lci,
+        r_result["lci"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="RCS LCI mismatch",
     )
-    assert abs(py_result.uci - r_result["uci"]) < 0.1, (
-        f"RCS UCI differs - Python={py_result.uci:.4f}, R={r_result['uci']:.4f}"
+    np.testing.assert_allclose(
+        py_result.uci,
+        r_result["uci"],
+        rtol=1e-4,
+        atol=1e-4,
+        err_msg="RCS UCI mismatch",
     )
 
 
@@ -1529,12 +1502,11 @@ def test_mp_rcs_att_gt_estimates_match(mp_rcs_data, est_method):
             if np.isnan(py_att) and np.isnan(r_att_val):
                 matches += 1
             elif not np.isnan(py_att) and not np.isnan(r_att_val):
-                rel_diff = abs(py_att - r_att_val) / max(abs(r_att_val), 0.01)
-                if rel_diff < 0.1 or abs(py_att - r_att_val) < 0.2:
+                if np.allclose(py_att, r_att_val, rtol=1e-4, atol=1e-4):
                     matches += 1
 
     match_rate = matches / len(py_result.att) if len(py_result.att) > 0 else 0
-    assert match_rate > 0.7, f"RCS {est_method}: Only {match_rate:.1%} of ATT(g,t) estimates match"
+    assert match_rate > 0.95, f"RCS {est_method}: Only {match_rate:.1%} of ATT(g,t) estimates match"
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -1744,3 +1716,19 @@ def test_rcs_ddd_formula_holds(two_period_rcs_data):
 
     computed_ddd = result.did_atts["att_4v3"] + result.did_atts["att_4v2"] - result.did_atts["att_4v1"]
     np.testing.assert_almost_equal(result.att, computed_ddd, decimal=10, err_msg="DDD formula mismatch for RCS")
+
+
+def _run_r_script(r_script, result_path, timeout=60):
+    proc = subprocess.run(
+        ["R", "--vanilla", "--quiet"],
+        input=r_script,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"R script failed:\nSTDOUT: {proc.stdout}\nSTDERR: {proc.stderr}")
+
+    with open(result_path, encoding="utf-8") as f:
+        return json.load(f)
