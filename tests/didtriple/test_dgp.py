@@ -220,3 +220,93 @@ def test_simple_ddd_reproducibility():
     data2 = generate_simple_ddd_data(n=500, att=5.0, random_state=42)
 
     pd.testing.assert_frame_equal(data1, data2)
+
+
+@pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
+def test_2period_rcs_data_structure(dgp_type):
+    result = gen_dgp_2periods(n=500, dgp_type=dgp_type, panel=False, random_state=42)
+    data = result["data"]
+
+    assert isinstance(data, pd.DataFrame)
+    assert len(data) == 1000
+    expected_cols = ["id", "state", "partition", "time", "y", "cov1", "cov2", "cov3", "cov4", "cluster"]
+    assert list(data.columns) == expected_cols
+
+
+def test_2period_rcs_unique_ids_per_period():
+    result = gen_dgp_2periods(n=500, dgp_type=1, panel=False, random_state=42)
+    data = result["data"]
+
+    ids_t1 = set(data[data["time"] == 1]["id"])
+    ids_t2 = set(data[data["time"] == 2]["id"])
+
+    assert len(ids_t1) == 500
+    assert len(ids_t2) == 500
+    assert ids_t1.isdisjoint(ids_t2)
+    assert data["id"].nunique() == 1000
+
+
+def test_2period_rcs_reproducibility():
+    result1 = gen_dgp_2periods(n=500, dgp_type=1, panel=False, random_state=42)
+    result2 = gen_dgp_2periods(n=500, dgp_type=1, panel=False, random_state=42)
+
+    pd.testing.assert_frame_equal(result1["data"], result2["data"])
+
+
+def test_2period_panel_vs_rcs_difference():
+    result_panel = gen_dgp_2periods(n=500, dgp_type=1, panel=True, random_state=42)
+    result_rcs = gen_dgp_2periods(n=500, dgp_type=1, panel=False, random_state=42)
+
+    assert result_panel["data"]["id"].nunique() == 500
+    assert result_rcs["data"]["id"].nunique() == 1000
+
+
+@pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
+def test_multiperiod_rcs_data_structure(dgp_type):
+    result = gen_dgp_mult_periods(n=300, dgp_type=dgp_type, panel=False, random_state=42)
+    data = result["data"]
+
+    assert isinstance(data, pd.DataFrame)
+    assert len(data) == 900
+    expected_cols = ["id", "group", "partition", "time", "y", "cov1", "cov2", "cov3", "cov4", "cluster"]
+    assert list(data.columns) == expected_cols
+
+
+def test_multiperiod_rcs_unique_ids_per_period():
+    result = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+    data = result["data"]
+
+    ids_t1 = set(data[data["time"] == 1]["id"])
+    ids_t2 = set(data[data["time"] == 2]["id"])
+    ids_t3 = set(data[data["time"] == 3]["id"])
+
+    assert len(ids_t1) == 300
+    assert len(ids_t2) == 300
+    assert len(ids_t3) == 300
+    assert ids_t1.isdisjoint(ids_t2)
+    assert ids_t1.isdisjoint(ids_t3)
+    assert ids_t2.isdisjoint(ids_t3)
+    assert data["id"].nunique() == 900
+
+
+def test_multiperiod_rcs_no_data_wide():
+    result = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+
+    assert result["data_wide"] is None
+
+
+def test_multiperiod_rcs_reproducibility():
+    result1 = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+    result2 = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+
+    pd.testing.assert_frame_equal(result1["data"], result2["data"])
+
+
+def test_multiperiod_panel_vs_rcs_difference():
+    result_panel = gen_dgp_mult_periods(n=300, dgp_type=1, panel=True, random_state=42)
+    result_rcs = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+
+    assert result_panel["data"]["id"].nunique() == 300
+    assert result_rcs["data"]["id"].nunique() == 900
+    assert result_panel["data_wide"] is not None
+    assert result_rcs["data_wide"] is None

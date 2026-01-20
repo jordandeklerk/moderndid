@@ -2,20 +2,22 @@
 
 import numpy as np
 
-from moderndid.core.preprocess.utils import parse_formula
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 
 from .estimators.ddd_mp import ddd_mp
+from .estimators.ddd_mp_rc import ddd_mp_rc
 from .estimators.ddd_panel import ddd_panel
+from .estimators.ddd_rc import _ddd_rc_2period
+from .utils import add_intercept, detect_multiple_periods, detect_rcs_mode, extract_covariates
 
 
 def ddd(
     data,
     yname,
     tname,
-    idname,
-    gname,
-    pname,
+    idname=None,
+    gname=None,
+    pname=None,
     xformla=None,
     control_group="nevertreated",
     base_period="universal",
@@ -26,6 +28,9 @@ def ddd(
     nboot=999,
     cluster=None,
     alpha=0.05,
+    trim_level=0.995,
+    panel=True,
+    allow_unbalanced_panel=False,
     random_state=None,
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
@@ -39,13 +44,17 @@ def ddd(
     Parameters
     ----------
     data : pd.DataFrame
-        Panel data in long format.
+        Data in long format. For panel data, should contain repeated observations
+        of the same units. For repeated cross-section data, different units may
+        be observed in each period.
     yname : str
         Name of outcome variable column.
     tname : str
         Name of time period column.
-    idname : str
-        Name of unit identifier column.
+    idname : str, optional
+        Name of unit identifier column. Required for panel data. For repeated
+        cross-section data (panel=False), this can be omitted and a row index
+        will be used automatically.
     gname : str
         Name of treatment group column. For 2-period data, this should be
         0 for never-treated and a positive value for treated units. For
@@ -80,13 +89,24 @@ def ddd(
         Currently only supported for 2-period data with bootstrap.
     alpha : float, default=0.05
         Significance level for confidence intervals.
+    trim_level : float, default=0.995
+        Trimming level for propensity scores. Only used for repeated cross-section
+        data (panel=False).
+    panel : bool, default=True
+        Whether the data is panel data (True) or repeated cross-section data (False).
+        Panel data has the same units observed across time periods. Repeated
+        cross-section data has different samples in each period.
+    allow_unbalanced_panel : bool, default=False
+        If True and panel=True, allows unbalanced panel data by treating it as
+        repeated cross-section data. If the panel is unbalanced and this is False,
+        an error will be raised.
     random_state : int, Generator, optional
         Random seed for reproducibility of bootstrap.
 
     Returns
     -------
-    DDDPanelResult or DDDMultiPeriodResult
-        For 2-period data, returns DDDPanelResult containing:
+    DDDPanelResult, DDDRCResult, DDDMultiPeriodResult, or DDDMultiPeriodRCResult
+        For 2-period panel data (panel=True), returns DDDPanelResult containing:
 
         - *att*: The DDD point estimate
         - *se*: Standard error
@@ -97,7 +117,10 @@ def ddd(
         - *subgroup_counts*: Number of units per subgroup
         - *args*: Estimation arguments
 
-        For multi-period data, returns DDDMultiPeriodResult containing:
+        For 2-period repeated cross-section data (panel=False), returns DDDRCResult
+        with the same structure.
+
+        For multi-period panel data, returns DDDMultiPeriodResult containing:
 
         - *att*: Array of ATT(g,t) point estimates
         - *se*: Standard errors for each ATT(g,t)
@@ -107,6 +130,9 @@ def ddd(
         - *inf_func_mat*: Influence function matrix
         - *n*: Number of units
         - *args*: Estimation arguments
+
+        For multi-period repeated cross-section data, returns DDDMultiPeriodRCResult
+        with the same structure.
 
     Examples
     --------
@@ -181,7 +207,9 @@ def ddd(
     See Also
     --------
     ddd_panel : Two-period DDD estimator for panel data.
-    ddd_mp : Multi-period DDD estimator for staggered adoption.
+    ddd_rc : Two-period DDD estimator for repeated cross-section data.
+    ddd_mp : Multi-period DDD estimator for staggered adoption with panel data.
+    ddd_mp_rc : Multi-period DDD estimator for staggered adoption with RCS data.
     agg_ddd : Aggregate group-time DDD effects.
 
     References
@@ -191,11 +219,38 @@ def ddd(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
-    multiple_periods = _multiple_periods(data, tname, gname)
+    is_rcs = detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel)
+
+    data = data.copy()
+    if is_rcs and idname is None:
+        data["_row_id"] = np.arange(len(data))
+        idname = "_row_id"
+
+    multiple_periods = detect_multiple_periods(data, tname, gname)
 
     if multiple_periods:
-        covariates = _extract_covariates(data, xformla)
+        covariates = extract_covariates(data, xformla)
 
+        if is_rcs:
+            return ddd_mp_rc(
+                data=data,
+                y_col=yname,
+                time_col=tname,
+                id_col=idname,
+                group_col=gname,
+                partition_col=pname,
+                covariates=covariates,
+                control_group=control_group,
+                base_period=base_period,
+                est_method=est_method,
+                boot=boot,
+                nboot=nboot,
+                cband=False,
+                cluster=cluster,
+                alpha=alpha,
+                trim_level=trim_level,
+                random_state=random_state,
+            )
         return ddd_mp(
             data=data,
             y_col=yname,
@@ -212,6 +267,24 @@ def ddd(
             cband=False,
             cluster=cluster,
             alpha=alpha,
+            random_state=random_state,
+        )
+
+    if is_rcs:
+        return _ddd_rc_2period(
+            data=data,
+            yname=yname,
+            tname=tname,
+            gname=gname,
+            pname=pname,
+            xformla=xformla,
+            weightsname=weightsname,
+            est_method=est_method,
+            boot=boot,
+            boot_type=boot_type,
+            nboot=nboot,
+            alpha=alpha,
+            trim_level=trim_level,
             random_state=random_state,
         )
 
@@ -233,7 +306,7 @@ def ddd(
         inf_func=True,
     )
 
-    covariates_with_intercept = _intercept(ddd_data.covariates)
+    covariates_with_intercept = add_intercept(ddd_data.covariates)
 
     return ddd_panel(
         y1=ddd_data.y1,
@@ -249,49 +322,3 @@ def ddd(
         alpha=ddd_data.config.alp,
         random_state=random_state,
     )
-
-
-def _multiple_periods(data, tname, gname):
-    """Detect whether data has multiple periods (staggered adoption)."""
-    n_time_periods = data[tname].nunique()
-
-    gvals = data[gname].unique()
-    finite_gvals = [g for g in gvals if np.isfinite(g)]
-    n_groups = len(finite_gvals)
-
-    return max(n_time_periods, n_groups) > 2
-
-
-def _extract_covariates(data, xformla):
-    """Extract covariate matrix for multi-period estimation."""
-    if xformla is None or xformla == "~1":
-        return None
-
-    formula_str = xformla.strip()
-    if formula_str.startswith("~"):
-        formula_str = "y " + formula_str
-
-    parsed = parse_formula(formula_str)
-    covariate_names = parsed["predictors"]
-
-    if not covariate_names or covariate_names == ["1"]:
-        return None
-
-    covariate_names = [c for c in covariate_names if c != "1"]
-
-    missing_covs = [c for c in covariate_names if c not in data.columns]
-    if missing_covs:
-        raise ValueError(f"Covariates not found in data: {missing_covs}")
-
-    X = data[covariate_names].values
-    intercept = np.ones((X.shape[0], 1))
-    return np.hstack([intercept, X])
-
-
-def _intercept(covariates):
-    """Add intercept column to covariate matrix if needed."""
-    if covariates is None or covariates.shape[1] == 0:
-        return None
-
-    intercept = np.ones((covariates.shape[0], 1))
-    return np.hstack([intercept, covariates])

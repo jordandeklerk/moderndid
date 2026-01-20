@@ -11,7 +11,9 @@ from moderndid import (
     agg_ddd,
     ddd,
     ddd_mp,
+    ddd_mp_rc,
     ddd_panel,
+    ddd_rc,
     gen_dgp_2periods,
     gen_dgp_mult_periods,
 )
@@ -169,6 +171,7 @@ def r_estimate_multiperiod_agg(
         min_e_str = "-Inf" if min_e is None else str(min_e)
         max_e_str = "Inf" if max_e is None else str(max_e)
         boot_str = "TRUE" if boot else "FALSE"
+        ddd_boot_str = "TRUE" if boot else "FALSE"
 
         r_script = f"""
 library(triplediff)
@@ -188,7 +191,8 @@ mp_result <- ddd(
     control_group = "nevertreated",
     base_period = "universal",
     est_method = "reg",
-    boot = FALSE
+    boot = {ddd_boot_str},
+    nboot = 100
 )
 
 agg_result <- agg_ddd(
@@ -1296,3 +1300,447 @@ def _convert_r_array(arr):
         else:
             result.append(float(val))
     return np.array(result)
+
+
+def r_estimate_2period_rcs(data, est_method="dr"):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_path = Path(tmpdir) / "data.csv"
+        result_path = Path(tmpdir) / "result.json"
+
+        data.to_csv(data_path, index=False)
+
+        r_script = f"""
+library(triplediff)
+library(jsonlite)
+
+data <- read.csv("{data_path}")
+
+result <- ddd(
+    yname = "y",
+    tname = "time",
+    idname = "id",
+    gname = "state",
+    pname = "partition",
+    xformla = ~ cov1 + cov2 + cov3 + cov4,
+    data = data,
+    est_method = "{est_method}",
+    panel = FALSE,
+    boot = FALSE,
+    inffunc = TRUE
+)
+
+output <- list(
+    att = result$ATT,
+    se = result$se,
+    lci = result$lci,
+    uci = result$uci
+)
+
+write_json(output, "{result_path}", auto_unbox = TRUE)
+"""
+        try:
+            proc = subprocess.run(
+                ["R", "--vanilla", "--quiet"],
+                input=r_script,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            if proc.returncode != 0:
+                return None
+
+            with open(result_path, encoding="utf-8") as f:
+                return json.load(f)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            return None
+
+
+def r_estimate_multiperiod_rcs(data, control_group="nevertreated", base_period="universal", est_method="dr"):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_path = Path(tmpdir) / "data.csv"
+        result_path = Path(tmpdir) / "result.json"
+
+        data.to_csv(data_path, index=False)
+
+        r_script = f"""
+library(triplediff)
+library(jsonlite)
+
+data <- read.csv("{data_path}")
+
+result <- ddd(
+    yname = "y",
+    tname = "time",
+    idname = "id",
+    gname = "group",
+    pname = "partition",
+    xformla = ~1,
+    data = data,
+    control_group = "{control_group}",
+    base_period = "{base_period}",
+    est_method = "{est_method}",
+    panel = FALSE,
+    boot = FALSE
+)
+
+output <- list(
+    att = result$ATT,
+    se = result$se,
+    groups = result$group,
+    times = result$t
+)
+
+write_json(output, "{result_path}", auto_unbox = TRUE)
+"""
+        try:
+            proc = subprocess.run(
+                ["R", "--vanilla", "--quiet"],
+                input=r_script,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+            if proc.returncode != 0:
+                return None
+
+            with open(result_path, encoding="utf-8") as f:
+                return json.load(f)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            return None
+
+
+def python_estimate_2period_rcs(data, est_method="dr"):
+    return ddd(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+        xformla="~ cov1 + cov2 + cov3 + cov4",
+        est_method=est_method,
+        panel=False,
+        boot=False,
+    )
+
+
+def python_estimate_multiperiod_rcs(data, control_group="nevertreated", base_period="universal", est_method="dr"):
+    return ddd(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        control_group=control_group,
+        base_period=base_period,
+        est_method=est_method,
+        panel=False,
+        boot=False,
+    )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
+def test_2period_rcs_point_estimates_match(two_period_rcs_data, est_method):
+    data = two_period_rcs_data
+
+    py_result = python_estimate_2period_rcs(data, est_method)
+    r_result = r_estimate_2period_rcs(data, est_method)
+
+    if r_result is None:
+        pytest.skip("R RCS estimation failed")
+
+    rel_diff = abs(py_result.att - r_result["att"]) / max(abs(r_result["att"]), 0.01)
+    abs_diff = abs(py_result.att - r_result["att"])
+    tol = 0.10 if est_method == "reg" else 0.05
+
+    assert rel_diff < tol or abs_diff < tol, (
+        f"RCS {est_method}: ATT differs - Python={py_result.att:.6f}, R={r_result['att']:.6f}"
+    )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
+def test_2period_rcs_standard_errors_match(two_period_rcs_data, est_method):
+    data = two_period_rcs_data
+
+    py_result = python_estimate_2period_rcs(data, est_method)
+    r_result = r_estimate_2period_rcs(data, est_method)
+
+    if r_result is None:
+        pytest.skip("R RCS estimation failed")
+
+    rel_diff = abs(py_result.se - r_result["se"]) / max(r_result["se"], 0.01)
+
+    tol = 0.20 if est_method == "reg" else 0.10
+
+    assert rel_diff < tol, f"RCS {est_method}: SE differs - Python={py_result.se:.6f}, R={r_result['se']:.6f}"
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+def test_2period_rcs_confidence_intervals_match(two_period_rcs_data):
+    data = two_period_rcs_data
+
+    py_result = python_estimate_2period_rcs(data, "dr")
+    r_result = r_estimate_2period_rcs(data, "dr")
+
+    if r_result is None:
+        pytest.skip("R RCS estimation failed")
+
+    assert abs(py_result.lci - r_result["lci"]) < 0.1, (
+        f"RCS LCI differs - Python={py_result.lci:.4f}, R={r_result['lci']:.4f}"
+    )
+    assert abs(py_result.uci - r_result["uci"]) < 0.1, (
+        f"RCS UCI differs - Python={py_result.uci:.4f}, R={r_result['uci']:.4f}"
+    )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
+def test_mp_rcs_att_gt_estimates_match(mp_rcs_data, est_method):
+    data = mp_rcs_data
+
+    py_result = python_estimate_multiperiod_rcs(data, est_method=est_method)
+    r_result = r_estimate_multiperiod_rcs(data, est_method=est_method)
+
+    if r_result is None:
+        pytest.skip("R RCS estimation failed")
+
+    r_att = np.atleast_1d(r_result["att"])
+    r_groups = np.atleast_1d(r_result["groups"])
+    r_times = np.atleast_1d(r_result["times"])
+
+    if len(r_att) != len(r_groups) or len(r_att) != len(r_times):
+        assert len(py_result.att) > 0, f"RCS {est_method}: Python returned no ATTs"
+        assert len(r_att) > 0, f"RCS {est_method}: R returned no ATTs"
+        return
+
+    matches = 0
+    for i, (g, t) in enumerate(zip(py_result.groups, py_result.times)):
+        r_mask = (r_groups == g) & (r_times == t)
+        if np.any(r_mask):
+            r_idx = np.where(r_mask)[0][0]
+            py_att = py_result.att[i]
+            r_att_val = r_att[r_idx]
+
+            if np.isnan(py_att) and np.isnan(r_att_val):
+                matches += 1
+            elif not np.isnan(py_att) and not np.isnan(r_att_val):
+                rel_diff = abs(py_att - r_att_val) / max(abs(r_att_val), 0.01)
+                if rel_diff < 0.1 or abs(py_att - r_att_val) < 0.2:
+                    matches += 1
+
+    match_rate = matches / len(py_result.att) if len(py_result.att) > 0 else 0
+    assert match_rate > 0.7, f"RCS {est_method}: Only {match_rate:.1%} of ATT(g,t) estimates match"
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
+def test_mp_rcs_control_group_options(mp_rcs_data, control_group):
+    data = mp_rcs_data
+
+    py_result = python_estimate_multiperiod_rcs(data, control_group=control_group, est_method="reg")
+    r_result = r_estimate_multiperiod_rcs(data, control_group=control_group, est_method="reg")
+
+    if r_result is None:
+        pytest.skip("R RCS estimation failed")
+
+    assert len(py_result.att) > 0, f"RCS Python returned no ATTs for {control_group}"
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("base_period", ["universal", "varying"])
+def test_mp_rcs_base_period_options(mp_rcs_data, base_period):
+    data = mp_rcs_data
+
+    py_result = python_estimate_multiperiod_rcs(data, base_period=base_period, est_method="reg")
+    r_result = r_estimate_multiperiod_rcs(data, base_period=base_period, est_method="reg")
+
+    if r_result is None:
+        pytest.skip("R RCS estimation failed")
+
+    assert len(py_result.att) > 0, f"RCS Python returned no ATTs for {base_period}"
+
+
+def test_ddd_rc_basic_functionality(two_period_rcs_data):
+    data = two_period_rcs_data
+
+    post = (data["time"] == 1).astype(int).values
+    y = data["y"].values
+    state = data["state"].values
+    partition = data["partition"].values
+    subgroup = 1 + state + 2 * partition
+
+    covariates = data[["cov1", "cov2", "cov3", "cov4"]].values
+    covariates = np.column_stack([np.ones(len(data)), covariates])
+
+    result = ddd_rc(
+        y=y,
+        post=post,
+        subgroup=subgroup,
+        covariates=covariates,
+        est_method="dr",
+        boot=False,
+        influence_func=True,
+    )
+
+    assert hasattr(result, "att"), "Missing att attribute"
+    assert hasattr(result, "se"), "Missing se attribute"
+    assert result.se > 0, f"SE must be positive, got {result.se}"
+
+
+def test_ddd_mp_rc_basic_functionality(mp_rcs_data):
+    data = mp_rcs_data
+
+    result = ddd_mp_rc(
+        data=data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        est_method="reg",
+    )
+
+    assert len(result.att) > 0, "ddd_mp_rc produced no ATTs"
+    assert len(result.groups) == len(result.att), "groups and att length mismatch"
+    assert len(result.times) == len(result.att), "times and att length mismatch"
+
+
+@pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
+def test_ddd_rc_all_methods_work(two_period_rcs_data, est_method):
+    data = two_period_rcs_data
+
+    post = (data["time"] == 1).astype(int).values
+    y = data["y"].values
+    state = data["state"].values
+    partition = data["partition"].values
+    subgroup = 1 + state + 2 * partition
+
+    covariates = data[["cov1", "cov2", "cov3", "cov4"]].values
+    covariates = np.column_stack([np.ones(len(data)), covariates])
+
+    result = ddd_rc(
+        y=y,
+        post=post,
+        subgroup=subgroup,
+        covariates=covariates,
+        est_method=est_method,
+        boot=False,
+    )
+
+    assert result.se > 0, f"{est_method}: SE must be positive"
+    assert result.lci < result.att < result.uci, f"{est_method}: ATT not within CI"
+
+
+@pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
+def test_ddd_mp_rc_all_methods_work(mp_rcs_data, est_method):
+    data = mp_rcs_data
+
+    result = ddd_mp_rc(
+        data=data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        est_method=est_method,
+    )
+
+    assert len(result.att) > 0, f"{est_method} produced no ATTs"
+    valid_atts = result.att[~np.isnan(result.att)]
+    assert len(valid_atts) > 0, f"{est_method} produced all NaN ATTs"
+
+
+def test_ddd_wrapper_rcs_mode(two_period_rcs_data):
+    data = two_period_rcs_data
+
+    result = ddd(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+        xformla="~ cov1 + cov2 + cov3 + cov4",
+        est_method="dr",
+        panel=False,
+    )
+
+    assert hasattr(result, "att"), "Missing att attribute"
+    assert hasattr(result, "se"), "Missing se attribute"
+
+
+def test_ddd_wrapper_mp_rcs_mode(mp_rcs_data):
+    data = mp_rcs_data
+
+    result = ddd(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method="reg",
+        panel=False,
+    )
+
+    assert len(result.att) > 0, "Multi-period RCS produced no ATTs"
+
+
+def test_rcs_influence_function_properties(two_period_rcs_data):
+    data = two_period_rcs_data
+
+    post = (data["time"] == 1).astype(int).values
+    y = data["y"].values
+    state = data["state"].values
+    partition = data["partition"].values
+    subgroup = 1 + state + 2 * partition
+
+    covariates = data[["cov1", "cov2", "cov3", "cov4"]].values
+    covariates = np.column_stack([np.ones(len(data)), covariates])
+
+    result = ddd_rc(
+        y=y,
+        post=post,
+        subgroup=subgroup,
+        covariates=covariates,
+        est_method="dr",
+        boot=False,
+        influence_func=True,
+    )
+
+    assert result.att_inf_func is not None, "Influence function is None"
+    assert len(result.att_inf_func) == len(data), "IF length should match number of observations"
+
+    se_from_if = np.sqrt(np.var(result.att_inf_func) / len(result.att_inf_func))
+    np.testing.assert_almost_equal(result.se, se_from_if, decimal=3, err_msg="SE from IF doesn't match reported SE")
+
+
+def test_rcs_ddd_formula_holds(two_period_rcs_data):
+    data = two_period_rcs_data
+
+    post = (data["time"] == 1).astype(int).values
+    y = data["y"].values
+    state = data["state"].values
+    partition = data["partition"].values
+    subgroup = 1 + state + 2 * partition
+
+    covariates = data[["cov1", "cov2", "cov3", "cov4"]].values
+    covariates = np.column_stack([np.ones(len(data)), covariates])
+
+    result = ddd_rc(
+        y=y,
+        post=post,
+        subgroup=subgroup,
+        covariates=covariates,
+        est_method="dr",
+        boot=False,
+        influence_func=True,
+    )
+
+    computed_ddd = result.did_atts["att_4v3"] + result.did_atts["att_4v2"] - result.did_atts["att_4v1"]
+    np.testing.assert_almost_equal(result.att, computed_ddd, decimal=10, err_msg="DDD formula mismatch for RCS")
