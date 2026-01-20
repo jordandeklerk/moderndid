@@ -21,8 +21,7 @@ Contributing code
 5. Make your code changes
 6. Check that your code follows the style guidelines of the project: ``tox -e check``
 7. Build the documentation: ``tox -e docs``
-8. Run the tests: ``tox -e py310``
-   (change the version number according to the Python you are using)
+8. Run the tests: ``tox -e core`` (fast test suite) or ``tox -e full`` (all tests)
 9. Commit, push, and open a pull request!
 
 Development environment
@@ -41,7 +40,15 @@ Tests are located in the ``tests/`` directory and can be run with tox:
 
 .. code-block:: bash
 
-   tox -e py310
+   tox -e core      # Fast test suite (recommended for development)
+   tox -e full      # Full test suite (all tests including slow ones)
+
+To run tests with coverage reporting:
+
+.. code-block:: bash
+
+   tox -e core-coverage
+   tox -e full-coverage
 
 Documentation
 =============
