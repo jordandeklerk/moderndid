@@ -86,8 +86,8 @@ def ddd_mp_rc(
     r"""Compute the multi-period doubly robust DDD estimator for the ATT with repeated cross-section data.
 
     Implements the multi-period triple difference-in-differences estimator from [1]_
-    for repeated cross-section data. Unlike panel data, different samples are observed
-    in each period.
+    for repeated cross-section data with staggered treatment adoption. Unlike panel
+    data, different samples are observed in each period.
 
     The target parameters are the group-time average treatment effects
 
@@ -97,35 +97,31 @@ def ddd_mp_rc(
     for all treatment cohorts :math:`g \in \mathcal{G}_{\mathrm{trt}}` and time periods
     :math:`t \in \{2, \ldots, T\}` such that :math:`t \geq g`.
 
-    For repeated cross-sections, the estimator follows the approach of Sant'Anna
-    and Zhao (2020) [2]_, extending the DDD framework from [1]_. Unlike panel data
-    where outcomes are differenced within units, RCS requires fitting separate
-    outcome regression models for each (subgroup, time period) cell. Specifically,
-    4 outcome models are fit per comparison
+    For each :math:`(g, t)` cell, the estimator compares outcomes at time :math:`t`
+    to a base period. With ``base_period="universal"``, all comparisons use period
+    :math:`g-1` (the last pre-treatment period for cohort :math:`g`). With
+    ``base_period="varying"``, each comparison uses period :math:`t-1`.
 
-    - :math:`\widehat{m}_{Y}^{S=g_{\mathrm{c}},Q=q}(X, T=0)`: Pre-period, comparison subgroup
-    - :math:`\widehat{m}_{Y}^{S=g_{\mathrm{c}},Q=q}(X, T=1)`: Post-period, comparison subgroup
-    - :math:`\widehat{m}_{Y}^{S=g,Q=1}(X, T=0)`: Pre-period, treated subgroup (for local efficiency)
-    - :math:`\widehat{m}_{Y}^{S=g,Q=1}(X, T=1)`: Post-period, treated subgroup (for local efficiency)
-
-    The combined outcome regression prediction is then
-    :math:`\widehat{m}(X, T) = T \cdot \widehat{m}_{\mathrm{post}}(X) + (1-T) \cdot \widehat{m}_{\mathrm{pre}}(X)`.
+    For repeated cross-sections, the estimator follows the approach of [2]_,
+    extending the DDD framework from [1]_. Unlike panel data where outcomes are
+    differenced within units, RCS fits separate outcome regression
+    models for the target period :math:`t` and the base period for each subgroup.
 
     When multiple comparison groups are available (not-yet-treated setting), the
     estimator combines them using optimal GMM weights (Equation 4.11 from [1]_)
 
     .. math::
-        \widehat{w}_{gmm}^{g,t} = \frac{\widehat{\Omega}_{g,t}^{-1} \mathbf{1}}
+        \widehat{w}_{\mathrm{gmm}}^{g,t} = \frac{\widehat{\Omega}_{g,t}^{-1} \mathbf{1}}
             {\mathbf{1}' \widehat{\Omega}_{g,t}^{-1} \mathbf{1}}
 
     where :math:`\widehat{\Omega}_{g,t}` is the covariance matrix of
-    :math:`\widehat{ATT}_{dr,g_c}(g,t)` across comparison groups. The GMM
+    :math:`\widehat{ATT}_{\mathrm{dr},g_c}(g,t)` across comparison groups. The GMM
     estimator (Equation 4.12 from [1]_) is then
 
     .. math::
-        \widehat{ATT}_{dr,gmm}(g,t) = \frac{\mathbf{1}' \widehat{\Omega}_{g,t}^{-1}}
+        \widehat{ATT}_{\mathrm{dr,gmm}}(g,t) = \frac{\mathbf{1}' \widehat{\Omega}_{g,t}^{-1}}
             {\mathbf{1}' \widehat{\Omega}_{g,t}^{-1} \mathbf{1}}
-            \widehat{ATT}_{dr}(g,t).
+            \widehat{ATT}_{\mathrm{dr}}(g,t).
 
     Parameters
     ----------

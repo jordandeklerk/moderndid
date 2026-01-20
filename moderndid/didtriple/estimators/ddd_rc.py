@@ -74,24 +74,33 @@ def ddd_rc(
     The target parameter is the Average Treatment Effect on the Treated (ATT)
 
     .. math::
-        ATT(g, t) = \mathbb{E}[Y_t(g) - Y_t(\infty) \mid S=g, Q=1],
+        ATT(2, 2) = \mathbb{E}[Y_2(2) - Y_2(\infty) \mid S=2, Q=1],
 
-    where :math:`S=g` denotes units in the treatment-enabling group and :math:`Q=1`
+    where :math:`S=2` denotes units in the treatment-enabling group and :math:`Q=1`
     denotes eligibility for treatment.
 
-    For repeated cross-sections, the estimator follows the approach of Sant'Anna
-    and Zhao (2020) [2]_, extending the DDD framework from [1]_. Unlike panel data
-    where outcomes are differenced within units, RCS requires fitting separate
-    outcome regression models for each (subgroup, time period) cell. Specifically,
-    4 outcome models are fit
+    For repeated cross-sections, the estimator follows the approach of [2]_, extending
+    the DDD framework from [1]_. Unlike panel data where outcomes are differenced
+    within units, RCS fits separate outcome regression models for each (subgroup,
+    time period) cell. The doubly robust DDD estimand combines three DiD comparisons
 
-    - :math:`\widehat{m}_{Y}^{S=g_c,Q=q}(X, T=0)`: Pre-period, comparison subgroup
-    - :math:`\widehat{m}_{Y}^{S=g_c,Q=q}(X, T=1)`: Post-period, comparison subgroup
-    - :math:`\widehat{m}_{Y}^{S=g,Q=1}(X, T=0)`: Pre-period, treated subgroup (for local efficiency)
-    - :math:`\widehat{m}_{Y}^{S=g,Q=1}(X, T=1)`: Post-period, treated subgroup (for local efficiency)
+    .. math::
+        \widehat{ATT}_{\mathrm{dr}}(2,2) &= \mathbb{E}_n\left[
+            \left(\widehat{w}_{\mathrm{trt}}^{S=2,Q=1}
+            - \widehat{w}_{\mathrm{comp}}^{S=2,Q=0}\right)
+            \left(Y - \widehat{m}_{Y}^{S=2,Q=0}(X,T)\right)\right] \\
+        &+ \mathbb{E}_n\left[
+            \left(\widehat{w}_{\mathrm{trt}}^{S=2,Q=1}
+            - \widehat{w}_{\mathrm{comp}}^{S=\infty,Q=1}\right)
+            \left(Y - \widehat{m}_{Y}^{S=\infty,Q=1}(X,T)\right)\right] \\
+        &- \mathbb{E}_n\left[
+            \left(\widehat{w}_{\mathrm{trt}}^{S=2,Q=1}
+            - \widehat{w}_{\mathrm{comp}}^{S=\infty,Q=0}\right)
+            \left(Y - \widehat{m}_{Y}^{S=\infty,Q=0}(X,T)\right)\right],
 
-    The combined outcome regression prediction is then
-    :math:`\widehat{m}(X, T) = T \cdot \widehat{m}_{post}(X) + (1-T) \cdot \widehat{m}_{pre}(X)`.
+    where each outcome model :math:`\widehat{m}_{Y}^{S=s,Q=q}(X,T)` is fit separately
+    for pre and post periods within each subgroup, as units are not tracked across
+    periods in repeated cross-sections.
 
     Parameters
     ----------
