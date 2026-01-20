@@ -10,17 +10,24 @@ Tox manages the environment, its env variables and the command to run
 to allow testing the library with different combinations of optional dependencies
 from the same development env.
 
-To run the full test suite run:
+To run the fast test suite (recommended for development):
 
 .. code-block:: bash
 
-   tox -e py312  # or py310, py311, py313, should match your python version
+   tox -e core
 
-To run only the minimal parts of the test suite:
+To run the full test suite (all tests including slow ones):
 
 .. code-block:: bash
 
-   tox -e minimal  # should work for any python version
+   tox -e full
+
+To run tests with coverage reporting:
+
+.. code-block:: bash
+
+   tox -e core-coverage
+   tox -e full-coverage
 
 To run style checks:
 
@@ -60,11 +67,11 @@ optional dependencies so that tests are skipped if a dependency is not available
 In addition, the env variable ``moderndid_REQUIRE_ALL_DEPS`` can be set to disable this behavior
 and ensure uninstalled dependencies raise an error.
 
-When using ``tox -e pyXXX`` all optional dependencies are installed,
+When using ``tox -e full`` all optional dependencies are installed,
 and ``moderndid_REQUIRE_ALL_DEPS`` is set to ensure all tests in the test suite run.
-However, ``tox -e minimal`` only installs the core dependencies and doesn't set the env variable,
+However, ``tox -e core`` only installs the core dependencies and doesn't set the env variable,
 which ensures that the minimal install is viable and works as expected.
 
 On GitHub Actions, the full test suite is run for all supported Python versions
-and the minimal test suite for one Python version.
+and the core test suite for one Python version.
 The test configuration is defined by the combination of ``tox.ini`` and ``.github/workflows/test.yml``.
