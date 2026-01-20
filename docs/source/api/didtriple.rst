@@ -25,7 +25,7 @@ High-Level Wrapper
    ddd
 
 Two-Period Estimators
-^^^^^^^^^^^^^^^^^^^^^
+----------------------
 
 .. autosummary::
    :toctree: generated/didtriple/
@@ -35,7 +35,7 @@ Two-Period Estimators
    ddd_rc
 
 Multi-Period Estimators
-^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------
 
 .. autosummary::
    :toctree: generated/didtriple/
