@@ -1,4 +1,4 @@
-# Triple Difference-in-Differences Estimators
+# Triple Difference-in-Differences
 
 This module provides a comprehensive implementation of triple difference-in-differences (DDD) estimators, also known as Difference-in-Differences-in-Differences. DDD designs are widely used in empirical work to relax parallel trends assumptions in Difference-in-Differences settings by leveraging a third dimension of variation.
 
@@ -392,8 +392,8 @@ Note that the standard error for ATT(2,2) is lower when using not-yet-treated co
 
 ## References
 
-Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025). *Better Understanding Triple Differences Estimators.*
-arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
-
 Callaway, B., & Sant'Anna, P. H. (2021). *Difference-in-differences with multiple time periods.*
 Journal of Econometrics, 225(2), 200-230. https://doi.org/10.1016/j.jeconom.2020.12.001
+
+Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025). *Better Understanding Triple Differences Estimators.*
+arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
