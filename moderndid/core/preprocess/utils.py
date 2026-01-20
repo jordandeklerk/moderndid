@@ -184,3 +184,85 @@ def extract_vars_from_formula(formula):
         vars_list.append(parsed["outcome"])
     vars_list.extend(parsed["predictors"])
     return vars_list
+
+
+def is_balanced_panel(data, tname, idname):
+    """Check if the panel data is balanced.
+
+    Parameters
+    ----------
+    data : DataFrame
+        The input data.
+    tname : str
+        Name of time column.
+    idname : str
+        Name of id column.
+
+    Returns
+    -------
+    bool
+        True if panel is balanced (all units observed in all periods).
+    """
+    n_periods = data[tname].nunique()
+    obs_per_unit = data.groupby(idname)[tname].nunique()
+
+    return (obs_per_unit == n_periods).all()
+
+
+def add_intercept(covariates):
+    """Add intercept column to covariate matrix.
+
+    Parameters
+    ----------
+    covariates : ndarray or None
+        Covariate matrix.
+
+    Returns
+    -------
+    ndarray or None
+        Covariate matrix with intercept column prepended, or None if input is None.
+    """
+    if covariates is None or covariates.shape[1] == 0:
+        return None
+
+    intercept = np.ones((covariates.shape[0], 1))
+    return np.hstack([intercept, covariates])
+
+
+def extract_covariates(data, xformla):
+    """Extract covariate matrix from DataFrame given a formula.
+
+    Parameters
+    ----------
+    data : DataFrame
+        The input data.
+    xformla : str or None
+        Formula for covariates in the form "~ x1 + x2 + x3".
+
+    Returns
+    -------
+    ndarray or None
+        Covariate matrix with intercept, or None if no covariates.
+    """
+    if xformla is None or xformla == "~1":
+        return None
+
+    formula_str = xformla.strip()
+    if formula_str.startswith("~"):
+        formula_str = "y " + formula_str
+
+    parsed = parse_formula(formula_str)
+    covariate_names = parsed["predictors"]
+
+    if not covariate_names or covariate_names == ["1"]:
+        return None
+
+    covariate_names = [c for c in covariate_names if c != "1"]
+
+    missing_covs = [c for c in covariate_names if c not in data.columns]
+    if missing_covs:
+        raise ValueError(f"Covariates not found in data: {missing_covs}")
+
+    X = data[covariate_names].values
+    intercept = np.ones((X.shape[0], 1))
+    return np.hstack([intercept, X])

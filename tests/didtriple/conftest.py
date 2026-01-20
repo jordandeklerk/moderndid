@@ -158,3 +158,87 @@ def agg_inf_func_data():
     weights = rng.random(len(whichones))
     weights = weights / weights.sum()
     return inf_func_mat, whichones, weights
+
+
+@pytest.fixture
+def two_period_rcs_data():
+    """Generate 2-period repeated cross-section data for DDD testing."""
+    rng = np.random.default_rng(42)
+
+    n_per_period = 1000
+    records = []
+
+    for t in [0, 1]:
+        state = rng.choice([0, 1], size=n_per_period, p=[0.5, 0.5])
+        partition = rng.choice([0, 1], size=n_per_period, p=[0.5, 0.5])
+
+        for i in range(n_per_period):
+            s = state[i]
+            p = partition[i]
+
+            cov1 = rng.normal(0, 1)
+            cov2 = rng.normal(0, 1)
+            cov3 = rng.normal(0, 1)
+            cov4 = rng.normal(0, 1)
+
+            base_y = 1.0 + 0.5 * cov1 + 0.3 * cov2 + 0.2 * cov3 + 0.1 * cov4
+            time_effect = 0.5 * t
+            treat_effect = 0.0
+            if s == 1 and p == 1 and t == 1:
+                treat_effect = 2.0
+
+            y = base_y + time_effect + treat_effect + rng.normal(0, 0.5)
+
+            records.append(
+                {
+                    "id": len(records),
+                    "time": t,
+                    "y": y,
+                    "state": s,
+                    "partition": p,
+                    "cov1": cov1,
+                    "cov2": cov2,
+                    "cov3": cov3,
+                    "cov4": cov4,
+                }
+            )
+
+    return pd.DataFrame(records)
+
+
+@pytest.fixture
+def mp_rcs_data():
+    """Generate multi-period repeated cross-section data for DDD testing."""
+    rng = np.random.default_rng(42)
+
+    n_per_period = 300
+    time_periods = [1, 2, 3, 4, 5]
+    records = []
+
+    for t in time_periods:
+        groups = rng.choice([0, 3, 4], size=n_per_period, p=[0.5, 0.25, 0.25])
+        partition = rng.choice([0, 1], size=n_per_period, p=[0.5, 0.5])
+
+        for i in range(n_per_period):
+            g = groups[i]
+            p = partition[i]
+
+            base_y = rng.normal(0, 1)
+            time_effect = 0.5 * t
+            treat_effect = 0.0
+            if 0 < g <= t and p == 1:
+                treat_effect = 2.0
+
+            y = base_y + time_effect + treat_effect + rng.normal(0, 0.5)
+
+            records.append(
+                {
+                    "id": len(records),
+                    "time": t,
+                    "y": y,
+                    "group": g,
+                    "partition": p,
+                }
+            )
+
+    return pd.DataFrame(records)

@@ -25,31 +25,22 @@ High-Level Wrapper
    ddd
 
 Two-Period Estimators
-^^^^^^^^^^^^^^^^^^^^^
+----------------------
 
 .. autosummary::
    :toctree: generated/didtriple/
    :nosignatures:
 
    ddd_panel
+   ddd_rc
 
 Multi-Period Estimators
-^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------
 
 .. autosummary::
    :toctree: generated/didtriple/
    :nosignatures:
 
    ddd_mp
+   ddd_mp_rc
    agg_ddd
-
-Data Generation
----------------
-
-.. autosummary::
-   :toctree: generated/didtriple/
-   :nosignatures:
-
-   gen_dgp_2periods
-   gen_dgp_mult_periods
-   generate_simple_ddd_data
