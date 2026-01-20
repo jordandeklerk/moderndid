@@ -274,16 +274,16 @@ The output shows effects at each event time (time relative to treatment):
  Overall summary of ATT's based on event-study aggregation:
 
    ATT          Std. Error     [95% Conf. Interval]
-      20.1000       0.3251     [19.4628, 20.7373] *
+      20.1000       0.3560     [19.4022, 20.7978] *
 
 
  Dynamic Effects:
 
     Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
-            -2    -1.0095       0.5761   [-2.3635,  0.3445]
+            -2    -1.0095       0.5296   [-2.2638,  0.2448]
             -1     0.0000          nan   [    nan,     nan]
-             0    19.0341       0.2483   [18.4505, 19.6176] *
-             1    21.1660       0.4453   [20.1195, 22.2125] *
+             0    19.0341       0.2502   [18.4415, 19.6266] *
+             1    21.1660       0.4611   [20.0740, 22.2580] *
 
 ------------------------------------------------------------------------------
  Signif. codes: '*' confidence band does not cover 0
@@ -308,14 +308,14 @@ group_agg = did.agg_ddd(result_mp, aggregation_type='group')
  Overall summary of ATT's based on group/cohort aggregation:
 
    ATT          Std. Error     [95% Conf. Interval]
-      21.1781       0.3935     [20.4069, 21.9493] *
+      21.1781       0.3829     [20.4277, 21.9286] *
 
 
  Group Effects:
 
          Group   Estimate   Std. Error   [95% Simult. Conf. Band]
-             2    16.1715       0.3649   [15.3890, 16.9539] *
-             3    24.9440       0.4593   [23.9591, 25.9289] *
+             2    16.1715       0.3705   [15.3327, 17.0102] *
+             3    24.9440       0.4821   [23.8526, 26.0354] *
 
 ------------------------------------------------------------------------------
  Signif. codes: '*' confidence band does not cover 0
