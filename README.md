@@ -72,7 +72,7 @@ This example uses county-level teen employment data to estimate the effect of mi
 ```python
 import moderndid as did
 
-# Example data
+# County teen employment data
 data = did.load_mpdta()
 
 # Estimate group-time average treatment effects
