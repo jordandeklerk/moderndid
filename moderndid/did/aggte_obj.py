@@ -219,10 +219,10 @@ def format_aggte_result(result):
     sig_marker = "*" if overall_sig else " "
 
     lines.append("")
-    lines.append(f"   ATT          Std. Error     [{conf_level}% Conf. Interval]")
-    lines.append(
-        f"   {result.overall_att:10.4f}   {result.overall_se:10.4f}     [{overall_lci:7.4f}, {overall_uci:7.4f}] {sig_marker}"  # noqa: E501
-    )
+    lines.append(f"{'ATT':>10}      {'Std. Error':>10}     [{conf_level}% Conf. Interval]")
+    att_line = f"{result.overall_att:10.4f}      {result.overall_se:10.4f}"
+    ci_line = f"[{overall_lci:8.4f}, {overall_uci:8.4f}] {sig_marker}"
+    lines.append(f"{att_line}     {ci_line}")
 
     if result.aggregation_type in ["dynamic", "group", "calendar"] and result.event_times is not None:
         lines.append("")
