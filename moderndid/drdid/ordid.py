@@ -8,7 +8,7 @@ from moderndid.core.preprocess import preprocess_drdid
 
 from .estimators.reg_did_panel import reg_did_panel
 from .estimators.reg_did_rc import reg_did_rc
-from .print import print_did_result
+from .format import print_did_result
 
 
 class ORDIDResult(NamedTuple):

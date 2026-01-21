@@ -10,7 +10,7 @@ from .estimators.ipw_did_panel import ipw_did_panel
 from .estimators.ipw_did_rc import ipw_did_rc
 from .estimators.std_ipw_did_panel import std_ipw_did_panel
 from .estimators.std_ipw_did_rc import std_ipw_did_rc
-from .print import print_did_result
+from .format import print_did_result
 
 
 class IPWDIDResult(NamedTuple):

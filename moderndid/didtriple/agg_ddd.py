@@ -104,6 +104,84 @@ def agg_ddd(
         - inf_func: Influence function matrix
         - inf_func_overall: Influence function for overall ATT
 
+    Examples
+    --------
+    First, we compute group-time average treatment effects using the ``ddd`` function
+    on multi-period data with staggered treatment adoption:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import numpy as np
+           ...: from moderndid import ddd, agg_ddd, gen_dgp_mult_periods
+           ...:
+           ...: dgp = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+           ...: df = dgp["data"]
+           ...:
+           ...: ddd_result = ddd(
+           ...:     data=df,
+           ...:     yname="y",
+           ...:     tname="time",
+           ...:     idname="id",
+           ...:     gname="group",
+           ...:     pname="partition",
+           ...:     control_group="nevertreated",
+           ...:     est_method="dr",
+           ...: )
+           ...: ddd_result
+
+    Now we can aggregate these group-time effects in different ways. The "simple" aggregation
+    computes an overall ATT by taking a weighted average of all post-treatment group-time ATTs:
+
+    .. ipython::
+        :okwarning:
+
+        In [2]: simple_agg = agg_ddd(ddd_result, aggregation_type="simple")
+           ...: print(simple_agg)
+
+    The "group" aggregation computes average treatment effects separately for each treatment
+    cohort (units first treated in the same period):
+
+    .. ipython::
+        :okwarning:
+
+        In [3]: group_agg = agg_ddd(ddd_result, aggregation_type="group")
+           ...: print(group_agg)
+
+    The "eventstudy" aggregation (default) creates an event study, showing how treatment
+    effects evolve relative to the treatment start date:
+
+    .. ipython::
+        :okwarning:
+
+        In [4]: es_agg = agg_ddd(ddd_result, aggregation_type="eventstudy")
+           ...: print(es_agg)
+
+    We can also limit the event study to specific event times:
+
+    .. ipython::
+        :okwarning:
+
+        In [5]: es_limited = agg_ddd(
+           ...:     ddd_result,
+           ...:     aggregation_type="eventstudy",
+           ...:     min_e=-2,
+           ...:     max_e=2
+           ...: )
+           ...: print(es_limited)
+
+    The "calendar" aggregation computes average treatment effects by calendar time period:
+
+    .. ipython::
+        :okwarning:
+
+        In [6]: calendar_agg = agg_ddd(ddd_result, aggregation_type="calendar")
+           ...: print(calendar_agg)
+
+    See Also
+    --------
+    ddd : Compute group-time average treatment effects for triple differences.
+
     References
     ----------
 

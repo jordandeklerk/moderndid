@@ -23,6 +23,7 @@ High-Level Wrapper
    :nosignatures:
 
    ddd
+   agg_ddd
 
 Two-Period Estimators
 ----------------------
@@ -43,4 +44,3 @@ Multi-Period Estimators
 
    ddd_mp
    ddd_mp_rc
-   agg_ddd
