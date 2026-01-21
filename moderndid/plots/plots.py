@@ -70,28 +70,6 @@ def plot_att_gt(
     -------
     ggplot
         A plotnine ggplot object that can be further customized.
-
-    Examples
-    --------
-    Basic usage:
-
-    >>> from moderndid import att_gt, load_mpdta
-    >>> from moderndid.plots import plot_att_gt
-    >>> df = load_mpdta()
-    >>> result = att_gt(data=df, yname="lemp", tname="year",
-    ...                 gname="first.treat", idname="countyreal")
-    >>> plot = plot_att_gt(result)
-    >>> plot.show()
-
-    Customization with plotnine:
-
-    >>> from plotnine import labs, theme_bw
-    >>> custom_plot = (
-    ...     plot_att_gt(result)
-    ...     + theme_bw()
-    ...     + labs(title="My Custom Title")
-    ... )
-    >>> custom_plot.show()
     """
     from moderndid.did.multiperiod_obj import MPResult as MPResultClass
 
@@ -166,30 +144,6 @@ def plot_event_study(
     -------
     ggplot
         A plotnine ggplot object that can be further customized.
-
-    Examples
-    --------
-    Basic usage:
-
-    >>> from moderndid import att_gt, aggte, load_mpdta
-    >>> from moderndid.plots import plot_event_study
-    >>> df = load_mpdta()
-    >>> mp_result = att_gt(data=df, yname="lemp", tname="year",
-    ...                    gname="first.treat", idname="countyreal")
-    >>> es_result = aggte(mp_result, type="dynamic")
-    >>> plot = plot_event_study(es_result)
-    >>> plot.show()
-
-    Customization with plotnine:
-
-    >>> from plotnine import labs, theme_bw, ylim
-    >>> custom_plot = (
-    ...     plot_event_study(es_result)
-    ...     + theme_bw()
-    ...     + labs(title="Dynamic Treatment Effects", y="Effect Size")
-    ...     + ylim(-0.5, 0.3)
-    ... )
-    >>> custom_plot.show()
     """
     from moderndid.didcont.estimation.container import PTEResult as PTEResultClass
 
@@ -267,19 +221,6 @@ def plot_dose_response(
     -------
     ggplot
         A plotnine ggplot object that can be further customized.
-
-    Examples
-    --------
-    Plot dose-response plot:
-
-    >>> from moderndid.plots import plot_dose_response
-    >>> plot = plot_dose_response(dose_result, effect_type="att")
-    >>> plot.show()
-
-    Plot marginal effects (ACRT):
-
-    >>> plot = plot_dose_response(dose_result, effect_type="acrt")
-    >>> plot.show()
     """
     df = doseresult_to_polars(result, effect_type=effect_type)
 
@@ -340,16 +281,6 @@ def plot_sensitivity(
     -------
     ggplot
         A plotnine ggplot object that can be further customized.
-
-    Examples
-    --------
-    Plot sensitivity analysis:
-
-    >>> from moderndid.didhonest import honest_did
-    >>> from moderndid.plots import plot_sensitivity
-    >>> hd_result = honest_did(es_result, event_time=0, sensitivity_type="smoothness")
-    >>> plot = plot_sensitivity(hd_result)
-    >>> plot.show()
     """
     df = honestdid_to_polars(result)
 
