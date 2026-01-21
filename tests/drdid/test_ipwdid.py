@@ -20,10 +20,10 @@ def nsw_data():
 def test_ipwdid_panel_basic(nsw_data, est_method):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         est_method=est_method,
     )
@@ -43,18 +43,18 @@ def test_ipwdid_panel_basic(nsw_data, est_method):
 def test_ipwdid_panel_with_covariates(nsw_data):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ + black + married + nodegree + hisp",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ + black + married + nodegree + hisp",
         panel=True,
         est_method="ipw",
     )
 
     assert isinstance(result.att, float)
     assert result.se > 0
-    assert result.call_params["covariates_formula"] == "~ age + educ + black + married + nodegree + hisp"
+    assert result.call_params["xformla"] == "~ age + educ + black + married + nodegree + hisp"
 
 
 def test_ipwdid_panel_with_weights(nsw_data):
@@ -66,28 +66,28 @@ def test_ipwdid_panel_with_weights(nsw_data):
 
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
-        weights_col="weight",
+        weightsname="weight",
         est_method="ipw",
     )
 
     assert isinstance(result.att, float)
     assert result.se > 0
-    assert result.call_params["weights_col"] == "weight"
+    assert result.call_params["weightsname"] == "weight"
 
 
 def test_ipwdid_panel_with_influence_func(nsw_data):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         inf_func=True,
         est_method="ipw",
@@ -110,11 +110,11 @@ def test_ipwdid_panel_with_influence_func(nsw_data):
 def test_ipwdid_panel_bootstrap(nsw_data, boot_type, est_method):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         boot=True,
         boot_type=boot_type,
@@ -142,11 +142,11 @@ def test_ipwdid_panel_bootstrap(nsw_data, boot_type, est_method):
 def test_ipwdid_repeated_cross_section(nsw_data, panel, est_method):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
+        yname="re",
+        tname="year",
+        treatname="experimental",
         panel=panel,
-        covariates_formula="~ age + educ + black",
+        xformla="~ age + educ + black",
         est_method=est_method,
     )
 
@@ -159,11 +159,11 @@ def test_ipwdid_repeated_cross_section(nsw_data, panel, est_method):
 def test_ipwdid_rc_with_bootstrap(nsw_data):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
+        yname="re",
+        tname="year",
+        treatname="experimental",
         panel=False,
-        covariates_formula="~ age + educ",
+        xformla="~ age + educ",
         boot=True,
         n_boot=50,
         est_method="ipw",
@@ -177,10 +177,10 @@ def test_ipwdid_rc_with_bootstrap(nsw_data):
 def test_ipwdid_trim_level(nsw_data, trim_level):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         trim_level=trim_level,
         est_method="ipw",
@@ -199,12 +199,12 @@ def test_ipwdid_missing_id_col_panel():
         }
     )
 
-    with pytest.raises(ValueError, match="id_col must be provided when panel=True"):
+    with pytest.raises(ValueError, match="idname must be provided when panel=True"):
         ipwdid(
             data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
+            yname="y",
+            tname="time",
+            treatname="treat",
             panel=True,
         )
 
@@ -219,11 +219,11 @@ def test_ipwdid_missing_id_col_panel():
 def test_ipwdid_formula_variations(nsw_data, formula):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula=formula,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla=formula,
         panel=True,
         est_method="ipw",
     )
@@ -235,11 +235,11 @@ def test_ipwdid_formula_variations(nsw_data, formula):
 def test_ipwdid_call_params_stored(nsw_data):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         boot=True,
         n_boot=50,
@@ -248,11 +248,11 @@ def test_ipwdid_call_params_stored(nsw_data):
         trim_level=0.99,
     )
 
-    assert result.call_params["y_col"] == "re"
-    assert result.call_params["time_col"] == "year"
-    assert result.call_params["treat_col"] == "experimental"
-    assert result.call_params["id_col"] == "id"
-    assert result.call_params["covariates_formula"] == "~ age + educ"
+    assert result.call_params["yname"] == "re"
+    assert result.call_params["tname"] == "year"
+    assert result.call_params["treatname"] == "experimental"
+    assert result.call_params["idname"] == "id"
+    assert result.call_params["xformla"] == "~ age + educ"
     assert result.call_params["panel"] is True
     assert result.call_params["boot"] is True
     assert result.call_params["n_boot"] == 50
@@ -265,10 +265,10 @@ def test_ipwdid_call_params_stored(nsw_data):
 def test_ipwdid_args_output(nsw_data):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         boot=True,
         boot_type="weighted",
@@ -294,11 +294,11 @@ def test_ipwdid_reproducibility(nsw_data):
     np.random.seed(42)
     result1 = ipwdid(
         data=small_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         est_method="ipw",
     )
@@ -306,11 +306,11 @@ def test_ipwdid_reproducibility(nsw_data):
     np.random.seed(42)
     result2 = ipwdid(
         data=small_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         est_method="ipw",
     )
@@ -325,11 +325,11 @@ def test_ipwdid_subset_columns(nsw_data):
 
     result = ipwdid(
         data=subset_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         est_method="std_ipw",
     )
@@ -342,11 +342,11 @@ def test_ipwdid_subset_columns(nsw_data):
 def test_ipwdid_no_covariates(nsw_data, covariates_formula):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula=covariates_formula,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla=covariates_formula,
         panel=True,
         est_method="ipw",
     )
@@ -358,22 +358,22 @@ def test_ipwdid_no_covariates(nsw_data, covariates_formula):
 def test_ipwdid_no_covariates_equivalence(nsw_data):
     result1 = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula=None,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla=None,
         panel=True,
         est_method="ipw",
     )
 
     result2 = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ 1",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ 1",
         panel=True,
         est_method="ipw",
     )
@@ -394,11 +394,11 @@ def test_ipwdid_categorical_covariates(nsw_data):
 
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ C(age_group) + educ + black",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ C(age_group) + educ + black",
         panel=True,
         est_method="ipw",
     )
@@ -425,11 +425,11 @@ def test_ipwdid_missing_values_handled():
 
     result = ipwdid(
         data=df,
-        y_col="y",
-        time_col="time",
-        treat_col="treat",
-        id_col="id",
-        covariates_formula="~ x1",
+        yname="y",
+        tname="time",
+        treatname="treat",
+        idname="id",
+        xformla="~ x1",
         panel=True,
     )
     assert isinstance(result.att, float)
@@ -450,10 +450,10 @@ def test_ipwdid_unbalanced_panel_warning():
     with pytest.warns(UserWarning, match="Panel data is unbalanced"):
         result = ipwdid(
             data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
-            id_col="id",
+            yname="y",
+            tname="time",
+            treatname="treat",
+            idname="id",
             panel=True,
         )
         assert isinstance(result.att, float)
@@ -472,10 +472,10 @@ def test_ipwdid_more_than_two_periods_error():
     with pytest.raises(ValueError):
         ipwdid(
             data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
-            id_col="id",
+            yname="y",
+            tname="time",
+            treatname="treat",
+            idname="id",
             panel=True,
         )
 
@@ -498,11 +498,11 @@ def test_ipwdid_estimators_consistency(nsw_data, panel, method):
     try:
         result = ipwdid(
             data=small_data,
-            y_col="re",
-            time_col="year",
-            treat_col="experimental",
-            id_col="id" if panel else None,
-            covariates_formula="~ age + educ + black",
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id" if panel else None,
+            xformla="~ age + educ + black",
             panel=panel,
             est_method=method,
             trim_level=0.99,
@@ -524,11 +524,11 @@ def test_ipwdid_comparison_std_vs_regular(nsw_data):
     try:
         ipw_result = ipwdid(
             data=data,
-            y_col="re",
-            time_col="year",
-            treat_col="experimental",
-            id_col="id",
-            covariates_formula="~ age + educ",
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            xformla="~ age + educ",
             panel=True,
             est_method="ipw",
             trim_level=0.99,
@@ -541,11 +541,11 @@ def test_ipwdid_comparison_std_vs_regular(nsw_data):
     try:
         std_ipw_result = ipwdid(
             data=data,
-            y_col="re",
-            time_col="year",
-            treat_col="experimental",
-            id_col="id",
-            covariates_formula="~ age + educ",
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            xformla="~ age + educ",
             panel=True,
             est_method="std_ipw",
             trim_level=0.99,
@@ -565,11 +565,11 @@ def test_ipwdid_comparison_std_vs_regular(nsw_data):
 def test_ipwdid_extreme_trimming(nsw_data):
     result = ipwdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         est_method="ipw",
         trim_level=0.9,
@@ -589,30 +589,30 @@ def test_ipwdid_comparison_with_other_estimators(nsw_data):
 
     ipw_result = ipwdid(
         data=data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         est_method="ipw",
     )
 
     dr_result = drdid(
         data=data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         est_method="trad",
     )
 
     or_result = ordid(
         data=data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
     )
 

@@ -33,14 +33,14 @@ DRDIDResult = print_did_result(DRDIDResult)
 
 def drdid(
     data,
-    y_col,
-    time_col,
-    treat_col,
-    id_col=None,
-    covariates_formula=None,
+    yname,
+    tname,
+    idname=None,
+    treatname=None,
+    xformla=None,
     panel=True,
     est_method="imp",
-    weights_col=None,
+    weightsname=None,
     boot=False,
     boot_type="weighted",
     n_boot=999,
@@ -58,17 +58,17 @@ def drdid(
     data : pd.DataFrame | pl.DataFrame
         The input data containing outcome, time, unit ID, treatment,
         and optionally covariates and weights. Accepts both pandas and polars DataFrames.
-    y_col : str
+    yname : str
         Name of the column containing the outcome variable.
-    time_col : str
+    tname : str
         Name of the column containing the time periods (must have exactly 2 periods).
-    treat_col : str
+    idname : str | None, default None
+        Name of the column containing the unit ID. Required if panel=True.
+    treatname : str
         Name of the column containing the treatment group indicator.
         For panel data: time-invariant indicator (1 if ever treated, 0 if never treated).
         For repeated cross-sections: treatment status in the post-period.
-    id_col : str | None, default None
-        Name of the column containing the unit ID. Required if panel=True.
-    covariates_formula : str | None, default None
+    xformla : str | None, default None
         A formula for the covariates to include in the model.
         Should be of the form "~ X1 + X2" (intercept is always included).
         If None, equivalent to "~ 1" (intercept only).
@@ -93,7 +93,7 @@ def drdid(
         - "trad_local": For repeated cross-sections only. Traditional DR DiD
           estimator from equation (3.3) in Sant'Anna and Zhao (2020) that is
           not locally efficient.
-    weights_col : str | None, default None
+    weightsname : str | None, default None
         Name of the column containing sampling weights.
         If None, all observations have equal weight.
         Weights are normalized to have mean 1.
@@ -139,12 +139,12 @@ def drdid(
            ...:
            ...: att_result = moderndid.drdid(
            ...:     data=nsw_data,
-           ...:     y_col="re",
-           ...:     time_col="year",
-           ...:     treat_col="experimental",
-           ...:     id_col="id",
+           ...:     yname="re",
+           ...:     tname="year",
+           ...:     idname="id",
+           ...:     treatname="experimental",
+           ...:     xformla="~ age + educ + black + married + nodegree + hisp + re74",
            ...:     panel=True,
-           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
            ...:     est_method="imp",
            ...: )
 
@@ -158,12 +158,12 @@ def drdid(
 
         In [3]: att_result_boot = moderndid.drdid(
            ...:     data=nsw_data,
-           ...:     y_col="re",
-           ...:     time_col="year",
-           ...:     treat_col="experimental",
-           ...:     id_col="id",
+           ...:     yname="re",
+           ...:     tname="year",
+           ...:     idname="id",
+           ...:     treatname="experimental",
+           ...:     xformla="~ age + educ + black + married + nodegree + hisp + re74",
            ...:     panel=True,
-           ...:     covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
            ...:     est_method="imp",
            ...:     boot=True,
            ...: )
@@ -217,19 +217,22 @@ def drdid(
            Journal of Econometrics, Vol. 219 (1), pp. 101-122.
            https://doi.org/10.1016/j.jeconom.2020.06.003
     """
-    if panel and id_col is None:
-        raise ValueError("id_col must be provided when panel=True")
+    if treatname is None:
+        raise ValueError("treatname is required. Please specify the treatment column.")
+
+    if panel and idname is None:
+        raise ValueError("idname must be provided when panel=True")
 
     call_params = {
-        "y_col": y_col,
-        "time_col": time_col,
-        "treat_col": treat_col,
-        "id_col": id_col,
-        "covariates_formula": covariates_formula,
+        "yname": yname,
+        "tname": tname,
+        "idname": idname,
+        "treatname": treatname,
+        "xformla": xformla,
         "data_shape": data.shape,
         "panel": panel,
         "est_method": est_method,
-        "weights_col": weights_col,
+        "weightsname": weightsname,
         "boot": boot,
         "boot_type": boot_type,
         "n_boot": n_boot,
@@ -239,13 +242,13 @@ def drdid(
 
     dp = preprocess_drdid(
         data=data,
-        yname=y_col,
-        tname=time_col,
-        treat_col=treat_col,
-        idname=id_col if panel else None,
-        xformla=covariates_formula,
+        yname=yname,
+        tname=tname,
+        treat_col=treatname,
+        idname=idname if panel else None,
+        xformla=xformla,
         panel=panel,
-        weightsname=weights_col,
+        weightsname=weightsname,
         bstrap=boot,
         boot_type=boot_type,
         biters=n_boot,
