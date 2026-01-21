@@ -22,8 +22,8 @@ def test_att_gt_basic_functionality(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         xformla="~ 1",
         est_method="reg",
     )
@@ -43,8 +43,8 @@ def test_att_gt_with_covariates(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         xformla="~ lpop",
         control_group="nevertreated",
         bstrap=False,
@@ -60,8 +60,8 @@ def test_att_gt_notyettreated_control(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         control_group="notyettreated",
         bstrap=False,
     )
@@ -75,8 +75,8 @@ def test_att_gt_with_anticipation(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         anticipation=1,
         bstrap=False,
     )
@@ -93,8 +93,8 @@ def test_att_gt_bootstrap_inference(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         bstrap=True,
         biters=20,
         cband=True,
@@ -113,8 +113,8 @@ def test_att_gt_estimation_methods(est_method, mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         est_method=est_method,
         bstrap=False,
     )
@@ -128,8 +128,8 @@ def test_att_gt_universal_base_period(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         base_period="universal",
         bstrap=False,
     )
@@ -145,8 +145,8 @@ def test_att_gt_with_weights(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         weightsname="weights",
         bstrap=False,
     )
@@ -176,8 +176,8 @@ def test_att_gt_unbalanced_panel(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         allow_unbalanced_panel=True,
         bstrap=False,
     )
@@ -194,8 +194,8 @@ def test_att_gt_clustering(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         clustervars=["cluster"],
         bstrap=True,
         biters=10,
@@ -210,8 +210,8 @@ def test_att_gt_wald_pretest(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         bstrap=False,
     )
 
@@ -250,8 +250,8 @@ def test_att_gt_all_treated_notyettreated(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         control_group="notyettreated",
         bstrap=False,
     )
@@ -265,8 +265,8 @@ def test_att_gt_summary_output(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         bstrap=False,
     )
 
@@ -281,8 +281,8 @@ def test_att_gt_influence_functions(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         bstrap=False,
     )
 
@@ -297,8 +297,8 @@ def test_att_gt_variance_matrix(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         bstrap=False,
     )
 
@@ -314,8 +314,8 @@ def test_att_gt_custom_alpha(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         alp=0.10,
         bstrap=False,
     )
@@ -329,8 +329,8 @@ def test_att_gt_print_details(mpdta_data):
         data=mpdta_data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         bstrap=False,
     )
 
@@ -345,8 +345,8 @@ def test_att_gt_bootstrap_reproducibility(mpdta_data):
         data=data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         bstrap=True,
         biters=50,
         random_state=42,
@@ -356,8 +356,8 @@ def test_att_gt_bootstrap_reproducibility(mpdta_data):
         data=data,
         yname="lemp",
         tname="year",
-        gname="first.treat",
         idname="countyreal",
+        gname="first.treat",
         bstrap=True,
         biters=50,
         random_state=42,

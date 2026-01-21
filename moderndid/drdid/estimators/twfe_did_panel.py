@@ -165,12 +165,12 @@ def twfe_did_panel(
 
         reg = ordid(
             data=data_long,
-            y_col="y",
-            time_col="post",
-            id_col="id",
-            treat_col="d",
-            weights_col="w",
-            covariates_formula=None,
+            yname="y",
+            tname="post",
+            idname="id",
+            treatname="d",
+            weightsname="w",
+            xformla=None,
             panel=True,
             boot=boot,
             boot_type=boot_type,

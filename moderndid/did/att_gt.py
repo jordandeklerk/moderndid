@@ -25,8 +25,8 @@ def att_gt(
     data,
     yname,
     tname,
-    gname,
     idname=None,
+    gname=None,
     xformla=None,
     weightsname=None,
     alp=0.05,
@@ -56,13 +56,13 @@ def att_gt(
         The name of the outcome variable.
     tname : str
         The name of the column containing the time periods.
+    idname : str, optional
+        The individual (cross-sectional unit) id name. Required for panel data.
     gname : str
         The name of the variable that contains the first period when a particular
         observation is treated. This should be a positive number for all observations
         in treated groups. It defines which "group" a unit belongs to. It should be 0
         for units in the untreated group.
-    idname : str, optional
-        The individual (cross-sectional unit) id name. Required for panel data.
     xformla : str, optional
         A formula for the covariates to include in the model. It should be of the
         form "~ X1 + X2". Default is None which is equivalent to xformla="~1".
@@ -158,6 +158,9 @@ def att_gt(
            with multiple time periods." Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001
     """
+    if gname is None:
+        raise ValueError("gname is required. Please specify the treatment group column.")
+
     control_group_enum = ControlGroup(control_group)
     est_method_enum = EstimationMethod(est_method) if isinstance(est_method, str) else est_method
     base_period_enum = BasePeriod(base_period)
