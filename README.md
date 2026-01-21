@@ -90,20 +90,22 @@ print(result)
 The output shows treatment effects for each group (defined by when they were first treated) at each time period:
 
 ```
+Reference: Callaway and Sant'Anna (2021)
+
 Group-Time Average Treatment Effects:
-  Group   Time   ATT(g,t)   Std. Error  [95% Simult. Conf. Band]
-   2004   2004    -0.0105       0.0239  [ -0.0745,   0.0535]
-   2004   2005    -0.0704       0.0304  [ -0.1517,   0.0109]
-   2004   2006    -0.1373       0.0363  [ -0.2346,  -0.0400] *
-   2004   2007    -0.1008       0.0340  [ -0.1919,  -0.0097] *
-   2006   2004     0.0065       0.0242  [ -0.0582,   0.0712]
-   2006   2005    -0.0028       0.0199  [ -0.0560,   0.0505]
-   2006   2006    -0.0046       0.0175  [ -0.0515,   0.0423]
-   2006   2007    -0.0412       0.0211  [ -0.0976,   0.0152]
-   2007   2004     0.0305       0.0144  [ -0.0082,   0.0692]
-   2007   2005    -0.0027       0.0170  [ -0.0483,   0.0429]
-   2007   2006    -0.0311       0.0177  [ -0.0784,   0.0162]
-   2007   2007    -0.0261       0.0159  [ -0.0687,   0.0166]
+  Group   Time   ATT(g,t)   Std. Error    [95% Simult.  Conf. Band]
+   2004   2004    -0.0105       0.0232    [ -0.0743,   0.0533]
+   2004   2005    -0.0704       0.0319    [ -0.1582,   0.0173]
+   2004   2006    -0.1373       0.0356    [ -0.2352,  -0.0394] *
+   2004   2007    -0.1008       0.0331    [ -0.1918,  -0.0098] *
+   2006   2004     0.0065       0.0241    [ -0.0597,   0.0727]
+   2006   2005    -0.0028       0.0202    [ -0.0582,   0.0527]
+   2006   2006    -0.0046       0.0179    [ -0.0538,   0.0446]
+   2006   2007    -0.0412       0.0211    [ -0.0992,   0.0167]
+   2007   2004     0.0305       0.0145    [ -0.0095,   0.0705]
+   2007   2005    -0.0027       0.0173    [ -0.0502,   0.0448]
+   2007   2006    -0.0311       0.0190    [ -0.0833,   0.0211]
+   2007   2007    -0.0261       0.0168    [ -0.0721,   0.0200]
 ---
 Signif. codes: '*' confidence band does not cover 0
 
@@ -126,28 +128,36 @@ print(event_study)
  Aggregate Treatment Effects (Event Study)
 ==============================================================================
 
+ Call:
+   aggte(MP, type='dynamic')
+
  Overall summary of ATT's based on event-study/dynamic aggregation:
 
-       ATT      Std. Error     [95% Conf. Interval]
-   -0.0772          0.0204     [ -0.1172,  -0.0372] *
+   ATT          Std. Error     [95% Conf. Interval]
+      -0.0772       0.0214     [-0.1191, -0.0353] *
 
 
  Dynamic Effects:
 
     Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
-            -3     0.0269       0.0146   [-0.0127,  0.0666]
-            -2    -0.0046       0.0136   [-0.0413,  0.0322]
-            -1    -0.0245       0.0143   [-0.0633,  0.0144]
-             0    -0.0199       0.0118   [-0.0519,  0.0121]
-             1    -0.0510       0.0168   [-0.0966, -0.0053] *
-             2    -0.1373       0.0363   [-0.2357, -0.0388] *
-             3    -0.1008       0.0342   [-0.1936, -0.0080] *
+            -3     0.0305       0.0151   [-0.0084,  0.0694]
+            -2    -0.0006       0.0132   [-0.0346,  0.0335]
+            -1    -0.0245       0.0139   [-0.0602,  0.0113]
+             0    -0.0199       0.0120   [-0.0508,  0.0109]
+             1    -0.0510       0.0172   [-0.0951, -0.0068] *
+             2    -0.1373       0.0371   [-0.2326, -0.0419] *
+             3    -0.1008       0.0352   [-0.1912, -0.0104] *
 
 ------------------------------------------------------------------------------
  Signif. codes: '*' confidence band does not cover 0
+
+ Control Group: Never Treated
+ Anticipation Periods: 0
+ Estimation Method: Doubly Robust
+==============================================================================
 ```
 
-Plot the event study results:
+We can also use built-in plotting functionality to plot the event study results:
 
 ```python
 did.plot_event_study(event_study)
@@ -156,6 +166,8 @@ did.plot_event_study(event_study)
 <img src="docs/source/_static/event_study.png" width="600" alt="Event study plot">
 
 ## Available Methods
+
+Each core module includes a dedicated walkthrough covering methodology background, API usage, and guidance on interpreting results.
 
 ### Core Implementations
 
