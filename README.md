@@ -125,19 +125,19 @@ print(event_study)
 
 ```
 ==============================================================================
- Aggregate Treatment Effects (Event Study)
+Aggregate Treatment Effects (Event Study)
 ==============================================================================
 
- Call:
-   aggte(MP, type='dynamic')
+Call:
+  aggte(MP, type='dynamic')
 
- Overall summary of ATT's based on event-study/dynamic aggregation:
+Overall summary of ATT's based on event-study/dynamic aggregation:
 
-   ATT          Std. Error     [95% Conf. Interval]
-      -0.0772       0.0214     [-0.1191, -0.0353] *
+      ATT      Std. Error     [95% Conf. Interval]
+  -0.0772          0.0214     [-0.1191, -0.0353] *
 
 
- Dynamic Effects:
+Dynamic Effects:
 
     Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
             -3     0.0305       0.0151   [-0.0084,  0.0694]
@@ -149,11 +149,11 @@ print(event_study)
              3    -0.1008       0.0352   [-0.1912, -0.0104] *
 
 ------------------------------------------------------------------------------
- Signif. codes: '*' confidence band does not cover 0
+Signif. codes: '*' confidence band does not cover 0
 
- Control Group: Never Treated
- Anticipation Periods: 0
- Estimation Method: Doubly Robust
+Control Group: Never Treated
+Anticipation Periods: 0
+Estimation Method: Doubly Robust
 ==============================================================================
 ```
 
