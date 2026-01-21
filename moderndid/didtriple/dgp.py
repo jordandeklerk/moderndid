@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 __all__ = ["gen_dgp_2periods", "gen_dgp_mult_periods", "generate_simple_ddd_data"]
 
@@ -58,7 +58,7 @@ def gen_dgp_2periods(
     dict
         Dictionary containing:
 
-        - *data*: pd.DataFrame in long format with columns [id, state, partition,
+        - *data*: pl.DataFrame in long format with columns [id, state, partition,
           time, y, cov1, cov2, cov3, cov4, cluster]
         - *true_att*: True ATT (always 0)
         - *oracle_att*: Oracle ATT from potential outcomes
@@ -144,12 +144,12 @@ def gen_dgp_2periods(
         y1 = treated_eligible * y11 + (1 - treated_eligible) * y10
         clusters = rng.integers(1, 51, size=n)
 
-        df_t1 = pd.DataFrame(
+        df_t1 = pl.DataFrame(
             {
                 "id": np.arange(1, n + 1),
                 "state": state,
                 "partition": partition,
-                "time": 1,
+                "time": np.ones(n, dtype=int),
                 "y": y0,
                 "cov1": z[:, 0],
                 "cov2": z[:, 1],
@@ -159,12 +159,12 @@ def gen_dgp_2periods(
             }
         )
 
-        df_t2 = pd.DataFrame(
+        df_t2 = pl.DataFrame(
             {
                 "id": np.arange(1, n + 1),
                 "state": state,
                 "partition": partition,
-                "time": 2,
+                "time": np.full(n, 2, dtype=int),
                 "y": y1,
                 "cov1": z[:, 0],
                 "cov2": z[:, 1],
@@ -174,8 +174,8 @@ def gen_dgp_2periods(
             }
         )
 
-        df = pd.concat([df_t1, df_t2], ignore_index=True)
-        df = df.sort_values(["id", "time"]).reset_index(drop=True)
+        df = pl.concat([df_t1, df_t2])
+        df = df.sort(["id", "time"])
 
     else:
         df_list = []
@@ -243,12 +243,12 @@ def gen_dgp_2periods(
 
             clusters = rng.integers(1, 51, size=n)
 
-            df_t = pd.DataFrame(
+            df_t = pl.DataFrame(
                 {
                     "id": np.arange(id_offset + 1, id_offset + n + 1),
                     "state": state,
                     "partition": partition,
-                    "time": t,
+                    "time": np.full(n, t, dtype=int),
                     "y": y,
                     "cov1": z[:, 0],
                     "cov2": z[:, 1],
@@ -260,7 +260,7 @@ def gen_dgp_2periods(
             df_list.append(df_t)
             id_offset += n
 
-        df = pd.concat(df_list, ignore_index=True)
+        df = pl.concat(df_list)
 
     return {
         "data": df,
@@ -308,9 +308,9 @@ def gen_dgp_mult_periods(
     dict
         Dictionary containing:
 
-        - *data*: pd.DataFrame in long format with columns [id, group, partition,
+        - *data*: pl.DataFrame in long format with columns [id, group, partition,
           time, y, cov1, cov2, cov3, cov4, cluster]
-        - *data_wide*: pd.DataFrame in wide format with one row per unit (only for panel=True)
+        - *data_wide*: pl.DataFrame in wide format with one row per unit (only for panel=True)
         - *es_0_oracle*: Oracle event-study parameter at event time 0
         - *prob_g2_p1*: Proportion of units with cohort=2 and eligibility
         - *prob_g3_p1*: Proportion of units with cohort=3 and eligibility
@@ -416,7 +416,7 @@ def gen_dgp_mult_periods(
 
         clusters = rng.integers(1, 51, size=n)
 
-        data_wide = pd.DataFrame(
+        data_wide = pl.DataFrame(
             {
                 "id": np.arange(1, n + 1),
                 "group": cohort,
@@ -434,12 +434,12 @@ def gen_dgp_mult_periods(
 
         df_list = []
         for t, y_vals in enumerate([y_t1, y_t2, y_t3], start=1):
-            df_t = pd.DataFrame(
+            df_t = pl.DataFrame(
                 {
                     "id": np.arange(1, n + 1),
                     "group": cohort,
                     "partition": partition,
-                    "time": t,
+                    "time": np.full(n, t, dtype=int),
                     "y": y_vals,
                     "cov1": z[:, 0],
                     "cov2": z[:, 1],
@@ -450,8 +450,8 @@ def gen_dgp_mult_periods(
             )
             df_list.append(df_t)
 
-        data = pd.concat(df_list, ignore_index=True)
-        data = data.sort_values(["id", "time"]).reset_index(drop=True)
+        data = pl.concat(df_list)
+        data = data.sort(["id", "time"])
 
         return {
             "data": data,
@@ -540,12 +540,12 @@ def gen_dgp_mult_periods(
 
         clusters = rng.integers(1, 51, size=n)
 
-        df_t = pd.DataFrame(
+        df_t = pl.DataFrame(
             {
                 "id": np.arange(id_offset + 1, id_offset + n + 1),
                 "group": cohort,
                 "partition": partition,
-                "time": t,
+                "time": np.full(n, t, dtype=int),
                 "y": y,
                 "cov1": z[:, 0],
                 "cov2": z[:, 1],
@@ -557,7 +557,7 @@ def gen_dgp_mult_periods(
         df_list.append(df_t)
         id_offset += n
 
-    data = pd.concat(df_list, ignore_index=True)
+    data = pl.concat(df_list)
 
     all_pi_2a = np.array(all_pi_2a)
     all_pi_3a = np.array(all_pi_3a)
@@ -577,7 +577,7 @@ def generate_simple_ddd_data(
     n,
     att,
     random_state=None,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """Generate simple DDD panel data with a known treatment effect.
 
     Parameters
@@ -591,7 +591,7 @@ def generate_simple_ddd_data(
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         Long-format DataFrame with columns:
 
         - *id*: Unit identifier
@@ -626,32 +626,32 @@ def generate_simple_ddd_data(
         + rng.standard_normal(n)
     )
 
-    df_t1 = pd.DataFrame(
+    df_t1 = pl.DataFrame(
         {
             "id": np.arange(1, n + 1),
             "state": state,
             "partition": partition,
-            "time": 1,
+            "time": np.ones(n, dtype=int),
             "y": y0,
             "x1": x1,
             "x2": x2,
         }
     )
 
-    df_t2 = pd.DataFrame(
+    df_t2 = pl.DataFrame(
         {
             "id": np.arange(1, n + 1),
             "state": state,
             "partition": partition,
-            "time": 2,
+            "time": np.full(n, 2, dtype=int),
             "y": y1,
             "x1": x1,
             "x2": x2,
         }
     )
 
-    df = pd.concat([df_t1, df_t2], ignore_index=True)
-    df = df.sort_values(["id", "time"]).reset_index(drop=True)
+    df = pl.concat([df_t1, df_t2])
+    df = df.sort(["id", "time"])
 
     return df
 

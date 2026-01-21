@@ -1,8 +1,11 @@
 """Tests for continuous treatment difference-in-differences estimation."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid.didcont.cont_did import (
     cont_did,
@@ -267,7 +270,7 @@ def test_cont_did_significance_level(contdid_data, alp):
 
 
 def test_cont_did_auto_gname(contdid_data):
-    data_no_g = contdid_data.drop(columns=["G"])
+    data_no_g = contdid_data.drop("G")
 
     result = cont_did(
         yname="Y",
@@ -306,7 +309,7 @@ def test_cont_did_empirical_bootstrap_fallback(contdid_data):
 
 
 def test_cont_did_invalid_data():
-    with pytest.raises(TypeError, match="data must be a pandas DataFrame"):
+    with pytest.raises(TypeError, match="data must be a pandas or polars DataFrame"):
         cont_did(
             yname="Y",
             dname="D",
@@ -317,7 +320,7 @@ def test_cont_did_invalid_data():
 
 
 def test_cont_did_missing_columns():
-    df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    df = pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
 
     with pytest.raises(ValueError, match="Missing columns"):
         cont_did(
@@ -417,7 +420,7 @@ def test_cont_did_anticipation_warning(contdid_data):
 @pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
 @pytest.mark.filterwarnings("ignore:Simultaneous critical value is arguably 'too large':UserWarning")
 def test_cont_did_weights_warning(contdid_data):
-    contdid_data["weights"] = np.random.uniform(0.5, 2.0, len(contdid_data))
+    contdid_data = contdid_data.with_columns(pl.lit(np.random.uniform(0.5, 2.0, len(contdid_data))).alias("weights"))
 
     with pytest.warns(UserWarning, match="Sampling weights not fully tested"):
         cont_did(
@@ -482,7 +485,7 @@ def test_cont_did_acrt_auto_dvals(simple_panel_data):
 
 
 def test_cont_did_acrt_no_treated(simple_panel_data):
-    simple_panel_data["D"] = 0
+    simple_panel_data = simple_panel_data.with_columns(pl.lit(0).alias("D"))
 
     result = cont_did_acrt(
         gt_data=simple_panel_data,
@@ -510,7 +513,7 @@ def test_cont_two_by_two_subset_notyettreated(contdid_data):
     assert "gt_data" in result
     assert "n1" in result
     assert "disidx" in result
-    assert isinstance(result["gt_data"], pd.DataFrame)
+    assert isinstance(result["gt_data"], pl.DataFrame)
     assert result["n1"] > 0
     assert isinstance(result["disidx"], np.ndarray)
 
@@ -530,7 +533,7 @@ def test_cont_two_by_two_subset_nevertreated(contdid_data):
     )
 
     assert "gt_data" in result
-    assert isinstance(result["gt_data"], pd.DataFrame)
+    assert isinstance(result["gt_data"], pl.DataFrame)
     assert "name" in result["gt_data"].columns
     assert "D" in result["gt_data"].columns
 
@@ -569,7 +572,7 @@ def test_cont_two_by_two_subset_universal_base(contdid_data):
 
     assert "gt_data" in result
     gt_data = result["gt_data"]
-    assert set(gt_data["name"].unique()) == {"pre", "post"}
+    assert set(gt_data["name"].unique().to_list()) == {"pre", "post"}
 
 
 def test_cck_estimator_basic(cck_test_data):
@@ -624,7 +627,7 @@ def test_cck_estimator_custom_dvals(cck_test_data):
 
 
 def test_cck_estimator_invalid_groups():
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "id": [1, 1, 1, 2, 2, 2, 3, 3, 3],
             "time": [1, 2, 3, 1, 2, 3, 1, 2, 3],
@@ -650,7 +653,7 @@ def test_cck_estimator_invalid_groups():
 
 
 def test_cck_estimator_invalid_times():
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "id": [1, 1, 1, 2, 2, 2],
             "time": [1, 2, 3, 1, 2, 3],
@@ -676,7 +679,7 @@ def test_cck_estimator_invalid_times():
 
 
 def test_cck_estimator_no_treated():
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "id": [1, 1, 2, 2, 3, 3, 4, 4],
             "time": [1, 2, 1, 2, 1, 2, 1, 2],

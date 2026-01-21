@@ -5,8 +5,9 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
+from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess import (
     choose_knots_quantile as _choose_knots_quantile,
 )
@@ -62,8 +63,8 @@ def pte(
         Name of time period variable.
     idname : str
         Name of unit ID variable.
-    data : pd.DataFrame
-        Panel data.
+    data : pd.DataFrame | pl.DataFrame
+        Panel data. Accepts both pandas and polars DataFrames.
     setup_pte_fun : callable
         Function to setup PTE parameters.
     subset_fun : callable
@@ -147,12 +148,14 @@ def pte(
         )
 
         att_gt_data = {
-            "att": bootstrap_result.attgt_results["att"].values,
-            "group": bootstrap_result.attgt_results["group"].values,
-            "time_period": bootstrap_result.attgt_results["time_period"].values,
-            "se": bootstrap_result.attgt_results.get(
-                "se", np.nan * np.ones(len(bootstrap_result.attgt_results))
-            ).values,
+            "att": bootstrap_result.attgt_results["att"].to_numpy(),
+            "group": bootstrap_result.attgt_results["group"].to_numpy(),
+            "time_period": bootstrap_result.attgt_results["time_period"].to_numpy(),
+            "se": (
+                bootstrap_result.attgt_results["se"].to_numpy()
+                if "se" in bootstrap_result.attgt_results.columns
+                else np.nan * np.ones(len(bootstrap_result.attgt_results))
+            ),
         }
 
         att_gt_result = {
@@ -172,11 +175,13 @@ def pte(
         event_study = None
         if bootstrap_result.dyn_results is not None:
             event_study = {
-                "e": bootstrap_result.dyn_results["e"].values,
-                "att_e": bootstrap_result.dyn_results["att_e"].values,
-                "se": bootstrap_result.dyn_results.get(
-                    "se", np.nan * np.ones(len(bootstrap_result.dyn_results))
-                ).values,
+                "e": bootstrap_result.dyn_results["e"].to_numpy(),
+                "att_e": bootstrap_result.dyn_results["att_e"].to_numpy(),
+                "se": (
+                    bootstrap_result.dyn_results["se"].to_numpy()
+                    if "se" in bootstrap_result.dyn_results.columns
+                    else np.nan * np.ones(len(bootstrap_result.dyn_results))
+                ),
             }
 
         return PTEResult(att_gt=att_gt_result, overall_att=overall_att, event_study=event_study, ptep=ptep)
@@ -232,7 +237,7 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
     base_period = ptep.base_period
     anticipation = ptep.anticipation
 
-    n_units = data[idname].nunique()
+    n_units = data[idname].n_unique()
 
     time_periods = ptep.t_list
     groups = ptep.g_list
@@ -300,15 +305,17 @@ def setup_pte_basic(
     biters=100,
 ):
     """Perform basic setup for panel treatment effects."""
-    data = data.copy()
+    data = data.clone()
 
-    data["G"] = data[gname]
-    data["id"] = data[idname]
-    data["period"] = data[tname]
-    data["Y"] = data[yname]
+    data = data.with_columns(
+        pl.col(gname).alias("G"),
+        pl.col(idname).alias("id"),
+        pl.col(tname).alias("period"),
+        pl.col(yname).alias("Y"),
+    )
 
-    time_periods = np.unique(data["period"])
-    groups = np.unique(data["G"])
+    time_periods = np.unique(data["period"].to_numpy())
+    groups = np.unique(data["G"].to_numpy())
 
     group_list = np.sort(groups)[1:]
     time_period_list = np.sort(time_periods)[1:]
@@ -364,16 +371,18 @@ def setup_pte(
     **kwargs,
 ):
     """Perform setup for panel treatment effects."""
-    data = data.copy()
+    data = to_polars(data).clone()
 
-    g_series = data[gname]
-    period_series = data[tname]
-    weights_series = data[weightsname].values if weightsname else np.ones(len(data))
+    g_series = data[gname].to_numpy()
+    period_series = data[tname].to_numpy()
+    weights_series = data[weightsname].to_numpy() if weightsname else np.ones(len(data))
 
-    data["G"] = g_series
-    data["id"] = data[idname]
-    data["Y"] = data[yname]
-    data[".w"] = weights_series
+    data = data.with_columns(
+        pl.col(gname).alias("G"),
+        pl.col(idname).alias("id"),
+        pl.col(yname).alias("Y"),
+        pl.Series(".w", weights_series),
+    )
 
     original_time_periods = np.unique(period_series)
 
@@ -384,13 +393,15 @@ def setup_pte(
     ):
         raise ValueError("Time periods must be positive integers.")
 
-    original_groups = np.sort(np.unique(data["G"]))[1:]
+    original_groups = np.sort(np.unique(data["G"].to_numpy()))[1:]
 
     sorted_original_time_periods = np.sort(original_time_periods)
     time_map = {orig: i + 1 for i, orig in enumerate(sorted_original_time_periods)}
 
-    data["period"] = _map_to_idx(period_series, time_map)
-    data["G"] = _map_to_idx(g_series, time_map)
+    data = data.with_columns(
+        pl.Series("period", _map_to_idx(period_series, time_map)),
+        pl.Series("G", _map_to_idx(g_series, time_map)),
+    )
 
     recoded_time_periods = _map_to_idx(sorted_original_time_periods, time_map)
     recoded_groups = _map_to_idx([g for g in original_groups if g in time_map], time_map)
@@ -406,7 +417,7 @@ def setup_pte(
     g_list = g_list[g_list >= (min_t_for_g + anticipation)]
 
     groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
-    data = data[~data["G"].isin(groups_to_drop)]
+    data = data.filter(~pl.col("G").is_in(groups_to_drop))
 
     params_dict = {
         "yname": yname,
@@ -514,24 +525,24 @@ def setup_pte_cont(
     **kwargs,
 ):
     """Perform setup for DiD with a continuous treatment."""
-    data = data.copy()
-    data["D"] = data[dname]
+    data = data.clone()
+    data = data.with_columns(pl.col(dname).alias("D"))
 
-    dose_but_untreated = (data[gname] == 0) & (data[dname] != 0)
-    if np.any(dose_but_untreated):
-        num_adjusted = np.sum(dose_but_untreated)
-        data.loc[dose_but_untreated, "D"] = 0
+    dose_but_untreated = (pl.col(gname) == 0) & (pl.col(dname) != 0)
+    num_adjusted = data.filter(dose_but_untreated).height
+    if num_adjusted > 0:
+        data = data.with_columns(pl.when(dose_but_untreated).then(pl.lit(0)).otherwise(pl.col("D")).alias("D"))
         warnings.warn(
             f"Set dose equal to 0 for {num_adjusted} units that have a dose but were in the never treated group."
         )
 
-    timing_no_dose = (data[gname] > 0) & (data[tname] >= data[gname]) & (data[dname] == 0)
-    if np.any(timing_no_dose):
-        num_dropped = np.sum(timing_no_dose)
-        data = data[~timing_no_dose]
+    timing_no_dose = (pl.col(gname) > 0) & (pl.col(tname) >= pl.col(gname)) & (pl.col(dname) == 0)
+    num_dropped = data.filter(timing_no_dose).height
+    if num_dropped > 0:
+        data = data.filter(~timing_no_dose)
         warnings.warn(f"Dropped {num_dropped} observations that are post-treatment but have no dose.")
 
-    dose_values = data.loc[(data[gname] > 0) & (data[tname] >= data[gname]), dname].values
+    dose_values = data.filter((pl.col(gname) > 0) & (pl.col(tname) >= pl.col(gname)))[dname].to_numpy()
 
     pte_params = setup_pte(
         yname=yname,
@@ -603,19 +614,28 @@ def _build_pte_params(
         Parameters object for panel treatment effects estimation.
     """
     config = cont_did_data.config
-    data = cont_did_data.data.copy()
+    data = cont_did_data.data.clone()
 
-    data["G"] = data[config.gname]
-    data["id"] = data[config.idname]
-    data["period"] = data[config.tname]
-    data["Y"] = data[config.yname]
-    data["D"] = data[config.dname] if config.dname else 0
+    data = data.with_columns(
+        [
+            pl.col(config.gname).alias("G"),
+            pl.col(config.idname).alias("id"),
+            pl.col(config.tname).alias("period"),
+            pl.col(config.yname).alias("Y"),
+        ]
+    )
+    if config.dname:
+        data = data.with_columns(pl.col(config.dname).alias("D"))
+    else:
+        data = data.with_columns(pl.lit(0).alias("D"))
 
     if config.weightsname:
-        weight_map = dict(zip(cont_did_data.time_invariant_data[config.idname], cont_did_data.weights))
-        data[".w"] = data[config.idname].map(weight_map)
+        weight_map = dict(
+            zip(cont_did_data.time_invariant_data[config.idname].to_list(), cont_did_data.weights.tolist())
+        )
+        data = data.with_columns(pl.col(config.idname).replace_strict(weight_map, default=1.0).alias(".w"))
     else:
-        data[".w"] = 1.0
+        data = data.with_columns(pl.lit(1.0).alias(".w"))
 
     time_periods = config.time_periods
     groups = config.treated_groups
@@ -635,11 +655,12 @@ def _build_pte_params(
     g_list = g_list[g_list >= (min_t_for_g + anticipation)]
 
     groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
-    data = data[~data["G"].isin(groups_to_drop)]
+    data = data.filter(~pl.col("G").is_in(groups_to_drop))
 
-    is_treated = np.isfinite(data["G"])
+    is_treated = data["G"].is_finite()
     is_post_treatment = data["period"] >= data["G"]
-    dose_values = data.loc[is_treated & is_post_treatment, "D"].values
+    mask = is_treated & is_post_treatment
+    dose_values = data.filter(mask)["D"].to_numpy()
     positive_doses = dose_values[dose_values > 0]
 
     knots = _choose_knots_quantile(positive_doses, config.num_knots)
@@ -704,24 +725,26 @@ def _two_by_two_subset(
         base_period_val = main_base_period
 
     if control_group == "notyettreated":
-        unit_mask = (data["G"] == g) | (data["G"] > tp) | (data["G"] == 0)
+        unit_mask = (pl.col("G") == g) | (pl.col("G") > tp) | (pl.col("G") == 0)
     else:
-        unit_mask = (data["G"] == g) | np.isinf(data["G"]) | (data["G"] == 0)
+        unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite() | (pl.col("G") == 0)
 
-    this_data = data.loc[unit_mask].copy()
+    this_data = data.filter(unit_mask)
 
-    time_mask = (this_data["period"] == tp) | (this_data["period"] == base_period_val)
-    this_data = this_data.loc[time_mask]
+    time_mask = (pl.col("period") == tp) | (pl.col("period") == base_period_val)
+    this_data = this_data.filter(time_mask)
 
-    this_data["name"] = np.where(this_data["period"] == tp, "post", "pre")
-    this_data["D"] = 1 * (this_data["G"] == g)
+    this_data = this_data.with_columns(
+        pl.when(pl.col("period") == tp).then(pl.lit("post")).otherwise(pl.lit("pre")).alias("name"),
+        (pl.col("G") == g).cast(pl.Int64).alias("D"),
+    )
 
-    if this_data["D"].nunique() < 2:
-        return {"gt_data": pd.DataFrame(), "n1": 0, "disidx": np.array([])}
+    if this_data["D"].n_unique() < 2:
+        return {"gt_data": pl.DataFrame(), "n1": 0, "disidx": np.array([])}
 
-    n1 = this_data["id"].nunique()
-    all_ids = data["id"].unique()
-    subset_ids = this_data["id"].unique()
+    n1 = this_data["id"].n_unique()
+    all_ids = data["id"].unique().to_numpy()
+    subset_ids = this_data["id"].unique().to_numpy()
     disidx = np.isin(all_ids, subset_ids)
 
     return {"gt_data": this_data, "n1": n1, "disidx": disidx}

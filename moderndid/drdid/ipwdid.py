@@ -53,9 +53,9 @@ def ipwdid(
 
     Parameters
     ----------
-    data : pd.DataFrame
+    data : pd.DataFrame | pl.DataFrame
         The input data containing outcome, time, unit ID, treatment,
-        and optionally covariates and weights.
+        and optionally covariates and weights. Accepts both pandas and polars DataFrames.
     y_col : str
         Name of the column containing the outcome variable.
     time_col : str

@@ -4,6 +4,9 @@ import re
 
 import numpy as np
 import pandas as pd
+import polars as pl
+
+from ..dataframe import to_polars
 
 
 def map_to_idx(vals, time_map):
@@ -28,32 +31,95 @@ def map_to_idx(vals, time_map):
 
 
 def make_balanced_panel(data, idname, tname):
-    """Make balanced panel."""
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("data must be a pandas DataFrame")
+    """Make balanced panel.
 
-    n_periods = data[tname].nunique()
-    balanced = data.groupby(idname).filter(lambda x: len(x) == n_periods)
-    return balanced.reset_index(drop=True)
+    Parameters
+    ----------
+    data : pd.DataFrame or pl.DataFrame
+        Input panel data.
+    idname : str
+        Name of the unit identifier column.
+    tname : str
+        Name of the time period column.
+
+    Returns
+    -------
+    pl.DataFrame
+        Balanced panel data containing only units observed in all time periods.
+    """
+    if not isinstance(data, (pl.DataFrame, pd.DataFrame)):
+        raise TypeError("data must be a pandas or polars DataFrame")
+
+    df = to_polars(data)
+    if df.is_empty():
+        return df
+
+    n_periods = df[tname].n_unique()
+    counts = df.group_by(idname).len()
+    complete_ids = counts.filter(pl.col("len") == n_periods)[idname].to_list()
+    return df.filter(pl.col(idname).is_in(complete_ids))
 
 
 def get_first_difference(df, idname, yname, tname):
-    """Get first difference."""
-    df = df.sort_values([idname, tname])
-    lagged = df.groupby(idname)[yname].shift(1)
-    return df[yname] - lagged
+    """Get first difference.
+
+    Parameters
+    ----------
+    df : pd.DataFrame or pl.DataFrame
+        Input data.
+    idname : str
+        Name of unit identifier column.
+    yname : str
+        Name of outcome column.
+    tname : str
+        Name of time column.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with original columns plus 'dy' column containing first differences.
+    """
+    data = to_polars(df)
+    data = data.sort([idname, tname])
+    return data.with_columns((pl.col(yname) - pl.col(yname).shift(1).over(idname)).alias("dy"))
 
 
 def get_group(df, idname, tname, treatname):
-    """Get group."""
-    df_sorted = df.sort_values([idname, tname])
+    """Get group.
 
-    is_treated = df_sorted[treatname] > 0
-    first_treat_mask = (is_treated.groupby(df_sorted[idname]).cumsum() == 1) & is_treated
+    Parameters
+    ----------
+    df : pd.DataFrame or pl.DataFrame
+        Input data.
+    idname : str
+        Name of unit identifier column.
+    tname : str
+        Name of time column.
+    treatname : str
+        Name of treatment column.
 
-    id_to_group = df_sorted[df_sorted[tname].where(first_treat_mask).notna()].groupby(idname)[tname].first()
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with original columns plus 'G' column containing group assignment.
+    """
+    data = to_polars(df)
+    df_sorted = data.sort([idname, tname])
 
-    return df[idname].map(id_to_group).fillna(0).astype(int)
+    df_with_treat = df_sorted.with_columns(
+        (pl.col(treatname) > 0).alias("_is_treated"),
+        (pl.col(treatname) > 0).cum_sum().over(idname).alias("_treat_cumsum"),
+    ).with_columns(((pl.col("_treat_cumsum") == 1) & pl.col("_is_treated")).alias("_first_treat"))
+
+    first_treat_df = (
+        df_with_treat.filter(pl.col("_first_treat")).group_by(idname).agg(pl.col(tname).first().alias("_group"))
+    )
+
+    result = data.join(first_treat_df, on=idname, how="left").with_columns(
+        pl.col("_group").fill_null(0).cast(pl.Int64).alias("G")
+    )
+
+    return result.drop("_group")
 
 
 def two_by_two_subset(
@@ -64,7 +130,29 @@ def two_by_two_subset(
     anticipation=0,
     base_period="varying",
 ):
-    """Two by two subset for treatment DiD."""
+    """Two by two subset for treatment DiD.
+
+    Parameters
+    ----------
+    data : pd.DataFrame or pl.DataFrame
+        Input data with columns 'G', 'period', 'id'.
+    g : numeric
+        Treatment group.
+    tp : numeric
+        Time period.
+    control_group : str
+        Control group type ('notyettreated' or 'nevertreated').
+    anticipation : int
+        Anticipation periods.
+    base_period : str
+        Base period type ('varying' or 'universal').
+
+    Returns
+    -------
+    dict
+        Dictionary with 'gt_data', 'n1', 'disidx'.
+    """
+    df = to_polars(data)
     main_base_period = g - anticipation - 1
 
     if base_period == "varying":
@@ -73,24 +161,26 @@ def two_by_two_subset(
         base_period_val = main_base_period
 
     if control_group == "notyettreated":
-        unit_mask = (data["G"] == g) | (data["G"] > tp)
+        unit_mask = (pl.col("G") == g) | (pl.col("G") > tp)
     else:
-        unit_mask = (data["G"] == g) | np.isinf(data["G"])
+        unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite()
 
-    this_data = data.loc[unit_mask].copy()
+    this_data = df.filter(unit_mask)
 
-    time_mask = (this_data["period"] == tp) | (this_data["period"] == base_period_val)
-    this_data = this_data.loc[time_mask]
+    time_mask = (pl.col("period") == tp) | (pl.col("period") == base_period_val)
+    this_data = this_data.filter(time_mask)
 
-    this_data["name"] = np.where(this_data["period"] == tp, "post", "pre")
-    this_data["D"] = 1 * (this_data["G"] == g)
+    this_data = this_data.with_columns(
+        pl.when(pl.col("period") == tp).then(pl.lit("post")).otherwise(pl.lit("pre")).alias("name"),
+        (pl.col("G") == g).cast(pl.Int64).alias("D"),
+    )
 
-    if this_data["D"].nunique() < 2:
-        return {"gt_data": pd.DataFrame(), "n1": 0, "disidx": np.array([])}
+    if this_data["D"].n_unique() < 2:
+        return {"gt_data": pl.DataFrame(), "n1": 0, "disidx": np.array([])}
 
-    n1 = this_data["id"].nunique()
-    all_ids = data["id"].unique()
-    subset_ids = this_data["id"].unique()
+    n1 = this_data["id"].n_unique()
+    all_ids = df["id"].unique().to_numpy()
+    subset_ids = this_data["id"].unique().to_numpy()
     disidx = np.isin(all_ids, subset_ids)
 
     return {"gt_data": this_data, "n1": n1, "disidx": disidx}
@@ -191,7 +281,7 @@ def is_balanced_panel(data, tname, idname):
 
     Parameters
     ----------
-    data : DataFrame
+    data : pd.DataFrame or pl.DataFrame
         The input data.
     tname : str
         Name of time column.
@@ -203,10 +293,11 @@ def is_balanced_panel(data, tname, idname):
     bool
         True if panel is balanced (all units observed in all periods).
     """
-    n_periods = data[tname].nunique()
-    obs_per_unit = data.groupby(idname)[tname].nunique()
+    df = to_polars(data)
+    n_periods = df[tname].n_unique()
+    obs_per_unit = df.group_by(idname).agg(pl.col(tname).n_unique().alias("n_obs"))
 
-    return (obs_per_unit == n_periods).all()
+    return (obs_per_unit["n_obs"] == n_periods).all()
 
 
 def add_intercept(covariates):
@@ -234,7 +325,7 @@ def extract_covariates(data, xformla):
 
     Parameters
     ----------
-    data : DataFrame
+    data : pd.DataFrame or pl.DataFrame
         The input data.
     xformla : str or None
         Formula for covariates in the form "~ x1 + x2 + x3".
@@ -246,6 +337,8 @@ def extract_covariates(data, xformla):
     """
     if xformla is None or xformla == "~1":
         return None
+
+    df = to_polars(data)
 
     formula_str = xformla.strip()
     if formula_str.startswith("~"):
@@ -259,10 +352,10 @@ def extract_covariates(data, xformla):
 
     covariate_names = [c for c in covariate_names if c != "1"]
 
-    missing_covs = [c for c in covariate_names if c not in data.columns]
+    missing_covs = [c for c in covariate_names if c not in df.columns]
     if missing_covs:
         raise ValueError(f"Covariates not found in data: {missing_covs}")
 
-    X = data[covariate_names].values
+    X = df.select(covariate_names).to_numpy()
     intercept = np.ones((X.shape[0], 1))
     return np.hstack([intercept, X])

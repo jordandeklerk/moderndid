@@ -4,6 +4,10 @@
 import numpy as np
 import pytest
 
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
+
 from moderndid import aggte, att_gt, load_mpdta
 
 
@@ -234,10 +238,10 @@ def test_aggte_extreme_event_times():
 @pytest.mark.filterwarnings("ignore:Setting an item of incompatible dtype:FutureWarning")
 def test_aggte_non_sequential_time_periods():
     df = load_mpdta()
-    mask = df["first.treat"] != 0
-    df.loc[mask, "first.treat"] = df.loc[mask, "first.treat"] + 1000
-    df.loc[~mask, "first.treat"] = np.inf
-    df["year"] = df["year"] + 1000
+    df = df.with_columns(
+        pl.when(pl.col("first.treat") != 0).then(pl.col("first.treat") + 1000).otherwise(np.inf).alias("first.treat")
+    )
+    df = df.with_columns((pl.col("year") + 1000).alias("year"))
 
     result = att_gt(
         data=df,
@@ -258,9 +262,7 @@ def test_aggte_non_sequential_time_periods():
 @pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
 def test_aggte_all_treated_same_time():
     df = load_mpdta()
-    mask = df["first.treat"] != 0
-    df.loc[mask, "first.treat"] = 2004
-    df.loc[~mask, "first.treat"] = np.inf
+    df = df.with_columns(pl.when(pl.col("first.treat") != 0).then(2004).otherwise(np.inf).alias("first.treat"))
 
     result = att_gt(
         data=df,

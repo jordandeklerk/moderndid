@@ -2,7 +2,10 @@
 """Tests for processing panel data."""
 
 import numpy as np
-import pandas as pd
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid.didcont.estimation.container import (
     AttgtResult,
@@ -36,7 +39,7 @@ def test_pte_result_creation():
         "gname": "g",
         "tname": "t",
         "idname": "id",
-        "data": pd.DataFrame({"y": [1, 2], "g": [0, 1]}),
+        "data": pl.DataFrame({"y": [1, 2], "g": [0, 1]}),
         "g_list": np.array([1, 2]),
         "t_list": np.array([1, 2]),
         "cband": True,
@@ -70,7 +73,7 @@ def test_pte_result_creation():
 
 
 def test_compute_pte_basic():
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "y": [1, 2, 3, 4, 5, 6],
             "id": [1, 1, 2, 2, 3, 3],
@@ -131,7 +134,7 @@ def test_compute_pte_basic():
 
 
 def test_compute_pte_universal_base_period():
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "y": np.random.randn(10),
             "id": [1, 1, 1, 2, 2, 2, 3, 3, 3, 3],
@@ -185,7 +188,7 @@ def test_compute_pte_universal_base_period():
 
 
 def test_bootstrap_logic():
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "y": np.random.randn(12),
             "id": [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4],
@@ -226,7 +229,9 @@ def test_bootstrap_logic():
         return PTEParams(**params_dict)
 
     def mock_subset_fun(data, g, tp, **kwargs):
-        return {"gt_data": data.head(4), "n1": 2, "disidx": np.array([True, True, False, False])}
+        if isinstance(data, pl.DataFrame):
+            return {"gt_data": data.head(4), "n1": 2, "disidx": np.array([True, True, False, False])}
+        return {"gt_data": data[:4], "n1": 2, "disidx": np.array([True, True, False, False])}
 
     def mock_attgt_with_inf(gt_data, **kwargs):
         return AttgtResult(attgt=0.5, inf_func=np.array([0.1, 0.2]), extra_gt_returns=None)
@@ -279,13 +284,13 @@ def test_bootstrap_logic():
 
 
 def test_pte_dose_type():
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "y": np.random.randn(10),
             "id": [1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
             "time": [1, 2] * 5,
             "group": [0, 0, 2, 2, 0, 0, 2, 2, 0, 0],
-            "D": [0, 0, 0, 0.5, 0, 0, 0, 0.8, 0, 0],
+            "D": [0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.8, 0.0, 0.0],
         }
     )
 

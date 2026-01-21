@@ -369,7 +369,7 @@ def sensitivity_to_dataset(robust_df, original_result, param_col="M"):
 
     Parameters
     ----------
-    robust_df : pd.DataFrame
+    robust_df : pl.DataFrame
         DataFrame with sensitivity results. Columns: lb, ub, method, M (or Mbar).
     original_result : NamedTuple
         Original confidence interval result with lb, ub, method.
@@ -388,7 +388,7 @@ def sensitivity_to_dataset(robust_df, original_result, param_col="M"):
 
         Dimensions: (param_value, method)
     """
-    import pandas as pd
+    import polars as pl
 
     m_col = param_col if param_col in robust_df.columns else param_col.lower()
     if m_col not in robust_df.columns:
@@ -401,13 +401,13 @@ def sensitivity_to_dataset(robust_df, original_result, param_col="M"):
         else:
             raise ValueError(f"Parameter column not found in DataFrame: {robust_df.columns}")
 
-    m_values = np.sort(robust_df[m_col].unique())
+    m_values = np.sort(robust_df[m_col].unique().to_numpy())
 
     m_gap = np.min(np.diff(m_values)) if len(m_values) > 1 else 1
     m_min = np.min(m_values)
     original_m = m_min - m_gap
 
-    original_df = pd.DataFrame(
+    original_df = pl.DataFrame(
         [
             {
                 m_col: original_m,
@@ -417,10 +417,10 @@ def sensitivity_to_dataset(robust_df, original_result, param_col="M"):
             }
         ]
     )
-    df = pd.concat([original_df, robust_df], ignore_index=True)
+    df = pl.concat([original_df, robust_df])
 
-    all_m_values = np.sort(df[m_col].unique())
-    all_methods = df["method"].unique()
+    all_m_values = np.sort(df[m_col].unique().to_numpy())
+    all_methods = df["method"].unique().to_list()
 
     n_params = len(all_m_values)
     n_methods = len(all_methods)
@@ -430,10 +430,10 @@ def sensitivity_to_dataset(robust_df, original_result, param_col="M"):
 
     for i, m_val in enumerate(all_m_values):
         for j, method in enumerate(all_methods):
-            mask = (df[m_col] == m_val) & (df["method"] == method)
-            if mask.any():
-                lb_array[i, j] = df.loc[mask, "lb"].values[0]
-                ub_array[i, j] = df.loc[mask, "ub"].values[0]
+            filtered = df.filter((pl.col(m_col) == m_val) & (pl.col("method") == method))
+            if len(filtered) > 0:
+                lb_array[i, j] = filtered["lb"][0]
+                ub_array[i, j] = filtered["ub"][0]
 
     midpoint_array = (lb_array + ub_array) / 2
     halfwidth_array = (ub_array - lb_array) / 2
@@ -489,15 +489,15 @@ def honestdid_to_dataset(result):
     """
     df = result.robust_ci
 
-    if df.empty:
+    if df.is_empty():
         raise ValueError("HonestDiDResult has empty robust_ci DataFrame")
 
     if "M" in df.columns:
         dim_name = "m_value"
-        coord_values = df["M"].values
+        coord_values = df["M"].to_numpy()
     elif "Mbar" in df.columns:
         dim_name = "mbar_value"
-        coord_values = df["Mbar"].values
+        coord_values = df["Mbar"].to_numpy()
     else:
         dim_name = "index"
         coord_values = np.arange(len(df))
@@ -507,7 +507,7 @@ def honestdid_to_dataset(result):
     for col in df.columns:
         if col not in ["M", "Mbar", "method"]:
             data_vars[col.lower().replace(" ", "_")] = {
-                "values": df[col].values,
+                "values": df[col].to_numpy(),
                 "dims": [dim_name],
                 "coords": {dim_name: coord_values},
             }

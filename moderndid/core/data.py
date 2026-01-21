@@ -5,12 +5,14 @@ import pickle
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
+import polars as pl
+
+from .dataframe import to_polars
 
 __all__ = ["load_nsw", "load_mpdta", "load_ehec", "load_engel"]
 
 
-def load_nsw() -> pd.DataFrame:
+def load_nsw() -> pl.DataFrame:
     """Load the NSW (National Supported Work) demonstration dataset.
 
     This dataset is from the National Supported Work (NSW) Demonstration,
@@ -23,7 +25,7 @@ def load_nsw() -> pd.DataFrame:
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         A DataFrame with the following columns:
 
         - *id*: Individual identifier
@@ -62,10 +64,10 @@ def load_nsw() -> pd.DataFrame:
     with gzip.open(data_path, "rb") as f:
         nsw_data = pickle.load(f)
 
-    return nsw_data
+    return to_polars(nsw_data)
 
 
-def load_mpdta() -> pd.DataFrame:
+def load_mpdta() -> pl.DataFrame:
     """Load the County Teen Employment dataset for multiple time period DiD analysis.
 
     This dataset contains county-level teen employment rates from 2003-2007
@@ -74,7 +76,7 @@ def load_mpdta() -> pd.DataFrame:
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         A DataFrame with the following columns:
 
         - *year*: Year (2003-2007)
@@ -103,10 +105,10 @@ def load_mpdta() -> pd.DataFrame:
 
     mpdta_data["first.treat"] = mpdta_data["first.treat"].astype(np.int64)
 
-    return mpdta_data
+    return to_polars(mpdta_data)
 
 
-def load_ehec() -> pd.DataFrame:
+def load_ehec() -> pl.DataFrame:
     """Load the EHEC dataset for Medicaid expansion analysis.
 
     This dataset contains state-level data on health insurance coverage rates
@@ -119,7 +121,7 @@ def load_ehec() -> pd.DataFrame:
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         A DataFrame with the following columns:
 
         - *stfips*: State FIPS code identifier
@@ -154,10 +156,10 @@ def load_ehec() -> pd.DataFrame:
     with gzip.open(data_path, "rb") as f:
         ehec_data = pickle.load(f)
 
-    return ehec_data
+    return to_polars(ehec_data)
 
 
-def load_engel() -> pd.DataFrame:
+def load_engel() -> pl.DataFrame:
     """Load the Engel household expenditure dataset.
 
     This dataset contains household expenditure data used to study Engel curves,
@@ -167,7 +169,7 @@ def load_engel() -> pd.DataFrame:
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         A DataFrame with the following columns:
 
         - *food*: Food expenditure share
@@ -204,4 +206,4 @@ def load_engel() -> pd.DataFrame:
     with gzip.open(data_path, "rb") as f:
         engel_data = pickle.load(f)
 
-    return engel_data
+    return to_polars(engel_data)

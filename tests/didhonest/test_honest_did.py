@@ -2,8 +2,11 @@
 """Tests for sensitivity analysis using the approach of Rambachan and Roth (2021)."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid import AGGTEResult, HonestDiDResult, honest_did
 
@@ -65,7 +68,7 @@ def test_honest_did_basic(sample_aggte_result):
     result = honest_did(sample_aggte_result, event_time=1)
 
     assert isinstance(result, HonestDiDResult)
-    assert isinstance(result.robust_ci, pd.DataFrame)
+    assert isinstance(result.robust_ci, pl.DataFrame)
     assert result.sensitivity_type == "smoothness"
 
     assert "lb" in result.robust_ci.columns
@@ -82,7 +85,7 @@ def test_honest_did_with_reference_period(sample_aggte_result_with_ref):
     result = honest_did(sample_aggte_result_with_ref, event_time=1)
 
     assert isinstance(result, HonestDiDResult)
-    assert isinstance(result.robust_ci, pd.DataFrame)
+    assert isinstance(result.robust_ci, pl.DataFrame)
     assert len(result.robust_ci) > 0
 
 
@@ -97,7 +100,7 @@ def test_honest_did_relative_magnitude(sample_aggte_result):
     assert result.sensitivity_type == "relative_magnitude"
     assert len(result.robust_ci) == 2
     assert "Mbar" in result.robust_ci.columns
-    assert list(result.robust_ci["Mbar"]) == [0.0, 1.0]
+    assert result.robust_ci["Mbar"].to_list() == [0.0, 1.0]
 
 
 @pytest.mark.parametrize(
@@ -115,7 +118,7 @@ def test_honest_did_methods(sample_aggte_result, event_time, method):
         m_vec=np.array([0, 0.1]),
     )
 
-    assert all(result.robust_ci["method"] == method)
+    assert (result.robust_ci["method"] == method).all()
 
 
 @pytest.mark.xfail(reason="Numerical instability with synthetic test data")
@@ -165,7 +168,7 @@ def test_honest_did_grid_points(sample_aggte_result):
         m_vec=np.array([0.1]),
     )
 
-    assert isinstance(result.robust_ci, pd.DataFrame)
+    assert isinstance(result.robust_ci, pl.DataFrame)
 
 
 def test_honest_did_errors():

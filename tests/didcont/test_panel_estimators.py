@@ -1,8 +1,11 @@
 """Tests for panel treatment effect estimators."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid.didcont.estimation.container import AttgtResult
 from moderndid.didcont.estimation.estimators import did_attgt, pte_attgt
@@ -36,7 +39,7 @@ def test_did_attgt_intercept_only(simple_panel_data):
 
 
 def test_did_attgt_missing_periods():
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {"id": [1, 2, 3], "D": [1, 0, 1], "period": [0, 0, 0], "name": ["pre", "pre", "pre"], "Y": [1.0, 2.0, 3.0]}
     )
 
@@ -94,7 +97,7 @@ def test_pte_attgt_with_d_covs_formula(panel_data_with_covariates_estimators):
 
 
 def test_pte_attgt_invalid_method():
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": [1, 1, 2, 2],
             "D": [1, 1, 0, 0],
@@ -124,7 +127,7 @@ def test_pte_attgt_with_weights():
     y_vals[::2] = pre_outcome
     y_vals[1::2] = post_outcome
 
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {"id": id_vals, "D": treatment, "period": period_vals, "name": name_vals, "Y": y_vals, ".w": weights}
     )
 
@@ -136,8 +139,8 @@ def test_pte_attgt_with_weights():
 
 
 def test_pte_attgt_collinearity_handling(panel_data_with_covariates_estimators):
-    df = panel_data_with_covariates_estimators.copy()
-    df["x3"] = df["x1"] * 2
+    df = panel_data_with_covariates_estimators.clone()
+    df = df.with_columns((pl.col("x1") * 2).alias("x3"))
 
     result = pte_attgt(df, xformula="~ x1 + x2 + x3", est_method="dr")
 
@@ -165,7 +168,7 @@ def test_pte_attgt_propensity_score_overlap_issue():
     y_vals[::2] = pre_outcome
     y_vals[1::2] = post_outcome
 
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": id_vals,
             "D": treatment,
@@ -184,7 +187,8 @@ def test_pte_attgt_propensity_score_overlap_issue():
 
 
 def test_pte_attgt_all_treated():
-    df = pd.DataFrame(
+    np.random.seed(42)
+    df = pl.DataFrame(
         {
             "id": np.repeat([1, 2, 3], 2),
             "D": np.ones(6),
@@ -200,7 +204,8 @@ def test_pte_attgt_all_treated():
 
 
 def test_pte_attgt_all_control():
-    df = pd.DataFrame(
+    np.random.seed(42)
+    df = pl.DataFrame(
         {
             "id": np.repeat([1, 2, 3], 2),
             "D": np.zeros(6),
@@ -242,7 +247,7 @@ def test_pte_attgt_combined_formulas():
     y_vals[::2] = pre_outcome
     y_vals[1::2] = post_outcome
 
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": id_vals,
             "D": treatment,
@@ -269,7 +274,7 @@ def test_pte_attgt_combined_formulas():
 
 
 def test_empty_data():
-    df = pd.DataFrame({"id": [], "D": [], "period": [], "name": [], "Y": []})
+    df = pl.DataFrame({"id": [], "D": [], "period": [], "name": [], "Y": []})
 
     with pytest.raises((ValueError, KeyError)):
         did_attgt(df)
@@ -279,7 +284,7 @@ def test_empty_data():
 
 
 def test_single_unit_data():
-    df = pd.DataFrame({"id": [1, 1], "D": [1, 1], "period": [0, 1], "name": ["pre", "post"], "Y": [1.0, 2.0]})
+    df = pl.DataFrame({"id": [1, 1], "D": [1, 1], "period": [0, 1], "name": ["pre", "post"], "Y": [1.0, 2.0]})
 
     with pytest.raises((ValueError, IndexError)):
         did_attgt(df)

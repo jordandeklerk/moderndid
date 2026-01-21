@@ -5,11 +5,10 @@ import pytest
 from moderndid.core.preprocess.models import DDDData
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 from moderndid.didtriple.dgp import gen_dgp_2periods
+from tests.helpers import importorskip
 
-from ..helpers import importorskip
-
-pd = importorskip("pandas")
 np = importorskip("numpy")
+pl = importorskip("polars")
 
 
 def test_preprocess_ddd_basic():
@@ -191,9 +190,8 @@ def test_preprocess_ddd_more_than_two_periods():
     result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
-    extra = data[data["time"] == 1].copy()
-    extra["time"] = 3
-    data = pd.concat([data, extra], ignore_index=True)
+    extra = data.filter(pl.col("time") == 1).with_columns(pl.lit(3).cast(pl.Int64).alias("time"))
+    data = pl.concat([data, extra])
 
     with pytest.raises(ValueError, match="exactly 2 time periods"):
         preprocess_ddd_2periods(
@@ -215,7 +213,7 @@ def test_preprocess_ddd_partition_time_varying():
     partition = np.repeat(rng.binomial(1, 0.5, n), 2)
     y = rng.normal(0, 1, n * 2)
 
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "id": ids,
             "time": times,
@@ -225,8 +223,13 @@ def test_preprocess_ddd_partition_time_varying():
         }
     )
 
-    data.loc[(data["id"] == 0) & (data["time"] == 2), "partition"] = (
-        1 - data.loc[(data["id"] == 0) & (data["time"] == 1), "partition"].values[0]
+    original_val = data.filter((pl.col("id") == 0) & (pl.col("time") == 1))["partition"][0]
+    new_val = 1 - original_val
+    data = data.with_columns(
+        pl.when((pl.col("id") == 0) & (pl.col("time") == 2))
+        .then(new_val)
+        .otherwise(pl.col("partition"))
+        .alias("partition")
     )
 
     with pytest.raises(ValueError, match="partition.*same across all periods"):
@@ -249,7 +252,7 @@ def test_preprocess_ddd_treatment_time_varying():
     partition = np.repeat(rng.binomial(1, 0.5, n), 2)
     y = rng.normal(0, 1, n * 2)
 
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "id": ids,
             "time": times,
@@ -259,8 +262,10 @@ def test_preprocess_ddd_treatment_time_varying():
         }
     )
 
-    data.loc[(data["id"] == 0) & (data["time"] == 2), "state"] = (
-        1 - data.loc[(data["id"] == 0) & (data["time"] == 1), "state"].values[0]
+    original_val = data.filter((pl.col("id") == 0) & (pl.col("time") == 1))["state"][0]
+    new_val = 1 - original_val
+    data = data.with_columns(
+        pl.when((pl.col("id") == 0) & (pl.col("time") == 2)).then(new_val).otherwise(pl.col("state")).alias("state")
     )
 
     with pytest.raises(ValueError, match="state.*same across all periods"):
@@ -283,7 +288,7 @@ def test_preprocess_ddd_small_subgroup():
     partition = np.repeat(np.array([1] * 1 + [0] * (n - 1)), 2)
     y = rng.normal(0, 1, n * 2)
 
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "id": ids,
             "time": times,

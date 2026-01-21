@@ -3,6 +3,10 @@
 import numpy as np
 import pytest
 
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
+
 from moderndid import ddd
 from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
 from moderndid.didtriple.estimators.ddd_panel import DDDPanelResult
@@ -113,7 +117,7 @@ def test_ddd_2period_influence_func(two_period_df):
     )
 
     assert result.att_inf_func is not None
-    n_units = two_period_df["id"].nunique()
+    n_units = two_period_df["id"].n_unique()
     assert len(result.att_inf_func) == n_units
 
 
@@ -278,11 +282,10 @@ def test_ddd_mp_bootstrap(multi_period_df):
 
 
 def test_ddd_mp_clustered(multi_period_df):
-    df = multi_period_df.copy()
     np.random.seed(42)
-    unique_ids = df["id"].unique()
+    unique_ids = multi_period_df["id"].unique().to_list()
     cluster_map = {uid: np.random.randint(1, 51) for uid in unique_ids}
-    df["cluster"] = df["id"].map(cluster_map)
+    df = multi_period_df.with_columns(pl.col("id").replace_strict(cluster_map, default=1).alias("cluster"))
 
     result = ddd(
         data=df,

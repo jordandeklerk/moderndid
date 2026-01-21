@@ -3,7 +3,7 @@
 from typing import NamedTuple
 
 import numpy as np
-import pandas as pd
+import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
@@ -153,7 +153,7 @@ def twfe_did_panel(
 
     else:
         unit_ids = np.arange(1, n_units + 1)
-        data_long = pd.DataFrame(
+        data_long = pl.DataFrame(
             {
                 "y": y_stacked,
                 "post": post.astype(int),

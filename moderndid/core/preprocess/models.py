@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 from .config import (
     BasePreprocessConfig,
@@ -20,13 +20,13 @@ from .utils import extract_vars_from_formula
 class PreprocessedData:
     """Preprocessed data."""
 
-    data: pd.DataFrame
-    time_invariant_data: pd.DataFrame
+    data: pl.DataFrame
+    time_invariant_data: pl.DataFrame
     weights: np.ndarray
 
-    cohort_counts: pd.DataFrame
-    period_counts: pd.DataFrame
-    crosstable_counts: pd.DataFrame
+    cohort_counts: pl.DataFrame
+    period_counts: pl.DataFrame
+    crosstable_counts: pl.DataFrame
 
     config: BasePreprocessConfig
     cluster: np.ndarray | None = None

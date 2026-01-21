@@ -1,7 +1,10 @@
 """Data generating process for continuous treatment DiD."""
 
 import numpy as np
-import pandas as pd
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 
 def simulate_contdid_data(
@@ -41,7 +44,7 @@ def simulate_contdid_data(
 
     Returns
     -------
-    pandas.DataFrame
+    pl.DataFrame
         A balanced panel data frame with the following columns:
 
         - id: unit id
@@ -87,21 +90,28 @@ def simulate_contdid_data(
 
     y = post_matrix * y1_t + (1 - post_matrix) * y0_t
 
-    df = pd.DataFrame(y, columns=[f"Y_{t}" for t in time_periods])
-    df["id"] = np.arange(1, n + 1)
-    df["G"] = group
-    df["D"] = dose
+    df = pl.DataFrame(
+        {
+            **{f"Y_{t}": y[:, i] for i, t in enumerate(time_periods)},
+            "id": np.arange(1, n + 1),
+            "G": group,
+            "D": dose,
+        }
+    )
 
-    df_long = pd.melt(
-        df,
-        id_vars=["id", "G", "D"],
-        value_vars=[f"Y_{t}" for t in time_periods],
-        var_name="time_period",
+    df_long = df.unpivot(
+        index=["id", "G", "D"],
+        on=[f"Y_{t}" for t in time_periods],
+        variable_name="time_period",
         value_name="Y",
     )
 
-    df_long["time_period"] = df_long["time_period"].str.replace("Y_", "").astype(int)
-    df_long.loc[df_long["G"] == 0, "D"] = 0
-    df_long.loc[df_long["time_period"] < df_long["G"], "D"] = 0
+    df_long = df_long.with_columns(pl.col("time_period").str.replace("Y_", "").cast(pl.Int64))
 
-    return df_long.sort_values(["id", "time_period"]).reset_index(drop=True)
+    df_long = df_long.with_columns(pl.when(pl.col("G") == 0).then(pl.lit(0.0)).otherwise(pl.col("D")).alias("D"))
+
+    df_long = df_long.with_columns(
+        pl.when(pl.col("time_period") < pl.col("G")).then(pl.lit(0.0)).otherwise(pl.col("D")).alias("D")
+    )
+
+    return df_long.sort(["id", "time_period"])

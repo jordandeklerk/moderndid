@@ -92,10 +92,12 @@ numpydoc_xref_ignore = {"of", "or", "optional", "scalar", "default"}
 singulars = ("int", "list", "dict", "float")
 numpydoc_xref_aliases = {
     "ndarray": ":class:`numpy.ndarray`",
-    "DataFrame": ":class:`pandas.DataFrame`",
+    "DataFrame": ":class:`polars.DataFrame`",
     "Series": ":class:`pandas.Series`",
     "pd.DataFrame": ":class:`pandas.DataFrame`",
     "pd.Series": ":class:`pandas.Series`",
+    "pl.DataFrame": ":class:`polars.DataFrame`",
+    "pl.LazyFrame": ":class:`polars.LazyFrame`",
     "np.ndarray": ":class:`numpy.ndarray`",
     "np.random.Generator": ":class:`numpy.random.Generator`",
     "matplotlib.figure.Figure": ":class:`matplotlib.figure.Figure`",
@@ -106,6 +108,7 @@ intersphinx_mapping = {
     "numpy": ("https://numpy.org/doc/stable/", None),
     "python": ("https://docs.python.org/3/", None),
     "pandas": ("https://pandas.pydata.org/docs/", None),
+    "polars": ("https://docs.pola.rs/api/python/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "matplotlib": ("https://matplotlib.org/stable/", None),
 }
