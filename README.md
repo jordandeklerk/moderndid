@@ -163,7 +163,7 @@ We can also use built-in plotting functionality to plot the event study results:
 did.plot_event_study(event_study)
 ```
 
-<img src="docs/source/_static/event_study.png" width="600" alt="Event study plot">
+<img src="docs/source/_static/event_study.png" alt="Event study plot">
 
 ## Available Methods
 
