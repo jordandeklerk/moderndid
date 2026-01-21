@@ -3,8 +3,10 @@
 import warnings
 
 import numpy as np
+import polars as pl
 import scipy.linalg
 
+from .dataframe import DataFrame, to_polars
 from .preprocess.builders import PreprocessDataBuilder
 from .preprocess.config import ContDIDConfig, DDDConfig, DIDConfig, TwoPeriodDIDConfig
 from .preprocess.constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
@@ -13,7 +15,7 @@ from .preprocess.utils import extract_vars_from_formula, make_balanced_panel
 
 
 def preprocess_drdid(
-    data,
+    data: DataFrame,
     yname,
     tname,
     treat_col,
@@ -33,7 +35,7 @@ def preprocess_drdid(
 
     Parameters
     ----------
-    data : pd.DataFrame
+    data : pd.DataFrame | pl.DataFrame
         Panel or repeated cross-section data.
     yname : str
         Name of outcome variable column.
@@ -96,7 +98,7 @@ def preprocess_drdid(
 
 
 def preprocess_did(
-    data,
+    data: DataFrame,
     yname,
     tname,
     gname,
@@ -115,14 +117,14 @@ def preprocess_did(
     est_method="dr",
     base_period="varying",
     faster_mode=False,
-    pl=False,
+    pl_parallel=False,
     cores=1,
 ):
     """Process data for multi-period difference-in-differences.
 
     Parameters
     ----------
-    data : pd.DataFrame
+    data : pd.DataFrame | pl.DataFrame
         Panel or repeated cross-section data.
     yname : str
         Name of outcome variable column.
@@ -162,7 +164,7 @@ def preprocess_did(
         How to choose base period for comparisons.
     faster_mode : bool, default False
         Whether to use computational shortcuts.
-    pl : bool, default False
+    pl_parallel : bool, default False
         Whether to use parallel processing.
     cores : int, default 1
         Number of cores for parallel processing.
@@ -200,7 +202,7 @@ def preprocess_did(
         est_method=est_method_enum,
         base_period=base_period_enum,
         faster_mode=faster_mode,
-        pl=pl,
+        pl=pl_parallel,
         cores=cores,
     )
 
@@ -211,7 +213,7 @@ def preprocess_did(
 
 
 def preprocess_cont_did(
-    data,
+    data: DataFrame,
     yname,
     tname,
     gname,
@@ -241,7 +243,7 @@ def preprocess_cont_did(
 
     Parameters
     ----------
-    data : pd.DataFrame
+    data : pd.DataFrame | pl.DataFrame
         Panel or repeated cross-section data.
     yname : str
         Name of outcome variable column.
@@ -360,7 +362,7 @@ def preprocess_cont_did(
 
 
 def preprocess_ddd_2periods(
-    data,
+    data: DataFrame,
     yname,
     tname,
     idname,
@@ -381,7 +383,7 @@ def preprocess_ddd_2periods(
 
     Parameters
     ----------
-    data : pd.DataFrame
+    data : pd.DataFrame | pl.DataFrame
         Panel data with exactly 2 time periods.
     yname : str
         Name of outcome variable column.
@@ -432,7 +434,8 @@ def preprocess_ddd_2periods(
     if xformla is None:
         xformla = "~1"
 
-    _validate_ddd_inputs(data, yname, tname, idname, gname, pname, xformla, cluster, weightsname)
+    df = to_polars(data)
+    _validate_ddd_inputs(df, yname, tname, idname, gname, pname, xformla, cluster, weightsname)
 
     config_params = _apply_ddd_defaults(
         alp=alp,
@@ -445,41 +448,40 @@ def preprocess_ddd_2periods(
         inf_func=inf_func,
     )
 
-    df = data.copy()
-
     if weightsname is not None:
-        weights = df[weightsname].values.astype(float)
+        weights = df[weightsname].to_numpy().astype(float)
         if np.any(np.isnan(weights)):
             raise ValueError("Missing values in weights column.")
         _check_weights_uniqueness(df, idname, weightsname)
     else:
         weights = np.ones(len(df))
     weights = weights / np.mean(weights)
-    df["_weights"] = weights
+    df = df.with_columns(pl.Series("_weights", weights))
 
-    tlist = np.sort(df[tname].unique())
+    tlist = np.sort(df[tname].unique().to_numpy())
     if len(tlist) != 2:
         raise ValueError(f"Data must have exactly 2 time periods, found {len(tlist)}.")
 
-    glist = np.sort(df[gname].unique())
+    glist = np.sort(df[gname].unique().to_numpy())
     if len(glist) != 2:
         raise ValueError(f"Treatment variable must have exactly 2 values (0 and treated group), found {len(glist)}.")
     if glist[0] != 0:
         raise ValueError("Treatment variable must include 0 for never-treated units.")
 
-    df["_post"] = (df[tname] == tlist[1]).astype(int)
+    df = df.with_columns((pl.col(tname) == tlist[1]).cast(pl.Int64).alias("_post"))
 
     if xformla != "~1":
         _check_covariates_time_invariant(df, xformla, idname)
 
-    df = df.sort_values([idname, tname]).reset_index(drop=True)
+    df = df.sort([idname, tname])
     df = make_balanced_panel(df, idname, tname)
 
     if len(df) == 0:
         raise ValueError("No observations remain after creating balanced panel.")
 
     treat_val = glist[1]
-    df["_subgroup"] = _create_subgroups(df[gname].values, df[pname].values, treat_val)
+    subgroup = _create_subgroups(df[gname].to_numpy(), df[pname].to_numpy(), treat_val)
+    df = df.with_columns(pl.Series("_subgroup", subgroup))
 
     subgroup_counts = _compute_subgroup_counts(df, idname)
     _validate_subgroup_sizes(subgroup_counts)
@@ -489,15 +491,18 @@ def preprocess_ddd_2periods(
     cluster_arr = None
     if config_params["cluster"] is not None:
         _check_cluster_time_invariant(df, config_params["cluster"], idname)
-        cluster_arr = df.loc[df["_post"] == 0, config_params["cluster"]].values
+        cluster_arr = df.filter(pl.col("_post") == 0)[config_params["cluster"]].to_numpy()
 
-    y0 = df.loc[df["_post"] == 0, yname].values.astype(float)
-    y1 = df.loc[df["_post"] == 1, yname].values.astype(float)
-    treat = df.loc[df["_post"] == 0, gname].values
+    df_pre = df.filter(pl.col("_post") == 0)
+    df_post = df.filter(pl.col("_post") == 1)
+
+    y0 = df_pre[yname].to_numpy().astype(float)
+    y1 = df_post[yname].to_numpy().astype(float)
+    treat = df_pre[gname].to_numpy()
     treat = (treat == treat_val).astype(int)
-    partition = df.loc[df["_post"] == 0, pname].values.astype(int)
-    subgroup = df.loc[df["_post"] == 0, "_subgroup"].values
-    weights_arr = df.loc[df["_post"] == 0, "_weights"].values
+    partition = df_pre[pname].to_numpy().astype(int)
+    subgroup = df_pre["_subgroup"].to_numpy()
+    weights_arr = df_pre["_weights"].to_numpy()
 
     n_units = len(y0)
 
@@ -538,7 +543,7 @@ def preprocess_ddd_2periods(
     )
 
 
-def _validate_ddd_inputs(data, yname, tname, idname, gname, pname, xformla, cluster, weightsname):
+def _validate_ddd_inputs(data: pl.DataFrame, yname, tname, idname, gname, pname, xformla, cluster, weightsname):
     """Validate DDD input arguments."""
     required_cols = [yname, tname, idname, gname, pname]
     col_names = ["yname", "tname", "idname", "gname", "pname"]
@@ -606,43 +611,43 @@ def _apply_ddd_defaults(alp, boot, boot_type, n_boot, cluster, cband, est_method
     }
 
 
-def _check_partition_uniqueness(df, idname, pname):
+def _check_partition_uniqueness(df: pl.DataFrame, idname, pname):
     """Check that partition is time-invariant within units."""
-    partition_per_id = df.groupby(idname)[pname].nunique()
-    if (partition_per_id > 1).any():
+    partition_per_id = df.group_by(idname).agg(pl.col(pname).n_unique().alias("n_unique"))
+    if (partition_per_id["n_unique"] > 1).any():
         raise ValueError(f"The value of {pname} must be the same across all periods for each unit.")
 
 
-def _check_treatment_uniqueness(df, idname, gname):
+def _check_treatment_uniqueness(df: pl.DataFrame, idname, gname):
     """Check that treatment status is time-invariant within units."""
-    treat_per_id = df.groupby(idname)[gname].nunique()
-    if (treat_per_id > 1).any():
+    treat_per_id = df.group_by(idname).agg(pl.col(gname).n_unique().alias("n_unique"))
+    if (treat_per_id["n_unique"] > 1).any():
         raise ValueError(f"The value of {gname} must be the same across all periods for each unit.")
 
 
-def _check_weights_uniqueness(df, idname, weightsname):
+def _check_weights_uniqueness(df: pl.DataFrame, idname, weightsname):
     """Check that weights are time-invariant within units."""
-    weights_per_id = df.groupby(idname)[weightsname].nunique()
-    if (weights_per_id > 1).any():
+    weights_per_id = df.group_by(idname).agg(pl.col(weightsname).n_unique().alias("n_unique"))
+    if (weights_per_id["n_unique"] > 1).any():
         raise ValueError("Weights must be the same across all periods for each unit.")
 
 
-def _check_covariates_time_invariant(df, xformla, idname):
+def _check_covariates_time_invariant(df: pl.DataFrame, xformla, idname):
     """Check that covariates are time-invariant."""
     covariate_vars = extract_vars_from_formula(xformla)
 
     for var in covariate_vars:
         if var not in df.columns:
             continue
-        var_per_id = df.groupby(idname)[var].nunique()
-        if (var_per_id > 1).any():
+        var_per_id = df.group_by(idname).agg(pl.col(var).n_unique().alias("n_unique"))
+        if (var_per_id["n_unique"] > 1).any():
             raise ValueError(f"Covariate '{var}' varies over time. Covariates must be time-invariant.")
 
 
-def _check_cluster_time_invariant(df, cluster, idname):
+def _check_cluster_time_invariant(df: pl.DataFrame, cluster, idname):
     """Check that cluster variable is time-invariant."""
-    cluster_per_id = df.groupby(idname)[cluster].nunique()
-    if (cluster_per_id > 1).any():
+    cluster_per_id = df.group_by(idname).agg(pl.col(cluster).n_unique().alias("n_unique"))
+    if (cluster_per_id["n_unique"] > 1).any():
         raise ValueError("Cluster variable must be time-invariant within units.")
 
 
@@ -666,10 +671,10 @@ def _create_subgroups(treat, partition, treat_val):
     return subgroup
 
 
-def _compute_subgroup_counts(df, idname):
+def _compute_subgroup_counts(df: pl.DataFrame, idname):
     """Compute counts per subgroup."""
-    counts_df = df.groupby("_subgroup")[idname].nunique()
-    return {int(k): int(v) for k, v in counts_df.items()}
+    counts_df = df.group_by("_subgroup").agg(pl.col(idname).n_unique().alias("count"))
+    return {int(row["_subgroup"]): int(row["count"]) for row in counts_df.iter_rows(named=True)}
 
 
 def _validate_subgroup_sizes(subgroup_counts, min_size=5):
@@ -679,16 +684,16 @@ def _validate_subgroup_sizes(subgroup_counts, min_size=5):
             raise ValueError(f"Subgroup {sg} has only {count} observations. Minimum required is {min_size}.")
 
 
-def _extract_covariates(df, xformla):
+def _extract_covariates(df: pl.DataFrame, xformla):
     """Extract and process covariates from data."""
     if xformla == "~1":
-        n_units = len(df[df["_post"] == 0])
+        n_units = len(df.filter(pl.col("_post") == 0))
         return np.empty((n_units, 0)), []
 
     covariate_vars = extract_vars_from_formula(xformla)
 
-    df_pre = df[df["_post"] == 0].copy()
-    cov_matrix = df_pre[covariate_vars].values.astype(float)
+    df_pre = df.filter(pl.col("_post") == 0)
+    cov_matrix = df_pre.select(covariate_vars).to_numpy().astype(float)
 
     if np.any(np.isnan(cov_matrix)):
         warnings.warn(

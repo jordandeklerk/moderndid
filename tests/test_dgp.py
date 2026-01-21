@@ -2,10 +2,11 @@
 
 import numpy as np
 import pytest
+from polars.testing import assert_frame_equal
 
 from .helpers import importorskip
 
-pd = importorskip("pandas")
+pl = importorskip("polars")
 
 from .dgp import BaseDGP, SantAnnaZhaoDRDiD
 
@@ -69,7 +70,7 @@ def test_santannazhaodrdid_set_seed():
     dgp2 = SantAnnaZhaoDRDiD(n_units=100, random_seed=5678)
     data2 = dgp2.generate_data(att=0.0)
 
-    pd.testing.assert_frame_equal(data1["df"], data2["df"])
+    assert_frame_equal(data1["df"], data2["df"])
 
     np.testing.assert_array_equal(data1["raw_covariates"], data2["raw_covariates"])
     np.testing.assert_array_equal(data1["transformed_covariates"], data2["transformed_covariates"])

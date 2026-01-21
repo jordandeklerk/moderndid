@@ -6,7 +6,10 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
+import polars as pl
 from scipy import stats
+
+from moderndid.core.dataframe import to_polars
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from .ddd_panel import ddd_panel
@@ -73,7 +76,7 @@ def ddd_mp(
     id_col,
     group_col,
     partition_col,
-    covariates=None,
+    covariate_cols=None,
     control_group="nevertreated",
     base_period="universal",
     est_method="dr",
@@ -144,8 +147,8 @@ def ddd_mp(
         Use 0 or np.inf for never-treated units.
     partition_col : str
         Name of the partition/eligibility column (1 = eligible, 0 = ineligible).
-    covariates : ndarray or None, default None
-        Pre-treatment covariates matrix. If None, uses intercept only.
+    covariate_cols : list of str or None, default None
+        Names of covariate columns in the data. If None, uses intercept only.
     control_group : {"nevertreated", "notyettreated"}, default "nevertreated"
         Which units to use as controls. With "notyettreated", multiple comparison
         groups may be available, triggering GMM aggregation.
@@ -210,11 +213,13 @@ def ddd_mp(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
-    tlist = np.sort(data[time_col].unique())
-    glist_raw = data[group_col].unique()
+    data = to_polars(data)
+
+    tlist = np.sort(data[time_col].unique().to_numpy())
+    glist_raw = data[group_col].unique().to_numpy()
     glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
 
-    n_units = data[id_col].nunique()
+    n_units = data[id_col].n_unique()
     n_periods = len(tlist)
     n_cohorts = len(glist)
 
@@ -225,7 +230,7 @@ def ddd_mp(
     inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
-    unique_ids = data[id_col].unique()
+    unique_ids = data[id_col].unique().to_numpy()
     id_to_idx = {uid: idx for idx, uid in enumerate(unique_ids)}
 
     counter = 0
@@ -246,7 +251,7 @@ def ddd_mp(
                 id_col,
                 group_col,
                 partition_col,
-                covariates,
+                covariate_cols,
                 est_method,
                 n_units,
                 attgt_list,
@@ -268,12 +273,12 @@ def ddd_mp(
     cluster_vals = None
     if cluster is not None:
         first_period = tlist[0]
-        cluster_data = data[data[time_col] == first_period].sort_values(id_col)
-        cluster_vals = cluster_data[cluster].values
+        cluster_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
+        cluster_vals = cluster_data[cluster].to_numpy()
 
     first_period = tlist[0]
-    unit_data = data[data[time_col] == first_period].sort_values(id_col)
-    unit_groups = unit_data[group_col].values
+    unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
+    unit_groups = unit_data[group_col].to_numpy()
 
     if boot:
         boot_result = mboot_ddd(
@@ -348,7 +353,7 @@ def _process_gt_cell(
     id_col,
     group_col,
     partition_col,
-    covariates,
+    covariate_cols,
     est_method,
     n_units,
     attgt_list,
@@ -380,7 +385,7 @@ def _process_gt_cell(
     if cell_data is None or len(available_controls) == 0:
         return counter + 1
 
-    n_cell = len(cell_data[id_col].unique())
+    n_cell = cell_data[id_col].n_unique()
 
     if len(available_controls) == 1:
         result = _process_single_control(
@@ -393,7 +398,7 @@ def _process_gt_cell(
             g,
             t,
             pret,
-            covariates,
+            covariate_cols,
             est_method,
             n_units,
             n_cell,
@@ -414,7 +419,7 @@ def _process_gt_cell(
             g,
             t,
             pret,
-            covariates,
+            covariate_cols,
             est_method,
             n_units,
             n_cell,
@@ -443,21 +448,22 @@ def _get_cell_data(data, g, t, pret, control_group, time_col, group_col):
     max_period = max(t, pret)
 
     if control_group == "nevertreated":
-        control_mask = (data[group_col] == 0) | (~np.isfinite(data[group_col]))
+        control_expr = (pl.col(group_col) == 0) | (~pl.col(group_col).is_finite())
     else:
-        control_mask = ((data[group_col] == 0) | (~np.isfinite(data[group_col])) | (data[group_col] > max_period)) & (
-            data[group_col] != g
-        )
+        control_expr = (
+            (pl.col(group_col) == 0) | (~pl.col(group_col).is_finite()) | (pl.col(group_col) > max_period)
+        ) & (pl.col(group_col) != g)
 
-    treat_mask = data[group_col] == g
-    cell_mask = treat_mask | control_mask
-    cell_data = data[cell_mask & data[time_col].isin([t, pret])].copy()
+    treat_expr = pl.col(group_col) == g
+    cell_expr = treat_expr | control_expr
+    time_expr = pl.col(time_col).is_in([t, pret])
+    cell_data = data.filter(cell_expr & time_expr)
 
     if len(cell_data) == 0:
         return None, []
 
-    control_data = cell_data[~cell_data[group_col].isin([g])]
-    available_controls = [c for c in control_data[group_col].unique() if c != g]
+    control_data = cell_data.filter(~pl.col(group_col).is_in([g]))
+    available_controls = [c for c in control_data[group_col].unique().to_list() if c != g]
 
     return cell_data, available_controls
 
@@ -470,18 +476,30 @@ def _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_i
 
 
 def _process_single_control(
-    cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariates, est_method, n_units, n_cell
+    cell_data,
+    y_col,
+    time_col,
+    id_col,
+    group_col,
+    partition_col,
+    g,
+    t,
+    pret,
+    covariate_cols,
+    est_method,
+    n_units,
+    n_cell,
 ):
     """Process a (g,t) cell with a single control group."""
     att_result, inf_func = _compute_single_ddd(
-        cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariates, est_method
+        cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
     )
 
     if att_result is None:
         return None, None, None
 
     inf_func_scaled = (n_units / n_cell) * inf_func
-    cell_id_list = cell_data[cell_data[time_col] == t][id_col].values
+    cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
     return att_result, inf_func_scaled, cell_id_list
 
 
@@ -496,7 +514,7 @@ def _process_multiple_controls(
     g,
     t,
     pret,
-    covariates,
+    covariate_cols,
     est_method,
     n_units,
     n_cell,
@@ -506,23 +524,23 @@ def _process_multiple_controls(
     inf_funcs_local = []
 
     for ctrl in available_controls:
-        ctrl_mask = (cell_data[group_col] == g) | (cell_data[group_col] == ctrl)
-        subset_data = cell_data[ctrl_mask].copy()
+        ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
+        subset_data = cell_data.filter(ctrl_expr)
 
         att_result, inf_func = _compute_single_ddd(
-            subset_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariates, est_method
+            subset_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
         )
 
         if att_result is None:
             continue
 
-        n_subset = subset_data[id_col].nunique()
+        n_subset = subset_data[id_col].n_unique()
         inf_func_scaled = (n_cell / n_subset) * inf_func
         ddd_results.append(att_result)
 
         inf_full = np.zeros(n_cell)
-        subset_ids = subset_data[subset_data[time_col] == t][id_col].values
-        cell_id_list = cell_data[cell_data[time_col] == t][id_col].unique()
+        subset_ids = subset_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
+        cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy()
         cell_id_to_local = {uid: idx for idx, uid in enumerate(cell_id_list)}
 
         for i, uid in enumerate(subset_ids):
@@ -536,45 +554,50 @@ def _process_multiple_controls(
 
     att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_funcs_local), n_units)
     inf_func_scaled = (n_units / n_cell) * if_gmm
-    cell_id_list = cell_data[cell_data[time_col] == t][id_col].unique()
+    cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy()
     return att_gmm, inf_func_scaled, cell_id_list, se_gmm
 
 
 def _compute_single_ddd(
-    cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariates, est_method
+    cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
 ):
     """Compute DDD for a single (g,t) cell with a single control group."""
-    cell_data = cell_data.copy()
-    cell_data["treat"] = (cell_data[group_col] == g).astype(int)
+    treat_col = (pl.col(group_col) == g).cast(pl.Int64).alias("treat")
+    subgroup_expr = (
+        4 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
+        + 3 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
+        + 2 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
+        + 1 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
+    ).alias("subgroup")
 
-    cell_data["subgroup"] = (
-        4 * (cell_data["treat"] == 1) * (cell_data[partition_col] == 1)
-        + 3 * (cell_data["treat"] == 1) * (cell_data[partition_col] == 0)
-        + 2 * (cell_data["treat"] == 0) * (cell_data[partition_col] == 1)
-        + 1 * (cell_data["treat"] == 0) * (cell_data[partition_col] == 0)
-    )
+    cell_data = cell_data.with_columns([treat_col]).with_columns([subgroup_expr])
 
-    post_data = cell_data[cell_data[time_col] == t].sort_values(id_col)
-    pre_data = cell_data[cell_data[time_col] == pret].sort_values(id_col)
+    post_data = cell_data.filter(pl.col(time_col) == t).sort(id_col)
+    pre_data = cell_data.filter(pl.col(time_col) == pret).sort(id_col)
 
-    common_ids = set(post_data[id_col]) & set(pre_data[id_col])
+    post_ids = set(post_data[id_col].to_list())
+    pre_ids = set(pre_data[id_col].to_list())
+    common_ids = post_ids & pre_ids
     if len(common_ids) == 0:
         return None, None
 
-    post_data = post_data[post_data[id_col].isin(common_ids)].sort_values(id_col)
-    pre_data = pre_data[pre_data[id_col].isin(common_ids)].sort_values(id_col)
+    common_ids_list = list(common_ids)
+    post_data = post_data.filter(pl.col(id_col).is_in(common_ids_list)).sort(id_col)
+    pre_data = pre_data.filter(pl.col(id_col).is_in(common_ids_list)).sort(id_col)
 
-    y1 = post_data[y_col].values
-    y0 = pre_data[y_col].values
-    subgroup = post_data["subgroup"].values
+    y1 = post_data[y_col].to_numpy()
+    y0 = pre_data[y_col].to_numpy()
+    subgroup = post_data["subgroup"].to_numpy()
 
     if 4 not in set(subgroup):
         return None, None
 
-    if covariates is None:
+    if covariate_cols is None:
         X = np.ones((len(y1), 1))
     else:
-        X = covariates[post_data.index.values] if hasattr(covariates, "__getitem__") else np.ones((len(y1), 1))
+        cov_matrix = post_data.select(covariate_cols).to_numpy()
+        intercept = np.ones((len(y1), 1))
+        X = np.hstack([intercept, cov_matrix])
 
     try:
         result = ddd_panel(y1=y1, y0=y0, subgroup=subgroup, covariates=X, est_method=est_method, influence_func=True)

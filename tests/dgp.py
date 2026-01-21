@@ -3,7 +3,10 @@
 import abc
 
 import numpy as np
-import pandas as pd
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 
 class BaseDGP(abc.ABC):
@@ -142,8 +145,8 @@ class SantAnnaZhaoDRDiD(BaseDGP):
         y = post * y1 + (1 - post) * y0
         id = np.arange(1, self.n_units + 1)
 
-        df = pd.DataFrame({"id": id, "post": post, "y": y, "d": d, "x1": z1, "x2": z2, "x3": z3, "x4": z4})
-        df = df.sort_values(by="id").reset_index(drop=True)
+        df = pl.DataFrame({"id": id, "post": post, "y": y, "d": d, "x1": z1, "x2": z2, "x3": z3, "x4": z4})
+        df = df.sort("id")
         true_att = att
 
         return {

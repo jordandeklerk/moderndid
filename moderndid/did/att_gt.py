@@ -5,7 +5,6 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
-import pandas as pd
 import scipy.linalg as la
 import scipy.stats
 
@@ -51,8 +50,8 @@ def att_gt(
 
     Parameters
     ----------
-    data : pd.DataFrame
-        The DataFrame containing the data.
+    data : pd.DataFrame | pl.DataFrame
+        The DataFrame containing the data. Accepts both pandas and polars DataFrames.
     yname : str
         The name of the outcome variable.
     tname : str
@@ -227,11 +226,12 @@ def att_gt(
             cluster_data = dp.time_invariant_data
 
             if len(clustervars) == 1:
-                cluster = cluster_data[clustervars[0]].values
+                cluster = cluster_data[clustervars[0]].to_numpy()
             else:
-                cluster = pd.Categorical(
-                    cluster_data[clustervars[0]].astype(str) + "_" + cluster_data[clustervars[1]].astype(str)
-                ).codes
+                combined = cluster_data[clustervars[0]].cast(str) + "_" + cluster_data[clustervars[1]].cast(str)
+                unique_vals = combined.unique()
+                val_to_code = {v: i for i, v in enumerate(unique_vals.to_list())}
+                cluster = np.array([val_to_code[v] for v in combined.to_list()])
 
         bootstrap_results = mboot(
             inf_func=influence_functions_dense,
@@ -324,9 +324,10 @@ def att_gt(
     sampling_weights = None
 
     if hasattr(dp, "time_invariant_data"):
-        group_assignments = dp.time_invariant_data.get(gname, None)
-        if weightsname is not None:
-            sampling_weights = dp.time_invariant_data.get(weightsname, None)
+        if gname in dp.time_invariant_data.columns:
+            group_assignments = dp.time_invariant_data[gname]
+        if weightsname is not None and weightsname in dp.time_invariant_data.columns:
+            sampling_weights = dp.time_invariant_data[weightsname]
 
     return mp(
         groups=groups,

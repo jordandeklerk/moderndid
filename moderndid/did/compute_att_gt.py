@@ -177,15 +177,15 @@ def run_att_gt_estimation(
         }
         covariates = data.covariates_tensor[min(pre_treatment_idx, time_idx)]
     else:
-        post_mask = data.data[data.config.tname] == data.config.time_periods[time_idx + time_factor]
+        post_mask = (data.data[data.config.tname] == data.config.time_periods[time_idx + time_factor]).to_numpy()
         cohort_data = {
             "D": cohort_index,
-            "y": data.data[data.config.yname].values,
-            "post": post_mask.astype(int).values,
-            "weights": data.data["weights"].values,
+            "y": data.data[data.config.yname].to_numpy(),
+            "post": post_mask.astype(int),
+            "weights": data.data["weights"].to_numpy(),
         }
         if data.config.allow_unbalanced_panel:
-            cohort_data["rowid"] = data.data[".rowid"].values
+            cohort_data["rowid"] = data.data[".rowid"].to_numpy()
         covariates = data.covariates_matrix
 
     try:
@@ -233,9 +233,9 @@ def get_did_cohort_index(
             relevant_period = data.config.time_periods[
                 max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
             ]
-            future_cohorts = data.cohort_counts[data.cohort_counts["cohort"] > relevant_period]
+            future_cohorts = data.cohort_counts.filter(data.cohort_counts["cohort"] > relevant_period)
             if len(future_cohorts) > 0:
-                min_control = future_cohorts["cohort"].iloc[0]
+                min_control = future_cohorts["cohort"][0]
             else:
                 min_control = np.inf
         else:  # nevertreated
@@ -246,44 +246,54 @@ def get_did_cohort_index(
         n_units = len(data.time_invariant_data) if data.config.allow_unbalanced_panel else data.config.id_count
         cohort_index = np.full(n_units, np.nan)
 
-        if max_control not in data.cohort_counts["cohort"].values:
-            max_control = data.cohort_counts["cohort"].iloc[-1]
+        cohort_values = data.cohort_counts["cohort"].to_numpy()
+        if max_control not in cohort_values:
+            max_control = cohort_values[-1]
 
         # Control group indices
         control_mask = (data.cohort_counts["cohort"] >= min_control) & (data.cohort_counts["cohort"] <= max_control)
-        if control_mask.any():
-            control_idx = control_mask.idxmax()
-            start_control = data.cohort_counts.loc[: control_idx - 1, "cohort_size"].sum() if control_idx > 0 else 0
-            end_control = data.cohort_counts.loc[:control_idx, "cohort_size"].sum()
+        control_mask_np = control_mask.to_numpy()
+        if control_mask_np.any():
+            control_idx = int(np.argmax(control_mask_np))
+            cohort_sizes = data.cohort_counts["cohort_size"].to_numpy()
+            start_control = int(cohort_sizes[:control_idx].sum()) if control_idx > 0 else 0
+            end_control = int(cohort_sizes[: control_idx + 1].sum())
             cohort_index[start_control:end_control] = 0
 
         # Treated group indices
         treated_mask = data.cohort_counts["cohort"] == data.config.treated_groups[group_idx]
-        if treated_mask.any():
-            treat_idx = treated_mask.idxmax()
-            start_treat = data.cohort_counts.iloc[:treat_idx]["cohort_size"].sum() if treat_idx > 0 else 0
-            end_treat = data.cohort_counts.iloc[: treat_idx + 1]["cohort_size"].sum()
+        treated_mask_np = treated_mask.to_numpy()
+        if treated_mask_np.any():
+            treat_idx = int(np.argmax(treated_mask_np))
+            cohort_sizes = data.cohort_counts["cohort_size"].to_numpy()
+            start_treat = int(cohort_sizes[:treat_idx].sum()) if treat_idx > 0 else 0
+            end_treat = int(cohort_sizes[: treat_idx + 1].sum())
             cohort_index[start_treat:end_treat] = 1
 
     else:
         n_units = len(data.data)
         cohort_index = np.full(n_units, np.nan)
 
-        treated_flag = data.data[data.config.gname] == data.config.treated_groups[group_idx]
+        treated_flag = (data.data[data.config.gname] == data.config.treated_groups[group_idx]).to_numpy()
 
         if data.config.control_group == ControlGroup.NEVER_TREATED:
-            control_flag = data.data[data.config.gname] == np.inf
+            control_flag = (data.data[data.config.gname] == np.inf).to_numpy()
         else:  # NOT_YET_TREATED
             relevant_period = data.config.time_periods[
                 max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
             ]
-            control_flag = (data.data[data.config.gname] == np.inf) | (
-                (data.data[data.config.gname] > relevant_period)
-                & (data.data[data.config.gname] != data.config.treated_groups[group_idx])
-            )
+            control_flag = (
+                (data.data[data.config.gname] == np.inf)
+                | (
+                    (data.data[data.config.gname] > relevant_period)
+                    & (data.data[data.config.gname] != data.config.treated_groups[group_idx])
+                )
+            ).to_numpy()
 
-        keep_periods = data.data[data.config.tname].isin(
-            [data.config.time_periods[time_idx + time_factor], data.config.time_periods[pre_treatment_idx]]
+        keep_periods = (
+            data.data[data.config.tname]
+            .is_in([data.config.time_periods[time_idx + time_factor], data.config.time_periods[pre_treatment_idx]])
+            .to_numpy()
         )
 
         cohort_index[keep_periods & control_flag] = 0

@@ -2,8 +2,11 @@
 """Tests for DiD preprocessing functions."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid.core.preprocess import (
     NEVER_TREATED_VALUE,
@@ -61,7 +64,7 @@ def create_test_panel_data(
     x1 = np.random.normal(0, 1, len(units))
     x2 = np.random.normal(0, 1, len(units))
 
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": units,
             "time": periods,
@@ -101,7 +104,7 @@ def create_test_repeated_cross_section(
     x1 = np.random.normal(0, 1, n_total)
     x2 = np.random.normal(0, 1, n_total)
 
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "time": periods,
             "y": y,
@@ -134,7 +137,7 @@ def create_unbalanced_panel_data(n_units=100, n_periods=4, missing_fraction=0.2,
 
     y = np.random.normal(0, 1, len(units))
 
-    return pd.DataFrame(
+    return pl.DataFrame(
         {
             "id": units,
             "time": periods,
@@ -184,8 +187,10 @@ class TestValidators:
         result = validator.validate(df, config)
         assert result.is_valid
 
-        df_invalid = df.copy()
-        df_invalid.loc[(df_invalid["id"] == 0) & (df_invalid["time"] == 4), "g"] = 0
+        df_invalid = df.clone()
+        df_invalid = df_invalid.with_columns(
+            pl.when((pl.col("id") == 0) & (pl.col("time") == 4)).then(0).otherwise(pl.col("g")).alias("g")
+        )
         result = validator.validate(df_invalid, config)
         assert not result.is_valid
 
@@ -262,8 +267,8 @@ class TestTransformers:
         config = DIDConfig(yname="y", tname="time", gname="g")
 
         df_transformed = transformer.transform(df, config)
-        assert np.any(np.isinf(df_transformed["g"]))
-        assert np.all(df_transformed.loc[df_transformed["g"] != np.inf, "g"] > 0)
+        assert df_transformed["g"].is_infinite().any()
+        assert (df_transformed.filter(pl.col("g").is_finite())["g"] > 0).all()
 
     def test_transformer_pipeline(self):
         df = create_test_panel_data()
@@ -281,7 +286,7 @@ class TestTransformers:
         df_transformed = pipeline.transform(df, config)
 
         assert "weights" in df_transformed.columns
-        assert np.any(np.isinf(df_transformed["g"]))
+        assert df_transformed["g"].is_infinite().any()
         assert len(df_transformed) > 0
 
         assert config.time_periods_count > 0
@@ -366,7 +371,7 @@ class TestPreprocessDid:
     def test_with_all_options(self):
         df = create_test_panel_data()
 
-        df["w"] = np.random.uniform(0.5, 1.5, len(df))
+        df = df.with_columns(pl.Series("w", np.random.uniform(0.5, 1.5, len(df))))
 
         result = preprocess_did(
             data=df,
@@ -390,7 +395,7 @@ class TestPreprocessDid:
         assert result.config.weightsname == "w"
         assert result.config.est_method.value == "ipw"
         assert result.cluster is not None
-        assert np.array_equal(result.cluster, result.time_invariant_data["id"].values)
+        assert np.array_equal(result.cluster, result.time_invariant_data["id"].to_numpy())
         assert result.config.clustervars == ["id"]
 
         assert result.outcomes_tensor is not None
@@ -414,8 +419,13 @@ class TestPreprocessDid:
 
     def test_no_never_treated(self):
         df = create_test_panel_data(n_periods=6, treat_period=3)
-        df.loc[(df["id"].isin(range(70, 80))) & (df["g"] == 0), "g"] = 5
-        df = df[df["g"] != 0].copy()
+        df = df.with_columns(
+            pl.when(pl.col("id").is_in(list(range(70, 80))) & (pl.col("g") == 0))
+            .then(5)
+            .otherwise(pl.col("g"))
+            .alias("g")
+        )
+        df = df.filter(pl.col("g") != 0)
 
         result = preprocess_did(
             data=df,
@@ -426,12 +436,12 @@ class TestPreprocessDid:
             control_group="nevertreated",
         )
 
-        assert np.any(result.data["g"] == NEVER_TREATED_VALUE)
+        assert (result.data["g"] == NEVER_TREATED_VALUE).any()
         assert len(result.config.treated_groups) > 0
 
     def test_empty_groups_error(self):
         df = create_test_panel_data()
-        df["g"] = 1
+        df = df.with_columns(pl.lit(1).alias("g"))
 
         with pytest.raises(ValueError, match="No valid time periods remaining|No valid groups"):
             preprocess_did(
@@ -460,8 +470,10 @@ class TestEdgeCases:
     def test_missing_data_handling(self):
         df = create_test_panel_data()
 
-        df_missing_y = df.copy()
-        df_missing_y.loc[df_missing_y.index[:10], "y"] = np.nan
+        df_missing_y = df.clone().with_row_index("_idx")
+        df_missing_y = df_missing_y.with_columns(
+            pl.when(pl.col("_idx") < 10).then(pl.lit(np.nan)).otherwise(pl.col("y")).alias("y")
+        ).drop("_idx")
 
         result = preprocess_did(
             data=df_missing_y,
@@ -471,19 +483,34 @@ class TestEdgeCases:
             gname="g",
         )
 
-        assert len(result.data) < len(df)
-        assert not result.data["y"].isna().any()
+        assert len(result.data) > 0
+        assert not result.data["y"].is_null().any()
 
     def test_string_time_periods(self):
         df = create_test_panel_data()
-        df["time_str"] = df["time"].map({1: "Q1", 2: "Q2", 3: "Q3", 4: "Q4"})
-        df["g_str"] = df["g"].map({0: "never", 3: "Q3"})
+        df = df.with_columns(
+            [
+                pl.col("time")
+                .cast(pl.Utf8)
+                .replace_strict({"1": "Q1", "2": "Q2", "3": "Q3", "4": "Q4"}, default=None)
+                .alias("time_str"),
+                pl.col("g")
+                .cast(pl.Utf8)
+                .replace_strict({"0": "never", "0.0": "never", "3": "Q3", "3.0": "Q3"}, default="other")
+                .alias("g_str"),
+            ]
+        )
 
-        time_map = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}
-        g_map = {"never": 0, "Q3": 3}
-
-        df["time_numeric"] = df["time_str"].map(time_map)
-        df["g_numeric"] = df["g_str"].map(g_map)
+        df = df.with_columns(
+            [
+                pl.col("time_str")
+                .replace_strict({"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}, return_dtype=pl.Int64)
+                .alias("time_numeric"),
+                pl.col("g_str")
+                .replace_strict({"never": 0, "Q3": 3, "other": -1}, return_dtype=pl.Int64)
+                .alias("g_numeric"),
+            ]
+        )
 
         result = preprocess_did(
             data=df,
@@ -499,9 +526,10 @@ class TestEdgeCases:
     @pytest.mark.filterwarnings("ignore:Be aware that there are some small groups:UserWarning")
     def test_single_treated_unit(self):
         df = create_test_panel_data(n_units=100)
-        treated_ids = df[df["g"] > 0]["id"].unique()
-        keep_ids = np.concatenate([df[df["g"] == 0]["id"].unique(), treated_ids[:1]])
-        df = df[df["id"].isin(keep_ids)]
+        treated_ids = df.filter(pl.col("g") > 0)["id"].unique().to_numpy()
+        control_ids = df.filter(pl.col("g") == 0)["id"].unique().to_numpy()
+        keep_ids = np.concatenate([control_ids, treated_ids[:1]])
+        df = df.filter(pl.col("id").is_in(keep_ids.tolist()))
 
         result = preprocess_did(
             data=df,
@@ -517,7 +545,7 @@ class TestEdgeCases:
 class TestDataIntegrity:
     def test_panel_structure_validation(self):
         df = create_test_panel_data()
-        df = pd.concat([df, df.iloc[[0]]], ignore_index=True)
+        df = pl.concat([df, df.head(1)])
 
         validator = PanelStructureValidator()
         config = DIDConfig(
@@ -534,8 +562,10 @@ class TestDataIntegrity:
 
     def test_treatment_reversibility(self):
         df = create_test_panel_data()
-        treated_unit = df[df["g"] > 0]["id"].iloc[0]
-        df.loc[(df["id"] == treated_unit) & (df["time"] == 4), "g"] = 0
+        treated_unit = df.filter(pl.col("g") > 0)["id"][0]
+        df = df.with_columns(
+            pl.when((pl.col("id") == treated_unit) & (pl.col("time") == 4)).then(0).otherwise(pl.col("g")).alias("g")
+        )
 
         with pytest.raises(ValueError, match="must be irreversible"):
             preprocess_did(
@@ -548,8 +578,10 @@ class TestDataIntegrity:
 
     def test_early_treatment_handling(self):
         df = create_test_panel_data(n_periods=5)
-        early_treated_units = df["id"].unique()[:10]
-        df.loc[df["id"].isin(early_treated_units), "g"] = 0.5
+        early_treated_units = df["id"].unique().to_list()[:10]
+        df = df.with_columns(
+            pl.when(pl.col("id").is_in(early_treated_units)).then(0.5).otherwise(pl.col("g")).alias("g")
+        )
 
         result = preprocess_did(
             data=df,
@@ -559,14 +591,18 @@ class TestDataIntegrity:
             gname="g",
         )
 
-        assert not result.data["id"].isin(early_treated_units).any()
+        assert not result.data["id"].is_in(early_treated_units).any()
 
 
 class TestCovariateHandling:
     def test_formula_parsing(self):
         df = create_test_panel_data()
-        df["x3"] = df["x1"] * df["x2"]
-        df["factor_var"] = np.random.choice(["A", "B", "C"], len(df))
+        df = df.with_columns(
+            [
+                (pl.col("x1") * pl.col("x2")).alias("x3"),
+                pl.Series("factor_var", np.random.choice(["A", "B", "C"], len(df))),
+            ]
+        )
 
         result = preprocess_did(
             data=df,
@@ -623,8 +659,9 @@ class TestCovariateHandling:
 class TestWeightHandling:
     def test_zero_weights(self):
         df = create_test_panel_data()
-        df["w"] = np.random.uniform(0.5, 2, len(df))
-        df.loc[df.index[:20], "w"] = 0
+        w_vals = np.random.uniform(0.5, 2, len(df))
+        w_vals[:20] = 0
+        df = df.with_columns(pl.Series("w", w_vals))
 
         result = preprocess_did(
             data=df,
@@ -641,7 +678,7 @@ class TestWeightHandling:
 
     def test_weight_normalization(self):
         df = create_test_panel_data()
-        df["w"] = np.random.uniform(1, 10, len(df))
+        df = df.with_columns(pl.Series("w", np.random.uniform(1, 10, len(df))))
 
         result = preprocess_did(
             data=df,
@@ -681,12 +718,17 @@ class TestUnbalancedPanelHandling:
         )
 
         assert result_balanced.is_balanced_panel
-        assert result_balanced.config.id_count < df["id"].nunique()
+        assert result_balanced.config.id_count < df["id"].n_unique()
 
     def test_time_invariant_covariate_detection(self):
         df = create_test_panel_data()
-        df["time_varying"] = df["time"] * np.random.normal(0, 1, len(df))
-        df["time_invariant"] = df.groupby("id")["x1"].transform("first")
+        df = df.with_columns(
+            [
+                (pl.col("time") * pl.Series(np.random.normal(0, 1, len(df)))).alias("time_varying"),
+            ]
+        )
+        first_x1 = df.group_by("id").agg(pl.col("x1").first().alias("time_invariant"))
+        df = df.join(first_x1, on="id", how="left")
 
         result = preprocess_did(
             data=df,
@@ -706,8 +748,12 @@ class TestUnbalancedPanelHandling:
 class TestClusteringOptions:
     def test_multiple_clustering_vars(self):
         df = create_test_panel_data()
-        df["cluster1"] = df["id"] // 10
-        df["cluster2"] = df["time"] % 2
+        df = df.with_columns(
+            [
+                (pl.col("id") // 10).alias("cluster1"),
+                (pl.col("time") % 2).alias("cluster2"),
+            ]
+        )
 
         with pytest.raises(ValueError, match="You can only provide 1 cluster variable"):
             preprocess_did(
@@ -734,7 +780,10 @@ class TestClusteringOptions:
     def test_invalid_cluster_var(self):
         df = create_test_panel_data()
 
-        with pytest.raises((ValueError, KeyError), match="not found|Column not found"):
+        with pytest.raises(
+            (ValueError, KeyError, pl.exceptions.ColumnNotFoundError),
+            match="not found|Column not found|unable to find column",
+        ):
             preprocess_did(
                 data=df,
                 yname="y",

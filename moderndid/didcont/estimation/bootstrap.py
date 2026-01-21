@@ -3,8 +3,9 @@
 import warnings
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
+from ...core.dataframe import to_pandas, to_polars
 from ..utils import _quantile_basis
 from .container import PteEmpBootResult
 
@@ -38,7 +39,7 @@ def panel_empirical_bootstrap(
     PteEmpBootResult
         Bootstrap results with standard errors for all aggregations.
     """
-    data = pte_params.data
+    data = to_pandas(pte_params.data)
     idname = pte_params.idname
     boot_type = pte_params.boot_type
     n_boot = pte_params.biters
@@ -88,58 +89,70 @@ def panel_empirical_bootstrap(
 
         bootstrap_results.append(boot_aggte)
 
-    attgt_boots = pd.concat([res["attgt_results"] for res in bootstrap_results if "attgt_results" in res])
-    attgt_se = attgt_boots.groupby(["group", "time_period"])["att"].std().reset_index(name="se")
-    attgt_results = aggte_results["attgt_results"].copy()
-    attgt_results = attgt_results.merge(attgt_se, on=["group", "time_period"], how="left")
+    attgt_boots = pl.concat([res["attgt_results"] for res in bootstrap_results if "attgt_results" in res])
+    attgt_boots = attgt_boots.with_columns(
+        [
+            pl.col("group").cast(pl.Float64),
+            pl.col("time_period").cast(pl.Float64),
+        ]
+    )
+    attgt_se = attgt_boots.group_by(["group", "time_period"]).agg(pl.col("att").std().alias("se"))
+    attgt_results = aggte_results["attgt_results"].clone()
+    attgt_results = attgt_results.with_columns(
+        [
+            pl.col("group").cast(pl.Float64),
+            pl.col("time_period").cast(pl.Float64),
+        ]
+    )
+    attgt_results = attgt_results.join(attgt_se, on=["group", "time_period"], how="left")
 
     if aggte_results.get("dyn_results") is not None:
-        dyn_boots = pd.concat([res["dyn_results"] for res in bootstrap_results if res.get("dyn_results") is not None])
+        dyn_boots = pl.concat([res["dyn_results"] for res in bootstrap_results if res.get("dyn_results") is not None])
 
-        counts = dyn_boots.groupby("e").size()
+        counts = dyn_boots.group_by("e").len()
         original_e_count = len(counts)
-        complete_groups = counts[counts == n_boot].index
+        complete_groups = counts.filter(pl.col("len") == n_boot)["e"].to_list()
         new_e_count = len(complete_groups)
 
         if new_e_count != original_e_count:
             warnings.warn("dropping some event times due to small groups")
 
-        if not complete_groups.empty:
-            filtered_boots = dyn_boots[dyn_boots["e"].isin(complete_groups)]
-            dyn_se = filtered_boots.groupby("e")["att_e"].std().reset_index(name="se")
+        if complete_groups:
+            filtered_boots = dyn_boots.filter(pl.col("e").is_in(complete_groups))
+            dyn_se = filtered_boots.group_by("e").agg(pl.col("att_e").std().alias("se"))
 
-            dyn_results = aggte_results["dyn_results"].copy()
-            dyn_results = dyn_results.merge(dyn_se, on="e", how="inner")
+            dyn_results = aggte_results["dyn_results"].clone()
+            dyn_results = dyn_results.join(dyn_se, on="e", how="inner")
         else:
-            dyn_results = aggte_results["dyn_results"].copy()
-            dyn_results["se"] = np.nan
-            dyn_results = dyn_results[dyn_results["e"].isin([])]
+            dyn_results = aggte_results["dyn_results"].clone()
+            dyn_results = dyn_results.with_columns(pl.lit(np.nan).alias("se"))
+            dyn_results = dyn_results.filter(pl.col("e").is_in([]))
     else:
         dyn_results = None
 
     if aggte_results.get("group_results") is not None:
-        group_boots = pd.concat(
+        group_boots = pl.concat(
             [res["group_results"] for res in bootstrap_results if res.get("group_results") is not None]
         )
 
-        counts = group_boots.groupby("group").size()
+        counts = group_boots.group_by("group").len()
         original_g_count = len(counts)
-        complete_groups = counts[counts == n_boot].index
+        complete_groups = counts.filter(pl.col("len") == n_boot)["group"].to_list()
         new_g_count = len(complete_groups)
 
         if new_g_count != original_g_count:
             warnings.warn("dropping some groups due to small groups")
 
-        if not complete_groups.empty:
-            filtered_boots = group_boots[group_boots["group"].isin(complete_groups)]
-            group_se = filtered_boots.groupby("group")["att_g"].std().reset_index(name="se")
+        if complete_groups:
+            filtered_boots = group_boots.filter(pl.col("group").is_in(complete_groups))
+            group_se = filtered_boots.group_by("group").agg(pl.col("att_g").std().alias("se"))
 
-            group_results = aggte_results["group_results"].copy()
-            group_results = group_results.merge(group_se, on="group", how="inner")
+            group_results = aggte_results["group_results"].clone()
+            group_results = group_results.join(group_se, on="group", how="inner")
         else:
-            group_results = aggte_results["group_results"].copy()
-            group_results["se"] = np.nan
-            group_results = group_results[group_results["group"].isin([])]
+            group_results = aggte_results["group_results"].clone()
+            group_results = group_results.with_columns(pl.lit(np.nan).alias("se"))
+            group_results = group_results.filter(pl.col("group").is_in([]))
     else:
         group_results = None
 
@@ -175,14 +188,22 @@ def attgt_pte_aggregations(attgt_list, pte_params):
     time_periods = pte_params.t_list
     groups = pte_params.g_list
 
-    data = pte_params.data
-    original_periods = np.sort(data[pte_params.tname].unique())
+    data = to_polars(pte_params.data)
+    original_periods = np.sort(data[pte_params.tname].unique().to_numpy())
 
-    attgt_df = pd.DataFrame(attgt_list)
+    attgt_df = pl.DataFrame(attgt_list)
 
-    if attgt_df.empty or "att" not in attgt_df.columns:
+    if "group" in attgt_df.columns:
+        attgt_df = attgt_df.with_columns(pl.col("group").cast(pl.Float64))
+    if "time_period" in attgt_df.columns:
+        attgt_df = attgt_df.with_columns(pl.col("time_period").cast(pl.Float64))
+
+    if attgt_df.is_empty() or "att" not in attgt_df.columns:
         return {
-            "attgt_results": pd.DataFrame(columns=["group", "time_period", "att"]),
+            "attgt_results": pl.DataFrame(
+                {"group": [], "time_period": [], "att": []},
+                schema={"group": pl.Float64, "time_period": pl.Float64, "att": pl.Float64},
+            ),
             "dyn_results": None,
             "dyn_weights": [],
             "group_results": None,
@@ -191,76 +212,99 @@ def attgt_pte_aggregations(attgt_list, pte_params):
             "overall_weights": np.array([]),
         }
 
-    attgt_df = attgt_df.dropna(subset=["att"]).reset_index(drop=True)
+    attgt_df = attgt_df.drop_nulls(subset=["att"])
 
     if not np.array_equal(time_periods, original_periods):
         time_map = {i + 1: orig for i, orig in enumerate(original_periods)}
-        attgt_df["time_period"] = attgt_df["time_period"].map(time_map)
-        attgt_df["group"] = attgt_df["group"].map(time_map)
+        attgt_df = attgt_df.with_columns(
+            pl.col("time_period").replace(time_map).alias("time_period"),
+            pl.col("group").replace(time_map).alias("group"),
+        )
         groups = np.array([time_map.get(g, g) for g in groups])
         time_periods = np.array([time_map.get(t, t) for t in time_periods])
 
-    attgt_df["e"] = attgt_df["time_period"] - attgt_df["group"]
+    attgt_df = attgt_df.with_columns((pl.col("time_period") - pl.col("group")).alias("e"))
 
     first_period = time_periods[0]
-    group_sizes = data[data[pte_params.tname] == first_period].groupby(pte_params.gname).size().rename("n_group")
-    attgt_df = attgt_df.merge(group_sizes, left_on="group", right_index=True, how="left")
-    attgt_df["n_group"] = attgt_df["n_group"].fillna(0)
+    group_sizes = (
+        data.filter(pl.col(pte_params.tname) == first_period)
+        .group_by(pte_params.gname)
+        .len()
+        .rename({pte_params.gname: "group", "len": "n_group"})
+        .with_columns(pl.col("group").cast(pl.Float64))
+    )
+    attgt_df = attgt_df.join(group_sizes, on="group", how="left")
+    attgt_df = attgt_df.with_columns(pl.col("n_group").fill_null(0))
 
-    if "e" in attgt_df.columns and attgt_df["e"].notna().any():
-        attgt_df["dyn_w"] = attgt_df["n_group"] / attgt_df.groupby("e")["n_group"].transform("sum")
-        dyn_df = (
-            attgt_df.groupby("e")
-            .apply(lambda x: (x["att"] * x["dyn_w"]).sum(), include_groups=False)
-            .reset_index(name="att_e")
-        )
+    if "e" in attgt_df.columns and attgt_df["e"].drop_nulls().len() > 0:
+        e_sums = attgt_df.group_by("e").agg(pl.col("n_group").sum().alias("e_sum"))
+        attgt_df = attgt_df.join(e_sums, on="e", how="left")
+        attgt_df = attgt_df.with_columns((pl.col("n_group") / pl.col("e_sum")).alias("dyn_w"))
 
-        dyn_weights_pivot = attgt_df.pivot_table(index=attgt_df.index, columns="e", values="dyn_w", fill_value=0)
-        dyn_weights = [{"e": e, "weights": dyn_weights_pivot[e].values} for e in dyn_weights_pivot.columns]
+        dyn_df = attgt_df.group_by("e").agg((pl.col("att") * pl.col("dyn_w")).sum().alias("att_e"))
+
+        e_values = attgt_df["e"].unique().sort().to_list()
+        dyn_weights = []
+        for e in e_values:
+            weights = attgt_df.with_columns(pl.when(pl.col("e") == e).then(pl.col("dyn_w")).otherwise(0).alias("w"))[
+                "w"
+            ].to_numpy()
+            dyn_weights.append({"e": e, "weights": weights})
     else:
         dyn_df = None
         dyn_weights = []
 
-    post_treatment_df = attgt_df[attgt_df["time_period"] >= attgt_df["group"]].copy()
-    if not post_treatment_df.empty:
-        group_df = (
-            post_treatment_df.groupby("group")
-            .agg(
-                att_g=("att", "mean"),
-                n_group=("n_group", "first"),
-                group_post_length=("att", "size"),
-            )
-            .reset_index()
+    post_treatment_df = attgt_df.filter(pl.col("time_period") >= pl.col("group"))
+    if not post_treatment_df.is_empty():
+        group_df = post_treatment_df.group_by("group").agg(
+            pl.col("att").mean().alias("att_g"),
+            pl.col("n_group").first().alias("n_group"),
+            pl.col("att").len().alias("group_post_length"),
         )
 
-        post_treatment_df["group_w"] = 1.0 / post_treatment_df.groupby("group")["group"].transform("size")
-        group_weights_pivot = post_treatment_df.pivot_table(
-            index=post_treatment_df.index, columns="group", values="group_w", fill_value=0
-        )
-        group_weights_pivot = group_weights_pivot.reindex(attgt_df.index, fill_value=0)
-        group_weights = [{"g": g, "weights": group_weights_pivot[g].values} for g in group_weights_pivot.columns]
+        group_counts = post_treatment_df.group_by("group").len().rename({"len": "group_size"})
+        post_treatment_df = post_treatment_df.join(group_counts, on="group", how="left")
+        post_treatment_df = post_treatment_df.with_columns((1.0 / pl.col("group_size")).alias("group_w"))
+
+        group_values = post_treatment_df["group"].unique().sort().to_list()
+        group_weights = []
+        for g in group_values:
+            weights = np.zeros(len(attgt_df))
+            post_mask = (attgt_df["time_period"] >= attgt_df["group"]).to_numpy()
+            group_mask = (attgt_df["group"] == g).to_numpy()
+            combined_mask = post_mask & group_mask
+            if combined_mask.any():
+                group_size = combined_mask.sum()
+                weights[combined_mask] = 1.0 / group_size
+            group_weights.append({"g": g, "weights": weights})
     else:
         group_df = None
         group_weights = []
 
-    if group_df is not None and not group_df.empty:
-        valid_groups = group_df.dropna(subset=["att_g"])
-        if not valid_groups.empty:
-            valid_groups["overall_w"] = valid_groups["n_group"] / valid_groups["n_group"].sum()
+    if group_df is not None and not group_df.is_empty():
+        valid_groups = group_df.drop_nulls(subset=["att_g"])
+        if not valid_groups.is_empty():
+            n_group_sum = valid_groups["n_group"].sum()
+            valid_groups = valid_groups.with_columns((pl.col("n_group") / n_group_sum).alias("overall_w"))
             overall_att = (valid_groups["att_g"] * valid_groups["overall_w"]).sum()
 
-            attgt_df = attgt_df.merge(
-                valid_groups[["group", "overall_w", "group_post_length"]],
+            attgt_df = attgt_df.join(
+                valid_groups.select(["group", "overall_w", "group_post_length"]),
                 on="group",
                 how="left",
             )
-            attgt_df["overall_w"] = attgt_df["overall_w"].fillna(0)
+            attgt_df = attgt_df.with_columns(pl.col("overall_w").fill_null(0))
 
-            e_mask = attgt_df["e"] >= 0
+            e_values = attgt_df["e"].to_numpy()
+            overall_w_values = attgt_df["overall_w"].to_numpy()
+            group_post_length_values = attgt_df["group_post_length"].to_numpy()
+
+            e_mask = e_values >= 0
             overall_weights = np.zeros(len(attgt_df))
-            overall_weights[e_mask] = (
-                attgt_df.loc[e_mask, "overall_w"] / attgt_df.loc[e_mask, "group_post_length"]
-            ).fillna(0)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                weights_calc = overall_w_values / group_post_length_values
+                weights_calc = np.nan_to_num(weights_calc, nan=0.0, posinf=0.0, neginf=0.0)
+            overall_weights[e_mask] = weights_calc[e_mask]
         else:
             overall_att = np.nan
             overall_weights = np.zeros(len(attgt_df))
@@ -268,10 +312,12 @@ def attgt_pte_aggregations(attgt_list, pte_params):
         overall_att = np.nan
         overall_weights = np.zeros(len(attgt_df))
 
-    attgt_results = attgt_df[["group", "time_period", "att"]]
+    attgt_results = attgt_df.select(["group", "time_period", "att"]).filter(
+        pl.col("att").is_not_null() & pl.col("att").is_not_nan()
+    )
 
     if group_df is not None:
-        group_results = group_df[["group", "att_g"]]
+        group_results = group_df.select(["group", "att_g"])
     else:
         group_results = None
 
@@ -319,7 +365,9 @@ def qtt_pte_aggregations(attgt_list, pte_params, extra_gt_returns):
     time_periods = [item["time_period"] for item in attgt_list]
 
     yname = pte_params.yname
-    y_values = pte_params.data[yname].values
+
+    data = to_polars(pte_params.data)
+    y_values = data[yname].to_numpy()
     y_seq = np.quantile(y_values, np.linspace(0, 1, 1000))
 
     overall_weights = att_results["overall_weights"]
@@ -367,9 +415,9 @@ def qtt_pte_aggregations(attgt_list, pte_params, extra_gt_returns):
             group_qtt.append({"group": g, "att_g": qtt_g})
 
     return {
-        "attgt_results": pd.DataFrame({"group": groups, "time_period": time_periods, "att": qtt_gt}),
-        "dyn_results": pd.DataFrame(dyn_qtt) if dyn_qtt else None,
-        "group_results": pd.DataFrame(group_qtt) if group_qtt else None,
+        "attgt_results": pl.DataFrame({"group": groups, "time_period": time_periods, "att": qtt_gt}),
+        "dyn_results": pl.DataFrame(dyn_qtt) if dyn_qtt else None,
+        "group_results": pl.DataFrame(group_qtt) if group_qtt else None,
         "overall_results": overall_qtt,
     }
 
@@ -401,7 +449,8 @@ def qott_pte_aggregations(attgt_list, pte_params, extra_gt_returns):
     time_periods = [item["time_period"] for item in attgt_list]
 
     yname = pte_params.yname
-    y_max = pte_params.data[yname].max()
+    data = to_polars(pte_params.data)
+    y_max = data[yname].max()
     y_seq = np.linspace(-y_max, y_max, 1000)
 
     overall_weights = att_results["overall_weights"]
@@ -434,9 +483,9 @@ def qott_pte_aggregations(attgt_list, pte_params, extra_gt_returns):
             group_qott.append({"group": g, "att_g": qott_g})
 
     return {
-        "attgt_results": pd.DataFrame({"group": groups, "time_period": time_periods, "att": qott_gt}),
-        "dyn_results": pd.DataFrame(dyn_qott) if dyn_qott else None,
-        "group_results": pd.DataFrame(group_qott) if group_qott else None,
+        "attgt_results": pl.DataFrame({"group": groups, "time_period": time_periods, "att": qott_gt}),
+        "dyn_results": pl.DataFrame(dyn_qott) if dyn_qott else None,
+        "group_results": pl.DataFrame(group_qott) if group_qott else None,
         "overall_results": overall_qott,
     }
 
@@ -446,17 +495,19 @@ def block_boot_sample(data, id_column):
 
     Parameters
     ----------
-    data : pd.DataFrame
+    data : pd.DataFrame or pl.DataFrame
         Panel data with unit identifiers.
     id_column : str
         Name of column containing unit IDs.
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         Bootstrap sample with same structure as input data.
     """
-    unique_ids = data[id_column].unique()
+    data_pl = to_polars(data)
+
+    unique_ids = data_pl[id_column].unique().to_numpy()
     n_units = len(unique_ids)
 
     rng = np.random.default_rng()
@@ -464,11 +515,11 @@ def block_boot_sample(data, id_column):
 
     bootstrap_data = []
     for new_id, old_id in enumerate(sampled_ids):
-        unit_data = data[data[id_column] == old_id].copy()
-        unit_data[id_column] = new_id
+        unit_data = data_pl.filter(pl.col(id_column) == old_id).clone()
+        unit_data = unit_data.with_columns(pl.lit(new_id).alias(id_column))
         bootstrap_data.append(unit_data)
 
-    return pd.concat(bootstrap_data, ignore_index=True)
+    return pl.concat(bootstrap_data)
 
 
 def _make_ecdf(y_values, cdf_values):

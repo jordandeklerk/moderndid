@@ -6,7 +6,10 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
+import polars as pl
 from scipy import stats
+
+from moderndid.core.dataframe import to_polars
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from .ddd_mp import _gmm_aggregate
@@ -71,7 +74,7 @@ def ddd_mp_rc(
     id_col,
     group_col,
     partition_col,
-    covariates=None,
+    covariate_cols=None,
     control_group="nevertreated",
     base_period="universal",
     est_method="dr",
@@ -140,8 +143,8 @@ def ddd_mp_rc(
         Use 0 or np.inf for never-treated units.
     partition_col : str
         Name of the partition/eligibility column (1 = eligible, 0 = ineligible).
-    covariates : ndarray or None, default None
-        Pre-treatment covariates matrix. If None, uses intercept only.
+    covariate_cols : list of str or None, default None
+        Names of covariate columns in the data. If None, uses intercept only.
     control_group : {"nevertreated", "notyettreated"}, default "nevertreated"
         Which units to use as controls. With "notyettreated", multiple comparison
         groups may be available, triggering GMM aggregation.
@@ -199,8 +202,10 @@ def ddd_mp_rc(
         Journal of Econometrics, 219(1), 101-122.
         https://doi.org/10.1016/j.jeconom.2020.06.003
     """
-    tlist = np.sort(data[time_col].unique())
-    glist_raw = data[group_col].unique()
+    data = to_polars(data)
+
+    tlist = np.sort(data[time_col].unique().to_numpy())
+    glist_raw = data[group_col].unique().to_numpy()
     glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
 
     n_obs = len(data)
@@ -214,8 +219,7 @@ def ddd_mp_rc(
     inf_func_mat = np.zeros((n_obs, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
-    data_with_idx = data.copy()
-    data_with_idx["_obs_idx"] = np.arange(len(data))
+    data_with_idx = data.with_columns(pl.Series("_obs_idx", np.arange(len(data))))
 
     counter = 0
 
@@ -235,7 +239,7 @@ def ddd_mp_rc(
                 _id_col=id_col,
                 group_col=group_col,
                 partition_col=partition_col,
-                covariates=covariates,
+                covariate_cols=covariate_cols,
                 est_method=est_method,
                 trim_level=trim_level,
                 n_obs=n_obs,
@@ -256,7 +260,7 @@ def ddd_mp_rc(
 
     cluster_vals = None
     if cluster is not None:
-        cluster_vals = data_with_idx[cluster].values
+        cluster_vals = data_with_idx[cluster].to_numpy()
 
     if boot:
         boot_result = mboot_ddd(
@@ -332,7 +336,7 @@ def _process_gt_cell_rc(
     _id_col,
     group_col,
     partition_col,
-    covariates,
+    covariate_cols,
     est_method,
     trim_level,
     n_obs,
@@ -376,7 +380,7 @@ def _process_gt_cell_rc(
             g,
             t,
             pret,
-            covariates,
+            covariate_cols,
             est_method,
             trim_level,
             n_obs,
@@ -397,7 +401,7 @@ def _process_gt_cell_rc(
             g,
             t,
             pret,
-            covariates,
+            covariate_cols,
             est_method,
             trim_level,
             n_obs,
@@ -427,21 +431,22 @@ def _get_cell_data_rc(data, g, t, pret, control_group, time_col, group_col):
     max_period = max(t, pret)
 
     if control_group == "nevertreated":
-        control_mask = (data[group_col] == 0) | (~np.isfinite(data[group_col]))
+        control_expr = (pl.col(group_col) == 0) | (~pl.col(group_col).is_finite())
     else:
-        control_mask = ((data[group_col] == 0) | (~np.isfinite(data[group_col])) | (data[group_col] > max_period)) & (
-            data[group_col] != g
-        )
+        control_expr = (
+            (pl.col(group_col) == 0) | (~pl.col(group_col).is_finite()) | (pl.col(group_col) > max_period)
+        ) & (pl.col(group_col) != g)
 
-    treat_mask = data[group_col] == g
-    cell_mask = treat_mask | control_mask
-    cell_data = data[cell_mask & data[time_col].isin([t, pret])].copy()
+    treat_expr = pl.col(group_col) == g
+    cell_expr = treat_expr | control_expr
+    time_expr = pl.col(time_col).is_in([t, pret])
+    cell_data = data.filter(cell_expr & time_expr)
 
     if len(cell_data) == 0:
         return None, []
 
-    control_data = cell_data[~cell_data[group_col].isin([g])]
-    available_controls = [c for c in control_data[group_col].unique() if c != g]
+    control_data = cell_data.filter(~pl.col(group_col).is_in([g]))
+    available_controls = [c for c in control_data[group_col].unique().to_list() if c != g]
 
     return cell_data, available_controls
 
@@ -454,11 +459,23 @@ def _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, count
 
 
 def _process_single_control_rc(
-    cell_data, y_col, time_col, group_col, partition_col, g, t, pret, covariates, est_method, trim_level, n_obs, n_cell
+    cell_data,
+    y_col,
+    time_col,
+    group_col,
+    partition_col,
+    g,
+    t,
+    pret,
+    covariate_cols,
+    est_method,
+    trim_level,
+    n_obs,
+    n_cell,
 ):
     """Process a (g,t) cell with a single control group for RCS."""
     att_result, inf_func, obs_indices = _compute_single_ddd_rc(
-        cell_data, y_col, time_col, group_col, partition_col, g, t, pret, covariates, est_method, trim_level
+        cell_data, y_col, time_col, group_col, partition_col, g, t, pret, covariate_cols, est_method, trim_level
     )
 
     if att_result is None:
@@ -478,7 +495,7 @@ def _process_multiple_controls_rc(
     g,
     t,
     pret,
-    covariates,
+    covariate_cols,
     est_method,
     trim_level,
     n_obs,
@@ -488,15 +505,15 @@ def _process_multiple_controls_rc(
     ddd_results = []
     inf_funcs_local = []
 
-    cell_obs_indices = cell_data["_obs_idx"].values
+    cell_obs_indices = cell_data["_obs_idx"].to_numpy()
     cell_idx_to_local = {idx: i for i, idx in enumerate(cell_obs_indices)}
 
     for ctrl in available_controls:
-        ctrl_mask = (cell_data[group_col] == g) | (cell_data[group_col] == ctrl)
-        subset_data = cell_data[ctrl_mask].copy()
+        ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
+        subset_data = cell_data.filter(ctrl_expr)
 
         att_result, inf_func, subset_obs_indices = _compute_single_ddd_rc(
-            subset_data, y_col, time_col, group_col, partition_col, g, t, pret, covariates, est_method, trim_level
+            subset_data, y_col, time_col, group_col, partition_col, g, t, pret, covariate_cols, est_method, trim_level
         )
 
         if att_result is None:
@@ -522,39 +539,35 @@ def _process_multiple_controls_rc(
 
 
 def _compute_single_ddd_rc(
-    cell_data, y_col, time_col, group_col, partition_col, g, t, _pret, covariates, est_method, trim_level
+    cell_data, y_col, time_col, group_col, partition_col, g, t, _pret, covariate_cols, est_method, trim_level
 ):
     """Compute DDD for a single (g,t) cell with a single control group using RCS."""
-    cell_data = cell_data.copy()
-    cell_data["treat"] = (cell_data[group_col] == g).astype(int)
+    treat_col = (pl.col(group_col) == g).cast(pl.Int64).alias("treat")
+    subgroup_expr = (
+        4 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
+        + 3 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
+        + 2 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
+        + 1 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
+    ).alias("subgroup")
 
-    cell_data["subgroup"] = (
-        4 * (cell_data["treat"] == 1) * (cell_data[partition_col] == 1)
-        + 3 * (cell_data["treat"] == 1) * (cell_data[partition_col] == 0)
-        + 2 * (cell_data["treat"] == 0) * (cell_data[partition_col] == 1)
-        + 1 * (cell_data["treat"] == 0) * (cell_data[partition_col] == 0)
-    )
+    cell_data = cell_data.with_columns([treat_col]).with_columns([subgroup_expr])
+    post_col = (pl.col(time_col) == t).cast(pl.Int64).alias("_post")
+    cell_data = cell_data.with_columns([post_col])
 
-    post_indicator = (cell_data[time_col] == t).astype(int)
-
-    y = cell_data[y_col].values
-    post = post_indicator.values
-    subgroup = cell_data["subgroup"].values
-    obs_indices = cell_data["_obs_idx"].values
+    y = cell_data[y_col].to_numpy()
+    post = cell_data["_post"].to_numpy()
+    subgroup = cell_data["subgroup"].to_numpy()
+    obs_indices = cell_data["_obs_idx"].to_numpy()
 
     if 4 not in set(subgroup):
         return None, None, None
 
-    if covariates is None:
+    if covariate_cols is None:
         X = np.ones((len(y), 1))
     else:
-        if hasattr(covariates, "__getitem__"):
-            try:
-                X = covariates[cell_data.index.values]
-            except (KeyError, IndexError):
-                X = np.ones((len(y), 1))
-        else:
-            X = np.ones((len(y), 1))
+        cov_matrix = cell_data.select(covariate_cols).to_numpy()
+        intercept = np.ones((len(y), 1))
+        X = np.hstack([intercept, cov_matrix])
 
     try:
         result = ddd_rc(
