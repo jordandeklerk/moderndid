@@ -19,7 +19,6 @@ from .multiperiod_obj import (
 )
 from .plots import (
     plot_att_gt,
-    plot_did,
     plot_event_study,
 )
 
@@ -44,5 +43,4 @@ __all__ = [
     "compute_att_gt",
     "plot_att_gt",
     "plot_event_study",
-    "plot_did",
 ]

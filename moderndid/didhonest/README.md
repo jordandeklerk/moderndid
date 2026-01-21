@@ -113,16 +113,28 @@ All these options are available both at a lower-level API or through the high-le
 
 ### Visualizations
 
-Built-in plotting functions:
+Built-in plotting functions using [plotnine](https://plotnine.org/):
 
 ```python
-from moderndid import plot_sensitivity_sm, plot_sensitivity_rm
+from moderndid import plot_sensitivity
 
-# Plot sensitivity analysis for smoothness restrictions
-fig = plot_sensitivity_sm(sensitivity_results, original_ci_df)
+# Plot sensitivity analysis results
+plot_sensitivity(sensitivity_results)
+```
 
-# Plot sensitivity analysis for relative magnitudes
-fig = plot_sensitivity_rm(sensitivity_results_rm, original_ci_df)
+Plots can be customized using standard plotnine syntax:
+
+```python
+from plotnine import labs, theme, theme_classic
+
+custom_plot = (
+    plot_sensitivity(sensitivity_results)
+    + theme_classic()
+    + labs(title="Sensitivity Analysis", y="Treatment Effect")
+    + theme(figure_size=(8, 5))
+)
+
+custom_plot.save("sensitivity.png", dpi=300)
 ```
 
 ## Usage
@@ -254,7 +266,9 @@ Original 95% CI for 2014 effect: [0.0285, 0.0644]
 The output shows a robust confidence interval for different values of $\bar{M}$. We see that the "breakdown value" for a significant effect is $\bar{M} = 2$, meaning that the significant result is robust to allowing for violations of parallel trends up to the same magnitude as the max violation in the pre-treatment period.
 
 ```python
-plot_sensitivity_rm(delta_rm_results, original_ci)
+from moderndid import plot_sensitivity
+
+plot_sensitivity(delta_rm_results)
 ```
 
 ![Sensitivity-Analysis-Using-Relative-Magnitudes](/assets/medicaid_sensitivity_rm.png)
@@ -292,7 +306,7 @@ print(delta_sd_results)
 We see that the breakdown value for a significant effect is $M \approx 0.03$, meaning that we can reject a null effect unless we are willing to allow for the linear extrapolation across consecutive periods to be off by more than 0.03 percentage points.
 
 ```python
-plot_sensitivity_sm(delta_sd_results, original_ci)
+plot_sensitivity(delta_sd_results)
 ```
 
 ![Sensitivity-Analysis-Using-Smoothness-Restrictions](/assets/medicaid_sensitivity_sd.png)
@@ -336,7 +350,7 @@ print(delta_rm_results_avg)
 ```
 
 ```python
-plot_sensitivity_rm(delta_rm_results_avg, original_ci_avg)
+plot_sensitivity(delta_rm_results_avg)
 ```
 
 ![Sensitivity-Analysis-Average](/assets/medicaid_sensitivity_avg.png)

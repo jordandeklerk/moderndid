@@ -169,3 +169,6 @@ cython_debug/
 uv.lock
 
 triplediff/
+
+# Large test data files
+tests/didcont/r_simulated_data.csv

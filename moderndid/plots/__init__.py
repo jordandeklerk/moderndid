@@ -1,32 +1,40 @@
-"""Unified plotting infrastructure for moderndid."""
+"""Unified plotting infrastructure for moderndid using plotnine."""
 
-try:
-    import matplotlib as _mpl  # noqa: F401
-except ImportError as e:
-    raise ImportError(
-        "matplotlib is required for plotting functionality. Install it with: pip install moderndid[plots]"
-    ) from e
-
-from moderndid.plots.collection import PlotCollection
-from moderndid.plots.themes import THEMES, PlotTheme, apply_theme
-from moderndid.plots.visuals import (
-    errorbar,
-    fill_between,
-    hline,
-    line,
-    scatter,
-    vline,
+from moderndid.plots.converters import (
+    aggteresult_to_polars,
+    doseresult_to_polars,
+    honestdid_to_polars,
+    mpresult_to_polars,
+    pteresult_to_polars,
+)
+from moderndid.plots.plots import (
+    plot_att_gt,
+    plot_dose_response,
+    plot_event_study,
+    plot_sensitivity,
+)
+from moderndid.plots.themes import (
+    COLORS,
+    theme_minimal,
+    theme_moderndid,
+    theme_publication,
 )
 
 __all__ = [
-    "PlotCollection",
-    "PlotTheme",
-    "THEMES",
-    "apply_theme",
-    "scatter",
-    "line",
-    "errorbar",
-    "fill_between",
-    "hline",
-    "vline",
+    # Plot functions
+    "plot_att_gt",
+    "plot_event_study",
+    "plot_dose_response",
+    "plot_sensitivity",
+    # Themes
+    "theme_moderndid",
+    "theme_publication",
+    "theme_minimal",
+    "COLORS",
+    # Converters
+    "mpresult_to_polars",
+    "aggteresult_to_polars",
+    "doseresult_to_polars",
+    "pteresult_to_polars",
+    "honestdid_to_polars",
 ]
