@@ -1,58 +1,14 @@
 """Shared fixtures for plotting tests."""
 
-import matplotlib
-import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import pytest
-
-matplotlib.use("Agg")
 
 from moderndid.did.aggte_obj import AGGTEResult
 from moderndid.did.multiperiod_obj import MPResult
 from moderndid.didcont.estimation.container import DoseResult
 from moderndid.didhonest.honest_did import HonestDiDResult
 from moderndid.didhonest.sensitivity import OriginalCSResult
-from moderndid.plots.containers import DataArray, Dataset
-
-
-@pytest.fixture
-def simple_data():
-    return DataArray(np.array([1, 2, 3, 4, 5]), ["x"], {"x": np.array([0, 1, 2, 3, 4])})
-
-
-@pytest.fixture
-def ax():
-    fig, axes = plt.subplots()
-    yield axes
-    plt.close(fig)
-
-
-@pytest.fixture
-def simple_dataset():
-    data_vars = {"a": {"values": np.array([1, 2, 3]), "dims": ["x"], "coords": {"x": np.array([0, 1, 2])}}}
-    return Dataset(data_vars)
-
-
-@pytest.fixture
-def multidim_dataset():
-    data_vars = {
-        "a": {
-            "values": np.array([[1, 2], [3, 4]]),
-            "dims": ["x", "y"],
-            "coords": {"x": np.array([0, 1]), "y": np.array([10, 20])},
-        }
-    }
-    return Dataset(data_vars)
-
-
-@pytest.fixture
-def multivar_dataset():
-    data_vars = {
-        "a": {"values": np.array([1, 2]), "dims": ["x"], "coords": {"x": np.array([0, 1])}},
-        "b": {"values": np.array([3, 4]), "dims": ["x"], "coords": {"x": np.array([0, 1])}},
-    }
-    return Dataset(data_vars)
 
 
 @pytest.fixture
@@ -125,11 +81,12 @@ def dose_result():
 
 @pytest.fixture
 def honest_result():
-    df = pl.DataFrame({"M": [0.0, 0.5, 1.0], "lb": [0.1, 0.0, -0.1], "ub": [0.9, 0.8, 0.7]})
+    df = pl.DataFrame({"M": [0.5, 1.0, 1.5], "lb": [0.1, 0.0, -0.1], "ub": [0.9, 0.8, 0.7], "method": ["FLCI"] * 3})
 
     original_ci = OriginalCSResult(
         lb=0.3,
         ub=0.7,
+        method="Original",
     )
 
     return HonestDiDResult(

@@ -101,6 +101,7 @@ numpydoc_xref_aliases = {
     "np.ndarray": ":class:`numpy.ndarray`",
     "np.random.Generator": ":class:`numpy.random.Generator`",
     "matplotlib.figure.Figure": ":class:`matplotlib.figure.Figure`",
+    "ggplot": ":class:`plotnine.ggplot`",
     **{f"{singular}s": f":any:`{singular}s <{singular}>`" for singular in singulars},
 }
 
@@ -111,6 +112,7 @@ intersphinx_mapping = {
     "polars": ("https://docs.pola.rs/api/python/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "matplotlib": ("https://matplotlib.org/stable/", None),
+    "plotnine": ("https://plotnine.org/reference/", None),
 }
 
 # -- Options for HTML output

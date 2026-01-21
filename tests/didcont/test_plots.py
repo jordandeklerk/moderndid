@@ -4,14 +4,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+plotnine = pytest.importorskip("plotnine")
+
+from plotnine import ggplot
+
 from moderndid.didcont.cont_did import cont_did
-from moderndid.didcont.plots import plot_cont_did
-from moderndid.plots import PlotCollection
+from moderndid.plots import plot_dose_response, plot_event_study
 from tests.helpers import importorskip
 
 np = importorskip("numpy")
 pd = importorskip("pandas")
-plt = importorskip("matplotlib.pyplot")
 
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -45,17 +49,11 @@ def test_dose_response_plot_produces_finite_outputs():
     assert np.all(np.isfinite(result.dose))
     assert np.all(np.isfinite(result.att_d))
 
-    pc_att = plot_cont_did(result, type="att", show_ci=True)
-    assert isinstance(pc_att, PlotCollection)
-    fig_att = pc_att.viz["figure"]
-    assert fig_att.axes
-    plt.close(fig_att)
+    plot_att = plot_dose_response(result, effect_type="att", show_ci=True)
+    assert isinstance(plot_att, ggplot)
 
-    pc_acrt = plot_cont_did(result, type="acrt", show_ci=True)
-    assert isinstance(pc_acrt, PlotCollection)
-    fig_acrt = pc_acrt.viz["figure"]
-    assert fig_acrt.axes
-    plt.close(fig_acrt)
+    plot_acrt = plot_dose_response(result, effect_type="acrt", show_ci=True)
+    assert isinstance(plot_acrt, ggplot)
 
 
 def test_event_study_plots_have_consistent_dimensions():
@@ -85,11 +83,8 @@ def test_event_study_plots_have_consistent_dimensions():
     assert np.all(np.isfinite(level_event.att_by_event))
     assert np.all(level_event.se_by_event >= 0)
 
-    pc_level = plot_cont_did(level_result)
-    assert isinstance(pc_level, PlotCollection)
-    fig_level = pc_level.viz["figure"]
-    assert fig_level.axes
-    plt.close(fig_level)
+    plot_level = plot_event_study(level_result)
+    assert isinstance(plot_level, ggplot)
 
     slope_result = cont_did(
         yname="Y",
@@ -114,11 +109,8 @@ def test_event_study_plots_have_consistent_dimensions():
     assert slope_event.att_by_event.shape == slope_event.se_by_event.shape
     assert np.all(np.isfinite(slope_event.att_by_event))
 
-    pc_slope = plot_cont_did(slope_result, type="acrt")
-    assert isinstance(pc_slope, PlotCollection)
-    fig_slope = pc_slope.viz["figure"]
-    assert fig_slope.axes
-    plt.close(fig_slope)
+    plot_slope = plot_event_study(slope_result)
+    assert isinstance(plot_slope, ggplot)
 
 
 def test_cck_dose_response_is_well_defined():
@@ -146,11 +138,8 @@ def test_cck_dose_response_is_well_defined():
     assert np.isfinite(result.overall_att)
     assert np.isfinite(result.overall_acrt)
 
-    pc = plot_cont_did(result, type="att", show_ci=True)
-    assert isinstance(pc, PlotCollection)
-    fig = pc.viz["figure"]
-    assert fig.axes
-    plt.close(fig)
+    plot = plot_dose_response(result, effect_type="att", show_ci=True)
+    assert isinstance(plot, ggplot)
 
 
 def _load_base_data():
