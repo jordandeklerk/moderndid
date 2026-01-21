@@ -2,7 +2,7 @@
 """Shared fixtures for tests."""
 
 import numpy as np
-import pandas as pd
+import polars as pl
 import pytest
 
 from moderndid import att_gt, load_engel, load_mpdta
@@ -169,12 +169,12 @@ def basis_matrices():
 @pytest.fixture
 def engel_data():
     engel_df = load_engel()
-    engel_df = engel_df.sort_values("logexp")
+    engel_df = engel_df.sort("logexp")
 
     return {
-        "food": engel_df["food"].values,
-        "logexp": engel_df["logexp"].values.reshape(-1, 1),
-        "logwages": engel_df["logwages"].values.reshape(-1, 1),
+        "food": engel_df["food"].to_numpy(),
+        "logexp": engel_df["logexp"].to_numpy().reshape(-1, 1),
+        "logwages": engel_df["logwages"].to_numpy().reshape(-1, 1),
     }
 
 
@@ -223,7 +223,7 @@ def panel_data_balanced():
     x1 = np.random.normal(1, 0.5, len(unit_ids))
     x2 = np.random.binomial(1, 0.3, len(unit_ids))
 
-    return pd.DataFrame(
+    return pl.DataFrame(
         {
             "unit_id": unit_ids,
             "time_id": time_ids,
@@ -264,12 +264,12 @@ def panel_data_unbalanced():
         x2 = np.random.exponential(1, n_periods_unit)
         weights = np.random.gamma(2, 0.5, n_periods_unit)
 
-        unit_data = pd.DataFrame(
+        unit_data = pl.DataFrame(
             {"unit_id": unit_ids, "time_id": time_ids, "y": y, "d": d, "x1": x1, "x2": x2, "weights": weights}
         )
         data_list.append(unit_data)
 
-    return pd.concat(data_list, ignore_index=True)
+    return pl.concat(data_list)
 
 
 @pytest.fixture
@@ -280,7 +280,7 @@ def staggered_treatment_panel():
         "y": [10, 12, 15, 18, 20, 22, 25, 28, 30, 32, 35, 38],
         "treat": [0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0],
     }
-    return pd.DataFrame(data)
+    return pl.DataFrame(data)
 
 
 @pytest.fixture
@@ -291,7 +291,7 @@ def unbalanced_simple_panel():
         "y": [10, 12, 15, 20, 22, 25, 32, 35, 40, 42, 45],
         "treat": [0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0],
     }
-    return pd.DataFrame(data)
+    return pl.DataFrame(data)
 
 
 @pytest.fixture
@@ -326,7 +326,7 @@ def panel_data_with_covariates():
         + np.random.normal(0, 1, n_obs)
     )
 
-    return pd.DataFrame(
+    return pl.DataFrame(
         {
             "unit_id": unit_ids,
             "time_id": time_ids,
@@ -361,7 +361,7 @@ def panel_data_with_weights():
     stratum_effect = np.where(stratum == "A", 0, np.where(stratum == "B", 1.2, -0.8))
     y = stratum_effect + 2.0 * d + 0.1 * (time_ids - 2019) + np.random.normal(0, 1, n_obs)
 
-    return pd.DataFrame(
+    return pl.DataFrame(
         {"unit_id": unit_ids, "time_id": time_ids, "y": y, "d": d, "stratum": stratum, "weights": weights}
     )
 
@@ -386,8 +386,8 @@ def att_gt_result(mpdta):
 
 @pytest.fixture
 def att_gt_result_bootstrap(mpdta):
-    unique_counties = mpdta["countyreal"].unique()[:50]
-    mpdta_subset = mpdta[mpdta["countyreal"].isin(unique_counties)]
+    unique_counties = mpdta["countyreal"].unique().to_list()[:50]
+    mpdta_subset = mpdta.filter(pl.col("countyreal").is_in(unique_counties))
 
     return att_gt(
         data=mpdta_subset,
@@ -431,7 +431,7 @@ def att_gt_raw_results():
 
 @pytest.fixture
 def pte_params_basic():
-    data = pd.DataFrame(
+    data = pl.DataFrame(
         {
             "id": np.repeat(np.arange(1, 51), 4),
             "time": np.tile([2003, 2004, 2005, 2006], 50),
@@ -439,10 +439,12 @@ def pte_params_basic():
             "G": np.repeat(np.random.choice([0, 2004, 2006, 2007], 50), 4),
         }
     )
-    time_vals = data["time"].unique()
+    time_vals = data["time"].unique().to_list()
     time_map = {v: i + 1 for i, v in enumerate(sorted(time_vals))}
-    data["period"] = data["time"].map(time_map).astype(int)
-    data[".w"] = 1.0
+    data = data.with_columns(
+        pl.col("time").replace_strict(time_map, default=None).cast(pl.Int64).alias("period"),
+        pl.lit(1.0).alias(".w"),
+    )
 
     return PTEParams(
         yname="y",
@@ -502,10 +504,12 @@ def att_gt_result_with_data():
 
     for period in periods:
         data_list.append(
-            pd.DataFrame({"period": period, ".w": np.random.uniform(0.5, 2.0, n_units), "group": unit_groups})
+            pl.DataFrame(
+                {"period": [period] * n_units, ".w": np.random.uniform(0.5, 2.0, n_units), "group": unit_groups}
+            )
         )
 
-    data = pd.concat(data_list, ignore_index=True)
+    data = pl.concat(data_list)
 
     att_values = []
     group_values = []
@@ -630,7 +634,7 @@ def contdid_data():
     from tests.didcont.dgp import simulate_contdid_data
 
     data = simulate_contdid_data(n=1000, seed=12345)
-    return data.rename(columns={"time_period": "period"})
+    return data.rename({"time_period": "period"})
 
 
 @pytest.fixture
@@ -653,7 +657,7 @@ def cck_test_data():
 
     d = np.repeat(dose, 2)
 
-    return pd.DataFrame(
+    return pl.DataFrame(
         {
             "id": id_vals,
             "time": time_vals,
@@ -666,7 +670,7 @@ def cck_test_data():
 
 @pytest.fixture
 def panel_data_with_group(panel_data_balanced):
-    data = panel_data_balanced.copy()
+    data = panel_data_balanced.clone()
 
     def assign_group(unit):
         if unit <= 10:
@@ -675,9 +679,14 @@ def panel_data_with_group(panel_data_balanced):
             return 2012
         return 0
 
-    data["group"] = data["unit_id"].apply(assign_group)
-    data.loc[data["time_id"] < data["group"], "d"] = 0
-    data.loc[data["group"] == 0, "d"] = 0
+    data = data.with_columns(pl.col("unit_id").map_elements(assign_group, return_dtype=pl.Int64).alias("group"))
+
+    data = data.with_columns(
+        pl.when(pl.col("time_id") < pl.col("group")).then(pl.lit(0.0)).otherwise(pl.col("d")).alias("d")
+    )
+
+    data = data.with_columns(pl.when(pl.col("group") == 0).then(pl.lit(0.0)).otherwise(pl.col("d")).alias("d"))
+
     return data
 
 
@@ -740,7 +749,7 @@ def simple_panel_data():
     y_vals[::2] = pre_outcome
     y_vals[1::2] = post_outcome
 
-    df = pd.DataFrame({"id": id_vals, "D": treatment, "period": period_vals, "name": name_vals, "Y": y_vals})
+    df = pl.DataFrame({"id": id_vals, "D": treatment, "period": period_vals, "name": name_vals, "Y": y_vals})
 
     return df
 
@@ -766,7 +775,7 @@ def panel_data_with_covariates_estimators():
     y_vals[::2] = pre_outcome
     y_vals[1::2] = post_outcome
 
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {"id": id_vals, "D": treatment, "period": period_vals, "name": name_vals, "Y": y_vals, "x1": x1, "x2": x2}
     )
 
@@ -776,7 +785,7 @@ def panel_data_with_covariates_estimators():
 @pytest.fixture
 def balanced_panel_data_bootstrap():
     np.random.seed(42)
-    return pd.DataFrame(
+    return pl.DataFrame(
         {
             "id": np.repeat([1, 2, 3], 4),
             "time": np.tile([2010, 2011, 2012, 2013], 3),
@@ -788,7 +797,7 @@ def balanced_panel_data_bootstrap():
 
 @pytest.fixture
 def unbalanced_panel_data_bootstrap():
-    return pd.DataFrame(
+    return pl.DataFrame(
         {
             "id": [1, 1, 1, 2, 2, 3, 3, 3, 3],
             "time": [1, 2, 3, 1, 3, 1, 2, 3, 4],
@@ -816,7 +825,7 @@ def create_pte_params():
         if times is None:
             times = [2003, 2004, 2005, 2006]
 
-        data = pd.DataFrame(
+        data = pl.DataFrame(
             {
                 "id": np.repeat(np.arange(1, n_units + 1), len(times)),
                 "time": np.tile(times, n_units),
@@ -917,7 +926,7 @@ def panel_data_with_groups():
     y_vals[::2] = pre_outcome
     y_vals[1::2] = post_outcome
 
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {"id": id_vals, "D": treatment, "G": group_vals, "period": period_vals, "name": name_vals, "Y": y_vals}
     )
 

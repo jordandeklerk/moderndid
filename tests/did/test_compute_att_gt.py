@@ -2,8 +2,11 @@
 """Tests for computing ATT-GT."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 import scipy.sparse as sp
 
 from moderndid import load_mpdta
@@ -249,8 +252,7 @@ def test_run_att_gt_estimation_base_periods(mpdta_data, base_period):
 
 
 def test_run_att_gt_estimation_no_control_units(mpdta_data):
-    df_all_treated = mpdta_data.copy()
-    df_all_treated["first.treat"] = 2004
+    df_all_treated = mpdta_data.with_columns(pl.lit(2004).alias("first.treat"))
 
     with pytest.raises(ValueError, match="No valid groups"):
         preprocess_did(
@@ -495,7 +497,7 @@ def test_compute_att_gt_no_covariates(mpdta_data):
 
 
 def test_compute_att_gt_edge_cases(mpdta_data):
-    df_small = mpdta_data.iloc[:100].copy()
+    df_small = mpdta_data.head(100)
 
     data = preprocess_did(
         df_small,
@@ -574,7 +576,7 @@ def test_no_variation_in_treatment_timing():
     n = 100
     n_periods = 4
 
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": np.repeat(np.arange(n), n_periods),
             "year": np.tile(np.arange(n_periods), n),

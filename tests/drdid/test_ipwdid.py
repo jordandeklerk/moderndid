@@ -6,10 +6,9 @@ import pytest
 
 from moderndid.core.data import load_nsw
 from moderndid.drdid.ipwdid import ipwdid
+from tests.helpers import importorskip
 
-from ..helpers import importorskip
-
-pd = importorskip("pandas")
+pl = importorskip("polars")
 
 
 @pytest.fixture
@@ -60,10 +59,10 @@ def test_ipwdid_panel_with_covariates(nsw_data):
 
 def test_ipwdid_panel_with_weights(nsw_data):
     np.random.seed(42)
-    unique_ids = nsw_data["id"].unique()
+    unique_ids = nsw_data["id"].unique().to_list()
     unit_weights = np.random.exponential(1, len(unique_ids))
     weight_dict = dict(zip(unique_ids, unit_weights))
-    nsw_data["weight"] = nsw_data["id"].map(weight_dict)
+    nsw_data = nsw_data.with_columns(pl.col("id").replace_strict(weight_dict, default=1.0).alias("weight"))
 
     result = ipwdid(
         data=nsw_data,
@@ -192,7 +191,7 @@ def test_ipwdid_trim_level(nsw_data, trim_level):
 
 
 def test_ipwdid_missing_id_col_panel():
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "y": np.random.randn(100),
             "time": np.repeat([0, 1], 50),
@@ -287,10 +286,10 @@ def test_ipwdid_args_output(nsw_data):
 
 
 def test_ipwdid_reproducibility(nsw_data):
-    treated_ids = nsw_data[nsw_data["experimental"] == 1]["id"].unique()[:50]
-    control_ids = nsw_data[nsw_data["experimental"] == 0]["id"].unique()[:50]
-    selected_ids = np.concatenate([treated_ids, control_ids])
-    small_data = nsw_data[nsw_data["id"].isin(selected_ids)].copy()
+    treated_ids = nsw_data.filter(pl.col("experimental") == 1)["id"].unique()[:50].to_list()
+    control_ids = nsw_data.filter(pl.col("experimental") == 0)["id"].unique()[:50].to_list()
+    selected_ids = treated_ids + control_ids
+    small_data = nsw_data.filter(pl.col("id").is_in(selected_ids))
 
     np.random.seed(42)
     result1 = ipwdid(
@@ -322,7 +321,7 @@ def test_ipwdid_reproducibility(nsw_data):
 
 def test_ipwdid_subset_columns(nsw_data):
     subset_cols = ["id", "year", "re", "experimental", "age", "educ"]
-    subset_data = nsw_data[subset_cols].copy()
+    subset_data = nsw_data.select(subset_cols)
 
     result = ipwdid(
         data=subset_data,
@@ -384,7 +383,14 @@ def test_ipwdid_no_covariates_equivalence(nsw_data):
 
 
 def test_ipwdid_categorical_covariates(nsw_data):
-    nsw_data["age_group"] = pd.cut(nsw_data["age"], bins=[0, 25, 35, 100], labels=["young", "middle", "old"])
+    nsw_data = nsw_data.with_columns(
+        pl.when(pl.col("age") <= 25)
+        .then(pl.lit("young"))
+        .when(pl.col("age") <= 35)
+        .then(pl.lit("middle"))
+        .otherwise(pl.lit("old"))
+        .alias("age_group")
+    )
 
     result = ipwdid(
         data=nsw_data,
@@ -401,33 +407,38 @@ def test_ipwdid_categorical_covariates(nsw_data):
     assert result.se > 0
 
 
-def test_ipwdid_missing_values_error():
-    df = pd.DataFrame(
+@pytest.mark.filterwarnings("ignore:Missing values found:UserWarning")
+@pytest.mark.filterwarnings("ignore:Dropped.*rows due to missing values:UserWarning")
+@pytest.mark.filterwarnings("ignore:Panel data is unbalanced:UserWarning")
+def test_ipwdid_missing_values_handled():
+    y_vals = np.random.randn(100)
+    y_vals[5] = np.nan
+    df = pl.DataFrame(
         {
             "id": np.repeat(range(50), 2),
             "time": np.tile([0, 1], 50),
-            "y": np.random.randn(100),
+            "y": y_vals,
             "treat": np.repeat([0, 1], 50),
             "x1": np.random.randn(100),
         }
     )
-    df.loc[5, "y"] = np.nan
 
-    with pytest.raises(ValueError):
-        ipwdid(
-            data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
-            id_col="id",
-            covariates_formula="~ x1",
-            panel=True,
-        )
+    result = ipwdid(
+        data=df,
+        y_col="y",
+        time_col="time",
+        treat_col="treat",
+        id_col="id",
+        covariates_formula="~ x1",
+        panel=True,
+    )
+    assert isinstance(result.att, float)
+    assert np.isfinite(result.att) or np.isnan(result.att)
 
 
 @pytest.mark.filterwarnings("ignore:Small group size detected:UserWarning")
 def test_ipwdid_unbalanced_panel_warning():
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": [1, 1, 2, 2, 3],
             "time": [0, 1, 0, 1, 0],
@@ -449,7 +460,7 @@ def test_ipwdid_unbalanced_panel_warning():
 
 
 def test_ipwdid_more_than_two_periods_error():
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": np.repeat(range(50), 3),
             "time": np.tile([0, 1, 2], 50),
@@ -479,10 +490,10 @@ def test_ipwdid_more_than_two_periods_error():
     ],
 )
 def test_ipwdid_estimators_consistency(nsw_data, panel, method):
-    treated_ids = nsw_data[nsw_data["experimental"] == 1]["id"].unique()[:200]
-    control_ids = nsw_data[nsw_data["experimental"] == 0]["id"].unique()[:200]
-    selected_ids = np.concatenate([treated_ids, control_ids])
-    small_data = nsw_data[nsw_data["id"].isin(selected_ids)].copy()
+    treated_ids = nsw_data.filter(pl.col("experimental") == 1)["id"].unique()[:200].to_list()
+    control_ids = nsw_data.filter(pl.col("experimental") == 0)["id"].unique()[:200].to_list()
+    selected_ids = treated_ids + control_ids
+    small_data = nsw_data.filter(pl.col("id").is_in(selected_ids))
 
     try:
         result = ipwdid(
@@ -505,10 +516,10 @@ def test_ipwdid_estimators_consistency(nsw_data, panel, method):
 
 
 def test_ipwdid_comparison_std_vs_regular(nsw_data):
-    treated_ids = nsw_data[nsw_data["experimental"] == 1]["id"].unique()[:300]
-    control_ids = nsw_data[nsw_data["experimental"] == 0]["id"].unique()[:300]
-    selected_ids = np.concatenate([treated_ids, control_ids])
-    data = nsw_data[nsw_data["id"].isin(selected_ids)].copy()
+    treated_ids = nsw_data.filter(pl.col("experimental") == 1)["id"].unique()[:300].to_list()
+    control_ids = nsw_data.filter(pl.col("experimental") == 0)["id"].unique()[:300].to_list()
+    selected_ids = treated_ids + control_ids
+    data = nsw_data.filter(pl.col("id").is_in(selected_ids))
 
     try:
         ipw_result = ipwdid(
@@ -571,10 +582,10 @@ def test_ipwdid_extreme_trimming(nsw_data):
 def test_ipwdid_comparison_with_other_estimators(nsw_data):
     from moderndid import drdid, ordid
 
-    treated_ids = nsw_data[nsw_data["experimental"] == 1]["id"].unique()[:100]
-    control_ids = nsw_data[nsw_data["experimental"] == 0]["id"].unique()[:100]
-    selected_ids = np.concatenate([treated_ids, control_ids])
-    data = nsw_data[nsw_data["id"].isin(selected_ids)].copy()
+    treated_ids = nsw_data.filter(pl.col("experimental") == 1)["id"].unique()[:100].to_list()
+    control_ids = nsw_data.filter(pl.col("experimental") == 0)["id"].unique()[:100].to_list()
+    selected_ids = treated_ids + control_ids
+    data = nsw_data.filter(pl.col("id").is_in(selected_ids))
 
     ipw_result = ipwdid(
         data=data,

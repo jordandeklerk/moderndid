@@ -1,20 +1,22 @@
 """Tests against R examples."""
 
 import numpy as np
-import pandas as pd
 
 from moderndid.didcont.cont_did import cont_did
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 
 def load_r_data():
-    df = pd.read_csv("tests/didcont/data/cont_test_data.csv.gz", compression="gzip")
-    df.loc[df["G"] == 0, "D"] = 0
+    df = pl.read_csv("tests/didcont/data/cont_test_data.csv.gz")
+    df = df.with_columns(pl.when(pl.col("G") == 0).then(0).otherwise(pl.col("D")).alias("D"))
     return df
 
 
 def load_cck_data():
-    df = pd.read_csv("tests/didcont/data/cont_test_data_cck.csv.gz", compression="gzip")
-    df.loc[df["G"] == 0, "D"] = 0
+    df = pl.read_csv("tests/didcont/data/cont_test_data_cck.csv.gz")
+    df = df.with_columns(pl.when(pl.col("G") == 0).then(0).otherwise(pl.col("D")).alias("D"))
     return df
 
 

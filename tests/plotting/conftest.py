@@ -1,12 +1,12 @@
 """Shared fixtures for plotting tests."""
 
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import polars as pl
 import pytest
 
-matplotlib = pytest.importorskip("matplotlib")
 matplotlib.use("Agg")
-plt = pytest.importorskip("matplotlib.pyplot")
-np = pytest.importorskip("numpy")
-pd = pytest.importorskip("pandas")
 
 from moderndid.did.aggte_obj import AGGTEResult
 from moderndid.did.multiperiod_obj import MPResult
@@ -125,7 +125,7 @@ def dose_result():
 
 @pytest.fixture
 def honest_result():
-    df = pd.DataFrame({"M": [0.0, 0.5, 1.0], "lb": [0.1, 0.0, -0.1], "ub": [0.9, 0.8, 0.7]})
+    df = pl.DataFrame({"M": [0.0, 0.5, 1.0], "lb": [0.1, 0.0, -0.1], "ub": [0.9, 0.8, 0.7]})
 
     original_ci = OriginalCSResult(
         lb=0.3,
@@ -163,7 +163,7 @@ def pte_result_with_event_study():
 
 @pytest.fixture
 def sensitivity_robust_results():
-    return pd.DataFrame(
+    return pl.DataFrame(
         {
             "M": [0.5, 1.0, 1.5, 0.5, 1.0, 1.5],
             "lb": [0.2, 0.1, 0.0, 0.15, 0.05, -0.05],

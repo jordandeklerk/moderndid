@@ -4,7 +4,7 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
-import pandas as pd
+import polars as pl
 from scipy import stats
 
 from .bounds import compute_delta_sd_upperbound_m
@@ -95,7 +95,7 @@ def create_sensitivity_results_sm(
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         DataFrame with columns: lb, ub, method, Delta, M.
 
     Notes
@@ -210,7 +210,7 @@ def create_sensitivity_results_sm(
         else:
             raise ValueError(f"Unknown method: {method}")
 
-    df = pd.DataFrame(results)
+    df = pl.DataFrame([r._asdict() for r in results])
     return df
 
 
@@ -272,7 +272,7 @@ def create_sensitivity_results_rm(
 
     Returns
     -------
-    pd.DataFrame
+    pl.DataFrame
         DataFrame with columns: lb, ub, method, Delta, Mbar.
 
     Notes
@@ -369,8 +369,8 @@ def create_sensitivity_results_rm(
 
         results.append(SensitivityResult(lb=lb, ub=ub, method=method, delta=delta_type, m=m_bar))
 
-    df = pd.DataFrame(results)
-    df = df.rename(columns={"m": "Mbar"})
+    df = pl.DataFrame([r._asdict() for r in results])
+    df = df.rename({"m": "Mbar"})
     return df
 
 

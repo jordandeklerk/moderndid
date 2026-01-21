@@ -1,8 +1,11 @@
 """Tests for the multi-period DDD repeated cross-section estimator."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid.didtriple.estimators.ddd_mp_rc import ddd_mp_rc
 
@@ -181,7 +184,7 @@ def test_ddd_mp_rc_never_treated_as_inf():
                 y += 1.5
             records.append({"id": len(records), "time": t, "y": y, "group": g, "partition": p})
 
-    data = pd.DataFrame(records)
+    data = pl.DataFrame(records)
 
     result = ddd_mp_rc(
         data=data,
@@ -326,7 +329,7 @@ def test_ddd_mp_rc_different_from_panel():
                 y += 2.0
             records.append({"id": len(records), "time": t, "y": y, "group": g, "partition": p})
 
-    data = pd.DataFrame(records)
+    data = pl.DataFrame(records)
 
     result = ddd_mp_rc(
         data=data,

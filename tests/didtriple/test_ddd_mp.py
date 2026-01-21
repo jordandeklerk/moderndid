@@ -1,8 +1,11 @@
 """Tests for the multi-period DDD estimator."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid import ddd_mp
 
@@ -23,7 +26,7 @@ def test_ddd_mp_basic(mp_ddd_data, est_method):
     assert len(result.att) == len(result.se)
     assert len(result.att) == len(result.groups)
     assert len(result.att) == len(result.times)
-    assert result.n == mp_ddd_data["id"].nunique()
+    assert result.n == mp_ddd_data["id"].n_unique()
 
 
 def test_ddd_mp_result_structure(mp_ddd_data):
@@ -178,7 +181,7 @@ def test_ddd_mp_never_treated_as_inf():
                 y += 1.5
             records.append({"id": unit, "time": t, "y": y, "group": g, "partition": p})
 
-    data = pd.DataFrame(records)
+    data = pl.DataFrame(records)
 
     result = ddd_mp(
         data=data,

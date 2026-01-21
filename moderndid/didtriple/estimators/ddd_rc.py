@@ -6,8 +6,10 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
+import polars as pl
 from scipy import stats
 
+from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess.utils import parse_formula
 
 from ..bootstrap.mboot_ddd import mboot_ddd
@@ -334,23 +336,27 @@ def _ddd_rc_2period(
     DDDRCResult
         The result from the RCS estimator.
     """
-    tlist = np.sort(data[tname].unique())
+    data = to_polars(data)
+
+    tlist = np.sort(data[tname].unique().to_numpy())
     if len(tlist) != 2:
         raise ValueError("2-period RCS estimator requires exactly 2 time periods.")
 
     t1 = tlist[1]
 
-    y = data[yname].values
-    post = (data[tname] == t1).astype(int).values
+    y = data[yname].to_numpy()
+    post = (data[tname] == t1).cast(pl.Int64).to_numpy()
 
-    treat = (data[gname] != 0) & np.isfinite(data[gname])
-    partition = data[pname].values
+    treat = (pl.col(gname) != 0) & pl.col(gname).is_finite()
+    data = data.with_columns(treat.alias("_treat"))
+    treat_arr = data["_treat"].to_numpy()
+    partition = data[pname].to_numpy()
 
     subgroup = (
-        4 * (treat.values * (partition == 1))
-        + 3 * (treat.values * (partition == 0))
-        + 2 * ((~treat).values * (partition == 1))
-        + 1 * ((~treat).values * (partition == 0))
+        4 * (treat_arr * (partition == 1))
+        + 3 * (treat_arr * (partition == 0))
+        + 2 * ((~treat_arr) * (partition == 1))
+        + 1 * ((~treat_arr) * (partition == 0))
     )
 
     if xformla is not None and xformla != "~1":
@@ -363,7 +369,7 @@ def _ddd_rc_2period(
         covariate_names = [c for c in covariate_names if c != "1"]
 
         if covariate_names:
-            X = data[covariate_names].values
+            X = data.select(covariate_names).to_numpy()
             intercept = np.ones((X.shape[0], 1))
             covariates = np.hstack([intercept, X])
         else:
@@ -372,7 +378,7 @@ def _ddd_rc_2period(
         covariates = np.ones((len(y), 1))
 
     if weightsname is not None:
-        i_weights = data[weightsname].values
+        i_weights = data[weightsname].to_numpy()
     else:
         i_weights = None
 

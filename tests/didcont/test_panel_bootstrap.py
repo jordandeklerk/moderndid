@@ -2,8 +2,11 @@
 """Tests for panel empirical bootstrap."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid.didcont.estimation.bootstrap import (
     _combine_ecdfs,
@@ -23,9 +26,10 @@ def test_block_boot_sample_balanced(balanced_panel_data_bootstrap):
     boot_data = block_boot_sample(balanced_panel_data_bootstrap, "id")
 
     assert len(boot_data) == len(balanced_panel_data_bootstrap)
-    assert set(boot_data["id"].unique()) == {0, 1, 2}
-    assert all(boot_data.groupby("id")["time"].count().values == 4)
-    assert set(boot_data["time"].unique()) == set(balanced_panel_data_bootstrap["time"].unique())
+    assert set(boot_data["id"].unique().to_list()) == {0, 1, 2}
+    counts = boot_data.group_by("id").agg(pl.col("time").count().alias("count"))["count"].to_numpy()
+    assert all(counts == 4)
+    assert set(boot_data["time"].unique().to_list()) == set(balanced_panel_data_bootstrap["time"].unique().to_list())
 
 
 def test_block_boot_sample_unbalanced(unbalanced_panel_data_bootstrap):
@@ -33,7 +37,7 @@ def test_block_boot_sample_unbalanced(unbalanced_panel_data_bootstrap):
     boot_data = block_boot_sample(unbalanced_panel_data_bootstrap, "id")
 
     original_units = unbalanced_panel_data_bootstrap["id"].unique()
-    assert len(boot_data["id"].unique()) == len(original_units)
+    assert boot_data["id"].n_unique() == len(original_units)
 
 
 @pytest.mark.parametrize(
@@ -46,7 +50,8 @@ def test_block_boot_sample_unbalanced(unbalanced_panel_data_bootstrap):
     ],
 )
 def test_block_boot_sample_various_sizes(n_units, n_periods):
-    data = pd.DataFrame(
+    np.random.seed(42)
+    data = pl.DataFrame(
         {
             "id": np.repeat(np.arange(n_units), n_periods),
             "time": np.tile(np.arange(n_periods), n_units),
@@ -56,7 +61,7 @@ def test_block_boot_sample_various_sizes(n_units, n_periods):
 
     boot_data = block_boot_sample(data, "id")
     assert len(boot_data) == n_units * n_periods
-    assert len(boot_data["id"].unique()) == n_units
+    assert boot_data["id"].n_unique() == n_units
 
 
 def test_make_ecdf_basic():
@@ -206,18 +211,16 @@ def test_attgt_pte_aggregations_basic(basic_attgt_data, create_pte_params):
         assert np.isclose(post_treatment_weights.sum(), 1.0, rtol=0.01)
 
     if result["dyn_results"] is not None:
-        dyn_att = result["dyn_results"]["att_e"].values
+        dyn_att = result["dyn_results"]["att_e"].to_numpy()
         assert all(np.isfinite(dyn_att))
         assert all(-10 <= att <= 10 for att in dyn_att)
 
     if result["group_results"] is not None:
-        group_att = result["group_results"]["att_g"].values
+        group_att = result["group_results"]["att_g"].to_numpy()
         assert all(np.isfinite(group_att))
-        for _, group_row in result["group_results"].iterrows():
+        for group_row in result["group_results"].iter_rows(named=True):
             g = group_row["group"]
-            group_attgt = result["attgt_results"][
-                (result["attgt_results"]["group"] == g) & (result["attgt_results"]["time_period"] >= g)
-            ]["att"]
+            group_attgt = result["attgt_results"].filter((pl.col("group") == g) & (pl.col("time_period") >= g))["att"]
             if len(group_attgt) > 0:
                 expected_att = group_attgt.mean()
                 assert np.isclose(group_row["att_g"], expected_att, rtol=0.01)
@@ -240,7 +243,7 @@ def test_attgt_pte_aggregations_with_missing(basic_attgt_data, create_pte_params
     result = attgt_pte_aggregations(attgt_list, pte_params)
 
     assert len(result["attgt_results"]) == len(attgt_list) - len(missing_indices)
-    assert not result["attgt_results"]["att"].isna().any()
+    assert not result["attgt_results"]["att"].is_null().any()
 
 
 def test_overall_weights_e_mask(basic_attgt_data, create_pte_params):
@@ -248,18 +251,23 @@ def test_overall_weights_e_mask(basic_attgt_data, create_pte_params):
     result = attgt_pte_aggregations(basic_attgt_data, pte_params)
 
     overall_weights = result["overall_weights"]
-    attgt_df = pd.DataFrame(basic_attgt_data)
-    attgt_df["e"] = attgt_df["time_period"] - attgt_df["group"]
+    attgt_df = pl.DataFrame(basic_attgt_data)
+    attgt_df = attgt_df.with_columns((pl.col("time_period") - pl.col("group")).alias("e"))
+    e_values = attgt_df["e"].to_numpy()
 
     assert len(overall_weights) == len(basic_attgt_data)
-    assert all(overall_weights[attgt_df["e"] < 0] == 0)
-    assert any(overall_weights[attgt_df["e"] >= 0] > 0)
+    assert all(overall_weights[e_values < 0] == 0)
+    assert any(overall_weights[e_values >= 0] > 0)
 
     if not np.isnan(result["overall_results"]):
-        attgt_df = result["attgt_results"].copy()
-        attgt_df["weight"] = overall_weights
-        attgt_df["e"] = attgt_df["time_period"] - attgt_df["group"]
-        post_treatment = attgt_df[attgt_df["e"] >= 0]
+        attgt_df = result["attgt_results"].clone()
+        attgt_df = attgt_df.with_columns(
+            [
+                pl.Series("weight", overall_weights[: len(attgt_df)]),
+                (pl.col("time_period") - pl.col("group")).alias("e"),
+            ]
+        )
+        post_treatment = attgt_df.filter(pl.col("e") >= 0)
 
         if len(post_treatment) > 0 and post_treatment["weight"].sum() > 0:
             computed_overall = (post_treatment["att"] * post_treatment["weight"]).sum()
@@ -275,13 +283,13 @@ def test_qtt_pte_aggregations(quantile_test_data, create_pte_params, quantile):
 
     assert "attgt_results" in result
     assert len(result["attgt_results"]) == 2
-    assert not result["attgt_results"]["att"].isna().any()
+    assert not result["attgt_results"]["att"].is_null().any()
     assert result["overall_results"] is not None
 
     assert np.isfinite(result["overall_results"])
     assert -10 <= result["overall_results"] <= 10
 
-    qtt_values = result["attgt_results"]["att"].values
+    qtt_values = result["attgt_results"]["att"].to_numpy()
     assert all(np.isfinite(qtt_values))
     assert all(-10 <= val <= 10 for val in qtt_values)
 
@@ -295,13 +303,13 @@ def test_qott_pte_aggregations(quantile_test_data, create_pte_params, quantile):
 
     assert "attgt_results" in result
     assert len(result["attgt_results"]) == 2
-    assert not result["attgt_results"]["att"].isna().any()
+    assert not result["attgt_results"]["att"].is_null().any()
     assert result["overall_results"] is not None
 
     assert np.isfinite(result["overall_results"])
     assert -10 <= result["overall_results"] <= 10
 
-    qott_values = result["attgt_results"]["att"].values
+    qott_values = result["attgt_results"]["att"].to_numpy()
     assert all(np.isfinite(qott_values))
     assert all(-10 <= val <= 10 for val in qott_values)
 
@@ -385,7 +393,7 @@ def test_panel_empirical_bootstrap(create_pte_params, n_boot, gt_type):
     assert result.overall_results is not None
     assert "se" in result.overall_results
 
-    se_values = result.attgt_results["se"].dropna()
+    se_values = result.attgt_results["se"].drop_nulls()
     if len(se_values) > 0:
         assert all(se_values >= 0)
         assert all(se_values < 1.0)

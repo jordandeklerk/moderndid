@@ -4,13 +4,17 @@
 import numpy as np
 import pytest
 
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
+
 from moderndid import compute_aggte, compute_att_gt, load_mpdta, mp, preprocess_did
 
 
 @pytest.fixture
 def mpdta_mp_result():
     mpdta = load_mpdta()
-    mpdta["cluster"] = mpdta["countyreal"] % 10
+    mpdta = mpdta.with_columns((pl.col("countyreal") % 10).alias("cluster"))
 
     data = preprocess_did(
         mpdta,

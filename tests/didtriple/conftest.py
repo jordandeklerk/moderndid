@@ -2,7 +2,7 @@
 """Shared fixtures for didtriple tests."""
 
 import numpy as np
-import pandas as pd
+import polars as pl
 import pytest
 
 from moderndid import ddd_mp
@@ -77,7 +77,7 @@ def mp_ddd_data():
             y = unit_effect + time_effect + treat_effect + rng.normal(0, 0.5)
             records.append({"id": unit, "time": t, "y": y, "group": g, "partition": p})
 
-    return pd.DataFrame(records)
+    return pl.DataFrame(records)
 
 
 @pytest.fixture
@@ -203,7 +203,7 @@ def two_period_rcs_data():
                 }
             )
 
-    return pd.DataFrame(records)
+    return pl.DataFrame(records)
 
 
 @pytest.fixture
@@ -241,4 +241,4 @@ def mp_rcs_data():
                 }
             )
 
-    return pd.DataFrame(records)
+    return pl.DataFrame(records)

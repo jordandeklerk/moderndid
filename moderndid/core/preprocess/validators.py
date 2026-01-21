@@ -2,8 +2,9 @@
 
 from typing import Protocol
 
-import pandas as pd
+import polars as pl
 
+from ..dataframe import DataFrame, to_polars
 from .base import BaseValidator
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
 from .constants import BasePeriod, ControlGroup
@@ -13,18 +14,19 @@ from .models import ValidationResult
 class DataValidator(Protocol):
     """Data validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
 
 
 class ColumnValidator(BaseValidator):
     """Column validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
+        df = to_polars(data)
         errors = []
         warnings = []
-        data_columns = data.columns.tolist()
+        data_columns = df.columns
 
         required_cols = {
             "yname": config.yname,
@@ -52,18 +54,18 @@ class ColumnValidator(BaseValidator):
                 errors.append(f"dname = '{config.dname}' must be a column in the dataset")
 
         if not errors:
-            if config.tname in data_columns and not pd.api.types.is_numeric_dtype(data[config.tname]):
+            if config.tname in data_columns and not _is_numeric_dtype(df[config.tname]):
                 errors.append(f"tname = '{config.tname}' is not numeric. Please convert it")
 
-            if config.gname in data_columns and not pd.api.types.is_numeric_dtype(data[config.gname]):
+            if config.gname in data_columns and not _is_numeric_dtype(df[config.gname]):
                 errors.append(f"gname = '{config.gname}' is not numeric. Please convert it")
 
             if config.idname and config.idname in data_columns:
-                if not pd.api.types.is_numeric_dtype(data[config.idname]):
+                if not _is_numeric_dtype(df[config.idname]):
                     errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
 
             if isinstance(config, ContDIDConfig) and config.dname and config.dname in data_columns:
-                if not pd.api.types.is_numeric_dtype(data[config.dname]):
+                if not _is_numeric_dtype(df[config.dname]):
                     errors.append(f"dname = '{config.dname}' is not numeric. Please convert it")
 
         return self._create_result(errors, warnings)
@@ -79,28 +81,30 @@ class ColumnValidator(BaseValidator):
 class TreatmentValidator(BaseValidator):
     """Treatment validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
+        df = to_polars(data)
         errors = []
         warnings = []
 
         if not config.panel or not config.idname:
             return self._create_result(errors, warnings)
 
-        gname_by_id = data.groupby(config.idname)[config.gname].nunique()
-        if (gname_by_id > 1).any():
+        gname_by_id = df.group_by(config.idname).agg(pl.col(config.gname).n_unique().alias("n_unique"))
+        if (gname_by_id["n_unique"] > 1).any():
             errors.append(
                 "The value of gname (treatment variable) must be the same across all "
                 "periods for each particular unit. The treatment must be irreversible."
             )
 
-        first_period = data[config.tname].min()
-        treated_first = (data[config.gname] > 0) & (data[config.gname] <= first_period)
+        first_period = df[config.tname].min()
+        treated_first_mask = (pl.col(config.gname) > 0) & (pl.col(config.gname) <= first_period)
+        treated_first_df = df.filter(treated_first_mask)
 
         if config.idname:
-            n_first_period = data.loc[treated_first, config.idname].nunique()
+            n_first_period = treated_first_df[config.idname].n_unique()
         else:
-            n_first_period = treated_first.sum()
+            n_first_period = len(treated_first_df)
 
         if n_first_period > 0:
             warnings.append(f"{n_first_period} units were already treated in the first period and will be dropped")
@@ -118,25 +122,26 @@ class TreatmentValidator(BaseValidator):
 class PanelStructureValidator(BaseValidator):
     """Panel structure validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
+        df = to_polars(data)
         errors = []
         warnings = []
 
         if not config.panel or not config.idname:
             return self._create_result(errors, warnings)
 
-        if data.duplicated(subset=[config.idname, config.tname]).any():
+        if df.select([config.idname, config.tname]).is_duplicated().any():
             errors.append(
                 "The value of idname must be unique (by tname). Some units are observed more than once in a period."
             )
 
         if not config.allow_unbalanced_panel:
-            time_periods = data[config.tname].unique()
-            unit_counts = data.groupby(config.idname).size()
+            n_time_periods = df[config.tname].n_unique()
+            unit_counts = df.group_by(config.idname).len()
 
-            if not (unit_counts == len(time_periods)).all():
-                n_unbalanced = (unit_counts != len(time_periods)).sum()
+            if not (unit_counts["len"] == n_time_periods).all():
+                n_unbalanced = (unit_counts["len"] != n_time_periods).sum()
                 warnings.append(f"{n_unbalanced} units have unbalanced observations and will be dropped")
 
         return self._create_result(errors, warnings)
@@ -152,8 +157,9 @@ class PanelStructureValidator(BaseValidator):
 class ClusterValidator(BaseValidator):
     """Cluster validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
+        df = to_polars(data)
         errors = []
         warnings = []
 
@@ -168,8 +174,8 @@ class ClusterValidator(BaseValidator):
 
         if len(cluster_vars) > 0 and config.idname and config.panel:
             for clust_var in cluster_vars:
-                clust_nunique = data.groupby(config.idname)[clust_var].nunique()
-                if (clust_nunique > 1).any():
+                clust_nunique = df.group_by(config.idname).agg(pl.col(clust_var).n_unique().alias("n_unique"))
+                if (clust_nunique["n_unique"] > 1).any():
                     errors.append(
                         "DiD cannot handle time-varying cluster variables at the moment. "
                         "Please check your cluster variable."
@@ -188,7 +194,7 @@ class ClusterValidator(BaseValidator):
 class ArgumentValidator(BaseValidator):
     """Argument validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
         errors = []
         warnings = []
@@ -236,21 +242,22 @@ class ArgumentValidator(BaseValidator):
 class DoseValidator(BaseValidator):
     """Dose validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
+        df = to_polars(data)
         errors = []
         warnings = []
 
         if not isinstance(config, ContDIDConfig) or not config.dname:
             return self._create_result(errors, warnings)
 
-        if config.dname in data.columns:
-            dose_values = data[config.dname]
+        if config.dname in df.columns:
+            dose_values = df[config.dname]
 
             if (dose_values < 0).any():
                 errors.append(f"dname = '{config.dname}' contains negative values")
 
-            n_missing = dose_values.isna().sum()
+            n_missing = dose_values.is_null().sum()
             if n_missing > 0:
                 warnings.append(f"{n_missing} observations have missing dose values and will be handled")
 
@@ -267,11 +274,12 @@ class DoseValidator(BaseValidator):
 class PrePostColumnValidator(BaseValidator):
     """Pre-post column validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
         """Validate data."""
+        df = to_polars(data)
         errors = []
         warnings = []
-        data_columns = data.columns.tolist()
+        data_columns = df.columns
 
         if not isinstance(config, TwoPeriodDIDConfig):
             return self._create_result(errors, warnings)
@@ -293,14 +301,14 @@ class PrePostColumnValidator(BaseValidator):
             errors.append(f"weightsname = '{config.weightsname}' must be a column in the dataset")
 
         if not errors:
-            if config.tname in data_columns and not pd.api.types.is_numeric_dtype(data[config.tname]):
+            if config.tname in data_columns and not _is_numeric_dtype(df[config.tname]):
                 errors.append(f"tname = '{config.tname}' is not numeric. Please convert it")
 
-            if config.treat_col in data_columns and not pd.api.types.is_numeric_dtype(data[config.treat_col]):
+            if config.treat_col in data_columns and not _is_numeric_dtype(df[config.treat_col]):
                 errors.append(f"treat_col = '{config.treat_col}' is not numeric. Please convert it")
 
             if config.idname and config.idname in data_columns:
-                if not pd.api.types.is_numeric_dtype(data[config.idname]):
+                if not _is_numeric_dtype(df[config.idname]):
                     errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
 
         return self._create_result(errors, warnings)
@@ -316,19 +324,20 @@ class PrePostColumnValidator(BaseValidator):
 class PrePostDataValidator(BaseValidator):
     """Pre-post data validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
         """Validate data."""
+        df = to_polars(data)
         errors = []
         warnings = []
 
         if not isinstance(config, TwoPeriodDIDConfig):
             return self._create_result(errors, warnings)
 
-        time_periods = sorted(data[config.tname].unique())
+        time_periods = sorted(df[config.tname].unique().to_list())
         if len(time_periods) != 2:
             errors.append("This package currently supports only two time periods (pre and post).")
 
-        groups = sorted(data[config.treat_col].unique())
+        groups = sorted(df[config.treat_col].unique().to_list())
         if len(groups) != 2 or not all(g in [0, 1] for g in groups):
             errors.append("Treatment indicator column must contain only 0 (control) and 1 (treated).")
 
@@ -345,17 +354,18 @@ class PrePostDataValidator(BaseValidator):
 class PrePostPanelValidator(BaseValidator):
     """Pre-post panel validator."""
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> ValidationResult:
         """Validate data."""
+        df = to_polars(data)
         errors = []
         warnings = []
 
         if not isinstance(config, TwoPeriodDIDConfig) or not config.panel or not config.idname:
             return self._create_result(errors, warnings)
 
-        treat_counts = data.groupby(config.idname)[config.treat_col].nunique()
-        if (treat_counts > 1).any():
-            invalid_ids = treat_counts[treat_counts > 1].index.tolist()
+        treat_counts = df.group_by(config.idname).agg(pl.col(config.treat_col).n_unique().alias("n_unique"))
+        if (treat_counts["n_unique"] > 1).any():
+            invalid_ids = treat_counts.filter(pl.col("n_unique") > 1)[config.idname].to_list()
             errors.append(
                 f"Treatment indicator ('{config.treat_col}') must be unique for each ID ('{config.idname}'). "
                 f"IDs with varying treatment: {invalid_ids}."
@@ -404,7 +414,7 @@ class CompositeValidator(BaseValidator):
 
         return common_validators
 
-    def validate(self, data: pd.DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
         all_errors = []
         all_warnings = []
@@ -415,3 +425,8 @@ class CompositeValidator(BaseValidator):
             all_warnings.extend(result.warnings)
 
         return ValidationResult(is_valid=len(all_errors) == 0, errors=all_errors, warnings=all_warnings)
+
+
+def _is_numeric_dtype(series: pl.Series) -> bool:
+    """Check if a polars series has a numeric dtype."""
+    return series.dtype.is_numeric()

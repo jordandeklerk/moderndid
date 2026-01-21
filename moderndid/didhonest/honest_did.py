@@ -3,7 +3,7 @@
 from typing import NamedTuple, Protocol, runtime_checkable
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 from .sensitivity import (
     OriginalCSResult,
@@ -17,7 +17,7 @@ from .utils import basis_vector
 class HonestDiDResult(NamedTuple):
     """Result from honest_did analysis."""
 
-    robust_ci: pd.DataFrame
+    robust_ci: pl.DataFrame
     original_ci: OriginalCSResult
     sensitivity_type: str
 

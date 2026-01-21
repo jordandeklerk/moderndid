@@ -9,10 +9,10 @@ from moderndid.didtriple.estimators.ddd_rc import ddd_rc
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
 def test_ddd_rc_basic(two_period_rcs_data, est_method):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result = ddd_rc(
         y=y,
@@ -33,9 +33,9 @@ def test_ddd_rc_basic(two_period_rcs_data, est_method):
 
 def test_ddd_rc_no_covariates(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
     covariates = np.ones((len(data), 1))
 
     result = ddd_rc(
@@ -53,10 +53,10 @@ def test_ddd_rc_no_covariates(two_period_rcs_data):
 
 def test_ddd_rc_with_weights(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
     rng = np.random.default_rng(42)
     i_weights = rng.uniform(0.5, 1.5, len(data))
 
@@ -76,10 +76,10 @@ def test_ddd_rc_with_weights(two_period_rcs_data):
 
 def test_ddd_rc_influence_function(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result = ddd_rc(
         y=y,
@@ -97,10 +97,10 @@ def test_ddd_rc_influence_function(two_period_rcs_data):
 
 def test_ddd_rc_bootstrap(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result = ddd_rc(
         y=y,
@@ -121,10 +121,10 @@ def test_ddd_rc_bootstrap(two_period_rcs_data):
 
 def test_ddd_rc_did_atts(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result = ddd_rc(
         y=y,
@@ -143,10 +143,10 @@ def test_ddd_rc_did_atts(two_period_rcs_data):
 
 def test_ddd_rc_subgroup_counts(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result = ddd_rc(
         y=y,
@@ -166,10 +166,10 @@ def test_ddd_rc_subgroup_counts(two_period_rcs_data):
 
 def test_ddd_rc_args_stored(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result = ddd_rc(
         y=y,
@@ -190,10 +190,10 @@ def test_ddd_rc_args_stored(two_period_rcs_data):
 
 def test_ddd_rc_reproducibility(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result1 = ddd_rc(
         y=y,
@@ -224,10 +224,10 @@ def test_ddd_rc_reproducibility(two_period_rcs_data):
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
 def test_ddd_rc_print(two_period_rcs_data, est_method):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result = ddd_rc(
         y=y,
@@ -246,10 +246,10 @@ def test_ddd_rc_print(two_period_rcs_data, est_method):
 
 def test_ddd_rc_print_bootstrap(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result = ddd_rc(
         y=y,
@@ -268,10 +268,10 @@ def test_ddd_rc_print_bootstrap(two_period_rcs_data):
 
 def test_ddd_rc_trim_level(two_period_rcs_data):
     data = two_period_rcs_data
-    y = data["y"].values
-    post = data["time"].values
-    subgroup = _create_subgroup(data["state"].values, data["partition"].values)
-    covariates = np.column_stack([np.ones(len(data)), data[["cov1", "cov2", "cov3", "cov4"]].values])
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()])
 
     result = ddd_rc(
         y=y,
