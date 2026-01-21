@@ -200,7 +200,10 @@ def attgt_pte_aggregations(attgt_list, pte_params):
 
     if attgt_df.is_empty() or "att" not in attgt_df.columns:
         return {
-            "attgt_results": pl.DataFrame({"group": [], "time_period": [], "att": []}),
+            "attgt_results": pl.DataFrame(
+                {"group": [], "time_period": [], "att": []},
+                schema={"group": pl.Float64, "time_period": pl.Float64, "att": pl.Float64},
+            ),
             "dyn_results": None,
             "dyn_weights": [],
             "group_results": None,
