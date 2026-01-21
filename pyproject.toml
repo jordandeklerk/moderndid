@@ -134,7 +134,6 @@ filterwarnings = [
     "ignore:Perfect separation.*:statsmodels.tools.sm_exceptions.PerfectSeparationWarning",
     "ignore:Setting an item of incompatible dtype:FutureWarning",
     "ignore:The behavior of DataFrame concatenation:FutureWarning",
-    "ignore::pandas.errors.SettingWithCopyWarning",
     "ignore:.*units were already treated.*:UserWarning:moderndid",
     "ignore:.*Dropped.*units.*:UserWarning:moderndid",
     "ignore:.*Dropped.*rows.*:UserWarning:moderndid",
