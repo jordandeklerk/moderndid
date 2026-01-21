@@ -35,12 +35,12 @@ from .spline import BSpline
 
 
 def cont_did(
+    data,
     yname,
-    dname,
     tname,
     idname,
-    data,
     gname=None,
+    dname=None,
     xformula="~1",
     target_parameter="level",
     aggregation="dose",
@@ -71,25 +71,25 @@ def cont_did(
 
     Parameters
     ----------
+    data : pd.DataFrame | pl.DataFrame
+        The input panel data containing outcome, treatment, time, unit ID,
+        and optionally covariates and weights. Accepts both pandas and polars DataFrames.
+        Should be in long format with each row representing a unit-time observation.
     yname : str
         Name of the column containing the outcome variable.
+    tname : str
+        Name of the column containing the time period variable.
+    idname : str
+        Name of the column containing the unit ID variable.
+    gname : str, optional
+        Name of the column containing the timing-group variable indicating
+        when treatment starts for each unit. If None, it will be computed
+        from the treatment variable. Should be 0 for never-treated units.
     dname : str
         Name of the column containing the continuous treatment variable.
         This should represent the "dose" or amount of treatment received,
         and should be constant across time periods for each unit.
         Use 0 for never-treated units.
-    tname : str
-        Name of the column containing the time period variable.
-    idname : str
-        Name of the column containing the unit ID variable.
-    data : pd.DataFrame | pl.DataFrame
-        The input panel data containing outcome, treatment, time, unit ID,
-        and optionally covariates and weights. Accepts both pandas and polars DataFrames.
-        Should be in long format with each row representing a unit-time observation.
-    gname : str, optional
-        Name of the column containing the timing-group variable indicating
-        when treatment starts for each unit. If None, it will be computed
-        from the treatment variable. Should be 0 for never-treated units.
     xformula : str, default="~1"
         A formula for the covariates to include in the model.
         Should be of the form "~ X1 + X2" (intercept is always included).
@@ -225,12 +225,12 @@ def cont_did(
         :okwarning:
 
         In [2]: dose_result = moderndid.cont_did(
+           ...:     data=data,
            ...:     yname="Y",
-           ...:     dname="D",
            ...:     tname="time_period",
            ...:     idname="id",
            ...:     gname="G",
-           ...:     data=data,
+           ...:     dname="D",
            ...:     target_parameter="level",
            ...:     aggregation="dose",
            ...:     degree=3,
@@ -284,12 +284,12 @@ def cont_did(
         :okwarning:
 
         In [4]: cck_result = moderndid.cont_did(
+           ...:     data=data_cck,
            ...:     yname="Y",
-           ...:     dname="D",
            ...:     tname="time_period",
            ...:     idname="id",
            ...:     gname="G",
-           ...:     data=data_cck,
+           ...:     dname="D",
            ...:     dose_est_method="cck",
            ...:     target_parameter="level",
            ...:     aggregation="dose",
@@ -339,6 +339,9 @@ def cont_did(
            Structural Functions and Elasticities."
            https://arxiv.org/abs/2107.11869
     """
+    if dname is None:
+        raise ValueError("dname is required. Please specify the dose/treatment column.")
+
     if not isinstance(data, (pd.DataFrame, pl.DataFrame)):
         raise TypeError("data must be a pandas or polars DataFrame")
 
