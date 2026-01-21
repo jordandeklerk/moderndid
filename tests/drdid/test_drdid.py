@@ -6,10 +6,9 @@ import pytest
 
 from moderndid.core.data import load_nsw
 from moderndid.drdid.drdid import drdid
+from tests.helpers import importorskip
 
-from ..helpers import importorskip
-
-pd = importorskip("pandas")
+pl = importorskip("polars")
 
 
 @pytest.fixture
@@ -60,10 +59,10 @@ def test_drdid_panel_with_covariates(nsw_data):
 
 def test_drdid_panel_with_weights(nsw_data):
     np.random.seed(42)
-    unique_ids = nsw_data["id"].unique()
+    unique_ids = nsw_data["id"].unique().to_list()
     unit_weights = np.random.exponential(1, len(unique_ids))
     weight_dict = dict(zip(unique_ids, unit_weights))
-    nsw_data["weight"] = nsw_data["id"].map(weight_dict)
+    nsw_data = nsw_data.with_columns(pl.col("id").replace_strict(weight_dict, default=1.0).alias("weight"))
 
     result = drdid(
         data=nsw_data,
@@ -186,7 +185,7 @@ def test_drdid_trim_level(nsw_data, trim_level):
 
 @pytest.mark.parametrize("est_method", ["imp_local", "trad_local"])
 def test_drdid_invalid_est_method_for_panel(est_method):
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": np.repeat(range(50), 2),
             "time": np.tile([0, 1], 50),
@@ -208,7 +207,7 @@ def test_drdid_invalid_est_method_for_panel(est_method):
 
 
 def test_drdid_missing_id_col_panel():
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "y": np.random.randn(100),
             "time": np.repeat([0, 1], 50),
@@ -303,10 +302,10 @@ def test_drdid_args_output(nsw_data):
 
 
 def test_drdid_reproducibility(nsw_data):
-    treated_ids = nsw_data[nsw_data["experimental"] == 1]["id"].unique()[:50]
-    control_ids = nsw_data[nsw_data["experimental"] == 0]["id"].unique()[:50]
-    selected_ids = np.concatenate([treated_ids, control_ids])
-    small_data = nsw_data[nsw_data["id"].isin(selected_ids)].copy()
+    treated_ids = nsw_data.filter(pl.col("experimental") == 1)["id"].unique()[:50].to_list()
+    control_ids = nsw_data.filter(pl.col("experimental") == 0)["id"].unique()[:50].to_list()
+    selected_ids = treated_ids + control_ids
+    small_data = nsw_data.filter(pl.col("id").is_in(selected_ids))
 
     np.random.seed(42)
     result1 = drdid(
@@ -338,7 +337,7 @@ def test_drdid_reproducibility(nsw_data):
 
 def test_drdid_subset_columns(nsw_data):
     subset_cols = ["id", "year", "re", "experimental", "age", "educ"]
-    subset_data = nsw_data[subset_cols].copy()
+    subset_data = nsw_data.select(subset_cols)
 
     result = drdid(
         data=subset_data,
@@ -400,7 +399,14 @@ def test_drdid_no_covariates_equivalence(nsw_data):
 
 
 def test_drdid_categorical_covariates(nsw_data):
-    nsw_data["age_group"] = pd.cut(nsw_data["age"], bins=[0, 25, 35, 100], labels=["young", "middle", "old"])
+    nsw_data = nsw_data.with_columns(
+        pl.when(pl.col("age") <= 25)
+        .then(pl.lit("young"))
+        .when(pl.col("age") <= 35)
+        .then(pl.lit("middle"))
+        .otherwise(pl.lit("old"))
+        .alias("age_group")
+    )
 
     result = drdid(
         data=nsw_data,
@@ -421,16 +427,17 @@ def test_drdid_categorical_covariates(nsw_data):
 @pytest.mark.filterwarnings("ignore:Dropped.*rows due to missing values:UserWarning")
 @pytest.mark.filterwarnings("ignore:Panel data is unbalanced:UserWarning")
 def test_drdid_missing_values_error():
-    df = pd.DataFrame(
+    y_vals = np.random.randn(100)
+    y_vals[5] = np.nan
+    df = pl.DataFrame(
         {
             "id": np.repeat(range(50), 2),
             "time": np.tile([0, 1], 50),
-            "y": np.random.randn(100),
+            "y": y_vals,
             "treat": np.repeat([0, 1], 50),
             "x1": np.random.randn(100),
         }
     )
-    df.loc[5, "y"] = np.nan
 
     with pytest.raises(ValueError):
         drdid(
@@ -447,7 +454,7 @@ def test_drdid_missing_values_error():
 @pytest.mark.filterwarnings("ignore:Small group size detected:UserWarning")
 @pytest.mark.filterwarnings("ignore:Only.*control units available:UserWarning")
 def test_drdid_unbalanced_panel_warning():
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": [1, 1, 2, 2, 3],
             "time": [0, 1, 0, 1, 0],
@@ -469,7 +476,7 @@ def test_drdid_unbalanced_panel_warning():
 
 
 def test_drdid_more_than_two_periods_error():
-    df = pd.DataFrame(
+    df = pl.DataFrame(
         {
             "id": np.repeat(range(50), 3),
             "time": np.tile([0, 1, 2], 50),
@@ -504,10 +511,10 @@ def test_drdid_all_estimators_consistency(nsw_data, panel, method):
     if panel and method in ["imp_local", "trad_local"]:
         pytest.skip("Methods imp_local and trad_local are only for repeated cross-sections")
 
-    treated_ids = nsw_data[nsw_data["experimental"] == 1]["id"].unique()[:50]
-    control_ids = nsw_data[nsw_data["experimental"] == 0]["id"].unique()[:50]
-    selected_ids = np.concatenate([treated_ids, control_ids])
-    small_data = nsw_data[nsw_data["id"].isin(selected_ids)].copy()
+    treated_ids = nsw_data.filter(pl.col("experimental") == 1)["id"].unique()[:50].to_list()
+    control_ids = nsw_data.filter(pl.col("experimental") == 0)["id"].unique()[:50].to_list()
+    selected_ids = treated_ids + control_ids
+    small_data = nsw_data.filter(pl.col("id").is_in(selected_ids))
 
     result = drdid(
         data=small_data,

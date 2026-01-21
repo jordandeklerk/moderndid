@@ -6,9 +6,11 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
+import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess import (
     get_first_difference as _get_first_difference,
 )
@@ -80,10 +82,10 @@ def cont_did(
         Name of the column containing the time period variable.
     idname : str
         Name of the column containing the unit ID variable.
-    data : pd.DataFrame
+    data : pd.DataFrame | pl.DataFrame
         The input panel data containing outcome, treatment, time, unit ID,
-        and optionally covariates and weights. Should be in long format with
-        each row representing a unit-time observation.
+        and optionally covariates and weights. Accepts both pandas and polars DataFrames.
+        Should be in long format with each row representing a unit-time observation.
     gname : str, optional
         Name of the column containing the timing-group variable indicating
         when treatment starts for each unit. If None, it will be computed
@@ -337,8 +339,10 @@ def cont_did(
            Structural Functions and Elasticities."
            https://arxiv.org/abs/2107.11869
     """
-    if not isinstance(data, pd.DataFrame):
-        raise TypeError("data must be a pandas DataFrame")
+    if not isinstance(data, (pd.DataFrame, pl.DataFrame)):
+        raise TypeError("data must be a pandas or polars DataFrame")
+
+    data = to_polars(data)
 
     if xformula != "~1":
         raise NotImplementedError("Covariates not currently supported, use xformula='~1'")
@@ -375,8 +379,8 @@ def cont_did(
         raise ValueError(f"Missing columns in data: {missing_cols}")
 
     if gname is None:
-        data = data.copy()
-        data[".G"] = get_group(data, idname=idname, tname=tname, treatname=dname)
+        data = get_group(data, idname=idname, tname=tname, treatname=dname)
+        data = data.rename({"G": ".G"})
         gname = ".G"
 
     req_pre_periods = 0 if dose_est_method == "cck" else 1
@@ -474,7 +478,7 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
 
     Parameters
     ----------
-    gt_data : pd.DataFrame
+    gt_data : pl.DataFrame
         Data subset for this group-time combination with columns:
 
         - id: Unit identifier
@@ -503,11 +507,11 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
         - **extra_gt_returns**: Dictionary with detailed results including
           dose-specific ATT and ACRT estimates
     """
-    gt_data["dy"] = _get_first_difference(gt_data, "id", "Y", "period")
+    gt_data = _get_first_difference(gt_data, "id", "Y", "period")
 
-    post_data = gt_data[gt_data["name"] == "post"].copy()
-    dose = post_data["D"].values
-    dy = post_data["dy"].values
+    post_data = gt_data.filter(pl.col("name") == "post")
+    dose = post_data["D"].to_numpy()
+    dy = post_data["dy"].to_numpy()
 
     if dvals is None or len(dvals) == 0:
         return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
@@ -603,26 +607,27 @@ def cont_two_by_two_subset(
         base_period_val = main_base_period
 
     if control_group == "notyettreated":
-        unit_mask = (data["G"] == g) | (data["G"] > tp)
+        unit_mask = (pl.col("G") == g) | (pl.col("G") > tp)
     else:
-        unit_mask = (data["G"] == g) | np.isinf(data["G"])
+        unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite()
 
-    subset_data = data.loc[unit_mask].copy()
+    subset_data = data.filter(unit_mask)
+    time_mask = (pl.col("period") == tp) | (pl.col("period") == base_period_val)
+    subset_data = subset_data.filter(time_mask)
+    subset_data = subset_data.with_columns(
+        pl.when(pl.col("period") == tp).then(pl.lit("post")).otherwise(pl.lit("pre")).alias("name")
+    )
 
-    time_mask = (subset_data["period"] == tp) | (subset_data["period"] == base_period_val)
-    subset_data = subset_data.loc[time_mask].copy()
-
-    subset_data["name"] = np.where(subset_data["period"] == tp, "post", "pre")
     target_parameter = kwargs.get("target_parameter", None)
     aggregation = kwargs.get("aggregation", None)
     if aggregation == "eventstudy" and target_parameter == "level":
-        subset_data["D"] = (subset_data["G"] == g).astype(int)
+        subset_data = subset_data.with_columns((pl.col("G") == g).cast(pl.Int64).alias("D"))
     else:
-        subset_data["D"] = subset_data["D"] * (subset_data["G"] == g)
+        subset_data = subset_data.with_columns((pl.col("D") * (pl.col("G") == g).cast(pl.Float64)).alias("D"))
 
-    n1 = subset_data["id"].nunique()
-    all_ids = data["id"].unique()
-    subset_ids = subset_data["id"].unique()
+    n1 = subset_data["id"].n_unique()
+    all_ids = data["id"].unique().to_numpy()
+    subset_ids = subset_data["id"].unique().to_numpy()
     disidx = np.isin(all_ids, subset_ids)
 
     return {"gt_data": subset_data, "n1": n1, "disidx": disidx}
@@ -631,7 +636,7 @@ def cont_two_by_two_subset(
 def _estimate_cck(cont_did_data, original_data, **kwargs):
     """Compute the CCK non-parametric estimator."""
     config = cont_did_data.config
-    data = cont_did_data.data.copy()
+    data = cont_did_data.data.clone()
 
     unique_groups = config.treated_groups
     unique_times = config.time_periods
@@ -644,13 +649,14 @@ def _estimate_cck(cont_did_data, original_data, **kwargs):
         )
 
     data = _make_balanced_panel(data, config.idname, config.tname)
-    data[".dy"] = _get_first_difference(data, config.idname, config.yname, config.tname)
+    data = _get_first_difference(data, config.idname, config.yname, config.tname)
+    data = data.rename({"dy": ".dy"})
 
     max_t = data[config.tname].max()
-    post_data = data[data[config.tname] == max_t].copy()
+    post_data = data.filter(pl.col(config.tname) == max_t)
 
-    dose = post_data[config.dname].values
-    dy = post_data[".dy"].values
+    dose = post_data[config.dname].to_numpy()
+    dy = post_data[".dy"].to_numpy()
 
     m0 = np.mean(dy[dose == 0])
     dy_centered = dy - m0

@@ -2,11 +2,12 @@
 """Test the medicaid example from the R package HonestDiD."""
 
 import numpy as np
-import pandas as pd
+import polars as pl
 import pytest
 
 from tests.helpers import importorskip
 
+pd = importorskip("pandas")
 pf = importorskip("pyfixest")
 
 from moderndid.didhonest import (
@@ -85,7 +86,7 @@ def test_relative_magnitudes_sensitivity(event_study_results):
         betahat=betahat, sigma=sigma, num_pre_periods=5, num_post_periods=2, m_bar_vec=m_bar_vec_rm
     )
 
-    expected_rm = pd.DataFrame(
+    expected_rm = pl.DataFrame(
         {
             "Mbar": [0.5, 1.0, 1.5, 2.0],
             "lb": [0.0241, 0.0171, 0.00859, -0.00107],
@@ -93,14 +94,14 @@ def test_relative_magnitudes_sensitivity(event_study_results):
         }
     )
 
-    for _, row in expected_rm.iterrows():
-        actual = delta_rm_results[delta_rm_results["Mbar"] == row["Mbar"]].iloc[0]
+    for row in expected_rm.iter_rows(named=True):
+        actual = delta_rm_results.filter(pl.col("Mbar") == row["Mbar"]).row(0, named=True)
         np.testing.assert_allclose(actual["lb"], row["lb"], atol=1e-3, rtol=0)
         np.testing.assert_allclose(actual["ub"], row["ub"], atol=1e-3, rtol=0)
 
-    breakdown_rows = delta_rm_results[delta_rm_results["lb"] <= 0]
+    breakdown_rows = delta_rm_results.filter(pl.col("lb") <= 0)
     assert len(breakdown_rows) > 0, "Should find a breakdown value"
-    breakdown_mbar = breakdown_rows.iloc[0]["Mbar"]
+    breakdown_mbar = breakdown_rows.row(0, named=True)["Mbar"]
     assert 1.5 < breakdown_mbar <= 2.0, "Breakdown value should be around 2"
 
 
@@ -112,23 +113,23 @@ def test_smoothness_sensitivity(event_study_results):
         betahat=betahat, sigma=sigma, num_pre_periods=5, num_post_periods=2, m_vec=m_vec_sd
     )
 
-    m0_result = delta_sd_results[delta_sd_results["m"] == 0.0].iloc[0]
+    m0_result = delta_sd_results.filter(pl.col("m") == 0.0).row(0, named=True)
     assert m0_result["lb"] > 0, "Lower bound at M=0 should be positive"
     assert m0_result["ub"] > m0_result["lb"], "Upper bound should exceed lower bound"
 
     for i in range(1, len(delta_sd_results)):
-        prev = delta_sd_results.iloc[i - 1]
-        curr = delta_sd_results.iloc[i]
+        prev = delta_sd_results.row(i - 1, named=True)
+        curr = delta_sd_results.row(i, named=True)
         assert curr["lb"] <= prev["lb"] + 1e-6, f"Lower bound should decrease as M increases (M={curr['m']})"
         assert curr["ub"] >= prev["ub"] - 1e-6, f"Upper bound should increase as M increases (M={curr['m']})"
 
-    breakdown_rows = delta_sd_results[delta_sd_results["lb"] <= 0]
+    breakdown_rows = delta_sd_results.filter(pl.col("lb") <= 0)
     assert len(breakdown_rows) > 0, "Should find a breakdown value"
-    breakdown_m = breakdown_rows.iloc[0]["m"]
+    breakdown_m = breakdown_rows.row(0, named=True)["m"]
     assert 0.01 < breakdown_m <= 0.04, f"Breakdown value {breakdown_m} outside expected range"
 
-    assert all(delta_sd_results["method"] == "FLCI"), "All results should use FLCI method"
-    assert all(delta_sd_results["delta"] == "DeltaSD"), "All results should use DeltaSD"
+    assert (delta_sd_results["method"] == "FLCI").all(), "All results should use FLCI method"
+    assert (delta_sd_results["delta"] == "DeltaSD").all(), "All results should use DeltaSD"
 
 
 def test_original_confidence_interval(event_study_results):
@@ -156,12 +157,12 @@ def test_average_effect_sensitivity(event_study_results):
         l_vec=l_vec,
     )
 
-    assert isinstance(delta_rm_results_avg, pd.DataFrame)
+    assert isinstance(delta_rm_results_avg, pl.DataFrame)
     assert len(delta_rm_results_avg) > 0
     assert "Mbar" in delta_rm_results_avg.columns
 
-    low_mbar_results = delta_rm_results_avg[delta_rm_results_avg["Mbar"] <= 1.0]
-    assert all(low_mbar_results["lb"] > 0), "Average effect should be significantly positive for low Mbar"
+    low_mbar_results = delta_rm_results_avg.filter(pl.col("Mbar") <= 1.0)
+    assert (low_mbar_results["lb"] > 0).all(), "Average effect should be significantly positive for low Mbar"
 
     original_results_avg = construct_original_cs(
         betahat=betahat, sigma=sigma, num_pre_periods=5, num_post_periods=2, l_vec=l_vec
@@ -178,7 +179,7 @@ def test_different_methods(event_study_results, method):
         betahat=betahat, sigma=sigma, num_pre_periods=5, num_post_periods=2, m_vec=np.array([0.0, 0.02]), method=method
     )
 
-    assert isinstance(delta_results, pd.DataFrame)
+    assert isinstance(delta_results, pl.DataFrame)
     assert len(delta_results) == 2
-    assert all(delta_results["method"] == method)
-    assert all(delta_results["lb"] <= delta_results["ub"])
+    assert (delta_results["method"] == method).all()
+    assert (delta_results["lb"] <= delta_results["ub"]).all()

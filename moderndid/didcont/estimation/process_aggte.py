@@ -4,6 +4,7 @@
 import warnings
 
 import numpy as np
+import polars as pl
 import scipy.stats as st
 
 from moderndid.core.preprocess import map_to_idx as _map_to_idx
@@ -65,9 +66,9 @@ def aggregate_att_gt(
     glist_original = np.array(sorted(np.unique(original_group[original_group > 0])))
     glist_idx = _map_to_idx(glist_original, time_map)
 
-    if data is not None and "period" in data and ".w" in data and (pte_params.gname in data):
+    if data is not None and "period" in data.columns and ".w" in data.columns and (pte_params.gname in data.columns):
         first_period_idx = int(np.min(time_idx))
-        first_period_data = data.loc[data["period"] == first_period_idx]
+        first_period_data = data.filter(pl.col("period") == first_period_idx)
         weights_ind = np.asarray(first_period_data[".w"], dtype=float)
         g_values = first_period_data[pte_params.gname].to_numpy()
         finite_mask = np.isfinite(g_values)
@@ -376,7 +377,7 @@ def overall_weights(att_gt_result, balance_event=None, min_event_time=-np.inf, m
     max_t = int(time_idx.max())
 
     first_period_idx = int(np.min(time_idx))
-    first_period_data = data.loc[data["period"] == first_period_idx]
+    first_period_data = data.filter(pl.col("period") == first_period_idx)
     weights_ind = np.asarray(first_period_data[".w"], dtype=float)
 
     glist_original = np.array(sorted(np.unique(original_group[original_group > 0])))

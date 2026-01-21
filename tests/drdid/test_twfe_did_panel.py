@@ -7,7 +7,7 @@ from moderndid import twfe_did_panel
 
 from ..helpers import importorskip
 
-pd = importorskip("pandas")
+pl = importorskip("polars")
 
 
 def dgp_panel_for_test(n=2000):
@@ -167,7 +167,7 @@ def test_intercept_removal():
     [
         "not_an_array",
         [1, 2, 3],
-        pd.DataFrame(),
+        pl.DataFrame(),
     ],
 )
 def test_invalid_input_types(invalid_input):
@@ -181,7 +181,7 @@ def test_mismatched_dimensions():
     y0 = np.random.normal(0, 1, n - 10)
     d = np.random.binomial(1, 0.5, n)
 
-    with pytest.raises((ValueError, IndexError)):
+    with pytest.raises((ValueError, IndexError, pl.exceptions.ShapeError)):
         twfe_did_panel(y1, y0, d)
 
 

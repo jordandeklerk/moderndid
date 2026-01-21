@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal, NamedTuple
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 
 class PTEParams(NamedTuple):
@@ -20,7 +20,7 @@ class PTEParams(NamedTuple):
         Name of the time period variable.
     idname : str
         Name of the id variable.
-    data : pd.DataFrame
+    data : pl.DataFrame
         Panel data as a pandas DataFrame.
     g_list : np.ndarray
         Array of unique group identifiers.
@@ -70,7 +70,7 @@ class PTEParams(NamedTuple):
     gname: str
     tname: str
     idname: str
-    data: pd.DataFrame
+    data: pl.DataFrame
     g_list: np.ndarray
     t_list: np.ndarray
     cband: bool
@@ -245,22 +245,22 @@ class PteEmpBootResult(NamedTuple):
 
     Attributes
     ----------
-    attgt_results : pd.DataFrame
+    attgt_results : pl.DataFrame
         ATT(g,t) estimates with standard errors.
     overall_results : dict
         Overall ATT estimate and standard error.
-    group_results : pd.DataFrame | None
+    group_results : pl.DataFrame | None
         Group-specific ATT estimates and standard errors.
-    dyn_results : pd.DataFrame | None
+    dyn_results : pl.DataFrame | None
         Dynamic (event-time) ATT estimates and standard errors.
     extra_gt_returns : list | None
         Extra returns from group-time calculations.
     """
 
-    attgt_results: pd.DataFrame
+    attgt_results: pl.DataFrame
     overall_results: dict
-    group_results: pd.DataFrame | None = None
-    dyn_results: pd.DataFrame | None = None
+    group_results: pl.DataFrame | None = None
+    dyn_results: pl.DataFrame | None = None
     extra_gt_returns: list | None = None
 
 

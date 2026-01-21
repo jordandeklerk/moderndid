@@ -6,6 +6,11 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from polars.testing import assert_frame_equal
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid import (
     agg_ddd,
@@ -56,7 +61,7 @@ def r_estimate_2period(data, est_method="dr"):
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
 
-        data.to_csv(data_path, index=False)
+        data.write_csv(data_path)
 
         r_script = f"""
 library(triplediff)
@@ -97,7 +102,7 @@ def r_estimate_multiperiod(data, control_group="nevertreated", base_period="univ
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
 
-        data.to_csv(data_path, index=False)
+        data.write_csv(data_path)
 
         r_script = f"""
 library(triplediff)
@@ -141,7 +146,7 @@ def r_estimate_multiperiod_agg(
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
 
-        data.to_csv(data_path, index=False)
+        data.write_csv(data_path)
 
         balance_e_str = "NULL" if balance_e is None else str(balance_e)
         min_e_str = "-Inf" if min_e is None else str(min_e)
@@ -218,7 +223,7 @@ def r_estimate_2period_bootstrap(data, est_method="dr", nboot=100):
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
 
-        data.to_csv(data_path, index=False)
+        data.write_csv(data_path)
 
         r_script = f"""
 library(triplediff)
@@ -261,7 +266,7 @@ def r_ddd_wrapper(data, is_multiperiod=False, est_method="dr", control_group="ne
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
 
-        data.to_csv(data_path, index=False)
+        data.write_csv(data_path)
 
         if is_multiperiod:
             r_script = f"""
@@ -1046,10 +1051,10 @@ def test_dgp_subgroup_proportions_reasonable():
     py_result = gen_dgp_2periods(n=5000, dgp_type=1, random_state=42)
     py_data = py_result["data"]
 
-    units = py_data.drop_duplicates("id")
-    subgroup_counts = units.groupby(["state", "partition"]).size()
+    units = py_data.unique(subset=["id"])
+    subgroup_counts = units.group_by(["state", "partition"]).len()
 
-    min_count = subgroup_counts.min()
+    min_count = subgroup_counts["len"].min()
     assert min_count > 200, f"Subgroup too small: {min_count}"
 
 
@@ -1072,8 +1077,8 @@ def test_mp_dgp_produces_valid_structure():
         assert col in data.columns, f"Missing column: {col}"
 
     n_obs = len(data)
-    n_units = data["id"].nunique()
-    n_times = data["time"].nunique()
+    n_units = data["id"].n_unique()
+    n_times = data["time"].n_unique()
     assert n_obs == n_units * n_times, f"Unbalanced panel: {n_obs} != {n_units} * {n_times}"
 
 
@@ -1118,7 +1123,7 @@ def test_mp_dgp_reproducibility():
     result1 = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
     result2 = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
 
-    pd.testing.assert_frame_equal(result1["data"], result2["data"])
+    assert_frame_equal(result1["data"], result2["data"])
 
 
 def test_did_components_sum_correctly(two_period_dgp_result):
@@ -1294,7 +1299,7 @@ def r_estimate_2period_rcs(data, est_method="dr"):
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
 
-        data.to_csv(data_path, index=False)
+        data.write_csv(data_path)
 
         r_script = f"""
 library(triplediff)
@@ -1336,7 +1341,7 @@ def r_estimate_multiperiod_rcs(data, control_group="nevertreated", base_period="
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
 
-        data.to_csv(data_path, index=False)
+        data.write_csv(data_path)
 
         r_script = f"""
 library(triplediff)
@@ -1540,13 +1545,13 @@ def test_mp_rcs_base_period_options(mp_rcs_data, base_period):
 def test_ddd_rc_basic_functionality(two_period_rcs_data):
     data = two_period_rcs_data
 
-    post = (data["time"] == 1).astype(int).values
-    y = data["y"].values
-    state = data["state"].values
-    partition = data["partition"].values
+    post = (data["time"] == 1).cast(pl.Int64).to_numpy()
+    y = data["y"].to_numpy()
+    state = data["state"].to_numpy()
+    partition = data["partition"].to_numpy()
     subgroup = 1 + state + 2 * partition
 
-    covariates = data[["cov1", "cov2", "cov3", "cov4"]].values
+    covariates = data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()
     covariates = np.column_stack([np.ones(len(data)), covariates])
 
     result = ddd_rc(
@@ -1586,13 +1591,13 @@ def test_ddd_mp_rc_basic_functionality(mp_rcs_data):
 def test_ddd_rc_all_methods_work(two_period_rcs_data, est_method):
     data = two_period_rcs_data
 
-    post = (data["time"] == 1).astype(int).values
-    y = data["y"].values
-    state = data["state"].values
-    partition = data["partition"].values
+    post = (data["time"] == 1).cast(pl.Int64).to_numpy()
+    y = data["y"].to_numpy()
+    state = data["state"].to_numpy()
+    partition = data["partition"].to_numpy()
     subgroup = 1 + state + 2 * partition
 
-    covariates = data[["cov1", "cov2", "cov3", "cov4"]].values
+    covariates = data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()
     covariates = np.column_stack([np.ones(len(data)), covariates])
 
     result = ddd_rc(
@@ -1666,13 +1671,13 @@ def test_ddd_wrapper_mp_rcs_mode(mp_rcs_data):
 def test_rcs_influence_function_properties(two_period_rcs_data):
     data = two_period_rcs_data
 
-    post = (data["time"] == 1).astype(int).values
-    y = data["y"].values
-    state = data["state"].values
-    partition = data["partition"].values
+    post = (data["time"] == 1).cast(pl.Int64).to_numpy()
+    y = data["y"].to_numpy()
+    state = data["state"].to_numpy()
+    partition = data["partition"].to_numpy()
     subgroup = 1 + state + 2 * partition
 
-    covariates = data[["cov1", "cov2", "cov3", "cov4"]].values
+    covariates = data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()
     covariates = np.column_stack([np.ones(len(data)), covariates])
 
     result = ddd_rc(
@@ -1695,13 +1700,13 @@ def test_rcs_influence_function_properties(two_period_rcs_data):
 def test_rcs_ddd_formula_holds(two_period_rcs_data):
     data = two_period_rcs_data
 
-    post = (data["time"] == 1).astype(int).values
-    y = data["y"].values
-    state = data["state"].values
-    partition = data["partition"].values
+    post = (data["time"] == 1).cast(pl.Int64).to_numpy()
+    y = data["y"].to_numpy()
+    state = data["state"].to_numpy()
+    partition = data["partition"].to_numpy()
     subgroup = 1 + state + 2 * partition
 
-    covariates = data[["cov1", "cov2", "cov3", "cov4"]].values
+    covariates = data.select(["cov1", "cov2", "cov3", "cov4"]).to_numpy()
     covariates = np.column_stack([np.ones(len(data)), covariates])
 
     result = ddd_rc(

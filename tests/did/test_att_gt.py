@@ -4,6 +4,10 @@
 import numpy as np
 import pytest
 
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
+
 from moderndid import MPResult, att_gt, load_mpdta
 
 
@@ -82,8 +86,8 @@ def test_att_gt_with_anticipation(mpdta_data):
 
 
 def test_att_gt_bootstrap_inference(mpdta_data):
-    unique_counties = mpdta_data["countyreal"].unique()[:100]
-    mpdta_data = mpdta_data[mpdta_data["countyreal"].isin(unique_counties)]
+    unique_counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
+    mpdta_data = mpdta_data.filter(pl.col("countyreal").is_in(unique_counties))
 
     result = att_gt(
         data=mpdta_data,
@@ -135,7 +139,7 @@ def test_att_gt_universal_base_period(mpdta_data):
 
 
 def test_att_gt_with_weights(mpdta_data):
-    mpdta_data["weights"] = np.random.uniform(0.5, 1.5, len(mpdta_data))
+    mpdta_data = mpdta_data.with_columns(pl.Series("weights", np.random.uniform(0.5, 1.5, len(mpdta_data))))
 
     result = att_gt(
         data=mpdta_data,
@@ -166,7 +170,7 @@ def test_att_gt_repeated_cross_section(mpdta_data):
 
 
 def test_att_gt_unbalanced_panel(mpdta_data):
-    mpdta_data = mpdta_data[~((mpdta_data["countyreal"] < 1010) & (mpdta_data["year"] == 2005))]
+    mpdta_data = mpdta_data.filter(~((pl.col("countyreal") < 1010) & (pl.col("year") == 2005)))
 
     result = att_gt(
         data=mpdta_data,
@@ -182,9 +186,9 @@ def test_att_gt_unbalanced_panel(mpdta_data):
 
 
 def test_att_gt_clustering(mpdta_data):
-    unique_counties = mpdta_data["countyreal"].unique()[:100]
-    mpdta_data = mpdta_data[mpdta_data["countyreal"].isin(unique_counties)]
-    mpdta_data["cluster"] = mpdta_data["countyreal"] // 10
+    unique_counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
+    mpdta_data = mpdta_data.filter(pl.col("countyreal").is_in(unique_counties))
+    mpdta_data = mpdta_data.with_columns((pl.col("countyreal") // 10).alias("cluster"))
 
     result = att_gt(
         data=mpdta_data,
@@ -334,8 +338,8 @@ def test_att_gt_print_details(mpdta_data):
 
 
 def test_att_gt_bootstrap_reproducibility(mpdta_data):
-    unique_counties = mpdta_data["countyreal"].unique()[:100]
-    data = mpdta_data[mpdta_data["countyreal"].isin(unique_counties)]
+    unique_counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
+    data = mpdta_data.filter(pl.col("countyreal").is_in(unique_counties)).sort(["countyreal", "year"])
 
     result1 = att_gt(
         data=data,

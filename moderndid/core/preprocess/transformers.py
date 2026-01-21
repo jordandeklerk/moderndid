@@ -4,8 +4,9 @@ import warnings
 from typing import Protocol
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
+from ..dataframe import DataFrame, to_pandas, to_polars
 from .base import BaseTransformer
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
 from .constants import (
@@ -21,15 +22,16 @@ from .utils import extract_vars_from_formula
 class DataTransformer(Protocol):
     """Data transformer."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
 
 
 class ColumnSelector(BaseTransformer):
     """Column selector."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
+        df = to_polars(data)
         cols_to_keep = [config.yname, config.tname, config.gname]
 
         if config.idname:
@@ -52,16 +54,17 @@ class ColumnSelector(BaseTransformer):
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
         cols_to_keep = [col for col in cols_to_keep if col is not None]
 
-        return data[cols_to_keep].copy()
+        return df.select(cols_to_keep)
 
 
 class MissingDataHandler(BaseTransformer):
     """Missing data."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
-        n_orig = len(data)
-        data_clean = data.dropna()
+        df = to_polars(data)
+        n_orig = len(df)
+        data_clean = df.drop_nulls()
         n_new = len(data_clean)
 
         if n_orig > n_new:
@@ -79,96 +82,106 @@ class MissingDataHandler(BaseTransformer):
 class WeightNormalizer(BaseTransformer):
     """Weight normalizer."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
-        data = data.copy()
+        df = to_polars(data)
 
         if config.weightsname is None:
-            weights = np.ones(len(data))
+            weights = np.ones(len(df))
         else:
-            weights = data[config.weightsname].values
+            weights = df[config.weightsname].to_numpy()
 
         weights = weights / weights.mean()
-        data[WEIGHTS_COLUMN] = weights
-
-        return data
+        return df.with_columns(pl.Series(name=WEIGHTS_COLUMN, values=weights))
 
 
 class DataSorter(BaseTransformer):
     """Data sorter."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
+        df = to_polars(data)
         sort_cols = [config.tname, config.gname]
 
         if config.idname:
             sort_cols.append(config.idname)
 
-        return data.sort_values(sort_cols).copy()
+        return df.sort(sort_cols)
 
 
 class TreatmentEncoder(BaseTransformer):
     """Treatment encoder."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
-        data = data.copy()
+        df = to_polars(data)
 
-        data[config.gname] = data[config.gname].astype(float)
-        data.loc[data[config.gname] == 0, config.gname] = NEVER_TREATED_VALUE
+        df = df.with_columns(pl.col(config.gname).cast(pl.Float64))
 
-        tlist = sorted(data[config.tname].unique())
+        df = df.with_columns(
+            pl.when(pl.col(config.gname) == 0)
+            .then(pl.lit(NEVER_TREATED_VALUE))
+            .otherwise(pl.col(config.gname))
+            .alias(config.gname)
+        )
+
+        tlist = sorted(df[config.tname].unique().to_list())
         max_treatment_time = max(tlist)
-        data.loc[data[config.gname] > max_treatment_time, config.gname] = NEVER_TREATED_VALUE
+        df = df.with_columns(
+            pl.when(pl.col(config.gname) > max_treatment_time)
+            .then(pl.lit(NEVER_TREATED_VALUE))
+            .otherwise(pl.col(config.gname))
+            .alias(config.gname)
+        )
 
-        return data
+        return df
 
 
 class EarlyTreatmentFilter(BaseTransformer):
     """Early treatment filter."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
-        data = data.copy()
+        df = to_polars(data)
 
-        tlist = sorted(data[config.tname].unique())
+        tlist = sorted(df[config.tname].unique().to_list())
         first_period = min(tlist)
 
-        treated_early = data[config.gname] <= first_period + config.anticipation
+        treated_early_mask = pl.col(config.gname) <= first_period + config.anticipation
 
         if config.idname:
-            early_units = data.loc[treated_early, config.idname].unique()
+            early_units = df.filter(treated_early_mask)[config.idname].unique().to_list()
             n_early = len(early_units)
             if n_early > 0:
                 warnings.warn(f"Dropped {n_early} units that were already treated in the first period")
-                data = data[~data[config.idname].isin(early_units)]
+                df = df.filter(~pl.col(config.idname).is_in(early_units))
         else:
-            n_early = treated_early.sum()
+            n_early = df.filter(treated_early_mask).height
             if n_early > 0:
                 warnings.warn(f"Dropped {n_early} observations that were already treated in the first period")
-                data = data[~treated_early]
+                df = df.filter(~treated_early_mask)
 
-        return data
+        return df
 
 
 class ControlGroupCreator(BaseTransformer):
     """Control group creator."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         if not isinstance(config, DIDConfig):
-            return data
+            return to_polars(data)
 
-        data = data.copy()
+        df = to_polars(data)
 
-        glist = sorted(data[config.gname].unique())
+        glist = sorted(df[config.gname].unique().to_list())
 
         if NEVER_TREATED_VALUE in glist:
-            return data
+            return df
 
         finite_glist = [g for g in glist if np.isfinite(g)]
         if not finite_glist:
-            return data
+            return df
 
         latest_g = max(finite_glist)
         cutoff_t = latest_g - config.anticipation
@@ -178,101 +191,105 @@ class ControlGroupCreator(BaseTransformer):
                 "No never-treated group is available. "
                 "The last treated cohort is being coerced as 'never-treated' units."
             )
-            data = data[data[config.tname] < cutoff_t].copy()
-            data.loc[data[config.gname] == latest_g, config.gname] = NEVER_TREATED_VALUE
+            df = df.filter(pl.col(config.tname) < cutoff_t)
+            df = df.with_columns(
+                pl.when(pl.col(config.gname) == latest_g)
+                .then(pl.lit(NEVER_TREATED_VALUE))
+                .otherwise(pl.col(config.gname))
+                .alias(config.gname)
+            )
         else:
-            data = data[data[config.tname] < cutoff_t].copy()
+            df = df.filter(pl.col(config.tname) < cutoff_t)
 
-        return data
+        return df
 
 
 class PanelBalancer(BaseTransformer):
     """Panel balancer."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         if not config.panel or config.allow_unbalanced_panel or not config.idname:
-            return data
+            return to_polars(data)
 
-        data = data.copy()
-        tlist = sorted(data[config.tname].unique())
+        df = to_polars(data)
+        tlist = sorted(df[config.tname].unique().to_list())
         n_periods = len(tlist)
 
-        unit_counts = data.groupby(config.idname).size()
-        complete_units = unit_counts[unit_counts == n_periods].index
+        unit_counts = df.group_by(config.idname).len()
+        complete_units = unit_counts.filter(pl.col("len") == n_periods)[config.idname].to_list()
 
-        n_old = data[config.idname].nunique()
-        data = data[data[config.idname].isin(complete_units)].copy()
-        n_new = data[config.idname].nunique()
+        n_old = df[config.idname].n_unique()
+        df = df.filter(pl.col(config.idname).is_in(complete_units))
+        n_new = df[config.idname].n_unique()
 
         if n_new < n_old:
             warnings.warn(f"Dropped {n_old - n_new} units while converting to balanced panel")
 
-        if len(data) == 0:
+        if len(df) == 0:
             raise ValueError(
                 "All observations dropped while converting to balanced panel. "
                 "Consider setting panel=False and/or revisiting 'idname'"
             )
 
-        return data
+        return df
 
 
 class RepeatedCrossSectionHandler(BaseTransformer):
     """Repeated cross section handler."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         if config.panel:
-            return data
+            return to_polars(data)
 
-        data = data.copy()
+        df = to_polars(data)
 
         if config.idname is None:
             config.true_repeated_cross_sections = True
 
         if config.true_repeated_cross_sections:
-            data = data.reset_index(drop=True)
-            data[ROW_ID_COLUMN] = data.index
+            df = df.with_row_index(name=ROW_ID_COLUMN)
             config.idname = ROW_ID_COLUMN
         else:
-            data[ROW_ID_COLUMN] = data[config.idname]
+            df = df.with_columns(pl.col(config.idname).alias(ROW_ID_COLUMN))
 
-        return data
+        return df
 
 
 class TimePeriodRecoder(BaseTransformer):
     """Time period recoder."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         if not isinstance(config, ContDIDConfig):
-            return data
+            return to_polars(data)
 
-        data = data.copy()
-        original_periods = sorted(data[config.tname].unique())
+        df = to_polars(data)
+        original_periods = sorted(df[config.tname].unique().to_list())
         time_map = {t: i + 1 for i, t in enumerate(original_periods)}
 
-        data[config.tname] = data[config.tname].map(time_map)
+        df = df.with_columns(pl.col(config.tname).replace(time_map).alias(config.tname))
         config.time_map = time_map
 
-        return data
+        return df
 
 
 class EarlyTreatmentGroupFilter(BaseTransformer):
     """Early treatment group filter."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         if not isinstance(config, ContDIDConfig):
-            return data
+            return to_polars(data)
 
-        data = data.copy()
+        df = to_polars(data)
 
-        glist = sorted([g for g in data[config.gname].unique() if np.isfinite(g)])
-        tlist = sorted(data[config.tname].unique())
+        glist = sorted([g for g in df[config.gname].unique().to_list() if np.isfinite(g)])
+        tlist = sorted(df[config.tname].unique().to_list())
 
         if not glist:
-            return data
+            return df
 
         min_valid_group = config.required_pre_periods + config.anticipation + min(tlist)
 
@@ -283,53 +300,60 @@ class EarlyTreatmentGroupFilter(BaseTransformer):
                 f"Dropped {len(groups_to_drop)} groups treated before period {min_valid_group} "
                 f"(required_pre_periods={config.required_pre_periods}, anticipation={config.anticipation})"
             )
-            data = data[~data[config.gname].isin(groups_to_drop)].copy()
+            df = df.filter(~pl.col(config.gname).is_in(groups_to_drop))
 
-        return data
+        return df
 
 
-class DoseValidator(BaseTransformer):
-    """Dose validator."""
+class DoseValidatorTransformer(BaseTransformer):
+    """Dose validator transformer."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         if not isinstance(config, ContDIDConfig) or not config.dname:
-            return data
+            return to_polars(data)
 
-        data = data.copy()
+        df = to_polars(data)
 
-        never_treated = data[config.gname] == NEVER_TREATED_VALUE
-        if never_treated.any():
-            data.loc[never_treated, config.dname] = 0
+        df = df.with_columns(
+            pl.when(pl.col(config.gname) == NEVER_TREATED_VALUE)
+            .then(pl.lit(0))
+            .otherwise(pl.col(config.dname))
+            .alias(config.dname)
+        )
 
-        treated_units = (data[config.gname] != NEVER_TREATED_VALUE) & np.isfinite(data[config.gname])
-        post_treatment = data[config.tname] >= data[config.gname]
-        no_dose = (data[config.dname] == 0) | data[config.dname].isna()
+        invalid_mask = (
+            (pl.col(config.gname) != NEVER_TREATED_VALUE)
+            & pl.col(config.gname).is_finite()
+            & (pl.col(config.tname) >= pl.col(config.gname))
+            & ((pl.col(config.dname) == 0) | pl.col(config.dname).is_null())
+        )
 
-        invalid_obs = treated_units & post_treatment & no_dose
-        n_invalid = invalid_obs.sum()
+        n_invalid = df.filter(invalid_mask).height
 
         if n_invalid > 0:
             warnings.warn(f"Dropped {n_invalid} post-treatment observations with missing or zero dose values")
-            data = data[~invalid_obs].copy()
+            df = df.filter(~invalid_mask)
 
-        return data
+        return df
 
 
 class ConfigUpdater:
     """Config updater."""
 
     @staticmethod
-    def update(data: pd.DataFrame, config: BasePreprocessConfig) -> None:
+    def update(data: DataFrame, config: BasePreprocessConfig) -> None:
         """Update config."""
+        df = to_polars(data)
+
         if isinstance(config, TwoPeriodDIDConfig):
-            tlist = sorted(data[config.tname].unique())
-            treat_list = sorted(data[config.treat_col].unique())
+            tlist = sorted(df[config.tname].unique().to_list())
+            treat_list = sorted(df[config.treat_col].unique().to_list())
 
             if config.idname:
-                n_units = data[config.idname].nunique()
+                n_units = df[config.idname].n_unique()
             else:
-                n_units = len(data)
+                n_units = len(df)
 
             config.time_periods = np.array(tlist)
             config.time_periods_count = len(tlist)
@@ -338,15 +362,15 @@ class ConfigUpdater:
             config.id_count = n_units
             return
 
-        tlist = sorted(data[config.tname].unique())
-        glist = sorted(data[config.gname].unique())
+        tlist = sorted(df[config.tname].unique().to_list())
+        glist = sorted(df[config.gname].unique().to_list())
 
         glist_finite = [g for g in glist if np.isfinite(g)]
 
         if config.idname:
-            n_units = data[config.idname].nunique()
+            n_units = df[config.idname].n_unique()
         else:
-            n_units = len(data)
+            n_units = len(df)
 
         config.time_periods = np.array(tlist)
         config.time_periods_count = len(tlist)
@@ -355,8 +379,8 @@ class ConfigUpdater:
         config.id_count = n_units
 
         if config.panel and config.allow_unbalanced_panel:
-            unit_counts = data.groupby(config.idname).size()
-            is_balanced = (unit_counts == len(tlist)).all()
+            unit_counts = df.group_by(config.idname).len()
+            is_balanced = (unit_counts["len"] == len(tlist)).all()
             if is_balanced:
                 config.data_format = DataFormat.PANEL
             else:
@@ -373,11 +397,12 @@ class ConfigUpdater:
 class PrePostColumnSelector(BaseTransformer):
     """Pre-post column selector."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pl.DataFrame:
         """Transform data."""
         if not isinstance(config, TwoPeriodDIDConfig):
-            return data
+            return to_polars(data)
 
+        df = to_polars(data)
         cols_to_keep = [config.yname, config.tname, config.treat_col]
 
         if config.idname:
@@ -394,28 +419,29 @@ class PrePostColumnSelector(BaseTransformer):
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
         cols_to_keep = [col for col in cols_to_keep if col is not None]
 
-        return data[cols_to_keep].copy()
+        return df.select(cols_to_keep)
 
 
 class PrePostCovariateProcessor(BaseTransformer):
     """Pre-post covariate processor."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pl.DataFrame:
         """Transform data."""
         if not isinstance(config, TwoPeriodDIDConfig):
-            return data
+            return to_polars(data)
 
         import formulaic as fml
 
+        df = to_polars(data)
         covariates_formula = config.xformla if config.xformla else "~1"
 
         try:
             model_matrix_result = fml.model_matrix(
                 covariates_formula,
-                data,
+                to_pandas(df),
                 output="pandas",
             )
-            covariates_df = model_matrix_result
+            covariates_pl = to_polars(model_matrix_result)
 
             if hasattr(model_matrix_result, "model_spec") and model_matrix_result.model_spec:
                 original_cov_names = [var for var in model_matrix_result.model_spec.variables if var != "1"]
@@ -426,50 +452,55 @@ class PrePostCovariateProcessor(BaseTransformer):
         except Exception as e:
             raise ValueError(f"Error processing covariates_formula '{covariates_formula}' with formulaic: {e}") from e
 
-        cols_to_drop = [name for name in original_cov_names if name in data.columns]
-        data_processed = pd.concat([data.drop(columns=cols_to_drop), covariates_df], axis=1)
+        cols_to_drop = [name for name in original_cov_names if name in df.columns]
+        cols_to_keep = [col for col in df.columns if col not in cols_to_drop]
 
-        return data_processed
+        return pl.concat([df.select(cols_to_keep), covariates_pl], how="horizontal")
 
 
 class PrePostPanelBalancer(BaseTransformer):
     """Pre-post panel balancer."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pl.DataFrame:
         """Transform data."""
         if not isinstance(config, TwoPeriodDIDConfig) or not config.panel or not config.idname:
-            return data
+            return to_polars(data)
 
-        n_times = data[config.tname].nunique()
-        obs_counts = data.groupby(config.idname).size()
-        ids_to_keep = obs_counts[obs_counts == n_times].index
+        df = to_polars(data)
+        n_times = df[config.tname].n_unique()
+        obs_counts = df.group_by(config.idname).len()
+        ids_to_keep = obs_counts.filter(pl.col("len") == n_times)[config.idname].to_list()
 
-        if len(ids_to_keep) < len(obs_counts):
+        if len(ids_to_keep) < obs_counts.height:
             warnings.warn("Panel data is unbalanced. Dropping units with incomplete observations.", UserWarning)
 
-        return data[data[config.idname].isin(ids_to_keep)].copy()
+        return df.filter(pl.col(config.idname).is_in(ids_to_keep))
 
 
 class PrePostInvarianceChecker(BaseTransformer):
     """Pre-post invariance checker."""
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pl.DataFrame:
         """Transform data."""
         if not isinstance(config, TwoPeriodDIDConfig) or not config.panel or not config.idname:
-            return data
+            return to_polars(data)
 
-        time_periods = sorted(data[config.tname].unique())
+        df = to_polars(data)
+        time_periods = sorted(df[config.tname].unique().to_list())
         if len(time_periods) != 2:
-            return data
+            return df
 
         pre_period, post_period = time_periods
 
-        pre_df = data[data[config.tname] == pre_period].set_index(config.idname)
-        post_df = data[data[config.tname] == post_period].set_index(config.idname)
+        pre_df = df.filter(pl.col(config.tname) == pre_period).sort(config.idname)
+        post_df = df.filter(pl.col(config.tname) == post_period).sort(config.idname)
 
-        common_ids = pre_df.index.intersection(post_df.index)
-        pre_df = pre_df.loc[common_ids]
-        post_df = post_df.loc[common_ids]
+        pre_ids = set(pre_df[config.idname].to_list())
+        post_ids = set(post_df[config.idname].to_list())
+        common_ids = list(pre_ids.intersection(post_ids))
+
+        pre_df = pre_df.filter(pl.col(config.idname).is_in(common_ids)).sort(config.idname)
+        post_df = post_df.filter(pl.col(config.idname).is_in(common_ids)).sort(config.idname)
 
         if not pre_df[config.treat_col].equals(post_df[config.treat_col]):
             raise ValueError(f"Treatment indicator ('{config.treat_col}') must be time-invariant in panel data.")
@@ -478,7 +509,7 @@ class PrePostInvarianceChecker(BaseTransformer):
             if not pre_df[WEIGHTS_COLUMN].equals(post_df[WEIGHTS_COLUMN]):
                 raise ValueError("Weights must be time-invariant in panel data.")
 
-        return data
+        return df
 
 
 class DataTransformerPipeline:
@@ -516,7 +547,7 @@ class DataTransformerPipeline:
                 TreatmentEncoder(),
                 TimePeriodRecoder(),
                 EarlyTreatmentGroupFilter(),
-                DoseValidator(),
+                DoseValidatorTransformer(),
                 PanelBalancer(),
                 DataSorter(),
             ]
@@ -536,11 +567,12 @@ class DataTransformerPipeline:
             ]
         )
 
-    def transform(self, data: pd.DataFrame, config: BasePreprocessConfig) -> pd.DataFrame:
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
+        df = to_polars(data)
         for transformer in self.transformers:
-            data = transformer.transform(data, config)
+            df = transformer.transform(df, config)
 
-        ConfigUpdater.update(data, config)
+        ConfigUpdater.update(df, config)
 
-        return data
+        return df

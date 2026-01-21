@@ -1,14 +1,16 @@
 """Main wrapper for Triple Difference-in-Differences estimation."""
 
 import numpy as np
+import polars as pl
 
+from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 
 from .estimators.ddd_mp import ddd_mp
 from .estimators.ddd_mp_rc import ddd_mp_rc
 from .estimators.ddd_panel import ddd_panel
 from .estimators.ddd_rc import _ddd_rc_2period
-from .utils import add_intercept, detect_multiple_periods, detect_rcs_mode, extract_covariates
+from .utils import add_intercept, detect_multiple_periods, detect_rcs_mode, get_covariate_names
 
 
 def ddd(
@@ -43,10 +45,10 @@ def ddd(
 
     Parameters
     ----------
-    data : pd.DataFrame
-        Data in long format. For panel data, should contain repeated observations
-        of the same units. For repeated cross-section data, different units may
-        be observed in each period.
+    data : pd.DataFrame | pl.DataFrame
+        Data in long format. Accepts both pandas and polars DataFrames.
+        For panel data, should contain repeated observations of the same units.
+        For repeated cross-section data, different units may be observed in each period.
     yname : str
         Name of outcome variable column.
     tname : str
@@ -221,15 +223,20 @@ def ddd(
     """
     is_rcs = detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel)
 
-    data = data.copy()
+    data = to_polars(data)
     if is_rcs and idname is None:
-        data["_row_id"] = np.arange(len(data))
+        data = data.with_columns(pl.Series("_row_id", np.arange(len(data))))
         idname = "_row_id"
 
     multiple_periods = detect_multiple_periods(data, tname, gname)
 
     if multiple_periods:
-        covariates = extract_covariates(data, xformla)
+        covariate_cols = get_covariate_names(xformla)
+
+        if covariate_cols is not None:
+            missing_covs = [c for c in covariate_cols if c not in data.columns]
+            if missing_covs:
+                raise ValueError(f"Covariates not found in data: {missing_covs}")
 
         if is_rcs:
             return ddd_mp_rc(
@@ -239,7 +246,7 @@ def ddd(
                 id_col=idname,
                 group_col=gname,
                 partition_col=pname,
-                covariates=covariates,
+                covariate_cols=covariate_cols,
                 control_group=control_group,
                 base_period=base_period,
                 est_method=est_method,
@@ -258,7 +265,7 @@ def ddd(
             id_col=idname,
             group_col=gname,
             partition_col=pname,
-            covariates=covariates,
+            covariate_cols=covariate_cols,
             control_group=control_group,
             base_period=base_period,
             est_method=est_method,

@@ -2,8 +2,11 @@
 """Tests for setup functions."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid.didcont.estimation import (
     PTEParams,
@@ -22,12 +25,12 @@ from tests.didcont.dgp import simulate_contdid_data
 @pytest.fixture
 def contdid_data():
     data = simulate_contdid_data(n=1000, seed=12345)
-    return data.rename(columns={"time_period": "period"})
+    return data.rename({"time_period": "period"})
 
 
 @pytest.fixture
 def panel_data_with_group(panel_data_balanced):
-    data = panel_data_balanced.copy()
+    data = panel_data_balanced.clone()
 
     def assign_group(unit):
         if unit <= 10:
@@ -36,9 +39,14 @@ def panel_data_with_group(panel_data_balanced):
             return 2012
         return 0
 
-    data["group"] = data["unit_id"].apply(assign_group)
-    data.loc[data["time_id"] < data["group"], "d"] = 0
-    data.loc[data["group"] == 0, "d"] = 0
+    data = data.with_columns(pl.col("unit_id").map_elements(assign_group, return_dtype=pl.Int64).alias("group"))
+
+    data = data.with_columns(
+        pl.when(pl.col("time_id") < pl.col("group")).then(pl.lit(0.0)).otherwise(pl.col("d")).alias("d")
+    )
+
+    data = data.with_columns(pl.when(pl.col("group") == 0).then(pl.lit(0.0)).otherwise(pl.col("d")).alias("d"))
+
     return data
 
 
@@ -74,7 +82,7 @@ def test_setup_pte_basic(panel_data_with_group):
 def test_setup_pte_time_recoding(panel_data_with_group):
     params = setup_pte(data=panel_data_with_group, yname="y", gname="group", tname="time_id", idname="unit_id")
     assert params.data["period"].max() == 6
-    assert set(params.data["G"].unique()) == {0, 2, 3}
+    assert set(params.data["G"].unique().to_list()) == {0, 2, 3}
 
 
 def test_setup_pte_varying_base_period(panel_data_with_group):
@@ -129,8 +137,7 @@ def test_setup_pte_anticipation(panel_data_with_group):
 
 
 def test_setup_pte_error_non_integer_time(panel_data_with_group):
-    data = panel_data_with_group.copy()
-    data["time_id"] = data["time_id"].astype(float) + 0.5
+    data = panel_data_with_group.with_columns((pl.col("time_id").cast(pl.Float64) + 0.5).alias("time_id"))
     with pytest.raises(ValueError, match="Time periods must be positive integers."):
         setup_pte(data=data, yname="y", gname="group", tname="time_id", idname="unit_id")
 
@@ -194,62 +201,64 @@ def test_setup_pte_cont_dvals(contdid_data):
 
 def test_make_balanced_panel_basic(unbalanced_simple_panel):
     result = _make_balanced_panel(unbalanced_simple_panel, "id", "time")
-    assert len(result["id"].unique()) == 3
-    assert 3 not in result["id"].values
-    assert all(result.groupby("id").size() == 3)
+    assert result["id"].n_unique() == 3
+    assert 3 not in result["id"].to_numpy()
+    counts = result.group_by("id").len()
+    assert (counts["len"] == 3).all()
 
 
 def test_make_balanced_panel_already_balanced(panel_data_balanced):
     result = _make_balanced_panel(panel_data_balanced, "unit_id", "time_id")
     assert len(result) == len(panel_data_balanced)
-    assert len(result["unit_id"].unique()) == len(panel_data_balanced["unit_id"].unique())
+    assert result["unit_id"].n_unique() == panel_data_balanced["unit_id"].n_unique()
 
 
 def test_make_balanced_panel_invalid_input():
-    with pytest.raises(TypeError, match="data must be a pandas DataFrame"):
+    with pytest.raises(TypeError, match="data must be a pandas or polars DataFrame"):
         _make_balanced_panel([1, 2, 3], "id", "time")
 
 
 def test_make_balanced_panel_empty():
-    empty_df = pd.DataFrame({"id": [], "time": [], "y": []})
+    empty_df = pl.DataFrame({"id": [], "time": [], "y": []})
     result = _make_balanced_panel(empty_df, "id", "time")
     assert len(result) == 0
 
 
 def test_get_first_difference_basic(panel_data_balanced):
     result = _get_first_difference(panel_data_balanced, "unit_id", "y", "time_id")
-    grouped = panel_data_balanced.sort_values(["unit_id", "time_id"]).groupby("unit_id")
+    sorted_data = panel_data_balanced.sort(["unit_id", "time_id"])
 
-    for unit_id, group in grouped:
-        unit_result = result[panel_data_balanced["unit_id"] == unit_id]
-        assert pd.isna(unit_result.iloc[0])
-        for i in range(1, len(group)):
-            expected_diff = group["y"].iloc[i] - group["y"].iloc[i - 1]
-            np.testing.assert_almost_equal(unit_result.iloc[i], expected_diff)
+    for unit_id in sorted_data["unit_id"].unique().to_list():
+        unit_data = sorted_data.filter(pl.col("unit_id") == unit_id)
+        unit_result = result.filter(pl.col("unit_id") == unit_id)
+        assert unit_result["dy"].is_null()[0]
+        for i in range(1, len(unit_data)):
+            expected_diff = unit_data["y"][i] - unit_data["y"][i - 1]
+            np.testing.assert_almost_equal(unit_result["dy"][i], expected_diff)
 
 
 def test_get_first_difference_single_period():
-    df = pd.DataFrame({"id": [1, 2, 3], "time": [1, 1, 1], "y": [10, 20, 30]})
+    df = pl.DataFrame({"id": [1, 2, 3], "time": [1, 1, 1], "y": [10, 20, 30]})
     result = _get_first_difference(df, "id", "y", "time")
-    assert result.isna().all()
+    assert result["dy"].is_null().all()
 
 
 def test_get_group_basic(staggered_treatment_panel):
     result = _get_group(staggered_treatment_panel, "id", "time", "treat")
-    expected = pd.Series([3, 3, 3, 3, 2, 2, 2, 2, 0, 0, 0, 0])
-    pd.testing.assert_series_equal(result.rename(None).reset_index(drop=True), expected)
+    expected = [3, 3, 3, 3, 2, 2, 2, 2, 0, 0, 0, 0]
+    np.testing.assert_array_equal(result["G"].to_numpy(), expected)
 
 
 def test_get_group_all_treated():
-    df = pd.DataFrame({"id": [1, 1, 2, 2], "time": [1, 2, 1, 2], "treat": [1, 1, 1, 1]})
+    df = pl.DataFrame({"id": [1, 1, 2, 2], "time": [1, 2, 1, 2], "treat": [1, 1, 1, 1]})
     result = _get_group(df, "id", "time", "treat")
-    assert (result == 1).all()
+    assert (result["G"] == 1).all()
 
 
 def test_get_group_none_treated():
-    df = pd.DataFrame({"id": [1, 1, 2, 2], "time": [1, 2, 1, 2], "treat": [0, 0, 0, 0]})
+    df = pl.DataFrame({"id": [1, 1, 2, 2], "time": [1, 2, 1, 2], "treat": [0, 0, 0, 0]})
     result = _get_group(df, "id", "time", "treat")
-    assert (result == 0).all()
+    assert (result["G"] == 0).all()
 
 
 @pytest.mark.parametrize(
@@ -262,13 +271,13 @@ def test_get_group_none_treated():
     ],
 )
 def test_get_group_various_patterns(treat_pattern, expected_group):
-    df = pd.DataFrame({"id": [1, 1, 1], "time": [1, 2, 3], "treat": treat_pattern})
+    df = pl.DataFrame({"id": [1, 1, 1], "time": [1, 2, 3], "treat": treat_pattern})
     result = _get_group(df, "id", "time", "treat")
-    assert (result == expected_group).all()
+    assert (result["G"] == expected_group).all()
 
 
 def test_integration_balanced_panel_with_groups(unbalanced_simple_panel):
     balanced = _make_balanced_panel(unbalanced_simple_panel, "id", "time")
     groups = _get_group(balanced, "id", "time", "treat")
     assert len(groups) == len(balanced)
-    assert set(groups.unique()) == {0, 2, 3}
+    assert set(groups["G"].unique().to_list()) == {0, 2, 3}

@@ -4,8 +4,9 @@ import warnings
 from typing import Any
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
+from ..dataframe import DataFrame, to_polars
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
 from .constants import WEIGHTS_COLUMN
 from .models import ContDIDData, DIDData, TwoPeriodDIDData
@@ -20,18 +21,18 @@ class PreprocessDataBuilder:
 
     def __init__(self):
         """Initialize builder."""
-        self._data: pd.DataFrame | None = None
+        self._data: pl.DataFrame | None = None
         self._config: BasePreprocessConfig | None = None
         self._validator: CompositeValidator | None = None
         self._transformer: DataTransformerPipeline | None = None
         self._warnings: list[str] = []
 
-    def with_data(self, data):
+    def with_data(self, data: DataFrame) -> "PreprocessDataBuilder":
         """Set the data.
 
         Parameters
         ----------
-        data : pd.DataFrame
+        data : pd.DataFrame | pl.DataFrame
             Input panel or cross-section data.
 
         Returns
@@ -39,9 +40,7 @@ class PreprocessDataBuilder:
         PreprocessDataBuilder
             Self for method chaining.
         """
-        if not isinstance(data, pd.DataFrame):
-            data = pd.DataFrame(data)
-        self._data = data
+        self._data = to_polars(data)
         return self
 
     def with_config(self, config):
@@ -168,9 +167,10 @@ class PreprocessDataBuilder:
             )
 
         if self._config.panel:
-            gsize = self._data.groupby(self._config.gname).size() / self._config.time_periods_count
+            gsize = self._data.group_by(self._config.gname).len()
+            gsize = gsize.with_columns((pl.col("len") / self._config.time_periods_count).alias("size"))
         else:
-            gsize = self._data.groupby(self._config.gname).size()
+            gsize = self._data.group_by(self._config.gname).len().rename({"len": "size"})
 
         if self._config and self._config.xformla and self._config.xformla != "~1":
             formula_vars = extract_vars_from_formula(self._config.xformla)
@@ -179,9 +179,9 @@ class PreprocessDataBuilder:
             n_covs = 0
         reqsize = n_covs + 5
 
-        small_groups = gsize[gsize < reqsize]
+        small_groups = gsize.filter(pl.col("size") < reqsize)
         if len(small_groups) > 0:
-            group_list = ", ".join([str(g) for g in small_groups.index])
+            group_list = ", ".join([str(g) for g in small_groups[self._config.gname].to_list()])
             warning_msg = f"Be aware that there are some small groups in your dataset.\nCheck groups: {group_list}"
             warnings.warn(warning_msg)
             self._warnings.append(warning_msg)
@@ -189,7 +189,8 @@ class PreprocessDataBuilder:
             if isinstance(self._config, DIDConfig):
                 from .constants import NEVER_TREATED_VALUE
 
-                if NEVER_TREATED_VALUE in small_groups.index and self._config.control_group.value == "nevertreated":
+                small_group_values = small_groups[self._config.gname].to_list()
+                if NEVER_TREATED_VALUE in small_group_values and self._config.control_group.value == "nevertreated":
                     raise ValueError("Never treated group is too small, try setting control_group='notyettreated'")
 
     def build(self) -> DIDData | ContDIDData | TwoPeriodDIDData:
@@ -242,7 +243,7 @@ class PreprocessDataBuilder:
         if not isinstance(self._config, TwoPeriodDIDConfig):
             raise ValueError("Config must be TwoPeriodDIDConfig")
 
-        time_periods = sorted(self._data[self._config.tname].unique())
+        time_periods = sorted(self._data[self._config.tname].unique().to_list())
         if len(time_periods) != 2:
             raise ValueError("Data must have exactly 2 time periods")
 
@@ -266,32 +267,37 @@ class PreprocessDataBuilder:
         ]
 
         if self._config.panel and self._config.idname:
-            df_processed = self._data.sort_values(by=[self._config.idname, self._config.tname])
+            df_processed = self._data.sort([self._config.idname, self._config.tname])
 
-            post_data = df_processed[df_processed[self._config.tname] == post_period].set_index(self._config.idname)
-            pre_data = df_processed[df_processed[self._config.tname] == pre_period].set_index(self._config.idname)
+            post_data = df_processed.filter(pl.col(self._config.tname) == post_period)
+            pre_data = df_processed.filter(pl.col(self._config.tname) == pre_period)
 
-            common_ids = post_data.index.intersection(pre_data.index)
-            post_data = post_data.loc[common_ids]
-            pre_data = pre_data.loc[common_ids]
+            common_ids = (
+                post_data.select(self._config.idname)
+                .join(pre_data.select(self._config.idname), on=self._config.idname, how="inner")[self._config.idname]
+                .to_list()
+            )
+
+            post_data = post_data.filter(pl.col(self._config.idname).is_in(common_ids)).sort(self._config.idname)
+            pre_data = pre_data.filter(pl.col(self._config.idname).is_in(common_ids)).sort(self._config.idname)
 
             two_period_data = TwoPeriodDIDData(
-                y1=post_data[self._config.yname].values,
-                y0=pre_data[self._config.yname].values,
-                D=post_data[self._config.treat_col].values,
-                covariates=post_data[covariate_columns].values,
-                weights=post_data[WEIGHTS_COLUMN].values,
+                y1=post_data[self._config.yname].to_numpy(),
+                y0=pre_data[self._config.yname].to_numpy(),
+                D=post_data[self._config.treat_col].to_numpy(),
+                covariates=post_data.select(covariate_columns).to_numpy(),
+                weights=post_data[WEIGHTS_COLUMN].to_numpy(),
                 covariate_names=covariate_columns,
                 n_units=len(common_ids),
                 config=self._config,
             )
         else:
             two_period_data = TwoPeriodDIDData(
-                y=self._data[self._config.yname].values,
-                D=self._data[self._config.treat_col].values,
-                post=(self._data[self._config.tname] == post_period).astype(int).values,
-                covariates=self._data[covariate_columns].values,
-                weights=self._data[WEIGHTS_COLUMN].values,
+                y=self._data[self._config.yname].to_numpy(),
+                D=self._data[self._config.treat_col].to_numpy(),
+                post=(self._data[self._config.tname] == post_period).cast(pl.Int64).to_numpy(),
+                covariates=self._data.select(covariate_columns).to_numpy(),
+                weights=self._data[WEIGHTS_COLUMN].to_numpy(),
                 covariate_names=covariate_columns,
                 n_obs=len(self._data),
                 config=self._config,
@@ -324,7 +330,7 @@ class PreprocessDataBuilder:
 
         return cont_data
 
-    def _create_time_invariant_data(self) -> pd.DataFrame:
+    def _create_time_invariant_data(self) -> pl.DataFrame:
         """Extract time-invariant data."""
         time_invariant_cols = [self._config.idname, self._config.gname, WEIGHTS_COLUMN]
 
@@ -337,29 +343,38 @@ class PreprocessDataBuilder:
 
             for var in formula_vars:
                 if var in self._data.columns:
-                    var_counts = self._data.groupby(self._config.idname)[var].nunique()
-                    if (var_counts == 1).all():
+                    var_counts = self._data.group_by(self._config.idname).agg(pl.col(var).n_unique().alias("n_unique"))
+                    if (var_counts["n_unique"] == 1).all():
                         time_invariant_cols.append(var)
 
         time_invariant_cols = list(dict.fromkeys(time_invariant_cols))
-
+        cols_to_select = [col for col in time_invariant_cols if col in self._data.columns]
         return (
-            self._data.groupby(self._config.idname)
-            .first()[[col for col in time_invariant_cols if col != self._config.idname]]
-            .reset_index()
+            self._data.group_by(self._config.idname, maintain_order=True)
+            .first()
+            .select([self._config.idname] + [c for c in cols_to_select if c != self._config.idname])
         )
 
-    def _create_summary_tables(self, time_invariant_data: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    def _create_summary_tables(self, time_invariant_data: pl.DataFrame) -> dict[str, pl.DataFrame]:
         """Create summary tables for cohorts and periods."""
-        cohort_counts = time_invariant_data.groupby(self._config.gname).size().reset_index(name="cohort_size")
-        cohort_counts.columns = ["cohort", "cohort_size"]
+        cohort_counts = (
+            time_invariant_data.group_by(self._config.gname, maintain_order=True)
+            .len()
+            .rename({self._config.gname: "cohort", "len": "cohort_size"})
+        )
 
-        period_counts = self._data.groupby(self._config.tname).size().reset_index(name="period_size")
-        period_counts.columns = ["period", "period_size"]
+        period_counts = (
+            self._data.group_by(self._config.tname, maintain_order=True)
+            .len()
+            .rename({self._config.tname: "period", "len": "period_size"})
+        )
 
-        crosstable = self._data.groupby([self._config.tname, self._config.gname]).size().reset_index(name="count")
-        crosstable.columns = ["period", "cohort", "count"]
-        crosstable_counts = crosstable.pivot(index="period", columns="cohort", values="count").fillna(0)
+        crosstable = (
+            self._data.group_by([self._config.tname, self._config.gname], maintain_order=True)
+            .len()
+            .rename({self._config.tname: "period", self._config.gname: "cohort", "len": "count"})
+        )
+        crosstable_counts = crosstable.pivot(index="period", on="cohort", values="count").fill_null(0)
 
         return {
             "cohort_counts": cohort_counts,
@@ -367,16 +382,16 @@ class PreprocessDataBuilder:
             "crosstable_counts": crosstable_counts,
         }
 
-    def _extract_cluster_variable(self, time_invariant_data: pd.DataFrame) -> np.ndarray | None:
+    def _extract_cluster_variable(self, time_invariant_data: pl.DataFrame) -> np.ndarray | None:
         """Extract cluster variable if specified."""
         if self._config.clustervars and len(self._config.clustervars) > 0:
-            return time_invariant_data[self._config.clustervars[0]].values
+            return time_invariant_data[self._config.clustervars[0]].to_numpy()
         return None
 
     @staticmethod
-    def _extract_weights(time_invariant_data: pd.DataFrame) -> np.ndarray:
+    def _extract_weights(time_invariant_data: pl.DataFrame) -> np.ndarray:
         """Extract normalized weights."""
-        return time_invariant_data[WEIGHTS_COLUMN].values
+        return time_invariant_data[WEIGHTS_COLUMN].to_numpy()
 
     def _get_did_summary(self, tensor_data: dict[str, Any]) -> str | None:
         """Get DiD preprocessing summary as a string."""
@@ -396,7 +411,7 @@ class PreprocessDataBuilder:
         if self._config.treated_groups_count > 0:
             lines.append("\nTreatment Timing:")
             cohort_counts = tensor_data["cohort_counts"]
-            for _, row in cohort_counts.iterrows():
+            for row in cohort_counts.iter_rows(named=True):
                 cohort = row["cohort"]
                 size = row["cohort_size"]
                 if np.isfinite(cohort):
@@ -419,7 +434,7 @@ class PreprocessDataBuilder:
         lines.append("=" * 60 + "\n")
         return "\n".join(lines)
 
-    def _get_cont_did_summary(self, summary_tables: dict[str, pd.DataFrame]) -> str | None:
+    def _get_cont_did_summary(self, summary_tables: dict[str, pl.DataFrame]) -> str | None:
         """Get continuous DiD preprocessing summary as a string."""
         if self._config is None or not isinstance(self._config, ContDIDConfig):
             return None
@@ -441,7 +456,7 @@ class PreprocessDataBuilder:
         if self._config.treated_groups_count > 0:
             lines.append("\nTreatment Timing:")
             cohort_counts = summary_tables["cohort_counts"]
-            for _, row in cohort_counts.head(10).iterrows():
+            for row in cohort_counts.head(10).iter_rows(named=True):
                 cohort = row["cohort"]
                 size = row["cohort_size"]
                 if np.isfinite(cohort):

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-import pandas as pd
+import polars as pl
 from scipy import stats
 
 from moderndid.plots import PlotCollection
@@ -29,7 +29,7 @@ METHOD_COLORS = {
 
 
 def plot_sensitivity_sm(
-    robust_results: pd.DataFrame,
+    robust_results: pl.DataFrame,
     original_results,
     rescale_factor: float = 1,
     max_m: float = np.inf,
@@ -47,7 +47,7 @@ def plot_sensitivity_sm(
 
     Parameters
     ----------
-    robust_results : pd.DataFrame
+    robust_results : pl.DataFrame
         DataFrame from create_sensitivity_results_sm with columns:
         lb, ub, method, Delta, M.
     original_results : NamedTuple
@@ -112,12 +112,16 @@ def plot_sensitivity_sm(
     theme_obj = _get_theme(theme)
     m_col = "M" if "M" in robust_results.columns else "m"
 
-    df = robust_results.copy()
-    df[m_col] = df[m_col] * rescale_factor
-    df["lb"] = df["lb"] * rescale_factor
-    df["ub"] = df["ub"] * rescale_factor
+    df = robust_results.clone()
+    df = df.with_columns(
+        [
+            (pl.col(m_col) * rescale_factor).alias(m_col),
+            (pl.col("lb") * rescale_factor).alias("lb"),
+            (pl.col("ub") * rescale_factor).alias("ub"),
+        ]
+    )
 
-    df = df[df[m_col] <= max_m]
+    df = df.filter(pl.col(m_col) <= max_m)
 
     scaled_original = type(original_results)(
         lb=original_results.lb * rescale_factor,
@@ -192,7 +196,7 @@ def plot_sensitivity_sm(
 
 
 def plot_sensitivity_rm(
-    robust_results: pd.DataFrame,
+    robust_results: pl.DataFrame,
     original_results,
     rescale_factor: float = 1,
     max_mbar: float = np.inf,
@@ -211,7 +215,7 @@ def plot_sensitivity_rm(
 
     Parameters
     ----------
-    robust_results : pd.DataFrame
+    robust_results : pl.DataFrame
         DataFrame from create_sensitivity_results_rm with
         columns: lb, ub, method, Delta, Mbar.
     original_results : NamedTuple
@@ -275,12 +279,16 @@ def plot_sensitivity_rm(
     """
     theme_obj = _get_theme(theme)
 
-    df = robust_results.copy()
-    df["Mbar"] = df["Mbar"] * rescale_factor
-    df["lb"] = df["lb"] * rescale_factor
-    df["ub"] = df["ub"] * rescale_factor
+    df = robust_results.clone()
+    df = df.with_columns(
+        [
+            (pl.col("Mbar") * rescale_factor).alias("Mbar"),
+            (pl.col("lb") * rescale_factor).alias("lb"),
+            (pl.col("ub") * rescale_factor).alias("ub"),
+        ]
+    )
 
-    df = df[df["Mbar"] <= max_mbar]
+    df = df.filter(pl.col("Mbar") <= max_mbar)
 
     scaled_original = type(original_results)(
         lb=original_results.lb * rescale_factor,

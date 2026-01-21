@@ -2,8 +2,11 @@
 """Tests for sensitivity analysis functions."""
 
 import numpy as np
-import pandas as pd
 import pytest
+
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
 
 from moderndid.didhonest.sensitivity import (
     OriginalCSResult,
@@ -70,14 +73,14 @@ def test_create_sensitivity_results(basic_event_study_data, method, monotonicity
         bias_direction=bias,
     )
 
-    assert isinstance(results, pd.DataFrame)
+    assert isinstance(results, pl.DataFrame)
     assert len(results) == len(m_vec)
-    assert list(results.columns) == ["lb", "ub", "method", "delta", "m"]
-    assert all(results["method"] == method)
-    assert all(results["delta"] == expected_delta)
-    assert all(results["lb"] <= results["ub"])
+    assert results.columns == ["lb", "ub", "method", "delta", "m"]
+    assert (results["method"] == method).all()
+    assert (results["delta"] == expected_delta).all()
+    assert (results["lb"] <= results["ub"]).all()
 
-    row = results.iloc[0]
+    row = results.row(0, named=True)
     expected_result = SensitivityResult(
         lb=row["lb"], ub=row["ub"], method=row["method"], delta=row["delta"], m=row["m"]
     )
@@ -108,12 +111,12 @@ def test_create_sensitivity_results_relative_magnitudes(
         grid_points=40,
     )
 
-    assert isinstance(results, pd.DataFrame)
+    assert isinstance(results, pl.DataFrame)
     assert len(results) == len(m_bar_vec)
-    assert list(results.columns) == ["lb", "ub", "method", "delta", "Mbar"]
-    assert all(results["delta"] == expected_delta)
-    assert list(results["Mbar"]) == list(m_bar_vec)
-    assert all(results["method"] == method)
+    assert results.columns == ["lb", "ub", "method", "delta", "Mbar"]
+    assert (results["delta"] == expected_delta).all()
+    assert results["Mbar"].to_list() == list(m_bar_vec)
+    assert (results["method"] == method).all()
 
 
 @pytest.mark.parametrize(
@@ -178,7 +181,7 @@ def test_default_m_vec_construction(basic_event_study_data):
         method="FLCI",
     )
 
-    assert isinstance(results, pd.DataFrame)
+    assert isinstance(results, pl.DataFrame)
     assert len(results) == 10
     assert results["m"].min() == 0
     assert results["m"].max() > 0
