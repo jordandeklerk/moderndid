@@ -17,12 +17,12 @@ from moderndid.didcont.estimation import DoseResult, PTEResult
 
 def test_cont_did_basic(contdid_data):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         xformula="~1",
         target_parameter="level",
         aggregation="dose",
@@ -46,12 +46,12 @@ def test_cont_did_basic(contdid_data):
 
 def test_cont_did_value_validation(contdid_data):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         target_parameter="level",
         aggregation="dose",
         degree=2,
@@ -82,12 +82,12 @@ def test_cont_did_value_validation(contdid_data):
 
 def test_cont_did_slope_parameter(contdid_data):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         target_parameter="slope",
         aggregation="dose",
         degree=2,
@@ -106,12 +106,12 @@ def test_cont_did_slope_parameter(contdid_data):
 
 def test_cont_did_event_study(contdid_data):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         target_parameter="level",
         aggregation="eventstudy",
         biters=10,
@@ -130,12 +130,12 @@ def test_cont_did_custom_dvals(contdid_data):
     custom_dvals = np.linspace(0.1, 0.9, 10)
 
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         dvals=custom_dvals,
         degree=2,
         num_knots=1,
@@ -151,12 +151,12 @@ def test_cont_did_custom_dvals(contdid_data):
 @pytest.mark.parametrize("control_group", ["notyettreated", "nevertreated"])
 def test_cont_did_control_groups(contdid_data, control_group):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         control_group=control_group,
         biters=10,
     )
@@ -174,12 +174,12 @@ def test_cont_did_control_groups(contdid_data, control_group):
 @pytest.mark.parametrize("base_period", ["varying", "universal"])
 def test_cont_did_base_period(contdid_data, base_period):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         base_period=base_period,
         biters=10,
     )
@@ -197,12 +197,12 @@ def test_cont_did_base_period(contdid_data, base_period):
 @pytest.mark.parametrize("boot_type", ["multiplier", "empirical"])
 def test_cont_did_bootstrap_types(contdid_data, boot_type):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         boot_type=boot_type,
         biters=10,
     )
@@ -226,12 +226,12 @@ def test_cont_did_bootstrap_types(contdid_data, boot_type):
 @pytest.mark.parametrize("cband", [False, True])
 def test_cont_did_confidence_bands(contdid_data, cband):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         cband=cband,
         biters=10,
     )
@@ -249,12 +249,12 @@ def test_cont_did_confidence_bands(contdid_data, cband):
 @pytest.mark.parametrize("alp", [0.05, 0.10])
 def test_cont_did_significance_level(contdid_data, alp):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         alp=alp,
         biters=10,
     )
@@ -273,12 +273,12 @@ def test_cont_did_auto_gname(contdid_data):
     data_no_g = contdid_data.drop("G")
 
     result = cont_did(
+        data=data_no_g,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=data_no_g,
         gname=None,
+        dname="D",
         biters=10,
     )
 
@@ -288,12 +288,12 @@ def test_cont_did_auto_gname(contdid_data):
 
 def test_cont_did_empirical_bootstrap_fallback(contdid_data):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         target_parameter="slope",
         aggregation="eventstudy",
         boot_type="empirical",
@@ -311,11 +311,11 @@ def test_cont_did_empirical_bootstrap_fallback(contdid_data):
 def test_cont_did_invalid_data():
     with pytest.raises(TypeError, match="data must be a pandas or polars DataFrame"):
         cont_did(
+            data=np.array([1, 2, 3]),
             yname="Y",
-            dname="D",
             tname="time",
             idname="id",
-            data=np.array([1, 2, 3]),
+            dname="D",
         )
 
 
@@ -324,23 +324,23 @@ def test_cont_did_missing_columns():
 
     with pytest.raises(ValueError, match="Missing columns"):
         cont_did(
+            data=df,
             yname="Y",
-            dname="D",
             tname="time",
             idname="id",
-            data=df,
+            dname="D",
         )
 
 
 def test_cont_did_covariates_not_supported(contdid_data):
     with pytest.raises(NotImplementedError, match="Covariates not currently supported"):
         cont_did(
+            data=contdid_data,
             yname="Y",
-            dname="D",
             tname="period",
             idname="id",
-            data=contdid_data,
             gname="G",
+            dname="D",
             xformula="~x1+x2",
         )
 
@@ -348,12 +348,12 @@ def test_cont_did_covariates_not_supported(contdid_data):
 def test_cont_did_discrete_treatment_not_supported(contdid_data):
     with pytest.raises(NotImplementedError, match="Discrete treatment not yet supported"):
         cont_did(
+            data=contdid_data,
             yname="Y",
-            dname="D",
             tname="period",
             idname="id",
-            data=contdid_data,
             gname="G",
+            dname="D",
             treatment_type="discrete",
         )
 
@@ -361,12 +361,12 @@ def test_cont_did_discrete_treatment_not_supported(contdid_data):
 def test_cont_did_unbalanced_panel_not_supported(contdid_data):
     with pytest.raises(NotImplementedError, match="Unbalanced panel not currently supported"):
         cont_did(
+            data=contdid_data,
             yname="Y",
-            dname="D",
             tname="period",
             idname="id",
-            data=contdid_data,
             gname="G",
+            dname="D",
             allow_unbalanced_panel=True,
         )
 
@@ -374,12 +374,12 @@ def test_cont_did_unbalanced_panel_not_supported(contdid_data):
 def test_cont_did_est_method_error(contdid_data):
     with pytest.raises(ValueError, match="Covariates not supported"):
         cont_did(
+            data=contdid_data,
             yname="Y",
-            dname="D",
             tname="period",
             idname="id",
-            data=contdid_data,
             gname="G",
+            dname="D",
             est_method="dr",
         )
 
@@ -389,12 +389,12 @@ def test_cont_did_est_method_error(contdid_data):
 def test_cont_did_clustering_warning(contdid_data):
     with pytest.warns(UserWarning, match="Two-way clustering not currently supported"):
         cont_did(
+            data=contdid_data,
             yname="Y",
-            dname="D",
             tname="period",
             idname="id",
-            data=contdid_data,
             gname="G",
+            dname="D",
             clustervars="state",
             biters=10,
         )
@@ -405,12 +405,12 @@ def test_cont_did_clustering_warning(contdid_data):
 def test_cont_did_anticipation_warning(contdid_data):
     with pytest.warns(UserWarning, match="Anticipation not fully tested"):
         cont_did(
+            data=contdid_data,
             yname="Y",
-            dname="D",
             tname="period",
             idname="id",
-            data=contdid_data,
             gname="G",
+            dname="D",
             anticipation=1,
             biters=10,
         )
@@ -424,12 +424,12 @@ def test_cont_did_weights_warning(contdid_data):
 
     with pytest.warns(UserWarning, match="Sampling weights not fully tested"):
         cont_did(
+            data=contdid_data,
             yname="Y",
-            dname="D",
             tname="period",
             idname="id",
-            data=contdid_data,
             gname="G",
+            dname="D",
             weightsname="weights",
             biters=10,
         )
@@ -579,10 +579,10 @@ def test_cck_estimator_basic(cck_test_data):
     result = cont_did(
         data=cck_test_data,
         yname="y",
-        dname="d",
-        gname="g",
         tname="time",
         idname="id",
+        gname="g",
+        dname="d",
         dose_est_method="cck",
         alp=0.05,
         cband=False,
@@ -606,10 +606,10 @@ def test_cck_estimator_custom_dvals(cck_test_data):
     result = cont_did(
         data=cck_test_data,
         yname="y",
-        dname="d",
-        gname="g",
         tname="time",
         idname="id",
+        gname="g",
+        dname="d",
         dose_est_method="cck",
         dvals=custom_dvals,
         alp=0.05,
@@ -641,10 +641,10 @@ def test_cck_estimator_invalid_groups():
         cont_did(
             data=data,
             yname="y",
-            dname="d",
-            gname="g",
             tname="time",
             idname="id",
+            gname="g",
+            dname="d",
             dose_est_method="cck",
             alp=0.05,
             cband=False,
@@ -667,10 +667,10 @@ def test_cck_estimator_invalid_times():
         cont_did(
             data=data,
             yname="y",
-            dname="d",
-            gname="g",
             tname="time",
             idname="id",
+            gname="g",
+            dname="d",
             dose_est_method="cck",
             alp=0.05,
             cband=False,
@@ -693,10 +693,10 @@ def test_cck_estimator_no_treated():
         cont_did(
             data=data,
             yname="y",
-            dname="d",
-            gname="g",
             tname="time",
             idname="id",
+            gname="g",
+            dname="d",
             dose_est_method="cck",
             alp=0.05,
             cband=False,
@@ -706,12 +706,12 @@ def test_cck_estimator_no_treated():
 
 def test_cont_did_cck_method(cck_test_data):
     result = cont_did(
+        data=cck_test_data,
         yname="y",
-        dname="d",
         tname="time",
         idname="id",
-        data=cck_test_data,
         gname="g",
+        dname="d",
         dose_est_method="cck",
         aggregation="dose",
     )
@@ -726,12 +726,12 @@ def test_cont_did_cck_method(cck_test_data):
 def test_cont_did_cck_invalid_aggregation(cck_test_data):
     with pytest.raises(ValueError, match="Event study not supported with CCK estimator"):
         cont_did(
+            data=cck_test_data,
             yname="y",
-            dname="d",
             tname="time",
             idname="id",
-            data=cck_test_data,
             gname="g",
+            dname="d",
             dose_est_method="cck",
             aggregation="eventstudy",
         )
@@ -740,12 +740,12 @@ def test_cont_did_cck_invalid_aggregation(cck_test_data):
 def test_cont_did_invalid_parameter_combination(contdid_data):
     with pytest.raises(ValueError, match="Invalid combination of parameters"):
         cont_did(
+            data=contdid_data,
             yname="Y",
-            dname="D",
             tname="period",
             idname="id",
-            data=contdid_data,
             gname="G",
+            dname="D",
             target_parameter="invalid",
             aggregation="dose",
             treatment_type="continuous",
@@ -755,12 +755,12 @@ def test_cont_did_invalid_parameter_combination(contdid_data):
 @pytest.mark.parametrize("degree,num_knots", [(1, 0), (2, 0), (3, 0)])
 def test_cont_did_various_degree_knot_combinations(contdid_data, degree, num_knots):
     result = cont_did(
+        data=contdid_data,
         yname="Y",
-        dname="D",
         tname="period",
         idname="id",
-        data=contdid_data,
         gname="G",
+        dname="D",
         degree=degree,
         num_knots=num_knots,
         biters=10,

@@ -20,10 +20,10 @@ def nsw_data():
 def test_drdid_panel_basic(nsw_data, est_method):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         est_method=est_method,
     )
@@ -43,18 +43,18 @@ def test_drdid_panel_basic(nsw_data, est_method):
 def test_drdid_panel_with_covariates(nsw_data):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ + black + married + nodegree + hisp",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ + black + married + nodegree + hisp",
         panel=True,
         est_method="imp",
     )
 
     assert isinstance(result.att, float)
     assert result.se > 0
-    assert result.call_params["covariates_formula"] == "~ age + educ + black + married + nodegree + hisp"
+    assert result.call_params["xformla"] == "~ age + educ + black + married + nodegree + hisp"
 
 
 def test_drdid_panel_with_weights(nsw_data):
@@ -66,28 +66,28 @@ def test_drdid_panel_with_weights(nsw_data):
 
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
-        weights_col="weight",
+        weightsname="weight",
         est_method="imp",
     )
 
     assert isinstance(result.att, float)
     assert result.se > 0
-    assert result.call_params["weights_col"] == "weight"
+    assert result.call_params["weightsname"] == "weight"
 
 
 def test_drdid_panel_with_influence_func(nsw_data):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         inf_func=True,
         est_method="imp",
@@ -109,11 +109,11 @@ def test_drdid_panel_with_influence_func(nsw_data):
 def test_drdid_panel_bootstrap(nsw_data, boot_type, est_method):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         boot=True,
         boot_type=boot_type,
@@ -135,11 +135,11 @@ def test_drdid_panel_bootstrap(nsw_data, boot_type, est_method):
 def test_drdid_repeated_cross_section(nsw_data, est_method):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
+        yname="re",
+        tname="year",
+        treatname="experimental",
         panel=False,
-        covariates_formula="~ age + educ + black",
+        xformla="~ age + educ + black",
         est_method=est_method,
     )
 
@@ -152,11 +152,11 @@ def test_drdid_repeated_cross_section(nsw_data, est_method):
 def test_drdid_rc_with_bootstrap(nsw_data):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
+        yname="re",
+        tname="year",
+        treatname="experimental",
         panel=False,
-        covariates_formula="~ age + educ",
+        xformla="~ age + educ",
         boot=True,
         n_boot=10,
         est_method="imp",
@@ -170,10 +170,10 @@ def test_drdid_rc_with_bootstrap(nsw_data):
 def test_drdid_trim_level(nsw_data, trim_level):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         trim_level=trim_level,
         est_method="imp",
@@ -197,10 +197,10 @@ def test_drdid_invalid_est_method_for_panel(est_method):
     with pytest.raises(ValueError, match=f"est_method '{est_method}' is only available for repeated cross-sections"):
         drdid(
             data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
-            id_col="id",
+            yname="y",
+            tname="time",
+            treatname="treat",
+            idname="id",
             panel=True,
             est_method=est_method,
         )
@@ -215,12 +215,12 @@ def test_drdid_missing_id_col_panel():
         }
     )
 
-    with pytest.raises(ValueError, match="id_col must be provided when panel=True"):
+    with pytest.raises(ValueError, match="idname must be provided when panel=True"):
         drdid(
             data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
+            yname="y",
+            tname="time",
+            treatname="treat",
             panel=True,
         )
 
@@ -235,11 +235,11 @@ def test_drdid_missing_id_col_panel():
 def test_drdid_formula_variations(nsw_data, formula):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula=formula,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla=formula,
         panel=True,
         est_method="imp",
     )
@@ -251,11 +251,11 @@ def test_drdid_formula_variations(nsw_data, formula):
 def test_drdid_call_params_stored(nsw_data):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         boot=True,
         n_boot=50,
@@ -264,11 +264,11 @@ def test_drdid_call_params_stored(nsw_data):
         trim_level=0.99,
     )
 
-    assert result.call_params["y_col"] == "re"
-    assert result.call_params["time_col"] == "year"
-    assert result.call_params["treat_col"] == "experimental"
-    assert result.call_params["id_col"] == "id"
-    assert result.call_params["covariates_formula"] == "~ age + educ"
+    assert result.call_params["yname"] == "re"
+    assert result.call_params["tname"] == "year"
+    assert result.call_params["treatname"] == "experimental"
+    assert result.call_params["idname"] == "id"
+    assert result.call_params["xformla"] == "~ age + educ"
     assert result.call_params["panel"] is True
     assert result.call_params["boot"] is True
     assert result.call_params["n_boot"] == 50
@@ -281,10 +281,10 @@ def test_drdid_call_params_stored(nsw_data):
 def test_drdid_args_output(nsw_data):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         boot=True,
         boot_type="weighted",
@@ -310,11 +310,11 @@ def test_drdid_reproducibility(nsw_data):
     np.random.seed(42)
     result1 = drdid(
         data=small_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         est_method="imp",
     )
@@ -322,11 +322,11 @@ def test_drdid_reproducibility(nsw_data):
     np.random.seed(42)
     result2 = drdid(
         data=small_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         est_method="imp",
     )
@@ -341,11 +341,11 @@ def test_drdid_subset_columns(nsw_data):
 
     result = drdid(
         data=subset_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ",
         panel=True,
         est_method="imp",
     )
@@ -358,11 +358,11 @@ def test_drdid_subset_columns(nsw_data):
 def test_drdid_no_covariates(nsw_data, covariates_formula):
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula=covariates_formula,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla=covariates_formula,
         panel=True,
         est_method="imp",
     )
@@ -374,22 +374,22 @@ def test_drdid_no_covariates(nsw_data, covariates_formula):
 def test_drdid_no_covariates_equivalence(nsw_data):
     result1 = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula=None,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla=None,
         panel=True,
         est_method="imp",
     )
 
     result2 = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ 1",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ 1",
         panel=True,
         est_method="imp",
     )
@@ -410,11 +410,11 @@ def test_drdid_categorical_covariates(nsw_data):
 
     result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
-        covariates_formula="~ C(age_group) + educ + black",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ C(age_group) + educ + black",
         panel=True,
         est_method="imp",
     )
@@ -442,11 +442,11 @@ def test_drdid_missing_values_error():
     with pytest.raises(ValueError):
         drdid(
             data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
-            id_col="id",
-            covariates_formula="~ x1",
+            yname="y",
+            tname="time",
+            treatname="treat",
+            idname="id",
+            xformla="~ x1",
             panel=True,
         )
 
@@ -466,10 +466,10 @@ def test_drdid_unbalanced_panel_warning():
     with pytest.warns(UserWarning, match="Panel data is unbalanced"):
         result = drdid(
             data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
-            id_col="id",
+            yname="y",
+            tname="time",
+            treatname="treat",
+            idname="id",
             panel=True,
         )
         assert isinstance(result.att, float)
@@ -488,10 +488,10 @@ def test_drdid_more_than_two_periods_error():
     with pytest.raises(ValueError):
         drdid(
             data=df,
-            y_col="y",
-            time_col="time",
-            treat_col="treat",
-            id_col="id",
+            yname="y",
+            tname="time",
+            treatname="treat",
+            idname="id",
             panel=True,
         )
 
@@ -518,11 +518,11 @@ def test_drdid_all_estimators_consistency(nsw_data, panel, method):
 
     result = drdid(
         data=small_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id" if panel else None,
-        covariates_formula="~ age + educ",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id" if panel else None,
+        xformla="~ age + educ",
         panel=panel,
         est_method=method,
     )
@@ -538,19 +538,19 @@ def test_drdid_comparison_with_ordid(nsw_data):
 
     or_result = ordid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
     )
 
     dr_result = drdid(
         data=nsw_data,
-        y_col="re",
-        time_col="year",
-        treat_col="experimental",
-        id_col="id",
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
         panel=True,
         est_method="trad",
     )
