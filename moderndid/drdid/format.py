@@ -1,4 +1,4 @@
-"""Print formatting for DiD estimation results."""
+"""Formatting for DR-DiD results."""
 
 from typing import NamedTuple
 
@@ -6,7 +6,7 @@ import numpy as np
 
 
 def format_did_result(result: NamedTuple) -> str:
-    """Format DiD estimation results."""
+    """Format DR-DiD results."""
     att = result.att
     se = result.se
     lci = result.lci

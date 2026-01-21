@@ -174,9 +174,9 @@ from moderndid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
 from moderndid.drdid.estimators.twfe_did_panel import twfe_did_panel
 from moderndid.drdid.estimators.twfe_did_rc import twfe_did_rc
 from moderndid.drdid.estimators.wols import wols_panel, wols_rc
+from moderndid.drdid.format import print_did_result
 from moderndid.drdid.ipwdid import ipwdid
 from moderndid.drdid.ordid import ordid
-from moderndid.drdid.print import print_did_result
 from moderndid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from moderndid.drdid.propensity.ipw_estimators import ipw_rc
 from moderndid.drdid.propensity.pscore_ipt import calculate_pscore_ipt

@@ -12,7 +12,7 @@ from .estimators.drdid_imp_rc import drdid_imp_rc
 from .estimators.drdid_panel import drdid_panel
 from .estimators.drdid_rc import drdid_rc
 from .estimators.drdid_trad_rc import drdid_trad_rc
-from .print import print_did_result
+from .format import print_did_result
 
 
 class DRDIDResult(NamedTuple):
