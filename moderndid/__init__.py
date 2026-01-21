@@ -180,6 +180,12 @@ from moderndid.drdid.print import print_did_result
 from moderndid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
 from moderndid.drdid.propensity.ipw_estimators import ipw_rc
 from moderndid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
+from moderndid.plots import (
+    plot_att_gt,
+    plot_dose_response,
+    plot_event_study,
+    plot_sensitivity,
+)
 
 __all__ = [
     "cont_did",
@@ -357,4 +363,9 @@ __all__ = [
     "wboot_twfe_rc",
     "wols_panel",
     "wols_rc",
+    # Plotting
+    "plot_att_gt",
+    "plot_event_study",
+    "plot_dose_response",
+    "plot_sensitivity",
 ]

@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from matplotlib.figure import Figure
+    from plotnine import ggplot
 
     from moderndid.did.aggte_obj import AGGTEResult
     from moderndid.did.multiperiod_obj import MPResult
 
 
-def _mp_plot(self: MPResult, **kwargs: Any) -> Figure:
+def _mp_plot(self: MPResult, **kwargs: Any) -> ggplot:
     """Plot method for MPResult objects.
 
     Parameters
@@ -21,36 +21,33 @@ def _mp_plot(self: MPResult, **kwargs: Any) -> Figure:
 
     Returns
     -------
-    Figure
-        Matplotlib figure object.
+    ggplot
+        A plotnine ggplot object.
     """
     from moderndid.did.plots.core import plot_att_gt
 
     return plot_att_gt(self, **kwargs)
 
 
-def _aggte_plot(self: AGGTEResult, plot_type: str | None = None, **kwargs: Any) -> Figure:
+def _aggte_plot(self: AGGTEResult, **kwargs: Any) -> ggplot:
     """Plot method for AGGTEResult objects.
 
     Parameters
     ----------
-    plot_type : str, optional
-        Type of plot. If None, uses the aggregation type.
-        Options: "dynamic" or "group".
     **kwargs
-        Keyword arguments passed to the specific plotting function.
+        Keyword arguments passed to plot_event_study.
 
     Returns
     -------
-    Figure
-        Matplotlib figure object.
+    ggplot
+        A plotnine ggplot object.
     """
-    from moderndid.did.plots.core import plot_did
+    from moderndid.did.plots.core import plot_event_study
 
-    return plot_did(self, plot_type=plot_type, **kwargs)
+    return plot_event_study(self, **kwargs)
 
 
-def add_plot_methods():
+def add_plot_methods() -> None:
     """Add plot methods to result objects."""
     from moderndid.did.aggte_obj import AGGTEResult
     from moderndid.did.multiperiod_obj import MPResult

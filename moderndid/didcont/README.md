@@ -46,9 +46,7 @@ With a continuous treatment, the primitive objects are effects that are local to
 For the examples below, we simulate data using `simulate_contdid_data` so that the continuous treatment has no true effect on outcomes; any estimated effects therefore reflect sampling variation.
 
 ```python
-import numpy as np
-import pandas as pd
-from moderndid.didcont import cont_did, plot_cont_did
+import moderndid as did
 from tests.didcont.dgp import simulate_contdid_data
 
 data = simulate_contdid_data(
@@ -65,7 +63,7 @@ data = simulate_contdid_data(
 
 ```python
 # Dose-response
-cd_res = cont_did(
+cd_res = did.cont_did(
     yname='Y',
     tname='time_period',
     idname='id',
@@ -106,13 +104,13 @@ Number of Knots: 1
 ```
 
 ```python
-fig_att = plot_cont_did(cd_res, type='att', show_confidence_bands=True)
+did.plot_dose_response(cd_res, effect_type='att')
 ```
 
 ![Dose-Response ATT](/assets/cont_dose_att.png)
 
 ```python
-fig_acrt = plot_cont_did(cd_res, type='acrt', show_confidence_bands=True)
+did.plot_dose_response(cd_res, effect_type='acrt')
 ```
 
 ![Dose-Response ACRT](/assets/cont_dose_acrt.png)
@@ -127,7 +125,7 @@ We can also consider event study aggregations. The first is an event study aggre
 
 ```python
 # Event Study
-cd_res_es_level = cont_did(
+cd_res_es_level = did.cont_did(
   yname = "Y",
   tname = "time_period",
   idname = "id",
@@ -174,6 +172,10 @@ Estimation Method: att
 ==============================================================================
 ```
 
+```python
+did.plot_event_study(cd_res_es_level)
+```
+
 ![Event Study ATT](/assets/cont_event_study_att.png)
 
 #### Event Study for ACRT
@@ -181,7 +183,7 @@ Estimation Method: att
 The event-study view averages across doses to show how effects evolve relative to time of treatment. The ATT plot targets level effects, while the ACRT plot focuses on how the marginal response changes over exposure length.
 
 ```python
-cd_res_es_slope = cont_did(
+cd_res_es_slope = did.cont_did(
   yname = "Y",
   tname = "time_period",
   idname = "id",
@@ -228,7 +230,32 @@ Estimation Method: dose
 ==============================================================================
 ```
 
+```python
+did.plot_event_study(cd_res_es_slope)
+```
+
 ![Event Study ACRT](/assets/cont_event_study_acrt.png)
+
+### Customizing Plots
+
+All plotting functions are built with [plotnine](https://plotnine.org/), a Python implementation of the grammar of graphics. You can customize any plot using standard plotnine syntax:
+
+```python
+from plotnine import labs, theme, theme_classic, scale_color_manual
+
+custom_plot = (
+    did.plot_dose_response(cd_res, effect_type='att')
+    + theme_classic()
+    + labs(
+        title="Dose-Response Function",
+        x="Treatment Dose",
+        y="ATT(d)"
+    )
+    + theme(figure_size=(8, 5))
+)
+
+custom_plot.save("dose_response.png", dpi=300)
+```
 
 ### Nonparametric Dose-Response (CCK)
 
@@ -248,7 +275,7 @@ data_cck.loc[data_cck['G'] == 0, 'D'] = 0
 ```
 
 ```python
-cd_res_cck = cont_did(
+cd_res_cck = did.cont_did(
     yname="Y",
     tname="time_period",
     idname="id",
@@ -270,11 +297,11 @@ cd_res_cck = cont_did(
 
 Overall ATT:
    ATT          Std. Error   [95% Conf. Interval]
-   0.3418       0.0395       [ 0.2644,  0.4192] *
+   0.3285       0.0443       [ 0.2416,  0.4153] *
 
 Overall ACRT:
    ACRT         Std. Error   [95% Conf. Interval]
-   0.7461       0.1770       [ 0.3991,  1.0931] *
+   1.0307       0.7691       [-0.4768,  2.5381]
 
 ---
 Signif. codes: '*' confidence band does not cover 0
@@ -282,14 +309,32 @@ Signif. codes: '*' confidence band does not cover 0
 
 Control Group: Not Yet Treated
 Anticipation Periods: 0
-Spline Degree: 1
+Spline Degree: 3
 Number of Knots: 0
 ==============================================================================
 ```
 
-![CCK Dose Response](/assets/cont_cck_truth.png)
+Since plots are built with plotnine, you can overlay the true relationship for comparison:
 
-The dashed line highlights the true quadratic relationship used in the simulation. The nonparametric estimator successfully recovers the curvature while providing uniform confidence bands.
+```python
+import numpy as np
+from plotnine import geom_line, aes, theme
+import polars as pl
+
+# Create truth data (d^2 is the true DGP)
+dose_grid = np.linspace(0.05, 1.0, 100)
+truth_df = pl.DataFrame({"dose": dose_grid, "truth": dose_grid ** 2}).to_pandas()
+
+# Plot with truth overlay
+cck_plot = (
+    did.plot_dose_response(cd_res_cck, effect_type='att')
+    + geom_line(aes(x="dose", y="truth"), data=truth_df,
+                linetype="dashed", color="#c0392b", size=1)
+    + theme(figure_size=(8, 5))
+)
+```
+
+![CCK Dose Response](/assets/cont_cck_truth.png)
 
 ## References
 

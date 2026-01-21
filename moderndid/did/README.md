@@ -31,7 +31,7 @@ Aggregates the numerous group-time ATTs into interpretable summary parameters:
 The main entry point provides a pandas-friendly interface with sensible defaults:
 
 ```python
-from moderndid.did import att_gt, aggte
+from moderndid import att_gt, aggte, plot_att_gt, plot_event_study
 
 # Estimate group-time ATTs
 att_results = att_gt(
@@ -104,14 +104,12 @@ We can compute group-time average treatment effects for a staggered adoption des
 
 ```python
 import moderndid as did
-import pandas as pd
-import numpy as np
 
 data = did.load_mpdta()
 
 # Estimate group-time ATTs using outcome regression
 attgt_result = did.att_gt(
-     data=df,
+     data=data,
      yname="lemp",
      tname="year",
      gname="first.treat",
@@ -151,13 +149,38 @@ Anticipation Periods:  0
 Estimation Method:  Doubly Robust
 ```
 
-We can also plot the results using `plot_did()`:
+We can also plot the results using `plot_att_gt()`:
 
 ```python
-plot_did(attgt_result)
+did.plot_att_gt(attgt_result)
 ```
 
 ![Group-Time Average Treatment Effects](/assets/att.png)
+
+### Customizing Plots
+
+All plotting functions in moderndid are built with [plotnine](https://plotnine.org/), a Python implementation of the grammar of graphics. This means you can customize any plot using standard plotnine syntax by adding layers, themes, and scales.
+
+```python
+from plotnine import labs, theme, theme_classic, scale_color_manual
+
+# Customize with plotnine
+custom_plot = (
+    did.plot_att_gt(attgt_result)
+    + theme_classic()  # Use a different theme
+    + scale_color_manual(values={"Pre": "#2ecc71", "Post": "#9b59b6"})
+    + labs(
+        title="Effect of Minimum Wage on Teen Employment",
+        x="Year",
+        y="ATT Estimate"
+    )
+    + theme(figure_size=(10, 8))  # Adjust figure size
+)
+
+custom_plot.save("my_plot.png", dpi=300)
+```
+
+![Customized Plot](/assets/att_custom.png)
 
 ### Event Study
 
@@ -168,7 +191,7 @@ a small number of parameters. One main type of aggregation is into an event stud
 We can make an event study by using the `aggte` function:
 
 ```python
-event_study =  aggte(att_gt_results, type='dynamic')
+event_study = did.aggte(attgt_result, type='dynamic')
 ```
 
 Just like for group-time average treatment effects, these can be summarized in a nice way:
@@ -211,13 +234,13 @@ The column event time is for each group relative to when they first participate 
 to the on impact effect, and `event time=-1` is the effect in the period before a unit becomes treated (checking that this is equal to 0 is
 potentially useful as a pre-test).
 
-We can also plot the event study with `plot_did()` as well:
+We can also plot the event study with `plot_event_study()`:
 
 ```python
-plot_did(event_study)
+did.plot_event_study(event_study)
 ```
 
-![Group-Time Average Treatment Effects](/assets/event.png)
+![Event Study](/assets/event.png)
 
 ### Overall Effect of Participating in the Treatment
 
@@ -225,10 +248,10 @@ The event study above reported an overall effect of participating in the treatme
 
 In many cases, a more general purpose overall treatment effect parameter is given by computing the average treatment effect for each group, and then averaging across groups. This sort of procedure provides an average treatment effect parameter with a very similar interpretation to the Average Treatment Effect on the Treated (ATT) in the two period and two group case.
 
-To compute this overall average treatment effect parameter, where we're interested in the estimate for overall ATT, we can switich the type to `group`:
+To compute this overall average treatment effect parameter, where we're interested in the estimate for overall ATT, we can switch the type to `group`:
 
 ```python
-overall_att =  aggte(att_gt_results, type='group')
+overall_att = did.aggte(attgt_result, type='group')
 ```
 
 The output shows that we estimate that increasing the minimum wage decreased teen employment by 3.1%,

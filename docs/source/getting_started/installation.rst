@@ -50,12 +50,6 @@ may need another tool (there are many!) for dealing with environments or complex
 
     pip install moderndid
 
-To include plotting functionality (requires matplotlib):
-
-.. code-block:: console
-
-    pip install moderndid[plots]
-
 - **Development**: To install the latest development version from GitHub:
 
 .. code-block:: console
