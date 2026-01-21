@@ -92,10 +92,10 @@ def format_ddd_agg_result(result):
     sig_marker = "*" if overall_sig else " "
 
     lines.append("")
-    lines.append(f"   ATT          Std. Error     [{conf_level}% Conf. Interval]")
-    att_str = f"   {result.overall_att:10.4f}   {result.overall_se:10.4f}"
-    ci_str = f"     [{overall_lci:7.4f}, {overall_uci:7.4f}] {sig_marker}"
-    lines.append(att_str + ci_str)
+    lines.append(f"{'ATT':>10}      {'Std. Error':>10}     [{conf_level}% Conf. Interval]")
+    att_line = f"{result.overall_att:10.4f}      {result.overall_se:10.4f}"
+    ci_line = f"[{overall_lci:8.4f}, {overall_uci:8.4f}] {sig_marker}"
+    lines.append(f"{att_line}     {ci_line}")
 
     if result.aggregation_type in ["eventstudy", "group", "calendar"] and result.egt is not None:
         lines.append("")
