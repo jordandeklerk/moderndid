@@ -1,3 +1,19 @@
+<a id="v0.0.3"></a>
+# [v0.0.3](https://github.com/jordandeklerk/moderndid/releases/tag/v0.0.3) - 2026-01-21
+
+## What's Changed
+* Bump version to 0.0.2 by [@jordandeklerk](https://github.com/jordandeklerk) in [#116](https://github.com/jordandeklerk/moderndid/pull/116)
+* Add permissions for post-release workflow by [@jordandeklerk](https://github.com/jordandeklerk) in [#117](https://github.com/jordandeklerk/moderndid/pull/117)
+* Update changelog for v0.0.2 by [@github-actions](https://github.com/github-actions)[bot] in [#118](https://github.com/jordandeklerk/moderndid/pull/118)
+
+## New Contributors
+* [@github-actions](https://github.com/github-actions)[bot] made their first contribution in [#118](https://github.com/jordandeklerk/moderndid/pull/118)
+
+**Full Changelog**: https://github.com/jordandeklerk/moderndid/compare/v0.0.2...v0.0.3
+
+[Changes][v0.0.3]
+
+
 <a id="v0.0.2"></a>
 # [v0.0.2](https://github.com/jordandeklerk/moderndid/releases/tag/v0.0.2) - 2026-01-21
 
@@ -115,6 +131,7 @@
 [Changes][v0.0.1]
 
 
+[v0.0.3]: https://github.com/jordandeklerk/moderndid/compare/v0.0.2...v0.0.3
 [v0.0.2]: https://github.com/jordandeklerk/moderndid/compare/v0.0.1...v0.0.2
 [v0.0.1]: https://github.com/jordandeklerk/moderndid/tree/v0.0.1
 
