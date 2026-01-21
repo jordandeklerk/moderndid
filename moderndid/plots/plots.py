@@ -103,7 +103,7 @@ def plot_att_gt(
     df = df.with_columns([df["group"].cast(int).cast(str).alias("group_label")])
 
     plot = (
-        ggplot(df.to_pandas(), aes(x="time", y="att", color="treatment_status"))
+        ggplot(df, aes(x="time", y="att", color="treatment_status"))
         + geom_point(size=3, alpha=0.8)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
@@ -200,9 +200,7 @@ def plot_event_study(
             raise ValueError(f"Event study plot requires dynamic aggregation, got {result.aggregation_type}")
         df = aggteresult_to_polars(result)
 
-    pdf = df.to_pandas()
-
-    plot = ggplot(pdf, aes(x="event_time", y="att"))
+    plot = ggplot(df, aes(x="event_time", y="att"))
 
     if show_ci:
         plot = plot + geom_errorbar(
@@ -284,12 +282,11 @@ def plot_dose_response(
     >>> plot.show()
     """
     df = doseresult_to_polars(result, effect_type=effect_type)
-    pdf = df.to_pandas()
 
     default_ylabel = "ATT(d)" if effect_type == "att" else "ACRT(d)"
     default_title = f"Dose-Response: {default_ylabel}"
 
-    plot = ggplot(pdf, aes(x="dose", y="effect"))
+    plot = ggplot(df, aes(x="dose", y="effect"))
 
     if show_ci:
         plot = plot + geom_ribbon(
@@ -375,7 +372,7 @@ def plot_sensitivity(
     dodge_width = 0.05 * (df["param_value"].max() - df["param_value"].min()) if n_methods > 1 else 0
 
     plot = (
-        ggplot(df.to_pandas(), aes(x="param_value", y="midpoint", color="method"))
+        ggplot(df, aes(x="param_value", y="midpoint", color="method"))
         + geom_point(size=3, position=position_dodge(width=dodge_width))
         + geom_errorbar(
             aes(ymin="lb", ymax="ub"),
