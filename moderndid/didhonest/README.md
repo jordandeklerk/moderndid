@@ -241,7 +241,7 @@ This gives us event study coefficients for years 2008-2012, 2014, and 2015 (2013
 
 ### Sensitivity Analysis Using Relative Magnitudes
 
-We can now apply `HonestDiD` to do sensitivity analysis. Suppose we're interested in assessing the sensitivity of the estimate for 2014, the first year after treatment.
+Suppose we're interested in assessing the sensitivity of the estimate for 2014, the first year after treatment.
 
 ```python
 num_pre_periods = 5
