@@ -7,7 +7,12 @@ import pytest
 
 from moderndid import ddd_mp
 from moderndid.core.preprocessing import preprocess_ddd_2periods
+from moderndid.didtriple.agg_ddd_obj import DDDAggResult
 from moderndid.didtriple.dgp import gen_dgp_2periods, gen_dgp_mult_periods
+from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
+from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
+from moderndid.didtriple.estimators.ddd_panel import DDDPanelResult
+from moderndid.didtriple.estimators.ddd_rc import DDDRCResult
 
 
 @pytest.fixture
@@ -242,3 +247,179 @@ def mp_rcs_data():
             )
 
     return pl.DataFrame(records)
+
+
+@pytest.fixture
+def ddd_panel_result():
+    return DDDPanelResult(
+        att=2.5,
+        se=0.5,
+        uci=3.48,
+        lci=1.52,
+        boots=None,
+        att_inf_func=np.random.default_rng(42).standard_normal(100),
+        did_atts={"comparison_3": 1.0, "comparison_2": 0.8, "comparison_1": -0.7},
+        subgroup_counts={
+            "subgroup_4": 25,
+            "subgroup_3": 25,
+            "subgroup_2": 25,
+            "subgroup_1": 25,
+        },
+        args={"est_method": "dr", "alpha": 0.05, "boot": False, "cband": False},
+    )
+
+
+@pytest.fixture
+def ddd_panel_result_not_significant():
+    return DDDPanelResult(
+        att=0.1,
+        se=0.5,
+        uci=1.08,
+        lci=-0.88,
+        boots=None,
+        att_inf_func=np.random.default_rng(42).standard_normal(100),
+        did_atts={"comparison_3": 0.05, "comparison_2": 0.03, "comparison_1": -0.02},
+        subgroup_counts={
+            "subgroup_4": 25,
+            "subgroup_3": 25,
+            "subgroup_2": 25,
+            "subgroup_1": 25,
+        },
+        args={"est_method": "dr", "alpha": 0.05, "boot": False},
+    )
+
+
+@pytest.fixture
+def ddd_mp_result_fixture():
+    rng = np.random.default_rng(42)
+    return DDDMultiPeriodResult(
+        att=np.array([1.5, 2.0, 2.5, 3.0]),
+        se=np.array([0.3, 0.35, 0.4, 0.45]),
+        lci=np.array([0.91, 1.31, 1.71, 2.11]),
+        uci=np.array([2.09, 2.69, 3.29, 3.89]),
+        groups=np.array([3, 3, 4, 4]),
+        times=np.array([3, 4, 4, 5]),
+        tlist=np.array([1, 2, 3, 4, 5]),
+        glist=np.array([3, 4]),
+        n=500,
+        inf_func_mat=rng.standard_normal((500, 4)),
+        unit_groups=np.repeat([0, 3, 4], [250, 125, 125]),
+        args={
+            "est_method": "dr",
+            "alpha": 0.05,
+            "control_group": "nevertreated",
+            "base_period": "universal",
+        },
+    )
+
+
+@pytest.fixture
+def ddd_rc_result():
+    rng = np.random.default_rng(42)
+    return DDDRCResult(
+        att=2.0,
+        se=0.4,
+        uci=2.78,
+        lci=1.22,
+        boots=None,
+        att_inf_func=rng.standard_normal(200),
+        did_atts={"comparison_3": 1.0, "comparison_2": 0.8, "comparison_1": -0.2},
+        subgroup_counts={
+            "subgroup_4": 50,
+            "subgroup_3": 50,
+            "subgroup_2": 50,
+            "subgroup_1": 50,
+        },
+        args={"est_method": "dr", "alpha": 0.05, "boot": False},
+    )
+
+
+@pytest.fixture
+def ddd_mp_rc_result():
+    rng = np.random.default_rng(42)
+    return DDDMultiPeriodRCResult(
+        att=np.array([1.8, 2.2, 2.6, 3.0]),
+        se=np.array([0.35, 0.38, 0.42, 0.48]),
+        uci=np.array([2.49, 2.95, 3.43, 3.95]),
+        lci=np.array([1.11, 1.45, 1.77, 2.05]),
+        groups=np.array([3, 3, 4, 4]),
+        times=np.array([3, 4, 4, 5]),
+        glist=np.array([3, 4]),
+        tlist=np.array([1, 2, 3, 4, 5]),
+        inf_func_mat=rng.standard_normal((1500, 4)),
+        n=1500,
+        args={
+            "est_method": "dr",
+            "alpha": 0.05,
+            "control_group": "nevertreated",
+            "base_period": "universal",
+        },
+    )
+
+
+@pytest.fixture
+def ddd_agg_result_simple():
+    return DDDAggResult(
+        overall_att=2.0,
+        overall_se=0.3,
+        aggregation_type="simple",
+        egt=None,
+        att_egt=None,
+        se_egt=None,
+        crit_val=1.96,
+        inf_func=None,
+        inf_func_overall=None,
+        args={"alpha": 0.05, "boot": False, "cband": False},
+    )
+
+
+@pytest.fixture
+def ddd_agg_result_eventstudy():
+    return DDDAggResult(
+        overall_att=2.0,
+        overall_se=0.3,
+        aggregation_type="eventstudy",
+        egt=np.array([-2, -1, 0, 1, 2]),
+        att_egt=np.array([0.1, 0.05, 1.8, 2.0, 2.2]),
+        se_egt=np.array([0.2, 0.15, 0.3, 0.35, 0.4]),
+        crit_val=1.96,
+        inf_func=None,
+        inf_func_overall=None,
+        args={"alpha": 0.05, "boot": False, "cband": False},
+    )
+
+
+@pytest.fixture
+def simple_panel_data():
+    rng = np.random.default_rng(42)
+    n_units = 100
+    n_periods = 4
+
+    records = []
+    for unit in range(n_units):
+        for t in range(1, n_periods + 1):
+            records.append(
+                {
+                    "id": unit,
+                    "time": t,
+                    "y": rng.normal(0, 1),
+                    "group": rng.choice([0, 3]),
+                    "partition": rng.choice([0, 1]),
+                }
+            )
+
+    return pl.DataFrame(records)
+
+
+@pytest.fixture
+def rcs_nuisance_data():
+    rng = np.random.default_rng(42)
+    n = 400
+
+    post = np.repeat([0, 1], n // 2)
+    subgroup = rng.choice([1, 2, 3, 4], size=n)
+    y = rng.normal(0, 1, n) + 2.0 * (subgroup == 4) * post
+    covariates = np.column_stack([np.ones(n), rng.normal(0, 1, (n, 2))])
+    weights = np.ones(n)
+
+    return y, post, subgroup, covariates, weights
