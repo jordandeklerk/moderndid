@@ -17,16 +17,16 @@ def _mp_plot(self: MPResult, **kwargs: Any) -> ggplot:
     Parameters
     ----------
     **kwargs
-        Keyword arguments passed to plot_att_gt.
+        Keyword arguments passed to plot_gt.
 
     Returns
     -------
     ggplot
         A plotnine ggplot object.
     """
-    from moderndid.did.plots.core import plot_att_gt
+    from moderndid.did.plots.core import plot_gt
 
-    return plot_att_gt(self, **kwargs)
+    return plot_gt(self, **kwargs)
 
 
 def _aggte_plot(self: AGGTEResult, **kwargs: Any) -> ggplot:

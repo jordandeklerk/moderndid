@@ -59,6 +59,30 @@ def aggte_result_simple():
 
 
 @pytest.fixture
+def aggte_result_group():
+    return AGGTEResult(
+        overall_att=0.8,
+        overall_se=0.14,
+        aggregation_type="group",
+        event_times=np.array([2000, 2007]),
+        att_by_event=np.array([0.7, 0.9]),
+        se_by_event=np.array([0.12, 0.16]),
+    )
+
+
+@pytest.fixture
+def aggte_result_calendar():
+    return AGGTEResult(
+        overall_att=0.75,
+        overall_se=0.13,
+        aggregation_type="calendar",
+        event_times=np.array([2004, 2005, 2006]),
+        att_by_event=np.array([0.6, 0.8, 0.85]),
+        se_by_event=np.array([0.11, 0.13, 0.14]),
+    )
+
+
+@pytest.fixture
 def dose_result():
     dose = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     att_d = np.array([0.5, 1.0, 1.5, 2.0, 2.5])

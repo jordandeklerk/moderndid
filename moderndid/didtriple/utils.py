@@ -103,6 +103,16 @@ def detect_rcs_mode(data: DataFrame, tname: str, idname: str | None, panel: bool
     if idname is None:
         return True
 
+    df = to_polars(data)
+    obs_per_unit = df.group_by(idname).len()
+    max_obs_per_unit = obs_per_unit["len"].max()
+
+    if max_obs_per_unit == 1:
+        raise ValueError(
+            "panel=True was specified, but no units appear in multiple time periods. "
+            "Set panel=False to use the repeated cross-section estimator."
+        )
+
     if allow_unbalanced_panel:
         if not is_balanced_panel(data, tname, idname):
             return True

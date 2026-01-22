@@ -20,6 +20,7 @@ from plotnine import (
     theme,
 )
 
+from moderndid.did.aggte_obj import AGGTEResult
 from moderndid.did.multiperiod_obj import MPResult
 from moderndid.didcont.estimation.container import PTEResult
 from moderndid.didtriple.agg_ddd_obj import DDDAggResult
@@ -37,13 +38,12 @@ from moderndid.plots.converters import (
 from moderndid.plots.themes import COLORS, theme_moderndid
 
 if TYPE_CHECKING:
-    from moderndid.did.aggte_obj import AGGTEResult
     from moderndid.didcont.estimation.container import DoseResult
     from moderndid.didhonest.honest_did import HonestDiDResult
 
 
-def plot_att_gt(
-    result: MPResult,
+def plot_gt(
+    result: MPResult | DDDMultiPeriodResult | DDDMultiPeriodRCResult,
     show_ci: bool = True,
     ref_line: float | None = 0,
     title: str = "Group",
@@ -56,9 +56,9 @@ def plot_att_gt(
 
     Parameters
     ----------
-    result : MPResult
-        Multi-period DID result object containing group-time ATT estimates.
-        This should be the output from ``att_gt()``, not ``drdid()``.
+    result : MPResult, DDDMultiPeriodResult, or DDDMultiPeriodRCResult
+        Multi-period result object containing group-time ATT estimates.
+        This should be the output from ``att_gt()`` or ``ddd()``.
     show_ci : bool, default=True
         Whether to show confidence intervals as error bars.
     ref_line : float or None, default=0
@@ -77,10 +77,16 @@ def plot_att_gt(
     ggplot
         A plotnine ggplot object that can be further customized.
     """
-    if not isinstance(result, MPResult):
-        raise TypeError(f"plot_att_gt requires MPResult from att_gt(), got {type(result).__name__}")
-
-    df = mpresult_to_polars(result)
+    if isinstance(result, MPResult):
+        df = mpresult_to_polars(result)
+        plot_title = "Group-Time Average Treatment Effects"
+    elif isinstance(result, (DDDMultiPeriodResult, DDDMultiPeriodRCResult)):
+        df = dddmpresult_to_polars(result)
+        plot_title = "Group-Time DDD Treatment Effects"
+    else:
+        raise TypeError(
+            f"plot_gt requires MPResult, DDDMultiPeriodResult, or DDDMultiPeriodRCResult, got {type(result).__name__}"
+        )
 
     df = df.with_columns([df["group"].cast(int).cast(str).alias("group_label")])
 
@@ -95,7 +101,7 @@ def plot_att_gt(
         + labs(
             x=xlab or "Time",
             y=ylab or "ATT",
-            title="Group-Time Average Treatment Effects",
+            title=plot_title,
         )
         + theme_moderndid()
         + theme(
@@ -118,7 +124,7 @@ def plot_att_gt(
 
 
 def plot_event_study(
-    result: AGGTEResult | PTEResult,
+    result: AGGTEResult | PTEResult | DDDAggResult,
     show_ci: bool = True,
     ref_line: float | None = 0,
     xlab: str | None = None,
@@ -130,8 +136,8 @@ def plot_event_study(
 
     Parameters
     ----------
-    result : AGGTEResult or PTEResult
-        Aggregated treatment effect result with dynamic aggregation,
+    result : AGGTEResult, PTEResult, or DDDAggResult
+        Aggregated treatment effect result with dynamic/eventstudy aggregation,
         or PTEResult with event_study attribute.
     show_ci : bool, default=True
         Whether to show confidence intervals as error bars.
@@ -142,7 +148,7 @@ def plot_event_study(
     ylab : str, optional
         Y-axis label. Defaults to "ATT".
     title : str, optional
-        Plot title. Defaults to "Event Study".
+        Plot title. Defaults based on result type.
 
     Returns
     -------
@@ -151,10 +157,21 @@ def plot_event_study(
     """
     if isinstance(result, PTEResult):
         df = pteresult_to_polars(result)
-    else:
+        default_title = "Event Study"
+    elif isinstance(result, DDDAggResult):
+        if result.aggregation_type != "eventstudy":
+            raise ValueError(f"Event study plot requires eventstudy aggregation, got {result.aggregation_type}")
+        df = dddaggresult_to_polars(result)
+        default_title = "DDD Event Study"
+    elif isinstance(result, AGGTEResult):
         if result.aggregation_type != "dynamic":
             raise ValueError(f"Event study plot requires dynamic aggregation, got {result.aggregation_type}")
         df = aggteresult_to_polars(result)
+        default_title = "Event Study"
+    else:
+        raise TypeError(
+            f"plot_event_study requires AGGTEResult, PTEResult, or DDDAggResult, got {type(result).__name__}"
+        )
 
     plot = ggplot(df, aes(x="event_time", y="att"))
 
@@ -179,10 +196,95 @@ def plot_event_study(
         + labs(
             x=xlab or "Event Time",
             y=ylab or "ATT",
-            title=title or "Event Study",
+            title=title or default_title,
         )
         + theme_moderndid()
         + theme(legend_position="bottom")
+    )
+
+    return plot
+
+
+def plot_agg(
+    result: AGGTEResult | DDDAggResult,
+    show_ci: bool = True,
+    ref_line: float | None = 0,
+    xlab: str | None = None,
+    ylab: str | None = None,
+    title: str | None = None,
+    **_kwargs: Any,
+) -> ggplot:
+    """Create plot for aggregated treatment effects by group or calendar time.
+
+    Parameters
+    ----------
+    result : AGGTEResult or DDDAggResult
+        Aggregated treatment effect result with group or calendar aggregation.
+    show_ci : bool, default=True
+        Whether to show confidence intervals as error bars.
+    ref_line : float or None, default=0
+        Y-value for reference line. Set to None to hide.
+    xlab : str, optional
+        X-axis label. Defaults based on aggregation type.
+    ylab : str, optional
+        Y-axis label. Defaults to "ATT".
+    title : str, optional
+        Plot title. Defaults based on aggregation type.
+
+    Returns
+    -------
+    ggplot
+        A plotnine ggplot object that can be further customized.
+    """
+    if isinstance(result, DDDAggResult):
+        if result.aggregation_type not in ("group", "calendar"):
+            raise ValueError(
+                f"plot_agg requires group or calendar aggregation, got {result.aggregation_type}. "
+                f"Use plot_event_study for eventstudy aggregation."
+            )
+        df = dddaggresult_to_polars(result)
+        is_ddd = True
+    elif isinstance(result, AGGTEResult):
+        if result.aggregation_type not in ("group", "calendar"):
+            raise ValueError(
+                f"plot_agg requires group or calendar aggregation, got {result.aggregation_type}. "
+                f"Use plot_event_study for dynamic aggregation."
+            )
+        df = aggteresult_to_polars(result)
+        is_ddd = False
+    else:
+        raise TypeError(f"plot_agg requires AGGTEResult or DDDAggResult, got {type(result).__name__}")
+
+    if result.aggregation_type == "group":
+        default_xlab = "Treatment Cohort"
+        default_title = "DDD Effects by Treatment Cohort" if is_ddd else "Effects by Treatment Cohort"
+    else:
+        default_xlab = "Calendar Time"
+        default_title = "DDD Effects by Calendar Time" if is_ddd else "Effects by Calendar Time"
+
+    plot = ggplot(df, aes(x="event_time", y="att"))
+
+    if show_ci:
+        plot = plot + geom_errorbar(
+            aes(ymin="ci_lower", ymax="ci_upper"),
+            width=0.2,
+            size=0.8,
+            color=COLORS["post_treatment"],
+        )
+
+    if ref_line is not None:
+        plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
+
+    plot = (
+        plot
+        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6)
+        + geom_point(color=COLORS["post_treatment"], size=3.5)
+        + labs(
+            x=xlab or default_xlab,
+            y=ylab or "ATT",
+            title=title or default_title,
+        )
+        + theme_moderndid()
     )
 
     return plot
@@ -325,229 +427,5 @@ def plot_sensitivity(
 
     if ref_line is not None:
         plot = plot + geom_hline(yintercept=ref_line, linetype="solid", color="black", alpha=0.4)
-
-    return plot
-
-
-def plot_ddd_gt(
-    result: DDDMultiPeriodResult | DDDMultiPeriodRCResult,
-    show_ci: bool = True,
-    ref_line: float | None = 0,
-    title: str = "Group",
-    xlab: str | None = None,
-    ylab: str | None = None,
-    ncol: int = 1,
-    **_kwargs: Any,
-) -> ggplot:
-    """Plot group-time average treatment effects for triple difference-in-differences.
-
-    Parameters
-    ----------
-    result : DDDMultiPeriodResult or DDDMultiPeriodRCResult
-        Multi-period DDD result object containing group-time ATT estimates.
-        This should be the output from ``ddd()`` with multi-period data.
-    show_ci : bool, default=True
-        Whether to show confidence intervals as error bars.
-    ref_line : float or None, default=0
-        Y-value for reference line. Set to None to hide.
-    title : str, default="Group"
-        Title prefix for each facet panel.
-    xlab : str, optional
-        X-axis label. Defaults to "Time".
-    ylab : str, optional
-        Y-axis label. Defaults to "ATT".
-    ncol : int, default=1
-        Number of columns in the facet grid. Use 1 for vertical stacking.
-
-    Returns
-    -------
-    ggplot
-        A plotnine ggplot object that can be further customized.
-    """
-    if not isinstance(result, (DDDMultiPeriodResult, DDDMultiPeriodRCResult)):
-        raise TypeError(
-            f"plot_ddd_gt requires DDDMultiPeriodResult or DDDMultiPeriodRCResult from ddd(), "
-            f"got {type(result).__name__}"
-        )
-
-    df = dddmpresult_to_polars(result)
-
-    df = df.with_columns([df["group"].cast(int).cast(str).alias("group_label")])
-
-    plot = (
-        ggplot(df, aes(x="time", y="att", color="treatment_status"))
-        + geom_point(size=3, alpha=0.8)
-        + scale_color_manual(
-            values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
-            name="Treatment Status",
-        )
-        + facet_wrap("~group_label", ncol=ncol, labeller=lambda x: f"{title} {x}", scales="free_x")
-        + labs(
-            x=xlab or "Time",
-            y=ylab or "ATT",
-            title="Group-Time DDD Treatment Effects",
-        )
-        + theme_moderndid()
-        + theme(
-            strip_text=element_text(size=11, weight="bold"),
-            legend_position="bottom",
-        )
-    )
-
-    if show_ci:
-        plot = plot + geom_errorbar(
-            aes(ymin="ci_lower", ymax="ci_upper"),
-            width=0.3,
-            alpha=0.7,
-        )
-
-    if ref_line is not None:
-        plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="black", alpha=0.5)
-
-    return plot
-
-
-def plot_ddd_event_study(
-    result: DDDAggResult,
-    show_ci: bool = True,
-    ref_line: float | None = 0,
-    xlab: str | None = None,
-    ylab: str | None = None,
-    title: str | None = None,
-    **_kwargs: Any,
-) -> ggplot:
-    """Create event study plot for aggregated DDD treatment effects.
-
-    Parameters
-    ----------
-    result : DDDAggResult
-        Aggregated DDD treatment effect result with dynamic/eventstudy aggregation.
-        This should be the output from ``agg_ddd()`` with ``aggregation_type="eventstudy"``.
-    show_ci : bool, default=True
-        Whether to show confidence intervals as error bars.
-    ref_line : float or None, default=0
-        Y-value for reference line. Set to None to hide.
-    xlab : str, optional
-        X-axis label. Defaults to "Event Time".
-    ylab : str, optional
-        Y-axis label. Defaults to "ATT".
-    title : str, optional
-        Plot title. Defaults to "DDD Event Study".
-    """
-    if not isinstance(result, DDDAggResult):
-        raise TypeError(f"plot_ddd_event_study requires DDDAggResult from agg_ddd(), got {type(result).__name__}")
-
-    if result.aggregation_type != "eventstudy":
-        raise ValueError(f"Event study plot requires eventstudy aggregation, got {result.aggregation_type}")
-
-    df = dddaggresult_to_polars(result)
-
-    plot = ggplot(df, aes(x="event_time", y="att"))
-
-    if show_ci:
-        plot = plot + geom_errorbar(
-            aes(ymin="ci_lower", ymax="ci_upper", color="treatment_status"),
-            width=0.2,
-            size=0.8,
-        )
-
-    if ref_line is not None:
-        plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
-
-    plot = (
-        plot
-        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6)
-        + geom_point(aes(color="treatment_status"), size=3.5)
-        + scale_color_manual(
-            values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
-            name="Treatment Status",
-        )
-        + labs(
-            x=xlab or "Event Time",
-            y=ylab or "ATT",
-            title=title or "DDD Event Study",
-        )
-        + theme_moderndid()
-        + theme(legend_position="bottom")
-    )
-
-    return plot
-
-
-def plot_ddd_agg(
-    result: DDDAggResult,
-    show_ci: bool = True,
-    ref_line: float | None = 0,
-    xlab: str | None = None,
-    ylab: str | None = None,
-    title: str | None = None,
-    **_kwargs: Any,
-) -> ggplot:
-    """Create plot for aggregated DDD treatment effects by group or calendar time.
-
-    Parameters
-    ----------
-    result : DDDAggResult
-        Aggregated DDD treatment effect result with group or calendar aggregation.
-        This should be the output from ``agg_ddd()`` with ``aggregation_type="group"``
-        or ``aggregation_type="calendar"``.
-    show_ci : bool, default=True
-        Whether to show confidence intervals as error bars.
-    ref_line : float or None, default=0
-        Y-value for reference line. Set to None to hide.
-    xlab : str, optional
-        X-axis label. Defaults based on aggregation type.
-    ylab : str, optional
-        Y-axis label. Defaults to "ATT".
-    title : str, optional
-        Plot title. Defaults based on aggregation type.
-
-    Returns
-    -------
-    ggplot
-        A plotnine ggplot object that can be further customized.
-    """
-    if not isinstance(result, DDDAggResult):
-        raise TypeError(f"plot_ddd_agg requires DDDAggResult from agg_ddd(), got {type(result).__name__}")
-
-    if result.aggregation_type not in ("group", "calendar"):
-        raise ValueError(
-            f"plot_ddd_agg requires group or calendar aggregation, got {result.aggregation_type}. "
-            f"Use plot_ddd_event_study for eventstudy aggregation."
-        )
-
-    df = dddaggresult_to_polars(result)
-
-    if result.aggregation_type == "group":
-        default_xlab = "Treatment Cohort"
-        default_title = "DDD Effects by Treatment Cohort"
-    else:
-        default_xlab = "Calendar Time"
-        default_title = "DDD Effects by Calendar Time"
-
-    plot = ggplot(df, aes(x="event_time", y="att"))
-
-    if show_ci:
-        plot = plot + geom_errorbar(
-            aes(ymin="ci_lower", ymax="ci_upper"),
-            width=0.2,
-            size=0.8,
-            color=COLORS["post_treatment"],
-        )
-
-    if ref_line is not None:
-        plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
-
-    plot = (
-        plot
-        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6)
-        + geom_point(color=COLORS["post_treatment"], size=3.5)
-        + labs(
-            x=xlab or default_xlab,
-            y=ylab or "ATT",
-            title=title or default_title,
-        )
-        + theme_moderndid()
-    )
 
     return plot

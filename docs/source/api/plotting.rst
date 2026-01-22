@@ -10,9 +10,9 @@ plotnine ``ggplot`` objects that can be further customized using standard plotni
 DiD Result Plots
 ----------------
 
-High-level function for plotting treatment effect estimates from DiD analyses.
-Automatically selects the appropriate visualization based on the aggregation type
-(group-time ATT, event study, and continuous treatment DiD).
+High-level functions for plotting treatment effect estimates from DiD analyses.
+Automatically selects the appropriate visualization based on the result type
+(group-time ATT, event study, and aggregated effects).
 
 .. currentmodule:: moderndid.plots
 
@@ -20,9 +20,9 @@ Automatically selects the appropriate visualization based on the aggregation typ
    :toctree: generated/plotting/
    :nosignatures:
 
-   plot_did
-   plot_att_gt
+   plot_gt
    plot_event_study
+   plot_agg
 
 Continuous Treatment Plots
 --------------------------
@@ -33,7 +33,6 @@ Functions for visualizing dose-response relationships from continuous treatment 
    :toctree: generated/plotting/
    :nosignatures:
 
-   plot_cont_did
    plot_dose_response
 
 Sensitivity Analysis Plots
