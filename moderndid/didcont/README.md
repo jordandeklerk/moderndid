@@ -81,7 +81,9 @@ cd_res = did.cont_did(
     num_knots=1,
     degree=3,
 )
+```
 
+```
 ==============================================================================
  Continuous Treatment Dose-Response Results
 ==============================================================================
@@ -143,7 +145,9 @@ cd_res_es_level = did.cont_did(
   num_knots = 1,
   degree = 3,
 )
+```
 
+```
 ==============================================================================
  Aggregate Treatment Effects (Event Study)
 ==============================================================================
@@ -201,7 +205,9 @@ cd_res_es_slope = did.cont_did(
   num_knots = 1,
   degree = 3,
 )
+```
 
+```
 ==============================================================================
  Aggregate Treatment Effects (Event Study)
 ==============================================================================
@@ -238,27 +244,6 @@ did.plot_event_study(cd_res_es_slope)
 
 ![Event Study ACRT](/assets/cont_event_study_acrt.png)
 
-### Customizing Plots
-
-All plotting functions are built with [plotnine](https://plotnine.org/), a Python implementation of the grammar of graphics. You can customize any plot using standard plotnine syntax:
-
-```python
-from plotnine import labs, theme, theme_classic, scale_color_manual
-
-custom_plot = (
-    did.plot_dose_response(cd_res, effect_type='att')
-    + theme_classic()
-    + labs(
-        title="Dose-Response Function",
-        x="Treatment Dose",
-        y="ATT(d)"
-    )
-    + theme(figure_size=(8, 5))
-)
-
-custom_plot.save("dose_response.png", dpi=300)
-```
-
 ### Nonparametric Dose-Response (CCK)
 
 When the dose-response surface is unknown, the parametric B-spline specification can be too restrictive. The alternative `dose_est_method='cck'` activates the nonparametric IV estimator of Chen, Christensen, and Kankanala (2024). We provide a self-contained implementation in `moderndid/didcont/npiv`, so no external dependencies are required. Consistent with the theory in Callaway, Goodman-Bacon, and Sant'Anna (2024), the current implementation supports two-period settings without staggered adoption; for longer panels, average the pre- and post-treatment periods to reduce to this case before estimation.
@@ -292,7 +277,9 @@ cd_res_cck = did.cont_did(
     biters=100,
     cband=True,
 )
+```
 
+```
 ==============================================================================
  Continuous Treatment Dose-Response Results
 ==============================================================================
