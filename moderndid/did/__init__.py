@@ -18,8 +18,8 @@ from .multiperiod_obj import (
     summary_mp_pretest,
 )
 from .plots import (
-    plot_att_gt,
     plot_event_study,
+    plot_gt,
 )
 
 __all__ = [
@@ -41,6 +41,6 @@ __all__ = [
     "ATTgtResult",
     "ComputeATTgtResult",
     "compute_att_gt",
-    "plot_att_gt",
+    "plot_gt",
     "plot_event_study",
 ]

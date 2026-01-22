@@ -1,8 +1,8 @@
 """Plots for DID models."""
 
 from moderndid.did.plots.core import (
-    plot_att_gt,
     plot_event_study,
+    plot_gt,
 )
 from moderndid.did.plots.methods import add_plot_methods
 
@@ -10,6 +10,6 @@ from moderndid.did.plots.methods import add_plot_methods
 add_plot_methods()
 
 __all__ = [
-    "plot_att_gt",
+    "plot_gt",
     "plot_event_study",
 ]

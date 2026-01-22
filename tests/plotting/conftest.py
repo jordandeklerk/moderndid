@@ -9,6 +9,8 @@ from moderndid.did.multiperiod_obj import MPResult
 from moderndid.didcont.estimation.container import DoseResult
 from moderndid.didhonest.honest_did import HonestDiDResult
 from moderndid.didhonest.sensitivity import OriginalCSResult
+from moderndid.didtriple.agg_ddd_obj import DDDAggResult
+from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
 
 
 @pytest.fixture
@@ -53,6 +55,30 @@ def aggte_result_simple():
         overall_att=0.75,
         overall_se=0.12,
         aggregation_type="simple",
+    )
+
+
+@pytest.fixture
+def aggte_result_group():
+    return AGGTEResult(
+        overall_att=0.8,
+        overall_se=0.14,
+        aggregation_type="group",
+        event_times=np.array([2000, 2007]),
+        att_by_event=np.array([0.7, 0.9]),
+        se_by_event=np.array([0.12, 0.16]),
+    )
+
+
+@pytest.fixture
+def aggte_result_calendar():
+    return AGGTEResult(
+        overall_att=0.75,
+        overall_se=0.13,
+        aggregation_type="calendar",
+        event_times=np.array([2004, 2005, 2006]),
+        att_by_event=np.array([0.6, 0.8, 0.85]),
+        se_by_event=np.array([0.11, 0.13, 0.14]),
     )
 
 
@@ -133,3 +159,81 @@ def sensitivity_robust_results():
 @pytest.fixture
 def sensitivity_original_result():
     return OriginalCSResult(lb=0.3, ub=0.7, method="Original")
+
+
+@pytest.fixture
+def ddd_mp_result():
+    rng = np.random.default_rng(42)
+    groups = np.array([2, 2, 2, 3, 3, 3])
+    times = np.array([1, 2, 3, 1, 2, 3])
+    att = np.array([0.0, 0.5, 0.8, 0.0, 0.0, 0.6])
+    se = np.array([0.1, 0.12, 0.15, 0.1, 0.11, 0.13])
+    uci = att + 1.96 * se
+    lci = att - 1.96 * se
+
+    return DDDMultiPeriodResult(
+        att=att,
+        se=se,
+        uci=uci,
+        lci=lci,
+        groups=groups,
+        times=times,
+        glist=np.array([2, 3]),
+        tlist=np.array([1, 2, 3]),
+        inf_func_mat=rng.standard_normal((100, 6)),
+        n=100,
+        args={"control_group": "nevertreated", "est_method": "dr"},
+        unit_groups=rng.choice([0, 2, 3], size=100),
+    )
+
+
+@pytest.fixture
+def ddd_agg_eventstudy():
+    return DDDAggResult(
+        overall_att=0.7,
+        overall_se=0.15,
+        aggregation_type="eventstudy",
+        egt=np.array([-2, -1, 0, 1, 2]),
+        att_egt=np.array([0.1, 0.05, 0.8, 1.2, 1.5]),
+        se_egt=np.array([0.1, 0.09, 0.12, 0.15, 0.18]),
+        crit_val=1.96,
+        args={"alpha": 0.05},
+    )
+
+
+@pytest.fixture
+def ddd_agg_group():
+    return DDDAggResult(
+        overall_att=0.75,
+        overall_se=0.12,
+        aggregation_type="group",
+        egt=np.array([2, 3, 4]),
+        att_egt=np.array([0.5, 0.8, 1.0]),
+        se_egt=np.array([0.1, 0.12, 0.15]),
+        crit_val=1.96,
+        args={"alpha": 0.05},
+    )
+
+
+@pytest.fixture
+def ddd_agg_calendar():
+    return DDDAggResult(
+        overall_att=0.65,
+        overall_se=0.11,
+        aggregation_type="calendar",
+        egt=np.array([2, 3, 4]),
+        att_egt=np.array([0.4, 0.7, 0.9]),
+        se_egt=np.array([0.09, 0.11, 0.13]),
+        crit_val=1.96,
+        args={"alpha": 0.05},
+    )
+
+
+@pytest.fixture
+def ddd_agg_simple():
+    return DDDAggResult(
+        overall_att=0.8,
+        overall_se=0.14,
+        aggregation_type="simple",
+        args={"alpha": 0.05},
+    )

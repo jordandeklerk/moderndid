@@ -150,7 +150,9 @@ The output contains the DDD point estimate along with standard errors and confid
 ------------------------------------------------------------------------------
  Data Info
 ------------------------------------------------------------------------------
- Panel data: 2 periods
+ Panel Data: 2 periods
+ Outcome variable: y
+ Qualification variable: partition
 
  No. of units at each subgroup:
    treated-and-eligible: 1235
@@ -235,11 +237,16 @@ The output shows ATT estimates for each group-time combination:
 ------------------------------------------------------------------------------
  Data Info
 ------------------------------------------------------------------------------
+ Panel Data
+ Outcome variable: y
+ Qualification variable: partition
  Control group: Never Treated
  Base period: universal
- Number of units: 500
- Time periods: 3 (1 to 3)
- Treatment cohorts: 2
+
+ No. of units per treatment group:
+   Units never enabling treatment: 97
+   Units enabling treatment at period 2: 173
+   Units enabling treatment at period 3: 230
 
 ------------------------------------------------------------------------------
  Estimation Details
@@ -255,6 +262,14 @@ The output shows ATT estimates for each group-time combination:
 ==============================================================================
  See Ortiz-Villavicencio and Sant'Anna (2025) for details.
 ```
+
+We can also plot the group-time effects using `plot_gt()`:
+
+```python
+did.plot_gt(result_mp)
+```
+
+![Group-Time DDD Treatment Effects](/assets/ddd_gt.png)
 
 #### Event Study Aggregation
 
@@ -280,10 +295,10 @@ The output shows effects at each event time (time relative to treatment):
  Dynamic Effects:
 
     Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
-            -2    -1.0095       0.5296   [-2.2638,  0.2448]
-            -1     0.0000          nan   [    nan,     nan]
-             0    19.0341       0.2502   [18.4415, 19.6266] *
-             1    21.1660       0.4611   [20.0740, 22.2580] *
+            -2    -1.0095       0.5527   [-2.3211,  0.3021]
+            -1     0.0000           NA              NA
+             0    19.0341       0.2513   [18.4376, 19.6305] *
+             1    21.1660       0.4618   [20.0701, 22.2619] *
 
 ------------------------------------------------------------------------------
  Signif. codes: '*' confidence band does not cover 0
@@ -291,6 +306,14 @@ The output shows effects at each event time (time relative to treatment):
 ```
 
 The column `Event time` shows effects relative to treatment adoption. `Event time=0` is the on-impact effect, and negative event times can be used as a pre-test for parallel trends.
+
+We can also plot the event study with `plot_event_study()`:
+
+```python
+did.plot_event_study(event_study)
+```
+
+![DDD Event Study](/assets/ddd_event.png)
 
 #### Group Aggregation
 
@@ -321,6 +344,14 @@ group_agg = did.agg_ddd(result_mp, aggregation_type='group')
  Signif. codes: '*' confidence band does not cover 0
 ==============================================================================
 ```
+
+We can also plot the group effects with `plot_agg()`:
+
+```python
+did.plot_agg(group_agg)
+```
+
+![DDD Group Effects](/assets/ddd_group.png)
 
 #### Using Not-Yet-Treated as Control Group
 
@@ -363,11 +394,16 @@ result_nyt = did.ddd(
 ------------------------------------------------------------------------------
  Data Info
 ------------------------------------------------------------------------------
- Control group: Not Yet Treated
+ Panel Data
+ Outcome variable: y
+ Qualification variable: partition
+ Control group: Not Yet Treated (GMM-based)
  Base period: universal
- Number of units: 500
- Time periods: 3 (1 to 3)
- Treatment cohorts: 2
+
+ No. of units per treatment group:
+   Units never enabling treatment: 97
+   Units enabling treatment at period 2: 173
+   Units enabling treatment at period 3: 230
 
 ------------------------------------------------------------------------------
  Estimation Details
@@ -442,7 +478,9 @@ The output is very similar to the panel data methods and shows that repeated cro
 ------------------------------------------------------------------------------
  Data Info
 ------------------------------------------------------------------------------
- Repeated cross-section data: 2 periods
+ Repeated Cross-Section Data: 2 periods
+ Outcome variable: y
+ Qualification variable: partition
 
  No. of observations at each subgroup:
    treated-and-eligible: 2471
@@ -469,7 +507,7 @@ Note that the output now reports "No. of observations" rather than "No. of units
 
 #### Multi-Period Repeated Cross-Section
 
-Repeated cross-section estimation also works with staggered treatment adoption:
+Finally, we can also estimate the group-time average treatment effect using a GMM-based estimator with not-yet-treated units as comparison group. This is done by setting the `control_group` parameter to `"notyettreated"` in the ddd function.
 
 ```python
 dgp_mp = did.gen_dgp_mult_periods(n=500, dgp_type=1, panel=False, random_state=42)
@@ -483,14 +521,14 @@ result_mp = did.ddd(
     gname="group",
     pname="partition",
     xformla="~ cov1 + cov2 + cov3 + cov4",
-    control_group="nevertreated",
+    control_group="notyettreated",
     base_period="universal",
     est_method="dr",
     panel=False,
 )
 ```
 
-The output again indicates that repeated cros-section data was used in the staggered adoption design:
+The output again indicates that repeated cross-section data was used in the staggered adoption design:
 
 ```
 ==============================================================================
@@ -502,7 +540,7 @@ The output again indicates that repeated cros-section data was used in the stagg
 
    Group    Time       ATT(g,t)   Std. Error    [95% Conf. Int.]
        2       1       0.0000          NA              NA
-       2       2      10.3679       0.5588    [ 9.2726, 11.4632] *
+       2       2      10.4737       0.3535    [ 9.7809, 11.1666] *
        2       3      19.4277       0.6178    [18.2169, 20.6386] *
        3       1       0.2872       0.5702    [-0.8304,  1.4048]
        3       2       0.0000          NA              NA
@@ -514,7 +552,10 @@ The output again indicates that repeated cros-section data was used in the stagg
 ------------------------------------------------------------------------------
  Data Info
 ------------------------------------------------------------------------------
- Control group: Never Treated
+ Repeated Cross-Section Data
+ Outcome variable: y
+ Qualification variable: partition
+ Control group: Not Yet Treated (GMM-based)
  Base period: universal
  Number of observations: 1500
  Time periods: 3 (1 to 3)

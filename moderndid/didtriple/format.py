@@ -65,7 +65,13 @@ def format_ddd_panel_result(result):
     lines.append("-" * 78)
     lines.append(" Data Info")
     lines.append("-" * 78)
-    lines.append(" Panel data: 2 periods")
+    lines.append(" Panel Data: 2 periods")
+
+    yname = args.get("yname", "y")
+    lines.append(f" Outcome variable: {yname}")
+
+    pname = args.get("pname", "partition")
+    lines.append(f" Qualification variable: {pname}")
 
     lines.append("")
     lines.append(" No. of units at each subgroup:")
@@ -170,20 +176,33 @@ def format_ddd_mp_result(result):
     lines.append("-" * 78)
     lines.append(" Data Info")
     lines.append("-" * 78)
+    lines.append(" Panel Data")
+
+    yname = args.get("yname", "y")
+    lines.append(f" Outcome variable: {yname}")
+
+    pname = args.get("pname", "partition")
+    lines.append(f" Qualification variable: {pname}")
 
     control_group = args.get("control_group", "nevertreated")
     if control_group == "nevertreated":
         control_type = "Never Treated"
     else:
-        control_type = "Not Yet Treated"
+        control_type = "Not Yet Treated (GMM-based)"
     lines.append(f" Control group: {control_type}")
 
     base_period = args.get("base_period", "universal")
     lines.append(f" Base period: {base_period}")
 
-    lines.append(f" Number of units: {result.n}")
-    lines.append(f" Time periods: {len(result.tlist)} ({result.tlist.min():.0f} to {result.tlist.max():.0f})")
-    lines.append(f" Treatment cohorts: {len(result.glist)}")
+    lines.append("")
+    lines.append(" No. of units per treatment group:")
+    unique_groups = np.unique(result.unit_groups)
+    for g in sorted(unique_groups):
+        count = np.sum(result.unit_groups == g)
+        if g == 0:
+            lines.append(f"   Units never enabling treatment: {count}")
+        else:
+            lines.append(f"   Units enabling treatment at period {int(g)}: {count}")
 
     lines.append("")
     lines.append("-" * 78)
@@ -281,7 +300,13 @@ def format_ddd_rc_result(result):
     lines.append("-" * 78)
     lines.append(" Data Info")
     lines.append("-" * 78)
-    lines.append(" Repeated cross-section data: 2 periods")
+    lines.append(" Repeated Cross-Section Data: 2 periods")
+
+    yname = args.get("yname", "y")
+    lines.append(f" Outcome variable: {yname}")
+
+    pname = args.get("pname", "partition")
+    lines.append(f" Qualification variable: {pname}")
 
     lines.append("")
     lines.append(" No. of observations at each subgroup:")
@@ -374,12 +399,19 @@ def format_ddd_mp_rc_result(result):
     lines.append("-" * 78)
     lines.append(" Data Info")
     lines.append("-" * 78)
+    lines.append(" Repeated Cross-Section Data")
+
+    yname = args.get("yname", "y")
+    lines.append(f" Outcome variable: {yname}")
+
+    pname = args.get("pname", "partition")
+    lines.append(f" Qualification variable: {pname}")
 
     control_group = args.get("control_group", "nevertreated")
     if control_group == "nevertreated":
         control_type = "Never Treated"
     else:
-        control_type = "Not Yet Treated"
+        control_type = "Not Yet Treated (GMM-based)"
     lines.append(f" Control group: {control_type}")
 
     base_period = args.get("base_period", "universal")
