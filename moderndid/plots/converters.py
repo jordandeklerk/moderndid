@@ -12,6 +12,9 @@ if TYPE_CHECKING:
     from moderndid.did.multiperiod_obj import MPResult
     from moderndid.didcont.estimation.container import DoseResult, PTEResult
     from moderndid.didhonest.honest_did import HonestDiDResult
+    from moderndid.didtriple.agg_ddd_obj import DDDAggResult
+    from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
+    from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
 
 
 def mpresult_to_polars(result: MPResult) -> pl.DataFrame:
@@ -296,3 +299,103 @@ def honestdid_to_polars(result: HonestDiDResult) -> pl.DataFrame:
     combined = combined.rename({param_col: "param_value"})
 
     return combined.sort(["method", "param_value"])
+
+
+def dddmpresult_to_polars(result: DDDMultiPeriodResult | DDDMultiPeriodRCResult) -> pl.DataFrame:
+    """Convert DDDMultiPeriodResult or DDDMultiPeriodRCResult to polars DataFrame for plotting.
+
+    Parameters
+    ----------
+    result : DDDMultiPeriodResult or DDDMultiPeriodRCResult
+        Multi-period DDD result containing group-time ATT estimates.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns:
+
+        - group: treatment cohort
+        - time: time period
+        - att: group-time ATT estimate
+        - se: standard error
+        - ci_lower: lower confidence interval
+        - ci_upper: upper confidence interval
+        - treatment_status: "Pre" or "Post" treatment
+    """
+    groups = result.groups
+    times = result.times
+    att = result.att
+    se = result.se
+
+    ci_lower = result.lci
+    ci_upper = result.uci
+
+    treatment_status = np.array(["Pre" if t < g else "Post" for g, t in zip(groups, times)])
+
+    return pl.DataFrame(
+        {
+            "group": groups,
+            "time": times,
+            "att": att,
+            "se": se,
+            "ci_lower": ci_lower,
+            "ci_upper": ci_upper,
+            "treatment_status": treatment_status,
+        }
+    )
+
+
+def dddaggresult_to_polars(result: DDDAggResult) -> pl.DataFrame:
+    """Convert DDDAggResult to polars DataFrame for plotting.
+
+    Parameters
+    ----------
+    result : DDDAggResult
+        Aggregated DDD treatment effect result (eventstudy, group, or calendar).
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns:
+
+        - event_time: event time (for eventstudy), group (for group), or time (for calendar)
+        - att: ATT estimate
+        - se: standard error
+        - ci_lower: lower confidence interval
+        - ci_upper: upper confidence interval
+        - treatment_status: "Pre" or "Post" (for eventstudy aggregation)
+
+    Raises
+    ------
+    ValueError
+        If result is simple aggregation or missing required data.
+    """
+    if result.aggregation_type == "simple":
+        raise ValueError("Simple aggregation does not produce event-level data for plotting.")
+
+    if result.egt is None or result.att_egt is None or result.se_egt is None:
+        raise ValueError(
+            f"DDDAggResult with aggregation_type='{result.aggregation_type}' must have egt, att_egt, and se_egt"
+        )
+
+    event_times = result.egt
+    att = result.att_egt
+    se = result.se_egt
+
+    crit_val = result.crit_val if result.crit_val is not None else 1.96
+
+    ci_lower = att - crit_val * se
+    ci_upper = att + crit_val * se
+
+    data = {
+        "event_time": event_times,
+        "att": att,
+        "se": se,
+        "ci_lower": ci_lower,
+        "ci_upper": ci_upper,
+    }
+
+    if result.aggregation_type == "eventstudy":
+        data["treatment_status"] = np.array(["Pre" if e < 0 else "Post" for e in event_times])
+
+    return pl.DataFrame(data)

@@ -130,12 +130,15 @@ def format_ddd_agg_result(result):
         for event_val, att_val, se_val, lb, ub in zip(
             result.egt, result.att_egt, result.se_egt, lower_bounds, upper_bounds
         ):
-            sig = (ub < 0) or (lb > 0)
-            sig_marker = "*" if sig else " "
+            if np.isnan(se_val):
+                lines.append(f"  {event_val:>12.0f}   {att_val:8.4f}           NA              NA")
+            else:
+                sig = (ub < 0) or (lb > 0)
+                sig_marker = "*" if sig else " "
 
-            lines.append(
-                f"  {event_val:>12.0f}   {att_val:8.4f}   {se_val:10.4f}   [{lb:7.4f}, {ub:7.4f}] {sig_marker}"
-            )
+                lines.append(
+                    f"  {event_val:>12.0f}   {att_val:8.4f}   {se_val:10.4f}   [{lb:7.4f}, {ub:7.4f}] {sig_marker}"
+                )
 
     lines.append("")
     lines.append("-" * 78)

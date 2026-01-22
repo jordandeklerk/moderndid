@@ -31,7 +31,7 @@ Aggregates the numerous group-time ATTs into interpretable summary parameters:
 The main entry point provides a pandas-friendly interface with sensible defaults:
 
 ```python
-from moderndid import att_gt, aggte, plot_att_gt, plot_event_study
+from moderndid import att_gt, aggte, plot_gt, plot_event_study
 
 # Estimate group-time ATTs
 att_results = att_gt(
@@ -149,38 +149,13 @@ Anticipation Periods:  0
 Estimation Method:  Doubly Robust
 ```
 
-We can also plot the results using `plot_att_gt()`:
+We can also plot the results using `plot_gt()`:
 
 ```python
-did.plot_att_gt(attgt_result)
+did.plot_gt(attgt_result)
 ```
 
 ![Group-Time Average Treatment Effects](/assets/att.png)
-
-### Customizing Plots
-
-All plotting functions in moderndid are built with [plotnine](https://plotnine.org/), a Python implementation of the grammar of graphics. This means you can customize any plot using standard plotnine syntax by adding layers, themes, and scales.
-
-```python
-from plotnine import labs, theme, theme_classic, scale_color_manual
-
-# Customize with plotnine
-custom_plot = (
-    did.plot_att_gt(attgt_result)
-    + theme_classic()  # Use a different theme
-    + scale_color_manual(values={"Pre": "#2ecc71", "Post": "#9b59b6"})
-    + labs(
-        title="Effect of Minimum Wage on Teen Employment",
-        x="Year",
-        y="ATT Estimate"
-    )
-    + theme(figure_size=(10, 8))  # Adjust figure size
-)
-
-custom_plot.save("my_plot.png", dpi=300)
-```
-
-![Customized Plot](/assets/att_custom.png)
 
 ### Event Study
 

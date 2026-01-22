@@ -10,6 +10,8 @@ from moderndid.didhonest.honest_did import HonestDiDResult
 from moderndid.didhonest.sensitivity import OriginalCSResult
 from moderndid.plots.converters import (
     aggteresult_to_polars,
+    dddaggresult_to_polars,
+    dddmpresult_to_polars,
     doseresult_to_polars,
     honestdid_to_polars,
     mpresult_to_polars,
@@ -263,3 +265,86 @@ def test_honestdid_midpoint():
 
     assert original_row["midpoint"].item() == pytest.approx(0.5)
     assert flci_row["midpoint"].item() == pytest.approx(0.5)
+
+
+def test_dddmpresult_to_polars(ddd_mp_result):
+    df = dddmpresult_to_polars(ddd_mp_result)
+
+    assert isinstance(df, pl.DataFrame)
+    assert "group" in df.columns
+    assert "time" in df.columns
+    assert "att" in df.columns
+    assert "se" in df.columns
+    assert "ci_lower" in df.columns
+    assert "ci_upper" in df.columns
+    assert "treatment_status" in df.columns
+    assert len(df) == 6
+
+
+def test_dddmpresult_treatment_status(ddd_mp_result):
+    df = dddmpresult_to_polars(ddd_mp_result)
+
+    post_rows = df.filter(pl.col("treatment_status") == "Post")
+    pre_rows = df.filter(pl.col("treatment_status") == "Pre")
+
+    for row in post_rows.iter_rows(named=True):
+        assert row["time"] >= row["group"]
+
+    for row in pre_rows.iter_rows(named=True):
+        assert row["time"] < row["group"]
+
+
+def test_dddaggresult_eventstudy_to_polars(ddd_agg_eventstudy):
+    df = dddaggresult_to_polars(ddd_agg_eventstudy)
+
+    assert isinstance(df, pl.DataFrame)
+    assert "event_time" in df.columns
+    assert "att" in df.columns
+    assert "se" in df.columns
+    assert "ci_lower" in df.columns
+    assert "ci_upper" in df.columns
+    assert "treatment_status" in df.columns
+    assert len(df) == 5
+
+
+def test_dddaggresult_eventstudy_treatment_status(ddd_agg_eventstudy):
+    df = dddaggresult_to_polars(ddd_agg_eventstudy)
+
+    pre_rows = df.filter(pl.col("event_time") < 0)
+    post_rows = df.filter(pl.col("event_time") >= 0)
+
+    assert all(s == "Pre" for s in pre_rows["treatment_status"].to_list())
+    assert all(s == "Post" for s in post_rows["treatment_status"].to_list())
+
+
+def test_dddaggresult_simple_raises(ddd_agg_simple):
+    with pytest.raises(ValueError, match="Simple aggregation"):
+        dddaggresult_to_polars(ddd_agg_simple)
+
+
+@pytest.mark.parametrize("agg_type", ["group", "calendar"])
+def test_dddaggresult_group_calendar_to_polars(agg_type, ddd_agg_group, ddd_agg_calendar):
+    result = ddd_agg_group if agg_type == "group" else ddd_agg_calendar
+    df = dddaggresult_to_polars(result)
+
+    assert isinstance(df, pl.DataFrame)
+    assert "event_time" in df.columns
+    assert "att" in df.columns
+    assert len(df) == 3
+    assert "treatment_status" not in df.columns
+
+
+def test_dddaggresult_confidence_intervals(ddd_agg_eventstudy):
+    df = dddaggresult_to_polars(ddd_agg_eventstudy)
+
+    row = df.filter(pl.col("event_time") == 0)
+    att = row["att"].item()
+    se = row["se"].item()
+    ci_lower = row["ci_lower"].item()
+    ci_upper = row["ci_upper"].item()
+
+    expected_lower = att - 1.96 * se
+    expected_upper = att + 1.96 * se
+
+    assert ci_lower == pytest.approx(expected_lower)
+    assert ci_upper == pytest.approx(expected_upper)
