@@ -37,11 +37,37 @@ def ddd(
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
 
-    Wrapper for triple difference-in-differences (DDD) estimators that automatically
-    detects whether the data has two periods or multiple periods with staggered treatment
-    adoption, calling the appropriate estimator. DDD extends standard DiD by incorporating
-    a partition variable that identifies eligible units within treatment groups, allowing
-    for both group-specific and partition-specific violations of parallel trends.
+    Implements triple difference-in-differences (DDD) estimation following [1]_. DDD
+    extends standard DiD by incorporating a partition variable :math:`Q` that identifies
+    eligible units within treatment-enabling groups :math:`S`, allowing for violations
+    of traditional DiD parallel trends as long as these violations are stable across
+    groups.
+
+    Let :math:`S_i` denote the period when treatment is enabled for unit :math:`i`'s
+    group, and :math:`Q_i \in \{0,1\}` indicate eligibility within that group. The
+    group-time average treatment effect measures the effect among eligible units in
+    group :math:`g` at time :math:`t`
+
+    .. math::
+
+        ATT(g,t) = \mathbb{E}[Y_{i,t}(g) - Y_{i,t}(\infty) \mid S_i = g, Q_i = 1].
+
+    Identification relies on a DDD conditional parallel trends assumption that allows
+    for differential trends between eligible and ineligible units, provided these
+    differentials are stable across treatment-enabling groups. For groups :math:`g`
+    and :math:`g'` where :math:`g' > \max\{g,t\}`
+
+    .. math::
+
+        &\mathbb{E}[\Delta Y(\infty) \mid S=g, Q=1, X]
+        - \mathbb{E}[\Delta Y(\infty) \mid S=g, Q=0, X] \\
+        &= \mathbb{E}[\Delta Y(\infty) \mid S=g', Q=1, X]
+        - \mathbb{E}[\Delta Y(\infty) \mid S=g', Q=0, X],
+
+    where :math:`\Delta Y(\infty) = Y_t(\infty) - Y_{t-1}(\infty)` denotes the change
+    in untreated potential outcomes. This assumption does not impose standard DiD
+    parallel trends within or across groups, making DDD appealing when such assumptions
+    are implausible.
 
     Parameters
     ----------

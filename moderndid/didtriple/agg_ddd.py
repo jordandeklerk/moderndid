@@ -23,36 +23,44 @@ def agg_ddd(
 ) -> DDDAggResult:
     r"""Aggregate group-time average treatment effects for triple differences.
 
-    Takes group-time average treatment effects from :func:`ddd_mp` and aggregates
-    them into summary parameters following [2]_. The event study aggregation computes
-    effects at each event time :math:`e = t - g`
+    Takes the full set of group-time average treatment effects from ``ddd`` and
+    aggregates them into interpretable summary measures, following [1]_ and [2]_.
+    Different aggregation schemes answer different policy questions about
+    treatment effect heterogeneity.
+
+    Let :math:`\mathcal{G}_{\mathrm{trt}}` denote the set of treatment cohorts,
+    :math:`T` the final time period, and :math:`ATT(g,t)` the group-time average
+    treatment effect for cohort :math:`g` at time :math:`t`.
+
+    The event-study aggregation reveals how effects evolve with exposure time
+    :math:`e = t - g`
 
     .. math::
+
         ES(e) = \sum_{g \in \mathcal{G}_{\mathrm{trt}}}
         \mathbb{P}(G=g \mid G+e \in [2, T]) \, ATT(g, g+e).
 
-    The simple aggregation computes a scalar summary by averaging all
-    post-treatment event study coefficients
+    The simple aggregation computes an overall summary by averaging event-study
+    coefficients across post-treatment periods
 
     .. math::
-        ES_{\mathrm{avg}} = \frac{1}{N_E} \sum_{e \in \mathcal{E}} ES(e),
 
-    where :math:`\mathcal{E}` is the support of post-treatment event time
-    and :math:`N_E` is its cardinality.
+        ES_{\mathrm{avg}} = \frac{1}{|\mathcal{E}|} \sum_{e \in \mathcal{E}} ES(e),
 
-    The group aggregation computes average effects for each treatment cohort
-    :math:`g` by averaging over all post-treatment periods for that cohort [1]_
+    where :math:`\mathcal{E}` is the support of post-treatment event times.
+
+    Group-specific aggregation averages effects over time for each treatment
+    cohort :math:`g`
 
     .. math::
+
         \theta_g = \frac{1}{T - g + 1} \sum_{t=g}^{T} ATT(g, t).
 
-    The overall group effect is then a weighted average across cohorts with
-    weights proportional to cohort size.
-
-    The calendar aggregation computes average effects for each calendar
-    time period :math:`t` by averaging across all cohorts treated by time :math:`t` [1]_
+    Calendar-time aggregation averages across treated cohorts within each period
+    :math:`t`
 
     .. math::
+
         \theta_t = \sum_{g \leq t} \mathbb{P}(G=g \mid G \leq t) \, ATT(g, t).
 
     Parameters
