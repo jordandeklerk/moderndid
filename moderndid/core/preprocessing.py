@@ -238,6 +238,7 @@ def preprocess_cont_did(
     base_period="varying",
     boot_type="multiplier",
     required_pre_periods=0,
+    dose_est_method="parametric",
 ):
     """Process data for continuous treatment difference-in-differences.
 
@@ -353,6 +354,7 @@ def preprocess_cont_did(
         base_period=base_period_enum,
         boot_type=boot_type_enum,
         required_pre_periods=required_pre_periods,
+        dose_est_method=dose_est_method,
     )
 
     builder = PreprocessDataBuilder()

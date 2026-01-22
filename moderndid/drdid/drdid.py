@@ -47,11 +47,38 @@ def drdid(
     inf_func=False,
     trim_level=0.995,
 ):
-    r"""Wrap the locally efficient doubly robust DiD estimators for the ATT.
+    r"""Compute the locally efficient doubly robust DiD estimator for the ATT.
 
-    This function is a wrapper for doubly robust difference-in-differences (DiD) estimators.
-    It can be used with panel or stationary repeated cross-section data and calls the
-    appropriate estimator based on the panel argument and estimation method.
+    Implements doubly robust difference-in-differences estimation following [2]_.
+    These estimators combine inverse probability weighting and outcome regression,
+    providing consistency if either the propensity score model or the outcome
+    regression model is correctly specified, but not necessarily both.
+
+    The parameter of interest is the average treatment effect on the treated (ATT)
+    in a two-period setting
+
+    .. math::
+
+        \tau = \mathbb{E}[Y_1(1) - Y_1(0) \mid D = 1].
+
+    Identification relies on a conditional parallel trends assumption requiring
+    that treated and comparison groups would have evolved similarly absent
+    treatment, conditional on covariates :math:`X`
+
+    .. math::
+
+        \mathbb{E}[Y_1(0) - Y_0(0) \mid D=1, X] = \mathbb{E}[Y_1(0) - Y_0(0) \mid D=0, X].
+
+    For panel data, the doubly robust estimand combines outcome regression
+    :math:`\mu_{0,\Delta}(X) = \mathbb{E}[\Delta Y \mid D=0, X]` with propensity
+    score weighting :math:`\pi(X) = \mathbb{P}(D=1 \mid X)`
+
+    .. math::
+
+        \tau^{dr} = \mathbb{E}\left[\left(\frac{D}{\mathbb{E}[D]}
+        - \frac{\pi(X)(1-D)/(1-\pi(X))}
+        {\mathbb{E}[\pi(X)(1-D)/(1-\pi(X))]}\right)
+        (\Delta Y - \mu_{0,\Delta}(X))\right].
 
     Parameters
     ----------

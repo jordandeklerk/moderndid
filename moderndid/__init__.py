@@ -2,7 +2,7 @@
 """Modern difference-in-differences estimators."""
 
 from moderndid.core import data
-from moderndid.core.data import load_ehec, load_engel, load_mpdta, load_nsw
+from moderndid.core.data import load_ehec, load_engel, load_mpdta, load_nsw, simulate_cont_did_data
 from moderndid.core.preprocess import DIDData, preprocess_did
 from moderndid.core.preprocess.utils import extract_vars_from_formula, parse_formula
 from moderndid.did.aggte import aggte
@@ -335,6 +335,7 @@ __all__ = [
     "setup_pte",
     "setup_pte_basic",
     "setup_pte_cont",
+    "simulate_cont_did_data",
     "std_ipw_did_panel",
     "std_ipw_did_rc",
     "summary_mp_pretest",

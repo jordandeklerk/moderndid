@@ -631,9 +631,9 @@ def mock_gt_results_no_dose(att_gt_raw_results):
 
 @pytest.fixture
 def contdid_data():
-    from tests.didcont.dgp import simulate_contdid_data
+    from moderndid import simulate_cont_did_data
 
-    data = simulate_contdid_data(n=1000, seed=12345)
+    data = simulate_cont_did_data(n=1000, seed=12345)
     return data.rename({"time_period": "period"})
 
 
