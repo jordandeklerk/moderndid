@@ -8,6 +8,9 @@ from plotnine import ggplot
 
 from moderndid.plots import (
     plot_att_gt,
+    plot_ddd_agg,
+    plot_ddd_event_study,
+    plot_ddd_gt,
     plot_dose_response,
     plot_event_study,
     plot_sensitivity,
@@ -92,3 +95,84 @@ def test_plot_sensitivity_no_ref_line(honest_result):
 def test_plot_sensitivity_custom_labels(honest_result):
     plot = plot_sensitivity(honest_result, xlab="Parameter", ylab="CI", title="Sensitivity")
     assert isinstance(plot, ggplot)
+
+
+def test_plot_ddd_gt_returns_ggplot(ddd_mp_result):
+    plot = plot_ddd_gt(ddd_mp_result)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("show_ci", [True, False])
+def test_plot_ddd_gt_show_ci(ddd_mp_result, show_ci):
+    plot = plot_ddd_gt(ddd_mp_result, show_ci=show_ci)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("ref_line", [0, None, 0.5])
+def test_plot_ddd_gt_ref_line(ddd_mp_result, ref_line):
+    plot = plot_ddd_gt(ddd_mp_result, ref_line=ref_line)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_ddd_gt_custom_labels(ddd_mp_result):
+    plot = plot_ddd_gt(ddd_mp_result, xlab="Period", ylab="Effect", title="Cohort")
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_ddd_gt_invalid_input_raises():
+    with pytest.raises(TypeError, match="plot_ddd_gt requires"):
+        plot_ddd_gt("invalid")
+
+
+def test_plot_ddd_event_study_returns_ggplot(ddd_agg_eventstudy):
+    plot = plot_ddd_event_study(ddd_agg_eventstudy)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("show_ci", [True, False])
+def test_plot_ddd_event_study_show_ci(ddd_agg_eventstudy, show_ci):
+    plot = plot_ddd_event_study(ddd_agg_eventstudy, show_ci=show_ci)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_ddd_event_study_custom_labels(ddd_agg_eventstudy):
+    plot = plot_ddd_event_study(ddd_agg_eventstudy, xlab="Time", ylab="Effect", title="ES")
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_ddd_event_study_wrong_aggregation_raises(ddd_agg_simple):
+    with pytest.raises(ValueError, match="eventstudy aggregation"):
+        plot_ddd_event_study(ddd_agg_simple)
+
+
+def test_plot_ddd_event_study_invalid_input_raises():
+    with pytest.raises(TypeError, match="plot_ddd_event_study requires"):
+        plot_ddd_event_study("invalid")
+
+
+@pytest.mark.parametrize("fixture_name", ["ddd_agg_group", "ddd_agg_calendar"])
+def test_plot_ddd_agg_returns_ggplot(fixture_name, request):
+    result = request.getfixturevalue(fixture_name)
+    plot = plot_ddd_agg(result)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("show_ci", [True, False])
+def test_plot_ddd_agg_show_ci(ddd_agg_group, show_ci):
+    plot = plot_ddd_agg(ddd_agg_group, show_ci=show_ci)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_ddd_agg_custom_labels(ddd_agg_group):
+    plot = plot_ddd_agg(ddd_agg_group, xlab="Group", ylab="Effect", title="Custom")
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_ddd_agg_wrong_aggregation_raises(ddd_agg_eventstudy):
+    with pytest.raises(ValueError, match="group or calendar aggregation"):
+        plot_ddd_agg(ddd_agg_eventstudy)
+
+
+def test_plot_ddd_agg_invalid_input_raises():
+    with pytest.raises(TypeError, match="plot_ddd_agg requires"):
+        plot_ddd_agg("invalid")
