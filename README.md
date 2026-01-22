@@ -78,7 +78,7 @@ import moderndid as did
 data = did.load_mpdta()
 
 # Estimate group-time average treatment effects
-result = did.att_gt(
+attgt_result = did.att_gt(
     data=data,
     yname="lemp",
     tname="year",
@@ -86,7 +86,7 @@ result = did.att_gt(
     gname="first.treat",
     est_method="dr",
 )
-print(result)
+print(attgt_result)
 ```
 
 The output shows treatment effects for each group-time pair, along with simultaneous confidence bands that account for multiple testing:
@@ -121,6 +121,10 @@ Estimation Method:  Doubly Robust
 Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
 
 We can plot these results using the `plot_gt()` functionality:
+
+```python
+did.plot_gt(attgt_result)
+```
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="ATT plot">
 
