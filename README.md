@@ -69,6 +69,8 @@ did.load_engel()  # Household expenditure
 
 This example uses county-level teen employment data to estimate the effect of minimum wage increases. States adopted higher minimum wages at different times (2004, 2006, or 2007), making this a staggered adoption design.
 
+The `att_gt` function estimates the average treatment effect for each group $g$ (defined by when units were first treated) at each time period $t$. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
+
 ```python
 import moderndid as did
 
@@ -87,7 +89,7 @@ result = did.att_gt(
 print(result)
 ```
 
-The output shows treatment effects for each group (defined by when they were first treated) at each time period:
+The output shows treatment effects for each group-time pair, along with simultaneous confidence bands that account for multiple testing:
 
 ```
 Reference: Callaway and Sant'Anna (2021)
@@ -116,11 +118,13 @@ Anticipation Periods:  0
 Estimation Method:  Doubly Robust
 ```
 
+Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
+
 We can plot these results using the `plot_gt()` functionality:
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="ATT plot">
 
-These group-time effects can be aggregated into an event study to see how effects evolve relative to treatment:
+While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The `aggte` function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
 
 ```python
 event_study = did.aggte(result, type="dynamic")
@@ -160,6 +164,8 @@ Anticipation Periods: 0
 Estimation Method: Doubly Robust
 ==============================================================================
 ```
+
+Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero support the parallel trends assumption, while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
 
 We can also use built-in plotting functionality to plot the event study results with `plot_event_study()`:
 
