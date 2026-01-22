@@ -30,7 +30,7 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 
 ## Features
 
-- **Multiple DiD estimators** — Staggered adoption, doubly robust, continuous treatment, triple difference, and sensitivity analysis
+- **DiD Estimators** — [Staggered](moderndid/did), [Doubly Robust](moderndid/drdid), [Continuous](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Sensitivity](moderndid/didhonest)
 - **Fast computation** — [Polars](https://pola.rs/) for data wrangling, [NumPy](https://numpy.org/) vectorization, and [Numba](https://numba.pydata.org/) JIT compilation for performance-critical paths
 - **Native plots** — Built on [plotnine](https://plotnine.org/) with full customization support
 - **Robust inference** — Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
