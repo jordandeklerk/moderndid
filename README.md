@@ -56,7 +56,7 @@ result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", .
 
 ### Example Datasets
 
-Several classic datasets from the DiD literature are included for learning and experimentation:
+Several classic datasets from the DiD literature are included for experimentation:
 
 ```python
 did.load_mpdta()  # County teen employment
