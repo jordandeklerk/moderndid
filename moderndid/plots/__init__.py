@@ -10,12 +10,10 @@ from moderndid.plots.converters import (
     pteresult_to_polars,
 )
 from moderndid.plots.plots import (
-    plot_att_gt,
-    plot_ddd_agg,
-    plot_ddd_event_study,
-    plot_ddd_gt,
+    plot_agg,
     plot_dose_response,
     plot_event_study,
+    plot_gt,
     plot_sensitivity,
 )
 from moderndid.plots.themes import (
@@ -27,14 +25,11 @@ from moderndid.plots.themes import (
 
 __all__ = [
     # Plot functions
-    "plot_att_gt",
+    "plot_gt",
     "plot_event_study",
+    "plot_agg",
     "plot_dose_response",
     "plot_sensitivity",
-    # DDD Plot functions
-    "plot_ddd_gt",
-    "plot_ddd_event_study",
-    "plot_ddd_agg",
     # Themes
     "theme_moderndid",
     "theme_publication",
@@ -46,7 +41,6 @@ __all__ = [
     "doseresult_to_polars",
     "pteresult_to_polars",
     "honestdid_to_polars",
-    # DDD Converters
     "dddmpresult_to_polars",
     "dddaggresult_to_polars",
 ]
