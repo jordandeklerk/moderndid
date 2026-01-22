@@ -12,7 +12,7 @@ API Reference
 This is the comprehensive API reference for **ModernDiD**, covering all public functions
 and classes available in the package. The documentation is generated automatically from
 the code documentation strings. Please refer to the :ref:`background` section for
-theoretical explanations and the :ref:`user_guide` for practical examples.
+theoretical explanations and the :ref:`example_gallery` section for practical examples.
 
 .. toctree::
    :maxdepth: 2

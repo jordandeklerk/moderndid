@@ -420,10 +420,15 @@ def _format_dose_result(result):
             lines.append(f"Control Group: {control_text}")
         if hasattr(pte_params, "anticipation"):
             lines.append(f"Anticipation Periods: {pte_params.anticipation}")
-        if hasattr(pte_params, "degree"):
-            lines.append(f"Spline Degree: {pte_params.degree}")
-        if hasattr(pte_params, "num_knots"):
-            lines.append(f"Number of Knots: {pte_params.num_knots}")
+        dose_method = getattr(pte_params, "dose_est_method", "parametric")
+        lines.append(
+            f"Estimation Method: {'Parametric (B-spline)' if dose_method == 'parametric' else 'Non-parametric (CCK)'}"
+        )
+        if dose_method == "parametric":
+            if hasattr(pte_params, "degree"):
+                lines.append(f"Spline Degree: {pte_params.degree}")
+            if hasattr(pte_params, "num_knots"):
+                lines.append(f"Number of Knots: {pte_params.num_knots}")
 
     lines.append("=" * 78)
     return "\n".join(lines)

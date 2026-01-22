@@ -702,6 +702,7 @@ def _build_pte_params(
         "aggregation": config.aggregation,
         "treatment_type": config.treatment_type,
         "xformula": config.xformla,
+        "dose_est_method": getattr(config, "dose_est_method", "parametric"),
     }
 
     return PTEParams(**params_dict)

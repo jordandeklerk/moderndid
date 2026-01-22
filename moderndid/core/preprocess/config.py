@@ -115,6 +115,7 @@ class ContDIDConfig(BasePreprocessConfig):
     target_parameter: str = "att"
     aggregation: str = "dose"
     treatment_type: str = "continuous"
+    dose_est_method: str = "parametric"
     time_map: dict | None = None
 
 

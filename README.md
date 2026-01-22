@@ -59,10 +59,10 @@ result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", .
 Several classic datasets from the DiD literature are included for learning and experimentation:
 
 ```python
-did.load_mpdta()  # County teen employment (staggered adoption)
-did.load_nsw()    # NSW job training program (2-period panel)
-did.load_ehec()   # Medicaid expansion (sensitivity analysis)
-did.load_engel()  # Household expenditure (continuous treatment)
+did.load_mpdta()  # County teen employment
+did.load_nsw()    # NSW job training program
+did.load_ehec()   # Medicaid expansion
+did.load_engel()  # Household expenditure
 ```
 
 ## Quick Start

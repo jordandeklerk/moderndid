@@ -21,11 +21,51 @@ def aggte(
     clustervars=None,
     random_state=None,
 ):
-    """Aggregate Group-Time Average Treatment Effects.
+    r"""Aggregate group-time average treatment effects.
 
-    Takes group-time average treatment effects and aggregates them into a smaller
-    number of parameters. There are several possible aggregations including
-    "simple", "dynamic", "group", and "calendar."
+    Takes the full set of group-time average treatment effects from ``att_gt``
+    and aggregates them into interpretable summary measures, following Callaway
+    and Sant'Anna (2021) [1]_. Different aggregation schemes answer different
+    policy questions about treatment effect heterogeneity.
+
+    Let :math:`\mathcal{G}` denote the set of treatment groups, :math:`\mathcal{T}`
+    the final time period, :math:`G` the random variable for treatment timing,
+    and :math:`ATT(g,t)` the group-time average treatment effect for group
+    :math:`g` at time :math:`t`.
+
+    The event-study or dynamic aggregation reveals how effects evolve with
+    exposure time :math:`e = t - g`. The event-study parameter averages effects
+    across groups observed :math:`e` periods after treatment
+
+    .. math::
+
+        \theta_{es}(e) = \sum_{g \in \mathcal{G}} \mathbf{1}\{g + e \le \mathcal{T}\}
+        P(G = g \mid G + e \le \mathcal{T}) \, ATT(g, g + e).
+
+    Group-specific aggregation averages effects over time for each treatment
+    cohort :math:`\tilde{g}`, revealing whether early versus late adopters
+    experience different effects
+
+    .. math::
+
+        \theta_{sel}(\tilde{g}) = \frac{1}{\mathcal{T} - \tilde{g} + 1}
+        \sum_{t=\tilde{g}}^{\mathcal{T}} ATT(\tilde{g}, t).
+
+    Calendar-time aggregation averages across treated groups within each period
+    :math:`\tilde{t}`, showing how effects vary with time-specific factors
+
+    .. math::
+
+        \theta_{c}(\tilde{t}) = \sum_{g \in \mathcal{G}} \mathbf{1}\{\tilde{t} \ge g\}
+        P(G = g \mid G \le \tilde{t}) \, ATT(g, \tilde{t}).
+
+    The simple or overall aggregation provides a single summary measure by
+    weighting group-specific effects by the distribution of treatment timing
+
+    .. math::
+
+        \theta_{sel}^O = \sum_{g \in \mathcal{G}} \theta_{sel}(g) \,
+        P(G = g \mid G \le \mathcal{T}).
 
     Parameters
     ----------
