@@ -139,6 +139,18 @@ custom_plot.save("sensitivity.png", dpi=300)
 
 ## Usage
 
+There are two main ways to use this module depending on your workflow:
+
+- **Direct API**: If you have event study coefficients and variance-covariance matrices from an external estimator (e.g., `pyfixest`, Stata, or traditional TWFE), use `create_sensitivity_results_rm` and `create_sensitivity_results_sm` directly.
+
+- **High-Level API**: If you're using `moderndid`'s `att_gt` and `aggte` functions, the `honest_did` wrapper automatically extracts the necessary components from the event study object.
+
+We will first demonstrate the direct API workflow, then show the high-level API in the [Staggered Treatment Timing](#staggered-treatment-timing) section.
+
+---
+
+### Direct API: External Estimators
+
 We will examine the effects of Medicaid expansions on insurance coverage using publicly-available data derived from the ACS. We first load the data and packages relevant for the analysis.
 
 ```python
@@ -357,16 +369,11 @@ plot_sensitivity(delta_rm_results_avg)
 
 ## Staggered Treatment Timing
 
-The `honest_did` function can be used with any estimator that produces a vector of event study coefficients,
-provided you are willing to impose relative magnitudes or smoothness restrictions that relate the bias of the
-"post-treatment" estimates to the "pre-treatment" estimates.
+### High-Level API: `honest_did` with `att_gt` and `aggte`
 
-Below, we show how the package can be used with modern methods for DiD with staggered treatment timing.
+When using `moderndid`'s built-in estimators, the `honest_did` function automatically extracts coefficients, variance-covariance matrices, and period information from the event study object.
 
-### Using HonestDiD with `att_gt` and `aggte`
-
-We can combine staggered treatment DiD estimators of the Callaway and Sant'Anna type with Honest DiD
-sensitivity analysis in a straight-forward way:
+We can combine staggered treatment DiD estimators of the Callaway and Sant'Anna type with Honest DiD sensitivity analysis in a straight-forward way:
 
 ```python
 from moderndid import att_gt, aggte, honest_did, load_ehec
