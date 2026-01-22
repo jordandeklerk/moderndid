@@ -116,6 +116,10 @@ Anticipation Periods:  0
 Estimation Method:  Doubly Robust
 ```
 
+We can plot these results using the `plot_gt()` functionality:
+
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="ATT plot">
+
 These group-time effects can be aggregated into an event study to see how effects evolve relative to treatment:
 
 ```python
@@ -157,7 +161,7 @@ Estimation Method: Doubly Robust
 ==============================================================================
 ```
 
-We can also use built-in plotting functionality to plot the event study results:
+We can also use built-in plotting functionality to plot the event study results with `plot_event_study()`:
 
 ```python
 did.plot_event_study(event_study)
