@@ -64,6 +64,8 @@ class PTEParams(NamedTuple):
         Type of treatment (e.g., 'continuous').
     xformula : str
         Formula for covariates.
+    dose_est_method : str
+        Method for estimating dose-specific effects ('parametric' or 'cck').
     """
 
     yname: str
@@ -92,6 +94,7 @@ class PTEParams(NamedTuple):
     aggregation: str
     treatment_type: str
     xformula: str
+    dose_est_method: str = "parametric"
 
 
 class AttgtResult(NamedTuple):

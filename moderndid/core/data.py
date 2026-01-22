@@ -9,7 +9,7 @@ import polars as pl
 
 from .dataframe import to_polars
 
-__all__ = ["load_nsw", "load_mpdta", "load_ehec", "load_engel"]
+__all__ = ["load_nsw", "load_mpdta", "load_ehec", "load_engel", "simulate_cont_did_data"]
 
 
 def load_nsw() -> pl.DataFrame:
@@ -207,3 +207,109 @@ def load_engel() -> pl.DataFrame:
         engel_data = pickle.load(f)
 
     return to_polars(engel_data)
+
+
+def simulate_cont_did_data(
+    n: int = 500,
+    num_time_periods: int = 4,
+    num_groups: int | None = None,
+    p_group: list | None = None,
+    p_untreated: float | None = None,
+    dose_linear_effect: float = 0.5,
+    dose_quadratic_effect: float = 0,
+    seed: int = 42,
+) -> pl.DataFrame:
+    """Simulate panel data for difference-in-differences with continuous treatment.
+
+    Parameters
+    ----------
+    n : int, default=500
+        Number of cross-sectional units.
+    num_time_periods : int, default=4
+        Number of time periods.
+    num_groups : int, optional
+        Number of timing groups. Defaults to ``num_time_periods``.
+        Groups consist of a never-treated group (G=0) and groups that
+        become treated in periods 2, 3, ..., num_time_periods.
+    p_group : list, optional
+        Probabilities for each treated group. Defaults to equal probabilities.
+    p_untreated : float, optional
+        Probability of being in the never-treated group.
+        Defaults to ``1/num_groups``.
+    dose_linear_effect : float, default=0.5
+        True linear effect of treatment dose on the outcome.
+    dose_quadratic_effect : float, default=0
+        True quadratic effect of treatment dose on the outcome.
+    seed : int, default=42
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    pl.DataFrame
+        A balanced panel DataFrame with columns:
+
+        - *id*: Unit identifier
+        - *time_period*: Time period (1, 2, ..., num_time_periods)
+        - *Y*: Outcome variable
+        - *G*: Timing group (0 for never-treated, or period when treatment starts)
+        - *D*: Treatment dose (0 for untreated unit-periods, positive otherwise)
+    """
+    rng = np.random.default_rng(seed)
+
+    if num_groups is None:
+        num_groups = num_time_periods
+
+    time_periods = np.arange(1, num_time_periods + 1)
+    groups = np.concatenate(([0], time_periods[1:]))
+
+    if p_untreated is None:
+        p_untreated = 1 / num_groups
+
+    if p_group is None:
+        p_group_len = num_groups - 1
+        p_group = np.repeat((1 - p_untreated) / p_group_len, p_group_len)
+
+    p = np.concatenate(([p_untreated], p_group))
+    p /= p.sum()
+
+    group = rng.choice(groups, n, replace=True, p=p)
+    dose = rng.uniform(0, 1, n)
+
+    eta = rng.normal(loc=group, scale=1, size=n)
+    time_effects = np.arange(1, num_time_periods + 1)
+    y0_t = time_effects + eta[:, np.newaxis] + rng.normal(size=(n, num_time_periods))
+
+    y1_t = (
+        dose_linear_effect * dose[:, np.newaxis]
+        + dose_quadratic_effect * (dose**2)[:, np.newaxis]
+        + time_effects
+        + eta[:, np.newaxis]
+        + rng.normal(size=(n, num_time_periods))
+    )
+
+    post_matrix = (group[:, np.newaxis] <= time_periods) & (group[:, np.newaxis] != 0)
+    y = post_matrix * y1_t + (1 - post_matrix) * y0_t
+
+    df = pl.DataFrame(
+        {
+            **{f"Y_{t}": y[:, i] for i, t in enumerate(time_periods)},
+            "id": np.arange(1, n + 1),
+            "G": group,
+            "D": dose,
+        }
+    )
+
+    df_long = df.unpivot(
+        index=["id", "G", "D"],
+        on=[f"Y_{t}" for t in time_periods],
+        variable_name="time_period",
+        value_name="Y",
+    )
+
+    df_long = df_long.with_columns(pl.col("time_period").str.replace("Y_", "").cast(pl.Int64))
+    df_long = df_long.with_columns(pl.when(pl.col("G") == 0).then(pl.lit(0.0)).otherwise(pl.col("D")).alias("D"))
+    df_long = df_long.with_columns(
+        pl.when(pl.col("time_period") < pl.col("G")).then(pl.lit(0.0)).otherwise(pl.col("D")).alias("D")
+    )
+
+    return df_long.sort(["id", "time_period"])

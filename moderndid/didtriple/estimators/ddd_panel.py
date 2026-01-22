@@ -98,13 +98,13 @@ def ddd_panel(
     where the estimated weights are
 
     .. math::
-        \widehat{w}_{\mathrm{trt}}^{S=2,Q=1}(S,Q) &\equiv
-            \frac{\mathbf{1}\{S=2, Q=1\}}{\mathbb{E}_n[\mathbf{1}\{S=2, Q=1\}]}, \\
-        \widehat{w}_{\mathrm{comp}}^{S=g,Q=q}(S,Q,X) &\equiv
-            \frac{\frac{\mathbf{1}\{S=g, Q=q\} \cdot \widehat{p}^{S=2,Q=1}(X)}
-            {\widehat{p}^{S=g,Q=q}(X)}}
-            {\mathbb{E}_n\left[\frac{\mathbf{1}\{S=g, Q=q\} \cdot \widehat{p}^{S=2,Q=1}(X)}
-            {\widehat{p}^{S=g,Q=q}(X)}\right]}.
+        \widehat{w}_{\mathrm{trt}}^{S=2,Q=1}(S,Q) \equiv
+        \frac{\mathbf{1}\{S=2, Q=1\}}{\mathbb{E}_n[\mathbf{1}\{S=2, Q=1\}]}, \quad
+        \widehat{w}_{\mathrm{comp}}^{S=g,Q=q}(S,Q,X) \equiv
+        \frac{\frac{\mathbf{1}\{S=g, Q=q\} \cdot \widehat{p}^{S=2,Q=1}(X)}
+        {\widehat{p}^{S=g,Q=q}(X)}}
+        {\mathbb{E}_n\left[\frac{\mathbf{1}\{S=g, Q=q\} \cdot \widehat{p}^{S=2,Q=1}(X)}
+        {\widehat{p}^{S=g,Q=q}(X)}\right]}.
 
     Parameters
     ----------

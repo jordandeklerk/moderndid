@@ -40,10 +40,45 @@ def honest_did(
     grid_points=100,
     **kwargs,
 ):
-    """Compute sensitivity analysis for event study estimates.
+    r"""Compute sensitivity analysis for event study estimates.
 
     Implements the approach of [1]_ for robust inference in difference-in-differences
-    and event study designs.
+    and event study designs. This method relaxes the parallel trends assumption by
+    allowing for bounded violations, providing confidence intervals that remain
+    valid under specified deviations from exact parallel trends.
+
+    The event-study coefficient vector :math:`\boldsymbol{\beta}` admits the causal
+    decomposition
+
+    .. math::
+
+        \boldsymbol{\beta} = \begin{pmatrix} \boldsymbol{\tau}_{pre} \\
+        \boldsymbol{\tau}_{post} \end{pmatrix} + \begin{pmatrix} \boldsymbol{\delta}_{pre} \\
+        \boldsymbol{\delta}_{post} \end{pmatrix},
+
+    where :math:`\boldsymbol{\tau}` represents treatment effects and
+    :math:`\boldsymbol{\delta}` represents differential trends between treated and
+    comparison groups. The conventional parallel trends assumption imposes
+    :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`, which this method relaxes by
+    assuming :math:`\boldsymbol{\delta} \in \Delta` for a researcher-specified set
+    :math:`\Delta`.
+
+    The smoothness restriction bounds the discrete second derivative of the trend
+    by a constant :math:`M`
+
+    .. math::
+
+        \Delta^{SD}(M) = \big\{\boldsymbol{\delta}:
+        |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \le M, \forall t \big\}.
+
+    The relative magnitudes restriction bounds post-treatment violations relative to
+    the maximum pre-treatment violation
+
+    .. math::
+
+        \Delta^{RM}(\bar{M}) = \big\{\boldsymbol{\delta}:
+        |\delta_{t+1} - \delta_t| \le \bar{M} \cdot \max_{s<0} |\delta_{s+1} - \delta_s|,
+        \forall t \ge 0 \big\}.
 
     Parameters
     ----------

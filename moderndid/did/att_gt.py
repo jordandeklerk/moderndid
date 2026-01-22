@@ -44,9 +44,48 @@ def att_gt(
 ):
     r"""Compute group-time average treatment effects.
 
-    Computes average treatment effects in DID setups where there are more than two
-    periods of data and allowing for treatment to occur at different points in time
-    and allowing for treatment effect heterogeneity and dynamics.
+    Implements difference-in-differences estimation for staggered adoption designs
+    where treatment timing varies across units, following [1]_. This approach
+    addresses the challenges of standard two-way fixed-effects regressions by
+    providing flexible estimators that allow for treatment effect heterogeneity
+    across groups and over time.
+
+    Let :math:`G_i` denote the time period when unit :math:`i` is first treated,
+    with :math:`G_i = \infty` for never-treated units, and let :math:`C_i` be an
+    indicator for never-treated status. The fundamental parameter
+    of interest is the group-time average treatment effect, :math:`ATT(g,t)`,
+    which measures the average effect for units first treated in period :math:`g`
+    as of time :math:`t`
+
+    .. math::
+
+        ATT(g,t) = \mathbb{E}[Y_t(g) - Y_t(0) \mid G = g].
+
+    Identification relies on a conditional parallel trends assumption. When using
+    never-treated units as the comparison group, the assumption requires that
+    trends in untreated potential outcomes are the same for the treatment group
+    and never-treated units conditional on covariates :math:`X`
+
+    .. math::
+
+        \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, G = g]
+        = \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, C = 1],
+
+    where :math:`C = 1` indicates never-treated units. The doubly robust estimand
+    combines inverse probability weighting and outcome regression, providing
+    consistency if either the propensity score or outcome model is correctly
+    specified
+
+    .. math::
+
+        ATT_{dr}(g,t) = \mathbb{E}\left[\left(\frac{G_g}{\mathbb{E}[G_g]}
+        - \frac{\frac{p_g(X) C}{1 - p_g(X)}}
+        {\mathbb{E}\left[\frac{p_g(X) C}{1 - p_g(X)}\right]}\right)
+        \left(\Delta Y_t - m_{g,t}(X)\right)\right],
+
+    where :math:`p_g(X)` is the propensity score, :math:`\Delta Y_t` is the
+    change in outcomes, and :math:`m_{g,t}(X)` is the expected outcome change
+    for the comparison group.
 
     Parameters
     ----------

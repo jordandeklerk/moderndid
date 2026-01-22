@@ -64,10 +64,42 @@ def cont_did(
 ):
     r"""Compute difference-in-differences with a continuous treatment.
 
-    Implements difference-in-differences estimation for settings with continuous treatment
-    variables in a staggered treatment adoption framework. It extends traditional DiD methods
-    to handle treatment intensity or dose, supporting both parametric estimation using B-splines
-    and non-parametric estimation following the methods in [2]_.
+    Implements difference-in-differences estimation for settings where treatment
+    intensity varies across units but remains constant over time for each unit,
+    following [1]_.
+
+    With continuous treatments, two distinct causal parameters are of interest.
+    The average treatment effect on the treated at dose :math:`d`, denoted
+    :math:`ATT(d|d)`, measures the effect of receiving dose :math:`d` compared
+    to no treatment among units that actually received dose :math:`d`
+
+    .. math::
+
+        ATT(d|d) = \mathbb{E}[Y_{t}(d) - Y_{t}(0) \mid D = d].
+
+    The average causal response on the treated, :math:`ACRT(d|d)`, measures the
+    marginal effect of increasing the dose, i.e., the slope of the dose-response
+    function
+
+    .. math::
+
+        ACRT(d|d) = \left.\frac{\partial}{\partial l}
+        \mathbb{E}[Y_{t}(l) \mid D = d]\right|_{l=d}.
+
+    Under a parallel trends assumption, the :math:`ATT(d|d)` is identified by
+    comparing outcome changes between dose group :math:`d` and the untreated
+
+    .. math::
+
+        ATT(d|d) = \mathbb{E}[\Delta Y \mid D = d] - \mathbb{E}[\Delta Y \mid D = 0].
+
+    Aggregating over the dose distribution among treated units yields the overall
+    average treatment effect and average causal response
+
+    .. math::
+
+        ATT^o = \mathbb{E}[ATT(D|D) \mid D > 0], \quad
+        ACRT^o = \mathbb{E}[ACRT(D|D) \mid D > 0].
 
     Parameters
     ----------
@@ -170,61 +202,21 @@ def cont_did(
 
     Examples
     --------
-    We can estimate the dose-response function for a continuous treatment using simulated
-    data where units receive different treatment intensities at different times.
-
-    First, we need to generate simulated data with a continuous treatment:
+    Estimate the dose-response function using simulated data with continuous treatment:
 
     .. ipython::
         :okwarning:
 
-        In [1]: import numpy as np
-           ...: import pandas as pd
-           ...: import moderndid
-           ...:
-           ...: np.random.seed(42)
-           ...: n = 1000
-           ...: n_periods = 4
-           ...: rng = np.random.default_rng(42)
-           ...:
-           ...: time_periods = np.arange(1, n_periods + 1)
-           ...: groups = np.concatenate(([0], time_periods[1:]))
-           ...: p = np.repeat(1/len(groups), len(groups))
-           ...: group = rng.choice(groups, n, replace=True, p=p)
-           ...: dose = rng.uniform(0, 1, n)
-           ...:
-           ...: eta = rng.normal(loc=group, scale=1, size=n)
-           ...: time_effects = np.arange(1, n_periods + 1)
-           ...: y0_t = time_effects + eta[:, np.newaxis] + rng.normal(size=(n, n_periods))
-           ...:
-           ...: dose_effect = 0.5
-           ...: y1_t = (dose_effect * dose[:, np.newaxis] + time_effects +
-           ...:         eta[:, np.newaxis] + rng.normal(size=(n, n_periods)))
-           ...:
-           ...: post_matrix = (group[:, np.newaxis] <= time_periods) & (group[:, np.newaxis] != 0)
-           ...: y = post_matrix * y1_t + (1 - post_matrix) * y0_t
-           ...:
-           ...: df = pd.DataFrame(y, columns=[f"Y_{t}" for t in time_periods])
-           ...: df["id"] = np.arange(1, n + 1)
-           ...: df["G"] = group
-           ...: df["D"] = dose
-           ...:
-           ...: df_long = pd.melt(df, id_vars=["id", "G", "D"],
-           ...:                   value_vars=[f"Y_{t}" for t in time_periods],
-           ...:                   var_name="time_period", value_name="Y")
-           ...: df_long["time_period"] = df_long["time_period"].str.replace("Y_", "").astype(int)
-           ...:
-           ...: df_long.loc[df_long["G"] == 0, "D"] = 0
-           ...: df_long.loc[df_long["time_period"] < df_long["G"], "D"] = 0
-           ...: data = df_long.sort_values(["id", "time_period"]).reset_index(drop=True)
+        In [1]: import moderndid
+           ...: data = moderndid.simulate_cont_did_data(n=500, seed=42)
+           ...: data.head()
 
-    Now we can estimate the dose-response function using the parametric estimator which
-    uses B-splines to approximate the dose-response function:
+    Estimate ATT as a function of dose using the parametric (B-spline) estimator:
 
     .. ipython::
         :okwarning:
 
-        In [2]: dose_result = moderndid.cont_did(
+        In [2]: result = moderndid.cont_did(
            ...:     data=data,
            ...:     yname="Y",
            ...:     tname="time_period",
@@ -236,54 +228,17 @@ def cont_did(
            ...:     degree=3,
            ...:     biters=100
            ...: )
-           ...: dose_result
+           ...: result
 
-    For the non-parametric CCK estimator, we need exactly 2 groups and 2 time periods,
-    which we can simulate as follows:
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: np.random.seed(42)
-           ...: n = 1000
-           ...: rng = np.random.default_rng(42)
-           ...:
-           ...: group = rng.choice([0, 2], n, replace=True, p=[0.5, 0.5])
-           ...: dose = rng.uniform(0, 1, n)
-           ...: time_periods = [1, 2]
-           ...:
-           ...: eta = rng.normal(size=n)
-           ...: y0_t = np.array(time_periods) + eta[:, np.newaxis] + rng.normal(size=(n, 2))
-           ...:
-           ...: dose_effect = 0.5
-           ...: y1_t = (dose_effect * dose[:, np.newaxis] + np.array(time_periods) +
-           ...:         eta[:, np.newaxis] + rng.normal(size=(n, 2)))
-           ...:
-           ...: post_matrix = (group[:, np.newaxis] == 2) & (np.array(time_periods) >= 2)
-           ...: y = post_matrix * y1_t + (1 - post_matrix) * y0_t
-           ...:
-           ...: df_cck = pd.DataFrame(y, columns=["Y_1", "Y_2"])
-           ...: df_cck["id"] = np.arange(1, n + 1)
-           ...: df_cck["G"] = group
-           ...: df_cck["D"] = dose
-           ...:
-           ...: df_cck_long = pd.melt(df_cck, id_vars=["id", "G", "D"],
-           ...:                       value_vars=["Y_1", "Y_2"],
-           ...:                       var_name="time_period", value_name="Y")
-           ...: df_cck_long["time_period"] = df_cck_long["time_period"].str.replace("Y_", "").astype(int)
-           ...:
-           ...: df_cck_long.loc[df_cck_long["G"] == 0, "D"] = 0
-           ...: df_cck_long.loc[df_cck_long["time_period"] < df_cck_long["G"], "D"] = 0
-           ...: data_cck = df_cck_long.sort_values(["id", "time_period"]).reset_index(drop=True)
-
-    Now we can estimate the dose-response function using the non-parametric CCK estimator,
-    which is a non-parametric estimator that does not require any assumptions about the
-    dose-response function:
+    For the non-parametric CCK estimator, we need exactly 2 groups and 2 time periods:
 
     .. ipython::
         :okwarning:
 
-        In [4]: cck_result = moderndid.cont_did(
+        In [3]: data_cck = moderndid.simulate_cont_did_data(
+           ...:     n=500, num_time_periods=2, seed=42
+           ...: )
+           ...: cck_result = moderndid.cont_did(
            ...:     data=data_cck,
            ...:     yname="Y",
            ...:     tname="time_period",
@@ -296,35 +251,6 @@ def cont_did(
            ...:     biters=100
            ...: )
            ...: cck_result
-
-    Notes
-    -----
-    The estimator accommodates settings where treatment intensity varies across
-    treated units but remains constant over time for each unit. This is common
-    in policy evaluations where different regions or units receive different
-    levels of treatment (e.g., different minimum wage increases, varying subsidy
-    amounts, or different policy intensities).
-
-    The combination of `target_parameter` and `aggregation` determines the
-    specific analysis:
-
-    - `target_parameter="level"` + `aggregation="dose"`: Estimates ATT as a
-      function of dose, showing how treatment effects vary with treatment intensity
-    - `target_parameter="slope"` + `aggregation="dose"`: Estimates ACRT, the
-      marginal effect of increasing treatment intensity
-    - `target_parameter="level"` + `aggregation="eventstudy"`: Event study
-      showing ATT over time, averaged across doses
-    - `target_parameter="slope"` + `aggregation="eventstudy"`: Event study
-      showing ACRT over time
-
-    When using `dose_est_method="parametric"` (default), the dose-response function
-    is approximated using B-splines. The flexibility of the approximation is
-    controlled by the `degree` and `num_knots` parameters. With `num_knots=0`,
-    a global polynomial of the specified degree is fit.
-
-    When using `dose_est_method="cck"`, the non-parametric estimator from
-    [2]_ is used. This method requires exactly 2 groups and 2 time periods and
-    currently only supports `aggregation="dose"`.
 
     References
     ----------
@@ -414,6 +340,7 @@ def cont_did(
         base_period=base_period,
         boot_type=boot_type,
         required_pre_periods=req_pre_periods,
+        dose_est_method=dose_est_method,
     )
 
     if dose_est_method == "cck":
