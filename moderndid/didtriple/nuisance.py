@@ -8,6 +8,8 @@ from typing import NamedTuple
 import numpy as np
 import statsmodels.api as sm
 
+from .utils import check_overlap_and_warn, get_comparison_description
+
 
 class PScoreResult(NamedTuple):
     """Result from propensity score estimation.
@@ -19,10 +21,14 @@ class PScoreResult(NamedTuple):
     hessian_matrix : ndarray or None
         Hessian matrix from logistic regression, used for influence function.
         None when using REG method.
+    keep_ps : ndarray
+        Boolean array indicating which units to keep after trimming.
+        Control units with propensity score >= trim_level are excluded.
     """
 
     propensity_scores: np.ndarray
     hessian_matrix: np.ndarray | None
+    keep_ps: np.ndarray
 
 
 class OutcomeRegResult(NamedTuple):
@@ -65,6 +71,7 @@ def compute_all_nuisances(
     covariates,
     weights,
     est_method="dr",
+    trim_level=0.995,
 ):
     """Compute all nuisance parameters for DDD estimation.
 
@@ -90,6 +97,10 @@ def compute_all_nuisances(
         - "reg": Outcome regression only
         - "ipw": Inverse probability weighting only
 
+    trim_level : float, default 0.995
+        Trimming level for propensity scores. Control units with propensity
+        scores >= trim_level will be excluded from estimation.
+
     Returns
     -------
     tuple[list[PScoreResult], list[OutcomeRegResult]]
@@ -110,7 +121,7 @@ def compute_all_nuisances(
         if est_method == "reg":
             ps_result = _compute_pscore_null(subgroup, comp_subgroup)
         else:
-            ps_result = _compute_pscore(subgroup, covariates, weights, comp_subgroup)
+            ps_result = _compute_pscore(subgroup, covariates, weights, comp_subgroup, trim_level)
         pscores.append(ps_result)
 
         if est_method == "ipw":
@@ -244,17 +255,18 @@ def _compute_did(
 
     pscore = pscore_result.propensity_scores
     hessian = pscore_result.hessian_matrix
+    keep_ps = pscore_result.keep_ps.astype(float)
     delta_y = or_result.delta_y
     or_delta = or_result.or_delta
 
     pa4 = (sub_subgroup == 4).astype(float)
     pa_comp = (sub_subgroup == comparison_subgroup).astype(float)
 
-    w_treat = sub_weights * pa4
+    w_treat = keep_ps * sub_weights * pa4
     if est_method == "reg":
-        w_control = sub_weights * pa_comp
+        w_control = keep_ps * sub_weights * pa_comp
     else:
-        w_control = sub_weights * pscore * pa_comp / (1 - pscore)
+        w_control = keep_ps * sub_weights * pscore * pa_comp / (1 - pscore)
 
     riesz_treat = w_treat * (delta_y - or_delta)
     riesz_control = w_control * (delta_y - or_delta)
@@ -414,7 +426,7 @@ def _compute_inf_func(
     return inf_func
 
 
-def _compute_pscore(subgroup, covariates, weights, comparison_subgroup):
+def _compute_pscore(subgroup, covariates, weights, comparison_subgroup, trim_level=0.995):
     """Compute propensity scores for a subgroup comparison.
 
     Parameters
@@ -427,11 +439,14 @@ def _compute_pscore(subgroup, covariates, weights, comparison_subgroup):
         A 1D array of observation weights.
     comparison_subgroup : int
         The comparison subgroup (1, 2, or 3).
+    trim_level : float, default 0.995
+        Trimming level for propensity scores. Control units with propensity
+        scores >= trim_level will be excluded.
 
     Returns
     -------
     PScoreResult
-        NamedTuple with propensity_scores and hessian_matrix.
+        NamedTuple with propensity_scores, hessian_matrix, and keep_ps.
     """
     if comparison_subgroup not in [1, 2, 3]:
         raise ValueError(f"comparison_subgroup must be 1, 2, or 3, got {comparison_subgroup}")
@@ -448,12 +463,20 @@ def _compute_pscore(subgroup, covariates, weights, comparison_subgroup):
         pscore_results = pscore_model.fit(disp=False)
 
         if not pscore_results.converged:
-            warnings.warn(f"Propensity score model for subgroup {comparison_subgroup} did not converge.", UserWarning)
+            comparison_desc = get_comparison_description(comparison_subgroup)
+            warnings.warn(
+                f"Propensity score model did not converge.\n"
+                f"  Comparison: {comparison_desc} units.\n"
+                f"  Consider using fewer covariates or checking for separation issues.",
+                UserWarning,
+            )
 
         if np.any(np.isnan(pscore_results.params)):
+            comparison_desc = get_comparison_description(comparison_subgroup)
             raise ValueError(
-                f"Propensity score model coefficients for subgroup {comparison_subgroup} "
-                "have NA components. Multicollinearity of covariates is a likely reason."
+                f"Propensity score model has NA coefficients.\n"
+                f"  Comparison: {comparison_desc} units.\n"
+                f"  This is likely due to multicollinearity among covariates."
             )
 
         ps_fit = pscore_results.predict(sub_covariates)
@@ -463,18 +486,17 @@ def _compute_pscore(subgroup, covariates, weights, comparison_subgroup):
             f"Failed to estimate propensity scores for subgroup {comparison_subgroup} due to singular matrix."
         ) from e
 
-    if np.any(ps_fit < 5e-4):
-        warnings.warn(
-            f"Propensity scores for comparison subgroup {comparison_subgroup} have poor overlap.",
-            UserWarning,
-        )
+    check_overlap_and_warn(ps_fit, comparison_subgroup)
 
-    ps_fit = np.clip(ps_fit, 1e-16, 1 - 1e-16)
+    ps_fit = np.minimum(ps_fit, 1 - 1e-6)
+
+    keep_ps = np.ones(len(pa4), dtype=bool)
+    keep_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
 
     n_sub = len(sub_weights)
     hessian_matrix = pscore_results.cov_params() * n_sub
 
-    return PScoreResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix)
+    return PScoreResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
 
 
 def _compute_pscore_null(subgroup, comparison_subgroup):
@@ -490,12 +512,17 @@ def _compute_pscore_null(subgroup, comparison_subgroup):
     Returns
     -------
     PScoreResult
-        NamedTuple with propensity_scores all equal to 1 and hessian_matrix=None.
+        NamedTuple with propensity_scores all equal to 1, hessian_matrix=None,
+        and keep_ps all True (no trimming for REG method).
     """
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     n_sub = np.sum(mask)
 
-    return PScoreResult(propensity_scores=np.ones(n_sub), hessian_matrix=None)
+    return PScoreResult(
+        propensity_scores=np.ones(n_sub),
+        hessian_matrix=None,
+        keep_ps=np.ones(n_sub, dtype=bool),
+    )
 
 
 def _compute_outcome_regression(y1, y0, subgroup, covariates, weights, comparison_subgroup):
@@ -545,9 +572,11 @@ def _compute_outcome_regression(y1, y0, subgroup, covariates, weights, compariso
         wls_results = wls_model.fit()
 
         if np.any(np.isnan(wls_results.params)):
+            comparison_desc = get_comparison_description(comparison_subgroup)
             raise ValueError(
-                f"Outcome regression model coefficients for subgroup {comparison_subgroup} "
-                "have NA components. Multicollinearity of covariates is a likely reason."
+                f"Outcome regression model has NA coefficients.\n"
+                f"  Comparison: {comparison_desc} units.\n"
+                f"  This is likely due to multicollinearity among covariates."
             )
 
         reg_coeff = wls_results.params

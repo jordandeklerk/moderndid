@@ -194,9 +194,11 @@ def test_pscore_rc_result():
     result = PScoreRCResult(
         propensity_scores=np.array([0.5, 0.6]),
         hessian_matrix=np.eye(2),
+        keep_ps=np.array([True, True]),
     )
     assert len(result.propensity_scores) == 2
     assert result.hessian_matrix.shape == (2, 2)
+    assert len(result.keep_ps) == 2
 
 
 def test_did_rc_result():
