@@ -107,6 +107,8 @@ Number of Knots: 1
 ==============================================================================
 ```
 
+Plots are built with [plotnine](https://plotnine.org/) and can be customized using standard plotnine syntax:
+
 ```python
 did.plot_dose_response(cd_res, effect_type='att')
 ```

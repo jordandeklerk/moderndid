@@ -122,7 +122,7 @@ from moderndid import plot_sensitivity
 plot_sensitivity(sensitivity_results)
 ```
 
-Plots can be customized using standard plotnine syntax:
+Plots can be customized using [plotnine](https://plotnine.org/) syntax:
 
 ```python
 from plotnine import labs, theme, theme_classic
