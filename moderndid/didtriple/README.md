@@ -307,7 +307,7 @@ The output shows effects at each event time (time relative to treatment):
 
 The column `Event time` shows effects relative to treatment adoption. `Event time=0` is the on-impact effect, and negative event times can be used as a pre-test for parallel trends.
 
-We can also plot the event study with `plot_event_study()`:
+We can also plot the event study with `plot_event_study()` which is built with [plotnine](https://plotnine.org/):
 
 ```python
 did.plot_event_study(event_study)
