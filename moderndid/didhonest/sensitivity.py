@@ -106,6 +106,11 @@ def create_sensitivity_results_sm(
     pl.DataFrame
         DataFrame with columns: lb, ub, method, Delta, M.
 
+    See Also
+    --------
+    create_sensitivity_results_rm
+    construct_original_cs
+
     Notes
     -----
     Cannot specify both monotonicity_direction and bias_direction.
@@ -115,9 +120,11 @@ def create_sensitivity_results_sm(
     To use this function directly, we need to compute an event study and extract the
     estimates and covariance matrix. If you're using moderndid's built-in estimators,
     you can use the `honest_did` function to process the event study and extract the
-    estimates and covariance matrix. If you're using an external estimator, you can use the
-    `create_sensitivity_results_sm` function to process the event study and extract the
-    estimates and construct the covariance matrix.
+    estimates and covariance matrix for you.
+
+    If you're using an external estimator, you will need to extract the influence functions and
+    construct the covariance matrix. Then, you can use the `create_sensitivity_results_sm` function
+    to run the sensitivity analysis.
 
     .. ipython::
         :okwarning:
@@ -348,6 +355,11 @@ def create_sensitivity_results_rm(
     pl.DataFrame
         DataFrame with columns: lb, ub, method, Delta, Mbar.
 
+    See Also
+    --------
+    create_sensitivity_results_sm
+    construct_original_cs
+
     Notes
     -----
     Deviation from linear trend requires at least 3 pre-treatment periods.
@@ -357,12 +369,11 @@ def create_sensitivity_results_rm(
     To use this function directly, we need to compute an event study and extract the
     estimates and covariance matrix. If you're using moderndid's built-in estimators,
     you can use the `honest_did` function to process the event study and extract the
-    estimates and covariance matrix. If you're using an external estimator, you can use the
-    `create_sensitivity_results_rm` function to process the event study and extract the
-    estimates and construct the covariance matrix.
+    estimates and covariance matrix for you.
 
-    Suppose this is an external estimator. We can extract the influence functions and
-    construct the covariance matrix, removing the reference period.
+    If you're using an external estimator, you will need to extract the influence functions
+    and construct the covariance matrix. Then, you can use the `create_sensitivity_results_rm`
+    function to run the sensitivity analysis.
 
     .. ipython::
         :okwarning:
@@ -548,15 +559,15 @@ def construct_original_cs(
     OriginalCSResult
         NamedTuple with lb, ub, method="Original", delta=None.
 
+    See Also
+    --------
+    create_sensitivity_results_sm
+    create_sensitivity_results_rm
+
     Examples
     --------
-    Construct the original confidence interval assuming parallel trends holds exactly.
     To use this function directly, we need to compute an event study and extract the
-    estimates and covariance matrix. If you're using moderndid's built-in estimators,
-    you can use the `honest_did` function to process the event study and extract the
-    estimates and covariance matrix. If you're using an external estimator, you can use the
-    `construct_original_cs` function to process the event study and extract the
-    estimates and construct the covariance matrix.
+    estimates and covariance matrix.
 
     .. ipython::
         :okwarning:
@@ -577,8 +588,7 @@ def construct_original_cs(
            ...: )
            ...: es_result = aggte(gt_result, type="dynamic")
 
-    Suppose this is an external estimator. We can extract the influence functions and
-    construct the covariance matrix, removing the reference period.
+    Now we can extract the estimates and covariance matrix.
 
     .. ipython::
         :okwarning:
@@ -593,7 +603,7 @@ def construct_original_cs(
            ...: num_pre = int(np.sum(np.delete(event_times, ref_idx) < -1))
            ...: num_post = len(att_no_ref) - num_pre
 
-    Finally, we construct the original confidence interval for the first post-treatment effect.
+    Finally, we can construct the original confidence interval for the first post-treatment effect.
 
     .. ipython::
         :okwarning:
