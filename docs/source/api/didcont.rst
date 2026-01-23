@@ -6,6 +6,7 @@ Continuous Treatment DiD
 The continuous treatment DiD module provides methods for handling continuous
 treatment variables in difference-in-differences settings. This includes
 nonparametric instrumental variables (NPIV) estimation and spline-based methods.
+The implementation follows `Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://psantanna.com/files/CGBS.pdf>`_.
 
 Main Functions
 --------------

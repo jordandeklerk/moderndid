@@ -60,6 +60,7 @@ def cont_did(
     clustervars=None,
     est_method=None,
     base_period="varying",
+    random_state=None,
     **kwargs,
 ):
     r"""Compute difference-in-differences with a continuous treatment.
@@ -182,6 +183,10 @@ def cont_did(
 
         - "varying": Use different base periods for different timing groups
         - "universal": Use the same base period for all comparisons
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
     **kwargs
         Additional keyword arguments passed to internal functions.
 
@@ -347,6 +352,7 @@ def cont_did(
         return _estimate_cck(
             cont_did_data=cont_did_data,
             original_data=data,
+            random_state=random_state,
             **kwargs,
         )
 
@@ -396,6 +402,7 @@ def cont_did(
         control_group=control_group,
         base_period=base_period,
         weightsname=weightsname,
+        random_state=random_state,
         **pte_kwargs,
     )
 
@@ -563,7 +570,7 @@ def cont_two_by_two_subset(
     return {"gt_data": subset_data, "n1": n1, "disidx": disidx}
 
 
-def _estimate_cck(cont_did_data, original_data, **kwargs):
+def _estimate_cck(cont_did_data, original_data, random_state=None, **kwargs):
     """Compute the CCK non-parametric estimator."""
     config = cont_did_data.config
     data = cont_did_data.data.clone()
@@ -610,6 +617,7 @@ def _estimate_cck(cont_did_data, original_data, **kwargs):
         boot_num=999,
         j_x_degree=3,
         k_w_degree=3,
+        seed=random_state,
     )
 
     att_d = cck_res.h
@@ -649,6 +657,7 @@ def _estimate_cck(cont_did_data, original_data, **kwargs):
         boot_type="multiplier",
         biters=config.biters,
         alp=config.alp,
+        random_state=random_state,
     )
 
     w_treated = dose[dose > 0]

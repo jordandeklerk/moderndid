@@ -4,17 +4,13 @@ Propensity Score Functions
 ===========================
 
 The propensity score module provides core functions for calculating propensity
-scores and implementing augmented inverse probability weighting (AIPW) estimators.
-These functions are used internally by the main DiD estimators but are also
-available for direct use.
-
-Main Functions
---------------
+scores via inverse probability tilting (IPT), augmented inverse
+probability weighting (AIPW), and inverse probability weighting (IPW).
 
 .. currentmodule:: moderndid
 
-Propensity Score Calculation
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Inverse Probability Tilting
+---------------------------
 
 .. autosummary::
    :toctree: generated/propensity/
@@ -22,8 +18,8 @@ Propensity Score Calculation
 
    calculate_pscore_ipt
 
-AIPW Estimators
-^^^^^^^^^^^^^^^
+Augmented Inverse Probability Weighting
+---------------------------------------
 
 .. autosummary::
    :toctree: generated/propensity/
@@ -33,8 +29,8 @@ AIPW Estimators
    aipw_did_rc_imp1
    aipw_did_rc_imp2
 
-IPW Functions
-^^^^^^^^^^^^^
+Inverse Probability Weighting
+------------------------------
 
 .. autosummary::
    :toctree: generated/propensity/
