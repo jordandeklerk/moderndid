@@ -8,6 +8,8 @@ from typing import NamedTuple
 import numpy as np
 import statsmodels.api as sm
 
+from .utils import check_overlap_and_warn, get_comparison_description
+
 
 class PScoreRCResult(NamedTuple):
     """Result from propensity score estimation for RCS.
@@ -19,10 +21,14 @@ class PScoreRCResult(NamedTuple):
     hessian_matrix : ndarray or None
         Hessian matrix from logistic regression, used for influence function.
         None when using REG method.
+    keep_ps : ndarray
+        Boolean array indicating which observations to keep after trimming.
+        Control observations with propensity score >= trim_level are excluded.
     """
 
     propensity_scores: np.ndarray
     hessian_matrix: np.ndarray | None
+    keep_ps: np.ndarray
 
 
 class OutcomeRegRCResult(NamedTuple):
@@ -241,6 +247,7 @@ def _compute_did_rc(
 
     pscore = pscore_result.propensity_scores
     hessian = pscore_result.hessian_matrix
+    keep_ps = pscore_result.keep_ps.astype(float)
 
     sub_y = or_result.y
     out_y_cont = or_result.out_y_cont
@@ -252,24 +259,24 @@ def _compute_did_rc(
     pa4 = (sub_subgroup == 4).astype(float)
     pa_comp = (sub_subgroup == comparison_subgroup).astype(float)
 
-    w_treat_pre = sub_weights * pa4 * (1 - sub_post)
-    w_treat_post = sub_weights * pa4 * sub_post
+    w_treat_pre = keep_ps * sub_weights * pa4 * (1 - sub_post)
+    w_treat_post = keep_ps * sub_weights * pa4 * sub_post
 
     if est_method == "reg":
         w_cont_pre = None
         w_cont_post = None
-        w_reg_control = sub_weights * pa4
+        w_reg_control = keep_ps * sub_weights * pa4
     else:
         with np.errstate(divide="ignore", invalid="ignore"):
-            w_cont_pre = sub_weights * pscore * pa_comp * (1 - sub_post) / (1 - pscore)
-            w_cont_post = sub_weights * pscore * pa_comp * sub_post / (1 - pscore)
+            w_cont_pre = keep_ps * sub_weights * pscore * pa_comp * (1 - sub_post) / (1 - pscore)
+            w_cont_post = keep_ps * sub_weights * pscore * pa_comp * sub_post / (1 - pscore)
         w_cont_pre = np.nan_to_num(w_cont_pre)
         w_cont_post = np.nan_to_num(w_cont_post)
         w_reg_control = None
 
-    w_d = sub_weights * pa4
-    w_dt1 = sub_weights * pa4 * sub_post
-    w_dt0 = sub_weights * pa4 * (1 - sub_post)
+    w_d = keep_ps * sub_weights * pa4
+    w_dt1 = keep_ps * sub_weights * pa4 * sub_post
+    w_dt0 = keep_ps * sub_weights * pa4 * (1 - sub_post)
 
     mean_w_treat_pre = np.mean(w_treat_pre)
     mean_w_treat_post = np.mean(w_treat_post)
@@ -638,12 +645,20 @@ def _compute_pscore_rc(subgroup, _post, covariates, weights, comparison_subgroup
         pscore_results = pscore_model.fit(disp=False)
 
         if not pscore_results.converged:
-            warnings.warn(f"Propensity score model for subgroup {comparison_subgroup} did not converge.", UserWarning)
+            comparison_desc = get_comparison_description(comparison_subgroup)
+            warnings.warn(
+                f"Propensity score model did not converge.\n"
+                f"  Comparison: {comparison_desc} units.\n"
+                f"  Consider using fewer covariates or checking for separation issues.",
+                UserWarning,
+            )
 
         if np.any(np.isnan(pscore_results.params)):
+            comparison_desc = get_comparison_description(comparison_subgroup)
             raise ValueError(
-                f"Propensity score model coefficients for subgroup {comparison_subgroup} "
-                "have NA components. Multicollinearity of covariates is a likely reason."
+                f"Propensity score model has NA coefficients.\n"
+                f"  Comparison: {comparison_desc} units.\n"
+                f"  This is likely due to multicollinearity among covariates."
             )
 
         ps_fit = pscore_results.predict(sub_covariates)
@@ -653,20 +668,16 @@ def _compute_pscore_rc(subgroup, _post, covariates, weights, comparison_subgroup
             f"Failed to estimate propensity scores for subgroup {comparison_subgroup} due to singular matrix."
         ) from e
 
-    if np.any(ps_fit < 5e-4):
-        warnings.warn(
-            f"Propensity scores for comparison subgroup {comparison_subgroup} have poor overlap.",
-            UserWarning,
-        )
+    check_overlap_and_warn(ps_fit, comparison_subgroup)
 
-    trim_ps = np.ones(len(pa4), dtype=bool)
-    trim_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
-    ps_fit = np.clip(ps_fit, 1e-16, 1 - 1e-16)
+    keep_ps = np.ones(len(pa4), dtype=bool)
+    keep_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
+    ps_fit = np.minimum(ps_fit, 1 - 1e-6)
 
     n_sub = len(sub_weights)
     hessian_matrix = pscore_results.cov_params() * n_sub
 
-    return PScoreRCResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix)
+    return PScoreRCResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
 
 
 def _compute_pscore_null_rc(subgroup, comparison_subgroup):
@@ -674,7 +685,11 @@ def _compute_pscore_null_rc(subgroup, comparison_subgroup):
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     n_sub = np.sum(mask)
 
-    return PScoreRCResult(propensity_scores=np.ones(n_sub), hessian_matrix=None)
+    return PScoreRCResult(
+        propensity_scores=np.ones(n_sub),
+        hessian_matrix=None,
+        keep_ps=np.ones(n_sub, dtype=bool),
+    )
 
 
 def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, comparison_subgroup, _est_method):

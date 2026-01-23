@@ -488,7 +488,8 @@ def preprocess_ddd_2periods(
     subgroup_counts = _compute_subgroup_counts(df, idname)
     _validate_subgroup_sizes(subgroup_counts)
 
-    covariates, covariate_names = _extract_covariates(df, xformla)
+    subgroup_pre = df.filter(pl.col("_post") == 0)["_subgroup"].to_numpy()
+    covariates, covariate_names = _extract_covariates(df, xformla, subgroup=subgroup_pre)
 
     cluster_arr = None
     if config_params["cluster"] is not None:
@@ -686,7 +687,36 @@ def _validate_subgroup_sizes(subgroup_counts, min_size=5):
             raise ValueError(f"Subgroup {sg} has only {count} observations. Minimum required is {min_size}.")
 
 
-def _extract_covariates(df: pl.DataFrame, xformla):
+def _check_partition_collinearity(cov_matrix, subgroup, var_names, tol=1e-6):
+    """Check for partition-specific collinearity in DDD comparisons."""
+    if len(var_names) == 0:
+        return {}, []
+
+    comparison_groups = [3, 2, 1]
+    partition_collinear: dict[str, list[str]] = {}
+
+    for comp_group in comparison_groups:
+        mask = (subgroup == 4) | (subgroup == comp_group)
+        cov_subset = cov_matrix[mask]
+
+        if cov_subset.shape[0] == 0:
+            continue
+
+        _, kept_vars = _remove_collinear(cov_subset, list(var_names), tol=tol)
+        kept_set = set(kept_vars)
+        collinear_in_subset = [v for v in var_names if v not in kept_set]
+
+        if collinear_in_subset:
+            partition_name = f"subgroup 4 vs {comp_group}"
+            for var in collinear_in_subset:
+                if var not in partition_collinear:
+                    partition_collinear[var] = []
+                partition_collinear[var].append(partition_name)
+
+    return partition_collinear, list(partition_collinear.keys())
+
+
+def _extract_covariates(df: pl.DataFrame, xformla, subgroup: np.ndarray | None = None):
     """Extract and process covariates from data."""
     if xformla == "~1":
         n_units = len(df.filter(pl.col("_post") == 0))
@@ -704,6 +734,23 @@ def _extract_covariates(df: pl.DataFrame, xformla):
         )
 
     cov_matrix, kept_vars = _remove_collinear(cov_matrix, covariate_vars)
+
+    if subgroup is not None and len(kept_vars) > 0:
+        partition_collinear, all_collinear = _check_partition_collinearity(cov_matrix, subgroup, kept_vars)
+
+        if all_collinear:
+            partition_warnings = [
+                f"  - {var} (collinear in: {', '.join(partitions)})" for var, partitions in partition_collinear.items()
+            ]
+            warnings.warn(
+                "The following covariates were dropped due to partition-specific collinearity:\n"
+                + "\n".join(partition_warnings),
+                stacklevel=3,
+            )
+
+            keep_mask = [var not in all_collinear for var in kept_vars]
+            cov_matrix = cov_matrix[:, keep_mask]
+            kept_vars = [v for v in kept_vars if v not in all_collinear]
 
     return cov_matrix, kept_vars
 

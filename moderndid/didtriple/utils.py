@@ -1,5 +1,7 @@
 """Utility functions for Triple Difference-in-Differences estimation."""
 
+import warnings
+
 import numpy as np
 
 from moderndid.core.dataframe import DataFrame, to_polars
@@ -12,9 +14,11 @@ from moderndid.core.preprocess.utils import (
 
 __all__ = [
     "add_intercept",
+    "check_overlap_and_warn",
     "detect_multiple_periods",
     "detect_rcs_mode",
     "extract_covariates",
+    "get_comparison_description",
     "get_covariate_names",
     "is_balanced_panel",
 ]
@@ -118,3 +122,68 @@ def detect_rcs_mode(data: DataFrame, tname: str, idname: str | None, panel: bool
             return True
 
     return False
+
+
+def get_comparison_description(condition_subgroup: int) -> str:
+    """Get descriptive comparison name for a subgroup.
+
+    Subgroup encoding:
+      4 = Treated + Eligible (focal group)
+      3 = Treated + Ineligible
+      2 = Eligible + Untreated
+      1 = Untreated + Ineligible
+
+    Parameters
+    ----------
+    condition_subgroup : int
+        The comparison subgroup (1, 2, or 3).
+
+    Returns
+    -------
+    str
+        Human-readable description of the comparison.
+    """
+    descriptions = {
+        3: "Treated-Eligible vs Treated-Ineligible",
+        2: "Treated-Eligible vs Eligible-Untreated",
+        1: "Treated-Eligible vs Untreated-Ineligible",
+    }
+    return descriptions.get(condition_subgroup, f"Unknown comparison ({condition_subgroup})")
+
+
+def check_overlap_and_warn(
+    propensity_scores: np.ndarray,
+    condition_subgroup: int,
+    threshold: float = 1e-3,
+    max_proportion: float = 0.05,
+) -> None:
+    """Check propensity score overlap and warn if poor.
+
+    Parameters
+    ----------
+    propensity_scores : ndarray
+        Estimated propensity scores.
+    condition_subgroup : int
+        The comparison subgroup (1, 2, or 3).
+    threshold : float, default 1e-3
+        Propensity score threshold for poor overlap.
+    max_proportion : float, default 0.05
+        Maximum proportion of units with ps below threshold before warning.
+    """
+    n_total = len(propensity_scores)
+    n_below_threshold = np.sum(propensity_scores < threshold)
+    prop_below = n_below_threshold / n_total
+
+    if prop_below <= max_proportion:
+        return
+
+    comparison_desc = get_comparison_description(condition_subgroup)
+
+    msg = (
+        f"Poor propensity score overlap detected.\n"
+        f"  Comparison: {comparison_desc} units.\n"
+        f"  Diagnostics: {prop_below * 100:.1f}% of units have propensity score < {threshold}.\n"
+        f"  Consider checking covariate balance or using fewer/different covariates."
+    )
+
+    warnings.warn(msg, UserWarning, stacklevel=4)
