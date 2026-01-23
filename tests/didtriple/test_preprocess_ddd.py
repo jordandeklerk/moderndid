@@ -1,9 +1,14 @@
 """Tests for DDD preprocessing."""
 
+import warnings
+
 import pytest
 
 from moderndid.core.preprocess.models import DDDData
-from moderndid.core.preprocessing import preprocess_ddd_2periods
+from moderndid.core.preprocessing import (
+    _check_partition_collinearity,
+    preprocess_ddd_2periods,
+)
 from moderndid.didtriple.dgp import gen_dgp_2periods
 from tests.helpers import importorskip
 
@@ -344,3 +349,59 @@ def test_preprocess_ddd_est_methods(est_method):
     )
 
     assert ddd_data.config.est_method.value == est_method
+
+
+def test_partition_collinearity_detection():
+    n = 100
+    subgroup = np.array([4] * 25 + [3] * 25 + [2] * 25 + [1] * 25)
+    x1 = np.random.default_rng(42).standard_normal(n)
+    x2 = np.random.default_rng(42).standard_normal(n)
+    x3 = np.random.default_rng(42).standard_normal(n)
+    x3[:50] = x1[:50]
+
+    cov_matrix = np.column_stack([x1, x2, x3])
+    var_names = ["x1", "x2", "x3"]
+
+    partition_collinear, all_collinear = _check_partition_collinearity(cov_matrix, subgroup, var_names)
+
+    assert "x3" in all_collinear
+    assert "x3" in partition_collinear
+    assert "subgroup 4 vs 3" in partition_collinear["x3"]
+
+
+def test_partition_collinearity_warning_in_preprocess():
+    rng = np.random.default_rng(42)
+    n = 200
+    ids = np.repeat(np.arange(n), 2)
+    times = np.tile([1, 2], n)
+    state = np.repeat(rng.choice([0, 2], n, p=[0.5, 0.5]), 2)
+    partition = np.repeat(rng.choice([0, 1], n, p=[0.5, 0.5]), 2)
+    cov1 = np.repeat(rng.standard_normal(n), 2)
+    cov2 = np.repeat(rng.standard_normal(n), 2)
+    y = rng.standard_normal(n * 2)
+
+    data = pl.DataFrame(
+        {
+            "id": ids,
+            "time": times,
+            "y": y,
+            "state": state,
+            "partition": partition,
+            "cov1": cov1,
+            "cov2": cov2,
+        }
+    )
+
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        ddd_data = preprocess_ddd_2periods(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            xformla="~ cov1 + cov2",
+        )
+
+    assert ddd_data.covariates.shape[1] <= 2

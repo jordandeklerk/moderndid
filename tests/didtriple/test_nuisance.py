@@ -9,6 +9,8 @@ from moderndid.didtriple.nuisance import (
     DIDResult,
     OutcomeRegResult,
     PScoreResult,
+    _compute_pscore,
+    _compute_pscore_null,
     compute_all_did,
     compute_all_nuisances,
 )
@@ -503,3 +505,88 @@ class TestValueRanges:
         for or_result in or_results:
             assert np.all(np.isfinite(or_result.reg_coeff))
             assert np.all(np.abs(or_result.reg_coeff) < 1000)
+
+
+def test_pscore_result_has_keep_ps(ddd_data_with_covariates):
+    ddd_data, covariates = ddd_data_with_covariates
+
+    pscores, _ = compute_all_nuisances(
+        y1=ddd_data.y1,
+        y0=ddd_data.y0,
+        subgroup=ddd_data.subgroup,
+        covariates=covariates,
+        weights=ddd_data.weights,
+        est_method="dr",
+    )
+
+    for ps_result in pscores:
+        assert hasattr(ps_result, "keep_ps")
+        assert ps_result.keep_ps is not None
+        assert len(ps_result.keep_ps) == len(ps_result.propensity_scores)
+        assert ps_result.keep_ps.dtype == bool
+
+
+def test_pscore_null_keep_ps_all_true():
+    subgroup = np.array([4, 4, 4, 3, 3, 3, 3])
+    result = _compute_pscore_null(subgroup, comparison_subgroup=3)
+    assert np.all(result.keep_ps)
+
+
+def test_trim_level_parameter(ddd_data_with_covariates):
+    ddd_data, covariates = ddd_data_with_covariates
+
+    pscores_default, _ = compute_all_nuisances(
+        y1=ddd_data.y1,
+        y0=ddd_data.y0,
+        subgroup=ddd_data.subgroup,
+        covariates=covariates,
+        weights=ddd_data.weights,
+        est_method="dr",
+        trim_level=0.995,
+    )
+
+    pscores_strict, _ = compute_all_nuisances(
+        y1=ddd_data.y1,
+        y0=ddd_data.y0,
+        subgroup=ddd_data.subgroup,
+        covariates=covariates,
+        weights=ddd_data.weights,
+        est_method="dr",
+        trim_level=0.5,
+    )
+
+    for ps_default, ps_strict in zip(pscores_default, pscores_strict):
+        n_trimmed_default = np.sum(~ps_default.keep_ps)
+        n_trimmed_strict = np.sum(~ps_strict.keep_ps)
+        assert n_trimmed_strict >= n_trimmed_default
+
+
+def test_compute_pscore_trimming():
+    rng = np.random.default_rng(42)
+    n = 200
+    subgroup = np.array([4] * 50 + [3] * 150)
+    x1 = rng.standard_normal(n)
+    x2 = rng.standard_normal(n)
+    covariates = np.column_stack([np.ones(n), x1, x2])
+    weights = np.ones(n)
+
+    result = _compute_pscore(subgroup, covariates, weights, comparison_subgroup=3, trim_level=0.995)
+
+    assert isinstance(result, PScoreResult)
+    assert len(result.propensity_scores) == n
+    assert len(result.keep_ps) == n
+    assert result.hessian_matrix is not None
+
+    pa4 = subgroup == 4
+    mask = (subgroup == 4) | (subgroup == 3)
+    pa4_sub = pa4[mask]
+    assert np.all(result.keep_ps[pa4_sub == 1])
+
+    control_ps = result.propensity_scores[pa4_sub == 0]
+    control_keep = result.keep_ps[pa4_sub == 0]
+
+    for ps, keep in zip(control_ps, control_keep):
+        if ps >= 0.995:
+            assert not keep
+        else:
+            assert keep

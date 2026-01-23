@@ -1,10 +1,14 @@
+import warnings
+
 import numpy as np
 import polars as pl
 import pytest
 
 from moderndid.didtriple.utils import (
+    check_overlap_and_warn,
     detect_multiple_periods,
     detect_rcs_mode,
+    get_comparison_description,
     get_covariate_names,
 )
 
@@ -69,3 +73,31 @@ def test_detect_rcs_mode(times, ids, panel, allow_unbalanced, expected):
 def test_detect_rcs_mode_no_idname():
     df = pl.DataFrame({"time": [1, 2]})
     assert detect_rcs_mode(df, "time", None, panel=True, allow_unbalanced_panel=False) is True
+
+
+@pytest.mark.parametrize(
+    "subgroup,expected",
+    [
+        (3, "Treated-Eligible vs Treated-Ineligible"),
+        (2, "Treated-Eligible vs Eligible-Untreated"),
+        (1, "Treated-Eligible vs Untreated-Ineligible"),
+    ],
+)
+def test_get_comparison_description(subgroup, expected):
+    assert get_comparison_description(subgroup) == expected
+
+
+def test_check_overlap_and_warn():
+    ps_good = np.array([0.3, 0.4, 0.5, 0.6, 0.7])
+    ps_poor = np.array([0.0001] * 20 + [0.5] * 80)
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        check_overlap_and_warn(ps_good, condition_subgroup=2)
+        assert len(w) == 0
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        check_overlap_and_warn(ps_poor, condition_subgroup=2, threshold=1e-3, max_proportion=0.05)
+        assert len(w) == 1
+        assert "Poor propensity score overlap" in str(w[0].message)
