@@ -113,7 +113,7 @@ All these options are available both at a lower-level API or through the high-le
 
 ### Visualizations
 
-Built-in plotting functions using plotnine:
+Built-in plotting functions using [plotnine](https://plotnine.org/):
 
 ```python
 from moderndid import plot_sensitivity
@@ -122,7 +122,7 @@ from moderndid import plot_sensitivity
 plot_sensitivity(sensitivity_results)
 ```
 
-Plots can be customized using [plotnine](https://plotnine.org/) syntax:
+Plots can be customized using plotnine syntax:
 
 ```python
 from plotnine import labs, theme, theme_classic
