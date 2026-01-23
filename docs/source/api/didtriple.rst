@@ -15,9 +15,6 @@ Main Functions
 
 .. currentmodule:: moderndid
 
-High-Level Wrapper
-^^^^^^^^^^^^^^^^^^
-
 .. autosummary::
    :toctree: generated/didtriple/
    :nosignatures:
