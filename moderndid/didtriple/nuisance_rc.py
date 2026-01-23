@@ -715,6 +715,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
         pre=True,
         treat=False,
         n_features=n_features,
+        comparison_subgroup=comparison_subgroup,
     )
 
     out_y_cont_post = _fit_ols_cell(
@@ -726,6 +727,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
         pre=False,
         treat=False,
         n_features=n_features,
+        comparison_subgroup=comparison_subgroup,
     )
 
     out_y_treat_pre = _fit_ols_cell(
@@ -737,6 +739,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
         pre=True,
         treat=True,
         n_features=n_features,
+        comparison_subgroup=comparison_subgroup,
     )
 
     out_y_treat_post = _fit_ols_cell(
@@ -748,6 +751,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
         pre=False,
         treat=True,
         n_features=n_features,
+        comparison_subgroup=comparison_subgroup,
     )
 
     out_y_cont = sub_post * out_y_cont_post + (1 - sub_post) * out_y_cont_pre
@@ -762,7 +766,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
     )
 
 
-def _fit_ols_cell(y, post, d, covariates, weights, pre, treat, n_features):
+def _fit_ols_cell(y, post, d, covariates, weights, pre, treat, n_features, comparison_subgroup):
     """Fit OLS for a specific (D, T) cell."""
     if pre and treat:
         subs = (d == 1) & (post == 0)
@@ -788,12 +792,20 @@ def _fit_ols_cell(y, post, d, covariates, weights, pre, treat, n_features):
         coefficients = results.params
 
         if np.any(np.isnan(coefficients)):
-            return np.full(len(y), np.nan)
+            subg_desc = "Treated-Eligible" if treat else get_comparison_description(comparison_subgroup)
+            period_desc = "pre-treatment" if pre else "post-treatment"
+            raise ValueError(
+                f"Outcome regression model has NA coefficients.\n"
+                f"  Cell: {subg_desc} units in {period_desc} period.\n"
+                f"  This is likely due to multicollinearity among covariates."
+            )
 
         fitted_values = covariates @ coefficients
         return fitted_values
 
-    except (np.linalg.LinAlgError, ValueError):
+    except (np.linalg.LinAlgError, ValueError) as e:
+        if "NA coefficients" in str(e):
+            raise
         return np.full(len(y), np.nan)
 
 

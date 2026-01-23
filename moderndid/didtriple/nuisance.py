@@ -572,9 +572,11 @@ def _compute_outcome_regression(y1, y0, subgroup, covariates, weights, compariso
         wls_results = wls_model.fit()
 
         if np.any(np.isnan(wls_results.params)):
+            comparison_desc = get_comparison_description(comparison_subgroup)
             raise ValueError(
-                f"Outcome regression model coefficients for subgroup {comparison_subgroup} "
-                "have NA components. Multicollinearity of covariates is a likely reason."
+                f"Outcome regression model has NA coefficients.\n"
+                f"  Comparison: {comparison_desc} units.\n"
+                f"  This is likely due to multicollinearity among covariates."
             )
 
         reg_coeff = wls_results.params
