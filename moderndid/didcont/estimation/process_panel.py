@@ -49,6 +49,7 @@ def pte(
     ret_quantile=None,
     process_dose_gt_fun=None,
     biters=100,
+    random_state=None,
     **kwargs,
 ):
     """Compute panel treatment effects.
@@ -87,6 +88,10 @@ def pte(
         Function to process dose results.
     biters : int, default=100
         Number of bootstrap iterations.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
     **kwargs
         Additional arguments passed through.
 
@@ -144,6 +149,7 @@ def pte(
             attgt_fun=attgt_fun,
             extra_gt_returns=res.get("extra_gt_returns", []),
             compute_pte_fun=compute_pte,
+            random_state=random_state,
             **kwargs,
         )
 
@@ -469,6 +475,7 @@ def pte_default(
     alp=0.05,
     boot_type="multiplier",
     biters=100,
+    random_state=None,
     **kwargs,
 ):
     """Compute panel treatment effects with default settings."""
@@ -494,6 +501,7 @@ def pte_default(
         alp=alp,
         boot_type=boot_type,
         biters=biters,
+        random_state=random_state,
         **kwargs,
     )
     return res
