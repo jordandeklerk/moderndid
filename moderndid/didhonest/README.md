@@ -26,7 +26,7 @@ Another approach is to restrict how much post-treatment violations can deviate f
 
 Given these restrictions, the Honest Did package provides confidence intervals that are guaranteed to have correct coverage when the restrictions are satisfied, accounting for estimation error in both treatment effects and pre-trends.
 
-Researchers can report confidence intervals under different assumptions about the magnitude of post-treatment violations (different values of $\bar{M}$ or $M$) and identify "breakdown values" – the largest restriction for which effects remain significant.
+Researchers can report confidence intervals under different assumptions about the magnitude of post-treatment violations (different values of $\bar{M}$ or $M$) and identify "breakdown values", the largest restriction for which effects remain significant.
 
 ## Features
 
@@ -141,7 +141,7 @@ custom_plot.save("sensitivity.png", dpi=300)
 
 There are two main ways to use this module depending on your workflow:
 
-- **Direct API**: If you have event study coefficients and variance-covariance matrices from an external estimator (e.g., `pyfixest`, Stata, or traditional TWFE), use `create_sensitivity_results_rm` and `create_sensitivity_results_sm` directly.
+- **Direct API**: If you have event study coefficients and variance-covariance matrices from an external estimator (e.g., `pyfixest`), use `create_sensitivity_results_rm` and `create_sensitivity_results_sm` directly.
 
 - **High-Level API**: If you're using `moderndid`'s `att_gt` and `aggte` functions, the `honest_did` wrapper automatically extracts the necessary components from the event study object.
 
