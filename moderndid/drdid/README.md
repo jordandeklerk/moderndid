@@ -31,18 +31,18 @@ Three main functions provide access to all DR-DiD estimators via the `est_method
 from moderndid.drdid import drdid, ipwdid, ordid
 
 # Doubly robust estimation
-result = drdid(data, y_col='outcome', time_col='period', treat_col='treated',
-               id_col='id', panel=True, covariates_formula='~ age + education + income',
+result = drdid(data, yname='outcome', tname='period', treatname='treated',
+               idname='id', panel=True, xformla='~ age + education + income',
                est_method='imp')
 
 # IPW estimation
-result = ipwdid(data, y_col='outcome', time_col='period', treat_col='treated',
-               id_col='id', panel=True, covariates_formula='~ age + education + income',
-               est_method='std_ipw')
+result = ipwdid(data, yname='outcome', tname='period', treatname='treated',
+                idname='id', panel=True, xformla='~ age + education + income',
+                est_method='std_ipw')
 
 # Outcome regression
-result = ordid(data, y_col='outcome', time_col='period', treat_col='treated',
-               id_col='id', panel=True, covariates_formula='~ age + education + income')
+result = ordid(data, yname='outcome', tname='period', treatname='treated',
+               idname='id', panel=True, xformla='~ age + education + income')
 ```
 
 ### Flexible Low-Level API
@@ -50,7 +50,7 @@ result = ordid(data, y_col='outcome', time_col='period', treat_col='treated',
 For advanced users, all underlying estimators are directly accessible with NumPy arrays as well
 
 ```python
-from moderndid.drdid.estimators import drdid_imp_local_rc
+from moderndid.drdid import drdid_imp_local_rc
 
 # Doubly-Robust locally efficient and improved ATT estimate
 result = drdid_imp_local_rc(
@@ -92,12 +92,12 @@ nsw_data = moderndid.datasets.load_nsw()
 # Estimate ATT using doubly robust DiD
 att_result = moderndid.drdid(
     data=nsw_data,
-    y_col='re',
-    time_col='year',
-    treat_col='experimental',
-    id_col='id',
+    yname='re',
+    tname='year',
+    treatname='experimental',
+    idname='id',
     panel=True,
-    covariates_formula="~ age + educ + black + married + nodegree + hisp + re74",
+    xformla="~ age + educ + black + married + nodegree + hisp + re74",
     est_method='imp',
 )
 ```
