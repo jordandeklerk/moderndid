@@ -149,7 +149,7 @@ Anticipation Periods:  0
 Estimation Method:  Doubly Robust
 ```
 
-We can also plot the results using `plot_gt()`:
+We can also plot the results using `plot_gt()` which is built with [plotnine](https://plotnine.org/):
 
 ```python
 did.plot_gt(attgt_result)
