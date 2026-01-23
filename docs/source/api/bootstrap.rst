@@ -12,9 +12,6 @@ Multiplier Bootstrap
 
 .. currentmodule:: moderndid
 
-Main Functions
-^^^^^^^^^^^^^^
-
 .. autosummary::
    :toctree: generated/bootstrap/
    :nosignatures:

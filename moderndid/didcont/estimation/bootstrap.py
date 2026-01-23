@@ -11,7 +11,15 @@ from .container import PteEmpBootResult
 
 
 def panel_empirical_bootstrap(
-    attgt_list, pte_params, setup_pte_fun, subset_fun, attgt_fun, extra_gt_returns, compute_pte_fun, **kwargs
+    attgt_list,
+    pte_params,
+    setup_pte_fun,
+    subset_fun,
+    attgt_fun,
+    extra_gt_returns,
+    compute_pte_fun,
+    random_state=None,
+    **kwargs,
 ):
     """Compute empirical bootstrap standard errors for panel treatment effects.
 
@@ -31,6 +39,10 @@ def panel_empirical_bootstrap(
         Extra returns from group-time calculations.
     compute_pte_fun : callable
         Function to compute PTE for bootstrap samples.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
     **kwargs
         Additional arguments passed through.
 
@@ -58,8 +70,9 @@ def panel_empirical_bootstrap(
 
     bootstrap_results = []
 
+    rng = np.random.default_rng(random_state)
     for _ in range(n_boot):
-        boot_data = block_boot_sample(data, idname)
+        boot_data = block_boot_sample(data, idname, rng=rng)
 
         boot_params = setup_pte_fun(
             yname=pte_params.yname,
@@ -490,7 +503,7 @@ def qott_pte_aggregations(attgt_list, pte_params, extra_gt_returns):
     }
 
 
-def block_boot_sample(data, id_column):
+def block_boot_sample(data, id_column, rng=None):
     """Draw a block bootstrap sample from panel data.
 
     Parameters
@@ -499,6 +512,8 @@ def block_boot_sample(data, id_column):
         Panel data with unit identifiers.
     id_column : str
         Name of column containing unit IDs.
+    rng : Generator, optional
+        NumPy random number generator. If None, creates a new one.
 
     Returns
     -------
@@ -510,7 +525,8 @@ def block_boot_sample(data, id_column):
     unique_ids = data_pl[id_column].unique().to_numpy()
     n_units = len(unique_ids)
 
-    rng = np.random.default_rng()
+    if rng is None:
+        rng = np.random.default_rng()
     sampled_ids = rng.choice(unique_ids, size=n_units, replace=True)
 
     bootstrap_data = []

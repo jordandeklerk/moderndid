@@ -13,23 +13,12 @@ Main Functions
 
 .. currentmodule:: moderndid
 
-High-Level Wrapper
-^^^^^^^^^^^^^^^^^^
-
 .. autosummary::
    :toctree: generated/honestdid/
    :nosignatures:
 
    honest_did
    construct_original_cs
-
-Sensitivity Analysis
-^^^^^^^^^^^^^^^^^^^^
-
-.. autosummary::
-   :toctree: generated/honestdid/
-   :nosignatures:
-
    create_sensitivity_results_rm
    create_sensitivity_results_sm
 
