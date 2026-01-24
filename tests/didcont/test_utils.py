@@ -8,13 +8,8 @@ from moderndid.didcont import (
     _quantile_basis,
     avoid_zero_division,
     basis_dimension,
-    bread,
-    compute_r_squared,
-    estfun,
     is_full_rank,
     matrix_sqrt,
-    meat,
-    sandwich_vcov,
 )
 
 
@@ -50,55 +45,6 @@ def test_is_full_rank_deficient(rank_deficient_matrix):
 def test_is_full_rank_custom_tolerance(simple_matrix, tol):
     result = is_full_rank(simple_matrix, tol=tol)
     assert isinstance(result.is_full_rank, bool)
-
-
-@pytest.mark.parametrize(
-    "y, y_pred_func, expected_r2",
-    [
-        (np.array([1.0, 2.0, 3.0, 4.0, 5.0]), lambda y: y.copy(), 1.0),
-        (np.array([1.0, 2.0, 3.0, 4.0, 5.0]), lambda y: np.mean(y) * np.ones_like(y), 0.0),
-    ],
-)
-def test_compute_r_squared_fits(y, y_pred_func, expected_r2):
-    y_pred = y_pred_func(y)
-    r2 = compute_r_squared(y, y_pred)
-    assert np.isclose(r2, expected_r2)
-
-
-def test_compute_r_squared_with_weights(rng):
-    n = 100
-    y = rng.randn(n)
-    y_pred = y + 0.1 * rng.randn(n)
-    weights = rng.uniform(0.5, 2.0, n)
-
-    r2_unweighted = compute_r_squared(y, y_pred)
-    r2_weighted = compute_r_squared(y, y_pred, weights)
-
-    assert 0 <= r2_unweighted <= 1
-    assert 0 <= r2_weighted <= 1
-    assert r2_unweighted != r2_weighted
-
-
-@pytest.mark.parametrize(
-    "y_pred_multiplier, expected_r2",
-    [
-        (1.0, 1.0),
-        (2.0, 0.0),
-    ],
-)
-def test_compute_r_squared_constant_y(y_pred_multiplier, expected_r2):
-    y_constant = np.ones(10)
-    y_pred = np.ones(10) * y_pred_multiplier
-    assert compute_r_squared(y_constant, y_pred) == expected_r2
-
-
-def test_compute_r_squared_mismatched_weights_length(rng):
-    y = rng.randn(10)
-    y_pred = rng.randn(10)
-    weights = rng.randn(5)
-
-    with pytest.raises(ValueError, match="same length"):
-        compute_r_squared(y, y_pred, weights)
 
 
 def test_matrix_sqrt_identity():
@@ -230,148 +176,6 @@ def test_basis_dimension_single_variable(basis_type):
         assert dim == 3 + 2
     else:
         assert dim == 3 + 2 - 1
-
-
-def test_bread_basic():
-    X = np.array([[1, 0], [0, 1], [1, 1], [2, 1]])
-    B = bread(X)
-
-    XtX = X.T @ X
-    XtX_inv = np.linalg.inv(XtX)
-    expected = XtX_inv * 4
-
-    assert np.allclose(B, expected)
-    assert B.shape == (2, 2)
-
-
-def test_bread_singular_matrix():
-    X = np.array([[1, 2], [2, 4], [3, 6]])
-    B = bread(X)
-
-    assert B.shape == (2, 2)
-    assert not np.isnan(B).any()
-
-
-def test_estfun_basic():
-    X = np.array([[1, 0], [0, 1], [1, 1]])
-    residuals = np.array([0.5, -0.3, 0.2])
-
-    scores = estfun(X, residuals)
-
-    assert scores.shape == (3, 2)
-    assert np.allclose(scores[0], [0.5, 0.0])
-    assert np.allclose(scores[1], [0.0, -0.3])
-    assert np.allclose(scores[2], [0.2, 0.2])
-
-
-def test_estfun_with_weights():
-    X = np.array([[1, 0], [0, 1]])
-    residuals = np.array([1.0, 1.0])
-    weights = np.array([2.0, 0.5])
-
-    scores = estfun(X, residuals, weights)
-
-    assert scores.shape == (2, 2)
-    assert np.allclose(scores[0], [2.0, 0.0])
-    assert np.allclose(scores[1], [0.0, 0.5])
-
-
-@pytest.mark.parametrize(
-    "omega_type, omega_value",
-    [
-        ("HC0", 1.0),
-        ("HC1", 3.0),
-    ],
-)
-def test_meat_hc_basic(omega_type, omega_value):
-    scores = np.array([[1, 0], [0, 1], [1, 1]])
-    M = meat(scores, omega_type=omega_type)
-
-    if omega_type == "HC0":
-        expected = scores.T @ scores / 3
-    else:  # HC1
-        weighted_scores = scores * np.sqrt(omega_value)
-        expected = weighted_scores.T @ weighted_scores / 3
-
-    assert np.allclose(M, expected)
-
-
-@pytest.mark.parametrize(
-    "omega_type, omega_func",
-    [
-        ("HC2", lambda h: 1 / (1 - h)),
-        ("HC3", lambda h: 1 / (1 - h) ** 2),
-    ],
-)
-def test_meat_hc_with_hat_values(omega_type, omega_func):
-    scores = np.array([[1, 0], [0, 1]])
-    hat_values = np.array([0.5, 0.3])
-
-    M = meat(scores, omega_type=omega_type, hat_values=hat_values)
-
-    omega = omega_func(hat_values)
-    weighted_scores = scores * np.sqrt(omega[:, np.newaxis])
-    expected = weighted_scores.T @ weighted_scores / 2
-    assert np.allclose(M, expected)
-
-
-def test_meat_invalid_type():
-    scores = np.array([[1, 0], [0, 1]])
-
-    with pytest.raises(ValueError, match="Unknown omega_type"):
-        meat(scores, omega_type="HC99")
-
-
-@pytest.mark.parametrize("omega_type", ["HC2", "HC3"])
-def test_meat_missing_hat_values(omega_type):
-    scores = np.array([[1, 0], [0, 1]])
-
-    with pytest.raises(ValueError, match="hat_values required"):
-        meat(scores, omega_type=omega_type)
-
-
-def test_sandwich_vcov_basic():
-    np.random.seed(42)
-    n = 100
-    X = np.column_stack([np.ones(n), np.random.randn(n)])
-    true_beta = np.array([1.0, 2.0])
-    y = X @ true_beta + np.random.randn(n) * 0.5
-
-    beta_hat = np.linalg.lstsq(X, y, rcond=None)[0]
-    residuals = y - X @ beta_hat
-
-    vcov = sandwich_vcov(X, residuals)
-
-    assert vcov.shape == (2, 2)
-    assert np.all(np.diag(vcov) > 0)
-    assert np.allclose(vcov, vcov.T)
-
-
-def test_sandwich_vcov_with_weights():
-    X = np.array([[1, 0], [1, 1], [1, 2]])
-    residuals = np.array([0.1, -0.2, 0.15])
-    weights = np.array([1.0, 2.0, 0.5])
-
-    vcov = sandwich_vcov(X, residuals, weights=weights)
-
-    assert vcov.shape == (2, 2)
-    assert np.all(np.diag(vcov) > 0)
-    assert np.allclose(vcov, vcov.T)
-
-
-def test_sandwich_vcov_different_omega_types():
-    np.random.seed(123)
-    n = 50
-    X = np.column_stack([np.ones(n), np.random.randn(n)])
-    residuals = np.random.randn(n) * 0.3
-
-    vcov_hc0 = sandwich_vcov(X, residuals, omega_type="HC0")
-    vcov_hc1 = sandwich_vcov(X, residuals, omega_type="HC1")
-
-    assert np.all(np.diag(vcov_hc1) >= np.diag(vcov_hc0))
-
-    assert np.all(np.linalg.eigvals(vcov_hc0) > 0)
-    assert np.all(np.linalg.eigvals(vcov_hc1) > 0)
 
 
 @pytest.mark.parametrize(
