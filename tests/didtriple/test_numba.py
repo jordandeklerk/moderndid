@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from moderndid.didtriple import numba
+from moderndid.didtriple.numba import _aggregate_by_cluster_impl, _multiplier_bootstrap_impl
 
 
 def _multiplier_bootstrap_py(inf_func, nboot, random_state):
@@ -130,3 +131,86 @@ def test_multiplier_bootstrap_single_column():
     result = numba.multiplier_bootstrap(inf_func, nboot, random_state)
 
     assert result.shape == (nboot, 1)
+
+
+def test_multiplier_bootstrap_runs(bootstrap_data):
+    result = numba.multiplier_bootstrap(bootstrap_data, nboot=50, random_state=42)
+    assert result.shape == (50, bootstrap_data.shape[1])
+    assert np.all(np.isfinite(result))
+
+
+def test_aggregate_by_cluster_runs(cluster_data):
+    inf_func, cluster = cluster_data
+    result, n_clusters = numba.aggregate_by_cluster(inf_func, cluster)
+    assert n_clusters == 10
+    assert result.shape == (10, inf_func.shape[1])
+
+
+def test_get_agg_inf_func_runs(agg_inf_func_data):
+    inf_func_mat, whichones, weights = agg_inf_func_data
+    result = numba.get_agg_inf_func(inf_func_mat, whichones, weights)
+    assert result.shape == (inf_func_mat.shape[0],)
+
+
+def test_multiplier_bootstrap_reproducibility():
+    rng = np.random.default_rng(42)
+    inf_func = rng.standard_normal((100, 3))
+
+    result1 = numba.multiplier_bootstrap(inf_func, nboot=20, random_state=123)
+    result2 = numba.multiplier_bootstrap(inf_func, nboot=20, random_state=123)
+
+    np.testing.assert_array_equal(result1, result2)
+
+
+def test_aggregate_by_cluster_single_cluster():
+    rng = np.random.default_rng(42)
+    inf_func = rng.standard_normal((20, 3))
+    cluster = np.zeros(20, dtype=int)
+
+    result, n_clusters = numba.aggregate_by_cluster(inf_func, cluster)
+
+    assert n_clusters == 1
+    expected = np.mean(inf_func, axis=0)
+    np.testing.assert_allclose(result[0], expected)
+
+
+def test_get_agg_inf_func_single_weight():
+    rng = np.random.default_rng(42)
+    inf_func_mat = rng.standard_normal((50, 10))
+    whichones = np.array([5])
+    weights = np.array([1.0])
+
+    result = numba.get_agg_inf_func(inf_func_mat, whichones, weights)
+
+    np.testing.assert_allclose(result, inf_func_mat[:, 5])
+
+
+def test_multiplier_bootstrap_mammen_weights():
+    rng = np.random.default_rng(42)
+    inf_func = rng.standard_normal((50, 3)).astype(np.float64)
+    weights_matrix = rng.binomial(1, 0.7, size=(20, 50)).astype(np.int8)
+
+    result = _multiplier_bootstrap_impl(np.ascontiguousarray(inf_func), weights_matrix)
+
+    k1 = 0.5 * (1 - np.sqrt(5))
+    k2 = 0.5 * (1 + np.sqrt(5))
+    for b in range(20):
+        v = np.where(weights_matrix[b] == 1, k1, k2)
+        expected = np.mean(inf_func * v[:, np.newaxis], axis=0)
+        np.testing.assert_allclose(result[b], expected, rtol=1e-10)
+
+
+def test_aggregate_by_cluster_correctness():
+    rng = np.random.default_rng(42)
+    inf_func = rng.standard_normal((30, 3)).astype(np.float64)
+    cluster = np.repeat(np.arange(5), 6).astype(np.int64)
+    unique_clusters = np.arange(5, dtype=np.int64)
+
+    result = _aggregate_by_cluster_impl(
+        np.ascontiguousarray(inf_func), np.ascontiguousarray(cluster), np.ascontiguousarray(unique_clusters)
+    )
+
+    for i in range(5):
+        mask = cluster == i
+        expected = np.mean(inf_func[mask], axis=0)
+        np.testing.assert_allclose(result[i], expected, rtol=1e-10)

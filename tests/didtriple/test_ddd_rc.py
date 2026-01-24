@@ -1,9 +1,10 @@
 """Tests for the DDD repeated cross-section estimator."""
 
 import numpy as np
+import polars as pl
 import pytest
 
-from moderndid.didtriple.estimators.ddd_rc import ddd_rc
+from moderndid.didtriple.estimators.ddd_rc import _ddd_rc_2period, _validate_inputs_rc, ddd_rc
 
 
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
@@ -293,3 +294,228 @@ def _create_subgroup(state, partition):
     subgroup[(state == 1) & (partition == 0)] = 3
     subgroup[(state == 1) & (partition == 1)] = 4
     return subgroup
+
+
+def test_ddd_rc_weighted_bootstrap(two_period_rcs_data):
+    data = two_period_rcs_data
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.column_stack([np.ones(len(data)), data.select(["cov1", "cov2"]).to_numpy()])
+
+    result = ddd_rc(
+        y=y,
+        post=post,
+        subgroup=subgroup,
+        covariates=covariates,
+        est_method="dr",
+        boot=True,
+        boot_type="weighted",
+        nboot=20,
+        random_state=42,
+    )
+
+    assert len(result.boots) == 20
+    assert result.se > 0
+    boot_std = np.nanstd(result.boots)
+    assert 0.5 * boot_std < result.se < 2.0 * boot_std
+
+
+def test_validate_inputs_rc_length_mismatch():
+    y = np.array([1.0, 2.0, 3.0])
+    post = np.array([0, 1])
+    subgroup = np.array([1, 2, 3])
+    covariates = np.ones((3, 1))
+
+    with pytest.raises(ValueError, match="same length"):
+        _validate_inputs_rc(y, post, subgroup, covariates, None)
+
+
+def test_validate_inputs_rc_invalid_post():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    post = np.array([0, 1, 2, 0])
+    subgroup = np.array([1, 2, 3, 4])
+    covariates = np.ones((4, 1))
+
+    with pytest.raises(ValueError, match="only 0 and 1"):
+        _validate_inputs_rc(y, post, subgroup, covariates, None)
+
+
+def test_validate_inputs_rc_invalid_subgroup():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    post = np.array([0, 1, 0, 1])
+    subgroup = np.array([1, 2, 3, 5])
+    covariates = np.ones((4, 1))
+
+    with pytest.raises(ValueError, match="only values 1, 2, 3, 4"):
+        _validate_inputs_rc(y, post, subgroup, covariates, None)
+
+
+def test_validate_inputs_rc_no_treated():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    post = np.array([0, 1, 0, 1])
+    subgroup = np.array([1, 2, 3, 1])
+    covariates = np.ones((4, 1))
+
+    with pytest.raises(ValueError, match="subgroup 4"):
+        _validate_inputs_rc(y, post, subgroup, covariates, None)
+
+
+def test_validate_inputs_rc_negative_weights():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    post = np.array([0, 1, 0, 1])
+    subgroup = np.array([1, 2, 3, 4])
+    covariates = np.ones((4, 1))
+    weights = np.array([1.0, -1.0, 1.0, 1.0])
+
+    with pytest.raises(ValueError, match="non-negative"):
+        _validate_inputs_rc(y, post, subgroup, covariates, weights)
+
+
+def test_validate_inputs_rc_weights_length_mismatch():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    post = np.array([0, 1, 0, 1])
+    subgroup = np.array([1, 2, 3, 4])
+    covariates = np.ones((4, 1))
+    weights = np.array([1.0, 1.0])
+
+    with pytest.raises(ValueError, match="same length as y"):
+        _validate_inputs_rc(y, post, subgroup, covariates, weights)
+
+
+def test_validate_inputs_rc_covariates_rows_mismatch():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    post = np.array([0, 1, 0, 1])
+    subgroup = np.array([1, 2, 3, 4])
+    covariates = np.ones((3, 1))
+
+    with pytest.raises(ValueError, match="same number of rows"):
+        _validate_inputs_rc(y, post, subgroup, covariates, None)
+
+
+def test_validate_inputs_rc_no_post_obs():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    post = np.array([0, 0, 0, 0])
+    subgroup = np.array([1, 2, 3, 4])
+    covariates = np.ones((4, 1))
+
+    with pytest.raises(ValueError, match="No post-treatment"):
+        _validate_inputs_rc(y, post, subgroup, covariates, None)
+
+
+def test_validate_inputs_rc_no_pre_obs():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    post = np.array([1, 1, 1, 1])
+    subgroup = np.array([1, 2, 3, 4])
+    covariates = np.ones((4, 1))
+
+    with pytest.raises(ValueError, match="No pre-treatment"):
+        _validate_inputs_rc(y, post, subgroup, covariates, None)
+
+
+def test_validate_inputs_rc_missing_subgroup_warns():
+    y = np.array([1.0, 2.0, 3.0, 4.0])
+    post = np.array([0, 1, 0, 1])
+    subgroup = np.array([1, 2, 4, 4])
+    covariates = np.ones((4, 1))
+
+    with pytest.warns(UserWarning, match="subgroup 3"):
+        _validate_inputs_rc(y, post, subgroup, covariates, None)
+
+
+def test_ddd_rc_2period_wrapper(two_period_rcs_data):
+    data = two_period_rcs_data
+
+    result = _ddd_rc_2period(
+        data=data,
+        yname="y",
+        tname="time",
+        gname="state",
+        pname="partition",
+        xformla="~ cov1 + cov2",
+        weightsname=None,
+        est_method="dr",
+        boot=False,
+        boot_type="multiplier",
+        nboot=50,
+        alpha=0.05,
+        trim_level=0.995,
+        random_state=None,
+    )
+
+    assert isinstance(result.att, float)
+    assert np.isfinite(result.att)
+
+
+def test_ddd_rc_2period_no_covariates(two_period_rcs_data):
+    data = two_period_rcs_data
+
+    result = _ddd_rc_2period(
+        data=data,
+        yname="y",
+        tname="time",
+        gname="state",
+        pname="partition",
+        xformla="~1",
+        weightsname=None,
+        est_method="dr",
+        boot=False,
+        boot_type="multiplier",
+        nboot=50,
+        alpha=0.05,
+        trim_level=0.995,
+        random_state=None,
+    )
+
+    assert isinstance(result.att, float)
+
+
+def test_ddd_rc_2period_invalid_periods():
+    data = pl.DataFrame({"y": [1, 2, 3], "time": [1, 2, 3], "state": [0, 1, 0], "partition": [1, 0, 1]})
+
+    with pytest.raises(ValueError, match="exactly 2 time periods"):
+        _ddd_rc_2period(
+            data=data,
+            yname="y",
+            tname="time",
+            gname="state",
+            pname="partition",
+            xformla=None,
+            weightsname=None,
+            est_method="dr",
+            boot=False,
+            boot_type="multiplier",
+            nboot=50,
+            alpha=0.05,
+            trim_level=0.995,
+            random_state=None,
+        )
+
+
+def test_ddd_rc_1d_covariates(two_period_rcs_data):
+    data = two_period_rcs_data
+    y = data["y"].to_numpy()
+    post = data["time"].to_numpy()
+    subgroup = _create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy())
+    covariates = np.ones(len(data))
+
+    result = ddd_rc(
+        y=y,
+        post=post,
+        subgroup=subgroup,
+        covariates=covariates,
+        est_method="dr",
+    )
+
+    assert np.isfinite(result.att)
+    assert 0.5 < result.att < 4.0
+
+
+def test_validate_inputs_rc_weight_normalization():
+    y = np.ones(8)
+    post = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+    subgroup = np.array([1, 2, 3, 4, 1, 2, 3, 4])
+    weights = np.array([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0])
+
+    _, _, _, _, normalized_weights, _ = _validate_inputs_rc(y, post, subgroup, None, weights)
+    np.testing.assert_allclose(np.mean(normalized_weights), 1.0)
