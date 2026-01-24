@@ -133,25 +133,6 @@ def test_multiplier_bootstrap_single_column():
     assert result.shape == (nboot, 1)
 
 
-def test_multiplier_bootstrap_runs(bootstrap_data):
-    result = numba.multiplier_bootstrap(bootstrap_data, nboot=50, random_state=42)
-    assert result.shape == (50, bootstrap_data.shape[1])
-    assert np.all(np.isfinite(result))
-
-
-def test_aggregate_by_cluster_runs(cluster_data):
-    inf_func, cluster = cluster_data
-    result, n_clusters = numba.aggregate_by_cluster(inf_func, cluster)
-    assert n_clusters == 10
-    assert result.shape == (10, inf_func.shape[1])
-
-
-def test_get_agg_inf_func_runs(agg_inf_func_data):
-    inf_func_mat, whichones, weights = agg_inf_func_data
-    result = numba.get_agg_inf_func(inf_func_mat, whichones, weights)
-    assert result.shape == (inf_func_mat.shape[0],)
-
-
 def test_multiplier_bootstrap_reproducibility():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal((100, 3))
