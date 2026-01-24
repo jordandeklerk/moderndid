@@ -231,3 +231,67 @@ def test_ddd_mp_print_control_group(mp_ddd_data, control_group, expected):
 
     output = str(result)
     assert expected in output
+
+
+def test_ddd_mp_bootstrap(mp_ddd_data):
+    result = ddd_mp(
+        data=mp_ddd_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        boot=True,
+        nboot=50,
+        random_state=42,
+    )
+
+    assert len(result.att) > 0
+    assert result.args["boot"] is True
+    assert result.args["nboot"] == 50
+
+
+def test_ddd_mp_bootstrap_cband(mp_ddd_data):
+    result = ddd_mp(
+        data=mp_ddd_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        boot=True,
+        nboot=50,
+        cband=True,
+        random_state=42,
+    )
+
+    assert len(result.att) > 0
+    assert result.args["cband"] is True
+
+
+def test_ddd_mp_reproducibility(mp_ddd_data):
+    result1 = ddd_mp(
+        data=mp_ddd_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        boot=True,
+        nboot=20,
+        random_state=123,
+    )
+
+    result2 = ddd_mp(
+        data=mp_ddd_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        boot=True,
+        nboot=20,
+        random_state=123,
+    )
+
+    np.testing.assert_allclose(result1.se, result2.se, equal_nan=True)

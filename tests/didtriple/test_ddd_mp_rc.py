@@ -342,3 +342,21 @@ def test_ddd_mp_rc_different_from_panel():
 
     assert len(result.att) > 0
     assert result.n == len(data)
+
+
+def test_ddd_mp_rc_bootstrap_cband(mp_rcs_data):
+    result = ddd_mp_rc(
+        data=mp_rcs_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        boot=True,
+        nboot=50,
+        cband=True,
+        random_state=42,
+    )
+
+    assert len(result.att) > 0
+    assert result.args["cband"] is True

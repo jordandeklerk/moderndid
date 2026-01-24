@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from moderndid import ddd_panel
+from moderndid.didtriple.estimators.ddd_panel import _validate_inputs
 
 
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
@@ -225,3 +226,90 @@ def test_ddd_panel_print_bootstrap(ddd_data_with_covariates):
     output = str(result)
     assert "Bootstrap standard errors" in output
     assert "50 reps" in output
+
+
+def test_validate_inputs_length_mismatch():
+    y1 = np.array([1.0, 2.0, 3.0])
+    y0 = np.array([0.5, 1.5])
+    subgroup = np.array([1, 2, 3])
+
+    with pytest.raises(ValueError, match="same length"):
+        _validate_inputs(y1, y0, subgroup, None, None)
+
+
+def test_validate_inputs_invalid_subgroup():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 3, 5])
+
+    with pytest.raises(ValueError, match="only values 1, 2, 3, 4"):
+        _validate_inputs(y1, y0, subgroup, None, None)
+
+
+def test_validate_inputs_no_treated():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 3, 1])
+
+    with pytest.raises(ValueError, match="subgroup 4"):
+        _validate_inputs(y1, y0, subgroup, None, None)
+
+
+def test_validate_inputs_negative_weights():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 3, 4])
+    weights = np.array([1.0, -1.0, 1.0, 1.0])
+
+    with pytest.raises(ValueError, match="non-negative"):
+        _validate_inputs(y1, y0, subgroup, None, weights)
+
+
+def test_validate_inputs_weights_length():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 3, 4])
+    weights = np.array([1.0, 1.0])
+
+    with pytest.raises(ValueError, match="same length"):
+        _validate_inputs(y1, y0, subgroup, None, weights)
+
+
+def test_validate_inputs_covariates_rows():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 3, 4])
+    covariates = np.ones((3, 1))
+
+    with pytest.raises(ValueError, match="same number of rows"):
+        _validate_inputs(y1, y0, subgroup, covariates, None)
+
+
+def test_validate_inputs_missing_subgroup_warns():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 4, 4])
+
+    with pytest.warns(UserWarning, match="subgroup 3"):
+        _validate_inputs(y1, y0, subgroup, None, None)
+
+
+def test_validate_inputs_1d_covariates():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 3, 4])
+    covariates = np.ones(4)
+
+    result = _validate_inputs(y1, y0, subgroup, covariates, None)
+    assert result[3].ndim == 2
+    assert result[3].shape == (4, 1)
+
+
+def test_validate_inputs_weight_normalization():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 3, 4])
+    weights = np.array([2.0, 2.0, 2.0, 2.0])
+
+    _, _, _, _, normalized_weights, _ = _validate_inputs(y1, y0, subgroup, None, weights)
+    np.testing.assert_allclose(np.mean(normalized_weights), 1.0)
