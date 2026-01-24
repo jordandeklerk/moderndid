@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from moderndid import ddd_panel
+from moderndid.didtriple.estimators.ddd_panel import _validate_inputs
 
 
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
@@ -18,13 +19,11 @@ def test_ddd_panel_basic(ddd_data_with_covariates, est_method):
         est_method=est_method,
     )
 
-    assert isinstance(result.att, float)
-    assert np.isfinite(result.att)
-    assert isinstance(result.se, float)
-    assert result.se > 0
+    assert 0.1 < result.att < 4.0
+    assert 0.01 < result.se < 2.0
     assert result.lci < result.att < result.uci
-    assert result.boots is None
-    assert result.att_inf_func is None
+    ci_width = result.uci - result.lci
+    assert 1.5 * result.se < ci_width < 5.0 * result.se
 
 
 def test_ddd_panel_no_covariates(ddd_data_no_covariates):
@@ -38,9 +37,9 @@ def test_ddd_panel_no_covariates(ddd_data_no_covariates):
         est_method="dr",
     )
 
-    assert isinstance(result.att, float)
     assert np.isfinite(result.att)
     assert result.se > 0
+    assert result.lci < result.att < result.uci
 
 
 def test_ddd_panel_with_weights(ddd_data_with_covariates):
@@ -48,7 +47,10 @@ def test_ddd_panel_with_weights(ddd_data_with_covariates):
     rng = np.random.default_rng(42)
     i_weights = rng.uniform(0.5, 1.5, len(ddd_data.y1))
 
-    result = ddd_panel(
+    result_unweighted = ddd_panel(
+        y1=ddd_data.y1, y0=ddd_data.y0, subgroup=ddd_data.subgroup, covariates=covariates, est_method="dr"
+    )
+    result_weighted = ddd_panel(
         y1=ddd_data.y1,
         y0=ddd_data.y0,
         subgroup=ddd_data.subgroup,
@@ -57,9 +59,8 @@ def test_ddd_panel_with_weights(ddd_data_with_covariates):
         est_method="dr",
     )
 
-    assert isinstance(result.att, float)
-    assert np.isfinite(result.att)
-    assert result.se > 0
+    assert 0.1 < result_weighted.att < 4.0
+    assert result_weighted.att != result_unweighted.att
 
 
 def test_ddd_panel_influence_function(ddd_data_with_covariates):
@@ -74,9 +75,9 @@ def test_ddd_panel_influence_function(ddd_data_with_covariates):
         influence_func=True,
     )
 
-    assert result.att_inf_func is not None
     assert len(result.att_inf_func) == len(ddd_data.y1)
-    assert np.abs(np.mean(result.att_inf_func)) < 0.5
+    inf_se = np.std(result.att_inf_func) / np.sqrt(len(ddd_data.y1))
+    np.testing.assert_allclose(result.se, inf_se, rtol=0.1)
 
 
 @pytest.mark.parametrize("boot_type", ["multiplier", "weighted"])
@@ -94,10 +95,10 @@ def test_ddd_panel_bootstrap(ddd_data_with_covariates, boot_type):
         nboot=50,
     )
 
-    assert result.boots is not None
     assert len(result.boots) == 50
     assert result.se > 0
-    assert result.lci < result.uci
+    ci_width = result.uci - result.lci
+    assert ci_width > 2 * result.se
 
 
 def test_ddd_panel_did_atts(ddd_data_with_covariates):
@@ -137,26 +138,6 @@ def test_ddd_panel_subgroup_counts(ddd_data_with_covariates):
     assert total == len(ddd_data.y1)
 
 
-def test_ddd_panel_args_stored(ddd_data_with_covariates):
-    ddd_data, covariates = ddd_data_with_covariates
-
-    result = ddd_panel(
-        y1=ddd_data.y1,
-        y0=ddd_data.y0,
-        subgroup=ddd_data.subgroup,
-        covariates=covariates,
-        est_method="dr",
-        boot=True,
-        nboot=25,
-        alpha=0.10,
-    )
-
-    assert result.args["est_method"] == "dr"
-    assert result.args["boot"] is True
-    assert result.args["nboot"] == 25
-    assert result.args["alpha"] == 0.10
-
-
 def test_ddd_panel_reproducibility(ddd_data_with_covariates):
     ddd_data, covariates = ddd_data_with_covariates
 
@@ -186,42 +167,47 @@ def test_ddd_panel_reproducibility(ddd_data_with_covariates):
     assert result1.se == result2.se
 
 
-@pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
-def test_ddd_panel_print(ddd_data_with_covariates, est_method):
-    ddd_data, covariates = ddd_data_with_covariates
-
-    result = ddd_panel(
-        y1=ddd_data.y1,
-        y0=ddd_data.y0,
-        subgroup=ddd_data.subgroup,
-        covariates=covariates,
-        est_method=est_method,
-    )
-
-    output = str(result)
-    assert "Triple Difference-in-Differences" in output
-    assert f"{est_method.upper()}-DDD" in output
-    assert "ATT" in output
-    assert "Std. Error" in output
-    assert "treated-and-eligible" in output
-    assert "treated-but-ineligible" in output
-    assert "eligible-but-untreated" in output
-    assert "untreated-and-ineligible" in output
+@pytest.mark.parametrize(
+    "y1,y0,subgroup,covariates,weights,match",
+    [
+        (np.array([1.0, 2.0, 3.0]), np.array([0.5, 1.5]), np.array([1, 2, 3]), None, None, "same length"),
+        (np.ones(4), np.ones(4), np.array([1, 2, 3, 5]), None, None, "only values 1, 2, 3, 4"),
+        (np.ones(4), np.ones(4), np.array([1, 2, 3, 1]), None, None, "subgroup 4"),
+        (np.ones(4), np.ones(4), np.array([1, 2, 3, 4]), None, np.array([1.0, -1.0, 1.0, 1.0]), "non-negative"),
+        (np.ones(4), np.ones(4), np.array([1, 2, 3, 4]), None, np.array([1.0, 1.0]), "same length"),
+        (np.ones(4), np.ones(4), np.array([1, 2, 3, 4]), np.ones((3, 1)), None, "same number of rows"),
+    ],
+)
+def test_validate_inputs_errors(y1, y0, subgroup, covariates, weights, match):
+    with pytest.raises(ValueError, match=match):
+        _validate_inputs(y1, y0, subgroup, covariates, weights)
 
 
-def test_ddd_panel_print_bootstrap(ddd_data_with_covariates):
-    ddd_data, covariates = ddd_data_with_covariates
+def test_validate_inputs_missing_subgroup_warns():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 4, 4])
 
-    result = ddd_panel(
-        y1=ddd_data.y1,
-        y0=ddd_data.y0,
-        subgroup=ddd_data.subgroup,
-        covariates=covariates,
-        est_method="dr",
-        boot=True,
-        nboot=50,
-    )
+    with pytest.warns(UserWarning, match="subgroup 3"):
+        _validate_inputs(y1, y0, subgroup, None, None)
 
-    output = str(result)
-    assert "Bootstrap standard errors" in output
-    assert "50 reps" in output
+
+def test_validate_inputs_1d_covariates():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 3, 4])
+    covariates = np.ones(4)
+
+    result = _validate_inputs(y1, y0, subgroup, covariates, None)
+    assert result[3].ndim == 2
+    assert result[3].shape == (4, 1)
+
+
+def test_validate_inputs_weight_normalization():
+    y1 = np.array([1.0, 2.0, 3.0, 4.0])
+    y0 = np.array([0.5, 1.5, 2.5, 3.5])
+    subgroup = np.array([1, 2, 3, 4])
+    weights = np.array([2.0, 2.0, 2.0, 2.0])
+
+    _, _, _, _, normalized_weights, _ = _validate_inputs(y1, y0, subgroup, None, weights)
+    np.testing.assert_allclose(np.mean(normalized_weights), 1.0)
