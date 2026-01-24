@@ -6,7 +6,6 @@ import numpy as np
 
 from .numba import (
     check_full_rank_crossprod,
-    compute_rsquared,
     create_nonzero_divisor,
     matrix_sqrt_eigendecomp,
 )
@@ -19,129 +18,6 @@ class FullRankCheckResult(NamedTuple):
     condition_number: float
     min_eigenvalue: float
     max_eigenvalue: float
-
-
-def bread(X, n_obs=None):
-    """Compute bread matrix for sandwich estimator.
-
-    Parameters
-    ----------
-    X : ndarray
-        Design matrix (n x p).
-    n_obs : int, optional
-        Number of observations. If None, uses X.shape[0].
-
-    Returns
-    -------
-    ndarray
-        Bread matrix :math:`B` (p x p).
-    """
-    if n_obs is None:
-        n_obs = X.shape[0]
-
-    xtx = X.T @ X
-    try:
-        xtx_inv = np.linalg.inv(xtx)
-    except np.linalg.LinAlgError:
-        xtx_inv = np.linalg.pinv(xtx)
-    return xtx_inv * n_obs
-
-
-def estfun(X, residuals, weights=None):
-    """Compute estimating functions.
-
-    Parameters
-    ----------
-    X : ndarray
-        Design matrix (n x p).
-    residuals : ndarray
-        Model residuals (n,).
-    weights : ndarray, optional
-        Observation weights. If None, uses unit weights.
-
-    Returns
-    -------
-    ndarray
-        Matrix of score contributions :math:`S` (n x p).
-    """
-    if weights is None:
-        weights = np.ones(len(residuals))
-    return residuals[:, np.newaxis] * weights[:, np.newaxis] * X
-
-
-def meat(scores, omega_type="HC0", hat_values=None):
-    """Compute meat matrix for sandwich estimator.
-
-    Parameters
-    ----------
-    scores : ndarray
-        Matrix of score contributions (n x p) from estfun().
-    omega_type : str, default="HC0"
-        Type of heteroskedasticity correction:
-
-        - **HC0**: No finite-sample correction
-        - **HC1**: Correction by n/(n-k)
-        - **HC2**: Uses leverage values (1 - h_ii)
-        - **HC3**: Uses leverage values (1 - h_ii)^2
-    hat_values : ndarray, optional
-        Diagonal of hat matrix. Required for HC2 and HC3.
-
-    Returns
-    -------
-    ndarray
-        Meat matrix :math:`M` (p x p).
-    """
-    n = scores.shape[0]
-
-    if omega_type == "HC0":
-        omega = np.ones(n)
-    elif omega_type == "HC1":
-        k = scores.shape[1]
-        omega = np.ones(n) * n / (n - k)
-    elif omega_type == "HC2":
-        if hat_values is None:
-            raise ValueError("hat_values required for HC2")
-        omega = 1 / (1 - hat_values)
-    elif omega_type == "HC3":
-        if hat_values is None:
-            raise ValueError("hat_values required for HC3")
-        omega = 1 / (1 - hat_values) ** 2
-    else:
-        raise ValueError(f"Unknown omega_type: {omega_type}")
-
-    weighted_scores = scores * np.sqrt(omega[:, np.newaxis])
-    return weighted_scores.T @ weighted_scores / n
-
-
-def sandwich_vcov(X, residuals, weights=None, omega_type="HC0", hat_values=None):
-    """Compute heteroskedasticity-consistent standard errors.
-
-    Parameters
-    ----------
-    X : ndarray
-        Design matrix :math:`X` (n x p).
-    residuals : ndarray
-        Model residuals :math:`e` (n,).
-    weights : ndarray, optional
-        Observation weights :math:`w`.
-    omega_type : str, default="HC0"
-        Type of heteroskedasticity correction.
-    hat_values : ndarray, optional
-        Diagonal of hat matrix for HC2/HC3.
-
-    Returns
-    -------
-    ndarray
-        Sandwich covariance matrix :math:`vcov` (p x p).
-    """
-    n = X.shape[0]
-
-    bread_mat = bread(X, n)
-    scores = estfun(X, residuals, weights)
-    meat_mat = meat(scores, omega_type, hat_values)
-
-    vcov = bread_mat @ meat_mat @ bread_mat / n
-    return vcov
 
 
 def is_full_rank(x, tol=None):
@@ -187,43 +63,6 @@ def is_full_rank(x, tol=None):
     return FullRankCheckResult(
         is_full_rank=bool(is_full), condition_number=cond_num, min_eigenvalue=min_eig, max_eigenvalue=max_eig
     )
-
-
-def compute_r_squared(y, y_pred, weights=None):
-    """Compute R-squared statistic for model fit.
-
-    Parameters
-    ----------
-    y : ndarray
-        Observed values.
-    y_pred : ndarray
-        Predicted values.
-    weights : ndarray, optional
-        Observation weights. If provided, computes weighted R-squared.
-
-    Returns
-    -------
-    float
-        R-squared value between 0 and 1.
-
-    Notes
-    -----
-    The weighted R-squared is computed by scaling both y and y_pred
-    by sqrt(weights) before the standard R-squared calculation.
-    """
-    y = np.asarray(y)
-    y_pred = np.asarray(y_pred)
-
-    if weights is not None:
-        weights = np.asarray(weights)
-        if len(weights) != len(y):
-            raise ValueError("weights must have same length as y")
-
-        sqrt_w = np.sqrt(weights)
-        y = y * sqrt_w
-        y_pred = y_pred * sqrt_w
-
-    return float(compute_rsquared(y, y_pred))
 
 
 def matrix_sqrt(x):
