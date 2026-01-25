@@ -6,6 +6,8 @@ import timeit
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid.didcont import numba as nb_module
 
 

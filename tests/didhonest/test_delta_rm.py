@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid.didhonest import (
     DeltaRMResult,
     compute_conditional_cs_rm,

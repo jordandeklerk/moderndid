@@ -6,6 +6,8 @@ import time
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid.didhonest import arp_no_nuisance, arp_nuisance, bounds, numba, utils
 
 
