@@ -219,6 +219,45 @@ def ddd(
            ...: )
            ...: result_mp
 
+    The function also supports repeated cross-section data where different units are
+    sampled in each time period. Set ``panel=False`` to use this mode.
+
+    .. ipython::
+        :okwarning:
+
+        In [4]: dgp_rcs = gen_dgp_2periods(n=2000, dgp_type=1, panel=False, random_state=42)
+           ...: result_rcs = ddd(
+           ...:     data=dgp_rcs["data"],
+           ...:     yname="y",
+           ...:     tname="time",
+           ...:     gname="state",
+           ...:     pname="partition",
+           ...:     xformla="~ cov1 + cov2 + cov3 + cov4",
+           ...:     est_method="dr",
+           ...:     panel=False,
+           ...: )
+           ...: result_rcs
+
+    For multi-period repeated cross-section data with staggered treatment adoption,
+    set ``panel=False`` with multiple time periods.
+
+    .. ipython::
+        :okwarning:
+
+        In [5]: dgp_mp_rcs = gen_dgp_mult_periods(n=500, dgp_type=1, panel=False, random_state=42)
+           ...: result_mp_rcs = ddd(
+           ...:     data=dgp_mp_rcs["data"],
+           ...:     yname="y",
+           ...:     tname="time",
+           ...:     gname="group",
+           ...:     pname="partition",
+           ...:     control_group="notyettreated",
+           ...:     base_period="universal",
+           ...:     est_method="dr",
+           ...:     panel=False,
+           ...: )
+           ...: result_mp_rcs
+
     Notes
     -----
     The DDD estimator identifies treatment effects in settings where units must satisfy
