@@ -5,6 +5,8 @@ import numpy as np
 import polars as pl
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from tests.helpers import importorskip
 
 pd = importorskip("pandas")

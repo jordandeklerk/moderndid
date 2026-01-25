@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid.didcont.npiv.gsl_bspline import gsl_bs, predict_gsl_bs
 
 

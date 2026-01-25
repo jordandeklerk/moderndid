@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid.didcont.npiv.prodspline import glp_model_matrix, tensor_prod_model_matrix
 
 
