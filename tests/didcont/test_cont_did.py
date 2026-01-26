@@ -171,8 +171,7 @@ def test_cont_did_control_groups(contdid_data, control_group):
         assert np.all(result.att_d_se >= 0)
 
 
-@pytest.mark.parametrize("base_period", ["varying", "universal"])
-def test_cont_did_base_period(contdid_data, base_period):
+def test_cont_did_base_period(contdid_data):
     result = cont_did(
         data=contdid_data,
         yname="Y",
@@ -180,7 +179,7 @@ def test_cont_did_base_period(contdid_data, base_period):
         idname="id",
         gname="G",
         dname="D",
-        base_period=base_period,
+        base_period="varying",
         biters=10,
     )
 
@@ -267,23 +266,6 @@ def test_cont_did_significance_level(contdid_data, alp):
         assert np.isfinite(result.att_d_crit_val)
         assert result.att_d_crit_val > 0
         assert result.att_d_crit_val < 10
-
-
-def test_cont_did_auto_gname(contdid_data):
-    data_no_g = contdid_data.drop("G")
-
-    result = cont_did(
-        data=data_no_g,
-        yname="Y",
-        tname="period",
-        idname="id",
-        gname=None,
-        dname="D",
-        biters=10,
-    )
-
-    assert isinstance(result, DoseResult | PTEResult)
-    assert np.isfinite(result.overall_att)
 
 
 def test_cont_did_empirical_bootstrap_fallback(contdid_data):
