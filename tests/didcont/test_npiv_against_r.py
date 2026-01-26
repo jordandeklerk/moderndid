@@ -1,5 +1,10 @@
 """Test of NPIV implementation against R npiv package results."""
 
+import pytest
+
+pytestmark = pytest.mark.slow
+
+
 import numpy as np
 
 from moderndid.didcont.npiv import npiv

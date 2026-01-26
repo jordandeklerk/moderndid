@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid.didcont.spline.utils import (
     append_zero_columns,
     arrays_almost_equal,

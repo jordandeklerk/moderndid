@@ -2,6 +2,8 @@
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.slow
 import scipy.stats as st
 
 from moderndid.didcont.estimation import (

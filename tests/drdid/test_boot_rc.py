@@ -3,6 +3,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid import (
     wboot_drdid_rc1,
     wboot_drdid_rc2,

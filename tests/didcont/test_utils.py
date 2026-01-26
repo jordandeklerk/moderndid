@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid.didcont import (
     _quantile_basis,
     avoid_zero_division,

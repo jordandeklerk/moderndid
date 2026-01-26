@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid.didhonest.delta.sd.sdm import (
     DeltaSDMResult,
     _create_sdm_constraint_matrix,
