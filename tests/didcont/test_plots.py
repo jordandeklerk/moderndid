@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 plotnine = pytest.importorskip("plotnine")
 
 from plotnine import ggplot

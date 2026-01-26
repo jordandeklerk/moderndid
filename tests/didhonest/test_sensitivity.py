@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from tests.helpers import importorskip
 
 pl = importorskip("polars")

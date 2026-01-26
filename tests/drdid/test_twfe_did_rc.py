@@ -3,6 +3,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid import twfe_did_rc
 
 

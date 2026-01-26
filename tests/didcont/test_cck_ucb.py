@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from moderndid.didcont.npiv.cck_ucb import compute_cck_ucb
 from moderndid.didcont.npiv.results import NPIVResult
 

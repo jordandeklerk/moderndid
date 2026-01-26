@@ -1,5 +1,10 @@
 """Tests against R examples."""
 
+import pytest
+
+pytestmark = pytest.mark.slow
+
+
 import numpy as np
 
 from moderndid.didcont.cont_did import cont_did
