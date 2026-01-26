@@ -362,7 +362,7 @@ at each point in time.
 Plotting results
 ----------------
 
-ModernDiD provides built-in plotting functions using plotnine with the  `ggplot` object.
+ModernDiD provides built-in plotting functions using plotnine with the ``ggplot`` object.
 
 Plot group-time effects:
 
@@ -370,15 +370,21 @@ Plot group-time effects:
 
     did.plot_gt(result)
 
+.. image:: /_static/images/plot_gt.png
+   :alt: Group-time average treatment effects plot
+   :width: 650px
+   :align: center
+
 Plot the event study:
 
 .. code-block:: python
 
     did.plot_event_study(event_study)
 
-The plots display point estimates and simultaneous confidence bands,
-making it easy to assess both the magnitude of effects and support
-for parallel trends.
+.. image:: /_static/images/plot_event_study.png
+   :alt: Event study plot
+   :width: 650px
+   :align: center
 
 
 Estimation options
