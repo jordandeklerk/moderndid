@@ -308,8 +308,5 @@ def simulate_cont_did_data(
 
     df_long = df_long.with_columns(pl.col("time_period").str.replace("Y_", "").cast(pl.Int64))
     df_long = df_long.with_columns(pl.when(pl.col("G") == 0).then(pl.lit(0.0)).otherwise(pl.col("D")).alias("D"))
-    df_long = df_long.with_columns(
-        pl.when(pl.col("time_period") < pl.col("G")).then(pl.lit(0.0)).otherwise(pl.col("D")).alias("D")
-    )
 
     return df_long.sort(["id", "time_period"])
