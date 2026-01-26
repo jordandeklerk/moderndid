@@ -555,12 +555,7 @@ def cont_two_by_two_subset(
         pl.when(pl.col("period") == tp).then(pl.lit("post")).otherwise(pl.lit("pre")).alias("name")
     )
 
-    target_parameter = kwargs.get("target_parameter", None)
-    aggregation = kwargs.get("aggregation", None)
-    if aggregation == "eventstudy" and target_parameter == "level":
-        subset_data = subset_data.with_columns((pl.col("G") == g).cast(pl.Int64).alias("D"))
-    else:
-        subset_data = subset_data.with_columns((pl.col("D") * (pl.col("G") == g).cast(pl.Float64)).alias("D"))
+    subset_data = subset_data.with_columns((pl.col("D") * (pl.col("G") == g).cast(pl.Float64)).alias("D"))
 
     n1 = subset_data["id"].n_unique()
     all_ids = data["id"].unique().to_numpy()
