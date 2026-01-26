@@ -29,6 +29,83 @@ class WOLSResult(NamedTuple):
     coefficients: np.ndarray
 
 
+def ols_panel(delta_y, d, x, i_weights):
+    r"""Compute plain OLS regression parameters for traditional DR-DiD with panel data.
+
+    Implements ordinary least squares regression for the outcome model component of the
+    traditional doubly-robust difference-in-differences estimator. The regression is performed
+    on control units only, using only observation weights (no propensity score weighting).
+
+    The OLS estimator solves
+
+    .. math::
+        \widehat{\beta}_{0, \Delta}^{ols, p} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
+        \left[\left.(\Delta Y - X^{\prime} b)^{2} \right\rvert\, D=0\right],
+
+    where :math:`\Delta Y` is the outcome difference (post - pre) and :math:`X` are the
+    covariates including intercept.
+
+    Parameters
+    ----------
+    delta_y : ndarray
+        A 1D array representing the difference in outcomes between the
+        post-treatment and pre-treatment periods (Y_post - Y_pre) for each unit.
+    d : ndarray
+        A 1D array representing the treatment indicator (1 for treated, 0 for control)
+        for each unit.
+    x : ndarray
+        A 2D array of covariates (including intercept if desired) with shape (n_units, n_features).
+    i_weights : ndarray
+        A 1D array of individual observation weights for each unit.
+
+    Returns
+    -------
+    WOLSResult
+        A named tuple containing:
+
+        - `out_reg` : ndarray
+        - `coefficients` : ndarray
+
+    See Also
+    --------
+    wols_panel : Weighted OLS for improved DR-DiD estimators (includes propensity score weighting).
+    """
+    _validate_wols_arrays({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, "ols_panel")
+
+    control_filter = d == 0
+    n_control = np.sum(control_filter)
+
+    if n_control == 0:
+        raise ValueError("No control units found (all d == 1). Cannot perform regression.")
+
+    if n_control < 5:
+        warnings.warn(f"Only {n_control} control units available. Results may be unreliable.", UserWarning)
+
+    control_weights = i_weights[control_filter]
+    control_x = x[control_filter]
+    control_y = delta_y[control_filter]
+
+    _check_extreme_weights(control_weights)
+
+    try:
+        wls_model = sm.WLS(control_y, control_x, weights=control_weights)
+        results = wls_model.fit()
+    except np.linalg.LinAlgError as e:
+        raise ValueError(
+            "Failed to solve linear system. The covariate matrix may be singular or ill-conditioned."
+        ) from e
+    except Exception as e:
+        raise ValueError(f"Failed to fit weighted least squares model: {e}") from e
+
+    coefficients = results.params
+    _check_wls_condition_number(results)
+    _check_coefficients_validity(coefficients)
+
+    fitted_values = x @ coefficients
+
+    return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
+
+
 def wols_panel(delta_y, d, x, ps, i_weights):
     r"""Compute weighted OLS regression parameters for DR-DiD with panel data.
 
@@ -258,6 +335,16 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
     traditional doubly-robust difference-in-differences estimator with repeated cross-section data.
     Unlike wols_rc, this function does NOT apply propensity score weighting - it uses only
     the observation weights i_weights.
+
+    The OLS estimator solves
+
+    .. math::
+        \widehat{\beta}_{g,t}^{ols,rc} = \arg\min_{b \in \Theta} \mathbb{E}_{n}
+        \left[\left.(Y - X^{\prime} b)^{2} \right\rvert\, D=g, T=t\right],
+
+    where :math:`g \in \{0, 1\}` indicates the treatment group, :math:`t` indicates the
+    period (pre/post), :math:`Y` is the outcome, and :math:`X` are the covariates
+    including intercept.
 
     Parameters
     ----------

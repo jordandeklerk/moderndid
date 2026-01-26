@@ -9,7 +9,7 @@ from scipy import stats
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_dr_tr_panel
-from .wols import wols_panel
+from .wols import ols_panel
 
 
 class DRDIDPanelResult(NamedTuple):
@@ -109,7 +109,7 @@ def drdid_panel(
     trim_ps = np.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
-    outcome_reg = wols_panel(delta_y=delta_y, d=d, x=covariates, ps=ps_fit, i_weights=i_weights)
+    outcome_reg = ols_panel(delta_y=delta_y, d=d, x=covariates, i_weights=i_weights)
     out_delta = outcome_reg.out_reg
 
     weights = _compute_weights(d, ps_fit, i_weights, trim_ps)
