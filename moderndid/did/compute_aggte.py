@@ -370,7 +370,7 @@ def _compute_group_att(
     group_influence_functions = []
 
     for i, g in enumerate(unique_groups_recoded):
-        mask = (groups == g) & ((g - 1) <= times) & (times <= g + max_e)
+        mask = (groups == g) & (g <= times) & (times <= g + max_e)
 
         if mask.any():
             group_att[i] = np.mean(att[mask])
