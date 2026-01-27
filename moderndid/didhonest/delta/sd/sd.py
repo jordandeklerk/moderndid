@@ -179,10 +179,26 @@ def compute_conditional_cs_sd(
 
     if grid_lb is None or grid_ub is None:
         sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-        if grid_lb is None:
-            grid_lb = -20 * sd_theta
-        if grid_ub is None:
-            grid_ub = 20 * sd_theta
+
+        if hybrid_flag == "FLCI":
+            # For FLCI hybrid, use the FLCI bounds centered at optimal estimate
+            if grid_ub is None:
+                grid_ub = flci_result.optimal_vec @ betahat + flci_result.optimal_half_length
+            if grid_lb is None:
+                grid_lb = flci_result.optimal_vec @ betahat - flci_result.optimal_half_length
+        else:
+            # For LF or ARP, compute identified set under parallel trends
+            id_set = compute_identified_set_sd(
+                m_bar=m_bar,
+                true_beta=np.zeros(num_pre_periods + num_post_periods),
+                l_vec=l_vec,
+                num_pre_periods=num_pre_periods,
+                num_post_periods=num_post_periods,
+            )
+            if grid_ub is None:
+                grid_ub = id_set.id_ub + 20 * sd_theta
+            if grid_lb is None:
+                grid_lb = id_set.id_lb - 20 * sd_theta
 
     result = compute_arp_nuisance_ci(
         betahat=betahat,

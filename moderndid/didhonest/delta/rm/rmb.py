@@ -308,15 +308,6 @@ def compute_identified_set_rmb(m_bar, true_beta, l_vec, num_pre_periods, num_pos
     id_lb = min(b.id_lb for b in all_bounds)
     id_ub = max(b.id_ub for b in all_bounds)
 
-    if bias_direction == "positive":
-        if np.all(l_vec >= 0) and not np.all(l_vec == 0):
-            id_lb = max(id_lb, 0.0)
-            id_ub = max(id_ub, id_lb)
-    elif bias_direction == "negative":
-        if np.all(l_vec >= 0) and not np.all(l_vec == 0):
-            id_ub = min(id_ub, 0.0)
-            id_lb = min(id_lb, id_ub)
-
     return DeltaRMBResult(id_lb=id_lb, id_ub=id_ub)
 
 

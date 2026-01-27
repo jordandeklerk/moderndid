@@ -43,10 +43,10 @@ def simple_event_study_data():
 
 @pytest.fixture
 def larger_event_study_data():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     num_pre_periods = 4
     num_post_periods = 3
-    betahat = np.concatenate([np.random.normal(0, 0.1, num_pre_periods), np.random.normal(0.5, 0.2, num_post_periods)])
+    betahat = np.concatenate([rng.normal(0, 0.1, num_pre_periods), rng.normal(0.5, 0.2, num_post_periods)])
     n = num_pre_periods + num_post_periods
     sigma = np.eye(n) * 0.02
     for i in range(n):
@@ -175,7 +175,9 @@ def test_identified_set_sign_restriction_binding():
         bias_direction="positive",
     )
 
-    assert result.id_lb >= 0
+    observed_effect = l_vec @ true_beta[3:]
+    assert result.id_lb == pytest.approx(observed_effect, abs=1e-6)
+    assert result.id_ub == pytest.approx(observed_effect, abs=1e-6)
 
 
 def test_compute_conditional_cs_rmb_basic(simple_event_study_data, fast_config):
@@ -285,7 +287,8 @@ def test_rmb_vs_rm_restriction():
     ],
 )
 def test_insufficient_pre_periods_errors(num_pre, num_post, error_msg):
-    true_beta = np.random.randn(num_pre + num_post)
+    rng = np.random.default_rng(0)
+    true_beta = rng.standard_normal(num_pre + num_post)
     l_vec = np.ones(num_post) / num_post if num_post > 0 else np.array([])
 
     with pytest.raises(ValueError, match=error_msg):
@@ -378,7 +381,10 @@ def test_single_post_period_case(fast_config):
     )
 
     assert result_id.id_lb <= result_id.id_ub
-    assert result_id.id_lb >= 0
+
+    observed_effect = l_vec @ true_beta[3:]
+    assert result_id.id_lb <= observed_effect + 1e-6
+    assert result_id.id_ub >= observed_effect - 1e-6
 
     result_cs = compute_conditional_cs_rmb(
         betahat=betahat,
@@ -429,8 +435,9 @@ def test_larger_event_study_rmb(larger_event_study_data, fast_config):
 def test_negative_post_effects_with_positive_bias(fast_config):
     if fast_config["skip_expensive_params"]:
         pytest.skip("Skip negative post-effects stress case in fast mode")
+    rng = np.random.default_rng(123)
     true_beta = np.array([0, 0, 0, -0.5, -0.3])
-    betahat = true_beta + np.random.normal(0, 0.01, 5)
+    betahat = true_beta + rng.normal(0, 0.01, 5)
     sigma = np.eye(5) * 0.01
     l_vec = np.array([1, 0])
 
@@ -443,7 +450,10 @@ def test_negative_post_effects_with_positive_bias(fast_config):
         bias_direction="positive",
     )
 
-    assert result.id_lb >= 0
+    observed_effect = l_vec @ true_beta[3:]
+    assert result.id_lb <= result.id_ub
+    assert result.id_lb <= observed_effect + 1e-6
+    assert result.id_ub >= observed_effect - 1e-6
 
     cs_result = compute_conditional_cs_rmb(
         betahat=betahat,
@@ -459,12 +469,7 @@ def test_negative_post_effects_with_positive_bias(fast_config):
         grid_ub=1,
     )
 
-    grid = cs_result["grid"]
-    accept = cs_result["accept"]
-    accepted_indices = np.where(accept)[0]
-
-    if len(accepted_indices) > 0:
-        assert grid[accepted_indices[0]] >= -0.1
+    assert np.any(cs_result["accept"] > 0)
 
 
 def test_custom_grid_bounds(simple_event_study_data, fast_config):

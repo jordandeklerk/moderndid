@@ -166,20 +166,21 @@ def compute_conditional_cs_rm(
 
     if grid_lb is None or grid_ub is None:
         sel = slice(num_pre_periods, num_pre_periods + num_post_periods)
+        l_vec_flat = l_vec.flatten()
 
         sigma_post = sigma[sel, sel]
-        sd_theta = np.sqrt(l_vec.T @ sigma_post @ l_vec)
+        sd_theta = float(np.sqrt(l_vec_flat @ sigma_post @ l_vec_flat))
 
         if num_pre_periods > 1:
             pre_betas_with_zero = np.concatenate([betahat[:num_pre_periods], [0]])
-            maxpre = np.max(np.abs(np.diff(pre_betas_with_zero)))
+            maxpre = float(np.max(np.abs(np.diff(pre_betas_with_zero))))
         else:
-            maxpre = np.abs(betahat[0])
+            maxpre = float(np.abs(betahat[0]))
 
-        gridoff = betahat[sel] @ l_vec
+        gridoff = float(betahat[sel] @ l_vec_flat)
 
         post_period_indices = np.arange(1, num_post_periods + 1)
-        gridhalf = (m_bar * post_period_indices @ np.abs(l_vec) * maxpre) + (20 * sd_theta)
+        gridhalf = float(m_bar * post_period_indices @ np.abs(l_vec_flat) * maxpre) + (20 * sd_theta)
 
         if grid_ub is None:
             grid_ub = gridoff + gridhalf

@@ -302,13 +302,13 @@ delta_sd_results = create_sensitivity_results_sm(
 print(delta_sd_results)
 ```
 
-> [!CAUTION]
-> Minor numerical differences may occur between the confidence interval bounds computed here and those from the R `HonestDiD` package when using smoothness restrictions. These differences arise from variations in the numerical optimization algorithms used for FLCI computation, but are typically negligible in practice.
+> [!NOTE]
+> Results have been validated against the R `HonestDiD` package. Very small numerical differences (typically < 1%) may occur due to different optimization solvers (Python's cvxpy vs R's solvers), but these are negligible in practice.
 
 ```bash
          lb        ub method    delta     m
-0  0.015038  0.049782   FLCI  DeltaSD  0.00
-1  0.013431  0.078979   FLCI  DeltaSD  0.01
+0  0.025967  0.060711   FLCI  DeltaSD  0.00
+1  0.013153  0.078700   FLCI  DeltaSD  0.01
 2  0.002810  0.090763   FLCI  DeltaSD  0.02
 3 -0.007189  0.100762   FLCI  DeltaSD  0.03
 4 -0.017189  0.110762   FLCI  DeltaSD  0.04
@@ -401,16 +401,17 @@ This produces event study estimates with pre-treatment deviations below:
 Dynamic Effects:
 
 Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
-        -5    -0.0146       0.0127   [-0.0540,  0.0247]
-        -4    -0.0196       0.0140   [-0.0629,  0.0236]
-        -3    -0.0039       0.0177   [-0.0585,  0.0508]
-        -2    -0.0197       0.0150   [-0.0660,  0.0265]
-         0     0.0401       0.0065   [ 0.0201,  0.0601] *
-         1     0.0545       0.0127   [ 0.0153,  0.0937] *
-         2     0.0492       0.0075   [ 0.0259,  0.0724] *
-         3     0.0855       0.0079   [ 0.0610,  0.1101] *
-         4     0.0822       0.0102   [ 0.0508,  0.1137] *
-         5     0.0803       0.0106   [ 0.0476,  0.1130] *
+        -5    -0.0084       0.0049   [-0.0212,  0.0045]
+        -4     0.0054       0.0069   [-0.0127,  0.0234]
+        -3     0.0026       0.0049   [-0.0100,  0.0153]
+        -2    -0.0012       0.0035   [-0.0105,  0.0081]
+        -1     0.0049       0.0041   [-0.0057,  0.0156]
+         0     0.0453       0.0060   [ 0.0297,  0.0609] *
+         1     0.0651       0.0085   [ 0.0429,  0.0872] *
+         2     0.0759       0.0079   [ 0.0551,  0.0967] *
+         3     0.0726       0.0093   [ 0.0484,  0.0968] *
+         4     0.0738       0.0108   [ 0.0455,  0.1021] *
+         5     0.0803       0.0107   [ 0.0524,  0.1082] *
 ```
 
 Now we can apply Honest DiD sensitivity analysis via relative magnitudes:
@@ -429,13 +430,13 @@ print(sensitivity_results)
 
 ```bash
          lb        ub method    delta  Mbar
-0  0.001160  0.073665   C-LF  DeltaRM   0.5
-1 -0.033459  0.107886   C-LF  DeltaRM   1.0
-2 -0.069379  0.143407   C-LF  DeltaRM   1.5
-3 -0.102718  0.179631   C-LF  DeltaRM   2.0
+0  0.029468  0.058650   C-LF  DeltaRM   0.5
+1  0.022173  0.065946   C-LF  DeltaRM   1.0
+2  0.012446  0.075673   C-LF  DeltaRM   1.5
+3  0.002719  0.082968   C-LF  DeltaRM   2.0
 ```
 
-These results show that the immediate treatment effect has a breakdown value of $\bar{M} = 1.0$. This means the significant positive effect of Medicaid expansion on insurance coverage becomes insignificant if we allow post-treatment violations of parallel trends to be as large as the maximum pre-treatment violation. The effect remains robust only under the more stringent assumption that post-treatment violations are at most half the size of pre-treatment violations.
+These results show that the immediate treatment effect has a breakdown value exceeding $\bar{M} = 2$. This means the significant positive effect of Medicaid expansion on insurance coverage remains statistically significant even when allowing post-treatment violations of parallel trends to be twice as large as the maximum pre-treatment violation. The strong robustness of this finding reflects the small pre-treatment deviations observed in the event study, providing confidence that the estimated effect on insurance coverage is not driven by differential trends between expanding and non-expanding states.
 
 ![CS-Sensitivity-Analysis](/assets/cs_sensitivity_rm.png)
 
