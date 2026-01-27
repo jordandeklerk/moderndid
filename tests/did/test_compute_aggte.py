@@ -326,7 +326,7 @@ def test_aggregation_correctness(synthetic_mp_result, agg_type):
         unique_groups = np.unique(groups)
         group_att = []
         for g in unique_groups:
-            mask = (groups == g) & ((g - 1) <= times) & (times <= g + np.inf)
+            mask = (groups == g) & (g <= times) & (times <= g + np.inf)
             if mask.any():
                 group_att.append(np.mean(att_gt[mask]))
         expected_att = np.mean(group_att)
