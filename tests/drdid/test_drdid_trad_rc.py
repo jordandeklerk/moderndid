@@ -7,14 +7,14 @@ from moderndid.drdid import drdid_trad_rc
 
 
 def test_drdid_trad_rc_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
     p = 3
 
-    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
-    d = np.random.binomial(1, 0.3, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5, -0.3] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
+    d = rng.binomial(1, 0.3, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
 
     result = drdid_trad_rc(y=y, post=post, d=d, covariates=x)
 
@@ -27,13 +27,13 @@ def test_drdid_trad_rc_basic():
 
 
 def test_drdid_trad_rc_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
-    weights = np.random.exponential(1, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
+    weights = rng.exponential(1, n)
 
     result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, i_weights=weights)
 
@@ -42,12 +42,12 @@ def test_drdid_trad_rc_with_weights():
 
 
 def test_drdid_trad_rc_with_influence_func():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, influence_func=True)
 
@@ -57,11 +57,11 @@ def test_drdid_trad_rc_with_influence_func():
 
 
 def test_drdid_trad_rc_no_covariates():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    d = np.random.binomial(1, 0.3, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = 1 + 2 * d * post + np.random.randn(n)
+    d = rng.binomial(1, 0.3, n)
+    post = rng.binomial(1, 0.5, n)
+    y = 1 + 2 * d * post + rng.standard_normal(n)
 
     result = drdid_trad_rc(y=y, post=post, d=d, covariates=None)
 
@@ -70,12 +70,12 @@ def test_drdid_trad_rc_no_covariates():
 
 
 def test_drdid_trad_rc_bootstrap_weighted():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", nboot=10)
 
@@ -85,12 +85,12 @@ def test_drdid_trad_rc_bootstrap_weighted():
 
 
 def test_drdid_trad_rc_bootstrap_multiplier():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
 
@@ -99,22 +99,23 @@ def test_drdid_trad_rc_bootstrap_multiplier():
 
 
 def test_drdid_trad_rc_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    y = np.random.randn(n)
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    y = rng.standard_normal(n)
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
 
     with pytest.raises(ValueError, match="i_weights must be non-negative"):
         drdid_trad_rc(y=y, post=post, d=d, covariates=x, i_weights=-np.ones(n))
 
 
 def test_drdid_trad_rc_edge_cases():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    y = np.random.randn(n)
-    post = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    y = rng.standard_normal(n)
+    post = rng.binomial(1, 0.5, n)
 
     d_all_treated = np.ones(n, dtype=int)
     with pytest.raises(ValueError, match="No control units found"):
@@ -126,12 +127,12 @@ def test_drdid_trad_rc_edge_cases():
 
 
 def test_drdid_trad_rc_extreme_pscore():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
     x = np.column_stack([np.ones(n), np.linspace(-10, 10, n)])
     d = (x[:, 1] > 0).astype(int)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     with pytest.warns(UserWarning):
         result = drdid_trad_rc(y=y, post=post, d=d, covariates=x)
@@ -140,12 +141,12 @@ def test_drdid_trad_rc_extreme_pscore():
 
 
 def test_drdid_trad_rc_trim_level():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result1 = drdid_trad_rc(y=y, post=post, d=d, covariates=x, trim_level=0.99)
     result2 = drdid_trad_rc(y=y, post=post, d=d, covariates=x, trim_level=0.95)
@@ -155,12 +156,12 @@ def test_drdid_trad_rc_trim_level():
 
 
 def test_drdid_trad_rc_args_output():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result = drdid_trad_rc(y=y, post=post, d=d, covariates=x, boot=True, nboot=10, trim_level=0.99)
 

@@ -58,9 +58,9 @@ def test_ipwdid_panel_with_covariates(nsw_data):
 
 
 def test_ipwdid_panel_with_weights(nsw_data):
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     unique_ids = nsw_data["id"].unique().to_list()
-    unit_weights = np.random.exponential(1, len(unique_ids))
+    unit_weights = rng.exponential(1, len(unique_ids))
     weight_dict = dict(zip(unique_ids, unit_weights))
     nsw_data = nsw_data.with_columns(pl.col("id").replace_strict(weight_dict, default=1.0).alias("weight"))
 
@@ -191,9 +191,10 @@ def test_ipwdid_trim_level(nsw_data, trim_level):
 
 
 def test_ipwdid_missing_id_col_panel():
+    rng = np.random.default_rng(42)
     df = pl.DataFrame(
         {
-            "y": np.random.randn(100),
+            "y": rng.standard_normal(100),
             "time": np.repeat([0, 1], 50),
             "treat": np.tile([0, 1], 50),
         }
@@ -291,7 +292,6 @@ def test_ipwdid_reproducibility(nsw_data):
     selected_ids = treated_ids + control_ids
     small_data = nsw_data.filter(pl.col("id").is_in(selected_ids))
 
-    np.random.seed(42)
     result1 = ipwdid(
         data=small_data,
         yname="re",
@@ -303,7 +303,6 @@ def test_ipwdid_reproducibility(nsw_data):
         est_method="ipw",
     )
 
-    np.random.seed(42)
     result2 = ipwdid(
         data=small_data,
         yname="re",
@@ -411,7 +410,8 @@ def test_ipwdid_categorical_covariates(nsw_data):
 @pytest.mark.filterwarnings("ignore:Dropped.*rows due to missing values:UserWarning")
 @pytest.mark.filterwarnings("ignore:Panel data is unbalanced:UserWarning")
 def test_ipwdid_missing_values_handled():
-    y_vals = np.random.randn(100)
+    rng = np.random.default_rng(42)
+    y_vals = rng.standard_normal(100)
     y_vals[5] = np.nan
     df = pl.DataFrame(
         {
@@ -419,7 +419,7 @@ def test_ipwdid_missing_values_handled():
             "time": np.tile([0, 1], 50),
             "y": y_vals,
             "treat": np.repeat([0, 1], 50),
-            "x1": np.random.randn(100),
+            "x1": rng.standard_normal(100),
         }
     )
 
@@ -438,11 +438,12 @@ def test_ipwdid_missing_values_handled():
 
 @pytest.mark.filterwarnings("ignore:Small group size detected:UserWarning")
 def test_ipwdid_unbalanced_panel_warning():
+    rng = np.random.default_rng(42)
     df = pl.DataFrame(
         {
             "id": [1, 1, 2, 2, 3],
             "time": [0, 1, 0, 1, 0],
-            "y": np.random.randn(5),
+            "y": rng.standard_normal(5),
             "treat": [0, 0, 1, 1, 0],
         }
     )
@@ -460,11 +461,12 @@ def test_ipwdid_unbalanced_panel_warning():
 
 
 def test_ipwdid_more_than_two_periods_error():
+    rng = np.random.default_rng(42)
     df = pl.DataFrame(
         {
             "id": np.repeat(range(50), 3),
             "time": np.tile([0, 1, 2], 50),
-            "y": np.random.randn(150),
+            "y": rng.standard_normal(150),
             "treat": np.repeat([0, 1], 75),
         }
     )

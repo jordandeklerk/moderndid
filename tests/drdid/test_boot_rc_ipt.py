@@ -10,14 +10,14 @@ from moderndid import (
 
 
 def test_wboot_drdid_ipt_rc1_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
     p = 3
 
-    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
-    d = np.random.binomial(1, 0.3, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5, -0.3] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
+    d = rng.binomial(1, 0.3, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
     wboot_estimates = wboot_drdid_ipt_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
@@ -30,11 +30,12 @@ def test_wboot_drdid_ipt_rc1_basic():
 
 
 def test_wboot_drdid_ipt_rc1_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    y = np.random.randn(n)
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    y = rng.standard_normal(n)
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
     weights = np.ones(n)
 
     with pytest.raises(TypeError):
@@ -51,14 +52,14 @@ def test_wboot_drdid_ipt_rc1_invalid_inputs():
 
 
 def test_wboot_drdid_ipt_rc1_edge_cases():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    y = np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    y = rng.standard_normal(n)
     weights = np.ones(n)
 
     d_all_treated = np.ones(n)
-    post = np.random.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
 
     with pytest.warns(UserWarning):
         wboot_estimates = wboot_drdid_ipt_rc1(
@@ -68,12 +69,12 @@ def test_wboot_drdid_ipt_rc1_edge_cases():
 
 
 def test_wboot_drdid_ipt_rc1_reproducibility():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
     wboot_estimates1 = wboot_drdid_ipt_rc1(
@@ -88,14 +89,14 @@ def test_wboot_drdid_ipt_rc1_reproducibility():
 
 
 def test_wboot_drdid_ipt_rc1_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    weights = np.random.exponential(1, n)
+    weights = rng.exponential(1, n)
 
     wboot_estimates = wboot_drdid_ipt_rc1(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
 
@@ -105,12 +106,12 @@ def test_wboot_drdid_ipt_rc1_with_weights():
 
 
 def test_wboot_drdid_ipt_rc1_no_intercept_warning():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 50
-    x_no_intercept = np.random.randn(n, 2)
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x_no_intercept @ [0.5, -0.3] + 2 * d * post + np.random.randn(n)
+    x_no_intercept = rng.standard_normal((n, 2))
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x_no_intercept @ [0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
     with pytest.warns(UserWarning, match="does not appear to be an intercept"):
@@ -118,14 +119,14 @@ def test_wboot_drdid_ipt_rc1_no_intercept_warning():
 
 
 def test_wboot_drdid_ipt_rc2_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
     p = 3
 
-    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
-    d = np.random.binomial(1, 0.3, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5, -0.3] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
+    d = rng.binomial(1, 0.3, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
     wboot_estimates = wboot_drdid_ipt_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
@@ -138,11 +139,12 @@ def test_wboot_drdid_ipt_rc2_basic():
 
 
 def test_wboot_drdid_ipt_rc2_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    y = np.random.randn(n)
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    y = rng.standard_normal(n)
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
     weights = np.ones(n)
 
     with pytest.raises(TypeError):
@@ -159,14 +161,14 @@ def test_wboot_drdid_ipt_rc2_invalid_inputs():
 
 
 def test_wboot_drdid_ipt_rc2_edge_cases():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    y = np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    y = rng.standard_normal(n)
     weights = np.ones(n)
 
     d_all_treated = np.ones(n)
-    post = np.random.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
 
     with pytest.warns(UserWarning):
         wboot_estimates = wboot_drdid_ipt_rc2(
@@ -176,12 +178,12 @@ def test_wboot_drdid_ipt_rc2_edge_cases():
 
 
 def test_wboot_drdid_ipt_rc2_reproducibility():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
     wboot_estimates1 = wboot_drdid_ipt_rc2(
@@ -196,14 +198,14 @@ def test_wboot_drdid_ipt_rc2_reproducibility():
 
 
 def test_wboot_drdid_ipt_rc2_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    weights = np.random.exponential(1, n)
+    weights = rng.exponential(1, n)
 
     wboot_estimates = wboot_drdid_ipt_rc2(y=y, post=post, d=d, x=x, i_weights=weights, n_bootstrap=100, random_state=42)
 
@@ -213,12 +215,12 @@ def test_wboot_drdid_ipt_rc2_with_weights():
 
 
 def test_wboot_drdid_ipt_rc2_no_intercept_warning():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 50
-    x_no_intercept = np.random.randn(n, 2)
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x_no_intercept @ [0.5, -0.3] + 2 * d * post + np.random.randn(n)
+    x_no_intercept = rng.standard_normal((n, 2))
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x_no_intercept @ [0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
     weights = np.ones(n)
 
     with pytest.warns(UserWarning, match="does not appear to be an intercept"):

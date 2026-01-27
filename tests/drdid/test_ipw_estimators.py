@@ -9,7 +9,7 @@ from moderndid import ipw_rc, wboot_ipw_rc
 
 
 def test_ipw_did_rc_basic():
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
     n = 100
     y = rng.normal(1, 1, n)
     post = rng.binomial(1, 0.5, n)
@@ -23,7 +23,7 @@ def test_ipw_did_rc_basic():
 
 
 def test_ipw_did_rc_with_trimming():
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
     n = 100
     y = rng.normal(1, 1, n)
     post = rng.binomial(1, 0.5, n)
@@ -40,9 +40,10 @@ def test_ipw_did_rc_with_trimming():
 
 
 def test_ipw_did_rc_all_treated():
+    rng = np.random.default_rng(42)
     n = 50
     y = np.ones(n)
-    post = np.random.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
     d = np.ones(n)
     ps = 0.5 * np.ones(n)
     i_weights = np.ones(n)
@@ -52,9 +53,10 @@ def test_ipw_did_rc_all_treated():
 
 
 def test_ipw_did_rc_no_treated():
+    rng = np.random.default_rng(42)
     n = 50
     y = np.ones(n)
-    post = np.random.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
     d = np.zeros(n)  # No treated units
     ps = 0.5 * np.ones(n)
     i_weights = np.ones(n)
@@ -65,9 +67,10 @@ def test_ipw_did_rc_no_treated():
 
 
 def test_ipw_did_rc_extreme_propensity():
+    rng = np.random.default_rng(42)
     n = 50
     y = np.ones(n)
-    post = np.random.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
     d = np.zeros(n)
     d[:10] = 1
     ps = np.ones(n)
@@ -80,9 +83,10 @@ def test_ipw_did_rc_extreme_propensity():
 
 
 def test_ipw_did_rc_lambda_edge_cases():
+    rng = np.random.default_rng(42)
     n = 50
     y = np.ones(n)
-    d = np.random.binomial(1, 0.3, n)
+    d = rng.binomial(1, 0.3, n)
     ps = 0.3 * np.ones(n)
     i_weights = np.ones(n)
 
@@ -98,10 +102,11 @@ def test_ipw_did_rc_lambda_edge_cases():
 
 
 def test_ipw_did_rc_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
     y = np.ones(n)
-    post = np.random.binomial(1, 0.5, n)
-    d = np.random.binomial(1, 0.3, n)
+    post = rng.binomial(1, 0.5, n)
+    d = rng.binomial(1, 0.3, n)
     ps = 0.3 * np.ones(n)
     i_weights = np.ones(n)
 
@@ -116,7 +121,7 @@ def test_ipw_did_rc_invalid_inputs():
 
 
 def test_wboot_ipw_rc_basic():
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
     n = 100
     y = rng.normal(1, 1, n)
     post = rng.binomial(1, 0.5, n)
@@ -132,7 +137,7 @@ def test_wboot_ipw_rc_basic():
 
 
 def test_wboot_ipw_rc_convergence():
-    rng = np.random.RandomState(123)
+    rng = np.random.default_rng(123)
     n = 200
     true_effect = 0.5
 

@@ -5,16 +5,16 @@ import numpy as np
 from moderndid import drdid_imp_rc
 
 
-def dgp_rc_for_test(n=2000, seed=42):
-    np.random.seed(seed)
-    x1 = np.random.normal(0, 1, n)
-    x2 = np.random.normal(0, 1, n)
-    x3 = np.random.normal(0, 1, n)
-    x4 = np.random.normal(0, 1, n)
-    post = np.random.binomial(1, 0.5, n)
+def dgp_rc_for_test(n=5000, seed=42):
+    rng = np.random.default_rng(seed)
+    x1 = rng.normal(0, 1, n)
+    x2 = rng.normal(0, 1, n)
+    x3 = rng.normal(0, 1, n)
+    x4 = rng.normal(0, 1, n)
+    post = rng.binomial(1, 0.5, n)
     d_propensity = 1 / (1 + np.exp(-(x1 + x3)))
-    d = (np.random.uniform(size=n) < d_propensity).astype(int)
-    y = 1 + 2 * x1 + 3 * x2 + 4 * x3 + 5 * x4 + post + d * post + np.random.normal(0, 1, n)
+    d = (rng.uniform(size=n) < d_propensity).astype(int)
+    y = 1 + 2 * x1 + 3 * x2 + 4 * x3 + 5 * x4 + post + d * post + rng.normal(0, 1, n)
     covariates = np.column_stack((np.ones(n), x1, x2, x3, x4))
     return y, post, d, covariates
 
