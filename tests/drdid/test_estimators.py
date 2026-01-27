@@ -278,8 +278,8 @@ def test_aipw_rc_happy_path_non_uniform_weights():
     out_y_cont_post_arr = data["potential_outcomes_post"]["y0"]
     out_y_treat_post_arr = data["potential_outcomes_post"]["y1"]
 
-    rng = np.random.RandomState(789)
-    i_weights_arr = rng.rand(dgp.n_units) + 0.5
+    rng = np.random.default_rng(789)
+    i_weights_arr = rng.random(dgp.n_units) + 0.5
 
     actual_att = aipw_did_rc_imp2(
         y_arr,

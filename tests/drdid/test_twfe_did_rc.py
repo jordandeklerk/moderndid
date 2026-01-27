@@ -8,18 +8,19 @@ pytestmark = pytest.mark.slow
 from moderndid import twfe_did_rc
 
 
-def dgp_rc_for_test(n=2000):
-    x1 = np.random.normal(0, 1, n)
-    x2 = np.random.normal(0, 1, n)
+def dgp_rc_for_test(n=2000, seed=42):
+    rng = np.random.default_rng(seed)
+    x1 = rng.normal(0, 1, n)
+    x2 = rng.normal(0, 1, n)
 
     post = np.concatenate([np.zeros(n // 2), np.ones(n // 2)])
 
     d_propensity = 1 / (1 + np.exp(-(x1 + x2)))
-    d = (np.random.uniform(size=n) < d_propensity).astype(int)
+    d = (rng.uniform(size=n) < d_propensity).astype(int)
 
     att = 1.0
-    y_base = x1 + x2 + np.random.normal(0, 1, n)
-    y = y_base + post * x1 + d * post * att + np.random.normal(0, 0.5, n)
+    y_base = x1 + x2 + rng.normal(0, 1, n)
+    y = y_base + post * x1 + d * post * att + rng.normal(0, 0.5, n)
 
     covariates = np.column_stack((np.ones(n), x1, x2))
 
@@ -73,8 +74,9 @@ def test_influence_function():
 
 
 def test_with_weights():
+    rng = np.random.default_rng(42)
     y, post, d, covariates = dgp_rc_for_test()
-    weights = np.random.uniform(0.5, 1.5, len(y))
+    weights = rng.uniform(0.5, 1.5, len(y))
     result = twfe_did_rc(y, post, d, covariates, i_weights=weights)
 
     assert result.att is not None
@@ -91,11 +93,12 @@ def test_negative_weights_error():
 
 
 def test_singular_matrix_error():
+    rng = np.random.default_rng(42)
     n = 100
-    y = np.random.normal(0, 1, n)
+    y = rng.normal(0, 1, n)
     post = np.concatenate([np.zeros(n // 2), np.ones(n // 2)])
     d = np.zeros(n)
-    x1 = np.random.normal(0, 1, n)
+    x1 = rng.normal(0, 1, n)
     covariates = np.column_stack([x1, x1 * 2])
 
     with pytest.raises(ValueError, match="regression design matrix is singular"):
@@ -103,8 +106,9 @@ def test_singular_matrix_error():
 
 
 def test_1d_covariates():
+    rng = np.random.default_rng(42)
     y, post, d, _ = dgp_rc_for_test(n=100)
-    covariates = np.random.normal(0, 1, 100)
+    covariates = rng.normal(0, 1, 100)
     result = twfe_did_rc(y, post, d, covariates)
 
     assert result.att is not None

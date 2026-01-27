@@ -5,16 +5,17 @@ import numpy as np
 from moderndid import drdid_imp_panel
 
 
-def dgp_panel_for_test(n=2000):
-    x1 = np.random.normal(0, 1, n)
-    x2 = np.random.normal(0, 1, n)
-    x3 = np.random.normal(0, 1, n)
-    x4 = np.random.normal(0, 1, n)
-    y00 = x1 + x2 + np.random.normal(0, 1, n)
-    y10 = y00 + x1 + x3 + np.random.normal(0, 1, n)
+def dgp_panel_for_test(n=2000, seed=42):
+    rng = np.random.default_rng(seed)
+    x1 = rng.normal(0, 1, n)
+    x2 = rng.normal(0, 1, n)
+    x3 = rng.normal(0, 1, n)
+    x4 = rng.normal(0, 1, n)
+    y00 = x1 + x2 + rng.normal(0, 1, n)
+    y10 = y00 + x1 + x3 + rng.normal(0, 1, n)
     att = 1
     d_propensity = 1 / (1 + np.exp(-(x1 + x3)))
-    d = (np.random.uniform(size=n) < d_propensity).astype(int)
+    d = (rng.uniform(size=n) < d_propensity).astype(int)
     y1 = y10 + att * d
     y0 = y00
     covariates = np.column_stack((np.ones(n), x1, x2, x3, x4))

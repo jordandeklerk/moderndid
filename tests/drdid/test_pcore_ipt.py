@@ -15,12 +15,12 @@ from moderndid.drdid.propensity.pscore_ipt import (
 
 
 def test_loss_ps_cal_py_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     gamma = np.array([0.1, 0.2, -0.3])
@@ -36,13 +36,13 @@ def test_loss_ps_cal_py_basic():
 
 
 def test_loss_ps_cal_py_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
-    iw = np.random.exponential(1, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
+    iw = rng.exponential(1, n_obs)
 
     gamma = np.array([0.1, 0.2, -0.3])
 
@@ -57,11 +57,12 @@ def test_loss_ps_cal_py_with_weights():
 
 
 def test_loss_ps_cal_py_nan_gamma():
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     gamma = np.array([0.1, np.nan, -0.3])
@@ -74,11 +75,12 @@ def test_loss_ps_cal_py_nan_gamma():
 
 
 def test_loss_ps_cal_py_shape_validation():
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     gamma = np.array([0.1, 0.2])
@@ -88,12 +90,12 @@ def test_loss_ps_cal_py_shape_validation():
 
 
 def test_loss_ps_ipt_py_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     gamma = np.array([0.1, 0.2, -0.3])
@@ -109,13 +111,13 @@ def test_loss_ps_ipt_py_basic():
 
 
 def test_loss_ps_ipt_py_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
-    iw = np.random.exponential(1, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
+    iw = rng.exponential(1, n_obs)
 
     gamma = np.array([0.1, 0.2, -0.3])
 
@@ -130,11 +132,12 @@ def test_loss_ps_ipt_py_with_weights():
 
 
 def test_loss_ps_ipt_py_nan_gamma():
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     gamma = np.array([0.1, np.nan, -0.3])
@@ -147,12 +150,12 @@ def test_loss_ps_ipt_py_nan_gamma():
 
 
 def test_calculate_pscore_ipt_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 200
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     pscore = calculate_pscore_ipt(D, X, iw)
@@ -163,13 +166,13 @@ def test_calculate_pscore_ipt_basic():
 
 
 def test_calculate_pscore_ipt_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 200
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
-    iw = np.random.exponential(1, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
+    iw = rng.exponential(1, n_obs)
 
     pscore = calculate_pscore_ipt(D, X, iw)
 
@@ -179,11 +182,12 @@ def test_calculate_pscore_ipt_with_weights():
 
 
 def test_calculate_pscore_ipt_shape_validation():
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
@@ -197,12 +201,12 @@ def test_calculate_pscore_ipt_shape_validation():
 
 
 def test_calculate_pscore_ipt_collinear_covariates():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
 
-    X_base = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, 1)])
+    X_base = np.column_stack([np.ones(n_obs), rng.standard_normal(n_obs)])
     X = np.column_stack([X_base, X_base[:, 1] * 2])
-    D = np.random.binomial(1, 0.3, n_obs)
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
@@ -213,11 +217,11 @@ def test_calculate_pscore_ipt_collinear_covariates():
 
 
 def test_calculate_pscore_ipt_all_treated():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
     D = np.ones(n_obs)
     iw = np.ones(n_obs)
 
@@ -230,11 +234,11 @@ def test_calculate_pscore_ipt_all_treated():
 
 
 def test_calculate_pscore_ipt_all_control():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
     D = np.zeros(n_obs)
     iw = np.ones(n_obs)
 
@@ -247,13 +251,13 @@ def test_calculate_pscore_ipt_all_control():
 
 
 def test_calculate_pscore_ipt_perfect_separation():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
 
-    x1 = np.random.randn(n_obs)
+    x1 = rng.standard_normal(n_obs)
     D = (x1 > 0).astype(int)
 
-    X = np.column_stack([np.ones(n_obs), x1, np.random.randn(n_obs, 2)])
+    X = np.column_stack([np.ones(n_obs), x1, rng.standard_normal((n_obs, 2))])
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
@@ -267,12 +271,12 @@ def test_calculate_pscore_ipt_perfect_separation():
 
 
 def test_calculate_pscore_ipt_trust_constr_fail_ipt_success():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 200
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     original_minimize = scipy.optimize.minimize
@@ -295,12 +299,12 @@ def test_calculate_pscore_ipt_trust_constr_fail_ipt_success():
 
 
 def test_calculate_pscore_ipt_both_methods_fail():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 200
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     original_minimize = scipy.optimize.minimize
@@ -321,12 +325,12 @@ def test_calculate_pscore_ipt_both_methods_fail():
 
 
 def test_calculate_pscore_ipt_non_binary_treatment():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.choice([0, 1, 2], size=n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.choice([0, 1, 2], size=n_obs)
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning):
@@ -337,12 +341,12 @@ def test_calculate_pscore_ipt_non_binary_treatment():
 
 
 def test_calculate_pscore_ipt_zero_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.zeros(n_obs)
 
     with pytest.warns(UserWarning):
@@ -353,8 +357,9 @@ def test_calculate_pscore_ipt_zero_weights():
 
 
 def test_remove_collinear_columns():
+    rng = np.random.default_rng(42)
     n_obs = 100
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs), np.random.randn(n_obs)])
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal(n_obs), rng.standard_normal(n_obs)])
 
     X_reduced, removed = _remove_collinear_columns(X)
 
@@ -363,8 +368,9 @@ def test_remove_collinear_columns():
 
 
 def test_remove_collinear_columns_with_collinearity():
+    rng = np.random.default_rng(42)
     n_obs = 100
-    X_base = np.column_stack([np.ones(n_obs), np.random.randn(n_obs)])
+    X_base = np.column_stack([np.ones(n_obs), rng.standard_normal(n_obs)])
     X = np.column_stack([X_base, X_base[:, 1] * 2])
 
     with pytest.warns(UserWarning, match="Removed.*collinear"):
@@ -375,8 +381,9 @@ def test_remove_collinear_columns_with_collinearity():
 
 
 def test_remove_collinear_columns_perfect_collinearity():
+    rng = np.random.default_rng(42)
     n_obs = 100
-    col1 = np.random.randn(n_obs)
+    col1 = rng.standard_normal(n_obs)
     X = np.column_stack([np.ones(n_obs), col1, col1, col1 * 2 + 1])
 
     with pytest.warns(UserWarning, match="Removed.*collinear"):
@@ -430,9 +437,9 @@ def test_weighted_quantile_edge():
 
 
 def test_add_quantile_constraints():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs), np.random.randn(n_obs)])
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal(n_obs), rng.standard_normal(n_obs)])
     iw = np.ones(n_obs)
 
     quantiles = {1: [0.25, 0.5, 0.75]}
@@ -443,8 +450,9 @@ def test_add_quantile_constraints():
 
 
 def test_add_quantile_constraints_invalid_column():
+    rng = np.random.default_rng(42)
     n_obs = 100
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs)])
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal(n_obs)])
     iw = np.ones(n_obs)
 
     quantiles = {5: [0.5]}
@@ -456,8 +464,9 @@ def test_add_quantile_constraints_invalid_column():
 
 
 def test_add_quantile_constraints_invalid_quantile():
+    rng = np.random.default_rng(42)
     n_obs = 100
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs)])
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal(n_obs)])
     iw = np.ones(n_obs)
 
     quantiles = {1: [0.0, 0.5, 1.5]}
@@ -469,8 +478,9 @@ def test_add_quantile_constraints_invalid_quantile():
 
 
 def test_add_quantile_constraints_intercept_skip():
+    rng = np.random.default_rng(42)
     n_obs = 100
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs)])
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal(n_obs)])
     iw = np.ones(n_obs)
 
     quantiles = {0: [0.5], 1: [0.5]}
@@ -482,12 +492,12 @@ def test_add_quantile_constraints_intercept_skip():
 
 
 def test_calculate_pscore_ipt_with_quantiles():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 200
     k_features = 3
 
-    X = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, k_features - 1)])
-    D = np.random.binomial(1, 0.3, n_obs)
+    X = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, k_features - 1))])
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     quantiles = {1: [0.25, 0.75], 2: [0.5]}
@@ -500,12 +510,12 @@ def test_calculate_pscore_ipt_with_quantiles():
 
 
 def test_calculate_pscore_ipt_automatic_collinearity_removal():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
 
-    X_base = np.column_stack([np.ones(n_obs), np.random.randn(n_obs, 2)])
+    X_base = np.column_stack([np.ones(n_obs), rng.standard_normal((n_obs, 2))])
     X = np.column_stack([X_base, X_base[:, 1] * 2, X_base[:, 2] - X_base[:, 1]])
-    D = np.random.binomial(1, 0.3, n_obs)
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     with pytest.warns(UserWarning, match="Removed.*collinear"):
@@ -517,12 +527,12 @@ def test_calculate_pscore_ipt_automatic_collinearity_removal():
 
 
 def test_calculate_pscore_ipt_collinearity_and_quantiles():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_obs = 100
 
-    X_base = np.column_stack([np.ones(n_obs), np.random.randn(n_obs)])
+    X_base = np.column_stack([np.ones(n_obs), rng.standard_normal(n_obs)])
     X = np.column_stack([X_base, X_base[:, 1] * 2])
-    D = np.random.binomial(1, 0.3, n_obs)
+    D = rng.binomial(1, 0.3, n_obs)
     iw = np.ones(n_obs)
 
     quantiles = {1: [0.5]}

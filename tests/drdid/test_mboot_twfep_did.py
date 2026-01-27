@@ -17,14 +17,16 @@ from moderndid import mboot_twfep_did
     ],
 )
 def test_mboot_twfep_did_shape(n_units, n_bootstrap, expected_shape):
-    linrep = np.random.normal(0, 1, 2 * n_units)
+    rng = np.random.default_rng(42)
+    linrep = rng.normal(0, 1, 2 * n_units)
     result = mboot_twfep_did(linrep, n_units, n_bootstrap, random_state=42)
     assert result.shape == expected_shape
 
 
 def test_mboot_twfep_did_reproducibility():
+    rng = np.random.default_rng(42)
     n_units = 10
-    linrep = np.random.normal(0, 1, 2 * n_units)
+    linrep = rng.normal(0, 1, 2 * n_units)
 
     result1 = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
     result2 = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
@@ -33,8 +35,9 @@ def test_mboot_twfep_did_reproducibility():
 
 
 def test_mboot_twfep_did_different_seeds():
+    rng = np.random.default_rng(42)
     n_units = 10
-    linrep = np.random.normal(0, 1, 2 * n_units)
+    linrep = rng.normal(0, 1, 2 * n_units)
 
     result1 = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=42)
     result2 = mboot_twfep_did(linrep, n_units, n_bootstrap=20, random_state=123)
@@ -84,9 +87,10 @@ def test_mboot_twfep_did_panel_structure():
 
 
 def test_mboot_twfep_did_edge_cases():
+    rng = np.random.default_rng(42)
     result = mboot_twfep_did(np.array([1.0, 2.0]), n_units=1, n_bootstrap=10, random_state=42)
     assert result.shape == (10,)
 
-    large_linrep = np.random.normal(0, 1, 2000)
+    large_linrep = rng.normal(0, 1, 2000)
     result = mboot_twfep_did(large_linrep, n_units=1000, n_bootstrap=10, random_state=42)
     assert result.shape == (10,)
