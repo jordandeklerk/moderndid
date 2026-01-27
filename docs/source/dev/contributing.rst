@@ -1,72 +1,154 @@
 .. _contributing:
 
-=======================
-Contributing guidelines
-=======================
+########################
+Contributing to ModernDiD
+########################
 
-Before contributing
+Welcome to ModernDiD! We appreciate your interest in contributing to the project.
+Whether you're fixing a bug, adding a new feature, improving documentation, or
+helping with code review, your contributions are valuable.
+
+This guide walks you through the contribution process. If you have questions or
+run into issues, feel free to open an issue on
+`GitHub <https://github.com/jordandeklerk/moderndid>`__.
+
+Development process
 ===================
 
-Welcome to moderndid! Before contributing to the project, please ensure you understand our contribution process.
+Here's a summary of the contribution workflow:
 
-Contributing code
-=================
+1. **Set up your environment**
 
-1. Set up a Python development environment
-   (advice: use `venv <https://docs.python.org/3/library/venv.html>`__,
-   `virtualenv <https://virtualenv.pypa.io/>`__, or `miniconda <https://docs.conda.io/en/latest/miniconda.html>`__)
-2. Install tox: ``python -m pip install tox``
-3. Clone the repository: ``git clone https://github.com/YOUR_USERNAME/moderndid.git``
-4. Start a new branch off main: ``git switch -c new-branch main``
-5. Make your code changes
-6. Check that your code follows the style guidelines of the project: ``tox -e check``
-7. Build the documentation: ``tox -e docs``
-8. Run the tests: ``tox -e core`` (fast test suite) or ``tox -e full`` (all tests)
-9. Commit, push, and open a pull request!
+   * Set up a Python development environment using
+     `venv <https://docs.python.org/3/library/venv.html>`__,
+     `virtualenv <https://virtualenv.pypa.io/>`__, or
+     `miniconda <https://docs.conda.io/en/latest/miniconda.html>`__
 
-Development environment
-=======================
+   * Install tox for managing test environments::
 
-We use `pyproject.toml <../pyproject.toml>`__ to manage project dependencies and configuration. You can install the package in development mode with:
+      python -m pip install tox
 
-.. code-block:: bash
+   * Fork the repository on GitHub, then clone your fork::
 
-   pip install -e .
+      git clone https://github.com/your-username/moderndid.git
+      cd moderndid
 
-Tests
-=====
+   * Add the upstream repository::
 
-Tests are located in the ``tests/`` directory and can be run with tox:
+      git remote add upstream https://github.com/jordandeklerk/moderndid.git
 
-.. code-block:: bash
+   * Install the package in development mode::
 
-   tox -e core      # Fast test suite (recommended for development)
-   tox -e full      # Full test suite (all tests including slow ones)
+      pip install -e .
 
-To run tests with coverage reporting:
+2. **Develop your contribution**
 
-.. code-block:: bash
+   * Create a branch for your work. Use a descriptive name that reflects
+     what you're working on::
+
+      git checkout -b fix-bootstrap-standard-errors
+
+   * Make your changes, writing tests for any new functionality
+
+   * Commit locally as you progress using clear, descriptive commit messages
+
+3. **Validate your changes**
+
+   * Run the test suite to make sure your changes don't break anything::
+
+      tox -e core
+
+   * Check that your code follows the project's style guidelines::
+
+      tox -e check
+
+   * If you've modified documentation, build and review it::
+
+      tox -e docs
+
+4. **Submit your contribution**
+
+   * Push your changes to your fork::
+
+      git push origin fix-bootstrap-standard-errors
+
+   * Open a pull request on GitHub. Provide a clear title and description
+     explaining what your changes do and why
+
+5. **Review process**
+
+   * Reviewers will provide feedback on your pull request. This is a
+     collaborative process, and we review all contributions with the goal
+     of improving the project together
+
+   * Update your PR by making changes locally, committing, and pushing
+     to the same branch. The PR will update automatically
+
+   * CI tests must pass before your PR can be merged
+
+Guidelines
+==========
+
+All code changes should include tests that verify the new behavior. See
+:doc:`testing` for details on how to write tests that follow our conventions,
+including guidance on fixtures, parameterization, and numerical tolerances.
+
+Public functions and classes should be documented with docstrings following the
+NumPy docstring standard. This ensures consistency across the codebase and
+enables automatic API documentation generation.
+
+If you're adding a new estimator, follow the established architecture patterns
+described in :doc:`architecture`. That document covers the preprocessing pipeline,
+result object design, and the consistent API conventions that make ModernDiD
+predictable for users.
+
+All changes require review and approval before merging. If you don't receive
+feedback within a week, feel free to ping the reviewers on the pull request.
+
+Stylistic guidelines
+====================
+
+We follow `PEP 8 <https://www.python.org/dev/peps/pep-0008/>`__ style conventions.
+Run ``tox -e check`` to verify your code before submitting a pull request.
+
+For imports, use the standard conventions of ``import numpy as np`` and
+``import polars as pl``. Keep imports organized with standard library imports
+first, followed by third-party packages, and then local imports.
+
+Prefer clear, descriptive names over brevity. Code is read more often than it
+is written, and a few extra characters in a variable name can save significant
+time for future readers.
+
+Test coverage
+=============
+
+Pull requests that modify code should include tests that sufficiently cover the new functionality.
+Tests should aim to address edge cases and realistic scenarios. We aim for high test coverage
+across the codebase.
+
+Run the test suite locally before pushing::
+
+   tox -e core      # Fast test suite (recommended during development)
+   tox -e full      # Full test suite including slow tests
+
+To run tests with coverage reporting::
 
    tox -e core-coverage
    tox -e full-coverage
 
-Documentation
-=============
+Building documentation
+======================
 
-Documentation is built using Sphinx and is located in the ``docs/`` directory. Build the documentation with:
+Documentation is built using Sphinx and lives in the ``docs/`` directory. The
+documentation includes API references generated from docstrings, user guides,
+and example notebooks.
 
-.. code-block:: bash
+To build and preview the documentation locally::
 
    tox -e docs
 
-Code style
-==========
-
-We follow the PEP 8 style guide. You can check your code with:
-
-.. code-block:: bash
-
-   tox -e check
+The built documentation will be available in ``.tox/docs/docs_out/``. Open
+``index.html`` in a browser to review your changes before submitting.
 
 .. toctree::
    :maxdepth: 1
@@ -74,4 +156,5 @@ We follow the PEP 8 style guide. You can check your code with:
    :hidden:
 
    self
+   architecture
    testing
