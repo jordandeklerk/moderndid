@@ -230,7 +230,7 @@ overall_att = did.aggte(attgt_result, type='group')
 ```
 
 The output shows that we estimate that increasing the minimum wage decreased teen employment by 3.1%,
-and the effect is marginally statistically significant.
+and the effect is statistically significant.
 
 ```
 ==============================================================================
@@ -243,15 +243,15 @@ and the effect is marginally statistically significant.
  Overall summary of ATT's based on group/cohort aggregation:
 
    ATT          Std. Error     [95% Conf. Interval]
-      -0.0313       0.0089     [-0.0487, -0.0140] *
+      -0.0310       0.0122     [-0.0550, -0.0071] *
 
 
  Group Effects:
 
          Group   Estimate   Std. Error   [95% Simult. Conf. Band]
-          2004    -0.0797       0.0268   [-0.1429, -0.0166] *
-          2006    -0.0162       0.0121   [-0.0447,  0.0123]
-          2007    -0.0286       0.0109   [-0.0542, -0.0029] *
+          2004    -0.0797       0.0279   [-0.1430, -0.0165] *
+          2006    -0.0229       0.0173   [-0.0620,  0.0162]
+          2007    -0.0261       0.0175   [-0.0656,  0.0135]
 
 ------------------------------------------------------------------------------
  Signif. codes: '*' confidence band does not cover 0
