@@ -133,7 +133,7 @@ def _create_sdrm_constraint_matrix_impl(num_pre_periods, num_post_periods, m_bar
         a_tilde[r, r : r + 3] = [1, -2, 1]
 
     v_max_diff = np.zeros((1, total_periods))
-    idx = num_pre_periods + s - 1
+    idx = num_pre_periods + s - 2
     v_max_diff[0, idx : idx + 3] = [1, -2, 1]
 
     if not max_positive:
@@ -338,7 +338,7 @@ if HAS_NUMBA:
             a_tilde[r, r + 2] = 1.0
 
         v_max_diff = np.zeros((1, total_periods))
-        idx = num_pre_periods + s - 1
+        idx = num_pre_periods + s - 2
         v_max_diff[0, idx] = 1.0
         v_max_diff[0, idx + 1] = -2.0
         v_max_diff[0, idx + 2] = 1.0

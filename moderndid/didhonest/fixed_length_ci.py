@@ -828,28 +828,30 @@ def _optimize_h_bisection(
 def _weights_to_l(weights):
     r"""Convert from weight parameterization to :math:`\ell` parameterization.
 
-    Converts from the first-difference parameterization :math:`w` to the
-    levels parameterization :math:`\ell` via
+    Applies the first-difference transformation to convert from the weight
+    parameterization :math:`w` to the levels parameterization :math:`\ell`:
 
     .. math::
 
-        \ell_t = \sum_{s=1}^{t} w_s.
+        \ell_1 = w_1, \quad \ell_t = w_t - w_{t-1} \text{ for } t > 1.
 
-    This transformation is used because the optimization problem is more
-    naturally expressed in terms of :math:`w`, while the final estimator
-    is expressed in terms of :math:`\ell`.
+    This is equivalent to multiplying by the lower bidiagonal matrix with
+    1s on the diagonal and -1s on the subdiagonal.
 
     Parameters
     ----------
     weights : ndarray
-        Weight vector :math:`w` (first differences).
+        Weight vector :math:`w`.
 
     Returns
     -------
     ndarray
-        Level vector :math:`\ell` (cumulative sums).
+        Level vector :math:`\ell`.
     """
-    return np.cumsum(weights)
+    result = np.empty_like(weights)
+    result[0] = weights[0]
+    result[1:] = np.diff(weights)
+    return result
 
 
 def _create_diff_matrix(size):

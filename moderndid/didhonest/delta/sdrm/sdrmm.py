@@ -168,7 +168,7 @@ def compute_conditional_cs_sdrmm(
             grid_lb = gridoff - gridhalf
 
     min_s = -(num_pre_periods - 2)
-    s_values = range(min_s, 0)
+    s_values = range(min_s, 1)
 
     grid = np.linspace(grid_lb, grid_ub, grid_points)
     n_s = len(s_values)
@@ -295,7 +295,7 @@ def compute_identified_set_sdrmm(
     l_vec = np.asarray(l_vec).flatten()
 
     min_s = -(num_pre_periods - 2)
-    s_values = range(min_s, 0)
+    s_values = range(min_s, 1)  # Include s=0 to match R's min_s:0
 
     all_bounds = []
 
@@ -384,13 +384,16 @@ def _compute_identified_set_sdrmm_fixed_s(
     a_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
     b_eq = true_beta[:num_pre_periods]
 
+    n_vars = num_pre_periods + num_post_periods
+    unbounded = [(None, None)] * n_vars
+
     result_max = opt.linprog(
         c=-c,
         A_ub=a_sdrmm,
         b_ub=b_sdrmm,
         A_eq=a_eq,
         b_eq=b_eq,
-        bounds=None,
+        bounds=unbounded,
         method="highs",
     )
 
@@ -400,7 +403,7 @@ def _compute_identified_set_sdrmm_fixed_s(
         b_ub=b_sdrmm,
         A_eq=a_eq,
         b_eq=b_eq,
-        bounds=None,
+        bounds=unbounded,
         method="highs",
     )
 

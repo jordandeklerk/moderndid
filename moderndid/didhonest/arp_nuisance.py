@@ -1019,8 +1019,18 @@ def _lp_dual_wrapper(
     # Residual after projecting out gamma_tilde direction
     # This is the component of y_t orthogonal to gamma_tilde under the metric sigma
     gamma_sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
-    if gamma_sigma_gamma <= 0:
-        raise ValueError("gamma'*sigma*gamma must be positive")
+
+    # This handles the degenerate case where gamma_sigma_gamma is zero or negative
+    # This can occur when constraints are linear combinations of each other
+    # (e.g., row i and row j are negatives with equal Lagrange multipliers)
+    # Return special values that the caller can detect and handle
+    if gamma_sigma_gamma <= np.finfo(float).eps:
+        return {
+            "vlo": -np.inf,
+            "vup": np.inf,
+            "eta": eta,
+            "gamma_tilde": gamma_tilde,
+        }
 
     # Projection matrix is I - (sigma * gamma * gamma') / (gamma' * sigma * gamma)
     s_t = (np.eye(len(y_t)) - (sigma @ np.outer(gamma_tilde, gamma_tilde)) / gamma_sigma_gamma) @ y_t
