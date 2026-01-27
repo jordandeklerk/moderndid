@@ -230,9 +230,9 @@ def get_did_cohort_index(
         # Determine control group boundaries
         if data.config.control_group == ControlGroup.NOT_YET_TREATED:
             # Find first cohort treated after the relevant period
-            relevant_period = data.config.time_periods[
-                max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
-            ]
+            relevant_period = (
+                data.config.time_periods[max(time_idx, pre_treatment_idx) + time_factor] + data.config.anticipation
+            )
             future_cohorts = data.cohort_counts.filter(data.cohort_counts["cohort"] > relevant_period)
             if len(future_cohorts) > 0:
                 min_control = future_cohorts["cohort"][0]
@@ -250,14 +250,13 @@ def get_did_cohort_index(
         if max_control not in cohort_values:
             max_control = cohort_values[-1]
 
-        # Control group indices
+        # Control group indices - this includes all matching cohorts
         control_mask = (data.cohort_counts["cohort"] >= min_control) & (data.cohort_counts["cohort"] <= max_control)
         control_mask_np = control_mask.to_numpy()
-        if control_mask_np.any():
-            control_idx = int(np.argmax(control_mask_np))
-            cohort_sizes = data.cohort_counts["cohort_size"].to_numpy()
-            start_control = int(cohort_sizes[:control_idx].sum()) if control_idx > 0 else 0
-            end_control = int(cohort_sizes[: control_idx + 1].sum())
+        cohort_sizes = data.cohort_counts["cohort_size"].to_numpy()
+        for idx in np.where(control_mask_np)[0]:
+            start_control = int(cohort_sizes[:idx].sum()) if idx > 0 else 0
+            end_control = int(cohort_sizes[: idx + 1].sum())
             cohort_index[start_control:end_control] = 0
 
         # Treated group indices
@@ -279,9 +278,9 @@ def get_did_cohort_index(
         if data.config.control_group == ControlGroup.NEVER_TREATED:
             control_flag = (data.data[data.config.gname] == np.inf).to_numpy()
         else:  # NOT_YET_TREATED
-            relevant_period = data.config.time_periods[
-                max(time_idx, pre_treatment_idx) + time_factor + data.config.anticipation
-            ]
+            relevant_period = (
+                data.config.time_periods[max(time_idx, pre_treatment_idx) + time_factor] + data.config.anticipation
+            )
             control_flag = (
                 (data.data[data.config.gname] == np.inf)
                 | (
