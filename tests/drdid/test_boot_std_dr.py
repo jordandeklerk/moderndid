@@ -10,8 +10,8 @@ from moderndid import mboot_did
 
 def test_mboot_did_basic():
     n = 100
-    np.random.seed(42)
-    linrep = np.random.normal(0, 1, n)
+    rng = np.random.default_rng(42)
+    linrep = rng.normal(0, 1, n)
 
     boots = mboot_did(linrep, n_bootstrap=20, random_state=42)
 
@@ -54,8 +54,8 @@ def test_mboot_did_mammen_weights():
 
 def test_mboot_did_variance_scaling():
     n = 1000
-    np.random.seed(42)
-    linrep = np.random.normal(0, 2, n)
+    rng = np.random.default_rng(42)
+    linrep = rng.normal(0, 2, n)
 
     boots = mboot_did(linrep, n_bootstrap=200, random_state=42)
 
@@ -67,8 +67,9 @@ def test_mboot_did_variance_scaling():
 
 @pytest.mark.parametrize("n_bootstrap", [20, 50, 100])
 def test_mboot_did_different_nboot(n_bootstrap):
+    rng = np.random.default_rng(42)
     n = 50
-    linrep = np.random.normal(0, 1, n)
+    linrep = rng.normal(0, 1, n)
 
     boots = mboot_did(linrep, n_bootstrap=n_bootstrap, random_state=42)
 

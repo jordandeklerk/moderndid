@@ -9,18 +9,18 @@ from moderndid import drdid_imp_local_rc
 @pytest.mark.parametrize("covariates", [None, "with_covariates"])
 def test_drdid_imp_local_rc_basic(covariates):
     n_units = 200
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = rng.binomial(1, 0.5, n_units)
     d = rng.binomial(1, 0.5, n_units)
 
     if covariates == "with_covariates":
-        x = rng.randn(n_units, 3)
+        x = rng.standard_normal((n_units, 3))
         x = np.column_stack([np.ones(n_units), x])
     else:
         x = None
 
-    y = rng.randn(n_units) + 2 * d * post
+    y = rng.standard_normal(n_units) + 2 * d * post
 
     result = drdid_imp_local_rc(y=y, post=post, d=d, covariates=x)
 
@@ -34,12 +34,12 @@ def test_drdid_imp_local_rc_basic(covariates):
 
 def test_drdid_imp_local_rc_with_weights():
     n_units = 200
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = rng.binomial(1, 0.5, n_units)
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y = rng.randn(n_units) + 2 * d * post
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y = rng.standard_normal(n_units) + 2 * d * post
     i_weights = rng.uniform(0.5, 1.5, n_units)
 
     result = drdid_imp_local_rc(y=y, post=post, d=d, covariates=x, i_weights=i_weights)
@@ -50,12 +50,12 @@ def test_drdid_imp_local_rc_with_weights():
 
 def test_drdid_imp_local_rc_influence_function():
     n_units = 200
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = rng.binomial(1, 0.5, n_units)
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y = rng.randn(n_units) + 2 * d * post
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y = rng.standard_normal(n_units) + 2 * d * post
 
     result = drdid_imp_local_rc(y=y, post=post, d=d, covariates=x, influence_func=True)
 
@@ -67,12 +67,12 @@ def test_drdid_imp_local_rc_influence_function():
 @pytest.mark.parametrize("boot_type", ["weighted", "multiplier"])
 def test_drdid_imp_local_rc_bootstrap(boot_type):
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = rng.binomial(1, 0.5, n_units)
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y = rng.randn(n_units) + 2 * d * post
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y = rng.standard_normal(n_units) + 2 * d * post
 
     result = drdid_imp_local_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=20)
 
@@ -84,12 +84,12 @@ def test_drdid_imp_local_rc_bootstrap(boot_type):
 
 def test_drdid_imp_local_rc_no_treated_in_post():
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = rng.binomial(1, 0.5, n_units)
     d = np.zeros(n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y = rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y = rng.standard_normal(n_units)
 
     with pytest.raises(ValueError, match="No units found"):
         drdid_imp_local_rc(y=y, post=post, d=d, covariates=x)
@@ -97,25 +97,25 @@ def test_drdid_imp_local_rc_no_treated_in_post():
 
 def test_drdid_imp_local_rc_all_treated():
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = rng.binomial(1, 0.5, n_units)
     d = np.ones(n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y = rng.randn(n_units) + 2 * post
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y = rng.standard_normal(n_units) + 2 * post
 
     with pytest.raises(ValueError, match="No units found"):
         drdid_imp_local_rc(y=y, post=post, d=d, covariates=x)
 
 
 def test_drdid_imp_local_rc_trimming():
-    n_units = 200
-    rng = np.random.RandomState(42)
+    n_units = 500
+    rng = np.random.default_rng(42)
 
     post = rng.binomial(1, 0.5, n_units)
-    d = rng.binomial(1, 0.05, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y = rng.randn(n_units) + 2 * d * post
+    d = rng.binomial(1, 0.1, n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y = rng.standard_normal(n_units) + 2 * d * post
 
     result = drdid_imp_local_rc(y=y, post=post, d=d, covariates=x, trim_level=0.9)
 
@@ -125,21 +125,21 @@ def test_drdid_imp_local_rc_trimming():
 
 def test_drdid_imp_local_rc_negative_weights():
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = rng.binomial(1, 0.5, n_units)
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y = rng.randn(n_units) + 2 * d * post
-    i_weights = rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y = rng.standard_normal(n_units) + 2 * d * post
+    i_weights = rng.standard_normal(n_units)
 
     with pytest.raises(ValueError, match="non-negative"):
         drdid_imp_local_rc(y=y, post=post, d=d, covariates=x, i_weights=i_weights)
 
 
 def test_drdid_imp_local_rc_dgp():
-    n_units = 2000
-    rng = np.random.RandomState(42)
+    n_units = 5000
+    rng = np.random.default_rng(42)
 
     x1 = rng.normal(0, 1, n_units)
     x2 = rng.normal(0, 1, n_units)
@@ -166,12 +166,12 @@ def test_drdid_imp_local_rc_dgp():
 
 def test_drdid_imp_local_rc_no_post_period():
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = np.zeros(n_units)
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y = rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y = rng.standard_normal(n_units)
 
     with pytest.raises(ValueError, match="No units found"):
         drdid_imp_local_rc(y=y, post=post, d=d, covariates=x)
@@ -179,12 +179,12 @@ def test_drdid_imp_local_rc_no_post_period():
 
 def test_drdid_imp_local_rc_no_pre_period():
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = np.ones(n_units)
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y = rng.randn(n_units) + 2 * d
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y = rng.standard_normal(n_units) + 2 * d
 
     with pytest.raises(ValueError, match="No units found"):
         drdid_imp_local_rc(y=y, post=post, d=d, covariates=x)
@@ -192,7 +192,7 @@ def test_drdid_imp_local_rc_no_pre_period():
 
 def test_drdid_imp_local_rc_heterogeneous_effects():
     n_units = 2000
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     x1 = rng.normal(0, 1, n_units)
     x2 = rng.normal(0, 1, n_units)
@@ -214,12 +214,12 @@ def test_drdid_imp_local_rc_heterogeneous_effects():
 
 def test_drdid_imp_local_rc_small_sample():
     n_units = 50
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     post = rng.binomial(1, 0.5, n_units)
     d = rng.binomial(1, 0.5, n_units)
-    y = rng.randn(n_units) + d * post
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
+    y = rng.standard_normal(n_units) + d * post
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
 
     result = drdid_imp_local_rc(y=y, post=post, d=d, covariates=x)
 

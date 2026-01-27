@@ -9,14 +9,14 @@ from moderndid.drdid import std_ipw_did_rc
 
 
 def test_std_ipw_did_rc_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
     p = 3
 
-    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
-    d = np.random.binomial(1, 0.3, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5, -0.3] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
+    d = rng.binomial(1, 0.3, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5, -0.3] + 2 * d * post + rng.standard_normal(n)
 
     result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
 
@@ -29,13 +29,13 @@ def test_std_ipw_did_rc_basic():
 
 
 def test_std_ipw_did_rc_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
-    weights = np.random.exponential(1, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
+    weights = rng.exponential(1, n)
 
     result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, i_weights=weights)
 
@@ -44,12 +44,12 @@ def test_std_ipw_did_rc_with_weights():
 
 
 def test_std_ipw_did_rc_with_influence_func():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, influence_func=True)
 
@@ -59,11 +59,11 @@ def test_std_ipw_did_rc_with_influence_func():
 
 
 def test_std_ipw_did_rc_no_covariates():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    d = np.random.binomial(1, 0.3, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = 1 + 2 * d * post + np.random.randn(n)
+    d = rng.binomial(1, 0.3, n)
+    post = rng.binomial(1, 0.5, n)
+    y = 1 + 2 * d * post + rng.standard_normal(n)
 
     result = std_ipw_did_rc(y=y, post=post, d=d, covariates=None)
 
@@ -72,12 +72,12 @@ def test_std_ipw_did_rc_no_covariates():
 
 
 def test_std_ipw_did_rc_bootstrap_weighted():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="weighted", nboot=10)
 
@@ -87,12 +87,12 @@ def test_std_ipw_did_rc_bootstrap_weighted():
 
 
 def test_std_ipw_did_rc_bootstrap_multiplier():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, boot_type="multiplier", nboot=10)
 
@@ -101,22 +101,23 @@ def test_std_ipw_did_rc_bootstrap_multiplier():
 
 
 def test_std_ipw_did_rc_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    y = np.random.randn(n)
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    y = rng.standard_normal(n)
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
 
     with pytest.raises(ValueError, match="i_weights must be non-negative"):
         std_ipw_did_rc(y=y, post=post, d=d, covariates=x, i_weights=-np.ones(n))
 
 
 def test_std_ipw_did_rc_edge_cases():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    y = np.random.randn(n)
-    post = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    y = rng.standard_normal(n)
+    post = rng.binomial(1, 0.5, n)
 
     d_all_treated = np.ones(n, dtype=int)
     with pytest.raises(ValueError, match="No control units found"):
@@ -128,36 +129,36 @@ def test_std_ipw_did_rc_edge_cases():
 
 
 def test_std_ipw_did_rc_all_post():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
     post = np.ones(n, dtype=int)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     with pytest.raises(ValueError, match="No pre-treatment observations found"):
         std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
 
 
 def test_std_ipw_did_rc_all_pre():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
     post = np.zeros(n, dtype=int)
-    y = x @ [1, 0.5] + np.random.randn(n)
+    y = x @ [1, 0.5] + rng.standard_normal(n)
 
     with pytest.raises(ValueError, match="No post-treatment observations found"):
         std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
 
 
 def test_std_ipw_did_rc_extreme_pscore():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
     x = np.column_stack([np.ones(n), np.linspace(-10, 10, n)])
     d = (x[:, 1] > 0).astype(int)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     with pytest.warns(UserWarning):
         result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
@@ -166,12 +167,12 @@ def test_std_ipw_did_rc_extreme_pscore():
 
 
 def test_std_ipw_did_rc_trim_level():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result1 = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, trim_level=0.99)
     result2 = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, trim_level=0.95)
@@ -181,12 +182,12 @@ def test_std_ipw_did_rc_trim_level():
 
 
 def test_std_ipw_did_rc_args_output():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x, boot=True, nboot=10, trim_level=0.99)
 
@@ -200,16 +201,14 @@ def test_std_ipw_did_rc_args_output():
 
 
 def test_std_ipw_did_rc_reproducibility():
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
-    np.random.seed(42)
     result1 = std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
-
-    np.random.seed(42)
     result2 = std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
 
     assert result1.att == result2.att
@@ -217,14 +216,14 @@ def test_std_ipw_did_rc_reproducibility():
 
 
 def test_std_ipw_did_rc_multicollinear_covariates():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x1 = np.random.randn(n)
+    x1 = rng.standard_normal(n)
     x2 = 2 * x1
     x = np.column_stack([np.ones(n), x1, x2])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = 1 + 0.5 * x1 + 2 * d * post + np.random.randn(n)
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = 1 + 0.5 * x1 + 2 * d * post + rng.standard_normal(n)
 
     result = std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
     assert isinstance(result.att, float)
@@ -233,12 +232,12 @@ def test_std_ipw_did_rc_multicollinear_covariates():
 
 
 def test_std_ipw_did_rc_comparison_with_non_std():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    post = np.random.binomial(1, 0.5, n)
-    y = x @ [1, 0.5] + 2 * d * post + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    post = rng.binomial(1, 0.5, n)
+    y = x @ [1, 0.5] + 2 * d * post + rng.standard_normal(n)
 
     result_std = std_ipw_did_rc(y=y, post=post, d=d, covariates=x)
 

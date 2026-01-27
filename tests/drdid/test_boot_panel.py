@@ -14,13 +14,13 @@ from moderndid import (
 
 
 def test_wboot_drdid_imp_panel_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
     p = 3
 
-    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
-    d = np.random.binomial(1, 0.3, n)
-    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
+    d = rng.binomial(1, 0.3, n)
+    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates = wboot_drdid_imp_panel(
@@ -35,10 +35,11 @@ def test_wboot_drdid_imp_panel_basic():
 
 
 def test_wboot_drdid_imp_panel_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
-    d = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
+    d = rng.binomial(1, 0.5, n)
     weights = np.ones(n)
 
     with pytest.raises(TypeError):
@@ -55,10 +56,10 @@ def test_wboot_drdid_imp_panel_invalid_inputs():
 
 
 def test_wboot_drdid_imp_panel_edge_cases():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
     weights = np.ones(n)
 
     d_all_treated = np.ones(n)
@@ -72,11 +73,11 @@ def test_wboot_drdid_imp_panel_edge_cases():
 
 
 def test_wboot_drdid_imp_panel_reproducibility():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates1 = wboot_drdid_imp_panel(
@@ -91,13 +92,13 @@ def test_wboot_drdid_imp_panel_reproducibility():
 
 
 def test_wboot_drdid_imp_panel_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
 
-    weights = np.random.exponential(1, n)
+    weights = rng.exponential(1, n)
 
     boot_estimates = wboot_drdid_imp_panel(
         delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42
@@ -109,13 +110,13 @@ def test_wboot_drdid_imp_panel_with_weights():
 
 
 def test_wboot_drdid_imp_panel_compare_variance():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 300
-    x = np.column_stack([np.ones(n), np.random.randn(n, 2)])
-    d = np.random.binomial(1, 0.4, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, 2))])
+    d = rng.binomial(1, 0.4, n)
 
     true_effect = 2.0
-    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + np.random.randn(n)
+    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates = wboot_drdid_imp_panel(
@@ -131,13 +132,13 @@ def test_wboot_drdid_imp_panel_compare_variance():
 
 
 def test_wboot_std_ipw_panel_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
     p = 3
 
-    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
-    d = np.random.binomial(1, 0.3, n)
-    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
+    d = rng.binomial(1, 0.3, n)
+    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
@@ -150,10 +151,11 @@ def test_wboot_std_ipw_panel_basic():
 
 
 def test_wboot_std_ipw_panel_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
-    d = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
+    d = rng.binomial(1, 0.5, n)
     weights = np.ones(n)
 
     with pytest.raises(TypeError):
@@ -170,10 +172,10 @@ def test_wboot_std_ipw_panel_invalid_inputs():
 
 
 def test_wboot_std_ipw_panel_edge_cases():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
     weights = np.ones(n)
 
     d_all_treated = np.ones(n)
@@ -187,11 +189,11 @@ def test_wboot_std_ipw_panel_edge_cases():
 
 
 def test_wboot_std_ipw_panel_reproducibility():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates1 = wboot_std_ipw_panel(
@@ -206,13 +208,13 @@ def test_wboot_std_ipw_panel_reproducibility():
 
 
 def test_wboot_std_ipw_panel_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
 
-    weights = np.random.exponential(1, n)
+    weights = rng.exponential(1, n)
 
     boot_estimates = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
@@ -222,13 +224,13 @@ def test_wboot_std_ipw_panel_with_weights():
 
 
 def test_wboot_std_ipw_panel_compare_with_ipw():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 300
-    x = np.column_stack([np.ones(n), np.random.randn(n, 2)])
-    d = np.random.binomial(1, 0.4, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, 2))])
+    d = rng.binomial(1, 0.4, n)
 
     true_effect = 2.0
-    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + np.random.randn(n)
+    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_std_ipw = wboot_std_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42)
@@ -249,13 +251,13 @@ def test_wboot_std_ipw_panel_compare_with_ipw():
 
 
 def test_wboot_dr_tr_panel_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
     p = 3
 
-    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
-    d = np.random.binomial(1, 0.3, n)
-    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
+    d = rng.binomial(1, 0.3, n)
+    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
@@ -268,10 +270,11 @@ def test_wboot_dr_tr_panel_basic():
 
 
 def test_wboot_dr_tr_panel_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
-    d = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
+    d = rng.binomial(1, 0.5, n)
     weights = np.ones(n)
 
     with pytest.raises(TypeError):
@@ -288,10 +291,10 @@ def test_wboot_dr_tr_panel_invalid_inputs():
 
 
 def test_wboot_dr_tr_panel_edge_cases():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
     weights = np.ones(n)
 
     d_all_treated = np.ones(n)
@@ -305,11 +308,11 @@ def test_wboot_dr_tr_panel_edge_cases():
 
 
 def test_wboot_dr_tr_panel_reproducibility():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates1 = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
@@ -320,13 +323,13 @@ def test_wboot_dr_tr_panel_reproducibility():
 
 
 def test_wboot_dr_tr_panel_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
 
-    weights = np.random.exponential(1, n)
+    weights = rng.exponential(1, n)
 
     boot_estimates = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
@@ -336,13 +339,13 @@ def test_wboot_dr_tr_panel_with_weights():
 
 
 def test_wboot_dr_tr_panel_compare_with_improved():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 300
-    x = np.column_stack([np.ones(n), np.random.randn(n, 2)])
-    d = np.random.binomial(1, 0.4, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, 2))])
+    d = rng.binomial(1, 0.4, n)
 
     true_effect = 2.0
-    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + np.random.randn(n)
+    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_traditional = wboot_dr_tr_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42)
@@ -364,13 +367,13 @@ def test_wboot_dr_tr_panel_compare_with_improved():
 
 
 def test_wboot_ipw_panel_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
     p = 3
 
-    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
-    d = np.random.binomial(1, 0.3, n)
-    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
+    d = rng.binomial(1, 0.3, n)
+    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
@@ -383,10 +386,11 @@ def test_wboot_ipw_panel_basic():
 
 
 def test_wboot_ipw_panel_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
-    d = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
+    d = rng.binomial(1, 0.5, n)
     weights = np.ones(n)
 
     with pytest.raises(TypeError):
@@ -403,10 +407,10 @@ def test_wboot_ipw_panel_invalid_inputs():
 
 
 def test_wboot_ipw_panel_edge_cases():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
     weights = np.ones(n)
 
     d_all_treated = np.ones(n)
@@ -420,11 +424,11 @@ def test_wboot_ipw_panel_edge_cases():
 
 
 def test_wboot_ipw_panel_reproducibility():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates1 = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=10, random_state=123)
@@ -435,13 +439,13 @@ def test_wboot_ipw_panel_reproducibility():
 
 
 def test_wboot_ipw_panel_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
 
-    weights = np.random.exponential(1, n)
+    weights = rng.exponential(1, n)
 
     boot_estimates = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=20, random_state=42)
 
@@ -451,13 +455,13 @@ def test_wboot_ipw_panel_with_weights():
 
 
 def test_wboot_ipw_panel_compare_with_dr():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 300
-    x = np.column_stack([np.ones(n), np.random.randn(n, 2)])
-    d = np.random.binomial(1, 0.4, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, 2))])
+    d = rng.binomial(1, 0.4, n)
 
     true_effect = 2.0
-    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + np.random.randn(n)
+    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_ipw = wboot_ipw_panel(delta_y=delta_y, d=d, x=x, i_weights=weights, n_bootstrap=200, random_state=42)
@@ -477,13 +481,13 @@ def test_wboot_ipw_panel_compare_with_dr():
 
 
 def test_wboot_reg_panel_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
     p = 3
 
-    x = np.column_stack([np.ones(n), np.random.randn(n, p - 1)])
-    d = np.random.binomial(1, 0.3, n)
-    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, p - 1))])
+    d = rng.binomial(1, 0.3, n)
+    delta_y = x @ [0.5, 0.3, -0.2] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates = wboot_reg_panel(
@@ -503,10 +507,11 @@ def test_wboot_reg_panel_basic():
 
 
 def test_wboot_reg_panel_invalid_inputs():
+    rng = np.random.default_rng(42)
     n = 50
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
-    d = np.random.binomial(1, 0.5, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
+    d = rng.binomial(1, 0.5, n)
     weights = np.ones(n)
 
     with pytest.raises(TypeError):
@@ -521,10 +526,10 @@ def test_wboot_reg_panel_invalid_inputs():
 
 @pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
 def test_wboot_reg_panel_edge_cases():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    delta_y = np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    delta_y = rng.standard_normal(n)
     weights = np.ones(n)
 
     d_all_treated = np.ones(n)
@@ -541,9 +546,10 @@ def test_wboot_reg_panel_edge_cases():
 
     assert np.sum(np.isnan(boot_estimates)) >= 5
 
-    x_many_cols = np.random.randn(10, 15)
+    rng2 = np.random.default_rng(43)
+    x_many_cols = rng2.standard_normal((10, 15))
     d_few_control = np.array([1, 1, 1, 1, 1, 1, 1, 0, 0, 0])
-    delta_y_small = np.random.randn(10)
+    delta_y_small = rng2.standard_normal(10)
     weights_small = np.ones(10)
 
     with pytest.warns(UserWarning, match="Insufficient control units"):
@@ -558,11 +564,11 @@ def test_wboot_reg_panel_edge_cases():
 
 
 def test_wboot_reg_panel_reproducibility():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_estimates1 = wboot_reg_panel(
@@ -586,13 +592,13 @@ def test_wboot_reg_panel_reproducibility():
 
 
 def test_wboot_reg_panel_with_weights():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 200
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
-    d = np.random.binomial(1, 0.5, n)
-    delta_y = x @ [1, 0.5] + 2 * d + np.random.randn(n)
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
+    d = rng.binomial(1, 0.5, n)
+    delta_y = x @ [1, 0.5] + 2 * d + rng.standard_normal(n)
 
-    weights = np.random.exponential(1, n)
+    weights = rng.exponential(1, n)
 
     boot_estimates = wboot_reg_panel(
         delta_y=delta_y,
@@ -610,11 +616,11 @@ def test_wboot_reg_panel_with_weights():
 
 @pytest.mark.filterwarnings("ignore:.*bootstrap iterations failed.*:UserWarning")
 def test_wboot_reg_panel_no_treated_units():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 100
-    x = np.column_stack([np.ones(n), np.random.randn(n)])
+    x = np.column_stack([np.ones(n), rng.standard_normal(n)])
     d = np.zeros(n)
-    delta_y = x @ [1, 0.5] + np.random.randn(n)
+    delta_y = x @ [1, 0.5] + rng.standard_normal(n)
     weights = np.ones(n)
 
     with pytest.warns(UserWarning, match="No effectively treated units"):
@@ -631,13 +637,13 @@ def test_wboot_reg_panel_no_treated_units():
 
 
 def test_wboot_reg_panel_compare_with_dr():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n = 300
-    x = np.column_stack([np.ones(n), np.random.randn(n, 2)])
-    d = np.random.binomial(1, 0.4, n)
+    x = np.column_stack([np.ones(n), rng.standard_normal((n, 2))])
+    d = rng.binomial(1, 0.4, n)
 
     true_effect = 2.0
-    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + np.random.randn(n)
+    delta_y = x @ [0.5, 0.3, -0.2] + true_effect * d + rng.standard_normal(n)
     weights = np.ones(n)
 
     boot_reg = wboot_reg_panel(
@@ -670,15 +676,15 @@ def test_wboot_reg_panel_compare_with_dr():
 
 
 def test_wboot_twfe_panel_basic():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_units = 100
     n_obs = 2 * n_units
 
-    y = np.random.randn(n_obs)
+    y = rng.standard_normal(n_obs)
     d = np.repeat([1] * 50 + [0] * 50, 2)
     post = np.tile([0, 1], n_units)
     x = np.ones((n_obs, 2))
-    x[:, 1] = np.random.randn(n_obs)
+    x[:, 1] = rng.standard_normal(n_obs)
     i_weights = np.ones(n_obs)
 
     result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=20, random_state=42)
@@ -689,14 +695,14 @@ def test_wboot_twfe_panel_basic():
 
 
 def test_wboot_twfe_panel_no_intercept():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_units = 50
     n_obs = 2 * n_units
 
-    y = np.random.randn(n_obs)
+    y = rng.standard_normal(n_obs)
     d = np.repeat([1] * 25 + [0] * 25, 2)
     post = np.tile([0, 1], n_units)
-    x = np.random.randn(n_obs, 2)
+    x = rng.standard_normal((n_obs, 2))
     i_weights = np.ones(n_obs)
 
     result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=10, random_state=42)
@@ -706,15 +712,15 @@ def test_wboot_twfe_panel_no_intercept():
 
 
 def test_wboot_twfe_panel_weighted():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_units = 40
     n_obs = 2 * n_units
 
-    y = np.random.randn(n_obs)
+    y = rng.standard_normal(n_obs)
     d = np.repeat([1] * 20 + [0] * 20, 2)
     post = np.tile([0, 1], n_units)
     x = np.ones((n_obs, 1))
-    i_weights = np.random.uniform(0.5, 2, n_obs)
+    i_weights = rng.uniform(0.5, 2, n_obs)
 
     result = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=30, random_state=42)
 
@@ -756,15 +762,15 @@ def test_wboot_twfe_panel_shape_mismatch():
 
 
 def test_wboot_twfe_panel_reproducibility():
-    np.random.seed(42)
+    rng = np.random.default_rng(42)
     n_units = 30
     n_obs = 2 * n_units
 
-    y = np.random.randn(n_obs)
+    y = rng.standard_normal(n_obs)
     d = np.repeat([1] * 15 + [0] * 15, 2)
     post = np.tile([0, 1], n_units)
     x = np.ones((n_obs, 2))
-    x[:, 1] = np.random.randn(n_obs)
+    x[:, 1] = rng.standard_normal(n_obs)
     i_weights = np.ones(n_obs)
 
     result1 = wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=10, random_state=42)
