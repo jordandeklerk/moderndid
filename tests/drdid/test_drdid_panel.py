@@ -9,18 +9,18 @@ from moderndid import drdid_panel
 @pytest.mark.parametrize("covariates", [None, "with_covariates"])
 def test_drdid_panel_basic(covariates):
     n_units = 200
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     d = rng.binomial(1, 0.5, n_units)
 
     if covariates == "with_covariates":
-        x = rng.randn(n_units, 3)
+        x = rng.standard_normal((n_units, 3))
         x = np.column_stack([np.ones(n_units), x])
     else:
         x = None
 
-    y0 = rng.randn(n_units)
-    y1 = y0 + 2 * d + rng.randn(n_units)
+    y0 = rng.standard_normal(n_units)
+    y1 = y0 + 2 * d + rng.standard_normal(n_units)
 
     result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
 
@@ -34,12 +34,12 @@ def test_drdid_panel_basic(covariates):
 
 def test_drdid_panel_with_weights():
     n_units = 200
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y0 = rng.randn(n_units)
-    y1 = y0 + 2 * d + rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y0 = rng.standard_normal(n_units)
+    y1 = y0 + 2 * d + rng.standard_normal(n_units)
     i_weights = rng.uniform(0.5, 1.5, n_units)
 
     result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, i_weights=i_weights)
@@ -50,12 +50,12 @@ def test_drdid_panel_with_weights():
 
 def test_drdid_panel_influence_function():
     n_units = 200
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y0 = rng.randn(n_units)
-    y1 = y0 + 2 * d + rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y0 = rng.standard_normal(n_units)
+    y1 = y0 + 2 * d + rng.standard_normal(n_units)
 
     result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, influence_func=True)
 
@@ -67,12 +67,12 @@ def test_drdid_panel_influence_function():
 @pytest.mark.parametrize("boot_type", ["weighted", "multiplier"])
 def test_drdid_panel_bootstrap(boot_type):
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y0 = rng.randn(n_units)
-    y1 = y0 + 2 * d + rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y0 = rng.standard_normal(n_units)
+    y1 = y0 + 2 * d + rng.standard_normal(n_units)
 
     result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, boot=True, boot_type=boot_type, nboot=20)
 
@@ -84,12 +84,12 @@ def test_drdid_panel_bootstrap(boot_type):
 
 def test_drdid_panel_no_treated():
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     d = np.zeros(n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y0 = rng.randn(n_units)
-    y1 = y0 + rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y0 = rng.standard_normal(n_units)
+    y1 = y0 + rng.standard_normal(n_units)
 
     with pytest.raises(ValueError, match="No effectively treated units"):
         drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
@@ -97,12 +97,12 @@ def test_drdid_panel_no_treated():
 
 def test_drdid_panel_all_treated():
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     d = np.ones(n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y0 = rng.randn(n_units)
-    y1 = y0 + 2 + rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y0 = rng.standard_normal(n_units)
+    y1 = y0 + 2 + rng.standard_normal(n_units)
 
     with pytest.raises(ValueError, match="No control units"):
         drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
@@ -110,12 +110,12 @@ def test_drdid_panel_all_treated():
 
 def test_drdid_panel_trimming():
     n_units = 200
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     d = rng.binomial(1, 0.05, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y0 = rng.randn(n_units)
-    y1 = y0 + 2 * d + rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y0 = rng.standard_normal(n_units)
+    y1 = y0 + 2 * d + rng.standard_normal(n_units)
 
     result = drdid_panel(y1=y1, y0=y0, d=d, covariates=x, trim_level=0.9)
 
@@ -125,13 +125,13 @@ def test_drdid_panel_trimming():
 
 def test_drdid_panel_singular_covariate_matrix():
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     d = rng.binomial(1, 0.5, n_units)
-    x1 = rng.randn(n_units)
+    x1 = rng.standard_normal(n_units)
     x = np.column_stack([np.ones(n_units), x1, x1])
-    y0 = rng.randn(n_units)
-    y1 = y0 + 2 * d + rng.randn(n_units)
+    y0 = rng.standard_normal(n_units)
+    y1 = y0 + 2 * d + rng.standard_normal(n_units)
 
     with pytest.raises(ValueError, match="singular"):
         drdid_panel(y1=y1, y0=y0, d=d, covariates=x)
@@ -139,13 +139,13 @@ def test_drdid_panel_singular_covariate_matrix():
 
 def test_drdid_panel_negative_weights():
     n_units = 100
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     d = rng.binomial(1, 0.5, n_units)
-    x = np.column_stack([np.ones(n_units), rng.randn(n_units, 2)])
-    y0 = rng.randn(n_units)
-    y1 = y0 + 2 * d + rng.randn(n_units)
-    i_weights = rng.randn(n_units)
+    x = np.column_stack([np.ones(n_units), rng.standard_normal((n_units, 2))])
+    y0 = rng.standard_normal(n_units)
+    y1 = y0 + 2 * d + rng.standard_normal(n_units)
+    i_weights = rng.standard_normal(n_units)
 
     with pytest.raises(ValueError, match="non-negative"):
         drdid_panel(y1=y1, y0=y0, d=d, covariates=x, i_weights=i_weights)
@@ -153,7 +153,7 @@ def test_drdid_panel_negative_weights():
 
 def test_drdid_panel_dgp():
     n_units = 2000
-    rng = np.random.RandomState(42)
+    rng = np.random.default_rng(42)
 
     x1 = rng.normal(0, 1, n_units)
     x2 = rng.normal(0, 1, n_units)

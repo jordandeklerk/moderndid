@@ -172,7 +172,7 @@ from moderndid.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
 from moderndid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
 from moderndid.drdid.estimators.twfe_did_panel import twfe_did_panel
 from moderndid.drdid.estimators.twfe_did_rc import twfe_did_rc
-from moderndid.drdid.estimators.wols import wols_panel, wols_rc
+from moderndid.drdid.estimators.wols import ols_panel, wols_panel, wols_rc
 from moderndid.drdid.format import print_did_result
 from moderndid.drdid.ipwdid import ipwdid
 from moderndid.drdid.ordid import ordid
@@ -361,6 +361,7 @@ __all__ = [
     "wboot_std_ipw_rc",
     "wboot_twfe_panel",
     "wboot_twfe_rc",
+    "ols_panel",
     "wols_panel",
     "wols_rc",
     # Plotting

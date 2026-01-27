@@ -12,17 +12,18 @@ from ..helpers import importorskip
 pl = importorskip("polars")
 
 
-def dgp_panel_for_test(n=2000):
-    x1 = np.random.normal(0, 1, n)
-    x2 = np.random.normal(0, 1, n)
+def dgp_panel_for_test(n=2000, seed=42):
+    rng = np.random.default_rng(seed)
+    x1 = rng.normal(0, 1, n)
+    x2 = rng.normal(0, 1, n)
 
-    y00 = x1 + x2 + np.random.normal(0, 1, n)
-    y10 = y00 + x1 + np.random.normal(0, 1, n)
+    y00 = x1 + x2 + rng.normal(0, 1, n)
+    y10 = y00 + x1 + rng.normal(0, 1, n)
 
     att = 1.0
 
     d_propensity = 1 / (1 + np.exp(-(x1 + x2)))
-    d = (np.random.uniform(size=n) < d_propensity).astype(int)
+    d = (rng.uniform(size=n) < d_propensity).astype(int)
 
     y1 = y10 + att * d
     y0 = y00
@@ -82,9 +83,10 @@ def test_influence_function():
 
 
 def test_with_weights():
+    rng = np.random.default_rng(42)
     n = 1000
     y1, y0, d, covariates = dgp_panel_for_test(n)
-    weights = np.random.uniform(0.5, 2.0, n)
+    weights = rng.uniform(0.5, 2.0, n)
 
     result = twfe_did_panel(y1, y0, d, covariates, i_weights=weights)
 
@@ -93,22 +95,24 @@ def test_with_weights():
 
 
 def test_all_treated():
+    rng = np.random.default_rng(42)
     n = 100
-    y1 = np.random.normal(0, 1, n)
-    y0 = np.random.normal(0, 1, n)
+    y1 = rng.normal(0, 1, n)
+    y0 = rng.normal(0, 1, n)
     d = np.ones(n)
-    covariates = np.random.normal(0, 1, (n, 3))
+    covariates = rng.normal(0, 1, (n, 3))
 
     with pytest.raises(ValueError, match="All units are treated"):
         twfe_did_panel(y1, y0, d, covariates)
 
 
 def test_all_control():
+    rng = np.random.default_rng(42)
     n = 100
-    y1 = np.random.normal(0, 1, n)
-    y0 = np.random.normal(0, 1, n)
+    y1 = rng.normal(0, 1, n)
+    y0 = rng.normal(0, 1, n)
     d = np.zeros(n)
-    covariates = np.random.normal(0, 1, (n, 3))
+    covariates = rng.normal(0, 1, (n, 3))
 
     result = twfe_did_panel(y1, y0, d, covariates)
     assert result.att == 0.0
@@ -123,12 +127,13 @@ def test_invalid_weights():
 
 
 def test_singular_design_matrix():
+    rng = np.random.default_rng(42)
     n = 100
-    y1 = np.random.normal(0, 1, n)
-    y0 = np.random.normal(0, 1, n)
-    d = np.random.binomial(1, 0.5, n)
+    y1 = rng.normal(0, 1, n)
+    y0 = rng.normal(0, 1, n)
+    d = rng.binomial(1, 0.5, n)
 
-    x1 = np.random.normal(0, 1, n)
+    x1 = rng.normal(0, 1, n)
     covariates = np.column_stack((np.ones(n), x1, x1))
 
     with pytest.raises(ValueError, match="singular"):
@@ -145,9 +150,10 @@ def test_small_sample():
 
 
 def test_single_covariate():
+    rng = np.random.default_rng(42)
     n = 500
     y1, y0, d, _ = dgp_panel_for_test(n)
-    single_cov = np.random.normal(0, 1, n)
+    single_cov = rng.normal(0, 1, n)
 
     result = twfe_did_panel(y1, y0, d, single_cov)
 
@@ -178,10 +184,11 @@ def test_invalid_input_types(invalid_input):
 
 
 def test_mismatched_dimensions():
+    rng = np.random.default_rng(42)
     n = 100
-    y1 = np.random.normal(0, 1, n)
-    y0 = np.random.normal(0, 1, n - 10)
-    d = np.random.binomial(1, 0.5, n)
+    y1 = rng.normal(0, 1, n)
+    y0 = rng.normal(0, 1, n - 10)
+    d = rng.binomial(1, 0.5, n)
 
     with pytest.raises((ValueError, IndexError, pl.exceptions.ShapeError)):
         twfe_did_panel(y1, y0, d)
