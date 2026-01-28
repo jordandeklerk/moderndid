@@ -55,7 +55,6 @@ ModernDiD: Modern Difference-in-Differences in Python
 
    Getting Started <getting_started/overview>
    User Guide <user_guide/user_guide>
-   Examples <examples/index>
    API <api/index>
    Development <dev/contributing>
    Background <background/index>

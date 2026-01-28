@@ -7,10 +7,10 @@ Background
 :Release: |version|
 :Date: |today|
 
-This section provides theoretical background and detailed explanations of the
-difference-in-differences methodologies implemented in **ModernDiD**. Each section
-covers the econometric theory, identification assumptions, and estimation approaches
-for different DiD methods.
+The following pages provide theoretical background and detailed explanations of the
+difference-in-differences methodologies implemented in **ModernDiD**, including
+the econometric theory, identification assumptions, and estimation approaches
+for each method.
 
 .. toctree::
    :maxdepth: 2
