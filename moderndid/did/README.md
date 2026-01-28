@@ -29,12 +29,9 @@ did.plot_event_study(event_study)
 
 ## Core Functions
 
-| Function | Description |
-|----------|-------------|
-| `att_gt` | Estimate group-time average treatment effects |
-| `aggte` | Aggregate effects (event study, simple, group, calendar) |
-| `plot_gt` | Plot group-time effects |
-| `plot_event_study` | Plot event study |
+- `att_gt` estimates group-time average treatment effects
+- `aggte` aggregates effects into event studies, overall ATT, or cohort summaries
+- `plot_gt` and `plot_event_study` visualize results
 
 ## Key Parameters
 
@@ -55,11 +52,9 @@ did.plot_event_study(event_study)
 
 ## Documentation
 
-For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/did.html).
-
-For a complete worked example with output, see the [Staggered DiD Example](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html).
-
-For theoretical background, see the [Background section](https://moderndid.readthedocs.io/en/latest/background/did.html).
+- For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/did.html).
+- For a complete worked example with output, see the [Staggered DiD Example](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html).
+- For theoretical background, see the [Background section](https://moderndid.readthedocs.io/en/latest/background/did.html).
 
 ## References
 
