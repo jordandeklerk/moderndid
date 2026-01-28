@@ -26,7 +26,7 @@ Here's a summary of the contribution workflow:
 
    * Install tox for managing test environments::
 
-      python -m pip install tox
+      uv pip install tox
 
    * Fork the repository on GitHub, then clone your fork::
 
@@ -39,7 +39,7 @@ Here's a summary of the contribution workflow:
 
    * Install the package in development mode::
 
-      pip install -e .
+      uv pip install -e .
 
 2. **Develop your contribution**
 
