@@ -4,10 +4,9 @@
 Architecture and API Design
 ====================================
 
-This document describes the internal architecture of ModernDiD and provides
-guidance for contributors who want to add new estimators or extend existing
-functionality. Understanding these patterns will help you write code that
-integrates seamlessly with the rest of the package.
+Understanding the internal architecture of ModernDiD will help you add new
+estimators or extend existing functionality. The patterns described here
+ensure your code integrates seamlessly with the rest of the package.
 
 Overview
 ========
@@ -24,7 +23,7 @@ sensitivity analysis that works with results from any estimator, and the
 
 This architecture means that adding a new estimator involves implementing the
 statistical logic while reusing the preprocessing, result handling, and plotting
-infrastructure. The sections below cover each component in detail.
+infrastructure.
 
 The Preprocessing Pipeline
 ==========================
@@ -313,9 +312,11 @@ simplifies debugging when results are unexpected.
 Creating a New Estimator
 ========================
 
-This section walks through creating a new estimator that integrates with the
-ModernDiD architecture. Following these steps ensures your estimator works
-seamlessly with the plotting, aggregation, and sensitivity analysis infrastructure.
+A well-integrated estimator gives users a consistent experience across the
+package. When your estimator follows the established patterns, users can apply
+what they learned from other estimators without consulting documentation for
+basic usage. It also means your estimator automatically works with the plotting,
+aggregation, and sensitivity analysis tools that users expect.
 
 Step 1: Define the Configuration
 --------------------------------
