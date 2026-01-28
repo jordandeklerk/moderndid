@@ -5,9 +5,16 @@ Introduction to Difference-in-Differences
 ************************************************
 
 Before diving into ModernDiD's API, it helps to understand the core concepts
-and terminology from the difference-in-differences literature. We start with
-the canonical two-period case to build intuition, then extend to multiple
-periods and staggered adoption.
+and terminology from the difference-in-differences literature.
+
+Difference-in-differences is a method for estimating causal effects when
+randomized experiments are not possible. The idea is to compare how outcomes
+change over time for units that receive a treatment to how outcomes change for
+units that do not. If both groups would have evolved similarly absent treatment,
+then any divergence after treatment can be attributed to the treatment itself.
+
+We start with the canonical two-period case to build intuition, then extend to
+multiple periods and staggered adoption.
 
 
 Notation and Potential Outcomes
