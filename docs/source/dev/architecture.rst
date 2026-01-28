@@ -371,17 +371,76 @@ Numba for Performance
 Computationally intensive operations should use Numba JIT compilation rather
 than pure Python loops. Numba compiles Python functions to machine code,
 providing performance comparable to C while keeping the code readable. This
-is particularly important for matrix operations, iterative algorithms, and
-any code that runs in tight loops over large arrays.
+is particularly important for bootstrap procedures where the same computation
+runs thousands of times, and for any code that runs in tight loops over large
+arrays.
 
-The pattern used in ModernDiD defines a pure Python/NumPy fallback first,
-then conditionally overrides it with a Numba-compiled version. This ensures
-the code works even when Numba is not installed while providing significant
-speedups when it is available.
+Consider computing bootstrap standard errors for group-time effects. Each
+bootstrap iteration requires resampling clusters and recomputing weighted
+means. In pure Python, this nested loop over bootstrap iterations and
+clusters is painfully slow.
 
 .. code-block:: python
 
    import numpy as np
+
+   # Pure Python - slow
+   def bootstrap_means_python(data, weights, cluster_ids, n_boot):
+       n_clusters = len(np.unique(cluster_ids))
+       unique_clusters = np.unique(cluster_ids)
+       results = np.zeros(n_boot)
+
+       for b in range(n_boot):
+           sampled = np.random.choice(unique_clusters, size=n_clusters, replace=True)
+           total = 0.0
+           weight_sum = 0.0
+           for c in sampled:
+               mask = cluster_ids == c
+               total += np.sum(data[mask] * weights[mask])
+               weight_sum += np.sum(weights[mask])
+           results[b] = total / weight_sum
+
+       return results
+
+With 1000 bootstrap iterations and 500 clusters, this function spends most of
+its time in Python's interpreter rather than doing actual computation. Numba
+eliminates this overhead by compiling the function to machine code.
+
+.. code-block:: python
+
+   import numba as nb
+
+   @nb.njit(cache=True, parallel=True)
+   def bootstrap_means_numba(data, weights, cluster_ids, n_boot, seed):
+       n_clusters = len(np.unique(cluster_ids))
+       unique_clusters = np.unique(cluster_ids)
+       results = np.zeros(n_boot)
+
+       for b in nb.prange(n_boot):
+           np.random.seed(seed + b)
+           sampled = np.random.choice(unique_clusters, size=n_clusters, replace=True)
+           total = 0.0
+           weight_sum = 0.0
+           for c in sampled:
+               for i in range(len(cluster_ids)):
+                   if cluster_ids[i] == c:
+                       total += data[i] * weights[i]
+                       weight_sum += weights[i]
+           results[b] = total / weight_sum
+
+       return results
+
+The Numba version uses ``nb.prange`` instead of ``range`` for the outer loop,
+enabling automatic parallelization across CPU cores. The ``cache=True`` argument
+stores the compiled function on disk, avoiding recompilation on subsequent runs.
+Speedups vary depending on the workload and data size, but can be substantial
+for the nested loops common in bootstrap procedures.
+
+The pattern used throughout ModernDiD defines a pure Python/NumPy fallback
+first, then conditionally overrides it with a Numba-compiled version. This
+ensures the code works even when Numba is not installed.
+
+.. code-block:: python
 
    try:
        import numba as nb
@@ -391,37 +450,24 @@ speedups when it is available.
        nb = None
 
 
-   # Pure Python/NumPy fallback
-   def _quadratic_form_impl(x, A):
-       return x @ A @ x
+   def _compute_impl(data, weights):
+       # Pure NumPy fallback
+       return np.sum(data * weights) / np.sum(weights)
 
 
-   # Numba-optimized version (conditionally defined)
    if HAS_NUMBA:
 
-       @nb.njit(cache=True, parallel=True)
-       def _quadratic_form_impl(x, A):
-           n = x.shape[0]
-           result = 0.0
-           for i in nb.prange(n):
-               row_sum = 0.0
-               for j in range(n):
-                   row_sum += A[i, j] * x[j]
-               result += x[i] * row_sum
-           return result
-
-
-   # Public function
-   def quadratic_form(x, A):
-       """Compute quadratic form :math:`x'Ax`."""
-       return _quadratic_form_impl(x, A)
-
-The ``cache=True`` argument tells Numba to cache the compiled function to disk,
-avoiding recompilation on subsequent runs. The ``parallel=True`` argument
-enables automatic parallelization of loops marked with ``nb.prange``.
+       @nb.njit(cache=True)
+       def _compute_impl(data, weights):
+           total = 0.0
+           weight_sum = 0.0
+           for i in range(len(data)):
+               total += data[i] * weights[i]
+               weight_sum += weights[i]
+           return total / weight_sum
 
 For element-wise operations on arrays, ``guvectorize`` provides a cleaner
-interface than writing explicit loops. It defines a generalized ufunc that
+interface than writing explicit loops. It defines a generalized ``ufunc`` that
 NumPy can broadcast automatically. The signature specifies input and output
 array shapes.
 
