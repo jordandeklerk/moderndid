@@ -205,4 +205,5 @@ ModernDiD brings these methods to the Python ecosystem.
 
    self
    installation
+   causal_inference
    quickstart

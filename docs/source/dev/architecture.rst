@@ -309,6 +309,160 @@ need to know the original setup, such as whether bootstrap was used and what
 the significance level was. Having all relevant information in one place also
 simplifies debugging when results are unexpected.
 
+Implementation Standards
+========================
+
+ModernDiD uses specific libraries for data handling and performance-critical
+code. Following these standards ensures consistency and maintains the
+performance characteristics users expect.
+
+Polars for Data Handling
+------------------------
+
+All internal data manipulation uses Polars rather than pandas. Polars provides
+better performance for the operations common in DiD estimation and has a more
+consistent API. When users pass a pandas DataFrame, the preprocessing pipeline
+converts it to Polars at the boundary, and all subsequent operations work with
+Polars DataFrames.
+
+If you are adding new preprocessing logic or data transformations within an
+estimator, use Polars operations. Avoid converting back to pandas for intermediate
+steps. The ``moderndid.core.dataframe`` module provides ``to_polars()`` for
+converting user input at the API boundary.
+
+Common Polars patterns used throughout the codebase:
+
+.. code-block:: python
+
+   import polars as pl
+   from moderndid.core.dataframe import to_polars
+
+   # Convert data to Polars
+   df = to_polars(data)
+
+   # Filter rows
+   treated = df.filter(pl.col("group") > 0)
+   balanced_ids = counts.filter(pl.col("len") == n_periods)
+
+   # Add or modify columns
+   df = df.with_columns(pl.Series(name="_weights", values=weights))
+   df = df.with_columns(pl.col("group").cast(pl.Float64))
+
+   # Conditional expressions
+   df = df.with_columns(
+       pl.when(pl.col("group") == 0)
+       .then(pl.lit(float("inf")))
+       .otherwise(pl.col("group"))
+       .alias("group")
+   )
+
+   # Group operations
+   counts = df.group_by("unit_id").len()
+   complete_ids = counts.filter(pl.col("len") == n_periods)["unit_id"].to_list()
+
+   # Window operations for panel data
+   df = df.with_columns(
+       (pl.col("outcome") - pl.col("outcome").shift(1).over("unit_id")).alias("dy")
+   )
+
+Numba for Performance
+---------------------
+
+Computationally intensive operations should use Numba JIT compilation rather
+than pure Python loops. Numba compiles Python functions to machine code,
+providing performance comparable to C while keeping the code readable. This
+is particularly important for matrix operations, iterative algorithms, and
+any code that runs in tight loops over large arrays.
+
+The pattern used in ModernDiD defines a pure Python/NumPy fallback first,
+then conditionally overrides it with a Numba-compiled version. This ensures
+the code works even when Numba is not installed while providing significant
+speedups when it is available.
+
+.. code-block:: python
+
+   import numpy as np
+
+   try:
+       import numba as nb
+       HAS_NUMBA = True
+   except ImportError:
+       HAS_NUMBA = False
+       nb = None
+
+
+   # Pure Python/NumPy fallback
+   def _quadratic_form_impl(x, A):
+       return x @ A @ x
+
+
+   # Numba-optimized version (conditionally defined)
+   if HAS_NUMBA:
+
+       @nb.njit(cache=True, parallel=True)
+       def _quadratic_form_impl(x, A):
+           n = x.shape[0]
+           result = 0.0
+           for i in nb.prange(n):
+               row_sum = 0.0
+               for j in range(n):
+                   row_sum += A[i, j] * x[j]
+               result += x[i] * row_sum
+           return result
+
+
+   # Public function
+   def quadratic_form(x, A):
+       """Compute quadratic form :math:`x'Ax`."""
+       return _quadratic_form_impl(x, A)
+
+The ``cache=True`` argument tells Numba to cache the compiled function to disk,
+avoiding recompilation on subsequent runs. The ``parallel=True`` argument
+enables automatic parallelization of loops marked with ``nb.prange``.
+
+For element-wise operations on arrays, ``guvectorize`` provides a cleaner
+interface than writing explicit loops. It defines a generalized ufunc that
+NumPy can broadcast automatically. The signature specifies input and output
+array shapes.
+
+.. code-block:: python
+
+   from numba import float64, guvectorize
+
+   # Pure Python/NumPy fallback
+   def _safe_divide_impl(x, y, out=None):
+       if out is None:
+           out = np.zeros_like(x, dtype=float)
+       mask = np.abs(y) >= 1e-10
+       np.divide(x, y, out=out, where=mask)
+       out[~mask] = 0.0
+       return out
+
+
+   if HAS_NUMBA:
+
+       @guvectorize(
+           [(float64[:], float64[:], float64[:])],
+           "(n),(n)->(n)",
+           nopython=True,
+           cache=True,
+       )
+       def _safe_divide_impl(x, y, result):
+           for i in range(x.shape[0]):
+               if np.abs(y[i]) < 1e-10:
+                   result[i] = 0.0
+               else:
+                   result[i] = x[i] / y[i]
+
+The signature ``"(n),(n)->(n)"`` means the function takes two arrays of the
+same length and produces an output array of that length. Numba handles memory
+allocation and broadcasting, so the compiled function works seamlessly with
+NumPy's array operations.
+
+When writing Numba functions, avoid Python objects and stick to NumPy arrays
+and scalar types. Numba works best with simple numerical code. If you need
+complex logic, keep it in pure Python and only JIT-compile the hot loops.
+
 Creating a New Estimator
 ========================
 
@@ -344,8 +498,8 @@ your config works with the preprocessing builder.
 Step 2: Define the Result Object
 --------------------------------
 
-Create a NamedTuple for your results. Include the standard attributes that
-downstream tools expect: point estimates, standard errors, influence functions,
+Create a ``NamedTuple`` for your results. Include the standard attributes that
+downstream tools expect, e.g., point estimates, standard errors, influence functions,
 and the estimation parameters dictionary.
 
 .. code-block:: python
