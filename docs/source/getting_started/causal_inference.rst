@@ -277,7 +277,7 @@ for group :math:`g` would have been the same as the path for never-treated
 units.
 
 An alternative version uses not-yet-treated units as the comparison group.
-For all groups :math:`g` and periods :math:`t \geq g`,
+For all groups :math:`g` and periods :math:`t \geq g`
 
 .. math::
 
