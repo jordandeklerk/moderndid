@@ -39,9 +39,9 @@ To run style checks:
 How to write tests
 ==================
 
-This section covers the conventions and patterns used throughout the test suite.
-Following these guidelines helps maintain consistency and makes the codebase easier
-to navigate for all contributors.
+Consistent test conventions make the codebase easier to navigate and help
+contributors understand what to expect when reading or writing tests. The
+patterns here have evolved from practical experience with the test suite.
 
 Imports and optional dependencies
 ---------------------------------
