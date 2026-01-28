@@ -8,8 +8,7 @@ Welcome to ModernDiD! We appreciate your interest in contributing to the project
 Whether you're fixing a bug, adding a new feature, improving documentation, or
 helping with code review, your contributions are valuable.
 
-This guide walks you through the contribution process. If you have questions or
-run into issues, feel free to open an issue on
+If you have questions or run into issues, feel free to open an issue on
 `GitHub <https://github.com/jordandeklerk/moderndid>`__.
 
 Development process

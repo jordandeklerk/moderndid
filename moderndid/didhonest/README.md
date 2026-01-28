@@ -122,21 +122,6 @@ from moderndid import plot_sensitivity
 plot_sensitivity(sensitivity_results)
 ```
 
-Plots can be customized using plotnine syntax:
-
-```python
-from plotnine import labs, theme, theme_classic
-
-custom_plot = (
-    plot_sensitivity(sensitivity_results)
-    + theme_classic()
-    + labs(title="Sensitivity Analysis", y="Treatment Effect")
-    + theme(figure_size=(8, 5))
-)
-
-custom_plot.save("sensitivity.png", dpi=300)
-```
-
 ## Usage
 
 There are two main ways to use this module depending on your workflow:
