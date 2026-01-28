@@ -27,12 +27,6 @@ event_study = did.aggte(result, type="dynamic")
 did.plot_event_study(event_study)
 ```
 
-## Core Functions
-
-- `att_gt` estimates group-time average treatment effects
-- `aggte` aggregates effects into event studies, overall ATT, or cohort summaries
-- `plot_gt` and `plot_event_study` visualize results
-
 ## Key Parameters
 
 **Estimation methods** (`est_method`)
@@ -52,7 +46,7 @@ did.plot_event_study(event_study)
 
 ## Documentation
 
-- For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/did.html).
+- For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/multiperiod.html).
 - For a complete worked example with output, see the [Staggered DiD Example](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html).
 - For theoretical background, see the [Background section](https://moderndid.readthedocs.io/en/latest/background/did.html).
 
