@@ -197,13 +197,221 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
     return df
 
 
-def compute_dof_scaling(df, horizon, config):
-    """Compute DOF scaling factor for variance correction.
+def compute_control_dof(df, horizon, config, cluster_col=None):
+    """Compute DOF for control units (non-switchers).
 
     Parameters
     ----------
     df : pl.DataFrame
-        Data with dof_switcher and dof_control columns.
+        Data with never_change column.
+    horizon : int
+        Current horizon.
+    config : DIDInterConfig
+        Configuration object.
+    cluster_col : str or None
+        Column name for cluster-robust DOF counting.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with dof_control_{h} and control_mean_{h} columns.
+    """
+    h = abs(horizon)
+    tname = config.tname
+    trends = config.trends_nonparam or []
+
+    never_col = f"never_change_{h}"
+    weighted_diff = f"weighted_diff_{h}"
+
+    if never_col not in df.columns:
+        return df
+
+    is_control = pl.col(never_col) == 1.0
+    group_vars = [tname, "d_sq"] + list(trends)
+
+    weight_sum_col = f"control_weight_sum_{h}"
+    diff_sum_col = f"control_diff_sum_{h}"
+    dof_col = f"dof_control_{h}"
+    mean_col = f"control_mean_{h}"
+
+    val_weight = pl.when(is_control).then(pl.col("weight_gt")).otherwise(None)
+    val_diff = pl.when(is_control).then(pl.col(weighted_diff)).otherwise(None)
+
+    df = df.with_columns(
+        pl.when(is_control).then(val_weight.sum().over(group_vars)).otherwise(None).alias(weight_sum_col)
+    )
+    df = df.with_columns(pl.when(is_control).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col))
+
+    if cluster_col is None:
+        val_dof = pl.when(is_control).then(pl.lit(1)).otherwise(None)
+        df = df.with_columns(pl.when(is_control).then(val_dof.sum().over(group_vars)).otherwise(None).alias(dof_col))
+    else:
+        cluster_flag = f"_control_cluster_{h}"
+        df = df.with_columns(pl.when(is_control).then(pl.col(cluster_col)).otherwise(None).alias(cluster_flag))
+        df = df.with_columns(
+            pl.when(pl.col(cluster_flag).is_not_null())
+            .then(pl.col(cluster_flag).n_unique().over(group_vars))
+            .otherwise(None)
+            .alias(dof_col)
+        )
+        df = df.drop(cluster_flag)
+
+    df = df.with_columns(
+        pl.when(pl.col(weight_sum_col) > 0)
+        .then(pl.col(diff_sum_col) / pl.col(weight_sum_col))
+        .otherwise(pl.lit(0.0))
+        .alias(mean_col)
+    )
+
+    return df
+
+
+def compute_union_dof(df, horizon, config, cluster_col=None):
+    """Compute DOF for the union of switchers and controls.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Data with switcher and control flags.
+    horizon : int
+        Current horizon.
+    config : DIDInterConfig
+        Configuration object.
+    cluster_col : str or None
+        Column name for cluster-robust DOF counting.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with dof_union_{h} and union_mean_{h} columns.
+    """
+    h = abs(horizon)
+    tname = config.tname
+    trends = config.trends_nonparam or []
+
+    switcher_flag = f"is_switcher_{h}"
+    never_col = f"never_change_{h}"
+    weighted_diff = f"weighted_diff_{h}"
+
+    if switcher_flag not in df.columns or never_col not in df.columns:
+        return df
+
+    is_union = (pl.col(switcher_flag) == 1) | (pl.col(never_col) == 1.0)
+    group_vars = [tname, "d_sq"] + list(trends)
+
+    union_flag = f"is_union_{h}"
+    weight_sum_col = f"union_weight_sum_{h}"
+    diff_sum_col = f"union_diff_sum_{h}"
+    dof_col = f"dof_union_{h}"
+    mean_col = f"union_mean_{h}"
+
+    df = df.with_columns(is_union.cast(pl.Int64).alias(union_flag))
+
+    val_weight = pl.when(is_union).then(pl.col("weight_gt")).otherwise(None)
+    val_diff = pl.when(is_union).then(pl.col(weighted_diff)).otherwise(None)
+
+    df = df.with_columns(
+        pl.when(is_union).then(val_weight.sum().over(group_vars)).otherwise(None).alias(weight_sum_col)
+    )
+    df = df.with_columns(pl.when(is_union).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col))
+
+    if cluster_col is None:
+        val_dof = pl.when(is_union).then(pl.col(union_flag)).otherwise(None)
+        df = df.with_columns(pl.when(is_union).then(val_dof.sum().over(group_vars)).otherwise(None).alias(dof_col))
+    else:
+        cluster_flag = f"_union_cluster_{h}"
+        df = df.with_columns(pl.when(is_union).then(pl.col(cluster_col)).otherwise(None).alias(cluster_flag))
+        df = df.with_columns(
+            pl.when(pl.col(cluster_flag).is_not_null())
+            .then(pl.col(cluster_flag).n_unique().over(group_vars))
+            .otherwise(None)
+            .alias(dof_col)
+        )
+        df = df.drop(cluster_flag)
+
+    df = df.with_columns(
+        pl.when(pl.col(weight_sum_col) > 0)
+        .then(pl.col(diff_sum_col) / pl.col(weight_sum_col))
+        .otherwise(pl.lit(0.0))
+        .alias(mean_col)
+    )
+
+    return df
+
+
+def compute_e_hat(df, horizon, config):
+    """Compute cohort mean with 3-level DOF fallback.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Data with DOF and mean columns.
+    horizon : int
+        Current horizon.
+    config : DIDInterConfig
+        Configuration object.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with E_hat_{h} column.
+    """
+    h = abs(horizon)
+    tname = config.tname
+
+    e_hat_col = f"E_hat_{h}"
+    dof_s_col = f"dof_switcher_{h}"
+    dof_ns_col = f"dof_control_{h}"
+    dof_union_col = f"dof_union_{h}"
+    mean_s_col = f"cohort_mean_{h}"
+    mean_ns_col = f"control_mean_{h}"
+    mean_union_col = f"union_mean_{h}"
+
+    time = pl.col(tname)
+    fg = pl.col("F_g")
+
+    at_target = (fg - 1 + h) == time
+    before_switch = time < fg
+    relevant = at_target | before_switch
+
+    dof_s = pl.col(dof_s_col) if dof_s_col in df.columns else pl.lit(None)
+    dof_ns = pl.col(dof_ns_col) if dof_ns_col in df.columns else pl.lit(None)
+    dof_union = pl.col(dof_union_col) if dof_union_col in df.columns else pl.lit(None)
+    mean_s = pl.col(mean_s_col) if mean_s_col in df.columns else pl.lit(0.0)
+    mean_ns = pl.col(mean_ns_col) if mean_ns_col in df.columns else pl.lit(0.0)
+    mean_union = pl.col(mean_union_col) if mean_union_col in df.columns else pl.lit(0.0)
+
+    s_safe = dof_s.fill_null(9999)
+    ns_safe = dof_ns.fill_null(9999)
+    union_safe = dof_union.fill_null(9999)
+
+    use_switcher_mean = at_target & (s_safe >= 2)
+    use_control_mean = before_switch & (ns_safe >= 2)
+    use_union_mean = (union_safe >= 2) & ((at_target & (s_safe == 1)) | (before_switch & (ns_safe == 1)))
+
+    df = df.with_columns(
+        pl.when(~relevant)
+        .then(pl.lit(None))
+        .when(use_switcher_mean)
+        .then(mean_s)
+        .when(use_control_mean)
+        .then(mean_ns)
+        .when(use_union_mean)
+        .then(mean_union)
+        .otherwise(pl.lit(0.0))
+        .alias(e_hat_col)
+    )
+
+    return df
+
+
+def compute_dof_scaling(df, horizon, config):
+    """Compute DOF scaling factor for variance correction with 3-level fallback.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Data with dof_switcher, dof_control, and dof_union columns.
     horizon : int
         Current horizon.
     config : DIDInterConfig
@@ -218,8 +426,9 @@ def compute_dof_scaling(df, horizon, config):
     tname = config.tname
 
     dof_col = f"dof_scale_{h}"
-    dof_s = f"dof_switcher_{h}"
-    dof_ns = f"dof_control_{h}"
+    dof_s_col = f"dof_switcher_{h}"
+    dof_ns_col = f"dof_control_{h}"
+    dof_union_col = f"dof_union_{h}"
 
     df = df.with_columns(pl.lit(1.0).alias(dof_col))
 
@@ -229,23 +438,29 @@ def compute_dof_scaling(df, horizon, config):
     at_target_time = (fg - 1 + h) == time
     before_switch = time < fg
 
-    if dof_s in df.columns:
-        s = pl.col(dof_s)
-        df = df.with_columns(
-            pl.when(at_target_time & (s.fill_null(9999) > 1))
-            .then((s / (s - 1)).sqrt())
-            .otherwise(pl.col(dof_col))
-            .alias(dof_col)
-        )
+    dof_s = pl.col(dof_s_col) if dof_s_col in df.columns else pl.lit(9999)
+    dof_ns = pl.col(dof_ns_col) if dof_ns_col in df.columns else pl.lit(9999)
+    dof_union = pl.col(dof_union_col) if dof_union_col in df.columns else pl.lit(9999)
 
-    if dof_ns in df.columns:
-        ns = pl.col(dof_ns)
-        df = df.with_columns(
-            pl.when(before_switch & (ns.fill_null(9999) > 1))
-            .then((ns / (ns - 1)).sqrt())
-            .otherwise(pl.col(dof_col))
-            .alias(dof_col)
-        )
+    s_safe = dof_s.fill_null(9999)
+    ns_safe = dof_ns.fill_null(9999)
+    union_safe = dof_union.fill_null(9999)
+
+    use_s_dof = at_target_time & (s_safe > 1)
+    use_ns_dof = before_switch & (ns_safe > 1)
+    use_union_s = at_target_time & (s_safe == 1) & (union_safe >= 2)
+    use_union_ns = before_switch & (ns_safe == 1) & (union_safe >= 2)
+
+    df = df.with_columns(
+        pl.when(use_s_dof)
+        .then((dof_s / (dof_s - 1)).sqrt())
+        .when(use_ns_dof)
+        .then((dof_ns / (dof_ns - 1)).sqrt())
+        .when(use_union_s | use_union_ns)
+        .then((dof_union / (dof_union - 1)).sqrt())
+        .otherwise(pl.col(dof_col))
+        .alias(dof_col)
+    )
 
     return df
 

@@ -4,15 +4,18 @@ import numpy as np
 import polars as pl
 from scipy import stats
 
-from .adjustments import compute_same_switchers_mask
+from .adjustments import compute_same_switchers_mask, get_group_vars
 from .controls import apply_control_adjustment, compute_control_coefficients
 from .results import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
 from .variance import (
     build_treatment_paths,
     compute_clustered_variance,
     compute_cohort_dof,
+    compute_control_dof,
     compute_dof_scaling,
+    compute_e_hat,
     compute_joint_test,
+    compute_union_dof,
 )
 
 
@@ -195,7 +198,7 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         never_w_col = f"never_change_w_{abs_h}"
         df = df.with_columns((pl.col(never_col) * pl.col("weight_gt")).alias(never_w_col))
 
-        group_vars = [tname, "d_sq"]
+        group_vars = get_group_vars(config)
         n_control_col = f"n_control_{abs_h}"
         df = df.with_columns(pl.col(never_w_col).sum().over(group_vars).alias(n_control_col))
 
@@ -255,14 +258,18 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
             weighted_diff = f"weighted_diff_{abs_h}"
             df = df.with_columns(pl.col(dist_col).cast(pl.Int64).alias(switcher_flag))
             df = df.with_columns((pl.col(diff_col).fill_null(0.0) * pl.col("weight_gt")).alias(weighted_diff))
+
             df = compute_cohort_dof(df, abs_h, config, config.cluster)
+            df = compute_control_dof(df, abs_h, config, config.cluster)
+            df = compute_union_dof(df, abs_h, config, config.cluster)
             df = compute_dof_scaling(df, abs_h, config)
+            df = compute_e_hat(df, abs_h, config)
 
             dof_scale_col = f"dof_scale_{abs_h}"
-            cohort_mean_col = f"cohort_mean_{abs_h}"
+            e_hat_col = f"E_hat_{abs_h}"
             inf_var_col = f"inf_func_var_{abs_h}"
 
-            if dof_scale_col in df.columns and cohort_mean_col in df.columns:
+            if dof_scale_col in df.columns and e_hat_col in df.columns:
                 df = df.with_columns(
                     (
                         (pl.lit(n_groups) / pl.lit(n_switchers))
@@ -272,7 +279,7 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
                             - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0)
                         )
                         * pl.col(dof_scale_col).fill_null(1.0)
-                        * (pl.col(diff_col).fill_null(0.0) - pl.col(cohort_mean_col).fill_null(0.0))
+                        * (pl.col(diff_col).fill_null(0.0) - pl.col(e_hat_col).fill_null(0.0))
                     ).alias(inf_var_col)
                 )
                 df = df.with_columns(
@@ -306,6 +313,11 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
             .alias(count_col)
         )
         n_obs_arr[idx] = df.select(pl.col(count_col).sum()).item()
+
+    if config.trends_lin and len(influence_funcs) == n_horizons and n_horizons > 0:
+        estimates, std_errors, influence_funcs = _apply_trends_lin(
+            estimates, std_errors, influence_funcs, n_groups, config.cluster, df
+        )
 
     vcov = None
     if len(influence_funcs) == n_horizons and all(len(f) > 0 for f in influence_funcs):
@@ -412,6 +424,34 @@ def _test_effects_equality(effects_results):
         return {"chi2_stat": chi2_stat, "df": df, "p_value": p_value}
     except np.linalg.LinAlgError:
         return None
+
+
+def _apply_trends_lin(estimates, std_errors, influence_funcs, n_groups, cluster, df):
+    """Apply linear trend adjustment by accumulating effects across horizons."""
+    n_horizons = len(influence_funcs)
+    if n_horizons == 0:
+        return estimates, std_errors, influence_funcs
+
+    valid_funcs = [f for f in influence_funcs if len(f) > 0 and not np.all(np.isnan(f))]
+    if len(valid_funcs) == 0:
+        return estimates, std_errors, influence_funcs
+
+    cumulative_inf = np.zeros_like(valid_funcs[0])
+    for inf_func in valid_funcs:
+        cumulative_inf = cumulative_inf + inf_func
+
+    last_idx = n_horizons - 1
+    influence_funcs[last_idx] = cumulative_inf
+
+    estimates[last_idx] = np.sum(cumulative_inf) / n_groups
+
+    if cluster:
+        cluster_ids = df.filter(df["first_obs_by_gp"] == 1).select(cluster).to_numpy().flatten()
+        std_errors[last_idx] = compute_clustered_variance(cumulative_inf, cluster_ids, n_groups)
+    else:
+        std_errors[last_idx] = np.sqrt(np.var(cumulative_inf, ddof=1) / n_groups)
+
+    return estimates, std_errors, influence_funcs
 
 
 def _prepare_data(data, config):
