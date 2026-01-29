@@ -4,6 +4,8 @@ import numpy as np
 import polars as pl
 from scipy import stats
 
+from .adjustments import compute_same_switchers_mask
+from .controls import apply_control_adjustment, compute_control_coefficients
 from .results import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
 from .variance import (
     build_treatment_paths,
@@ -38,6 +40,12 @@ def compute_effects(preprocessed):
     t_max = int(data[config.tname].max())
 
     df = _prepare_data(data, config)
+
+    if config.same_switchers:
+        df = compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
+
+    if config.same_switchers_pl and config.placebo > 0:
+        df = compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
 
     effects_results = _compute_did_effects(
         df=df,
@@ -116,30 +124,6 @@ def compute_effects(preprocessed):
     )
 
 
-def _prepare_data(data, config):
-    """Prepare data for computation."""
-    df = data.clone()
-    gname = config.gname
-    tname = config.tname
-
-    df = df.sort([gname, tname])
-
-    df = df.with_columns(pl.lit(1.0).alias("weight_gt"))
-
-    if config.weightsname:
-        df = df.with_columns((pl.col("weight_gt") * pl.col(config.weightsname)).alias("weight_gt"))
-
-    first_obs = df.group_by(gname).agg(pl.col(tname).min().alias("_first_t")).select([gname, "_first_t"])
-    df = df.join(first_obs, on=gname, how="left")
-    df = df.with_columns((pl.col(tname) == pl.col("_first_t")).cast(pl.Int64).alias("first_obs_by_gp"))
-    df = df.drop("_first_t")
-
-    t_max_by_group = df.group_by(gname).agg(pl.col(tname).max().alias("t_max_by_group"))
-    df = df.join(t_max_by_group, on=gname, how="left")
-
-    return df
-
-
 def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
     """Compute effects at multiple horizons."""
     gname = config.gname
@@ -187,8 +171,8 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
                 lag_col = f"lag_{ctrl}_{abs_h}"
                 df = df.with_columns(pl.col(ctrl).shift(abs_h).over(gname).alias(lag_col))
 
-            coefficients = _compute_control_coefficients(df, config, abs_h)
-            df = _apply_control_adjustment(df, config, abs_h, coefficients)
+            coefficients = compute_control_coefficients(df, config, abs_h)
+            df = apply_control_adjustment(df, config, abs_h, coefficients)
 
         never_col = f"never_change_{abs_h}"
         df = df.with_columns(
@@ -221,6 +205,9 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
             switcher_mask = pl.col("S_g") == -1
         else:
             switcher_mask = pl.col("S_g") != 0
+
+        if config.same_switchers and "same_switcher_valid" in df.columns:
+            switcher_mask = switcher_mask & pl.col("same_switcher_valid")
 
         dist_w_col = f"dist_to_switch_w_{abs_h}"
         df = df.with_columns(
@@ -427,93 +414,25 @@ def _test_effects_equality(effects_results):
         return None
 
 
-def _compute_control_coefficients(df, config, horizon):
-    """Compute control coefficients."""
-    controls = config.controls
-
-    if not controls:
-        return {}
-
-    diff_y_col = f"diff_y_{horizon}"
-    coefficients = {}
-
-    baseline_levels = df.filter(pl.col("F_g") == float("inf"))["d_sq"].unique().to_list()
-
-    for d_level in baseline_levels:
-        subset = df.filter(
-            (pl.col("d_sq") == d_level) & (pl.col("F_g") == float("inf")) & pl.col(diff_y_col).is_not_null()
-        )
-
-        if len(subset) < len(controls) + 1:
-            coefficients[d_level] = np.zeros(len(controls))
-            continue
-
-        y = subset.select(diff_y_col).to_numpy().flatten()
-        weights = subset.select("weight_gt").to_numpy().flatten()
-
-        X_cols = []
-        for ctrl in controls:
-            lag_col = f"lag_{ctrl}_{horizon}"
-            if lag_col in subset.columns:
-                diff_ctrl = subset.select(pl.col(ctrl) - pl.col(lag_col)).to_numpy().flatten()
-            else:
-                diff_ctrl = np.zeros(len(subset))
-            X_cols.append(diff_ctrl)
-
-        X = np.column_stack(X_cols)
-
-        valid_mask = ~np.isnan(y) & ~np.any(np.isnan(X), axis=1)
-        if np.sum(valid_mask) < len(controls) + 1:
-            coefficients[d_level] = np.zeros(len(controls))
-            continue
-
-        y_valid = y[valid_mask]
-        X_valid = X[valid_mask]
-        w_valid = weights[valid_mask]
-
-        try:
-            W = np.diag(w_valid)
-            XtWX = X_valid.T @ W @ X_valid
-            XtWy = X_valid.T @ W @ y_valid
-            theta = np.linalg.solve(XtWX, XtWy)
-            coefficients[d_level] = theta
-        except np.linalg.LinAlgError:
-            coefficients[d_level] = np.zeros(len(controls))
-
-    return coefficients
-
-
-def _apply_control_adjustment(df, config, horizon, coefficients):
-    """Apply control adjustment."""
+def _prepare_data(data, config):
+    """Prepare data for computation."""
+    df = data.clone()
     gname = config.gname
-    controls = config.controls
+    tname = config.tname
 
-    if not controls or not coefficients:
-        return df
+    df = df.sort([gname, tname])
 
-    diff_y_col = f"diff_y_{horizon}"
+    df = df.with_columns(pl.lit(1.0).alias("weight_gt"))
 
-    for ctrl_idx, ctrl in enumerate(controls):
-        lag_col = f"lag_{ctrl}_{horizon}"
+    if config.weightsname:
+        df = df.with_columns((pl.col("weight_gt") * pl.col(config.weightsname)).alias("weight_gt"))
 
-        if lag_col not in df.columns:
-            df = df.sort([gname, config.tname])
-            df = df.with_columns(pl.col(ctrl).shift(horizon).over(gname).alias(lag_col))
+    first_obs = df.group_by(gname).agg(pl.col(tname).min().alias("_first_t")).select([gname, "_first_t"])
+    df = df.join(first_obs, on=gname, how="left")
+    df = df.with_columns((pl.col(tname) == pl.col("_first_t")).cast(pl.Int64).alias("first_obs_by_gp"))
+    df = df.drop("_first_t")
 
-        diff_ctrl_col = f"diff_{ctrl}_{horizon}"
-        df = df.with_columns((pl.col(ctrl) - pl.col(lag_col)).alias(diff_ctrl_col))
-
-    for d_level, theta in coefficients.items():
-        adjustment = pl.lit(0.0)
-        for ctrl_idx, ctrl in enumerate(controls):
-            diff_ctrl_col = f"diff_{ctrl}_{horizon}"
-            adjustment = adjustment + pl.lit(theta[ctrl_idx]) * pl.col(diff_ctrl_col).fill_null(0.0)
-
-        df = df.with_columns(
-            pl.when(pl.col("d_sq") == d_level)
-            .then(pl.col(diff_y_col) - adjustment)
-            .otherwise(pl.col(diff_y_col))
-            .alias(diff_y_col)
-        )
+    t_max_by_group = df.group_by(gname).agg(pl.col(tname).max().alias("t_max_by_group"))
+    df = df.join(t_max_by_group, on=gname, how="left")
 
     return df
