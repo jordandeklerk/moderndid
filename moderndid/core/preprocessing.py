@@ -8,7 +8,7 @@ import scipy.linalg
 
 from .dataframe import DataFrame, to_polars
 from .preprocess.builders import PreprocessDataBuilder
-from .preprocess.config import ContDIDConfig, DDDConfig, DIDConfig, TwoPeriodDIDConfig
+from .preprocess.config import ContDIDConfig, DDDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .preprocess.constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
 from .preprocess.models import DDDData
 from .preprocess.utils import extract_vars_from_formula, make_balanced_panel
@@ -544,6 +544,111 @@ def preprocess_ddd_2periods(
         covariate_names=covariate_names,
         config=ddd_config,
     )
+
+
+def preprocess_didinter(
+    data,
+    yname,
+    tname,
+    gname,
+    dname,
+    cluster=None,
+    weightsname=None,
+    controls=None,
+    trends_nonparam=None,
+    effects=1,
+    placebo=0,
+    normalized=False,
+    effects_equal=False,
+    switchers="",
+    only_never_switchers=False,
+    same_switchers=False,
+    same_switchers_pl=False,
+    ci_level=95.0,
+    less_conservative_se=False,
+    trends_lin=False,
+    continuous=0,
+    allow_unbalanced_panel=False,
+):
+    """Process data for heterogeneous and dynamic treatment effects.
+
+    Parameters
+    ----------
+    data : pd.DataFrame | pl.DataFrame
+        Panel data in long format.
+    yname : str
+        Name of outcome variable column.
+    tname : str
+        Name of time period column.
+    gname : str
+        Name of unit/group identifier column.
+    dname : str
+        Name of treatment variable column.
+    cluster : str, optional
+        Name of clustering variable for standard errors.
+    weightsname : str, optional
+        Name of sampling weights column.
+    controls : list of str, optional
+        Names of control variable columns.
+    trends_nonparam : list of str, optional
+        Variables for non-parametric trends.
+    effects : int, default 1
+        Number of post-treatment periods to estimate.
+    placebo : int, default 0
+        Number of pre-treatment placebo periods.
+    normalized : bool, default False
+        Whether to normalize by treatment intensity.
+    effects_equal : bool, default False
+        Whether to test equality of effects.
+    switchers : str, default ""
+        Filter switchers: "" (all), "in" (switchers-in), "out" (switchers-out).
+    only_never_switchers : bool, default False
+        Use only never-switchers as controls.
+    same_switchers : bool, default False
+        Use same switchers across all effects.
+    same_switchers_pl : bool, default False
+        Use same switchers for placebos.
+    ci_level : float, default 95.0
+        Confidence interval level.
+    less_conservative_se : bool, default False
+        Use less conservative standard errors.
+    trends_lin : bool, default False
+        Include linear trends.
+    continuous : int, default 0
+        Polynomial degree for continuous treatment.
+    allow_unbalanced_panel : bool, default False
+        Allow unbalanced panel data.
+
+    Returns
+    -------
+    DIDInterData
+        Container with processed data for DIDInter estimation.
+    """
+    config = DIDInterConfig(
+        yname=yname,
+        tname=tname,
+        gname=gname,
+        dname=dname,
+        cluster=cluster,
+        weightsname=weightsname,
+        controls=controls,
+        trends_nonparam=trends_nonparam,
+        effects=effects,
+        placebo=placebo,
+        normalized=normalized,
+        effects_equal=effects_equal,
+        switchers=switchers,
+        only_never_switchers=only_never_switchers,
+        same_switchers=same_switchers,
+        same_switchers_pl=same_switchers_pl,
+        ci_level=ci_level,
+        less_conservative_se=less_conservative_se,
+        trends_lin=trends_lin,
+        continuous=continuous,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+    )
+
+    return PreprocessDataBuilder().with_data(data).with_config(config).validate().transform().build()
 
 
 def _validate_ddd_inputs(data: pl.DataFrame, yname, tname, idname, gname, pname, xformla, cluster, weightsname):
