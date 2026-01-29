@@ -3,9 +3,8 @@
 from typing import NamedTuple
 
 import cvxpy as cp
-from scipy import stats
-
 import numpy as np
+from scipy import stats
 
 from .utils import basis_vector, validate_conformable
 
