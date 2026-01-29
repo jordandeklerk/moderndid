@@ -148,12 +148,3 @@ To build and preview the documentation locally::
 
 The built documentation will be available in ``.tox/docs/docs_out/``. Open
 ``index.html`` in a browser to review your changes before submitting.
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Development
-   :hidden:
-
-   self
-   architecture
-   testing

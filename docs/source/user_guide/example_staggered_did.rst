@@ -23,7 +23,7 @@ background, see the :ref:`Introduction to Difference-in-Differences <causal_infe
 
 
 Loading data
-============
+------------
 
 .. code-block:: python
 
@@ -58,7 +58,7 @@ interpretation and improves precision.
 
 
 Estimating group-time effects
-=============================
+-----------------------------
 
 The first step is to estimate treatment effects separately for each cohort
 at each time period. This avoids the negative weighting problem that can
@@ -125,7 +125,7 @@ to observe.
 
 
 Aggregating into an event study
-===============================
+-------------------------------
 
 With 12 group-time estimates, the results are difficult to summarize. The
 event study aggregation aligns all cohorts relative to their treatment date,
@@ -191,7 +191,7 @@ cohorts and is less precisely estimated.
 
 
 Summarizing the overall effect
-==============================
+------------------------------
 
 For policy discussions, you often need a single number that summarizes the
 average treatment effect. The ``"simple"`` aggregation provides this by
@@ -235,7 +235,7 @@ examine the dynamic effects before reporting only the overall ATT.
 
 
 Examining heterogeneity by cohort
-=================================
+---------------------------------
 
 Different cohorts may experience different effects due to variation in
 local economic conditions, policy implementation, or the composition of
@@ -291,7 +291,7 @@ to provide a more complete picture.
 
 
 Plotting results
-================
+----------------
 
 Visualizations make it easier to communicate findings and spot patterns.
 The group-time plot shows all the underlying estimates organized by cohort.
@@ -322,7 +322,7 @@ in a causal interpretation.
 
 
 Next steps
-==========
+----------
 
 For details on estimation options such as covariates, control groups,
 bootstrap inference, and clustering, see the :ref:`quickstart <quickstart>` or

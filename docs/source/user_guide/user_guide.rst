@@ -19,7 +19,7 @@ For theoretical details on each estimator, see the :ref:`Background <background>
 
 
 Core Arguments
-==============
+--------------
 
 Every estimator requires four variables that identify the panel structure.
 
@@ -45,7 +45,7 @@ all estimators. Once you learn one, the others follow the same patterns.
 
 
 Basic Usage
-===========
+-----------
 
 We will focus on the :func:`~moderndid.did.att_gt` function, which estimates group-time average
 treatment effects for staggered adoption designs. Other estimators follow the same pattern with
@@ -82,7 +82,7 @@ into interpretable summaries.
 
 
 Estimation Options
-==================
+------------------
 
 The ``att_gt`` function provides several options for customizing the
 estimation procedure. The defaults reflect best practices, but you may
@@ -90,7 +90,7 @@ want to adjust them based on your data and research design.
 
 
 Estimation Methods
-------------------
+^^^^^^^^^^^^^^^^^^
 
 The ``est_method`` parameter controls how group-time effects are
 estimated. The default is ``"dr"`` for doubly robust, but you can also
@@ -120,7 +120,7 @@ model is correctly specified.
 
 
 Covariates
-----------
+^^^^^^^^^^
 
 When treated and comparison groups differ on observable characteristics,
 include covariates using the ``xformla`` parameter. This strengthens the
@@ -142,7 +142,7 @@ measured before treatment to avoid conditioning on post-treatment variables.
 
 
 Control Group
--------------
+^^^^^^^^^^^^^
 
 By default, ``att_gt`` uses never-treated units as the comparison group.
 You can instead use not-yet-treated units, which includes units that will
@@ -165,7 +165,7 @@ unrelated to potential outcomes.
 
 
 Bootstrap Inference
--------------------
+^^^^^^^^^^^^^^^^^^^
 
 By default, ``att_gt`` uses the multiplier bootstrap to compute standard
 errors and simultaneous confidence bands.
@@ -192,7 +192,7 @@ intervals instead of simultaneous bands.
 
 
 Clustering
-----------
+^^^^^^^^^^
 
 Standard errors can be clustered at one or two levels using the
 ``clustervars`` parameter. Clustering requires using the bootstrap.
@@ -214,7 +214,7 @@ unit identifier (``idname``).
 
 
 Anticipation
-------------
+^^^^^^^^^^^^
 
 If units can anticipate treatment before it actually occurs, account for
 this using the ``anticipation`` parameter. This shifts the base period
@@ -237,7 +237,7 @@ by anticipation of the upcoming treatment.
 
 
 Base Period
------------
+^^^^^^^^^^^
 
 The ``base_period`` parameter controls which pre-treatment period is used
 as the comparison. The default ``"varying"`` uses the period immediately
@@ -257,7 +257,7 @@ estimates to be relative to the same reference point.
 
 
 Panel Data Options
-------------------
+^^^^^^^^^^^^^^^^^^
 
 By default, ``att_gt`` expects a balanced panel where all units are
 observed in all time periods. If your panel is unbalanced, set
@@ -279,7 +279,7 @@ and omit the ``idname`` parameter.
 
 
 Sampling Weights
-----------------
+^^^^^^^^^^^^^^^^
 
 If your data has sampling weights, specify them using ``weightsname``.
 
@@ -296,7 +296,7 @@ If your data has sampling weights, specify them using ``weightsname``.
 
 
 Visualization
-=============
+-------------
 
 ModernDiD provides built-in plotting functions using plotnine.
 
@@ -310,7 +310,7 @@ ModernDiD provides built-in plotting functions using plotnine.
 
 
 Other Estimators
-================
+----------------
 
 ModernDiD provides additional estimators for different research designs.
 All estimators share the same core API, so once you learn ``att_gt``, or another estimator,
@@ -318,7 +318,7 @@ the others follow the same pattern with estimator-specific parameters.
 
 
 Continuous Treatment DiD
-------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 The :func:`~moderndid.didcont.cont_did` function handles settings with
 treatment intensity rather than binary treatment. We can compare the function
@@ -384,7 +384,7 @@ identically.
 
 
 Triple Difference-in-Differences
---------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The :func:`~moderndid.didtriple.ddd` function leverages an additional
 dimension of variation such as eligibility status. The API follows
@@ -410,7 +410,7 @@ arguments work the same as ``att_gt``.
 
 
 Sensitivity Analysis
---------------------
+^^^^^^^^^^^^^^^^^^^^
 
 The :mod:`~moderndid.didhonest` module assesses robustness to parallel
 trends violations. It takes results from ``att_gt``, or external event study results,
@@ -435,11 +435,3 @@ parallel trends violation.
     sensitivity = honest_did(event_study, event_time=0, sensitivity_type="smoothness")
 
 See the examples for detailed usage of each estimator.
-
-
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-
-   self
-   example_staggered_did

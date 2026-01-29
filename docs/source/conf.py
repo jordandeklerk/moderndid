@@ -141,12 +141,12 @@ html_theme_options = {
         "image_light": "_static/logo.svg",
         "image_dark": "_static/logo.svg",
     },
-    "collapse_navigation": True,
+    "collapse_navigation": False,
     "navbar_start": ["navbar-logo"],
     "navbar_end": ["search-button", "theme-switcher", "navbar-icon-links"],
     "navbar_persistent": [],
-    "secondary_sidebar_items": ["page-toc"],
     "show_version_warning_banner": False,
+    "navigation_depth": 4,
 }
 
 html_title = f"{project} v{version} Manual"

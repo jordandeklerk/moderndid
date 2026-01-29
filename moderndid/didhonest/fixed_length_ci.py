@@ -3,8 +3,9 @@
 from typing import NamedTuple
 
 import cvxpy as cp
-import numpy as np
 from scipy import stats
+
+import numpy as np
 
 from .utils import basis_vector, validate_conformable
 
@@ -93,20 +94,6 @@ def compute_flci(
         - optimal_half_length: Half-length of the confidence interval
         - smoothness_bound: Smoothness parameter :math:`M` used
         - status: Optimization status
-
-    Warnings
-    --------
-    FLCIs are recommended primarily for :math:`\Delta^{SD}(M)` where they have
-    guaranteed consistency and near-optimal finite-sample properties. For other
-    restriction sets, consider using conditional or hybrid confidence sets instead.
-
-    During the optimization process, you may encounter a warning from CVXPY about
-    "Solution may be inaccurate" when the solver reaches numerical precision limits.
-    This typically occurs during the binary search for optimal parameters when the
-    variance constraint becomes very tight (h values around 0.009 or smaller).
-    Despite this warning, the returned solution is still valid and usable. The
-    warning simply indicates that the solver terminated with status "optimal_inaccurate"
-    rather than "optimal" due to numerical precision constraints.
 
     Notes
     -----
