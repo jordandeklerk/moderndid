@@ -1,14 +1,4 @@
-html[data-theme="light"] {
-  --pst-color-primary: rgb(93, 154, 181);
-  --pst-color-secondary: rgb(93, 154, 181);
-  --pst-color-secondary-bg: rgb(223, 235, 240);
-}
-
-html[data-theme="dark"] {
-  --pst-color-primary: rgb(93, 155, 182);
-  --pst-color-secondary: rgb(93, 155, 182);
-  --pst-color-secondary-bg: rgb(33, 45, 51);
-}
+@import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&family=Open+Sans:ital,wght@0,400;0,600;1,400;1,600&display=swap');
 
 .navbar-brand img {
   height: 75px;
@@ -16,11 +6,41 @@ html[data-theme="dark"] {
 
 .navbar-brand {
   height: 75px;
+  flex-shrink: 0;
 }
+
+/* Prevent logo text from overlapping header links and bold the title */
+.navbar-brand .logo__title,
+.navbar-brand-box .logo__title,
+p.logo__title {
+  font-size: 1.1rem;
+  white-space: nowrap;
+  font-weight: bold !important;
+}
+
+/* Bold the main page title */
+h1 {
+  font-weight: bold;
+}
+
+/* Add spacing between logo/title and header navigation links */
+.navbar-header-items {
+  margin-left: 2rem;
+}
+
+body {
+  font-family: 'Open Sans', sans-serif;
+  font-size: medium;
+}
+
+/* Making sure the navbar shows correctly in one line
+   Reduces the space between the top-left logo and the navbar section titles */
 
 .col-lg-3 {
   width: 15%;
 }
+
+/* Version switcher from PyData Sphinx Theme */
 
 .version-switcher__menu a.list-group-item {
   font-size: small;
@@ -32,6 +52,8 @@ button.btn.version-switcher__button:hover {
   font-size: small;
 }
 
+/* Main index page overview cards */
+
 .sd-card .sd-card-img-top {
   height: 60px;
   width: 60px;
@@ -40,9 +62,13 @@ button.btn.version-switcher__button:hover {
   margin-top: 10px;
 }
 
+/* Main index page overview images */
+
 html[data-theme=dark] .sd-card img[src*='.svg'] {
   filter: invert(0.82) brightness(0.8) contrast(1.2);
 }
+
+/* Legacy admonition */
 
 div.admonition-legacy {
   border-color: var(--pst-color-warning);
@@ -55,6 +81,8 @@ div.admonition-legacy>.admonition-title::after {
 div.admonition-legacy>.admonition-title {
   background-color: var(--pst-color-warning-bg);
 }
+
+/* Buttons for JupyterLite-enabled interactive examples */
 
 .try_examples_button {
   color: white;
@@ -69,6 +97,7 @@ div.admonition-legacy>.admonition-title {
   font-size: small;
 }
 
+/* Use more accessible colours for text in dark mode */
 [data-theme=dark] .try_examples_button {
   color: black;
 }
@@ -86,137 +115,8 @@ div.admonition-legacy>.admonition-title {
   margin-bottom: 20px;
 }
 
+/* Better gaps for examples buttons under admonitions */
+
 .try_examples_outer_iframe {
   margin-top: 0.4em;
-}
-
-h1 {
-  word-wrap: break-word;
-}
-
-h1#moderndid-documentation {
-  font-weight: bold;
-}
-
-.bd-container {
-  max-width: 100%;
-}
-
-.bd-header .bd-header__inner {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding-left: 1rem;
-  padding-right: 1rem;
-}
-
-.bd-content .bd-article-container {
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-div.empty + section>h1 {
-  font-family: var(--pst-font-family-monospace);
-}
-
-.prename {
-  font-family: var(--pst-font-family-monospace);
-  font-size: var(--pst-font-size-h4);
-}
-
-.sig-prename {
-  display: none;
-}
-
-.bd-header-nav-items {
-  margin-left: 1rem;
-}
-
-ul.bd-navbar-elements {
-  padding-left: 1rem;
-}
-
-.navbar-nav {
-  margin-left: 1rem;
-}
-
-.wy-nav-side p.caption {
-  color: #F5F5F5;
-}
-
-div.wy-side-nav-search {
-  background: #757575;
-}
-
-div.wy-side-nay {
-  background: #212121;
-}
-
-table.field-list td li {
-  line-height: 18px;
-}
-
-table.docutils td p {
-  font-size: 14px !important;
-  margin-bottom: 6px;
-}
-
-table.docutils td li {
-  line-height: 18px;
-}
-
-table td.vl-type-def {
-  max-width: 170px;
-  overflow-x: clip;
-}
-
-#rtd-footer-container {
-  display: none;
-}
-
-.bd-sidebar-primary {
-  max-width: 20%
-}
-
-@media (max-width: 959.98px) {
-  .bd-sidebar-primary {
-      max-width: 350px;
-  }
-}
-
-.properties-example .vega-bind-name {
-  display: inline-block;
-  min-width: 150px;
-}
-
-.properties-example .vega-bindings {
-  padding-left: 20px;
-  padding-bottom: 10px;
-}
-
-.properties-example .vega-bindings select {
-  max-width: 180px;
-}
-
-.properties-example .vega-bindings input {
-  vertical-align: text-bottom;
-  margin-right: 3px;
-}
-
-.full-width-plot {
-  width: 100%;
-}
-
-.search-button-field > .search-button__kbd-shortcut {
-    display: none;
-}
-
-.lead {
-  font-size: 1.3em;
-  font-weight: 300;
-  margin-top: 22px;
-  margin-bottom: 22px;
-}
-
-.lead strong {
-  font-weight: bold;
 }
