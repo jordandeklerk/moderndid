@@ -2,31 +2,35 @@
 
 .. _api:
 
-##############
+#############
 API Reference
-##############
+#############
 
 :Release: |version|
 :Date: |today|
 
-This is the comprehensive API reference for **ModernDiD**, covering all public functions
-and classes available in the package. The documentation is generated automatically from
-the code documentation strings. Please refer to the :ref:`background` section for
-theoretical explanations and the :ref:`example_gallery` section for practical examples.
+This is the API reference for ModernDiD; details on the underlying
+methodology are found in :ref:`background`.
 
 .. toctree::
+   :caption: Core estimators
    :maxdepth: 2
-   :caption: API Modules
 
    multiperiod
    drdid
-   honestdid
+
+.. toctree::
+   :caption: Extensions
+   :maxdepth: 2
+
    didcont
    didtriple
+   honestdid
+
+.. toctree::
+   :caption: Utilities
+   :maxdepth: 2
+
    propensity
    bootstrap
    plotting
-
-.. note::
-   The API is stable for all documented functions. Additional modules under development
-   will be added in future releases.

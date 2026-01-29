@@ -4,17 +4,13 @@
 Background
 ##########
 
-:Release: |version|
-:Date: |today|
-
-The following pages provide theoretical background and detailed explanations of the
-difference-in-differences methodologies implemented in **ModernDiD**, including
-the econometric theory, identification assumptions, and estimation approaches
-for each method.
+This section provides theoretical background on the difference-in-differences
+methodologies implemented in ModernDiD; for practical usage see the
+:ref:`User Guide <user-guide>`.
 
 .. toctree::
+   :caption: Methodology
    :maxdepth: 2
-   :caption: Contents
 
    did
    drdid

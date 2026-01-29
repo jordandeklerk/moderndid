@@ -1,7 +1,7 @@
 .. _api-drdid:
 
-Doubly Robust DiD Estimators
-============================
+Doubly Robust DiD
+=================
 
 The drdid module provides all two-period difference-in-differences estimators,
 including doubly robust, inverse propensity weighted, and outcome regression methods.

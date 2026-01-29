@@ -1,0 +1,31 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.0.3 Release Notes
+=============================
+
+ModernDiD 0.0.3 is a patch release with minor fixes for PyPI distribution.
+
+Highlights
+==========
+
+- Fix absolute URLs for README images on PyPI
+- Update changelog and release workflow permissions
+
+Pull Requests Merged
+====================
+
+A total of 3 pull requests were merged for this release (all feature or fix PRs,
+no automated dependency updates).
+
+* `#118 <https://github.com/jordandeklerk/moderndid/pull/118>`__: Update changelog for v0.0.2
+* `#117 <https://github.com/jordandeklerk/moderndid/pull/117>`__: Add permissions for post-release workflow
+* `#116 <https://github.com/jordandeklerk/moderndid/pull/116>`__: Bump version to 0.0.2
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk

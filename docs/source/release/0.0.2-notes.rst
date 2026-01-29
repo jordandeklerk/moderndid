@@ -1,0 +1,124 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.0.2 Release Notes
+=============================
+
+ModernDiD 0.0.2 is a major feature release that adds triple difference-in-differences
+estimation, continuous treatment DiD, migrates from pandas to polars for improved
+performance, and integrates plotnine for publication-quality visualizations.
+
+Highlights
+==========
+
+- **Triple Difference-in-Differences**: New ``ddd()`` estimator for designs with
+  an additional dimension of variation (e.g., eligibility status)
+- **Continuous Treatment DiD**: New ``cont_did()`` function for settings with
+  treatment intensity rather than binary treatment
+- **Polars migration**: Migrated from pandas to polars for faster DataFrame operations
+- **Plotnine integration**: New plotting functions using plotnine for
+  publication-quality visualizations
+- **Unified API**: Consistent argument names across all main estimators
+
+New Features
+============
+
+Triple Difference-in-Differences
+--------------------------------
+
+- Add ``ddd()`` function for triple DiD estimation with panel data
+- Add ``agg_ddd()`` function for aggregating triple DiD effects
+- Support for repeated cross-section data in DDD estimators
+- Add DDD-specific plotting functions
+
+Continuous Treatment DiD
+------------------------
+
+- Add ``cont_did()`` function implementing `Callaway, Goodman-Bacon, and
+  Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`__ for continuous/multi-valued
+  treatments
+- Support for parametric and CCK estimation methods
+- Add dose-response aggregation options
+
+Plotting
+--------
+
+- Integrate plotnine for all visualization functions
+- Add ``plot_gt()`` for group-time effects visualization
+- Add ``plot_event_study()`` for event study plots
+- Add enhanced themes and styling options
+
+Performance Improvements
+------------------------
+
+- Migrate from pandas to polars for DataFrame handling across the codebase
+- Add Numba JIT compilation for computationally intensive operations
+- Optimize weight influence computations
+
+API Changes
+-----------
+
+- Unify argument names across main estimators for consistency
+- Update results formatting for ``aggte()`` and ``agg_ddd()`` functions
+- Add ``random_state`` parameter for bootstrap reproducibility
+
+Bug Fixes
+=========
+
+- Fix plotting functions to use polars DataFrame directly
+- Fix deprecated pandas SettingWithCopyWarning filter
+- Update analytical standard errors in DR-DiD estimators
+- Fix various test suite issues and improve tolerances
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk
+
+
+Pull Requests Merged
+====================
+
+A total of 70 pull requests were merged for this release, of which 37 are
+feature or fix PRs (excluding automated dependency updates).
+
+* `#114 <https://github.com/jordandeklerk/moderndid/pull/114>`__: Unify main function arguments
+* `#113 <https://github.com/jordandeklerk/moderndid/pull/113>`__: Integrate plotnine for all plotting
+* `#111 <https://github.com/jordandeklerk/moderndid/pull/111>`__: Migrate codebase from pandas to polars
+* `#110 <https://github.com/jordandeklerk/moderndid/pull/110>`__: Update testing instructions for Tox usage
+* `#109 <https://github.com/jordandeklerk/moderndid/pull/109>`__: Add tighter tolerances for point estimates in R tests
+* `#108 <https://github.com/jordandeklerk/moderndid/pull/108>`__: Add the ``didtriple`` readme
+* `#106 <https://github.com/jordandeklerk/moderndid/pull/106>`__: Update test instructions in contributing guide
+* `#105 <https://github.com/jordandeklerk/moderndid/pull/105>`__: Add multi-period repeated cross section DDD functionality
+* `#103 <https://github.com/jordandeklerk/moderndid/pull/103>`__: Add unified DDD estimator and numba optimizations
+* `#102 <https://github.com/jordandeklerk/moderndid/pull/102>`__: Add aggregated treatment effects for triple DiD
+* `#101 <https://github.com/jordandeklerk/moderndid/pull/101>`__: Add multi-period DDD estimator
+* `#100 <https://github.com/jordandeklerk/moderndid/pull/100>`__: Add 2 period panel DDD estimator
+* `#98 <https://github.com/jordandeklerk/moderndid/pull/98>`__: Add nuisance function estimation for DDD
+* `#97 <https://github.com/jordandeklerk/moderndid/pull/97>`__: Add 2-period triple DiD preprocessing logic
+* `#96 <https://github.com/jordandeklerk/moderndid/pull/96>`__: Add ``random_state`` for bootstrap reproducibility
+* `#94 <https://github.com/jordandeklerk/moderndid/pull/94>`__: Add continuous DiD preprocessing functions
+* `#88 <https://github.com/jordandeklerk/moderndid/pull/88>`__: Fix package dependencies
+* `#87 <https://github.com/jordandeklerk/moderndid/pull/87>`__: Add batteries-included plotting via ``PlotCollection`` object
+* `#78 <https://github.com/jordandeklerk/moderndid/pull/78>`__: Unify preprocessing logic for all estimators
+* `#74 <https://github.com/jordandeklerk/moderndid/pull/74>`__: Refactor tox testing environments
+* `#73 <https://github.com/jordandeklerk/moderndid/pull/73>`__: Fix propensity trimming in estimators
+* `#62 <https://github.com/jordandeklerk/moderndid/pull/62>`__: Update analytical standard errors for estimators
+* `#56 <https://github.com/jordandeklerk/moderndid/pull/56>`__: Optimize full test suite for speed
+* `#53 <https://github.com/jordandeklerk/moderndid/pull/53>`__: Update API links
+* `#52 <https://github.com/jordandeklerk/moderndid/pull/52>`__: Add docs for ``didcont``
+* `#51 <https://github.com/jordandeklerk/moderndid/pull/51>`__: Add ``cont_did()`` plotting functions
+* `#42 <https://github.com/jordandeklerk/moderndid/pull/42>`__: Add new docs
+* `#41 <https://github.com/jordandeklerk/moderndid/pull/41>`__: Add main continuous DiD function and preprocessing functions
+* `#37 <https://github.com/jordandeklerk/moderndid/pull/37>`__: Add more processing functions for continuous DiD
+* `#36 <https://github.com/jordandeklerk/moderndid/pull/36>`__: Add splines and panel processing functions
+* `#33 <https://github.com/jordandeklerk/moderndid/pull/33>`__: Fix references in NPIV functions
+* `#32 <https://github.com/jordandeklerk/moderndid/pull/32>`__: Nonparametric IV functions for sieve dimension and UCB estimation
+* `#29 <https://github.com/jordandeklerk/moderndid/pull/29>`__: API doc fix for build
+* `#28 <https://github.com/jordandeklerk/moderndid/pull/28>`__: Update index and API documentation
+* `#27 <https://github.com/jordandeklerk/moderndid/pull/27>`__: Fix layout for headers
+* `#26 <https://github.com/jordandeklerk/moderndid/pull/26>`__: Fix readthedocs error
+* `#25 <https://github.com/jordandeklerk/moderndid/pull/25>`__: Add new logos

@@ -1,0 +1,188 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.0.1 Release Notes
+=============================
+
+ModernDiD 0.0.1 is the initial release of the package, providing a unified
+Python implementation of modern difference-in-differences methodologies.
+
+Highlights
+==========
+
+This release includes the core functionality for difference-in-differences
+estimation:
+
+- **Multi-period staggered DiD**: Implementation of the `Callaway and Sant'Anna
+  (2021) <https://doi.org/10.1016/j.jeconom.2020.12.001>`__ estimator for staggered
+  treatment adoption designs via ``att_gt()`` and ``aggte()`` functions
+- **Doubly robust DiD estimators**: Full suite of DR-DiD estimators for both
+  panel data and repeated cross-sections following `Sant'Anna and Zhao (2020)
+  <https://doi.org/10.1016/j.jeconom.2020.06.003>`__
+- **Sensitivity analysis**: HonestDiD module implementing `Rambachan and Roth
+  (2023) <https://doi.org/10.1093/restud/rdad018>`__ sensitivity analysis for
+  parallel trends violations
+- **Bootstrap inference**: Multiplier bootstrap for standard errors and
+  simultaneous confidence bands
+
+New Features
+============
+
+Core Estimators
+---------------
+
+- Add ``att_gt()`` function for group-time average treatment effects
+- Add ``aggte()`` function for aggregating group-time effects into event
+  studies, overall ATT, group effects, and calendar time effects
+- Add doubly robust DiD estimators (``drdid_panel``, ``drdid_rc``)
+- Add IPW and outcome regression DiD estimators
+- Add two-way fixed effects estimators
+
+Sensitivity Analysis
+--------------------
+
+- Add HonestDiD sensitivity analysis functions following `Rambachan and Roth (2023)
+  <https://doi.org/10.1093/restud/rdad018>`__
+- Support for smoothness restrictions and relative magnitudes bounds
+- Add ARP confidence interval functions
+
+Infrastructure
+--------------
+
+- Add ``load_mpdta()`` function for loading example minimum wage dataset
+- Add comprehensive documentation with Sphinx
+- Add test suite with pytest
+- Set up CI/CD with GitHub Actions
+
+
+Major Commits
+=============
+
+.. note::
+
+   This project began as a solo side project, and at the time I did not anticipate
+   it growing into a full software package. As a result, the initial development
+   did not follow best practices such as using pull requests for changes. Starting
+   with version 0.0.2, all changes are tracked via pull requests.
+
+A total of 450 commits were made for this release, including 102 feature commits,
+24 bug fixes, and 98 refactors. Below are 70 key commits grouped by area
+(excluding documentation, chore, and automated updates).
+
+Core Estimators
+---------------
+
+* `415d74c <https://github.com/jordandeklerk/moderndid/commit/415d74c>`__: Add DR-DiD wrapper for doubly robust DiD estimators
+* `1fc3981 <https://github.com/jordandeklerk/moderndid/commit/1fc3981>`__: Add ``drdid_panel`` estimator
+* `06b77e9 <https://github.com/jordandeklerk/moderndid/commit/06b77e9>`__: Add DR-DiD estimators for improved and locally efficient repeated cross-section
+* `371e886 <https://github.com/jordandeklerk/moderndid/commit/371e886>`__: Add DR-DiD estimator for panel data and fix IPT propensity computation
+* `0f29f03 <https://github.com/jordandeklerk/moderndid/commit/0f29f03>`__: Add inverse-propensity weighted DiD estimator
+* `91e092c <https://github.com/jordandeklerk/moderndid/commit/91e092c>`__: Add IPW DiD estimator for panel data
+* `5d8b8d2 <https://github.com/jordandeklerk/moderndid/commit/5d8b8d2>`__: Add standardized IPW DiD estimator for repeated cross-section
+* `f7ed590 <https://github.com/jordandeklerk/moderndid/commit/f7ed590>`__: Add standardized IPW estimator for panel data
+* `27e2f03 <https://github.com/jordandeklerk/moderndid/commit/27e2f03>`__: Add outcome regression DiD estimator
+* `29f5144 <https://github.com/jordandeklerk/moderndid/commit/29f5144>`__: Add outcome regression panel DiD estimator
+* `2a23230 <https://github.com/jordandeklerk/moderndid/commit/2a23230>`__: Add ``drdid_trad_rc`` estimator
+* `31ac269 <https://github.com/jordandeklerk/moderndid/commit/31ac269>`__: Add DR-DiD locally efficient estimator
+* `b21d6b0 <https://github.com/jordandeklerk/moderndid/commit/b21d6b0>`__: Add IPW wrapper
+* `0a107b7 <https://github.com/jordandeklerk/moderndid/commit/0a107b7>`__: Add TWFE DiD estimators
+* `afc3187 <https://github.com/jordandeklerk/moderndid/commit/afc3187>`__: Add WOLS estimators
+
+Multi-period Staggered DiD
+--------------------------
+
+* `9bcb04a <https://github.com/jordandeklerk/moderndid/commit/9bcb04a>`__: Add ``att_gt`` function
+* `74d84bc <https://github.com/jordandeklerk/moderndid/commit/74d84bc>`__: Add wrapper for aggregate ATT
+* `c77b572 <https://github.com/jordandeklerk/moderndid/commit/c77b572>`__: Add ``compute_aggte`` function with group assignments and sampling weights
+* `42ca5ae <https://github.com/jordandeklerk/moderndid/commit/42ca5ae>`__: Add ``compute_att_gt`` functions for multi-period DiD analysis
+* `05d012b <https://github.com/jordandeklerk/moderndid/commit/05d012b>`__: Add multi-period and aggregate treatment effect result objects
+* `40455b7 <https://github.com/jordandeklerk/moderndid/commit/40455b7>`__: Add influence function support for overall ATT in AGGTE results
+* `b2643d3 <https://github.com/jordandeklerk/moderndid/commit/b2643d3>`__: Add ``MPPretestResult`` for pre-test of parallel trends assumption
+
+HonestDiD Sensitivity Analysis
+------------------------------
+
+* `852de48 <https://github.com/jordandeklerk/moderndid/commit/852de48>`__: Add new directory for Honest DiD
+* `53fe33b <https://github.com/jordandeklerk/moderndid/commit/53fe33b>`__: Add utility functions for Honest DiD analysis
+* `4aad9b1 <https://github.com/jordandeklerk/moderndid/commit/4aad9b1>`__: Add APR confidence interval functions
+* `aff332f <https://github.com/jordandeklerk/moderndid/commit/aff332f>`__: Add ARP confidence interval functions with nuisance params
+* `bc4f165 <https://github.com/jordandeklerk/moderndid/commit/bc4f165>`__: Add functions for fixed-length confidence intervals (FLCI)
+* `4ff564a <https://github.com/jordandeklerk/moderndid/commit/4ff564a>`__: Add functions for bound estimation and conditional tests
+* `1e628c4 <https://github.com/jordandeklerk/moderndid/commit/1e628c4>`__: Add functions for relative magnitudes restrictions
+* `700dfff <https://github.com/jordandeklerk/moderndid/commit/700dfff>`__: Add monotonicity and sign constraint matrix functions
+* `a8a479a <https://github.com/jordandeklerk/moderndid/commit/a8a479a>`__: Add functions for second difference inference
+* `f043407 <https://github.com/jordandeklerk/moderndid/commit/f043407>`__: Add Honest DiD main sensitivity analysis functions
+* `846b5f9 <https://github.com/jordandeklerk/moderndid/commit/846b5f9>`__: Add sensitivity analysis and plotting functions
+
+Bootstrap Inference
+-------------------
+
+* `3918479 <https://github.com/jordandeklerk/moderndid/commit/3918479>`__: Add ``mboot`` function
+* `1def724 <https://github.com/jordandeklerk/moderndid/commit/1def724>`__: Add standard multiplier bootstrap functionality
+* `0c817c0 <https://github.com/jordandeklerk/moderndid/commit/0c817c0>`__: Add ``mboot_twfep_did`` function for TWFE bootstrap
+* `a1f0be2 <https://github.com/jordandeklerk/moderndid/commit/a1f0be2>`__: Add bootstrap inference for doubly-robust DiD estimators
+* `de30695 <https://github.com/jordandeklerk/moderndid/commit/de30695>`__: Add IPT bootstrap functions
+* `4276f80 <https://github.com/jordandeklerk/moderndid/commit/4276f80>`__: Add traditional bootstrap for DR-DiD with panel data
+* `d3ca89e <https://github.com/jordandeklerk/moderndid/commit/d3ca89e>`__: Add improved bootstrap for DR-DiD with panel data
+* `f57828d <https://github.com/jordandeklerk/moderndid/commit/f57828d>`__: Add ``wboot_drdid_rc`` for DR-DiD bootstrap with repeated cross-section
+* `fedcea8 <https://github.com/jordandeklerk/moderndid/commit/fedcea8>`__: Add ``wboot_twfe_rc`` estimator
+* `57c5b50 <https://github.com/jordandeklerk/moderndid/commit/57c5b50>`__: Add ``wboot_std_ipw_rc`` estimator
+* `14c096c <https://github.com/jordandeklerk/moderndid/commit/14c096c>`__: Add ``wboot_reg_rc`` estimator
+
+Data and Preprocessing
+----------------------
+
+* `8d340e0 <https://github.com/jordandeklerk/moderndid/commit/8d340e0>`__: Add ``load_mpdta`` function for multiple time period DiD analysis
+* `6b7d2b1 <https://github.com/jordandeklerk/moderndid/commit/6b7d2b1>`__: Add preprocessing functions
+* `a3101fa <https://github.com/jordandeklerk/moderndid/commit/a3101fa>`__: Add DR-DiD preprocessing module
+* `d4b1862 <https://github.com/jordandeklerk/moderndid/commit/d4b1862>`__: Add panel and RC utility functions
+* `10a0ede <https://github.com/jordandeklerk/moderndid/commit/10a0ede>`__: Add print function for DiD results
+
+Propensity Score
+----------------
+
+* `ab7a1ff <https://github.com/jordandeklerk/moderndid/commit/ab7a1ff>`__: Add propensity score methods
+* `48e3b06 <https://github.com/jordandeklerk/moderndid/commit/48e3b06>`__: Add trimming functionality to AIPW estimators
+* `ab084c1 <https://github.com/jordandeklerk/moderndid/commit/ab084c1>`__: Enhance IPT propensity score with quantile constraints and collinearity removal
+
+Bug Fixes
+---------
+
+* `fb18373 <https://github.com/jordandeklerk/moderndid/commit/fb18373>`__: Fix grid bounds issues and computations
+* `74cd52c <https://github.com/jordandeklerk/moderndid/commit/74cd52c>`__: Fix trapezoidal integration for CI length and linear program solver
+* `c51ff0b <https://github.com/jordandeklerk/moderndid/commit/c51ff0b>`__: Fix pre-period constraint matrix calculations
+* `e7b32b4 <https://github.com/jordandeklerk/moderndid/commit/e7b32b4>`__: Update IPW estimator to use original weights directly
+* `e0fe502 <https://github.com/jordandeklerk/moderndid/commit/e0fe502>`__: Improve error handling and warnings in weighted OLS functions
+
+Performance and Refactoring
+---------------------------
+
+* `ed7acbf <https://github.com/jordandeklerk/moderndid/commit/ed7acbf>`__: Integrate Numba for performance optimization
+* `202dc12 <https://github.com/jordandeklerk/moderndid/commit/202dc12>`__: Move second difference and monotonicity matrix implementations to Numba
+* `d9b815f <https://github.com/jordandeklerk/moderndid/commit/d9b815f>`__: Replace custom functions with optimized Numba versions
+* `e7ef260 <https://github.com/jordandeklerk/moderndid/commit/e7ef260>`__: Improve grid default bound calculations in RM and SDRM functions
+* `d347dd3 <https://github.com/jordandeklerk/moderndid/commit/d347dd3>`__: Enhance grid bounds calculation using identified sets
+* `3966275 <https://github.com/jordandeklerk/moderndid/commit/3966275>`__: Enhance modularity and clarity in DiD estimators
+
+Infrastructure
+--------------
+
+* `e46bc8f <https://github.com/jordandeklerk/moderndid/commit/e46bc8f>`__: Initial repo setup
+* `dbed5b8 <https://github.com/jordandeklerk/moderndid/commit/dbed5b8>`__: Add CodeQL workflow
+
+Testing
+-------
+
+* `585bdbd <https://github.com/jordandeklerk/moderndid/commit/585bdbd>`__: Add tests for AIPW estimators and preprocess functions
+* `a564175 <https://github.com/jordandeklerk/moderndid/commit/a564175>`__: Add tests for DR-DiD DGP
+* `127ce5d <https://github.com/jordandeklerk/moderndid/commit/127ce5d>`__: Add ARP nuisance parameter tests
+* `9aa1d07 <https://github.com/jordandeklerk/moderndid/commit/9aa1d07>`__: Add tests for preprocessing
+* `c854616 <https://github.com/jordandeklerk/moderndid/commit/c854616>`__: Add tests for ``wboot_ipw_panel``
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk
