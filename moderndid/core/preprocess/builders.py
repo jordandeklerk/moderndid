@@ -162,6 +162,9 @@ class PreprocessDataBuilder:
         if isinstance(self._config, TwoPeriodDIDConfig):
             return
 
+        if isinstance(self._config, DIDInterConfig):
+            return
+
         glist = self._config.treated_groups
         if len(glist) == 0:
             raise ValueError(

@@ -103,8 +103,9 @@ class DataSorter(BaseTransformer):
         df = to_polars(data)
         sort_cols = [config.tname, config.gname]
 
-        if config.idname:
-            sort_cols.append(config.idname)
+        idname = getattr(config, "idname", None)
+        if idname:
+            sort_cols.append(idname)
 
         return df.sort(sort_cols)
 

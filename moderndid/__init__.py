@@ -118,6 +118,19 @@ from moderndid.didhonest import (
     validate_conformable,
     validate_symmetric_psd,
 )
+from moderndid.didinter import (
+    ATEResult as DIDInterATEResult,
+)
+from moderndid.didinter import (
+    DIDInterResult,
+    didinter,
+)
+from moderndid.didinter import (
+    EffectsResult as DIDInterEffectsResult,
+)
+from moderndid.didinter import (
+    PlacebosResult as DIDInterPlacebosResult,
+)
 from moderndid.didtriple import (
     ATTgtRCResult as DDDATTgtRCResult,
 )
@@ -198,12 +211,17 @@ __all__ = [
     "DDDMultiPeriodResult",
     "DDDPanelResult",
     "DDDRCResult",
+    "DIDInterATEResult",
+    "DIDInterEffectsResult",
+    "DIDInterPlacebosResult",
+    "DIDInterResult",
     "agg_ddd",
     "ddd",
     "ddd_mp",
     "ddd_mp_rc",
     "ddd_panel",
     "ddd_rc",
+    "didinter",
     "APRCIResult",
     "ARPNuisanceCIResult",
     "ATTgtResult",

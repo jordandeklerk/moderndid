@@ -156,17 +156,20 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
 
         df = df.sort([gname, tname])
         diff_col = f"diff_y_{abs_h}"
-        df = df.with_columns(pl.col(yname).diff(abs_h).over(gname).alias(diff_col))
 
         if horizon_type == "effect":
+            df = df.with_columns(pl.col(yname).diff(abs_h).over(gname).alias(diff_col))
             dist_col = f"dist_to_switch_{abs_h}"
             df = df.with_columns(
                 pl.when(pl.col(tname) == pl.col("F_g") + abs_h - 1).then(1.0).otherwise(0.0).alias(dist_col)
             )
         else:
+            df = df.with_columns(
+                (pl.col(yname).shift(2 * abs_h).over(gname) - pl.col(yname).shift(abs_h).over(gname)).alias(diff_col)
+            )
             dist_col = f"dist_to_switch_pl_{abs_h}"
             df = df.with_columns(
-                pl.when(pl.col(tname) == pl.col("F_g") - abs_h - 1).then(1.0).otherwise(0.0).alias(dist_col)
+                pl.when(pl.col(tname) == pl.col("F_g") + abs_h - 1).then(1.0).otherwise(0.0).alias(dist_col)
             )
 
         never_col = f"never_change_{abs_h}"
@@ -219,14 +222,13 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
             continue
 
         inf_temp_col = f"inf_func_{abs_h}_temp"
+        n_control_is_zero = pl.col(n_control_col).is_null() | (pl.col(n_control_col) == 0)
+        safe_n_control = pl.when(n_control_is_zero).then(1.0).otherwise(pl.col(n_control_col))
         df = df.with_columns(
             (
                 (pl.lit(n_groups) / pl.lit(n_switchers))
                 * pl.col("weight_gt")
-                * (
-                    pl.col(dist_col)
-                    - (pl.col(n_treated_col) / pl.col(n_control_col).fill_null(1.0)) * pl.col(never_col).fill_null(0.0)
-                )
+                * (pl.col(dist_col) - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0))
                 * pl.col(diff_col).fill_null(0.0)
             ).alias(inf_temp_col)
         )
