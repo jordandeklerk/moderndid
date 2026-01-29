@@ -41,38 +41,7 @@ in modern settings:
   of causal inference.
 
 ModernDiD addresses these challenges by implementing state-of-the-art methods
-from the econometrics literature. As a simple example, consider estimating the
-effect of a policy that different states adopted at different times. With
-traditional two-way fixed effects, we might write::
-
-  import pyfixest as pf
-  model = pf.feols("outcome ~ treated | state + year", data=df)
-
-This produces a single coefficient, but that coefficient is a weighted average
-of many underlying comparisons, some of which use already-treated states as
-controls with negative weights. If treatment effects grow over time, these
-negative weights can cause the estimate to be biased toward zero or even
-negative when all true effects are positive.
-
-ModernDiD provides methods that avoid these pitfalls::
-
-  import moderndid as did
-
-  result = did.att_gt(
-      data=df,
-      yname="outcome",
-      tname="year",
-      idname="state",
-      gname="first_treated",
-  )
-
-This estimates separate treatment effects for each combination of treatment
-cohort (group) and time period. These *group-time average treatment effects*,
-or ATT(g,t), represent clean causal comparisons that use only never-treated
-or not-yet-treated units as controls. They can then be aggregated into
-interpretable summaries such as event studies showing how effects evolve
-relative to treatment timing.
-
+from the econometrics literature.
 
 .. _whatis-unified:
 
