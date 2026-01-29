@@ -123,7 +123,6 @@ from moderndid.didinter import (
 )
 from moderndid.didinter import (
     DIDInterResult,
-    didinter,
 )
 from moderndid.didinter import (
     EffectsResult as DIDInterEffectsResult,
@@ -221,7 +220,6 @@ __all__ = [
     "ddd_mp_rc",
     "ddd_panel",
     "ddd_rc",
-    "didinter",
     "APRCIResult",
     "ARPNuisanceCIResult",
     "ATTgtResult",
