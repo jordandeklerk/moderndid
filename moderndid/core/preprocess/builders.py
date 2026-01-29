@@ -7,9 +7,9 @@ import numpy as np
 import polars as pl
 
 from ..dataframe import DataFrame, to_polars
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .constants import WEIGHTS_COLUMN
-from .models import ContDIDData, DIDData, TwoPeriodDIDData
+from .models import ContDIDData, DIDData, DIDInterData, TwoPeriodDIDData
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
 from .utils import extract_vars_from_formula
@@ -61,6 +61,9 @@ class PreprocessDataBuilder:
         if isinstance(config, TwoPeriodDIDConfig):
             self._validator = CompositeValidator(config_type="two_period")
             self._transformer = DataTransformerPipeline.get_two_period_pipeline()
+        elif isinstance(config, DIDInterConfig):
+            self._validator = CompositeValidator(config_type="didinter")
+            self._transformer = DataTransformerPipeline.get_didinter_pipeline()
         elif isinstance(config, DIDConfig):
             self._validator = CompositeValidator(config_type="did")
             self._transformer = DataTransformerPipeline.get_did_pipeline()
@@ -193,12 +196,12 @@ class PreprocessDataBuilder:
                 if NEVER_TREATED_VALUE in small_group_values and self._config.control_group.value == "nevertreated":
                     raise ValueError("Never treated group is too small, try setting control_group='notyettreated'")
 
-    def build(self) -> DIDData | ContDIDData | TwoPeriodDIDData:
+    def build(self) -> DIDData | ContDIDData | TwoPeriodDIDData | DIDInterData:
         """Build the final preprocessed data object.
 
         Returns
         -------
-        DIDData | ContDIDData | TwoPeriodDIDData
+        DIDData | ContDIDData | TwoPeriodDIDData | DIDInterData
             Preprocessed data container (type depends on config).
 
         Raises
@@ -211,6 +214,8 @@ class PreprocessDataBuilder:
 
         if isinstance(self._config, TwoPeriodDIDConfig):
             return self._build_two_period_did_data()
+        if isinstance(self._config, DIDInterConfig):
+            return self._build_didinter_data()
         if isinstance(self._config, DIDConfig):
             return self._build_did_data()
         if isinstance(self._config, ContDIDConfig):
@@ -329,6 +334,80 @@ class PreprocessDataBuilder:
         )
 
         return cont_data
+
+    def _build_didinter_data(self) -> DIDInterData:
+        """Build DIDInterData object."""
+        if not isinstance(self._config, DIDInterConfig):
+            raise ValueError("Config must be DIDInterConfig")
+
+        time_invariant_data = self._create_didinter_time_invariant_data()
+        summary_tables = self._create_didinter_summary_tables(time_invariant_data)
+
+        cluster = None
+        if self._config.cluster and self._config.cluster in time_invariant_data.columns:
+            cluster = time_invariant_data[self._config.cluster].to_numpy()
+
+        weights = time_invariant_data[WEIGHTS_COLUMN].to_numpy()
+
+        return DIDInterData(
+            data=self._data,
+            time_invariant_data=time_invariant_data,
+            weights=weights,
+            cohort_counts=summary_tables["cohort_counts"],
+            period_counts=summary_tables["period_counts"],
+            crosstable_counts=summary_tables["crosstable_counts"],
+            cluster=cluster,
+            config=self._config,
+        )
+
+    def _create_didinter_time_invariant_data(self) -> pl.DataFrame:
+        """Extract time-invariant data for DIDInter."""
+        if not isinstance(self._config, DIDInterConfig):
+            raise ValueError("Config must be DIDInterConfig")
+
+        time_invariant_cols = [self._config.gname, WEIGHTS_COLUMN, "F_g", "d_sq", "S_g"]
+
+        if self._config.cluster:
+            time_invariant_cols.append(self._config.cluster)
+
+        time_invariant_cols = list(dict.fromkeys(time_invariant_cols))
+        cols_to_select = [col for col in time_invariant_cols if col in self._data.columns]
+
+        return (
+            self._data.group_by(self._config.gname, maintain_order=True)
+            .first()
+            .select([self._config.gname] + [c for c in cols_to_select if c != self._config.gname])
+        )
+
+    def _create_didinter_summary_tables(self, time_invariant_data: pl.DataFrame) -> dict[str, pl.DataFrame]:
+        """Create summary tables for DIDInter."""
+        if not isinstance(self._config, DIDInterConfig):
+            raise ValueError("Config must be DIDInterConfig")
+
+        switcher_counts = (
+            time_invariant_data.group_by("S_g", maintain_order=True)
+            .len()
+            .rename({"S_g": "cohort", "len": "cohort_size"})
+        )
+
+        period_counts = (
+            self._data.group_by(self._config.tname, maintain_order=True)
+            .len()
+            .rename({self._config.tname: "period", "len": "period_size"})
+        )
+
+        crosstable = (
+            self._data.group_by([self._config.tname, "S_g"], maintain_order=True)
+            .len()
+            .rename({self._config.tname: "period", "S_g": "cohort", "len": "count"})
+        )
+        crosstable_counts = crosstable.pivot(index="period", on="cohort", values="count").fill_null(0)
+
+        return {
+            "cohort_counts": switcher_counts,
+            "period_counts": period_counts,
+            "crosstable_counts": crosstable_counts,
+        }
 
     def _create_time_invariant_data(self) -> pl.DataFrame:
         """Extract time-invariant data."""
