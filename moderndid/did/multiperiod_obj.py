@@ -224,7 +224,7 @@ def format_mp_result(result):
         control_text = {"nevertreated": "Never Treated", "notyettreated": "Not Yet Treated"}.get(
             control_group, control_group
         )
-        lines.append(f"Control Group:  {control_text},  ")
+        lines.append(f"Control Group:  {control_text}")
 
     anticipation = result.estimation_params.get("anticipation_periods", 0)
     lines.append(f"Anticipation Periods:  {anticipation}")

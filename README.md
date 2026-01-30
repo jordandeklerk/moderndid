@@ -114,7 +114,7 @@ Signif. codes: '*' confidence band does not cover 0
 
 P-value for pre-test of parallel trends assumption:  0.1681
 
-Control Group:  Never Treated,
+Control Group:  Never Treated
 Anticipation Periods:  0
 Estimation Method:  Doubly Robust
 ```
