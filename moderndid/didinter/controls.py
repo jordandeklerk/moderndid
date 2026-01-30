@@ -1,4 +1,4 @@
-"""Control variable adjustment for DIDInter."""
+"""Control variable adjustments."""
 
 import numpy as np
 import polars as pl

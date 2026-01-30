@@ -1,4 +1,4 @@
-"""Data adjustments for DIDInter estimation."""
+"""Data adjustments for estimation."""
 
 import polars as pl
 

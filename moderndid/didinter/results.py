@@ -1,4 +1,4 @@
-"""Result containers for DIDInter estimation."""
+"""Result containers."""
 
 from typing import NamedTuple
 

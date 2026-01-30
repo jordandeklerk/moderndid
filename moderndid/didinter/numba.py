@@ -1,5 +1,5 @@
 # pylint: disable=function-redefined
-"""Numba operations for DIDInter variance estimation."""
+"""Numba operations for variance estimation."""
 
 import numpy as np
 

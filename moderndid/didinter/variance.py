@@ -1,4 +1,4 @@
-"""Variance estimation for DIDInter."""
+"""Variance estimation."""
 
 import numpy as np
 import polars as pl

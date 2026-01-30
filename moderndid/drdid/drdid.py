@@ -177,26 +177,6 @@ def drdid(
 
         In [2]: print(att_result)
 
-    For more robust inference, we can use bootstrapped standard errors with
-    propensity score trimming to handle extreme weights.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: att_result_boot = moderndid.drdid(
-           ...:     data=nsw_data,
-           ...:     yname="re",
-           ...:     tname="year",
-           ...:     idname="id",
-           ...:     treatname="experimental",
-           ...:     xformla="~ age + educ + black + married + nodegree + hisp + re74",
-           ...:     panel=True,
-           ...:     est_method="imp",
-           ...:     boot=True,
-           ...: )
-
-        In [4]: print(att_result_boot)
-
     Notes
     -----
     When panel data are available (`panel=True`), the function implements the

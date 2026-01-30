@@ -1,4 +1,4 @@
-"""Core computation for DIDInter estimation."""
+"""Core computations for estimation."""
 
 import numpy as np
 import polars as pl

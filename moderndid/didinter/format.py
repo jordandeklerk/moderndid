@@ -1,4 +1,4 @@
-"""Formatting for DIDInter result objects."""
+"""Formatting for results."""
 
 import numpy as np
 
