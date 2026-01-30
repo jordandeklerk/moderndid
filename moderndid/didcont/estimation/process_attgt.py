@@ -8,7 +8,7 @@ import scipy.stats
 from .container import GroupTimeATTResult
 
 
-def process_att_gt(att_gt_results, pte_params):
+def process_att_gt(att_gt_results, pte_params, rng=None):
     """Process ATT(g,t) results.
 
     Parameters
@@ -22,6 +22,8 @@ def process_att_gt(att_gt_results, pte_params):
 
     pte_params : PTEParams
         Parameters object containing estimation settings.
+    rng : numpy.random.Generator, optional
+        Random number generator for bootstrap. If None, a new generator is created.
 
     Returns
     -------
@@ -43,7 +45,7 @@ def process_att_gt(att_gt_results, pte_params):
     alpha = pte_params.alp
 
     critical_value = scipy.stats.norm.ppf(1 - alpha / 2)
-    boot_results = multiplier_bootstrap(influence_func, alpha=alpha)
+    boot_results = multiplier_bootstrap(influence_func, alpha=alpha, rng=rng)
 
     if cband:
         critical_value = boot_results["critical_value"]

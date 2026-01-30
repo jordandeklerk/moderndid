@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 from polars.testing import assert_frame_equal
 
+pytestmark = pytest.mark.slow
+
 from tests.helpers import importorskip
 
 pl = importorskip("polars")

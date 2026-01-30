@@ -423,3 +423,38 @@ def rcs_nuisance_data():
     weights = np.ones(n)
 
     return y, post, subgroup, covariates, weights
+
+
+@pytest.fixture
+def ddd_baseline_result(two_period_df):
+    from moderndid import ddd
+
+    return ddd(
+        data=two_period_df,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+        xformla="~ cov1 + cov2",
+        est_method="dr",
+    )
+
+
+@pytest.fixture
+def ddd_converted(request, two_period_df):
+    from tests.helpers import importorskip
+
+    df_type = request.param
+    if df_type == "pandas":
+        importorskip("pandas")
+        return two_period_df.to_pandas()
+    if df_type == "pyarrow":
+        importorskip("pyarrow")
+        return two_period_df.to_arrow()
+    if df_type == "duckdb":
+        duckdb = importorskip("duckdb")
+        conn = duckdb.connect()
+        conn.register("ddd_data", two_period_df.to_arrow())
+        return conn.execute("SELECT * FROM ddd_data").fetch_arrow_table()
+    raise ValueError(f"Unknown dataframe type: {df_type}")

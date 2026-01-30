@@ -15,7 +15,9 @@ from .process_aggte import (
 from .process_attgt import process_att_gt
 
 
-def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-np.inf, max_event_time=np.inf):
+def process_dose_gt(
+    gt_results, pte_params, balance_event=None, min_event_time=-np.inf, max_event_time=np.inf, rng=None
+):
     """Process group-time results for continuous treatment dose-response.
 
     Parameters
@@ -35,13 +37,18 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
         Minimum event time for filtering.
     max_event_time : float, default=np.inf
         Maximum event time for filtering.
+    rng : numpy.random.Generator, optional
+        Random number generator for bootstrap. If None, a new generator is created.
 
     Returns
     -------
     DoseResult
         NamedTuple containing dose-response results.
     """
-    att_gt = process_att_gt(gt_results, pte_params)
+    if rng is None:
+        rng = np.random.default_rng()
+
+    att_gt = process_att_gt(gt_results, pte_params, rng=rng)
     all_extra_gt_returns = att_gt.extra_gt_returns
 
     if not all_extra_gt_returns:
@@ -83,13 +90,25 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
     att_influence_matrix = att_gt.influence_func
     overall_att_inf_func = _compute_overall_att_inf_func(weights_dict["weights"], att_influence_matrix)
     overall_att_se = float(
-        get_se(overall_att_inf_func[:, None], bootstrap=True, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
+        get_se(
+            overall_att_inf_func[:, None],
+            bootstrap=True,
+            bootstrap_iterations=bootstrap_iterations,
+            alpha=alpha,
+            rng=rng,
+        )
     )
 
     overall_acrt = float(np.nansum(acrt_overall_by_group * weights_dict["weights"]))
     overall_acrt_inf_func = np.sum(acrt_influence_matrix * weights_dict["weights"][np.newaxis, :], axis=1)
     overall_acrt_se = float(
-        get_se(overall_acrt_inf_func[:, None], bootstrap=True, bootstrap_iterations=bootstrap_iterations, alpha=alpha)
+        get_se(
+            overall_acrt_inf_func[:, None],
+            bootstrap=True,
+            bootstrap_iterations=bootstrap_iterations,
+            alpha=alpha,
+            rng=rng,
+        )
     )
 
     dose_values = pte_params.dvals
@@ -145,7 +164,7 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
     )
 
     if att_d_inf_func is not None:
-        boot_res = _multiplier_bootstrap_dose(att_d_inf_func, biters=bootstrap_iterations, alpha=alpha)
+        boot_res = _multiplier_bootstrap_dose(att_d_inf_func, biters=bootstrap_iterations, alpha=alpha, rng=rng)
         att_d_se = boot_res["se"]
         att_d_crit_val = boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
         att_d_crit_val = check_critical_value(att_d_crit_val, alpha)
@@ -154,7 +173,7 @@ def process_dose_gt(gt_results, pte_params, balance_event=None, min_event_time=-
         att_d_crit_val = st.norm.ppf(1 - alpha / 2)
 
     if acrt_d_inf_func is not None:
-        acrt_boot_res = _multiplier_bootstrap_dose(acrt_d_inf_func, biters=bootstrap_iterations, alpha=alpha)
+        acrt_boot_res = _multiplier_bootstrap_dose(acrt_d_inf_func, biters=bootstrap_iterations, alpha=alpha, rng=rng)
         acrt_d_se = acrt_boot_res["se"]
         acrt_d_crit_val = acrt_boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
         acrt_d_crit_val = check_critical_value(acrt_d_crit_val, alpha)
@@ -266,7 +285,7 @@ def _compute_dose_influence_functions(
     return att_d_influence, acrt_d_influence
 
 
-def _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.05):
+def _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.05, rng=None):
     """Multiplier bootstrap for dose-specific inference.
 
     Parameters
@@ -277,6 +296,8 @@ def _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.05):
         Number of bootstrap iterations.
     alpha : float, default=0.05
         Significance level for confidence intervals.
+    rng : numpy.random.Generator, optional
+        Random number generator. If None, a new generator is created.
 
     Returns
     -------
@@ -287,7 +308,8 @@ def _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.05):
     """
     n_obs, _ = influence_function.shape
 
-    rng = np.random.RandomState(None)
+    if rng is None:
+        rng = np.random.default_rng()
     bootstrap_results = []
 
     for _ in range(biters):

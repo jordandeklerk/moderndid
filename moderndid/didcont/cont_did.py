@@ -5,7 +5,6 @@ import warnings
 from functools import partial
 
 import numpy as np
-import pandas as pd
 import polars as pl
 import statsmodels.api as sm
 from scipy import stats
@@ -272,9 +271,6 @@ def cont_did(
     """
     if dname is None:
         raise ValueError("dname is required. Please specify the dose/treatment column.")
-
-    if not isinstance(data, (pd.DataFrame, pl.DataFrame)):
-        raise TypeError("data must be a pandas or polars DataFrame")
 
     data = to_polars(data)
 

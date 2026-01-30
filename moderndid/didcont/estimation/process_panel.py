@@ -130,7 +130,8 @@ def pte(
             filtered_kwargs["min_event_time"] = kwargs["min_event_time"]
         if "max_event_time" in kwargs:
             filtered_kwargs["max_event_time"] = kwargs["max_event_time"]
-        return process_dose_gt_fun(res, ptep, **filtered_kwargs)
+        rng = np.random.default_rng(random_state)
+        return process_dose_gt_fun(res, ptep, rng=rng, **filtered_kwargs)
 
     if len(res.get("attgt_list", [])) == 0:
         return PTEResult(
@@ -192,7 +193,8 @@ def pte(
 
         return PTEResult(att_gt=att_gt_result, overall_att=overall_att, event_study=event_study, ptep=ptep)
 
-    att_gt = process_att_gt(res, ptep)
+    rng = np.random.default_rng(random_state)
+    att_gt = process_att_gt(res, ptep, rng=rng)
 
     min_e = kwargs.get("min_e", -np.inf)
     max_e = kwargs.get("max_e", np.inf)

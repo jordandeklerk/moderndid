@@ -25,7 +25,7 @@ Regression-based DiD estimators that model outcome evolutions directly.
 
 ### Unified High-Level API
 
-Three main functions provide access to all DR-DiD estimators via the `est_method` with a consistent pandas-friendly interface
+Three main functions provide access to all DR-DiD estimators via the `est_method` with a consistent dataframe-agnostic interface (accepts polars, pandas, pyarrow, duckdb, etc.)
 
 ```python
 from moderndid.drdid import drdid, ipwdid, ordid

@@ -321,9 +321,11 @@ Polars for Data Handling
 
 All internal data manipulation uses Polars rather than pandas. Polars provides
 better performance for the operations common in DiD estimation and has a more
-consistent API. When users pass a pandas DataFrame, the preprocessing pipeline
-converts it to Polars at the boundary, and all subsequent operations work with
-Polars DataFrames.
+consistent API. When users pass any Arrow-compatible DataFrame (polars, pandas,
+pyarrow, duckdb, etc.), the preprocessing pipeline converts it to Polars at the
+boundary via the `Arrow PyCapsule Interface <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_
+using `narwhals <https://narwhals-dev.github.io/narwhals/>`_, and all subsequent
+operations work with Polars DataFrames.
 
 If you are adding new preprocessing logic or data transformations within an
 estimator, use Polars operations. Avoid converting back to pandas for intermediate

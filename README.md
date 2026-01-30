@@ -31,8 +31,8 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 ## Features
 
 - **DiD Estimators** — [Staggered](moderndid/did), [Doubly Robust](moderndid/drdid), [Continuous](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Sensitivity](moderndid/didhonest)
+- **Dataframe agnostic** — Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
 - **Fast computation** — [Polars](https://pola.rs/) for data wrangling, [NumPy](https://numpy.org/) vectorization, and [Numba](https://numba.pydata.org/) JIT compilation for performance
-- **Pandas compatible** — Pass [pandas](https://pandas.pydata.org/) DataFrames directly; converted to Polars internally
 - **Native plots** — Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
 - **Robust inference** — Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
 - **Documentation** — [https://moderndid.readthedocs.io/en/latest/index.html](https://moderndid.readthedocs.io/en/latest/index.html)

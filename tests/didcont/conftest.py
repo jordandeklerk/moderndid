@@ -931,3 +931,42 @@ def panel_data_with_groups():
     )
 
     return df
+
+
+@pytest.fixture
+def cont_did_baseline_result(contdid_data):
+    from moderndid import cont_did
+
+    return cont_did(
+        data=contdid_data,
+        yname="Y",
+        tname="period",
+        idname="id",
+        gname="G",
+        dname="D",
+        target_parameter="level",
+        aggregation="dose",
+        degree=2,
+        num_knots=0,
+        biters=10,
+        random_state=42,
+    )
+
+
+@pytest.fixture
+def contdid_converted(request, contdid_data):
+    from tests.helpers import importorskip
+
+    df_type = request.param
+    if df_type == "pandas":
+        importorskip("pandas")
+        return contdid_data.to_pandas()
+    if df_type == "pyarrow":
+        importorskip("pyarrow")
+        return contdid_data.to_arrow()
+    if df_type == "duckdb":
+        duckdb = importorskip("duckdb")
+        conn = duckdb.connect()
+        conn.register("contdid_data", contdid_data.to_arrow())
+        return conn.execute("SELECT * FROM contdid_data").fetch_arrow_table()
+    raise ValueError(f"Unknown dataframe type: {df_type}")

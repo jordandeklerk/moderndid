@@ -6,7 +6,7 @@ from typing import Protocol
 import numpy as np
 import polars as pl
 
-from ..dataframe import DataFrame, to_pandas, to_polars
+from ..dataframe import DataFrame, to_polars
 from .base import BaseTransformer
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .constants import (
@@ -437,12 +437,8 @@ class PrePostCovariateProcessor(BaseTransformer):
         covariates_formula = config.xformla if config.xformla else "~1"
 
         try:
-            model_matrix_result = fml.model_matrix(
-                covariates_formula,
-                to_pandas(df),
-                output="pandas",
-            )
-            covariates_pl = to_polars(model_matrix_result)
+            model_matrix_result = fml.model_matrix(covariates_formula, df)
+            covariates_pl = model_matrix_result.__wrapped__
 
             if hasattr(model_matrix_result, "model_spec") and model_matrix_result.model_spec:
                 original_cov_names = [var for var in model_matrix_result.model_spec.variables if var != "1"]
