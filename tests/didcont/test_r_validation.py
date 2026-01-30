@@ -705,7 +705,7 @@ def test_cont_did_missing_dname_raises():
 
 
 def test_cont_did_invalid_data_type_raises():
-    with pytest.raises(TypeError, match="must be a pandas or polars DataFrame"):
+    with pytest.raises(TypeError, match="Expected object implementing '__arrow_c_stream__'"):
         cont_did(
             data=[[1, 2, 3]],
             yname="Y",
