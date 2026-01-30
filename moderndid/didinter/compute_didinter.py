@@ -5,7 +5,12 @@ import polars as pl
 from scipy import stats
 
 from .adjustments import compute_same_switchers_mask, get_group_vars
-from .controls import apply_control_adjustment, compute_control_coefficients
+from .controls import (
+    apply_control_adjustment,
+    compute_control_coefficients,
+    compute_control_influence,
+    compute_variance_adjustment,
+)
 from .results import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
 from .variance import (
     build_treatment_paths,
@@ -169,6 +174,7 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         if use_dof_adjustment:
             df = build_treatment_paths(df, abs_h, config)
 
+        coefficients = None
         if config.controls:
             for ctrl in config.controls:
                 lag_col = f"lag_{ctrl}_{abs_h}"
@@ -253,6 +259,10 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
 
         estimates[idx] = did_estimate
 
+        if config.controls and coefficients:
+            df = compute_control_influence(df, config, abs_h, coefficients, n_groups, n_switchers)
+            df = compute_variance_adjustment(df, config, abs_h, coefficients, n_groups)
+
         if use_dof_adjustment:
             switcher_flag = f"is_switcher_{abs_h}"
             weighted_diff = f"weighted_diff_{abs_h}"
@@ -285,11 +295,21 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
                 df = df.with_columns(
                     (pl.col(inf_var_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(inf_var_col)
                 )
+
+                part2_col = f"part2_{abs_h}"
+                if part2_col in df.columns:
+                    df = df.with_columns((pl.col(inf_var_col) - pl.col(part2_col).fill_null(0.0)).alias(inf_var_col))
+
                 inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_var_col).to_numpy().flatten()
             else:
                 inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_col).to_numpy().flatten()
         else:
             inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_col).to_numpy().flatten()
+
+            part2_col = f"part2_{abs_h}"
+            if part2_col in df.columns:
+                part2_vals = df.filter(pl.col("first_obs_by_gp") == 1).select(part2_col).to_numpy().flatten()
+                inf_func = inf_func - part2_vals
 
         influence_funcs.append(inf_func)
 
@@ -341,6 +361,8 @@ def _compute_delta_d(df, config, horizon, horizon_type):
     tname = config.tname
     dname = config.dname
 
+    treat_col = f"{dname}_orig" if config.continuous > 0 and f"{dname}_orig" in df.columns else dname
+
     switchers = df.filter(pl.col("F_g") != float("inf"))
     if len(switchers) == 0:
         return None
@@ -351,11 +373,13 @@ def _compute_delta_d(df, config, horizon, horizon_type):
         target_time = pl.col("F_g") - horizon - 1
 
     treat_at_target = (
-        switchers.filter(pl.col(tname) == target_time).select([gname, pl.col(dname).alias("treat_target")]).unique()
+        switchers.filter(pl.col(tname) == target_time).select([gname, pl.col(treat_col).alias("treat_target")]).unique()
     )
 
     treat_at_base = (
-        switchers.filter(pl.col(tname) == pl.col("F_g") - 1).select([gname, pl.col(dname).alias("treat_base")]).unique()
+        switchers.filter(pl.col(tname) == pl.col("F_g") - 1)
+        .select([gname, pl.col(treat_col).alias("treat_base")])
+        .unique()
     )
 
     merged = treat_at_target.join(treat_at_base, on=gname, how="inner")

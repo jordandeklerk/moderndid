@@ -600,6 +600,59 @@ class SwitcherIdentifier(BaseTransformer):
         return df
 
 
+class ContinuousTreatmentProcessor(BaseTransformer):
+    """Process continuous treatment for DIDInter."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        if config.continuous <= 0:
+            return to_polars(data)
+
+        df = to_polars(data)
+        dname = config.dname
+        degree_pol = config.continuous
+
+        df = df.with_columns(
+            [
+                pl.col(dname).alias(f"{dname}_orig"),
+                pl.col("d_sq").alias("d_sq_orig"),
+            ]
+        )
+
+        for p in range(1, degree_pol + 1):
+            df = df.with_columns((pl.col("d_sq") ** p).alias(f"d_sq_{p}"))
+
+        df = df.with_columns(
+            pl.when(pl.col("S_g").is_not_null() & (pl.col("S_g") != 0) & (pl.col("F_g") <= pl.col(config.tname)))
+            .then(pl.col("S_g").cast(pl.Float64))
+            .when(pl.col("S_g").is_null())
+            .then(pl.lit(None))
+            .otherwise(0.0)
+            .alias(f"{dname}_binarized")
+        )
+
+        T_max = int(df[config.tname].max())
+        time_fe_controls = []
+
+        for t in range(2, T_max + 1):
+            for p in range(1, degree_pol + 1):
+                fe_col = f"time_fe_{t}_bt{p}"
+                df = df.with_columns(((pl.col(config.tname) >= t).cast(pl.Float64) * pl.col(f"d_sq_{p}")).alias(fe_col))
+                time_fe_controls.append(fe_col)
+
+        if config.controls is None:
+            config.controls = []
+        config.controls = list(config.controls) + time_fe_controls
+
+        df = df.with_columns(pl.col(f"{dname}_binarized").alias(dname))
+        df = df.drop(f"{dname}_binarized")
+
+        return df
+
+
 class DIDInterPanelBalancer(BaseTransformer):
     """DIDInter panel balancer."""
 
@@ -768,6 +821,7 @@ class DataTransformerPipeline:
                 MissingDataHandler(),
                 WeightNormalizer(),
                 SwitcherIdentifier(),
+                ContinuousTreatmentProcessor(),
                 DIDInterPanelBalancer(),
                 DataSorter(),
             ]
