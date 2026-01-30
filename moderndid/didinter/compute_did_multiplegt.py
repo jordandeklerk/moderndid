@@ -1,7 +1,8 @@
-"""Core computations for estimation."""
+"""Core computations for estimation in heterogeneous and dynamic ATT estimation."""
 
 import numpy as np
 import polars as pl
+import statsmodels.api as sm
 from scipy import stats
 
 from .adjustments import compute_same_switchers_mask, get_group_vars
@@ -11,7 +12,7 @@ from .controls import (
     compute_control_influence,
     compute_variance_adjustment,
 )
-from .results import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
+from .results import ATEResult, DIDInterResult, EffectsResult, HeterogeneityResult, PlacebosResult
 from .variance import (
     build_treatment_paths,
     compute_clustered_variance,
@@ -110,6 +111,8 @@ def compute_effects(preprocessed):
             n_observations=placebos_results["n_observations"],
         )
 
+    heterogeneity = _compute_heterogeneity(df, config)
+
     return DIDInterResult(
         effects=effects,
         placebos=placebos,
@@ -122,6 +125,7 @@ def compute_effects(preprocessed):
         placebo_joint_test=placebo_joint_test,
         influence_effects=effects_results.get("influence_func"),
         influence_placebos=placebos_results.get("influence_func") if placebos_results else None,
+        heterogeneity=heterogeneity,
         estimation_params={
             "effects": config.effects,
             "placebo": config.placebo,
@@ -356,7 +360,7 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
 
 
 def _compute_delta_d(df, config, horizon, horizon_type):
-    """Compute treatment intensity change."""
+    """Compute treatment intensity change as weighted average by switcher direction."""
     gname = config.gname
     tname = config.tname
     dname = config.dname
@@ -373,7 +377,9 @@ def _compute_delta_d(df, config, horizon, horizon_type):
         target_time = pl.col("F_g") - horizon - 1
 
     treat_at_target = (
-        switchers.filter(pl.col(tname) == target_time).select([gname, pl.col(treat_col).alias("treat_target")]).unique()
+        switchers.filter(pl.col(tname) == target_time)
+        .select([gname, pl.col(treat_col).alias("treat_target"), "S_g"])
+        .unique()
     )
 
     treat_at_base = (
@@ -386,7 +392,21 @@ def _compute_delta_d(df, config, horizon, horizon_type):
     if len(merged) == 0:
         return None
 
-    delta_d = (merged["treat_target"] - merged["treat_base"]).mean()
+    merged = merged.with_columns((pl.col("treat_target") - pl.col("treat_base")).alias("delta"))
+
+    in_switchers = merged.filter(pl.col("S_g") == 1)
+    out_switchers = merged.filter(pl.col("S_g") == -1)
+
+    n1 = len(in_switchers)
+    n0 = len(out_switchers)
+
+    if n1 + n0 == 0:
+        return None
+
+    delta_in = in_switchers["delta"].mean() if n1 > 0 else 0.0
+    delta_out = out_switchers["delta"].mean() if n0 > 0 else 0.0
+
+    delta_d = (n1 / (n1 + n0)) * delta_in + (n0 / (n1 + n0)) * delta_out
     return delta_d
 
 
@@ -485,7 +505,6 @@ def _prepare_data(data, config):
     tname = config.tname
 
     df = df.sort([gname, tname])
-
     df = df.with_columns(pl.lit(1.0).alias("weight_gt"))
 
     if config.weightsname:
@@ -500,3 +519,169 @@ def _prepare_data(data, config):
     df = df.join(t_max_by_group, on=gname, how="left")
 
     return df
+
+
+def _compute_heterogeneity(df, config):
+    """Compute heterogeneous effects analysis via WLS regressions."""
+    if config.predict_het is None or config.normalized:
+        return None
+
+    covariates, het_effects = config.predict_het
+
+    if not isinstance(covariates, list) or not isinstance(het_effects, list) or len(covariates) == 0:
+        return None
+
+    gname = config.gname
+    tname = config.tname
+    yname = config.yname
+
+    valid_covariates = []
+    for cov in covariates:
+        if cov not in df.columns:
+            continue
+        n_unique = df.group_by(gname).agg(pl.col(cov).n_unique().alias("n_uniq"))
+        if (n_unique["n_uniq"] > 1).any():
+            continue
+        valid_covariates.append(cov)
+
+    if len(valid_covariates) == 0:
+        return None
+
+    all_horizons = (
+        list(range(1, config.effects + 1))
+        if -1 in het_effects
+        else [h for h in het_effects if 1 <= h <= config.effects]
+    )
+
+    if len(all_horizons) == 0:
+        return None
+
+    df = df.with_columns(
+        pl.when(pl.col(tname) == pl.col("F_g") - 1).then(pl.col(yname)).otherwise(None).alias("_Y_baseline")
+    )
+    df = df.with_columns(pl.col("_Y_baseline").mean().over(gname).alias("_Y_baseline"))
+    df = df.with_columns(pl.col("_Y_baseline").is_not_null().alias("_feasible_het"))
+
+    if config.trends_lin:
+        df = df.with_columns(
+            pl.when(pl.col(tname) == pl.col("F_g") - 2).then(pl.col(yname)).otherwise(None).alias("_Y_baseline_m2")
+        )
+        df = df.with_columns(pl.col("_Y_baseline_m2").mean().over(gname).alias("_Y_baseline_m2"))
+        df = df.with_columns((pl.col("_feasible_het") & pl.col("_Y_baseline_m2").is_not_null()).alias("_feasible_het"))
+
+    df = df.sort([gname, tname])
+    df = df.with_columns(pl.arange(0, pl.len()).over(gname).alias("_gr_id"))
+
+    results = []
+    for horizon in all_horizons:
+        het_result = _compute_het_horizon(df, valid_covariates, horizon, config)
+        if het_result is not None:
+            results.append(het_result)
+
+    return results if len(results) > 0 else None
+
+
+def _compute_het_horizon(df, covariates, horizon, config):
+    """Compute heterogeneity regression for a single horizon."""
+    gname = config.gname
+    tname = config.tname
+    yname = config.yname
+
+    df = df.with_columns(
+        pl.when(pl.col(tname) == pl.col("F_g") - 1 + horizon)
+        .then(pl.col(yname))
+        .otherwise(None)
+        .alias(f"_Y_h{horizon}")
+    )
+    df = df.with_columns(pl.col(f"_Y_h{horizon}").mean().over(gname).alias(f"_Y_h{horizon}"))
+    df = df.with_columns((pl.col(f"_Y_h{horizon}") - pl.col("_Y_baseline")).alias("_diff_het"))
+
+    if config.trends_lin:
+        df = df.with_columns(
+            (pl.col("_diff_het") - horizon * (pl.col("_Y_baseline") - pl.col("_Y_baseline_m2"))).alias("_diff_het")
+        )
+
+    df = df.with_columns((pl.col("S_g") * pl.col("_diff_het")).alias("_prod_het"))
+    df = df.with_columns(pl.when(pl.col("_gr_id") != 0).then(None).otherwise(pl.col("_prod_het")).alias("_prod_het"))
+
+    het_sample = df.filter(
+        (pl.col("F_g") - 1 + horizon <= pl.col("t_max_by_group"))
+        & pl.col("_feasible_het")
+        & pl.col("_prod_het").is_not_null()
+    )
+
+    if len(het_sample) < len(covariates) + 5:
+        return None
+
+    return _run_het_regression(het_sample, covariates, horizon, config)
+
+
+def _run_het_regression(het_sample, covariates, horizon, config):
+    """Run WLS regression for heterogeneity analysis at a given horizon."""
+    y = het_sample["_prod_het"].to_numpy()
+    weights = het_sample["weight_gt"].to_numpy() if "weight_gt" in het_sample.columns else np.ones(len(y))
+
+    valid_mask = ~np.isnan(y)
+    if valid_mask.sum() < len(covariates) + 5:
+        return None
+
+    y = y[valid_mask]
+    weights = weights[valid_mask]
+
+    X_cov = het_sample.select(covariates).to_numpy()[valid_mask]
+
+    fe_cols = []
+    for fe_var in ["F_g", "d_sq", "S_g"]:
+        if fe_var in het_sample.columns:
+            col_vals = het_sample[fe_var].to_numpy()[valid_mask]
+            unique_vals = np.unique(col_vals[~np.isnan(col_vals)])
+            if len(unique_vals) > 1:
+                fe_cols.append((fe_var, col_vals, unique_vals))
+
+    if config.trends_nonparam:
+        for tnp in config.trends_nonparam:
+            if tnp in het_sample.columns:
+                col_vals = het_sample[tnp].to_numpy()[valid_mask]
+                unique_vals = np.unique(col_vals[~np.isnan(col_vals)])
+                if len(unique_vals) > 1:
+                    fe_cols.append((tnp, col_vals, unique_vals))
+
+    X_parts = [np.ones((len(y), 1)), X_cov]
+    for _, col_vals, unique_vals in fe_cols:
+        dummies = np.zeros((len(col_vals), len(unique_vals) - 1))
+        for i, val in enumerate(unique_vals[1:]):
+            dummies[:, i] = (col_vals == val).astype(float)
+        X_parts.append(dummies)
+
+    X = np.column_stack(X_parts)
+
+    model = sm.WLS(y, X, weights=weights).fit(cov_type="HC1")
+
+    n_cov = len(covariates)
+    coef_indices = list(range(1, n_cov + 1))
+
+    coefs = model.params[coef_indices]
+    ses = model.bse[coef_indices]
+    t_stats = model.tvalues[coef_indices]
+
+    t_crit = stats.t.ppf(0.975, model.df_resid)
+    ci_lower = coefs - t_crit * ses
+    ci_upper = coefs + t_crit * ses
+
+    r_matrix = np.zeros((n_cov, len(model.params)))
+    for i, idx in enumerate(coef_indices):
+        r_matrix[i, idx] = 1
+    f_test = model.f_test(r_matrix)
+    f_pvalue = float(f_test.pvalue)
+
+    return HeterogeneityResult(
+        horizon=horizon,
+        covariates=covariates,
+        estimates=np.array(coefs),
+        std_errors=np.array(ses),
+        t_stats=np.array(t_stats),
+        ci_lower=np.array(ci_lower),
+        ci_upper=np.array(ci_upper),
+        n_obs=int(model.nobs),
+        f_pvalue=f_pvalue,
+    )

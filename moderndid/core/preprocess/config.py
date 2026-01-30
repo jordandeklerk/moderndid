@@ -175,6 +175,11 @@ class DIDInterConfig(ConfigMixin):
     trends_lin: bool = False
     continuous: int = 0
 
+    keep_bidirectional_switchers: bool = False
+    drop_missing_preswitch: bool = False
+
+    predict_het: tuple[list[str], list[int]] | None = None
+
     panel: bool = True
     allow_unbalanced_panel: bool = False
 

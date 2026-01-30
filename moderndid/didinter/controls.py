@@ -200,7 +200,6 @@ def compute_control_influence(df, config, horizon, coefficients, n_groups, n_swi
         return df
 
     safe_n_control = pl.when(pl.col(n_control_col) == 0).then(1.0).otherwise(pl.col(n_control_col))
-
     baseline_levels = [d for d, c in coefficients.items() if c.get("useful", False)]
 
     for ctrl_idx, ctrl in enumerate(controls):

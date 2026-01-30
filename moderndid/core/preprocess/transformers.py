@@ -557,6 +557,20 @@ class SwitcherIdentifier(BaseTransformer):
 
         df = df.with_columns((pl.col(config.dname) - pl.col(config.dname).shift(1).over(config.gname)).alias("_d_diff"))
 
+        df = df.with_columns(
+            [
+                (pl.col("_d_diff") > 0).any().over(config.gname).alias("_ever_increase"),
+                (pl.col("_d_diff") < 0).any().over(config.gname).alias("_ever_decrease"),
+            ]
+        )
+
+        if not config.keep_bidirectional_switchers:
+            bidirectional_units = df.filter(pl.col("_ever_increase") & pl.col("_ever_decrease"))[config.gname].unique()
+            if len(bidirectional_units) > 0:
+                df = df.filter(~pl.col(config.gname).is_in(bidirectional_units))
+
+        df = df.drop(["_ever_increase", "_ever_decrease"])
+
         first_switch = (
             df.filter((pl.col("_d_diff") != 0) & pl.col("_d_diff").is_not_null())
             .group_by(config.gname)
@@ -591,6 +605,24 @@ class SwitcherIdentifier(BaseTransformer):
             .alias("S_g")
         )
 
+        if config.drop_missing_preswitch:
+            min_treat_time = (
+                df.filter(pl.col(config.dname).is_not_null())
+                .group_by(config.gname)
+                .agg(pl.col(config.tname).min().alias("_min_treat_time"))
+            )
+            df = df.join(min_treat_time, on=config.gname, how="left")
+
+            df = df.filter(
+                ~(
+                    (pl.col("_min_treat_time") < pl.col("F_g"))
+                    & (pl.col(config.tname) >= pl.col("_min_treat_time"))
+                    & (pl.col(config.tname) < pl.col("F_g"))
+                    & pl.col(config.dname).is_null()
+                )
+            )
+            df = df.drop("_min_treat_time")
+
         df = df.drop(["_d_diff", "_first_diff"])
 
         return df
@@ -608,43 +640,24 @@ class ContinuousTreatmentProcessor(BaseTransformer):
             return to_polars(data)
 
         df = to_polars(data)
-        dname = config.dname
         degree_pol = config.continuous
 
-        df = df.with_columns(
-            [
-                pl.col(dname).alias(f"{dname}_orig"),
-                pl.col("d_sq").alias("d_sq_orig"),
-            ]
-        )
+        df = df.with_columns(pl.col("d_sq").alias("d_sq_orig"))
 
         for p in range(1, degree_pol + 1):
-            df = df.with_columns((pl.col("d_sq") ** p).alias(f"d_sq_{p}"))
+            df = df.with_columns((pl.col("d_sq_orig") ** p).alias(f"d_sq_{p}"))
 
-        df = df.with_columns(
-            pl.when(pl.col("S_g").is_not_null() & (pl.col("S_g") != 0) & (pl.col("F_g") <= pl.col(config.tname)))
-            .then(pl.col("S_g").cast(pl.Float64))
-            .when(pl.col("S_g").is_null())
-            .then(pl.lit(None))
-            .otherwise(0.0)
-            .alias(f"{dname}_binarized")
+        df = df.with_columns(pl.lit(0).alias("d_sq"))
+
+        mapping_df = (
+            df.select("d_sq")
+            .filter(pl.col("d_sq").is_not_null())
+            .unique()
+            .sort("d_sq")
+            .with_row_index("d_sq_int", offset=1)
+            .select(["d_sq", "d_sq_int"])
         )
-
-        T_max = int(df[config.tname].max())
-        time_fe_controls = []
-
-        for t in range(2, T_max + 1):
-            for p in range(1, degree_pol + 1):
-                fe_col = f"time_fe_{t}_bt{p}"
-                df = df.with_columns(((pl.col(config.tname) >= t).cast(pl.Float64) * pl.col(f"d_sq_{p}")).alias(fe_col))
-                time_fe_controls.append(fe_col)
-
-        if config.controls is None:
-            config.controls = []
-        config.controls = list(config.controls) + time_fe_controls
-
-        df = df.with_columns(pl.col(f"{dname}_binarized").alias(dname))
-        df = df.drop(f"{dname}_binarized")
+        df = df.join(mapping_df, on="d_sq", how="left")
 
         return df
 

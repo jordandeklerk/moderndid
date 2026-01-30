@@ -128,12 +128,7 @@ def ddd_panel(
         A 1D array of observation weights. If None, weights are uniform.
         Weights are normalized to have a mean of 1.
     est_method : {"dr", "reg", "ipw"}, default "dr"
-        Estimation method to use:
-
-        - "dr": Doubly robust (propensity score + outcome regression)
-        - "reg": Regression adjustment only (:math:`ATT_{ra}`)
-        - "ipw": Inverse probability weighting only (:math:`ATT_{ipw}`)
-
+        Estimation method for each 2-period comparison.
     boot : bool, default False
         Whether to use bootstrap for inference.
     boot_type : {"multiplier", "weighted"}, default "multiplier"

@@ -124,6 +124,7 @@ from moderndid.didinter import (
 )
 from moderndid.didinter import (
     DIDInterResult,
+    did_multiplegt,
 )
 from moderndid.didinter import (
     EffectsResult as DIDInterEffectsResult,
@@ -216,6 +217,7 @@ __all__ = [
     "DIDInterEffectsResult",
     "DIDInterPlacebosResult",
     "DIDInterResult",
+    "did_multiplegt",
     "agg_ddd",
     "ddd",
     "ddd_mp",
