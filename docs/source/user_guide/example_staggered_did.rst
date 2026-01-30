@@ -99,7 +99,7 @@ cohorts or over time.
 
     P-value for pre-test of parallel trends assumption:  0.1681
 
-    Control Group:  Never Treated,
+    Control Group:  Never Treated
     Anticipation Periods:  0
     Estimation Method:  Doubly Robust
 
