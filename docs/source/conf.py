@@ -2,7 +2,6 @@
 """moderndid sphinx configuration."""
 
 import math
-import os
 from datetime import date
 from importlib.metadata import metadata
 
@@ -15,14 +14,6 @@ author = _metadata["Author-email"].split("<", 1)[0].strip()
 copyright = f"{date.today().year}, {author}"
 
 version = _metadata["Version"]
-if os.environ.get("READTHEDOCS", False):
-    rtd_version = os.environ.get("READTHEDOCS_VERSION", "")
-    if "." not in rtd_version and rtd_version.lower() != "stable":
-        version = "dev"
-else:
-    branch_name = os.environ.get("BUILD_SOURCEBRANCHNAME", "")
-    if branch_name == "main":
-        version = "dev"
 release = version
 
 

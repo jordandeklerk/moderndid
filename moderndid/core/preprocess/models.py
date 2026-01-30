@@ -10,6 +10,7 @@ from .config import (
     ContDIDConfig,
     DDDConfig,
     DIDConfig,
+    DIDInterConfig,
     TwoPeriodDIDConfig,
 )
 from .constants import DataFormat
@@ -158,6 +159,33 @@ class DDDData:
     def get_covariate_names(self) -> list[str]:
         """Get covariate names."""
         return self.covariate_names
+
+
+@dataclass
+class DIDInterData(PreprocessedData):
+    """DIDInter data."""
+
+    config: DIDInterConfig = field(default_factory=DIDInterConfig)
+
+    @property
+    def has_never_switchers(self) -> bool:
+        """Check if data has never-switchers."""
+        return (self.data["F_g"] == float("inf")).any()
+
+    @property
+    def n_switchers(self) -> int:
+        """Count number of switchers."""
+        return int((self.time_invariant_data["F_g"] != float("inf")).sum())
+
+    @property
+    def n_never_switchers(self) -> int:
+        """Count number of never-switchers."""
+        return int((self.time_invariant_data["F_g"] == float("inf")).sum())
+
+    @property
+    def has_controls(self) -> bool:
+        """Check if data has control variables."""
+        return self.config.controls is not None and len(self.config.controls) > 0
 
 
 @dataclass

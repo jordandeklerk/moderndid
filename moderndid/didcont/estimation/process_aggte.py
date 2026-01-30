@@ -452,12 +452,12 @@ def check_critical_value(critical_value, alpha):
     return critical_value
 
 
-def get_se(influence_function, bootstrap=True, bootstrap_iterations=100, alpha=0.05):
+def get_se(influence_function, bootstrap=True, bootstrap_iterations=100, alpha=0.05, rng=None):
     """Convert an influence function to a scalar standard error."""
     n = influence_function.shape[0]
 
     if bootstrap:
-        boot_result = multiplier_bootstrap(influence_function, biters=bootstrap_iterations, alpha=alpha)
+        boot_result = multiplier_bootstrap(influence_function, biters=bootstrap_iterations, alpha=alpha, rng=rng)
         if "boot_se" in boot_result:
             return float(np.asarray(boot_result["boot_se"]).reshape(-1)[0])
         return float(np.asarray(boot_result["se"]).reshape(-1)[0])

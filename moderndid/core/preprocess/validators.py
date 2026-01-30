@@ -6,7 +6,7 @@ import polars as pl
 
 from ..dataframe import DataFrame, to_polars
 from .base import BaseValidator
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .constants import BasePeriod, ControlGroup
 from .models import ValidationResult
 
@@ -381,6 +381,123 @@ class PrePostPanelValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
+class DIDInterColumnValidator(BaseValidator):
+    """DIDInter column validator."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate data."""
+        if not isinstance(config, DIDInterConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        df = to_polars(data)
+        errors = []
+        warnings = []
+        data_columns = df.columns
+
+        required_cols = {
+            "yname": config.yname,
+            "tname": config.tname,
+            "gname": config.gname,
+            "dname": config.dname,
+        }
+
+        for col_type, col_name in required_cols.items():
+            if col_name not in data_columns:
+                errors.append(f"{col_type} = '{col_name}' must be a column in the dataset")
+
+        if config.weightsname and config.weightsname not in data_columns:
+            errors.append(f"weightsname = '{config.weightsname}' must be a column in the dataset")
+
+        if config.cluster and config.cluster not in data_columns:
+            errors.append(f"cluster = '{config.cluster}' must be a column in the dataset")
+
+        if config.controls:
+            for ctrl in config.controls:
+                if ctrl not in data_columns:
+                    errors.append(f"controls contains '{ctrl}' which is not in the dataset")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
+class DIDInterTreatmentValidator(BaseValidator):
+    """DIDInter treatment validator."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate data."""
+        if not isinstance(config, DIDInterConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        df = to_polars(data)
+        errors = []
+        warnings = []
+
+        treatment_changes = df.group_by(config.gname).agg(pl.col(config.dname).n_unique().alias("n_unique"))
+        n_switchers = int((treatment_changes["n_unique"] > 1).sum())
+
+        if n_switchers == 0:
+            errors.append("No units change treatment. Cannot estimate effects.")
+
+        n_never_switchers = int((treatment_changes["n_unique"] == 1).sum())
+        if n_never_switchers == 0:
+            warnings.append("No never-switchers found. Control group will be empty.")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
+class DIDInterArgumentValidator(BaseValidator):
+    """DIDInter argument validator."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate data."""
+        if not isinstance(config, DIDInterConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        errors = []
+        warnings = []
+
+        if config.effects < 1:
+            errors.append("effects must be at least 1")
+
+        if config.placebo < 0:
+            errors.append("placebo must be non-negative")
+
+        if not 0 < config.ci_level < 100:
+            errors.append("ci_level must be between 0 and 100")
+
+        if config.switchers not in ["", "in", "out"]:
+            errors.append("switchers must be '', 'in', or 'out'")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
+class DIDInterPanelValidator(BaseValidator):
+    """DIDInter panel validator."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate data."""
+        if not isinstance(config, DIDInterConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        df = to_polars(data)
+        errors = []
+        warnings = []
+
+        if df.select([config.gname, config.tname]).is_duplicated().any():
+            errors.append(
+                "The combination of gname and tname must be unique. Some units are observed more than once in a period."
+            )
+
+        if not config.allow_unbalanced_panel:
+            n_time_periods = df[config.tname].n_unique()
+            unit_counts = df.group_by(config.gname).len()
+
+            if not (unit_counts["len"] == n_time_periods).all():
+                n_unbalanced = int((unit_counts["len"] != n_time_periods).sum())
+                warnings.append(f"{n_unbalanced} units have unbalanced observations and will be dropped")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
 class CompositeValidator(BaseValidator):
     """Composite validator."""
 
@@ -399,6 +516,14 @@ class CompositeValidator(BaseValidator):
                 PrePostColumnValidator(),
                 PrePostDataValidator(),
                 PrePostPanelValidator(),
+            ]
+
+        if config_type == "didinter":
+            return [
+                DIDInterColumnValidator(),
+                DIDInterArgumentValidator(),
+                DIDInterTreatmentValidator(),
+                DIDInterPanelValidator(),
             ]
 
         common_validators = [

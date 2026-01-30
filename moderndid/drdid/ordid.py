@@ -122,25 +122,6 @@ def ordid(
 
         In [2]: print(att_result)
 
-    For more robust inference, we can use weighted-bootstrap standard errors with
-    propensity score trimming to handle extreme weights.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: att_result_rc_boot = moderndid.ordid(
-           ...:     data=nsw_data,
-           ...:     yname="re",
-           ...:     tname="year",
-           ...:     idname="id",
-           ...:     treatname="experimental",
-           ...:     xformla="~ age + educ + black + married + nodegree + hisp + re74",
-           ...:     panel=True,
-           ...:     boot=True,
-           ...: )
-
-        In [4]: print(att_result_rc_boot)
-
     Notes
     -----
     The outcome regression DiD estimator is based on a linear regression model for

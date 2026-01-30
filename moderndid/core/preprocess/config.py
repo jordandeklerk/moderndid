@@ -142,3 +142,46 @@ class DDDConfig(ConfigMixin):
     time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
     time_periods_count: int = 0
     n_units: int = 0
+
+
+@dataclass
+class DIDInterConfig(ConfigMixin):
+    """DIDInter config for heterogeneous/dynamic treatment effects."""
+
+    yname: str = ""
+    tname: str = ""
+    gname: str = ""
+    dname: str = ""
+
+    cluster: str | None = None
+    weightsname: str | None = None
+    controls: list[str] | None = None
+    trends_nonparam: list[str] | None = None
+
+    effects: int = 1
+    placebo: int = 0
+    normalized: bool = False
+    effects_equal: bool = False
+
+    switchers: str = ""
+    only_never_switchers: bool = False
+    same_switchers: bool = False
+    same_switchers_pl: bool = False
+
+    ci_level: float = 95.0
+    alp: float = DEFAULT_ALPHA
+    less_conservative_se: bool = False
+
+    trends_lin: bool = False
+    continuous: int = 0
+
+    panel: bool = True
+    allow_unbalanced_panel: bool = False
+
+    time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
+    time_periods_count: int = 0
+    n_groups: int = 0
+    id_count: int = 0
+    max_effects_available: int = 0
+    max_placebo_available: int = 0
+    data_format: DataFormat = DataFormat.PANEL

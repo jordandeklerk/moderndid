@@ -158,26 +158,6 @@ def ipwdid(
 
         In [4]: print(att_result_std)
 
-    For more robust inference, we can use weighted-bootstrap standard errors with
-    propensity score trimming to handle extreme weights.
-
-    .. ipython::
-        :okwarning:
-
-        In [5]: att_result_boot = moderndid.ipwdid(
-           ...:     data=nsw_data,
-           ...:     yname="re",
-           ...:     tname="year",
-           ...:     idname="id",
-           ...:     treatname="experimental",
-           ...:     xformla="~ age + educ + black + married + nodegree + hisp + re74",
-           ...:     panel=True,
-           ...:     est_method="ipw",
-           ...:     boot=True,
-           ...: )
-
-        In [6]: print(att_result_boot)
-
     Notes
     -----
     The IPW estimator uses the propensity score (probability of being in the treated

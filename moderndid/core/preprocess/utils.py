@@ -3,7 +3,6 @@
 import re
 
 import numpy as np
-import pandas as pd
 import polars as pl
 
 from ..dataframe import to_polars
@@ -47,9 +46,6 @@ def make_balanced_panel(data, idname, tname):
     pl.DataFrame
         Balanced panel data containing only units observed in all time periods.
     """
-    if not isinstance(data, (pl.DataFrame, pd.DataFrame)):
-        raise TypeError("data must be a pandas or polars DataFrame")
-
     df = to_polars(data)
     if df.is_empty():
         return df

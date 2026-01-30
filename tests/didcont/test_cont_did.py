@@ -291,7 +291,7 @@ def test_cont_did_empirical_bootstrap_fallback(contdid_data):
 
 
 def test_cont_did_invalid_data():
-    with pytest.raises(TypeError, match="data must be a pandas or polars DataFrame"):
+    with pytest.raises(TypeError, match="__arrow_c_stream__"):
         cont_did(
             data=np.array([1, 2, 3]),
             yname="Y",
@@ -755,3 +755,26 @@ def test_cont_did_various_degree_knot_combinations(contdid_data, degree, num_kno
         assert np.all(np.isfinite(result.att_d))
         assert np.all(np.isfinite(result.att_d_se))
         assert np.all(result.att_d_se >= 0)
+
+
+@pytest.mark.parametrize("contdid_converted", ["pandas", "pyarrow", "duckdb"], indirect=True)
+def test_cont_did_dataframe_interoperability(contdid_converted, cont_did_baseline_result):
+    result = cont_did(
+        data=contdid_converted,
+        yname="Y",
+        tname="period",
+        idname="id",
+        gname="G",
+        dname="D",
+        target_parameter="level",
+        aggregation="dose",
+        degree=2,
+        num_knots=0,
+        biters=10,
+        random_state=42,
+    )
+
+    assert np.isclose(result.overall_att, cont_did_baseline_result.overall_att)
+    assert np.isclose(result.overall_att_se, cont_did_baseline_result.overall_att_se)
+    np.testing.assert_array_almost_equal(result.dose, cont_did_baseline_result.dose)
+    np.testing.assert_array_almost_equal(result.att_d, cont_did_baseline_result.att_d)

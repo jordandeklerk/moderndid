@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import polars as pl
 
-from ...core.dataframe import to_pandas, to_polars
+from ...core.dataframe import to_polars
 from ..utils import _quantile_basis
 from .container import PteEmpBootResult
 
@@ -51,7 +51,7 @@ def panel_empirical_bootstrap(
     PteEmpBootResult
         Bootstrap results with standard errors for all aggregations.
     """
-    data = to_pandas(pte_params.data)
+    data = pte_params.data
     idname = pte_params.idname
     boot_type = pte_params.boot_type
     n_boot = pte_params.biters
@@ -64,7 +64,7 @@ def panel_empirical_bootstrap(
     else:
         aggte_results = attgt_pte_aggregations(attgt_list, pte_params)
 
-    original_periods = np.sort(data[pte_params.tname].unique())
+    original_periods = data[pte_params.tname].unique().sort().to_numpy()
     if extra_gt_returns:
         extra_gt_returns = _convert_to_original_time(extra_gt_returns, original_periods)
 

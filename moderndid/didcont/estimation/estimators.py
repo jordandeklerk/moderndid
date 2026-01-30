@@ -8,7 +8,6 @@ import polars as pl
 import statsmodels.api as sm
 from formulaic import model_matrix
 
-from ...core.dataframe import to_pandas
 from ...drdid.estimators.drdid_panel import drdid_panel
 from ...drdid.estimators.reg_did_panel import reg_did_panel
 from .container import AttgtResult
@@ -42,9 +41,8 @@ def did_attgt(gt_data, xformula="~1", **kwargs):
     gt_data_wide = gt_data.pivot(index=["id", "D"], on="name", values="Y").sort("id")
 
     pre_data_aligned = pre_data.sort("id").filter(pl.col("id").is_in(gt_data_wide["id"].to_list()))
-    pre_data_pd = to_pandas(pre_data_aligned)
 
-    covariates = model_matrix(xformula, data=pre_data_pd).values
+    covariates = model_matrix(xformula, data=pre_data_aligned).__wrapped__.to_numpy()
 
     if "post" not in gt_data_wide.columns or "pre" not in gt_data_wide.columns:
         raise ValueError("Data must contain both 'pre' and 'post' periods")
@@ -123,14 +121,11 @@ def pte_attgt(
     pre_data_aligned = pre_data.filter(pl.col("id").is_in(wide_ids)).sort("id")
     post_data_aligned = post_data.filter(pl.col("id").is_in(wide_ids)).sort("id")
 
-    pre_data_pd = to_pandas(pre_data_aligned)
-    post_data_pd = to_pandas(post_data_aligned)
-
-    covariates = model_matrix(xformula, data=pre_data_pd).values
+    covariates = model_matrix(xformula, data=pre_data_aligned).__wrapped__.to_numpy()
 
     if d_covs_formula not in ("~-1", "~ -1"):
-        d_covs_pre = model_matrix(d_covs_formula, data=pre_data_pd).values
-        d_covs_post = model_matrix(d_covs_formula, data=post_data_pd).values
+        d_covs_pre = model_matrix(d_covs_formula, data=pre_data_aligned).__wrapped__.to_numpy()
+        d_covs_post = model_matrix(d_covs_formula, data=post_data_aligned).__wrapped__.to_numpy()
         d_covs = d_covs_post - d_covs_pre
         covariates = np.hstack([covariates, d_covs])
 

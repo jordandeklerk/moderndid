@@ -451,3 +451,22 @@ def test_ddd_missing_covariate_error(multi_period_df):
             xformla="~ nonexistent_var",
             est_method="dr",
         )
+
+
+@pytest.mark.parametrize("ddd_converted", ["pandas", "pyarrow", "duckdb"], indirect=True)
+def test_ddd_dataframe_interoperability(ddd_converted, ddd_baseline_result):
+    result = ddd(
+        data=ddd_converted,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+        xformla="~ cov1 + cov2",
+        est_method="dr",
+    )
+
+    assert np.isclose(result.att, ddd_baseline_result.att)
+    assert np.isclose(result.se, ddd_baseline_result.se)
+    assert np.isclose(result.lci, ddd_baseline_result.lci)
+    assert np.isclose(result.uci, ddd_baseline_result.uci)

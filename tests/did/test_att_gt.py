@@ -8,13 +8,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import MPResult, att_gt, load_mpdta
-
-
-@pytest.fixture
-def mpdta_data():
-    df = load_mpdta()
-    return df
+from moderndid import MPResult, att_gt
 
 
 def test_att_gt_basic_functionality(mpdta_data):
@@ -366,3 +360,20 @@ def test_att_gt_bootstrap_reproducibility(mpdta_data):
     np.testing.assert_array_equal(result1.se_gt, result2.se_gt)
     assert result1.critical_value == result2.critical_value
     assert result1.estimation_params.get("random_state") == 42
+
+
+@pytest.mark.parametrize("mpdta_converted", ["pandas", "pyarrow", "duckdb"], indirect=True)
+def test_att_gt_dataframe_interoperability(mpdta_converted, att_gt_baseline_result):
+    result = att_gt(
+        data=mpdta_converted,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        bstrap=False,
+    )
+
+    np.testing.assert_array_almost_equal(result.att_gt, att_gt_baseline_result.att_gt)
+    np.testing.assert_array_almost_equal(result.se_gt, att_gt_baseline_result.se_gt)
+    np.testing.assert_array_equal(result.groups, att_gt_baseline_result.groups)
+    np.testing.assert_array_equal(result.times, att_gt_baseline_result.times)

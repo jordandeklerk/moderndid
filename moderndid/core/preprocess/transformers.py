@@ -6,9 +6,9 @@ from typing import Protocol
 import numpy as np
 import polars as pl
 
-from ..dataframe import DataFrame, to_pandas, to_polars
+from ..dataframe import DataFrame, to_polars
 from .base import BaseTransformer
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .constants import (
     NEVER_TREATED_VALUE,
     ROW_ID_COLUMN,
@@ -103,8 +103,9 @@ class DataSorter(BaseTransformer):
         df = to_polars(data)
         sort_cols = [config.tname, config.gname]
 
-        if config.idname:
-            sort_cols.append(config.idname)
+        idname = getattr(config, "idname", None)
+        if idname:
+            sort_cols.append(idname)
 
         return df.sort(sort_cols)
 
@@ -436,12 +437,8 @@ class PrePostCovariateProcessor(BaseTransformer):
         covariates_formula = config.xformla if config.xformla else "~1"
 
         try:
-            model_matrix_result = fml.model_matrix(
-                covariates_formula,
-                to_pandas(df),
-                output="pandas",
-            )
-            covariates_pl = to_polars(model_matrix_result)
+            model_matrix_result = fml.model_matrix(covariates_formula, df)
+            covariates_pl = model_matrix_result.__wrapped__
 
             if hasattr(model_matrix_result, "model_spec") and model_matrix_result.model_spec:
                 original_cov_names = [var for var in model_matrix_result.model_spec.variables if var != "1"]
@@ -512,6 +509,250 @@ class PrePostInvarianceChecker(BaseTransformer):
         return df
 
 
+class DIDInterColumnSelector(BaseTransformer):
+    """DIDInter column selector."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        cols_to_keep = [config.yname, config.tname, config.gname, config.dname]
+
+        if config.weightsname:
+            cols_to_keep.append(config.weightsname)
+
+        if config.cluster:
+            cols_to_keep.append(config.cluster)
+
+        if config.controls:
+            cols_to_keep.extend(config.controls)
+
+        if config.trends_nonparam:
+            cols_to_keep.extend(config.trends_nonparam)
+
+        cols_to_keep = list(dict.fromkeys(cols_to_keep))
+        cols_to_keep = [col for col in cols_to_keep if col is not None and col in df.columns]
+
+        df = df.select(cols_to_keep)
+
+        for col in [config.tname, config.gname, config.dname]:
+            if col in df.columns and df[col].dtype not in (pl.Float64, pl.Float32, pl.Int64, pl.Int32):
+                df = df.with_columns(pl.col(col).cast(pl.Float64))
+
+        return df
+
+
+class SwitcherIdentifier(BaseTransformer):
+    """Identify switchers."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        df = df.sort([config.gname, config.tname])
+
+        df = df.with_columns((pl.col(config.dname) - pl.col(config.dname).shift(1).over(config.gname)).alias("_d_diff"))
+
+        first_switch = (
+            df.filter((pl.col("_d_diff") != 0) & pl.col("_d_diff").is_not_null())
+            .group_by(config.gname)
+            .agg(pl.col(config.tname).min().alias("F_g"))
+        )
+
+        df = df.join(first_switch, on=config.gname, how="left")
+        df = df.with_columns(pl.col("F_g").fill_null(float("inf")))
+
+        base_treatment = (
+            df.filter(pl.col(config.tname) == pl.col(config.tname).min().over(config.gname))
+            .select([config.gname, pl.col(config.dname).alias("d_sq")])
+            .unique()
+        )
+        df = df.join(base_treatment, on=config.gname, how="left")
+
+        switch_direction = (
+            df.filter(pl.col("_d_diff").is_not_null() & (pl.col("_d_diff") != 0))
+            .group_by(config.gname)
+            .agg(pl.col("_d_diff").first().alias("_first_diff"))
+        )
+        df = df.join(switch_direction, on=config.gname, how="left")
+
+        df = df.with_columns(
+            pl.when(pl.col("F_g") == float("inf"))
+            .then(0)
+            .when(pl.col("_first_diff") > 0)
+            .then(1)
+            .when(pl.col("_first_diff") < 0)
+            .then(-1)
+            .otherwise(0)
+            .alias("S_g")
+        )
+
+        df = df.drop(["_d_diff", "_first_diff"])
+
+        return df
+
+
+class ContinuousTreatmentProcessor(BaseTransformer):
+    """Process continuous treatment for DIDInter."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        if config.continuous <= 0:
+            return to_polars(data)
+
+        df = to_polars(data)
+        dname = config.dname
+        degree_pol = config.continuous
+
+        df = df.with_columns(
+            [
+                pl.col(dname).alias(f"{dname}_orig"),
+                pl.col("d_sq").alias("d_sq_orig"),
+            ]
+        )
+
+        for p in range(1, degree_pol + 1):
+            df = df.with_columns((pl.col("d_sq") ** p).alias(f"d_sq_{p}"))
+
+        df = df.with_columns(
+            pl.when(pl.col("S_g").is_not_null() & (pl.col("S_g") != 0) & (pl.col("F_g") <= pl.col(config.tname)))
+            .then(pl.col("S_g").cast(pl.Float64))
+            .when(pl.col("S_g").is_null())
+            .then(pl.lit(None))
+            .otherwise(0.0)
+            .alias(f"{dname}_binarized")
+        )
+
+        T_max = int(df[config.tname].max())
+        time_fe_controls = []
+
+        for t in range(2, T_max + 1):
+            for p in range(1, degree_pol + 1):
+                fe_col = f"time_fe_{t}_bt{p}"
+                df = df.with_columns(((pl.col(config.tname) >= t).cast(pl.Float64) * pl.col(f"d_sq_{p}")).alias(fe_col))
+                time_fe_controls.append(fe_col)
+
+        if config.controls is None:
+            config.controls = []
+        config.controls = list(config.controls) + time_fe_controls
+
+        df = df.with_columns(pl.col(f"{dname}_binarized").alias(dname))
+        df = df.drop(f"{dname}_binarized")
+
+        return df
+
+
+class DIDInterPanelBalancer(BaseTransformer):
+    """DIDInter panel balancer."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        if config.allow_unbalanced_panel:
+            return to_polars(data)
+
+        df = to_polars(data)
+        tlist = sorted(df[config.tname].unique().to_list())
+        n_periods = len(tlist)
+
+        unit_counts = df.group_by(config.gname).len()
+        complete_units = unit_counts.filter(pl.col("len") == n_periods)[config.gname].to_list()
+
+        n_old = df[config.gname].n_unique()
+        df = df.filter(pl.col(config.gname).is_in(complete_units))
+        n_new = df[config.gname].n_unique()
+
+        if n_new < n_old:
+            warnings.warn(f"Dropped {n_old - n_new} units while converting to balanced panel")
+
+        if len(df) == 0:
+            raise ValueError(
+                "All observations dropped while converting to balanced panel. "
+                "Consider setting allow_unbalanced_panel=True."
+            )
+
+        return df
+
+
+class DIDInterConfigUpdater:
+    """DIDInter config updater."""
+
+    @staticmethod
+    def update(data: DataFrame, config: DIDInterConfig) -> None:
+        """Update config."""
+        df = to_polars(data)
+
+        tlist = sorted(df[config.tname].unique().to_list())
+        n_groups = df[config.gname].n_unique()
+
+        config.time_periods = np.array(tlist)
+        config.time_periods_count = len(tlist)
+        config.n_groups = n_groups
+        config.id_count = n_groups
+
+        T_max = int(df[config.tname].max())
+        T_min = int(df[config.tname].min())
+
+        switchers = df.filter(pl.col("F_g") != float("inf"))
+        if len(switchers) > 0:
+            max_effects = (
+                switchers.group_by(config.gname)
+                .agg((pl.lit(T_max) - pl.col("F_g") + 1).max().alias("max_exp"))
+                .select("max_exp")
+                .min()
+                .item()
+            )
+            max_placebo = (
+                switchers.group_by(config.gname)
+                .agg((pl.col("F_g") - pl.lit(T_min) - 1).max().alias("max_pre"))
+                .select("max_pre")
+                .min()
+                .item()
+            )
+            config.max_effects_available = int(max_effects) if max_effects is not None else 0
+            config.max_placebo_available = int(max_placebo) if max_placebo is not None else 0
+        else:
+            config.max_effects_available = 0
+            config.max_placebo_available = 0
+
+        if config.effects > config.max_effects_available:
+            warnings.warn(
+                f"Requested effects={config.effects} but only {config.max_effects_available} "
+                f"post-treatment periods available. Using effects={config.max_effects_available}.",
+                UserWarning,
+                stacklevel=4,
+            )
+            config.effects = config.max_effects_available
+
+        if config.placebo > config.max_placebo_available:
+            warnings.warn(
+                f"Requested placebo={config.placebo} but only {config.max_placebo_available} "
+                f"pre-treatment periods available. Using placebo={config.max_placebo_available}.",
+                UserWarning,
+                stacklevel=4,
+            )
+            config.placebo = config.max_placebo_available
+
+        if config.allow_unbalanced_panel:
+            unit_counts = df.group_by(config.gname).len()
+            is_balanced = (unit_counts["len"] == len(tlist)).all()
+            if is_balanced:
+                config.data_format = DataFormat.PANEL
+            else:
+                config.data_format = DataFormat.UNBALANCED_PANEL
+        else:
+            config.data_format = DataFormat.PANEL
+
+
 class DataTransformerPipeline:
     """Data transformer pipeline."""
 
@@ -567,12 +808,30 @@ class DataTransformerPipeline:
             ]
         )
 
+    @staticmethod
+    def get_didinter_pipeline() -> "DataTransformerPipeline":
+        """Get DIDInter pipeline."""
+        return DataTransformerPipeline(
+            [
+                DIDInterColumnSelector(),
+                MissingDataHandler(),
+                WeightNormalizer(),
+                SwitcherIdentifier(),
+                ContinuousTreatmentProcessor(),
+                DIDInterPanelBalancer(),
+                DataSorter(),
+            ]
+        )
+
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         df = to_polars(data)
         for transformer in self.transformers:
             df = transformer.transform(df, config)
 
-        ConfigUpdater.update(df, config)
+        if isinstance(config, DIDInterConfig):
+            DIDInterConfigUpdater.update(df, config)
+        else:
+            ConfigUpdater.update(df, config)
 
         return df

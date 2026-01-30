@@ -121,10 +121,15 @@ Causal inference often involves large datasets and computationally intensive
 procedures like bootstrapping. ModernDiD is built for performance from the
 ground up.
 
-Data wrangling uses `Polars <https://pola.rs/>`_ internally, providing
-substantial speed improvements over pandas for the grouping, filtering, and
-reshaping operations common in panel data analysis. Users can pass pandas
-DataFrames directly and conversion happens automatically.
+ModernDiD is dataframe-agnostic and
+accepts any `Arrow-compatible <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_
+DataFrame including polars, pandas, pyarrow, duckdb, and others. Conversion
+happens automatically via the Arrow PyCapsule Interface powered by
+`narwhals <https://narwhals-dev.github.io/narwhals/>`_.
+
+All internal operations work with Polars DataFrames, providing substantial
+speed improvements for the grouping, filtering, and reshaping operations common
+in panel data analysis with large datasets.
 
 Numerical computations use NumPy with vectorized operations wherever possible.
 Performance-critical inner loops, particularly in bootstrap procedures, use
@@ -158,9 +163,10 @@ intermediate outputs for custom analyses. Warning messages explain when
 data issues might affect results.
 
 **Interoperability.** ModernDiD works with the Python data science ecosystem.
-Input data can be pandas or Polars DataFrames. Outputs are NumPy arrays and
-named tuples that integrate with standard workflows. Plots use plotnine,
-allowing full customization through the grammar of graphics.
+Input data can be any Arrow-compatible DataFrame including polars, pandas,
+pyarrow, and duckdb. Outputs are NumPy arrays and named tuples that integrate
+with standard workflows. Plots use plotnine, allowing full customization
+through the grammar of graphics.
 
 Modern causal inference methods should be accessible to all empirical
 researchers regardless of their preferred programming language.
