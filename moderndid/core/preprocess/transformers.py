@@ -63,6 +63,18 @@ class MissingDataHandler(BaseTransformer):
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         df = to_polars(data)
+
+        if isinstance(config, DIDInterConfig):
+            df = df.with_columns(
+                [
+                    pl.col(config.dname).mean().over(config.gname).alias("_mean_D"),
+                    pl.col(config.yname).mean().over(config.gname).alias("_mean_Y"),
+                ]
+            )
+            df = df.filter(pl.col("_mean_D").is_not_null() & pl.col("_mean_Y").is_not_null())
+            df = df.drop(["_mean_D", "_mean_Y"])
+            return df
+
         n_orig = len(df)
         data_clean = df.drop_nulls()
         n_new = len(data_clean)
@@ -557,19 +569,55 @@ class SwitcherIdentifier(BaseTransformer):
 
         df = df.with_columns((pl.col(config.dname) - pl.col(config.dname).shift(1).over(config.gname)).alias("_d_diff"))
 
+        base_treatment_pre = (
+            df.filter(pl.col(config.tname) == pl.col(config.tname).min().over(config.gname))
+            .select([config.gname, pl.col(config.dname).alias("_d_sq_pre")])
+            .unique()
+        )
+        df = df.join(base_treatment_pre, on=config.gname, how="left")
+        df = df.with_columns((pl.col(config.dname) - pl.col("_d_sq_pre")).alias("_diff_from_sq"))
+
+        first_switch_pre = (
+            df.filter((pl.col("_d_diff") != 0) & pl.col("_d_diff").is_not_null())
+            .group_by(config.gname)
+            .agg(pl.col(config.tname).min().alias("_F_g_pre"))
+        )
+        df = df.join(first_switch_pre, on=config.gname, how="left")
+
+        t_max_per_unit = df.group_by(config.gname).agg(pl.col(config.tname).max().alias("_T_max_unit"))
+        df = df.join(t_max_per_unit, on=config.gname, how="left")
+
+        df = df.with_columns(
+            pl.when(pl.col("_F_g_pre").is_not_null())
+            .then(pl.col("_T_max_unit") - pl.col("_F_g_pre") + 1)
+            .otherwise(pl.lit(0.0))
+            .alias("L_g")
+        )
+        df = df.drop(["_F_g_pre", "_T_max_unit"])
+
         df = df.with_columns(
             [
-                (pl.col("_d_diff") > 0).any().over(config.gname).alias("_ever_increase"),
-                (pl.col("_d_diff") < 0).any().over(config.gname).alias("_ever_decrease"),
+                pl.when((pl.col("_diff_from_sq") > 0) & pl.col(config.dname).is_not_null())
+                .then(1)
+                .otherwise(0)
+                .cum_sum()
+                .clip(upper_bound=1)
+                .over(config.gname)
+                .alias("_ever_strict_increase"),
+                pl.when((pl.col("_diff_from_sq") < 0) & pl.col(config.dname).is_not_null())
+                .then(1)
+                .otherwise(0)
+                .cum_sum()
+                .clip(upper_bound=1)
+                .over(config.gname)
+                .alias("_ever_strict_decrease"),
             ]
         )
 
         if not config.keep_bidirectional_switchers:
-            bidirectional_units = df.filter(pl.col("_ever_increase") & pl.col("_ever_decrease"))[config.gname].unique()
-            if len(bidirectional_units) > 0:
-                df = df.filter(~pl.col(config.gname).is_in(bidirectional_units))
+            df = df.filter(~((pl.col("_ever_strict_increase") == 1) & (pl.col("_ever_strict_decrease") == 1)))
 
-        df = df.drop(["_ever_increase", "_ever_decrease"])
+        df = df.drop(["_ever_strict_increase", "_ever_strict_decrease", "_d_sq_pre", "_diff_from_sq"])
 
         first_switch = (
             df.filter((pl.col("_d_diff") != 0) & pl.col("_d_diff").is_not_null())
@@ -586,6 +634,13 @@ class SwitcherIdentifier(BaseTransformer):
             .unique()
         )
         df = df.join(base_treatment, on=config.gname, how="left")
+
+        switch_treatment = (
+            df.filter(pl.col(config.tname) == pl.col("F_g"))
+            .select([config.gname, pl.col(config.dname).alias("d_fg")])
+            .unique()
+        )
+        df = df.join(switch_treatment, on=config.gname, how="left")
 
         switch_direction = (
             df.filter(pl.col("_d_diff").is_not_null() & (pl.col("_d_diff") != 0))
@@ -624,6 +679,76 @@ class SwitcherIdentifier(BaseTransformer):
             df = df.drop("_min_treat_time")
 
         df = df.drop(["_d_diff", "_first_diff"])
+
+        return df
+
+
+class SwitcherFilter(BaseTransformer):
+    """Filter units based on switchers parameter."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+
+        if config.switchers == "in":
+            valid_units = df.filter((pl.col("S_g") == 1) | (pl.col("S_g") == 0))[config.gname].unique()
+            df = df.filter(pl.col(config.gname).is_in(valid_units))
+        elif config.switchers == "out":
+            valid_units = df.filter((pl.col("S_g") == -1) | (pl.col("S_g") == 0))[config.gname].unique()
+            df = df.filter(pl.col(config.gname).is_in(valid_units))
+
+        return df
+
+
+class FgVariationFilter(BaseTransformer):
+    """Filter out baseline treatment groups with no variation in F_g."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+
+        group_cols = ["d_sq"]
+        if config.trends_nonparam:
+            group_cols.extend(config.trends_nonparam)
+
+        df = df.with_columns(
+            pl.when(pl.col("F_g") == float("inf")).then(0).otherwise(pl.col("F_g")).alias("_F_g_for_std")
+        )
+
+        df = df.with_columns(pl.col("_F_g_for_std").std().over(group_cols).round(3).alias("_var_F_g"))
+
+        df = df.filter(pl.col("_var_F_g") > 0)
+        df = df.drop(["_var_F_g", "_F_g_for_std"])
+
+        return df
+
+
+class ControlsTimeFilter(BaseTransformer):
+    """Filter to cells with at least one never-switcher as control."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+
+        df = df.with_columns(pl.when(pl.col("F_g") == float("inf")).then(1).otherwise(0).alias("_never_change_d"))
+
+        ctrl_group = [config.tname, "d_sq"]
+        if config.trends_nonparam:
+            ctrl_group.extend(config.trends_nonparam)
+
+        df = df.with_columns(pl.col("_never_change_d").max().over(ctrl_group).alias("_controls_time"))
+
+        df = df.filter(pl.col("_controls_time") > 0)
+        df = df.drop(["_never_change_d", "_controls_time"])
 
         return df
 
@@ -670,28 +795,19 @@ class DIDInterPanelBalancer(BaseTransformer):
         if not isinstance(config, DIDInterConfig):
             return to_polars(data)
 
-        if config.allow_unbalanced_panel:
-            return to_polars(data)
-
         df = to_polars(data)
-        tlist = sorted(df[config.tname].unique().to_list())
-        n_periods = len(tlist)
 
-        unit_counts = df.group_by(config.gname).len()
-        complete_units = unit_counts.filter(pl.col("len") == n_periods)[config.gname].to_list()
+        groups = df.select(config.gname).unique()
+        times = df.select(config.tname).unique()
 
-        n_old = df[config.gname].n_unique()
-        df = df.filter(pl.col(config.gname).is_in(complete_units))
-        n_new = df[config.gname].n_unique()
+        full_index = groups.join(times, how="cross")
 
-        if n_new < n_old:
-            warnings.warn(f"Dropped {n_old - n_new} units while converting to balanced panel")
+        df = full_index.join(df, on=[config.gname, config.tname], how="left")
 
-        if len(df) == 0:
-            raise ValueError(
-                "All observations dropped while converting to balanced panel. "
-                "Consider setting allow_unbalanced_panel=True."
-            )
+        time_invariant_cols = ["F_g", "d_sq", "S_g", "L_g"]
+        for col in time_invariant_cols:
+            if col in df.columns:
+                df = df.with_columns(pl.col(col).mean().over(config.gname).alias(col))
 
         return df
 
@@ -721,14 +837,14 @@ class DIDInterConfigUpdater:
                 switchers.group_by(config.gname)
                 .agg((pl.lit(T_max) - pl.col("F_g") + 1).max().alias("max_exp"))
                 .select("max_exp")
-                .min()
+                .max()
                 .item()
             )
             max_placebo = (
                 switchers.group_by(config.gname)
                 .agg((pl.col("F_g") - pl.lit(T_min) - 1).max().alias("max_pre"))
                 .select("max_pre")
-                .min()
+                .max()
                 .item()
             )
             config.max_effects_available = int(max_effects) if max_effects is not None else 0
@@ -830,6 +946,9 @@ class DataTransformerPipeline:
                 MissingDataHandler(),
                 WeightNormalizer(),
                 SwitcherIdentifier(),
+                SwitcherFilter(),
+                FgVariationFilter(),
+                ControlsTimeFilter(),
                 ContinuousTreatmentProcessor(),
                 DIDInterPanelBalancer(),
                 DataSorter(),

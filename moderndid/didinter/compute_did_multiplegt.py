@@ -5,7 +5,6 @@ import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
-from .adjustments import compute_same_switchers_mask, get_group_vars
 from .controls import (
     apply_control_adjustment,
     compute_control_coefficients,
@@ -25,7 +24,7 @@ from .variance import (
 )
 
 
-def compute_effects(preprocessed):
+def compute_did_multiplegt(preprocessed):
     """Compute treatment effects.
 
     Parameters
@@ -76,7 +75,7 @@ def compute_effects(preprocessed):
             horizon_type="placebo",
         )
 
-    ate = _compute_ate(effects_results, z_crit) if effects_results else None
+    ate = _compute_ate(effects_results, z_crit, n_groups) if effects_results else None
 
     effects_equal_test = None
     if config.effects_equal and config.effects > 1 and effects_results:
@@ -132,6 +131,14 @@ def compute_effects(preprocessed):
             "normalized": config.normalized,
             "switchers": config.switchers,
             "controls": config.controls,
+            "cluster": config.cluster,
+            "trends_lin": config.trends_lin,
+            "trends_nonparam": config.trends_nonparam,
+            "only_never_switchers": config.only_never_switchers,
+            "same_switchers": config.same_switchers,
+            "same_switchers_pl": config.same_switchers_pl,
+            "continuous": config.continuous,
+            "weightsname": config.weightsname,
         },
     )
 
@@ -141,7 +148,6 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
     gname = config.gname
     tname = config.tname
     yname = config.yname
-    use_dof_adjustment = config.less_conservative_se
 
     if horizon_type == "effect":
         horizons = np.arange(1, n_horizons + 1)
@@ -149,10 +155,14 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         horizons = -np.arange(1, n_horizons + 1)
 
     estimates = np.zeros(n_horizons)
+    estimates_unnorm = np.zeros(n_horizons)
     std_errors = np.zeros(n_horizons)
     n_switchers_arr = np.zeros(n_horizons)
+    n_switchers_weighted_arr = np.zeros(n_horizons)
+    delta_d_arr = np.zeros(n_horizons)
     n_obs_arr = np.zeros(n_horizons)
     influence_funcs = []
+    influence_funcs_unnorm = []
 
     for idx, h in enumerate(horizons):
         abs_h = abs(h)
@@ -163,20 +173,13 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         if horizon_type == "effect":
             df = df.with_columns(pl.col(yname).diff(abs_h).over(gname).alias(diff_col))
             dist_col = f"dist_to_switch_{abs_h}"
-            df = df.with_columns(
-                pl.when(pl.col(tname) == pl.col("F_g") + abs_h - 1).then(1.0).otherwise(0.0).alias(dist_col)
-            )
         else:
             df = df.with_columns(
                 (pl.col(yname).shift(2 * abs_h).over(gname) - pl.col(yname).shift(abs_h).over(gname)).alias(diff_col)
             )
             dist_col = f"dist_to_switch_pl_{abs_h}"
-            df = df.with_columns(
-                pl.when(pl.col(tname) == pl.col("F_g") + abs_h - 1).then(1.0).otherwise(0.0).alias(dist_col)
-            )
 
-        if use_dof_adjustment:
-            df = build_treatment_paths(df, abs_h, config)
+        df = build_treatment_paths(df, abs_h, config)
 
         coefficients = None
         if config.controls:
@@ -214,13 +217,35 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
 
         if config.switchers == "in":
             switcher_mask = pl.col("S_g") == 1
+            increase_val = 1
         elif config.switchers == "out":
             switcher_mask = pl.col("S_g") == -1
+            increase_val = -1
         else:
             switcher_mask = pl.col("S_g") != 0
+            increase_val = None
 
         if config.same_switchers and "same_switcher_valid" in df.columns:
             switcher_mask = switcher_mask & pl.col("same_switcher_valid")
+
+        base_cond = (
+            (pl.col(tname) == (pl.col("F_g") - 1 + abs_h))
+            & (pl.col("L_g") >= abs_h)
+            & (pl.col(n_control_col) > 0)
+            & pl.col(n_control_col).is_not_null()
+        )
+
+        if config.same_switchers and "same_switcher_valid" in df.columns:
+            base_cond = base_cond & pl.col("same_switcher_valid")
+
+        if increase_val is not None:
+            cond_expr = base_cond & (pl.col("S_g") == increase_val)
+        else:
+            cond_expr = base_cond & (pl.col("S_g") != 0)
+
+        df = df.with_columns(
+            pl.when(pl.col(diff_col).is_null()).then(pl.lit(None)).otherwise(cond_expr.cast(pl.Float64)).alias(dist_col)
+        )
 
         dist_w_col = f"dist_to_switch_w_{abs_h}"
         df = df.with_columns(
@@ -230,9 +255,14 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         n_treated_col = f"n_treated_{abs_h}"
         df = df.with_columns(pl.col(dist_w_col).sum().over(group_vars).alias(n_treated_col))
 
-        n_switchers = df.filter(pl.col(dist_col) == 1.0)[gname].n_unique()
+        switcher_filter = (pl.col(dist_col) == 1.0) & pl.col(diff_col).is_not_null() & switcher_mask
+        n_switchers_unweighted = df.filter(switcher_filter)[gname].n_unique()
 
-        if n_switchers == 0:
+        n_switchers_weighted = df.select(pl.col(dist_w_col).sum()).item()
+        if n_switchers_weighted is None or n_switchers_weighted == 0:
+            n_switchers_weighted = 0.0
+
+        if n_switchers_unweighted == 0:
             estimates[idx] = np.nan
             std_errors[idx] = np.nan
             n_switchers_arr[idx] = 0
@@ -242,9 +272,11 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         inf_temp_col = f"inf_func_{abs_h}_temp"
         n_control_is_zero = pl.col(n_control_col).is_null() | (pl.col(n_control_col) == 0)
         safe_n_control = pl.when(n_control_is_zero).then(1.0).otherwise(pl.col(n_control_col))
+        safe_n_switchers = max(n_switchers_weighted, 1e-10)
+
         df = df.with_columns(
             (
-                (pl.lit(n_groups) / pl.lit(n_switchers))
+                (pl.lit(n_groups) / pl.lit(safe_n_switchers))
                 * pl.col("weight_gt")
                 * (pl.col(dist_col) - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0))
                 * pl.col(diff_col).fill_null(0.0)
@@ -256,57 +288,66 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
 
         did_estimate = df.select(pl.col(inf_col).sum()).item() / n_groups
 
-        if config.normalized:
-            delta_d = _compute_delta_d(df, config, abs_h, horizon_type)
-            if delta_d is not None and delta_d != 0:
-                did_estimate = did_estimate / delta_d
+        estimates_unnorm[idx] = did_estimate
+        n_switchers_weighted_arr[idx] = safe_n_switchers
+        delta_d = _compute_delta_d(df, config, abs_h, horizon_type, dist_col)
+
+        if horizon_type == "effect":
+            delta_d_arr[idx] = delta_d if delta_d is not None else 0.0
+
+        if config.normalized and delta_d is not None and delta_d != 0:
+            did_estimate = did_estimate / delta_d
 
         estimates[idx] = did_estimate
 
         if config.controls and coefficients:
-            df = compute_control_influence(df, config, abs_h, coefficients, n_groups, n_switchers)
+            df = compute_control_influence(df, config, abs_h, coefficients, n_groups, safe_n_switchers)
             df = compute_variance_adjustment(df, config, abs_h, coefficients, n_groups)
 
-        if use_dof_adjustment:
-            switcher_flag = f"is_switcher_{abs_h}"
-            weighted_diff = f"weighted_diff_{abs_h}"
-            df = df.with_columns(pl.col(dist_col).cast(pl.Int64).alias(switcher_flag))
-            df = df.with_columns((pl.col(diff_col).fill_null(0.0) * pl.col("weight_gt")).alias(weighted_diff))
+        switcher_flag = f"is_switcher_{abs_h}"
+        weighted_diff = f"weighted_diff_{abs_h}"
+        df = df.with_columns(pl.col(dist_col).cast(pl.Int64).alias(switcher_flag))
+        df = df.with_columns((pl.col(diff_col).fill_null(0.0) * pl.col("weight_gt")).alias(weighted_diff))
 
-            df = compute_cohort_dof(df, abs_h, config, config.cluster)
-            df = compute_control_dof(df, abs_h, config, config.cluster)
-            df = compute_union_dof(df, abs_h, config, config.cluster)
-            df = compute_dof_scaling(df, abs_h, config)
-            df = compute_e_hat(df, abs_h, config)
+        df = compute_cohort_dof(df, abs_h, config, config.cluster)
+        df = compute_control_dof(df, abs_h, config, config.cluster)
+        df = compute_union_dof(df, abs_h, config, config.cluster)
+        df = compute_dof_scaling(df, abs_h, config)
+        df = compute_e_hat(df, abs_h, config)
 
-            dof_scale_col = f"dof_scale_{abs_h}"
-            e_hat_col = f"E_hat_{abs_h}"
-            inf_var_col = f"inf_func_var_{abs_h}"
+        dof_scale_col = f"dof_scale_{abs_h}"
+        e_hat_col = f"E_hat_{abs_h}"
+        inf_var_col = f"inf_func_var_{abs_h}"
+        dof_scale_expr = pl.col(dof_scale_col).fill_null(1.0) if dof_scale_col in df.columns else pl.lit(1.0)
+        dummy_u_gg_col = f"dummy_u_gg_{abs_h}"
+        time_constraint_col = f"time_constraint_{abs_h}"
 
-            if dof_scale_col in df.columns and e_hat_col in df.columns:
-                df = df.with_columns(
-                    (
-                        (pl.lit(n_groups) / pl.lit(n_switchers))
-                        * pl.col("weight_gt")
-                        * (
-                            pl.col(dist_col)
-                            - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0)
-                        )
-                        * pl.col(dof_scale_col).fill_null(1.0)
-                        * (pl.col(diff_col).fill_null(0.0) - pl.col(e_hat_col).fill_null(0.0))
-                    ).alias(inf_var_col)
-                )
-                df = df.with_columns(
-                    (pl.col(inf_var_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(inf_var_col)
-                )
+        df = df.with_columns((pl.lit(abs_h) <= (pl.col("T_g") - 1)).cast(pl.Int64).alias(dummy_u_gg_col))
+        df = df.with_columns(
+            ((pl.col(tname) >= pl.lit(abs_h + 1)) & (pl.col(tname) <= pl.col("T_g")))
+            .cast(pl.Int64)
+            .alias(time_constraint_col)
+        )
 
-                part2_col = f"part2_{abs_h}"
-                if part2_col in df.columns:
-                    df = df.with_columns((pl.col(inf_var_col) - pl.col(part2_col).fill_null(0.0)).alias(inf_var_col))
+        if e_hat_col in df.columns:
+            df = df.with_columns(
+                (
+                    pl.col(dummy_u_gg_col)
+                    * (pl.lit(n_groups) / pl.lit(safe_n_switchers))
+                    * pl.col(time_constraint_col)
+                    * pl.col("weight_gt")
+                    * (pl.col(dist_col) - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0))
+                    * dof_scale_expr
+                    * (pl.col(diff_col).fill_null(0.0) - pl.col(e_hat_col).fill_null(0.0))
+                ).alias(inf_var_col)
+            )
+            df = df.with_columns((pl.col(inf_var_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(inf_var_col))
 
-                inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_var_col).to_numpy().flatten()
-            else:
-                inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_col).to_numpy().flatten()
+            part2_col = f"part2_{abs_h}"
+            if part2_col in df.columns:
+                df = df.with_columns((pl.col(inf_var_col) - pl.col(part2_col).fill_null(0.0)).alias(inf_var_col))
+
+            inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_var_col).to_numpy().flatten()
         else:
             inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_col).to_numpy().flatten()
 
@@ -315,16 +356,30 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
                 part2_vals = df.filter(pl.col("first_obs_by_gp") == 1).select(part2_col).to_numpy().flatten()
                 inf_func = inf_func - part2_vals
 
-        influence_funcs.append(inf_func)
-
         if config.cluster:
-            cluster_ids = df.filter(pl.col("first_obs_by_gp") == 1).select(config.cluster).to_numpy().flatten()
-            std_error = compute_clustered_variance(inf_func, cluster_ids, n_groups)
+            cluster_data = df.filter(pl.col("first_obs_by_gp") == 1).select(
+                [config.cluster, inf_var_col if e_hat_col in df.columns else inf_col]
+            )
+            valid_cluster_mask = cluster_data[config.cluster].is_not_null()
+            cluster_ids = cluster_data.filter(valid_cluster_mask)[config.cluster].to_numpy().flatten()
+            inf_func_for_cluster = (
+                cluster_data.filter(valid_cluster_mask)[inf_var_col if e_hat_col in df.columns else inf_col]
+                .to_numpy()
+                .flatten()
+            )
+            std_error = compute_clustered_variance(inf_func_for_cluster, cluster_ids, n_groups)
         else:
-            std_error = np.sqrt(np.var(inf_func, ddof=1) / n_groups)
+            std_error = np.sqrt(np.sum(inf_func**2)) / n_groups
 
+        influence_funcs_unnorm.append(inf_func.copy())
+
+        if config.normalized and delta_d is not None and delta_d != 0:
+            std_error = std_error / delta_d
+            inf_func = inf_func / delta_d
+
+        influence_funcs.append(inf_func)
         std_errors[idx] = std_error
-        n_switchers_arr[idx] = n_switchers
+        n_switchers_arr[idx] = n_switchers_unweighted
 
         count_col = f"count_{abs_h}"
         df = df.with_columns(
@@ -351,92 +406,137 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
     return {
         "horizons": horizons.astype(float),
         "estimates": estimates,
+        "estimates_unnorm": estimates_unnorm,
         "std_errors": std_errors,
         "n_switchers": n_switchers_arr,
+        "n_switchers_weighted": n_switchers_weighted_arr,
+        "delta_d_arr": delta_d_arr,
         "n_observations": n_obs_arr,
         "influence_func": np.column_stack(influence_funcs) if influence_funcs else None,
+        "influence_func_unnorm": np.column_stack(influence_funcs_unnorm) if influence_funcs_unnorm else None,
         "vcov": vcov,
+        "df": df,
     }
 
 
-def _compute_delta_d(df, config, horizon, horizon_type):
-    """Compute treatment intensity change as weighted average by switcher direction."""
+def _compute_delta_d(df, config, horizon, horizon_type, dist_col=None):
+    """Compute cumulative treatment intensity change for normalization."""
     gname = config.gname
     tname = config.tname
     dname = config.dname
 
     treat_col = f"{dname}_orig" if config.continuous > 0 and f"{dname}_orig" in df.columns else dname
 
+    if dist_col is None:
+        dist_col = f"dist_to_switch_{horizon}" if horizon_type == "effect" else f"dist_to_switch_pl_{horizon}"
+
     switchers = df.filter(pl.col("F_g") != float("inf"))
     if len(switchers) == 0:
         return None
 
-    if horizon_type == "effect":
-        target_time = pl.col("F_g") + horizon - 1
+    # Delta_D uses post-switch periods for both effects and placebos
+    time_start = pl.col("F_g")
+    time_end = pl.col("F_g") - 1 + horizon
+
+    mask = (pl.col(tname) >= time_start) & (pl.col(tname) <= time_end)
+
+    switchers = switchers.with_columns(
+        pl.when(mask).then(pl.col(treat_col) - pl.col("d_sq")).otherwise(None).alias("_treat_diff_temp")
+    )
+
+    sum_by_unit = switchers.group_by(gname).agg(
+        pl.col("_treat_diff_temp").sum().alias("sum_treat"),
+        pl.col("S_g").first().alias("S_g"),
+    )
+
+    if dist_col in df.columns:
+        valid_units = df.filter(pl.col(dist_col) == 1.0).select([gname, "weight_gt"]).unique()
+        sum_by_unit = sum_by_unit.join(valid_units, on=gname, how="inner")
     else:
-        target_time = pl.col("F_g") - horizon - 1
+        sum_by_unit = sum_by_unit.with_columns(pl.lit(1.0).alias("weight_gt"))
 
-    treat_at_target = (
-        switchers.filter(pl.col(tname) == target_time)
-        .select([gname, pl.col(treat_col).alias("treat_target"), "S_g"])
-        .unique()
-    )
-
-    treat_at_base = (
-        switchers.filter(pl.col(tname) == pl.col("F_g") - 1)
-        .select([gname, pl.col(treat_col).alias("treat_base")])
-        .unique()
-    )
-
-    merged = treat_at_target.join(treat_at_base, on=gname, how="inner")
-    if len(merged) == 0:
+    sum_by_unit = sum_by_unit.filter(pl.col("sum_treat").is_not_null())
+    if len(sum_by_unit) == 0:
         return None
 
-    merged = merged.with_columns((pl.col("treat_target") - pl.col("treat_base")).alias("delta"))
-
-    in_switchers = merged.filter(pl.col("S_g") == 1)
-    out_switchers = merged.filter(pl.col("S_g") == -1)
-
-    n1 = len(in_switchers)
-    n0 = len(out_switchers)
-
-    if n1 + n0 == 0:
+    total_weight = sum_by_unit["weight_gt"].sum()
+    if total_weight == 0:
         return None
 
-    delta_in = in_switchers["delta"].mean() if n1 > 0 else 0.0
-    delta_out = out_switchers["delta"].mean() if n0 > 0 else 0.0
+    sum_by_unit = sum_by_unit.with_columns(pl.when(pl.col("S_g") == 1).then(1).otherwise(0).alias("S_g_ind"))
+    sum_by_unit = sum_by_unit.with_columns(
+        (
+            (pl.col("weight_gt") / total_weight)
+            * (pl.col("S_g_ind") * pl.col("sum_treat") + (1 - pl.col("S_g_ind")) * (-pl.col("sum_treat")))
+        ).alias("delta_contrib")
+    )
 
-    delta_d = (n1 / (n1 + n0)) * delta_in + (n0 / (n1 + n0)) * delta_out
+    delta_d = sum_by_unit["delta_contrib"].sum()
     return delta_d
 
 
-def _compute_ate(effects_results, z_crit):
+def _compute_ate(effects_results, z_crit, n_groups):
     """Compute average total effect."""
-    estimates = effects_results["estimates"]
-    valid_mask = ~np.isnan(estimates)
+    estimates = effects_results.get("estimates_unnorm", effects_results["estimates"])
+    n_sw = effects_results.get("n_switchers_weighted", effects_results["n_switchers"])
+    delta_d_arr = effects_results.get("delta_d_arr", np.ones(len(estimates)))
+
+    valid_mask = ~np.isnan(estimates) & (n_sw > 0)
 
     if not np.any(valid_mask):
         return None
 
-    ate_estimate = np.nanmean(estimates)
+    total_n_sw = np.sum(n_sw[valid_mask])
+    if total_n_sw > 0:
+        weights = n_sw[valid_mask] / total_n_sw
+    else:
+        weights = np.ones(np.sum(valid_mask)) / np.sum(valid_mask)
 
-    if effects_results.get("vcov") is not None:
+    weighted_mean_effect = np.sum(weights * estimates[valid_mask])
+    delta_d_1 = delta_d_arr[0] if len(delta_d_arr) > 0 and delta_d_arr[0] != 0 else 1.0
+    ate_estimate = weighted_mean_effect / delta_d_1
+
+    inf_func_unnorm = effects_results.get("influence_func_unnorm")
+    if inf_func_unnorm is not None and inf_func_unnorm.shape[1] == len(estimates):
+        weighted_inf = np.zeros(inf_func_unnorm.shape[0])
+        for i, (is_valid, wi) in enumerate(
+            zip(valid_mask, n_sw / total_n_sw if total_n_sw > 0 else np.ones(len(n_sw)) / len(n_sw))
+        ):
+            if is_valid:
+                weighted_inf += wi * inf_func_unnorm[:, i]
+
+        ate_inf = weighted_inf / delta_d_1
+        ate_se = np.sqrt(np.sum(ate_inf**2)) / n_groups
+    elif effects_results.get("vcov") is not None:
         vcov = effects_results["vcov"]
         n_effects = np.sum(valid_mask)
-        weights = np.zeros(len(estimates))
-        weights[valid_mask] = 1.0 / n_effects
-        ate_var = weights @ vcov @ weights
+        if n_effects == 1:
+            ate_var = float(np.asarray(vcov).flat[0]) if vcov.size > 0 else np.nan
+        else:
+            ate_weights = np.zeros(len(estimates))
+            ate_weights[valid_mask] = weights
+            ate_var = ate_weights @ vcov @ ate_weights
+
+        ate_var = ate_var / (delta_d_1**2)
+
         ate_se = np.sqrt(ate_var) if ate_var > 0 else np.nan
     else:
         std_errors = effects_results["std_errors"]
         valid_se = std_errors[valid_mask]
         ate_se = np.sqrt(np.mean(valid_se**2)) if len(valid_se) > 0 else np.nan
+        ate_se = ate_se / abs(delta_d_1)
+
+    n_observations = effects_results.get("n_observations", np.zeros(len(estimates)))
+    total_n_obs = np.sum(n_observations[valid_mask])
+    total_n_switchers = np.sum(n_sw[valid_mask])
 
     return ATEResult(
         estimate=ate_estimate,
         std_error=ate_se,
         ci_lower=ate_estimate - z_crit * ate_se,
         ci_upper=ate_estimate + z_crit * ate_se,
+        n_observations=total_n_obs,
+        n_switchers=total_n_switchers,
     )
 
 
@@ -493,7 +593,7 @@ def _apply_trends_lin(estimates, std_errors, influence_funcs, n_groups, cluster,
         cluster_ids = df.filter(df["first_obs_by_gp"] == 1).select(cluster).to_numpy().flatten()
         std_errors[last_idx] = compute_clustered_variance(cumulative_inf, cluster_ids, n_groups)
     else:
-        std_errors[last_idx] = np.sqrt(np.var(cumulative_inf, ddof=1) / n_groups)
+        std_errors[last_idx] = np.sqrt(np.sum(cumulative_inf**2)) / n_groups
 
     return estimates, std_errors, influence_funcs
 
@@ -503,12 +603,21 @@ def _prepare_data(data, config):
     df = data.clone()
     gname = config.gname
     tname = config.tname
+    yname = config.yname
+    dname = config.dname
 
     df = df.sort([gname, tname])
     df = df.with_columns(pl.lit(1.0).alias("weight_gt"))
 
     if config.weightsname:
-        df = df.with_columns((pl.col("weight_gt") * pl.col(config.weightsname)).alias("weight_gt"))
+        df = df.with_columns(pl.col(config.weightsname).fill_null(0).alias("weight_gt"))
+
+    df = df.with_columns(
+        pl.when(pl.col(yname).is_null() | pl.col(dname).is_null())
+        .then(0.0)
+        .otherwise(pl.col("weight_gt"))
+        .alias("weight_gt")
+    )
 
     first_obs = df.group_by(gname).agg(pl.col(tname).min().alias("_first_t")).select([gname, "_first_t"])
     df = df.join(first_obs, on=gname, how="left")
@@ -517,6 +626,19 @@ def _prepare_data(data, config):
 
     t_max_by_group = df.group_by(gname).agg(pl.col(tname).max().alias("t_max_by_group"))
     df = df.join(t_max_by_group, on=gname, how="left")
+
+    group_cols = ["d_sq"]
+    if config.trends_nonparam:
+        group_cols.extend(config.trends_nonparam)
+
+    df = df.with_columns(
+        pl.when(pl.col("F_g") == float("inf"))
+        .then(pl.col("t_max_by_group") + 1)
+        .otherwise(pl.col("F_g"))
+        .alias("_F_g_trunc")
+    )
+    df = df.with_columns((pl.col("_F_g_trunc").max().over(group_cols) - 1).alias("T_g"))
+    df = df.drop("_F_g_trunc")
 
     return df
 
@@ -685,3 +807,27 @@ def _run_het_regression(het_sample, covariates, horizon, config):
         n_obs=int(model.nobs),
         f_pvalue=f_pvalue,
     )
+
+
+def compute_same_switchers_mask(df, config, n_horizons, _t_max, horizon_type="effect"):
+    """Compute mask for switchers valid at all horizons."""
+    if "L_g" in df.columns:
+        if horizon_type == "effect":
+            df = df.with_columns((pl.col("L_g") >= n_horizons).alias("same_switcher_valid"))
+        else:
+            t_min = df[config.tname].min()
+            df = df.with_columns(((pl.col("F_g") - t_min) >= (n_horizons + 1)).alias("same_switcher_valid"))
+    else:
+        df = df.with_columns(pl.lit(True).alias("same_switcher_valid"))
+
+    return df
+
+
+def get_group_vars(config):
+    """Get grouping variables for control matching."""
+    group_vars = [config.tname, "d_sq"]
+
+    if config.trends_nonparam:
+        group_vars.extend(config.trends_nonparam)
+
+    return group_vars

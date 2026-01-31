@@ -116,83 +116,44 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
     trends = config.trends_nonparam or []
     switcher_flag = f"is_switcher_{h}"
     weighted_diff = f"weighted_diff_{h}"
+    dist_col = f"dist_to_switch_{h}"
 
     is_switcher = pl.col(switcher_flag) == 1
 
-    def _path_group(path_col):
-        return [path_col] + list(trends)
+    base_group_vars = ["d_sq", "F_g", "d_fg", dist_col]
+    group_vars = base_group_vars + list(trends)
+    group_vars = [c for c in group_vars if c in df.columns]
 
-    path_configs = [("path_0", "p0"), ("path_1", "p1"), (f"path_{h}", "p2")]
+    weight_sum_col = f"weight_sum_{h}_switcher"
+    diff_sum_col = f"diff_sum_{h}_switcher"
 
-    for path_col, tag in path_configs:
-        if path_col not in df.columns:
-            continue
+    val_weight = pl.when(is_switcher).then(pl.col("weight_gt")).otherwise(None)
+    val_diff = pl.when(is_switcher).then(pl.col(weighted_diff)).otherwise(None)
 
-        weight_sum = f"weight_sum_{h}_{tag}"
-        diff_sum = f"diff_sum_{h}_{tag}"
+    df = df.with_columns(
+        pl.when(is_switcher).then(val_weight.sum().over(group_vars)).otherwise(None).alias(weight_sum_col)
+    )
+    df = df.with_columns(pl.when(is_switcher).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col))
 
-        val_weight = pl.when(is_switcher).then(pl.col("weight_gt")).otherwise(None)
-        val_diff = pl.when(is_switcher).then(pl.col(weighted_diff)).otherwise(None)
-
-        df = df.with_columns(
-            pl.when(is_switcher).then(val_weight.sum().over(_path_group(path_col))).otherwise(None).alias(weight_sum)
-        )
-        df = df.with_columns(
-            pl.when(is_switcher).then(val_diff.sum().over(_path_group(path_col))).otherwise(None).alias(diff_sum)
-        )
-
+    dof_col = f"dof_switcher_{h}"
     if cluster_col is None:
         val_dof = pl.when(is_switcher).then(pl.col(switcher_flag)).otherwise(None)
-        for path_col, tag in path_configs:
-            if path_col not in df.columns:
-                continue
-            dof_col = f"dof_{h}_{tag}"
-            df = df.with_columns(
-                pl.when(is_switcher).then(val_dof.sum().over(_path_group(path_col))).otherwise(None).alias(dof_col)
-            )
+        df = df.with_columns(pl.when(is_switcher).then(val_dof.sum().over(group_vars)).otherwise(None).alias(dof_col))
     else:
         cluster_flag = f"_cluster_flag_{h}"
         df = df.with_columns(pl.when(is_switcher).then(pl.col(cluster_col)).otherwise(None).alias(cluster_flag))
-        for path_col, tag in path_configs:
-            if path_col not in df.columns:
-                continue
-            dof_col = f"dof_{h}_{tag}"
-            df = df.with_columns(
-                pl.when(pl.col(cluster_flag).is_not_null())
-                .then(pl.col(cluster_flag).n_unique().over(_path_group(path_col)))
-                .otherwise(None)
-                .alias(dof_col)
-            )
+        df = df.with_columns(
+            pl.when(pl.col(cluster_flag).is_not_null())
+            .then(pl.col(cluster_flag).n_unique().over(group_vars))
+            .otherwise(None)
+            .alias(dof_col)
+        )
         df = df.drop(cluster_flag)
 
-    dof_p0 = pl.col(f"dof_{h}_p0") if f"dof_{h}_p0" in df.columns else pl.lit(None)
-    dof_p1 = pl.col(f"dof_{h}_p1") if f"dof_{h}_p1" in df.columns else pl.lit(None)
-    dof_p2 = pl.col(f"dof_{h}_p2") if f"dof_{h}_p2" in df.columns else pl.lit(None)
+    ws = pl.col(weight_sum_col).fill_null(1.0)
+    ds = pl.col(diff_sum_col).fill_null(0.0)
 
-    df = df.with_columns(
-        pl.when(dof_p2 >= 2)
-        .then(dof_p2)
-        .when((dof_p2 < 2) & (dof_p1 >= 2))
-        .then(dof_p1)
-        .otherwise(dof_p0)
-        .alias(f"dof_switcher_{h}")
-    )
-
-    ws_p0 = pl.col(f"weight_sum_{h}_p0") if f"weight_sum_{h}_p0" in df.columns else pl.lit(1.0)
-    ws_p1 = pl.col(f"weight_sum_{h}_p1") if f"weight_sum_{h}_p1" in df.columns else pl.lit(1.0)
-    ws_p2 = pl.col(f"weight_sum_{h}_p2") if f"weight_sum_{h}_p2" in df.columns else pl.lit(1.0)
-    ds_p0 = pl.col(f"diff_sum_{h}_p0") if f"diff_sum_{h}_p0" in df.columns else pl.lit(0.0)
-    ds_p1 = pl.col(f"diff_sum_{h}_p1") if f"diff_sum_{h}_p1" in df.columns else pl.lit(0.0)
-    ds_p2 = pl.col(f"diff_sum_{h}_p2") if f"diff_sum_{h}_p2" in df.columns else pl.lit(0.0)
-
-    df = df.with_columns(
-        pl.when(dof_p2 >= 2)
-        .then(ds_p2 / ws_p2)
-        .when((dof_p2 < 2) & (dof_p1 >= 2))
-        .then(ds_p1 / ws_p1)
-        .otherwise(ds_p0 / ws_p0)
-        .alias(f"cohort_mean_{h}")
-    )
+    df = df.with_columns((ds / ws).alias(f"cohort_mean_{h}"))
 
     return df
 
@@ -486,10 +447,9 @@ def compute_clustered_variance(influence_func, cluster_ids, n_groups):
     n_clusters = len(unique_clusters)
 
     if n_clusters <= 1:
-        return np.sqrt(np.var(influence_func, ddof=1) / n_groups)
+        return np.sqrt(np.sum(influence_func**2)) / n_groups
 
-    cluster_var = np.var(cluster_sums, ddof=1)
-    std_error = np.sqrt(cluster_var / n_groups)
+    std_error = np.sqrt(np.sum(cluster_sums**2)) / n_groups
 
     return std_error
 

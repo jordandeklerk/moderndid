@@ -181,7 +181,7 @@ class DIDInterConfig(ConfigMixin):
     predict_het: tuple[list[str], list[int]] | None = None
 
     panel: bool = True
-    allow_unbalanced_panel: bool = False
+    allow_unbalanced_panel: bool = True
 
     time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
     time_periods_count: int = 0

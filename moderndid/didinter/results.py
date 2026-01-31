@@ -107,12 +107,18 @@ class ATEResult(NamedTuple):
         Lower confidence interval bound.
     ci_upper : float
         Upper confidence interval bound.
+    n_observations : float
+        Total observations contributing to the ATE.
+    n_switchers : float
+        Total switchers contributing to the ATE.
     """
 
     estimate: float
     std_error: float
     ci_lower: float
     ci_upper: float
+    n_observations: float = 0.0
+    n_switchers: float = 0.0
 
 
 class HeterogeneityResult(NamedTuple):

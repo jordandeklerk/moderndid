@@ -3,7 +3,7 @@
 from moderndid.core.preprocess import PreprocessDataBuilder
 from moderndid.core.preprocess.config import DIDInterConfig
 
-from .compute_did_multiplegt import compute_effects
+from .compute_did_multiplegt import compute_did_multiplegt
 
 
 def did_multiplegt(
@@ -36,8 +36,10 @@ def did_multiplegt(
 
     Parameters
     ----------
-    data : pd.DataFrame | pl.DataFrame
-        Panel data in long format.
+    data : DataFrame
+        Panel data in long format. Accepts any object implementing the Arrow
+        PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
+        pyarrow Table, and cudf DataFrames.
     yname : str
         Name of the outcome variable.
     tname : str
@@ -155,4 +157,4 @@ def did_multiplegt(
     builder = PreprocessDataBuilder()
     preprocessed = builder.with_data(data).with_config(config).validate().transform().build()
 
-    return compute_effects(preprocessed)
+    return compute_did_multiplegt(preprocessed)
