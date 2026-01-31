@@ -83,7 +83,6 @@ numpydoc_xref_ignore = {"of", "or", "optional", "scalar", "default"}
 singulars = ("int", "list", "dict", "float")
 numpydoc_xref_aliases = {
     "ndarray": ":class:`numpy.ndarray`",
-    "DataFrame": ":class:`polars.DataFrame`",
     "Series": ":class:`pandas.Series`",
     "pd.DataFrame": ":class:`pandas.DataFrame`",
     "pd.Series": ":class:`pandas.Series`",

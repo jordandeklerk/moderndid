@@ -3,7 +3,7 @@
 
 from moderndid._version import __version__
 from moderndid.core import data
-from moderndid.core.data import load_ehec, load_engel, load_mpdta, load_nsw, simulate_cont_did_data
+from moderndid.core.data import load_ehec, load_engel, load_favara_imbs, load_mpdta, load_nsw, simulate_cont_did_data
 from moderndid.core.preprocess import DIDData, preprocess_did
 from moderndid.core.preprocess.utils import extract_vars_from_formula, parse_formula
 from moderndid.did.aggte import aggte
@@ -326,6 +326,7 @@ __all__ = [
     "lee_coefficient",
     "load_ehec",
     "load_engel",
+    "load_favara_imbs",
     "load_mpdta",
     "load_nsw",
     "lp_conditional_test",

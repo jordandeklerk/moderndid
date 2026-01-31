@@ -8,21 +8,36 @@ from .numba import compute_cluster_sums
 
 
 def build_treatment_paths(df, horizon, config):
-    """Build hierarchical cohort identifiers.
+    r"""Build hierarchical cohort identifiers based on treatment trajectories.
+
+    Constructs treatment path variables that track each group's treatment history
+    from period :math:`F_g` (first switch) through :math:`F_g - 1 + \ell`. Groups
+    are assigned to cohorts based on their baseline treatment :math:`D_{g,1}`,
+    switch timing :math:`F_g`, and subsequent treatment values. This enables
+    comparison of switchers only to non-switchers with the same baseline treatment,
+    which is required for the parallel trends assumption in [1]_.
 
     Parameters
     ----------
     df : pl.DataFrame
-        Data with F_g and d_sq columns.
+        Data with F_g (first switch period) and d_sq (baseline treatment) columns.
     horizon : int
-        Current horizon being computed.
+        Current horizon :math:`\ell` being computed.
     config : DIDInterConfig
         Configuration object with column names.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with path_0, path_1, ..., path_h columns added.
+        DataFrame with path_0, path_1, ..., path_h columns identifying treatment
+        trajectories, and validity flags for cohorts with sufficient observations.
+
+    References
+    ----------
+
+    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
+           Differences Estimators of Intertemporal Treatment Effects.
+           *Review of Economics and Statistics*, 106(6), 1723-1736.
     """
     gname = config.gname
     tname = config.tname
@@ -427,21 +442,39 @@ def compute_dof_scaling(df, horizon, config):
 
 
 def compute_clustered_variance(influence_func, cluster_ids, n_groups):
-    """Compute clustered standard error from influence function.
+    r"""Compute clustered standard error from influence function.
+
+    Computes standard errors for :math:`\text{DID}_\ell` estimators using the
+    influence function approach with optional clustering. The variance is computed as
+
+    .. math::
+
+        \widehat{\text{Var}}(\text{DID}_\ell) = \frac{1}{G^2}
+        \sum_{c=1}^{C} \left(\sum_{g \in c} \psi_g\right)^2
+
+    where :math:`\psi_g` is the influence function for group :math:`g`, :math:`G`
+    is the total number of groups, and :math:`C` is the number of clusters. When
+    not clustering, each group is its own cluster.
 
     Parameters
     ----------
     influence_func : ndarray
-        Influence function values for each unit.
+        Influence function values :math:`\psi_g` for each group.
     cluster_ids : ndarray
-        Cluster identifiers for each unit.
+        Cluster identifiers for each group.
     n_groups : int
-        Number of groups.
+        Total number of groups :math:`G`.
 
     Returns
     -------
     float
         Clustered standard error.
+
+    References
+    ----------
+    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
+           Differences Estimators of Intertemporal Treatment Effects.
+           *Review of Economics and Statistics*, 106(6), 1723-1736.
     """
     cluster_sums, unique_clusters = compute_cluster_sums(influence_func, cluster_ids)
     n_clusters = len(unique_clusters)
@@ -455,19 +488,39 @@ def compute_clustered_variance(influence_func, cluster_ids, n_groups):
 
 
 def compute_joint_test(estimates, vcov):
-    """Compute joint test that all estimates are zero.
+    r"""Compute joint Wald test that all estimates are zero.
+
+    Computes a chi-squared test statistic for the null hypothesis
+    :math:`H_0: \delta_1 = \delta_2 = \cdots = \delta_L = 0`. For placebo
+    effects, this tests the parallel trends assumption by checking whether
+    pre-treatment outcome trends differ between switchers and non-switchers.
+    The test statistic is
+
+    .. math::
+
+        W = \hat{\boldsymbol{\delta}}' \widehat{\mathbf{V}}^{-1} \hat{\boldsymbol{\delta}}
+        \sim \chi^2_L
+
+    where :math:`\hat{\boldsymbol{\delta}}` is the vector of estimates and
+    :math:`\widehat{\mathbf{V}}` is the variance-covariance matrix.
 
     Parameters
     ----------
     estimates : ndarray
-        Point estimates.
+        Point estimates :math:`\hat{\boldsymbol{\delta}}`.
     vcov : ndarray
-        Variance-covariance matrix.
+        Variance-covariance matrix :math:`\widehat{\mathbf{V}}`.
 
     Returns
     -------
     dict or None
-        Dictionary with chi2_stat, df, and p_value, or None if test fails.
+        Dictionary with chi2_stat, df, and p_value, or None if computation fails.
+
+    References
+    ----------
+    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
+           Differences Estimators of Intertemporal Treatment Effects.
+           *Review of Economics and Statistics*, 106(6), 1723-1736.
     """
     if vcov is None:
         return None

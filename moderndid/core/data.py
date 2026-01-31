@@ -9,7 +9,7 @@ import polars as pl
 
 from .dataframe import to_polars
 
-__all__ = ["load_nsw", "load_mpdta", "load_ehec", "load_engel", "simulate_cont_did_data"]
+__all__ = ["load_nsw", "load_mpdta", "load_ehec", "load_engel", "load_favara_imbs", "simulate_cont_did_data"]
 
 
 def load_nsw() -> pl.DataFrame:
@@ -207,6 +207,55 @@ def load_engel() -> pl.DataFrame:
         engel_data = pickle.load(f)
 
     return to_polars(engel_data)
+
+
+def load_favara_imbs() -> pl.DataFrame:
+    """Load the Favara and Imbs banking deregulation dataset.
+
+    This dataset contains county-level data on bank lending and interstate
+    branching deregulation from 1994-2005, used to study the effects of
+    banking deregulation on credit supply. The treatment (interstate branching)
+    is non-binary and potentially non-absorbing, making it suitable for
+    intertemporal treatment effects estimation.
+
+    Returns
+    -------
+    pl.DataFrame
+        A DataFrame with the following columns:
+
+        - *year*: Year (1994-2005)
+        - *county*: County identifier
+        - *state_n*: State number
+        - *Dl_vloans_b*: Change in log volume of loans (outcome variable)
+        - *inter_bra*: Interstate branching indicator (treatment variable)
+        - *w1*: Sampling weight
+        - *Dl_hpi*: Change in log house price index
+
+    Notes
+    -----
+    This dataset is commonly used for demonstrating difference-in-differences
+    methods with time-varying treatments, particularly the de Chaisemartin and
+    D'Haultfoeuille (2024) estimator for intertemporal treatment effects.
+
+    References
+    ----------
+
+    .. [1] Favara, G., & Imbs, J. (2015). Credit supply and the price of
+        housing. American Economic Review, 105(3), 958-992.
+
+    .. [2] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
+        Differences Estimators of Intertemporal Treatment Effects.
+        Review of Economics and Statistics, 106(6), 1723-1736.
+    """
+    data_path = Path(__file__).parent / "datasets" / "favara_imbs.csv.gz"
+
+    if not data_path.exists():
+        raise FileNotFoundError(
+            f"Favara-Imbs data file not found at {data_path}. "
+            "Please ensure the data file is included in the moderndid installation."
+        )
+
+    return pl.read_csv(data_path)
 
 
 def simulate_cont_did_data(

@@ -18,6 +18,44 @@ terminology and setup, see :ref:`Introduction to Difference-in-Differences <caus
 For theoretical details on each estimator, see the :ref:`Background <background>` section.
 
 
+Dataframe Agnostic
+------------------
+
+ModernDiD accepts any DataFrame that implements the
+`Arrow PyCapsule Interface <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_.
+This includes polars, pandas, pyarrow Table, duckdb, cudf, and other Arrow-compatible DataFrames.
+You can pass your data directly without manual conversion.
+
+.. code-block:: python
+
+    import moderndid as did
+
+    # Works with pandas
+    import pandas as pd
+    df_pandas = pd.read_csv("data.csv")
+    result = did.att_gt(data=df_pandas, ...)
+
+    # Works with polars
+    import polars as pl
+    df_polars = pl.read_csv("data.csv")
+    result = did.att_gt(data=df_polars, ...)
+
+    # Works with pyarrow
+    import pyarrow.parquet as pq
+    table = pq.read_table("data.parquet")
+    result = did.att_gt(data=table, ...)
+
+    # Works with duckdb
+    import duckdb
+    df_duck = duckdb.query("SELECT * FROM 'data.parquet'").arrow()
+    result = did.att_gt(data=df_duck, ...)
+
+Conversion happens automatically via
+`narwhals <https://narwhals-dev.github.io/narwhals/>`_, with all internal
+operations using Polars for performance. This means you get the speed benefits
+of Polars regardless of your input format.
+
+
 Core Arguments
 --------------
 

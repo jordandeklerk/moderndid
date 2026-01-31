@@ -16,32 +16,10 @@ outcomes change over time between treated and untreated groups to isolate
 the effect of a treatment or policy, provided that both groups would have
 followed parallel paths in the absence of treatment.
 
-There are several important reasons why traditional approaches to DiD
-(such as two-way fixed effects regression) can produce misleading results
-in modern settings:
-
-- When units receive treatment at different times (staggered adoption),
-  traditional methods implicitly use already-treated units as controls.
-  This leads to *negative weighting* of some treatment effects, potentially
-  producing estimates with the wrong sign even when all true effects are positive.
-
-- Treatment effects often vary across groups and over time. Traditional
-  methods assume a single constant effect, which masks important
-  heterogeneity and can produce estimates that do not correspond to any
-  meaningful causal parameter.
-
-- When parallel trends may not hold exactly, researchers need tools to
-  assess how sensitive their conclusions are to violations of this
-  assumption. Traditional methods offer no systematic way to conduct
-  such sensitivity analysis.
-
-- Modern research designs often involve continuous treatments, triple
-  differences, or repeated cross-sections rather than balanced panels.
-  These settings require specialized methods that maintain the credibility
-  of causal inference.
-
-ModernDiD addresses these challenges by implementing state-of-the-art methods
-from the econometrics literature.
+Recent econometric research has developed methods that properly handle
+treatment effect heterogeneity, staggered adoption timing, continuous
+treatments, and potential violations of parallel trends. ModernDiD brings
+these advances to Python with a unified API.
 
 .. _whatis-unified:
 
@@ -104,6 +82,11 @@ with treatment dose.
 implements the `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
 methods that leverage a third dimension of variation (such as eligibility
 status) to relax parallel trends assumptions.
+
+**Intertemporal DiD** (:mod:`~moderndid.didinter`) implements the
+`de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
+framework for estimating treatment effects with non-binary, non-absorbing
+treatments where lagged treatments may affect outcomes.
 
 **Sensitivity analysis** (:mod:`~moderndid.didhonest`) provides the
 `Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_

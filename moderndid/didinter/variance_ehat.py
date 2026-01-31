@@ -226,7 +226,6 @@ def compute_e_hat(df, horizon, config):
     cond_b = ((fg - 1 + horizon) == time) & (s9999 >= 2)
 
     df = df.with_columns(pl.when(cond_a).then(0.0).otherwise(pl.col(e_hat_col)).alias(e_hat_col))
-
     df = df.with_columns(pl.when(cond_b).then(pl.col(mean_s)).otherwise(pl.col(e_hat_col)).alias(e_hat_col))
 
     df = df.with_columns(
@@ -271,9 +270,7 @@ def compute_dof(df, horizon, config):
     cond_b = ((fg - 1 + horizon) == time) & (s.fill_null(9999) > 1)
 
     df = df.with_columns(pl.when(cond_a).then(1.0).otherwise(pl.col(dof_col)).alias(dof_col))
-
     df = df.with_columns(pl.when(cond_b).then((s / (s - 1)).sqrt()).otherwise(pl.col(dof_col)).alias(dof_col))
-
     df = df.with_columns(pl.when(s.is_null()).then(pl.lit(None)).otherwise(pl.col(dof_col)).alias(dof_col))
 
     return df
