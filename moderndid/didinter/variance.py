@@ -472,6 +472,7 @@ def compute_clustered_variance(influence_func, cluster_ids, n_groups):
 
     References
     ----------
+
     .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
            Differences Estimators of Intertemporal Treatment Effects.
            *Review of Economics and Statistics*, 106(6), 1723-1736.
@@ -518,6 +519,7 @@ def compute_joint_test(estimates, vcov):
 
     References
     ----------
+
     .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
            Differences Estimators of Intertemporal Treatment Effects.
            *Review of Economics and Statistics*, 106(6), 1723-1736.
