@@ -694,10 +694,10 @@ class SwitcherFilter(BaseTransformer):
         df = to_polars(data)
 
         if config.switchers == "in":
-            valid_units = df.filter((pl.col("S_g") == 1) | (pl.col("S_g") == 0))[config.gname].unique()
+            valid_units = df.filter((pl.col("S_g") == 1) | (pl.col("S_g") == 0))[config.gname].unique().to_list()
             df = df.filter(pl.col(config.gname).is_in(valid_units))
         elif config.switchers == "out":
-            valid_units = df.filter((pl.col("S_g") == -1) | (pl.col("S_g") == 0))[config.gname].unique()
+            valid_units = df.filter((pl.col("S_g") == -1) | (pl.col("S_g") == 0))[config.gname].unique().to_list()
             df = df.filter(pl.col(config.gname).is_in(valid_units))
 
         return df
@@ -882,6 +882,87 @@ class DIDInterConfigUpdater:
             config.data_format = DataFormat.PANEL
 
 
+class TrendsLinTransformer(BaseTransformer):
+    """Apply first-differencing transformation for linear trends."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+
+        if not config.trends_lin:
+            return df
+
+        t_min = df[config.tname].min()
+        df = df.filter(pl.col("F_g") != t_min + 1)
+        df = df.sort([config.gname, config.tname])
+
+        df = df.with_columns(
+            (pl.col(config.yname) - pl.col(config.yname).shift(1).over(config.gname)).alias(config.yname)
+        )
+
+        if config.controls:
+            for ctrl in config.controls:
+                df = df.with_columns((pl.col(ctrl) - pl.col(ctrl).shift(1).over(config.gname)).alias(ctrl))
+
+        df = df.filter(pl.col(config.tname) != t_min)
+
+        return df
+
+
+class DIDInterDataPreparer(BaseTransformer):
+    """Prepare data for DIDInter computation."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        gname = config.gname
+        tname = config.tname
+        yname = config.yname
+        dname = config.dname
+
+        df = df.sort([gname, tname])
+        df = df.with_columns(pl.lit(1.0).alias("weight_gt"))
+
+        if config.weightsname:
+            df = df.with_columns(pl.col(config.weightsname).fill_null(0).alias("weight_gt"))
+
+        df = df.with_columns(
+            pl.when(pl.col(yname).is_null() | pl.col(dname).is_null())
+            .then(0.0)
+            .otherwise(pl.col("weight_gt"))
+            .alias("weight_gt")
+        )
+
+        first_obs = df.group_by(gname).agg(pl.col(tname).min().alias("_first_t")).select([gname, "_first_t"])
+        df = df.join(first_obs, on=gname, how="left")
+        df = df.with_columns((pl.col(tname) == pl.col("_first_t")).cast(pl.Int64).alias("first_obs_by_gp"))
+        df = df.drop("_first_t")
+
+        t_max_by_group = df.group_by(gname).agg(pl.col(tname).max().alias("t_max_by_group"))
+        df = df.join(t_max_by_group, on=gname, how="left")
+
+        group_cols = ["d_sq"]
+        if config.trends_nonparam:
+            group_cols.extend(config.trends_nonparam)
+
+        df = df.with_columns(
+            pl.when(pl.col("F_g") == float("inf"))
+            .then(pl.col("t_max_by_group") + 1)
+            .otherwise(pl.col("F_g"))
+            .alias("_F_g_trunc")
+        )
+        df = df.with_columns((pl.col("_F_g_trunc").max().over(group_cols) - 1).alias("T_g"))
+        df = df.drop("_F_g_trunc")
+
+        return df
+
+
 class DataTransformerPipeline:
     """Data transformer pipeline."""
 
@@ -951,6 +1032,8 @@ class DataTransformerPipeline:
                 ControlsTimeFilter(),
                 ContinuousTreatmentProcessor(),
                 DIDInterPanelBalancer(),
+                TrendsLinTransformer(),
+                DIDInterDataPreparer(),
                 DataSorter(),
             ]
         )

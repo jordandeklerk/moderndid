@@ -1,10 +1,13 @@
 """Core computations for estimation in heterogeneous and dynamic ATT estimation."""
 
+import warnings
+
 import numpy as np
 import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
+from .bootstrap import cluster_bootstrap
 from .controls import (
     apply_control_adjustment,
     compute_control_coefficients,
@@ -38,16 +41,14 @@ def compute_did_multiplegt(preprocessed):
         Estimation results.
     """
     config = preprocessed.config
-    data = preprocessed.data
+    df = preprocessed.data
 
     ci_level = config.ci_level
     alpha = 1 - ci_level / 100
     z_crit = stats.norm.ppf(1 - alpha / 2)
 
-    n_groups = data[config.gname].n_unique()
-    t_max = int(data[config.tname].max())
-
-    df = _prepare_data(data, config)
+    n_groups = df[config.gname].n_unique()
+    t_max = int(df[config.tname].max())
 
     if config.same_switchers:
         df = compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
@@ -74,6 +75,26 @@ def compute_did_multiplegt(preprocessed):
             t_max=t_max,
             horizon_type="placebo",
         )
+
+    if config.boot:
+        warnings.warn(
+            "did_multiplegt computes analytical standard errors by default. "
+            "Bootstrapping is slower and recommended when using a continuous treatment.",
+            UserWarning,
+            stacklevel=4,
+        )
+
+        boot_result = cluster_bootstrap(
+            data=df,
+            config=config,
+            compute_func=_compute_bootstrap_estimates,
+            nboot=config.nboot,
+            random_state=config.random_state,
+        )
+        effects_results["std_errors"] = boot_result.effects_se
+
+        if placebos_results is not None and boot_result.placebos_se is not None:
+            placebos_results["std_errors"] = boot_result.placebos_se
 
     ate = _compute_ate(effects_results, z_crit, n_groups) if effects_results else None
 
@@ -141,6 +162,78 @@ def compute_did_multiplegt(preprocessed):
             "weightsname": config.weightsname,
         },
     )
+
+
+def _compute_bootstrap_estimates(df, config):
+    """Compute estimates for a bootstrap sample of preprocessed data."""
+    nan_effects = np.full(config.effects, np.nan)
+    nan_placebos = np.full(config.placebo, np.nan) if config.placebo > 0 else None
+
+    if df.height == 0:
+        result = {"effects": nan_effects}
+        if nan_placebos is not None:
+            result["placebos"] = nan_placebos
+        return result
+
+    n_groups = df[config.gname].n_unique()
+    if n_groups == 0:
+        result = {"effects": nan_effects}
+        if nan_placebos is not None:
+            result["placebos"] = nan_placebos
+        return result
+
+    t_max_val = df[config.tname].max()
+    if t_max_val is None:
+        result = {"effects": nan_effects}
+        if nan_placebos is not None:
+            result["placebos"] = nan_placebos
+        return result
+    t_max = int(t_max_val)
+
+    has_switchers = df.filter(pl.col("S_g") != 0).height > 0
+    if not has_switchers:
+        result = {"effects": nan_effects}
+        if nan_placebos is not None:
+            result["placebos"] = nan_placebos
+        return result
+
+    if config.same_switchers:
+        df = compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
+
+    if config.same_switchers_pl and config.placebo > 0:
+        df = compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
+
+    effects_results = _compute_did_effects(
+        df=df,
+        config=config,
+        n_horizons=config.effects,
+        n_groups=n_groups,
+        t_max=t_max,
+        horizon_type="effect",
+    )
+
+    result = {"effects": effects_results["estimates"]}
+
+    if config.placebo > 0:
+        placebos_results = _compute_did_effects(
+            df=df,
+            config=config,
+            n_horizons=config.placebo,
+            n_groups=n_groups,
+            t_max=t_max,
+            horizon_type="placebo",
+        )
+        result["placebos"] = placebos_results["estimates"]
+
+    if not config.trends_lin:
+        ci_level = config.ci_level
+        alpha = 1 - ci_level / 100
+        z_crit = stats.norm.ppf(1 - alpha / 2)
+        ate_result = _compute_ate(effects_results, z_crit, n_groups)
+        if ate_result is not None:
+            result["ate"] = ate_result.estimate
+
+    return result
 
 
 def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
@@ -580,67 +673,24 @@ def _apply_trends_lin(estimates, std_errors, influence_funcs, n_groups, cluster,
     if len(valid_funcs) == 0:
         return estimates, std_errors, influence_funcs
 
-    cumulative_inf = np.zeros_like(valid_funcs[0])
-    for inf_func in valid_funcs:
-        cumulative_inf = cumulative_inf + inf_func
+    cumulative_estimates = np.cumsum(estimates)
 
-    last_idx = n_horizons - 1
-    influence_funcs[last_idx] = cumulative_inf
+    for idx in range(1, n_horizons):
+        estimates[idx] = cumulative_estimates[idx]
 
-    estimates[last_idx] = np.sum(cumulative_inf) / n_groups
+        cumulative_inf = np.zeros_like(valid_funcs[0])
+        for j in range(idx + 1):
+            if j < len(valid_funcs):
+                cumulative_inf = cumulative_inf + valid_funcs[j]
+        influence_funcs[idx] = cumulative_inf
 
-    if cluster:
-        cluster_ids = df.filter(df["first_obs_by_gp"] == 1).select(cluster).to_numpy().flatten()
-        std_errors[last_idx] = compute_clustered_variance(cumulative_inf, cluster_ids, n_groups)
-    else:
-        std_errors[last_idx] = np.sqrt(np.sum(cumulative_inf**2)) / n_groups
+        if cluster:
+            cluster_ids = df.filter(df["first_obs_by_gp"] == 1).select(cluster).to_numpy().flatten()
+            std_errors[idx] = compute_clustered_variance(cumulative_inf, cluster_ids, n_groups)
+        else:
+            std_errors[idx] = np.sqrt(np.sum(cumulative_inf**2)) / n_groups
 
     return estimates, std_errors, influence_funcs
-
-
-def _prepare_data(data, config):
-    """Prepare data for computation."""
-    df = data.clone()
-    gname = config.gname
-    tname = config.tname
-    yname = config.yname
-    dname = config.dname
-
-    df = df.sort([gname, tname])
-    df = df.with_columns(pl.lit(1.0).alias("weight_gt"))
-
-    if config.weightsname:
-        df = df.with_columns(pl.col(config.weightsname).fill_null(0).alias("weight_gt"))
-
-    df = df.with_columns(
-        pl.when(pl.col(yname).is_null() | pl.col(dname).is_null())
-        .then(0.0)
-        .otherwise(pl.col("weight_gt"))
-        .alias("weight_gt")
-    )
-
-    first_obs = df.group_by(gname).agg(pl.col(tname).min().alias("_first_t")).select([gname, "_first_t"])
-    df = df.join(first_obs, on=gname, how="left")
-    df = df.with_columns((pl.col(tname) == pl.col("_first_t")).cast(pl.Int64).alias("first_obs_by_gp"))
-    df = df.drop("_first_t")
-
-    t_max_by_group = df.group_by(gname).agg(pl.col(tname).max().alias("t_max_by_group"))
-    df = df.join(t_max_by_group, on=gname, how="left")
-
-    group_cols = ["d_sq"]
-    if config.trends_nonparam:
-        group_cols.extend(config.trends_nonparam)
-
-    df = df.with_columns(
-        pl.when(pl.col("F_g") == float("inf"))
-        .then(pl.col("t_max_by_group") + 1)
-        .otherwise(pl.col("F_g"))
-        .alias("_F_g_trunc")
-    )
-    df = df.with_columns((pl.col("_F_g_trunc").max().over(group_cols) - 1).alias("T_g"))
-    df = df.drop("_F_g_trunc")
-
-    return df
 
 
 def _compute_heterogeneity(df, config):

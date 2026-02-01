@@ -63,10 +63,10 @@ result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="trea
 Several classic datasets from the DiD literature are included for experimentation:
 
 ```python
-did.load_mpdta()  # County teen employment
-did.load_nsw()    # NSW job training program
-did.load_ehec()   # Medicaid expansion
-did.load_engel()  # Household expenditure
+did.load_mpdta()       # County teen employment
+did.load_nsw()         # NSW job training program
+did.load_ehec()        # Medicaid expansion
+did.load_engel()       # Household expenditure
 did.load_favara_imbs() # Bank lending
 ```
 

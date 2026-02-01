@@ -426,3 +426,62 @@ def test_real_data_normalized(favara_imbs_data):
 
     assert isinstance(result, DIDInterResult)
     assert len(result.effects.estimates) == 3
+
+
+@pytest.mark.parametrize("placebo", [0, 1])
+def test_bootstrap_standard_errors(simple_panel_data, placebo):
+    result = did_multiplegt(
+        simple_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        placebo=placebo,
+        boot=True,
+        nboot=50,
+        random_state=42,
+    )
+
+    assert isinstance(result, DIDInterResult)
+    assert all(se > 0 or np.isnan(se) for se in result.effects.std_errors)
+    if placebo > 0 and result.placebos is not None:
+        assert all(se > 0 or np.isnan(se) for se in result.placebos.std_errors)
+
+
+def test_bootstrap_with_cluster(favara_imbs_data):
+    result = did_multiplegt(
+        favara_imbs_data,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=2,
+        cluster="state_n",
+        boot=True,
+        nboot=50,
+        random_state=42,
+    )
+
+    assert isinstance(result, DIDInterResult)
+    assert all(se > 0 for se in result.effects.std_errors)
+
+
+def test_bootstrap_reproducibility(simple_panel_data):
+    kwargs = {
+        "yname": "y",
+        "idname": "id",
+        "tname": "time",
+        "dname": "d",
+        "effects": 2,
+        "boot": True,
+        "nboot": 50,
+        "random_state": 123,
+    }
+    result1 = did_multiplegt(simple_panel_data, **kwargs)
+    result2 = did_multiplegt(simple_panel_data, **kwargs)
+
+    np.testing.assert_array_almost_equal(
+        result1.effects.std_errors,
+        result2.effects.std_errors,
+    )

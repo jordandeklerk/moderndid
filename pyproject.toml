@@ -171,6 +171,9 @@ filterwarnings = [
     "ignore:Mean of weights is zero or negative.*:UserWarning:moderndid",
     "ignore:Solution may be inaccurate.*:UserWarning",
     "ignore:np.dot.*is faster on contiguous arrays.*:numba.core.errors.NumbaPerformanceWarning",
+    "ignore:did_multiplegt computes analytical standard errors.*:UserWarning",
+    "ignore:.*pl.count.*is deprecated.*:DeprecationWarning",
+    "ignore:The number of placebos requested cannot be larger.*:UserWarning",
 ]
 
 [tool.coverage.run]
