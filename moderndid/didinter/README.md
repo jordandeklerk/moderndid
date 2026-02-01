@@ -172,7 +172,7 @@ The output shows the average total effect (sum of effects across horizons), trea
 
 The placebo effects test whether switchers and non-switchers had similar outcome trends before switching (parallel trends assumption). The joint test p-value of 0.2676 indicates no significant pre-trends, supporting the identification assumptions.
 
-We can visualize the event study with `plot_multiplegt()`:
+We can visualize the event study with `plot_multiplegt()`.
 
 ```python
 md.plot_multiplegt(result)
