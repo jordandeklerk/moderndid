@@ -391,7 +391,8 @@ def compute_dof_scaling(df, horizon, config):
     horizon : int
         Current horizon.
     config : DIDInterConfig
-        Configuration object.
+        Configuration object. Uses ``less_conservative_se`` to control whether
+        DOF adjustments are applied.
 
     Returns
     -------
@@ -407,6 +408,9 @@ def compute_dof_scaling(df, horizon, config):
     dof_union_col = f"dof_union_{h}"
 
     df = df.with_columns(pl.lit(1.0).alias(dof_col))
+
+    if getattr(config, "less_conservative_se", False):
+        return df
 
     time = pl.col(tname)
     fg = pl.col("F_g")

@@ -13,6 +13,7 @@ from plotnine import (
     geom_line,
     geom_point,
     geom_ribbon,
+    geom_vline,
     ggplot,
     labs,
     position_dodge,
@@ -23,6 +24,7 @@ from plotnine import (
 from moderndid.did.aggte_obj import AGGTEResult
 from moderndid.did.multiperiod_obj import MPResult
 from moderndid.didcont.estimation.container import PTEResult
+from moderndid.didinter.results import DIDInterResult
 from moderndid.didtriple.agg_ddd_obj import DDDAggResult
 from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
 from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
@@ -30,6 +32,7 @@ from moderndid.plots.converters import (
     aggteresult_to_polars,
     dddaggresult_to_polars,
     dddmpresult_to_polars,
+    didinterresult_to_polars,
     doseresult_to_polars,
     honestdid_to_polars,
     mpresult_to_polars,
@@ -427,5 +430,72 @@ def plot_sensitivity(
 
     if ref_line is not None:
         plot = plot + geom_hline(yintercept=ref_line, linetype="solid", color="black", alpha=0.4)
+
+    return plot
+
+
+def plot_multiplegt(
+    result: DIDInterResult,
+    show_ci: bool = True,
+    ref_line: float | None = 0,
+    xlab: str | None = None,
+    ylab: str | None = None,
+    title: str | None = None,
+    **_kwargs: Any,
+) -> ggplot:
+    """Create event study plot for intertemporal treatment effects.
+
+    Parameters
+    ----------
+    result : DIDInterResult
+        Intertemporal treatment effects result from did_multiplegt().
+    show_ci : bool, default=True
+        Whether to show confidence intervals as error bars.
+    ref_line : float or None, default=0
+        Y-value for reference line. Set to None to hide.
+    xlab : str, optional
+        X-axis label. Defaults to "Horizon".
+    ylab : str, optional
+        Y-axis label. Defaults to "Effect".
+    title : str, optional
+        Plot title. Defaults to "Intertemporal Treatment Effects".
+
+    Returns
+    -------
+    ggplot
+        A plotnine ggplot object that can be further customized.
+    """
+    df = didinterresult_to_polars(result)
+
+    plot = ggplot(df, aes(x="horizon", y="att"))
+
+    if show_ci:
+        plot = plot + geom_errorbar(
+            aes(ymin="ci_lower", ymax="ci_upper", color="treatment_status"),
+            width=0.2,
+            size=0.8,
+        )
+
+    if ref_line is not None:
+        plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
+
+    plot = plot + geom_vline(xintercept=0, linetype="dotted", color="#7f8c8d", alpha=0.7)
+
+    plot = (
+        plot
+        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6)
+        + geom_point(aes(color="treatment_status"), size=3.5)
+        + scale_color_manual(
+            values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
+            name="Treatment Status",
+        )
+        + labs(
+            x=xlab or "Horizon",
+            y=ylab or "Effect",
+            title=title or "Intertemporal Treatment Effects",
+        )
+        + theme_moderndid()
+        + theme(legend_position="bottom")
+    )
 
     return plot

@@ -180,6 +180,10 @@ class DIDInterConfig(ConfigMixin):
 
     predict_het: tuple[list[str], list[int]] | None = None
 
+    boot: bool = False
+    nboot: int = 999
+    random_state: int | None = None
+
     panel: bool = True
     allow_unbalanced_panel: bool = True
 

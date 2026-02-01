@@ -31,6 +31,9 @@ def did_multiplegt(
     less_conservative_se=False,
     keep_bidirectional_switchers=False,
     drop_missing_preswitch=False,
+    boot=False,
+    nboot=999,
+    random_state=None,
 ):
     r"""Estimate intertemporal treatment effects with non-binary, non-absorbing treatments.
 
@@ -155,6 +158,15 @@ def did_multiplegt(
     drop_missing_preswitch : bool, default=False
         If True, drop observations where treatment is missing before the
         first switch time.
+    boot : bool, default=False
+        If True, compute standard errors using the multiplier bootstrap
+        instead of asymptotic influence function-based inference. The
+        bootstrap resamples at the cluster level when ``cluster`` is
+        specified.
+    nboot : int, default=999
+        Number of bootstrap iterations when ``boot=True``.
+    random_state : int, Generator, optional
+        Random seed for reproducibility of bootstrap.
 
     Returns
     -------
@@ -277,6 +289,9 @@ def did_multiplegt(
         less_conservative_se=less_conservative_se,
         keep_bidirectional_switchers=keep_bidirectional_switchers,
         drop_missing_preswitch=drop_missing_preswitch,
+        boot=boot,
+        nboot=nboot,
+        random_state=random_state,
     )
 
     builder = PreprocessDataBuilder()

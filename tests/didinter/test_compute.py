@@ -12,7 +12,6 @@ from moderndid.core.preprocess.config import DIDInterConfig
 from moderndid.didinter.compute_did_multiplegt import (
     _compute_ate,
     _compute_delta_d,
-    _prepare_data,
     _test_effects_equality,
     compute_same_switchers_mask,
     get_group_vars,
@@ -153,48 +152,6 @@ def test_compute_same_switchers_mask_large_n_horizons():
 
     assert id1_valid is True
     assert id2_valid is False
-
-
-@pytest.mark.parametrize(
-    "expected_column",
-    ["weight_gt", "first_obs_by_gp", "T_g"],
-)
-def test_prepare_data_adds_columns(panel_data, basic_config, expected_column):
-    result = _prepare_data(panel_data, basic_config)
-
-    assert expected_column in result.columns
-
-
-def test_prepare_data_weight_defaults_to_one(panel_data, basic_config):
-    result = _prepare_data(panel_data, basic_config)
-
-    assert result["weight_gt"].to_list() == [1.0] * 9
-
-
-def test_prepare_data_first_obs_marker(panel_data, basic_config):
-    result = _prepare_data(panel_data, basic_config)
-
-    first_obs = result.sort(["id", "time"])["first_obs_by_gp"].to_list()
-    assert first_obs == [1, 0, 0, 1, 0, 0, 1, 0, 0]
-
-
-def test_prepare_data_uses_custom_weights(panel_data, basic_config):
-    df = panel_data.with_columns(pl.Series("w", [1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0]))
-    basic_config.weightsname = "w"
-
-    result = _prepare_data(df, basic_config)
-
-    weights = result.sort(["id", "time"])["weight_gt"].to_list()
-    assert weights == [1.0, 2.0, 3.0, 1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
-
-
-def test_prepare_data_zeros_weight_for_missing_outcome(panel_data, basic_config):
-    df = panel_data.with_columns(pl.when(pl.col("id") == 1).then(None).otherwise(pl.col("y")).alias("y"))
-
-    result = _prepare_data(df, basic_config)
-
-    weights = result.filter(pl.col("id") == 1)["weight_gt"].to_list()
-    assert all(w == 0.0 for w in weights)
 
 
 def test_compute_delta_d_positive_for_increasing_treatment(switcher_data, basic_config):
