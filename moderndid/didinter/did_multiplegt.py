@@ -219,20 +219,11 @@ def did_multiplegt(
     weaker than standard parallel trends across all groups, which would rule out
     both dynamic treatment effects and time-varying effects.
 
-    Unlike :func:`att_gt` which assumes binary, absorbing (staggered) treatment,
-    this estimator handles non-binary treatments (e.g., policy intensity),
-    non-absorbing treatments (units can enter and exit treatment), and
-    time-varying treatment effects including dynamic effects of lagged treatments.
-    When all groups share the same baseline treatment and treatment is binary
-    and staggered, this estimator is numerically equivalent to binarizing
-    the treatment indicator and computing the [1]_ event-study estimator.
-    However, when baseline treatments vary across groups,
-    the estimators differ because this method only compares switchers to
-    non-switchers with the same baseline treatment, whereas the standard
-    approach compares groups with different baseline treatments. This distinction
-    matters because standard parallel trends across all groups essentially rules
-    out lagged treatment effects and time-varying effects, while the conditional
-    parallel trends assumption used here allows for both.
+    With binary staggered treatment and uniform baseline, this is equivalent
+    to the :func:`att_gt` event-study estimator. With varying baseline treatments,
+    the estimators differ because this method compares switchers only to non-switchers
+    with the same baseline, preserving validity under a conditional parallel
+    trends assumption that allows for lagged and time-varying effects.
 
     By default, units that experience both treatment increases and decreases
     are dropped (``keep_bidirectional_switchers=False``) because their
