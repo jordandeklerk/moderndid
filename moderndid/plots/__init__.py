@@ -4,6 +4,7 @@ from moderndid.plots.converters import (
     aggteresult_to_polars,
     dddaggresult_to_polars,
     dddmpresult_to_polars,
+    didinterresult_to_polars,
     doseresult_to_polars,
     honestdid_to_polars,
     mpresult_to_polars,
@@ -14,6 +15,7 @@ from moderndid.plots.plots import (
     plot_dose_response,
     plot_event_study,
     plot_gt,
+    plot_multiplegt,
     plot_sensitivity,
 )
 from moderndid.plots.themes import (
@@ -28,6 +30,7 @@ __all__ = [
     "plot_gt",
     "plot_event_study",
     "plot_agg",
+    "plot_multiplegt",
     "plot_dose_response",
     "plot_sensitivity",
     # Themes
@@ -38,6 +41,7 @@ __all__ = [
     # Converters
     "mpresult_to_polars",
     "aggteresult_to_polars",
+    "didinterresult_to_polars",
     "doseresult_to_polars",
     "pteresult_to_polars",
     "honestdid_to_polars",

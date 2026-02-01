@@ -9,6 +9,7 @@ from moderndid.did.multiperiod_obj import MPResult
 from moderndid.didcont.estimation.container import DoseResult
 from moderndid.didhonest.honest_did import HonestDiDResult
 from moderndid.didhonest.sensitivity import OriginalCSResult
+from moderndid.didinter.results import DIDInterResult, EffectsResult, PlacebosResult
 from moderndid.didtriple.agg_ddd_obj import DDDAggResult
 from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
 
@@ -236,4 +237,54 @@ def ddd_agg_simple():
         overall_se=0.14,
         aggregation_type="simple",
         args={"alpha": 0.05},
+    )
+
+
+@pytest.fixture
+def didinter_result():
+    effects = EffectsResult(
+        horizons=np.array([1, 2, 3, 4]),
+        estimates=np.array([0.5, 0.8, 1.0, 1.2]),
+        std_errors=np.array([0.1, 0.12, 0.15, 0.18]),
+        ci_lower=np.array([0.3, 0.56, 0.71, 0.85]),
+        ci_upper=np.array([0.7, 1.04, 1.29, 1.55]),
+        n_switchers=np.array([50, 45, 40, 35]),
+        n_observations=np.array([500, 450, 400, 350]),
+    )
+    return DIDInterResult(
+        effects=effects,
+        n_units=100,
+        n_switchers=50,
+        n_never_switchers=50,
+        ci_level=95.0,
+    )
+
+
+@pytest.fixture
+def didinter_result_with_placebos():
+    effects = EffectsResult(
+        horizons=np.array([1, 2, 3]),
+        estimates=np.array([0.5, 0.8, 1.0]),
+        std_errors=np.array([0.1, 0.12, 0.15]),
+        ci_lower=np.array([0.3, 0.56, 0.71]),
+        ci_upper=np.array([0.7, 1.04, 1.29]),
+        n_switchers=np.array([50, 45, 40]),
+        n_observations=np.array([500, 450, 400]),
+    )
+    placebos = PlacebosResult(
+        horizons=np.array([-2, -1]),
+        estimates=np.array([0.05, 0.02]),
+        std_errors=np.array([0.08, 0.07]),
+        ci_lower=np.array([-0.11, -0.12]),
+        ci_upper=np.array([0.21, 0.16]),
+        n_switchers=np.array([50, 50]),
+        n_observations=np.array([500, 500]),
+    )
+    return DIDInterResult(
+        effects=effects,
+        placebos=placebos,
+        n_units=100,
+        n_switchers=50,
+        n_never_switchers=50,
+        ci_level=95.0,
     )

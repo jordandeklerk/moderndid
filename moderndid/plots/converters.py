@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from moderndid.did.multiperiod_obj import MPResult
     from moderndid.didcont.estimation.container import DoseResult, PTEResult
     from moderndid.didhonest.honest_did import HonestDiDResult
+    from moderndid.didinter.results import DIDInterResult
     from moderndid.didtriple.agg_ddd_obj import DDDAggResult
     from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
     from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
@@ -399,3 +400,62 @@ def dddaggresult_to_polars(result: DDDAggResult) -> pl.DataFrame:
         data["treatment_status"] = np.array(["Pre" if e < 0 else "Post" for e in event_times])
 
     return pl.DataFrame(data)
+
+
+def didinterresult_to_polars(result: DIDInterResult) -> pl.DataFrame:
+    """Convert DIDInterResult to polars DataFrame for plotting.
+
+    Parameters
+    ----------
+    result : DIDInterResult
+        Intertemporal treatment effects result from did_multiplegt().
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns:
+
+        - horizon: event horizon (negative for placebos, positive for effects)
+        - att: effect estimate
+        - se: standard error
+        - ci_lower: lower confidence interval
+        - ci_upper: upper confidence interval
+        - treatment_status: "Pre" or "Post" treatment
+    """
+    effects = result.effects
+    placebos = result.placebos
+
+    horizons = []
+    att = []
+    se = []
+    ci_lower = []
+    ci_upper = []
+    treatment_status = []
+
+    if placebos is not None:
+        sorted_indices = np.argsort(placebos.horizons)
+        horizons.extend(placebos.horizons[sorted_indices])
+        att.extend(placebos.estimates[sorted_indices])
+        se.extend(placebos.std_errors[sorted_indices])
+        ci_lower.extend(placebos.ci_lower[sorted_indices])
+        ci_upper.extend(placebos.ci_upper[sorted_indices])
+        treatment_status.extend(["Pre"] * len(placebos.horizons))
+
+    sorted_indices = np.argsort(effects.horizons)
+    horizons.extend(effects.horizons[sorted_indices])
+    att.extend(effects.estimates[sorted_indices])
+    se.extend(effects.std_errors[sorted_indices])
+    ci_lower.extend(effects.ci_lower[sorted_indices])
+    ci_upper.extend(effects.ci_upper[sorted_indices])
+    treatment_status.extend(["Post"] * len(effects.horizons))
+
+    return pl.DataFrame(
+        {
+            "horizon": horizons,
+            "att": att,
+            "se": se,
+            "ci_lower": ci_lower,
+            "ci_upper": ci_upper,
+            "treatment_status": treatment_status,
+        }
+    )

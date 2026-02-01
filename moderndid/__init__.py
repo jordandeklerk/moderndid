@@ -198,6 +198,7 @@ from moderndid.plots import (
     plot_dose_response,
     plot_event_study,
     plot_gt,
+    plot_multiplegt,
     plot_sensitivity,
 )
 
@@ -389,6 +390,7 @@ __all__ = [
     "plot_gt",
     "plot_event_study",
     "plot_agg",
+    "plot_multiplegt",
     "plot_dose_response",
     "plot_sensitivity",
 ]

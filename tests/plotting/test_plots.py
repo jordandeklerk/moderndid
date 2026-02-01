@@ -11,6 +11,7 @@ from moderndid.plots import (
     plot_dose_response,
     plot_event_study,
     plot_gt,
+    plot_multiplegt,
     plot_sensitivity,
 )
 
@@ -160,4 +161,31 @@ def test_plot_sensitivity_no_ref_line(honest_result):
 
 def test_plot_sensitivity_custom_labels(honest_result):
     plot = plot_sensitivity(honest_result, xlab="Parameter", ylab="CI", title="Sensitivity")
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_multiplegt_returns_ggplot(didinter_result):
+    plot = plot_multiplegt(didinter_result)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_multiplegt_with_placebos(didinter_result_with_placebos):
+    plot = plot_multiplegt(didinter_result_with_placebos)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("show_ci", [True, False])
+def test_plot_multiplegt_show_ci(didinter_result, show_ci):
+    plot = plot_multiplegt(didinter_result, show_ci=show_ci)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("ref_line", [0, None, 0.5])
+def test_plot_multiplegt_ref_line(didinter_result, ref_line):
+    plot = plot_multiplegt(didinter_result, ref_line=ref_line)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_multiplegt_custom_labels(didinter_result):
+    plot = plot_multiplegt(didinter_result, xlab="Event Horizon", ylab="Treatment Effect", title="Custom Title")
     assert isinstance(plot, ggplot)
