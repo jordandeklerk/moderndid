@@ -103,10 +103,10 @@ def cont_did(
 
     Parameters
     ----------
-    data : pd.DataFrame | pl.DataFrame
-        The input panel data containing outcome, treatment, time, unit ID,
-        and optionally covariates and weights. Accepts both pandas and polars DataFrames.
-        Should be in long format with each row representing a unit-time observation.
+    data : DataFrame
+        Panel data in long format. Accepts any object implementing the Arrow
+        PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
+        pyarrow Table, and cudf DataFrames.
     yname : str
         Name of the column containing the outcome variable.
     tname : str

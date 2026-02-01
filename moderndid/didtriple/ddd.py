@@ -71,10 +71,10 @@ def ddd(
 
     Parameters
     ----------
-    data : pd.DataFrame | pl.DataFrame
-        Data in long format. Accepts both pandas and polars DataFrames.
-        For panel data, should contain repeated observations of the same units.
-        For repeated cross-section data, different units may be observed in each period.
+    data : DataFrame
+        Data in long format. Accepts any object implementing the Arrow
+        PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
+        pyarrow Table, and cudf DataFrames.
     yname : str
         Name of outcome variable column.
     tname : str

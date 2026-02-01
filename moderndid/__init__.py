@@ -3,7 +3,7 @@
 
 from moderndid._version import __version__
 from moderndid.core import data
-from moderndid.core.data import load_ehec, load_engel, load_mpdta, load_nsw, simulate_cont_did_data
+from moderndid.core.data import load_ehec, load_engel, load_favara_imbs, load_mpdta, load_nsw, simulate_cont_did_data
 from moderndid.core.preprocess import DIDData, preprocess_did
 from moderndid.core.preprocess.utils import extract_vars_from_formula, parse_formula
 from moderndid.did.aggte import aggte
@@ -124,6 +124,7 @@ from moderndid.didinter import (
 )
 from moderndid.didinter import (
     DIDInterResult,
+    did_multiplegt,
 )
 from moderndid.didinter import (
     EffectsResult as DIDInterEffectsResult,
@@ -216,6 +217,7 @@ __all__ = [
     "DIDInterEffectsResult",
     "DIDInterPlacebosResult",
     "DIDInterResult",
+    "did_multiplegt",
     "agg_ddd",
     "ddd",
     "ddd_mp",
@@ -324,6 +326,7 @@ __all__ = [
     "lee_coefficient",
     "load_ehec",
     "load_engel",
+    "load_favara_imbs",
     "load_mpdta",
     "load_nsw",
     "lp_conditional_test",

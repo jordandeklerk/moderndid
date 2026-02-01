@@ -107,12 +107,70 @@ class ATEResult(NamedTuple):
         Lower confidence interval bound.
     ci_upper : float
         Upper confidence interval bound.
+    n_observations : float
+        Total observations contributing to the ATE.
+    n_switchers : float
+        Total switchers contributing to the ATE.
     """
 
     estimate: float
     std_error: float
     ci_lower: float
     ci_upper: float
+    n_observations: float = 0.0
+    n_switchers: float = 0.0
+
+
+class HeterogeneityResult(NamedTuple):
+    """Container for heterogeneous effects analysis.
+
+    Attributes
+    ----------
+    horizon : int
+        Effect horizon analyzed.
+    covariates : list[str]
+        Covariate names.
+    estimates : np.ndarray
+        Coefficient estimates for each covariate.
+    std_errors : np.ndarray
+        Standard errors for each coefficient.
+    t_stats : np.ndarray
+        T-statistics for each coefficient.
+    ci_lower : np.ndarray
+        Lower confidence interval bounds.
+    ci_upper : np.ndarray
+        Upper confidence interval bounds.
+    n_obs : int
+        Number of observations in the regression.
+    f_pvalue : float
+        P-value from joint F-test that all covariate coefficients are zero.
+    """
+
+    horizon: int
+    covariates: list[str]
+    estimates: np.ndarray
+    std_errors: np.ndarray
+    t_stats: np.ndarray
+    ci_lower: np.ndarray
+    ci_upper: np.ndarray
+    n_obs: int
+    f_pvalue: float
+
+    def to_dataframe(self) -> pl.DataFrame:
+        """Convert to Polars DataFrame."""
+        return pl.DataFrame(
+            {
+                "Horizon": [self.horizon] * len(self.covariates),
+                "Covariate": self.covariates,
+                "Estimate": self.estimates,
+                "Std. Error": self.std_errors,
+                "t-stat": self.t_stats,
+                "CI Lower": self.ci_lower,
+                "CI Upper": self.ci_upper,
+                "N": [self.n_obs] * len(self.covariates),
+                "F p-value": [self.f_pvalue] * len(self.covariates),
+            }
+        )
 
 
 class DIDInterResult(NamedTuple):
@@ -142,6 +200,8 @@ class DIDInterResult(NamedTuple):
         Influence function for effects.
     influence_placebos : ndarray, optional
         Influence function for placebos.
+    heterogeneity : list[HeterogeneityResult], optional
+        Heterogeneous effects analysis results for each horizon.
     estimation_params : dict
         Parameters used for estimation.
     """
@@ -157,4 +217,5 @@ class DIDInterResult(NamedTuple):
     placebo_joint_test: dict | None = None
     influence_effects: np.ndarray | None = None
     influence_placebos: np.ndarray | None = None
+    heterogeneity: list | None = None
     estimation_params: dict = {}

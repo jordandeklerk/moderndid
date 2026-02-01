@@ -175,8 +175,13 @@ class DIDInterConfig(ConfigMixin):
     trends_lin: bool = False
     continuous: int = 0
 
+    keep_bidirectional_switchers: bool = False
+    drop_missing_preswitch: bool = False
+
+    predict_het: tuple[list[str], list[int]] | None = None
+
     panel: bool = True
-    allow_unbalanced_panel: bool = False
+    allow_unbalanced_panel: bool = True
 
     time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
     time_periods_count: int = 0

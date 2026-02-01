@@ -25,6 +25,7 @@ methodology are found in :ref:`background`.
 
    didcont
    didtriple
+   didinter
    honestdid
 
 .. toctree::

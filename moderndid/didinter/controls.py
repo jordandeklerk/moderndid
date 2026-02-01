@@ -5,7 +5,17 @@ import polars as pl
 
 
 def compute_control_coefficients(df, config, horizon):
-    """Compute regression coefficients for control adjustment.
+    r"""Compute regression coefficients for covariate adjustment.
+
+    Estimates coefficients :math:`\boldsymbol{\theta}` for adjusting the
+    :math:`\text{DID}_{g,\ell}` estimator when covariates are included. The
+    adjustment uses never-switchers with the same baseline treatment to estimate
+    how covariates relate to outcome changes, then applies this relationship to
+    remove covariate-driven differences between switchers and non-switchers.
+
+    For each baseline treatment level :math:`d`, computes weighted least squares
+    regression of outcome differences on covariate differences among never-switchers
+    with :math:`D_{g,1} = d`.
 
     Parameters
     ----------
@@ -14,12 +24,13 @@ def compute_control_coefficients(df, config, horizon):
     config : DIDInterConfig
         Configuration object.
     horizon : int
-        Current horizon.
+        Current horizon :math:`\ell`.
 
     Returns
     -------
     dict
-        Mapping from baseline treatment level to dict with theta, inv_denom, useful.
+        Mapping from baseline treatment level to dict with theta (coefficients),
+        inv_denom (inverse of X'WX for variance), and useful (validity flag).
     """
     controls = config.controls
     gname = config.gname
@@ -106,7 +117,19 @@ def compute_control_coefficients(df, config, horizon):
 
 
 def apply_control_adjustment(df, config, horizon, coefficients):
-    """Apply control adjustment.
+    r"""Apply covariate adjustment to outcome differences.
+
+    Adjusts the outcome difference :math:`Y_{g,F_g-1+\ell} - Y_{g,F_g-1}` by
+    removing the component explained by covariate changes. For each group,
+    computes
+
+    .. math::
+
+        \widetilde{\Delta Y}_{g,\ell} = \Delta Y_{g,\ell} -
+        \boldsymbol{\theta}_{D_{g,1}}' \Delta \mathbf{X}_{g,\ell}
+
+    where :math:`\boldsymbol{\theta}_{D_{g,1}}` are the coefficients estimated
+    from never-switchers with the same baseline treatment.
 
     Parameters
     ----------
@@ -115,9 +138,10 @@ def apply_control_adjustment(df, config, horizon, coefficients):
     config : DIDInterConfig
         Configuration object.
     horizon : int
-        Current horizon.
+        Current horizon :math:`\ell`.
     coefficients : dict
-        Mapping from baseline treatment level to coefficient dict.
+        Mapping from baseline treatment level to coefficient dict from
+        :func:`compute_control_coefficients`.
 
     Returns
     -------
@@ -160,7 +184,12 @@ def apply_control_adjustment(df, config, horizon, coefficients):
 
 
 def compute_control_influence(df, config, horizon, coefficients, n_groups, n_switchers):
-    """Compute influence terms for control variance adjustment.
+    r"""Compute influence function adjustment for covariate-adjusted estimator.
+
+    Computes the additional influence function terms arising from estimating
+    the covariate adjustment coefficients :math:`\boldsymbol{\theta}`. The
+    influence function for the adjusted estimator accounts for uncertainty
+    in both the treatment effect estimate and the covariate coefficients.
 
     Parameters
     ----------
@@ -169,11 +198,11 @@ def compute_control_influence(df, config, horizon, coefficients, n_groups, n_swi
     config : DIDInterConfig
         Configuration object.
     horizon : int
-        Current horizon.
+        Current horizon :math:`\ell`.
     coefficients : dict
         Mapping from baseline treatment level to coefficient dict.
     n_groups : int
-        Total number of groups.
+        Total number of groups :math:`G`.
     n_switchers : int
         Number of switchers at this horizon.
 
@@ -200,7 +229,6 @@ def compute_control_influence(df, config, horizon, coefficients, n_groups, n_swi
         return df
 
     safe_n_control = pl.when(pl.col(n_control_col) == 0).then(1.0).otherwise(pl.col(n_control_col))
-
     baseline_levels = [d for d, c in coefficients.items() if c.get("useful", False)]
 
     for ctrl_idx, ctrl in enumerate(controls):
@@ -259,25 +287,31 @@ def compute_control_influence(df, config, horizon, coefficients, n_groups, n_swi
 
 
 def compute_variance_adjustment(df, config, horizon, coefficients, n_groups):
-    """Compute the variance adjustment term for controls.
+    r"""Compute variance adjustment for covariate-adjusted estimator.
+
+    Computes the second component of the influence function variance that
+    arises from estimating covariate adjustment coefficients. This accounts
+    for the additional uncertainty introduced by the two-step estimation
+    procedure (first estimating :math:`\boldsymbol{\theta}`, then applying
+    the adjustment).
 
     Parameters
     ----------
     df : pl.DataFrame
-        Data with control influence columns.
+        Data with control influence columns from :func:`compute_control_influence`.
     config : DIDInterConfig
         Configuration object.
     horizon : int
-        Current horizon.
+        Current horizon :math:`\ell`.
     coefficients : dict
         Mapping from baseline treatment level to coefficient dict.
     n_groups : int
-        Total number of groups.
+        Total number of groups :math:`G`.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with part2 variance adjustment column.
+        DataFrame with variance adjustment column for each group.
     """
     controls = config.controls
     gname = config.gname

@@ -89,8 +89,10 @@ def att_gt(
 
     Parameters
     ----------
-    data : pd.DataFrame | pl.DataFrame
-        The DataFrame containing the data. Accepts both pandas and polars DataFrames.
+    data : DataFrame
+        Panel data in long format. Accepts any object implementing the Arrow
+        PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
+        pyarrow Table, and cudf DataFrames.
     yname : str
         The name of the outcome variable.
     tname : str
