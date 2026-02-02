@@ -35,28 +35,26 @@ uv pip install moderndid[all]
 
 Extras are additive. They add functionality to the base install, so you always get the core estimators plus whatever extras you specify.
 
-| Extra | What you get | Additional dependencies |
-|-------|--------------|------------------------|
-| `didcont` | Base + continuous treatment DiD (`cont_did`) | formulaic |
-| `didhonest` | Base + sensitivity analysis (`honest_did`) | cvxpy, sympy |
-| `plots` | Base + visualization (`plot_gt`, `plot_event_study`, ...) | plotnine |
-| `numba` | Base + faster bootstrap inference | numba |
-| `all` | Everything | all of the above |
+- **`didcont`** — Base + continuous treatment DiD (`cont_did`)
+- **`didhonest`** — Base + sensitivity analysis (`honest_did`)
+- **`plots`** — Base + visualization (`plot_gt`, `plot_event_study`, ...)
+- **`numba`** — Base + faster bootstrap inference
+- **`all`** — Everything
 
 ```bash
-uv pip install moderndid[didcont]    # Base estimators + cont_did
-uv pip install moderndid[numba]      # Base estimators with faster bootstrap
+uv pip install moderndid[didcont]     # Base estimators + cont_did
+uv pip install moderndid[numba]       # Base estimators with faster bootstrap
 uv pip install moderndid[plots,numba] # Combine multiple extras
 ```
-
-> [!TIP]
-> **Recommended:** `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant speedups for bootstrap inference. Install minimal extras only if you have specific dependency constraints.
 
 Or install from source:
 
 ```bash
 uv pip install git+https://github.com/jordandeklerk/moderndid.git
 ```
+
+> [!TIP]
+> We recommend `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant speedups for bootstrap inference and the plotting extra `plotnine` provides batteries-included plotting out of the box. Install minimal extras only if you have specific dependency constraints.
 
 ## Features
 
