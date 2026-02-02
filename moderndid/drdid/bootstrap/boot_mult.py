@@ -2,6 +2,8 @@
 
 import numpy as np
 
+from moderndid.core.numba_utils import multiplier_bootstrap as _multiplier_bootstrap
+
 
 def mboot_did(
     linrep,
@@ -34,22 +36,9 @@ def mboot_did(
     .. [1] Mammen, E. (1993). "Bootstrap and wild bootstrap for high dimensional
            linear models". The Annals of Statistics, 21(1), 255-285.
     """
-    sqrt5 = np.sqrt(5)
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    pkappa = 0.5 * (1 + sqrt5) / sqrt5
-
-    n_units = len(linrep)
-    rng = np.random.default_rng(random_state)
-    bootstrap_estimates = np.zeros(n_bootstrap)
-
-    for b in range(n_bootstrap):
-        v = rng.binomial(1, pkappa, size=n_units)
-        v = np.where(v == 1, k1, k2)
-
-        bootstrap_estimates[b] = np.mean(linrep * v)
-
-    return bootstrap_estimates
+    linrep = np.asarray(linrep, dtype=np.float64).flatten()
+    result = _multiplier_bootstrap(linrep, n_bootstrap, random_state)
+    return result[:, 0]
 
 
 def mboot_twfep_did(

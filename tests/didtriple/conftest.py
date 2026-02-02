@@ -152,19 +152,6 @@ def cluster_data():
 
 
 @pytest.fixture
-def agg_inf_func_data():
-    """Aggregation data for numba tests."""
-    rng = np.random.default_rng(42)
-    n = 100
-    num_gt_cells = 20
-    inf_func_mat = rng.standard_normal((n, num_gt_cells))
-    whichones = np.array([0, 3, 7, 12, 15])
-    weights = rng.random(len(whichones))
-    weights = weights / weights.sum()
-    return inf_func_mat, whichones, weights
-
-
-@pytest.fixture
 def two_period_rcs_data():
     """Generate 2-period repeated cross-section data for DDD testing."""
     rng = np.random.default_rng(42)
