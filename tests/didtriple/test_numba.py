@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
+from moderndid.core.numba_utils import _aggregate_by_cluster_impl, _multiplier_bootstrap_impl
 from moderndid.didtriple import numba
-from moderndid.didtriple.numba import _aggregate_by_cluster_impl, _multiplier_bootstrap_impl
 
 
 def _multiplier_bootstrap_py(inf_func, biters, random_state):
@@ -39,11 +39,6 @@ def _aggregate_by_cluster_py(inf_func, cluster):
     return cluster_mean_if, n_clusters
 
 
-def _get_agg_inf_func_py(inf_func_mat, whichones, weights):
-    weights = np.asarray(weights).flatten()
-    return inf_func_mat[:, whichones] @ weights
-
-
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_multiplier_bootstrap_consistency(bootstrap_data):
     inf_func = bootstrap_data
@@ -64,16 +59,6 @@ def test_aggregate_by_cluster_consistency(cluster_data):
     result_py, n_clusters_py = _aggregate_by_cluster_py(inf_func, cluster)
 
     assert n_clusters_numba == n_clusters_py
-    np.testing.assert_allclose(result_numba, result_py, rtol=1e-10)
-
-
-@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
-def test_get_agg_inf_func_consistency(agg_inf_func_data):
-    inf_func_mat, whichones, weights = agg_inf_func_data
-
-    result_numba = numba.get_agg_inf_func(inf_func_mat, whichones, weights)
-    result_py = _get_agg_inf_func_py(inf_func_mat, whichones, weights)
-
     np.testing.assert_allclose(result_numba, result_py, rtol=1e-10)
 
 
@@ -100,24 +85,6 @@ def test_aggregate_by_cluster_string_clusters():
             found = True
             break
     assert found, "Cluster 'A' mean not found in results"
-
-
-@pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
-def test_get_agg_inf_func_with_boolean_mask():
-    rng = np.random.default_rng(42)
-    n = 50
-    num_gt_cells = 10
-    inf_func_mat = rng.standard_normal((n, num_gt_cells))
-    bool_mask = np.array([True, False, True, False, True, False, True, False, True, False])
-    weights = rng.random(5)
-    weights = weights / weights.sum()
-
-    result = numba.get_agg_inf_func(inf_func_mat, bool_mask, weights)
-
-    whichones = np.where(bool_mask)[0]
-    expected = _get_agg_inf_func_py(inf_func_mat, whichones, weights)
-
-    np.testing.assert_allclose(result, expected, rtol=1e-10)
 
 
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
@@ -152,17 +119,6 @@ def test_aggregate_by_cluster_single_cluster():
     assert n_clusters == 1
     expected = np.mean(inf_func, axis=0)
     np.testing.assert_allclose(result[0], expected)
-
-
-def test_get_agg_inf_func_single_weight():
-    rng = np.random.default_rng(42)
-    inf_func_mat = rng.standard_normal((50, 10))
-    whichones = np.array([5])
-    weights = np.array([1.0])
-
-    result = numba.get_agg_inf_func(inf_func_mat, whichones, weights)
-
-    np.testing.assert_allclose(result, inf_func_mat[:, 5])
 
 
 def test_multiplier_bootstrap_mammen_weights():

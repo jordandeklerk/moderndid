@@ -9,7 +9,6 @@ from scipy import stats
 
 from .agg_ddd_obj import DDDAggResult
 from .bootstrap.mboot_ddd import mboot_ddd
-from .numba import get_agg_inf_func
 
 
 def compute_agg_ddd(
@@ -213,7 +212,7 @@ def _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, biters, alpha, 
         simple_att = np.nan
 
     weights = pg_obs[keepers] / pg_obs[keepers].sum()
-    simple_if = get_agg_inf_func(inf_func_mat, keepers, weights)
+    simple_if = _get_agg_inf_func(inf_func_mat, keepers, weights)
 
     simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state)
 
@@ -262,7 +261,7 @@ def _compute_group(
         if len(whichg) > 0:
             selective_att_g[i] = np.mean(att[whichg])
             weights_g = pg_obs[whichg] / pg_obs[whichg].sum()
-            inf_func_g = get_agg_inf_func(inf_func_mat, whichg, weights_g)
+            inf_func_g = _get_agg_inf_func(inf_func_mat, whichg, weights_g)
             selective_se_g[i] = _compute_se(inf_func_g, n, boot, biters, alpha, random_state)
         else:
             selective_att_g[i] = np.nan
@@ -336,7 +335,7 @@ def _compute_calendar(
         if len(whicht) > 0:
             pgt = pg_obs[whicht] / pg_obs[whicht].sum()
             calendar_att_t[i] = np.sum(pgt * att[whicht])
-            inf_func_t = get_agg_inf_func(inf_func_mat, whicht, pgt)
+            inf_func_t = _get_agg_inf_func(inf_func_mat, whicht, pgt)
             calendar_se_t[i] = _compute_se(inf_func_t, n, boot, biters, alpha, random_state)
         else:
             calendar_att_t[i] = np.nan
@@ -424,7 +423,7 @@ def _compute_eventstudy(
         if len(whiche) > 0:
             pge = pg_obs[whiche] / pg_obs[whiche].sum()
             dynamic_att_e[i] = np.sum(att[whiche] * pge)
-            inf_func_e = get_agg_inf_func(inf_func_mat, whiche, pge)
+            inf_func_e = _get_agg_inf_func(inf_func_mat, whiche, pge)
             dynamic_se_e[i] = _compute_se(inf_func_e, n, boot, biters, alpha, random_state)
         else:
             dynamic_att_e[i] = np.nan
@@ -532,3 +531,9 @@ def _t2orig(t, orig_gtlist, uniquet):
         return orig_gtlist[idx]
     except IndexError:
         return 0
+
+
+def _get_agg_inf_func(inf_func_mat, whichones, weights):
+    """Combine influence functions with weights to get aggregated influence function."""
+    weights = np.asarray(weights, dtype=np.float64).flatten()
+    return inf_func_mat[:, whichones] @ weights
