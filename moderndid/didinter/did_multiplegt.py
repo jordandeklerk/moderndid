@@ -1,5 +1,7 @@
 """Dynamic ATT estimation for intertemporal treatment effects."""
 
+import warnings
+
 from moderndid.core.preprocess import PreprocessDataBuilder
 from moderndid.core.preprocess.config import DIDInterConfig
 
@@ -267,6 +269,27 @@ def did_multiplegt(
            *Review of Economics and Statistics*, 106(6), 1723-1736.
            https://doi.org/10.1162/rest_a_01414
     """
+    if continuous > 0 and not boot:
+        warnings.warn(
+            "When continuous > 0, variance estimators are not backed by proven asymptotic "
+            "normality. Bootstrap inference (boot=True) is recommended.",
+            UserWarning,
+        )
+
+    if trends_lin:
+        warnings.warn(
+            "When trends_lin=True, the average total effect (ATE) is not computed.",
+            UserWarning,
+        )
+
+    if keep_bidirectional_switchers:
+        warnings.warn(
+            "Keeping bidirectional switchers (units with both treatment increases and decreases) "
+            "may violate the no-sign-reversal property. The default behavior of dropping these "
+            "units is recommended.",
+            UserWarning,
+        )
+
     config = DIDInterConfig(
         yname=yname,
         tname=tname,

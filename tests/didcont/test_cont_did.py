@@ -353,19 +353,6 @@ def test_cont_did_unbalanced_panel_not_supported(contdid_data):
         )
 
 
-def test_cont_did_est_method_error(contdid_data):
-    with pytest.raises(ValueError, match="Covariates not supported"):
-        cont_did(
-            data=contdid_data,
-            yname="Y",
-            tname="period",
-            idname="id",
-            gname="G",
-            dname="D",
-            est_method="dr",
-        )
-
-
 @pytest.mark.filterwarnings("ignore:Simultaneous confidence band:UserWarning")
 @pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
 def test_cont_did_clustering_warning(contdid_data):

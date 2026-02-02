@@ -485,3 +485,24 @@ def test_bootstrap_reproducibility(simple_panel_data):
         result1.effects.std_errors,
         result2.effects.std_errors,
     )
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected_warning",
+    [
+        ({"continuous": 1}, "continuous.*Bootstrap inference"),
+        ({"trends_lin": True}, "trends_lin.*ATE.*not computed"),
+        ({"keep_bidirectional_switchers": True}, "bidirectional switchers"),
+    ],
+)
+def test_warnings_for_options(simple_panel_data, kwargs, expected_warning):
+    with pytest.warns(UserWarning, match=expected_warning):
+        did_multiplegt(
+            simple_panel_data,
+            yname="y",
+            idname="id",
+            tname="time",
+            dname="d",
+            effects=1,
+            **kwargs,
+        )

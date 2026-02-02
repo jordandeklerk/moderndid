@@ -30,8 +30,8 @@ def att_gt(
     xformla=None,
     weightsname=None,
     alp=0.05,
-    boot=False,
     cband=True,
+    boot=False,
     biters=1000,
     clustervars=None,
     est_method="dr",
@@ -112,12 +112,12 @@ def att_gt(
         observations have same weight.
     alp : float, default=0.05
         The significance level.
-    boot : bool, default=False
-        Whether or not to compute standard errors using the multiplier bootstrap.
-        If standard errors are clustered, then one must set boot=True.
     cband : bool, default=True
         Whether or not to compute a uniform confidence band that covers all of the
         group-time average treatment effects with fixed probability 1-alp.
+    boot : bool, default=False
+        Whether or not to compute standard errors using the multiplier bootstrap.
+        If standard errors are clustered, then one must set boot=True.
     biters : int, default=1000
         The number of bootstrap iterations to use. Only applicable if boot=True.
     clustervars : list[str], optional

@@ -58,7 +58,6 @@ def cont_did(
     boot_type="multiplier",
     biters=1000,
     clustervars=None,
-    est_method=None,
     base_period="varying",
     random_state=None,
     **kwargs,
@@ -180,9 +179,6 @@ def cont_did(
         ``boot=True``.
     clustervars : str, optional
         Variable(s) for clustering standard errors. Not currently supported.
-    est_method : str, optional
-        Estimation method for the outcome model. Must be None as covariates
-        are not currently supported.
     base_period : {"varying", "universal"}, default="varying"
         How to choose the base period for comparisons:
 
@@ -292,9 +288,6 @@ def cont_did(
     if clustervars is not None:
         warnings.warn("Two-way clustering not currently supported", UserWarning)
         clustervars = None
-
-    if est_method is not None:
-        raise ValueError("Covariates not supported yet, set est_method=None")
 
     if anticipation != 0:
         warnings.warn("Anticipation not fully tested yet, may not work correctly", UserWarning)
