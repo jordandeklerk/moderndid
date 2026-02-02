@@ -1,4 +1,3 @@
-# pylint: disable=superfluous-parens
 """Augmented inverse propensity weighted (AIPW) estimators for DR-DiD."""
 
 import warnings

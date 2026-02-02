@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for CCK uniform confidence bands."""
 
 import numpy as np

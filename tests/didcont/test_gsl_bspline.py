@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Test the gsl_bspline module."""
 
 import numpy as np

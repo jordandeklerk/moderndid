@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name, protected-access
 """B-spline basis functions."""
 
 import numpy as np

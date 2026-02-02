@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for second differences with bias sign restrictions."""
 
 import numpy as np

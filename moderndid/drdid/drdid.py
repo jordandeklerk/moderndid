@@ -256,7 +256,7 @@ def drdid(
         xformla=xformla,
         panel=panel,
         weightsname=weightsname,
-        bstrap=boot,
+        boot=boot,
         boot_type=boot_type,
         biters=n_boot,
         inf_func=inf_func,

@@ -48,7 +48,7 @@ def mpresult_to_polars(result: MPResult) -> pl.DataFrame:
     ci_lower = att - crit_val * se
     ci_upper = att + crit_val * se
 
-    treatment_status = np.array(["Pre" if t < g else "Post" for g, t in zip(groups, times)])
+    treatment_status = np.array(["Pre" if t < g else "Post" for g, t in zip(groups, times, strict=False)])
 
     return pl.DataFrame(
         {
@@ -101,10 +101,7 @@ def aggteresult_to_polars(result: AGGTEResult) -> pl.DataFrame:
     att = result.att_by_event
     se = result.se_by_event
 
-    if result.critical_values is not None:
-        crit_vals = result.critical_values
-    else:
-        crit_vals = np.full_like(se, 1.96)
+    crit_vals = result.critical_values if result.critical_values is not None else np.full_like(se, 1.96)
 
     ci_lower = att - crit_vals * se
     ci_upper = att + crit_vals * se
@@ -331,7 +328,7 @@ def dddmpresult_to_polars(result: DDDMultiPeriodResult | DDDMultiPeriodRCResult)
     ci_lower = result.lci
     ci_upper = result.uci
 
-    treatment_status = np.array(["Pre" if t < g else "Post" for g, t in zip(groups, times)])
+    treatment_status = np.array(["Pre" if t < g else "Post" for g, t in zip(groups, times, strict=False)])
 
     return pl.DataFrame(
         {

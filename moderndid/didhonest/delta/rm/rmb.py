@@ -213,9 +213,8 @@ def compute_conditional_cs_rmb(
     if bias_direction == "positive":
         if np.all(l_vec >= 0) and not np.all(l_vec == 0):
             accept[grid < 0] = 0.0
-    elif bias_direction == "negative":
-        if np.all(l_vec >= 0) and not np.all(l_vec == 0):
-            accept[grid > 0] = 0.0
+    elif bias_direction == "negative" and np.all(l_vec >= 0) and not np.all(l_vec == 0):
+        accept[grid > 0] = 0.0
 
     if return_length:
         grid_length = np.concatenate([[0], np.diff(grid) / 2, [0]])

@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for group-time average treatment effects."""
 
 import numpy as np

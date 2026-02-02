@@ -5,11 +5,11 @@ import warnings
 import numpy as np
 
 __all__ = [
-    "_validate_inputs",
-    "_validate_wols_arrays",
+    "_check_coefficients_validity",
     "_check_extreme_weights",
     "_check_wls_condition_number",
-    "_check_coefficients_validity",
+    "_validate_inputs",
+    "_validate_wols_arrays",
     "_weighted_sum",
 ]
 
@@ -33,7 +33,7 @@ def _validate_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=Fa
     first_array = next(iter(arrays_dict.values()))
     n_units = first_array.shape[0]
 
-    for name, arr in arrays_dict.items():
+    for _name, arr in arrays_dict.items():
         if arr.shape[0] != n_units:
             raise ValueError("All arrays must have the same number of observations.")
 
@@ -58,7 +58,7 @@ def _validate_inputs(arrays_dict, x, n_bootstrap, trim_level, check_intercept=Fa
 
 def _validate_wols_arrays(arrays_dict, x, function_name="wols"):
     """Validate input arrays for WOLS functions."""
-    all_arrays = list(arrays_dict.values()) + [x]
+    all_arrays = [*list(arrays_dict.values()), x]
     if not all(isinstance(arr, np.ndarray) for arr in all_arrays):
         raise TypeError("All inputs must be NumPy arrays.")
 
@@ -75,7 +75,7 @@ def _validate_wols_arrays(arrays_dict, x, function_name="wols"):
         raise ValueError("x must be a 2-dimensional array.")
 
     n_units = next(iter(arrays_dict.values())).shape[0]
-    for arr in list(arrays_dict.values()) + [x]:
+    for arr in [*list(arrays_dict.values()), x]:
         if arr.shape[0] != n_units:
             raise ValueError("All arrays must have the same number of observations (first dimension).")
 

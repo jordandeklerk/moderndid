@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for computing ATT-GT."""
 
 import numpy as np

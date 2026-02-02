@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for control variable adjustment functions."""
 
 import numpy as np

@@ -152,15 +152,9 @@ def compute_ucb(
     n = len(y)
     n_eval = len(main_result.h)
 
-    if ucb_h:
-        boot_h_stats = np.zeros(boot_num)
-    else:
-        boot_h_stats = None
+    boot_h_stats = np.zeros(boot_num) if ucb_h else None
 
-    if ucb_deriv:
-        boot_deriv_stats = np.zeros(boot_num)
-    else:
-        boot_deriv_stats = None
+    boot_deriv_stats = np.zeros(boot_num) if ucb_deriv else None
 
     if selection_result is not None:
         return compute_cck_ucb(

@@ -1,4 +1,3 @@
-# pylint: disable=function-redefined
 """Numba-accelerated operations for bootstrap and variance estimation."""
 
 import numpy as np
@@ -14,11 +13,11 @@ except ImportError:
 
 __all__ = [
     "HAS_NUMBA",
-    "compute_cluster_sums",
-    "multiplier_bootstrap",
     "aggregate_by_cluster",
-    "gather_bootstrap_indices",
+    "compute_cluster_sums",
     "compute_column_std",
+    "gather_bootstrap_indices",
+    "multiplier_bootstrap",
 ]
 
 

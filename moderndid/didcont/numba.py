@@ -1,4 +1,3 @@
-# pylint: disable=too-many-nested-blocks, function-redefined
 """Numba operations for continuous treatment DiD."""
 
 from itertools import combinations, product
@@ -19,12 +18,12 @@ except ImportError:
 __all__ = [
     "HAS_NUMBA",
     "check_full_rank_crossprod",
-    "compute_rsquared",
-    "matrix_sqrt_eigendecomp",
-    "create_nonzero_divisor",
     "compute_basis_dimension",
-    "tensor_prod_model_matrix",
+    "compute_rsquared",
+    "create_nonzero_divisor",
     "glp_model_matrix",
+    "matrix_sqrt_eigendecomp",
+    "tensor_prod_model_matrix",
 ]
 
 
@@ -208,14 +207,12 @@ def _glp_model_matrix_impl(bases_flat, n_obs, dims):
             interaction_cols = int(np.prod(selected_dims))
             interaction_result = np.empty((n_obs, interaction_cols))
 
-            interaction_col_idx = 0
-            for func_indices in product(*[range(dim) for dim in selected_dims]):
+            for interaction_col_idx, func_indices in enumerate(product(*[range(dim) for dim in selected_dims])):
                 interaction_col = np.ones(n_obs)
                 for basis_idx, func_idx in enumerate(func_indices):
                     interaction_col *= selected_bases[basis_idx][:, func_idx]
 
                 interaction_result[:, interaction_col_idx] = interaction_col
-                interaction_col_idx += 1
 
             result[:, col_idx : col_idx + interaction_cols] = interaction_result
             col_idx += interaction_cols

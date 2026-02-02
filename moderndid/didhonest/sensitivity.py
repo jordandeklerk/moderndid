@@ -141,7 +141,7 @@ def create_sensitivity_results_sm(
            ...:     gname="first.treat",
            ...:     idname="countyreal",
            ...:     est_method="dr",
-           ...:     bstrap=False
+           ...:     boot=False
            ...: )
            ...: es_result = aggte(gt_result, type="dynamic")
 
@@ -214,10 +214,7 @@ def create_sensitivity_results_sm(
     )
 
     if method is None:
-        if monotonicity_direction is None and bias_direction is None:
-            method = "FLCI"
-        else:
-            method = "C-F"
+        method = "FLCI" if monotonicity_direction is None and bias_direction is None else "C-F"
 
     if method == "FLCI" and (monotonicity_direction is not None or bias_direction is not None):
         warnings.warn(
@@ -390,7 +387,7 @@ def create_sensitivity_results_rm(
            ...:     gname="first.treat",
            ...:     idname="countyreal",
            ...:     est_method="dr",
-           ...:     bstrap=False
+           ...:     boot=False
            ...: )
            ...: es_result = aggte(gt_result, type="dynamic")
 
@@ -584,7 +581,7 @@ def construct_original_cs(
            ...:     gname="first.treat",
            ...:     idname="countyreal",
            ...:     est_method="dr",
-           ...:     bstrap=False
+           ...:     boot=False
            ...: )
            ...: es_result = aggte(gt_result, type="dynamic")
 

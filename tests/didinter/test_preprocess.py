@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for DIDInter preprocessing."""
 
 import numpy as np

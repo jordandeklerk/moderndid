@@ -1,4 +1,3 @@
-# pylint: disable=too-many-return-statements
 """Andrews-Roth-Pakes (ARP) confidence intervals with nuisance parameters."""
 
 import warnings
@@ -347,13 +346,7 @@ def lp_conditional_test(
     y_t_arp = y_t[rows_for_arp]
     sigma_arp = sigma[np.ix_(rows_for_arp, rows_for_arp)]
 
-    if x_t is not None:
-        if x_t.ndim == 1:
-            x_t_arp = x_t[rows_for_arp]
-        else:
-            x_t_arp = x_t[rows_for_arp]
-    else:
-        x_t_arp = None
+    x_t_arp = x_t[rows_for_arp] if x_t is not None else None
 
     # No nuisance parameter case
     if x_t_arp is None:
@@ -538,15 +531,9 @@ def lp_conditional_test(
         # Each constraint gives either an upper or lower bound depending on sign of rho
         maximand_or_minimand = numerator / denominator + v_b_y
 
-        if np.any(denominator > 0):
-            vlo = np.max(maximand_or_minimand[denominator > 0])
-        else:
-            vlo = -np.inf
+        vlo = np.max(maximand_or_minimand[denominator > 0]) if np.any(denominator > 0) else -np.inf
 
-        if np.any(denominator < 0):
-            vup = np.min(maximand_or_minimand[denominator < 0])
-        else:
-            vup = np.inf
+        vup = np.min(maximand_or_minimand[denominator < 0]) if np.any(denominator < 0) else np.inf
 
         if hybrid_flag == "LF":
             zlo = vlo / sigma_b
@@ -666,11 +653,8 @@ def compute_vlo_vup_dual(
         sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
         b = (sigma @ gamma_tilde) / sigma_gamma
 
-        if result.success:
-            # Use first-order approximation from LP solution
-            mid = _round_eps(float(result.x @ s_t)) / (1 - float(result.x @ b))
-        else:
-            mid = high_initial
+        # Use first-order approximation from LP solution if successful
+        mid = _round_eps(float(result.x @ s_t)) / (1 - float(result.x @ b)) if result.success else high_initial
 
         # Iterate shortcut method for a few steps
         while iters < switch_iters:
@@ -711,10 +695,7 @@ def compute_vlo_vup_dual(
         sigma_gamma = float(gamma_tilde.T @ sigma @ gamma_tilde)
         b = (sigma @ gamma_tilde) / sigma_gamma
 
-        if result.success:
-            mid = _round_eps(float(result.x @ s_t)) / (1 - float(result.x @ b))
-        else:
-            mid = low_initial
+        mid = _round_eps(float(result.x @ s_t)) / (1 - float(result.x @ b)) if result.success else low_initial
 
         while iters < switch_iters:
             result, is_solution = _check_if_solution(mid, tol_equality, s_t, gamma_tilde, sigma, w_t)
@@ -811,10 +792,7 @@ def compute_least_favorable_cv(
 
     if rows_for_arp is not None:
         if x_t is not None:
-            if x_t.ndim == 1:
-                x_t = x_t[rows_for_arp]
-            else:
-                x_t = x_t[rows_for_arp]
+            x_t = x_t[rows_for_arp]
         sigma = sigma[np.ix_(rows_for_arp, rows_for_arp)]
 
     if x_t is None:

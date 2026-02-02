@@ -118,6 +118,46 @@ Prefer clear, descriptive names over brevity. Code is read more often than it
 is written, and a few extra characters in a variable name can save significant
 time for future readers.
 
+Code quality tools
+==================
+
+We use `ruff <https://docs.astral.sh/ruff/>`__ for linting and formatting. Ruff
+is built in Rust and is very fast. It replaces flake8, pylint, black, and isort
+in a single tool:
+
+* **Linting**: Pyflakes, Pycodestyle, pydocstyle, bugbear, and more
+* **Formatting**: Consistent code style (replaces black)
+* **Import sorting**: Organized imports (replaces isort)
+
+Ruff is configured in ``pyproject.toml``. To check your code manually::
+
+   ruff check moderndid tests     # Lint
+   ruff format moderndid tests    # Format
+
+To auto-fix issues::
+
+   ruff check --fix moderndid tests
+
+Pre-commit hooks
+----------------
+
+We use `prek <https://github.com/j178/prek>`__ to manage pre-commit hooks. Prek
+is built in Rust and is very fast. Hooks run automatically before each commit
+to catch issues early.
+
+To install the hooks after cloning the repository::
+
+   prek install
+
+The hooks will then run automatically on ``git commit``. To run all hooks
+manually on all files::
+
+   prek run --all-files
+
+If you need to bypass hooks temporarily (not recommended)::
+
+   git commit --no-verify
+
 Test coverage
 =============
 

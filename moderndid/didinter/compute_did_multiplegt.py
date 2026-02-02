@@ -244,10 +244,7 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
     tname = config.tname
     yname = config.yname
 
-    if horizon_type == "effect":
-        horizons = np.arange(1, n_horizons + 1)
-    else:
-        horizons = -np.arange(1, n_horizons + 1)
+    horizons = np.arange(1, n_horizons + 1) if horizon_type == "effect" else -np.arange(1, n_horizons + 1)
 
     estimates = np.zeros(n_horizons)
     estimates_unnorm = np.zeros(n_horizons)
@@ -583,10 +580,7 @@ def _compute_ate(effects_results, z_crit, n_groups):
         return None
 
     total_n_sw = np.sum(n_sw[valid_mask])
-    if total_n_sw > 0:
-        weights = n_sw[valid_mask] / total_n_sw
-    else:
-        weights = np.ones(np.sum(valid_mask)) / np.sum(valid_mask)
+    weights = n_sw[valid_mask] / total_n_sw if total_n_sw > 0 else np.ones(np.sum(valid_mask)) / np.sum(valid_mask)
 
     weighted_mean_effect = np.sum(weights * estimates[valid_mask])
     delta_d_1 = delta_d_arr[0] if len(delta_d_arr) > 0 and delta_d_arr[0] != 0 else 1.0
@@ -596,7 +590,7 @@ def _compute_ate(effects_results, z_crit, n_groups):
     if inf_func_unnorm is not None and inf_func_unnorm.shape[1] == len(estimates):
         weighted_inf = np.zeros(inf_func_unnorm.shape[0])
         for i, (is_valid, wi) in enumerate(
-            zip(valid_mask, n_sw / total_n_sw if total_n_sw > 0 else np.ones(len(n_sw)) / len(n_sw))
+            zip(valid_mask, n_sw / total_n_sw if total_n_sw > 0 else np.ones(len(n_sw)) / len(n_sw), strict=False)
         ):
             if is_valid:
                 weighted_inf += wi * inf_func_unnorm[:, i]

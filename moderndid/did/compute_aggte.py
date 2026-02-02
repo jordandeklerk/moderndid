@@ -898,10 +898,7 @@ def _get_agg_inf_func(
     ndarray
         Aggregated influence function of shape (n_units,).
     """
-    if keepers.dtype == bool:
-        keep_idx = np.where(keepers)[0]
-    else:
-        keep_idx = keepers
+    keep_idx = np.where(keepers)[0] if keepers.dtype == bool else keepers
 
     influence_function_kept = influence_function[:, keep_idx]
     att_kept = att[keep_idx]

@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Test relative magnitudes with bias restriction."""
 
 import numpy as np

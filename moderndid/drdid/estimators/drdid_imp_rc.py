@@ -214,10 +214,7 @@ def _validate_and_preprocess_inputs(
     y = np.asarray(y).flatten()
     post = np.asarray(post).flatten()
 
-    if covariates is None:
-        covariates = np.ones((n_units, 1))
-    else:
-        covariates = np.asarray(covariates)
+    covariates = np.ones((n_units, 1)) if covariates is None else np.asarray(covariates)
 
     if i_weights is None:
         i_weights = np.ones(n_units)

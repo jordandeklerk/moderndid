@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for data-driven dimension selection."""
 
 import numpy as np

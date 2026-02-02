@@ -259,10 +259,7 @@ def create_interactions(
                     else:
                         col_names.append(f"{f_val}:{v_val}")
 
-        if not interactions:
-            matrix = np.zeros((n, 0))
-        else:
-            matrix = np.column_stack(interactions)
+        matrix = np.zeros((n, 0)) if not interactions else np.column_stack(interactions)
 
     elif is_numeric_interaction:
         k = len(factor_unique)

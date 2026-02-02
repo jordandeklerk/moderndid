@@ -295,10 +295,7 @@ def ddd_mp(
 
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
-        if cband and np.isfinite(boot_result.crit_val):
-            cv = boot_result.crit_val
-        else:
-            cv = stats.norm.ppf(1 - alpha / 2)
+        cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
     else:
         V = inf_func_trimmed.T @ inf_func_trimmed / n_units
         se_computed = np.sqrt(np.diag(V) / n_units)

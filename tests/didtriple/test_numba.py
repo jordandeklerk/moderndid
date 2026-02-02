@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name,protected-access
 """Tests for Numba optimizations in didtriple module."""
 
 import numpy as np

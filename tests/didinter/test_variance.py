@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for variance estimation functions."""
 
 import numpy as np

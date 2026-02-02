@@ -70,10 +70,7 @@ def mboot_ddd(
            arXiv preprint arXiv:2505.09942.
            https://arxiv.org/abs/2505.09942
     """
-    if inf_func.ndim == 1:
-        inf_func = inf_func.reshape(-1, 1)
-    else:
-        inf_func = np.atleast_2d(inf_func)
+    inf_func = inf_func.reshape(-1, 1) if inf_func.ndim == 1 else np.atleast_2d(inf_func)
 
     n, k = inf_func.shape
 

@@ -416,30 +416,9 @@ it, we estimate the covariate-conditional effect and then average over the
 distribution of covariates for units in group :math:`g`.
 
 
-Using ModernDiD
-===============
+What's Next
+===========
 
-ModernDiD implements the methods described above. The :mod:`~moderndid.did`
-module estimates group-time average treatment effects using the
-`Callaway and Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_ framework,
-with options for never-treated or not-yet-treated comparison groups, outcome
-regression, inverse probability weighting, or doubly robust estimation.
-
-Key parameters map directly to the concepts introduced here:
-
-- ``yname``: the outcome variable :math:`Y`
-- ``tname``: the time period variable :math:`t`
-- ``idname``: the unit identifier :math:`i`
-- ``gname``: the group (first treatment period) variable :math:`G`
-- ``xformla``: covariates :math:`X` for conditional parallel trends
-- ``control_group``: whether to use never-treated or not-yet-treated comparisons
-
-The ``att_gt`` function returns all group-time effects :math:`ATT(g,t)`.
-The ``aggte`` function aggregates these into event-study, group, calendar-time,
-or overall summaries as described above.
-
-For the classic two-period, two-group setting, the ``drdid`` function provides
-the `Sant'Anna and Zhao (2020) <https://arxiv.org/abs/1812.01723>`_ estimators
-directly without requiring the multi-period machinery.
-
-See the :doc:`/user_guide/index` for detailed examples.
+ModernDiD implements these staggered treatment timing methods along with extensions
+for continuous treatments, intertemporal effects, triple differences, and sensitivity analysis.
+To see these ideas in practice, continue to the :doc:`/user_guide/index`.

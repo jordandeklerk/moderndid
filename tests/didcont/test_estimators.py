@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for nonparametric instrumental variables estimators."""
 
 import numpy as np

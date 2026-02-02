@@ -352,7 +352,7 @@ def _weighted_combine_arrays(array_list, weights):
 
     result = np.zeros_like(arrays[0], dtype=np.float64)
 
-    for arr, w in zip(arrays, valid_weights):
+    for arr, w in zip(arrays, valid_weights, strict=False):
         result += w * arr
 
     return result

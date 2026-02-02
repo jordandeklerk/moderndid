@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for the did_multiplegt main entry point."""
 
 import numpy as np

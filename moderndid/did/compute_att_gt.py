@@ -129,10 +129,7 @@ def run_att_gt_estimation(
         pre_periods = np.where(
             data.config.time_periods < (data.config.treated_groups[group_idx] - data.config.anticipation)
         )[0]
-        if len(pre_periods) > 0:
-            pre_treatment_idx = pre_periods[-1]
-        else:
-            pre_treatment_idx = None
+        pre_treatment_idx = pre_periods[-1] if len(pre_periods) > 0 else None
     else:
         pre_treatment_idx = time_idx
 
@@ -234,10 +231,7 @@ def get_did_cohort_index(
                 data.config.time_periods[max(time_idx, pre_treatment_idx) + time_factor] + data.config.anticipation
             )
             future_cohorts = data.cohort_counts.filter(data.cohort_counts["cohort"] > relevant_period)
-            if len(future_cohorts) > 0:
-                min_control = future_cohorts["cohort"][0]
-            else:
-                min_control = np.inf
+            min_control = future_cohorts["cohort"][0] if len(future_cohorts) > 0 else np.inf
         else:  # nevertreated
             min_control = np.inf
 

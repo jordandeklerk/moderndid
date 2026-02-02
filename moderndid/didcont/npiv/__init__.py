@@ -11,26 +11,26 @@ from .results import NPIVResult
 from .selection import npiv_choose_j
 
 __all__ = [
-    # Main estimation functions
-    "npiv",
-    "npiv_est",
-    "compute_ucb",
-    "npiv_choose_j",
-    # Result types
-    "NPIVResult",
     # B-spline utilities
     "BSplineBasis",
-    "gsl_bs",
-    "predict_gsl_bs",
     # Spline basis construction
     "MultivariateBasis",
-    "prodspline",
-    "glp_model_matrix",
-    "tensor_prod_model_matrix",
-    # Complexity selection
-    "npiv_j",
-    "npiv_jhat_max",
+    # Result types
+    "NPIVResult",
     # Confidence bands
     "compute_cck_ucb",
     "compute_ucb",
+    "compute_ucb",
+    "glp_model_matrix",
+    "gsl_bs",
+    # Main estimation functions
+    "npiv",
+    "npiv_choose_j",
+    "npiv_est",
+    # Complexity selection
+    "npiv_j",
+    "npiv_jhat_max",
+    "predict_gsl_bs",
+    "prodspline",
+    "tensor_prod_model_matrix",
 ]

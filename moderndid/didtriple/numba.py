@@ -1,4 +1,3 @@
-# pylint: disable=function-redefined
 """Numba operations for DDD bootstrap and aggregation."""
 
 import numpy as np
@@ -14,9 +13,9 @@ except ImportError:
 
 __all__ = [
     "HAS_NUMBA",
-    "multiplier_bootstrap",
     "aggregate_by_cluster",
     "get_agg_inf_func",
+    "multiplier_bootstrap",
 ]
 
 

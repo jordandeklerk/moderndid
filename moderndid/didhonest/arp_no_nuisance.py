@@ -159,9 +159,8 @@ def compute_arp_ci(
         if hybrid_flag == "FLCI":
             if flci_halflength is None or flci_l is None:
                 raise ValueError("flci_halflength and flci_l must be specified for FLCI hybrid")
-        elif hybrid_flag == "LF":
-            if lf_cv is None:
-                raise ValueError("lf_cv must be specified for LF hybrid")
+        elif hybrid_flag == "LF" and lf_cv is None:
+            raise ValueError("lf_cv must be specified for LF hybrid")
 
     if grid_lb is None:
         post_period_vec = basis_vector(index=n_pre_periods + post_period_index, size=len(beta_hat)).flatten()
@@ -241,7 +240,7 @@ def test_in_identified_set(
     A,
     d,
     alpha,
-    **kwargs,  # pylint: disable=unused-argument
+    **kwargs,
 ):
     r"""Test whether :math:`\bar{\theta}` lies in the identified set using the ARP conditional approach.
 
@@ -355,7 +354,7 @@ def test_in_identified_set_flci_hybrid(
     hybrid_kappa,
     flci_halflength,
     flci_l,
-    **kwargs,  # pylint: disable=unused-argument
+    **kwargs,
 ):
     r"""Hybrid test combining fixed-length confidence interval (FLCI) constraints with ARP conditional test.
 
@@ -450,7 +449,7 @@ def test_in_identified_set_lf_hybrid(
     alpha,
     hybrid_kappa,
     lf_cv,
-    **kwargs,  # pylint: disable=unused-argument
+    **kwargs,
 ):
     r"""Conditional-least favorable (LF) hybrid test.
 

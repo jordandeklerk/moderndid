@@ -656,7 +656,7 @@ def _validate_ddd_inputs(data: pl.DataFrame, yname, tname, idname, gname, pname,
     required_cols = [yname, tname, idname, gname, pname]
     col_names = ["yname", "tname", "idname", "gname", "pname"]
 
-    for col, name in zip(required_cols, col_names):
+    for col, name in zip(required_cols, col_names, strict=False):
         if col not in data.columns:
             raise ValueError(f"{name}='{col}' not found in data.")
 

@@ -1,4 +1,3 @@
-# pylint: disable=no-self-use
 """Tests for spline utility functions."""
 
 import numpy as np

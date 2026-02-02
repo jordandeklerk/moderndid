@@ -44,7 +44,7 @@ def format_did_result(result: NamedTuple) -> str:
     values = [att_label_str, att_val_str, se_val_str, t_val_str, p_val_str, conf_int_val_str]
 
     col_padding = 2
-    w = [max(len(h), len(v)) for h, v in zip(headers, values)]
+    w = [max(len(h), len(v)) for h, v in zip(headers, values, strict=False)]
     w[0] += 1
     for i in range(1, len(w)):
         w[i] += col_padding

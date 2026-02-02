@@ -203,7 +203,7 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
         return df
 
     is_control = pl.col(never_col) == 1.0
-    group_vars = [tname, "d_sq"] + list(trends)
+    group_vars = [tname, "d_sq", *list(trends)]
 
     weight_sum_col = f"control_weight_sum_{h}"
     diff_sum_col = f"control_diff_sum_{h}"
@@ -273,7 +273,7 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
         return df
 
     is_union = (pl.col(switcher_flag) == 1) | (pl.col(never_col) == 1.0)
-    group_vars = [tname, "d_sq"] + list(trends)
+    group_vars = [tname, "d_sq", *list(trends)]
 
     union_flag = f"is_union_{h}"
     weight_sum_col = f"union_weight_sum_{h}"

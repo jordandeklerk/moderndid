@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Validation tests comparing Python drdid implementation with R DRDID package."""
 
 import json

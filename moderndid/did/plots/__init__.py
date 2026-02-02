@@ -10,6 +10,6 @@ from moderndid.did.plots.methods import add_plot_methods
 add_plot_methods()
 
 __all__ = [
-    "plot_gt",
     "plot_event_study",
+    "plot_gt",
 ]

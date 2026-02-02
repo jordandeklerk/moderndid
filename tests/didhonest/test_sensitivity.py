@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for sensitivity analysis functions."""
 
 import numpy as np

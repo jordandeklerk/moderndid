@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name, protected-access
 """Test Numba functions."""
 
 import timeit

@@ -59,10 +59,7 @@ def mboot(
     .. [1] Mammen, E. (1993). "Bootstrap and wild bootstrap for high dimensional
            linear models". The Annals of Statistics, 21(1), 255-285.
     """
-    if inf_func.ndim == 1:
-        inf_func = inf_func.reshape(-1, 1)
-    else:
-        inf_func = np.atleast_2d(inf_func)
+    inf_func = inf_func.reshape(-1, 1) if inf_func.ndim == 1 else np.atleast_2d(inf_func)
 
     n_obs, n_params = inf_func.shape
 

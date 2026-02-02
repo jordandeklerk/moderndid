@@ -1,4 +1,3 @@
-# pylint: disable=unused-argument
 """Aggregation functions for continuous treatment DiD."""
 
 import warnings
@@ -85,7 +84,7 @@ def aggregate_att_gt(
         pg_groups = safe_normalize(np.ones(len(glist_original), dtype=float))
         warnings.warn("No unit-level data available; using uniform group probabilities and omitting weight-IF terms.")
 
-    pg_map = dict(zip(glist_idx, pg_groups))
+    pg_map = dict(zip(glist_idx, pg_groups, strict=False))
     pg_att = np.array([pg_map.get(g, np.nan) for g in group_idx], dtype=float)
 
     if np.isfinite(max_event_time):
@@ -405,7 +404,7 @@ def overall_weights(att_gt_result, balance_event=None, min_event_time=-np.inf, m
         if np.any(is_this_g):
             g_weights[i] = pg_groups[i] / np.sum(is_this_g)
 
-    group_to_weight = dict(zip(glist_idx, g_weights))
+    group_to_weight = dict(zip(glist_idx, g_weights, strict=False))
     output_weights = np.array([group_to_weight.get(g, 0.0) for g in group_idx], dtype=float) * keepers_mask.astype(
         float
     )

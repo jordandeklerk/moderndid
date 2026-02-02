@@ -117,11 +117,7 @@ def detect_rcs_mode(data: DataFrame, tname: str, idname: str | None, panel: bool
             "Set panel=False to use the repeated cross-section estimator."
         )
 
-    if allow_unbalanced_panel:
-        if not is_balanced_panel(data, tname, idname):
-            return True
-
-    return False
+    return bool(allow_unbalanced_panel and not is_balanced_panel(data, tname, idname))
 
 
 def get_comparison_description(condition_subgroup: int) -> str:

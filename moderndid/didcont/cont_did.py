@@ -1,4 +1,3 @@
-# pylint: disable=unused-argument
 """Continuous treatment difference-in-differences estimation."""
 
 import warnings
@@ -295,9 +294,8 @@ def cont_did(
     if weightsname is not None:
         warnings.warn("Sampling weights not fully tested yet", UserWarning)
 
-    if dose_est_method == "cck":
-        if aggregation != "dose":
-            raise ValueError("Event study not supported with CCK estimator yet, use aggregation='dose'")
+    if dose_est_method == "cck" and aggregation != "dose":
+        raise ValueError("Event study not supported with CCK estimator yet, use aggregation='dose'")
 
     missing_cols = []
     required_cols = [yname, dname, tname, idname]
@@ -531,10 +529,7 @@ def cont_two_by_two_subset(
     main_base_period = g - anticipation - 1
 
     if base_period == "varying":
-        if tp < (g - anticipation):
-            base_period_val = tp - 1
-        else:
-            base_period_val = main_base_period
+        base_period_val = tp - 1 if tp < g - anticipation else main_base_period
     else:
         base_period_val = main_base_period
 

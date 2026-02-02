@@ -74,23 +74,31 @@ line-length = 120
 
 [tool.ruff.lint]
 select = [
-    "F",  # Pyflakes
-    "E",  # Pycodestyle
-    "W",  # Pycodestyle
-    "D",  # pydocstyle
+    "F",   # Pyflakes
+    "E",   # Pycodestyle
+    "W",   # Pycodestyle
+    "D",   # pydocstyle
     "NPY", # numpy specific rules
     "UP",  # pyupgrade
-    "I",  # isort
+    "I",   # isort
+    "B",   # bugbear
+    "BLE", # blind-except
+    "SIM", # simplify
+    "RUF", # ruff-specific
 ]
 ignore = [
-    "D203",  # one-blank-line-before-class
-    "D213",  # multi-line-summary-second-line
+    "D203",   # one-blank-line-before-class
+    "D213",   # multi-line-summary-second-line
+    "B024",   # abstract-base-class-without-abstract-method
+    "B028",   # no-explicit-stacklevel
+    "RUF002", # ambiguous-unicode-character-docstring (en-dash in refs is fine)
+    "RUF012", # mutable-class-default (common pattern)
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "src/moderndid/__init__.py" = ["I", "F401", "E402", "F403"]
 "src/moderndid/**/__init__.py" = ["I", "F401", "E402", "F403"]
-"tests/**/*" = ["D", "E402", "NPY002"]
+"tests/**/*" = ["D", "E402", "NPY002", "B905", "RUF005", "RUF015", "RUF043", "SIM102", "SIM108", "SIM114"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for relative magnitudes with monotonicity restriction."""
 
 import numpy as np

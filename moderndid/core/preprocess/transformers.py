@@ -98,10 +98,7 @@ class WeightNormalizer(BaseTransformer):
         """Transform data."""
         df = to_polars(data)
 
-        if config.weightsname is None:
-            weights = np.ones(len(df))
-        else:
-            weights = df[config.weightsname].to_numpy()
+        weights = np.ones(len(df)) if config.weightsname is None else df[config.weightsname].to_numpy()
 
         weights = weights / weights.mean()
         return df.with_columns(pl.Series(name=WEIGHTS_COLUMN, values=weights))
@@ -363,10 +360,7 @@ class ConfigUpdater:
             tlist = sorted(df[config.tname].unique().to_list())
             treat_list = sorted(df[config.treat_col].unique().to_list())
 
-            if config.idname:
-                n_units = df[config.idname].n_unique()
-            else:
-                n_units = len(df)
+            n_units = df[config.idname].n_unique() if config.idname else len(df)
 
             config.time_periods = np.array(tlist)
             config.time_periods_count = len(tlist)
@@ -380,10 +374,7 @@ class ConfigUpdater:
 
         glist_finite = [g for g in glist if np.isfinite(g)]
 
-        if config.idname:
-            n_units = df[config.idname].n_unique()
-        else:
-            n_units = len(df)
+        n_units = df[config.idname].n_unique() if config.idname else len(df)
 
         config.time_periods = np.array(tlist)
         config.time_periods_count = len(tlist)
@@ -514,9 +505,12 @@ class PrePostInvarianceChecker(BaseTransformer):
         if not pre_df[config.treat_col].equals(post_df[config.treat_col]):
             raise ValueError(f"Treatment indicator ('{config.treat_col}') must be time-invariant in panel data.")
 
-        if WEIGHTS_COLUMN in pre_df.columns and WEIGHTS_COLUMN in post_df.columns:
-            if not pre_df[WEIGHTS_COLUMN].equals(post_df[WEIGHTS_COLUMN]):
-                raise ValueError("Weights must be time-invariant in panel data.")
+        if (
+            WEIGHTS_COLUMN in pre_df.columns
+            and WEIGHTS_COLUMN in post_df.columns
+            and not pre_df[WEIGHTS_COLUMN].equals(post_df[WEIGHTS_COLUMN])
+        ):
+            raise ValueError("Weights must be time-invariant in panel data.")
 
         return df
 

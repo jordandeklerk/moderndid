@@ -1,4 +1,3 @@
-# pylint: disable=no-self-use
 """Tests for DiD preprocessing functions."""
 
 import numpy as np

@@ -377,10 +377,7 @@ def _ddd_rc_2period(
     else:
         covariates = np.ones((len(y), 1))
 
-    if weightsname is not None:
-        i_weights = data[weightsname].to_numpy()
-    else:
-        i_weights = None
+    i_weights = data[weightsname].to_numpy() if weightsname is not None else None
 
     return ddd_rc(
         y=y,

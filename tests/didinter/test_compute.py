@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for compute_did_multiplegt functions."""
 
 import numpy as np

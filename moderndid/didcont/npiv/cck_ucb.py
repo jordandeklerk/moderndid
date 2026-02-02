@@ -130,10 +130,7 @@ def compute_cck_ucb(
     p_x = x.shape[1]
     p_w = w.shape[1]
 
-    if x_eval is None:
-        x_eval = x.copy()
-    else:
-        x_eval = np.atleast_2d(x_eval)
+    x_eval = x.copy() if x_eval is None else np.atleast_2d(x_eval)
 
     j_x_segments = selection_result["j_x_seg"]
     k_w_segments = selection_result["k_w_seg"]
@@ -267,10 +264,7 @@ def compute_cck_ucb(
             z_boot_h = np.max(z_sup_boot_h, axis=1)
             z_star_h = _quantile_basis(z_boot_h, 1 - alpha)
 
-            if j_tilde is not None:
-                cv_h = z_star_h + max(0, np.log(np.log(j_tilde))) * theta_star
-            else:
-                cv_h = z_star_h
+            cv_h = z_star_h + max(0, np.log(np.log(j_tilde))) * theta_star if j_tilde is not None else z_star_h
 
         if ucb_deriv:
             z_boot_deriv = np.max(z_sup_boot_deriv, axis=1)

@@ -258,7 +258,7 @@ def format_aggte_result(result):
         upper_bounds = result.att_by_event + crit_vals * result.se_by_event
 
         for event_val, att_val, se_val, lb, ub in zip(
-            result.event_times, result.att_by_event, result.se_by_event, lower_bounds, upper_bounds
+            result.event_times, result.att_by_event, result.se_by_event, lower_bounds, upper_bounds, strict=False
         ):
             sig = (ub < 0) or (lb > 0)
             sig_marker = "*" if sig else " "

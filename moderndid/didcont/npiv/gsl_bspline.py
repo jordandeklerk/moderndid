@@ -103,10 +103,7 @@ def gsl_bs(
     if x_min >= x_max:
         raise ValueError("x_min must be less than x_max.")
 
-    if knots is None:
-        interior_knots = np.linspace(x_min, x_max, nbreak)
-    else:
-        interior_knots = knots.copy()
+    interior_knots = np.linspace(x_min, x_max, nbreak) if knots is None else knots.copy()
 
     ol = x < x_min
     or_ = x > x_max
@@ -224,10 +221,7 @@ def _compute_bspline_basis(
         ord_ = degree + 1
         derivs = np.arange(deriv, degree + 1)
 
-        if ord_ == deriv:
-            scalef = 1
-        else:
-            scalef = np.array([np.prod(np.arange(1, ord_ - deriv + 1))])
+        scalef = 1 if ord_ == deriv else np.array([np.prod(np.arange(1, ord_ - deriv + 1))])
 
         if np.any(ol) and (ord_ > deriv):
             k_pivot = x_min

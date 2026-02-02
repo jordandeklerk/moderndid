@@ -13,7 +13,7 @@ from .dgp import BaseDGP, SantAnnaZhaoDRDiD
 
 def test_abstract_methods():
     with pytest.raises(TypeError):
-        BaseDGP()  # pylint: disable=abstract-class-instantiated
+        BaseDGP()
 
 
 def test_santannazhaodrdid_init():

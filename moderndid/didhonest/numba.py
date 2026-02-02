@@ -1,4 +1,3 @@
-# pylint: disable=function-redefined
 """Numba operations."""
 
 import numpy as np
@@ -15,21 +14,21 @@ except ImportError:
 
 __all__ = [
     "HAS_NUMBA",
-    "lee_coefficient",
-    "selection_matrix",
-    "compute_bounds",
-    "find_rows_with_post_period_values",
-    "create_first_differences_matrix",
-    "create_second_differences_matrix",
-    "create_sdrm_constraint_matrix",
     "check_matrix_sparsity",
-    "quadratic_form",
-    "safe_divide",
     "clip_values",
-    "prepare_theta_grid_y_values",
+    "compute_bounds",
     "compute_hybrid_dbar",
     "create_bounds_second_difference_matrix",
+    "create_first_differences_matrix",
     "create_monotonicity_matrix",
+    "create_sdrm_constraint_matrix",
+    "create_second_differences_matrix",
+    "find_rows_with_post_period_values",
+    "lee_coefficient",
+    "prepare_theta_grid_y_values",
+    "quadratic_form",
+    "safe_divide",
+    "selection_matrix",
 ]
 
 
