@@ -92,7 +92,7 @@ def test_ddd_panel_bootstrap(ddd_data_with_covariates, boot_type):
         est_method="dr",
         boot=True,
         boot_type=boot_type,
-        nboot=50,
+        biters=50,
     )
 
     assert len(result.boots) == 50
@@ -148,7 +148,7 @@ def test_ddd_panel_reproducibility(ddd_data_with_covariates):
         covariates=covariates,
         est_method="dr",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 
@@ -159,7 +159,7 @@ def test_ddd_panel_reproducibility(ddd_data_with_covariates):
         covariates=covariates,
         est_method="dr",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 

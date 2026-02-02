@@ -49,45 +49,45 @@ from .utils import (
 )
 
 __all__ = [
-    "cont_did",
-    # Main NPIV estimation functions
-    "npiv",
-    "npiv_est",
-    "compute_ucb",
-    # Dimension selection functions
-    "npiv_choose_j",
-    # Result types
-    "NPIVResult",
-    "GroupTimeATTResult",
-    "PTEAggteResult",
-    "DoseResult",
     # B-spline and basis construction
     "BSplineBasis",
+    "DoseResult",
+    "GroupTimeATTResult",
     "MultivariateBasis",
-    "gsl_bs",
-    "predict_gsl_bs",
-    "prodspline",
-    # Utility functions
-    "is_full_rank",
-    "matrix_sqrt",
-    "avoid_zero_division",
-    "basis_dimension",
-    "_quantile_basis",
+    # Result types
+    "NPIVResult",
+    "PTEAggteResult",
     # Panel treatment effects setup
     "PTEParams",
-    "setup_pte",
-    "setup_pte_basic",
-    "setup_pte_cont",
-    # Processing functions
-    "process_att_gt",
-    "process_dose_gt",
-    "aggregate_att_gt",
-    "_summary_dose_result",
-    "overall_weights",
-    "multiplier_bootstrap",
     "_get_first_difference",
     "_get_group",
     "_make_balanced_panel",
+    "_quantile_basis",
+    "_summary_dose_result",
+    "aggregate_att_gt",
+    "avoid_zero_division",
+    "basis_dimension",
+    "compute_ucb",
+    "cont_did",
     "did_attgt",
+    "gsl_bs",
+    # Utility functions
+    "is_full_rank",
+    "matrix_sqrt",
+    "multiplier_bootstrap",
+    # Main NPIV estimation functions
+    "npiv",
+    # Dimension selection functions
+    "npiv_choose_j",
+    "npiv_est",
+    "overall_weights",
+    "predict_gsl_bs",
+    # Processing functions
+    "process_att_gt",
+    "process_dose_gt",
+    "prodspline",
     "pte_attgt",
+    "setup_pte",
+    "setup_pte_basic",
+    "setup_pte_cont",
 ]

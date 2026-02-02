@@ -9,6 +9,7 @@ from .base import BaseValidator
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .constants import BasePeriod, ControlGroup
 from .models import ValidationResult
+from .utils import extract_vars_from_formula
 
 
 class DataValidator(Protocol):
@@ -49,9 +50,8 @@ class ColumnValidator(BaseValidator):
                 if cluster_var not in data_columns:
                     errors.append(f"clustervars contains '{cluster_var}' which is not in the dataset")
 
-        if isinstance(config, ContDIDConfig) and config.dname:
-            if config.dname not in data_columns:
-                errors.append(f"dname = '{config.dname}' must be a column in the dataset")
+        if isinstance(config, ContDIDConfig) and config.dname and config.dname not in data_columns:
+            errors.append(f"dname = '{config.dname}' must be a column in the dataset")
 
         if not errors:
             if config.tname in data_columns and not _is_numeric_dtype(df[config.tname]):
@@ -60,13 +60,16 @@ class ColumnValidator(BaseValidator):
             if config.gname in data_columns and not _is_numeric_dtype(df[config.gname]):
                 errors.append(f"gname = '{config.gname}' is not numeric. Please convert it")
 
-            if config.idname and config.idname in data_columns:
-                if not _is_numeric_dtype(df[config.idname]):
-                    errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
+            if config.idname and config.idname in data_columns and not _is_numeric_dtype(df[config.idname]):
+                errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
 
-            if isinstance(config, ContDIDConfig) and config.dname and config.dname in data_columns:
-                if not _is_numeric_dtype(df[config.dname]):
-                    errors.append(f"dname = '{config.dname}' is not numeric. Please convert it")
+            if (
+                isinstance(config, ContDIDConfig)
+                and config.dname
+                and config.dname in data_columns
+                and not _is_numeric_dtype(df[config.dname])
+            ):
+                errors.append(f"dname = '{config.dname}' is not numeric. Please convert it")
 
         return self._create_result(errors, warnings)
 
@@ -101,10 +104,7 @@ class TreatmentValidator(BaseValidator):
         treated_first_mask = (pl.col(config.gname) > 0) & (pl.col(config.gname) <= first_period)
         treated_first_df = df.filter(treated_first_mask)
 
-        if config.idname:
-            n_first_period = treated_first_df[config.idname].n_unique()
-        else:
-            n_first_period = len(treated_first_df)
+        n_first_period = treated_first_df[config.idname].n_unique() if config.idname else len(treated_first_df)
 
         if n_first_period > 0:
             warnings.append(f"{n_first_period} units were already treated in the first period and will be dropped")
@@ -307,9 +307,8 @@ class PrePostColumnValidator(BaseValidator):
             if config.treat_col in data_columns and not _is_numeric_dtype(df[config.treat_col]):
                 errors.append(f"treat_col = '{config.treat_col}' is not numeric. Please convert it")
 
-            if config.idname and config.idname in data_columns:
-                if not _is_numeric_dtype(df[config.idname]):
-                    errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
+            if config.idname and config.idname in data_columns and not _is_numeric_dtype(df[config.idname]):
+                errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
 
         return self._create_result(errors, warnings)
 
@@ -411,10 +410,11 @@ class DIDInterColumnValidator(BaseValidator):
         if config.cluster and config.cluster not in data_columns:
             errors.append(f"cluster = '{config.cluster}' must be a column in the dataset")
 
-        if config.controls:
-            for ctrl in config.controls:
+        if config.xformla and config.xformla != "~1":
+            covariate_names = extract_vars_from_formula(config.xformla)
+            for ctrl in covariate_names:
                 if ctrl not in data_columns:
-                    errors.append(f"controls contains '{ctrl}' which is not in the dataset")
+                    errors.append(f"xformla contains '{ctrl}' which is not in the dataset")
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 

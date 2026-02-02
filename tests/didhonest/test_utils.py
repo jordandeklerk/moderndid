@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for utility functions."""
 
 import warnings

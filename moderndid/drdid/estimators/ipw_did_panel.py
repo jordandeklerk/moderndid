@@ -1,5 +1,4 @@
 """Inverse propensity weighted DiD estimator for panel data."""
-# pylint: disable=duplicate-code
 
 import warnings
 from typing import NamedTuple
@@ -189,10 +188,7 @@ def _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights):
 
     delta_y = np.asarray(y1).flatten() - np.asarray(y0).flatten()
 
-    if covariates is None:
-        covariates = np.ones((n_units, 1))
-    else:
-        covariates = np.asarray(covariates)
+    covariates = np.ones((n_units, 1)) if covariates is None else np.asarray(covariates)
 
     # Weights
     if i_weights is None:

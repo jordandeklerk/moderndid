@@ -8,6 +8,6 @@ from moderndid.plots import (
 )
 
 __all__ = [
-    "plot_gt",
     "plot_event_study",
+    "plot_gt",
 ]

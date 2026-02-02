@@ -224,10 +224,7 @@ def npiv_j(
     )
 
     # truncated value (second-largest j)
-    if len(j_x_segments_set) > 1:
-        j_seg_n = j_x_segments_set[-2]
-    else:
-        j_seg_n = j_seg
+    j_seg_n = j_x_segments_set[-2] if len(j_x_segments_set) > 1 else j_seg
 
     j_hat_n = basis_dimension(
         basis=basis,
@@ -376,10 +373,7 @@ def npiv_jhat_max(
 
     valid_idx = np.where((test_val[:-1] <= 10 * np.sqrt(n)) & (10 * np.sqrt(n) < test_val[1:]))[0]
 
-    if len(valid_idx) > 0:
-        L_hat_max = valid_idx[0] + 1
-    else:
-        L_hat_max = L_max
+    L_hat_max = valid_idx[0] + 1 if len(valid_idx) > 0 else L_max
 
     j_x_segments_set = j_x_segments_set[:L_hat_max]
     k_w_segments_set = k_w_segments_set[:L_hat_max]

@@ -72,7 +72,7 @@ during estimation.
        base_period: BasePeriod = BasePeriod.VARYING
        anticipation: int = 0
        alp: float = 0.05
-       bstrap: bool = False
+       boot: bool = False
        biters: int = 1000
        clustervars: list[str] = field(default_factory=list)
 
@@ -233,7 +233,7 @@ Inference Parameters
      - Description
    * - ``alp``
      - Significance level (default: 0.05)
-   * - ``bstrap``
+   * - ``boot``
      - Whether to use bootstrap inference
    * - ``biters``
      - Number of bootstrap iterations (default: 1000)

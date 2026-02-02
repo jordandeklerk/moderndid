@@ -1,4 +1,3 @@
-# pylint: disable=too-many-nested-blocks
 """Multivariate spline construction for continuous treatment DiD estimation."""
 
 import warnings
@@ -389,14 +388,11 @@ def _compute_basis_interaction(bases):
 
     result = np.empty((n_obs, total_interactions))
 
-    col_idx = 0
-
-    for indices in product(*[range(dim) for dim in dims]):
+    for col_idx, indices in enumerate(product(*[range(dim) for dim in dims])):
         interaction_col = np.ones(n_obs)
         for basis_idx, func_idx in enumerate(indices):
             interaction_col *= bases[basis_idx][:, func_idx]
 
         result[:, col_idx] = interaction_col
-        col_idx += 1
 
     return result

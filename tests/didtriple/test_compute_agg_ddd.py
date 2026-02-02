@@ -66,7 +66,7 @@ def test_compute_agg_ddd_with_bootstrap(mp_ddd_result):
         mp_ddd_result,
         aggregation_type="simple",
         boot=True,
-        nboot=50,
+        biters=50,
         cband=False,
         random_state=42,
     )

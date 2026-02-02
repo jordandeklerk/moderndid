@@ -4,8 +4,8 @@
 Introduction to Difference-in-Differences
 ************************************************
 
-Before diving into ModernDiD's API, it helps to understand the core concepts
-and terminology from the difference-in-differences literature.
+This page introduces the core concepts and terminology from the
+difference-in-differences literature.
 
 Difference-in-differences is a method for estimating causal effects when
 randomized experiments are not possible. The idea is to compare how outcomes
@@ -13,8 +13,8 @@ change over time for units that receive a treatment to how outcomes change for
 units that do not. If both groups would have evolved similarly absent treatment,
 then any divergence after treatment can be attributed to the treatment itself.
 
-We start with the canonical two-period case to build intuition, then extend to
-multiple periods and staggered adoption.
+We start with the canonical two-period case to build intuition, then extend
+to multiple periods and staggered treatment timing.
 
 
 Notation and Potential Outcomes
@@ -117,9 +117,8 @@ Two-Way Fixed Effects and Its Limitations
 =========================================
 
 Now consider a more general setting with :math:`\mathcal{T}` total time periods
-where different units become treated at different times. This is called
-staggered adoption or staggered treatment timing, and it is common in policy
-evaluation where reforms roll out to different regions over time.
+where different units become treated at different times. This is common in
+policy evaluation where reforms roll out to different regions over time.
 
 
 The TWFE Regression
@@ -414,5 +413,12 @@ same covariate values would have followed the same trend absent treatment.
 
 The target parameter remains the unconditional :math:`ATT(g, t)`. To recover
 it, we estimate the covariate-conditional effect and then average over the
-distribution of covariates for units in group :math:`g`. ModernDiD automates
-this through the ``xformla`` parameter.
+distribution of covariates for units in group :math:`g`.
+
+
+What's Next
+===========
+
+ModernDiD implements these staggered treatment timing methods along with extensions
+for continuous treatments, intertemporal effects, triple differences, and sensitivity analysis.
+To see these ideas in practice, continue to the :doc:`/user_guide/index`.

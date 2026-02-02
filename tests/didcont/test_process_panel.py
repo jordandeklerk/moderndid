@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name, unused-argument
 """Tests for processing panel data."""
 
 import numpy as np

@@ -323,7 +323,7 @@ def test_cont_did_covariates_not_supported(contdid_data):
             idname="id",
             gname="G",
             dname="D",
-            xformula="~x1+x2",
+            xformla="~x1+x2",
         )
 
 
@@ -350,19 +350,6 @@ def test_cont_did_unbalanced_panel_not_supported(contdid_data):
             gname="G",
             dname="D",
             allow_unbalanced_panel=True,
-        )
-
-
-def test_cont_did_est_method_error(contdid_data):
-    with pytest.raises(ValueError, match="Covariates not supported"):
-        cont_did(
-            data=contdid_data,
-            yname="Y",
-            tname="period",
-            idname="id",
-            gname="G",
-            dname="D",
-            est_method="dr",
         )
 
 

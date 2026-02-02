@@ -5,10 +5,10 @@ from .did_multiplegt import did_multiplegt
 from .results import ATEResult, DIDInterResult, EffectsResult, HeterogeneityResult, PlacebosResult
 
 __all__ = [
-    "did_multiplegt",
+    "ATEResult",
     "DIDInterResult",
     "EffectsResult",
-    "PlacebosResult",
-    "ATEResult",
     "HeterogeneityResult",
+    "PlacebosResult",
+    "did_multiplegt",
 ]

@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Validation tests comparing Python cont_did implementation with R contdid package."""
 
 import json

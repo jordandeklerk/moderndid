@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for utility functions for continuous treatment DiD."""
 
 import numpy as np

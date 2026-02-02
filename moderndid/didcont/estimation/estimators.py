@@ -1,4 +1,3 @@
-# pylint: disable=unused-argument
 """ATT(g,t) estimator functions for panel treatment effects."""
 
 import warnings
@@ -139,10 +138,7 @@ def pte_attgt(
 
     weights_aligned = weights_aligned / np.sum(weights_aligned)
 
-    if d_outcome:
-        y = y_post - y_pre
-    else:
-        y = y_post
+    y = y_post - y_pre if d_outcome else y_post
 
     n_control = np.sum(d == 0)
     if n_control > 0:

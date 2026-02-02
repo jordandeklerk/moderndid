@@ -1,4 +1,3 @@
-# pylint: disable=unused-argument
 """Functions for panel treatment effects."""
 
 import warnings
@@ -259,13 +258,12 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
 
     for tp in time_periods:
         for g in groups:
-            if base_period == "universal":
-                if tp == (g - 1 - anticipation):
-                    attgt_list.append({"att": 0, "group": g, "time_period": tp})
-                    extra_gt_returns.append({"extra_gt_returns": None, "group": g, "time_period": tp})
-                    inffunc[:, counter] = 0
-                    counter += 1
-                    continue
+            if base_period == "universal" and tp == (g - 1 - anticipation):
+                attgt_list.append({"att": 0, "group": g, "time_period": tp})
+                extra_gt_returns.append({"extra_gt_returns": None, "group": g, "time_period": tp})
+                inffunc[:, counter] = 0
+                counter += 1
+                continue
 
             gt_subset = subset_fun(data, g, tp, **kwargs)
             gt_data = gt_subset["gt_data"]
@@ -576,10 +574,7 @@ def setup_pte_cont(
     positive_doses = dose_values[dose_values > 0]
     knots = _choose_knots_quantile(positive_doses, num_knots)
     if dvals is None:
-        if len(positive_doses) > 0:
-            dvals = np.linspace(positive_doses.min(), positive_doses.max(), 50)
-        else:
-            dvals = np.array([])
+        dvals = np.linspace(positive_doses.min(), positive_doses.max(), 50) if len(positive_doses) > 0 else np.array([])
 
     pte_params_dict = pte_params._asdict()
     pte_params_dict.update(
@@ -640,9 +635,9 @@ def _build_pte_params(
         data = data.with_columns(pl.lit(0).alias("D"))
 
     if config.weightsname:
-        weight_map = dict(
-            zip(cont_did_data.time_invariant_data[config.idname].to_list(), cont_did_data.weights.tolist())
-        )
+        ids = cont_did_data.time_invariant_data[config.idname].to_list()
+        weights = cont_did_data.weights.tolist()
+        weight_map = dict(zip(ids, weights, strict=False))
         data = data.with_columns(pl.col(config.idname).replace_strict(weight_map, default=1.0).alias(".w"))
     else:
         data = data.with_columns(pl.lit(1.0).alias(".w"))
@@ -677,10 +672,7 @@ def _build_pte_params(
 
     dvals = config.dvals
     if dvals is None:
-        if len(positive_doses) > 0:
-            dvals = np.linspace(positive_doses.min(), positive_doses.max(), 50)
-        else:
-            dvals = np.array([])
+        dvals = np.linspace(positive_doses.min(), positive_doses.max(), 50) if len(positive_doses) > 0 else np.array([])
 
     control_group = config.control_group.value if hasattr(config.control_group, "value") else config.control_group
     boot_type = config.boot_type.value if hasattr(config.boot_type, "value") else config.boot_type

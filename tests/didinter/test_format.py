@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for result formatting functions."""
 
 import numpy as np

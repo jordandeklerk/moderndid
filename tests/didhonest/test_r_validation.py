@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Validation tests comparing Python didhonest implementation with R HonestDiD package."""
 
 import json

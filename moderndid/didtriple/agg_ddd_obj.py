@@ -115,10 +115,7 @@ def format_ddd_agg_result(result):
 
         cband = result.args.get("cband", False)
         boot = result.args.get("boot", False)
-        if boot and cband:
-            cb_type = f"[{conf_level}% Simult. Conf. Band]"
-        else:
-            cb_type = f"[{conf_level}% Pointwise Conf. Band]"
+        cb_type = f"[{conf_level}% Simult. Conf. Band]" if boot and cband else f"[{conf_level}% Pointwise Conf. Band]"
 
         lines.append(f"  {col1_header:>12}   Estimate   Std. Error   {cb_type}")
 
@@ -128,7 +125,7 @@ def format_ddd_agg_result(result):
         upper_bounds = result.att_egt + crit_val * result.se_egt
 
         for event_val, att_val, se_val, lb, ub in zip(
-            result.egt, result.att_egt, result.se_egt, lower_bounds, upper_bounds
+            result.egt, result.att_egt, result.se_egt, lower_bounds, upper_bounds, strict=False
         ):
             if np.isnan(se_val):
                 lines.append(f"  {event_val:>12.0f}   {att_val:8.4f}           NA              NA")

@@ -16,7 +16,7 @@ def agg_ddd(
     max_e=np.inf,
     dropna=False,
     boot=True,
-    nboot=999,
+    biters=1000,
     cband=True,
     alpha=0.05,
     random_state=None,
@@ -88,7 +88,7 @@ def agg_ddd(
         Whether to remove NA values before aggregation.
     boot : bool, default=True
         Whether to compute standard errors using the multiplier bootstrap.
-    nboot : int, default=999
+    biters : int, default=1000
         Number of bootstrap iterations.
     cband : bool, default=True
         Whether to compute uniform confidence bands. Requires boot=True.
@@ -211,7 +211,7 @@ def agg_ddd(
         max_e=max_e,
         dropna=dropna,
         boot=boot,
-        nboot=nboot,
+        biters=biters,
         cband=cband,
         alpha=alpha,
         random_state=random_state,

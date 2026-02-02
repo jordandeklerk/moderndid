@@ -335,7 +335,7 @@ def _add_quantile_constraints(X, quantiles, iw):
             quantile_features.append(q_indicator)
 
     if quantile_features:
-        X_extended = np.column_stack([X] + quantile_features)
+        X_extended = np.column_stack([X, *quantile_features])
         return X_extended
     return X
 

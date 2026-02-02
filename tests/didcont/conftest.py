@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Shared fixtures for tests."""
 
 import numpy as np
@@ -380,7 +379,7 @@ def att_gt_result(mpdta):
         gname="first.treat",
         idname="countyreal",
         est_method="reg",
-        bstrap=False,
+        boot=False,
     )
 
 
@@ -396,7 +395,7 @@ def att_gt_result_bootstrap(mpdta):
         gname="first.treat",
         idname="countyreal",
         est_method="reg",
-        bstrap=True,
+        boot=True,
         biters=20,
         cband=True,
     )

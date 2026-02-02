@@ -20,7 +20,7 @@ def compute_agg_ddd(
     max_e=np.inf,
     dropna=False,
     boot=True,
-    nboot=999,
+    biters=1000,
     cband=True,
     alpha=0.05,
     random_state=None,
@@ -53,7 +53,7 @@ def compute_agg_ddd(
         Whether to remove NA values before aggregation.
     boot : bool, default=True
         Whether to use bootstrap for standard errors.
-    nboot : int, default=999
+    biters : int, default=1000
         Number of bootstrap iterations.
     cband : bool, default=True
         Whether to compute uniform confidence bands.
@@ -87,7 +87,7 @@ def compute_agg_ddd(
     args = {
         "aggregation_type": aggregation_type,
         "boot": boot,
-        "nboot": nboot,
+        "biters": biters,
         "cband": cband,
         "alpha": alpha,
     }
@@ -138,7 +138,7 @@ def compute_agg_ddd(
     keepers = np.where((group <= t) & (t <= group + max_e))[0]
 
     if aggregation_type == "simple":
-        return _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, nboot, alpha, args, random_state)
+        return _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, biters, alpha, args, random_state)
 
     if aggregation_type == "group":
         return _compute_group(
@@ -154,7 +154,7 @@ def compute_agg_ddd(
             n,
             max_e,
             boot,
-            nboot,
+            biters,
             alpha,
             cband,
             args,
@@ -174,7 +174,7 @@ def compute_agg_ddd(
             orig_gtlist,
             uniquet,
             boot,
-            nboot,
+            biters,
             alpha,
             cband,
             args,
@@ -197,7 +197,7 @@ def compute_agg_ddd(
         orig_gtlist,
         uniquet,
         boot,
-        nboot,
+        biters,
         alpha,
         cband,
         args,
@@ -205,7 +205,7 @@ def compute_agg_ddd(
     )
 
 
-def _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, nboot, alpha, args, random_state):
+def _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, biters, alpha, args, random_state):
     """Compute simple ATT aggregation."""
     simple_att = np.sum(att[keepers] * pg_obs[keepers]) / pg_obs[keepers].sum()
 
@@ -215,7 +215,7 @@ def _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, nboot, alpha, a
     weights = pg_obs[keepers] / pg_obs[keepers].sum()
     simple_if = get_agg_inf_func(inf_func_mat, keepers, weights)
 
-    simple_se = _compute_se(simple_if, n, boot, nboot, alpha, random_state)
+    simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state)
 
     return DDDAggResult(
         overall_att=simple_att,
@@ -244,7 +244,7 @@ def _compute_group(
     n,
     max_e,
     boot,
-    nboot,
+    biters,
     alpha,
     cband,
     args,
@@ -263,7 +263,7 @@ def _compute_group(
             selective_att_g[i] = np.mean(att[whichg])
             weights_g = pg_obs[whichg] / pg_obs[whichg].sum()
             inf_func_g = get_agg_inf_func(inf_func_mat, whichg, weights_g)
-            selective_se_g[i] = _compute_se(inf_func_g, n, boot, nboot, alpha, random_state)
+            selective_se_g[i] = _compute_se(inf_func_g, n, boot, biters, alpha, random_state)
         else:
             selective_att_g[i] = np.nan
             inf_func_g = np.zeros(n)
@@ -275,7 +275,7 @@ def _compute_group(
 
     selective_crit_val = stats.norm.ppf(1 - alpha / 2)
     if cband and boot:
-        selective_crit_val = _get_crit_val(selective_inf_func_g, nboot, alpha, random_state)
+        selective_crit_val = _get_crit_val(selective_inf_func_g, biters, alpha, random_state)
 
     selective_att_g_clean = np.where(np.isnan(selective_att_g), 0, selective_att_g)
     selective_att = np.sum(selective_att_g_clean * pgg) / pgg.sum()
@@ -289,7 +289,7 @@ def _compute_group(
     )
 
     selective_inf_func = selective_inf_func_g @ weights_overall + wif @ selective_att_g_clean
-    selective_se = _compute_se(selective_inf_func, n, boot, nboot, alpha, random_state)
+    selective_se = _compute_se(selective_inf_func, n, boot, biters, alpha, random_state)
 
     return DDDAggResult(
         overall_att=selective_att,
@@ -316,7 +316,7 @@ def _compute_calendar(
     orig_gtlist,
     uniquet,
     boot,
-    nboot,
+    biters,
     alpha,
     cband,
     args,
@@ -337,7 +337,7 @@ def _compute_calendar(
             pgt = pg_obs[whicht] / pg_obs[whicht].sum()
             calendar_att_t[i] = np.sum(pgt * att[whicht])
             inf_func_t = get_agg_inf_func(inf_func_mat, whicht, pgt)
-            calendar_se_t[i] = _compute_se(inf_func_t, n, boot, nboot, alpha, random_state)
+            calendar_se_t[i] = _compute_se(inf_func_t, n, boot, biters, alpha, random_state)
         else:
             calendar_att_t[i] = np.nan
             inf_func_t = np.zeros(n)
@@ -349,13 +349,13 @@ def _compute_calendar(
 
     calendar_crit_val = stats.norm.ppf(1 - alpha / 2)
     if cband and boot:
-        calendar_crit_val = _get_crit_val(calendar_inf_func_t, nboot, alpha, random_state)
+        calendar_crit_val = _get_crit_val(calendar_inf_func_t, biters, alpha, random_state)
 
     calendar_att = np.nanmean(calendar_att_t)
 
     weights_calendar = np.ones(len(calendar_tlist)) / len(calendar_tlist)
     calendar_inf_func = calendar_inf_func_t @ weights_calendar
-    calendar_se = _compute_se(calendar_inf_func, n, boot, nboot, alpha, random_state)
+    calendar_se = _compute_se(calendar_inf_func, n, boot, biters, alpha, random_state)
 
     orig_calendar_tlist = np.array([_t2orig(tc, orig_gtlist, uniquet) for tc in calendar_tlist])
 
@@ -389,7 +389,7 @@ def _compute_eventstudy(
     orig_gtlist,
     uniquet,
     boot,
-    nboot,
+    biters,
     alpha,
     cband,
     args,
@@ -425,7 +425,7 @@ def _compute_eventstudy(
             pge = pg_obs[whiche] / pg_obs[whiche].sum()
             dynamic_att_e[i] = np.sum(att[whiche] * pge)
             inf_func_e = get_agg_inf_func(inf_func_mat, whiche, pge)
-            dynamic_se_e[i] = _compute_se(inf_func_e, n, boot, nboot, alpha, random_state)
+            dynamic_se_e[i] = _compute_se(inf_func_e, n, boot, biters, alpha, random_state)
         else:
             dynamic_att_e[i] = np.nan
             inf_func_e = np.zeros(n)
@@ -437,14 +437,14 @@ def _compute_eventstudy(
 
     dynamic_crit_val = stats.norm.ppf(1 - alpha / 2)
     if cband and boot and len(eseq) > 0:
-        dynamic_crit_val = _get_crit_val(dynamic_inf_func_e, nboot, alpha, random_state)
+        dynamic_crit_val = _get_crit_val(dynamic_inf_func_e, biters, alpha, random_state)
 
     epos = eseq >= 0
     if epos.any():
         dynamic_att = np.nanmean(dynamic_att_e[epos])
         n_pos = epos.sum()
         dynamic_inf_func = dynamic_inf_func_e[:, epos] @ (np.ones(n_pos) / n_pos)
-        dynamic_se = _compute_se(dynamic_inf_func, n, boot, nboot, alpha, random_state)
+        dynamic_se = _compute_se(dynamic_inf_func, n, boot, biters, alpha, random_state)
     else:
         dynamic_att = np.nan
         dynamic_se = np.nan
@@ -469,10 +469,10 @@ def _compute_eventstudy(
     )
 
 
-def _compute_se(inf_func, n, boot, nboot, alpha, random_state):
+def _compute_se(inf_func, n, boot, biters, alpha, random_state):
     """Compute standard error from influence function."""
     if boot:
-        boot_result = mboot_ddd(inf_func.reshape(-1, 1), nboot, alpha, random_state=random_state)
+        boot_result = mboot_ddd(inf_func.reshape(-1, 1), biters, alpha, random_state=random_state)
         se = boot_result.se[0]
     else:
         se = np.sqrt(np.mean(inf_func**2) / n)
@@ -483,9 +483,9 @@ def _compute_se(inf_func, n, boot, nboot, alpha, random_state):
     return se
 
 
-def _get_crit_val(inf_func_mat, nboot, alpha, random_state):
+def _get_crit_val(inf_func_mat, biters, alpha, random_state):
     """Get critical value for uniform confidence bands."""
-    boot_result = mboot_ddd(inf_func_mat, nboot, alpha, random_state=random_state)
+    boot_result = mboot_ddd(inf_func_mat, biters, alpha, random_state=random_state)
     crit_val = boot_result.crit_val
 
     pointwise_crit = stats.norm.ppf(1 - alpha / 2)

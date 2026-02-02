@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for Lepski method for optimal dimension selection."""
 
 import numpy as np

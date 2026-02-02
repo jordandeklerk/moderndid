@@ -29,7 +29,7 @@ def cluster_bootstrap(
     data,
     config,
     compute_func,
-    nboot=999,
+    biters=999,
     random_state=None,
 ):
     """Compute cluster bootstrap standard errors.
@@ -42,7 +42,7 @@ def cluster_bootstrap(
         Configuration object with estimation parameters.
     compute_func : callable
         Function to compute estimates on bootstrap sample.
-    nboot : int, default 999
+    biters : int, default 999
         Number of bootstrap iterations.
     random_state : int or None, default None
         Seed for random number generation.
@@ -68,11 +68,11 @@ def cluster_bootstrap(
     n_effects = config.effects
     n_placebos = config.placebo
 
-    bresults_effects = np.full((nboot, n_effects), np.nan)
-    bresults_ate = np.full(nboot, np.nan) if not config.trends_lin else None
-    bresults_placebos = np.full((nboot, n_placebos), np.nan) if n_placebos > 0 else None
+    bresults_effects = np.full((biters, n_effects), np.nan)
+    bresults_ate = np.full(biters, np.nan) if not config.trends_lin else None
+    bresults_placebos = np.full((biters, n_placebos), np.nan) if n_placebos > 0 else None
 
-    for b in range(nboot):
+    for b in range(biters):
         sampled_ids = rng.integers(0, n_clusters, size=n_clusters)
         row_indices = gather_bootstrap_indices(sampled_ids, cluster_starts, cluster_counts)
 

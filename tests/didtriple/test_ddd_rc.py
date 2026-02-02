@@ -103,7 +103,7 @@ def test_ddd_rc_bootstrap(two_period_rcs_data):
         est_method="dr",
         boot=True,
         boot_type="multiplier",
-        nboot=50,
+        biters=50,
     )
 
     assert len(result.boots) == 50
@@ -171,7 +171,7 @@ def test_ddd_rc_reproducibility(two_period_rcs_data):
         covariates=covariates,
         est_method="dr",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 
@@ -182,7 +182,7 @@ def test_ddd_rc_reproducibility(two_period_rcs_data):
         covariates=covariates,
         est_method="dr",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 
@@ -214,7 +214,7 @@ def test_ddd_rc_weighted_bootstrap(two_period_rcs_data):
         est_method="dr",
         boot=True,
         boot_type="weighted",
-        nboot=20,
+        biters=20,
         random_state=42,
     )
 
@@ -280,7 +280,7 @@ def test_ddd_rc_2period(two_period_rcs_data, xformla):
         est_method="dr",
         boot=False,
         boot_type="multiplier",
-        nboot=50,
+        biters=50,
         alpha=0.05,
         trim_level=0.995,
         random_state=None,
@@ -304,7 +304,7 @@ def test_ddd_rc_2period_invalid_periods():
             est_method="dr",
             boot=False,
             boot_type="multiplier",
-            nboot=50,
+            biters=50,
             alpha=0.05,
             trim_level=0.995,
             random_state=None,

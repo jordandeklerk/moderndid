@@ -21,7 +21,7 @@ def importorskip(modname: str, reason: str | None = None) -> Any:
     reason : str, optional
         this reason is shown as skip message when the module cannot be imported.
     """
-    __tracebackhide__ = True  # pylint: disable=unused-variable
+    __tracebackhide__ = True
     compile(modname, "", "eval")  # to catch syntaxerrors
 
     with warnings.catch_warnings():

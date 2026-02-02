@@ -233,15 +233,9 @@ def _norminvp_generalized(
     if np.isinf(l_std) and np.isinf(u_std):
         return mu + sd * stats.norm.ppf(p)
 
-    if not np.isinf(l_std):
-        p_l = stats.norm.cdf(l_std)
-    else:
-        p_l = 0
+    p_l = stats.norm.cdf(l_std) if not np.isinf(l_std) else 0
 
-    if not np.isinf(u_std):
-        p_u = stats.norm.cdf(u_std)
-    else:
-        p_u = 1
+    p_u = stats.norm.cdf(u_std) if not np.isinf(u_std) else 1
 
     p_trunc = p_l + p * (p_u - p_l)
 

@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for inverse propensity weighted DiD."""
 
 import numpy as np

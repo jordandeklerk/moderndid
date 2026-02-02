@@ -1,4 +1,3 @@
-# pylint: disable=no-self-use
 """Test the dataframe conversion functions."""
 
 import numpy as np

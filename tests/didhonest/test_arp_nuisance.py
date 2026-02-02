@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for ARP nuisance CI."""
 
 import numpy as np

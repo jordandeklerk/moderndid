@@ -10,7 +10,7 @@ def test_mboot_ddd_basic():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
 
-    result = mboot_ddd(inf_func, nboot=10, random_state=42)
+    result = mboot_ddd(inf_func, biters=10, random_state=42)
 
     assert result.bres.shape == (10, 1)
     assert len(result.se) == 1
@@ -22,8 +22,8 @@ def test_mboot_ddd_reproducibility():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
 
-    result1 = mboot_ddd(inf_func, nboot=10, random_state=123)
-    result2 = mboot_ddd(inf_func, nboot=10, random_state=123)
+    result1 = mboot_ddd(inf_func, biters=10, random_state=123)
+    result2 = mboot_ddd(inf_func, biters=10, random_state=123)
 
     assert np.allclose(result1.bres, result2.bres)
     assert np.allclose(result1.se, result2.se)
@@ -34,8 +34,8 @@ def test_mboot_ddd_different_seeds():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
 
-    result1 = mboot_ddd(inf_func, nboot=10, random_state=123)
-    result2 = mboot_ddd(inf_func, nboot=10, random_state=456)
+    result1 = mboot_ddd(inf_func, biters=10, random_state=123)
+    result2 = mboot_ddd(inf_func, biters=10, random_state=456)
 
     assert not np.allclose(result1.bres, result2.bres)
 
@@ -50,7 +50,7 @@ def test_wboot_ddd_basic(ddd_data_no_covariates):
         covariates=covariates,
         i_weights=np.ones(len(ddd_data.y1)),
         est_method="reg",
-        nboot=3,
+        biters=3,
         random_state=42,
     )
 
@@ -69,7 +69,7 @@ def test_wboot_ddd_reproducibility(ddd_data_no_covariates):
         covariates=covariates,
         i_weights=np.ones(len(ddd_data.y1)),
         est_method="reg",
-        nboot=3,
+        biters=3,
         random_state=123,
     )
 
@@ -80,7 +80,7 @@ def test_wboot_ddd_reproducibility(ddd_data_no_covariates):
         covariates=covariates,
         i_weights=np.ones(len(ddd_data.y1)),
         est_method="reg",
-        nboot=3,
+        biters=3,
         random_state=123,
     )
 
@@ -91,7 +91,7 @@ def test_mboot_ddd_2d_influence_function():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal((100, 5))
 
-    result = mboot_ddd(inf_func, nboot=20, random_state=42)
+    result = mboot_ddd(inf_func, biters=20, random_state=42)
 
     assert result.bres.shape == (20, 5)
     assert len(result.se) == 5
@@ -104,7 +104,7 @@ def test_mboot_ddd_clustered():
     inf_func = rng.standard_normal(100)
     cluster = np.repeat(np.arange(20), 5)
 
-    result = mboot_ddd(inf_func, nboot=20, cluster=cluster, random_state=42)
+    result = mboot_ddd(inf_func, biters=20, cluster=cluster, random_state=42)
 
     assert result.bres.shape == (20, 1)
     assert np.isfinite(result.se[0])
@@ -116,7 +116,7 @@ def test_mboot_ddd_clustered_2d():
     inf_func = rng.standard_normal((100, 3))
     cluster = np.repeat(np.arange(20), 5)
 
-    result = mboot_ddd(inf_func, nboot=20, cluster=cluster, random_state=42)
+    result = mboot_ddd(inf_func, biters=20, cluster=cluster, random_state=42)
 
     assert result.bres.shape == (20, 3)
     assert len(result.se) == 3
@@ -128,8 +128,8 @@ def test_mboot_ddd_clustered_vs_unclustered():
     inf_func = rng.standard_normal(100)
     cluster = np.repeat(np.arange(20), 5)
 
-    result_unclustered = mboot_ddd(inf_func, nboot=50, random_state=42)
-    result_clustered = mboot_ddd(inf_func, nboot=50, cluster=cluster, random_state=42)
+    result_unclustered = mboot_ddd(inf_func, biters=50, random_state=42)
+    result_clustered = mboot_ddd(inf_func, biters=50, cluster=cluster, random_state=42)
 
     assert result_unclustered.se[0] != result_clustered.se[0]
 
@@ -139,7 +139,7 @@ def test_mboot_ddd_alpha_levels(alpha):
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
 
-    result = mboot_ddd(inf_func, nboot=50, alpha=alpha, random_state=42)
+    result = mboot_ddd(inf_func, biters=50, alpha=alpha, random_state=42)
 
     assert np.isfinite(result.crit_val)
     assert result.crit_val > 0
@@ -149,18 +149,18 @@ def test_mboot_ddd_alpha_ordering():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
 
-    result_01 = mboot_ddd(inf_func, nboot=100, alpha=0.01, random_state=42)
-    result_05 = mboot_ddd(inf_func, nboot=100, alpha=0.05, random_state=42)
-    result_10 = mboot_ddd(inf_func, nboot=100, alpha=0.10, random_state=42)
+    result_01 = mboot_ddd(inf_func, biters=100, alpha=0.01, random_state=42)
+    result_05 = mboot_ddd(inf_func, biters=100, alpha=0.05, random_state=42)
+    result_10 = mboot_ddd(inf_func, biters=100, alpha=0.10, random_state=42)
 
     assert result_01.crit_val > result_05.crit_val > result_10.crit_val
 
 
-def test_mboot_ddd_larger_nboot():
+def test_mboot_ddd_larger_biters():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(200)
 
-    result = mboot_ddd(inf_func, nboot=500, random_state=42)
+    result = mboot_ddd(inf_func, biters=500, random_state=42)
 
     assert result.bres.shape == (500, 1)
     assert np.isfinite(result.se[0])
@@ -177,7 +177,7 @@ def test_wboot_ddd_all_methods(ddd_data_no_covariates, est_method):
         covariates=covariates,
         i_weights=np.ones(len(ddd_data.y1)),
         est_method=est_method,
-        nboot=5,
+        biters=5,
         random_state=42,
     )
 
@@ -198,7 +198,7 @@ def test_wboot_ddd_with_weights(ddd_data_no_covariates):
         covariates=covariates,
         i_weights=weights,
         est_method="reg",
-        nboot=5,
+        biters=5,
         random_state=42,
     )
 
@@ -217,7 +217,7 @@ def test_wboot_ddd_with_covariates(ddd_data_with_covariates):
         covariates=covariates,
         i_weights=np.ones(len(ddd_data.y1)),
         est_method="dr",
-        nboot=5,
+        biters=5,
         random_state=42,
     )
 
@@ -236,7 +236,7 @@ def test_wboot_ddd_different_seeds(ddd_data_no_covariates):
         covariates=covariates,
         i_weights=np.ones(len(ddd_data.y1)),
         est_method="reg",
-        nboot=5,
+        biters=5,
         random_state=123,
     )
 
@@ -247,7 +247,7 @@ def test_wboot_ddd_different_seeds(ddd_data_no_covariates):
         covariates=covariates,
         i_weights=np.ones(len(ddd_data.y1)),
         est_method="reg",
-        nboot=5,
+        biters=5,
         random_state=456,
     )
 

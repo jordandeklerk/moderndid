@@ -1,4 +1,3 @@
-# pylint: disable=too-many-return-statements
 """Utility functions for spline computations."""
 
 import warnings

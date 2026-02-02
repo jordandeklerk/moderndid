@@ -295,7 +295,7 @@ def maximize_bias(
         }
     except (ValueError, RuntimeError, cp.error.SolverError) as e:
         return {
-            "status": f"error: {str(e)}",
+            "status": f"error: {e!s}",
             "value": np.inf,
             "optimal_x": None,
             "optimal_w": None,
@@ -405,7 +405,7 @@ def minimize_variance(
 
         raise ValueError("Error in optimization for minimum variance")
     except (ValueError, RuntimeError, cp.error.SolverError) as e:
-        raise ValueError(f"Error in optimization for minimum variance: {str(e)}") from e
+        raise ValueError(f"Error in optimization for minimum variance: {e!s}") from e
 
 
 def affine_variance(

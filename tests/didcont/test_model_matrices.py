@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Test model matrices for continuous treatment DiD."""
 
 import numpy as np

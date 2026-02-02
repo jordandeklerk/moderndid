@@ -474,10 +474,7 @@ def _compute_inf_func_rc(
         XpX_pre = (wols_x_pre.T @ sub_covariates) / n_sub
 
         cond_pre = np.linalg.cond(XpX_pre)
-        if cond_pre > 1 / np.finfo(float).eps:
-            XpX_inv_pre = np.linalg.pinv(XpX_pre)
-        else:
-            XpX_inv_pre = np.linalg.inv(XpX_pre)
+        XpX_inv_pre = np.linalg.pinv(XpX_pre) if cond_pre > 1 / np.finfo(float).eps else np.linalg.inv(XpX_pre)
         asy_lin_rep_ols_pre = wols_eX_pre @ XpX_inv_pre
 
         weights_ols_post = sub_weights * pa_comp * sub_post
@@ -486,10 +483,7 @@ def _compute_inf_func_rc(
         XpX_post = (wols_x_post.T @ sub_covariates) / n_sub
 
         cond_post = np.linalg.cond(XpX_post)
-        if cond_post > 1 / np.finfo(float).eps:
-            XpX_inv_post = np.linalg.pinv(XpX_post)
-        else:
-            XpX_inv_post = np.linalg.inv(XpX_post)
+        XpX_inv_post = np.linalg.pinv(XpX_post) if cond_post > 1 / np.finfo(float).eps else np.linalg.inv(XpX_post)
         asy_lin_rep_ols_post = wols_eX_post @ XpX_inv_post
 
         inf_control_1 = reg_att_control - w_reg_control * eta_reg_control
@@ -534,10 +528,7 @@ def _compute_inf_func_rc(
         gram_pre = (weighted_x_pre.T @ sub_covariates) / n_sub
 
         cond_pre = np.linalg.cond(gram_pre)
-        if cond_pre > 1 / np.finfo(float).eps:
-            gram_inv_pre = np.linalg.pinv(gram_pre)
-        else:
-            gram_inv_pre = np.linalg.inv(gram_pre)
+        gram_inv_pre = np.linalg.pinv(gram_pre) if cond_pre > 1 / np.finfo(float).eps else np.linalg.inv(gram_pre)
         asy_lin_rep_ols_pre = weighted_resid_x_pre @ gram_inv_pre
 
         weights_ols_post = sub_weights * pa_comp * sub_post
@@ -546,10 +537,7 @@ def _compute_inf_func_rc(
         gram_post = (weighted_x_post.T @ sub_covariates) / n_sub
 
         cond_post = np.linalg.cond(gram_post)
-        if cond_post > 1 / np.finfo(float).eps:
-            gram_inv_post = np.linalg.pinv(gram_post)
-        else:
-            gram_inv_post = np.linalg.inv(gram_post)
+        gram_inv_post = np.linalg.pinv(gram_post) if cond_post > 1 / np.finfo(float).eps else np.linalg.inv(gram_post)
         asy_lin_rep_ols_post = weighted_resid_x_post @ gram_inv_post
 
         weights_ols_pre_treat = sub_weights * pa4 * (1 - sub_post)

@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 import pytest
 
 from tests.helpers import importorskip
@@ -21,7 +20,7 @@ def att_gt_baseline_result(mpdta_data):
         tname="year",
         idname="countyreal",
         gname="first.treat",
-        bstrap=False,
+        boot=False,
     )
 
 

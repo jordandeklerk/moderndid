@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for sensitivity analysis using the approach of Rambachan and Roth (2021)."""
 
 import numpy as np

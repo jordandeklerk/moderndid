@@ -138,7 +138,7 @@ def honest_did(
            ...:     gname="first.treat",
            ...:     idname="countyreal",
            ...:     est_method="dr",
-           ...:     bstrap=False
+           ...:     boot=False
            ...: )
            ...: es_result = aggte(gt_result, type="dynamic")
            ...: print(es_result)

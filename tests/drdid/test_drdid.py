@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for doubly robust DiD."""
 
 import numpy as np

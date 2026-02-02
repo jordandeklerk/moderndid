@@ -238,10 +238,7 @@ def _stack_data(y0, y1, d, covariates, i_weights, n_units):
     """Stack panel data for TWFE regression."""
     x = None
     if covariates is not None:
-        if covariates.ndim == 1:
-            x = np.concatenate([covariates, covariates])
-        else:
-            x = np.vstack([covariates, covariates])
+        x = np.concatenate([covariates, covariates]) if covariates.ndim == 1 else np.vstack([covariates, covariates])
 
     post = np.concatenate([np.zeros(n_units), np.ones(n_units)])
     d_stacked = np.concatenate([d, d])

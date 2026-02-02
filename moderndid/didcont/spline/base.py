@@ -1,4 +1,3 @@
-# pylint: disable=too-many-public-methods
 """Base class for spline basis functions."""
 
 import warnings
@@ -87,12 +86,10 @@ class SplineBase(ABC):
 
         if internal_knots is not None and len(internal_knots) > 0:
             sorted_internal = np.sort(internal_knots)
-            if self._boundary_knots is not None:
-                if (
-                    np.min(sorted_internal) <= self._boundary_knots[0]
-                    or np.max(sorted_internal) >= self._boundary_knots[1]
-                ):
-                    raise ValueError("Internal knots must be strictly inside boundary knots.")
+            if self._boundary_knots is not None and (
+                np.min(sorted_internal) <= self._boundary_knots[0] or np.max(sorted_internal) >= self._boundary_knots[1]
+            ):
+                raise ValueError("Internal knots must be strictly inside boundary knots.")
 
             combined = np.concatenate([sorted_internal, self._boundary_knots])
             self._has_internal_multiplicity = has_duplicates(combined)

@@ -188,10 +188,7 @@ def format_mp_result(result):
     bootstrap = result.estimation_params.get("bootstrap", False)
     uniform_bands = result.estimation_params.get("uniform_bands", False)
 
-    if bootstrap and uniform_bands:
-        band_type = "Simult."
-    else:
-        band_type = "Pointwise"
+    band_type = "Simult." if bootstrap and uniform_bands else "Pointwise"
 
     band_text = f"[{conf_level}% {band_type} Conf. Band]"
 

@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Shared fixtures for didtriple tests."""
 
 import numpy as np

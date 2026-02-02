@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for the did_multiplegt main entry point."""
 
 import numpy as np
@@ -190,11 +189,11 @@ def test_with_controls(panel_with_controls):
         tname="time",
         dname="d",
         effects=2,
-        controls=["x1", "x2"],
+        xformla="~ x1 + x2",
     )
 
     assert isinstance(result, DIDInterResult)
-    assert result.estimation_params.get("controls") == ["x1", "x2"]
+    assert result.estimation_params.get("xformla") == "~ x1 + x2"
 
 
 @pytest.mark.parametrize(
@@ -439,7 +438,7 @@ def test_bootstrap_standard_errors(simple_panel_data, placebo):
         effects=2,
         placebo=placebo,
         boot=True,
-        nboot=50,
+        biters=50,
         random_state=42,
     )
 
@@ -459,7 +458,7 @@ def test_bootstrap_with_cluster(favara_imbs_data):
         effects=2,
         cluster="state_n",
         boot=True,
-        nboot=50,
+        biters=50,
         random_state=42,
     )
 
@@ -475,7 +474,7 @@ def test_bootstrap_reproducibility(simple_panel_data):
         "dname": "d",
         "effects": 2,
         "boot": True,
-        "nboot": 50,
+        "biters": 50,
         "random_state": 123,
     }
     result1 = did_multiplegt(simple_panel_data, **kwargs)
@@ -485,3 +484,24 @@ def test_bootstrap_reproducibility(simple_panel_data):
         result1.effects.std_errors,
         result2.effects.std_errors,
     )
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected_warning",
+    [
+        ({"continuous": 1}, "continuous.*Bootstrap inference"),
+        ({"trends_lin": True}, "trends_lin.*ATE.*not computed"),
+        ({"keep_bidirectional_switchers": True}, "bidirectional switchers"),
+    ],
+)
+def test_warnings_for_options(simple_panel_data, kwargs, expected_warning):
+    with pytest.warns(UserWarning, match=expected_warning):
+        did_multiplegt(
+            simple_panel_data,
+            yname="y",
+            idname="id",
+            tname="time",
+            dname="d",
+            effects=1,
+            **kwargs,
+        )

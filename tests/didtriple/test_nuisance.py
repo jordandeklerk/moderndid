@@ -1,4 +1,3 @@
-# pylint: disable=no-self-use
 """Tests for DDD nuisance parameter estimation."""
 
 import pytest

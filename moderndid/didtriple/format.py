@@ -38,10 +38,7 @@ def format_ddd_panel_result(result):
     boot = args.get("boot", False)
     cband = args.get("cband", False)
 
-    if boot and cband:
-        cb_type = "Simult."
-    else:
-        cb_type = "Ptwise."
+    cb_type = "Simult." if boot and cband else "Ptwise."
 
     lines.append("")
     lines.append(f"       ATT      Std. Error    Pr(>|t|)    [{conf_level}% {cb_type} Conf. Int.]")
@@ -109,8 +106,8 @@ def format_ddd_panel_result(result):
 
     if boot:
         boot_type = args.get("boot_type", "multiplier")
-        nboot = args.get("nboot", 999)
-        lines.append(f" Bootstrap standard errors ({boot_type}, {nboot} reps)")
+        biters = args.get("biters", 1000)
+        lines.append(f" Bootstrap standard errors ({boot_type}, {biters} reps)")
     else:
         lines.append(" Analytical standard errors")
 
@@ -185,10 +182,7 @@ def format_ddd_mp_result(result):
     lines.append(f" Qualification variable: {pname}")
 
     control_group = args.get("control_group", "nevertreated")
-    if control_group == "nevertreated":
-        control_type = "Never Treated"
-    else:
-        control_type = "Not Yet Treated (GMM-based)"
+    control_type = "Never Treated" if control_group == "nevertreated" else "Not Yet Treated (GMM-based)"
     lines.append(f" Control group: {control_type}")
 
     base_period = args.get("base_period", "universal")
@@ -273,10 +267,7 @@ def format_ddd_rc_result(result):
     conf_level = int((1 - alpha) * 100)
     boot = args.get("boot", False)
 
-    if boot:
-        cb_type = "Ptwise."
-    else:
-        cb_type = "Ptwise."
+    cb_type = "Ptwise."
 
     lines.append("")
     lines.append(f"       ATT      Std. Error    Pr(>|t|)    [{conf_level}% {cb_type} Conf. Int.]")
@@ -344,8 +335,8 @@ def format_ddd_rc_result(result):
 
     if boot:
         boot_type = args.get("boot_type", "multiplier")
-        nboot = args.get("nboot", 999)
-        lines.append(f" Bootstrap standard errors ({boot_type}, {nboot} reps)")
+        biters = args.get("biters", 1000)
+        lines.append(f" Bootstrap standard errors ({boot_type}, {biters} reps)")
     else:
         lines.append(" Analytical standard errors")
 
@@ -408,10 +399,7 @@ def format_ddd_mp_rc_result(result):
     lines.append(f" Qualification variable: {pname}")
 
     control_group = args.get("control_group", "nevertreated")
-    if control_group == "nevertreated":
-        control_type = "Never Treated"
-    else:
-        control_type = "Not Yet Treated (GMM-based)"
+    control_type = "Never Treated" if control_group == "nevertreated" else "Not Yet Treated (GMM-based)"
     lines.append(f" Control group: {control_type}")
 
     base_period = args.get("base_period", "universal")

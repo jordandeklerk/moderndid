@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for didinter result containers."""
 
 import numpy as np

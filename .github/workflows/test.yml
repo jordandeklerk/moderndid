@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install tox tox-gh-actions pylint
+          pip install tox tox-gh-actions
       - name: Run core test suite
         run: SKIP=no-commit-to-branch tox
         env:

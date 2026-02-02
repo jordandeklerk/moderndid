@@ -3,6 +3,8 @@
 import numpy as np
 import polars as pl
 
+from moderndid.core.preprocess.utils import get_covariate_names_from_formula
+
 
 def compute_control_coefficients(df, config, horizon):
     r"""Compute regression coefficients for covariate adjustment.
@@ -32,11 +34,10 @@ def compute_control_coefficients(df, config, horizon):
         Mapping from baseline treatment level to dict with theta (coefficients),
         inv_denom (inverse of X'WX for variance), and useful (validity flag).
     """
-    controls = config.controls
-    gname = config.gname
-
+    controls = get_covariate_names_from_formula(config.xformla)
     if not controls:
         return {}
+    gname = config.gname
 
     diff_y_col = f"diff_y_{horizon}"
     results = {}
@@ -148,12 +149,11 @@ def apply_control_adjustment(df, config, horizon, coefficients):
     pl.DataFrame
         DataFrame with adjusted outcome differences.
     """
-    gname = config.gname
-    controls = config.controls
-
+    controls = get_covariate_names_from_formula(config.xformla)
     if not controls or not coefficients:
         return df
 
+    gname = config.gname
     diff_y_col = f"diff_y_{horizon}"
 
     for ctrl in controls:
@@ -211,13 +211,12 @@ def compute_control_influence(df, config, horizon, coefficients, n_groups, n_swi
     pl.DataFrame
         DataFrame with control influence columns added.
     """
-    controls = config.controls
-    gname = config.gname
-    tname = config.tname
-
+    controls = get_covariate_names_from_formula(config.xformla)
     if not controls or not coefficients or n_switchers == 0:
         return df
 
+    gname = config.gname
+    tname = config.tname
     dist_col = (
         f"dist_to_switch_{horizon}" if f"dist_to_switch_{horizon}" in df.columns else f"distance_to_switch_{horizon}"
     )
@@ -313,12 +312,11 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_groups):
     pl.DataFrame
         DataFrame with variance adjustment column for each group.
     """
-    controls = config.controls
-    gname = config.gname
-
+    controls = get_covariate_names_from_formula(config.xformla)
     if not controls or not coefficients:
         return df
 
+    gname = config.gname
     part2_col = f"part2_{horizon}"
     df = df.with_columns(pl.lit(0.0).alias(part2_col))
 

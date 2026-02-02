@@ -8,7 +8,8 @@ ModernDiD estimates causal effects using difference-in-differences methods.
 The :func:`~moderndid.did.att_gt` function computes group-time average treatment
 effects for staggered adoption designs. Other estimators handle continuous
 treatments (:func:`~moderndid.didcont.cont_did`), triple differences
-(:func:`~moderndid.didtriple.ddd`), and sensitivity analysis
+(:func:`~moderndid.didtriple.ddd`), intertemporal treatments
+(:func:`~moderndid.didinter.did_multiplegt`), and sensitivity analysis
 (:mod:`~moderndid.didhonest`). Most estimators support both panel data and
 repeated cross-sections.
 
@@ -59,7 +60,7 @@ of Polars regardless of your input format.
 Core Arguments
 --------------
 
-Every estimator requires four variables that identify the panel structure.
+Every estimator requires three variables that identify the panel structure.
 
 ``yname``
     The outcome variable you want to measure treatment effects on
@@ -73,12 +74,13 @@ Every estimator requires four variables that identify the panel structure.
     The unit identifier that tracks the same unit across time periods
     (such as state, county, or individual ID).
 
-``gname``
-    The group variable indicating when each unit was first treated.
-    Units that never receive treatment should have a value of 0.
+The treatment variable differs by estimator. Most estimators use ``gname``
+to indicate when each unit was first treated (units never treated should
+have a value of 0). The intertemporal estimator uses ``dname`` instead,
+since treatment can change multiple times over the panel.
 
 Options like ``xformla`` for covariates, ``est_method`` for estimation
-approach, and ``bstrap`` for bootstrap inference work similarly across
+approach, and ``boot`` for bootstrap inference work similarly across
 all estimators. Once you learn one, the others follow the same patterns.
 
 
@@ -216,15 +218,15 @@ errors and simultaneous confidence bands.
         tname="year",
         idname="unit_id",
         gname="first_treated",
-        bstrap=True,       # Use bootstrap (default)
+        boot=True,         # Use bootstrap (default is False)
         biters=1000,       # Number of bootstrap iterations (default)
         cband=True,        # Compute uniform confidence bands (default)
         alp=0.05,          # Significance level (default)
         random_state=42,   # For reproducibility
     )
 
-Setting ``bstrap=False`` uses analytical standard errors instead of
-bootstrap, which is faster but does not support clustering or uniform
+Setting ``boot=False`` (the default) uses analytical standard errors instead
+of bootstrap, which is faster but does not support clustering or uniform
 confidence bands. Setting ``cband=False`` computes pointwise confidence
 intervals instead of simultaneous bands.
 
@@ -244,7 +246,7 @@ Standard errors can be clustered at one or two levels using the
         idname="unit_id",
         gname="first_treated",
         clustervars=["unit_id"],
-        bstrap=True,
+        boot=True,
     )
 
 You can cluster on at most two variables, and one of them must be the
@@ -407,6 +409,7 @@ options for dose-response estimation.
         anticipation=0,
         base_period="varying",
         alp=0.05,
+        boot=True,
         biters=1000,
         clustervars=["unit_id"],
         # Method-specific options
@@ -415,7 +418,7 @@ options for dose-response estimation.
         dose_est_method="parametric",  # parametric or cck
     )
 
-All the inference options (``alp``, ``biters``, ``clustervars``, ``cband``)
+All the inference options (``alp``, ``boot``, ``biters``, ``clustervars``, ``cband``)
 work the same way across estimators. The shared estimation options
 (``control_group``, ``anticipation``, ``base_period``) also behave
 identically.
@@ -445,6 +448,57 @@ the same pattern as the other estimators.
 The triple DiD estimator adds ``pname`` to specify the partition variable
 that identifies eligible units within treatment groups. All other core
 arguments work the same as ``att_gt``.
+
+
+Intertemporal DiD
+^^^^^^^^^^^^^^^^^
+
+The :func:`~moderndid.didinter.did_multiplegt` function handles settings with
+non-binary, non-absorbing (time-varying) treatments where lagged treatments
+may affect outcomes. This implements the
+`de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
+framework.
+
+.. code-block:: python
+
+    result = did.did_multiplegt(
+        data=data,
+        yname="outcome",
+        tname="year",
+        idname="unit_id",
+        dname="treatment",            # treatment variable (can vary over time)
+        effects=5,                    # number of post-treatment periods
+        placebo=3,                    # number of placebo periods
+        cluster="unit_id",
+    )
+
+Unlike ``att_gt`` which requires a ``gname`` (first treatment period), the
+intertemporal estimator uses ``dname`` directly since treatment can change
+multiple times. The estimator compares units whose treatment changes
+("switchers") to units with the same baseline treatment that have not yet
+switched.
+
+.. code-block:: python
+
+    result = did.did_multiplegt(
+        data=data,
+        yname="outcome",
+        tname="year",
+        idname="unit_id",
+        dname="treatment",
+        # Effect options
+        effects=5,                    # dynamic effects for 5 periods
+        placebo=3,                    # 3 placebo periods
+        normalized=True,              # normalize by cumulative treatment change
+        # Inference options
+        cluster="unit_id",
+        ci_level=95.0,
+        boot=True,                    # bootstrap inference
+        biters=1000,
+        # Control options
+        controls=["covariate1", "covariate2"],
+        trends_lin=True,              # unit-specific linear trends
+    )
 
 
 Sensitivity Analysis

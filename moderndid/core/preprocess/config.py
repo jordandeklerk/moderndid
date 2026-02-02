@@ -43,7 +43,7 @@ class BasePreprocessConfig(ConfigMixin):
     allow_unbalanced_panel: bool = True
     weightsname: str | None = None
     alp: float = DEFAULT_ALPHA
-    bstrap: bool = False
+    boot: bool = False
     cband: bool = False
     biters: int = DEFAULT_BOOTSTRAP_ITERATIONS
     clustervars: list[str] = field(default_factory=list)
@@ -82,7 +82,7 @@ class TwoPeriodDIDConfig(ConfigMixin):
     panel: bool = True
     weightsname: str | None = None
     alp: float = DEFAULT_ALPHA
-    bstrap: bool = False
+    boot: bool = False
     boot_type: BootstrapType = BootstrapType.WEIGHTED
     biters: int = DEFAULT_BOOTSTRAP_ITERATIONS
     est_method: str = "imp"
@@ -156,6 +156,7 @@ class DIDInterConfig(ConfigMixin):
     cluster: str | None = None
     weightsname: str | None = None
     controls: list[str] | None = None
+    xformla: str = "~1"
     trends_nonparam: list[str] | None = None
 
     effects: int = 1
@@ -181,7 +182,7 @@ class DIDInterConfig(ConfigMixin):
     predict_het: tuple[list[str], list[int]] | None = None
 
     boot: bool = False
-    nboot: int = 999
+    biters: int = 1000
     random_state: int | None = None
 
     panel: bool = True

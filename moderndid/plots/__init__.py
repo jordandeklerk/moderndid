@@ -26,25 +26,25 @@ from moderndid.plots.themes import (
 )
 
 __all__ = [
+    "COLORS",
+    "aggteresult_to_polars",
+    "dddaggresult_to_polars",
+    "dddmpresult_to_polars",
+    "didinterresult_to_polars",
+    "doseresult_to_polars",
+    "honestdid_to_polars",
+    # Converters
+    "mpresult_to_polars",
+    "plot_agg",
+    "plot_dose_response",
+    "plot_event_study",
     # Plot functions
     "plot_gt",
-    "plot_event_study",
-    "plot_agg",
     "plot_multiplegt",
-    "plot_dose_response",
     "plot_sensitivity",
+    "pteresult_to_polars",
+    "theme_minimal",
     # Themes
     "theme_moderndid",
     "theme_publication",
-    "theme_minimal",
-    "COLORS",
-    # Converters
-    "mpresult_to_polars",
-    "aggteresult_to_polars",
-    "didinterresult_to_polars",
-    "doseresult_to_polars",
-    "pteresult_to_polars",
-    "honestdid_to_polars",
-    "dddmpresult_to_polars",
-    "dddaggresult_to_polars",
 ]

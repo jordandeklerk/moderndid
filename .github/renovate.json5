@@ -1,0 +1,65 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  dependencyDashboard: true,
+  dependencyDashboardTitle: "Renovate Dependency Dashboard",
+  schedule: ["before 4am on Monday"],
+  timezone: "America/New_York",
+  labels: ["dependencies"],
+  semanticCommits: "disabled",
+  separateMajorMinor: true,
+  enabledManagers: ["github-actions", "pre-commit", "pep621"],
+  "pre-commit": {
+    enabled: true,
+  },
+  packageRules: [
+    // Pin GitHub Actions to SHA digests for security
+    {
+      matchDepTypes: ["action"],
+      pinDigests: true,
+    },
+    // Annotate GitHub Actions SHAs with SemVer version
+    {
+      extends: ["helpers:pinGitHubActionDigests"],
+      extractVersion: "^(?<version>v?\\d+\\.\\d+\\.\\d+)$",
+      versioning: "regex:^v?(?<major>\\d+)(\\.(?<minor>\\d+)\\.(?<patch>\\d+))?$",
+    },
+    // Group all pre-commit hook updates together
+    {
+      groupName: "pre-commit hooks",
+      matchManagers: ["pre-commit"],
+    },
+    // Group GitHub Actions updates together
+    {
+      groupName: "GitHub Actions",
+      matchManagers: ["github-actions"],
+      matchDatasources: ["gitea-tags", "github-tags"],
+    },
+    // Disable PRs updating GitHub runners (e.g. 'runs-on: ubuntu-latest')
+    {
+      matchManagers: ["github-actions"],
+      matchDatasources: ["github-runners"],
+      enabled: false,
+    },
+    // Group optional dependency updates by category
+    {
+      groupName: "test dependencies",
+      matchManagers: ["pep621"],
+      matchDepTypes: ["project.optional-dependencies.test"],
+    },
+    {
+      groupName: "documentation dependencies",
+      matchManagers: ["pep621"],
+      matchDepTypes: ["project.optional-dependencies.doc"],
+    },
+    {
+      groupName: "development dependencies",
+      matchManagers: ["pep621"],
+      matchDepTypes: ["project.optional-dependencies.dev"],
+    },
+  ],
+  vulnerabilityAlerts: {
+    labels: ["dependencies", "security"],
+    // Run vulnerability alerts immediately, not just on schedule
+    schedule: ["at any time"],
+  },
+}

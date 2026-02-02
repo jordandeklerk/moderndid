@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """Tests for FLCI (Fixed-Length Confidence Intervals) module."""
 
 import numpy as np

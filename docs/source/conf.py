@@ -1,4 +1,3 @@
-# pylint: disable=redefined-builtin,invalid-name
 """moderndid sphinx configuration."""
 
 import math

@@ -1,5 +1,7 @@
 """Dynamic ATT estimation for intertemporal treatment effects."""
 
+import warnings
+
 from moderndid.core.preprocess import PreprocessDataBuilder
 from moderndid.core.preprocess.config import DIDInterConfig
 
@@ -14,7 +16,7 @@ def did_multiplegt(
     dname,
     cluster=None,
     weightsname=None,
-    controls=None,
+    xformla="~1",
     effects=1,
     placebo=0,
     normalized=False,
@@ -32,7 +34,7 @@ def did_multiplegt(
     keep_bidirectional_switchers=False,
     drop_missing_preswitch=False,
     boot=False,
-    nboot=999,
+    biters=1000,
     random_state=None,
 ):
     r"""Estimate intertemporal treatment effects with non-binary, non-absorbing treatments.
@@ -98,8 +100,10 @@ def did_multiplegt(
     weightsname : str, optional
         Name of the sampling weights column. If None, all observations
         have equal weight.
-    controls : list[str], optional
-        List of control variable names to include in the estimation.
+    xformla : str, default="~1"
+        A formula for the covariates to include in the model.
+        Should be of the form "~ X1 + X2" (intercept is always included).
+        Use "~1" for no covariates.
     effects : int, default=1
         Number of post-treatment horizons to estimate (1, 2, ..., effects).
         :math:`\delta_\ell` estimates the effect of :math:`\ell` periods of
@@ -163,7 +167,7 @@ def did_multiplegt(
         instead of asymptotic influence function-based inference. The
         bootstrap resamples at the cluster level when ``cluster`` is
         specified.
-    nboot : int, default=999
+    biters : int, default=1000
         Number of bootstrap iterations when ``boot=True``.
     random_state : int, Generator, optional
         Random seed for reproducibility of bootstrap.
@@ -265,6 +269,27 @@ def did_multiplegt(
            *Review of Economics and Statistics*, 106(6), 1723-1736.
            https://doi.org/10.1162/rest_a_01414
     """
+    if continuous > 0 and not boot:
+        warnings.warn(
+            "When continuous > 0, variance estimators are not backed by proven asymptotic "
+            "normality. Bootstrap inference (boot=True) is recommended.",
+            UserWarning,
+        )
+
+    if trends_lin:
+        warnings.warn(
+            "When trends_lin=True, the average total effect (ATE) is not computed.",
+            UserWarning,
+        )
+
+    if keep_bidirectional_switchers:
+        warnings.warn(
+            "Keeping bidirectional switchers (units with both treatment increases and decreases) "
+            "may violate the no-sign-reversal property. The default behavior of dropping these "
+            "units is recommended.",
+            UserWarning,
+        )
+
     config = DIDInterConfig(
         yname=yname,
         tname=tname,
@@ -272,7 +297,7 @@ def did_multiplegt(
         dname=dname,
         cluster=cluster,
         weightsname=weightsname,
-        controls=controls,
+        xformla=xformla,
         trends_nonparam=trends_nonparam,
         effects=effects,
         placebo=placebo,
@@ -290,7 +315,7 @@ def did_multiplegt(
         keep_bidirectional_switchers=keep_bidirectional_switchers,
         drop_missing_preswitch=drop_missing_preswitch,
         boot=boot,
-        nboot=nboot,
+        biters=biters,
         random_state=random_state,
     )
 

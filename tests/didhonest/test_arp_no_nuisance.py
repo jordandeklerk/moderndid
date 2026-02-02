@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name, unused-argument
 """Tests for APR CI with no nuisance parameters."""
 
 import numpy as np

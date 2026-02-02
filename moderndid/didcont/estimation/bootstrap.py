@@ -329,10 +329,7 @@ def attgt_pte_aggregations(attgt_list, pte_params):
         pl.col("att").is_not_null() & pl.col("att").is_not_nan()
     )
 
-    if group_df is not None:
-        group_results = group_df.select(["group", "att_g"])
-    else:
-        group_results = None
+    group_results = group_df.select(["group", "att_g"]) if group_df is not None else None
 
     return {
         "attgt_results": attgt_results,
@@ -369,7 +366,7 @@ def qtt_pte_aggregations(attgt_list, pte_params, extra_gt_returns):
     f1_list = [egr["extra_gt_returns"]["F1"] for egr in extra_gt_returns]
 
     qtt_gt = []
-    for f0, f1 in zip(f0_list, f1_list):
+    for f0, f1 in zip(f0_list, f1_list, strict=False):
         q1 = _quantile_basis(f1, ret_quantile)
         q0 = _quantile_basis(f0, ret_quantile)
         qtt_gt.append(q1 - q0)

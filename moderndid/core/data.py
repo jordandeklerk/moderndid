@@ -9,7 +9,7 @@ import polars as pl
 
 from .dataframe import to_polars
 
-__all__ = ["load_nsw", "load_mpdta", "load_ehec", "load_engel", "load_favara_imbs", "simulate_cont_did_data"]
+__all__ = ["load_ehec", "load_engel", "load_favara_imbs", "load_mpdta", "load_nsw", "simulate_cont_did_data"]
 
 
 def load_nsw() -> pl.DataFrame:

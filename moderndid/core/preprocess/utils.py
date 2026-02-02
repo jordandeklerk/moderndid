@@ -355,3 +355,10 @@ def extract_covariates(data, xformla):
     X = df.select(covariate_names).to_numpy()
     intercept = np.ones((X.shape[0], 1))
     return np.hstack([intercept, X])
+
+
+def get_covariate_names_from_formula(xformla):
+    """Extract covariate names from an xformla string, returning None if no covariates."""
+    if not xformla or xformla == "~1":
+        return None
+    return extract_vars_from_formula(xformla)

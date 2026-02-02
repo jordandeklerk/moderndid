@@ -141,7 +141,6 @@ def test_process_att_gt_with_extra_returns(pte_params_basic):
 
 
 def test_process_att_gt_with_real_mp_result(att_gt_result):
-    """Test processing with real att_gt results from moderndid.did."""
     att_gt_raw = {
         "attgt_list": [
             {"att": att, "group": g, "time_period": t}

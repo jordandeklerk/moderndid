@@ -30,8 +30,8 @@ def att_gt(
     xformla=None,
     weightsname=None,
     alp=0.05,
-    bstrap=True,
     cband=True,
+    boot=False,
     biters=1000,
     clustervars=None,
     est_method="dr",
@@ -112,14 +112,14 @@ def att_gt(
         observations have same weight.
     alp : float, default=0.05
         The significance level.
-    bstrap : bool, default=True
-        Whether or not to compute standard errors using the multiplier bootstrap.
-        If standard errors are clustered, then one must set bstrap=True.
     cband : bool, default=True
         Whether or not to compute a uniform confidence band that covers all of the
         group-time average treatment effects with fixed probability 1-alp.
+    boot : bool, default=False
+        Whether or not to compute standard errors using the multiplier bootstrap.
+        If standard errors are clustered, then one must set boot=True.
     biters : int, default=1000
-        The number of bootstrap iterations to use. Only applicable if bstrap=True.
+        The number of bootstrap iterations to use. Only applicable if boot=True.
     clustervars : list[str], optional
         A list of variables names to cluster on. At most, there can be two variables
         (otherwise will throw an error) and one of these must be the same as idname
@@ -185,7 +185,7 @@ def att_gt(
            ...:     gname="first.treat",
            ...:     idname="countyreal",
            ...:     est_method="dr",
-           ...:     bstrap=False
+           ...:     boot=False
            ...: )
            ...: print(result)
 
@@ -218,7 +218,7 @@ def att_gt(
         anticipation=anticipation,
         weightsname=weightsname,
         alp=alp,
-        bstrap=bstrap,
+        boot=boot,
         cband=cband,
         biters=biters,
         clustervars=clustervars if clustervars is not None else [],
@@ -248,7 +248,7 @@ def att_gt(
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
     # If clustering along another dimension we require using the bootstrap
-    if (clustervars is not None and len(clustervars) > 0) and not bstrap:
+    if (clustervars is not None and len(clustervars) > 0) and not boot:
         warnings.warn(
             "Clustering the standard errors requires using the bootstrap, "
             "resulting standard errors are NOT accounting for clustering",
@@ -257,7 +257,7 @@ def att_gt(
 
     zero_na_sd_indices = np.unique(np.where(np.isnan(standard_errors))[0])
 
-    if bstrap:
+    if boot:
         cluster = None
         if clustervars is not None and len(clustervars) > 0:
             if len(clustervars) > 2:
@@ -341,7 +341,7 @@ def att_gt(
 
     critical_value = scipy.stats.norm.ppf(1 - alp / 2)
 
-    if bstrap and cband:
+    if boot and cband:
         critical_value = bootstrap_results["crit_val"]
         if not np.isnan(critical_value) and critical_value >= 7:
             warnings.warn(
@@ -355,7 +355,7 @@ def att_gt(
         "control_group": control_group,
         "anticipation_periods": anticipation,
         "estimation_method": est_method if isinstance(est_method, str) else "custom",
-        "bootstrap": bstrap,
+        "bootstrap": boot,
         "uniform_bands": cband,
         "base_period": base_period,
         "panel": panel,
