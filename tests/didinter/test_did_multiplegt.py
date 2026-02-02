@@ -190,11 +190,11 @@ def test_with_controls(panel_with_controls):
         tname="time",
         dname="d",
         effects=2,
-        controls=["x1", "x2"],
+        xformla="~ x1 + x2",
     )
 
     assert isinstance(result, DIDInterResult)
-    assert result.estimation_params.get("controls") == ["x1", "x2"]
+    assert result.estimation_params.get("xformla") == "~ x1 + x2"
 
 
 @pytest.mark.parametrize(
@@ -439,7 +439,7 @@ def test_bootstrap_standard_errors(simple_panel_data, placebo):
         effects=2,
         placebo=placebo,
         boot=True,
-        nboot=50,
+        biters=50,
         random_state=42,
     )
 
@@ -459,7 +459,7 @@ def test_bootstrap_with_cluster(favara_imbs_data):
         effects=2,
         cluster="state_n",
         boot=True,
-        nboot=50,
+        biters=50,
         random_state=42,
     )
 
@@ -475,7 +475,7 @@ def test_bootstrap_reproducibility(simple_panel_data):
         "dname": "d",
         "effects": 2,
         "boot": True,
-        "nboot": 50,
+        "biters": 50,
         "random_state": 123,
     }
     result1 = did_multiplegt(simple_panel_data, **kwargs)

@@ -62,7 +62,7 @@ def test_compute_control_coefficients_basic(control_test_data):
         tname="time",
         gname="id",
         dname="d",
-        controls=["x1", "x2"],
+        xformla="~ x1 + x2",
     )
 
     coefficients = compute_control_coefficients(control_test_data, config, horizon=1)
@@ -70,14 +70,14 @@ def test_compute_control_coefficients_basic(control_test_data):
     assert isinstance(coefficients, dict)
 
 
-@pytest.mark.parametrize("controls", [None, []])
-def test_compute_control_coefficients_no_controls(controls):
+@pytest.mark.parametrize("xformla", ["~1", ""])
+def test_compute_control_coefficients_no_controls(xformla):
     config = DIDInterConfig(
         yname="y",
         tname="time",
         gname="id",
         dname="d",
-        controls=controls,
+        xformla=xformla if xformla else "~1",
     )
 
     df = pl.DataFrame(
@@ -94,19 +94,19 @@ def test_compute_control_coefficients_no_controls(controls):
 
 
 @pytest.mark.parametrize(
-    "controls,expected_column",
+    "xformla,expected_column",
     [
-        (["x1", "x2"], "diff_y_1"),
-        (None, "diff_y_1"),
+        ("~ x1 + x2", "diff_y_1"),
+        ("~1", "diff_y_1"),
     ],
 )
-def test_apply_control_adjustment_returns_diff_column(control_test_data, controls, expected_column):
+def test_apply_control_adjustment_returns_diff_column(control_test_data, xformla, expected_column):
     config = DIDInterConfig(
         yname="y",
         tname="time",
         gname="id",
         dname="d",
-        controls=controls,
+        xformla=xformla,
     )
 
     result = apply_control_adjustment(control_test_data, config, horizon=1, coefficients={})
@@ -124,7 +124,7 @@ def test_apply_control_adjustment_creates_diff_columns(control_test_data, expect
         tname="time",
         gname="id",
         dname="d",
-        controls=["x1", "x2"],
+        xformla="~ x1 + x2",
     )
 
     coefficients = {
@@ -147,7 +147,7 @@ def test_coefficient_structure_keys(control_test_data, expected_key):
         tname="time",
         gname="id",
         dname="d",
-        controls=["x1", "x2"],
+        xformla="~ x1 + x2",
     )
 
     coefficients = compute_control_coefficients(control_test_data, config, horizon=1)
@@ -162,7 +162,7 @@ def test_coefficient_useful_is_bool(control_test_data):
         tname="time",
         gname="id",
         dname="d",
-        controls=["x1", "x2"],
+        xformla="~ x1 + x2",
     )
 
     coefficients = compute_control_coefficients(control_test_data, config, horizon=1)
@@ -177,7 +177,7 @@ def test_compute_control_coefficients_insufficient_data():
         tname="time",
         gname="id",
         dname="d",
-        controls=["x1", "x2"],
+        xformla="~ x1 + x2",
     )
 
     df = pl.DataFrame(

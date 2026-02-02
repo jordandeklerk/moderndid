@@ -107,14 +107,14 @@ if HAS_NUMBA:
         return cluster_mean_if
 
 
-def multiplier_bootstrap(inf_func, nboot, random_state=None):
+def multiplier_bootstrap(inf_func, biters, random_state=None):
     """Run the multiplier bootstrap using Mammen weights.
 
     Parameters
     ----------
     inf_func : ndarray
         Influence function matrix of shape (n, k).
-    nboot : int
+    biters : int
         Number of bootstrap iterations.
     random_state : int, Generator, or None, default None
         Controls random number generation for reproducibility.
@@ -122,7 +122,7 @@ def multiplier_bootstrap(inf_func, nboot, random_state=None):
     Returns
     -------
     ndarray
-        Bootstrap results matrix of shape (nboot, k).
+        Bootstrap results matrix of shape (biters, k).
     """
     inf_func = np.asarray(inf_func, dtype=np.float64)
     if inf_func.ndim == 1:
@@ -130,7 +130,7 @@ def multiplier_bootstrap(inf_func, nboot, random_state=None):
 
     n = inf_func.shape[0]
     rng = np.random.default_rng(random_state)
-    weights_matrix = rng.binomial(1, _P_KAPPA, size=(nboot, n)).astype(np.int8)
+    weights_matrix = rng.binomial(1, _P_KAPPA, size=(biters, n)).astype(np.int8)
 
     return _multiplier_bootstrap_impl(np.ascontiguousarray(inf_func), weights_matrix)
 

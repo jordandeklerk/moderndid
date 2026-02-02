@@ -175,14 +175,14 @@ mp_result <- ddd(
     base_period = "universal",
     est_method = "reg",
     boot = {ddd_boot_str},
-    nboot = 100
+    biters = 100
 )
 
 agg_result <- agg_ddd(
     mp_result,
     type = "{agg_type}",
     boot = {boot_str},
-    nboot = 100,
+    biters = 100,
     balance_e = {balance_e_str},
     min_e = {min_e_str},
     max_e = {max_e_str},
@@ -220,7 +220,7 @@ write_json(output, "{result_path}", auto_unbox = TRUE)
             return None
 
 
-def r_estimate_2period_bootstrap(data, est_method="dr", nboot=100):
+def r_estimate_2period_bootstrap(data, est_method="dr", biters=100):
     with tempfile.TemporaryDirectory() as tmpdir:
         data_path = Path(tmpdir) / "data.csv"
         result_path = Path(tmpdir) / "result.json"
@@ -244,7 +244,7 @@ result <- ddd(
     data = data,
     est_method = "{est_method}",
     boot = TRUE,
-    nboot = {nboot},
+    biters = {biters},
     inffunc = TRUE
 )
 
@@ -455,11 +455,11 @@ def test_2period_bootstrap_se_reasonable(two_period_dgp_result):
         xformla="~ cov1 + cov2 + cov3 + cov4",
         est_method="dr",
         boot=True,
-        nboot=100,
+        biters=100,
         random_state=42,
     )
 
-    r_result = r_estimate_2period_bootstrap(data, "dr", nboot=100)
+    r_result = r_estimate_2period_bootstrap(data, "dr", biters=100)
 
     if r_result is None:
         pytest.skip("R bootstrap estimation failed")
@@ -753,7 +753,7 @@ def test_agg_with_bootstrap_matches(mp_ddd_data, agg_type):
         py_mp_result,
         aggregation_type=agg_type,
         boot=True,
-        nboot=100,
+        biters=100,
         cband=True,
         random_state=42,
     )

@@ -9,6 +9,7 @@ from .base import BaseValidator
 from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .constants import BasePeriod, ControlGroup
 from .models import ValidationResult
+from .utils import extract_vars_from_formula
 
 
 class DataValidator(Protocol):
@@ -411,10 +412,11 @@ class DIDInterColumnValidator(BaseValidator):
         if config.cluster and config.cluster not in data_columns:
             errors.append(f"cluster = '{config.cluster}' must be a column in the dataset")
 
-        if config.controls:
-            for ctrl in config.controls:
+        if config.xformla and config.xformla != "~1":
+            covariate_names = extract_vars_from_formula(config.xformla)
+            for ctrl in covariate_names:
                 if ctrl not in data_columns:
-                    errors.append(f"controls contains '{ctrl}' which is not in the dataset")
+                    errors.append(f"xformla contains '{ctrl}' which is not in the dataset")
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 

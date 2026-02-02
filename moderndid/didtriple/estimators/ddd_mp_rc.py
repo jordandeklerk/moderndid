@@ -79,7 +79,7 @@ def ddd_mp_rc(
     base_period="universal",
     est_method="dr",
     boot=False,
-    nboot=999,
+    biters=1000,
     cband=False,
     cluster=None,
     alpha=0.05,
@@ -155,7 +155,7 @@ def ddd_mp_rc(
         Estimation method for each 2-period comparison.
     boot : bool, default False
         Whether to use multiplier bootstrap for inference.
-    nboot : int, default 999
+    biters : int, default 1000
         Number of bootstrap repetitions (only used if boot=True).
     cband : bool, default False
         Whether to compute uniform confidence bands (only used if boot=True).
@@ -265,7 +265,7 @@ def ddd_mp_rc(
     if boot:
         boot_result = mboot_ddd(
             inf_func=inf_func_trimmed,
-            nboot=nboot,
+            biters=biters,
             alpha=alpha,
             cluster=cluster_vals,
             random_state=random_state,
@@ -301,7 +301,7 @@ def ddd_mp_rc(
         "base_period": base_period,
         "est_method": est_method,
         "boot": boot,
-        "nboot": nboot if boot else None,
+        "biters": biters if boot else None,
         "cband": cband if boot else None,
         "cluster": cluster,
         "alpha": alpha,

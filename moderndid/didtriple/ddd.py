@@ -27,7 +27,7 @@ def ddd(
     weightsname=None,
     boot=False,
     boot_type="multiplier",
-    nboot=999,
+    biters=1000,
     cluster=None,
     alpha=0.05,
     trim_level=0.995,
@@ -110,7 +110,7 @@ def ddd(
     boot_type : {"multiplier", "weighted"}, default="multiplier"
         Type of bootstrap for 2-period data (only used if boot=True).
         Multi-period data always uses multiplier bootstrap.
-    nboot : int, default=999
+    biters : int, default=1000
         Number of bootstrap repetitions (only used if boot=True).
     cluster : str, optional
         Name of the clustering variable for clustered standard errors.
@@ -316,7 +316,7 @@ def ddd(
                 base_period=base_period,
                 est_method=est_method,
                 boot=boot,
-                nboot=nboot,
+                biters=biters,
                 cband=False,
                 cluster=cluster,
                 alpha=alpha,
@@ -335,7 +335,7 @@ def ddd(
             base_period=base_period,
             est_method=est_method,
             boot=boot,
-            nboot=nboot,
+            biters=biters,
             cband=False,
             cluster=cluster,
             alpha=alpha,
@@ -354,7 +354,7 @@ def ddd(
             est_method=est_method,
             boot=boot,
             boot_type=boot_type,
-            nboot=nboot,
+            biters=biters,
             alpha=alpha,
             trim_level=trim_level,
             random_state=random_state,
@@ -372,7 +372,7 @@ def ddd(
         weightsname=weightsname,
         boot=boot,
         boot_type=boot_type,
-        n_boot=nboot,
+        n_boot=biters,
         cluster=cluster,
         alp=alpha,
         inf_func=True,
@@ -389,7 +389,7 @@ def ddd(
         est_method=est_method,
         boot=ddd_data.config.boot,
         boot_type=ddd_data.config.boot_type.value,
-        nboot=ddd_data.config.n_boot,
+        biters=ddd_data.config.n_boot,
         influence_func=True,
         alpha=ddd_data.config.alp,
         random_state=random_state,

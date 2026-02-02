@@ -84,8 +84,8 @@ def test_aggte_with_na_rm(mp_result, agg_type):
 @pytest.mark.parametrize(
     "params,expected",
     [
-        ({"bstrap": True, "biters": 99}, {"bootstrap": True, "biters": 99}),
-        ({"cband": True, "bstrap": True, "biters": 99}, {"uniform_bands": True, "bootstrap": True}),
+        ({"boot": True, "biters": 99}, {"bootstrap": True, "biters": 99}),
+        ({"cband": True, "boot": True, "biters": 99}, {"uniform_bands": True, "bootstrap": True}),
         ({"alp": 0.1}, {"alpha": 0.1}),
     ],
 )
@@ -102,7 +102,7 @@ def test_aggte_clustering(mp_result):
         mp_result,
         type="simple",
         clustervars=["countyreal"],
-        bstrap=True,
+        boot=True,
         biters=99,
     )
 
@@ -285,7 +285,7 @@ def test_aggte_clustering_multiple_vars_error(mp_result):
             mp_result,
             type="simple",
             clustervars=["var1", "var2"],
-            bstrap=True,
+            boot=True,
             biters=99,
         )
 
@@ -308,7 +308,7 @@ def test_aggte_uniform_bands_without_bootstrap():
             result,
             type="group",
             cband=True,
-            bstrap=False,
+            boot=False,
         )
 
     assert agg_result.aggregation_type == "group"
@@ -322,7 +322,7 @@ def test_aggte_critical_value_nan_handling(mp_result):
             mp_result,
             type="group",
             cband=True,
-            bstrap=True,
+            boot=True,
             biters=99,
         )
 
@@ -386,7 +386,7 @@ def test_aggte_conflicting_cband_bootstrap():
             result,
             type="dynamic",
             cband=True,
-            bstrap=False,
+            boot=False,
         )
 
     assert agg_result.aggregation_type == "dynamic"
@@ -426,7 +426,7 @@ def test_aggte_very_large_bootstrap_iterations():
     agg_result = aggte(
         result,
         type="simple",
-        bstrap=True,
+        boot=True,
         biters=10,
     )
 
@@ -436,8 +436,8 @@ def test_aggte_very_large_bootstrap_iterations():
 
 @pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
 def test_aggte_bootstrap_reproducibility(mp_result, agg_type):
-    result1 = aggte(mp_result, type=agg_type, bstrap=True, biters=50, random_state=42)
-    result2 = aggte(mp_result, type=agg_type, bstrap=True, biters=50, random_state=42)
+    result1 = aggte(mp_result, type=agg_type, boot=True, biters=50, random_state=42)
+    result2 = aggte(mp_result, type=agg_type, boot=True, biters=50, random_state=42)
 
     assert result1.overall_se == result2.overall_se
     assert result1.estimation_params.get("random_state") == 42

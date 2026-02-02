@@ -23,7 +23,7 @@ def preprocess_drdid(
     xformla=None,
     panel=True,
     weightsname=None,
-    bstrap=False,
+    boot=False,
     boot_type="weighted",
     biters=999,
     inf_func=False,
@@ -54,7 +54,7 @@ def preprocess_drdid(
         Whether data is in panel format (vs repeated cross-sections).
     weightsname : str | None, default None
         Name of sampling weights column.
-    bstrap : bool, default False
+    boot : bool, default False
         Whether to use bootstrap for inference.
     boot_type : {"weighted", "multiplier"}, default "weighted"
         Type of bootstrap.
@@ -82,7 +82,7 @@ def preprocess_drdid(
         xformla=xformla if xformla is not None else "~1",
         panel=panel,
         weightsname=weightsname,
-        bstrap=bstrap,
+        boot=boot,
         boot_type=BootstrapType(boot_type),
         biters=biters,
         est_method=est_method,
@@ -110,7 +110,7 @@ def preprocess_did(
     anticipation=0,
     weightsname=None,
     alp=0.05,
-    bstrap=False,
+    boot=False,
     cband=False,
     biters=1000,
     clustervars=None,
@@ -150,7 +150,7 @@ def preprocess_did(
         Name of sampling weights column.
     alp : float, default 0.05
         Significance level for confidence intervals.
-    bstrap : bool, default False
+    boot : bool, default False
         Whether to use bootstrap for inference.
     cband : bool, default False
         Whether to compute uniform confidence bands.
@@ -195,7 +195,7 @@ def preprocess_did(
         anticipation=anticipation,
         weightsname=weightsname,
         alp=alp,
-        bstrap=bstrap,
+        boot=boot,
         cband=cband,
         biters=biters,
         clustervars=clustervars if clustervars is not None else [],
@@ -226,7 +226,7 @@ def preprocess_cont_did(
     anticipation=0,
     weightsname=None,
     alp=0.05,
-    bstrap=False,
+    boot=False,
     cband=False,
     biters=1000,
     clustervars=None,
@@ -274,7 +274,7 @@ def preprocess_cont_did(
         Name of sampling weights column.
     alp : float, default 0.05
         Significance level for confidence intervals.
-    bstrap : bool, default False
+    boot : bool, default False
         Whether to use bootstrap for inference.
     cband : bool, default False
         Whether to compute uniform confidence bands.
@@ -342,7 +342,7 @@ def preprocess_cont_did(
         anticipation=anticipation,
         weightsname=weightsname,
         alp=alp,
-        bstrap=bstrap,
+        boot=boot,
         cband=cband,
         biters=biters,
         clustervars=clustervars_list,

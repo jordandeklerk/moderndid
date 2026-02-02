@@ -52,7 +52,7 @@ def test_format_ddd_panel_method_labels(ddd_panel_result, est_method, expected_l
 
 def test_format_ddd_panel_bootstrap_inference(ddd_panel_result):
     result = ddd_panel_result._replace(
-        args={**ddd_panel_result.args, "boot": True, "boot_type": "multiplier", "nboot": 999}
+        args={**ddd_panel_result.args, "boot": True, "boot_type": "multiplier", "biters": 999}
     )
     output = format_ddd_panel_result(result)
     assert "Bootstrap standard errors" in output

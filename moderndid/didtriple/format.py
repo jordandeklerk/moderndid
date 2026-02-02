@@ -109,8 +109,8 @@ def format_ddd_panel_result(result):
 
     if boot:
         boot_type = args.get("boot_type", "multiplier")
-        nboot = args.get("nboot", 999)
-        lines.append(f" Bootstrap standard errors ({boot_type}, {nboot} reps)")
+        biters = args.get("biters", 1000)
+        lines.append(f" Bootstrap standard errors ({boot_type}, {biters} reps)")
     else:
         lines.append(" Analytical standard errors")
 
@@ -344,8 +344,8 @@ def format_ddd_rc_result(result):
 
     if boot:
         boot_type = args.get("boot_type", "multiplier")
-        nboot = args.get("nboot", 999)
-        lines.append(f" Bootstrap standard errors ({boot_type}, {nboot} reps)")
+        biters = args.get("biters", 1000)
+        lines.append(f" Bootstrap standard errors ({boot_type}, {biters} reps)")
     else:
         lines.append(" Analytical standard errors")
 

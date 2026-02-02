@@ -75,7 +75,7 @@ def test_ddd_2period_bootstrap(two_period_df):
         xformla="~ cov1 + cov2",
         est_method="dr",
         boot=True,
-        nboot=50,
+        biters=50,
         random_state=42,
     )
 
@@ -97,7 +97,7 @@ def test_ddd_2period_boot_types(two_period_df, boot_type):
         est_method="dr",
         boot=True,
         boot_type=boot_type,
-        nboot=30,
+        biters=30,
         random_state=42,
     )
 
@@ -149,7 +149,7 @@ def test_ddd_2period_reproducibility(two_period_df):
         pname="partition",
         est_method="dr",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 
@@ -162,7 +162,7 @@ def test_ddd_2period_reproducibility(two_period_df):
         pname="partition",
         est_method="dr",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 
@@ -180,13 +180,13 @@ def test_ddd_2period_args_stored(two_period_df):
         pname="partition",
         est_method="reg",
         boot=True,
-        nboot=25,
+        biters=25,
         alpha=0.10,
     )
 
     assert result.args["est_method"] == "reg"
     assert result.args["boot"] is True
-    assert result.args["nboot"] == 25
+    assert result.args["biters"] == 25
     assert result.args["alpha"] == 0.10
 
 
@@ -271,13 +271,13 @@ def test_ddd_mp_bootstrap(multi_period_df):
         pname="partition",
         est_method="dr",
         boot=True,
-        nboot=50,
+        biters=50,
         random_state=42,
     )
 
     assert isinstance(result, DDDMultiPeriodResult)
     assert result.args["boot"] is True
-    assert result.args["nboot"] == 50
+    assert result.args["biters"] == 50
     assert all(np.isfinite(se) or np.isnan(se) for se in result.se)
 
 
@@ -296,7 +296,7 @@ def test_ddd_mp_clustered(multi_period_df):
         pname="partition",
         est_method="dr",
         boot=True,
-        nboot=50,
+        biters=50,
         cluster="cluster",
         random_state=42,
     )
@@ -347,7 +347,7 @@ def test_ddd_mp_reproducibility(multi_period_df):
         pname="partition",
         est_method="dr",
         boot=True,
-        nboot=30,
+        biters=30,
         random_state=456,
     )
 
@@ -360,7 +360,7 @@ def test_ddd_mp_reproducibility(multi_period_df):
         pname="partition",
         est_method="dr",
         boot=True,
-        nboot=30,
+        biters=30,
         random_state=456,
     )
 
@@ -380,7 +380,7 @@ def test_ddd_mp_args_stored(multi_period_df):
         base_period="varying",
         est_method="ipw",
         boot=True,
-        nboot=30,
+        biters=30,
         alpha=0.01,
     )
 
@@ -388,7 +388,7 @@ def test_ddd_mp_args_stored(multi_period_df):
     assert result.args["base_period"] == "varying"
     assert result.args["est_method"] == "ipw"
     assert result.args["boot"] is True
-    assert result.args["nboot"] == 30
+    assert result.args["biters"] == 30
     assert result.args["alpha"] == 0.01
 
 

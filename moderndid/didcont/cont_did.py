@@ -40,7 +40,7 @@ def cont_did(
     idname,
     gname=None,
     dname=None,
-    xformula="~1",
+    xformla="~1",
     target_parameter="level",
     aggregation="dose",
     treatment_type="continuous",
@@ -54,6 +54,7 @@ def cont_did(
     weightsname=None,
     alp=0.05,
     cband=False,
+    boot=False,
     boot_type="multiplier",
     biters=1000,
     clustervars=None,
@@ -122,7 +123,7 @@ def cont_did(
         This should represent the "dose" or amount of treatment received,
         and should be constant across time periods for each unit.
         Use 0 for never-treated units.
-    xformula : str, default="~1"
+    xformla : str, default="~1"
         A formula for the covariates to include in the model.
         Should be of the form "~ X1 + X2" (intercept is always included).
         Currently only "~1" (no covariates) is supported.
@@ -168,10 +169,15 @@ def cont_did(
         Significance level for confidence intervals (e.g., 0.05 for 95% CI).
     cband : bool, default=False
         Whether to compute uniform confidence bands over all dose values.
+    boot : bool, default=False
+        Whether to use bootstrap inference. If False, uses analytical
+        standard errors.
     boot_type : str, default="multiplier"
         Type of bootstrap to perform ("multiplier" or "empirical").
+        Only used when ``boot=True``.
     biters : int, default=1000
-        Number of bootstrap iterations for inference.
+        Number of bootstrap iterations for inference. Only used when
+        ``boot=True``.
     clustervars : str, optional
         Variable(s) for clustering standard errors. Not currently supported.
     est_method : str, optional
@@ -274,8 +280,8 @@ def cont_did(
 
     data = to_polars(data)
 
-    if xformula != "~1":
-        raise NotImplementedError("Covariates not currently supported, use xformula='~1'")
+    if xformla != "~1":
+        raise NotImplementedError("Covariates not currently supported, use xformla='~1'")
 
     if treatment_type == "discrete":
         raise NotImplementedError("Discrete treatment not yet supported")
@@ -322,14 +328,14 @@ def cont_did(
         gname=gname,
         dname=dname,
         idname=idname,
-        xformla=xformula,
+        xformla=xformla,
         panel=True,
         allow_unbalanced_panel=allow_unbalanced_panel,
         control_group=control_group,
         anticipation=anticipation,
         weightsname=weightsname,
         alp=alp,
-        bstrap=False,
+        boot=boot,
         cband=cband,
         biters=biters,
         clustervars=clustervars,
@@ -380,7 +386,7 @@ def cont_did(
         setup_pte_fun=setup_fn,
         subset_fun=cont_two_by_two_subset,
         attgt_fun=attgt_fun,
-        xformula=xformula,
+        xformla=xformla,
         target_parameter=target_parameter,
         aggregation=aggregation,
         treatment_type=treatment_type,

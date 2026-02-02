@@ -167,7 +167,7 @@ def test_ddd_mp_rc_reproducibility(mp_rcs_data):
         group_col="group",
         partition_col="partition",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 
@@ -179,7 +179,7 @@ def test_ddd_mp_rc_reproducibility(mp_rcs_data):
         group_col="group",
         partition_col="partition",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 
@@ -198,7 +198,7 @@ def test_ddd_mp_rc_bootstrap(mp_rcs_data, cband):
         group_col="group",
         partition_col="partition",
         boot=True,
-        nboot=50,
+        biters=50,
         cband=cband,
         random_state=42,
     )

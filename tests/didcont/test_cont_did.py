@@ -323,7 +323,7 @@ def test_cont_did_covariates_not_supported(contdid_data):
             idname="id",
             gname="G",
             dname="D",
-            xformula="~x1+x2",
+            xformla="~x1+x2",
         )
 
 

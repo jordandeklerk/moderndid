@@ -110,16 +110,16 @@ def test_agg_ddd_inf_func_calendar(mp_ddd_result):
 
 @pytest.mark.parametrize("agg_type", ["eventstudy", "group", "calendar"])
 def test_agg_ddd_bootstrap(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=True, nboot=50, cband=False)
+    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=True, biters=50, cband=False)
 
     assert result.aggregation_type == agg_type
     assert result.args.get("boot") is True
-    assert result.args.get("nboot") == 50
+    assert result.args.get("biters") == 50
 
 
 @pytest.mark.parametrize("agg_type", ["eventstudy", "group", "calendar"])
 def test_agg_ddd_cband(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=True, nboot=50, cband=True)
+    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=True, biters=50, cband=True)
 
     assert result.args.get("cband") is True
     assert result.crit_val is not None
@@ -131,7 +131,7 @@ def test_agg_ddd_reproducibility(mp_ddd_result, agg_type):
         mp_ddd_result,
         aggregation_type=agg_type,
         boot=True,
-        nboot=50,
+        biters=50,
         cband=False,
         random_state=42,
     )
@@ -139,7 +139,7 @@ def test_agg_ddd_reproducibility(mp_ddd_result, agg_type):
         mp_ddd_result,
         aggregation_type=agg_type,
         boot=True,
-        nboot=50,
+        biters=50,
         cband=False,
         random_state=42,
     )
@@ -155,14 +155,14 @@ def test_agg_ddd_args_stored(mp_ddd_result):
         mp_ddd_result,
         aggregation_type="eventstudy",
         boot=True,
-        nboot=100,
+        biters=100,
         cband=True,
         alpha=0.05,
     )
 
     assert result.args["aggregation_type"] == "eventstudy"
     assert result.args["boot"] is True
-    assert result.args["nboot"] == 100
+    assert result.args["biters"] == 100
     assert result.args["cband"] is True
     assert result.args["alpha"] == 0.05
 

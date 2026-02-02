@@ -4,8 +4,8 @@
 Introduction to Difference-in-Differences
 ************************************************
 
-Before diving into ModernDiD's API, it helps to understand the core concepts
-and terminology from the difference-in-differences literature.
+This page introduces the core concepts and terminology from the
+difference-in-differences literature.
 
 Difference-in-differences is a method for estimating causal effects when
 randomized experiments are not possible. The idea is to compare how outcomes
@@ -13,8 +13,8 @@ change over time for units that receive a treatment to how outcomes change for
 units that do not. If both groups would have evolved similarly absent treatment,
 then any divergence after treatment can be attributed to the treatment itself.
 
-We start with the canonical two-period case to build intuition, then extend to
-multiple periods and staggered adoption.
+We start with the canonical two-period case to build intuition, then extend
+to multiple periods and staggered treatment timing.
 
 
 Notation and Potential Outcomes
@@ -117,9 +117,8 @@ Two-Way Fixed Effects and Its Limitations
 =========================================
 
 Now consider a more general setting with :math:`\mathcal{T}` total time periods
-where different units become treated at different times. This is called
-staggered adoption or staggered treatment timing, and it is common in policy
-evaluation where reforms roll out to different regions over time.
+where different units become treated at different times. This is common in
+policy evaluation where reforms roll out to different regions over time.
 
 
 The TWFE Regression
@@ -414,5 +413,33 @@ same covariate values would have followed the same trend absent treatment.
 
 The target parameter remains the unconditional :math:`ATT(g, t)`. To recover
 it, we estimate the covariate-conditional effect and then average over the
-distribution of covariates for units in group :math:`g`. ModernDiD automates
-this through the ``xformla`` parameter.
+distribution of covariates for units in group :math:`g`.
+
+
+Using ModernDiD
+===============
+
+ModernDiD implements the methods described above. The :mod:`~moderndid.did`
+module estimates group-time average treatment effects using the
+`Callaway and Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_ framework,
+with options for never-treated or not-yet-treated comparison groups, outcome
+regression, inverse probability weighting, or doubly robust estimation.
+
+Key parameters map directly to the concepts introduced here:
+
+- ``yname``: the outcome variable :math:`Y`
+- ``tname``: the time period variable :math:`t`
+- ``idname``: the unit identifier :math:`i`
+- ``gname``: the group (first treatment period) variable :math:`G`
+- ``xformla``: covariates :math:`X` for conditional parallel trends
+- ``control_group``: whether to use never-treated or not-yet-treated comparisons
+
+The ``att_gt`` function returns all group-time effects :math:`ATT(g,t)`.
+The ``aggte`` function aggregates these into event-study, group, calendar-time,
+or overall summaries as described above.
+
+For the classic two-period, two-group setting, the ``drdid`` function provides
+the `Sant'Anna and Zhao (2020) <https://arxiv.org/abs/1812.01723>`_ estimators
+directly without requiring the multi-period machinery.
+
+See the :doc:`/user_guide/index` for detailed examples.

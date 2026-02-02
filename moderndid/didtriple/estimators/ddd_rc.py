@@ -61,7 +61,7 @@ def ddd_rc(
     est_method="dr",
     boot=False,
     boot_type="multiplier",
-    nboot=999,
+    biters=1000,
     influence_func=False,
     alpha=0.05,
     trim_level=0.995,
@@ -137,7 +137,7 @@ def ddd_rc(
     boot_type : {"multiplier", "weighted"}, default "multiplier"
         Type of bootstrap. Multiplier bootstrap uses Rademacher weights on the
         influence function; weighted bootstrap re-estimates with exponential weights.
-    nboot : int, default 999
+    biters : int, default 1000
         Number of bootstrap repetitions.
     influence_func : bool, default False
         Whether to return the influence function.
@@ -225,7 +225,7 @@ def ddd_rc(
         lci = ddd_att - z_val * se_ddd
     else:
         if boot_type == "multiplier":
-            boot_result = mboot_ddd(inf_func, nboot, alpha, random_state=random_state)
+            boot_result = mboot_ddd(inf_func, biters, alpha, random_state=random_state)
             dr_boot = boot_result.bres.flatten()
             se_ddd = boot_result.se[0]
             cv = boot_result.crit_val if np.isfinite(boot_result.crit_val) else z_val
@@ -244,7 +244,7 @@ def ddd_rc(
                 i_weights=i_weights,
                 est_method=est_method,
                 trim_level=trim_level,
-                nboot=nboot,
+                biters=biters,
                 random_state=random_state,
             )
             se_ddd = stats.iqr(dr_boot - ddd_att, nan_policy="omit") / (stats.norm.ppf(0.75) - stats.norm.ppf(0.25))
@@ -264,7 +264,7 @@ def ddd_rc(
         "est_method": est_method,
         "boot": boot,
         "boot_type": boot_type,
-        "nboot": nboot,
+        "biters": biters,
         "alpha": alpha,
         "trim_level": trim_level,
     }
@@ -293,7 +293,7 @@ def _ddd_rc_2period(
     est_method,
     boot,
     boot_type,
-    nboot,
+    biters,
     alpha,
     trim_level,
     random_state,
@@ -322,7 +322,7 @@ def _ddd_rc_2period(
         Whether to use bootstrap.
     boot_type : str
         Type of bootstrap.
-    nboot : int
+    biters : int
         Number of bootstrap iterations.
     alpha : float
         Significance level.
@@ -391,7 +391,7 @@ def _ddd_rc_2period(
         est_method=est_method,
         boot=boot,
         boot_type=boot_type,
-        nboot=nboot,
+        biters=biters,
         influence_func=True,
         alpha=alpha,
         trim_level=trim_level,
@@ -407,7 +407,7 @@ def _wboot_ddd_rc(
     i_weights,
     est_method,
     trim_level=0.995,
-    nboot=999,
+    biters=1000,
     random_state=None,
 ):
     """Weighted bootstrap for DDD RC estimator using exponential weights.
@@ -428,7 +428,7 @@ def _wboot_ddd_rc(
         Estimation method.
     trim_level : float
         Trimming level for propensity scores.
-    nboot : int, default 999
+    biters : int, default 1000
         Number of bootstrap iterations.
     random_state : int, Generator, or None, default None
         Controls random number generation for reproducibility.
@@ -436,13 +436,13 @@ def _wboot_ddd_rc(
     Returns
     -------
     ndarray
-        Bootstrap estimates of shape (nboot,).
+        Bootstrap estimates of shape (biters,).
     """
     rng = np.random.default_rng(random_state)
     n = len(y)
-    boot_estimates = np.zeros(nboot)
+    boot_estimates = np.zeros(biters)
 
-    for b in range(nboot):
+    for b in range(biters):
         boot_weights = rng.exponential(scale=1.0, size=n)
         boot_weights = boot_weights * i_weights
         boot_weights = boot_weights / np.mean(boot_weights)

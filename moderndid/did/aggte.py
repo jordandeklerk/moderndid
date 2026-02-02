@@ -14,7 +14,7 @@ def aggte(
     min_e=-np.inf,
     max_e=np.inf,
     na_rm=False,
-    bstrap=None,
+    boot=None,
     biters=None,
     cband=None,
     alp=None,
@@ -98,19 +98,19 @@ def aggte(
         of exposure are computed.
     na_rm : bool, default=False
         Logical value if we are to remove missing values from analyses.
-    bstrap : bool, optional
+    boot : bool, optional
         Boolean for whether or not to compute standard errors using the
         multiplier bootstrap. If standard errors are clustered, then one must
-        set bstrap=True. Default is value set in the MP object. If bstrap is
+        set boot=True. Default is value set in the MP object. If boot is
         False, then analytical standard errors are reported.
     biters : int, optional
         The number of bootstrap iterations to use. The default is the value
-        set in the MP object, and this is only applicable if bstrap=True.
+        set in the MP object, and this is only applicable if boot=True.
     cband : bool, optional
         Boolean for whether or not to compute a uniform confidence band that
         covers all of the group-time average treatment effects with fixed
         probability 1-alp. In order to compute uniform confidence bands,
-        bstrap must also be set to True. The default is the value set in
+        boot must also be set to True. The default is the value set in
         the MP object.
     alp : float, optional
         The significance level, default is value set in the MP object.
@@ -149,7 +149,7 @@ def aggte(
            ...:     gname="first.treat",
            ...:     idname="countyreal",
            ...:     est_method="dr",
-           ...:     bstrap=False
+           ...:     boot=False
            ...: )
 
     Now we can aggregate these group-time effects in different ways. The "simple" aggregation
@@ -226,7 +226,7 @@ def aggte(
         min_e=min_e,
         max_e=max_e,
         dropna=na_rm,
-        bootstrap=bstrap,
+        bootstrap=boot,
         bootstrap_iterations=biters,
         confidence_band=cband,
         alpha=alp,

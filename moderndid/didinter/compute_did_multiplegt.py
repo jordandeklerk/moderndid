@@ -7,6 +7,8 @@ import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.core.preprocess.utils import get_covariate_names_from_formula
+
 from .bootstrap import cluster_bootstrap
 from .controls import (
     apply_control_adjustment,
@@ -88,7 +90,7 @@ def compute_did_multiplegt(preprocessed):
             data=df,
             config=config,
             compute_func=_compute_bootstrap_estimates,
-            nboot=config.nboot,
+            biters=config.biters,
             random_state=config.random_state,
         )
         effects_results["std_errors"] = boot_result.effects_se
@@ -151,7 +153,7 @@ def compute_did_multiplegt(preprocessed):
             "placebo": config.placebo,
             "normalized": config.normalized,
             "switchers": config.switchers,
-            "controls": config.controls,
+            "xformla": config.xformla,
             "cluster": config.cluster,
             "trends_lin": config.trends_lin,
             "trends_nonparam": config.trends_nonparam,
@@ -275,8 +277,9 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         df = build_treatment_paths(df, abs_h, config)
 
         coefficients = None
-        if config.controls:
-            for ctrl in config.controls:
+        covariate_names = get_covariate_names_from_formula(config.xformla)
+        if covariate_names:
+            for ctrl in covariate_names:
                 lag_col = f"lag_{ctrl}_{abs_h}"
                 df = df.with_columns(pl.col(ctrl).shift(abs_h).over(gname).alias(lag_col))
 
@@ -393,7 +396,7 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
 
         estimates[idx] = did_estimate
 
-        if config.controls and coefficients:
+        if covariate_names and coefficients:
             df = compute_control_influence(df, config, abs_h, coefficients, n_groups, safe_n_switchers)
             df = compute_variance_adjustment(df, config, abs_h, coefficients, n_groups)
 

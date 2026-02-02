@@ -165,7 +165,7 @@ def test_ddd_mp_bootstrap(mp_ddd_data, cband):
         group_col="group",
         partition_col="partition",
         boot=True,
-        nboot=50,
+        biters=50,
         cband=cband,
         random_state=42,
     )
@@ -185,7 +185,7 @@ def test_ddd_mp_reproducibility(mp_ddd_data):
         group_col="group",
         partition_col="partition",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 
@@ -197,7 +197,7 @@ def test_ddd_mp_reproducibility(mp_ddd_data):
         group_col="group",
         partition_col="partition",
         boot=True,
-        nboot=20,
+        biters=20,
         random_state=123,
     )
 

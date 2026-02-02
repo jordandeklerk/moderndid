@@ -8,7 +8,7 @@ from moderndid.didtriple import numba
 from moderndid.didtriple.numba import _aggregate_by_cluster_impl, _multiplier_bootstrap_impl
 
 
-def _multiplier_bootstrap_py(inf_func, nboot, random_state):
+def _multiplier_bootstrap_py(inf_func, biters, random_state):
     sqrt5 = np.sqrt(5)
     k1 = 0.5 * (1 - sqrt5)
     k2 = 0.5 * (1 + sqrt5)
@@ -16,9 +16,9 @@ def _multiplier_bootstrap_py(inf_func, nboot, random_state):
 
     n, k = inf_func.shape
     rng = np.random.default_rng(random_state)
-    bres = np.zeros((nboot, k))
+    bres = np.zeros((biters, k))
 
-    for b in range(nboot):
+    for b in range(biters):
         v = rng.binomial(1, p_kappa, size=n)
         v = np.where(v == 1, k1, k2)
         bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
@@ -48,11 +48,11 @@ def _get_agg_inf_func_py(inf_func_mat, whichones, weights):
 @pytest.mark.skipif(not numba.HAS_NUMBA, reason="Numba not available")
 def test_multiplier_bootstrap_consistency(bootstrap_data):
     inf_func = bootstrap_data
-    nboot = 100
+    biters = 100
     random_state = 42
 
-    result_numba = numba.multiplier_bootstrap(inf_func, nboot, random_state)
-    result_py = _multiplier_bootstrap_py(inf_func, nboot, random_state)
+    result_numba = numba.multiplier_bootstrap(inf_func, biters, random_state)
+    result_py = _multiplier_bootstrap_py(inf_func, biters, random_state)
 
     np.testing.assert_allclose(result_numba, result_py, rtol=1e-10)
 
@@ -125,20 +125,20 @@ def test_get_agg_inf_func_with_boolean_mask():
 def test_multiplier_bootstrap_single_column():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)
-    nboot = 50
+    biters = 50
     random_state = 42
 
-    result = numba.multiplier_bootstrap(inf_func, nboot, random_state)
+    result = numba.multiplier_bootstrap(inf_func, biters, random_state)
 
-    assert result.shape == (nboot, 1)
+    assert result.shape == (biters, 1)
 
 
 def test_multiplier_bootstrap_reproducibility():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal((100, 3))
 
-    result1 = numba.multiplier_bootstrap(inf_func, nboot=20, random_state=123)
-    result2 = numba.multiplier_bootstrap(inf_func, nboot=20, random_state=123)
+    result1 = numba.multiplier_bootstrap(inf_func, biters=20, random_state=123)
+    result2 = numba.multiplier_bootstrap(inf_func, biters=20, random_state=123)
 
     np.testing.assert_array_equal(result1, result2)
 

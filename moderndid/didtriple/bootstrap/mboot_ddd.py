@@ -17,7 +17,7 @@ class MbootResult(NamedTuple):
     Attributes
     ----------
     bres : ndarray
-        Bootstrap results matrix of shape (nboot, k).
+        Bootstrap results matrix of shape (biters, k).
     se : ndarray
         Standard errors for each parameter.
     crit_val : float
@@ -31,7 +31,7 @@ class MbootResult(NamedTuple):
 
 def mboot_ddd(
     inf_func,
-    nboot=999,
+    biters=1000,
     alpha=0.05,
     cluster=None,
     random_state=None,
@@ -42,7 +42,7 @@ def mboot_ddd(
     ----------
     inf_func : ndarray
         Influence function matrix of shape (n_units,) or (n_units, k).
-    nboot : int, default 999
+    biters : int, default 1000
         Number of bootstrap iterations.
     alpha : float, default 0.05
         Significance level for confidence intervals.
@@ -58,7 +58,7 @@ def mboot_ddd(
     MbootResult
         NamedTuple containing:
 
-        - bres: Bootstrap results matrix of shape (nboot, k)
+        - bres: Bootstrap results matrix of shape (biters, k)
         - se: Standard errors for each parameter
         - crit_val: Critical value for uniform confidence bands
 
@@ -83,7 +83,7 @@ def mboot_ddd(
         inf_func_boot = inf_func
         n_eff = n
 
-    bres = np.sqrt(n_eff) * multiplier_bootstrap(inf_func_boot, nboot, random_state)
+    bres = np.sqrt(n_eff) * multiplier_bootstrap(inf_func_boot, biters, random_state)
 
     col_sums_sq = np.sum(bres**2, axis=0)
     ndg_dim = (~np.isnan(col_sums_sq)) & (col_sums_sq > np.sqrt(np.finfo(float).eps) * 10)
@@ -117,7 +117,7 @@ def wboot_ddd(
     covariates,
     i_weights,
     est_method,
-    nboot=999,
+    biters=1000,
     random_state=None,
 ):
     """Weighted bootstrap for DDD estimator using exponential weights.
@@ -136,7 +136,7 @@ def wboot_ddd(
         Observation weights.
     est_method : {"dr", "reg", "ipw"}
         Estimation method.
-    nboot : int, default 999
+    biters : int, default 1000
         Number of bootstrap iterations.
     random_state : int, Generator, or None, default None
         Controls random number generation for reproducibility.
@@ -144,13 +144,13 @@ def wboot_ddd(
     Returns
     -------
     ndarray
-        Bootstrap estimates of shape (nboot,).
+        Bootstrap estimates of shape (biters,).
     """
     rng = np.random.default_rng(random_state)
     n = len(subgroup)
-    boot_estimates = np.zeros(nboot)
+    boot_estimates = np.zeros(biters)
 
-    for b in range(nboot):
+    for b in range(biters):
         boot_weights = rng.exponential(scale=1.0, size=n)
         boot_weights = boot_weights * i_weights
         boot_weights = boot_weights / np.mean(boot_weights)

@@ -81,7 +81,7 @@ result <- att_gt(
   base_period = "{base_period}",
   anticipation = {anticipation},
   panel = {str(panel).upper()},
-  bstrap = FALSE
+  boot = FALSE
 )
 
 out <- list(
@@ -122,7 +122,7 @@ result <- att_gt(
   data = data,
   est_method = "{est_method}",
   control_group = "nevertreated",
-  bstrap = TRUE,
+  boot = TRUE,
   biters = {biters},
   cband = {str(cband).upper()}
 )
@@ -167,7 +167,7 @@ mp_result <- att_gt(
   data = data,
   est_method = "{est_method}",
   control_group = "nevertreated",
-  bstrap = FALSE
+  boot = FALSE
 )
 
 agg_result <- aggte(
@@ -177,7 +177,7 @@ agg_result <- aggte(
   min_e = {min_e_str},
   max_e = {max_e_str},
   na.rm = {na_rm_str},
-  bstrap = FALSE
+  boot = FALSE
 )
 
 if ("{agg_type}" == "simple") {{
@@ -224,7 +224,7 @@ mp_result <- att_gt(
   data = data,
   est_method = "dr",
   control_group = "nevertreated",
-  bstrap = TRUE,
+  boot = TRUE,
   biters = {biters},
   cband = {str(cband).upper()}
 )
@@ -232,7 +232,7 @@ mp_result <- att_gt(
 agg_result <- aggte(
   mp_result,
   type = "{agg_type}",
-  bstrap = TRUE,
+  boot = TRUE,
   biters = {biters},
   cband = {str(cband).upper()}
 )
@@ -304,7 +304,7 @@ def test_att_gt_estimation_methods(mpdta_data, mpdta_csv_path, est_method):
         xformla="~1",
         est_method=est_method,
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     r_groups = np.array(r_result["groups"])
@@ -349,7 +349,7 @@ def test_att_gt_standard_errors(mpdta_data, mpdta_csv_path, est_method):
         xformla="~1",
         est_method=est_method,
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     r_groups = np.array(r_result["groups"])
@@ -391,7 +391,7 @@ def test_att_gt_control_group_nevertreated(mpdta_data, mpdta_csv_path):
         xformla="~1",
         est_method="reg",
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     r_groups = np.array(r_result["groups"])
@@ -434,7 +434,7 @@ def test_att_gt_control_group_notyettreated(mpdta_data, mpdta_csv_path):
         xformla="~1",
         est_method="reg",
         control_group="notyettreated",
-        bstrap=False,
+        boot=False,
     )
 
     r_groups = np.array(r_result["groups"])
@@ -478,7 +478,7 @@ def test_att_gt_base_periods(mpdta_data, mpdta_csv_path, base_period):
         xformla="~1",
         est_method="reg",
         base_period=base_period,
-        bstrap=False,
+        boot=False,
     )
 
     r_groups = np.array(r_result["groups"])
@@ -522,7 +522,7 @@ def test_att_gt_anticipation(mpdta_data, mpdta_csv_path, anticipation):
         xformla="~1",
         est_method="reg",
         anticipation=anticipation,
-        bstrap=False,
+        boot=False,
     )
 
     r_groups = np.array(r_result["groups"])
@@ -565,7 +565,7 @@ def test_att_gt_with_covariates(mpdta_data, mpdta_csv_path):
         xformla="~lpop",
         est_method="dr",
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     r_groups = np.array(r_result["groups"])
@@ -608,7 +608,7 @@ def test_att_gt_bootstrap_se(mpdta_small, mpdta_small_csv_path):
         xformla="~1",
         est_method="dr",
         control_group="nevertreated",
-        bstrap=True,
+        boot=True,
         biters=100,
         cband=False,
         random_state=42,
@@ -651,7 +651,7 @@ def test_aggte_overall_att(mpdta_data, mpdta_csv_path, agg_type):
         xformla="~1",
         est_method="reg",
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     py_agg_result = aggte(py_mp_result, type=agg_type)
@@ -682,7 +682,7 @@ def test_aggte_overall_se(mpdta_data, mpdta_csv_path, agg_type):
         xformla="~1",
         est_method="reg",
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     py_agg_result = aggte(py_mp_result, type=agg_type)
@@ -716,7 +716,7 @@ def test_aggte_disaggregated_effects(mpdta_data, mpdta_csv_path, agg_type):
         xformla="~1",
         est_method="reg",
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     py_agg_result = aggte(py_mp_result, type=agg_type)
@@ -762,7 +762,7 @@ def test_aggte_dynamic_with_balance_e(mpdta_data, mpdta_csv_path):
         xformla="~1",
         est_method="reg",
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     py_agg_result = aggte(py_mp_result, type="dynamic", balance_e=1)
@@ -792,7 +792,7 @@ def test_aggte_dynamic_with_min_max_e(mpdta_data, mpdta_csv_path):
         xformla="~1",
         est_method="reg",
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     py_agg_result = aggte(py_mp_result, type="dynamic", min_e=-1, max_e=2)
@@ -825,7 +825,7 @@ def test_aggte_estimation_methods(mpdta_data, mpdta_csv_path, est_method):
         xformla="~1",
         est_method=est_method,
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     py_agg_result = aggte(py_mp_result, type="simple")
@@ -856,13 +856,13 @@ def test_aggte_bootstrap_se(mpdta_small, mpdta_small_csv_path, agg_type):
         xformla="~1",
         est_method="dr",
         control_group="nevertreated",
-        bstrap=True,
+        boot=True,
         biters=100,
         cband=False,
         random_state=42,
     )
 
-    py_agg_result = aggte(py_mp_result, type=agg_type, bstrap=True, biters=100, cband=False, random_state=42)
+    py_agg_result = aggte(py_mp_result, type=agg_type, boot=True, biters=100, cband=False, random_state=42)
 
     np.testing.assert_allclose(
         py_agg_result.overall_att,
@@ -894,7 +894,7 @@ def test_full_pipeline_consistency(mpdta_data, mpdta_csv_path):
         xformla="~1",
         est_method="dr",
         control_group="nevertreated",
-        bstrap=False,
+        boot=False,
     )
 
     py_agg_result = aggte(py_mp_result, type="simple")
@@ -947,7 +947,7 @@ def test_repeated_cross_section(mpdta_data, mpdta_csv_path):
         est_method="reg",
         control_group="nevertreated",
         panel=False,
-        bstrap=False,
+        boot=False,
     )
 
     r_groups = np.array(r_result["groups"])

@@ -538,8 +538,9 @@ class DIDInterColumnSelector(BaseTransformer):
         if config.cluster:
             cols_to_keep.append(config.cluster)
 
-        if config.controls:
-            cols_to_keep.extend(config.controls)
+        if config.xformla and config.xformla != "~1":
+            covariate_names = extract_vars_from_formula(config.xformla)
+            cols_to_keep.extend(covariate_names)
 
         if config.trends_nonparam:
             cols_to_keep.extend(config.trends_nonparam)
@@ -903,8 +904,9 @@ class TrendsLinTransformer(BaseTransformer):
             (pl.col(config.yname) - pl.col(config.yname).shift(1).over(config.gname)).alias(config.yname)
         )
 
-        if config.controls:
-            for ctrl in config.controls:
+        if config.xformla and config.xformla != "~1":
+            covariate_names = extract_vars_from_formula(config.xformla)
+            for ctrl in covariate_names:
                 df = df.with_columns((pl.col(ctrl) - pl.col(ctrl).shift(1).over(config.gname)).alias(ctrl))
 
         df = df.filter(pl.col(config.tname) != t_min)
