@@ -54,7 +54,7 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 ```
 
 > [!TIP]
-> We recommend `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant speedups for bootstrap inference and the plotting extra `plotnine` provides batteries-included plotting out of the box. Install minimal extras only if you have specific dependency constraints.
+> We recommend `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant performance gains for bootstrap inference and the plotting extra `plotnine` provides customizable, batteries-included plotting out of the box. Install minimal extras only if you have specific dependency constraints.
 
 ## Features
 
