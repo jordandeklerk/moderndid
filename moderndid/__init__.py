@@ -213,7 +213,9 @@ __all__ = [
 ]
 
 # Submodules that can be loaded lazily
-_submodules = ["core", "did", "drdid", "didinter", "didtriple", "didcont", "didhonest", "plots"]
+# Note: drdid is excluded because we want `from moderndid import drdid` to get
+# the drdid() function, not the drdid submodule. Access submodule via moderndid.drdid.
+_submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "plots"]
 
 # Map attribute names to their module paths (for base/always-available imports)
 _lazy_imports = {
@@ -432,17 +434,14 @@ _aliases = {
 
 
 def __getattr__(name: str) -> Any:
-    # Submodules
-    if name in _submodules:
-        return _importlib.import_module(f"moderndid.{name}")
-
     # Aliased imports
     if name in _aliases:
         module_path, attr_name = _aliases[name]
         module = _importlib.import_module(module_path)
         return getattr(module, attr_name)
 
-    # Base lazy imports (always available)
+    # Base lazy imports (always available) - check before submodules
+    # so that e.g. `drdid` resolves to the function, not the module
     if name in _lazy_imports:
         module = _importlib.import_module(_lazy_imports[name])
         return getattr(module, name)
@@ -456,7 +455,16 @@ def __getattr__(name: str) -> Any:
         except ImportError as e:
             raise ImportError(f"'{name}' requires extra dependencies: uv pip install 'moderndid[{extra}]'") from e
 
+    # Submodules - checked last so specific imports take precedence
+    if name in _submodules:
+        return _importlib.import_module(f"moderndid.{name}")
+
     raise AttributeError(f"module 'moderndid' has no attribute {name!r}")
+
+
+# Eagerly import names that shadow subpackages
+# This is needed because `from X import Y` bypasses __getattr__ when Y is a subpackage
+from moderndid.drdid.drdid import drdid
 
 
 def __dir__() -> list[str]:
