@@ -23,7 +23,6 @@ from plotnine import (
 
 from moderndid.did.aggte_obj import AGGTEResult
 from moderndid.did.multiperiod_obj import MPResult
-from moderndid.didcont.estimation.container import PTEResult
 from moderndid.didinter.results import DIDInterResult
 from moderndid.didtriple.agg_ddd_obj import DDDAggResult
 from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
@@ -41,7 +40,7 @@ from moderndid.plots.converters import (
 from moderndid.plots.themes import COLORS, theme_moderndid
 
 if TYPE_CHECKING:
-    from moderndid.didcont.estimation.container import DoseResult
+    from moderndid.didcont.estimation.container import DoseResult, PTEResult
     from moderndid.didhonest.honest_did import HonestDiDResult
 
 
@@ -158,7 +157,9 @@ def plot_event_study(
     ggplot
         A plotnine ggplot object that can be further customized.
     """
-    if isinstance(result, PTEResult):
+    # Check for PTEResult using duck typing (has event_study attribute)
+    # to avoid requiring didcont at import time
+    if hasattr(result, "event_study") and not isinstance(result, (AGGTEResult, DDDAggResult)):
         df = pteresult_to_polars(result)
         default_title = "Event Study"
     elif isinstance(result, DDDAggResult):

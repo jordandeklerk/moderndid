@@ -1,5 +1,14 @@
 """Sensitivity analysis for difference-in-differences using the approach of Rambachan and Roth (2022)."""
 
+try:
+    import cvxpy
+    import sympy
+except ImportError as e:
+    raise ImportError(
+        "The 'didhonest' module requires additional dependencies. "
+        "Install them with: uv pip install 'moderndid[didhonest]'"
+    ) from e
+
 from .arp_no_nuisance import (
     APRCIResult,
     compute_arp_ci,

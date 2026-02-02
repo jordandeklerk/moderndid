@@ -1,5 +1,8 @@
 """Difference-in-Differences estimators with multiple time periods."""
 
+import importlib
+from typing import Any
+
 from moderndid.core.preprocess import DIDData, preprocess_did
 
 from .aggte import aggte
@@ -17,10 +20,22 @@ from .multiperiod_obj import (
     mp_pretest,
     summary_mp_pretest,
 )
-from .plots import (
-    plot_event_study,
-    plot_gt,
-)
+
+# Lazy loading for plot functions (requires plotnine)
+_PLOT_FUNCTIONS = {"plot_event_study", "plot_gt"}
+
+
+def __getattr__(name: str) -> Any:
+    """Lazy loading for plot functions."""
+    if name in _PLOT_FUNCTIONS:
+        try:
+            from moderndid.did.plots import plot_event_study, plot_gt
+
+            return plot_event_study if name == "plot_event_study" else plot_gt
+        except ImportError as e:
+            raise ImportError(f"'{name}' requires extra dependencies: uv pip install 'moderndid[plots]'") from e
+    raise AttributeError(f"module 'moderndid.did' has no attribute '{name}'")
+
 
 __all__ = [
     "AGGTEResult",
