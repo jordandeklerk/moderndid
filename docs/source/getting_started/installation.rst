@@ -61,11 +61,6 @@ Or with pip:
 
     pip install git+https://github.com/jordandeklerk/moderndid.git
 
-.. note::
-
-    moderndid is not yet available on conda-forge. We recommend using uv or pip
-    for installation.
-
 .. tip::
 
     We recommend ``uv pip install moderndid[all]`` for full functionality.
