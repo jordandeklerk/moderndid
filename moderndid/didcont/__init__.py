@@ -1,5 +1,12 @@
 """Difference-in-differences with a continuous treatment."""
 
+try:
+    import formulaic
+except ImportError as e:
+    raise ImportError(
+        "The 'didcont' module requires additional dependencies. Install them with: uv pip install 'moderndid[didcont]'"
+    ) from e
+
 from moderndid.core.preprocess import (
     get_first_difference as _get_first_difference,
 )

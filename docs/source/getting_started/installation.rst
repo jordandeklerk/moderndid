@@ -5,23 +5,46 @@ Installation
 Installing moderndid
 --------------------
 
-The only prerequisite for installing moderndid is Python 3.10 or later.
+The only prerequisite for installing moderndid is Python 3.11 or later.
 
 From PyPI
 ^^^^^^^^^
 
-The recommended way to install moderndid is from PyPI using
-`uv <https://docs.astral.sh/uv/>`_ or pip:
+The base installation (~80MB) includes core DiD estimators (``did``, ``drdid``, ``didinter``, ``didtriple``):
 
 .. code-block:: console
 
     uv pip install moderndid
 
-Or with pip:
+For full functionality including all estimators, plotting, and performance optimizations:
+
+.. code-block:: console
+
+    uv pip install moderndid[all]
+
+Or install just the base with pip:
 
 .. code-block:: console
 
     pip install moderndid
+
+Optional Extras
+^^^^^^^^^^^^^^^
+
+Extras are additive. They add functionality to the base install, so you always
+get the core estimators plus whatever extras you specify.
+
+- **didcont** — Base + continuous treatment DiD (``cont_did``)
+- **didhonest** — Base + sensitivity analysis (``honest_did``)
+- **plots** — Base + visualization (``plot_gt``, ``plot_event_study``, ...)
+- **numba** — Base + faster bootstrap inference
+- **all** — Everything
+
+.. code-block:: console
+
+    uv pip install moderndid[didcont]     # Base estimators + cont_did
+    uv pip install moderndid[numba]       # Base estimators with faster bootstrap
+    uv pip install moderndid[plots,numba] # Combine multiple extras
 
 From source
 ^^^^^^^^^^^
@@ -38,10 +61,12 @@ Or with pip:
 
     pip install git+https://github.com/jordandeklerk/moderndid.git
 
-.. note::
+.. tip::
 
-    moderndid is not yet available on conda-forge. We recommend using uv or pip
-    for installation.
+    We recommend ``uv pip install moderndid[all]`` for full functionality.
+    The ``numba`` extra provides significant performance gains for bootstrap inference and the
+    ``plots`` extra provides customizable, batteries-included plotting out of the box.
+    Install minimal extras only if you have specific dependency constraints.
 
 Verifying the installation
 --------------------------
@@ -61,7 +86,7 @@ To install moderndid for development:
 
     git clone https://github.com/jordandeklerk/moderndid.git
     cd moderndid
-    uv pip install -e ".[dev,test]"
+    uv pip install -e ".[all,dev,test]"
 
-This installs moderndid in editable mode along with development and test
-dependencies.
+This installs moderndid in editable mode along with all optional dependencies,
+development tools, and test dependencies.

@@ -19,8 +19,32 @@ __moderndid__ is a unified Python implementation of modern difference-in-differe
 
 ## Installation
 
+The base installation includes core DiD estimators that share the same dependencies (`did`, `drdid`, `didinter`, `didtriple`):
+
 ```bash
 uv pip install moderndid
+```
+
+For full functionality including all estimators, plotting, and performance optimizations:
+
+```bash
+uv pip install moderndid[all]
+```
+
+### Optional Extras
+
+Extras are additive. They add functionality to the base install, so you always get the core estimators plus whatever extras you specify.
+
+- **`didcont`** — Base + continuous treatment DiD (`cont_did`)
+- **`didhonest`** — Base + sensitivity analysis (`honest_did`)
+- **`plots`** — Base + visualization (`plot_gt`, `plot_event_study`, ...)
+- **`numba`** — Base + faster bootstrap inference
+- **`all`** — Everything
+
+```bash
+uv pip install moderndid[didcont]     # Base estimators + cont_did
+uv pip install moderndid[numba]       # Base estimators with faster bootstrap
+uv pip install moderndid[plots,numba] # Combine multiple extras
 ```
 
 Or install from source:
@@ -28,6 +52,9 @@ Or install from source:
 ```bash
 uv pip install git+https://github.com/jordandeklerk/moderndid.git
 ```
+
+> [!TIP]
+> We recommend `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant performance gains for bootstrap inference and the `plotnine` extra provides customizable, batteries-included plotting out of the box. Install minimal extras only if you have specific dependency constraints.
 
 ## Features
 

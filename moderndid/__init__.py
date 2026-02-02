@@ -1,213 +1,26 @@
 """Modern difference-in-differences estimators."""
 
-from moderndid._version import __version__
-from moderndid.core import data
-from moderndid.core.data import load_ehec, load_engel, load_favara_imbs, load_mpdta, load_nsw, simulate_cont_did_data
-from moderndid.core.preprocess import DIDData, preprocess_did
-from moderndid.core.preprocess.utils import extract_vars_from_formula, parse_formula
-from moderndid.did.aggte import aggte
-from moderndid.did.aggte_obj import AGGTEResult, format_aggte_result
-from moderndid.did.att_gt import att_gt
-from moderndid.did.compute_aggte import compute_aggte
-from moderndid.did.compute_att_gt import ATTgtResult, ComputeATTgtResult, compute_att_gt
-from moderndid.did.mboot import mboot
-from moderndid.did.multiperiod_obj import (
-    MPPretestResult,
-    MPResult,
-    format_mp_pretest_result,
-    format_mp_result,
-    mp,
-    mp_pretest,
-    summary_mp_pretest,
-)
-from moderndid.didcont import (
-    PTEParams,
-    _get_first_difference,
-    _get_group,
-    _make_balanced_panel,
-    avoid_zero_division,
-    basis_dimension,
-    cont_did,
-    is_full_rank,
-    matrix_sqrt,
-    setup_pte,
-    setup_pte_basic,
-    setup_pte_cont,
-)
-from moderndid.didcont.npiv import (
-    MultivariateBasis,
-    NPIVResult,
-    compute_cck_ucb,
-    compute_ucb,
-    npiv,
-    npiv_choose_j,
-    npiv_est,
-    npiv_j,
-    npiv_jhat_max,
-    prodspline,
-)
-from moderndid.didcont.spline import (
-    BSpline,
-    SplineBase,
-)
-from moderndid.didhonest import (
-    APRCIResult,
-    ARPNuisanceCIResult,
-    DeltaRMBResult,
-    DeltaRMMResult,
-    DeltaRMResult,
-    DeltaSDBResult,
-    DeltaSDMResult,
-    DeltaSDResult,
-    DeltaSDRMBResult,
-    DeltaSDRMMResult,
-    DeltaSDRMResult,
-    FLCIResult,
-    HonestDiDResult,
-    OriginalCSResult,
-    SensitivityResult,
-    affine_variance,
-    basis_vector,
-    bin_factor,
-    compute_arp_ci,
-    compute_arp_nuisance_ci,
-    compute_bounds,
-    compute_conditional_cs_rm,
-    compute_conditional_cs_rmb,
-    compute_conditional_cs_rmm,
-    compute_conditional_cs_sd,
-    compute_conditional_cs_sdb,
-    compute_conditional_cs_sdm,
-    compute_conditional_cs_sdrm,
-    compute_conditional_cs_sdrmb,
-    compute_conditional_cs_sdrmm,
-    compute_delta_sd_lowerbound_m,
-    compute_delta_sd_upperbound_m,
-    compute_flci,
-    compute_identified_set_rm,
-    compute_identified_set_rmb,
-    compute_identified_set_rmm,
-    compute_identified_set_sd,
-    compute_identified_set_sdb,
-    compute_identified_set_sdm,
-    compute_identified_set_sdrm,
-    compute_identified_set_sdrmb,
-    compute_identified_set_sdrmm,
-    compute_least_favorable_cv,
-    compute_vlo_vup_dual,
-    construct_original_cs,
-    create_interactions,
-    create_monotonicity_constraint_matrix,
-    create_pre_period_constraint_matrix,
-    create_second_difference_matrix,
-    create_sensitivity_results_rm,
-    create_sensitivity_results_sm,
-    create_sign_constraint_matrix,
-    estimate_lowerbound_m_conditional_test,
-    folded_normal_quantile,
-    honest_did,
-    lee_coefficient,
-    lp_conditional_test,
-    maximize_bias,
-    minimize_variance,
-    selection_matrix,
-    test_in_identified_set,
-    test_in_identified_set_flci_hybrid,
-    test_in_identified_set_lf_hybrid,
-    test_in_identified_set_max,
-    validate_conformable,
-    validate_symmetric_psd,
-)
-from moderndid.didinter import (
-    ATEResult as DIDInterATEResult,
-)
-from moderndid.didinter import (
-    DIDInterResult,
-    did_multiplegt,
-)
-from moderndid.didinter import (
-    EffectsResult as DIDInterEffectsResult,
-)
-from moderndid.didinter import (
-    PlacebosResult as DIDInterPlacebosResult,
-)
-from moderndid.didtriple import (
-    ATTgtRCResult as DDDATTgtRCResult,
-)
-from moderndid.didtriple import (
-    ATTgtResult as DDDATTgtResult,
-)
-from moderndid.didtriple import (
-    DDDAggResult,
-    DDDMultiPeriodRCResult,
-    DDDMultiPeriodResult,
-    DDDPanelResult,
-    DDDRCResult,
-    agg_ddd,
-    ddd,
-    ddd_mp,
-    ddd_mp_rc,
-    ddd_panel,
-    ddd_rc,
-    gen_dgp_2periods,
-    gen_dgp_mult_periods,
-    generate_simple_ddd_data,
-    mboot_ddd,
-    wboot_ddd,
-)
-from moderndid.drdid.bootstrap.boot_ipw_rc import wboot_ipw_rc
-from moderndid.drdid.bootstrap.boot_mult import mboot_did, mboot_twfep_did
-from moderndid.drdid.bootstrap.boot_panel import (
-    wboot_dr_tr_panel,
-    wboot_drdid_imp_panel,
-    wboot_ipw_panel,
-    wboot_reg_panel,
-    wboot_std_ipw_panel,
-    wboot_twfe_panel,
-)
-from moderndid.drdid.bootstrap.boot_rc import wboot_drdid_rc1, wboot_drdid_rc2
-from moderndid.drdid.bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
-from moderndid.drdid.bootstrap.boot_reg_rc import wboot_reg_rc
-from moderndid.drdid.bootstrap.boot_std_ipw_rc import wboot_std_ipw_rc
-from moderndid.drdid.bootstrap.boot_twfe_rc import wboot_twfe_rc
-from moderndid.drdid.drdid import drdid
-from moderndid.drdid.estimators.drdid_imp_local_rc import drdid_imp_local_rc
-from moderndid.drdid.estimators.drdid_imp_panel import drdid_imp_panel
-from moderndid.drdid.estimators.drdid_imp_rc import drdid_imp_rc
-from moderndid.drdid.estimators.drdid_panel import drdid_panel
-from moderndid.drdid.estimators.drdid_rc import drdid_rc
-from moderndid.drdid.estimators.drdid_trad_rc import drdid_trad_rc
-from moderndid.drdid.estimators.ipw_did_panel import ipw_did_panel
-from moderndid.drdid.estimators.ipw_did_rc import ipw_did_rc
-from moderndid.drdid.estimators.reg_did_panel import reg_did_panel
-from moderndid.drdid.estimators.reg_did_rc import reg_did_rc
-from moderndid.drdid.estimators.std_ipw_did_panel import std_ipw_did_panel
-from moderndid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
-from moderndid.drdid.estimators.twfe_did_panel import twfe_did_panel
-from moderndid.drdid.estimators.twfe_did_rc import twfe_did_rc
-from moderndid.drdid.estimators.wols import ols_panel, wols_panel, wols_rc
-from moderndid.drdid.format import print_did_result
-from moderndid.drdid.ipwdid import ipwdid
-from moderndid.drdid.ordid import ordid
-from moderndid.drdid.propensity.aipw_estimators import aipw_did_panel, aipw_did_rc_imp1, aipw_did_rc_imp2
-from moderndid.drdid.propensity.ipw_estimators import ipw_rc
-from moderndid.drdid.propensity.pscore_ipt import calculate_pscore_ipt
-from moderndid.plots import (
-    plot_agg,
-    plot_dose_response,
-    plot_event_study,
-    plot_gt,
-    plot_multiplegt,
-    plot_sensitivity,
-)
+import importlib as _importlib
+from importlib.metadata import PackageNotFoundError, version
+from typing import Any
+
+# Version handling
+try:
+    __version__ = version("moderndid")
+except PackageNotFoundError:
+    __version__ = "unknown"
 
 __all__ = [
+    # did module
     "AGGTEResult",
+    # Optional: didhonest (requires cvxpy, sympy)
     "APRCIResult",
     "ARPNuisanceCIResult",
     "ATTgtResult",
+    # Optional: didcont (requires formulaic)
     "BSpline",
     "ComputeATTgtResult",
+    # didtriple module
     "DDDATTgtRCResult",
     "DDDATTgtResult",
     "DDDAggResult",
@@ -215,7 +28,9 @@ __all__ = [
     "DDDMultiPeriodResult",
     "DDDPanelResult",
     "DDDRCResult",
+    # Core preprocessing
     "DIDData",
+    # didinter module
     "DIDInterATEResult",
     "DIDInterEffectsResult",
     "DIDInterPlacebosResult",
@@ -239,6 +54,7 @@ __all__ = [
     "PTEParams",
     "SensitivityResult",
     "SplineBase",
+    # Version
     "__version__",
     "_get_first_difference",
     "_get_group",
@@ -246,6 +62,7 @@ __all__ = [
     "affine_variance",
     "agg_ddd",
     "aggte",
+    # drdid module
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
@@ -294,6 +111,7 @@ __all__ = [
     "create_sensitivity_results_rm",
     "create_sensitivity_results_sm",
     "create_sign_constraint_matrix",
+    # Core data
     "data",
     "ddd",
     "ddd_mp",
@@ -347,10 +165,10 @@ __all__ = [
     "ols_panel",
     "ordid",
     "parse_formula",
+    # Optional: plots (requires plotnine)
     "plot_agg",
     "plot_dose_response",
     "plot_event_study",
-    # Plotting
     "plot_gt",
     "plot_multiplegt",
     "plot_sensitivity",
@@ -393,3 +211,261 @@ __all__ = [
     "wols_panel",
     "wols_rc",
 ]
+
+# Submodules that can be loaded lazily
+# Note: drdid is excluded because we want `from moderndid import drdid` to get
+# the drdid() function, not the drdid submodule. Access submodule via moderndid.drdid.
+_submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "plots"]
+
+# Map attribute names to their module paths (for base/always-available imports)
+_lazy_imports = {
+    # core.data
+    "data": "moderndid.core",
+    "load_ehec": "moderndid.core.data",
+    "load_engel": "moderndid.core.data",
+    "load_favara_imbs": "moderndid.core.data",
+    "load_mpdta": "moderndid.core.data",
+    "load_nsw": "moderndid.core.data",
+    "simulate_cont_did_data": "moderndid.core.data",
+    # core.preprocess
+    "DIDData": "moderndid.core.preprocess",
+    "preprocess_did": "moderndid.core.preprocess",
+    "extract_vars_from_formula": "moderndid.core.preprocess.utils",
+    "parse_formula": "moderndid.core.preprocess.utils",
+    # did
+    "AGGTEResult": "moderndid.did.aggte_obj",
+    "format_aggte_result": "moderndid.did.aggte_obj",
+    "ATTgtResult": "moderndid.did.compute_att_gt",
+    "ComputeATTgtResult": "moderndid.did.compute_att_gt",
+    "compute_att_gt": "moderndid.did.compute_att_gt",
+    "MPPretestResult": "moderndid.did.multiperiod_obj",
+    "MPResult": "moderndid.did.multiperiod_obj",
+    "format_mp_pretest_result": "moderndid.did.multiperiod_obj",
+    "format_mp_result": "moderndid.did.multiperiod_obj",
+    "mp": "moderndid.did.multiperiod_obj",
+    "mp_pretest": "moderndid.did.multiperiod_obj",
+    "summary_mp_pretest": "moderndid.did.multiperiod_obj",
+    "aggte": "moderndid.did.aggte",
+    "att_gt": "moderndid.did.att_gt",
+    "compute_aggte": "moderndid.did.compute_aggte",
+    "mboot": "moderndid.did.mboot",
+    # drdid
+    "drdid": "moderndid.drdid.drdid",
+    "ipwdid": "moderndid.drdid.ipwdid",
+    "ordid": "moderndid.drdid.ordid",
+    "print_did_result": "moderndid.drdid.format",
+    "drdid_imp_local_rc": "moderndid.drdid.estimators.drdid_imp_local_rc",
+    "drdid_imp_panel": "moderndid.drdid.estimators.drdid_imp_panel",
+    "drdid_imp_rc": "moderndid.drdid.estimators.drdid_imp_rc",
+    "drdid_panel": "moderndid.drdid.estimators.drdid_panel",
+    "drdid_rc": "moderndid.drdid.estimators.drdid_rc",
+    "drdid_trad_rc": "moderndid.drdid.estimators.drdid_trad_rc",
+    "ipw_did_panel": "moderndid.drdid.estimators.ipw_did_panel",
+    "ipw_did_rc": "moderndid.drdid.estimators.ipw_did_rc",
+    "reg_did_panel": "moderndid.drdid.estimators.reg_did_panel",
+    "reg_did_rc": "moderndid.drdid.estimators.reg_did_rc",
+    "std_ipw_did_panel": "moderndid.drdid.estimators.std_ipw_did_panel",
+    "std_ipw_did_rc": "moderndid.drdid.estimators.std_ipw_did_rc",
+    "twfe_did_panel": "moderndid.drdid.estimators.twfe_did_panel",
+    "twfe_did_rc": "moderndid.drdid.estimators.twfe_did_rc",
+    "ols_panel": "moderndid.drdid.estimators.wols",
+    "wols_panel": "moderndid.drdid.estimators.wols",
+    "wols_rc": "moderndid.drdid.estimators.wols",
+    "wboot_ipw_rc": "moderndid.drdid.bootstrap.boot_ipw_rc",
+    "mboot_did": "moderndid.drdid.bootstrap.boot_mult",
+    "mboot_twfep_did": "moderndid.drdid.bootstrap.boot_mult",
+    "wboot_dr_tr_panel": "moderndid.drdid.bootstrap.boot_panel",
+    "wboot_drdid_imp_panel": "moderndid.drdid.bootstrap.boot_panel",
+    "wboot_ipw_panel": "moderndid.drdid.bootstrap.boot_panel",
+    "wboot_reg_panel": "moderndid.drdid.bootstrap.boot_panel",
+    "wboot_std_ipw_panel": "moderndid.drdid.bootstrap.boot_panel",
+    "wboot_twfe_panel": "moderndid.drdid.bootstrap.boot_panel",
+    "wboot_drdid_rc1": "moderndid.drdid.bootstrap.boot_rc",
+    "wboot_drdid_rc2": "moderndid.drdid.bootstrap.boot_rc",
+    "wboot_drdid_ipt_rc1": "moderndid.drdid.bootstrap.boot_rc_ipt",
+    "wboot_drdid_ipt_rc2": "moderndid.drdid.bootstrap.boot_rc_ipt",
+    "wboot_reg_rc": "moderndid.drdid.bootstrap.boot_reg_rc",
+    "wboot_std_ipw_rc": "moderndid.drdid.bootstrap.boot_std_ipw_rc",
+    "wboot_twfe_rc": "moderndid.drdid.bootstrap.boot_twfe_rc",
+    "aipw_did_panel": "moderndid.drdid.propensity.aipw_estimators",
+    "aipw_did_rc_imp1": "moderndid.drdid.propensity.aipw_estimators",
+    "aipw_did_rc_imp2": "moderndid.drdid.propensity.aipw_estimators",
+    "ipw_rc": "moderndid.drdid.propensity.ipw_estimators",
+    "calculate_pscore_ipt": "moderndid.drdid.propensity.pscore_ipt",
+    # didinter
+    "DIDInterATEResult": "moderndid.didinter.results",
+    "DIDInterEffectsResult": "moderndid.didinter.results",
+    "DIDInterPlacebosResult": "moderndid.didinter.results",
+    "DIDInterResult": "moderndid.didinter.results",
+    "did_multiplegt": "moderndid.didinter.did_multiplegt",
+    # didtriple
+    "DDDATTgtRCResult": "moderndid.didtriple.estimators.ddd_mp_rc",
+    "DDDATTgtResult": "moderndid.didtriple.estimators.ddd_mp",
+    "DDDAggResult": "moderndid.didtriple.agg_ddd_obj",
+    "DDDMultiPeriodRCResult": "moderndid.didtriple.estimators.ddd_mp_rc",
+    "DDDMultiPeriodResult": "moderndid.didtriple.estimators.ddd_mp",
+    "DDDPanelResult": "moderndid.didtriple.estimators.ddd_panel",
+    "DDDRCResult": "moderndid.didtriple.estimators.ddd_rc",
+    "agg_ddd": "moderndid.didtriple.agg_ddd",
+    "ddd": "moderndid.didtriple.ddd",
+    "ddd_mp": "moderndid.didtriple.estimators.ddd_mp",
+    "ddd_mp_rc": "moderndid.didtriple.estimators.ddd_mp_rc",
+    "ddd_panel": "moderndid.didtriple.estimators.ddd_panel",
+    "ddd_rc": "moderndid.didtriple.estimators.ddd_rc",
+    "gen_dgp_2periods": "moderndid.didtriple.dgp",
+    "gen_dgp_mult_periods": "moderndid.didtriple.dgp",
+    "generate_simple_ddd_data": "moderndid.didtriple.dgp",
+    "mboot_ddd": "moderndid.didtriple.bootstrap",
+    "wboot_ddd": "moderndid.didtriple.bootstrap",
+}
+
+# Optional imports that require extra dependencies
+# Format: {name: (module_path, extra_name)}
+_optional_imports = {
+    # didcont (requires formulaic)
+    "PTEParams": ("moderndid.didcont", "didcont"),
+    "_get_first_difference": ("moderndid.didcont", "didcont"),
+    "_get_group": ("moderndid.didcont", "didcont"),
+    "_make_balanced_panel": ("moderndid.didcont", "didcont"),
+    "avoid_zero_division": ("moderndid.didcont", "didcont"),
+    "basis_dimension": ("moderndid.didcont", "didcont"),
+    "cont_did": ("moderndid.didcont", "didcont"),
+    "is_full_rank": ("moderndid.didcont", "didcont"),
+    "matrix_sqrt": ("moderndid.didcont", "didcont"),
+    "setup_pte": ("moderndid.didcont", "didcont"),
+    "setup_pte_basic": ("moderndid.didcont", "didcont"),
+    "setup_pte_cont": ("moderndid.didcont", "didcont"),
+    "MultivariateBasis": ("moderndid.didcont.npiv", "didcont"),
+    "NPIVResult": ("moderndid.didcont.npiv", "didcont"),
+    "compute_cck_ucb": ("moderndid.didcont.npiv", "didcont"),
+    "compute_ucb": ("moderndid.didcont.npiv", "didcont"),
+    "npiv": ("moderndid.didcont.npiv", "didcont"),
+    "npiv_choose_j": ("moderndid.didcont.npiv", "didcont"),
+    "npiv_est": ("moderndid.didcont.npiv", "didcont"),
+    "npiv_j": ("moderndid.didcont.npiv", "didcont"),
+    "npiv_jhat_max": ("moderndid.didcont.npiv", "didcont"),
+    "prodspline": ("moderndid.didcont.npiv", "didcont"),
+    "BSpline": ("moderndid.didcont.spline", "didcont"),
+    "SplineBase": ("moderndid.didcont.spline", "didcont"),
+    # didhonest (requires cvxpy, sympy)
+    "APRCIResult": ("moderndid.didhonest", "didhonest"),
+    "ARPNuisanceCIResult": ("moderndid.didhonest", "didhonest"),
+    "DeltaRMBResult": ("moderndid.didhonest", "didhonest"),
+    "DeltaRMMResult": ("moderndid.didhonest", "didhonest"),
+    "DeltaRMResult": ("moderndid.didhonest", "didhonest"),
+    "DeltaSDBResult": ("moderndid.didhonest", "didhonest"),
+    "DeltaSDMResult": ("moderndid.didhonest", "didhonest"),
+    "DeltaSDResult": ("moderndid.didhonest", "didhonest"),
+    "DeltaSDRMBResult": ("moderndid.didhonest", "didhonest"),
+    "DeltaSDRMMResult": ("moderndid.didhonest", "didhonest"),
+    "DeltaSDRMResult": ("moderndid.didhonest", "didhonest"),
+    "FLCIResult": ("moderndid.didhonest", "didhonest"),
+    "HonestDiDResult": ("moderndid.didhonest", "didhonest"),
+    "OriginalCSResult": ("moderndid.didhonest", "didhonest"),
+    "SensitivityResult": ("moderndid.didhonest", "didhonest"),
+    "affine_variance": ("moderndid.didhonest", "didhonest"),
+    "basis_vector": ("moderndid.didhonest", "didhonest"),
+    "bin_factor": ("moderndid.didhonest", "didhonest"),
+    "compute_arp_ci": ("moderndid.didhonest", "didhonest"),
+    "compute_arp_nuisance_ci": ("moderndid.didhonest", "didhonest"),
+    "compute_bounds": ("moderndid.didhonest", "didhonest"),
+    "compute_conditional_cs_rm": ("moderndid.didhonest", "didhonest"),
+    "compute_conditional_cs_rmb": ("moderndid.didhonest", "didhonest"),
+    "compute_conditional_cs_rmm": ("moderndid.didhonest", "didhonest"),
+    "compute_conditional_cs_sd": ("moderndid.didhonest", "didhonest"),
+    "compute_conditional_cs_sdb": ("moderndid.didhonest", "didhonest"),
+    "compute_conditional_cs_sdm": ("moderndid.didhonest", "didhonest"),
+    "compute_conditional_cs_sdrm": ("moderndid.didhonest", "didhonest"),
+    "compute_conditional_cs_sdrmb": ("moderndid.didhonest", "didhonest"),
+    "compute_conditional_cs_sdrmm": ("moderndid.didhonest", "didhonest"),
+    "compute_delta_sd_lowerbound_m": ("moderndid.didhonest", "didhonest"),
+    "compute_delta_sd_upperbound_m": ("moderndid.didhonest", "didhonest"),
+    "compute_flci": ("moderndid.didhonest", "didhonest"),
+    "compute_identified_set_rm": ("moderndid.didhonest", "didhonest"),
+    "compute_identified_set_rmb": ("moderndid.didhonest", "didhonest"),
+    "compute_identified_set_rmm": ("moderndid.didhonest", "didhonest"),
+    "compute_identified_set_sd": ("moderndid.didhonest", "didhonest"),
+    "compute_identified_set_sdb": ("moderndid.didhonest", "didhonest"),
+    "compute_identified_set_sdm": ("moderndid.didhonest", "didhonest"),
+    "compute_identified_set_sdrm": ("moderndid.didhonest", "didhonest"),
+    "compute_identified_set_sdrmb": ("moderndid.didhonest", "didhonest"),
+    "compute_identified_set_sdrmm": ("moderndid.didhonest", "didhonest"),
+    "compute_least_favorable_cv": ("moderndid.didhonest", "didhonest"),
+    "compute_vlo_vup_dual": ("moderndid.didhonest", "didhonest"),
+    "construct_original_cs": ("moderndid.didhonest", "didhonest"),
+    "create_interactions": ("moderndid.didhonest", "didhonest"),
+    "create_monotonicity_constraint_matrix": ("moderndid.didhonest", "didhonest"),
+    "create_pre_period_constraint_matrix": ("moderndid.didhonest", "didhonest"),
+    "create_second_difference_matrix": ("moderndid.didhonest", "didhonest"),
+    "create_sensitivity_results_rm": ("moderndid.didhonest", "didhonest"),
+    "create_sensitivity_results_sm": ("moderndid.didhonest", "didhonest"),
+    "create_sign_constraint_matrix": ("moderndid.didhonest", "didhonest"),
+    "estimate_lowerbound_m_conditional_test": ("moderndid.didhonest", "didhonest"),
+    "folded_normal_quantile": ("moderndid.didhonest", "didhonest"),
+    "honest_did": ("moderndid.didhonest", "didhonest"),
+    "lee_coefficient": ("moderndid.didhonest", "didhonest"),
+    "lp_conditional_test": ("moderndid.didhonest", "didhonest"),
+    "maximize_bias": ("moderndid.didhonest", "didhonest"),
+    "minimize_variance": ("moderndid.didhonest", "didhonest"),
+    "selection_matrix": ("moderndid.didhonest", "didhonest"),
+    "test_in_identified_set": ("moderndid.didhonest", "didhonest"),
+    "test_in_identified_set_flci_hybrid": ("moderndid.didhonest", "didhonest"),
+    "test_in_identified_set_lf_hybrid": ("moderndid.didhonest", "didhonest"),
+    "test_in_identified_set_max": ("moderndid.didhonest", "didhonest"),
+    "validate_conformable": ("moderndid.didhonest", "didhonest"),
+    "validate_symmetric_psd": ("moderndid.didhonest", "didhonest"),
+    # plots (requires plotnine)
+    "plot_agg": ("moderndid.plots", "plots"),
+    "plot_dose_response": ("moderndid.plots", "plots"),
+    "plot_event_study": ("moderndid.plots", "plots"),
+    "plot_gt": ("moderndid.plots", "plots"),
+    "plot_multiplegt": ("moderndid.plots", "plots"),
+    "plot_sensitivity": ("moderndid.plots", "plots"),
+}
+
+# Aliased imports (different name in source module)
+_aliases = {
+    "DIDInterATEResult": ("moderndid.didinter.results", "ATEResult"),
+    "DIDInterEffectsResult": ("moderndid.didinter.results", "EffectsResult"),
+    "DIDInterPlacebosResult": ("moderndid.didinter.results", "PlacebosResult"),
+    "DDDATTgtRCResult": ("moderndid.didtriple.estimators.ddd_mp_rc", "ATTgtRCResult"),
+    "DDDATTgtResult": ("moderndid.didtriple.estimators.ddd_mp", "ATTgtResult"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    # Aliased imports
+    if name in _aliases:
+        module_path, attr_name = _aliases[name]
+        module = _importlib.import_module(module_path)
+        return getattr(module, attr_name)
+
+    # Base lazy imports (always available) - check before submodules
+    # so that e.g. `drdid` resolves to the function, not the module
+    if name in _lazy_imports:
+        module = _importlib.import_module(_lazy_imports[name])
+        return getattr(module, name)
+
+    # Optional imports (require extra dependencies)
+    if name in _optional_imports:
+        module_path, extra = _optional_imports[name]
+        try:
+            module = _importlib.import_module(module_path)
+            return getattr(module, name)
+        except ImportError as e:
+            raise ImportError(f"'{name}' requires extra dependencies: uv pip install 'moderndid[{extra}]'") from e
+
+    # Submodules - checked last so specific imports take precedence
+    if name in _submodules:
+        return _importlib.import_module(f"moderndid.{name}")
+
+    raise AttributeError(f"module 'moderndid' has no attribute {name!r}")
+
+
+# Eagerly import names that shadow subpackages
+# This is needed because `from X import Y` bypasses __getattr__ when Y is a subpackage
+from moderndid.drdid.drdid import drdid
+
+
+def __dir__() -> list[str]:
+    return __all__

@@ -1,5 +1,12 @@
 """Unified plotting infrastructure for moderndid using plotnine."""
 
+try:
+    import plotnine
+except ImportError as e:
+    raise ImportError(
+        "The 'plots' module requires additional dependencies. Install them with: uv pip install 'moderndid[plots]'"
+    ) from e
+
 from moderndid.plots.converters import (
     aggteresult_to_polars,
     dddaggresult_to_polars,
