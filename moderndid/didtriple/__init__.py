@@ -1,6 +1,6 @@
 """Triple difference-in-differences estimators."""
 
-import moderndid.didtriple.format  # noqa: F401
+import moderndid.didtriple.format
 from moderndid.didtriple.agg_ddd import agg_ddd
 from moderndid.didtriple.agg_ddd_obj import DDDAggResult
 from moderndid.didtriple.bootstrap.mboot_ddd import mboot_ddd, wboot_ddd
