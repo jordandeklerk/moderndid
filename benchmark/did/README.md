@@ -1,6 +1,6 @@
-# Multi-Period Staggered DiD Benchmark
+# Staggered DiD Benchmark
 
-Benchmark suite comparing Python `att_gt` estimator against the R `did` package.
+Benchmark suite comparing the Python `att_gt` estimator against the R `did` package.
 
 ## Quick Start
 

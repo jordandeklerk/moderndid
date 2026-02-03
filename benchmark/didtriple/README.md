@@ -1,6 +1,6 @@
 # Triple DiD Benchmark
 
-Benchmark suite comparing Python `ddd` (triple difference) estimator against the R `triplediff` package.
+Benchmark suite comparing the Python `ddd` estimator against the R `triplediff` package.
 
 ## Quick Start
 

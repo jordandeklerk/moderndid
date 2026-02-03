@@ -1,6 +1,6 @@
-# Continuous DiD Benchmark Suite
+# Continuous DiD Benchmark
 
-Benchmarks for `cont_did` (continuous treatment difference-in-differences) comparing Python `moderndid` against R `contdid`.
+Benchmark suite comparing the Python `cont_did` estimator against the R `contdid` package.
 
 ## Quick Start
 
