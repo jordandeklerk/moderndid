@@ -1,4 +1,4 @@
-# Benchmark Suite: Python `att_gt` vs R `did` Package
+# Benchmark Suite
 
 Comprehensive benchmark suite comparing computational performance of the Python `att_gt` estimator against the R `did` package.
 
