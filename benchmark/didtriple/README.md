@@ -1,4 +1,4 @@
-# ddd Benchmark
+# Triple DiD Benchmark
 
 Benchmark suite comparing Python `ddd` (triple difference) estimator against the R `triplediff` package.
 

@@ -1,4 +1,4 @@
-# cont_did Benchmark Suite
+# Continuous DiD Benchmark Suite
 
 Benchmarks for `cont_did` (continuous treatment difference-in-differences) comparing Python `moderndid` against R `contdid`.
 
