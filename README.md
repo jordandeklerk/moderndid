@@ -215,12 +215,9 @@ did.plot_event_study(event_study)
 
 ### Benchmarks
 
-The Python implementation shows significant speed improvements as observations grow compared to the R `did` package:
+The Python implementation shows significant speed improvements as observations grow compared to the canonical R packages:
 
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/benchmark/output/benchmark_scaling.png" alt="Benchmark plot">
-
-- **att_gt**: Up to **117x faster** than R at 2M observations.
-- **ddd**: Up to **8x faster** than R at 5M units.
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/benchmark/output/benchmark_scaling_hires.png" alt="Benchmark plot">
 
 See [benchmark](benchmark/) for full methodology and results.
 
