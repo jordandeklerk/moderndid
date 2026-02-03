@@ -1,6 +1,6 @@
 # Benchmark Suite
 
-Comprehensive benchmark suite comparing computational performance of the Python `moderndid` package against R equivalents.
+This benchmark suite measures the computational performance of `moderndid` estimators against their canonical R implementations. It provides reproducible timing comparisons across configurable dimensions including dataset size, number of time periods, treatment groups, covariates, and bootstrap iterations.
 
 ## Quick Start
 
@@ -10,11 +10,15 @@ python -m benchmark.did.run_benchmark --suite quick --python-only
 
 # ddd benchmarks
 python -m benchmark.didtriple.run_benchmark --suite quick --python-only
+
+# cont_did benchmarks
+python -m benchmark.didcont.run_benchmark --suite quick --python-only
 ```
 
 See module-specific READMEs for detailed CLI options:
 - [`benchmark/did/README.md`](did/README.md) — att_gt vs R did
 - [`benchmark/didtriple/README.md`](didtriple/README.md) — ddd vs R triplediff
+- [`benchmark/didcont/README.md`](didcont/README.md) — cont_did vs R contdid
 
 ## Methodology
 
@@ -32,8 +36,8 @@ The benchmark suite ensures fair comparisons between Python and R:
 - moderndid, polars, numpy
 
 **R (optional):**
-- R with `did`, `triplediff`, and `jsonlite` packages
+- R with `did`, `triplediff`, `contdid`, and `jsonlite` packages
 
 ## Results
 
-![Python vs R Performance](output/benchmark_scaling.png)
+![Python vs R Performance](output/benchmark_scaling_hires.png)
