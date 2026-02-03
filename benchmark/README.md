@@ -15,7 +15,7 @@ python -m benchmark.didtriple.run_benchmark --suite quick --python-only
 python -m benchmark.didcont.run_benchmark --suite quick --python-only
 ```
 
-See module-specific READMEs for detailed CLI options:
+See module-specific instructions for detailed CLI options:
 - [`benchmark/did/README.md`](did/README.md) — att_gt vs R did
 - [`benchmark/didtriple/README.md`](didtriple/README.md) — ddd vs R triplediff
 - [`benchmark/didcont/README.md`](didcont/README.md) — cont_did vs R contdid
