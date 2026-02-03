@@ -43,27 +43,6 @@ class BaseBenchmarkResult:
         return asdict(self)
 
 
-@dataclass
-class ATTgtBenchmarkResult(BaseBenchmarkResult):
-    """Container for att_gt benchmark result."""
-
-    n_periods: int = 0
-    n_groups: int = 0
-    n_covariates: int = 0
-    control_group: str = "nevertreated"
-
-
-@dataclass
-class DDDBenchmarkResult(BaseBenchmarkResult):
-    """Container for DDD benchmark result."""
-
-    dgp_type: int = 1
-    panel: bool = True
-    multi_period: bool = False
-    control_group: str = "nevertreated"
-    base_period: str = "varying"
-
-
 class ResultStorage:
     """Handles saving and loading benchmark results."""
 
