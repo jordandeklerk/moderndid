@@ -2,15 +2,6 @@
 
 Comprehensive benchmark suite comparing computational performance of the Python `moderndid` package against R equivalents.
 
-## Results
-
-![Python vs R Performance](output/benchmark_scaling.png)
-
-| Estimator | R Package | Max Speedup | At Scale |
-|-----------|-----------|-------------|----------|
-| `att_gt` | `did` | **117x faster** | 2M observations |
-| `ddd` | `triplediff` | **8x faster** | 5M units |
-
 ## Quick Start
 
 ```bash
@@ -42,3 +33,7 @@ The benchmark suite ensures fair comparisons between Python and R:
 
 **R (optional):**
 - R with `did`, `triplediff`, and `jsonlite` packages
+
+## Results
+
+![Python vs R Performance](output/benchmark_scaling.png)
