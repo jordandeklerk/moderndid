@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 
 @dataclass
-class BenchmarkConfig:
-    """Configuration for a single benchmark run."""
+class BaseBenchmarkConfig:
+    """Base configuration shared by all benchmark types."""
 
     n_units: int = 1000
-    n_periods: int = 5
-    n_groups: int = 3
-    n_covariates: int = 0
     est_method: str = "dr"
-    control_group: str = "nevertreated"
     boot: bool = False
     biters: int = 100
     xformla: str = "~1"
@@ -24,66 +20,120 @@ class BenchmarkConfig:
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
-        return {
-            "n_units": self.n_units,
-            "n_periods": self.n_periods,
-            "n_groups": self.n_groups,
-            "n_covariates": self.n_covariates,
-            "est_method": self.est_method,
-            "control_group": self.control_group,
-            "boot": self.boot,
-            "biters": self.biters,
-            "xformla": self.xformla,
-            "n_warmup": self.n_warmup,
-            "n_runs": self.n_runs,
-            "random_seed": self.random_seed,
-        }
+        return asdict(self)
 
 
-BENCHMARK_SUITES: dict[str, list[BenchmarkConfig]] = {
+@dataclass
+class ATTgtBenchmarkConfig(BaseBenchmarkConfig):
+    """Configuration for att_gt benchmark runs."""
+
+    n_periods: int = 5
+    n_groups: int = 3
+    n_covariates: int = 0
+    control_group: str = "nevertreated"
+
+
+@dataclass
+class DDDBenchmarkConfig(BaseBenchmarkConfig):
+    """Configuration for DDD benchmark runs."""
+
+    dgp_type: int = 1
+    panel: bool = True
+    multi_period: bool = False
+    control_group: str = "nevertreated"
+    base_period: str = "varying"
+    xformla: str = "~ cov1 + cov2 + cov3 + cov4"
+
+
+ATTGT_BENCHMARK_SUITES: dict[str, list[ATTgtBenchmarkConfig]] = {
     "scaling_units": [
-        BenchmarkConfig(n_units=100, n_periods=5, n_groups=3),
-        BenchmarkConfig(n_units=500, n_periods=5, n_groups=3),
-        BenchmarkConfig(n_units=1000, n_periods=5, n_groups=3),
-        BenchmarkConfig(n_units=5000, n_periods=5, n_groups=3),
-        BenchmarkConfig(n_units=10000, n_periods=5, n_groups=3),
-        BenchmarkConfig(n_units=50000, n_periods=5, n_groups=3),
-        BenchmarkConfig(n_units=100000, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=100, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=500, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=5000, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=10000, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=50000, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=100000, n_periods=5, n_groups=3),
     ],
     "scaling_periods": [
-        BenchmarkConfig(n_units=1000, n_periods=5, n_groups=3),
-        BenchmarkConfig(n_units=1000, n_periods=10, n_groups=3),
-        BenchmarkConfig(n_units=1000, n_periods=15, n_groups=3),
-        BenchmarkConfig(n_units=1000, n_periods=20, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=10, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=15, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=20, n_groups=3),
     ],
     "scaling_groups": [
-        BenchmarkConfig(n_units=1000, n_periods=10, n_groups=3),
-        BenchmarkConfig(n_units=1000, n_periods=10, n_groups=5),
-        BenchmarkConfig(n_units=1000, n_periods=10, n_groups=7),
-        BenchmarkConfig(n_units=1000, n_periods=10, n_groups=10),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=10, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=10, n_groups=5),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=10, n_groups=7),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=10, n_groups=10),
     ],
     "est_methods": [
-        BenchmarkConfig(n_units=1000, n_periods=5, n_groups=3, est_method="dr"),
-        BenchmarkConfig(n_units=1000, n_periods=5, n_groups=3, est_method="ipw"),
-        BenchmarkConfig(n_units=1000, n_periods=5, n_groups=3, est_method="reg"),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=5, n_groups=3, est_method="dr"),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=5, n_groups=3, est_method="ipw"),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=5, n_groups=3, est_method="reg"),
     ],
     "bootstrap": [
-        BenchmarkConfig(n_units=500, n_periods=5, n_groups=3, boot=False),
-        BenchmarkConfig(n_units=500, n_periods=5, n_groups=3, boot=True, biters=100),
-        BenchmarkConfig(n_units=500, n_periods=5, n_groups=3, boot=True, biters=500),
-        BenchmarkConfig(n_units=500, n_periods=5, n_groups=3, boot=True, biters=1000),
+        ATTgtBenchmarkConfig(n_units=500, n_periods=5, n_groups=3, boot=False),
+        ATTgtBenchmarkConfig(n_units=500, n_periods=5, n_groups=3, boot=True, biters=100),
+        ATTgtBenchmarkConfig(n_units=500, n_periods=5, n_groups=3, boot=True, biters=500),
+        ATTgtBenchmarkConfig(n_units=500, n_periods=5, n_groups=3, boot=True, biters=1000),
     ],
     "quick": [
-        BenchmarkConfig(n_units=100, n_periods=5, n_groups=3),
-        BenchmarkConfig(n_units=500, n_periods=5, n_groups=3),
-        BenchmarkConfig(n_units=1000, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=100, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=500, n_periods=5, n_groups=3),
+        ATTgtBenchmarkConfig(n_units=1000, n_periods=5, n_groups=3),
     ],
     "large_scale": [
-        BenchmarkConfig(n_units=100000, n_periods=10, n_groups=5),
-        BenchmarkConfig(n_units=200000, n_periods=10, n_groups=5),
-        BenchmarkConfig(n_units=500000, n_periods=10, n_groups=5),
-        BenchmarkConfig(n_units=1000000, n_periods=5, n_groups=5),
-        BenchmarkConfig(n_units=1000000, n_periods=10, n_groups=5),
-        BenchmarkConfig(n_units=2000000, n_periods=5, n_groups=5),
+        ATTgtBenchmarkConfig(n_units=100000, n_periods=10, n_groups=5),
+        ATTgtBenchmarkConfig(n_units=200000, n_periods=10, n_groups=5),
+        ATTgtBenchmarkConfig(n_units=500000, n_periods=10, n_groups=5),
+        ATTgtBenchmarkConfig(n_units=1000000, n_periods=5, n_groups=5),
+        ATTgtBenchmarkConfig(n_units=1000000, n_periods=10, n_groups=5),
+        ATTgtBenchmarkConfig(n_units=2000000, n_periods=5, n_groups=5),
+    ],
+}
+
+DDD_BENCHMARK_SUITES: dict[str, list[DDDBenchmarkConfig]] = {
+    "scaling_units_2period": [
+        DDDBenchmarkConfig(n_units=100, multi_period=False),
+        DDDBenchmarkConfig(n_units=500, multi_period=False),
+        DDDBenchmarkConfig(n_units=1000, multi_period=False),
+        DDDBenchmarkConfig(n_units=5000, multi_period=False),
+        DDDBenchmarkConfig(n_units=10000, multi_period=False),
+        DDDBenchmarkConfig(n_units=50000, multi_period=False),
+        DDDBenchmarkConfig(n_units=100000, multi_period=False),
+    ],
+    "scaling_units_multiperiod": [
+        DDDBenchmarkConfig(n_units=100, multi_period=True),
+        DDDBenchmarkConfig(n_units=500, multi_period=True),
+        DDDBenchmarkConfig(n_units=1000, multi_period=True),
+        DDDBenchmarkConfig(n_units=5000, multi_period=True),
+        DDDBenchmarkConfig(n_units=10000, multi_period=True),
+        DDDBenchmarkConfig(n_units=50000, multi_period=True),
+    ],
+    "est_methods": [
+        DDDBenchmarkConfig(n_units=1000, multi_period=False, est_method="dr"),
+        DDDBenchmarkConfig(n_units=1000, multi_period=False, est_method="ipw"),
+        DDDBenchmarkConfig(n_units=1000, multi_period=False, est_method="reg"),
+        DDDBenchmarkConfig(n_units=1000, multi_period=True, est_method="dr"),
+        DDDBenchmarkConfig(n_units=1000, multi_period=True, est_method="ipw"),
+        DDDBenchmarkConfig(n_units=1000, multi_period=True, est_method="reg"),
+    ],
+    "bootstrap": [
+        DDDBenchmarkConfig(n_units=500, multi_period=False, boot=False),
+        DDDBenchmarkConfig(n_units=500, multi_period=False, boot=True, biters=100),
+        DDDBenchmarkConfig(n_units=500, multi_period=False, boot=True, biters=500),
+        DDDBenchmarkConfig(n_units=500, multi_period=False, boot=True, biters=1000),
+    ],
+    "panel_vs_rcs": [
+        DDDBenchmarkConfig(n_units=1000, multi_period=False, panel=True),
+        DDDBenchmarkConfig(n_units=1000, multi_period=False, panel=False),
+        DDDBenchmarkConfig(n_units=1000, multi_period=True, panel=True),
+        DDDBenchmarkConfig(n_units=1000, multi_period=True, panel=False),
+    ],
+    "quick": [
+        DDDBenchmarkConfig(n_units=100, multi_period=False),
+        DDDBenchmarkConfig(n_units=500, multi_period=False),
+        DDDBenchmarkConfig(n_units=1000, multi_period=False),
     ],
 }

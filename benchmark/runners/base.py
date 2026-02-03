@@ -5,7 +5,8 @@ from __future__ import annotations
 import gc
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Any
 
 import polars as pl
 
@@ -25,16 +26,7 @@ class TimingResult:
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
-        return {
-            "mean_time": self.mean_time,
-            "std_time": self.std_time,
-            "min_time": self.min_time,
-            "max_time": self.max_time,
-            "times": self.times,
-            "n_estimates": self.n_estimates,
-            "success": self.success,
-            "error": self.error,
-        }
+        return asdict(self)
 
 
 class BaseBenchmarkRunner(ABC):
@@ -46,7 +38,7 @@ class BaseBenchmarkRunner(ABC):
         gc.collect()
 
     @staticmethod
-    def time_execution(func, *args, **kwargs) -> tuple[float, any]:
+    def time_execution(func, *args, **kwargs) -> tuple[float, Any]:
         """Time a single function execution."""
         start = time.perf_counter()
         result = func(*args, **kwargs)
@@ -66,3 +58,20 @@ class BaseBenchmarkRunner(ABC):
         n_runs: int = 5,
     ) -> TimingResult:
         """Time att_gt estimation."""
+
+    @abstractmethod
+    def time_ddd(
+        self,
+        data: pl.DataFrame,
+        multi_period: bool = False,
+        panel: bool = True,
+        est_method: str = "dr",
+        control_group: str = "nevertreated",
+        base_period: str = "varying",
+        boot: bool = False,
+        biters: int = 100,
+        xformla: str = "~ cov1 + cov2 + cov3 + cov4",
+        n_warmup: int = 1,
+        n_runs: int = 5,
+    ) -> TimingResult:
+        """Time DDD estimation."""

@@ -1,6 +1,6 @@
 # Benchmark Suite
 
-Comprehensive benchmark suite comparing computational performance of the Python `att_gt` estimator against the R `did` package.
+Comprehensive benchmark suite comparing computational performance of the Python `moderndid` package against R equivalents (`did` and `triplediff` packages).
 
 ## Requirements
 
@@ -10,43 +10,14 @@ Comprehensive benchmark suite comparing computational performance of the Python 
 - numpy
 
 For R comparison:
-- R with `did` and `jsonlite` packages
+- R with `did`, `triplediff`, and `jsonlite` packages
 
-## Results Summary
+## Results
 
-### Performance by Dataset Size
+![Python vs R Performance](output/benchmark_scaling.png)
 
-| Observations | Python | R | Speedup |
-|--------------|--------|---|---------|
-| 500 | 0.015s | 0.027s | **1.7x** |
-| 2,500 | 0.019s | 0.032s | **1.7x** |
-| 5,000 | 0.021s | 0.045s | **2.1x** |
-| 25,000 | 0.032s | 0.199s | **6.3x** |
-| 50,000 | 0.050s | 0.366s | **7.3x** |
-| 250,000 | 0.137s | 4.80s | **35x** |
-| 500,000 | 0.242s | 16.48s | **68x** |
-| 1,000,000 | 0.83s | 50.79s | **61x** |
-| 2,000,000 | 1.61s | 189.27s | **117x** |
-| 10,000,000 | 9.56s | — | — |
-| 50,000,000 | 54.29s | — | — |
-
-### Covariate Scaling (50K observations)
-
-| Covariates | Python | R | Speedup |
-|------------|--------|---|---------|
-| 0 | 0.051s | 0.373s | **7.3x** |
-| 2 | 0.046s | 0.381s | **8.2x** |
-| 5 | 0.047s | 0.360s | **7.6x** |
-| 10 | 0.046s | 0.376s | **8.2x** |
-
-### Bootstrap Iterations (2,500 observations)
-
-| Bootstrap Iters | Python | R | Speedup |
-|-----------------|--------|---|---------|
-| None | 0.019s | 0.032s | **1.7x** |
-| 100 | 0.023s | 0.036s | **1.6x** |
-| 500 | 0.030s | 0.041s | **1.3x** |
-| 1,000 | 0.042s | 0.048s | **1.1x** |
+- **att_gt**: Up to **117x faster** than R at 2M observations.
+- **ddd**: Up to **8x faster** than R at 5M units.
 
 ## Methodology
 

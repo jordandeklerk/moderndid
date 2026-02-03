@@ -10,15 +10,11 @@ from pathlib import Path
 
 
 @dataclass
-class BenchmarkResult:
-    """Container for a single benchmark result."""
+class BaseBenchmarkResult:
+    """Base container for benchmark results."""
 
     n_units: int
-    n_periods: int
-    n_groups: int
-    n_covariates: int
     est_method: str
-    control_group: str
     boot: bool
     biters: int
     xformla: str
@@ -47,6 +43,27 @@ class BenchmarkResult:
         return asdict(self)
 
 
+@dataclass
+class ATTgtBenchmarkResult(BaseBenchmarkResult):
+    """Container for att_gt benchmark result."""
+
+    n_periods: int = 0
+    n_groups: int = 0
+    n_covariates: int = 0
+    control_group: str = "nevertreated"
+
+
+@dataclass
+class DDDBenchmarkResult(BaseBenchmarkResult):
+    """Container for DDD benchmark result."""
+
+    dgp_type: int = 1
+    panel: bool = True
+    multi_period: bool = False
+    control_group: str = "nevertreated"
+    base_period: str = "varying"
+
+
 class ResultStorage:
     """Handles saving and loading benchmark results."""
 
@@ -54,7 +71,7 @@ class ResultStorage:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def save_csv(self, results: list[BenchmarkResult], filename: str) -> Path:
+    def save_csv(self, results: list[BaseBenchmarkResult], filename: str) -> Path:
         """Save results to CSV file."""
         filepath = self.output_dir / filename
         if not results:
@@ -70,7 +87,7 @@ class ResultStorage:
 
         return filepath
 
-    def save_json(self, results: list[BenchmarkResult], filename: str) -> Path:
+    def save_json(self, results: list[BaseBenchmarkResult], filename: str) -> Path:
         """Save results to JSON file."""
         filepath = self.output_dir / filename
 
