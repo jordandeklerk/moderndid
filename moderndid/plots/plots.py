@@ -37,7 +37,7 @@ from moderndid.plots.converters import (
     mpresult_to_polars,
     pteresult_to_polars,
 )
-from moderndid.plots.themes import COLORS, theme_moderndid
+from moderndid.plots.themes import COLORS, theme_minimal
 
 if TYPE_CHECKING:
     from moderndid.didcont.estimation.container import DoseResult, PTEResult
@@ -105,9 +105,10 @@ def plot_gt(
             y=ylab or "ATT",
             title=plot_title,
         )
-        + theme_moderndid()
+        + theme_minimal()
         + theme(
             strip_text=element_text(size=11, weight="bold"),
+            plot_title=element_text(margin={"b": 25}),
             legend_position="bottom",
         )
     )
@@ -191,7 +192,7 @@ def plot_event_study(
 
     plot = (
         plot
-        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6)
+        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6, linetype="dotted")
         + geom_point(aes(color="treatment_status"), size=3.5)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
@@ -202,7 +203,7 @@ def plot_event_study(
             y=ylab or "ATT",
             title=title or default_title,
         )
-        + theme_moderndid()
+        + theme_minimal()
         + theme(legend_position="bottom")
     )
 
@@ -288,7 +289,7 @@ def plot_agg(
             y=ylab or "ATT",
             title=title or default_title,
         )
-        + theme_moderndid()
+        + theme_minimal()
     )
 
     return plot
@@ -356,7 +357,7 @@ def plot_dose_response(
             y=ylab or default_ylabel,
             title=title or default_title,
         )
-        + theme_moderndid()
+        + theme_minimal()
     )
 
     return plot
@@ -425,7 +426,7 @@ def plot_sensitivity(
             y=ylab or "Confidence Interval",
             title=title or default_title,
         )
-        + theme_moderndid()
+        + theme_minimal()
         + theme(legend_position="bottom")
     )
 
@@ -495,7 +496,7 @@ def plot_multiplegt(
             y=ylab or "Effect",
             title=title or "Intertemporal Treatment Effects",
         )
-        + theme_moderndid()
+        + theme_minimal()
         + theme(legend_position="bottom")
     )
 
