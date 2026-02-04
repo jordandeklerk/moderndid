@@ -43,6 +43,7 @@ Extras are additive. They add functionality to the base install, so you always g
 
 ```bash
 uv pip install moderndid[didcont]     # Base estimators + cont_did
+uv pip install moderndid[didhonest]   # Base estimators + sensitivity analysis
 uv pip install moderndid[numba]       # Base estimators with faster bootstrap
 uv pip install moderndid[plots,numba] # Combine multiple extras
 ```
@@ -211,6 +212,14 @@ did.plot_event_study(event_study)
 ```
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="Event study plot">
+
+### Benchmarks
+
+Our package is built for speed. Python implementations shows significant speed improvements as observations grow compared to the canonical R packages:
+
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/benchmark/output/benchmark_scaling_hires.png" alt="Benchmark plot">
+
+See [benchmark](benchmark/) for full methodology and results.
 
 ## Available Methods
 

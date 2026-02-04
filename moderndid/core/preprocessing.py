@@ -865,7 +865,7 @@ def _remove_collinear(cov_matrix, var_names, tol=1e-6):
     if cov_matrix.shape[1] == 0:
         return cov_matrix, var_names
 
-    _, r, pivot = scipy.linalg.qr(cov_matrix, pivoting=True)
+    _, r, pivot = scipy.linalg.qr(cov_matrix, mode="economic", pivoting=True)
 
     diag_r = np.abs(np.diag(r))
     rank = np.sum(diag_r > tol * diag_r[0]) if len(diag_r) > 0 else 0

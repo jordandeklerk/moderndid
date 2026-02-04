@@ -173,3 +173,8 @@ py_did_mult*/
 
 # Large test data files
 tests/didcont/r_simulated_data.csv
+
+# Benchmark output
+benchmark/output/*.csv
+benchmark/output/*.json
+!benchmark/output/.gitkeep
