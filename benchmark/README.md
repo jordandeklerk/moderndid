@@ -13,12 +13,16 @@ python -m benchmark.didtriple.run_benchmark --suite quick --python-only
 
 # cont_did benchmarks
 python -m benchmark.didcont.run_benchmark --suite quick --python-only
+
+# did_multiplegt benchmarks
+python -m benchmark.didinter.run_benchmark --suite quick --python-only
 ```
 
 See module-specific instructions for detailed CLI options:
 - [`benchmark/did/README.md`](did/README.md) — att_gt vs R did
 - [`benchmark/didtriple/README.md`](didtriple/README.md) — ddd vs R triplediff
 - [`benchmark/didcont/README.md`](didcont/README.md) — cont_did vs R contdid
+- [`benchmark/didinter/README.md`](didinter/README.md) — did_multiplegt vs R DIDmultiplegtDYN
 
 ## Methodology
 
@@ -36,7 +40,8 @@ The benchmark suite ensures fair comparisons between Python and R:
 - moderndid, polars, numpy
 
 **R (optional):**
-- R with `did`, `triplediff`, `contdid`, and `jsonlite` packages
+
+- R with `did`, `triplediff`, `contdid`, `DIDmultiplegtDYN`, and `jsonlite` packages
 
 ## Results
 

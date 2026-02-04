@@ -65,25 +65,10 @@ Options:
 
 ### Python vs R Comparison
 
-| Metric | Python (moderndid) | R (contdid) |
-|--------|-------------------|-------------|
-| Max sample size | 5M units (20M obs) | ~900 units |
-| Time (500 units) | ~0.07s | ~0.67s |
-| Speedup | **9.2x faster** | baseline |
+| Observations | Python | R | Speedup |
+|-------------:|-------:|--:|--------:|
+| 500K | 6.2s | 132.8s | **21x** |
+| 1M | 12.3s | 278.0s | **23x** |
+| 2M | 24.9s | 826.3s | **33x** |
 
-## R `contdid` Package Issue
-
-The R `contdid` package has a known bug that causes it to fail on datasets with more than ~900-950 units. The error occurs in the `overall_weights()` function due to floating-point precision issues when checking if weights sum to 1.
-
-**Error message:**
-```
-Error in overall_weights(att_gt, ...) :
-  something's going wrong calculating overall weights
-```
-
-**Details:**
-- The bug is tracked at: https://github.com/bcallaway11/contdid/issues/6
-- The issue affects various group/period configurations, not just large samples
-- Our Python implementation does not have this limitation
-
-Due to this bug, **R benchmarks are only run for sample sizes under 900 units**. For larger datasets, only Python benchmarks are available.
+Python scales to 10M+ observations while R fails beyond 2M observations.

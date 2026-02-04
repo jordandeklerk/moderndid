@@ -229,7 +229,7 @@ writeLines(toJSON(out, auto_unbox = TRUE), "{result_path}")
                 input=r_script,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=3600,
                 check=False,
             )
 

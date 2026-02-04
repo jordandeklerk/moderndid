@@ -1,4 +1,4 @@
-"""Benchmark runners for cont_did continuous treatment DiD estimator."""
+"""Benchmark runners for did_multiplegt intertemporal treatment effects estimator."""
 
 from __future__ import annotations
 
@@ -11,15 +11,15 @@ import numpy as np
 import polars as pl
 
 from benchmark.common.base import BaseBenchmarkRunner, TimingResult
-from moderndid import cont_did
+from moderndid import did_multiplegt
 
 
-def check_r_contdid_available() -> bool:
-    """Check if R and the contdid package are available."""
+def check_r_didmultiplegt_available() -> bool:
+    """Check if R and the DIDmultiplegtDYN package are available."""
     try:
         result = subprocess.run(
             ["R", "--vanilla", "--quiet"],
-            input='library(contdid); library(jsonlite); cat("OK")',
+            input='library(DIDmultiplegtDYN); library(jsonlite); cat("OK")',
             capture_output=True,
             text=True,
             timeout=30,
@@ -30,52 +30,111 @@ def check_r_contdid_available() -> bool:
         return False
 
 
-R_CONTDID_AVAILABLE = check_r_contdid_available()
+R_DIDINTER_AVAILABLE = check_r_didmultiplegt_available()
 
 
-class ContDIDPythonRunner(BaseBenchmarkRunner):
-    """Benchmark runner for Python cont_did implementation."""
+def generate_didinter_data(
+    n_units: int = 500,
+    n_periods: int = 10,
+    treatment_effect: float = 2.0,
+    switcher_fraction: float = 0.4,
+    random_seed: int = 42,
+) -> pl.DataFrame:
+    """Generate panel data for did_multiplegt benchmarks."""
+    rng = np.random.default_rng(random_seed)
 
-    def time_cont_did(
+    n_switchers = int(n_units * switcher_fraction)
+    n_never_switchers = n_units - n_switchers
+
+    records = []
+
+    for i in range(n_never_switchers):
+        unit_id = i + 1
+        unit_fe = rng.normal(0, 1)
+
+        for t in range(1, n_periods + 1):
+            time_fe = 0.5 * t
+            y = unit_fe + time_fe + rng.normal(0, 0.5)
+            records.append(
+                {
+                    "id": unit_id,
+                    "time": t,
+                    "D": 0,
+                    "Y": y,
+                }
+            )
+
+    switch_times = rng.integers(3, n_periods - 1, size=n_switchers)
+
+    for i in range(n_switchers):
+        unit_id = n_never_switchers + i + 1
+        unit_fe = rng.normal(0, 1)
+        switch_time = switch_times[i]
+        treat_level = rng.integers(1, 4)
+
+        for t in range(1, n_periods + 1):
+            time_fe = 0.5 * t
+
+            if t < switch_time:
+                d = 0
+                y = unit_fe + time_fe + rng.normal(0, 0.5)
+            else:
+                d = treat_level
+                exposure = t - switch_time + 1
+                effect = treatment_effect * d * min(exposure, 3) / 3
+                y = unit_fe + time_fe + effect + rng.normal(0, 0.5)
+
+            records.append(
+                {
+                    "id": unit_id,
+                    "time": t,
+                    "D": d,
+                    "Y": y,
+                }
+            )
+
+    return pl.DataFrame(records)
+
+
+class DIDInterPythonRunner(BaseBenchmarkRunner):
+    """Benchmark runner for Python did_multiplegt implementation."""
+
+    def time_did_multiplegt(
         self,
         data: pl.DataFrame,
-        target_parameter: str = "level",
-        aggregation: str = "dose",
-        dose_est_method: str = "parametric",
-        degree: int = 3,
-        num_knots: int = 0,
+        effects: int = 3,
+        placebo: int = 2,
+        normalized: bool = False,
         boot: bool = False,
         biters: int = 100,
         n_warmup: int = 1,
         n_runs: int = 5,
         random_state: int | None = None,
     ) -> TimingResult:
-        """Time Python cont_did estimation."""
+        """Time Python did_multiplegt estimation."""
 
         def run_estimation():
-            return cont_did(
+            return did_multiplegt(
                 data=data,
                 yname="Y",
-                tname="time_period",
+                tname="time",
                 idname="id",
-                gname="G",
                 dname="D",
-                target_parameter=target_parameter,
-                aggregation=aggregation,
-                dose_est_method=dose_est_method,
-                degree=degree,
-                num_knots=num_knots,
+                effects=effects,
+                placebo=placebo,
+                normalized=normalized,
                 boot=boot,
                 biters=biters,
                 random_state=random_state,
             )
 
         def get_n_estimates(result):
-            if hasattr(result, "dose") and result.dose is not None:
-                return len(result.dose)
-            if hasattr(result, "att_d") and result.att_d is not None:
-                return len(result.att_d)
-            return 1
+            n = 0
+            if hasattr(result, "effects") and result.effects is not None:
+                n += len(result.effects.estimates)
+            if hasattr(result, "placebos") and result.placebos is not None:
+                n += len(result.placebos.estimates)
+            return max(n, 1)
 
         try:
             for _ in range(n_warmup):
@@ -114,32 +173,30 @@ class ContDIDPythonRunner(BaseBenchmarkRunner):
             )
 
 
-class ContDIDRRunner(BaseBenchmarkRunner):
-    """Benchmark runner for R contdid package implementation."""
+class DIDInterRRunner(BaseBenchmarkRunner):
+    """Benchmark runner for R DIDmultiplegtDYN package implementation."""
 
     def __init__(self):
-        self._r_available = R_CONTDID_AVAILABLE
+        self._r_available = R_DIDINTER_AVAILABLE
 
     @property
     def is_available(self) -> bool:
-        """Check if R contdid runner is available."""
+        """Check if R DIDmultiplegtDYN runner is available."""
         return self._r_available
 
-    def time_cont_did(
+    def time_did_multiplegt(
         self,
         data: pl.DataFrame,
-        target_parameter: str = "level",
-        aggregation: str = "dose",
-        dose_est_method: str = "parametric",
-        degree: int = 3,
-        num_knots: int = 0,
+        effects: int = 3,
+        placebo: int = 2,
+        normalized: bool = False,
         boot: bool = False,
         biters: int = 100,
         n_warmup: int = 1,
         n_runs: int = 5,
         random_state: int | None = None,
     ) -> TimingResult:
-        """Time R contdid package estimation."""
+        """Time R DIDmultiplegtDYN package estimation."""
         if not self._r_available:
             return TimingResult(
                 mean_time=float("nan"),
@@ -149,7 +206,7 @@ class ContDIDRRunner(BaseBenchmarkRunner):
                 times=[],
                 n_estimates=0,
                 success=False,
-                error="R or contdid package not available",
+                error="R or DIDmultiplegtDYN package not available",
             )
 
         with tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w") as f:
@@ -159,59 +216,63 @@ class ContDIDRRunner(BaseBenchmarkRunner):
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             result_path = f.name
 
-        bstrap_str = "TRUE" if boot else "FALSE"
+        normalized_str = "TRUE" if normalized else "FALSE"
+        bootstrap_str = str(biters) if boot else "NULL"
         seed_str = f"set.seed({random_state})" if random_state is not None else ""
 
         r_script = f"""
-library(contdid)
-library(jsonlite)
+# Memory optimization settings
+options(rgl.useNULL = TRUE)
+options(warn = -1)
+
+# Clear environment and force garbage collection
+rm(list = ls(all.names = TRUE))
+gc(verbose = FALSE, full = TRUE, reset = TRUE)
+
+# Load packages with minimal overhead
+suppressPackageStartupMessages({{
+    library(DIDmultiplegtDYN)
+    library(jsonlite)
+    library(data.table)
+}})
 
 {seed_str}
 
-data <- read.csv("{data_path}")
-
-run_estimation <- function() {{
-    suppressWarnings(cont_did(
-        yname = "Y",
-        tname = "time_period",
-        idname = "id",
-        gname = "G",
-        dname = "D",
-        data = data,
-        target_parameter = "{target_parameter}",
-        aggregation = "{aggregation}",
-        treatment_type = "continuous",
-        control_group = "notyettreated",
-        base_period = "varying",
-        dose_est_method = "{dose_est_method}",
-        degree = {degree},
-        num_knots = {num_knots},
-        bstrap = {bstrap_str},
-        biters = {biters}
-    ))
-}}
-
-for (i in 1:{n_warmup}) {{
-    gc()
-    run_estimation()
-}}
+# Use data.table for efficient CSV reading (less memory than read.csv)
+data <- as.data.frame(fread("{data_path}", data.table = FALSE))
+gc(verbose = FALSE, full = TRUE)
 
 times <- numeric({n_runs})
 n_estimates <- 0
 
+# Skip warmup to reduce memory pressure - go straight to timed runs
 for (i in 1:{n_runs}) {{
-    gc()
+    # Aggressive garbage collection before each run
+    gc(verbose = FALSE, full = TRUE, reset = TRUE)
+
     start_time <- Sys.time()
-    result <- run_estimation()
+    result <- suppressWarnings(did_multiplegt_dyn(
+        df = data,
+        outcome = "Y",
+        group = "id",
+        time = "time",
+        treatment = "D",
+        effects = {effects},
+        placebo = {placebo},
+        normalized = {normalized_str},
+        bootstrap = {bootstrap_str},
+        graph_off = TRUE
+    ))
     end_time <- Sys.time()
     times[i] <- as.numeric(difftime(end_time, start_time, units = "secs"))
-    if (!is.null(result$dose)) {{
-        n_estimates <- length(result$dose)
-    }} else if (!is.null(result$att_d)) {{
-        n_estimates <- length(result$att_d)
-    }} else {{
-        n_estimates <- 1
-    }}
+
+    n_eff <- if (!is.null(result$effects)) nrow(result$effects) else 0
+    n_plac <- if (!is.null(result$placebos)) nrow(result$placebos) else 0
+    n_estimates <- n_eff + n_plac
+
+    # Immediately free result memory
+    rm(result)
+    gc(verbose = FALSE, full = TRUE, reset = TRUE)
 }}
 
 out <- list(
@@ -228,6 +289,11 @@ writeLines(toJSON(out, auto_unbox = TRUE), "{result_path}")
 """
 
         try:
+            import os
+
+            env = os.environ.copy()
+            env["R_MAX_VSIZE"] = "32Gb"
+
             proc = subprocess.run(
                 ["R", "--vanilla", "--quiet"],
                 input=r_script,
@@ -235,6 +301,7 @@ writeLines(toJSON(out, auto_unbox = TRUE), "{result_path}")
                 text=True,
                 timeout=3600,
                 check=False,
+                env=env,
             )
 
             if proc.returncode != 0:
@@ -253,7 +320,7 @@ writeLines(toJSON(out, auto_unbox = TRUE), "{result_path}")
                 r_result = json.load(f)
 
             std_time = r_result["std_time"]
-            if std_time is None or (isinstance(std_time, float) and std_time != std_time):
+            if std_time is None or std_time == "NA" or (isinstance(std_time, float) and std_time != std_time):
                 std_time = 0.0
 
             return TimingResult(
