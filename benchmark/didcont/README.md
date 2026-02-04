@@ -52,12 +52,13 @@ python -m benchmark.didcont.run_benchmark --n-units 5000 --n-periods 4 --runs 5
 ## Python vs R Comparison
 
 | Observations | Python | R | Speedup |
-| -----------: | -----: | -: | ------: |
-| 500K | 6.2s | 132.8s | 21x |
-| 1M | 12.3s | 278.0s | 23x |
-| 2M | 24.9s | 826.3s | **33x** |
+| -----------: | -----: | ------: | ------: |
+| 100K | 1.49s | 36.1s | 24x |
+| 500K | 6.21s | 132.8s | 21x |
+| 1M | 12.33s | 278.0s | 23x |
+| 2M | 24.85s | 826.3s | **33x** |
 
-Python scales to 10M+ observations while R fails beyond 2M observations.
+Python scales to 10M+ observations.
 
 ## R Requirements
 

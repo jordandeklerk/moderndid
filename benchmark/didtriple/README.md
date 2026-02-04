@@ -49,7 +49,7 @@ python -m benchmark.didtriple.run_benchmark --n-units 5000 --multi-period --runs
 ## Python vs R Comparison
 
 | Observations | Python | R | Speedup |
-| -----------: | -----: | -: | ------: |
+| -----------: | -----: | -----: | ------: |
 | 100K | 0.10s | 0.6s | 5x |
 | 500K | 0.37s | 3.2s | 9x |
 | 1M | 0.75s | 6.0s | 8x |

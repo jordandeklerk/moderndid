@@ -49,13 +49,13 @@ python -m benchmark.didinter.run_benchmark --n-units 1000 --n-periods 10 --effec
 ## Python vs R Comparison
 
 | Observations | Python | R | Speedup |
-| -----------: | -----: | -: | ------: |
+| -----------: | -----: | ------: | ------: |
 | 10K | 0.17s | 3.1s | 18x |
 | 100K | 0.49s | 19.4s | 40x |
 | 200K | 0.79s | 72.4s | 91x |
 | 300K | 1.07s | 114.0s | **106x** |
 
-Python scales to 10M+ observations while R fails beyond 300K observations due to memory exhaustion.
+Python scales to 10M+ observations. R fails beyond 300K observations due to memory exhaustion.
 
 ## R Requirements
 
