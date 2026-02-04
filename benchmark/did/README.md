@@ -18,7 +18,7 @@ python -m benchmark.did.run_benchmark --n-units 5000 --n-periods 10 --runs 5
 ## Available Suites
 
 | Suite | Description |
-|-------|-------------|
+| ----- | ----------- |
 | `quick` | Fast validation (100-1000 units) |
 | `scaling_units` | Unit scaling (100 to 100,000 units) |
 | `scaling_periods` | Period scaling (5 to 20 periods) |
@@ -29,7 +29,7 @@ python -m benchmark.did.run_benchmark --n-units 5000 --n-periods 10 --runs 5
 
 ## CLI Options
 
-```
+```text
 --suite SUITE         Predefined benchmark suite
 --n-units N           Number of units (default: 1000)
 --n-periods N         Number of time periods (default: 5)
@@ -46,28 +46,21 @@ python -m benchmark.did.run_benchmark --n-units 5000 --n-periods 10 --runs 5
 --quiet               Suppress verbose output
 ```
 
-## Programmatic Usage
+## Python vs R Comparison
 
-```python
-from benchmark.did import (
-    ATTgtBenchmarkConfig,
-    StaggeredDIDDGP,
-    ATTgtPythonRunner,
-)
+| Observations | Python | R | Speedup |
+| -----------: | -----: | -: | ------: |
+| 100K | 0.08s | 1.4s | 17x |
+| 500K | 0.30s | 18.6s | 61x |
+| 1M | 0.79s | 70.6s | 89x |
+| 2M | 1.02s | 233.7s | **229x** |
 
-# Generate data
-dgp = StaggeredDIDDGP(n_units=1000, n_periods=5, n_groups=3)
-data = dgp.generate_data()
-
-# Run benchmark
-runner = ATTgtPythonRunner()
-result = runner.time_att_gt(data["df"], n_runs=5)
-print(f"Mean time: {result.mean_time:.4f}s")
-```
+Python scales to 10M+ observations while R times out beyond 2M observations.
 
 ## R Requirements
 
 For R comparison benchmarks:
+
 - R installation
 - `did` package: `install.packages("did")`
 - `jsonlite` package: `install.packages("jsonlite")`

@@ -18,7 +18,7 @@ python -m benchmark.didtriple.run_benchmark --n-units 5000 --multi-period --runs
 ## Available Suites
 
 | Suite | Description |
-|-------|-------------|
+| ----- | ----------- |
 | `quick` | Fast validation (100-1000 units) |
 | `scaling_units_2period` | Unit scaling with 2-period DGP |
 | `scaling_units_multiperiod` | Unit scaling with multi-period DGP |
@@ -28,7 +28,7 @@ python -m benchmark.didtriple.run_benchmark --n-units 5000 --multi-period --runs
 
 ## CLI Options
 
-```
+```text
 --suite SUITE         Predefined benchmark suite
 --n-units N           Number of units (default: 1000)
 --dgp-type N          DGP type: 1, 2, 3, 4 (default: 1)
@@ -46,24 +46,21 @@ python -m benchmark.didtriple.run_benchmark --n-units 5000 --multi-period --runs
 --quiet               Suppress verbose output
 ```
 
-## Programmatic Usage
+## Python vs R Comparison
 
-```python
-from benchmark.didtriple import DDDPythonRunner
-from moderndid import gen_dgp_2periods
+| Observations | Python | R | Speedup |
+| -----------: | -----: | -: | ------: |
+| 100K | 0.10s | 0.6s | 5x |
+| 500K | 0.37s | 3.2s | 9x |
+| 1M | 0.75s | 6.0s | 8x |
+| 2M | 2.33s | 12.2s | **5x** |
 
-# Generate data
-dgp_result = gen_dgp_2periods(n=1000, dgp_type=1, panel=True)
-
-# Run benchmark
-runner = DDDPythonRunner()
-result = runner.time_ddd(dgp_result["data"], n_runs=5)
-print(f"Mean time: {result.mean_time:.4f}s")
-```
+Python scales to 10M+ observations. R scales well but is consistently slower.
 
 ## R Requirements
 
 For R comparison benchmarks:
+
 - R installation
 - `triplediff` package: `install.packages("triplediff")`
 - `jsonlite` package: `install.packages("jsonlite")`

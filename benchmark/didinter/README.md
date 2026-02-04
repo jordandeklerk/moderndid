@@ -18,7 +18,7 @@ python -m benchmark.didinter.run_benchmark --n-units 1000 --n-periods 10 --effec
 ## Available Suites
 
 | Suite | Description |
-|-------|-------------|
+| ----- | ----------- |
 | `quick` | Fast validation (100-1000 units) |
 | `scaling_units` | Unit scaling (100 to 10,000 units) |
 | `scaling_periods` | Period scaling (5 to 20 periods) |
@@ -29,7 +29,7 @@ python -m benchmark.didinter.run_benchmark --n-units 1000 --n-periods 10 --effec
 
 ## CLI Options
 
-```
+```text
 --suite SUITE         Predefined benchmark suite
 --n-units N           Number of units (default: 500)
 --n-periods N         Number of time periods (default: 10)
@@ -49,19 +49,18 @@ python -m benchmark.didinter.run_benchmark --n-units 1000 --n-periods 10 --effec
 ## Python vs R Comparison
 
 | Observations | Python | R | Speedup |
-|-------------:|-------:|--:|--------:|
+| -----------: | -----: | -: | ------: |
 | 10K | 0.17s | 3.1s | 18x |
 | 100K | 0.49s | 19.4s | 40x |
 | 200K | 0.79s | 72.4s | 91x |
 | 300K | 1.07s | 114.0s | **106x** |
 
-## R Limitations
-
-The R `DIDmultiplegtDYN` package runs out of memory at larger scales. R benchmarks are only available up to ~300K observations.
+Python scales to 10M+ observations while R fails beyond 300K observations due to memory exhaustion.
 
 ## R Requirements
 
 For R comparison benchmarks:
+
 - R installation
 - `DIDmultiplegtDYN` package: `install.packages("DIDmultiplegtDYN")`
 - `jsonlite` package: `install.packages("jsonlite")`
