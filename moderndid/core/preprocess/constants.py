@@ -1,16 +1,16 @@
 """Constants and enums for preprocessing."""
 
-from enum import Enum
+from enum import StrEnum
 
 
-class ControlGroup(str, Enum):
+class ControlGroup(StrEnum):
     """Control group."""
 
     NEVER_TREATED = "nevertreated"
     NOT_YET_TREATED = "notyettreated"
 
 
-class EstimationMethod(str, Enum):
+class EstimationMethod(StrEnum):
     """Estimation method."""
 
     DOUBLY_ROBUST = "dr"
@@ -18,14 +18,14 @@ class EstimationMethod(str, Enum):
     REGRESSION = "reg"
 
 
-class BasePeriod(str, Enum):
+class BasePeriod(StrEnum):
     """Base period."""
 
     UNIVERSAL = "universal"
     VARYING = "varying"
 
 
-class BootstrapType(str, Enum):
+class BootstrapType(StrEnum):
     """Bootstrap type."""
 
     WEIGHTED = "weighted"
@@ -33,7 +33,7 @@ class BootstrapType(str, Enum):
     EMPIRICAL = "empirical"
 
 
-class DataFormat(str, Enum):
+class DataFormat(StrEnum):
     """Data format."""
 
     PANEL = "panel"
