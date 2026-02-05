@@ -4,14 +4,17 @@
 Introduction to Difference-in-Differences
 ************************************************
 
-This page introduces the core concepts and terminology from the
-difference-in-differences literature.
+Difference-in-differences (DiD) is one of the most widely used methods for
+estimating causal effects from observational data. It has become a cornerstone
+of empirical research across economics, public health, political science,
+sociology, and many other fields where randomized experiments are impractical
+or impossible. The method's appeal lies in its intuitive logic and relatively
+mild assumptions compared to alternatives.
 
-Difference-in-differences is a method for estimating causal effects when
-randomized experiments are not possible. The idea is to compare how outcomes
-change over time for units that receive a treatment to how outcomes change for
-units that do not. If both groups would have evolved similarly absent treatment,
-then any divergence after treatment can be attributed to the treatment itself.
+The core idea is to compare how outcomes change over time for units that receive
+a treatment to how outcomes change for units that do not. If both groups would
+have evolved similarly absent treatment, then any divergence after treatment
+can be attributed to the treatment itself.
 
 We start with the canonical two-period case to build intuition, then extend
 to multiple periods and staggered treatment timing.
@@ -57,8 +60,8 @@ Effect on the Treated, or ATT. It is defined as
 
 This quantity represents the average difference between treated and untreated
 potential outcomes for units in the treated group. It answers a specific causal
-question: what was the average effect of the treatment on those who actually
-received it?
+question, namely what was the average effect of the treatment on those who
+actually received it.
 
 The fundamental challenge of causal inference is that we never observe
 :math:`Y_t(0)` for treated units. We see what happened to them after treatment,
@@ -113,12 +116,97 @@ in the absence of treatment. This is consistent with fixed effects models where
 the mean of unobserved unit characteristics can differ across groups.
 
 
+Assessing the Parallel Trends Assumption
+========================================
+
+The parallel trends assumption is fundamentally untestable because it concerns
+counterfactual outcomes that are never observed. We cannot directly verify
+whether treated units would have followed the same trajectory as comparison
+units in the absence of treatment. However, researchers can gather indirect
+evidence about the plausibility of this assumption.
+
+
+Pre-Trend Tests
+---------------
+
+The most common approach is to examine whether treated and comparison groups
+followed similar trends in the pre-treatment period. The logic is that if
+the groups were evolving in parallel before treatment, it is more plausible
+that they would have continued to do so afterward. In an event-study framework,
+this corresponds to testing whether the coefficients for negative event times
+are statistically different from zero.
+
+While widely used, pre-trend tests have important limitations. These tests
+may lack statistical power, meaning a failure to reject parallel pre-trends
+does not imply the assumption holds. The sample may simply be too small or
+noisy to detect a real divergence in trends. When this happens, researchers
+may proceed with confidence intervals that are too narrow.
+
+A second concern arises from the practice of conditioning on test results.
+When researchers only proceed with the analysis after observing insignificant
+pre-trends, they are selecting on a random outcome. Studies that happen to
+pass the test may do so by chance, and this selection can distort the
+distribution of subsequent estimates.
+
+
+Sensitivity Analysis
+--------------------
+
+Given these limitations, a more robust approach is to conduct sensitivity
+analysis that explicitly considers how violations of parallel trends would
+affect conclusions. Rather than assuming parallel trends holds exactly or
+testing whether it holds in the pre-period, sensitivity analysis asks how
+large violations would need to be to overturn the main findings.
+
+One approach bounds the magnitude of post-treatment trend differences by
+the magnitude of pre-treatment trend differences. If pre-trends are small,
+this bounds post-treatment violations to also be small. Another approach
+assumes that differential trends evolve smoothly over time, extrapolating
+from observed pre-trends to bound possible post-treatment violations.
+
+These methods produce confidence intervals that remain valid even under
+specified degrees of departure from parallel trends. If conclusions are
+robust to plausible violations, researchers can be more confident in their
+findings. If conclusions are sensitive to small violations, this reveals
+fragility in the research design that warrants caution. ModernDiD implements
+these sensitivity analysis methods in the ``didhonest`` module.
+
+
+Conditioning on Covariates
+--------------------------
+
+Another approach to strengthening the parallel trends assumption is to
+condition on pre-treatment covariates. When outcome trends vary with
+observable characteristics and treated units differ systematically from
+comparison units on these characteristics, unconditional parallel trends
+may fail even if conditional parallel trends holds.
+
+For instance, if younger workers experience faster wage growth than older
+workers, and training program participants tend to be younger, the treated
+group would show steeper wage trends even absent treatment. Controlling for
+age restores comparability by ensuring we compare workers with similar
+baseline characteristics. More generally, allowing for covariate-specific
+trends can eliminate biases that arise from compositional differences
+between groups.
+
+We cover these ideas in the :ref:`Conditional Parallel Trends <conditional-parallel-trends>`
+section below in more detail.
+
+
 Two-Way Fixed Effects and Its Limitations
 =========================================
 
-Now consider a more general setting with :math:`\mathcal{T}` total time periods
-where different units become treated at different times. This is common in
-policy evaluation where reforms roll out to different regions over time.
+The two-period setup provides clean intuition, but most empirical applications
+involve richer settings. Policies often roll out gradually across regions or
+over time, creating variation in when different units receive treatment. This
+staggered adoption is common in policy evaluation, where reforms phase in across
+states, countries implement regulations at different dates, or firms adopt new
+practices over several years. While this variation seems helpful for identifying
+causal effects, the traditional estimation approach can produce misleading
+results.
+
+Consider a setting with :math:`\mathcal{T}` total time periods in which
+different units become treated at different times.
 
 
 The TWFE Regression
@@ -225,10 +313,15 @@ TWFE, implicitly using already-treated units as part of the comparison group.
 Group-Time Average Treatment Effects
 ====================================
 
-The solution to these problems is conceptually straightforward. Rather than
-pooling all units into a single regression that makes problematic comparisons,
-we estimate treatment effects separately for each combination of treatment
-cohort and time period, using only valid comparisons.
+The problems with TWFE stem from pooling all variation into a single regression
+coefficient. This forces the estimator to make implicit comparisons, including
+problematic ones that use already-treated units as controls. The solution is
+to avoid this pooling entirely.
+
+Rather than estimating a single treatment effect, modern methods estimate
+separate effects for each combination of treatment cohort and time period,
+using only valid comparisons. This disaggregated approach yields a richer set
+of parameters that can then be aggregated in transparent ways.
 
 Let :math:`G_i` denote the time period when unit :math:`i` first receives
 treatment. If a unit is never treated, we set :math:`G_i = \infty`. Units
@@ -390,6 +483,8 @@ It is the natural multi-period analogue of the ATT in the two-period case.
 If a researcher must report a single treatment effect summary, this is the
 recommended parameter.
 
+
+.. _conditional-parallel-trends:
 
 Conditional Parallel Trends
 ===========================
