@@ -213,14 +213,6 @@ did.plot_event_study(event_study)
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="Event study plot">
 
-### Benchmarks
-
-Our package is built for speed. Python implementations shows significant speed improvements as observations grow compared to the canonical R packages.
-
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/benchmark/output/benchmark_scaling_hires.png" alt="Benchmark plot">
-
-See [benchmark](benchmark/) for full methodology and results.
-
 ## Available Methods
 
 Each core module includes a dedicated walkthrough covering methodology background, API usage, and guidance on interpreting results.
