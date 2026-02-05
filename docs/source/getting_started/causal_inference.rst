@@ -395,6 +395,33 @@ effect is a clean causal comparison that never uses already-treated units
 as controls, avoiding the problems that plague TWFE.
 
 
+.. _conditional-parallel-trends:
+
+Conditional Parallel Trends
+===========================
+
+In many applications, the parallel trends assumption is more credible when
+conditioning on observed pre-treatment covariates. For example, if treatment
+timing correlates with observable characteristics that also affect outcome
+trends, controlling for these characteristics strengthens identification.
+
+The conditional parallel trends assumption states that, within levels of
+covariates :math:`X`, treated and comparison groups would have followed the
+same path
+
+.. math::
+
+   \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, G = g] = \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, C = 1].
+
+This allows covariate-specific trends. Different covariate values can have
+different outcome trends, as long as treated and comparison units with the
+same covariate values would have followed the same trend absent treatment.
+
+The target parameter remains the unconditional :math:`ATT(g, t)`. To recover
+it, we estimate the covariate-conditional effect and then average over the
+distribution of covariates for units in group :math:`g`.
+
+
 Aggregating Group-Time Effects
 ==============================
 
@@ -482,33 +509,6 @@ treated population, properly accounting for the staggered adoption pattern.
 It is the natural multi-period analogue of the ATT in the two-period case.
 If a researcher must report a single treatment effect summary, this is the
 recommended parameter.
-
-
-.. _conditional-parallel-trends:
-
-Conditional Parallel Trends
-===========================
-
-In many applications, the parallel trends assumption is more credible when
-conditioning on observed pre-treatment covariates. For example, if treatment
-timing correlates with observable characteristics that also affect outcome
-trends, controlling for these characteristics strengthens identification.
-
-The conditional parallel trends assumption states that, within levels of
-covariates :math:`X`, treated and comparison groups would have followed the
-same path
-
-.. math::
-
-   \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, G = g] = \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid X, C = 1].
-
-This allows covariate-specific trends. Different covariate values can have
-different outcome trends, as long as treated and comparison units with the
-same covariate values would have followed the same trend absent treatment.
-
-The target parameter remains the unconditional :math:`ATT(g, t)`. To recover
-it, we estimate the covariate-conditional effect and then average over the
-distribution of covariates for units in group :math:`g`.
 
 
 What's Next
