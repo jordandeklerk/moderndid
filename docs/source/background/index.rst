@@ -14,6 +14,7 @@ methodologies implemented in ModernDiD; for practical usage see the
 
    did
    drdid
+   didcont
    didhonest
 
 Acknowledgements

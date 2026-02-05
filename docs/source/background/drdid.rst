@@ -27,23 +27,31 @@ The main identification challenge is to estimate the counterfactual term :math:`
 Identification
 --------------
 
-The key identifying assumptions are:
+The key identifying assumptions are as follows.
 
-1.  **Data Structure**: The data are assumed to be either
+.. admonition:: Assumption 1 (Data Structure)
 
-    (a) A panel dataset where :math:`\{Y_{i0}, Y_{i1}, D_i, X_i\}_{i=1}^n` are independent and identically distributed (i.i.d.).
+   The data are assumed to be either
 
-    (b) A pooled repeated cross-section where :math:`\{Y_i, D_i, X_i, T_i\}_{i=1}^n` are i.i.d. draws from a mixture distribution, and the joint distribution of :math:`(D, X)` is invariant to the time period :math:`T`.
+   (a) A panel dataset where :math:`\{Y_{i0}, Y_{i1}, D_i, X_i\}_{i=1}^n` are independent and identically distributed (i.i.d.).
 
-2.  **Conditional Parallel Trends Assumption (PTA)**: The average outcomes for the treated and comparison groups would have evolved in parallel, conditional on covariates
+   (b) A pooled repeated cross-section where :math:`\{Y_i, D_i, X_i, T_i\}_{i=1}^n` are i.i.d. draws from a mixture distribution, and the joint distribution of :math:`(D, X)` is invariant to the time period :math:`T`.
 
-    .. math::
-       \mathbb{E}[Y_1(0) - Y_0(0) | D=1, X] = \mathbb{E}[Y_1(0) - Y_0(0) | D=0, X].
+.. admonition:: Assumption 2 (Conditional Parallel Trends)
 
-3.  **Overlap**: For all values of covariates :math:`X`, there is a positive probability of being in either the treatment or comparison group
+   The average outcomes for the treated and comparison groups would have evolved in parallel, conditional on covariates,
 
-    .. math::
-       \mathbb{P}(D=1|X) < 1-\varepsilon \text{ for some } \varepsilon > 0.
+   .. math::
+
+      \mathbb{E}[Y_1(0) - Y_0(0) | D=1, X] = \mathbb{E}[Y_1(0) - Y_0(0) | D=0, X].
+
+.. admonition:: Assumption 3 (Overlap)
+
+   For all values of covariates :math:`X`, there is a positive probability of being in either the treatment or comparison group,
+
+   .. math::
+
+      \mathbb{P}(D=1|X) < 1-\varepsilon \text{ for some } \varepsilon > 0.
 
 Doubly Robust Estimands
 -----------------------

@@ -39,40 +39,45 @@ This parameter is flexible and does not impose homogeneity across groups or time
 Identifying Assumptions
 -----------------------
 
-The identification of :math:`ATT(g, t)` relies on the following key assumptions:
+The identification of :math:`ATT(g, t)` relies on the following key assumptions.
 
-1.  **Limited Treatment Anticipation**: Potential outcomes are not affected by the treatment in periods far enough before it is implemented.
-    For a known anticipation horizon :math:`\delta \ge 0`, we have
+.. admonition:: Assumption 1 (Limited Treatment Anticipation)
 
-    .. math::
+   Potential outcomes are not affected by the treatment in periods far enough before it is implemented. For a known anticipation horizon :math:`\delta \ge 0`,
 
-       \mathbb{E}[Y_t(g) | X, G_g = 1] = \mathbb{E}[Y_t(0) | X, G_g = 1] \quad \text{for all } t < g - \delta.
+   .. math::
 
-    When :math:`\delta = 0`, this is a "no anticipation" assumption.
+      \mathbb{E}[Y_t(g) | X, G_g = 1] = \mathbb{E}[Y_t(0) | X, G_g = 1] \quad \text{for all } t < g - \delta.
 
-2.  **Conditional Parallel Trends**: The average evolution of untreated potential outcomes is the same for a treatment group and a comparison group, conditional on a set of pre-treatment covariates :math:`X`. Two alternative assumptions are proposed:
+When :math:`\delta = 0`, this is a "no anticipation" assumption.
 
-    * **Based on a "Never-Treated" Group**: For each group :math:`g` and for periods :math:`t \ge g - \delta`
+.. admonition:: Assumption 2 (Conditional Parallel Trends)
 
-      .. math::
+   The average evolution of untreated potential outcomes is the same for a treatment group and a comparison group, conditional on a set of pre-treatment covariates :math:`X`. Two alternative formulations are available.
 
-         \mathbb{E}[Y_t(0) - Y_{t-1}(0) | X, G_g = 1] = \mathbb{E}[Y_t(0) - Y_{t-1}(0) | X, C = 1].
+   *Based on a "Never-Treated" Group*: For each group :math:`g` and for periods :math:`t \ge g - \delta`,
 
-    * **Based on "Not-Yet-Treated" Groups**: For each group :math:`g` and for periods :math:`t \ge g - \delta`
+   .. math::
 
-      .. math::
+      \mathbb{E}[Y_t(0) - Y_{t-1}(0) | X, G_g = 1] = \mathbb{E}[Y_t(0) - Y_{t-1}(0) | X, C = 1].
 
-         \mathbb{E}[Y_t(0) - Y_{t-1}(0) | X, G_g = 1] = \mathbb{E}[Y_t(0) - Y_{t-1}(0) | X, D_s = 0, G_g = 0],
+   *Based on "Not-Yet-Treated" Groups*: For each group :math:`g` and for periods :math:`t \ge g - \delta`,
 
-      where :math:`s` is a time period such that :math:`t + \delta \le s`.
+   .. math::
 
-3.  **Overlap**: For any given covariates, there is a positive probability of being in a treatment group and in the comparison group. Formally, for some :math:`\varepsilon > 0`, :math:`P(G_g = 1) > \varepsilon` and the generalized propensity score
+      \mathbb{E}[Y_t(0) - Y_{t-1}(0) | X, G_g = 1] = \mathbb{E}[Y_t(0) - Y_{t-1}(0) | X, D_s = 0, G_g = 0],
 
-    .. math::
+   where :math:`s` is a time period such that :math:`t + \delta \le s`.
 
-       p_{g,t}(X) = P(G_g = 1 | X, G_g + (1 - D_t)(1 - G_g) = 1)
+.. admonition:: Assumption 3 (Overlap)
 
-    is bounded away from 1.
+   For any given covariates, there is a positive probability of being in a treatment group and in the comparison group. Formally, for some :math:`\varepsilon > 0`, :math:`P(G_g = 1) > \varepsilon` and the generalized propensity score
+
+   .. math::
+
+      p_{g,t}(X) = P(G_g = 1 | X, G_g + (1 - D_t)(1 - G_g) = 1)
+
+   is bounded away from 1.
 
 Nonparametric Identification of ATT(g,t)
 -----------------------------------------

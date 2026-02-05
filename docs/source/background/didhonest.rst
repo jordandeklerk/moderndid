@@ -32,25 +32,33 @@ The goal is to conduct inference on a scalar parameter of interest, typically a 
 
 When :math:`\Delta` is closed and convex, this identified set is a simple interval, :math:`[\theta^{lb}, \theta^{ub}]`.
 
-The choice of :math:`\Delta` is critical and must be guided by economic context. The paper proposes several classes of restrictions that can be specified as polyhedra (sets defined by linear inequalities):
+The choice of :math:`\Delta` is critical and must be guided by economic context. The paper proposes several classes of restrictions that can be specified as polyhedra (sets defined by linear inequalities).
 
-- **Relative Magnitudes (RM)**: This formalizes the idea that post-treatment violations are not substantially larger than pre-treatment violations. The set :math:`\Delta^{RM}(\bar{M})` bounds the change in the trend violation between any two consecutive post-treatment periods by a factor :math:`\bar{M}` of the maximum change in the pre-treatment period. This set is given by
+.. admonition:: Relative Magnitudes Restriction (RM)
 
-  .. math::
+   This formalizes the idea that post-treatment violations are not substantially larger than pre-treatment violations. The set :math:`\Delta^{RM}(\bar{M})` bounds the change in the trend violation between any two consecutive post-treatment periods by a factor :math:`\bar{M}` of the maximum change in the pre-treatment period,
 
-     \Delta^{RM}(\bar{M}) = \bigg\{\boldsymbol{\delta}: |\delta_{t+1} - \delta_t| \le \bar{M} \cdot \max_{s<0} |\delta_{s+1} - \delta_s|, \forall t \ge 0 \bigg\}.
+   .. math::
 
-  A natural benchmark is :math:`\bar{M}=1`. If you believe the confounding factors causing deviations from parallel trends after treatment are similar in size to those before treatment, the relative magnitude bounds approach is suitable.
+      \Delta^{RM}(\bar{M}) = \bigg\{\boldsymbol{\delta}: |\delta_{t+1} - \delta_t| \le \bar{M} \cdot \max_{s<0} |\delta_{s+1} - \delta_s|, \forall t \ge 0 \bigg\}.
 
-- **Smoothness Restrictions (SD)**: This formalizes the idea that the differential trend evolves smoothly over time, relaxing the assumption of a perfectly linear trend. The set :math:`\Delta^{SD}(M)` bounds the discrete second derivative of the trend by a constant :math:`M`. This set is given by
+A natural benchmark is :math:`\bar{M}=1`. If you believe the confounding factors causing deviations from parallel trends after treatment are similar in size to those before treatment, the relative magnitude bounds approach is suitable.
 
-  .. math::
+.. admonition:: Smoothness Restriction (SD)
 
-     \Delta^{SD}(M) = \bigg\{\boldsymbol{\delta}: |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \le M, \forall t \bigg\}.
+   This formalizes the idea that the differential trend evolves smoothly over time, relaxing the assumption of a perfectly linear trend. The set :math:`\Delta^{SD}(M)` bounds the discrete second derivative of the trend by a constant :math:`M`,
 
-  This is a relaxation of controlling for a linear time trend (which corresponds to :math:`M=0`). When you expect the differences in trends between the treatment and control group to evolve smoothly over time without sharp changes, the smoothness restriction approach is appropriate.
+   .. math::
 
-- **Combined and Shape Restrictions**: The framework is flexible and can accommodate other assumptions, such as combining the RM and SD restrictions (**SDRM**), or imposing **Sign and Monotonicity Restrictions** based on knowledge of the economic setting (e.g., if the bias is known to be positive or increasing). If you believe that trends change smoothly over time, but are unsure about the exact level of smoothness, you can combine the smoothness and relative magnitude bounds approaches to set reasonable limits on trend changes.
+      \Delta^{SD}(M) = \bigg\{\boldsymbol{\delta}: |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \le M, \forall t \bigg\}.
+
+This is a relaxation of controlling for a linear time trend (which corresponds to :math:`M=0`). When you expect the differences in trends between the treatment and control group to evolve smoothly over time without sharp changes, the smoothness restriction approach is appropriate.
+
+.. admonition:: Combined and Shape Restrictions
+
+   The framework is flexible and can accommodate other assumptions, such as combining the RM and SD restrictions (SDRM), or imposing sign and monotonicity restrictions based on knowledge of the economic setting (e.g., if the bias is known to be positive or increasing).
+
+If you believe that trends change smoothly over time, but are unsure about the exact level of smoothness, you can combine the smoothness and relative magnitude bounds approaches to set reasonable limits on trend changes.
 
 Inference Methods
 -----------------
