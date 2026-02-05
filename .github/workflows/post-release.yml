@@ -12,10 +12,10 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: main
-      - uses: rhysd/changelog-from-release/action@v3
+      - uses: rhysd/changelog-from-release/action@78b335bb7d059f35ad04c5428d50711726feee50 # v3.9.1
         with:
           file: CHANGELOG.md
           github_token: ${{ secrets.GITHUB_TOKEN }}
