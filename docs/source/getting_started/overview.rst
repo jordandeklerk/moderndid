@@ -6,7 +6,7 @@ What is ModernDiD?
 
 ModernDiD is a Python library for modern difference-in-differences methods
 in causal inference. It provides a unified API across multiple estimators,
-robust bootstrap inference, and publication-ready visualization.
+robust bootstrap inference, and visualization.
 
 Difference-in-differences (DiD) estimates causal effects by comparing how
 outcomes change over time between treated and untreated groups. The method
@@ -22,7 +22,7 @@ Why a unified package?
 ----------------------
 
 The modern DiD literature has produced many methodological advances, but
-implementations remain fragmented across separate R and Stata packages—each
+implementations remain fragmented across separate R and Stata packages, each
 with its own API, data requirements, and output formats. Researchers must
 learn multiple interfaces, convert data between formats, and reconcile
 different output structures.
@@ -91,8 +91,8 @@ matrices, and estimation metadata. Warning messages explain when data issues
 might affect results.
 
 **Visualization.** All modules include plotting functions built on
-`plotnine <https://plotnine.org/>`_ that produce publication-ready figures
-with full customization through the grammar of graphics.
+`plotnine <https://plotnine.org/>`_ for event studies, dose-response curves,
+and sensitivity plots with full customization through the grammar of graphics.
 
 
 .. toctree::

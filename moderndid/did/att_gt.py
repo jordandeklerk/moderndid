@@ -155,7 +155,22 @@ def att_gt(
     Returns
     -------
     MPResult
-        Object containing all the results for group-time average treatment effects.
+        Object containing group-time average treatment effect results:
+
+        - **groups**: Array indicating which group (period first treated) each ATT is for
+        - **times**: Array indicating which time period each ATT is for
+        - **att_gt**: Array of group-time average treatment effects
+        - **se_gt**: Standard errors for each ATT(g,t)
+        - **vcov_analytical**: Analytical variance-covariance matrix
+        - **critical_value**: Critical value for confidence intervals (simultaneous if bootstrap with cband=True)
+        - **influence_func**: Influence function matrix for each ATT(g,t)
+        - **n_units**: Number of unique cross-sectional units
+        - **wald_stat**: Wald statistic for pre-testing parallel trends
+        - **wald_pvalue**: P-value for the parallel trends pre-test
+        - **alpha**: Significance level used
+        - **estimation_params**: Dictionary with estimation details (control_group, anticipation_periods, etc.)
+        - **G**: Unit-level group assignments
+        - **weights_ind**: Unit-level sampling weights (if provided)
 
     Examples
     --------

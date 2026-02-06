@@ -1,434 +1,63 @@
 # Honest Difference-in-Differences
 
-This module provides tools for **robust inference and sensitivity analysis** for difference-in-differences and event study designs. Rather than relying on the assumption of exactly parallel trends, this framework formalizes the intuition that pre-trends are informative about violations of parallel trends, allowing researchers to conduct **sensitivity analysis** and construct **robust confidence intervals** that remain valid under plausible violations of the parallel trends assumption.
+This module provides sensitivity analysis for difference-in-differences designs, allowing researchers to assess how violations of the parallel trends assumption affect their conclusions. Rather than assuming exactly parallel trends, this framework constructs robust confidence intervals that remain valid under plausible violations.
 
 The computational methods here are inspired by the corresponding R package [HonestDiD](https://github.com/asheshrambachan/HonestDiD) by Rambachan and Roth.
 
-> [!IMPORTANT]
-> This module is designed for **sensitivity analysis** of existing DiD estimates. You'll need event-study coefficients and their variance-covariance matrix from another estimation method (e.g., `did`, `drdid`, or traditional TWFE) before using `HonestDiD`.
-
-## Background
-
-The robust inference approach in [Rambachan and Roth](https://asheshrambachan.github.io/assets/files/hpt-draft.pdf) formalizes the intuition that pre-trends are informative about violations of parallel trends. They provide several ways to formalize what this means.
-
-### Bounds on Relative Magnitudes
-
-One approach is to impose that violations of parallel trends in the post-treatment period cannot be much larger than those in the pre-treatment period. This is formalized by bounding the post-treatment violation to be no more than $\bar{M}$ times larger than the maximum pre-treatment violation. For example:
-
-- $\bar{M} = 1$: Post-treatment violations are no larger than the worst pre-treatment violation
-- $\bar{M} = 2$: Post-treatment violations are at most twice the pre-treatment violations
-
-### Smoothness Restrictions
-
-Another approach is to restrict how much post-treatment violations can deviate from a linear extrapolation of the pre-trend. The paper imposes that the slope of the pre-trend can change by no more than $M$ across consecutive periods. Setting $M = 0$ imposes exactly linear counterfactual trends, while larger $M$ allows more non-linearity.
-
-### Sensitivity Analysis
-
-Given these restrictions, the Honest Did package provides confidence intervals that are guaranteed to have correct coverage when the restrictions are satisfied, accounting for estimation error in both treatment effects and pre-trends.
-
-Researchers can report confidence intervals under different assumptions about the magnitude of post-treatment violations (different values of $\bar{M}$ or $M$) and identify "breakdown values", the largest restriction for which effects remain significant.
-
-## Features
-
-### Unified High-Level API
-
-The main entry point provides a consistent interface for working with event study objects:
+## Quick Start
 
 ```python
+import moderndid as did
 
-from moderndid import honest_did
+# Load data and estimate event study
+data = did.load_mpdta()
+result = did.att_gt(
+    data=data,
+    yname="lemp",
+    tname="year",
+    idname="countyreal",
+    gname="first.treat",
+)
+event_study = did.aggte(result, type="dynamic")
 
-# For event study objects (e.g., from moderndid.did.aggte)
-result = honest_did(
+# Sensitivity analysis for event_time=0
+sensitivity = did.honest_did(
     event_study,
     event_time=0,
-    sensitivity_type="smoothness",  # 'relative_magnitude'
-    grid_points=100,
-    m_vec=[0, 0.01, 0.02],          # For smoothness
-    m_bar_vec=[0.5, 1, 1.5, 2],     # For relative magnitudes
-    alpha=0.05
-)
-```
-
-### Direct API
-
-For users with pre-computed event study coefficients:
-
-```python
-from moderndid import (
-    create_sensitivity_results_sm,
-    create_sensitivity_results_rm,
-    construct_original_cs
-)
-
-# For smoothness restrictions
-sensitivity_results = create_sensitivity_results_sm(
-    betahat=event_study_coefs,
-    sigma=vcov_matrix,
-    num_pre_periods=5,
-    num_post_periods=3,
-    m_vec=[0, 0.01, 0.02, 0.03],
-    l_vec=None,
-    method="FLCI",
-    alpha=0.05
-)
-
-# For relative magnitude restrictions
-sensitivity_results_rm = create_sensitivity_results_rm(
-    betahat=event_study_coefs,
-    sigma=vcov_matrix,
-    num_pre_periods=5,
-    num_post_periods=3,
+    sensitivity_type="relative_magnitude",
     m_bar_vec=[0.5, 1.0, 1.5, 2.0],
-    method="C-LF",
-    alpha=0.05
-)
-```
-
-### Advanced Sensitivity Restrictions
-
-Beyond the basic relative magnitudes and smoothness restrictions, the package offers additional restrictions for users to incorporate context-specific knowledge about confounding factors contributing to possible violations of the parallel trends assumption:
-
-- **Relative Magnitudes with Sign Restrictions**: Incorporate knowledge about bias direction (positive/negative) alongside relative magnitude bounds
-- **Relative Magnitudes with Monotonicity**: Add monotonicity constraints when treatment effects are expected to evolve smoothly (increasing/decreasing)
-- **Second Differences with Sign Restrictions**: Combine smoothness constraints with bias direction
-- **Second Differences with Monotonicity**: Enforce both smoothness and monotonic evolution of effects
-- **Combined Smoothness and Relative Magnitudes**: Apply both types of restrictions simultaneously
-- **Full Constraint Combinations**: Layer all three types of constraints for maximum robustness
-
-All these options are available both at a lower-level API or through the high-level wrapper function `honest_did` with the required `kwargs` relevant to the specific restrictions.
-
-### Multiple Confidence Interval Methods
-
-- **Fixed-Length CI (`FLCI`)**: Default method with optimal length for **smoothness methods**
-- **Andrew-Roth-Pakes (`ARP`)**: Data-driven CI construction
-- **Conditional CI (`Conditional`)**: Conditions on non-negativity
-- **C-LF Method (`C-LF`)**: Computationally efficient for **relative magnitudes**
-
-### Flexible Parameter Analysis
-
-- Analyze any linear combination of post-treatment effects via `l_vec` parameter
-- Support for average effects, cumulative effects, or custom weighted combinations
-- Fine-grained control over computational parameters (grid resolution, bounds, bootstrap settings)
-
-### Visualizations
-
-Built-in plotting functions using [plotnine](https://plotnine.org/):
-
-```python
-from moderndid import plot_sensitivity
-
-# Plot sensitivity analysis results
-plot_sensitivity(sensitivity_results)
-```
-
-## Usage
-
-There are two main ways to use this module depending on your workflow:
-
-- **Direct API**: If you have event study coefficients and variance-covariance matrices from an external estimator (e.g., `pyfixest`), use `create_sensitivity_results_rm` and `create_sensitivity_results_sm` directly.
-
-- **High-Level API**: If you're using `moderndid`'s `att_gt` and `aggte` functions, the `honest_did` wrapper automatically extracts the necessary components from the event study object.
-
-We will first demonstrate the direct API workflow, then show the high-level API in the [Staggered Treatment Timing](#staggered-treatment-timing) section.
-
----
-
-### Direct API: External Estimators
-
-We will examine the effects of Medicaid expansions on insurance coverage using publicly-available data derived from the ACS. We first load the data and packages relevant for the analysis.
-
-```python
-from moderndid import (
-    load_ehec,
-    create_sensitivity_results_sm,
-    create_sensitivity_results_rm,
-    construct_original_cs
 )
 
-df = load_ehec()
-print(df.head())
+# Plot results
+did.plot_sensitivity(sensitivity)
 ```
 
-```bash
-##    stfips  year      dins     yexp2         W
-## 0       1  2008  0.681218       NaN  613156.0
-## 1       1  2009  0.658096       NaN  613156.0
-## 2       1  2010  0.631473       NaN  613156.0
-## 3       1  2011  0.655519       NaN  613156.0
-## 4       1  2012  0.671467       NaN  613156.0
-```
-
-The data is a state-level panel with information on health insurance coverage and Medicaid expansion. The variable `dins` shows the share of low-income childless adults with health insurance in the state. The variable `yexp2` gives the year that a state expanded Medicaid coverage under the Affordable Care Act, and is missing if the state never expanded.
-
-### Estimate the Baseline Event Study
-
-For simplicity, we will first focus on assessing sensitivity to violations of parallel trends in a non-staggered DiD. We therefore restrict the sample to the years 2015 and earlier, and drop the small number of states who are first treated in 2015. We are now left with a panel dataset where some units are first treated in 2014 and the remaining units are not treated during the sample period.
-
-```python
-import pyfixest as pf
-
-if df['year'].dtype.name == 'category':
-    df['year'] = df['year'].astype(int)
-if 'yexp2' in df.columns and df['yexp2'].dtype.name == 'category':
-    df['yexp2'] = df['yexp2'].astype(float)
-if df['stfips'].dtype.name == 'category':
-    df['stfips'] = df['stfips'].astype(str)
-
-df_nonstaggered = df[
-    (df['year'] < 2016) &
-    (df['yexp2'].isna() | (df['yexp2'] != 2015))
-].copy()
-
-df_nonstaggered['D'] = np.where(df_nonstaggered['yexp2'] == 2014, 1, 0)
-
-years = sorted(df_nonstaggered['year'].unique())
-for year in years:
-    if year != 2013:
-        df_nonstaggered[f'D_year_{year}'] = df_nonstaggered['D'] * (df_nonstaggered['year'] == year)
-
-interaction_terms = [f'D_year_{year}' for year in years if year != 2013]
-formula = f"dins ~ {' + '.join(interaction_terms)} | stfips + year"
-
-twfe_results = pf.feols(formula, data=df_nonstaggered, vcov={'CRV1': 'stfips'})
-
-pre_years = [2008, 2009, 2010, 2011, 2012]
-post_years = [2014, 2015]
-
-coef_names = [f'D_year_{year}' for year in pre_years + post_years]
-betahat = np.array([twfe_results.coef()[name] for name in coef_names])
-
-sigma_full = twfe_results._vcov
-
-all_coef_names = list(twfe_results.coef().index)
-coef_indices = [all_coef_names.index(name) for name in coef_names]
-
-sigma = sigma_full[np.ix_(coef_indices, coef_indices)]
-
-print(twfe_results.summary())
-```
-
-This gives us event study coefficients for years 2008-2012, 2014, and 2015 (2013 is the reference period):
-
-```
-| Coefficient                                 |   Estimate |   Std. Error |   t value |   Pr(>|t|) |   2.5% |   97.5% |
-|:--------------------------------------------|-----------:|-------------:|----------:|-----------:|-------:|--------:|
-| C(year, contr.treatment(base=2013))[2008]:D |     -0.005 |        0.009 |    -0.611 |      0.545 | -0.023 |   0.012 |
-| C(year, contr.treatment(base=2013))[2009]:D |     -0.011 |        0.009 |    -1.325 |      0.192 | -0.029 |   0.006 |
-| C(year, contr.treatment(base=2013))[2010]:D |     -0.003 |        0.007 |    -0.376 |      0.708 | -0.017 |   0.012 |
-| C(year, contr.treatment(base=2013))[2011]:D |     -0.001 |        0.006 |    -0.224 |      0.824 | -0.014 |   0.011 |
-| C(year, contr.treatment(base=2013))[2012]:D |      0.000 |        0.007 |     0.046 |      0.964 | -0.015 |   0.015 |
-| C(year, contr.treatment(base=2013))[2014]:D |      0.046 |        0.009 |     5.075 |      0.000 |  0.028 |   0.065 |
-| C(year, contr.treatment(base=2013))[2015]:D |      0.069 |        0.010 |     6.687 |      0.000 |  0.048 |   0.090 |
-```
-
-![Event-Study](/assets/medicaid_event_study.png)
-
-### Sensitivity Analysis Using Relative Magnitudes
-
-Suppose we're interested in assessing the sensitivity of the estimate for 2014, the first year after treatment.
-
-```python
-num_pre_periods = 5
-num_post_periods = 2
-
-original_ci = construct_original_cs(
-    betahat=betahat,
-    sigma=sigma,
-    num_pre_periods=num_pre_periods,
-    num_post_periods=num_post_periods,
-    alpha=0.05
-)
-
-delta_rm_results = create_sensitivity_results_rm(
-    betahat=betahat,
-    sigma=sigma,
-    num_pre_periods=num_pre_periods,
-    num_post_periods=num_post_periods,
-    m_bar_vec=[0.5, 1.0, 1.5, 2.0],
-    method="C-LF"
-)
-```
-
-```bash
-Original 95% CI for 2014 effect: [0.0285, 0.0644]
-
-         lb        ub method    delta  Mbar
-0  0.024130  0.066888   C-LF  DeltaRM   0.5
-1  0.017094  0.071963   C-LF  DeltaRM   1.0
-2  0.008587  0.079599   C-LF  DeltaRM   1.5
-3 -0.000666  0.087946   C-LF  DeltaRM   2.0
-```
-
-The output shows a robust confidence interval for different values of $\bar{M}$. We see that the "breakdown value" for a significant effect is $\bar{M} = 2$, meaning that the significant result is robust to allowing for violations of parallel trends up to the same magnitude as the max violation in the pre-treatment period.
-
-```python
-from moderndid import plot_sensitivity
-
-plot_sensitivity(delta_rm_results)
-```
-
-![Sensitivity-Analysis-Using-Relative-Magnitudes](/assets/medicaid_sensitivity_rm.png)
-
-### Sensitivity Analysis Using Smoothness Restrictions
-
-We can also do a sensitivity analysis based on smoothness restrictions, i.e., imposing that the slope of the difference in trends changes by no more than $M$ between periods.
-
-```python
-delta_sd_results = create_sensitivity_results_sm(
-    betahat=betahat,
-    sigma=sigma,
-    num_pre_periods=num_pre_periods,
-    num_post_periods=num_post_periods,
-    m_vec=np.arange(0, 0.051, 0.01),
-    method="FLCI"
-)
-
-print(delta_sd_results)
-```
-
-> [!NOTE]
-> Results have been validated against the R `HonestDiD` package. Very small numerical differences (typically < 1%) may occur due to different optimization solvers (Python's cvxpy vs R's solvers), but these are negligible in practice.
-
-```bash
-         lb        ub method    delta     m
-0  0.025967  0.060711   FLCI  DeltaSD  0.00
-1  0.013153  0.078700   FLCI  DeltaSD  0.01
-2  0.002810  0.090763   FLCI  DeltaSD  0.02
-3 -0.007189  0.100762   FLCI  DeltaSD  0.03
-4 -0.017189  0.110762   FLCI  DeltaSD  0.04
-5 -0.027189  0.120762   FLCI  DeltaSD  0.05
-```
-
-We see that the breakdown value for a significant effect is $M \approx 0.03$, meaning that we can reject a null effect unless we are willing to allow for the linear extrapolation across consecutive periods to be off by more than 0.03 percentage points.
-
-```python
-plot_sensitivity(delta_sd_results)
-```
-
-![Sensitivity-Analysis-Using-Smoothness-Restrictions](/assets/medicaid_sensitivity_sd.png)
-
-## Sensitivity Analysis for Average Effects
-
-So far we have focused on the effect for the first post-treatment period, which is the default in `HonestDiD`. If we are instead interested in the average over the two post-treatment periods, we can use the option `l_vec = [0.5, 0.5]`:
-
-```python
-l_vec = np.array([0.5, 0.5])
-
-original_ci_avg = construct_original_cs(
-    betahat=betahat,
-    sigma=sigma,
-    num_pre_periods=num_pre_periods,
-    num_post_periods=num_post_periods,
-    l_vec=l_vec,
-    alpha=0.05
-)
-
-delta_rm_results_avg = create_sensitivity_results_rm(
-    betahat=betahat,
-    sigma=sigma,
-    num_pre_periods=num_pre_periods,
-    num_post_periods=num_post_periods,
-    m_bar_vec=[0, 0.5, 1.0, 1.5, 2.0],
-    l_vec=l_vec,
-    method="C-LF"
-)
-
-print(delta_rm_results_avg)
-```
-
-```bash
-         lb        ub method    delta  Mbar
-0  0.041244  0.074409   C-LF  DeltaRM   0.0
-1  0.032511  0.079816   C-LF  DeltaRM   0.5
-2  0.019767  0.090149   C-LF  DeltaRM   1.0
-3  0.005824  0.103501   C-LF  DeltaRM   1.5
-4 -0.008538  0.117249   C-LF  DeltaRM   2.0
-```
-
-```python
-plot_sensitivity(delta_rm_results_avg)
-```
-
-![Sensitivity-Analysis-Average](/assets/medicaid_sensitivity_avg.png)
-
-## Staggered Treatment Timing
-
-### High-Level API: `honest_did` with `att_gt` and `aggte`
-
-When using `moderndid`'s built-in estimators, the `honest_did` function automatically extracts coefficients, variance-covariance matrices, and period information from the event study object.
-
-We can combine staggered treatment DiD estimators of the Callaway and Sant'Anna type with Honest DiD sensitivity analysis in a straight-forward way:
-
-```python
-from moderndid import att_gt, aggte, honest_did, load_ehec
-
-df = load_ehec()
-
-# Replace missing treatment times with a large number
-df['yexp2'] = df['yexp2'].fillna(3000)
-
-cs_results = att_gt(
-    yname='dins',
-    tname='year',
-    idname='stfips',
-    gname='yexp2',
-    data=df,
-    control_group='notyettreated'
-)
-
-es = aggte(cs_results, type='dynamic', min_e=-5, max_e=5)
-```
-
-This produces event study estimates with pre-treatment deviations below:
-
-```
-Dynamic Effects:
-
-Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
-        -5    -0.0084       0.0049   [-0.0212,  0.0045]
-        -4     0.0054       0.0069   [-0.0127,  0.0234]
-        -3     0.0026       0.0049   [-0.0100,  0.0153]
-        -2    -0.0012       0.0035   [-0.0105,  0.0081]
-        -1     0.0049       0.0041   [-0.0057,  0.0156]
-         0     0.0453       0.0060   [ 0.0297,  0.0609] *
-         1     0.0651       0.0085   [ 0.0429,  0.0872] *
-         2     0.0759       0.0079   [ 0.0551,  0.0967] *
-         3     0.0726       0.0093   [ 0.0484,  0.0968] *
-         4     0.0738       0.0108   [ 0.0455,  0.1021] *
-         5     0.0803       0.0107   [ 0.0524,  0.1082] *
-```
-
-Now we can apply Honest DiD sensitivity analysis via relative magnitudes:
-
-```python
-# Immediate treatment effect (event_time=0)
-sensitivity_results = honest_did(
-    es,
-    event_time=0,
-    sensitivity_type='relative_magnitude',
-    m_bar_vec=[0.5, 1.0, 1.5, 2.0]
-)
-
-print(sensitivity_results)
-```
-
-```bash
-         lb        ub method    delta  Mbar
-0  0.029468  0.058650   C-LF  DeltaRM   0.5
-1  0.022173  0.065946   C-LF  DeltaRM   1.0
-2  0.012446  0.075673   C-LF  DeltaRM   1.5
-3  0.002719  0.082968   C-LF  DeltaRM   2.0
-```
-
-These results show that the immediate treatment effect has a breakdown value exceeding $\bar{M} = 2$. This means the significant positive effect of Medicaid expansion on insurance coverage remains statistically significant even when allowing post-treatment violations of parallel trends to be twice as large as the maximum pre-treatment violation. The strong robustness of this finding reflects the small pre-treatment deviations observed in the event study, providing confidence that the estimated effect on insurance coverage is not driven by differential trends between expanding and non-expanding states.
-
-![CS-Sensitivity-Analysis](/assets/cs_sensitivity_rm.png)
+## Key Parameters
+
+**Sensitivity types** (`sensitivity_type`)
+- `"relative_magnitude"`: Bound post-treatment violations relative to pre-treatment
+- `"smoothness"`: Restrict deviations from linear extrapolation of pre-trends
+
+**Relative magnitude parameters**
+- `m_bar_vec`: Values of Mbar (e.g., `[0.5, 1.0, 1.5, 2.0]`)
+- Mbar=1 means post-treatment violations are no larger than worst pre-treatment violation
+
+**Smoothness parameters**
+- `m_vec`: Values of M (e.g., `[0, 0.01, 0.02, 0.03]`)
+- M=0 imposes exactly linear counterfactual trends
+
+**CI methods** (`method`)
+- `"C-LF"` (default for relative magnitude): Computationally efficient
+- `"FLCI"` (default for smoothness): Optimal length
+- `"ARP"`: Data-driven construction
+- `"Conditional"`: Conditions on non-negativity
+
+## Documentation
+
+- For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/didhonest.html).
+- For a complete worked example with output, see the [Honest DiD Example](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html).
+- For theoretical background, see the [Background section](https://moderndid.readthedocs.io/en/latest/background/didhonest.html).
 
 ## References
 
-Rambachan, A., & Roth, J. (2023). *A more credible approach to parallel trends.*
-American Economic Review, 113(9), 2555-2591.
-
-Sun, L., & Abraham, S. (2021). *Estimating dynamic treatment effects in event studies with heterogeneous treatment effects.*
-Journal of Econometrics, 225(2), 175-199.
+Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends. *American Economic Review*, 113(9), 2555-2591.

@@ -19,19 +19,19 @@ python -m benchmark.didinter.run_benchmark --suite quick --python-only
 ```
 
 See module-specific instructions for detailed CLI options:
-- [`benchmark/did/README.md`](did/README.md) — att_gt vs R did
-- [`benchmark/didtriple/README.md`](didtriple/README.md) — ddd vs R triplediff
-- [`benchmark/didcont/README.md`](didcont/README.md) — cont_did vs R contdid
-- [`benchmark/didinter/README.md`](didinter/README.md) — did_multiplegt vs R DIDmultiplegtDYN
+- [`benchmark/did/README.md`](did/README.md) - att_gt vs R did
+- [`benchmark/didtriple/README.md`](didtriple/README.md) - ddd vs R triplediff
+- [`benchmark/didcont/README.md`](didcont/README.md) - cont_did vs R contdid
+- [`benchmark/didinter/README.md`](didinter/README.md) - did_multiplegt vs R DIDmultiplegtDYN
 
 ## Methodology
 
 The benchmark suite ensures fair comparisons between Python and R:
 
-- **Same Data** — Both receive identical datasets (R via CSV export)
-- **Same Configuration** — Equivalent parameters for both implementations
-- **Same Timing Protocol** — Warmup runs, garbage collection, multiple timed runs
-- **Same Computation** — Verified via matching number of estimates
+- **Same Data** - Both receive identical datasets (R via CSV export)
+- **Same Configuration** - Equivalent parameters for both implementations
+- **Same Timing Protocol** - Warmup runs, garbage collection, multiple timed runs
+- **Same Computation** - Verified via matching number of estimates
 
 ## Requirements
 

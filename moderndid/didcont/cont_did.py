@@ -126,15 +126,22 @@ def cont_did(
         Should be of the form "~ X1 + X2" (intercept is always included).
         Currently only "~1" (no covariates) is supported.
     target_parameter : {"level", "slope"}, default="level"
-        Type of treatment effect to estimate:
+        Type of treatment effect to focus on:
 
         - "level": Average treatment effect (ATT) at different dose levels
         - "slope": Average causal response (ACRT), the derivative of the dose-response curve
+
+        For ``aggregation="dose"``, both ATT(d) and ACRT(d) are always computed
+        and reported regardless of this setting. This parameter mainly affects
+        ``aggregation="eventstudy"``, where it determines whether to aggregate
+        ATT or ACRT over event time.
     aggregation : {"dose", "eventstudy"}, default="dose"
         How to aggregate the treatment effects:
 
-        - "dose": Average across timing-groups and time periods, report by dose
-        - "eventstudy": Average across timing-groups and doses, report by event time
+        - "dose": Average across timing-groups and time periods, report by dose.
+          Both ATT(d) and ACRT(d) curves are returned.
+        - "eventstudy": Average across timing-groups and doses, report by event time.
+          Returns ATT or ACRT by event time depending on ``target_parameter``.
     treatment_type : {"continuous", "discrete"}, default="continuous"
         Nature of the treatment variable. Only "continuous" is currently supported.
     dose_est_method : {"parametric", "cck"}, default="parametric"
