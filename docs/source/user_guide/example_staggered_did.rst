@@ -4,7 +4,7 @@
 Staggered Difference-in-Differences
 =======================================
 
-Policies often roll out gradually. One state raises its minimum wage in 2004,
+In practice, policies often roll out gradually over time. One state raises its minimum wage in 2004,
 another in 2006, and a third in 2007. This staggered adoption creates a rich
 panel structure for causal inference, but it also creates problems for
 conventional regression approaches.
@@ -112,7 +112,9 @@ Rows where Time is less than Group are pre-treatment periods. You want these
 to be close to zero, since large pre-treatment differences would cast doubt on
 the parallel trends assumption. Keep in mind that flat pre-trends are
 reassuring but do not guarantee parallel trends holds in the post-treatment
-period. For the 2007 cohort, the estimates at times 2004, 2005, and 2006 are
+period.
+
+For the 2007 cohort, the estimates at times 2004, 2005, and 2006 are
 all pre-treatment. The estimate of 0.0305 in 2004 is slightly positive and
 barely significant with pointwise confidence bands, but the joint pre-test
 p-value of 0.1681 is the more relevant measure since we are examining multiple

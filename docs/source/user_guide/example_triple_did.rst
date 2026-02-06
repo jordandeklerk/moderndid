@@ -308,10 +308,9 @@ etc.). This simulation has positive treatment effects that grow over time.
 Each row shows the ATT for a specific cohort at a specific time. Rows where
 Time is before the Group's treatment date (like Group 2, Time 1) serve as
 placebo tests. These pre-treatment estimates should be close to zero if the
-DDD parallel trends assumption holds. The estimate of -1.0095 for Group 3 at
+DDD parallel trends assumption is plausible. The estimate of -1.0095 for Group 3 at
 Time 1 is small relative to the post-treatment effects and statistically
-insignificant, providing evidence that the gap between eligible and ineligible
-units was evolving similarly across treated and control groups before treatment.
+insignificant, consistent with the DDD parallel trends assumption.
 
 The post-treatment effects are large and precisely estimated. Group 2 shows
 effects of 11.2 at time 2 growing to 21.2 at time 3, while Group 3 shows an
@@ -459,8 +458,10 @@ confidence bands. The vertical dotted line marks the reference period.
    :alt: DDD event study plot
    :width: 100%
 
-The flat pre-treatment estimate and growing post-treatment effects are
-consistent with the identifying assumptions and a positive treatment effect.
+The flat pre-treatment estimate is consistent with the identifying assumptions,
+though passing pre-treatment placebos alone does not guarantee that the
+assumption holds in post-treatment periods. The growing post-treatment effects
+indicate a positive and accumulating treatment effect.
 
 
 Control group options

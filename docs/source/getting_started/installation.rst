@@ -10,7 +10,7 @@ The only prerequisite for installing moderndid is Python 3.11 or later.
 From PyPI
 ^^^^^^^^^
 
-The base installation (~80MB) includes core DiD estimators (``did``, ``drdid``, ``didinter``, ``didtriple``).
+The base installation includes core DiD estimators (``did``, ``drdid``, ``didinter``, ``didtriple``).
 
 .. code-block:: console
 

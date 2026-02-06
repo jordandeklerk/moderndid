@@ -145,12 +145,12 @@ Understanding ATT versus ACRT
 
 Which one you should target depends on your research question.
 
-**ATT(d)** answers the question of what is the average effect of receiving dose d
+The :math:`ATT(d)` estimate answers the question of what is the average effect of receiving dose :math:`d`
 compared to no treatment. This is the level of the dose-response curve at each
 point. For policy evaluation, ATT tells you the expected benefit of a specific
 treatment intensity.
 
-**ACRT(d)** answers the question of what is the marginal effect of increasing the
+The :math:`ACRT(d)` estimate answers the question of what is the marginal effect of increasing the
 dose. This is the derivative of the dose-response curve. For policy optimization,
 ACRT tells you whether increasing treatment intensity would yield additional
 benefits.
@@ -167,7 +167,7 @@ ATT and ACRT require different identifying assumptions, so which one you
 report depends on both your research question and what you are willing to
 assume.
 
-**ATT(d)** is identified under standard parallel trends, the same assumption
+The :math:`ATT(d)` estimate is identified under standard parallel trends, the same assumption
 as in binary DiD extended to the continuous case. We assume that untreated
 potential outcomes would have evolved similarly across dose groups. If you
 believe that absent treatment, high-dose and low-dose units would have
@@ -175,7 +175,7 @@ followed parallel outcome paths, ATT(d) is identified. This is the right
 target when you want to know the effect of receiving dose d versus no
 treatment.
 
-**ACRT(d)** requires a stronger "strong parallel trends" assumption. To
+The :math:`ACRT(d)` estimate requires a stronger "strong parallel trends" assumption. To
 interpret outcome differences *across* dose groups as causal responses to
 dose changes, we need to rule out selection on gains. If units that benefit
 more from treatment systematically choose higher doses, comparing across
@@ -317,7 +317,7 @@ level effect (ATT), set ``target_parameter="slope"``.
 
 The ACRT event study shows how the marginal effect of increasing dose evolves
 over time. The ``target_parameter`` setting only affects event study aggregation.
-For dose aggregation, both ATT(d) and ACRT(d) are always computed and reported
+For dose aggregation, both the :math:`ATT(d)` and :math:`ACRT(d)` estimates are always computed and reported
 regardless of this setting.
 
 .. code-block:: python
@@ -343,7 +343,7 @@ of the treatment effect function.
    :alt: Dose-response curve for ATT
    :width: 100%
 
-The dose-response plot shows ATT(d) as a function of dose, with pointwise
+The dose-response plot shows the :math:`ATT(d)` estimate as a function of dose, with pointwise
 confidence bands. Each point on this curve is identified under standard
 parallel trends, but interpreting the *shape* of the curve (comparing effects
 across different doses) requires the stronger parallel trends assumption
@@ -358,7 +358,7 @@ uncertainty where fewer observations are available.
    :alt: Dose-response curve for ACRT
    :width: 100%
 
-The ACRT plot shows how the marginal effect varies with dose. The positive and
+The :math:`ACRT(d)` plot shows how the marginal effect varies with dose. The positive and
 increasing pattern indicates that higher doses yield not just larger effects
 but also larger marginal effects, consistent with our quadratic specification.
 
