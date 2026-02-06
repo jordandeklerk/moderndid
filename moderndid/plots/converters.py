@@ -117,7 +117,8 @@ def aggteresult_to_polars(result: AGGTEResult) -> pl.DataFrame:
     if result.aggregation_type == "dynamic":
         data["treatment_status"] = np.array(["Pre" if e < 0 else "Post" for e in event_times])
 
-    return pl.DataFrame(data)
+    df = pl.DataFrame(data)
+    return df.filter(~pl.col("se").is_nan())
 
 
 def doseresult_to_polars(result: DoseResult, effect_type: str = "att") -> pl.DataFrame:
@@ -223,7 +224,7 @@ def pteresult_to_polars(result: PTEResult) -> pl.DataFrame:
     ci_upper = att + crit_val * se
     treatment_status = np.array(["Pre" if e < 0 else "Post" for e in event_times])
 
-    return pl.DataFrame(
+    df = pl.DataFrame(
         {
             "event_time": event_times,
             "att": att,
@@ -233,6 +234,7 @@ def pteresult_to_polars(result: PTEResult) -> pl.DataFrame:
             "treatment_status": treatment_status,
         }
     )
+    return df.filter(~pl.col("se").is_nan())
 
 
 def honestdid_to_polars(result: HonestDiDResult) -> pl.DataFrame:
@@ -330,7 +332,7 @@ def dddmpresult_to_polars(result: DDDMultiPeriodResult | DDDMultiPeriodRCResult)
 
     treatment_status = np.array(["Pre" if t < g else "Post" for g, t in zip(groups, times, strict=False)])
 
-    return pl.DataFrame(
+    df = pl.DataFrame(
         {
             "group": groups,
             "time": times,
@@ -341,6 +343,7 @@ def dddmpresult_to_polars(result: DDDMultiPeriodResult | DDDMultiPeriodRCResult)
             "treatment_status": treatment_status,
         }
     )
+    return df.filter(~pl.col("se").is_nan())
 
 
 def dddaggresult_to_polars(result: DDDAggResult) -> pl.DataFrame:
@@ -396,7 +399,8 @@ def dddaggresult_to_polars(result: DDDAggResult) -> pl.DataFrame:
     if result.aggregation_type == "eventstudy":
         data["treatment_status"] = np.array(["Pre" if e < 0 else "Post" for e in event_times])
 
-    return pl.DataFrame(data)
+    df = pl.DataFrame(data)
+    return df.filter(~pl.col("se").is_nan())
 
 
 def didinterresult_to_polars(result: DIDInterResult) -> pl.DataFrame:

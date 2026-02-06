@@ -109,9 +109,9 @@ def honest_did(
     HonestDiDResult
         NamedTuple containing:
 
-        - robust_ci : DataFrame with sensitivity analysis results
-        - original_ci : Original confidence interval
-        - sensitivity_type : Type of analysis performed
+        - **robust_ci**: DataFrame with sensitivity analysis results
+        - **original_ci**: Original confidence interval
+        - **sensitivity_type**: Type of analysis performed
 
     Examples
     --------

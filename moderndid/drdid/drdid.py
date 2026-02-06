@@ -141,14 +141,14 @@ def drdid(
     DRDIDResult
         NamedTuple containing:
 
-        - *att*: The DR DiD point estimate.
-        - *se*: The DR DiD standard error.
-        - *uci*: The upper bound of a 95% confidence interval.
-        - *lci*: The lower bound of a 95% confidence interval.
-        - *boots*: Bootstrap draws of the ATT if boot=True.
-        - *att_inf_func*: Influence function values if inf_func=True.
-        - *call_params*: Original function call parameters.
-        - *args*: Arguments used in the estimation.
+        - **att**: The DR DiD point estimate.
+        - **se**: The DR DiD standard error.
+        - **uci**: The upper bound of a 95% confidence interval.
+        - **lci**: The lower bound of a 95% confidence interval.
+        - **boots**: Bootstrap draws of the ATT if boot=True.
+        - **att_inf_func**: Influence function values if inf_func=True.
+        - **call_params**: Original function call parameters.
+        - **args**: Arguments used in the estimation.
 
     Examples
     --------

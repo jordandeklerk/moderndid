@@ -177,22 +177,22 @@ def did_multiplegt(
     DIDInterResult
         Result object containing:
 
-        - *effects*: EffectsResult with treatment effects at each horizon,
+        - **effects**: EffectsResult with treatment effects at each horizon,
           including point estimates, standard errors, confidence intervals,
           and sample sizes
-        - *placebos*: PlacebosResult with placebo effects (if placebo > 0)
-        - *ate*: ATEResult with the average total effect :math:`\delta`,
+        - **placebos**: PlacebosResult with placebo effects (if placebo > 0)
+        - **ate**: ATEResult with the average total effect :math:`\delta`,
           which can be used for cost-benefit analysis
-        - *n_units*: Total number of units in the sample
-        - *n_switchers*: Number of switching units
-        - *n_never_switchers*: Number of never-switching units
-        - *ci_level*: Confidence level used for intervals
-        - *effects_equal_test*: Chi-squared test for equal effects (if requested)
-        - *placebo_joint_test*: Joint test that all placebo effects are zero
-        - *influence_effects*: Influence functions for effects (for custom inference)
-        - *influence_placebos*: Influence functions for placebos
-        - *heterogeneity*: Heterogeneous effects analysis (if predict_het specified)
-        - *estimation_params*: Dictionary of estimation parameters used
+        - **n_units**: Total number of units in the sample
+        - **n_switchers**: Number of switching units
+        - **n_never_switchers**: Number of never-switching units
+        - **ci_level**: Confidence level used for intervals
+        - **effects_equal_test**: Chi-squared test for equal effects (if requested)
+        - **placebo_joint_test**: Joint test that all placebo effects are zero
+        - **influence_effects**: Influence functions for effects (for custom inference)
+        - **influence_placebos**: Influence functions for placebos
+        - **heterogeneity**: Heterogeneous effects analysis (if predict_het specified)
+        - **estimation_params**: Dictionary of estimation parameters used
 
     Examples
     --------

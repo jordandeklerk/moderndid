@@ -8,7 +8,7 @@ import scipy.stats as st
 
 from moderndid.core.preprocess import map_to_idx as _map_to_idx
 
-from .container import PTEAggteResult
+from .container import PTEAggteResult, PTEResult
 from .process_attgt import multiplier_bootstrap
 
 
@@ -594,3 +594,16 @@ def _format_pte_aggregation_result(result):
 
 PTEAggteResult.__repr__ = _format_pte_aggregation_result
 PTEAggteResult.__str__ = _format_pte_aggregation_result
+
+
+def _format_pte_result(self):
+    """Format PTEResult by delegating to event_study's string representation."""
+    if self.event_study is not None:
+        return str(self.event_study)
+    if self.overall_att is not None:
+        return str(self.overall_att)
+    return repr(tuple(self))
+
+
+PTEResult.__repr__ = _format_pte_result
+PTEResult.__str__ = _format_pte_result

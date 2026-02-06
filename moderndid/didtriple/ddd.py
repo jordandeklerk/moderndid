@@ -136,28 +136,28 @@ def ddd(
     DDDPanelResult, DDDRCResult, DDDMultiPeriodResult, or DDDMultiPeriodRCResult
         For 2-period panel data (panel=True), returns DDDPanelResult containing:
 
-        - *att*: The DDD point estimate
-        - *se*: Standard error
-        - *uci*, *lci*: Confidence interval bounds
-        - *boots*: Bootstrap draws (if requested)
-        - *att_inf_func*: Influence function
-        - *did_atts*: Individual DiD ATT estimates
-        - *subgroup_counts*: Number of units per subgroup
-        - *args*: Estimation arguments
+        - **att**: The DDD point estimate
+        - **se**: Standard error
+        - **uci**, **lci**: Confidence interval bounds
+        - **boots**: Bootstrap draws (if requested)
+        - **att_inf_func**: Influence function
+        - **did_atts**: Individual DiD ATT estimates
+        - **subgroup_counts**: Number of units per subgroup
+        - **args**: Estimation arguments
 
         For 2-period repeated cross-section data (panel=False), returns DDDRCResult
         with the same structure.
 
         For multi-period panel data, returns DDDMultiPeriodResult containing:
 
-        - *att*: Array of ATT(g,t) point estimates
-        - *se*: Standard errors for each ATT(g,t)
-        - *uci*, *lci*: Confidence interval bounds
-        - *groups*, *times*: Treatment cohort and time for each estimate
-        - *glist*, *tlist*: Unique cohorts and periods
-        - *inf_func_mat*: Influence function matrix
-        - *n*: Number of units
-        - *args*: Estimation arguments
+        - **att**: Array of ATT(g,t) point estimates
+        - **se**: Standard errors for each ATT(g,t)
+        - **uci**, **lci**: Confidence interval bounds
+        - **groups**, **times**: Treatment cohort and time for each estimate
+        - **glist**, **tlist**: Unique cohorts and periods
+        - **inf_func_mat**: Influence function matrix
+        - **n**: Number of units
+        - **args**: Estimation arguments
 
         For multi-period repeated cross-section data, returns DDDMultiPeriodRCResult
         with the same structure.

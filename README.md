@@ -35,11 +35,11 @@ uv pip install moderndid[all]
 
 Extras are additive. They add functionality to the base install, so you always get the core estimators plus whatever extras you specify.
 
-- **`didcont`** — Base + continuous treatment DiD (`cont_did`)
-- **`didhonest`** — Base + sensitivity analysis (`honest_did`)
-- **`plots`** — Base + visualization (`plot_gt`, `plot_event_study`, ...)
-- **`numba`** — Base + faster bootstrap inference
-- **`all`** — Everything
+- **`didcont`** - Base + continuous treatment DiD (`cont_did`)
+- **`didhonest`** - Base + sensitivity analysis (`honest_did`)
+- **`plots`** - Base + visualization (`plot_gt`, `plot_event_study`, ...)
+- **`numba`** - Base + faster bootstrap inference
+- **`all`** - Everything
 
 ```bash
 uv pip install moderndid[didcont]     # Base estimators + cont_did
@@ -59,12 +59,12 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 
 ## Features
 
-- **DiD Estimators** — [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
-- **Dataframe agnostic** — Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
-- **Fast computation** — [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, and [Numba](https://numba.pydata.org/) JIT compilation for performance
-- **Native plots** — Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
-- **Robust inference** — Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
-- **Documentation** — [https://moderndid.readthedocs.io/en/latest/index.html](https://moderndid.readthedocs.io/en/latest/index.html)
+- **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
+- **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
+- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, and [Numba](https://numba.pydata.org/) JIT compilation for performance
+- **Native plots** - Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
+- **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
+- **Documentation** - [https://moderndid.readthedocs.io/en/latest/index.html](https://moderndid.readthedocs.io/en/latest/index.html)
 
 ### Consistent API
 

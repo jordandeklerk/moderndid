@@ -18,6 +18,7 @@ from plotnine import (
     labs,
     position_dodge,
     scale_color_manual,
+    scale_x_continuous,
     theme,
 )
 
@@ -91,6 +92,7 @@ def plot_gt(
         )
 
     df = df.with_columns([df["group"].cast(int).cast(str).alias("group_label")])
+    x_breaks = sorted(df["time"].unique().to_list())
 
     plot = (
         ggplot(df, aes(x="time", y="att", color="treatment_status"))
@@ -99,6 +101,7 @@ def plot_gt(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
             name="Treatment Status",
         )
+        + scale_x_continuous(breaks=x_breaks)
         + facet_wrap("~group_label", ncol=ncol, labeller=lambda x: f"{title} {x}", scales="free_x")
         + labs(
             x=xlab or "Time",
@@ -130,6 +133,7 @@ def plot_event_study(
     result: AGGTEResult | PTEResult | DDDAggResult,
     show_ci: bool = True,
     ref_line: float | None = 0,
+    ref_period: float | None = None,
     xlab: str | None = None,
     ylab: str | None = None,
     title: str | None = None,
@@ -146,6 +150,8 @@ def plot_event_study(
         Whether to show confidence intervals as error bars.
     ref_line : float or None, default=0
         Y-value for reference line. Set to None to hide.
+    ref_period : float or None, default=-1
+        X-value for vertical reference period line. Set to None to hide.
     xlab : str, optional
         X-axis label. Defaults to "Event Time".
     ylab : str, optional
@@ -158,8 +164,6 @@ def plot_event_study(
     ggplot
         A plotnine ggplot object that can be further customized.
     """
-    # Check for PTEResult using duck typing (has event_study attribute)
-    # to avoid requiring didcont at import time
     if hasattr(result, "event_study") and not isinstance(result, (AGGTEResult, DDDAggResult)):
         df = pteresult_to_polars(result)
         default_title = "Event Study"
@@ -190,14 +194,21 @@ def plot_event_study(
     if ref_line is not None:
         plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
 
+    if ref_period is not None:
+        plot = plot + geom_vline(xintercept=ref_period, linetype="dotted", color="#7f8c8d", alpha=0.7)
+    else:
+        plot = plot + geom_line(color=COLORS["line"], size=0.8, alpha=0.6, linetype="dotted")
+
+    x_breaks = sorted(df["event_time"].unique().to_list())
+
     plot = (
         plot
-        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6, linetype="dotted")
         + geom_point(aes(color="treatment_status"), size=3.5)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
             name="Treatment Status",
         )
+        + scale_x_continuous(breaks=x_breaks)
         + labs(
             x=xlab or "Event Time",
             y=ylab or "ATT",
@@ -280,10 +291,13 @@ def plot_agg(
     if ref_line is not None:
         plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
 
+    x_breaks = sorted(df["event_time"].unique().to_list())
+
     plot = (
         plot
-        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6)
+        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6, linetype="dotted")
         + geom_point(color=COLORS["post_treatment"], size=3.5)
+        + scale_x_continuous(breaks=x_breaks)
         + labs(
             x=xlab or default_xlab,
             y=ylab or "ATT",
@@ -336,12 +350,15 @@ def plot_dose_response(
     default_ylabel = "ATT(d)" if effect_type == "att" else "ACRT(d)"
     default_title = f"Dose-Response: {default_ylabel}"
 
+    line_color = "#2c3e50"
+    fill_color = "#95a5a6"
+
     plot = ggplot(df, aes(x="dose", y="effect"))
 
     if show_ci:
         plot = plot + geom_ribbon(
             aes(ymin="ci_lower", ymax="ci_upper"),
-            fill=COLORS["pre_treatment"],
+            fill=fill_color,
             alpha=0.25,
         )
 
@@ -350,8 +367,8 @@ def plot_dose_response(
 
     plot = (
         plot
-        + geom_line(color=COLORS["pre_treatment"], size=1.2)
-        + geom_point(color=COLORS["pre_treatment"], size=2.5)
+        + geom_line(color=line_color, size=1.2)
+        + geom_point(color=line_color, size=2.5)
         + labs(
             x=xlab or "Dose",
             y=ylab or default_ylabel,
@@ -485,7 +502,7 @@ def plot_multiplegt(
 
     plot = (
         plot
-        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6)
+        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6, linetype="dotted")
         + geom_point(aes(color="treatment_status"), size=3.5)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},

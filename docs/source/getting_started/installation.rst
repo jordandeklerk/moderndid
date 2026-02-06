@@ -10,19 +10,19 @@ The only prerequisite for installing moderndid is Python 3.11 or later.
 From PyPI
 ^^^^^^^^^
 
-The base installation (~80MB) includes core DiD estimators (``did``, ``drdid``, ``didinter``, ``didtriple``):
+The base installation (~80MB) includes core DiD estimators (``did``, ``drdid``, ``didinter``, ``didtriple``).
 
 .. code-block:: console
 
     uv pip install moderndid
 
-For full functionality including all estimators, plotting, and performance optimizations:
+For full functionality including all estimators, plotting, and performance optimizations, install with the ``all`` extra.
 
 .. code-block:: console
 
     uv pip install moderndid[all]
 
-Or install just the base with pip:
+Or install just the base with pip.
 
 .. code-block:: console
 
@@ -34,11 +34,11 @@ Optional Extras
 Extras are additive. They add functionality to the base install, so you always
 get the core estimators plus whatever extras you specify.
 
-- **didcont** — Base + continuous treatment DiD (``cont_did``)
-- **didhonest** — Base + sensitivity analysis (``honest_did``)
-- **plots** — Base + visualization (``plot_gt``, ``plot_event_study``, ...)
-- **numba** — Base + faster bootstrap inference
-- **all** — Everything
+- **didcont** - Base + continuous treatment DiD (``cont_did``)
+- **didhonest** - Base + sensitivity analysis (``honest_did``)
+- **plots** - Base + visualization (``plot_gt``, ``plot_event_study``, ...)
+- **numba** - Base + faster bootstrap inference
+- **all** - Everything
 
 .. code-block:: console
 
@@ -49,13 +49,13 @@ get the core estimators plus whatever extras you specify.
 From source
 ^^^^^^^^^^^
 
-To install the latest development version from GitHub:
+To install the latest development version from GitHub, use the following.
 
 .. code-block:: console
 
     uv pip install git+https://github.com/jordandeklerk/moderndid.git
 
-Or with pip:
+Or with pip.
 
 .. code-block:: console
 
@@ -71,7 +71,7 @@ Or with pip:
 Verifying the installation
 --------------------------
 
-To verify that moderndid is installed correctly:
+To verify that moderndid is installed correctly, run the following.
 
 .. code-block:: console
 
@@ -80,7 +80,7 @@ To verify that moderndid is installed correctly:
 Development
 -----------
 
-To install moderndid for development:
+To install moderndid for development, clone the repository and install in editable mode.
 
 .. code-block:: console
 
