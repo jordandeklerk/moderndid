@@ -24,13 +24,14 @@ Notation and Potential Outcomes
 ===============================
 
 The potential outcomes framework provides precise definitions of causal effects.
-For unit :math:`i` in period :math:`s`, we define :math:`Y_{is}(0)` as the
-*untreated potential outcome*, representing what unit :math:`i` would experience
-in period :math:`s` if it did *not* participate in treatment. Similarly,
-:math:`Y_{is}(1)` is the *treated potential outcome*, representing what unit
-:math:`i` would experience in period :math:`s` if it *did* participate in
-treatment. The indicator :math:`D_i` denotes group membership, taking value 1
-for units in the treated group and 0 for units in the untreated group.
+For unit :math:`i` in period :math:`s`, we define
+
+- :math:`Y_{is}(0)` — the *untreated potential outcome*, what unit :math:`i`
+  would experience in period :math:`s` without treatment
+- :math:`Y_{is}(1)` — the *treated potential outcome*, what unit :math:`i`
+  would experience in period :math:`s` with treatment
+- :math:`D_i` — a group membership indicator equal to 1 for treated units
+  and 0 for untreated units
 
 In the canonical two-period setup with periods :math:`t-1` and :math:`t`, no
 one is treated in the first period, and units in the treated group become
@@ -66,7 +67,7 @@ actually received it.
 The fundamental challenge of causal inference is that we never observe
 :math:`Y_t(0)` for treated units. We see what happened to them after treatment,
 but we cannot observe what *would have* happened to them in the absence of
-treatment. This unobserved quantity is called the counterfactual. DiD solves
+treatment. This unobserved quantity is called the counterfactual. DiD attempts to solve
 this problem by using the untreated group to construct an estimate of this
 counterfactual.
 
@@ -94,19 +95,40 @@ potential outcomes for the untreated group, is directly observable since these
 units never received treatment. The parallel trends assumption allows us to use
 this observable quantity to stand in for the unobservable counterfactual.
 
-Under parallel trends, the ATT is identified and given by
+Under parallel trends, the ATT can be rewritten entirely in terms of
+observable quantities. Starting from the definition, add and subtract
+:math:`\mathbb{E}[Y_{t-1}(0) \mid D=1]` to get
+
+.. math::
+
+   ATT &= \mathbb{E}[Y_t(1) - Y_t(0) \mid D=1] \\
+       &= \bigl(\mathbb{E}[Y_t(1) \mid D=1] - \mathbb{E}[Y_{t-1}(0) \mid D=1]\bigr) \\
+       &\quad - \bigl(\mathbb{E}[Y_t(0) \mid D=1] - \mathbb{E}[Y_{t-1}(0) \mid D=1]\bigr).
+
+The first term is the observed change in outcomes for the treated group, since
+:math:`Y_t = Y_t(1)` and :math:`Y_{t-1} = Y_{t-1}(0)` for treated units. The
+second term is the counterfactual trend for the treated group, which is
+unobservable. Parallel trends states exactly that this term equals the
+corresponding trend for the untreated group,
+
+.. math::
+
+   \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid D=1] = \mathbb{E}[Y_t(0) - Y_{t-1}(0) \mid D=0],
+
+and since untreated units have :math:`Y_t = Y_t(0)` in both periods, the
+right-hand side equals :math:`\mathbb{E}[Y_t - Y_{t-1} \mid D=0]`.
+Substituting back gives
 
 .. math::
 
    ATT = \mathbb{E}[Y_t - Y_{t-1} \mid D=1] - \mathbb{E}[Y_t - Y_{t-1} \mid D=0].
 
-The ATT equals the mean change in outcomes over time experienced by units in
-the treated group, adjusted by the mean change in outcomes over time experienced
-by units in the untreated group. This latter term, under the parallel trends
-assumption, represents what the path of outcomes for treated units would have
-been if they had not participated in treatment. The resulting
-"difference-in-differences" removes both time-invariant differences between
-groups and common time trends affecting all units.
+This is the same ATT defined earlier, now expressed entirely in terms of
+observable quantities. Without parallel trends, the substitution above is
+not justified and the counterfactual trend for the treated group remains
+unknown, making it impossible to express the ATT as a
+difference-in-differences. Parallel trends is what bridges the gap between
+the causal parameter we want and the data we have.
 
 It is important to note that parallel trends allows the *level* of untreated
 potential outcomes to differ across groups. The treated group could have
@@ -219,12 +241,15 @@ the two-way fixed effects (TWFE) linear regression
 
    Y_{it} = \theta_t + \eta_i + \alpha D_{it} + \varepsilon_{it},
 
-where :math:`\theta_t` is a time fixed effect, :math:`\eta_i` is a unit fixed
-effect, :math:`D_{it}` is a treatment dummy variable equal to 1 if unit
-:math:`i` has been treated by time :math:`t`, :math:`\varepsilon_{it}` represents
-time-varying unobservables, and :math:`\alpha` is presumably the parameter of
-interest. Researchers typically interpret :math:`\alpha` as the average effect
-of participating in treatment.
+where
+
+- :math:`\theta_t` — time fixed effect
+- :math:`\eta_i` — unit fixed effect
+- :math:`D_{it}` — treatment indicator equal to 1 if unit :math:`i` has been
+  treated by time :math:`t`
+- :math:`\varepsilon_{it}` — time-varying unobservables
+- :math:`\alpha` — the parameter of interest, typically interpreted as the
+  average effect of participating in treatment
 
 When there are only two time periods, this approach works well. The coefficient
 :math:`\alpha` is numerically equal to the ATT under parallel trends and
@@ -237,10 +262,11 @@ The Problem with Staggered Adoption
 -----------------------------------
 
 This robustness does not extend to settings with multiple time periods and
-variation in treatment timing. The problem is that in a TWFE regression, units
-whose treatment status does not change over time serve as the comparison group
-for units whose treatment status does change. With staggered adoption, some of
-these comparisons are problematic.
+variation in treatment timing.
+`Goodman-Bacon (2021) <https://doi.org/10.1016/j.jeconom.2021.03.014>`_
+showed that the TWFE estimator equals a weighted average of all possible
+two-group/two-period DiD estimators in the data, and that some of these
+implicit comparisons are problematic.
 
 Consider the three types of comparisons that TWFE implicitly makes. First,
 it compares newly treated units to never-treated units, which is exactly in

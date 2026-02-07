@@ -16,8 +16,6 @@ reports confidence intervals that remain valid under those bounds.
 
 This example demonstrates sensitivity analysis using state-level data on health
 insurance coverage following Medicaid expansion under the Affordable Care Act.
-For API details, see the :ref:`Sensitivity Analysis API reference <api-honestdid>`. For conceptual
-background, see the :ref:`Introduction to Difference-in-Differences <causal_inference>`.
 
 
 Why sensitivity analysis matters
