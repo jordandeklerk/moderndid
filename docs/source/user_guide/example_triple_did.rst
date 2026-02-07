@@ -19,13 +19,9 @@ The `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>
 estimator provides doubly robust inference for DDD designs, supporting both
 two-period and staggered adoption settings.
 
-This example demonstrates the estimator using simulated data. For API details,
-see the :ref:`Triple DiD API reference <api-didtriple>`. For conceptual
-background, see the :ref:`Introduction to Difference-in-Differences <causal_inference>`.
 
-
-The three dimensions of variation
----------------------------------
+Three dimensions of variation
+------------------------------
 
 DDD exploits variation along three dimensions simultaneously.
 
@@ -52,8 +48,8 @@ are common across groups or across eligibility status, isolating the effect
 of treatment on eligible units in treated groups.
 
 
-What DDD assumes (and what it doesn't)
---------------------------------------
+Assumptions of DDD
+-------------------
 
 DDD relaxes the standard DiD assumption in an important way. Standard DiD
 requires that treated and control groups would have followed parallel trends
@@ -72,8 +68,10 @@ eligibility-level confounders exist, but that these confounders affect
 eligible and ineligible units similarly within groups.
 
 
-Common pitfalls to avoid
-------------------------
+Common pitfalls of DDD
+-----------------------
+
+There are several common pitfalls to avoid when estimating DDD.
 
 - **Computing DDD as the difference of two DiDs.** Running DiD separately
   within treated groups (eligible vs ineligible) and control groups, then
@@ -93,9 +91,6 @@ Common pitfalls to avoid
   for covariate-specific trends in DDD designs. Use the doubly robust
   estimator instead, which correctly integrates over the treated units'
   covariate distribution.
-
-For the full theoretical treatment of why these approaches fail, see the
-:ref:`Background on Triple DiD <background-tripledid>`.
 
 
 Simulating data

@@ -20,6 +20,7 @@ ModernDiD documentation
 
 **Useful links**:
 `Installation <getting_started/installation.html>`_ |
+`Introduction to DiD <getting_started/causal_inference.html>`_ |
 `Source Repository <https://github.com/jordandeklerk/moderndid>`_ |
 `Issue Tracker <https://github.com/jordandeklerk/moderndid/issues>`_ |
 `PyPI <https://pypi.org/project/moderndid/>`_

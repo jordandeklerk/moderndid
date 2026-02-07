@@ -16,10 +16,6 @@ effects vary with treatment intensity. It handles both continuous doses and
 staggered adoption, allowing researchers to trace out the full relationship
 between treatment intensity and outcomes.
 
-This example demonstrates the estimator using simulated data. For API details,
-see the :ref:`Continuous DiD API reference <api-didcont>`. For conceptual
-background, see the :ref:`Introduction to Difference-in-Differences <causal_inference>`.
-
 
 Simulating data
 ---------------

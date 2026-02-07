@@ -17,9 +17,7 @@ cohort at each time period, then aggregating them into interpretable summaries
 like event studies.
 
 This example demonstrates the estimator using county-level employment data
-from states that raised their minimum wage between 2004 and 2007. For API
-details, see the :ref:`Staggered DiD API reference <api-multiperiod>`. For conceptual background,
-see the :ref:`Introduction to Difference-in-Differences <causal_inference>`.
+from states that raised their minimum wage between 2004 and 2007.
 
 
 Loading data

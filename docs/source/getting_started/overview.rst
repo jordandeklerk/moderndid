@@ -4,16 +4,15 @@
 What is ModernDiD?
 ******************
 
-ModernDiD is a Python library for modern difference-in-differences methods
-in causal inference. It provides a unified API across multiple estimators,
-robust bootstrap inference, and visualization.
+ModernDiD is a Python library for modern difference-in-differences (DiD)
+methods for causal inference. DiD methods estimate causal effects by comparing how
+outcomes change over time for treated units against how they change for
+untreated units, attributing the divergence to the treatment itself.
 
-Difference-in-differences (DiD) estimates causal effects by comparing how
-outcomes change over time between treated and untreated groups. The method
-assumes both groups would have followed parallel paths absent treatment.
-Recent econometric advances handle treatment effect heterogeneity, staggered
-adoption, continuous treatments, and potential violations of parallel trends.
-ModernDiD brings these methods to Python.
+Recent econometric advances have extended the DiD framework to handle staggered treatment
+adoption, continuous treatment intensities, heterogeneous effects, intertemporal
+dynamics, potential violations of the parallel trends assumption, and more. ModernDiD
+brings these methods together under a single, unified API.
 
 
 .. _whatis-unified:
@@ -28,9 +27,8 @@ learn multiple interfaces, convert data between formats, and reconcile
 different output structures.
 
 ModernDiD provides a single interface where the same parameter names
-(``yname``, ``tname``, ``idname``, ``gname``) work across all estimators.
-Result objects share common structures. Plotting functions accept outputs
-from any module.
+work across all estimators. Result objects share common structures and
+plotting functions accept results from any module.
 
 
 .. _whatis-methods:

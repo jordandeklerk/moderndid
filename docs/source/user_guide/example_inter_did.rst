@@ -24,8 +24,7 @@ allows for valid causal inference even when treatment intensity varies and
 past treatments affect current outcomes.
 
 This example demonstrates the estimator using county-level data on bank
-lending and interstate branching deregulation from 1994 to 2005. For
-conceptual background, see the :ref:`DiD with Intertemporal Treatment Effects <background-didinter>`.
+lending and interstate branching deregulation from 1994 to 2005.
 
 
 Loading data
