@@ -8,7 +8,6 @@ from .dataframe import DataFrame
 from .preprocess.builders import PreprocessDataBuilder
 from .preprocess.config import ContDIDConfig, DDDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .preprocess.constants import BasePeriod, BootstrapType, ControlGroup, EstimationMethod
-from .preprocess.utils import check_partition_collinearity as _check_partition_collinearity  # noqa: F401
 
 
 def preprocess_drdid(

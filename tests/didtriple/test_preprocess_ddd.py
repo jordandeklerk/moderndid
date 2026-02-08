@@ -5,10 +5,8 @@ import warnings
 import pytest
 
 from moderndid.core.preprocess.models import DDDData
-from moderndid.core.preprocessing import (
-    _check_partition_collinearity,
-    preprocess_ddd_2periods,
-)
+from moderndid.core.preprocess.utils import check_partition_collinearity
+from moderndid.core.preprocessing import preprocess_ddd_2periods
 from moderndid.didtriple.dgp import gen_dgp_2periods
 from tests.helpers import importorskip
 
@@ -362,7 +360,7 @@ def test_partition_collinearity_detection():
     cov_matrix = np.column_stack([x1, x2, x3])
     var_names = ["x1", "x2", "x3"]
 
-    partition_collinear, all_collinear = _check_partition_collinearity(cov_matrix, subgroup, var_names)
+    partition_collinear, all_collinear = check_partition_collinearity(cov_matrix, subgroup, var_names)
 
     assert "x3" in all_collinear
     assert "x3" in partition_collinear
