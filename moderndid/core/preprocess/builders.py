@@ -7,12 +7,12 @@ import numpy as np
 import polars as pl
 
 from ..dataframe import DataFrame, to_polars
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .constants import WEIGHTS_COLUMN
-from .models import ContDIDData, DIDData, DIDInterData, TwoPeriodDIDData
+from .models import ContDIDData, DDDData, DIDData, DIDInterData, TwoPeriodDIDData
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
-from .utils import extract_vars_from_formula
+from .utils import extract_ddd_covariates, extract_vars_from_formula
 from .validators import CompositeValidator
 
 
@@ -64,6 +64,9 @@ class PreprocessDataBuilder:
         elif isinstance(config, DIDInterConfig):
             self._validator = CompositeValidator(config_type="didinter")
             self._transformer = DataTransformerPipeline.get_didinter_pipeline()
+        elif isinstance(config, DDDConfig):
+            self._validator = CompositeValidator(config_type="ddd")
+            self._transformer = DataTransformerPipeline.get_ddd_pipeline()
         elif isinstance(config, DIDConfig):
             self._validator = CompositeValidator(config_type="did")
             self._transformer = DataTransformerPipeline.get_did_pipeline()
@@ -162,6 +165,9 @@ class PreprocessDataBuilder:
         if isinstance(self._config, TwoPeriodDIDConfig):
             return
 
+        if isinstance(self._config, DDDConfig):
+            return
+
         if isinstance(self._config, DIDInterConfig):
             return
 
@@ -199,7 +205,7 @@ class PreprocessDataBuilder:
                 if NEVER_TREATED_VALUE in small_group_values and self._config.control_group.value == "nevertreated":
                     raise ValueError("Never treated group is too small, try setting control_group='notyettreated'")
 
-    def build(self) -> DIDData | ContDIDData | TwoPeriodDIDData | DIDInterData:
+    def build(self) -> DIDData | ContDIDData | TwoPeriodDIDData | DIDInterData | DDDData:
         """Build the final preprocessed data object.
 
         Returns
@@ -217,6 +223,8 @@ class PreprocessDataBuilder:
 
         if isinstance(self._config, TwoPeriodDIDConfig):
             return self._build_two_period_did_data()
+        if isinstance(self._config, DDDConfig):
+            return self._build_ddd_data()
         if isinstance(self._config, DIDInterConfig):
             return self._build_didinter_data()
         if isinstance(self._config, DIDConfig):
@@ -312,6 +320,59 @@ class PreprocessDataBuilder:
             )
 
         return two_period_data
+
+    def _build_ddd_data(self) -> DDDData:
+        """Build DDDData object."""
+        if not isinstance(self._config, DDDConfig):
+            raise ValueError("Config must be DDDConfig")
+
+        df = self._data
+        glist = np.sort(df[self._config.gname].unique().to_numpy())
+        treat_val = glist[1]
+
+        df_pre = df.filter(pl.col("_post") == 0)
+        df_post = df.filter(pl.col("_post") == 1)
+
+        y0 = df_pre[self._config.yname].to_numpy().astype(float)
+        y1 = df_post[self._config.yname].to_numpy().astype(float)
+        treat = df_pre[self._config.gname].to_numpy()
+        treat = (treat == treat_val).astype(int)
+        partition = df_pre[self._config.pname].to_numpy().astype(int)
+        subgroup = df_pre["_subgroup"].to_numpy()
+        weights_arr = df_pre[WEIGHTS_COLUMN].to_numpy()
+
+        subgroup_pre = df_pre["_subgroup"].to_numpy()
+        covariates, covariate_names = extract_ddd_covariates(df, self._config.xformla, subgroup=subgroup_pre)
+
+        cluster_arr = None
+        if self._config.cluster is not None:
+            cluster_per_id = df.group_by(self._config.idname).agg(
+                pl.col(self._config.cluster).n_unique().alias("n_unique")
+            )
+            if (cluster_per_id["n_unique"] > 1).any():
+                raise ValueError("Cluster variable must be time-invariant within units.")
+            cluster_arr = df_pre[self._config.cluster].to_numpy()
+
+        counts_df = df.group_by("_subgroup").agg(pl.col(self._config.idname).n_unique().alias("count"))
+        subgroup_counts = {int(row["_subgroup"]): int(row["count"]) for row in counts_df.iter_rows(named=True)}
+
+        n_units = len(y0)
+        self._config.n_units = n_units
+
+        return DDDData(
+            y1=y1,
+            y0=y0,
+            treat=treat,
+            partition=partition,
+            subgroup=subgroup,
+            covariates=covariates,
+            weights=weights_arr,
+            cluster=cluster_arr,
+            n_units=n_units,
+            subgroup_counts=subgroup_counts,
+            covariate_names=covariate_names,
+            config=self._config,
+        )
 
     def _build_cont_did_data(self) -> ContDIDData:
         """Build ContDIDData object."""

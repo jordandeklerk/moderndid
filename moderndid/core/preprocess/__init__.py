@@ -2,7 +2,7 @@
 
 from ..preprocessing import preprocess_did, preprocess_drdid
 from .builders import PreprocessDataBuilder
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, TwoPeriodDIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDConfig, TwoPeriodDIDConfig
 from .constants import (
     DEFAULT_ALPHA,
     DEFAULT_ANTICIPATION_PERIODS,
@@ -20,7 +20,7 @@ from .constants import (
     DataFormat,
     EstimationMethod,
 )
-from .models import ContDIDData, DIDData, PreprocessedData, TwoPeriodDIDData, ValidationResult
+from .models import ContDIDData, DDDData, DIDData, PreprocessedData, TwoPeriodDIDData, ValidationResult
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
 from .utils import (
@@ -53,6 +53,8 @@ __all__ = [
     "ContDIDConfig",
     "ContDIDData",
     "ControlGroup",
+    "DDDConfig",
+    "DDDData",
     "DIDConfig",
     "DIDData",
     "DataFormat",

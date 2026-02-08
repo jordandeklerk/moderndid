@@ -2,11 +2,12 @@
 
 from typing import Protocol
 
+import numpy as np
 import polars as pl
 
 from ..dataframe import DataFrame, to_polars
 from .base import BaseValidator
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .constants import BasePeriod, ControlGroup
 from .models import ValidationResult
 from .utils import extract_vars_from_formula
@@ -498,6 +499,122 @@ class DIDInterPanelValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
+class DDDColumnValidator(BaseValidator):
+    """DDD column validator."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate DDD columns exist and have correct types."""
+        if not isinstance(config, DDDConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        df = to_polars(data)
+        errors = []
+        warnings = []
+        data_columns = df.columns
+
+        required_cols = {
+            "yname": config.yname,
+            "tname": config.tname,
+            "idname": config.idname,
+            "gname": config.gname,
+            "pname": config.pname,
+        }
+
+        for col_type, col_name in required_cols.items():
+            if col_name not in data_columns:
+                errors.append(f"{col_type}='{col_name}' not found in data.")
+
+        if config.cluster is not None and config.cluster not in data_columns:
+            errors.append(f"cluster='{config.cluster}' not found in data.")
+
+        if config.weightsname is not None and config.weightsname not in data_columns:
+            errors.append(f"weightsname='{config.weightsname}' not found in data.")
+
+        if config.xformla != "~1":
+            try:
+                covariate_vars = extract_vars_from_formula(config.xformla)
+            except ValueError as e:
+                errors.append(f"Invalid formula: {e}")
+                return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+            for var in covariate_vars:
+                if var not in data_columns:
+                    errors.append(f"Covariate '{var}' from formula not found in data.")
+
+        if not errors:
+            for col_type in ["yname", "tname", "idname", "gname"]:
+                col_name = getattr(config, col_type)
+                if col_name in data_columns and not _is_numeric_dtype(df[col_name]):
+                    errors.append(f"{col_type}='{col_name}' is not numeric. Please convert it.")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
+class DDDArgumentValidator(BaseValidator):
+    """DDD argument validator."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate DDD arguments."""
+        if not isinstance(config, DDDConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        errors = []
+
+        if config.est_method.value not in ("dr", "reg", "ipw"):
+            errors.append(f"est_method must be 'dr', 'reg', or 'ipw', got '{config.est_method.value}'.")
+
+        if not 0 < config.alp < 1:
+            errors.append("alp must be between 0 and 1.")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
+
+
+class DDDInvarianceValidator(BaseValidator):
+    """DDD invariance validator for partition and treatment."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate partition and treatment are time-invariant."""
+        if not isinstance(config, DDDConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        df = to_polars(data)
+        errors = []
+
+        partition_per_id = df.group_by(config.idname).agg(pl.col(config.pname).n_unique().alias("n_unique"))
+        if (partition_per_id["n_unique"] > 1).any():
+            errors.append(f"The value of {config.pname} must be the same across all periods for each unit.")
+
+        treat_per_id = df.group_by(config.idname).agg(pl.col(config.gname).n_unique().alias("n_unique"))
+        if (treat_per_id["n_unique"] > 1).any():
+            errors.append(f"The value of {config.gname} must be the same across all periods for each unit.")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
+
+
+class DDDDataValidator(BaseValidator):
+    """DDD data validator for time periods and treatment values."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate exactly 2 time periods and 2 treatment values."""
+        if not isinstance(config, DDDConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        df = to_polars(data)
+        errors = []
+
+        tlist = np.sort(df[config.tname].unique().to_numpy())
+        if len(tlist) != 2:
+            errors.append(f"Data must have exactly 2 time periods, found {len(tlist)}.")
+
+        glist = np.sort(df[config.gname].unique().to_numpy())
+        if len(glist) != 2:
+            errors.append(f"Treatment variable must have exactly 2 values (0 and treated group), found {len(glist)}.")
+        elif glist[0] != 0:
+            errors.append("Treatment variable must include 0 for never-treated units.")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
+
+
 class CompositeValidator(BaseValidator):
     """Composite validator."""
 
@@ -524,6 +641,14 @@ class CompositeValidator(BaseValidator):
                 DIDInterArgumentValidator(),
                 DIDInterTreatmentValidator(),
                 DIDInterPanelValidator(),
+            ]
+
+        if config_type == "ddd":
+            return [
+                DDDColumnValidator(),
+                DDDArgumentValidator(),
+                DDDInvarianceValidator(),
+                DDDDataValidator(),
             ]
 
         common_validators = [
