@@ -8,7 +8,7 @@ import polars as pl
 
 from ..dataframe import DataFrame, to_polars
 from .base import BaseTransformer
-from .config import BasePreprocessConfig, ContDIDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
+from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .constants import (
     NEVER_TREATED_VALUE,
     ROW_ID_COLUMN,
@@ -16,7 +16,7 @@ from .constants import (
     ControlGroup,
     DataFormat,
 )
-from .utils import extract_vars_from_formula
+from .utils import create_ddd_subgroups, extract_vars_from_formula, make_balanced_panel, validate_subgroup_sizes
 
 
 class DataTransformer(Protocol):
@@ -959,6 +959,151 @@ class DIDInterDataPreparer(BaseTransformer):
         return df
 
 
+class DDDColumnSelector(BaseTransformer):
+    """DDD column selector."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Select relevant columns for DDD preprocessing."""
+        if not isinstance(config, DDDConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        cols_to_keep = [config.yname, config.tname, config.idname, config.gname, config.pname]
+
+        if config.cluster:
+            cols_to_keep.append(config.cluster)
+
+        if config.weightsname:
+            cols_to_keep.append(config.weightsname)
+
+        if config.xformla and config.xformla != "~1":
+            formula_vars = extract_vars_from_formula(config.xformla)
+            cols_to_keep.extend(formula_vars)
+
+        cols_to_keep = list(dict.fromkeys(cols_to_keep))
+        cols_to_keep = [col for col in cols_to_keep if col is not None and col in df.columns]
+
+        return df.select(cols_to_keep)
+
+
+class DDDWeightProcessor(BaseTransformer):
+    """DDD weight processor."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Extract/create weights, validate, normalize, add as WEIGHTS_COLUMN."""
+        if not isinstance(config, DDDConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+
+        if config.weightsname is not None:
+            weights = df[config.weightsname].to_numpy().astype(float)
+            if np.any(np.isnan(weights)):
+                raise ValueError("Missing values in weights column.")
+            weights_per_id = df.group_by(config.idname).agg(pl.col(config.weightsname).n_unique().alias("n_unique"))
+            if (weights_per_id["n_unique"] > 1).any():
+                raise ValueError("Weights must be the same across all periods for each unit.")
+        else:
+            weights = np.ones(len(df))
+
+        weights = weights / np.mean(weights)
+        return df.with_columns(pl.Series(name=WEIGHTS_COLUMN, values=weights))
+
+
+class DDDPanelBalancer(BaseTransformer):
+    """DDD panel balancer."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Sort and balance the panel."""
+        if not isinstance(config, DDDConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        df = df.sort([config.idname, config.tname])
+        df = make_balanced_panel(df, config.idname, config.tname)
+
+        if len(df) == 0:
+            raise ValueError("No observations remain after creating balanced panel.")
+
+        return df
+
+
+class DDDPostIndicatorCreator(BaseTransformer):
+    """DDD post indicator creator."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Create _post column indicating post-treatment period."""
+        if not isinstance(config, DDDConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        tlist = np.sort(df[config.tname].unique().to_numpy())
+        return df.with_columns((pl.col(config.tname) == tlist[1]).cast(pl.Int64).alias("_post"))
+
+
+class DDDCovariateInvarianceChecker(BaseTransformer):
+    """DDD covariate invariance checker."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Check that covariates are time-invariant."""
+        if not isinstance(config, DDDConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+
+        if config.xformla == "~1":
+            return df
+
+        covariate_vars = extract_vars_from_formula(config.xformla)
+
+        for var in covariate_vars:
+            if var not in df.columns:
+                continue
+            var_per_id = df.group_by(config.idname).agg(pl.col(var).n_unique().alias("n_unique"))
+            if (var_per_id["n_unique"] > 1).any():
+                raise ValueError(f"Covariate '{var}' varies over time. Covariates must be time-invariant.")
+
+        return df
+
+
+class DDDSubgroupCreator(BaseTransformer):
+    """DDD subgroup creator."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Assign 4-group subgroups and validate sizes."""
+        if not isinstance(config, DDDConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        glist = np.sort(df[config.gname].unique().to_numpy())
+        treat_val = glist[1]
+
+        subgroup = create_ddd_subgroups(df[config.gname].to_numpy(), df[config.pname].to_numpy(), treat_val)
+        df = df.with_columns(pl.Series("_subgroup", subgroup))
+
+        counts_df = df.group_by("_subgroup").agg(pl.col(config.idname).n_unique().alias("count"))
+        subgroup_counts = {int(row["_subgroup"]): int(row["count"]) for row in counts_df.iter_rows(named=True)}
+        validate_subgroup_sizes(subgroup_counts)
+
+        return df
+
+
+class DDDConfigUpdater:
+    """DDD config updater."""
+
+    @staticmethod
+    def update(data: DataFrame, config: DDDConfig) -> None:
+        """Update DDD config with computed values."""
+        df = to_polars(data)
+
+        tlist = np.sort(df[config.tname].unique().to_numpy())
+        config.time_periods = tlist
+        config.time_periods_count = len(tlist)
+
+        n_units = df.filter(pl.col("_post") == 0).height
+        config.n_units = n_units
+
+
 class DataTransformerPipeline:
     """Data transformer pipeline."""
 
@@ -1034,13 +1179,30 @@ class DataTransformerPipeline:
             ]
         )
 
+    @staticmethod
+    def get_ddd_pipeline() -> "DataTransformerPipeline":
+        """Get DDD pipeline."""
+        return DataTransformerPipeline(
+            [
+                DDDColumnSelector(),
+                MissingDataHandler(),
+                DDDWeightProcessor(),
+                DDDPanelBalancer(),
+                DDDPostIndicatorCreator(),
+                DDDCovariateInvarianceChecker(),
+                DDDSubgroupCreator(),
+            ]
+        )
+
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         df = to_polars(data)
         for transformer in self.transformers:
             df = transformer.transform(df, config)
 
-        if isinstance(config, DIDInterConfig):
+        if isinstance(config, DDDConfig):
+            DDDConfigUpdater.update(df, config)
+        elif isinstance(config, DIDInterConfig):
             DIDInterConfigUpdater.update(df, config)
         else:
             ConfigUpdater.update(df, config)

@@ -1,9 +1,11 @@
 """Utility functions for preprocessing."""
 
 import re
+import warnings
 
 import numpy as np
 import polars as pl
+import scipy.linalg
 
 from ..dataframe import to_polars
 
@@ -362,3 +364,115 @@ def get_covariate_names_from_formula(xformla):
     if not xformla or xformla == "~1":
         return None
     return extract_vars_from_formula(xformla)
+
+
+def remove_collinear(cov_matrix, var_names, tol=1e-6):
+    """Remove collinear columns from covariate matrix using QR decomposition."""
+    if cov_matrix.shape[1] == 0:
+        return cov_matrix, var_names
+
+    _, r, pivot = scipy.linalg.qr(cov_matrix, mode="economic", pivoting=True)
+
+    diag_r = np.abs(np.diag(r))
+    rank = np.sum(diag_r > tol * diag_r[0]) if len(diag_r) > 0 else 0
+
+    keep_indices = pivot[:rank]
+    keep_indices = np.sort(keep_indices)
+
+    kept_vars = [var_names[i] for i in keep_indices]
+    return cov_matrix[:, keep_indices], kept_vars
+
+
+def check_partition_collinearity(cov_matrix, subgroup, var_names, tol=1e-6):
+    """Check for partition-specific collinearity in DDD comparisons."""
+    if len(var_names) == 0:
+        return {}, []
+
+    comparison_groups = [3, 2, 1]
+    partition_collinear: dict[str, list[str]] = {}
+
+    for comp_group in comparison_groups:
+        mask = (subgroup == 4) | (subgroup == comp_group)
+        cov_subset = cov_matrix[mask]
+
+        if cov_subset.shape[0] == 0:
+            continue
+
+        _, kept_vars = remove_collinear(cov_subset, list(var_names), tol=tol)
+        kept_set = set(kept_vars)
+        collinear_in_subset = [v for v in var_names if v not in kept_set]
+
+        if collinear_in_subset:
+            partition_name = f"subgroup 4 vs {comp_group}"
+            for var in collinear_in_subset:
+                if var not in partition_collinear:
+                    partition_collinear[var] = []
+                partition_collinear[var].append(partition_name)
+
+    return partition_collinear, list(partition_collinear.keys())
+
+
+def create_ddd_subgroups(treat, partition, treat_val):
+    """Create subgroup assignments for DDD.
+
+    Subgroup definitions:
+    - 4: Treated AND Eligible (treat=g, partition=1)
+    - 3: Treated BUT Ineligible (treat=g, partition=0)
+    - 2: Eligible BUT Untreated (treat=0, partition=1)
+    - 1: Untreated AND Ineligible (treat=0, partition=0)
+    """
+    is_treated = treat == treat_val
+    is_eligible = partition == 1
+
+    subgroup = np.where(
+        is_treated & is_eligible,
+        4,
+        np.where(is_treated & ~is_eligible, 3, np.where(is_eligible, 2, 1)),
+    )
+    return subgroup
+
+
+def validate_subgroup_sizes(subgroup_counts, min_size=5):
+    """Validate that each subgroup has sufficient observations."""
+    for sg, count in subgroup_counts.items():
+        if count < min_size:
+            raise ValueError(f"Subgroup {sg} has only {count} observations. Minimum required is {min_size}.")
+
+
+def extract_ddd_covariates(df: pl.DataFrame, xformla, subgroup: np.ndarray | None = None):
+    """Extract and process covariates from data for DDD."""
+    if xformla == "~1":
+        n_units = len(df.filter(pl.col("_post") == 0))
+        return np.empty((n_units, 0)), []
+
+    covariate_vars = extract_vars_from_formula(xformla)
+
+    df_pre = df.filter(pl.col("_post") == 0)
+    cov_matrix = df_pre.select(covariate_vars).to_numpy().astype(float)
+
+    if np.any(np.isnan(cov_matrix)):
+        warnings.warn(
+            "Missing values in covariates. Rows with NaN will cause issues.",
+            stacklevel=3,
+        )
+
+    cov_matrix, kept_vars = remove_collinear(cov_matrix, covariate_vars)
+
+    if subgroup is not None and len(kept_vars) > 0:
+        partition_collinear, all_collinear = check_partition_collinearity(cov_matrix, subgroup, kept_vars)
+
+        if all_collinear:
+            partition_warnings = [
+                f"  - {var} (collinear in: {', '.join(partitions)})" for var, partitions in partition_collinear.items()
+            ]
+            warnings.warn(
+                "The following covariates were dropped due to partition-specific collinearity:\n"
+                + "\n".join(partition_warnings),
+                stacklevel=3,
+            )
+
+            keep_mask = [var not in all_collinear for var in kept_vars]
+            cov_matrix = cov_matrix[:, keep_mask]
+            kept_vars = [v for v in kept_vars if v not in all_collinear]
+
+    return cov_matrix, kept_vars
