@@ -290,6 +290,15 @@ def did_multiplegt(
             UserWarning,
         )
 
+    if effects < 1:
+        raise ValueError(f"effects={effects} is not valid. Must be at least 1.")
+    if placebo < 0:
+        raise ValueError(f"placebo={placebo} is not valid. Must be non-negative.")
+    if switchers not in ("", "in", "out"):
+        raise ValueError(f"switchers='{switchers}' is not valid. Must be '', 'in', or 'out'.")
+    if not 0 < ci_level < 100:
+        raise ValueError(f"ci_level={ci_level} is not valid. Must be between 0 and 100 (exclusive).")
+
     config = DIDInterConfig(
         yname=yname,
         tname=tname,

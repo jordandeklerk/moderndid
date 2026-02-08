@@ -291,6 +291,13 @@ def ddd(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
+    if gname is None:
+        raise ValueError("gname is required. Please specify the treatment group column.")
+    if pname is None:
+        raise ValueError("pname is required. Please specify the partition/eligibility column.")
+    if est_method not in ("dr", "reg", "ipw"):
+        raise ValueError(f"est_method='{est_method}' is not valid. Must be 'dr', 'reg', or 'ipw'.")
+
     is_rcs = detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel)
 
     data = to_polars(data)

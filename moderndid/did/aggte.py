@@ -215,6 +215,10 @@ def aggte(
            with multiple time periods. Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001
     """
+    valid_types = ("simple", "dynamic", "group", "calendar")
+    if type not in valid_types:
+        raise ValueError(f"type='{type}' is not valid. Must be one of: 'simple', 'dynamic', 'group', 'calendar'.")
+
     call_info = {
         "function": f"aggte(MP, type='{type}')",
     }

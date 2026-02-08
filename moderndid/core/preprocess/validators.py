@@ -64,6 +64,15 @@ class ColumnValidator(BaseValidator):
             if config.idname and config.idname in data_columns and not _is_numeric_dtype(df[config.idname]):
                 errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
 
+            if config.yname in data_columns and not _is_numeric_dtype(df[config.yname]):
+                errors.append(f"yname = '{config.yname}' is not numeric. Please convert it")
+
+            if config.xformla and config.xformla != "~1":
+                covariate_names = extract_vars_from_formula(config.xformla)
+                for cov in covariate_names:
+                    if cov not in data_columns:
+                        errors.append(f"xformla contains '{cov}' which is not a column in the dataset")
+
             if (
                 isinstance(config, ContDIDConfig)
                 and config.dname
@@ -192,6 +201,31 @@ class ClusterValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
+class WeightValidator(BaseValidator):
+    """Weight validator."""
+
+    def validate(self, data: DataFrame, config) -> ValidationResult:
+        """Validate weights are non-negative."""
+        df = to_polars(data)
+        errors = []
+        weightsname = getattr(config, "weightsname", None)
+        if not weightsname or weightsname not in df.columns:
+            return self._create_result(errors, [])
+        weights = df[weightsname]
+        if _is_numeric_dtype(weights) and (weights < 0).any():
+            n_neg = int((weights < 0).sum())
+            errors.append(
+                f"weightsname = '{weightsname}' contains {n_neg} negative values. Weights must be non-negative."
+            )
+        return self._create_result(errors, [])
+
+    @staticmethod
+    def _create_result(errors=None, warnings=None):
+        errors = errors or []
+        warnings = warnings or []
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
 class ArgumentValidator(BaseValidator):
     """Argument validator."""
 
@@ -207,6 +241,13 @@ class ArgumentValidator(BaseValidator):
 
         if not 0 < config.alp < 1:
             errors.append("alp must be between 0 and 1")
+
+        if (
+            hasattr(config, "biters")
+            and config.biters is not None
+            and (not isinstance(config.biters, int) or config.biters < 1)
+        ):
+            errors.append(f"biters must be a positive integer, got {config.biters}")
 
         if isinstance(config, DIDConfig):
             if config.control_group not in [ControlGroup.NEVER_TREATED, ControlGroup.NOT_YET_TREATED]:
@@ -311,6 +352,9 @@ class PrePostColumnValidator(BaseValidator):
             if config.idname and config.idname in data_columns and not _is_numeric_dtype(df[config.idname]):
                 errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
 
+            if config.yname in data_columns and not _is_numeric_dtype(df[config.yname]):
+                errors.append(f"yname = '{config.yname}' is not numeric. Please convert it")
+
         return self._create_result(errors, warnings)
 
     @staticmethod
@@ -379,6 +423,29 @@ class PrePostPanelValidator(BaseValidator):
         errors = errors or []
         warnings = warnings or []
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
+class PrePostArgumentValidator(BaseValidator):
+    """Argument validator for two-period DiD."""
+
+    def validate(self, data: DataFrame, config) -> ValidationResult:
+        """Validate two-period DiD arguments."""
+        if not isinstance(config, TwoPeriodDIDConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+        errors = []
+        valid_methods = ("imp", "trad", "imp_local", "trad_local")
+        if config.est_method not in valid_methods:
+            errors.append(
+                f"est_method='{config.est_method}' is not valid. "
+                f"Must be one of: {', '.join(repr(m) for m in valid_methods)}."
+            )
+        if not 0 < config.trim_level < 1:
+            errors.append(f"trim_level={config.trim_level} must be between 0 and 1 (exclusive).")
+        if not 0 < config.alp < 1:
+            errors.append("alp must be between 0 and 1")
+        if config.biters < 1:
+            errors.append("biters must be a positive integer")
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
 
 
 class DIDInterColumnValidator(BaseValidator):
@@ -566,6 +633,9 @@ class DDDArgumentValidator(BaseValidator):
         if not 0 < config.alp < 1:
             errors.append("alp must be between 0 and 1.")
 
+        if config.n_boot < 1:
+            errors.append("n_boot must be a positive integer")
+
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
 
 
@@ -631,8 +701,10 @@ class CompositeValidator(BaseValidator):
         if config_type == "two_period":
             return [
                 PrePostColumnValidator(),
+                PrePostArgumentValidator(),
                 PrePostDataValidator(),
                 PrePostPanelValidator(),
+                WeightValidator(),
             ]
 
         if config_type == "didinter":
@@ -641,6 +713,7 @@ class CompositeValidator(BaseValidator):
                 DIDInterArgumentValidator(),
                 DIDInterTreatmentValidator(),
                 DIDInterPanelValidator(),
+                WeightValidator(),
             ]
 
         if config_type == "ddd":
@@ -649,11 +722,13 @@ class CompositeValidator(BaseValidator):
                 DDDArgumentValidator(),
                 DDDInvarianceValidator(),
                 DDDDataValidator(),
+                WeightValidator(),
             ]
 
         common_validators = [
             ArgumentValidator(),
             ColumnValidator(),
+            WeightValidator(),
             TreatmentValidator(),
             PanelStructureValidator(),
             ClusterValidator(),

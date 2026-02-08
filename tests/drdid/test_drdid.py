@@ -194,7 +194,7 @@ def test_drdid_invalid_est_method_for_panel(est_method):
         }
     )
 
-    with pytest.raises(ValueError, match=f"est_method '{est_method}' is only available for repeated cross-sections"):
+    with pytest.raises(ValueError, match=f"est_method='{est_method}' is only available for repeated cross-sections"):
         drdid(
             data=df,
             yname="y",

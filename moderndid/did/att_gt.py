@@ -221,6 +221,13 @@ def att_gt(
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")
 
+    if isinstance(control_group, str) and control_group not in ("nevertreated", "notyettreated"):
+        raise ValueError(f"control_group='{control_group}' is not valid. Must be 'nevertreated' or 'notyettreated'.")
+    if isinstance(est_method, str) and est_method not in ("dr", "ipw", "reg"):
+        raise ValueError(f"est_method='{est_method}' is not valid. Must be 'dr', 'ipw', or 'reg'.")
+    if isinstance(base_period, str) and base_period not in ("varying", "universal"):
+        raise ValueError(f"base_period='{base_period}' is not valid. Must be 'varying' or 'universal'.")
+
     control_group_enum = ControlGroup(control_group)
     est_method_enum = EstimationMethod(est_method) if isinstance(est_method, str) else est_method
     base_period_enum = BasePeriod(base_period)

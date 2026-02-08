@@ -873,3 +873,26 @@ def test_cont_did_different_knot_options(num_knots):
         biters=10,
     )
     assert result is not None, f"Failed with num_knots={num_knots}"
+
+
+@pytest.mark.parametrize(
+    "param,value",
+    [
+        ("aggregation", "invalid"),
+        ("target_parameter", "invalid"),
+        ("dose_est_method", "invalid"),
+        ("control_group", "invalid"),
+    ],
+)
+def test_cont_did_invalid_params(param, value):
+    data = simulate_cont_did_data(n=100, seed=42)
+    with pytest.raises(ValueError, match=f"{param}='invalid' is not valid"):
+        cont_did(
+            data=data,
+            yname="Y",
+            tname="time_period",
+            idname="id",
+            gname="G",
+            dname="D",
+            **{param: value},
+        )

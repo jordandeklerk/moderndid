@@ -369,3 +369,27 @@ def test_placebo_joint_test(favara_imbs_data):
     if "Placebos_joint_test" in source_res:
         source_pval = source_res["Placebos_joint_test"]["p-value"].item()
         assert_allclose(our_result.placebo_joint_test["p_value"], source_pval, rtol=1e-4)
+
+
+@pytest.mark.parametrize(
+    "param,value,match",
+    [
+        ("effects", 0, "effects=0 is not valid"),
+        ("effects", -1, "effects=-1 is not valid"),
+        ("placebo", -1, "placebo=-1 is not valid"),
+        ("switchers", "bad", "switchers='bad' is not valid"),
+        ("ci_level", 0, "ci_level=0 is not valid"),
+        ("ci_level", 100, "ci_level=100 is not valid"),
+        ("ci_level", -5, "ci_level=-5 is not valid"),
+    ],
+)
+def test_did_multiplegt_invalid_params(favara_imbs_data, param, value, match):
+    with pytest.raises(ValueError, match=match):
+        md.did_multiplegt(
+            favara_imbs_data,
+            yname="Dl_vloans_b",
+            idname="county",
+            tname="year",
+            dname="inter_bra",
+            **{param: value},
+        )
