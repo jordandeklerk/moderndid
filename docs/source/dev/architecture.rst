@@ -14,33 +14,32 @@ Overview
 ModernDiD is organized around a shared core and specialized estimator modules.
 The ``core`` module provides infrastructure that all estimators rely on,
 including a preprocessing pipeline for validating and transforming input data,
-configuration dataclasses that define estimator parameters, and base utilities
-for result objects. Each estimator module (``did``, ``drdid``, ``didcont``,
-``didtriple``) contains the statistical implementation for its methodology,
-following the patterns established in core. The ``didhonest`` module provides
-sensitivity analysis that works with results from any estimator, and the
-``plots`` module offers unified visualization across all result types.
+configuration dataclasses that define estimator parameters, shared formatting
+utilities for structured table output, and base utilities for result objects.
+Each estimator module (``did``, ``drdid``, ``didcont``, ``didtriple``)
+contains the statistical implementation for its methodology, following the
+patterns established in core. Each module also has a ``format.py`` that
+registers display formatting for its result objects. The ``didhonest`` module
+provides sensitivity analysis that works with results from any estimator, and
+the ``plots`` module offers unified visualization across all result types.
 
 This architecture means that adding a new estimator involves implementing the
-statistical logic while reusing the preprocessing, result handling, and plotting
-infrastructure.
+statistical logic while reusing the preprocessing, result handling, formatting,
+and plotting infrastructure.
 
 The Preprocessing Pipeline
 ==========================
 
-Most estimators in ModernDiD use a shared preprocessing pipeline built on the
-builder pattern. The multi-period DiD, two-period doubly robust DiD, and
-continuous treatment modules all use ``PreprocessDataBuilder``, which ensures
-consistent data handling and prevents reimplementing validation logic.
-
-Some estimators may require specialized preprocessing that does not fit cleanly
-into the shared pipeline. When an estimator has genuinely unique data structure
-requirements that are not reusable across methods, it is acceptable to keep
-that preprocessing logic contained within the estimator module. The triple
-differences module is an example of this, as it requires partition-specific
-subgroup creation and collinearity checks that do not apply to other estimators.
-If you find yourself in this situation, follow similar validation patterns to
-the shared pipeline and document why the custom approach is necessary.
+All estimators in ModernDiD use a shared preprocessing pipeline built on the
+builder pattern. The ``PreprocessDataBuilder`` provides a single entry point
+for data validation and transformation, with module-specific behavior controlled
+by configuration classes, validators, and transformers. Each module defines its
+own config class (e.g., ``DIDConfig``, ``TwoPeriodDIDConfig``, ``DDDConfig``,
+``DIDInterConfig``) and data container (e.g., ``DIDData``, ``DDDData``), but
+the builder itself is shared. The builder selects the appropriate validators
+and transformers based on the config type, so module-specific requirements like
+partition-based subgroup creation or time-varying treatment handling are
+expressed through the pipeline rather than bypassing it.
 
 Configuration Classes
 ---------------------
@@ -111,11 +110,9 @@ The Builder Pattern
 -------------------
 
 The ``PreprocessDataBuilder`` class provides a fluent interface for the
-preprocessing pipeline. The builder automatically selects the appropriate
-validators and transformers based on the configuration type, which allows
-the same builder to handle multi-period DiD, two-period DiD, continuous
-treatment, and triple differences without the caller needing to know which
-validators apply to which estimator type.
+preprocessing pipeline. The configuration object passed to the builder
+determines which validators and transformers run, so the caller only needs
+to construct the right config and the builder handles the rest.
 
 .. code-block:: python
 
@@ -511,6 +508,129 @@ When writing Numba functions, avoid Python objects and stick to NumPy arrays
 and scalar types. Numba works best with simple numerical code. If you need
 complex logic, keep it in pure Python and only JIT-compile the hot loops.
 
+The Formatting System
+=====================
+
+Every result object in ModernDiD has a formatted ``__repr__`` and ``__str__``
+that produces structured table output when users call ``print()`` on a result.
+This is implemented through a formatting layer in ``moderndid/core/format.py``
+and per-module ``format.py`` files.
+
+The ``attach_format`` Function
+------------------------------
+
+The core mechanism is ``attach_format``, which monkey-patches ``__repr__`` and
+``__str__`` onto a result class so that printing it produces formatted output
+instead of raw NamedTuple contents.
+
+.. code-block:: python
+
+   from moderndid.core.format import attach_format
+
+   # At module level in myestimator/format.py
+   attach_format(MyEstimatorResult, format_my_result)
+
+After this call, ``print(result)`` will call ``format_my_result(result)``
+instead of showing the default NamedTuple representation.
+
+Shared Format Helpers
+---------------------
+
+The ``moderndid.core.format`` module provides helper functions that produce
+consistent output across all estimators. Format functions should compose these
+helpers rather than building strings from scratch.
+
+``format_title(title, subtitle=None)``
+   Produces the title block with thick ``=`` separators.
+
+``format_section_header(label)``
+   Produces a labeled section with thin ``-`` separators (used for Data Info,
+   Estimation Details, Inference).
+
+``format_footer(reference=None)``
+   Produces a closing ``=`` separator with an optional citation line.
+
+``format_significance_note(band=False)``
+   Produces the significance code legend. Pass ``band=True`` when the table
+   shows confidence bands rather than confidence intervals.
+
+``format_single_result_table(label, att, se, conf_level, lci, uci, ...)``
+   Builds a one-row summary table (e.g., for an overall ATT).
+
+``format_event_table(col1_header, event_values, att, se, lower, upper, conf_level, band_type)``
+   Builds a multi-row event study table.
+
+``format_group_time_table(groups, times, att, se, lci, uci, conf_level, band_type)``
+   Builds a group-time ATT table.
+
+``format_horizon_table(horizons, estimates, std_errors, ci_lower, ci_upper, conf_level, ...)``
+   Builds a horizon-indexed table for intertemporal effects.
+
+``adjust_separators(lines)``
+   Widens ``=`` and ``-`` separator lines to match the widest content line,
+   useful when tables are wider than the default 78-character width.
+
+All table helpers use `prettytable <https://github.com/prettytable/prettytable>`_ with the ``SINGLE_BORDER`` style internally.
+
+Writing a Format Function
+-------------------------
+
+A format function takes a result object and returns a string. The typical
+structure is title block, summary table, detail table, significance note,
+metadata sections, and footer.
+
+.. code-block:: python
+
+   # myestimator/format.py
+   from scipy import stats
+
+   from moderndid.core.format import (
+       attach_format,
+       format_event_table,
+       format_footer,
+       format_section_header,
+       format_significance_note,
+       format_single_result_table,
+       format_title,
+   )
+
+   from .results import MyEstimatorResult
+
+
+   def format_my_result(result):
+       lines = []
+
+       lines.extend(format_title("My Estimator Results"))
+
+       alpha = result.estimation_params.get("alp", 0.05)
+       conf_level = int((1 - alpha) * 100)
+       z_crit = stats.norm.ppf(1 - alpha / 2)
+
+       lci = result.overall_att - z_crit * result.overall_se
+       uci = result.overall_att + z_crit * result.overall_se
+
+       lines.extend(
+           format_single_result_table(
+               "ATT", result.overall_att, result.overall_se,
+               conf_level, lci, uci,
+           )
+       )
+
+       lines.extend(format_significance_note())
+
+       lines.extend(format_section_header("Data Info"))
+       lines.append(f" Observations: {result.n_units}")
+
+       lines.extend(format_footer("Reference: Author (Year)"))
+       return "\n".join(lines)
+
+
+   attach_format(MyEstimatorResult, format_my_result)
+
+The ``attach_format`` call at module level means the format is registered as
+soon as the module is imported. Each estimator module's ``__init__.py`` should
+import the format module to ensure registration happens at import time.
+
 Creating a New Estimator
 ========================
 
@@ -633,61 +753,197 @@ understand the preprocessing pipeline to use your estimator.
        # Implementation details...
        pass
 
-Step 4: Add Plotting Support
-----------------------------
-
-Create a converter function that transforms your result to a DataFrame suitable
-for plotting. The converter should compute confidence intervals from standard
-errors and critical values, create any indicator columns needed for visualization,
-and handle missing values gracefully.
-
-.. code-block:: python
-
-   # myestimator/converters.py
-   import polars as pl
-   from .results import MyEstimatorResult
-
-   def myresult_to_polars(result: MyEstimatorResult) -> pl.DataFrame:
-       return pl.DataFrame({
-           "estimate": result.att,
-           "se": result.se,
-           "ci_lower": result.att - 1.96 * result.se,
-           "ci_upper": result.att + 1.96 * result.se,
-       })
-
-Then add a plotting function or integrate with existing plot functions:
-
-.. code-block:: python
-
-   # myestimator/plots.py
-   from plotnine import ggplot, aes, geom_point, geom_errorbar
-   from .converters import myresult_to_polars
-
-   def plot_my_estimator(result, show_ci=True):
-       df = myresult_to_polars(result)
-       # Build ggplot...
-
-Step 5: Export the Public API
+Step 4: Add Formatted Output
 -----------------------------
 
-Add your estimator to the module's ``__init__.py``:
+Create a ``format.py`` module that gives your result readable ``print()``
+output. Import the shared helpers from ``moderndid.core.format``, define a
+format function, and register it with ``attach_format``. See
+:ref:`The Formatting System <architecture>` above for the full pattern.
+
+.. code-block:: python
+
+   # myestimator/format.py
+   from moderndid.core.format import (
+       attach_format,
+       format_footer,
+       format_section_header,
+       format_significance_note,
+       format_single_result_table,
+       format_title,
+   )
+
+   from .results import MyEstimatorResult
+
+
+   def format_my_result(result):
+       lines = []
+       lines.extend(format_title("My Estimator Results"))
+       # ... build sections using helpers ...
+       lines.extend(format_footer("Reference: Author (Year)"))
+       return "\n".join(lines)
+
+
+   attach_format(MyEstimatorResult, format_my_result)
+
+Step 5: Add Plotting Support
+-----------------------------
+
+Create a converter function in ``moderndid/plots/converters.py`` that
+transforms your result to a Polars DataFrame for plotting. Converters must
+use the standard column names that the plot functions expect, and should
+filter out rows where the standard error is NaN (these correspond to
+reference periods that should not be plotted).
+
+For event study results, the expected columns are:
+
+- ``event_time``: event time relative to treatment
+- ``att``: point estimate
+- ``se``: standard error
+- ``ci_lower``: lower confidence interval bound
+- ``ci_upper``: upper confidence interval bound
+- ``treatment_status``: ``"Pre"`` or ``"Post"``
+
+For group-time results, use ``group`` and ``time`` instead of ``event_time``.
+
+.. code-block:: python
+
+   # In moderndid/plots/converters.py
+
+   def myresult_to_polars(result: MyEstimatorResult) -> pl.DataFrame:
+       event_times = result.event_times
+       att = result.att
+       se = result.se
+       crit_val = result.critical_value if result.critical_value is not None else 1.96
+
+       ci_lower = att - crit_val * se
+       ci_upper = att + crit_val * se
+       treatment_status = np.array(["Pre" if e < 0 else "Post" for e in event_times])
+
+       df = pl.DataFrame({
+           "event_time": event_times,
+           "att": att,
+           "se": se,
+           "ci_lower": ci_lower,
+           "ci_upper": ci_upper,
+           "treatment_status": treatment_status,
+       })
+       return df.filter(~pl.col("se").is_nan())
+
+Then update the relevant plot function in ``moderndid/plots/plots.py`` to
+dispatch to your converter. Plot functions use ``isinstance()`` checks to
+route each result type to its converter:
+
+.. code-block:: python
+
+   # In moderndid/plots/plots.py
+
+   from moderndid.myestimator.results import MyEstimatorResult
+   from moderndid.plots.converters import myresult_to_polars
+
+   def plot_event_study(result, ...):
+       if isinstance(result, AGGTEResult):
+           df = aggteresult_to_polars(result)
+       elif isinstance(result, MyEstimatorResult):       # Add your type
+           df = myresult_to_polars(result)
+       # ... build ggplot
+
+Step 6: Export the Public API
+-----------------------------
+
+Add your estimator to the module's ``__init__.py``. Import the format module
+to ensure ``attach_format`` runs at import time.
 
 .. code-block:: python
 
    # myestimator/__init__.py
    from .estimator import my_estimator
+   from .format import format_my_result
    from .results import MyEstimatorResult
 
-   __all__ = ["my_estimator", "MyEstimatorResult"]
+   __all__ = ["my_estimator", "MyEstimatorResult", "format_my_result"]
 
-And to the main package ``__init__.py`` if it should be a top-level export:
+Then register exports in the top-level ``moderndid/__init__.py``. The package
+uses a lazy-loading system with a custom ``__getattr__`` to defer imports
+until first access, so you should not add direct import statements. Instead,
+update the appropriate dictionaries:
+
+1. Add each exported name to ``__all__``.
+
+2. Add entries to ``_lazy_imports`` if the module has no extra dependencies,
+   or to ``_optional_imports`` if it requires optional packages. The format
+   for ``_lazy_imports`` maps each name to its module path. The format for
+   ``_optional_imports`` maps each name to a ``(module_path, extra_name)``
+   tuple, where ``extra_name`` is used in the installation hint
+   (``uv pip install 'moderndid[extra_name]'``).
+
+3. If your result class is re-exported under a different public name, add
+   an entry to ``_aliases`` mapping the public name to
+   ``(module_path, actual_class_name)``.
+
+4. If you want ``import moderndid.myestimator`` to work, add
+   ``"myestimator"`` to ``_submodules``.
 
 .. code-block:: python
 
-   # moderndid/__init__.py
-   from moderndid.myestimator import my_estimator, MyEstimatorResult
+   # In moderndid/__init__.py
 
-Step 6: Write Tests
+   __all__ = [
+       ...
+       "MyEstimatorResult",
+       "my_estimator",
+       "format_my_result",
+   ]
+
+   # For modules with no extra dependencies:
+   _lazy_imports = {
+       ...
+       "MyEstimatorResult": "moderndid.myestimator.results",
+       "my_estimator": "moderndid.myestimator.estimator",
+       "format_my_result": "moderndid.myestimator.format",
+   }
+
+   # Or for modules requiring extra dependencies:
+   _optional_imports = {
+       ...
+       "my_estimator": ("moderndid.myestimator", "myestimator"),
+   }
+
+   _submodules = [..., "myestimator"]
+
+Step 7: Add Aggregation Support (Multi-Period Estimators)
+---------------------------------------------------------
+
+If your estimator produces group-time effects that should be aggregated into
+event studies, group summaries, or an overall ATT, implement an aggregation
+function following the ``aggte`` pattern. The aggregation function takes a
+multi-period result object and returns an aggregated result, using influence
+functions from the original estimation to propagate uncertainty correctly.
+
+.. code-block:: python
+
+   # myestimator/aggte.py
+
+   def aggte(result, type="dynamic", ...):
+       """Aggregate group-time effects.
+
+       Parameters
+       ----------
+       result : MyMPResult
+           Group-time result from the estimator.
+       type : {'simple', 'dynamic', 'group', 'calendar'}
+           Aggregation type.
+       """
+       # Use influence functions to compute aggregated ATT and SE
+       ...
+
+The aggregated result object should include ``overall_att``, ``overall_se``,
+``aggregation_type``, and for non-simple aggregations: ``event_times``,
+``att_by_event``, ``se_by_event``, ``critical_values``, and
+``influence_func``. These fields are needed by the plotting converters and
+the sensitivity analysis tools.
+
+Step 8: Write Tests
 -------------------
 
 See :doc:`testing` for detailed guidance on testing conventions. Test basic
@@ -707,10 +963,19 @@ that work across the entire package.
 Converter Functions
 -------------------
 
-Each result type has a converter that transforms it to a long-format DataFrame
-suitable for plotting. Converters handle computing confidence intervals from
-standard errors and critical values, creating indicator columns for pre/post
-treatment periods, and dealing with missing values and edge cases.
+Each result type has a converter in ``moderndid/plots/converters.py`` that
+transforms it to a long-format Polars DataFrame suitable for plotting.
+Converters handle computing confidence intervals from standard errors and
+critical values, creating indicator columns for pre/post treatment periods,
+and dealing with missing values and edge cases.
+
+All converters follow the naming convention ``{resulttype}_to_polars`` and
+produce DataFrames with standardized column names. Rows where the standard
+error is NaN (reference periods) must be filtered out:
+
+.. code-block:: python
+
+   df = df.filter(~pl.col("se").is_nan())
 
 .. code-block:: python
 
@@ -728,9 +993,9 @@ Plot Functions
 --------------
 
 Plot functions accept result objects and delegate to the appropriate converter
-based on the result type. This design allows adding support for new result
-types by simply adding a new converter function without modifying the plotting
-logic itself.
+based on the result type. Adding support for a new result type requires two
+changes: writing a converter function in ``converters.py`` and adding an
+``isinstance()`` branch in the relevant plot function in ``plots.py``.
 
 .. code-block:: python
 
