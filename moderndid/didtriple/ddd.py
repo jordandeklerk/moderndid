@@ -34,6 +34,7 @@ def ddd(
     panel=True,
     allow_unbalanced_panel=False,
     random_state=None,
+    n_jobs=1,
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
 
@@ -130,6 +131,10 @@ def ddd(
         an error will be raised.
     random_state : int, Generator, optional
         Random seed for reproducibility of bootstrap.
+    n_jobs : int, default=1
+        Number of parallel jobs for group-time estimation in multi-period
+        settings. 1 = sequential (default), -1 = all cores, >1 = that many
+        workers. Ignored for 2-period data.
 
     Returns
     -------
@@ -322,6 +327,7 @@ def ddd(
                 alpha=alpha,
                 trim_level=trim_level,
                 random_state=random_state,
+                n_jobs=n_jobs,
             )
         return ddd_mp(
             data=data,
@@ -340,6 +346,7 @@ def ddd(
             cluster=cluster,
             alpha=alpha,
             random_state=random_state,
+            n_jobs=n_jobs,
         )
 
     if is_rcs:

@@ -175,14 +175,14 @@ mp_result <- ddd(
     base_period = "universal",
     est_method = "reg",
     boot = {ddd_boot_str},
-    biters = 100
+    nboot = 100
 )
 
 agg_result <- agg_ddd(
     mp_result,
     type = "{agg_type}",
     boot = {boot_str},
-    biters = 100,
+    nboot = 100,
     balance_e = {balance_e_str},
     min_e = {min_e_str},
     max_e = {max_e_str},
@@ -244,7 +244,7 @@ result <- ddd(
     data = data,
     est_method = "{est_method}",
     boot = TRUE,
-    biters = {biters},
+    nboot = {biters},
     inffunc = TRUE
 )
 

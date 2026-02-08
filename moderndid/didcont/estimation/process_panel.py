@@ -249,50 +249,35 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
     time_periods = ptep.t_list
     groups = ptep.g_list
 
-    attgt_list = []
-    counter = 0
     n_groups = len(groups)
     n_times = len(time_periods)
     inffunc = np.full((n_units, n_groups * n_times), np.nan)
+
+    args_list = [
+        (tp, g, data, base_period, anticipation, subset_fun, attgt_fun, ptep.gt_type, ptep, n_units, kwargs)
+        for tp in time_periods
+        for g in groups
+    ]
+
+    cell_results = [_process_pte_cell(*args) for args in args_list]
+
+    attgt_list = []
     extra_gt_returns = []
 
-    for tp in time_periods:
-        for g in groups:
-            if base_period == "universal" and tp == (g - 1 - anticipation):
-                attgt_list.append({"att": 0, "group": g, "time_period": tp})
-                extra_gt_returns.append({"extra_gt_returns": None, "group": g, "time_period": tp})
+    for counter, result in enumerate(cell_results):
+        attgt_list.append(result["att_entry"])
+        extra_gt_returns.append(result["extra_entry"])
+
+        inf_data = result["inf_func_data"]
+        if inf_data is not None:
+            kind = inf_data[0]
+            if kind == "zero":
                 inffunc[:, counter] = 0
-                counter += 1
-                continue
-
-            gt_subset = subset_fun(data, g, tp, **kwargs)
-            gt_data = gt_subset["gt_data"]
-            n1 = gt_subset["n1"]
-            disidx = gt_subset["disidx"]
-
-            attgt_kwargs = kwargs.copy()
-            if ptep.gt_type == "dose":
-                attgt_kwargs.update(
-                    {
-                        "dvals": ptep.dvals,
-                        "knots": ptep.knots,
-                        "degree": ptep.degree,
-                        "num_knots": ptep.num_knots,
-                    }
-                )
-
-            attgt_result = attgt_fun(gt_data=gt_data, **attgt_kwargs)
-            attgt_list.append({"att": attgt_result.attgt, "group": g, "time_period": tp})
-            extra_gt_returns.append({"extra_gt_returns": attgt_result.extra_gt_returns, "group": g, "time_period": tp})
-
-            if attgt_result.inf_func is not None:
-                adjusted_inf_func = (n_units / n1) * attgt_result.inf_func
-
+            elif kind == "values":
+                _, adjusted_inf_func, disidx = inf_data
                 this_inf_func = np.zeros(n_units)
                 this_inf_func[disidx] = adjusted_inf_func
                 inffunc[:, counter] = this_inf_func
-
-            counter += 1
 
     return {"attgt_list": attgt_list, "influence_func": inffunc, "extra_gt_returns": extra_gt_returns}
 
@@ -592,6 +577,51 @@ def setup_pte_cont(
     )
 
     return PTEParams(**pte_params_dict)
+
+
+def _process_pte_cell(tp, g, data, base_period, anticipation, subset_fun, attgt_fun, gt_type, ptep, n_units, kwargs):
+    """Process a single (tp, g) cell for panel treatment effects.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys: att_entry, extra_entry, inf_func_data (or None).
+    """
+    if base_period == "universal" and tp == (g - 1 - anticipation):
+        return {
+            "att_entry": {"att": 0, "group": g, "time_period": tp},
+            "extra_entry": {"extra_gt_returns": None, "group": g, "time_period": tp},
+            "inf_func_data": ("zero", None, None),
+        }
+
+    gt_subset = subset_fun(data, g, tp, **kwargs)
+    gt_data = gt_subset["gt_data"]
+    n1 = gt_subset["n1"]
+    disidx = gt_subset["disidx"]
+
+    attgt_kwargs = kwargs.copy()
+    if gt_type == "dose":
+        attgt_kwargs.update(
+            {
+                "dvals": ptep.dvals,
+                "knots": ptep.knots,
+                "degree": ptep.degree,
+                "num_knots": ptep.num_knots,
+            }
+        )
+
+    attgt_result = attgt_fun(gt_data=gt_data, **attgt_kwargs)
+
+    inf_func_data = None
+    if attgt_result.inf_func is not None:
+        adjusted_inf_func = (n_units / n1) * attgt_result.inf_func
+        inf_func_data = ("values", adjusted_inf_func, disidx)
+
+    return {
+        "att_entry": {"att": attgt_result.attgt, "group": g, "time_period": tp},
+        "extra_entry": {"extra_gt_returns": attgt_result.extra_gt_returns, "group": g, "time_period": tp},
+        "inf_func_data": inf_func_data,
+    }
 
 
 def _build_pte_params(
