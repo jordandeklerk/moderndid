@@ -100,24 +100,45 @@ flexibly approximate the dose-response curve.
      Continuous Treatment Dose-Response Results
     ==============================================================================
 
-    Overall ATT:
-       ATT          Std. Error   [95% Conf. Interval]
-       0.3824       0.0770       [ 0.2315,  0.5332] *
+     Overall ATT:
 
-    Overall ACRT:
-       ACRT         Std. Error   [95% Conf. Interval]
-       0.7019       0.0758       [ 0.5533,  0.8505] *
+    ┌────────┬────────────┬────────────────────────┐
+    │    ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├────────┼────────────┼────────────────────────┤
+    │ 0.3824 │     0.0917 │ [  0.2026,   0.5621] * │
+    └────────┴────────────┴────────────────────────┘
 
-    ---
-    Signif. codes: '*' confidence band does not cover 0
+     Overall ACRT:
 
+    ┌────────┬────────────┬────────────────────────┐
+    │   ACRT │ Std. Error │ [95% Conf. Interval]   │
+    ├────────┼────────────┼────────────────────────┤
+    │ 0.7019 │     0.0784 │ [  0.5483,   0.8555] * │
+    └────────┴────────────┴────────────────────────┘
 
-    Control Group: Not Yet Treated
-    Anticipation Periods: 0
-    Estimation Method: Parametric (B-spline)
-    Spline Degree: 3
-    Number of Knots: 1
+    ------------------------------------------------------------------------------
+     Signif. codes: '*' confidence band does not cover 0
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+     Control Group: Not Yet Treated
+     Anticipation Periods: 0
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+     Estimation Method: Parametric (B-spline)
+     Spline Degree: 3
+     Number of Knots: 1
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Bootstrap standard errors
     ==============================================================================
+     Reference: Callaway et al. (2024)
 
 Two key quantities stand out here. The Overall ATT is the average treatment
 effect across all treated units, weighted by the distribution of doses in the
@@ -224,30 +245,48 @@ useful for examining treatment dynamics.
      Aggregate Treatment Effects (Event Study)
     ==============================================================================
 
-    Overall summary of ATT's:
+     Overall summary of ATT's:
 
-       ATT          Std. Error   [95% Conf. Interval]
-       0.4382       0.0480       [ 0.3441,  0.5323] *
-
-
-
-    Event time Effects:
-
-        Event time   Estimate   Std. Error  [95% Simult. Conf. Band]
-                -2     0.0764       0.0703  [ -0.1092,   0.2621]
-                -1     0.0300       0.0544  [ -0.1137,   0.1737]
-                 0     0.4536       0.0348  [  0.3618,   0.5455] *
-                 1     0.4118       0.0542  [  0.2687,   0.5549] *
-                 2     0.4492       0.0856  [  0.2231,   0.6752] *
-
-    ---
-    Signif. codes: '*' confidence band does not cover 0
+    ┌────────┬────────────┬────────────────────────┐
+    │    ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├────────┼────────────┼────────────────────────┤
+    │ 0.4382 │     0.0494 │ [  0.3413,   0.5350] * │
+    └────────┴────────────┴────────────────────────┘
 
 
-    Control Group: Not Yet Treated
-    Anticipation Periods: 0
-    Estimation Method: att
+     Event time Effects:
+
+    ┌────────────┬──────────┬────────────┬──────────────────────────┐
+    │ Event time │ Estimate │ Std. Error │ [95% Simult. Conf. Band] │
+    ├────────────┼──────────┼────────────┼──────────────────────────┤
+    │         -2 │   0.0764 │     0.0805 │ [-0.1358,  0.2886]       │
+    │         -1 │   0.0300 │     0.0631 │ [-0.1364,  0.1964]       │
+    │          0 │   0.4536 │     0.0394 │ [ 0.3496,  0.5576] *     │
+    │          1 │   0.4118 │     0.0591 │ [ 0.2559,  0.5676] *     │
+    │          2 │   0.4492 │     0.0811 │ [ 0.2353,  0.6630] *     │
+    └────────────┴──────────┴────────────┴──────────────────────────┘
+
+    ------------------------------------------------------------------------------
+     Signif. codes: '*' confidence band does not cover 0
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+     Control Group: Not Yet Treated
+     Anticipation Periods: 0
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+     Estimation Method: att
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Bootstrap standard errors
     ==============================================================================
+     Reference: Callaway et al. (2024)
 
 We can see the pre-treatment and post-treatment dynamics here. Event times -2
 and -1 are pre-treatment periods that serve as placebo tests for parallel
@@ -286,30 +325,48 @@ level effect (ATT), set ``target_parameter="slope"``.
      Aggregate Treatment Effects (Event Study)
     ==============================================================================
 
-    Overall summary of ACRT's:
+     Overall summary of ACRT's:
 
-       ACRT         Std. Error   [95% Conf. Interval]
-       0.5602       0.0991       [ 0.3660,  0.7544] *
-
-
-
-    Event time Effects:
-
-        Event time   Estimate   Std. Error  [95% Simult. Conf. Band]
-                -2    -0.0097       0.1305  [ -0.3299,   0.3106]
-                -1     0.3052       0.1060  [  0.0450,   0.5653] *
-                 0     0.7632       0.0810  [  0.5645,   0.9620] *
-                 1     0.2119       0.1224  [ -0.0884,   0.5122]
-                 2     0.7054       0.1721  [  0.2830,   1.1278] *
-
-    ---
-    Signif. codes: '*' confidence band does not cover 0
+    ┌────────┬────────────┬────────────────────────┐
+    │   ACRT │ Std. Error │ [95% Conf. Interval]   │
+    ├────────┼────────────┼────────────────────────┤
+    │ 0.5602 │     0.0944 │ [  0.3752,   0.7452] * │
+    └────────┴────────────┴────────────────────────┘
 
 
-    Control Group: Not Yet Treated
-    Anticipation Periods: 0
-    Estimation Method: dose
+     Event time Effects:
+
+    ┌────────────┬──────────┬────────────┬──────────────────────────┐
+    │ Event time │ Estimate │ Std. Error │ [95% Simult. Conf. Band] │
+    ├────────────┼──────────┼────────────┼──────────────────────────┤
+    │         -2 │  -0.0097 │     0.0886 │ [-0.2006,  0.1812]       │
+    │         -1 │   0.3052 │     0.1341 │ [ 0.0165,  0.5938] *     │
+    │          0 │   0.7632 │     0.0976 │ [ 0.5530,  0.9735] *     │
+    │          1 │   0.2119 │     0.0993 │ [-0.0020,  0.4258]       │
+    │          2 │   0.7054 │     0.1757 │ [ 0.3271,  1.0837] *     │
+    └────────────┴──────────┴────────────┴──────────────────────────┘
+
+    ------------------------------------------------------------------------------
+     Signif. codes: '*' confidence band does not cover 0
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+     Control Group: Not Yet Treated
+     Anticipation Periods: 0
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+     Estimation Method: dose
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Bootstrap standard errors
     ==============================================================================
+     Reference: Callaway et al. (2024)
 
 The ACRT event study shows how the marginal effect of increasing dose evolves
 over time. The ``target_parameter`` setting only affects event study aggregation.
@@ -419,22 +476,43 @@ averaging pre-treatment and post-treatment outcomes.
      Continuous Treatment Dose-Response Results
     ==============================================================================
 
-    Overall ATT:
-       ATT          Std. Error   [95% Conf. Interval]
-       0.3403       0.0763       [ 0.1907,  0.4898] *
+     Overall ATT:
 
-    Overall ACRT:
-       ACRT         Std. Error   [95% Conf. Interval]
-       0.7436       0.2919       [ 0.1714,  1.3157] *
+    ┌────────┬────────────┬────────────────────────┐
+    │    ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├────────┼────────────┼────────────────────────┤
+    │ 0.3403 │     0.0677 │ [  0.2076,   0.4730] * │
+    └────────┴────────────┴────────────────────────┘
 
-    ---
-    Signif. codes: '*' confidence band does not cover 0
+     Overall ACRT:
 
+    ┌────────┬────────────┬────────────────────────┐
+    │   ACRT │ Std. Error │ [95% Conf. Interval]   │
+    ├────────┼────────────┼────────────────────────┤
+    │ 0.7436 │     0.2919 │ [  0.1714,   1.3157] * │
+    └────────┴────────────┴────────────────────────┘
 
-    Control Group: Not Yet Treated
-    Anticipation Periods: 0
-    Estimation Method: Non-parametric (CCK)
+    ------------------------------------------------------------------------------
+     Signif. codes: '*' confidence band does not cover 0
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+     Control Group: Not Yet Treated
+     Anticipation Periods: 0
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+     Estimation Method: Non-parametric (CCK)
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Bootstrap standard errors
     ==============================================================================
+     Reference: Callaway et al. (2024)
 
 With a purely quadratic true effect (dose_quadratic_effect=1.0 and no linear
 term), the CCK estimator correctly identifies a significant positive ATT. The
@@ -495,24 +573,45 @@ timing could be endogenous.
      Continuous Treatment Dose-Response Results
     ==============================================================================
 
-    Overall ATT:
-       ATT          Std. Error   [95% Conf. Interval]
-       0.3871       0.1027       [ 0.1858,  0.5885] *
+     Overall ATT:
 
-    Overall ACRT:
-       ACRT         Std. Error   [95% Conf. Interval]
-       0.7019       0.1048       [ 0.4964,  0.9074] *
+    ┌────────┬────────────┬────────────────────────┐
+    │    ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├────────┼────────────┼────────────────────────┤
+    │ 0.3871 │     0.0998 │ [  0.1916,   0.5827] * │
+    └────────┴────────────┴────────────────────────┘
 
-    ---
-    Signif. codes: '*' confidence band does not cover 0
+     Overall ACRT:
 
+    ┌────────┬────────────┬────────────────────────┐
+    │   ACRT │ Std. Error │ [95% Conf. Interval]   │
+    ├────────┼────────────┼────────────────────────┤
+    │ 0.7019 │     0.0863 │ [  0.5327,   0.8711] * │
+    └────────┴────────────┴────────────────────────┘
 
-    Control Group: Never Treated
-    Anticipation Periods: 0
-    Estimation Method: Parametric (B-spline)
-    Spline Degree: 3
-    Number of Knots: 1
+    ------------------------------------------------------------------------------
+     Signif. codes: '*' confidence band does not cover 0
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+     Control Group: Never Treated
+     Anticipation Periods: 0
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+     Estimation Method: Parametric (B-spline)
+     Spline Degree: 3
+     Number of Knots: 1
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Bootstrap standard errors
     ==============================================================================
+     Reference: Callaway et al. (2024)
 
 With the never-treated control group, the point estimates are similar but
 standard errors are somewhat larger due to the smaller control pool. Which

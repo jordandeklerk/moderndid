@@ -17,6 +17,7 @@ from moderndid.core.preprocess import (
     make_balanced_panel as _make_balanced_panel,
 )
 
+from . import format as _format
 from .cont_did import cont_did
 from .estimation import (
     DoseResult,

@@ -159,8 +159,11 @@ treated eligible units.
 
      DR-DDD estimation for the ATT:
 
-           ATT      Std. Error    Pr(>|t|)    [95% Ptwise. Conf. Int.]
-           0.0229       0.0828       0.7825    [ -0.1394,   0.1851]
+    ┌────────┬────────────┬──────────┬────────────────────────┐
+    │    ATT │ Std. Error │ Pr(>|t|) │ [95% Conf. Interval]   │
+    ├────────┼────────────┼──────────┼────────────────────────┤
+    │ 0.0229 │     0.0828 │   0.7825 │ [ -0.1394,   0.1851]   │
+    └────────┴────────────┴──────────┴────────────────────────┘
 
     ------------------------------------------------------------------------------
      Signif. codes: '*' confidence interval does not cover 0
@@ -192,7 +195,7 @@ treated eligible units.
     ==============================================================================
      See Ortiz-Villavicencio and Sant'Anna (2025) for details.
 
-We get an ATT estimate of 0.0229, close to zero as expected, with a confidence
+We get an ATT estimate of 0.023, close to zero as expected, with a confidence
 interval that comfortably includes zero. The output also reports the number of
 units in each of the four subgroups, confirming balanced representation across
 the design.
@@ -261,13 +264,16 @@ etc.). This simulation has positive treatment effects that grow over time.
 
      DR-DDD estimation for ATT(g,t):
 
-       Group    Time       ATT(g,t)   Std. Error    [95% Conf. Int.]
-           2       1       0.0000          NA              NA
-           2       2      11.1769       0.4201    [10.3535, 12.0004] *
-           2       3      21.1660       0.4516    [20.2808, 22.0511] *
-           3       1      -1.0095       0.5450    [-2.0778,  0.0587]
-           3       2       0.0000          NA              NA
-           3       3      24.9440       0.4724    [24.0182, 25.8698] *
+    ┌───────┬──────┬──────────┬────────────┬──────────────────────┐
+    │ Group │ Time │ ATT(g,t) │ Std. Error │ [95% Conf. Int.]     │
+    ├───────┼──────┼──────────┼────────────┼──────────────────────┤
+    │     2 │    1 │   0.0000 │         NA │ NA                   │
+    │     2 │    2 │  11.1769 │     0.4201 │ [10.3535, 12.0004] * │
+    │     2 │    3 │  21.1660 │     0.4516 │ [20.2808, 22.0511] * │
+    │     3 │    1 │  -1.0095 │     0.5450 │ [-2.0778,  0.0587]   │
+    │     3 │    2 │   0.0000 │         NA │ NA                   │
+    │     3 │    3 │  24.9440 │     0.4724 │ [24.0182, 25.8698] * │
+    └───────┴──────┴──────────┴────────────┴──────────────────────┘
 
     ------------------------------------------------------------------------------
      Signif. codes: '*' confidence interval does not cover 0
@@ -337,24 +343,45 @@ much easier to see the overall pattern.
 
      Overall summary of ATT's based on event-study aggregation:
 
-           ATT      Std. Error     [95% Conf. Interval]
-       20.1000          0.3164     [ 19.4799,  20.7202] *
+    ┌─────────┬────────────┬────────────────────────┐
+    │     ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├─────────┼────────────┼────────────────────────┤
+    │ 20.1000 │     0.3567 │ [ 19.4010,  20.7990] * │
+    └─────────┴────────────┴────────────────────────┘
 
 
      Dynamic Effects:
 
-        Event time   Estimate   Std. Error   [95% Simult. Conf. Band]
-                -2    -1.0095       0.5410   [-2.2235,  0.2044]
-                -1     0.0000           NA              NA
-                 0    19.0341       0.2611   [18.4483, 19.6198] *
-                 1    21.1660       0.4411   [20.1763, 22.1557] *
+    ┌────────────┬──────────┬────────────┬──────────────────────────┐
+    │ Event time │ Estimate │ Std. Error │ [95% Simult. Conf. Band] │
+    ├────────────┼──────────┼────────────┼──────────────────────────┤
+    │         -2 │  -1.0095 │     0.5436 │ [-2.2865,  0.2675]       │
+    │         -1 │   0.0000 │         NA │ NA                       │
+    │          0 │  19.0341 │     0.2571 │ [18.4301, 19.6380] *     │
+    │          1 │  21.1660 │     0.4517 │ [20.1048, 22.2271] *     │
+    └────────────┴──────────┴────────────┴──────────────────────────┘
 
     ------------------------------------------------------------------------------
      Signif. codes: '*' confidence band does not cover 0
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Bootstrap standard errors
     ==============================================================================
+     See Ortiz-Villavicencio and Sant'Anna (2025) for details.
 
 Event time 0 is the period of treatment adoption. The pre-treatment estimate
-at event time -2 is close to zero and statistically insignificant, consistent
+at event time -2 is -1.0 and statistically insignificant, consistent
 with the parallel trends assumption. The on-impact effect at event time 0 is 19.0,
 growing to 21.2 by event time 1.
 
@@ -378,19 +405,40 @@ heterogeneity across groups that adopted at different times.
 
      Overall summary of ATT's based on group/cohort aggregation:
 
-           ATT      Std. Error     [95% Conf. Interval]
-       21.1781          0.3753     [ 20.4426,  21.9137] *
+    ┌─────────┬────────────┬────────────────────────┐
+    │     ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├─────────┼────────────┼────────────────────────┤
+    │ 21.1781 │     0.3947 │ [ 20.4045,  21.9517] * │
+    └─────────┴────────────┴────────────────────────┘
 
 
      Group Effects:
 
-             Group   Estimate   Std. Error   [95% Simult. Conf. Band]
-                 2    16.1715       0.3679   [15.3653, 16.9776] *
-                 3    24.9440       0.4696   [23.9151, 25.9729] *
+    ┌───────┬──────────┬────────────┬──────────────────────────┐
+    │ Group │ Estimate │ Std. Error │ [95% Simult. Conf. Band] │
+    ├───────┼──────────┼────────────┼──────────────────────────┤
+    │     2 │  16.1715 │     0.3584 │ [15.3514, 16.9915] *     │
+    │     3 │  24.9440 │     0.5008 │ [23.7980, 26.0899] *     │
+    └───────┴──────────┴────────────┴──────────────────────────┘
 
     ------------------------------------------------------------------------------
      Signif. codes: '*' confidence band does not cover 0
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Bootstrap standard errors
     ==============================================================================
+     See Ortiz-Villavicencio and Sant'Anna (2025) for details.
 
 Group 2 (early adopters) shows an average effect of 16.2, while Group 3 (later
 adopters) shows a larger effect of 24.9. This heterogeneity could reflect
@@ -417,14 +465,32 @@ all post-treatment group-time cells.
 
      Overall ATT:
 
-           ATT      Std. Error     [95% Conf. Interval]
-       19.6744          0.2918     [ 19.1025,  20.2462] *
+    ┌─────────┬────────────┬────────────────────────┐
+    │     ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├─────────┼────────────┼────────────────────────┤
+    │ 19.6744 │     0.2917 │ [ 19.1027,  20.2460] * │
+    └─────────┴────────────┴────────────────────────┘
 
     ------------------------------------------------------------------------------
      Signif. codes: '*' confidence band does not cover 0
-    ==============================================================================
 
-The overall ATT of 19.7 represents the average treatment effect across all
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Bootstrap standard errors
+    ==============================================================================
+     See Ortiz-Villavicencio and Sant'Anna (2025) for details.
+
+The overall ATT of 19.67 represents the average treatment effect across all
 treated eligible units in all post-treatment periods, weighted by group size.
 
 

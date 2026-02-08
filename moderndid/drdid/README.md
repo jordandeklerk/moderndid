@@ -105,27 +105,39 @@ att_result = moderndid.drdid(
 The output shows all of the relevant quantities for the estimated ATT and information about the method type, e.g., panel or repeated cross-section data, outcome and propensity models, and inference type:
 
 ```bash
-=======================================================================
+==============================================================================
  Doubly Robust DiD Estimator (Improved Method)
-=======================================================================
+==============================================================================
  Computed from 32834 observations and 12 covariates.
 
-       Estimate  Std. Error  t-value  Pr(>|t|)     [95% Conf. Interval]
------------------------------------------------------------------------
-ATT   -901.2703    393.6212  -2.2897    0.0220  [-1672.7679, -129.7727]
+┌─────────┬────────────┬──────────┬────────────────────────┐
+│     ATT │ Std. Error │ Pr(>|t|) │ [95% Conf. Interval]   │
+├─────────┼────────────┼──────────┼────────────────────────┤
+│ -0.0800 │     0.0126 │   <0.001 │ [ -0.1047,  -0.0553] * │
+└─────────┴────────────┴──────────┴────────────────────────┘
 
------------------------------------------------------------------------
- Method Details:
-   Data structure: Panel data
-   Outcome regression: Weighted least squares
-   Propensity score: Inverse probability tilting
+------------------------------------------------------------------------------
+ Signif. codes: '*' confidence interval does not cover 0
 
- Inference:
-   Standard errors: Analytical
-   Propensity score trimming: 0.995
-=======================================================================
+------------------------------------------------------------------------------
+ Data Info
+------------------------------------------------------------------------------
+ Data structure: Panel data
+
+------------------------------------------------------------------------------
+ Estimation Details
+------------------------------------------------------------------------------
+ Outcome regression: Weighted least squares
+ Propensity score: Inverse probability tilting
+
+------------------------------------------------------------------------------
+ Inference
+------------------------------------------------------------------------------
+ Standard errors: Analytical
+ Propensity score trimming: 0.995
+==============================================================================
  Reference: Sant'Anna and Zhao (2020), Journal of Econometrics
- ```
+```
 
 ## References
 
