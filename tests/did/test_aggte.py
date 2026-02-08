@@ -48,7 +48,7 @@ def test_aggte_basic_structure(mp_result, agg_type):
 
 
 def test_aggte_invalid_type(mp_result):
-    with pytest.raises(ValueError, match="must be one of"):
+    with pytest.raises(ValueError, match="Must be one of"):
         aggte(mp_result, type="invalid")
 
 

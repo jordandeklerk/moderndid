@@ -707,7 +707,7 @@ def test_cont_did_cck_invalid_aggregation(cck_test_data):
 
 
 def test_cont_did_invalid_parameter_combination(contdid_data):
-    with pytest.raises(ValueError, match="Invalid combination of parameters"):
+    with pytest.raises(ValueError, match="target_parameter='invalid' is not valid"):
         cont_did(
             data=contdid_data,
             yname="Y",

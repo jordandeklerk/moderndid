@@ -640,3 +640,57 @@ def test_ordid_confidence_interval(nsw_data, data_path):
         rtol=1e-4,
         err_msg="UCI mismatch",
     )
+
+
+def test_invalid_panel_est_method(nsw_data):
+    with pytest.raises(ValueError, match="est_method='bad' is not valid.*For panel data"):
+        drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            panel=True,
+            est_method="bad",
+        )
+
+
+@pytest.mark.parametrize("est_method", ["imp_local", "trad_local"])
+def test_rc_method_on_panel_raises_clear_error(nsw_data, est_method):
+    with pytest.raises(ValueError, match=f"est_method='{est_method}' is only available for repeated cross-sections"):
+        drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            panel=True,
+            est_method=est_method,
+        )
+
+
+def test_invalid_rc_est_method(nsw_data):
+    with pytest.raises(ValueError, match="est_method='bad' is not valid.*For repeated cross-sections"):
+        drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            panel=False,
+            est_method="bad",
+        )
+
+
+@pytest.mark.parametrize("trim_level", [0, 1, -0.5, 1.5])
+def test_invalid_trim_level(nsw_data, trim_level):
+    with pytest.raises(ValueError, match="trim_level=.*is not valid"):
+        drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            panel=True,
+            est_method="imp",
+            trim_level=trim_level,
+        )

@@ -230,6 +230,26 @@ def drdid(
     if panel and idname is None:
         raise ValueError("idname must be provided when panel=True")
 
+    valid_panel_methods = ("imp", "trad")
+    valid_rc_methods = ("imp", "trad", "imp_local", "trad_local")
+    if panel:
+        if est_method not in valid_panel_methods:
+            if est_method in valid_rc_methods:
+                raise ValueError(
+                    f"est_method='{est_method}' is only available for repeated cross-sections "
+                    f"(panel=False). For panel data, use 'imp' or 'trad'."
+                )
+            raise ValueError(f"est_method='{est_method}' is not valid. For panel data, must be 'imp' or 'trad'.")
+    else:
+        if est_method not in valid_rc_methods:
+            raise ValueError(
+                f"est_method='{est_method}' is not valid. For repeated cross-sections, "
+                f"must be one of: 'imp', 'trad', 'imp_local', 'trad_local'."
+            )
+
+    if not 0 < trim_level < 1:
+        raise ValueError(f"trim_level={trim_level} is not valid. Must be between 0 and 1 (exclusive).")
+
     call_params = {
         "yname": yname,
         "tname": tname,
@@ -265,9 +285,6 @@ def drdid(
     )
 
     if panel:
-        if est_method in ["imp_local", "trad_local"]:
-            raise ValueError(f"est_method '{est_method}' is only available for repeated cross-sections (panel=False)")
-
         if est_method == "imp":
             result = drdid_imp_panel(
                 y1=dp.y1,

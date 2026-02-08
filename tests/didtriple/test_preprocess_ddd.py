@@ -7,6 +7,7 @@ import pytest
 from moderndid.core.preprocess.models import DDDData
 from moderndid.core.preprocess.utils import check_partition_collinearity
 from moderndid.core.preprocessing import preprocess_ddd_2periods
+from moderndid.didtriple.ddd import ddd
 from moderndid.didtriple.dgp import gen_dgp_2periods
 from tests.helpers import importorskip
 
@@ -403,3 +404,31 @@ def test_partition_collinearity_warning_in_preprocess():
         )
 
     assert ddd_data.covariates.shape[1] <= 2
+
+
+@pytest.mark.parametrize(
+    "kwargs,match",
+    [
+        ({"yname": "y", "tname": "time", "pname": "partition"}, "gname is required"),
+        ({"yname": "y", "tname": "time", "gname": "state"}, "pname is required"),
+    ],
+)
+def test_ddd_missing_required_params(kwargs, match):
+    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    with pytest.raises(ValueError, match=match):
+        ddd(data=result["data"], **kwargs)
+
+
+@pytest.mark.parametrize("est_method", ["ols", "lasso", ""])
+def test_ddd_invalid_est_method(est_method):
+    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    with pytest.raises(ValueError, match=f"est_method='{est_method}' is not valid"):
+        ddd(
+            data=result["data"],
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            est_method=est_method,
+        )

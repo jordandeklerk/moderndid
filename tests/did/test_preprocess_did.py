@@ -29,7 +29,10 @@ from moderndid.core.preprocess.validators import (
     ColumnValidator,
     PanelStructureValidator,
     TreatmentValidator,
+    WeightValidator,
 )
+from moderndid.did.aggte import aggte
+from moderndid.did.att_gt import att_gt
 
 
 def create_test_panel_data(
@@ -878,3 +881,63 @@ class TestBuilderPattern:
 
         assert isinstance(result, DIDData)
         assert result.config == config
+
+
+@pytest.mark.parametrize(
+    "param,value,match",
+    [
+        ("est_method", "ols", "est_method='ols' is not valid"),
+        ("control_group", "all", "control_group='all' is not valid"),
+        ("base_period", "fixed", "base_period='fixed' is not valid"),
+    ],
+)
+def test_att_gt_invalid_params(param, value, match):
+    df = create_test_panel_data()
+    with pytest.raises(ValueError, match=match):
+        att_gt(data=df, yname="y", tname="time", idname="id", gname="g", **{param: value})
+
+
+def test_aggte_invalid_type():
+    df = create_test_panel_data()
+    result = att_gt(data=df, yname="y", tname="time", idname="id", gname="g")
+    with pytest.raises(ValueError, match="type='invalid' is not valid"):
+        aggte(result, type="invalid")
+
+
+def test_column_validator_non_numeric_yname():
+    df = create_test_panel_data()
+    df = df.with_columns(pl.col("y").cast(pl.Utf8).alias("y_str"))
+    validator = ColumnValidator()
+    config = DIDConfig(yname="y_str", tname="time", idname="id", gname="g")
+    result = validator.validate(df, config)
+    assert not result.is_valid
+    assert any("yname" in err and "not numeric" in err for err in result.errors)
+
+
+def test_column_validator_missing_covariate():
+    df = create_test_panel_data()
+    validator = ColumnValidator()
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", xformla="~ x1 + missing_var")
+    result = validator.validate(df, config)
+    assert not result.is_valid
+    assert any("missing_var" in err for err in result.errors)
+
+
+def test_weight_validator_negative_weights():
+    df = create_test_panel_data()
+    w = np.random.uniform(-1, 1, len(df))
+    df = df.with_columns(pl.Series("w", w))
+    validator = WeightValidator()
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", weightsname="w")
+    result = validator.validate(df, config)
+    assert not result.is_valid
+    assert any("negative values" in err for err in result.errors)
+
+
+def test_argument_validator_invalid_biters():
+    df = create_test_panel_data()
+    validator = ArgumentValidator()
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", biters=0)
+    result = validator.validate(df, config)
+    assert not result.is_valid
+    assert any("biters" in err for err in result.errors)

@@ -280,6 +280,15 @@ def cont_did(
     if dname is None:
         raise ValueError("dname is required. Please specify the dose/treatment column.")
 
+    if aggregation not in ("dose", "eventstudy"):
+        raise ValueError(f"aggregation='{aggregation}' is not valid. Must be 'dose' or 'eventstudy'.")
+    if target_parameter not in ("level", "slope"):
+        raise ValueError(f"target_parameter='{target_parameter}' is not valid. Must be 'level' or 'slope'.")
+    if dose_est_method not in ("parametric", "cck"):
+        raise ValueError(f"dose_est_method='{dose_est_method}' is not valid. Must be 'parametric' or 'cck'.")
+    if control_group not in ("notyettreated", "nevertreated"):
+        raise ValueError(f"control_group='{control_group}' is not valid. Must be 'notyettreated' or 'nevertreated'.")
+
     data = to_polars(data)
 
     if xformla != "~1":
