@@ -31,6 +31,7 @@ dependencies = [
   "pyarrow>=8.0.0",
   "narwhals>=1.13.3",
   "statsmodels>=0.14.4",
+  "prettytable>=3.10.0",
 ]
 
 [tool.flit.module]

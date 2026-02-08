@@ -76,30 +76,50 @@ or over time.
 
 .. code-block:: text
 
-    Reference: Callaway and Sant'Anna (2021)
+    ==============================================================================
+     Group-Time Average Treatment Effects
+    ==============================================================================
 
-    Group-Time Average Treatment Effects:
-      Group   Time   ATT(g,t)   Std. Error  [95% Pointwise Conf. Band]
-       2004   2004    -0.0105       0.0233  [ -0.0561,   0.0351]
-       2004   2005    -0.0704       0.0310  [ -0.1312,  -0.0097] *
-       2004   2006    -0.1373       0.0364  [ -0.2087,  -0.0658] *
-       2004   2007    -0.1008       0.0344  [ -0.1682,  -0.0335] *
-       2006   2004     0.0065       0.0233  [ -0.0392,   0.0522]
-       2006   2005    -0.0028       0.0196  [ -0.0411,   0.0356]
-       2006   2006    -0.0046       0.0178  [ -0.0394,   0.0302]
-       2006   2007    -0.0412       0.0202  [ -0.0809,  -0.0016] *
-       2007   2004     0.0305       0.0150  [  0.0010,   0.0600] *
-       2007   2005    -0.0027       0.0164  [ -0.0349,   0.0294]
-       2007   2006    -0.0311       0.0179  [ -0.0661,   0.0040]
-       2007   2007    -0.0261       0.0167  [ -0.0587,   0.0066]
-    ---
-    Signif. codes: '*' confidence band does not cover 0
+    ┌───────┬──────┬──────────┬────────────┬────────────────────────────┐
+    │ Group │ Time │ ATT(g,t) │ Std. Error │ [95% Pointwise Conf. Band] │
+    ├───────┼──────┼──────────┼────────────┼────────────────────────────┤
+    │  2004 │ 2004 │  -0.0105 │     0.0233 │ [-0.0561,  0.0351]         │
+    │  2004 │ 2005 │  -0.0704 │     0.0310 │ [-0.1312, -0.0097] *       │
+    │  2004 │ 2006 │  -0.1373 │     0.0364 │ [-0.2087, -0.0658] *       │
+    │  2004 │ 2007 │  -0.1008 │     0.0344 │ [-0.1682, -0.0335] *       │
+    │  2006 │ 2004 │   0.0065 │     0.0233 │ [-0.0392,  0.0522]         │
+    │  2006 │ 2005 │  -0.0028 │     0.0196 │ [-0.0411,  0.0356]         │
+    │  2006 │ 2006 │  -0.0046 │     0.0178 │ [-0.0394,  0.0302]         │
+    │  2006 │ 2007 │  -0.0412 │     0.0202 │ [-0.0809, -0.0016] *       │
+    │  2007 │ 2004 │   0.0305 │     0.0150 │ [ 0.0010,  0.0600] *       │
+    │  2007 │ 2005 │  -0.0027 │     0.0164 │ [-0.0349,  0.0294]         │
+    │  2007 │ 2006 │  -0.0311 │     0.0179 │ [-0.0661,  0.0040]         │
+    │  2007 │ 2007 │  -0.0261 │     0.0167 │ [-0.0587,  0.0066]         │
+    └───────┴──────┴──────────┴────────────┴────────────────────────────┘
 
-    P-value for pre-test of parallel trends assumption:  0.1681
+    ------------------------------------------------------------------------------
+     Signif. codes: '*' confidence band does not cover 0
 
-    Control Group:  Never Treated
-    Anticipation Periods:  0
-    Estimation Method:  Doubly Robust
+     P-value for pre-test of parallel trends assumption:  0.1681
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+     Control Group:  Never Treated
+     Anticipation Periods:  0
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+     Estimation Method:  Doubly Robust
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Analytical standard errors
+    ==============================================================================
+     Reference: Callaway and Sant'Anna (2021)
 
 Each row represents a specific cohort (``gname``) measured at a specific time
 (``tname``). Cohorts are defined by when they first received treatment. For
@@ -120,11 +140,12 @@ pre-treatment periods simultaneously. We cannot reject parallel trends at
 conventional levels. A low p-value here would be a warning sign that the
 identifying assumption may be violated.
 
-For the 2004 cohort, effects grow from -0.01 in 2004 to -0.14 in 2006 before
-moderating to -0.10 in 2007. This pattern of growing then partially reverting
-is common and suggests the policy had a lagged impact that took time to fully
-materialize. The 2006 and 2007 cohorts show smaller effects, possibly because
-they have fewer post-treatment periods for the impact to accumulate.
+For the 2004 cohort, effects grow from -0.01 in 2004 to -0.07 in 2005 and
+-0.14 in 2006 before moderating to -0.10 in 2007. This pattern of growing
+then partially reverting is common and suggests the policy had a lagged
+impact that took time to fully materialize. The 2006 and 2007 cohorts show
+smaller effects, possibly because they have fewer post-treatment periods for
+the impact to accumulate.
 
 
 Aggregating into an event study
@@ -145,39 +166,56 @@ treatment date, making it much easier to see the overall pattern.
      Aggregate Treatment Effects (Event Study)
     ==============================================================================
 
-     Call:
-       aggte(MP, type='dynamic')
-
      Overall summary of ATT's based on event-study/dynamic aggregation:
 
-           ATT      Std. Error     [95% Conf. Interval]
-       -0.0772          0.0200     [ -0.1164,  -0.0381] *
+    ┌─────────┬────────────┬────────────────────────┐
+    │     ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├─────────┼────────────┼────────────────────────┤
+    │ -0.0772 │     0.0200 │ [ -0.1164,  -0.0381] * │
+    └─────────┴────────────┴────────────────────────┘
 
 
      Dynamic Effects:
 
-        Event time   Estimate   Std. Error   [95% Pointwise Conf. Band]
-                -3     0.0305       0.0150   [-0.0103,  0.0713]
-                -2    -0.0006       0.0133   [-0.0367,  0.0355]
-                -1    -0.0245       0.0142   [-0.0631,  0.0142]
-                 0    -0.0199       0.0118   [-0.0520,  0.0122]
-                 1    -0.0510       0.0169   [-0.0968, -0.0051] *
-                 2    -0.1373       0.0364   [-0.2362, -0.0383] *
-                 3    -0.1008       0.0344   [-0.1941, -0.0075] *
+    ┌────────────┬──────────┬────────────┬────────────────────────────┐
+    │ Event time │ Estimate │ Std. Error │ [95% Pointwise Conf. Band] │
+    ├────────────┼──────────┼────────────┼────────────────────────────┤
+    │         -3 │   0.0305 │     0.0150 │ [-0.0093,  0.0703]         │
+    │         -2 │  -0.0006 │     0.0133 │ [-0.0357,  0.0346]         │
+    │         -1 │  -0.0245 │     0.0142 │ [-0.0621,  0.0132]         │
+    │          0 │  -0.0199 │     0.0118 │ [-0.0512,  0.0114]         │
+    │          1 │  -0.0510 │     0.0169 │ [-0.0957, -0.0062] *       │
+    │          2 │  -0.1373 │     0.0364 │ [-0.2337, -0.0408] *       │
+    │          3 │  -0.1008 │     0.0344 │ [-0.1918, -0.0099] *       │
+    └────────────┴──────────┴────────────┴────────────────────────────┘
 
     ------------------------------------------------------------------------------
      Signif. codes: '*' confidence band does not cover 0
 
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
      Control Group: Never Treated
      Anticipation Periods: 0
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
      Estimation Method: Doubly Robust
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Analytical standard errors
     ==============================================================================
+     Reference: Callaway and Sant'Anna (2021)
 
 Event time 0 is the year of treatment adoption. Negative event times are
 pre-treatment periods that serve as a placebo test for parallel trends.
 Positive event times show how effects evolve after treatment.
 
-We can see that the estimates at event times -3, -2, and -1 are all close to
+The pre-treatment estimates at event times -3, -2, and -1 are all close to
 zero and statistically insignificant. This is reassuring. If these were large
 or showed a trending pattern, it would suggest treated and control counties
 were already diverging before the policy change, calling into question
@@ -211,26 +249,41 @@ across all post-treatment group-time cells, weighted by group size.
      Aggregate Treatment Effects
     ==============================================================================
 
-     Call:
-       aggte(MP, type='simple')
-
      Overall ATT:
 
-           ATT      Std. Error     [95% Conf. Interval]
-       -0.0400          0.0120     [ -0.0635,  -0.0164] *
+    ┌─────────┬────────────┬────────────────────────┐
+    │     ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├─────────┼────────────┼────────────────────────┤
+    │ -0.0400 │     0.0120 │ [ -0.0635,  -0.0164] * │
+    └─────────┴────────────┴────────────────────────┘
 
     ------------------------------------------------------------------------------
      Signif. codes: '*' confidence band does not cover 0
 
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
      Control Group: Never Treated
      Anticipation Periods: 0
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
      Estimation Method: Doubly Robust
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Analytical standard errors
     ==============================================================================
+     Reference: Callaway and Sant'Anna (2021)
 
 The overall ATT of -0.04 means that minimum wage increases reduced log teen
 employment by about 4 log points (approximately 4 percent) on average across
-all treated counties and post-treatment periods. The confidence interval
-excludes zero, indicating this effect is statistically significant.
+all treated counties and post-treatment periods. The confidence interval of
+[-0.06, -0.02] excludes zero, indicating this effect is statistically
+significant.
 
 This single number is useful for policy summaries but masks the treatment
 effect heterogeneity we saw in the event study. It is generally a good idea to
@@ -256,37 +309,55 @@ heterogeneity.
      Aggregate Treatment Effects (Group/Cohort)
     ==============================================================================
 
-     Call:
-       aggte(MP, type='group')
-
      Overall summary of ATT's based on group/cohort aggregation:
 
-           ATT      Std. Error     [95% Conf. Interval]
-       -0.0310          0.0124     [ -0.0554,  -0.0066] *
+    ┌─────────┬────────────┬────────────────────────┐
+    │     ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├─────────┼────────────┼────────────────────────┤
+    │ -0.0310 │     0.0124 │ [ -0.0554,  -0.0066] * │
+    └─────────┴────────────┴────────────────────────┘
 
 
      Group Effects:
 
-             Group   Estimate   Std. Error   [95% Pointwise Conf. Band]
-              2004    -0.0797       0.0264   [-0.1401, -0.0194] *
-              2006    -0.0229       0.0167   [-0.0611,  0.0153]
-              2007    -0.0261       0.0167   [-0.0641,  0.0120]
+    ┌───────┬──────────┬────────────┬────────────────────────────┐
+    │ Group │ Estimate │ Std. Error │ [95% Pointwise Conf. Band] │
+    ├───────┼──────────┼────────────┼────────────────────────────┤
+    │  2004 │  -0.0797 │     0.0264 │ [-0.1378, -0.0217] *       │
+    │  2006 │  -0.0229 │     0.0167 │ [-0.0597,  0.0139]         │
+    │  2007 │  -0.0261 │     0.0167 │ [-0.0627,  0.0106]         │
+    └───────┴──────────┴────────────┴────────────────────────────┘
 
     ------------------------------------------------------------------------------
      Signif. codes: '*' confidence band does not cover 0
 
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
      Control Group: Never Treated
      Anticipation Periods: 0
-     Estimation Method: Doubly Robust
-    ==============================================================================
 
-The 2004 cohort experienced the largest effect at -0.08, while the 2006 and
-2007 cohorts show effects around -0.02 to -0.03 that are not statistically
-significant. This heterogeneity could arise for several reasons. Early
-adopters may have implemented larger minimum wage increases. They also have
-more post-treatment periods in the data, so their effects have had more time
-to materialize. Or the economic conditions in 2004 may have made employment
-more sensitive to wage floors than in later years.
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+     Estimation Method: Doubly Robust
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Analytical standard errors
+    ==============================================================================
+     Reference: Callaway and Sant'Anna (2021)
+
+The 2004 cohort experienced the largest effect at -0.08, which is
+statistically significant. The 2006 and 2007 cohorts show effects around
+-0.02 to -0.03 that are not statistically significant. This heterogeneity
+could arise for several reasons. Early adopters may have implemented larger
+minimum wage increases. They also have more post-treatment periods in the
+data, so their effects have had more time to materialize. Or the economic
+conditions in 2004 may have made employment more sensitive to wage floors
+than in later years.
 
 When you see this much heterogeneity across cohorts, it is worth considering
 whether a single overall effect tells the full story. Reporting both the event

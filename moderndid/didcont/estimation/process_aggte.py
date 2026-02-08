@@ -8,7 +8,7 @@ import scipy.stats as st
 
 from moderndid.core.preprocess import map_to_idx as _map_to_idx
 
-from .container import PTEAggteResult, PTEResult
+from .container import PTEAggteResult
 from .process_attgt import multiplier_bootstrap
 
 
@@ -525,85 +525,3 @@ def weight_influence_function_from_groups(pg_comp, weights_ind, g_units_idx, gro
     denom_weights = (pg_comp / (denom**2)).reshape(1, -1)
     influence_part2 = row_sum.reshape(-1, 1) @ denom_weights
     return influence_part1 - influence_part2
-
-
-def _format_pte_aggregation_result(result):
-    """Summary of aggregated ATT(g,t) results."""
-    att_gt = result.att_gt_result
-    pte_params = att_gt.pte_params if att_gt else None
-    alpha = float(pte_params.alp) if pte_params else 0.05
-    conf_level = int((1 - alpha) * 100)
-
-    lines = []
-    lines.append("\n" + "=" * 78)
-    header = {
-        "dynamic": "Aggregate Treatment Effects (Event Study)",
-        "group": "Aggregate Treatment Effects (Group/Cohort)",
-        "overall": "Overall Aggregate Treatment Effects",
-    }.get(result.aggregation_type, "Aggregate Treatment Effects")
-    lines.append(f" {header}")
-    lines.append("=" * 78)
-
-    z = st.norm.ppf(1 - alpha / 2)
-    lower_bound = result.overall_att - z * result.overall_se
-    upper_bound = result.overall_att + z * result.overall_se
-    star = "*" if (lower_bound > 0 or upper_bound < 0) else ""
-    effect_label = "ATT"
-    if pte_params and getattr(pte_params, "target_parameter", None) == "slope":
-        effect_label = "ACRT"
-
-    lines.append(f"\nOverall summary of {effect_label}'s:")
-    lines.append(f"\n   {effect_label:<12} {'Std. Error':<12} [{conf_level}% Conf. Interval]")
-    lines.append(
-        f"   {result.overall_att:<12.4f} {result.overall_se:<12.4f} [{lower_bound:7.4f}, {upper_bound:7.4f}] {star}"
-    )
-
-    if result.aggregation_type in {"dynamic", "group"} and result.event_times is not None:
-        lines.append("\n\n")
-        c1 = "Event time" if result.aggregation_type == "dynamic" else "Group"
-        lines.append(f"{c1.capitalize()} Effects:")
-
-        band_type = "Simult." if (pte_params and pte_params.cband) else "Pointwise"
-        lines.append(f"\n  {c1:>12} {'Estimate':>10} {'Std. Error':>12}  [{conf_level}% {band_type} Conf. Band]")
-
-        if result.att_by_event is not None and result.se_by_event is not None and result.critical_value is not None:
-            lower_bound_event = result.att_by_event - result.critical_value * result.se_by_event
-            upper_bound_event = result.att_by_event + result.critical_value * result.se_by_event
-            for i, event_value in enumerate(result.event_times):
-                star = "*" if (lower_bound_event[i] > 0 or upper_bound_event[i] < 0) else ""
-                lines.append(
-                    f"  {event_value:>12} {result.att_by_event[i]:>10.4f} {result.se_by_event[i]:>12.4f}  "
-                    f"[{lower_bound_event[i]:>8.4f}, {upper_bound_event[i]:>8.4f}] {star}"
-                )
-
-    lines.append("\n---")
-    lines.append("Signif. codes: '*' confidence band does not cover 0")
-
-    if pte_params:
-        control_map = {"nevertreated": "Never Treated", "notyettreated": "Not Yet Treated"}
-        control_text = control_map.get(pte_params.control_group, pte_params.control_group)
-        lines.append("\n")
-        lines.append(f"Control Group: {control_text}")
-        lines.append(f"Anticipation Periods: {pte_params.anticipation}")
-        est_method_map = {"dr": "Doubly Robust", "ipw": "Inverse Probability Weighting", "reg": "Outcome Regression"}
-        lines.append(f"Estimation Method: {est_method_map.get(pte_params.gt_type, pte_params.gt_type)}")
-
-    lines.append("=" * 78)
-    return "\n".join(lines)
-
-
-PTEAggteResult.__repr__ = _format_pte_aggregation_result
-PTEAggteResult.__str__ = _format_pte_aggregation_result
-
-
-def _format_pte_result(self):
-    """Format PTEResult by delegating to event_study's string representation."""
-    if self.event_study is not None:
-        return str(self.event_study)
-    if self.overall_att is not None:
-        return str(self.overall_att)
-    return repr(tuple(self))
-
-
-PTEResult.__repr__ = _format_pte_result
-PTEResult.__str__ = _format_pte_result

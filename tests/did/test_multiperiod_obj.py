@@ -129,7 +129,7 @@ def test_mp_formatting():
 
     formatted = format_mp_result(result)
 
-    assert "Group-Time Average Treatment Effects:" in formatted
+    assert "Group-Time Average Treatment Effects" in formatted
     assert "Group" in formatted
     assert "Time" in formatted
     assert "ATT(g,t)" in formatted

@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from moderndid.didtriple.agg_ddd_obj import DDDAggResult, format_ddd_agg_result
+from moderndid.didtriple.agg_ddd_obj import DDDAggResult
+from moderndid.didtriple.format import format_ddd_agg_result
 
 
 @pytest.mark.parametrize(

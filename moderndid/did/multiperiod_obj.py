@@ -157,115 +157,6 @@ def mp(
     )
 
 
-def format_mp_result(result):
-    """Format multi-period results.
-
-    Parameters
-    ----------
-    result : MPResult
-        The multi-period result to format.
-
-    Returns
-    -------
-    str
-        Formatted string representation of the results.
-    """
-    lines = []
-
-    lines.append("")
-
-    if result.estimation_params.get("call_info"):
-        lines.append("Call:")
-        lines.append(f"{result.estimation_params['call_info']}")
-        lines.append("")
-
-    lines.append("Reference: Callaway and Sant'Anna (2021)")
-    lines.append("")
-
-    lines.append("Group-Time Average Treatment Effects:")
-
-    conf_level = int((1 - result.alpha) * 100)
-    bootstrap = result.estimation_params.get("bootstrap", False)
-    uniform_bands = result.estimation_params.get("uniform_bands", False)
-
-    band_type = "Simult." if bootstrap and uniform_bands else "Pointwise"
-
-    band_text = f"[{conf_level}% {band_type} Conf. Band]"
-
-    conf_lower = result.att_gt - result.critical_value * result.se_gt
-    conf_upper = result.att_gt + result.critical_value * result.se_gt
-
-    sig = (conf_upper < 0) | (conf_lower > 0)
-    sig[np.isnan(sig)] = False
-
-    lines.append(f" {'Group':>6} {'Time':>6} {'ATT(g,t)':>10} {'Std. Error':>12}  {band_text}")
-
-    for i, group in enumerate(result.groups):
-        sig_marker = "*" if sig[i] else " "
-        lines.append(
-            f" {group:>6.0f} {result.times[i]:>6.0f} "
-            f"{result.att_gt[i]:>10.4f} {result.se_gt[i]:>12.4f}  "
-            f"[{conf_lower[i]:>8.4f}, {conf_upper[i]:>8.4f}] {sig_marker}"
-        )
-
-    lines.append("---")
-    lines.append("Signif. codes: '*' confidence band does not cover 0")
-    lines.append("")
-
-    if result.wald_pvalue is not None:
-        lines.append(f"P-value for pre-test of parallel trends assumption:  {result.wald_pvalue:.4f}")
-        lines.append("")
-
-    control_group = result.estimation_params.get("control_group")
-    if control_group:
-        control_text = {"nevertreated": "Never Treated", "notyettreated": "Not Yet Treated"}.get(
-            control_group, control_group
-        )
-        lines.append(f"Control Group:  {control_text}")
-
-    anticipation = result.estimation_params.get("anticipation_periods", 0)
-    lines.append(f"Anticipation Periods:  {anticipation}")
-
-    est_method = result.estimation_params.get("estimation_method")
-    if est_method:
-        method_text = {"dr": "Doubly Robust", "ipw": "Inverse Probability Weighting", "reg": "Outcome Regression"}.get(
-            est_method, est_method
-        )
-        lines.append(f"Estimation Method:  {method_text}")
-
-    lines.append("")
-
-    return "\n".join(lines)
-
-
-def summary_mp(result):
-    """Print summary of a multi-period result.
-
-    Parameters
-    ----------
-    result : MPResult
-        The multi-period result to summarize.
-
-    Returns
-    -------
-    str
-        Formatted summary string.
-    """
-    return format_mp_result(result)
-
-
-def _mp_repr(self):
-    return format_mp_result(self)
-
-
-def _mp_str(self):
-    return format_mp_result(self)
-
-
-MPResult.__repr__ = _mp_repr
-MPResult.__str__ = _mp_str
-
-
 class MPPretestResult(NamedTuple):
     """Container for pre-test results of conditional parallel trends assumption.
 
@@ -366,48 +257,20 @@ def mp_pretest(
     )
 
 
-def format_mp_pretest_result(result):
-    """Format pre-test results.
+def summary_mp(result):
+    """Print summary of a multi-period result.
 
     Parameters
     ----------
-    result : MPPretestResult
-        The pre-test result to format.
+    result : MPResult
+        The multi-period result to summarize.
 
     Returns
     -------
     str
-        Formatted string representation of the results.
+        Formatted summary string.
     """
-    lines = []
-
-    lines.append("")
-    lines.append("Pre-test of Conditional Parallel Trends Assumption")
-    lines.append("=" * 50)
-    lines.append("")
-
-    lines.append("Cramer von Mises Test:")
-    lines.append(f"  Test Statistic: {result.cvm_stat:.4f}")
-    lines.append(f"  Critical Value: {result.cvm_critval:.4f}")
-    lines.append(f"  P-value       : {result.cvm_pval:.4f}")
-    lines.append("")
-
-    lines.append("Kolmogorov-Smirnov Test:")
-    lines.append(f"  Test Statistic: {result.ks_stat:.4f}")
-    lines.append(f"  Critical Value: {result.ks_critval:.4f}")
-    lines.append(f"  P-value       : {result.ks_pval:.4f}")
-    lines.append("")
-
-    if result.cluster_vars:
-        cluster_str = ", ".join(result.cluster_vars)
-        lines.append(f"Clustering on: {cluster_str}")
-
-    if result.x_formula:
-        lines.append(f"X formula: {result.x_formula}")
-
-    lines.append("")
-
-    return "\n".join(lines)
+    return str(result)
 
 
 def summary_mp_pretest(result):
@@ -423,16 +286,4 @@ def summary_mp_pretest(result):
     str
         Formatted summary string.
     """
-    return format_mp_pretest_result(result)
-
-
-def _mp_pretest_repr(self):
-    return format_mp_pretest_result(self)
-
-
-def _mp_pretest_str(self):
-    return format_mp_pretest_result(self)
-
-
-MPPretestResult.__repr__ = _mp_pretest_repr
-MPPretestResult.__str__ = _mp_pretest_str
+    return str(result)

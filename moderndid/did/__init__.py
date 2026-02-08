@@ -6,16 +6,15 @@ from typing import Any
 from moderndid.core.preprocess import DIDData, preprocess_did
 
 from .aggte import aggte
-from .aggte_obj import AGGTEResult, format_aggte_result
+from .aggte_obj import AGGTEResult
 from .att_gt import att_gt
 from .compute_aggte import compute_aggte
 from .compute_att_gt import ATTgtResult, ComputeATTgtResult, compute_att_gt
+from .format import format_aggte_result, format_mp_pretest_result, format_mp_result
 from .mboot import mboot
 from .multiperiod_obj import (
     MPPretestResult,
     MPResult,
-    format_mp_pretest_result,
-    format_mp_result,
     mp,
     mp_pretest,
     summary_mp_pretest,
