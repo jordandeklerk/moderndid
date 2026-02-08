@@ -10,6 +10,7 @@ import polars as pl
 from scipy import stats
 
 from moderndid.core.dataframe import to_polars
+from moderndid.core.parallel import parallel_map
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from .ddd_mp import _gmm_aggregate
@@ -85,6 +86,7 @@ def ddd_mp_rc(
     alpha=0.05,
     trim_level=0.995,
     random_state=None,
+    n_jobs=1,
 ):
     r"""Compute the multi-period doubly robust DDD estimator for the ATT with repeated cross-section data.
 
@@ -169,6 +171,9 @@ def ddd_mp_rc(
         Trimming level for propensity scores.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
+    n_jobs : int, default=1
+        Number of parallel jobs for group-time estimation. 1 = sequential
+        (default), -1 = all cores, >1 = that many workers.
 
     Returns
     -------
@@ -215,39 +220,49 @@ def ddd_mp_rc(
     tfac = 0 if base_period == "universal" else 1
     tlist_length = n_periods - tfac
 
-    attgt_list = []
     inf_func_mat = np.zeros((n_obs, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
     data_with_idx = data.with_columns(pl.Series("_obs_idx", np.arange(len(data))))
 
-    counter = 0
-
+    args_list = []
     for g in glist:
         for t_idx in range(tlist_length):
             t = tlist[t_idx + tfac]
-            counter = _process_gt_cell_rc(
-                data=data_with_idx,
-                g=g,
-                t=t,
-                t_idx=t_idx,
-                tlist=tlist,
-                base_period=base_period,
-                control_group=control_group,
-                y_col=y_col,
-                time_col=time_col,
-                _id_col=id_col,
-                group_col=group_col,
-                partition_col=partition_col,
-                covariate_cols=covariate_cols,
-                est_method=est_method,
-                trim_level=trim_level,
-                n_obs=n_obs,
-                attgt_list=attgt_list,
-                inf_func_mat=inf_func_mat,
-                se_array=se_array,
-                counter=counter,
+            args_list.append(
+                (
+                    data_with_idx,
+                    g,
+                    t,
+                    t_idx,
+                    tlist,
+                    base_period,
+                    control_group,
+                    y_col,
+                    time_col,
+                    id_col,
+                    group_col,
+                    partition_col,
+                    covariate_cols,
+                    est_method,
+                    trim_level,
+                    n_obs,
+                )
             )
+
+    cell_results = parallel_map(_process_gt_cell_rc, args_list, n_jobs=n_jobs)
+
+    attgt_list = []
+    for counter, result in enumerate(cell_results):
+        if result is not None:
+            att_entry, inf_data, se_val = result
+            if att_entry is not None:
+                attgt_list.append(att_entry)
+                if inf_data is not None:
+                    inf_func_scaled, obs_indices = inf_data
+                    _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter)
+                if se_val is not None:
+                    se_array[counter] = se_val
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
@@ -337,33 +352,34 @@ def _process_gt_cell_rc(
     est_method,
     trim_level,
     n_obs,
-    attgt_list,
-    inf_func_mat,
-    se_array,
-    counter,
 ):
-    """Process a single (g,t) cell and update results for RCS."""
+    """Process a single (g,t) cell and return results for RCS.
+
+    Returns
+    -------
+    tuple or None
+        (ATTgtRCResult, (inf_func_scaled, obs_indices) or None, se or None),
+        or None if cell is skipped entirely.
+    """
     pret = _get_base_period_rc(g, t_idx, tlist, base_period)
     if pret is None:
         warnings.warn(f"No pre-treatment periods for group {g}. Skipping.", UserWarning)
-        return counter + 1
+        return None
 
     post_treat = int(g <= t)
     if post_treat:
         pre_periods = tlist[tlist < g]
         if len(pre_periods) == 0:
-            return counter + 1
+            return None
         pret = pre_periods[-1]
 
     if base_period == "universal" and pret == t:
-        attgt_list.append(ATTgtRCResult(att=0.0, group=int(g), time=int(t), post=0))
-        inf_func_mat[:, counter] = 0.0
-        return counter + 1
+        return (ATTgtRCResult(att=0.0, group=int(g), time=int(t), post=0), None, None)
 
     cell_data, available_controls = _get_cell_data_rc(data, g, t, pret, control_group, time_col, group_col)
 
     if cell_data is None or len(available_controls) == 0:
-        return counter + 1
+        return None
 
     n_cell = len(cell_data)
 
@@ -385,8 +401,12 @@ def _process_gt_cell_rc(
         )
         att_result, inf_func_scaled, obs_indices = result
         if att_result is not None:
-            attgt_list.append(ATTgtRCResult(att=att_result, group=int(g), time=int(t), post=post_treat))
-            _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter)
+            return (
+                ATTgtRCResult(att=att_result, group=int(g), time=int(t), post=post_treat),
+                (inf_func_scaled, obs_indices),
+                None,
+            )
+        return None
     else:
         result = _process_multiple_controls_rc(
             cell_data,
@@ -406,11 +426,12 @@ def _process_gt_cell_rc(
         )
         if result[0] is not None:
             att_gmm, inf_func_scaled, obs_indices, se_gmm = result
-            attgt_list.append(ATTgtRCResult(att=att_gmm, group=int(g), time=int(t), post=post_treat))
-            _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter)
-            se_array[counter] = se_gmm
-
-    return counter + 1
+            return (
+                ATTgtRCResult(att=att_gmm, group=int(g), time=int(t), post=post_treat),
+                (inf_func_scaled, obs_indices),
+                se_gmm,
+            )
+        return None
 
 
 def _get_base_period_rc(g, t_idx, tlist, base_period):

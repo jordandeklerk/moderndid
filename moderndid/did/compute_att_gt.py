@@ -8,6 +8,7 @@ from typing import NamedTuple
 import numpy as np
 import scipy.sparse as sp
 
+from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess import ControlGroup, DIDData, EstimationMethod
 from moderndid.drdid.estimators.drdid_panel import drdid_panel
 from moderndid.drdid.estimators.drdid_rc import drdid_rc
@@ -33,13 +34,15 @@ class ComputeATTgtResult(NamedTuple):
     influence_functions: sp.csr_matrix
 
 
-def compute_att_gt(data: DIDData):
+def compute_att_gt(data: DIDData, n_jobs=1):
     """Compute group-time average treatment effects.
 
     Parameters
     ----------
     data : DIDData
         Preprocessed DiD data object containing all necessary data and configuration.
+    n_jobs : int, default=1
+        Number of parallel jobs. 1 = sequential, -1 = all cores, >1 = that many workers.
 
     Returns
     -------
@@ -50,48 +53,19 @@ def compute_att_gt(data: DIDData):
     time_periods = data.config.time_periods
 
     n_time_periods = len(time_periods) - 1 if data.config.base_period != "universal" else len(time_periods)
-    time_factor = 1 if data.config.base_period != "universal" else 0
 
     group_time_pairs = [(g, t) for g in range(data.config.treated_groups_count) for t in range(n_time_periods)]
+
+    args_list = [(g_idx, t_idx, data) for g_idx, t_idx in group_time_pairs]
+    cell_results = parallel_map(_process_gt_cell_did, args_list, n_jobs=n_jobs)
 
     att_results = []
     influence_func_list = []
 
-    for group_idx, time_idx in group_time_pairs:
-        estimation_result = run_att_gt_estimation(group_idx, time_idx, data)
-
-        is_post_treatment = int(
-            data.config.treated_groups[group_idx] <= data.config.time_periods[time_idx + time_factor]
-        )
-
-        if estimation_result is None or estimation_result["att"] is None:
-            if data.config.base_period == "universal":
-                att_results.append(
-                    ATTgtResult(
-                        att=0.0,
-                        group=data.config.treated_groups[group_idx],
-                        year=data.config.time_periods[time_idx + time_factor],
-                        post=is_post_treatment,
-                    )
-                )
-                influence_func_list.append(np.zeros(n_units))
-        else:
-            att_estimate = estimation_result["att"]
-            influence_func = estimation_result["inf_func"]
-
-            if np.isnan(att_estimate):
-                att_estimate = 0.0
-                influence_func = np.zeros(n_units)
-
-            att_results.append(
-                ATTgtResult(
-                    att=att_estimate,
-                    group=data.config.treated_groups[group_idx],
-                    year=data.config.time_periods[time_idx + time_factor],
-                    post=is_post_treatment,
-                )
-            )
-            influence_func_list.append(influence_func)
+    for att_result, inf_func in cell_results:
+        if att_result is not None:
+            att_results.append(att_result)
+            influence_func_list.append(inf_func)
 
     if influence_func_list:
         influence_matrix = np.column_stack(influence_func_list)
@@ -393,3 +367,48 @@ def run_drdid(
             influence_func[valid_obs] = (n / valid_obs.sum()) * result.att_inf_func
 
     return {"att": result.att, "inf_func": influence_func}
+
+
+def _process_gt_cell_did(group_idx, time_idx, data):
+    """Process a single (group, time) cell for DiD estimation.
+
+    Returns
+    -------
+    tuple of (ATTgtResult or None, ndarray or None)
+    """
+    n_units = data.config.id_count
+    time_factor = 1 if data.config.base_period != "universal" else 0
+
+    estimation_result = run_att_gt_estimation(group_idx, time_idx, data)
+
+    is_post_treatment = int(data.config.treated_groups[group_idx] <= data.config.time_periods[time_idx + time_factor])
+
+    if estimation_result is None or estimation_result["att"] is None:
+        if data.config.base_period == "universal":
+            return (
+                ATTgtResult(
+                    att=0.0,
+                    group=data.config.treated_groups[group_idx],
+                    year=data.config.time_periods[time_idx + time_factor],
+                    post=is_post_treatment,
+                ),
+                np.zeros(n_units),
+            )
+        return (None, None)
+
+    att_estimate = estimation_result["att"]
+    influence_func = estimation_result["inf_func"]
+
+    if np.isnan(att_estimate):
+        att_estimate = 0.0
+        influence_func = np.zeros(n_units)
+
+    return (
+        ATTgtResult(
+            att=att_estimate,
+            group=data.config.treated_groups[group_idx],
+            year=data.config.time_periods[time_idx + time_factor],
+            post=is_post_treatment,
+        ),
+        influence_func,
+    )

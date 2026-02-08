@@ -80,7 +80,7 @@ result <- att_gt(
   base_period = "{base_period}",
   anticipation = {anticipation},
   panel = {str(panel).upper()},
-  boot = FALSE
+  bstrap = FALSE
 )
 
 out <- list(
@@ -121,7 +121,7 @@ result <- att_gt(
   data = data,
   est_method = "{est_method}",
   control_group = "nevertreated",
-  boot = TRUE,
+  bstrap = TRUE,
   biters = {biters},
   cband = {str(cband).upper()}
 )
@@ -166,7 +166,7 @@ mp_result <- att_gt(
   data = data,
   est_method = "{est_method}",
   control_group = "nevertreated",
-  boot = FALSE
+  bstrap = FALSE
 )
 
 agg_result <- aggte(
@@ -176,7 +176,7 @@ agg_result <- aggte(
   min_e = {min_e_str},
   max_e = {max_e_str},
   na.rm = {na_rm_str},
-  boot = FALSE
+  bstrap = FALSE
 )
 
 if ("{agg_type}" == "simple") {{
@@ -223,7 +223,7 @@ mp_result <- att_gt(
   data = data,
   est_method = "dr",
   control_group = "nevertreated",
-  boot = TRUE,
+  bstrap = TRUE,
   biters = {biters},
   cband = {str(cband).upper()}
 )
@@ -231,7 +231,7 @@ mp_result <- att_gt(
 agg_result <- aggte(
   mp_result,
   type = "{agg_type}",
-  boot = TRUE,
+  bstrap = TRUE,
   biters = {biters},
   cband = {str(cband).upper()}
 )

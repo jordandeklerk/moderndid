@@ -10,6 +10,7 @@ import polars as pl
 from scipy import stats
 
 from moderndid.core.dataframe import to_polars
+from moderndid.core.parallel import parallel_map
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from .ddd_panel import ddd_panel
@@ -86,6 +87,7 @@ def ddd_mp(
     cluster=None,
     alpha=0.05,
     random_state=None,
+    n_jobs=1,
 ):
     r"""Compute the multi-period doubly robust DDD estimator for the ATT with panel data.
 
@@ -171,6 +173,9 @@ def ddd_mp(
         Significance level for confidence intervals.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
+    n_jobs : int, default=1
+        Number of parallel jobs for group-time estimation. 1 = sequential
+        (default), -1 = all cores, >1 = that many workers.
 
     Returns
     -------
@@ -226,40 +231,49 @@ def ddd_mp(
     tfac = 0 if base_period == "universal" else 1
     tlist_length = n_periods - tfac
 
-    attgt_list = []
     inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
     unique_ids = data[id_col].unique().to_numpy()
     id_to_idx = {uid: idx for idx, uid in enumerate(unique_ids)}
 
-    counter = 0
-
+    args_list = []
     for g in glist:
         for t_idx in range(tlist_length):
             t = tlist[t_idx + tfac]
-            counter = _process_gt_cell(
-                data,
-                g,
-                t,
-                t_idx,
-                tlist,
-                base_period,
-                control_group,
-                y_col,
-                time_col,
-                id_col,
-                group_col,
-                partition_col,
-                covariate_cols,
-                est_method,
-                n_units,
-                attgt_list,
-                inf_func_mat,
-                se_array,
-                id_to_idx,
-                counter,
+            args_list.append(
+                (
+                    data,
+                    g,
+                    t,
+                    t_idx,
+                    tlist,
+                    base_period,
+                    control_group,
+                    y_col,
+                    time_col,
+                    id_col,
+                    group_col,
+                    partition_col,
+                    covariate_cols,
+                    est_method,
+                    n_units,
+                )
             )
+
+    cell_results = parallel_map(_process_gt_cell, args_list, n_jobs=n_jobs)
+
+    attgt_list = []
+    for counter, result in enumerate(cell_results):
+        if result is not None:
+            att_entry, inf_data, se_val = result
+            if att_entry is not None:
+                attgt_list.append(att_entry)
+                if inf_data is not None:
+                    inf_func_scaled, cell_id_list = inf_data
+                    _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter)
+                if se_val is not None:
+                    se_array[counter] = se_val
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
@@ -353,34 +367,34 @@ def _process_gt_cell(
     covariate_cols,
     est_method,
     n_units,
-    attgt_list,
-    inf_func_mat,
-    se_array,
-    id_to_idx,
-    counter,
 ):
-    """Process a single (g,t) cell and update results."""
+    """Process a single (g,t) cell and return results.
+
+    Returns
+    -------
+    tuple or None
+        (ATTgtResult, (inf_func_scaled, cell_id_list) or None, se or None),
+        or None if cell is skipped entirely.
+    """
     pret = _get_base_period(g, t_idx, tlist, base_period)
     if pret is None:
         warnings.warn(f"No pre-treatment periods for group {g}. Skipping.", UserWarning)
-        return counter + 1
+        return None
 
     post_treat = int(g <= t)
     if post_treat:
         pre_periods = tlist[tlist < g]
         if len(pre_periods) == 0:
-            return counter + 1
+            return None
         pret = pre_periods[-1]
 
     if base_period == "universal" and pret == t:
-        attgt_list.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
-        inf_func_mat[:, counter] = 0.0
-        return counter + 1
+        return (ATTgtResult(att=0.0, group=int(g), time=int(t), post=0), None, None)
 
     cell_data, available_controls = _get_cell_data(data, g, t, pret, control_group, time_col, group_col)
 
     if cell_data is None or len(available_controls) == 0:
-        return counter + 1
+        return None
 
     n_cell = cell_data[id_col].n_unique()
 
@@ -402,8 +416,12 @@ def _process_gt_cell(
         )
         att_result, inf_func_scaled, cell_id_list = result
         if att_result is not None:
-            attgt_list.append(ATTgtResult(att=att_result, group=int(g), time=int(t), post=post_treat))
-            _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter)
+            return (
+                ATTgtResult(att=att_result, group=int(g), time=int(t), post=post_treat),
+                (inf_func_scaled, cell_id_list),
+                None,
+            )
+        return None
     else:
         result = _process_multiple_controls(
             cell_data,
@@ -423,11 +441,12 @@ def _process_gt_cell(
         )
         if result[0] is not None:
             att_gmm, inf_func_scaled, cell_id_list, se_gmm = result
-            attgt_list.append(ATTgtResult(att=att_gmm, group=int(g), time=int(t), post=post_treat))
-            _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter)
-            se_array[counter] = se_gmm
-
-    return counter + 1
+            return (
+                ATTgtResult(att=att_gmm, group=int(g), time=int(t), post=post_treat),
+                (inf_func_scaled, cell_id_list),
+                se_gmm,
+            )
+        return None
 
 
 def _get_base_period(g, t_idx, tlist, base_period):

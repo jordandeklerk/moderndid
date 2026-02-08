@@ -571,6 +571,81 @@ def test_influence_function_aggregation(mpdta_data):
     assert len(result["inf_func"]) <= n_units
 
 
+@pytest.mark.parametrize(
+    "base_period,control_group",
+    [("varying", "nevertreated"), ("universal", "nevertreated"), ("varying", "notyettreated")],
+)
+def test_compute_att_gt_parallel_matches_sequential(mpdta_data, base_period, control_group):
+    data = preprocess_did(
+        mpdta_data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~lpop",
+        panel=True,
+        control_group=control_group,
+        base_period=base_period,
+    )
+
+    result_seq = compute_att_gt(data, n_jobs=1)
+    result_par = compute_att_gt(data, n_jobs=2)
+
+    assert len(result_seq.attgt_list) == len(result_par.attgt_list)
+
+    for r1, r2 in zip(result_seq.attgt_list, result_par.attgt_list):
+        np.testing.assert_allclose(r1.att, r2.att, rtol=1e-10)
+        assert r1.group == r2.group
+        assert r1.year == r2.year
+        assert r1.post == r2.post
+
+    inf_seq = result_seq.influence_functions.toarray()
+    inf_par = result_par.influence_functions.toarray()
+    np.testing.assert_allclose(inf_seq, inf_par, rtol=1e-10)
+
+
+@pytest.fixture
+def _preprocessed_panel(mpdta_data):
+    return preprocess_did(
+        mpdta_data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~lpop",
+        panel=True,
+        control_group="nevertreated",
+        base_period="varying",
+    )
+
+
+def _check_att_gt_result(result, n_ids):
+    assert isinstance(result, ComputeATTgtResult)
+    assert len(result.attgt_list) > 0
+    for r in result.attgt_list:
+        assert isinstance(r, ATTgtResult)
+        assert np.isfinite(r.att)
+        assert r.post in (0, 1)
+    assert isinstance(result.influence_functions, sp.csr_matrix)
+    assert result.influence_functions.shape == (n_ids, len(result.attgt_list))
+
+
+@pytest.mark.benchmark
+def test_benchmark_compute_att_gt_sequential(benchmark, _preprocessed_panel):
+    result = benchmark.pedantic(
+        compute_att_gt, args=(_preprocessed_panel,), kwargs={"n_jobs": 1}, rounds=3, warmup_rounds=1
+    )
+    _check_att_gt_result(result, _preprocessed_panel.config.id_count)
+
+
+@pytest.mark.benchmark
+def test_benchmark_compute_att_gt_parallel(benchmark, _preprocessed_panel):
+    result = benchmark.pedantic(
+        compute_att_gt, args=(_preprocessed_panel,), kwargs={"n_jobs": -1}, rounds=3, warmup_rounds=1
+    )
+    _check_att_gt_result(result, _preprocessed_panel.config.id_count)
+
+
 def test_no_variation_in_treatment_timing():
     n = 100
     n_periods = 4

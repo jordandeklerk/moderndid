@@ -41,6 +41,7 @@ def att_gt(
     anticipation=0,
     base_period="varying",
     random_state=None,
+    n_jobs=1,
 ):
     r"""Compute group-time average treatment effects.
 
@@ -151,6 +152,9 @@ def att_gt(
         Controls the randomness of the bootstrap. Pass an int for reproducible
         results across multiple function calls. Can also accept a NumPy
         ``Generator`` instance.
+    n_jobs : int, default=1
+        Number of parallel jobs for group-time estimation. 1 = sequential
+        (default), -1 = all cores, >1 = that many workers.
 
     Returns
     -------
@@ -243,7 +247,7 @@ def att_gt(
 
     builder = PreprocessDataBuilder()
     dp = builder.with_data(data).with_config(config).validate().transform().build()
-    results = compute_att_gt(dp)
+    results = compute_att_gt(dp, n_jobs=n_jobs)
 
     att_gt_list = results.attgt_list
     influence_functions = results.influence_functions

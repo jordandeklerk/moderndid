@@ -202,3 +202,70 @@ def test_ddd_mp_reproducibility(mp_ddd_data):
     )
 
     np.testing.assert_allclose(result1.se, result2.se, equal_nan=True)
+
+
+def _ddd_mp_kwargs(data, n_jobs):
+    return {
+        "data": data,
+        "y_col": "y",
+        "time_col": "time",
+        "id_col": "id",
+        "group_col": "group",
+        "partition_col": "partition",
+        "n_jobs": n_jobs,
+    }
+
+
+def _check_ddd_mp_result(result, data):
+    assert len(result.att) > 0
+    assert len(result.att) == len(result.se)
+    assert len(result.att) == len(result.groups)
+    assert len(result.att) == len(result.times)
+    assert result.n == data["id"].n_unique()
+    assert result.inf_func_mat.shape == (result.n, len(result.att))
+    valid = ~np.isnan(result.se)
+    assert np.all(result.lci[valid] < result.att[valid])
+    assert np.all(result.att[valid] < result.uci[valid])
+
+
+@pytest.mark.benchmark
+def test_benchmark_ddd_mp_sequential(benchmark, mp_ddd_data):
+    result = benchmark.pedantic(ddd_mp, kwargs=_ddd_mp_kwargs(mp_ddd_data, n_jobs=1), rounds=3, warmup_rounds=1)
+    _check_ddd_mp_result(result, mp_ddd_data)
+
+
+@pytest.mark.benchmark
+def test_benchmark_ddd_mp_parallel(benchmark, mp_ddd_data):
+    result = benchmark.pedantic(ddd_mp, kwargs=_ddd_mp_kwargs(mp_ddd_data, n_jobs=-1), rounds=3, warmup_rounds=1)
+    _check_ddd_mp_result(result, mp_ddd_data)
+
+
+@pytest.mark.parametrize("base_period", ["universal", "varying"])
+def test_ddd_mp_parallel_matches_sequential(mp_ddd_data, base_period):
+    result_seq = ddd_mp(
+        data=mp_ddd_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        base_period=base_period,
+        n_jobs=1,
+    )
+
+    result_par = ddd_mp(
+        data=mp_ddd_data,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        base_period=base_period,
+        n_jobs=2,
+    )
+
+    np.testing.assert_allclose(result_seq.att, result_par.att, rtol=1e-10)
+    np.testing.assert_array_equal(result_seq.groups, result_par.groups)
+    np.testing.assert_array_equal(result_seq.times, result_par.times)
+    np.testing.assert_allclose(result_seq.se, result_par.se, rtol=1e-10, equal_nan=True)
+    np.testing.assert_allclose(result_seq.inf_func_mat, result_par.inf_func_mat, rtol=1e-10)

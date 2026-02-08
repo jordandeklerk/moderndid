@@ -508,6 +508,36 @@ When writing Numba functions, avoid Python objects and stick to NumPy arrays
 and scalar types. Numba works best with simple numerical code. If you need
 complex logic, keep it in pure Python and only JIT-compile the hot loops.
 
+Thread-Based Parallelism
+------------------------
+
+Estimators that loop over group-time cells can use the ``parallel_map``
+utility in ``moderndid.core.parallel`` to distribute work across threads.
+Threads work well here because the per-cell computation is dominated by
+NumPy, SciPy, and statsmodels C extensions that release the GIL. This
+avoids the serialization overhead of multiprocessing while still achieving
+concurrency.
+
+.. code-block:: python
+
+   from moderndid.core.parallel import parallel_map
+
+   # Build a list of argument tuples, one per group-time cell
+   args_list = [
+       (group_idx, time_idx, data)
+       for group_idx in range(n_groups)
+       for time_idx in range(n_times)
+   ]
+
+   # Run sequentially or in parallel depending on n_jobs
+   results = parallel_map(estimate_single_cell, args_list, n_jobs=n_jobs)
+
+The ``n_jobs`` parameter follows scikit-learn conventions: ``1`` runs
+sequentially, ``-1`` uses all available cores, and any value ``> 1`` uses
+that many worker threads. Expose ``n_jobs`` as a parameter on your
+estimator function with a default of ``1`` so that sequential execution
+remains the default and parallelism is opt-in.
+
 The Formatting System
 =====================
 
@@ -707,6 +737,7 @@ understand the preprocessing pipeline to use your estimator.
        xformla: str = "~1",
        my_special_param: float = 1.0,
        alp: float = 0.05,
+       n_jobs: int = 1,
    ) -> MyEstimatorResult:
        # 1. Build configuration
        config = MyEstimatorConfig(
@@ -729,8 +760,8 @@ understand the preprocessing pipeline to use your estimator.
            .build()
        )
 
-       # 3. Perform estimation
-       att, se, influence_func = _compute_estimates(preprocessed)
+       # 3. Perform estimation (use parallel_map for group-time loops)
+       att, se, influence_func = _compute_estimates(preprocessed, n_jobs=n_jobs)
 
        # 4. Return result
        return MyEstimatorResult(
@@ -749,9 +780,16 @@ understand the preprocessing pipeline to use your estimator.
        )
 
 
-   def _compute_estimates(data):
-       # Implementation details...
-       pass
+   def _compute_estimates(data, n_jobs=1):
+       from moderndid.core.parallel import parallel_map
+
+       args_list = [
+           (group_idx, time_idx, data)
+           for group_idx in range(len(data.config.treated_groups))
+           for time_idx in range(len(data.config.time_periods))
+       ]
+       results = parallel_map(_estimate_single_cell, args_list, n_jobs=n_jobs)
+       # ... collect results into arrays ...
 
 Step 4: Add Formatted Output
 -----------------------------
