@@ -91,7 +91,7 @@ See [GPU benchmark results](scripts/README.md) for performance comparisons acros
 
 ### Consistent API
 
-All estimators share a unified interface, making it easy to switch between methods:
+All estimators share a unified interface for core parameters, making it easy to switch between methods:
 
 ```python
 # Staggered DiD
@@ -274,6 +274,21 @@ did.plot_event_study(event_study)
 ```
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="Event study plot">
+
+## Common Troubleshooting for GPU
+
+If `set_backend("cupy")` raises **`CuPy is not installed`**, the most common cause is installing the generic `cupy` package, which tries to compile from source. Instead, install a prebuilt wheel that matches your CUDA driver version:
+
+```bash
+uv pip install cupy-cuda12x   # CUDA 12.x
+uv pip install cupy-cuda11x   # CUDA 11.x
+```
+
+Run `nvidia-smi` to check which CUDA version your driver supports. After installing, restart your Python process (or notebook runtime) before importing moderndid (CuPy availability is checked once at import time).
+
+If you see **`cudaErrorInsufficientDriver`**, the installed CuPy wheel expects a newer CUDA version than your driver provides. Check `nvidia-smi` and switch to the matching wheel.
+
+If you see **`No CUDA GPU is available`**, make sure `nvidia-smi` shows a device. In cloud notebooks, verify that a GPU runtime is selected.
 
 ## Available Methods
 
