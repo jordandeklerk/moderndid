@@ -6,6 +6,8 @@ from typing import NamedTuple
 import numpy as np
 from scipy import stats
 
+from moderndid.cupy.backend import get_backend, to_numpy
+
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_drdid_imp_panel
 from ..propensity.pscore_ipt import calculate_pscore_ipt
@@ -115,26 +117,29 @@ def drdid_imp_panel(
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
+    xp = get_backend()
     y1, y0, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights)
 
     delta_y = y1 - y0
 
     pscore_ipt_results = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
-    ps_fit = np.clip(pscore_ipt_results, 1e-6, 1 - 1e-6)
+    ps_fit = xp.clip(xp.asarray(pscore_ipt_results), 1e-6, 1 - 1e-6)
 
-    trim_ps = np.ones(n_units, dtype=bool)
+    trim_ps = xp.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
     outcome_reg = wols_panel(delta_y=delta_y, d=d, x=covariates, ps=ps_fit, i_weights=i_weights)
     out_delta = outcome_reg.out_reg
 
     dr_att_summand_num = trim_ps * (1 - (1 - d) / (1 - ps_fit)) * (delta_y - out_delta)
-    dr_att = np.mean(i_weights * dr_att_summand_num) / np.mean(d * i_weights)
+    dr_att = xp.mean(i_weights * dr_att_summand_num) / xp.mean(d * i_weights)
 
-    mean_d_weights = np.mean(d * i_weights)
+    mean_d_weights = xp.mean(d * i_weights)
     att_inf_func = i_weights * trim_ps * (dr_att_summand_num - d * dr_att) / mean_d_weights
 
-    # Inference
+    att_inf_func = to_numpy(att_inf_func)
+    dr_att = float(dr_att)
+
     dr_boot = None
     if not boot:
         se_dr_att = np.std(att_inf_func, ddof=1) * np.sqrt(n_units - 1) / n_units
@@ -198,21 +203,22 @@ def _validate_and_preprocess_inputs(
     i_weights,
 ):
     """Validate and preprocess input arrays."""
-    d = np.asarray(d).flatten()
+    xp = get_backend()
+    d = xp.asarray(d).flatten()
     n_units = len(d)
 
-    y1 = np.asarray(y1).flatten()
-    y0 = np.asarray(y0).flatten()
+    y1 = xp.asarray(y1).flatten()
+    y0 = xp.asarray(y0).flatten()
 
-    covariates = np.ones((n_units, 1)) if covariates is None else np.asarray(covariates)
+    covariates = xp.ones((n_units, 1)) if covariates is None else xp.asarray(covariates)
 
     if i_weights is None:
-        i_weights = np.ones(n_units)
+        i_weights = xp.ones(n_units)
     else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
+        i_weights = xp.asarray(i_weights).flatten()
+        if xp.any(i_weights < 0):
             raise ValueError("i_weights must be non-negative.")
 
-    i_weights /= np.mean(i_weights)
+    i_weights /= xp.mean(i_weights)
 
     return y1, y0, d, covariates, i_weights, n_units
