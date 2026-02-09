@@ -304,21 +304,21 @@ def _verify_ddd_mp():
     gpu = ddd_mp(**kwargs)
     set_backend("numpy")
 
-    max_att = float(np.max(np.abs(cpu.att_gt - gpu.att_gt)))
-    max_se = float(np.max(np.abs(np.nan_to_num(cpu.se_gt) - np.nan_to_num(gpu.se_gt))))
+    max_att = float(np.max(np.abs(cpu.att - gpu.att)))
+    max_se = float(np.max(np.abs(np.nan_to_num(cpu.se) - np.nan_to_num(gpu.se))))
 
     log.info("%-12s %10s %10s %10s %10s", "(g,t)", "CPU ATT", "GPU ATT", "CPU SE", "GPU SE")
     log.info("-" * 54)
-    for i in range(len(cpu.att_gt)):
+    for i in range(len(cpu.att)):
         g, t = int(cpu.groups[i]), int(cpu.times[i])
         log.info(
             "(%d,%d)  %10.6f  %10.6f  %10.6f  %10.6f",
             g,
             t,
-            cpu.att_gt[i],
-            gpu.att_gt[i],
-            cpu.se_gt[i],
-            gpu.se_gt[i],
+            cpu.att[i],
+            gpu.att[i],
+            cpu.se[i],
+            gpu.se[i],
         )
 
     atol = 1e-6
