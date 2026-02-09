@@ -7,6 +7,9 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.core.backend import get_backend, to_numpy
+from moderndid.core.gpu import gpu_logistic_irls
+
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc import wboot_drdid_rc2
 from .wols import ols_rc
@@ -242,20 +245,36 @@ def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
 
 def _compute_propensity_score(d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
-    try:
-        pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
-
-        pscore_results = pscore_model.fit()
-        if not pscore_results.converged:
-            warnings.warn("Propensity score estimation did not converge.", UserWarning)
-        if np.any(np.isnan(pscore_results.params)):
-            raise ValueError(
-                "Propensity score model coefficients have NA components. \n "
-                "Multicollinearity (or lack of variation) of covariates is a likely reason."
+    xp = get_backend()
+    if xp is not np:
+        try:
+            beta, ps_fit = gpu_logistic_irls(
+                xp.asarray(d, dtype=xp.float64),
+                xp.asarray(covariates, dtype=xp.float64),
+                xp.asarray(i_weights, dtype=xp.float64),
             )
-        ps_fit = pscore_results.predict(covariates)
-    except np.linalg.LinAlgError as e:
-        raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
+            ps_fit = to_numpy(ps_fit)
+            if np.any(np.isnan(to_numpy(beta))):
+                raise ValueError(
+                    "Propensity score model coefficients have NA components. \n "
+                    "Multicollinearity (or lack of variation) of covariates is a likely reason."
+                )
+        except (np.linalg.LinAlgError, RuntimeError) as e:
+            raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
+    else:
+        try:
+            pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+            pscore_results = pscore_model.fit()
+            if not pscore_results.converged:
+                warnings.warn("Propensity score estimation did not converge.", UserWarning)
+            if np.any(np.isnan(pscore_results.params)):
+                raise ValueError(
+                    "Propensity score model coefficients have NA components. \n "
+                    "Multicollinearity (or lack of variation) of covariates is a likely reason."
+                )
+            ps_fit = pscore_results.predict(covariates)
+        except np.linalg.LinAlgError as e:
+            raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
     return ps_fit
@@ -357,58 +376,60 @@ def _get_influence_quantities(
     n_units,
 ):
     """Compute quantities needed for influence function."""
+    xp = get_backend()
+
     # Asymptotic linear representation of OLS parameters in pre-period, control group
     weights_ols_pre = i_weights * (1 - d) * (1 - post)
-    weighted_x_pre = weights_ols_pre[:, np.newaxis] * covariates
-    weighted_resid_x_pre = (weights_ols_pre * (y - out_y_cont_pre))[:, np.newaxis] * covariates
+    weighted_x_pre = weights_ols_pre[:, xp.newaxis] * covariates
+    weighted_resid_x_pre = (weights_ols_pre * (y - out_y_cont_pre))[:, xp.newaxis] * covariates
     gram_pre = (weighted_x_pre.T @ covariates) / n_units
 
-    if np.linalg.cond(gram_pre) > 1 / np.finfo(float).eps:
+    if xp.linalg.cond(gram_pre) > 1 / xp.finfo(float).eps:
         raise np.linalg.LinAlgError("Singular matrix in pre-period control group OLS.")
 
-    gram_inv_pre = np.linalg.inv(gram_pre)
+    gram_inv_pre = xp.linalg.inv(gram_pre)
     asy_lin_rep_ols_pre = weighted_resid_x_pre @ gram_inv_pre
 
     # Asymptotic linear representation of OLS parameters in post-period, control group
     weights_ols_post = i_weights * (1 - d) * post
-    weighted_x_post = weights_ols_post[:, np.newaxis] * covariates
-    weighted_resid_x_post = (weights_ols_post * (y - out_y_cont_post))[:, np.newaxis] * covariates
+    weighted_x_post = weights_ols_post[:, xp.newaxis] * covariates
+    weighted_resid_x_post = (weights_ols_post * (y - out_y_cont_post))[:, xp.newaxis] * covariates
     gram_post = (weighted_x_post.T @ covariates) / n_units
 
-    if np.linalg.cond(gram_post) > 1 / np.finfo(float).eps:
+    if xp.linalg.cond(gram_post) > 1 / xp.finfo(float).eps:
         raise np.linalg.LinAlgError("Singular matrix in post-period control group OLS.")
 
-    gram_inv_post = np.linalg.inv(gram_post)
+    gram_inv_post = xp.linalg.inv(gram_post)
     asy_lin_rep_ols_post = weighted_resid_x_post @ gram_inv_post
 
     # Asymptotic linear representation of OLS parameters in pre-period, treated
     weights_ols_pre_treat = i_weights * d * (1 - post)
-    weighted_x_pre_treat = weights_ols_pre_treat[:, np.newaxis] * covariates
-    weighted_resid_x_pre_treat = (weights_ols_pre_treat * (y - out_y_treat_pre))[:, np.newaxis] * covariates
+    weighted_x_pre_treat = weights_ols_pre_treat[:, xp.newaxis] * covariates
+    weighted_resid_x_pre_treat = (weights_ols_pre_treat * (y - out_y_treat_pre))[:, xp.newaxis] * covariates
     gram_pre_treat = (weighted_x_pre_treat.T @ covariates) / n_units
 
-    if np.linalg.cond(gram_pre_treat) > 1 / np.finfo(float).eps:
+    if xp.linalg.cond(gram_pre_treat) > 1 / xp.finfo(float).eps:
         raise np.linalg.LinAlgError("Singular matrix in pre-period treated group OLS.")
 
-    gram_inv_pre_treat = np.linalg.inv(gram_pre_treat)
+    gram_inv_pre_treat = xp.linalg.inv(gram_pre_treat)
     asy_lin_rep_ols_pre_treat = weighted_resid_x_pre_treat @ gram_inv_pre_treat
 
     # Asymptotic linear representation of OLS parameters in post-period, treated
     weights_ols_post_treat = i_weights * d * post
-    weighted_x_post_treat = weights_ols_post_treat[:, np.newaxis] * covariates
-    weighted_resid_x_post_treat = (weights_ols_post_treat * (y - out_y_treat_post))[:, np.newaxis] * covariates
+    weighted_x_post_treat = weights_ols_post_treat[:, xp.newaxis] * covariates
+    weighted_resid_x_post_treat = (weights_ols_post_treat * (y - out_y_treat_post))[:, xp.newaxis] * covariates
     gram_post_treat = (weighted_x_post_treat.T @ covariates) / n_units
 
-    if np.linalg.cond(gram_post_treat) > 1 / np.finfo(float).eps:
+    if xp.linalg.cond(gram_post_treat) > 1 / xp.finfo(float).eps:
         raise np.linalg.LinAlgError("Singular matrix in post-period treated group OLS.")
 
-    gram_inv_post_treat = np.linalg.inv(gram_post_treat)
+    gram_inv_post_treat = xp.linalg.inv(gram_post_treat)
     asy_lin_rep_ols_post_treat = weighted_resid_x_post_treat @ gram_inv_post_treat
 
     # Asymptotic linear representation of logit's beta's
-    score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
+    score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * covariates
     ps_weights = ps_fit * (1 - ps_fit) * i_weights
-    ps_hessian_inv = np.linalg.inv(covariates.T @ (ps_weights[:, np.newaxis] * covariates)) * n_units
+    ps_hessian_inv = xp.linalg.inv(covariates.T @ (ps_weights[:, xp.newaxis] * covariates)) * n_units
     asy_lin_rep_ps = score_ps @ ps_hessian_inv
 
     return {

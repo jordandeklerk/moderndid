@@ -7,6 +7,9 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.core.backend import get_backend, to_numpy
+from moderndid.core.gpu import gpu_logistic_irls
+
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_dr_tr_panel
 from .wols import ols_panel
@@ -230,23 +233,39 @@ def _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights):
 
 def _compute_propensity_score(d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
-    try:
-        pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
-
-        pscore_results = pscore_model.fit()
-
-        if not pscore_results.converged:
-            warnings.warn("Propensity score estimation did not converge.", UserWarning)
-
-        if np.any(np.isnan(pscore_results.params)):
-            raise ValueError(
-                "Propensity score model coefficients have NA components. "
-                "Multicollinearity (or lack of variation) of covariates is a likely reason."
+    xp = get_backend()
+    if xp is not np:
+        try:
+            beta, ps_fit = gpu_logistic_irls(
+                xp.asarray(d, dtype=xp.float64),
+                xp.asarray(covariates, dtype=xp.float64),
+                xp.asarray(i_weights, dtype=xp.float64),
             )
+            ps_fit = to_numpy(ps_fit)
+            if np.any(np.isnan(to_numpy(beta))):
+                raise ValueError(
+                    "Propensity score model coefficients have NA components. "
+                    "Multicollinearity (or lack of variation) of covariates is a likely reason."
+                )
+        except (np.linalg.LinAlgError, RuntimeError) as e:
+            raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
+    else:
+        try:
+            pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+            pscore_results = pscore_model.fit()
 
-        ps_fit = pscore_results.predict(covariates)
-    except np.linalg.LinAlgError as e:
-        raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
+            if not pscore_results.converged:
+                warnings.warn("Propensity score estimation did not converge.", UserWarning)
+
+            if np.any(np.isnan(pscore_results.params)):
+                raise ValueError(
+                    "Propensity score model coefficients have NA components. "
+                    "Multicollinearity (or lack of variation) of covariates is a likely reason."
+                )
+
+            ps_fit = pscore_results.predict(covariates)
+        except np.linalg.LinAlgError as e:
+            raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
 
@@ -269,22 +288,24 @@ def _compute_weights(d, ps_fit, i_weights, trim_ps):
 
 def _get_influence_quantities(delta_y, d, covariates, ps_fit, out_delta, i_weights, W, n_units):
     """Compute quantities needed for influence function."""
+    xp = get_backend()
+
     # Influence function of the nuisance functions
     weights_ols = i_weights * (1 - d)
-    wols_x = weights_ols[:, np.newaxis] * covariates
-    wols_residual_covariates = (weights_ols * (delta_y - out_delta))[:, np.newaxis] * covariates
+    wols_x = weights_ols[:, xp.newaxis] * covariates
+    wols_residual_covariates = (weights_ols * (delta_y - out_delta))[:, xp.newaxis] * covariates
 
     weighted_cov_matrix = covariates.T @ wols_x / n_units
 
-    if np.linalg.cond(weighted_cov_matrix) > 1 / np.finfo(float).eps:
+    if xp.linalg.cond(weighted_cov_matrix) > 1 / xp.finfo(float).eps:
         raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
 
-    weighted_cov_matrix_inv = np.linalg.solve(weighted_cov_matrix, np.eye(weighted_cov_matrix.shape[0]))
+    weighted_cov_matrix_inv = xp.linalg.solve(weighted_cov_matrix, xp.eye(weighted_cov_matrix.shape[0]))
     asy_lin_rep_wols = wols_residual_covariates @ weighted_cov_matrix_inv
 
     # Asymptotic linear representation of logit's beta's
-    score_ps = (i_weights * (d - ps_fit))[:, np.newaxis] * covariates
-    Hessian_ps = np.linalg.inv(covariates.T @ (W[:, np.newaxis] * covariates)) * n_units
+    score_ps = (i_weights * (d - ps_fit))[:, xp.newaxis] * covariates
+    Hessian_ps = xp.linalg.inv(covariates.T @ (W[:, xp.newaxis] * covariates)) * n_units
     asy_lin_rep_ps = score_ps @ Hessian_ps
 
     return {

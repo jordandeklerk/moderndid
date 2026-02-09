@@ -11,6 +11,8 @@ except PackageNotFoundError:
     __version__ = "unknown"
 
 __all__ = [
+    # GPU backend
+    "HAS_CUPY",
     # did module
     "AGGTEResult",
     # Optional: didhonest (requires cvxpy, sympy)
@@ -135,6 +137,8 @@ __all__ = [
     "gen_dgp_2periods",
     "gen_dgp_mult_periods",
     "generate_simple_ddd_data",
+    # GPU backend
+    "get_backend",
     "honest_did",
     "ipw_did_panel",
     "ipw_did_rc",
@@ -178,6 +182,7 @@ __all__ = [
     "reg_did_panel",
     "reg_did_rc",
     "selection_matrix",
+    "set_backend",
     "setup_pte",
     "setup_pte_basic",
     "setup_pte_cont",
@@ -219,6 +224,10 @@ _submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "
 
 # Map attribute names to their module paths (for base/always-available imports)
 _lazy_imports = {
+    # core.backend
+    "HAS_CUPY": "moderndid.core.backend",
+    "get_backend": "moderndid.core.backend",
+    "set_backend": "moderndid.core.backend",
     # core.data
     "data": "moderndid.core",
     "load_ehec": "moderndid.core.data",

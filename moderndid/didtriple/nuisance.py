@@ -8,6 +8,9 @@ from typing import NamedTuple
 import numpy as np
 import statsmodels.api as sm
 
+from moderndid.core.backend import get_backend, to_numpy
+from moderndid.core.gpu import gpu_logistic_irls, gpu_wls
+
 from .utils import check_overlap_and_warn, get_comparison_description
 
 
@@ -458,6 +461,44 @@ def _compute_pscore(subgroup, covariates, weights, comparison_subgroup, trim_lev
 
     pa4 = (sub_subgroup == 4).astype(float)
 
+    xp = get_backend()
+    if xp is not np:
+        try:
+            beta, ps_fit = gpu_logistic_irls(
+                xp.asarray(pa4, dtype=xp.float64),
+                xp.asarray(sub_covariates, dtype=xp.float64),
+                xp.asarray(sub_weights, dtype=xp.float64),
+            )
+            ps_fit = to_numpy(ps_fit)
+            beta_np = to_numpy(beta)
+            if np.any(np.isnan(beta_np)):
+                comparison_desc = get_comparison_description(comparison_subgroup)
+                raise ValueError(
+                    f"Propensity score model has NA coefficients.\n"
+                    f"  Comparison: {comparison_desc} units.\n"
+                    f"  This is likely due to multicollinearity among covariates."
+                )
+        except (np.linalg.LinAlgError, RuntimeError) as e:
+            raise ValueError(
+                f"Failed to estimate propensity scores for subgroup {comparison_subgroup} due to singular matrix."
+            ) from e
+
+        check_overlap_and_warn(ps_fit, comparison_subgroup)
+        ps_fit = np.minimum(ps_fit, 1 - 1e-6)
+
+        keep_ps = np.ones(len(pa4), dtype=bool)
+        keep_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
+
+        n_sub = len(sub_weights)
+        sc = xp.asarray(sub_covariates, dtype=xp.float64)
+        sw = xp.asarray(sub_weights, dtype=xp.float64)
+        ps_gpu = xp.asarray(ps_fit, dtype=xp.float64)
+        W = sw * ps_gpu * (1 - ps_gpu)
+        info_matrix = sc.T @ (W[:, None] * sc)
+        hessian_matrix = to_numpy(xp.linalg.inv(info_matrix)) * n_sub
+
+        return PScoreResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
+
     try:
         pscore_model = sm.GLM(pa4, sub_covariates, family=sm.families.Binomial(), freq_weights=sub_weights)
         pscore_results = pscore_model.fit(disp=False)
@@ -567,26 +608,49 @@ def _compute_outcome_regression(y1, y0, subgroup, covariates, weights, compariso
     control_covariates = covariates[control_mask]
     control_weights = weights[control_mask]
 
-    try:
-        wls_model = sm.WLS(control_delta_y, control_covariates, weights=control_weights)
-        wls_results = wls_model.fit()
-
-        if np.any(np.isnan(wls_results.params)):
-            comparison_desc = get_comparison_description(comparison_subgroup)
-            raise ValueError(
-                f"Outcome regression model has NA coefficients.\n"
-                f"  Comparison: {comparison_desc} units.\n"
-                f"  This is likely due to multicollinearity among covariates."
+    xp = get_backend()
+    if xp is not np:
+        try:
+            reg_coeff, _ = gpu_wls(
+                xp.asarray(control_delta_y, dtype=xp.float64),
+                xp.asarray(control_covariates, dtype=xp.float64),
+                xp.asarray(control_weights, dtype=xp.float64),
             )
+            reg_coeff = to_numpy(reg_coeff)
+            if np.any(np.isnan(reg_coeff)):
+                comparison_desc = get_comparison_description(comparison_subgroup)
+                raise ValueError(
+                    f"Outcome regression model has NA coefficients.\n"
+                    f"  Comparison: {comparison_desc} units.\n"
+                    f"  This is likely due to multicollinearity among covariates."
+                )
+            or_delta = sub_covariates @ reg_coeff
+        except (np.linalg.LinAlgError, RuntimeError) as e:
+            raise ValueError(
+                f"Failed to estimate outcome regression for subgroup {comparison_subgroup}. "
+                f"Subgroup may have insufficient data."
+            ) from e
+    else:
+        try:
+            wls_model = sm.WLS(control_delta_y, control_covariates, weights=control_weights)
+            wls_results = wls_model.fit()
 
-        reg_coeff = wls_results.params
-        or_delta = sub_covariates @ reg_coeff
+            if np.any(np.isnan(wls_results.params)):
+                comparison_desc = get_comparison_description(comparison_subgroup)
+                raise ValueError(
+                    f"Outcome regression model has NA coefficients.\n"
+                    f"  Comparison: {comparison_desc} units.\n"
+                    f"  This is likely due to multicollinearity among covariates."
+                )
 
-    except np.linalg.LinAlgError as e:
-        raise ValueError(
-            f"Failed to estimate outcome regression for subgroup {comparison_subgroup}. "
-            f"Subgroup may have insufficient data."
-        ) from e
+            reg_coeff = wls_results.params
+            or_delta = sub_covariates @ reg_coeff
+
+        except np.linalg.LinAlgError as e:
+            raise ValueError(
+                f"Failed to estimate outcome regression for subgroup {comparison_subgroup}. "
+                f"Subgroup may have insufficient data."
+            ) from e
 
     return OutcomeRegResult(delta_y=delta_y, or_delta=or_delta, reg_coeff=reg_coeff)
 

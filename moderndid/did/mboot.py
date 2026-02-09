@@ -4,6 +4,8 @@ import warnings
 
 import numpy as np
 
+from moderndid.core.backend import get_backend, to_numpy
+
 
 def mboot(
     inf_func,
@@ -144,6 +146,10 @@ def _run_multiplier_bootstrap(
     ndarray
         Bootstrap results of shape (biters, k).
     """
+    xp = get_backend()
+    if xp is not np:
+        return _run_multiplier_bootstrap_gpu(inf_func, biters, random_state)
+
     # Mammen weights
     sqrt5 = np.sqrt(5)
     k1 = 0.5 * (1 - sqrt5)
@@ -161,3 +167,23 @@ def _run_multiplier_bootstrap(
         bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
 
     return bres
+
+
+def _run_multiplier_bootstrap_gpu(inf_func, biters, random_state=None):
+    """Batched GPU multiplier bootstrap."""
+    xp = get_backend()
+
+    sqrt5 = float(np.sqrt(5))
+    k1 = 0.5 * (1 - sqrt5)
+    k2 = 0.5 * (1 + sqrt5)
+    pkappa = 0.5 * (1 + sqrt5) / sqrt5
+
+    n = inf_func.shape[0]
+    inf_gpu = xp.asarray(inf_func, dtype=xp.float64)
+
+    rng = xp.random.default_rng(random_state)
+    draws = rng.binomial(1, pkappa, size=(biters, n))
+    v = xp.where(draws == 1, k1, k2).astype(xp.float64)
+
+    bres = (v @ inf_gpu) / n
+    return to_numpy(bres)

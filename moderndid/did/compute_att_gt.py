@@ -8,6 +8,7 @@ from typing import NamedTuple
 import numpy as np
 import scipy.sparse as sp
 
+from moderndid.core.backend import get_backend
 from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess import ControlGroup, DIDData, EstimationMethod
 from moderndid.drdid.estimators.drdid_panel import drdid_panel
@@ -68,8 +69,19 @@ def compute_att_gt(data: DIDData, n_jobs=1):
             influence_func_list.append(inf_func)
 
     if influence_func_list:
-        influence_matrix = np.column_stack(influence_func_list)
-        sparse_influence_funcs = sp.csr_matrix(influence_matrix)
+        xp = get_backend()
+        if xp is not np:
+            try:
+                import cupyx.scipy.sparse as cusp
+
+                influence_matrix = xp.column_stack([xp.asarray(f) for f in influence_func_list])
+                sparse_influence_funcs = cusp.csr_matrix(influence_matrix)
+            except ImportError:
+                influence_matrix = np.column_stack(influence_func_list)
+                sparse_influence_funcs = sp.csr_matrix(influence_matrix)
+        else:
+            influence_matrix = np.column_stack(influence_func_list)
+            sparse_influence_funcs = sp.csr_matrix(influence_matrix)
     else:
         sparse_influence_funcs = sp.csr_matrix((n_units, 0))
 

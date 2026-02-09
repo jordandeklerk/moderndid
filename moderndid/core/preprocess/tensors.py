@@ -6,6 +6,8 @@ from typing import Protocol
 import numpy as np
 import polars as pl
 
+from moderndid.core.backend import get_backend, to_device
+
 from ..dataframe import DataFrame, to_polars
 from .config import DIDConfig
 from .constants import WEIGHTS_COLUMN, DataFormat
@@ -232,6 +234,16 @@ class TensorFactorySelector:
         else:
             covariates_matrix = covariates_tensor
             covariates_tensor = None
+
+        xp = get_backend()
+        if xp is not np:
+            if outcomes_tensor is not None:
+                outcomes_tensor = [to_device(arr) for arr in outcomes_tensor]
+            if covariates_tensor is not None:
+                covariates_tensor = [to_device(arr) for arr in covariates_tensor]
+            if covariates_matrix is not None:
+                covariates_matrix = to_device(covariates_matrix)
+            weights = to_device(weights)
 
         return {
             "data": df,
