@@ -144,7 +144,7 @@ def _main():
     log.info("=" * 60)
 
     rows = []
-    for n_units in [1_000, 5_000, 10_000, 50_000, 100_000]:
+    for n_units in [10_000, 50_000, 100_000, 500_000, 1_000_000]:
         dgp = StaggeredDIDDGP(n_units=n_units, n_periods=5, n_groups=3, random_seed=42)
         data = dgp.generate_data()["df"]
         runner = _make_att_gt_runner(data)
@@ -175,7 +175,7 @@ def _main():
     log.info("=" * 60)
 
     rows = []
-    for n_units in [1_000, 5_000, 10_000, 50_000, 100_000]:
+    for n_units in [10_000, 50_000, 100_000, 500_000, 1_000_000]:
         dgp = StaggeredDIDDGP(n_units=n_units, n_periods=5, n_groups=3, random_seed=42)
         data = dgp.generate_data()["df"]
         runner = _make_att_gt_runner(data, boot=True, biters=500)
