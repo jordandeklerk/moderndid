@@ -43,7 +43,7 @@ def _log_table(rows, header=("Config", "CPU (s)", "GPU (s)", "Speedup")):
         log.info(fmt.format(*row))
 
 
-def _make_att_gt_runner(data, *, boot=False, biters=0):
+def _make_att_gt_runner(data, *, boot=False, biters=1000):
     def _run():
         return att_gt(
             data=data,
