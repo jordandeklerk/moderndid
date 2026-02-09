@@ -87,6 +87,8 @@ To switch back to the default CPU path:
 did.set_backend("numpy")
 ```
 
+See [GPU benchmark results](scripts/README.md) for performance comparisons across Tesla T4, A100, and H100 GPUs.
+
 ### Consistent API
 
 All estimators share a unified interface, making it easy to switch between methods:
