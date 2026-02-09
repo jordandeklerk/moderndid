@@ -538,6 +538,46 @@ that many worker threads. Expose ``n_jobs`` as a parameter on your
 estimator function with a default of ``1`` so that sequential execution
 remains the default and parallelism is opt-in.
 
+CuPy GPU Acceleration
+---------------------
+
+On machines with NVIDIA GPUs, ModernDiD can offload regression and propensity
+score estimation to the GPU via `CuPy <https://cupy.dev/>`_. All GPU-related
+code lives in the ``moderndid/cupy/`` module, which provides three files:
+
+- ``backend.py`` — ``get_backend()``, ``set_backend()``, ``to_device()``,
+  ``to_numpy()`` for switching between NumPy and CuPy array libraries.
+- ``regression.py`` — ``cupy_wls`` (weighted least squares) and
+  ``cupy_logistic_irls`` (logistic regression via IRLS), implemented with
+  the current backend's array operations.
+- ``bootstrap.py`` — GPU-accelerated multiplier bootstrap and cluster
+  aggregation helpers.
+
+Estimators use a dispatch pattern that checks the active backend at runtime.
+When the backend is CuPy, arrays are moved to the GPU with ``to_device()``
+and regression is performed with ``cupy_wls`` or ``cupy_logistic_irls``.
+Results are moved back to NumPy with ``to_numpy()`` before being returned.
+When the backend is NumPy (the default), the standard statsmodels path runs
+with no overhead.
+
+.. code-block:: python
+
+   from moderndid.cupy.backend import get_backend, to_numpy
+   from moderndid.cupy.regression import cupy_wls
+
+   xp = get_backend()
+   if xp is not np:
+       beta, fitted = cupy_wls(xp.asarray(y), xp.asarray(X), xp.asarray(w))
+       params = to_numpy(beta)
+   else:
+       result = sm.WLS(y, X, weights=w).fit()
+       params = result.params
+
+Users enable GPU acceleration by installing the ``gpu`` extra
+(``uv pip install moderndid[gpu]``) and calling ``set_backend("cupy")``
+before running an estimator. The ``gpu`` extra is not included in ``all``
+because it requires CUDA hardware.
+
 The Formatting System
 =====================
 
