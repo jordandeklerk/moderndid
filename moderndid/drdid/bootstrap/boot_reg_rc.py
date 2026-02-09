@@ -6,7 +6,7 @@ import numpy as np
 import statsmodels.api as sm
 
 from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import gpu_wls
+from moderndid.core.gpu import cupy_wls
 
 from ..utils import _validate_inputs
 
@@ -91,7 +91,7 @@ def wboot_reg_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):
 
             xp = get_backend()
             if xp is not np:
-                reg_coeff_pre_b, _ = gpu_wls(
+                reg_coeff_pre_b, _ = cupy_wls(
                     xp.asarray(y_control_pre, dtype=xp.float64),
                     xp.asarray(x_control_pre, dtype=xp.float64),
                     xp.asarray(w_control_pre, dtype=xp.float64),
@@ -113,7 +113,7 @@ def wboot_reg_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None):
             w_control_post = b_weights[control_post]
 
             if xp is not np:
-                reg_coeff_post_b, _ = gpu_wls(
+                reg_coeff_post_b, _ = cupy_wls(
                     xp.asarray(y_control_post, dtype=xp.float64),
                     xp.asarray(x_control_post, dtype=xp.float64),
                     xp.asarray(w_control_post, dtype=xp.float64),

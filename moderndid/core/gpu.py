@@ -5,7 +5,7 @@ import numpy as np
 from .backend import get_backend
 
 
-def gpu_wls(y, X, weights):
+def cupy_wls(y, X, weights):
     """Weighted least squares via direct linear algebra.
 
     Parameters
@@ -36,7 +36,7 @@ def gpu_wls(y, X, weights):
         raise
 
 
-def gpu_logistic_irls(y, X, weights, max_iter=25, tol=1e-8):
+def cupy_logistic_irls(y, X, weights, max_iter=25, tol=1e-8):
     """Logistic regression via iteratively reweighted least squares.
 
     Parameters

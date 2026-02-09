@@ -8,7 +8,7 @@ import statsmodels.api as sm
 from scipy import stats
 
 from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import gpu_logistic_irls
+from moderndid.core.gpu import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc import wboot_drdid_rc2
@@ -248,7 +248,7 @@ def _compute_propensity_score(d, covariates, i_weights):
     xp = get_backend()
     if xp is not np:
         try:
-            beta, ps_fit = gpu_logistic_irls(
+            beta, ps_fit = cupy_logistic_irls(
                 xp.asarray(d, dtype=xp.float64),
                 xp.asarray(covariates, dtype=xp.float64),
                 xp.asarray(i_weights, dtype=xp.float64),

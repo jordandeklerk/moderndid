@@ -43,16 +43,16 @@ def set_backend(name):
     if name == "cupy" and not HAS_CUPY:
         raise ImportError("CuPy is not installed. Install with: uv pip install 'moderndid[gpu]'")
     if name == "cupy":
-        _gpu_ok = False
+        _cupy_ok = False
         if hasattr(cp, "is_available"):
-            _gpu_ok = cp.is_available()
+            _cupy_ok = cp.is_available()
         else:
             try:
                 cp.array([1.0])
-                _gpu_ok = True
+                _cupy_ok = True
             except (RuntimeError, AttributeError):
-                _gpu_ok = False
-        if not _gpu_ok:
+                _cupy_ok = False
+        if not _cupy_ok:
             raise RuntimeError(
                 "CuPy is installed but no CUDA GPU is available. Check your CUDA installation or use backend='numpy'."
             )

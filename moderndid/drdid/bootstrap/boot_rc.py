@@ -6,7 +6,7 @@ import numpy as np
 import statsmodels.api as sm
 
 from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import gpu_logistic_irls
+from moderndid.core.gpu import cupy_logistic_irls
 
 from ..estimators.wols import wols_rc
 from ..propensity.aipw_estimators import aipw_did_rc_imp1, aipw_did_rc_imp2
@@ -218,7 +218,7 @@ def _fit_logistic_boot_rc(d, x, b_weights):
     """Dispatch logistic regression for bootstrap to GPU or statsmodels."""
     xp = get_backend()
     if xp is not np:
-        _, ps = gpu_logistic_irls(
+        _, ps = cupy_logistic_irls(
             xp.asarray(d, dtype=xp.float64),
             xp.asarray(x, dtype=xp.float64),
             xp.asarray(b_weights, dtype=xp.float64),

@@ -6,7 +6,7 @@ import numpy as np
 import statsmodels.api as sm
 
 from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import gpu_wls
+from moderndid.core.gpu import cupy_wls
 
 from ..utils import _validate_inputs
 
@@ -75,7 +75,7 @@ def wboot_twfe_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None)
         try:
             xp = get_backend()
             if xp is not np:
-                beta, _ = gpu_wls(
+                beta, _ = cupy_wls(
                     xp.asarray(y, dtype=xp.float64),
                     xp.asarray(design_matrix, dtype=xp.float64),
                     xp.asarray(b_weights, dtype=xp.float64),

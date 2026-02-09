@@ -7,7 +7,7 @@ import numpy as np
 import statsmodels.api as sm
 
 from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import gpu_wls
+from moderndid.core.gpu import cupy_wls
 
 from ..utils import (
     _check_coefficients_validity,
@@ -448,7 +448,7 @@ def _fit_wls(y, X, weights):
     """
     xp = get_backend()
     if xp is not np:
-        beta, _ = gpu_wls(xp.asarray(y), xp.asarray(X), xp.asarray(weights))
+        beta, _ = cupy_wls(xp.asarray(y), xp.asarray(X), xp.asarray(weights))
         return to_numpy(beta), None
     model = sm.WLS(y, X, weights=weights)
     results = model.fit()

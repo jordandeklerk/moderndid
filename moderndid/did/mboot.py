@@ -148,7 +148,7 @@ def _run_multiplier_bootstrap(
     """
     xp = get_backend()
     if xp is not np:
-        return _run_multiplier_bootstrap_gpu(inf_func, biters, random_state)
+        return _run_multiplier_bootstrap_cupy(inf_func, biters, random_state)
 
     # Mammen weights
     sqrt5 = np.sqrt(5)
@@ -169,7 +169,7 @@ def _run_multiplier_bootstrap(
     return bres
 
 
-def _run_multiplier_bootstrap_gpu(inf_func, biters, random_state=None):
+def _run_multiplier_bootstrap_cupy(inf_func, biters, random_state=None):
     """Batched GPU multiplier bootstrap."""
     xp = get_backend()
 

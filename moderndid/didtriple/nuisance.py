@@ -9,7 +9,7 @@ import numpy as np
 import statsmodels.api as sm
 
 from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import gpu_logistic_irls, gpu_wls
+from moderndid.core.gpu import cupy_logistic_irls, cupy_wls
 
 from .utils import check_overlap_and_warn, get_comparison_description
 
@@ -464,7 +464,7 @@ def _compute_pscore(subgroup, covariates, weights, comparison_subgroup, trim_lev
     xp = get_backend()
     if xp is not np:
         try:
-            beta, ps_fit = gpu_logistic_irls(
+            beta, ps_fit = cupy_logistic_irls(
                 xp.asarray(pa4, dtype=xp.float64),
                 xp.asarray(sub_covariates, dtype=xp.float64),
                 xp.asarray(sub_weights, dtype=xp.float64),
@@ -611,7 +611,7 @@ def _compute_outcome_regression(y1, y0, subgroup, covariates, weights, compariso
     xp = get_backend()
     if xp is not np:
         try:
-            reg_coeff, _ = gpu_wls(
+            reg_coeff, _ = cupy_wls(
                 xp.asarray(control_delta_y, dtype=xp.float64),
                 xp.asarray(control_covariates, dtype=xp.float64),
                 xp.asarray(control_weights, dtype=xp.float64),

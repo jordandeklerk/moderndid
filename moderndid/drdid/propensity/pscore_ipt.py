@@ -9,7 +9,7 @@ import scipy.special
 import statsmodels.api as sm
 
 from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import gpu_logistic_irls
+from moderndid.core.gpu import cupy_logistic_irls
 
 
 def calculate_pscore_ipt(D, X, iw, quantiles=None):
@@ -267,7 +267,7 @@ def _get_initial_gamma(D, X, iw, k_features):
     xp = get_backend()
     if xp is not np:
         try:
-            beta, _ = gpu_logistic_irls(
+            beta, _ = cupy_logistic_irls(
                 xp.asarray(D, dtype=xp.float64),
                 xp.asarray(X, dtype=xp.float64),
                 xp.asarray(iw, dtype=xp.float64),

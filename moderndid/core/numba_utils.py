@@ -291,7 +291,7 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
 
     xp = get_backend()
     if xp is not np:
-        return _multiplier_bootstrap_gpu(inf_func, biters, random_state)
+        return _multiplier_bootstrap_cupy(inf_func, biters, random_state)
 
     n = inf_func.shape[0]
     rng = np.random.default_rng(random_state)
@@ -301,7 +301,7 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
     return _multiplier_bootstrap_impl(np.ascontiguousarray(inf_func), weights_matrix)
 
 
-def _multiplier_bootstrap_gpu(inf_func, biters, random_state=None):
+def _multiplier_bootstrap_cupy(inf_func, biters, random_state=None):
     """Batched GPU multiplier bootstrap."""
     xp = get_backend()
 
@@ -356,7 +356,7 @@ def aggregate_by_cluster(inf_func, cluster):
 
     xp = get_backend()
     if xp is not np:
-        return _aggregate_by_cluster_gpu(inf_func, cluster_int, n_clusters), n_clusters
+        return _aggregate_by_cluster_cupy(inf_func, cluster_int, n_clusters), n_clusters
 
     cluster_mean_if = _aggregate_by_cluster_impl(
         np.ascontiguousarray(inf_func),
@@ -367,7 +367,7 @@ def aggregate_by_cluster(inf_func, cluster):
     return cluster_mean_if, n_clusters
 
 
-def _aggregate_by_cluster_gpu(inf_func, cluster_int, n_clusters):
+def _aggregate_by_cluster_cupy(inf_func, cluster_int, n_clusters):
     """GPU cluster aggregation using scatter-add."""
     xp = get_backend()
     inf_gpu = xp.asarray(inf_func, dtype=xp.float64)

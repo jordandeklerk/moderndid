@@ -6,7 +6,7 @@ import numpy as np
 import statsmodels.api as sm
 
 from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import gpu_logistic_irls
+from moderndid.core.gpu import cupy_logistic_irls
 
 from ..utils import _validate_inputs
 
@@ -79,7 +79,7 @@ def wboot_std_ipw_rc(
         try:
             xp = get_backend()
             if xp is not np:
-                _, ps_b = gpu_logistic_irls(
+                _, ps_b = cupy_logistic_irls(
                     xp.asarray(d, dtype=xp.float64),
                     xp.asarray(x, dtype=xp.float64),
                     xp.asarray(b_weights, dtype=xp.float64),
