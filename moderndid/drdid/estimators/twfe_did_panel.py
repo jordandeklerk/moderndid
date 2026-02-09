@@ -7,6 +7,9 @@ import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_wls
+
 from ..bootstrap.boot_mult import mboot_twfep_did
 from ..bootstrap.boot_panel import wboot_twfe_panel
 from ..ordid import ordid
@@ -261,10 +264,19 @@ def _fit_twfe_regression(y_stacked, d_stacked, post, x, i_weights_stacked):
     )
 
     try:
-        wls_model = sm.WLS(y_stacked, design_matrix, weights=i_weights_stacked)
-        wls_results = wls_model.fit()
+        xp = get_backend()
+        if xp is not np:
+            beta, _ = cupy_wls(xp.asarray(y_stacked), xp.asarray(design_matrix), xp.asarray(i_weights_stacked))
+            params = to_numpy(beta)
+            att = params[3]
+            fitted = design_matrix @ params
+            residuals = y_stacked - fitted
+        else:
+            wls_model = sm.WLS(y_stacked, design_matrix, weights=i_weights_stacked)
+            wls_results = wls_model.fit()
+            att = wls_results.params[3]
+            residuals = wls_results.resid
 
-        att = wls_results.params[3]
         x_prime_x = design_matrix.T @ (i_weights_stacked[:, np.newaxis] * design_matrix) / len(y_stacked)
 
         if np.linalg.cond(x_prime_x) > 1e15:
@@ -272,7 +284,6 @@ def _fit_twfe_regression(y_stacked, d_stacked, post, x, i_weights_stacked):
 
         x_prime_x_inv = np.linalg.inv(x_prime_x)
 
-        residuals = wls_results.resid
         influence_reg = (i_weights_stacked[:, np.newaxis] * design_matrix * residuals[:, np.newaxis]) @ x_prime_x_inv
 
         selection_theta = np.zeros(design_matrix.shape[1])

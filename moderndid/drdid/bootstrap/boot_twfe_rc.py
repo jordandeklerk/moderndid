@@ -5,6 +5,9 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_wls
+
 from ..utils import _validate_inputs
 
 
@@ -70,9 +73,18 @@ def wboot_twfe_rc(y, post, d, x, i_weights, n_bootstrap=1000, random_state=None)
             interaction_idx = 3
 
         try:
-            wls_model = sm.WLS(y, design_matrix, weights=b_weights)
-            wls_results = wls_model.fit()
-            att_b = wls_results.params[interaction_idx]
+            xp = get_backend()
+            if xp is not np:
+                beta, _ = cupy_wls(
+                    xp.asarray(y, dtype=xp.float64),
+                    xp.asarray(design_matrix, dtype=xp.float64),
+                    xp.asarray(b_weights, dtype=xp.float64),
+                )
+                att_b = float(to_numpy(beta)[interaction_idx])
+            else:
+                wls_model = sm.WLS(y, design_matrix, weights=b_weights)
+                wls_results = wls_model.fit()
+                att_b = wls_results.params[interaction_idx]
             bootstrap_estimates[b] = att_b
 
         except (np.linalg.LinAlgError, ValueError) as e:

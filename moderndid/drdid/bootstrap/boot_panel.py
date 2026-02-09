@@ -5,6 +5,9 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
+
 from ..estimators.wols import wols_panel
 from ..propensity.aipw_estimators import aipw_did_panel
 from ..propensity.pscore_ipt import calculate_pscore_ipt
@@ -159,10 +162,7 @@ def wboot_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.995
         b_weights = i_weights * v
 
         try:
-            logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
-
-            logit_results = logit_model.fit()
-            ps_b = logit_results.predict(x)
+            ps_b = _fit_logistic_boot(d, x, b_weights)
         except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
@@ -252,10 +252,7 @@ def wboot_std_ipw_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0
         b_weights = i_weights * v
 
         try:
-            logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
-
-            logit_results = logit_model.fit()
-            ps_b = logit_results.predict(x)
+            ps_b = _fit_logistic_boot(d, x, b_weights)
         except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
@@ -353,10 +350,7 @@ def wboot_dr_tr_panel(delta_y, d, x, i_weights, n_bootstrap=1000, trim_level=0.9
         b_weights = i_weights * v
 
         try:
-            logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
-
-            logit_results = logit_model.fit()
-            ps_b = logit_results.predict(x)
+            ps_b = _fit_logistic_boot(d, x, b_weights)
         except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(f"Propensity score estimation failed in bootstrap {b}: {e}", UserWarning)
             bootstrap_estimates[b] = np.nan
@@ -462,14 +456,23 @@ def wboot_reg_panel(delta_y, d, x, i_weights, n_bootstrap=1000, random_state=Non
             y_control = delta_y[control_mask]
             w_control = b_weights[control_mask]
 
-            glm_model = sm.GLM(
-                y_control,
-                x_control,
-                family=sm.families.Gaussian(link=sm.families.links.Identity()),
-                var_weights=w_control,
-            )
-            glm_results = glm_model.fit()
-            reg_coeff = glm_results.params
+            xp = get_backend()
+            if xp is not np:
+                reg_coeff, _ = cupy_wls(
+                    xp.asarray(y_control, dtype=xp.float64),
+                    xp.asarray(x_control, dtype=xp.float64),
+                    xp.asarray(w_control, dtype=xp.float64),
+                )
+                reg_coeff = to_numpy(reg_coeff)
+            else:
+                glm_model = sm.GLM(
+                    y_control,
+                    x_control,
+                    family=sm.families.Gaussian(link=sm.families.links.Identity()),
+                    var_weights=w_control,
+                )
+                glm_results = glm_model.fit()
+                reg_coeff = glm_results.params
             out_reg_b = x @ reg_coeff
 
         except (np.linalg.LinAlgError, ValueError) as e:
@@ -562,9 +565,18 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
             interaction_idx = 3
 
         try:
-            wls_model = sm.WLS(y, design_matrix, weights=b_weights)
-            wls_results = wls_model.fit()
-            att_b = wls_results.params[interaction_idx]
+            xp = get_backend()
+            if xp is not np:
+                beta, _ = cupy_wls(
+                    xp.asarray(y, dtype=xp.float64),
+                    xp.asarray(design_matrix, dtype=xp.float64),
+                    xp.asarray(b_weights, dtype=xp.float64),
+                )
+                att_b = float(to_numpy(beta)[interaction_idx])
+            else:
+                wls_model = sm.WLS(y, design_matrix, weights=b_weights)
+                wls_results = wls_model.fit()
+                att_b = wls_results.params[interaction_idx]
             bootstrap_estimates[b] = att_b
 
         except (np.linalg.LinAlgError, ValueError) as e:
@@ -580,3 +592,18 @@ def wboot_twfe_panel(y, d, post, x, i_weights, n_bootstrap=1000, random_state=No
         )
 
     return bootstrap_estimates
+
+
+def _fit_logistic_boot(d, x, b_weights):
+    """Dispatch logistic regression for bootstrap to GPU or statsmodels."""
+    xp = get_backend()
+    if xp is not np:
+        _, ps = cupy_logistic_irls(
+            xp.asarray(d, dtype=xp.float64),
+            xp.asarray(x, dtype=xp.float64),
+            xp.asarray(b_weights, dtype=xp.float64),
+        )
+        return to_numpy(ps)
+    logit_model = sm.GLM(d, x, family=sm.families.Binomial(), freq_weights=b_weights)
+    logit_results = logit_model.fit()
+    return logit_results.predict(x)

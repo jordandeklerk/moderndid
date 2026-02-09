@@ -6,6 +6,9 @@ from typing import NamedTuple
 import numpy as np
 import statsmodels.api as sm
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_wls
+
 from ..utils import (
     _check_coefficients_validity,
     _check_extreme_weights,
@@ -70,10 +73,11 @@ def ols_panel(delta_y, d, x, i_weights):
     --------
     wols_panel : Weighted OLS for improved DR-DiD estimators (includes propensity score weighting).
     """
+    xp = get_backend()
     _validate_wols_arrays({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, "ols_panel")
 
     control_filter = d == 0
-    n_control = np.sum(control_filter)
+    n_control = int(xp.sum(control_filter))
 
     if n_control == 0:
         raise ValueError("No control units found (all d == 1). Cannot perform regression.")
@@ -88,8 +92,7 @@ def ols_panel(delta_y, d, x, i_weights):
     _check_extreme_weights(control_weights)
 
     try:
-        wls_model = sm.WLS(control_y, control_x, weights=control_weights)
-        results = wls_model.fit()
+        coefficients, sm_results = _fit_wls(control_y, control_x, control_weights)
     except np.linalg.LinAlgError as e:
         raise ValueError(
             "Failed to solve linear system. The covariate matrix may be singular or ill-conditioned."
@@ -97,11 +100,11 @@ def ols_panel(delta_y, d, x, i_weights):
     except Exception as e:
         raise ValueError(f"Failed to fit weighted least squares model: {e}") from e
 
-    coefficients = results.params
-    _check_wls_condition_number(results)
+    if sm_results is not None:
+        _check_wls_condition_number(sm_results)
     _check_coefficients_validity(coefficients)
 
-    fitted_values = x @ coefficients
+    fitted_values = x @ xp.asarray(coefficients)
 
     return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
 
@@ -152,10 +155,11 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     --------
     wols_rc : Weighted OLS for repeated cross-section data.
     """
+    xp = get_backend()
     _validate_wols_arrays({"delta_y": delta_y, "d": d, "ps": ps, "i_weights": i_weights}, x, "wols_panel")
 
     control_filter = d == 0
-    n_control = np.sum(control_filter)
+    n_control = int(xp.sum(control_filter))
 
     if n_control == 0:
         raise ValueError("No control units found (all d == 1). Cannot perform regression.")
@@ -165,7 +169,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
 
     control_ps = ps[control_filter]
     problematic_ps = control_ps == 1.0
-    if np.any(problematic_ps):
+    if xp.any(problematic_ps):
         raise ValueError("Propensity score is 1 for some control units. Weights would be undefined.")
 
     ps_odds = control_ps / (1 - control_ps)
@@ -177,8 +181,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     _check_extreme_weights(control_weights)
 
     try:
-        wls_model = sm.WLS(control_y, control_x, weights=control_weights)
-        results = wls_model.fit()
+        coefficients, sm_results = _fit_wls(control_y, control_x, control_weights)
     except np.linalg.LinAlgError as e:
         raise ValueError(
             "Failed to solve linear system. The covariate matrix may be singular or ill-conditioned."
@@ -186,11 +189,11 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     except Exception as e:
         raise ValueError(f"Failed to fit weighted least squares model: {e}") from e
 
-    coefficients = results.params
-    _check_wls_condition_number(results)
+    if sm_results is not None:
+        _check_wls_condition_number(sm_results)
     _check_coefficients_validity(coefficients)
 
-    fitted_values = x @ coefficients
+    fitted_values = x @ xp.asarray(coefficients)
 
     return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
 
@@ -313,11 +316,10 @@ def wols_rc(y, post, d, x, ps, i_weights, pre=None, treat=False):
     fitted_values = np.full(y.shape[0], np.nan)
 
     try:
-        wls_model = sm.WLS(sub_y, sub_x, weights=sub_weights)
-        results = wls_model.fit()
-        coefficients = results.params
+        coefficients, sm_results = _fit_wls(sub_y, sub_x, sub_weights)
 
-        _check_wls_condition_number(results, threshold_error=1e15, threshold_warn=1e10)
+        if sm_results is not None:
+            _check_wls_condition_number(sm_results, threshold_error=1e15, threshold_warn=1e10)
         _check_coefficients_validity(coefficients)
 
         fitted_values = x @ coefficients
@@ -423,11 +425,10 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
     fitted_values = np.full(y.shape[0], np.nan)
 
     try:
-        wls_model = sm.WLS(sub_y, sub_x, weights=sub_weights)
-        results = wls_model.fit()
-        coefficients = results.params
+        coefficients, sm_results = _fit_wls(sub_y, sub_x, sub_weights)
 
-        _check_wls_condition_number(results, threshold_error=1e15, threshold_warn=1e10)
+        if sm_results is not None:
+            _check_wls_condition_number(sm_results, threshold_error=1e15, threshold_warn=1e10)
         _check_coefficients_validity(coefficients)
 
         fitted_values = x @ coefficients
@@ -436,3 +437,21 @@ def ols_rc(y, post, d, x, i_weights, pre=None, treat=False):
         warnings.warn(f"Failed to fit weighted least squares model: {e}. Returning NaNs.", UserWarning)
 
     return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
+
+
+def _fit_wls(y, X, weights):
+    """Dispatch WLS to GPU or statsmodels depending on active backend.
+
+    Returns
+    -------
+    coefficients : ndarray (numpy)
+    sm_results : statsmodels RegressionResults or None
+        None when the GPU path is used (no condition-number object available).
+    """
+    xp = get_backend()
+    if xp is not np:
+        beta, _ = cupy_wls(xp.asarray(y), xp.asarray(X), xp.asarray(weights))
+        return to_numpy(beta), None
+    model = sm.WLS(y, X, weights=weights)
+    results = model.fit()
+    return results.params, results

@@ -178,3 +178,4 @@ tests/didcont/r_simulated_data.csv
 benchmark/output/*.csv
 benchmark/output/*.json
 !benchmark/output/.gitkeep
+plot_gpu_benchmark.py

@@ -11,6 +11,7 @@ from scipy import stats
 
 from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess.utils import parse_formula
+from moderndid.cupy.backend import get_backend, to_numpy
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from ..nuisance_rc import compute_all_did_rc, compute_all_nuisances_rc
@@ -181,11 +182,12 @@ def ddd_rc(
     """
     y, post, subgroup, covariates, i_weights, n_obs = _validate_inputs_rc(y, post, subgroup, covariates, i_weights)
 
+    xp = get_backend()
     subgroup_counts = {
-        "subgroup_1": int(np.sum(subgroup == 1)),
-        "subgroup_2": int(np.sum(subgroup == 2)),
-        "subgroup_3": int(np.sum(subgroup == 3)),
-        "subgroup_4": int(np.sum(subgroup == 4)),
+        "subgroup_1": int(xp.sum(subgroup == 1)),
+        "subgroup_2": int(xp.sum(subgroup == 2)),
+        "subgroup_3": int(xp.sum(subgroup == 3)),
+        "subgroup_4": int(xp.sum(subgroup == 4)),
     }
 
     pscores, or_results = compute_all_nuisances_rc(
@@ -215,6 +217,9 @@ def ddd_rc(
         "att_4v2": did_results[1].dr_att,
         "att_4v1": did_results[2].dr_att,
     }
+
+    inf_func = to_numpy(inf_func)
+    ddd_att = float(ddd_att)
 
     dr_boot = None
     z_val = stats.norm.ppf(1 - alpha / 2)
@@ -477,21 +482,23 @@ def _wboot_ddd_rc(
 
 def _validate_inputs_rc(y, post, subgroup, covariates, i_weights):
     """Validate and preprocess input arrays for RCS."""
-    y = np.asarray(y).flatten()
-    post = np.asarray(post).flatten()
-    subgroup = np.asarray(subgroup).flatten()
+    xp = get_backend()
+    y = xp.asarray(y).flatten()
+    post = xp.asarray(post).flatten()
+    subgroup = xp.asarray(subgroup).flatten()
     n_obs = len(y)
 
     if len(post) != n_obs or len(subgroup) != n_obs:
         raise ValueError("y, post, and subgroup must have the same length.")
 
-    if not np.all(np.isin(post, [0, 1])):
+    post_np = to_numpy(post)
+    if not np.all(np.isin(post_np, [0, 1])):
         raise ValueError("post must contain only 0 and 1.")
 
     if covariates is None:
-        covariates = np.ones((n_obs, 1))
+        covariates = xp.ones((n_obs, 1))
     else:
-        covariates = np.asarray(covariates)
+        covariates = xp.asarray(covariates)
         if covariates.ndim == 1:
             covariates = covariates.reshape(-1, 1)
 
@@ -499,17 +506,17 @@ def _validate_inputs_rc(y, post, subgroup, covariates, i_weights):
         raise ValueError("covariates must have the same number of rows as y.")
 
     if i_weights is None:
-        i_weights = np.ones(n_obs)
+        i_weights = xp.ones(n_obs)
     else:
-        i_weights = np.asarray(i_weights).flatten()
+        i_weights = xp.asarray(i_weights).flatten()
         if len(i_weights) != n_obs:
             raise ValueError("i_weights must have the same length as y.")
-        if np.any(i_weights < 0):
+        if xp.any(i_weights < 0):
             raise ValueError("i_weights must be non-negative.")
 
-    i_weights = i_weights / np.mean(i_weights)
+    i_weights = i_weights / xp.mean(i_weights)
 
-    unique_subgroups = set(np.unique(subgroup))
+    unique_subgroups = set(int(v) for v in to_numpy(xp.unique(subgroup)))
     expected_subgroups = {1, 2, 3, 4}
     if not unique_subgroups.issubset(expected_subgroups):
         raise ValueError(f"subgroup must contain only values 1, 2, 3, 4. Got {unique_subgroups}.")
@@ -524,9 +531,9 @@ def _validate_inputs_rc(y, post, subgroup, covariates, i_weights):
                 UserWarning,
             )
 
-    if not np.any(post == 1):
+    if not xp.any(post == 1):
         raise ValueError("No post-treatment observations.")
-    if not np.any(post == 0):
+    if not xp.any(post == 0):
         raise ValueError("No pre-treatment observations.")
 
     return y, post, subgroup, covariates, i_weights, n_obs

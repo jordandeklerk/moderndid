@@ -38,7 +38,8 @@ get the core estimators plus whatever extras you specify.
 - **didhonest** - Base + sensitivity analysis (``honest_did``)
 - **plots** - Base + visualization (``plot_gt``, ``plot_event_study``, ...)
 - **numba** - Base + faster bootstrap inference
-- **all** - Everything
+- **gpu** - Base + GPU-accelerated estimation (requires CUDA)
+- **all** - Everything (except ``gpu``, which requires CUDA hardware)
 
 .. code-block:: console
 

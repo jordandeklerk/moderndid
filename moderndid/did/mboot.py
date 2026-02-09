@@ -4,6 +4,9 @@ import warnings
 
 import numpy as np
 
+from moderndid.cupy.backend import get_backend
+from moderndid.cupy.bootstrap import _run_multiplier_bootstrap_cupy
+
 
 def mboot(
     inf_func,
@@ -144,6 +147,10 @@ def _run_multiplier_bootstrap(
     ndarray
         Bootstrap results of shape (biters, k).
     """
+    xp = get_backend()
+    if xp is not np:
+        return _run_multiplier_bootstrap_cupy(inf_func, biters, random_state)
+
     # Mammen weights
     sqrt5 = np.sqrt(5)
     k1 = 0.5 * (1 - sqrt5)

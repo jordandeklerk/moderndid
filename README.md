@@ -39,12 +39,14 @@ Extras are additive. They add functionality to the base install, so you always g
 - **`didhonest`** - Base + sensitivity analysis (`honest_did`)
 - **`plots`** - Base + visualization (`plot_gt`, `plot_event_study`, ...)
 - **`numba`** - Base + faster bootstrap inference
-- **`all`** - Everything
+- **`gpu`** - Base + GPU-accelerated estimation (requires CUDA)
+- **`all`** - Everything (except `gpu`, which requires CUDA hardware)
 
 ```bash
 uv pip install moderndid[didcont]     # Base estimators + cont_did
 uv pip install moderndid[didhonest]   # Base estimators + sensitivity analysis
-uv pip install moderndid[numba]       # Base estimators with faster bootstrap
+uv pip install moderndid[numba]       # Base estimators with faster computations
+uv pip install moderndid[gpu]         # Base estimators with GPU acceleration
 uv pip install moderndid[plots,numba] # Combine multiple extras
 ```
 
@@ -55,16 +57,37 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 ```
 
 > [!TIP]
-> We recommend `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant performance gains for bootstrap inference and the `plotnine` extra provides customizable, batteries-included plotting out of the box. Install minimal extras only if you have specific dependency constraints.
+> We recommend `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant performance gains for bootstrap inference and the `plots` extra provides customizable, batteries-included plotting out of the box. On machines with NVIDIA GPUs, use `uv pip install moderndid[all,gpu]` to also enable CuPy-accelerated estimation. Install minimal extras only if you have specific dependency constraints.
 
 ## Features
 
 - **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
 - **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
-- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and optional thread-based parallelism via `n_jobs` for performance
+- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, optional thread-based parallelism via `n_jobs`, and optional GPU accelerated regression and propensity score estimation across all doubly robust and IPW estimators via [CuPy](https://cupy.dev/)
 - **Native plots** - Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
 - **Documentation** - [https://moderndid.readthedocs.io/en/latest/index.html](https://moderndid.readthedocs.io/en/latest/index.html)
+
+### GPU Acceleration
+
+On machines with NVIDIA GPUs, you can install the `gpu` extra and activate the CuPy backend to offload regression and propensity score estimation to the GPU:
+
+```python
+import moderndid as did
+
+did.set_backend("cupy")
+
+# All estimators now use GPU-accelerated computations
+result = did.att_gt(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+```
+
+To switch back to the default CPU path:
+
+```python
+did.set_backend("numpy")
+```
+
+See [GPU benchmark results](scripts/README.md) for performance comparisons across Tesla T4, A100, and H100 GPUs.
 
 ### Consistent API
 

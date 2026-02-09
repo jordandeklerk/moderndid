@@ -8,6 +8,9 @@ import scipy.optimize
 import scipy.special
 import statsmodels.api as sm
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_logistic_irls
+
 
 def calculate_pscore_ipt(D, X, iw, quantiles=None):
     r"""Calculate propensity scores using Inverse Probability Tilting for the ATT.
@@ -261,6 +264,18 @@ def _loss_ps_ipt(gamma, D, X, iw, n_obs):
 
 def _get_initial_gamma(D, X, iw, k_features):
     """Get initial gamma values for optimization."""
+    xp = get_backend()
+    if xp is not np:
+        try:
+            beta, _ = cupy_logistic_irls(
+                xp.asarray(D, dtype=xp.float64),
+                xp.asarray(X, dtype=xp.float64),
+                xp.asarray(iw, dtype=xp.float64),
+            )
+            return to_numpy(beta)
+        except (RuntimeError, np.linalg.LinAlgError):
+            return np.zeros(k_features)
+
     try:
         logit_model = sm.GLM(D, X, family=sm.families.Binomial(), freq_weights=iw)
         logit_results = logit_model.fit(maxiter=100)

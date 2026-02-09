@@ -7,6 +7,9 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_wls
+
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_reg_panel
 
@@ -281,17 +284,29 @@ def _fit_outcome_regression(delta_y, d, int_cov, i_weights):
     if n_control < int_cov.shape[1]:
         raise ValueError("Insufficient control units for regression.")
 
-    try:
-        glm_model = sm.GLM(
-            delta_y[control_filter],
-            int_cov[control_filter],
-            family=sm.families.Gaussian(link=sm.families.links.Identity()),
-            var_weights=i_weights[control_filter],
-        )
-        glm_results = glm_model.fit()
-        reg_coeff = glm_results.params
-    except (np.linalg.LinAlgError, ValueError) as e:
-        raise ValueError(f"Failed to fit outcome regression model: {e}") from e
+    xp = get_backend()
+    if xp is not np:
+        try:
+            beta, _ = cupy_wls(
+                xp.asarray(delta_y[control_filter]),
+                xp.asarray(int_cov[control_filter]),
+                xp.asarray(i_weights[control_filter]),
+            )
+            reg_coeff = to_numpy(beta)
+        except (np.linalg.LinAlgError, RuntimeError) as e:
+            raise ValueError(f"Failed to fit outcome regression model: {e}") from e
+    else:
+        try:
+            glm_model = sm.GLM(
+                delta_y[control_filter],
+                int_cov[control_filter],
+                family=sm.families.Gaussian(link=sm.families.links.Identity()),
+                var_weights=i_weights[control_filter],
+            )
+            glm_results = glm_model.fit()
+            reg_coeff = glm_results.params
+        except (np.linalg.LinAlgError, ValueError) as e:
+            raise ValueError(f"Failed to fit outcome regression model: {e}") from e
 
     if np.any(np.isnan(reg_coeff)):
         raise ValueError(

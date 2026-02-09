@@ -15,6 +15,7 @@ from moderndid.core.preprocess import (
     EstimationMethod,
     PreprocessDataBuilder,
 )
+from moderndid.cupy.backend import to_numpy
 
 from .compute_att_gt import compute_att_gt
 from .mboot import mboot
@@ -261,12 +262,12 @@ def att_gt(
 
     groups = np.array([att.group for att in att_gt_list])
     times = np.array([att.year for att in att_gt_list])
-    att_values = np.array([att.att for att in att_gt_list])
+    att_values = np.array([float(att.att) for att in att_gt_list])
 
     if hasattr(influence_functions, "toarray"):
-        influence_functions_dense = influence_functions.toarray()
+        influence_functions_dense = to_numpy(influence_functions.toarray())
     else:
-        influence_functions_dense = np.array(influence_functions)
+        influence_functions_dense = to_numpy(np.array(influence_functions))
 
     n_units = dp.config.id_count
     variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units

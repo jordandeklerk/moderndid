@@ -56,6 +56,9 @@ plots = [
 numba = [
     "numba>=0.57.0",
 ]
+gpu = [
+    "cupy-cuda12x>=13.0",
+]
 all = [
     "moderndid[didcont,didhonest,plots,numba]",
 ]

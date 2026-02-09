@@ -2,6 +2,9 @@
 
 import numpy as np
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.bootstrap import _aggregate_by_cluster_cupy, _multiplier_bootstrap_cupy
+
 try:
     import numba as nb
 
@@ -287,6 +290,10 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
     if inf_func.ndim == 1:
         inf_func = inf_func.reshape(-1, 1)
 
+    xp = get_backend()
+    if xp is not np:
+        return _multiplier_bootstrap_cupy(inf_func, biters, random_state)
+
     n = inf_func.shape[0]
     rng = np.random.default_rng(random_state)
     p_kappa = 0.5 * (1 + np.sqrt(5)) / np.sqrt(5)
@@ -327,6 +334,11 @@ def aggregate_by_cluster(inf_func, cluster):
         cluster_int = cluster.astype(np.int64)
 
     n_clusters = len(unique_clusters)
+
+    xp = get_backend()
+    if xp is not np:
+        return _aggregate_by_cluster_cupy(inf_func, cluster_int, n_clusters), n_clusters
+
     cluster_mean_if = _aggregate_by_cluster_impl(
         np.ascontiguousarray(inf_func),
         np.ascontiguousarray(cluster_int),
@@ -373,4 +385,9 @@ def compute_column_std(matrix):
     ndarray
         Standard deviation for each column.
     """
+    xp = get_backend()
+    if xp is not np:
+        m = xp.asarray(matrix, dtype=xp.float64)
+        return to_numpy(xp.nanstd(m, axis=0, ddof=1))
+
     return _compute_column_std_impl(np.ascontiguousarray(matrix.astype(np.float64)))
