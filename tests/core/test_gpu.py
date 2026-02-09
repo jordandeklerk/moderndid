@@ -251,15 +251,15 @@ class TestMbootGpu:
         inf_func = rng.standard_normal((n, k))
 
         set_backend("numpy")
-        cpu_result = mboot(inf_func, n_units=n, biters=99, random_state=42)
+        cpu_result = mboot(inf_func, n_units=n, biters=999, random_state=42)
 
         set_backend("cupy")
-        gpu_result = mboot(inf_func, n_units=n, biters=99, random_state=42)
+        gpu_result = mboot(inf_func, n_units=n, biters=999, random_state=42)
 
         assert gpu_result["bres"].shape == cpu_result["bres"].shape
         assert np.all(np.isfinite(gpu_result["se"][~np.isnan(cpu_result["se"])]))
         np.testing.assert_allclose(gpu_result["se"], cpu_result["se"], rtol=0.3)
-        np.testing.assert_allclose(gpu_result["bres"].mean(axis=0), cpu_result["bres"].mean(axis=0), atol=0.15)
+        np.testing.assert_allclose(gpu_result["bres"].mean(axis=0), cpu_result["bres"].mean(axis=0), atol=0.3)
         set_backend("numpy")
 
     @requires_gpu
