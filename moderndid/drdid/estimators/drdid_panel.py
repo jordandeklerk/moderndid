@@ -244,8 +244,7 @@ def _compute_propensity_score(d, covariates, i_weights):
                 xp.asarray(covariates, dtype=xp.float64),
                 xp.asarray(i_weights, dtype=xp.float64),
             )
-            ps_fit = to_numpy(ps_fit)
-            if np.any(np.isnan(to_numpy(beta))):
+            if xp.any(xp.isnan(beta)):
                 raise ValueError(
                     "Propensity score model coefficients have NA components. "
                     "Multicollinearity (or lack of variation) of covariates is a likely reason."
