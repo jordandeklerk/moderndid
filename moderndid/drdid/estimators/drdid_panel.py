@@ -7,8 +7,8 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
-from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import cupy_logistic_irls
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_panel import wboot_dr_tr_panel

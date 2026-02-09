@@ -8,8 +8,8 @@ from typing import NamedTuple
 import numpy as np
 import statsmodels.api as sm
 
-from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import cupy_logistic_irls, cupy_wls
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
 
 from .utils import check_overlap_and_warn, get_comparison_description
 

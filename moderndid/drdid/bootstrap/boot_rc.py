@@ -5,8 +5,8 @@ import warnings
 import numpy as np
 import statsmodels.api as sm
 
-from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import cupy_logistic_irls
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..estimators.wols import wols_rc
 from ..propensity.aipw_estimators import aipw_did_rc_imp1, aipw_did_rc_imp2

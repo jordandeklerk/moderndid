@@ -6,6 +6,9 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_wls
+
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_reg_rc import wboot_reg_rc
 
@@ -204,6 +207,8 @@ def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
 
 def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
     """Fit outcome regression models for control units in pre and post periods."""
+    xp = get_backend()
+
     # Pre-treatment period
     pre_filter = (d == 0) & (post == 0)
     n_control_pre = np.sum(pre_filter)
@@ -214,17 +219,28 @@ def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
     if n_control_pre < int_cov.shape[1]:
         raise ValueError("Insufficient control units in pre-treatment period for regression.")
 
-    try:
-        glm_pre = sm.GLM(
-            y[pre_filter],
-            int_cov[pre_filter],
-            family=sm.families.Gaussian(link=sm.families.links.Identity()),
-            var_weights=i_weights[pre_filter],
-        )
-        res_pre = glm_pre.fit()
-        reg_coeff_pre = res_pre.params
-    except (np.linalg.LinAlgError, ValueError) as e:
-        raise ValueError(f"Failed to fit pre-period regression: {e}") from e
+    if xp is not np:
+        try:
+            beta_pre, _ = cupy_wls(
+                xp.asarray(y[pre_filter]),
+                xp.asarray(int_cov[pre_filter]),
+                xp.asarray(i_weights[pre_filter]),
+            )
+            reg_coeff_pre = to_numpy(beta_pre)
+        except (np.linalg.LinAlgError, RuntimeError) as e:
+            raise ValueError(f"Failed to fit pre-period regression: {e}") from e
+    else:
+        try:
+            glm_pre = sm.GLM(
+                y[pre_filter],
+                int_cov[pre_filter],
+                family=sm.families.Gaussian(link=sm.families.links.Identity()),
+                var_weights=i_weights[pre_filter],
+            )
+            res_pre = glm_pre.fit()
+            reg_coeff_pre = res_pre.params
+        except (np.linalg.LinAlgError, ValueError) as e:
+            raise ValueError(f"Failed to fit pre-period regression: {e}") from e
 
     if np.any(np.isnan(reg_coeff_pre)):
         raise ValueError(
@@ -244,17 +260,28 @@ def _fit_outcome_regressions(y, post, d, int_cov, i_weights):
     if n_control_post < int_cov.shape[1]:
         raise ValueError("Insufficient control units in post-treatment period for regression.")
 
-    try:
-        glm_post = sm.GLM(
-            y[post_filter],
-            int_cov[post_filter],
-            family=sm.families.Gaussian(link=sm.families.links.Identity()),
-            var_weights=i_weights[post_filter],
-        )
-        res_post = glm_post.fit()
-        reg_coeff_post = res_post.params
-    except (np.linalg.LinAlgError, ValueError) as e:
-        raise ValueError(f"Failed to fit post-period regression: {e}") from e
+    if xp is not np:
+        try:
+            beta_post, _ = cupy_wls(
+                xp.asarray(y[post_filter]),
+                xp.asarray(int_cov[post_filter]),
+                xp.asarray(i_weights[post_filter]),
+            )
+            reg_coeff_post = to_numpy(beta_post)
+        except (np.linalg.LinAlgError, RuntimeError) as e:
+            raise ValueError(f"Failed to fit post-period regression: {e}") from e
+    else:
+        try:
+            glm_post = sm.GLM(
+                y[post_filter],
+                int_cov[post_filter],
+                family=sm.families.Gaussian(link=sm.families.links.Identity()),
+                var_weights=i_weights[post_filter],
+            )
+            res_post = glm_post.fit()
+            reg_coeff_post = res_post.params
+        except (np.linalg.LinAlgError, ValueError) as e:
+            raise ValueError(f"Failed to fit post-period regression: {e}") from e
 
     if np.any(np.isnan(reg_coeff_post)):
         raise ValueError(

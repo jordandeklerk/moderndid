@@ -6,7 +6,7 @@ from typing import Protocol
 import numpy as np
 import polars as pl
 
-from moderndid.core.backend import get_backend, to_device
+from moderndid.cupy.backend import get_backend, to_device
 
 from ..dataframe import DataFrame, to_polars
 from .config import DIDConfig

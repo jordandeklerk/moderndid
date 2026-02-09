@@ -8,9 +8,9 @@ from typing import NamedTuple
 import numpy as np
 import scipy.sparse as sp
 
-from moderndid.core.backend import get_backend
 from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess import ControlGroup, DIDData, EstimationMethod
+from moderndid.cupy.backend import get_backend
 from moderndid.drdid.estimators.drdid_panel import drdid_panel
 from moderndid.drdid.estimators.drdid_rc import drdid_rc
 from moderndid.drdid.estimators.reg_did_panel import reg_did_panel

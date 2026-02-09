@@ -8,8 +8,8 @@ import scipy.optimize
 import scipy.special
 import statsmodels.api as sm
 
-from moderndid.core.backend import get_backend, to_numpy
-from moderndid.core.gpu import cupy_logistic_irls
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_logistic_irls
 
 
 def calculate_pscore_ipt(D, X, iw, quantiles=None):

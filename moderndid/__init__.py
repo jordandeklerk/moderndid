@@ -225,9 +225,9 @@ _submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "
 # Map attribute names to their module paths (for base/always-available imports)
 _lazy_imports = {
     # core.backend
-    "HAS_CUPY": "moderndid.core.backend",
-    "get_backend": "moderndid.core.backend",
-    "set_backend": "moderndid.core.backend",
+    "HAS_CUPY": "moderndid.cupy.backend",
+    "get_backend": "moderndid.cupy.backend",
+    "set_backend": "moderndid.cupy.backend",
     # core.data
     "data": "moderndid.core",
     "load_ehec": "moderndid.core.data",

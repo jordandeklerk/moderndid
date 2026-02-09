@@ -7,6 +7,9 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_logistic_irls
+
 from ..bootstrap.boot_ipw_rc import wboot_ipw_rc
 from ..bootstrap.boot_mult import mboot_did
 
@@ -215,20 +218,37 @@ def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
 
 def _compute_propensity_score(d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
-    try:
-        pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
-
-        pscore_results = pscore_model.fit()
-        if not pscore_results.converged:
-            warnings.warn("GLM algorithm did not converge.", UserWarning)
-        if np.any(np.isnan(pscore_results.params)):
-            raise ValueError(
-                "Propensity score model coefficients have NA components. \n"
-                "Multicollinearity (or lack of variation) of covariates is a likely reason."
+    xp = get_backend()
+    if xp is not np:
+        try:
+            beta, ps_fit = cupy_logistic_irls(
+                xp.asarray(d, dtype=xp.float64),
+                xp.asarray(covariates, dtype=xp.float64),
+                xp.asarray(i_weights, dtype=xp.float64),
             )
-        ps_fit = pscore_results.predict(covariates)
-    except np.linalg.LinAlgError as e:
-        raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
+            ps_fit = to_numpy(ps_fit)
+            if np.any(np.isnan(to_numpy(beta))):
+                raise ValueError(
+                    "Propensity score model coefficients have NA components. \n"
+                    "Multicollinearity (or lack of variation) of covariates is a likely reason."
+                )
+        except (np.linalg.LinAlgError, RuntimeError) as e:
+            raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
+    else:
+        try:
+            pscore_model = sm.GLM(d, covariates, family=sm.families.Binomial(), freq_weights=i_weights)
+
+            pscore_results = pscore_model.fit()
+            if not pscore_results.converged:
+                warnings.warn("GLM algorithm did not converge.", UserWarning)
+            if np.any(np.isnan(pscore_results.params)):
+                raise ValueError(
+                    "Propensity score model coefficients have NA components. \n"
+                    "Multicollinearity (or lack of variation) of covariates is a likely reason."
+                )
+            ps_fit = pscore_results.predict(covariates)
+        except np.linalg.LinAlgError as e:
+            raise ValueError("Failed to estimate propensity scores due to singular matrix.") from e
 
     ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
     ps_weights = ps_fit * (1 - ps_fit) * i_weights

@@ -6,6 +6,9 @@ import numpy as np
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_wls
+
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_twfe_rc import wboot_twfe_rc
 
@@ -197,11 +200,18 @@ def _fit_twfe_regression(y, post, d, x, i_weights, n):
         )
 
     try:
-        wls_model = sm.WLS(y, design_matrix, weights=i_weights)
-        wls_results = wls_model.fit()
-
-        # ATT coefficient (d:post interaction)
-        att = wls_results.params[3]  # Index 3 is the d:post interaction
+        xp = get_backend()
+        if xp is not np:
+            beta, _ = cupy_wls(xp.asarray(y), xp.asarray(design_matrix), xp.asarray(i_weights))
+            params = to_numpy(beta)
+            att = params[3]
+            fitted = design_matrix @ params
+            residuals = y - fitted
+        else:
+            wls_model = sm.WLS(y, design_matrix, weights=i_weights)
+            wls_results = wls_model.fit()
+            att = wls_results.params[3]
+            residuals = wls_results.resid
 
         # Elements for influence function
         x_prime_x = design_matrix.T @ (i_weights[:, np.newaxis] * design_matrix) / n
@@ -212,7 +222,6 @@ def _fit_twfe_regression(y, post, d, x, i_weights, n):
         x_prime_x_inv = np.linalg.inv(x_prime_x)
 
         # Influence function of the TWFE regression
-        residuals = wls_results.resid
         influence_reg = (i_weights[:, np.newaxis] * design_matrix * residuals[:, np.newaxis]) @ x_prime_x_inv
 
         selection_theta = np.zeros(design_matrix.shape[1])

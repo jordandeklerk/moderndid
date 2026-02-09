@@ -8,6 +8,9 @@ from typing import NamedTuple
 import numpy as np
 import statsmodels.api as sm
 
+from moderndid.cupy.backend import get_backend, to_numpy
+from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
+
 from .utils import check_overlap_and_warn, get_comparison_description
 
 
@@ -628,6 +631,41 @@ def _compute_pscore_rc(subgroup, _post, covariates, weights, comparison_subgroup
 
     pa4 = (sub_subgroup == 4).astype(float)
 
+    xp = get_backend()
+    if xp is not np:
+        try:
+            beta, ps_fit = cupy_logistic_irls(
+                xp.asarray(pa4, dtype=xp.float64),
+                xp.asarray(sub_covariates, dtype=xp.float64),
+                xp.asarray(sub_weights, dtype=xp.float64),
+            )
+            ps_fit = to_numpy(ps_fit)
+            if np.any(np.isnan(to_numpy(beta))):
+                comparison_desc = get_comparison_description(comparison_subgroup)
+                raise ValueError(
+                    f"Propensity score model has NA coefficients.\n"
+                    f"  Comparison: {comparison_desc} units.\n"
+                    f"  This is likely due to multicollinearity among covariates."
+                )
+        except (np.linalg.LinAlgError, RuntimeError) as e:
+            raise ValueError(
+                f"Failed to estimate propensity scores for subgroup {comparison_subgroup} due to singular matrix."
+            ) from e
+
+        check_overlap_and_warn(ps_fit, comparison_subgroup)
+
+        keep_ps = np.ones(len(pa4), dtype=bool)
+        keep_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
+        ps_fit = np.minimum(ps_fit, 1 - 1e-6)
+
+        n_sub = len(sub_weights)
+        # Compute Hessian from ps_fit directly
+        W = ps_fit * (1 - ps_fit) * sub_weights
+        hessian_ps = sub_covariates.T @ (W[:, np.newaxis] * sub_covariates)
+        hessian_matrix = np.linalg.inv(hessian_ps) * n_sub
+
+        return PScoreRCResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
+
     try:
         pscore_model = sm.GLM(pa4, sub_covariates, family=sm.families.Binomial(), freq_weights=sub_weights)
         pscore_results = pscore_model.fit(disp=False)
@@ -775,9 +813,14 @@ def _fit_ols_cell(y, post, d, covariates, weights, pre, treat, n_features, compa
     sub_weights = weights[subs]
 
     try:
-        wls_model = sm.WLS(sub_y, sub_x, weights=sub_weights)
-        results = wls_model.fit()
-        coefficients = results.params
+        xp = get_backend()
+        if xp is not np:
+            beta, _ = cupy_wls(xp.asarray(sub_y), xp.asarray(sub_x), xp.asarray(sub_weights))
+            coefficients = to_numpy(beta)
+        else:
+            wls_model = sm.WLS(sub_y, sub_x, weights=sub_weights)
+            results = wls_model.fit()
+            coefficients = results.params
 
         if np.any(np.isnan(coefficients)):
             subg_desc = "Treated-Eligible" if treat else get_comparison_description(comparison_subgroup)
