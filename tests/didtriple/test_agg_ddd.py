@@ -43,7 +43,7 @@ def test_agg_ddd_result_structure(mp_ddd_result, agg_type):
 
 
 def test_agg_ddd_invalid_type(mp_ddd_result):
-    with pytest.raises(ValueError, match="must be one of"):
+    with pytest.raises(ValueError, match="Must be one of"):
         agg_ddd(mp_ddd_result, aggregation_type="invalid")
 
 

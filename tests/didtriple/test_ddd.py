@@ -64,6 +64,7 @@ def test_ddd_2period_with_covariates(two_period_df):
     assert np.isfinite(result.att)
 
 
+@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 def test_ddd_2period_bootstrap(two_period_df):
     result = ddd(
         data=two_period_df,
@@ -84,6 +85,7 @@ def test_ddd_2period_bootstrap(two_period_df):
     assert result.se > 0
 
 
+@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 @pytest.mark.parametrize("boot_type", ["multiplier", "weighted"])
 def test_ddd_2period_boot_types(two_period_df, boot_type):
     result = ddd(
@@ -139,6 +141,7 @@ def test_ddd_2period_subgroup_counts(two_period_df):
     assert all(c > 0 for c in result.subgroup_counts.values())
 
 
+@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 def test_ddd_2period_reproducibility(two_period_df):
     result1 = ddd(
         data=two_period_df,
@@ -170,6 +173,7 @@ def test_ddd_2period_reproducibility(two_period_df):
     assert result1.se == result2.se
 
 
+@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 def test_ddd_2period_args_stored(two_period_df):
     result = ddd(
         data=two_period_df,

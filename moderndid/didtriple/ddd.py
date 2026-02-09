@@ -297,6 +297,18 @@ def ddd(
         raise ValueError("pname is required. Please specify the partition/eligibility column.")
     if est_method not in ("dr", "reg", "ipw"):
         raise ValueError(f"est_method='{est_method}' is not valid. Must be 'dr', 'reg', or 'ipw'.")
+    if control_group not in ("nevertreated", "notyettreated"):
+        raise ValueError(f"control_group='{control_group}' is not valid. Must be 'nevertreated' or 'notyettreated'.")
+    if base_period not in ("universal", "varying"):
+        raise ValueError(f"base_period='{base_period}' is not valid. Must be 'universal' or 'varying'.")
+    if not 0 < alpha < 1:
+        raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
+    if not isinstance(biters, int) or biters < 1:
+        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
+    if boot_type not in ("weighted", "multiplier"):
+        raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted' or 'multiplier'.")
+    if not 0 < trim_level < 1:
+        raise ValueError(f"trim_level={trim_level} is not valid. Must be between 0 and 1 (exclusive).")
 
     is_rcs = detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel)
 

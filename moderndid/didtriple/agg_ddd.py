@@ -203,6 +203,21 @@ def agg_ddd(
            arXiv preprint arXiv:2505.09942.
            https://arxiv.org/abs/2505.09942
     """
+    valid_types = ("simple", "eventstudy", "group", "calendar")
+    if aggregation_type not in valid_types:
+        raise ValueError(
+            f"aggregation_type='{aggregation_type}' is not valid. "
+            f"Must be one of: 'simple', 'eventstudy', 'group', 'calendar'."
+        )
+    if not 0 < alpha < 1:
+        raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
+    if not isinstance(biters, int) or biters < 1:
+        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
+    if balance_e is not None and (not isinstance(balance_e, int) or balance_e < 0):
+        raise ValueError(f"balance_e={balance_e} is not valid. Must be a non-negative integer.")
+    if min_e > max_e:
+        raise ValueError(f"min_e={min_e} must be less than or equal to max_e={max_e}.")
+
     return compute_agg_ddd(
         ddd_result=ddd_result,
         aggregation_type=aggregation_type,

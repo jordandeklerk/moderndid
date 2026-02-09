@@ -45,23 +45,3 @@ def _aggregate_by_cluster_cupy(inf_func, cluster_int, n_clusters):
     counts = xp.maximum(counts, 1.0)
     result = sums / counts[:, None]
     return to_numpy(result)
-
-
-def _run_multiplier_bootstrap_cupy(inf_func, biters, random_state=None):
-    """Batched GPU multiplier bootstrap."""
-    xp = get_backend()
-
-    sqrt5 = float(np.sqrt(5))
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    pkappa = 0.5 * (1 + sqrt5) / sqrt5
-
-    n = inf_func.shape[0]
-    inf_gpu = xp.asarray(inf_func, dtype=xp.float64)
-
-    rng = xp.random.default_rng(random_state)
-    draws = rng.binomial(1, pkappa, size=(biters, n))
-    v = xp.where(draws == 1, k1, k2).astype(xp.float64)
-
-    bres = (v @ inf_gpu) / n
-    return to_numpy(bres)

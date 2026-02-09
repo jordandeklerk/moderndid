@@ -218,6 +218,14 @@ def aggte(
     valid_types = ("simple", "dynamic", "group", "calendar")
     if type not in valid_types:
         raise ValueError(f"type='{type}' is not valid. Must be one of: 'simple', 'dynamic', 'group', 'calendar'.")
+    if alp is not None and not 0 < alp < 1:
+        raise ValueError(f"alp={alp} is not valid. Must be between 0 and 1 (exclusive).")
+    if biters is not None and (not isinstance(biters, int) or biters < 1):
+        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
+    if balance_e is not None and (not isinstance(balance_e, int) or balance_e < 0):
+        raise ValueError(f"balance_e={balance_e} is not valid. Must be a non-negative integer.")
+    if min_e > max_e:
+        raise ValueError(f"min_e={min_e} must be less than or equal to max_e={max_e}.")
 
     call_info = {
         "function": f"aggte(MP, type='{type}')",

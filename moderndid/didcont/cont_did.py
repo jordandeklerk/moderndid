@@ -288,6 +288,22 @@ def cont_did(
         raise ValueError(f"dose_est_method='{dose_est_method}' is not valid. Must be 'parametric' or 'cck'.")
     if control_group not in ("notyettreated", "nevertreated"):
         raise ValueError(f"control_group='{control_group}' is not valid. Must be 'notyettreated' or 'nevertreated'.")
+    if isinstance(base_period, str) and base_period not in ("varying", "universal"):
+        raise ValueError(f"base_period='{base_period}' is not valid. Must be 'varying' or 'universal'.")
+    if not 0 < alp < 1:
+        raise ValueError(f"alp={alp} is not valid. Must be between 0 and 1 (exclusive).")
+    if not isinstance(biters, int) or biters < 1:
+        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
+    if boot_type not in ("weighted", "multiplier", "empirical"):
+        raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted', 'multiplier', or 'empirical'.")
+    if not isinstance(anticipation, int | float) or anticipation < 0:
+        raise ValueError(f"anticipation={anticipation} is not valid. Must be a non-negative number.")
+    if degree < 1:
+        raise ValueError(f"degree={degree} is not valid. Must be at least 1.")
+    if num_knots < 0:
+        raise ValueError(f"num_knots={num_knots} is not valid. Must be non-negative.")
+    if treatment_type not in ("continuous", "discrete"):
+        raise ValueError(f"treatment_type='{treatment_type}' is not valid. Must be 'continuous' or 'discrete'.")
 
     data = to_polars(data)
 

@@ -157,6 +157,11 @@ def ordid(
     if panel and idname is None:
         raise ValueError("idname must be provided when panel=True")
 
+    if boot_type not in ("weighted", "multiplier"):
+        raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted' or 'multiplier'.")
+    if not isinstance(n_boot, int) or n_boot < 1:
+        raise ValueError(f"n_boot={n_boot} is not valid. Must be a positive integer.")
+
     call_params = {
         "yname": yname,
         "tname": tname,

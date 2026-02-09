@@ -7,8 +7,7 @@ import polars as pl
 
 from ..dataframe import DataFrame, to_polars
 from .base import BaseValidator
-from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
-from .constants import BasePeriod, ControlGroup
+from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDInterConfig, TwoPeriodDIDConfig
 from .models import ValidationResult
 from .utils import extract_vars_from_formula
 
@@ -234,42 +233,8 @@ class ArgumentValidator(BaseValidator):
         errors = []
         warnings = []
 
-        if not isinstance(config.anticipation, int | float):
-            errors.append("anticipation must be numeric")
-        elif config.anticipation < 0:
-            errors.append("anticipation must be positive")
-
-        if not 0 < config.alp < 1:
-            errors.append("alp must be between 0 and 1")
-
-        if (
-            hasattr(config, "biters")
-            and config.biters is not None
-            and (not isinstance(config.biters, int) or config.biters < 1)
-        ):
-            errors.append(f"biters must be a positive integer, got {config.biters}")
-
-        if isinstance(config, DIDConfig):
-            if config.control_group not in [ControlGroup.NEVER_TREATED, ControlGroup.NOT_YET_TREATED]:
-                errors.append(
-                    f"control_group must be either '{ControlGroup.NEVER_TREATED.value}' "
-                    f"or '{ControlGroup.NOT_YET_TREATED.value}'"
-                )
-
-            if config.base_period not in [BasePeriod.UNIVERSAL, BasePeriod.VARYING]:
-                errors.append(
-                    f"base_period must be either '{BasePeriod.UNIVERSAL.value}' or '{BasePeriod.VARYING.value}'"
-                )
-
-        if isinstance(config, ContDIDConfig):
-            if config.degree < 1:
-                errors.append("degree must be at least 1")
-
-            if config.num_knots < 0:
-                errors.append("num_knots must be non-negative")
-
-            if config.required_pre_periods < 0:
-                errors.append("required_pre_periods must be non-negative")
+        if isinstance(config, ContDIDConfig) and config.required_pre_periods < 0:
+            errors.append("required_pre_periods must be non-negative")
 
         return self._create_result(errors, warnings)
 
@@ -432,20 +397,7 @@ class PrePostArgumentValidator(BaseValidator):
         """Validate two-period DiD arguments."""
         if not isinstance(config, TwoPeriodDIDConfig):
             return ValidationResult(is_valid=True, errors=[], warnings=[])
-        errors = []
-        valid_methods = ("imp", "trad", "imp_local", "trad_local")
-        if config.est_method not in valid_methods:
-            errors.append(
-                f"est_method='{config.est_method}' is not valid. "
-                f"Must be one of: {', '.join(repr(m) for m in valid_methods)}."
-            )
-        if not 0 < config.trim_level < 1:
-            errors.append(f"trim_level={config.trim_level} must be between 0 and 1 (exclusive).")
-        if not 0 < config.alp < 1:
-            errors.append("alp must be between 0 and 1")
-        if config.biters < 1:
-            errors.append("biters must be a positive integer")
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
+        return ValidationResult(is_valid=True, errors=[], warnings=[])
 
 
 class DIDInterColumnValidator(BaseValidator):
@@ -519,23 +471,7 @@ class DIDInterArgumentValidator(BaseValidator):
         """Validate data."""
         if not isinstance(config, DIDInterConfig):
             return ValidationResult(is_valid=True, errors=[], warnings=[])
-
-        errors = []
-        warnings = []
-
-        if config.effects < 1:
-            errors.append("effects must be at least 1")
-
-        if config.placebo < 0:
-            errors.append("placebo must be non-negative")
-
-        if not 0 < config.ci_level < 100:
-            errors.append("ci_level must be between 0 and 100")
-
-        if config.switchers not in ["", "in", "out"]:
-            errors.append("switchers must be '', 'in', or 'out'")
-
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+        return ValidationResult(is_valid=True, errors=[], warnings=[])
 
 
 class DIDInterPanelValidator(BaseValidator):
@@ -624,19 +560,7 @@ class DDDArgumentValidator(BaseValidator):
         """Validate DDD arguments."""
         if not isinstance(config, DDDConfig):
             return ValidationResult(is_valid=True, errors=[], warnings=[])
-
-        errors = []
-
-        if config.est_method.value not in ("dr", "reg", "ipw"):
-            errors.append(f"est_method must be 'dr', 'reg', or 'ipw', got '{config.est_method.value}'.")
-
-        if not 0 < config.alp < 1:
-            errors.append("alp must be between 0 and 1.")
-
-        if config.n_boot < 1:
-            errors.append("n_boot must be a positive integer")
-
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
+        return ValidationResult(is_valid=True, errors=[], warnings=[])
 
 
 class DDDInvarianceValidator(BaseValidator):

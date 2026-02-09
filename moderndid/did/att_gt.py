@@ -228,6 +228,12 @@ def att_gt(
         raise ValueError(f"est_method='{est_method}' is not valid. Must be 'dr', 'ipw', or 'reg'.")
     if isinstance(base_period, str) and base_period not in ("varying", "universal"):
         raise ValueError(f"base_period='{base_period}' is not valid. Must be 'varying' or 'universal'.")
+    if not 0 < alp < 1:
+        raise ValueError(f"alp={alp} is not valid. Must be between 0 and 1 (exclusive).")
+    if not isinstance(biters, int) or biters < 1:
+        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
+    if not isinstance(anticipation, int | float) or anticipation < 0:
+        raise ValueError(f"anticipation={anticipation} is not valid. Must be a non-negative number.")
 
     control_group_enum = ControlGroup(control_group)
     est_method_enum = EstimationMethod(est_method) if isinstance(est_method, str) else est_method

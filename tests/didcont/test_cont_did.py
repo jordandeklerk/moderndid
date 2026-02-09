@@ -371,6 +371,7 @@ def test_cont_did_clustering_warning(contdid_data):
 
 @pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
 @pytest.mark.filterwarnings("ignore:Simultaneous confidence band is smaller than pointwise:UserWarning")
+@pytest.mark.filterwarnings("ignore:Dropped 1 groups treated before period:UserWarning")
 def test_cont_did_anticipation_warning(contdid_data):
     with pytest.warns(UserWarning, match="Anticipation not fully tested"):
         cont_did(
@@ -595,6 +596,7 @@ def test_cck_estimator_custom_dvals(cck_test_data):
     assert np.all(np.isfinite(result.acrt_d))
 
 
+@pytest.mark.filterwarnings("ignore:Be aware that there are some small groups:UserWarning")
 def test_cck_estimator_invalid_groups():
     data = pl.DataFrame(
         {
@@ -621,6 +623,7 @@ def test_cck_estimator_invalid_groups():
         )
 
 
+@pytest.mark.filterwarnings("ignore:Be aware that there are some small groups:UserWarning")
 def test_cck_estimator_invalid_times():
     data = pl.DataFrame(
         {
@@ -647,6 +650,7 @@ def test_cck_estimator_invalid_times():
         )
 
 
+@pytest.mark.filterwarnings("ignore:Dropped .* post-treatment observations:UserWarning")
 def test_cck_estimator_no_treated():
     data = pl.DataFrame(
         {

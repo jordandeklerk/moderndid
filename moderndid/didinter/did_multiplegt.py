@@ -290,14 +290,18 @@ def did_multiplegt(
             UserWarning,
         )
 
-    if effects < 1:
-        raise ValueError(f"effects={effects} is not valid. Must be at least 1.")
-    if placebo < 0:
-        raise ValueError(f"placebo={placebo} is not valid. Must be non-negative.")
+    if not isinstance(effects, int) or effects < 1:
+        raise ValueError(f"effects={effects} is not valid. Must be a positive integer.")
+    if not isinstance(placebo, int) or placebo < 0:
+        raise ValueError(f"placebo={placebo} is not valid. Must be a non-negative integer.")
+    if not isinstance(continuous, int) or continuous < 0:
+        raise ValueError(f"continuous={continuous} is not valid. Must be a non-negative integer.")
     if switchers not in ("", "in", "out"):
         raise ValueError(f"switchers='{switchers}' is not valid. Must be '', 'in', or 'out'.")
     if not 0 < ci_level < 100:
         raise ValueError(f"ci_level={ci_level} is not valid. Must be between 0 and 100 (exclusive).")
+    if not isinstance(biters, int) or biters < 1:
+        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
 
     config = DIDInterConfig(
         yname=yname,
