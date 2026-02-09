@@ -298,7 +298,8 @@ def _get_influence_quantities(delta_y, d, covariates, ps_fit, out_delta, i_weigh
 
     weighted_cov_matrix = covariates.T @ wols_x / n_units
 
-    if xp.linalg.cond(weighted_cov_matrix) > 1 / xp.finfo(float).eps:
+    s = xp.linalg.svd(weighted_cov_matrix, compute_uv=False)
+    if s[-1] == 0 or s[0] / s[-1] > 1 / xp.finfo(float).eps:
         raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
 
     weighted_cov_matrix_inv = xp.linalg.solve(weighted_cov_matrix, xp.eye(weighted_cov_matrix.shape[0]))
