@@ -209,6 +209,7 @@ def compute_all_did_rc(
         )
         did_results.append(did_result)
 
+    xp = get_backend()
     dr_att_3, inf_func_3 = did_results[0].dr_att, did_results[0].inf_func
     dr_att_2, inf_func_2 = did_results[1].dr_att, did_results[1].inf_func
     dr_att_1, inf_func_1 = did_results[2].dr_att, did_results[2].inf_func
@@ -216,9 +217,9 @@ def compute_all_did_rc(
     ddd_att = dr_att_3 + dr_att_2 - dr_att_1
 
     n = n_total
-    n3 = np.sum((subgroup == 4) | (subgroup == 3))
-    n2 = np.sum((subgroup == 4) | (subgroup == 2))
-    n1 = np.sum((subgroup == 4) | (subgroup == 1))
+    n3 = int(xp.sum((subgroup == 4) | (subgroup == 3)))
+    n2 = int(xp.sum((subgroup == 4) | (subgroup == 2)))
+    n1 = int(xp.sum((subgroup == 4) | (subgroup == 1)))
 
     w3 = n / n3 if n3 > 0 else 0
     w2 = n / n2 if n2 > 0 else 0
@@ -242,6 +243,7 @@ def _compute_did_rc(
     n_total,
 ):
     """Compute doubly robust DiD for one subgroup comparison with RCS."""
+    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     sub_subgroup = subgroup[mask]
     sub_post = post[mask]
@@ -270,22 +272,26 @@ def _compute_did_rc(
         w_cont_post = None
         w_reg_control = keep_ps * sub_weights * pa4
     else:
-        with np.errstate(divide="ignore", invalid="ignore"):
+        if xp is np:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                w_cont_pre = keep_ps * sub_weights * pscore * pa_comp * (1 - sub_post) / (1 - pscore)
+                w_cont_post = keep_ps * sub_weights * pscore * pa_comp * sub_post / (1 - pscore)
+        else:
             w_cont_pre = keep_ps * sub_weights * pscore * pa_comp * (1 - sub_post) / (1 - pscore)
             w_cont_post = keep_ps * sub_weights * pscore * pa_comp * sub_post / (1 - pscore)
-        w_cont_pre = np.nan_to_num(w_cont_pre)
-        w_cont_post = np.nan_to_num(w_cont_post)
+        w_cont_pre = xp.nan_to_num(w_cont_pre)
+        w_cont_post = xp.nan_to_num(w_cont_post)
         w_reg_control = None
 
     w_d = keep_ps * sub_weights * pa4
     w_dt1 = keep_ps * sub_weights * pa4 * sub_post
     w_dt0 = keep_ps * sub_weights * pa4 * (1 - sub_post)
 
-    mean_w_treat_pre = np.mean(w_treat_pre)
-    mean_w_treat_post = np.mean(w_treat_post)
-    mean_w_d = np.mean(w_d)
-    mean_w_dt1 = np.mean(w_dt1)
-    mean_w_dt0 = np.mean(w_dt0)
+    mean_w_treat_pre = xp.mean(w_treat_pre)
+    mean_w_treat_post = xp.mean(w_treat_post)
+    mean_w_d = xp.mean(w_d)
+    mean_w_dt1 = xp.mean(w_dt1)
+    mean_w_dt0 = xp.mean(w_dt0)
 
     if mean_w_treat_pre == 0 or mean_w_treat_post == 0:
         raise ValueError(
@@ -293,16 +299,16 @@ def _compute_did_rc(
         )
 
     if est_method == "reg":
-        mean_w_reg_control = np.mean(w_reg_control)
+        mean_w_reg_control = xp.mean(w_reg_control)
 
         eta_treat_pre = w_treat_pre * sub_y / mean_w_treat_pre
         eta_treat_post = w_treat_post * sub_y / mean_w_treat_post
 
         reg_att_control = w_reg_control * (out_y_cont_post - out_y_cont_pre)
-        eta_reg_control = np.mean(reg_att_control) / mean_w_reg_control
+        eta_reg_control = xp.mean(reg_att_control) / mean_w_reg_control
 
-        att_treat_pre = np.mean(eta_treat_pre)
-        att_treat_post = np.mean(eta_treat_post)
+        att_treat_pre = xp.mean(eta_treat_pre)
+        att_treat_post = xp.mean(eta_treat_post)
 
         dr_att = (att_treat_post - att_treat_pre) - eta_reg_control
 
@@ -323,8 +329,8 @@ def _compute_did_rc(
 
     else:
         # DR or IPW estimator
-        mean_w_cont_pre = np.mean(w_cont_pre)
-        mean_w_cont_post = np.mean(w_cont_post)
+        mean_w_cont_pre = xp.mean(w_cont_pre)
+        mean_w_cont_post = xp.mean(w_cont_post)
 
         if mean_w_cont_pre == 0 or mean_w_cont_post == 0:
             raise ValueError(f"No effectively control observations (subgroup {comparison_subgroup}) after weighting.")
@@ -339,14 +345,14 @@ def _compute_did_rc(
         eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / mean_w_d
         eta_dt0_pre = w_dt0 * (out_y_treat_pre - out_y_cont_pre) / mean_w_dt0
 
-        att_treat_pre = np.mean(eta_treat_pre)
-        att_treat_post = np.mean(eta_treat_post)
-        att_cont_pre = np.mean(eta_cont_pre)
-        att_cont_post = np.mean(eta_cont_post)
-        att_d_post = np.mean(eta_d_post)
-        att_dt1_post = np.mean(eta_dt1_post)
-        att_d_pre = np.mean(eta_d_pre)
-        att_dt0_pre = np.mean(eta_dt0_pre)
+        att_treat_pre = xp.mean(eta_treat_pre)
+        att_treat_post = xp.mean(eta_treat_post)
+        att_cont_pre = xp.mean(eta_cont_pre)
+        att_cont_post = xp.mean(eta_cont_post)
+        att_d_post = xp.mean(eta_d_post)
+        att_dt1_post = xp.mean(eta_dt1_post)
+        att_d_pre = xp.mean(eta_d_pre)
+        att_dt0_pre = xp.mean(eta_dt0_pre)
 
         dr_att = (
             (att_treat_post - att_treat_pre)
@@ -403,11 +409,11 @@ def _compute_did_rc(
         reg_att_control=reg_att_control,
     )
 
-    inf_func = np.zeros(n_total)
-    mask_indices = np.where(mask)[0]
+    inf_func = xp.zeros(n_total)
+    mask_indices = xp.where(mask)[0]
     inf_func[mask_indices] = inf_func_sub
 
-    return DIDRCResult(dr_att=dr_att, inf_func=inf_func)
+    return DIDRCResult(dr_att=float(dr_att), inf_func=inf_func)
 
 
 def _compute_inf_func_rc(
@@ -453,16 +459,17 @@ def _compute_inf_func_rc(
     reg_att_control=None,
 ):
     """Compute influence function for the DiD comparison with RCS."""
+    xp = get_backend()
     n_sub = len(sub_weights)
 
-    mean_w_treat_pre = np.mean(w_treat_pre)
-    mean_w_treat_post = np.mean(w_treat_post)
-    mean_w_d = np.mean(w_d)
-    mean_w_dt1 = np.mean(w_dt1)
-    mean_w_dt0 = np.mean(w_dt0)
+    mean_w_treat_pre = xp.mean(w_treat_pre)
+    mean_w_treat_post = xp.mean(w_treat_post)
+    mean_w_d = xp.mean(w_d)
+    mean_w_dt1 = xp.mean(w_dt1)
+    mean_w_dt0 = xp.mean(w_dt0)
 
     if est_method == "reg":
-        mean_w_reg_control = np.mean(w_reg_control)
+        mean_w_reg_control = xp.mean(w_reg_control)
 
         reg_att_treat_pre = w_treat_pre * sub_y
         reg_att_treat_post = w_treat_post * sub_y
@@ -472,25 +479,27 @@ def _compute_inf_func_rc(
         inf_treat = inf_treat_post - inf_treat_pre
 
         weights_ols_pre = sub_weights * pa_comp * (1 - sub_post)
-        wols_x_pre = weights_ols_pre[:, np.newaxis] * sub_covariates
-        wols_eX_pre = (weights_ols_pre * (sub_y - out_y_cont_pre))[:, np.newaxis] * sub_covariates
+        wols_x_pre = weights_ols_pre[:, None] * sub_covariates
+        wols_eX_pre = (weights_ols_pre * (sub_y - out_y_cont_pre))[:, None] * sub_covariates
         XpX_pre = (wols_x_pre.T @ sub_covariates) / n_sub
 
-        cond_pre = np.linalg.cond(XpX_pre)
-        XpX_inv_pre = np.linalg.pinv(XpX_pre) if cond_pre > 1 / np.finfo(float).eps else np.linalg.inv(XpX_pre)
+        s = xp.linalg.svd(XpX_pre, compute_uv=False)
+        cond_pre = s[0] / s[-1] if s[-1] > 0 else float("inf")
+        XpX_inv_pre = xp.linalg.pinv(XpX_pre) if cond_pre > 1 / xp.finfo(float).eps else xp.linalg.inv(XpX_pre)
         asy_lin_rep_ols_pre = wols_eX_pre @ XpX_inv_pre
 
         weights_ols_post = sub_weights * pa_comp * sub_post
-        wols_x_post = weights_ols_post[:, np.newaxis] * sub_covariates
-        wols_eX_post = (weights_ols_post * (sub_y - out_y_cont_post))[:, np.newaxis] * sub_covariates
+        wols_x_post = weights_ols_post[:, None] * sub_covariates
+        wols_eX_post = (weights_ols_post * (sub_y - out_y_cont_post))[:, None] * sub_covariates
         XpX_post = (wols_x_post.T @ sub_covariates) / n_sub
 
-        cond_post = np.linalg.cond(XpX_post)
-        XpX_inv_post = np.linalg.pinv(XpX_post) if cond_post > 1 / np.finfo(float).eps else np.linalg.inv(XpX_post)
+        s = xp.linalg.svd(XpX_post, compute_uv=False)
+        cond_post = s[0] / s[-1] if s[-1] > 0 else float("inf")
+        XpX_inv_post = xp.linalg.pinv(XpX_post) if cond_post > 1 / xp.finfo(float).eps else xp.linalg.inv(XpX_post)
         asy_lin_rep_ols_post = wols_eX_post @ XpX_inv_post
 
         inf_control_1 = reg_att_control - w_reg_control * eta_reg_control
-        M1 = np.mean((w_reg_control)[:, np.newaxis] * sub_covariates, axis=0)
+        M1 = xp.mean((w_reg_control)[:, None] * sub_covariates, axis=0)
         inf_control_2_post = asy_lin_rep_ols_post @ M1
         inf_control_2_pre = asy_lin_rep_ols_pre @ M1
         inf_control = (inf_control_1 + inf_control_2_post - inf_control_2_pre) / mean_w_reg_control
@@ -498,8 +507,8 @@ def _compute_inf_func_rc(
         inf_func = inf_treat - inf_control
         return inf_func
 
-    mean_w_cont_pre = np.mean(w_cont_pre)
-    mean_w_cont_post = np.mean(w_cont_post)
+    mean_w_cont_pre = xp.mean(w_cont_pre)
+    mean_w_cont_post = xp.mean(w_cont_post)
 
     inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / mean_w_treat_pre
     inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / mean_w_treat_post
@@ -508,99 +517,94 @@ def _compute_inf_func_rc(
     inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / mean_w_cont_post
 
     cont_moment_pre = (
-        np.mean((w_cont_pre * (sub_y - out_y_cont - att_cont_pre))[:, np.newaxis] * sub_covariates, axis=0)
-        / mean_w_cont_pre
+        xp.mean((w_cont_pre * (sub_y - out_y_cont - att_cont_pre))[:, None] * sub_covariates, axis=0) / mean_w_cont_pre
     )
     cont_moment_post = (
-        np.mean((w_cont_post * (sub_y - out_y_cont - att_cont_post))[:, np.newaxis] * sub_covariates, axis=0)
+        xp.mean((w_cont_post * (sub_y - out_y_cont - att_cont_post))[:, None] * sub_covariates, axis=0)
         / mean_w_cont_post
     )
 
-    score_ps = (sub_weights * (pa4 - pscore))[:, np.newaxis] * sub_covariates
+    score_ps = (sub_weights * (pa4 - pscore))[:, None] * sub_covariates
     asy_lin_rep_ps = score_ps @ hessian
     inf_cont_ps = asy_lin_rep_ps @ (cont_moment_post - cont_moment_pre)
 
     if est_method == "ipw":
-        inf_treat_or = np.zeros(n_sub)
-        inf_cont_or = np.zeros(n_sub)
-        inf_or_adj = np.zeros(n_sub)
+        inf_treat_or = xp.zeros(n_sub)
+        inf_cont_or = xp.zeros(n_sub)
+        inf_or_adj = xp.zeros(n_sub)
     else:
         weights_ols_pre = sub_weights * pa_comp * (1 - sub_post)
-        weighted_x_pre = weights_ols_pre[:, np.newaxis] * sub_covariates
-        weighted_resid_x_pre = (weights_ols_pre * (sub_y - out_y_cont_pre))[:, np.newaxis] * sub_covariates
+        weighted_x_pre = weights_ols_pre[:, None] * sub_covariates
+        weighted_resid_x_pre = (weights_ols_pre * (sub_y - out_y_cont_pre))[:, None] * sub_covariates
         gram_pre = (weighted_x_pre.T @ sub_covariates) / n_sub
 
-        cond_pre = np.linalg.cond(gram_pre)
-        gram_inv_pre = np.linalg.pinv(gram_pre) if cond_pre > 1 / np.finfo(float).eps else np.linalg.inv(gram_pre)
+        s = xp.linalg.svd(gram_pre, compute_uv=False)
+        cond_pre = s[0] / s[-1] if s[-1] > 0 else float("inf")
+        gram_inv_pre = xp.linalg.pinv(gram_pre) if cond_pre > 1 / xp.finfo(float).eps else xp.linalg.inv(gram_pre)
         asy_lin_rep_ols_pre = weighted_resid_x_pre @ gram_inv_pre
 
         weights_ols_post = sub_weights * pa_comp * sub_post
-        weighted_x_post = weights_ols_post[:, np.newaxis] * sub_covariates
-        weighted_resid_x_post = (weights_ols_post * (sub_y - out_y_cont_post))[:, np.newaxis] * sub_covariates
+        weighted_x_post = weights_ols_post[:, None] * sub_covariates
+        weighted_resid_x_post = (weights_ols_post * (sub_y - out_y_cont_post))[:, None] * sub_covariates
         gram_post = (weighted_x_post.T @ sub_covariates) / n_sub
 
-        cond_post = np.linalg.cond(gram_post)
-        gram_inv_post = np.linalg.pinv(gram_post) if cond_post > 1 / np.finfo(float).eps else np.linalg.inv(gram_post)
+        s = xp.linalg.svd(gram_post, compute_uv=False)
+        cond_post = s[0] / s[-1] if s[-1] > 0 else float("inf")
+        gram_inv_post = xp.linalg.pinv(gram_post) if cond_post > 1 / xp.finfo(float).eps else xp.linalg.inv(gram_post)
         asy_lin_rep_ols_post = weighted_resid_x_post @ gram_inv_post
 
         weights_ols_pre_treat = sub_weights * pa4 * (1 - sub_post)
-        weighted_x_pre_treat = weights_ols_pre_treat[:, np.newaxis] * sub_covariates
-        weighted_resid_x_pre_treat = (weights_ols_pre_treat * (sub_y - out_y_treat_pre))[:, np.newaxis] * sub_covariates
+        weighted_x_pre_treat = weights_ols_pre_treat[:, None] * sub_covariates
+        weighted_resid_x_pre_treat = (weights_ols_pre_treat * (sub_y - out_y_treat_pre))[:, None] * sub_covariates
 
-        sum_pre_treat = np.sum(weights_ols_pre_treat)
+        sum_pre_treat = xp.sum(weights_ols_pre_treat)
         if sum_pre_treat > 0:
             gram_pre_treat = (weighted_x_pre_treat.T @ sub_covariates) / n_sub
-            cond_pre_treat = np.linalg.cond(gram_pre_treat)
-            if cond_pre_treat > 1 / np.finfo(float).eps:
-                gram_inv_pre_treat = np.linalg.pinv(gram_pre_treat)
+            s = xp.linalg.svd(gram_pre_treat, compute_uv=False)
+            cond_pre_treat = s[0] / s[-1] if s[-1] > 0 else float("inf")
+            if cond_pre_treat > 1 / xp.finfo(float).eps:
+                gram_inv_pre_treat = xp.linalg.pinv(gram_pre_treat)
             else:
-                gram_inv_pre_treat = np.linalg.inv(gram_pre_treat)
+                gram_inv_pre_treat = xp.linalg.inv(gram_pre_treat)
             asy_lin_rep_ols_pre_treat = weighted_resid_x_pre_treat @ gram_inv_pre_treat
         else:
-            asy_lin_rep_ols_pre_treat = np.zeros((n_sub, sub_covariates.shape[1]))
+            asy_lin_rep_ols_pre_treat = xp.zeros((n_sub, sub_covariates.shape[1]))
 
         weights_ols_post_treat = sub_weights * pa4 * sub_post
-        weighted_x_post_treat = weights_ols_post_treat[:, np.newaxis] * sub_covariates
-        weighted_resid_x_post_treat = (weights_ols_post_treat * (sub_y - out_y_treat_post))[
-            :, np.newaxis
-        ] * sub_covariates
+        weighted_x_post_treat = weights_ols_post_treat[:, None] * sub_covariates
+        weighted_resid_x_post_treat = (weights_ols_post_treat * (sub_y - out_y_treat_post))[:, None] * sub_covariates
 
-        sum_post_treat = np.sum(weights_ols_post_treat)
+        sum_post_treat = xp.sum(weights_ols_post_treat)
         if sum_post_treat > 0:
             gram_post_treat = (weighted_x_post_treat.T @ sub_covariates) / n_sub
-            cond_post_treat = np.linalg.cond(gram_post_treat)
-            if cond_post_treat > 1 / np.finfo(float).eps:
-                gram_inv_post_treat = np.linalg.pinv(gram_post_treat)
+            s = xp.linalg.svd(gram_post_treat, compute_uv=False)
+            cond_post_treat = s[0] / s[-1] if s[-1] > 0 else float("inf")
+            if cond_post_treat > 1 / xp.finfo(float).eps:
+                gram_inv_post_treat = xp.linalg.pinv(gram_post_treat)
             else:
-                gram_inv_post_treat = np.linalg.inv(gram_post_treat)
+                gram_inv_post_treat = xp.linalg.inv(gram_post_treat)
             asy_lin_rep_ols_post_treat = weighted_resid_x_post_treat @ gram_inv_post_treat
         else:
-            asy_lin_rep_ols_post_treat = np.zeros((n_sub, sub_covariates.shape[1]))
+            asy_lin_rep_ols_post_treat = xp.zeros((n_sub, sub_covariates.shape[1]))
 
-        treat_moment_post = (
-            -np.mean((w_treat_post * sub_post)[:, np.newaxis] * sub_covariates, axis=0) / mean_w_treat_post
-        )
-        treat_moment_pre = (
-            -np.mean((w_treat_pre * (1 - sub_post))[:, np.newaxis] * sub_covariates, axis=0) / mean_w_treat_pre
-        )
+        treat_moment_post = -xp.mean((w_treat_post * sub_post)[:, None] * sub_covariates, axis=0) / mean_w_treat_post
+        treat_moment_pre = -xp.mean((w_treat_pre * (1 - sub_post))[:, None] * sub_covariates, axis=0) / mean_w_treat_pre
 
         inf_treat_or_post = asy_lin_rep_ols_post @ treat_moment_post
         inf_treat_or_pre = asy_lin_rep_ols_pre @ treat_moment_pre
         inf_treat_or = inf_treat_or_post + inf_treat_or_pre
 
-        cont_reg_moment_post = (
-            -np.mean((w_cont_post * sub_post)[:, np.newaxis] * sub_covariates, axis=0) / mean_w_cont_post
-        )
+        cont_reg_moment_post = -xp.mean((w_cont_post * sub_post)[:, None] * sub_covariates, axis=0) / mean_w_cont_post
         cont_reg_moment_pre = (
-            -np.mean((w_cont_pre * (1 - sub_post))[:, np.newaxis] * sub_covariates, axis=0) / mean_w_cont_pre
+            -xp.mean((w_cont_pre * (1 - sub_post))[:, None] * sub_covariates, axis=0) / mean_w_cont_pre
         )
 
         inf_cont_or_post = asy_lin_rep_ols_post @ cont_reg_moment_post
         inf_cont_or_pre = asy_lin_rep_ols_pre @ cont_reg_moment_pre
         inf_cont_or = inf_cont_or_post + inf_cont_or_pre
 
-        mom_post = np.mean(((w_d / mean_w_d) - (w_dt1 / mean_w_dt1))[:, np.newaxis] * sub_covariates, axis=0)
-        mom_pre = np.mean(((w_d / mean_w_d) - (w_dt0 / mean_w_dt0))[:, np.newaxis] * sub_covariates, axis=0)
+        mom_post = xp.mean(((w_d / mean_w_d) - (w_dt1 / mean_w_dt1))[:, None] * sub_covariates, axis=0)
+        mom_pre = xp.mean(((w_d / mean_w_d) - (w_dt0 / mean_w_dt0))[:, None] * sub_covariates, axis=0)
         inf_or_post = (asy_lin_rep_ols_post_treat - asy_lin_rep_ols_post) @ mom_post
         inf_or_pre = (asy_lin_rep_ols_pre_treat - asy_lin_rep_ols_pre) @ mom_pre
         inf_or_adj = inf_or_post - inf_or_pre
@@ -639,8 +643,7 @@ def _compute_pscore_rc(subgroup, _post, covariates, weights, comparison_subgroup
                 xp.asarray(sub_covariates, dtype=xp.float64),
                 xp.asarray(sub_weights, dtype=xp.float64),
             )
-            ps_fit = to_numpy(ps_fit)
-            if np.any(np.isnan(to_numpy(beta))):
+            if xp.any(xp.isnan(beta)):
                 comparison_desc = get_comparison_description(comparison_subgroup)
                 raise ValueError(
                     f"Propensity score model has NA coefficients.\n"
@@ -652,17 +655,16 @@ def _compute_pscore_rc(subgroup, _post, covariates, weights, comparison_subgroup
                 f"Failed to estimate propensity scores for subgroup {comparison_subgroup} due to singular matrix."
             ) from e
 
-        check_overlap_and_warn(ps_fit, comparison_subgroup)
+        check_overlap_and_warn(to_numpy(ps_fit), comparison_subgroup)
 
-        keep_ps = np.ones(len(pa4), dtype=bool)
+        keep_ps = xp.ones(len(pa4), dtype=bool)
         keep_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
-        ps_fit = np.minimum(ps_fit, 1 - 1e-6)
+        ps_fit = xp.minimum(ps_fit, 1 - 1e-6)
 
         n_sub = len(sub_weights)
-        # Compute Hessian from ps_fit directly
-        W = ps_fit * (1 - ps_fit) * sub_weights
-        hessian_ps = sub_covariates.T @ (W[:, np.newaxis] * sub_covariates)
-        hessian_matrix = np.linalg.inv(hessian_ps) * n_sub
+        W = sub_weights * ps_fit * (1 - ps_fit)
+        hessian_ps = sub_covariates.T @ (W[:, None] * sub_covariates)
+        hessian_matrix = xp.linalg.inv(hessian_ps) * n_sub
 
         return PScoreRCResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
 
@@ -708,13 +710,14 @@ def _compute_pscore_rc(subgroup, _post, covariates, weights, comparison_subgroup
 
 def _compute_pscore_null_rc(subgroup, comparison_subgroup):
     """Compute null propensity scores for REG method with RCS."""
+    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
-    n_sub = np.sum(mask)
+    n_sub = int(xp.sum(mask))
 
     return PScoreRCResult(
-        propensity_scores=np.ones(n_sub),
+        propensity_scores=xp.ones(n_sub),
         hessian_matrix=None,
-        keep_ps=np.ones(n_sub, dtype=bool),
+        keep_ps=xp.ones(n_sub, dtype=bool),
     )
 
 
@@ -803,50 +806,59 @@ def _fit_ols_cell(y, post, d, covariates, weights, pre, treat, n_features, compa
     else:
         subs = (d == 0) & (post == 1)
 
-    n_subs = np.sum(subs)
+    xp = get_backend()
+    n_subs = int(xp.sum(subs))
 
     if n_subs == 0 or n_subs < n_features:
-        return np.full(len(y), np.nan)
+        return xp.full(len(y), float("nan"))
 
     sub_y = y[subs]
     sub_x = covariates[subs]
     sub_weights = weights[subs]
 
     try:
-        xp = get_backend()
         if xp is not np:
             beta, _ = cupy_wls(xp.asarray(sub_y), xp.asarray(sub_x), xp.asarray(sub_weights))
-            coefficients = to_numpy(beta)
+            if xp.any(xp.isnan(beta)):
+                subg_desc = "Treated-Eligible" if treat else get_comparison_description(comparison_subgroup)
+                period_desc = "pre-treatment" if pre else "post-treatment"
+                raise ValueError(
+                    f"Outcome regression model has NA coefficients.\n"
+                    f"  Cell: {subg_desc} units in {period_desc} period.\n"
+                    f"  This is likely due to multicollinearity among covariates."
+                )
+            fitted_values = xp.asarray(covariates, dtype=xp.float64) @ beta
         else:
             wls_model = sm.WLS(sub_y, sub_x, weights=sub_weights)
             results = wls_model.fit()
             coefficients = results.params
 
-        if np.any(np.isnan(coefficients)):
-            subg_desc = "Treated-Eligible" if treat else get_comparison_description(comparison_subgroup)
-            period_desc = "pre-treatment" if pre else "post-treatment"
-            raise ValueError(
-                f"Outcome regression model has NA coefficients.\n"
-                f"  Cell: {subg_desc} units in {period_desc} period.\n"
-                f"  This is likely due to multicollinearity among covariates."
-            )
+            if np.any(np.isnan(coefficients)):
+                subg_desc = "Treated-Eligible" if treat else get_comparison_description(comparison_subgroup)
+                period_desc = "pre-treatment" if pre else "post-treatment"
+                raise ValueError(
+                    f"Outcome regression model has NA coefficients.\n"
+                    f"  Cell: {subg_desc} units in {period_desc} period.\n"
+                    f"  This is likely due to multicollinearity among covariates."
+                )
+            fitted_values = covariates @ coefficients
 
-        fitted_values = covariates @ coefficients
         return fitted_values
 
     except (np.linalg.LinAlgError, ValueError) as e:
         if "NA coefficients" in str(e):
             raise
-        return np.full(len(y), np.nan)
+        return xp.full(len(y), float("nan"))
 
 
 def _compute_outcome_regression_null_rc(y, _post, subgroup, comparison_subgroup):
     """Compute null outcome regression for IPW method with RCS."""
+    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     sub_y = y[mask]
     n_sub = len(sub_y)
 
-    zeros = np.zeros(n_sub)
+    zeros = xp.zeros(n_sub)
 
     return OutcomeRegRCResult(
         y=sub_y,

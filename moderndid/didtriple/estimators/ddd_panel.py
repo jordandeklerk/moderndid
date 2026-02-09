@@ -8,6 +8,8 @@ from typing import NamedTuple
 import numpy as np
 from scipy import stats
 
+from moderndid.cupy.backend import get_backend, to_numpy
+
 from ..bootstrap.mboot_ddd import mboot_ddd, wboot_ddd
 from ..nuisance import compute_all_did, compute_all_nuisances
 
@@ -187,11 +189,12 @@ def ddd_panel(
     """
     y1, y0, subgroup, covariates, i_weights, n_units = _validate_inputs(y1, y0, subgroup, covariates, i_weights)
 
+    xp = get_backend()
     subgroup_counts = {
-        "subgroup_1": int(np.sum(subgroup == 1)),
-        "subgroup_2": int(np.sum(subgroup == 2)),
-        "subgroup_3": int(np.sum(subgroup == 3)),
-        "subgroup_4": int(np.sum(subgroup == 4)),
+        "subgroup_1": int(xp.sum(subgroup == 1)),
+        "subgroup_2": int(xp.sum(subgroup == 2)),
+        "subgroup_3": int(xp.sum(subgroup == 3)),
+        "subgroup_4": int(xp.sum(subgroup == 4)),
     }
 
     pscores, or_results = compute_all_nuisances(
@@ -218,6 +221,9 @@ def ddd_panel(
         "att_4v2": did_results[1].dr_att,
         "att_4v1": did_results[2].dr_att,
     }
+
+    inf_func = to_numpy(inf_func)
+    ddd_att = float(ddd_att)
 
     dr_boot = None
     z_val = stats.norm.ppf(1 - alpha / 2)
@@ -285,18 +291,19 @@ def ddd_panel(
 
 def _validate_inputs(y1, y0, subgroup, covariates, i_weights):
     """Validate and preprocess input arrays."""
-    y1 = np.asarray(y1).flatten()
-    y0 = np.asarray(y0).flatten()
-    subgroup = np.asarray(subgroup).flatten()
+    xp = get_backend()
+    y1 = xp.asarray(y1).flatten()
+    y0 = xp.asarray(y0).flatten()
+    subgroup = xp.asarray(subgroup).flatten()
     n_units = len(subgroup)
 
     if len(y1) != n_units or len(y0) != n_units:
         raise ValueError("y1, y0, and subgroup must have the same length.")
 
     if covariates is None:
-        covariates = np.ones((n_units, 1))
+        covariates = xp.ones((n_units, 1))
     else:
-        covariates = np.asarray(covariates)
+        covariates = xp.asarray(covariates)
         if covariates.ndim == 1:
             covariates = covariates.reshape(-1, 1)
 
@@ -304,17 +311,17 @@ def _validate_inputs(y1, y0, subgroup, covariates, i_weights):
         raise ValueError("covariates must have the same number of rows as subgroup.")
 
     if i_weights is None:
-        i_weights = np.ones(n_units)
+        i_weights = xp.ones(n_units)
     else:
-        i_weights = np.asarray(i_weights).flatten()
+        i_weights = xp.asarray(i_weights).flatten()
         if len(i_weights) != n_units:
             raise ValueError("i_weights must have the same length as subgroup.")
-        if np.any(i_weights < 0):
+        if xp.any(i_weights < 0):
             raise ValueError("i_weights must be non-negative.")
 
-    i_weights = i_weights / np.mean(i_weights)
+    i_weights = i_weights / xp.mean(i_weights)
 
-    unique_subgroups = set(np.unique(subgroup))
+    unique_subgroups = set(int(v) for v in to_numpy(xp.unique(subgroup)))
     expected_subgroups = {1, 2, 3, 4}
     if not unique_subgroups.issubset(expected_subgroups):
         raise ValueError(f"subgroup must contain only values 1, 2, 3, 4. Got {unique_subgroups}.")

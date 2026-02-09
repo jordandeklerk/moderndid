@@ -194,6 +194,7 @@ def compute_all_did(
         )
         did_results.append(did_result)
 
+    xp = get_backend()
     dr_att_3, inf_func_3 = did_results[0].dr_att, did_results[0].inf_func
     dr_att_2, inf_func_2 = did_results[1].dr_att, did_results[1].inf_func
     dr_att_1, inf_func_1 = did_results[2].dr_att, did_results[2].inf_func
@@ -201,9 +202,9 @@ def compute_all_did(
     ddd_att = dr_att_3 + dr_att_2 - dr_att_1
 
     n = n_total
-    n3 = np.sum((subgroup == 4) | (subgroup == 3))
-    n2 = np.sum((subgroup == 4) | (subgroup == 2))
-    n1 = np.sum((subgroup == 4) | (subgroup == 1))
+    n3 = int(xp.sum((subgroup == 4) | (subgroup == 3)))
+    n2 = int(xp.sum((subgroup == 4) | (subgroup == 2)))
+    n1 = int(xp.sum((subgroup == 4) | (subgroup == 1)))
 
     w3 = n / n3 if n3 > 0 else 0
     w2 = n / n2 if n2 > 0 else 0
@@ -251,6 +252,7 @@ def _compute_did(
         NamedTuple with dr_att (ATT estimate) and inf_func (influence function
         for all units, with zeros for units not in the comparison).
     """
+    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     sub_subgroup = subgroup[mask]
     sub_covariates = covariates[mask]
@@ -274,8 +276,8 @@ def _compute_did(
     riesz_treat = w_treat * (delta_y - or_delta)
     riesz_control = w_control * (delta_y - or_delta)
 
-    mean_w_treat = np.mean(w_treat)
-    mean_w_control = np.mean(w_control)
+    mean_w_treat = xp.mean(w_treat)
+    mean_w_control = xp.mean(w_control)
 
     if mean_w_treat == 0:
         raise ValueError(
@@ -284,8 +286,8 @@ def _compute_did(
     if mean_w_control == 0:
         raise ValueError(f"No effectively control units (subgroup {comparison_subgroup}) after weighting.")
 
-    att_treat = np.mean(riesz_treat) / mean_w_treat
-    att_control = np.mean(riesz_control) / mean_w_control
+    att_treat = xp.mean(riesz_treat) / mean_w_treat
+    att_control = xp.mean(riesz_control) / mean_w_control
 
     dr_att = att_treat - att_control
 
@@ -309,11 +311,11 @@ def _compute_did(
         est_method=est_method,
     )
 
-    inf_func = np.zeros(n_total)
-    mask_indices = np.where(mask)[0]
+    inf_func = xp.zeros(n_total)
+    mask_indices = xp.where(mask)[0]
     inf_func[mask_indices] = inf_func_sub
 
-    return DIDResult(dr_att=dr_att, inf_func=inf_func)
+    return DIDResult(dr_att=float(dr_att), inf_func=inf_func)
 
 
 def _compute_inf_func(
@@ -379,39 +381,41 @@ def _compute_inf_func(
     ndarray
         Influence function for units in the comparison.
     """
+    xp = get_backend()
     n_sub = len(sub_weights)
 
     if est_method == "reg":
-        inf_control_pscore = np.zeros(n_sub)
+        inf_control_pscore = xp.zeros(n_sub)
     else:
-        m2 = np.mean(
-            (w_control * (delta_y - or_delta - att_control))[:, np.newaxis] * sub_covariates,
+        m2 = xp.mean(
+            (w_control * (delta_y - or_delta - att_control))[:, None] * sub_covariates,
             axis=0,
         )
-        score_ps = (sub_weights * (pa4 - pscore))[:, np.newaxis] * sub_covariates
+        score_ps = (sub_weights * (pa4 - pscore))[:, None] * sub_covariates
         asy_lin_rep_ps = score_ps @ hessian
         inf_control_pscore = asy_lin_rep_ps @ m2
 
     if est_method == "ipw":
-        inf_treat_or = np.zeros(n_sub)
-        inf_cont_or = np.zeros(n_sub)
+        inf_treat_or = xp.zeros(n_sub)
+        inf_cont_or = xp.zeros(n_sub)
     else:
-        m1 = np.mean(w_treat[:, np.newaxis] * sub_covariates, axis=0)
-        m3 = np.mean(w_control[:, np.newaxis] * sub_covariates, axis=0)
+        m1 = xp.mean(w_treat[:, None] * sub_covariates, axis=0)
+        m3 = xp.mean(w_control[:, None] * sub_covariates, axis=0)
 
-        or_x = (sub_weights * pa_comp)[:, np.newaxis] * sub_covariates
-        or_ex = (sub_weights * pa_comp * (delta_y - or_delta))[:, np.newaxis] * sub_covariates
+        or_x = (sub_weights * pa_comp)[:, None] * sub_covariates
+        or_ex = (sub_weights * pa_comp * (delta_y - or_delta))[:, None] * sub_covariates
         xpx = or_x.T @ sub_covariates / n_sub
 
-        cond_num = np.linalg.cond(xpx)
-        if cond_num > 1 / np.finfo(float).eps:
+        s = xp.linalg.svd(xpx, compute_uv=False)
+        cond_num = s[0] / s[-1] if s[-1] > 0 else float("inf")
+        if cond_num > 1 / xp.finfo(float).eps:
             warnings.warn(
                 "Outcome regression design matrix is nearly singular. Consider removing collinear covariates.",
                 UserWarning,
             )
-            xpx_inv = np.linalg.pinv(xpx)
+            xpx_inv = xp.linalg.pinv(xpx)
         else:
-            xpx_inv = np.linalg.solve(xpx, np.eye(xpx.shape[0]))
+            xpx_inv = xp.linalg.solve(xpx, xp.eye(xpx.shape[0]))
 
         asy_linear_or = or_ex @ xpx_inv
 
@@ -469,9 +473,7 @@ def _compute_pscore(subgroup, covariates, weights, comparison_subgroup, trim_lev
                 xp.asarray(sub_covariates, dtype=xp.float64),
                 xp.asarray(sub_weights, dtype=xp.float64),
             )
-            ps_fit = to_numpy(ps_fit)
-            beta_np = to_numpy(beta)
-            if np.any(np.isnan(beta_np)):
+            if xp.any(xp.isnan(beta)):
                 comparison_desc = get_comparison_description(comparison_subgroup)
                 raise ValueError(
                     f"Propensity score model has NA coefficients.\n"
@@ -483,19 +485,16 @@ def _compute_pscore(subgroup, covariates, weights, comparison_subgroup, trim_lev
                 f"Failed to estimate propensity scores for subgroup {comparison_subgroup} due to singular matrix."
             ) from e
 
-        check_overlap_and_warn(ps_fit, comparison_subgroup)
-        ps_fit = np.minimum(ps_fit, 1 - 1e-6)
+        check_overlap_and_warn(to_numpy(ps_fit), comparison_subgroup)
+        ps_fit = xp.minimum(ps_fit, 1 - 1e-6)
 
-        keep_ps = np.ones(len(pa4), dtype=bool)
+        keep_ps = xp.ones(len(pa4), dtype=bool)
         keep_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
 
         n_sub = len(sub_weights)
-        sc = xp.asarray(sub_covariates, dtype=xp.float64)
-        sw = xp.asarray(sub_weights, dtype=xp.float64)
-        ps_gpu = xp.asarray(ps_fit, dtype=xp.float64)
-        W = sw * ps_gpu * (1 - ps_gpu)
-        info_matrix = sc.T @ (W[:, None] * sc)
-        hessian_matrix = to_numpy(xp.linalg.inv(info_matrix)) * n_sub
+        W = sub_weights * ps_fit * (1 - ps_fit)
+        info_matrix = sub_covariates.T @ (W[:, None] * sub_covariates)
+        hessian_matrix = xp.linalg.inv(info_matrix) * n_sub
 
         return PScoreResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
 
@@ -556,13 +555,14 @@ def _compute_pscore_null(subgroup, comparison_subgroup):
         NamedTuple with propensity_scores all equal to 1, hessian_matrix=None,
         and keep_ps all True (no trimming for REG method).
     """
+    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
-    n_sub = np.sum(mask)
+    n_sub = int(xp.sum(mask))
 
     return PScoreResult(
-        propensity_scores=np.ones(n_sub),
+        propensity_scores=xp.ones(n_sub),
         hessian_matrix=None,
-        keep_ps=np.ones(n_sub, dtype=bool),
+        keep_ps=xp.ones(n_sub, dtype=bool),
     )
 
 
@@ -616,15 +616,14 @@ def _compute_outcome_regression(y1, y0, subgroup, covariates, weights, compariso
                 xp.asarray(control_covariates, dtype=xp.float64),
                 xp.asarray(control_weights, dtype=xp.float64),
             )
-            reg_coeff = to_numpy(reg_coeff)
-            if np.any(np.isnan(reg_coeff)):
+            if xp.any(xp.isnan(reg_coeff)):
                 comparison_desc = get_comparison_description(comparison_subgroup)
                 raise ValueError(
                     f"Outcome regression model has NA coefficients.\n"
                     f"  Comparison: {comparison_desc} units.\n"
                     f"  This is likely due to multicollinearity among covariates."
                 )
-            or_delta = sub_covariates @ reg_coeff
+            or_delta = xp.asarray(sub_covariates, dtype=xp.float64) @ reg_coeff
         except (np.linalg.LinAlgError, RuntimeError) as e:
             raise ValueError(
                 f"Failed to estimate outcome regression for subgroup {comparison_subgroup}. "
@@ -678,7 +677,8 @@ def _compute_outcome_regression_null(y1, y0, subgroup, comparison_subgroup):
     sub_y1 = y1[mask]
     sub_y0 = y0[mask]
 
+    xp = get_backend()
     delta_y = sub_y1 - sub_y0
-    or_delta = np.zeros(len(delta_y))
+    or_delta = xp.zeros(len(delta_y))
 
     return OutcomeRegResult(delta_y=delta_y, or_delta=or_delta, reg_coeff=None)
