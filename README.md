@@ -77,7 +77,7 @@ import moderndid as did
 
 did.set_backend("cupy")
 
-# All estimators now use GPU-accelerated regression
+# All estimators now use GPU-accelerated computations
 result = did.att_gt(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat")
 ```
 

@@ -42,8 +42,6 @@ All benchmarks use CuPy 13.6.0 with CUDA 12.9.
 | `ddd_mp` | Analytical | 2.39x | 2.28x | 2.39x |
 | `ddd_mp` | Bootstrap | 6.36x | 5.50x | 5.61x |
 
-### Combined scaling
-
 ![CPU vs GPU Performance](output/gpu_benchmark.png)
 
 ---
