@@ -73,10 +73,11 @@ def ols_panel(delta_y, d, x, i_weights):
     --------
     wols_panel : Weighted OLS for improved DR-DiD estimators (includes propensity score weighting).
     """
+    xp = get_backend()
     _validate_wols_arrays({"delta_y": delta_y, "d": d, "i_weights": i_weights}, x, "ols_panel")
 
     control_filter = d == 0
-    n_control = np.sum(control_filter)
+    n_control = int(xp.sum(control_filter))
 
     if n_control == 0:
         raise ValueError("No control units found (all d == 1). Cannot perform regression.")
@@ -103,7 +104,7 @@ def ols_panel(delta_y, d, x, i_weights):
         _check_wls_condition_number(sm_results)
     _check_coefficients_validity(coefficients)
 
-    fitted_values = x @ coefficients
+    fitted_values = x @ xp.asarray(coefficients)
 
     return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
 
@@ -154,10 +155,11 @@ def wols_panel(delta_y, d, x, ps, i_weights):
     --------
     wols_rc : Weighted OLS for repeated cross-section data.
     """
+    xp = get_backend()
     _validate_wols_arrays({"delta_y": delta_y, "d": d, "ps": ps, "i_weights": i_weights}, x, "wols_panel")
 
     control_filter = d == 0
-    n_control = np.sum(control_filter)
+    n_control = int(xp.sum(control_filter))
 
     if n_control == 0:
         raise ValueError("No control units found (all d == 1). Cannot perform regression.")
@@ -167,7 +169,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
 
     control_ps = ps[control_filter]
     problematic_ps = control_ps == 1.0
-    if np.any(problematic_ps):
+    if xp.any(problematic_ps):
         raise ValueError("Propensity score is 1 for some control units. Weights would be undefined.")
 
     ps_odds = control_ps / (1 - control_ps)
@@ -191,7 +193,7 @@ def wols_panel(delta_y, d, x, ps, i_weights):
         _check_wls_condition_number(sm_results)
     _check_coefficients_validity(coefficients)
 
-    fitted_values = x @ coefficients
+    fitted_values = x @ xp.asarray(coefficients)
 
     return WOLSResult(out_reg=fitted_values, coefficients=coefficients)
 

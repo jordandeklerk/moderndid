@@ -118,8 +118,7 @@ def _check_wls_condition_number(results, threshold_error=1e15, threshold_warn=1e
 
 def _check_coefficients_validity(coefficients):
     """Check if coefficients contain invalid values."""
-    xp = get_backend()
-    if xp.any(xp.isnan(coefficients)) or xp.any(xp.isinf(coefficients)):
+    if np.any(np.isnan(coefficients)) or np.any(np.isinf(coefficients)):
         raise ValueError(
             "Failed to solve linear system. Coefficients contain NaN/Inf values, "
             "likely due to multicollinearity or singular matrix."
