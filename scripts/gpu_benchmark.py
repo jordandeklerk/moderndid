@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import cupy as cp
 
 from benchmark.did.dgp import StaggeredDIDDGP
-from moderndid import att_gt, load_mpdta, set_backend
+from moderndid import att_gt, ddd_mp, gen_dgp_mult_periods, load_mpdta, set_backend
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
@@ -54,6 +54,25 @@ def _make_att_gt_runner(data, *, boot=False, biters=1000):
             xformla="~1",
             est_method="dr",
             control_group="nevertreated",
+            boot=boot,
+            biters=biters,
+        )
+
+    return _run
+
+
+def _make_ddd_mp_runner(data, *, boot=False, biters=1000):
+    def _run():
+        return ddd_mp(
+            data=data,
+            y_col="y",
+            time_col="time",
+            id_col="id",
+            group_col="group",
+            partition_col="partition",
+            est_method="dr",
+            control_group="nevertreated",
+            base_period="universal",
             boot=boot,
             biters=biters,
         )
@@ -179,6 +198,68 @@ def _main():
         dgp = StaggeredDIDDGP(n_units=n_units, n_periods=5, n_groups=3, random_seed=42)
         data = dgp.generate_data()["df"]
         runner = _make_att_gt_runner(data, boot=True, biters=500)
+
+        set_backend("numpy")
+        cpu_mean, cpu_std, _ = _bench(runner)
+
+        set_backend("cupy")
+        gpu_mean, gpu_std, _ = _bench(runner)
+        set_backend("numpy")
+
+        speedup = cpu_mean / gpu_mean if gpu_mean > 0 else float("inf")
+        rows.append(
+            (
+                f"{n_units:,} units",
+                f"{cpu_mean:.3f} +/- {cpu_std:.3f}",
+                f"{gpu_mean:.3f} +/- {gpu_std:.3f}",
+                f"{speedup:.2f}x",
+            )
+        )
+
+    log.info("")
+    _log_table(rows)
+
+    log.info("")
+    log.info("=" * 60)
+    log.info("Benchmark: ddd_mp (analytical SE)")
+    log.info("=" * 60)
+
+    rows = []
+    for n_units in [10_000, 50_000, 100_000, 500_000, 1_000_000]:
+        dgp_result = gen_dgp_mult_periods(n=n_units, dgp_type=1, panel=True, random_state=42)
+        data = dgp_result["data"]
+        runner = _make_ddd_mp_runner(data)
+
+        set_backend("numpy")
+        cpu_mean, cpu_std, _ = _bench(runner)
+
+        set_backend("cupy")
+        gpu_mean, gpu_std, _ = _bench(runner)
+        set_backend("numpy")
+
+        speedup = cpu_mean / gpu_mean if gpu_mean > 0 else float("inf")
+        rows.append(
+            (
+                f"{n_units:,} units",
+                f"{cpu_mean:.3f} +/- {cpu_std:.3f}",
+                f"{gpu_mean:.3f} +/- {gpu_std:.3f}",
+                f"{speedup:.2f}x",
+            )
+        )
+
+    log.info("")
+    _log_table(rows)
+
+    log.info("")
+    log.info("=" * 60)
+    log.info("Benchmark: ddd_mp (multiplier bootstrap, biters=500)")
+    log.info("=" * 60)
+
+    rows = []
+    for n_units in [10_000, 50_000, 100_000, 500_000, 1_000_000]:
+        dgp_result = gen_dgp_mult_periods(n=n_units, dgp_type=1, panel=True, random_state=42)
+        data = dgp_result["data"]
+        runner = _make_ddd_mp_runner(data, boot=True, biters=500)
 
         set_backend("numpy")
         cpu_mean, cpu_std, _ = _bench(runner)
