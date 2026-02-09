@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import cupy as cp
 
 from benchmark.did.dgp import StaggeredDIDDGP
-from moderndid import att_gt, drdid, load_mpdta, load_nsw, set_backend
+from moderndid import att_gt, load_mpdta, set_backend
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ def _main():
     log.info("=" * 60)
 
     rows = []
-    for n_units in [1_000, 5_000, 10_000]:
+    for n_units in [1_000, 5_000, 10_000, 50_000, 100_000]:
         dgp = StaggeredDIDDGP(n_units=n_units, n_periods=5, n_groups=3, random_seed=42)
         data = dgp.generate_data()["df"]
         runner = _make_att_gt_runner(data)
@@ -175,7 +175,7 @@ def _main():
     log.info("=" * 60)
 
     rows = []
-    for n_units in [1_000, 5_000, 10_000]:
+    for n_units in [1_000, 5_000, 10_000, 50_000, 100_000]:
         dgp = StaggeredDIDDGP(n_units=n_units, n_periods=5, n_groups=3, random_seed=42)
         data = dgp.generate_data()["df"]
         runner = _make_att_gt_runner(data, boot=True, biters=500)
@@ -197,45 +197,6 @@ def _main():
             )
         )
 
-    log.info("")
-    _log_table(rows)
-
-    log.info("")
-    log.info("=" * 60)
-    log.info("Benchmark: drdid (two-period, NSW data)")
-    log.info("=" * 60)
-
-    nsw_data = load_nsw()
-
-    def _run_drdid():
-        return drdid(
-            data=nsw_data,
-            yname="re",
-            tname="year",
-            idname="id",
-            treatname="experimental",
-            xformla="~ age + educ + black + married + nodegree + hisp + re74",
-            panel=True,
-            est_method="imp",
-        )
-
-    set_backend("numpy")
-    cpu_mean, cpu_std, _ = _bench(_run_drdid)
-
-    set_backend("cupy")
-    gpu_mean, gpu_std, _ = _bench(_run_drdid)
-    set_backend("numpy")
-
-    speedup = cpu_mean / gpu_mean if gpu_mean > 0 else float("inf")
-
-    rows = [
-        (
-            "NSW (722 units)",
-            f"{cpu_mean:.4f} +/- {cpu_std:.4f}",
-            f"{gpu_mean:.4f} +/- {gpu_std:.4f}",
-            f"{speedup:.2f}x",
-        )
-    ]
     log.info("")
     _log_table(rows)
 
