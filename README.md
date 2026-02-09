@@ -70,7 +70,7 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 
 ### GPU Acceleration
 
-On machines with NVIDIA GPUs, you can install the `gpu` extra and activate the CuPy backend to offload regression and propensity score estimation to the GPU:
+On machines with NVIDIA GPUs, you can install the `gpu` extra and activate the CuPy backend to offload regression and propensity score estimation to the GPU. See the [GPU troubleshooting section](#common-troubleshooting-for-gpu) below for guidance on common issues:
 
 ```python
 import moderndid as did
@@ -78,7 +78,11 @@ import moderndid as did
 did.set_backend("cupy")
 
 # All estimators now use GPU-accelerated computations
-result = did.att_gt(data, yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+result = did.att_gt(data,
+                    yname="lemp",
+                    tname="year",
+                    idname="countyreal",
+                    gname="first.treat")
 ```
 
 To switch back to the default CPU path:
@@ -284,7 +288,7 @@ uv pip install cupy-cuda12x   # CUDA 12.x
 uv pip install cupy-cuda11x   # CUDA 11.x
 ```
 
-Run `nvidia-smi` to check which CUDA version your driver supports. After installing, restart your Python process (or notebook runtime) before importing moderndid (CuPy availability is checked once at import time).
+Run `nvidia-smi` to check which CUDA version your driver supports. After installing, restart your Python process (or notebook runtime) before importing ModernDiD (CuPy availability is checked once at import time).
 
 If you see **`cudaErrorInsufficientDriver`**, the installed CuPy wheel expects a newer CUDA version than your driver provides. Check `nvidia-smi` and switch to the matching wheel.
 
