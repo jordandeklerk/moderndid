@@ -25,6 +25,18 @@ that ATT and SE estimates match within 1e-6 tolerance:
 **Scaling** — times each estimator at 10k, 50k, 100k, 500k, and 1M
 units with both analytical and bootstrap inference.
 
+## Hardware
+
+CPU baseline for all GPU runs is the host vCPU of each cloud instance.
+Local development uses the MacBook Pro listed below.
+
+| Label | Device | VRAM | Driver / CUDA | Host CPU | Host RAM |
+| --- | --- | --- | --- | --- | --- |
+| **Local** | Apple M2 Pro (integrated) | shared 16 GB | — | Apple M2 Pro (10-core) | 16 GB |
+| **Tesla T4** | NVIDIA Tesla T4 | 15 GB GDDR6 | 550.54.15 / CUDA 12.4 | Intel Xeon @ 2.00 GHz (4 vCPU) | 15 GB |
+| **A100** | NVIDIA A100-SXM4-40GB | 40 GB HBM2e | 550.54.15 / CUDA 12.4 | AMD EPYC Milan (12 vCPU) | 85 GB |
+| **H100** | NVIDIA H100-SXM5-80GB | 80 GB HBM3 | 550.90.07 / CUDA 12.4 | Intel Xeon Sapphire Rapids (26 vCPU) | 200 GB |
+
 ## Results
 
 All benchmarks use CuPy 13.6.0 with CUDA 12.9.
