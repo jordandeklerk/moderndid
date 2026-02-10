@@ -256,7 +256,7 @@ def python_ordid(data, panel=True, xformla=None):
 def nsw_data():
     data_path = DATA_DIR / "nsw_long_r.csv.gz"
     if not data_path.exists():
-        pytest.skip("R NSW data file not found")
+        pytest.fail("R NSW data file not found")
     return pl.read_csv(data_path)
 
 
@@ -271,7 +271,7 @@ def test_drdid_panel_no_covariates(nsw_data, data_path, est_method):
     r_result = r_drdid(data_path, est_method=est_method, panel=True)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_drdid(nsw_data, est_method=est_method, panel=True)
 
@@ -297,7 +297,7 @@ def test_drdid_panel_with_covariates(nsw_data, data_path, est_method):
     r_result = r_drdid(data_path, est_method=est_method, panel=True, xformla=xformla)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_drdid(nsw_data, est_method=est_method, panel=True, xformla=xformla)
 
@@ -324,7 +324,7 @@ def test_drdid_rc_no_covariates(nsw_data, data_path, est_method):
         r_result = r_drdid(data_path, est_method=est_method, panel=False)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_drdid(nsw_data, est_method=est_method, panel=False)
 
@@ -353,7 +353,7 @@ def test_drdid_rc_with_covariates(nsw_data, data_path, est_method):
         r_result = r_drdid(data_path, est_method=est_method, panel=False, xformla=xformla)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_drdid(nsw_data, est_method=est_method, panel=False, xformla=xformla)
 
@@ -377,7 +377,7 @@ def test_ipwdid_panel_no_covariates(nsw_data, data_path, normalized, est_method)
     r_result = r_ipwdid(data_path, normalized=normalized, panel=True)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ipwdid(nsw_data, est_method=est_method, panel=True)
 
@@ -403,7 +403,7 @@ def test_ipwdid_panel_with_covariates(nsw_data, data_path, normalized, est_metho
     r_result = r_ipwdid(data_path, normalized=normalized, panel=True, xformla=xformla)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ipwdid(nsw_data, est_method=est_method, panel=True, xformla=xformla)
 
@@ -427,7 +427,7 @@ def test_ipwdid_rc_no_covariates(nsw_data, data_path, normalized, est_method):
     r_result = r_ipwdid(data_path, normalized=normalized, panel=False)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ipwdid(nsw_data, est_method=est_method, panel=False)
 
@@ -453,7 +453,7 @@ def test_ipwdid_rc_with_covariates(nsw_data, data_path, normalized, est_method):
     r_result = r_ipwdid(data_path, normalized=normalized, panel=False, xformla=xformla)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ipwdid(nsw_data, est_method=est_method, panel=False, xformla=xformla)
 
@@ -476,7 +476,7 @@ def test_ordid_panel_no_covariates(nsw_data, data_path):
     r_result = r_ordid(data_path, panel=True)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ordid(nsw_data, panel=True)
 
@@ -501,7 +501,7 @@ def test_ordid_panel_with_covariates(nsw_data, data_path):
     r_result = r_ordid(data_path, panel=True, xformla=xformla)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ordid(nsw_data, panel=True, xformla=xformla)
 
@@ -524,7 +524,7 @@ def test_ordid_rc_no_covariates(nsw_data, data_path):
     r_result = r_ordid(data_path, panel=False)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ordid(nsw_data, panel=False)
 
@@ -549,7 +549,7 @@ def test_ordid_rc_with_covariates(nsw_data, data_path):
     r_result = r_ordid(data_path, panel=False, xformla=xformla)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ordid(nsw_data, panel=False, xformla=xformla)
 
@@ -574,7 +574,7 @@ def test_drdid_confidence_interval(nsw_data, data_path):
     r_result = r_drdid(data_path, est_method="imp", panel=True, xformla=xformla)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_drdid(nsw_data, est_method="imp", panel=True, xformla=xformla)
 
@@ -599,7 +599,7 @@ def test_ipwdid_confidence_interval(nsw_data, data_path):
     r_result = r_ipwdid(data_path, normalized=True, panel=True, xformla=xformla)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ipwdid(nsw_data, est_method="std_ipw", panel=True, xformla=xformla)
 
@@ -624,7 +624,7 @@ def test_ordid_confidence_interval(nsw_data, data_path):
     r_result = r_ordid(data_path, panel=True, xformla=xformla)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = python_ordid(nsw_data, panel=True, xformla=xformla)
 

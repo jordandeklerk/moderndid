@@ -298,7 +298,7 @@ def test_dose_overall_att_matches(r_test_data, target_parameter):
     r_result = r_estimate_dose(r_test_data, target_parameter=target_parameter)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_att,
@@ -316,7 +316,7 @@ def test_dose_overall_se_matches(r_test_data, target_parameter):
     r_result = r_estimate_dose(r_test_data, target_parameter=target_parameter)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_att_se,
@@ -333,7 +333,7 @@ def test_dose_acrt_matches(r_test_data):
     r_result = r_estimate_dose(r_test_data, target_parameter="slope")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_acrt,
@@ -350,7 +350,7 @@ def test_dose_acrt_se_matches(r_test_data):
     r_result = r_estimate_dose(r_test_data, target_parameter="slope")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_acrt_se,
@@ -368,7 +368,7 @@ def test_dose_control_group_options(r_test_data, control_group):
     r_result = r_estimate_dose(r_test_data, control_group=control_group)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     rtol = 1e-6 if control_group == "notyettreated" else 0.01
     atol = 1e-6 if control_group == "notyettreated" else 1e-3
@@ -389,7 +389,7 @@ def test_dose_degree_options(r_test_data, degree):
     r_result = r_estimate_dose(r_test_data, degree=degree, num_knots=0)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_att,
@@ -407,7 +407,7 @@ def test_dose_knots_options(r_test_data, num_knots):
     r_result = r_estimate_dose(r_test_data, degree=3, num_knots=num_knots)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_att,
@@ -425,7 +425,7 @@ def test_eventstudy_overall_att_matches(r_test_data, target_parameter):
     r_result = r_estimate_eventstudy(r_test_data, target_parameter=target_parameter)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_att = (
         py_result.overall_att.overall_att if hasattr(py_result.overall_att, "overall_att") else py_result.overall_att
@@ -450,7 +450,7 @@ def test_eventstudy_overall_se_matches(r_test_data, target_parameter):
     r_result = r_estimate_eventstudy(r_test_data, target_parameter=target_parameter)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_se = (
         py_result.overall_att.overall_se if hasattr(py_result.overall_att, "overall_se") else py_result.overall_att_se
@@ -471,10 +471,10 @@ def test_eventstudy_event_times_match(r_test_data):
     r_result = r_estimate_eventstudy(r_test_data, target_parameter="level")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     if "egt" not in r_result or len(r_result["egt"]) == 0:
-        pytest.skip("R result missing event times")
+        pytest.fail("R result missing event times")
 
     py_event_times = set(py_result.event_study.event_times)
     r_event_times = set(r_result["egt"])
@@ -489,10 +489,10 @@ def test_eventstudy_dynamic_effects_match(r_test_data, target_parameter):
     r_result = r_estimate_eventstudy(r_test_data, target_parameter=target_parameter)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     if "egt" not in r_result or len(r_result["egt"]) == 0:
-        pytest.skip("R result missing event times")
+        pytest.fail("R result missing event times")
 
     r_event_times = np.array(r_result["egt"])
     r_att_by_event = np.array(r_result["att_egt"])
@@ -527,10 +527,10 @@ def test_eventstudy_dynamic_se_match(r_test_data, target_parameter):
     r_result = r_estimate_eventstudy(r_test_data, target_parameter=target_parameter)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     if "se_egt" not in r_result or len(r_result["se_egt"]) == 0:
-        pytest.skip("R result missing se_egt")
+        pytest.fail("R result missing se_egt")
 
     r_event_times = np.array(r_result["egt"])
     r_se_by_event = np.array(r_result["se_egt"])
@@ -562,7 +562,7 @@ def test_eventstudy_control_group_options(r_test_data, control_group):
     r_result = r_estimate_eventstudy(r_test_data, control_group=control_group)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_att = (
         py_result.overall_att.overall_att if hasattr(py_result.overall_att, "overall_att") else py_result.overall_att
@@ -586,7 +586,7 @@ def test_cck_overall_att_matches(r_test_data_cck):
     r_result = r_estimate_cck(r_test_data_cck)
 
     if r_result is None:
-        pytest.skip("R CCK estimation failed")
+        pytest.fail("R CCK estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_att,
@@ -603,7 +603,7 @@ def test_cck_overall_att_se_matches(r_test_data_cck):
     r_result = r_estimate_cck(r_test_data_cck)
 
     if r_result is None:
-        pytest.skip("R CCK estimation failed")
+        pytest.fail("R CCK estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_att_se,
@@ -620,7 +620,7 @@ def test_cck_overall_acrt_matches(r_test_data_cck):
     r_result = r_estimate_cck(r_test_data_cck)
 
     if r_result is None:
-        pytest.skip("R CCK estimation failed")
+        pytest.fail("R CCK estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_acrt,
@@ -637,7 +637,7 @@ def test_cck_overall_acrt_se_matches(r_test_data_cck):
     r_result = r_estimate_cck(r_test_data_cck)
 
     if r_result is None:
-        pytest.skip("R CCK estimation failed")
+        pytest.fail("R CCK estimation failed")
 
     np.testing.assert_allclose(
         py_result.overall_acrt_se,

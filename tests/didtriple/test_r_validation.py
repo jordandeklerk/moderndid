@@ -363,7 +363,7 @@ def test_2period_point_estimates_match(two_period_dgp_result, est_method):
     r_result = r_estimate_2period(data, est_method)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.att,
@@ -383,7 +383,7 @@ def test_2period_standard_errors_match(two_period_dgp_result, est_method):
     r_result = r_estimate_2period(data, est_method)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.se,
@@ -402,7 +402,7 @@ def test_2period_confidence_intervals_match(two_period_dgp_result):
     r_result = r_estimate_2period(data, "dr")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.lci,
@@ -430,7 +430,7 @@ def test_2period_dgp_types_match(dgp_type):
     r_result = r_estimate_2period(data, "dr")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.att,
@@ -462,7 +462,7 @@ def test_2period_bootstrap_se_reasonable(two_period_dgp_result):
     r_result = r_estimate_2period_bootstrap(data, "dr", biters=100)
 
     if r_result is None:
-        pytest.skip("R bootstrap estimation failed")
+        pytest.fail("R bootstrap estimation failed")
 
     np.testing.assert_allclose(
         py_result.se,
@@ -491,7 +491,7 @@ def test_mp_att_gt_estimates_match(mp_ddd_data, est_method):
     r_result = r_estimate_multiperiod(data, est_method=est_method)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     r_att = np.atleast_1d(r_result["att"])
     r_groups = np.atleast_1d(r_result["groups"])
@@ -545,7 +545,7 @@ def test_mp_control_group_options(mp_ddd_data, control_group):
     r_result = r_estimate_multiperiod(data, control_group=control_group, est_method="reg")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     assert len(py_result.att) > 0, f"Python returned no ATTs for {control_group}"
 
@@ -569,7 +569,7 @@ def test_mp_base_period_options(mp_ddd_data, base_period):
     r_result = r_estimate_multiperiod(data, base_period=base_period, est_method="reg")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     assert len(py_result.att) > 0, f"Python returned no ATTs for {base_period}"
 
@@ -592,7 +592,7 @@ def test_ddd_wrapper_2period(two_period_dgp_result):
     r_result = r_ddd_wrapper(data, is_multiperiod=False, est_method="dr")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     np.testing.assert_allclose(
         py_result.att,
@@ -620,7 +620,7 @@ def test_ddd_wrapper_multiperiod(mp_ddd_data):
     r_result = r_ddd_wrapper(data, is_multiperiod=True, est_method="reg")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     assert len(py_result.att) > 0, "Python wrapper returned no ATTs"
     assert len(r_result["att"]) > 0, "R wrapper returned no ATTs"
@@ -645,7 +645,7 @@ def test_agg_overall_att_matches(mp_ddd_data, agg_type):
     r_result = r_estimate_multiperiod_agg(data, agg_type)
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     np.testing.assert_allclose(
         py_agg.overall_att,
@@ -675,7 +675,7 @@ def test_agg_overall_se_matches(mp_ddd_data, agg_type):
     r_result = r_estimate_multiperiod_agg(data, agg_type)
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     np.testing.assert_allclose(
         py_agg.overall_se,
@@ -705,10 +705,10 @@ def test_agg_disaggregated_effects_match(mp_ddd_data, agg_type):
     r_result = r_estimate_multiperiod_agg(data, agg_type)
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     if "egt" not in r_result or r_result["egt"] is None:
-        pytest.skip("R result missing disaggregated effects")
+        pytest.fail("R result missing disaggregated effects")
 
     r_egt = np.array(r_result["egt"])
     r_att_egt = np.array(r_result["att_egt"])
@@ -761,7 +761,7 @@ def test_agg_with_bootstrap_matches(mp_ddd_data, agg_type):
     r_result = r_estimate_multiperiod_agg(data, agg_type, boot=True)
 
     if r_result is None:
-        pytest.skip("R aggregation with bootstrap failed")
+        pytest.fail("R aggregation with bootstrap failed")
 
     np.testing.assert_allclose(
         py_agg.overall_att,
@@ -804,7 +804,7 @@ def test_eventstudy_balance_e_matches(mp_ddd_data):
     r_result = r_estimate_multiperiod_agg(data, "eventstudy", balance_e=1)
 
     if r_result is None:
-        pytest.skip("R aggregation with balance_e failed")
+        pytest.fail("R aggregation with balance_e failed")
 
     np.testing.assert_allclose(
         py_agg.overall_att,
@@ -840,7 +840,7 @@ def test_eventstudy_min_max_e_matches(mp_ddd_data):
     r_result = r_estimate_multiperiod_agg(data, "eventstudy", min_e=-1, max_e=2)
 
     if r_result is None:
-        pytest.skip("R aggregation with min_e/max_e failed")
+        pytest.fail("R aggregation with min_e/max_e failed")
 
     if "egt" in r_result and r_result["egt"] is not None:
         r_egt = np.array(r_result["egt"])
@@ -873,7 +873,7 @@ def test_agg_alpha_levels_match(mp_ddd_data, alpha):
     r_result = r_estimate_multiperiod_agg(data, "simple", alpha=alpha)
 
     if r_result is None:
-        pytest.skip(f"R aggregation with alpha={alpha} failed")
+        pytest.fail(f"R aggregation with alpha={alpha} failed")
 
     np.testing.assert_allclose(
         py_agg.overall_att,
@@ -907,10 +907,10 @@ def test_group_agg_all_groups_match(mp_ddd_data):
     r_result = r_estimate_multiperiod_agg(data, "group")
 
     if r_result is None:
-        pytest.skip("R group aggregation failed")
+        pytest.fail("R group aggregation failed")
 
     if "egt" not in r_result or r_result["egt"] is None:
-        pytest.skip("R result missing group effects")
+        pytest.fail("R result missing group effects")
 
     r_groups = np.array(r_result["egt"])
     r_att = np.array(r_result["att_egt"])
@@ -959,10 +959,10 @@ def test_calendar_agg_all_times_match(mp_ddd_data):
     r_result = r_estimate_multiperiod_agg(data, "calendar")
 
     if r_result is None:
-        pytest.skip("R calendar aggregation failed")
+        pytest.fail("R calendar aggregation failed")
 
     if "egt" not in r_result or r_result["egt"] is None:
-        pytest.skip("R result missing calendar effects")
+        pytest.fail("R result missing calendar effects")
 
     r_times = np.array(r_result["egt"])
     r_att = np.array(r_result["att_egt"])
@@ -1007,10 +1007,10 @@ def test_agg_se_egt_matches(mp_ddd_data, agg_type):
     r_result = r_estimate_multiperiod_agg(data, agg_type)
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     if "se_egt" not in r_result or r_result["se_egt"] is None:
-        pytest.skip("R result missing se_egt")
+        pytest.fail("R result missing se_egt")
 
     r_egt = _convert_r_array(r_result["egt"])
     r_se_egt = _convert_r_array(r_result["se_egt"])
@@ -1421,7 +1421,7 @@ def test_2period_rcs_point_estimates_match(two_period_rcs_data, est_method):
     r_result = r_estimate_2period_rcs(data, est_method)
 
     if r_result is None:
-        pytest.skip("R RCS estimation failed")
+        pytest.fail("R RCS estimation failed")
 
     np.testing.assert_allclose(
         py_result.att,
@@ -1441,7 +1441,7 @@ def test_2period_rcs_standard_errors_match(two_period_rcs_data, est_method):
     r_result = r_estimate_2period_rcs(data, est_method)
 
     if r_result is None:
-        pytest.skip("R RCS estimation failed")
+        pytest.fail("R RCS estimation failed")
 
     np.testing.assert_allclose(
         py_result.se,
@@ -1460,7 +1460,7 @@ def test_2period_rcs_confidence_intervals_match(two_period_rcs_data):
     r_result = r_estimate_2period_rcs(data, "dr")
 
     if r_result is None:
-        pytest.skip("R RCS estimation failed")
+        pytest.fail("R RCS estimation failed")
 
     np.testing.assert_allclose(
         py_result.lci,
@@ -1487,7 +1487,7 @@ def test_mp_rcs_att_gt_estimates_match(mp_rcs_data, est_method):
     r_result = r_estimate_multiperiod_rcs(data, est_method=est_method)
 
     if r_result is None:
-        pytest.skip("R RCS estimation failed")
+        pytest.fail("R RCS estimation failed")
 
     r_att = np.atleast_1d(r_result["att"])
     r_groups = np.atleast_1d(r_result["groups"])
@@ -1525,7 +1525,7 @@ def test_mp_rcs_control_group_options(mp_rcs_data, control_group):
     r_result = r_estimate_multiperiod_rcs(data, control_group=control_group, est_method="reg")
 
     if r_result is None:
-        pytest.skip("R RCS estimation failed")
+        pytest.fail("R RCS estimation failed")
 
     assert len(py_result.att) > 0, f"RCS Python returned no ATTs for {control_group}"
 
@@ -1539,7 +1539,7 @@ def test_mp_rcs_base_period_options(mp_rcs_data, base_period):
     r_result = r_estimate_multiperiod_rcs(data, base_period=base_period, est_method="reg")
 
     if r_result is None:
-        pytest.skip("R RCS estimation failed")
+        pytest.fail("R RCS estimation failed")
 
     assert len(py_result.att) > 0, f"RCS Python returned no ATTs for {base_period}"
 

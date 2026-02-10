@@ -292,7 +292,7 @@ def test_att_gt_estimation_methods(mpdta_data, mpdta_csv_path, est_method):
     r_result = r_att_gt(mpdta_csv_path, est_method=est_method)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = att_gt(
         data=mpdta_data,
@@ -337,7 +337,7 @@ def test_att_gt_standard_errors(mpdta_data, mpdta_csv_path, est_method):
     r_result = r_att_gt(mpdta_csv_path, est_method=est_method)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = att_gt(
         data=mpdta_data,
@@ -379,7 +379,7 @@ def test_att_gt_control_group_nevertreated(mpdta_data, mpdta_csv_path):
     r_result = r_att_gt(mpdta_csv_path, est_method="reg", control_group="nevertreated")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = att_gt(
         data=mpdta_data,
@@ -422,7 +422,7 @@ def test_att_gt_control_group_notyettreated(mpdta_data, mpdta_csv_path):
     r_result = r_att_gt(mpdta_csv_path, est_method="reg", control_group="notyettreated")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = att_gt(
         data=mpdta_data,
@@ -466,7 +466,7 @@ def test_att_gt_base_periods(mpdta_data, mpdta_csv_path, base_period):
     r_result = r_att_gt(mpdta_csv_path, est_method="reg", base_period=base_period)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = att_gt(
         data=mpdta_data,
@@ -510,7 +510,7 @@ def test_att_gt_anticipation(mpdta_data, mpdta_csv_path, anticipation):
     r_result = r_att_gt(mpdta_csv_path, est_method="reg", anticipation=anticipation)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = att_gt(
         data=mpdta_data,
@@ -553,7 +553,7 @@ def test_att_gt_with_covariates(mpdta_data, mpdta_csv_path):
     r_result = r_att_gt(mpdta_csv_path, est_method="dr", xformla="~lpop")
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = att_gt(
         data=mpdta_data,
@@ -596,7 +596,7 @@ def test_att_gt_bootstrap_se(mpdta_small, mpdta_small_csv_path):
     r_result = r_att_gt_bootstrap(mpdta_small_csv_path, est_method="dr", biters=100, cband=False)
 
     if r_result is None:
-        pytest.skip("R bootstrap estimation failed")
+        pytest.fail("R bootstrap estimation failed")
 
     py_result = att_gt(
         data=mpdta_small,
@@ -639,7 +639,7 @@ def test_aggte_overall_att(mpdta_data, mpdta_csv_path, agg_type):
     r_result = r_aggte(mpdta_csv_path, agg_type=agg_type, est_method="reg")
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     py_mp_result = att_gt(
         data=mpdta_data,
@@ -670,7 +670,7 @@ def test_aggte_overall_se(mpdta_data, mpdta_csv_path, agg_type):
     r_result = r_aggte(mpdta_csv_path, agg_type=agg_type, est_method="reg")
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     py_mp_result = att_gt(
         data=mpdta_data,
@@ -701,10 +701,10 @@ def test_aggte_disaggregated_effects(mpdta_data, mpdta_csv_path, agg_type):
     r_result = r_aggte(mpdta_csv_path, agg_type=agg_type, est_method="reg")
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     if "egt" not in r_result or r_result["egt"] is None:
-        pytest.skip("R result missing disaggregated effects")
+        pytest.fail("R result missing disaggregated effects")
 
     py_mp_result = att_gt(
         data=mpdta_data,
@@ -750,7 +750,7 @@ def test_aggte_dynamic_with_balance_e(mpdta_data, mpdta_csv_path):
     r_result = r_aggte(mpdta_csv_path, agg_type="dynamic", est_method="reg", balance_e=1)
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     py_mp_result = att_gt(
         data=mpdta_data,
@@ -780,7 +780,7 @@ def test_aggte_dynamic_with_min_max_e(mpdta_data, mpdta_csv_path):
     r_result = r_aggte(mpdta_csv_path, agg_type="dynamic", est_method="reg", min_e=-1, max_e=2)
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     py_mp_result = att_gt(
         data=mpdta_data,
@@ -813,7 +813,7 @@ def test_aggte_estimation_methods(mpdta_data, mpdta_csv_path, est_method):
     r_result = r_aggte(mpdta_csv_path, agg_type="simple", est_method=est_method)
 
     if r_result is None:
-        pytest.skip("R aggregation failed")
+        pytest.fail("R aggregation failed")
 
     py_mp_result = att_gt(
         data=mpdta_data,
@@ -844,7 +844,7 @@ def test_aggte_bootstrap_se(mpdta_small, mpdta_small_csv_path, agg_type):
     r_result = r_aggte_bootstrap(mpdta_small_csv_path, agg_type=agg_type, biters=100, cband=False)
 
     if r_result is None:
-        pytest.skip("R bootstrap aggregation failed")
+        pytest.fail("R bootstrap aggregation failed")
 
     py_mp_result = att_gt(
         data=mpdta_small,
@@ -882,7 +882,7 @@ def test_full_pipeline_consistency(mpdta_data, mpdta_csv_path):
     r_agg_result = r_aggte(mpdta_csv_path, agg_type="simple", est_method="dr")
 
     if r_gt_result is None or r_agg_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_mp_result = att_gt(
         data=mpdta_data,
@@ -935,7 +935,7 @@ def test_repeated_cross_section(mpdta_data, mpdta_csv_path):
     r_result = r_att_gt(mpdta_csv_path, est_method="reg", panel=False)
 
     if r_result is None:
-        pytest.skip("R estimation failed")
+        pytest.fail("R estimation failed")
 
     py_result = att_gt(
         data=mpdta_data,
