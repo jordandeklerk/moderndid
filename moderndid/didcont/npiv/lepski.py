@@ -296,8 +296,6 @@ def npiv_jhat_max(
         Type of basis.
     x_min, x_max, w_min, w_max : float, optional
         Range limits for basis construction.
-    check_is_fullrank : bool, default=False
-        Whether to check for full rank.
 
     Returns
     -------
