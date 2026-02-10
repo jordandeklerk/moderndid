@@ -48,7 +48,6 @@ didcont = [
 ]
 didhonest = [
     "cvxpy[ECOS]>=1.3.0",
-    "sympy>=1.14.0",
 ]
 plots = [
     "plotnine>=0.14.0",

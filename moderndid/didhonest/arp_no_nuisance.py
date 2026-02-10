@@ -240,6 +240,7 @@ def test_in_identified_set(
     A,
     d,
     alpha,
+    _precomputed=None,
     **kwargs,
 ):
     r"""Test whether :math:`\bar{\theta}` lies in the identified set using the ARP conditional approach.
@@ -277,6 +278,8 @@ def test_in_identified_set(
         Constraint bounds :math:`d` such that :math:`\Delta = \{\delta : A\delta \leq d\}`.
     alpha : float
         Significance level :math:`\alpha` for the test.
+    _precomputed : dict, optional
+        Pre-computed A_tilde and d_tilde to avoid redundant computation in grid loops.
     **kwargs
         Unused parameters for compatibility with hybrid tests.
 
@@ -293,10 +296,14 @@ def test_in_identified_set(
     .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
-    sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
-    sigma_tilde = np.maximum(sigma_tilde, 1e-10)
-    A_tilde = np.diag(1 / sigma_tilde) @ A
-    d_tilde = d / sigma_tilde
+    if _precomputed is not None:
+        A_tilde = _precomputed["A_tilde"]
+        d_tilde = _precomputed["d_tilde"]
+    else:
+        sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
+        sigma_tilde = np.maximum(sigma_tilde, 1e-10)
+        A_tilde = np.diag(1 / sigma_tilde) @ A
+        d_tilde = d / sigma_tilde
 
     normalized_moments = A_tilde @ y - d_tilde
     max_location = np.argmax(normalized_moments)
@@ -449,6 +456,7 @@ def test_in_identified_set_lf_hybrid(
     alpha,
     hybrid_kappa,
     lf_cv,
+    _precomputed=None,
     **kwargs,
 ):
     r"""Conditional-least favorable (LF) hybrid test.
@@ -488,6 +496,8 @@ def test_in_identified_set_lf_hybrid(
         First-stage significance level :math:`\kappa`, typically :math:`\alpha/10`.
     lf_cv : float
         Least favorable critical value :math:`c_{LF}` for first-stage test.
+    _precomputed : dict, optional
+        Pre-computed A_tilde and d_tilde to avoid redundant computation in grid loops.
     **kwargs
         Unused parameters.
 
@@ -504,11 +514,14 @@ def test_in_identified_set_lf_hybrid(
     .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
         parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
-    sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
-    sigma_tilde = np.maximum(sigma_tilde, 1e-10)
-
-    A_tilde = np.diag(1 / sigma_tilde) @ A
-    d_tilde = d / sigma_tilde
+    if _precomputed is not None:
+        A_tilde = _precomputed["A_tilde"]
+        d_tilde = _precomputed["d_tilde"]
+    else:
+        sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
+        sigma_tilde = np.maximum(sigma_tilde, 1e-10)
+        A_tilde = np.diag(1 / sigma_tilde) @ A
+        d_tilde = d / sigma_tilde
 
     normalized_moments = A_tilde @ y - d_tilde
     max_location = np.argmax(normalized_moments)
@@ -594,17 +607,31 @@ def _test_over_theta_grid(
     post_period_vec = basis_vector(index=n_pre_periods + post_period_index, size=len(beta_hat)).flatten()
 
     y_matrix = prepare_theta_grid_y_values(beta_hat, post_period_vec, theta_grid)
+    n_grid = len(theta_grid)
 
-    results = []
-    for i, theta in enumerate(theta_grid):
-        y = y_matrix[i]
+    sigma_tilde = np.sqrt(np.diag(A @ sigma @ A.T))
+    sigma_tilde = np.maximum(sigma_tilde, 1e-10)
+    precomputed = {
+        "A_tilde": np.diag(1 / sigma_tilde) @ A,
+        "d_tilde": d / sigma_tilde,
+    }
+
+    _supports_precomputed = test_fn in (test_in_identified_set, test_in_identified_set_lf_hybrid)
+
+    results = np.zeros((n_grid, 2))
+    results[:, 0] = theta_grid
+    for i in range(n_grid):
+        kwargs = dict(test_kwargs)
+        if _supports_precomputed:
+            kwargs["_precomputed"] = precomputed
         in_set = test_fn(
-            y=y,
+            y=y_matrix[i],
             sigma=sigma,
             A=A,
             d=d,
             alpha=alpha,
-            **test_kwargs,
+            **kwargs,
         )
-        results.append([theta, float(in_set)])
-    return np.array(results)
+        results[i, 1] = float(in_set)
+
+    return results

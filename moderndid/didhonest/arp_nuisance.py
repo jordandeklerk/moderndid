@@ -1,12 +1,12 @@
 """Andrews-Roth-Pakes (ARP) confidence intervals with nuisance parameters."""
 
 import warnings
+from functools import partial
 from typing import NamedTuple
 
 import numpy as np
 import scipy.optimize as opt
 from scipy import stats
-from sympy import Matrix
 
 from .conditional import _norminvp_generalized
 from .numba import compute_hybrid_dbar, prepare_theta_grid_y_values
@@ -174,51 +174,38 @@ def compute_arp_nuisance_ci(
 
     y_t_matrix = prepare_theta_grid_y_values(y, a_gamma_inv_one, theta_grid)
 
-    accept_grid = []
-    for i, theta in enumerate(theta_grid):
-        y_t = y_t_matrix[i]
+    test_fn = partial(
+        _test_theta_accepted,
+        y_t_matrix=y_t_matrix,
+        hybrid_flag=hybrid_flag,
+        hybrid_list=hybrid_list,
+        d_vec=d_vec,
+        a_gamma_inv_one=a_gamma_inv_one,
+        theta_grid=theta_grid,
+        a_gamma_inv_minus_one=a_gamma_inv_minus_one,
+        sigma_y=sigma_y,
+        alpha=alpha,
+        rows_for_arp=rows_for_arp,
+    )
 
-        if hybrid_flag == "FLCI":
-            hybrid_list["dbar"] = compute_hybrid_dbar(
-                hybrid_list["flci_halflength"],
-                hybrid_list["vbar"],
-                d_vec,
-                a_gamma_inv_one,
-                theta,
-            )
+    lb_idx, ub_idx = _binary_search_ci_bounds(test_fn, grid_points)
 
-        # Test theta value
-        result = lp_conditional_test(
-            y_t=y_t,
-            x_t=a_gamma_inv_minus_one,
-            sigma=sigma_y,
-            alpha=alpha,
-            hybrid_flag=hybrid_flag,
-            hybrid_list=hybrid_list,
-            rows_for_arp=rows_for_arp,
-        )
+    accept_grid = np.zeros(grid_points)
+    if lb_idx is not None:
+        accept_grid[lb_idx : ub_idx + 1] = 1.0
 
-        accept = not result["reject"]
-        accept_grid.append(accept)
-
-    accept_grid = np.array(accept_grid, dtype=float)
     results_grid = np.column_stack([theta_grid, accept_grid])
 
-    accepted_indices = np.where(accept_grid == 1)[0]
-    if len(accepted_indices) > 0:
-        ci_lb = theta_grid[accepted_indices[0]]
-        ci_ub = theta_grid[accepted_indices[-1]]
+    if lb_idx is not None:
+        ci_lb = theta_grid[lb_idx]
+        ci_ub = theta_grid[ub_idx]
     else:
         ci_lb = np.nan
         ci_ub = np.nan
 
-    # Use trapezoidal rule for integration which correctly handles non-contiguous acceptance regions
     grid_spacing = np.diff(theta_grid)
     grid_lengths = 0.5 * np.concatenate([[grid_spacing[0]], grid_spacing[:-1] + grid_spacing[1:], [grid_spacing[-1]]])
-    length = np.sum(accept_grid * grid_lengths)
-
-    if len(accepted_indices) == 0:
-        length = np.nan
+    length = np.sum(accept_grid * grid_lengths) if lb_idx is not None else np.nan
 
     if accept_grid[0] == 1 or accept_grid[-1] == 1:
         warnings.warn("CI is open at one of the endpoints; CI bounds may not be accurate.", UserWarning)
@@ -1179,10 +1166,9 @@ def _construct_gamma(l_vec):
     :math:`\theta = l'\beta_{post}` is the parameter of interest and :math:`\xi`
     are nuisance parameters.
 
-    The construction uses the reduced row echelon form (RREF) to find a basis
-    that includes :math:`l`. Starting with the augmented matrix :math:`[l | I]`,
-    the algorithm identifies pivot columns that form a linearly independent set
-    including :math:`l`.
+    The construction places :math:`l` as the first row and fills the remaining
+    rows with standard basis vectors, dropping the one corresponding to the
+    largest absolute component of :math:`l` for numerical stability.
 
     Parameters
     ----------
@@ -1210,28 +1196,16 @@ def _construct_gamma(l_vec):
     the test to profile over :math:`\xi` for each value of :math:`\theta`.
     """
     bar_t = len(l_vec)
-    # Construct augmented matrix B = [l_vec | I]
-    # The identity matrix ensures we can find a basis that includes l_vec
-    B = np.column_stack([l_vec.reshape(-1, 1), np.eye(bar_t)])
+    l_flat = l_vec.flatten()
+    drop_idx = int(np.argmax(np.abs(l_flat)))
 
-    # Reduced row echelon form
-    B_sympy = Matrix(B)
-    rref_B, _ = B_sympy.rref()
-
-    rref_B = np.array(rref_B).astype(float)
-
-    # Pivot columns form the basis
-    leading_ones = []
-    for i in range(rref_B.shape[0]):
-        try:
-            col = _find_leading_one_column(i, rref_B)
-            leading_ones.append(col)
-        except ValueError:
-            continue
-
-    # Select the pivot columns from original matrix and transpose
-    # This gives us Gamma with l_vec as the first row
-    gamma = B[:, leading_ones].T
+    gamma = np.zeros((bar_t, bar_t))
+    gamma[0] = l_flat
+    row = 1
+    for i in range(bar_t):
+        if i != drop_idx:
+            gamma[row, i] = 1.0
+            row += 1
 
     if abs(np.linalg.det(gamma)) < 1e-10:
         raise ValueError("Failed to construct invertible Gamma matrix")
@@ -1239,25 +1213,67 @@ def _construct_gamma(l_vec):
     return gamma
 
 
-def _find_leading_one_column(row, rref_matrix):
-    """Find column index of leading one in a row of RREF matrix.
+def _binary_search_ci_bounds(test_fn, n_points):
+    """Find CI boundaries using binary search assuming contiguous acceptance.
 
     Parameters
     ----------
-    row : int
-        Row index.
-    rref_matrix : ndarray
-        Matrix in reduced row echelon form.
+    test_fn : callable
+        Function that takes an index i and returns True if accepted.
+    n_points : int
+        Number of grid points.
 
     Returns
     -------
-    int
-        Column index of leading one in the row.
+    tuple
+        (lb_idx, ub_idx) or (None, None) if no accepted points.
     """
-    for col in range(rref_matrix.shape[1]):
-        if abs(rref_matrix[row, col] - 1) < 1e-10:
-            return col
-    raise ValueError(f"Row {row} has no leading one")
+    mid = n_points // 2
+    seed_idx = None
+
+    if test_fn(mid):
+        seed_idx = mid
+    else:
+        for offset in range(1, n_points):
+            left = mid - offset
+            right = mid + offset
+            if left >= 0 and test_fn(left):
+                seed_idx = left
+                break
+            if right < n_points and test_fn(right):
+                seed_idx = right
+                break
+            if left < 0 and right >= n_points:
+                break
+
+    if seed_idx is None:
+        return None, None
+
+    if seed_idx == 0 or not test_fn(0):
+        lo, hi = 0, seed_idx
+        while lo < hi:
+            m = (lo + hi) // 2
+            if test_fn(m):
+                hi = m
+            else:
+                lo = m + 1
+        lb_idx = lo
+    else:
+        lb_idx = 0
+
+    if seed_idx == n_points - 1 or not test_fn(n_points - 1):
+        lo, hi = seed_idx, n_points - 1
+        while lo < hi:
+            m = (lo + hi + 1) // 2
+            if test_fn(m):
+                lo = m
+            else:
+                hi = m - 1
+        ub_idx = lo
+    else:
+        ub_idx = n_points - 1
+
+    return lb_idx, ub_idx
 
 
 def _round_eps(x, eps=None):
@@ -1278,3 +1294,69 @@ def _round_eps(x, eps=None):
     if eps is None:
         eps = np.finfo(float).eps ** (3 / 4)
     return 0.0 if abs(x) < eps else x
+
+
+def _test_theta_accepted(
+    i,
+    y_t_matrix,
+    hybrid_flag,
+    hybrid_list,
+    d_vec,
+    a_gamma_inv_one,
+    theta_grid,
+    a_gamma_inv_minus_one,
+    sigma_y,
+    alpha,
+    rows_for_arp,
+):
+    """Test whether theta_grid[i] is accepted.
+
+    Parameters
+    ----------
+    i : int
+        Index into theta_grid to test.
+    y_t_matrix : ndarray
+        Pre-computed y vectors for each theta grid point.
+    hybrid_flag : str
+        Type of test ('ARP', 'LF', 'FLCI').
+    hybrid_list : dict
+        Parameters for hybrid tests.
+    d_vec : ndarray
+        Constraint bounds.
+    a_gamma_inv_one : ndarray
+        First column of A @ Gamma^(-1).
+    theta_grid : ndarray
+        Grid of theta values.
+    a_gamma_inv_minus_one : ndarray
+        Remaining columns of A @ Gamma^(-1).
+    sigma_y : ndarray
+        Covariance matrix of y.
+    alpha : float
+        Significance level.
+    rows_for_arp : ndarray or None
+        Subset of rows for ARP test.
+
+    Returns
+    -------
+    bool
+        True if theta_grid[i] is accepted (not rejected).
+    """
+    y_t = y_t_matrix[i]
+    if hybrid_flag == "FLCI":
+        hybrid_list["dbar"] = compute_hybrid_dbar(
+            hybrid_list["flci_halflength"],
+            hybrid_list["vbar"],
+            d_vec,
+            a_gamma_inv_one,
+            theta_grid[i],
+        )
+    result = lp_conditional_test(
+        y_t=y_t,
+        x_t=a_gamma_inv_minus_one,
+        sigma=sigma_y,
+        alpha=alpha,
+        hybrid_flag=hybrid_flag,
+        hybrid_list=hybrid_list,
+        rows_for_arp=rows_for_arp,
+    )
+    return not result["reject"]

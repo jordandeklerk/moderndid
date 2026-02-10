@@ -12,7 +12,7 @@
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
 
-__moderndid__ is a unified Python implementation of modern difference-in-differences (DiD) methodologies, bringing together the fragmented landscape of DiD estimators into a single, coherent framework. This package consolidates methods from leading econometric research and various R packages into one comprehensive Python library with a consistent API.
+__ModernDiD__ is a unified Python implementation of modern difference-in-differences (DiD) methodologies, bringing together the fragmented landscape of DiD estimators into a single, coherent framework. This package consolidates methods from leading econometric research and various R packages into one comprehensive Python library with a consistent API.
 
 > [!WARNING]
 > This package is currently in active development with core estimators and some sensitivity analysis implemented. The API is subject to change.
@@ -150,7 +150,7 @@ attgt_result = did.att_gt(
 print(attgt_result)
 ```
 
-The output shows treatment effects for each group-time pair, along with simultaneous confidence bands that account for multiple testing:
+The output shows treatment effects for each group-time pair, along with pointwise confidence bands that account for multiple testing:
 
 ```
 ==============================================================================
@@ -269,7 +269,7 @@ Bootstrap type: Weighted
 Reference: Callaway and Sant'Anna (2021)
 ```
 
-Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero support the parallel trends assumption, while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
+Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero lean in support of the parallel trends assumption (but do not confirm it), while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
 
 We can also use built-in plotting functionality to plot the event study results with `plot_event_study()`:
 
