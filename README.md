@@ -154,7 +154,7 @@ The output shows treatment effects for each group-time pair, along with simultan
 
 ```
 ==============================================================================
-    Group-Time Average Treatment Effects
+Group-Time Average Treatment Effects
 ==============================================================================
 
 ┌───────┬──────┬──────────┬────────────┬────────────────────────────┐
@@ -172,31 +172,31 @@ The output shows treatment effects for each group-time pair, along with simultan
 └───────┴──────┴──────────┴────────────┴────────────────────────────┘
 
 ------------------------------------------------------------------------------
-    Signif. codes: '*' confidence band does not cover 0
+Signif. codes: '*' confidence band does not cover 0
 
 ------------------------------------------------------------------------------
-    Data Info
+Data Info
 ------------------------------------------------------------------------------
-    Num observations: 2500
-    Num units: 500
-    Num time periods: 5
-    Control group: Not yet treated
+Num observations: 2500
+Num units: 500
+Num time periods: 5
+Control group: Not yet treated
 
 ------------------------------------------------------------------------------
-    Estimation Details
+Estimation Details
 ------------------------------------------------------------------------------
-    Estimation method: Doubly Robust (dr)
-    Base period: Varying
-    Anticipation periods: 0
+Estimation method: Doubly Robust (dr)
+Base period: Varying
+Anticipation periods: 0
 
 ------------------------------------------------------------------------------
-    Inference
+Inference
 ------------------------------------------------------------------------------
-    Significance level: 0.05
-    Bootstrap iterations: 999
-    Bootstrap type: Weighted
+Significance level: 0.05
+Bootstrap iterations: 999
+Bootstrap type: Weighted
 ==============================================================================
-    Reference: Callaway and Sant'Anna (2021)
+Reference: Callaway and Sant'Anna (2021)
 ```
 
 Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
@@ -218,10 +218,10 @@ print(event_study)
 
 ```
 ==============================================================================
-    Aggregate Treatment Effects (Event Study)
+Aggregate Treatment Effects (Event Study)
 ==============================================================================
 
-    Overall summary of ATT's based on event study/dynamic aggregation:
+Overall summary of ATT's based on event study/dynamic aggregation:
 
 ┌─────────┬────────────┬────────────────────────┐
 │     ATT │ Std. Error │ [95% Conf. Interval]   │
@@ -230,7 +230,7 @@ print(event_study)
 └─────────┴────────────┴────────────────────────┘
 
 
-    Dynamic Effects:
+Dynamic Effects:
 
 ┌────────────┬──────────┬────────────┬──────────────────────────┐
 │ Event time │ Estimate │ Std. Error │ [95% Simult. Conf. Band] │
@@ -245,28 +245,28 @@ print(event_study)
 └────────────┴──────────┴────────────┴──────────────────────────┘
 
 ------------------------------------------------------------------------------
-    Signif. codes: '*' confidence band does not cover 0
+Signif. codes: '*' confidence band does not cover 0
 
 ------------------------------------------------------------------------------
-    Data Info
+Data Info
 ------------------------------------------------------------------------------
-    Control group: Not yet treated
+Control group: Not yet treated
 
 ------------------------------------------------------------------------------
-    Estimation Details
+Estimation Details
 ------------------------------------------------------------------------------
-    Estimation method: Doubly Robust (dr)
-    Base period: Varying
-    Anticipation periods: 0
+Estimation method: Doubly Robust (dr)
+Base period: Varying
+Anticipation periods: 0
 
 ------------------------------------------------------------------------------
-    Inference
+Inference
 ------------------------------------------------------------------------------
-    Significance level: 0.05
-    Bootstrap iterations: 999
-    Bootstrap type: Weighted
+Significance level: 0.05
+Bootstrap iterations: 999
+Bootstrap type: Weighted
 ==============================================================================
-    Reference: Callaway and Sant'Anna (2021)
+Reference: Callaway and Sant'Anna (2021)
 ```
 
 Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero support the parallel trends assumption, while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
