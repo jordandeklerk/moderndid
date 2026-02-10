@@ -302,6 +302,18 @@ def did_multiplegt(
         raise ValueError(f"ci_level={ci_level} is not valid. Must be between 0 and 100 (exclusive).")
     if not isinstance(biters, int) or biters < 1:
         raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
+    if predict_het is not None:
+        if not isinstance(predict_het, tuple) or len(predict_het) != 2:
+            raise ValueError("predict_het must be a tuple of (covariate_names, horizons).")
+        covs, horizons = predict_het
+        if not isinstance(covs, list) or not all(isinstance(c, str) for c in covs):
+            raise ValueError("predict_het[0] must be a list of covariate name strings.")
+        if not isinstance(horizons, list) or not all(isinstance(h, int) for h in horizons):
+            raise ValueError("predict_het[1] must be a list of integer horizons.")
+    if trends_nonparam is not None and (
+        not isinstance(trends_nonparam, list) or not all(isinstance(v, str) for v in trends_nonparam)
+    ):
+        raise ValueError("trends_nonparam must be a list of variable name strings.")
 
     config = DIDInterConfig(
         yname=yname,

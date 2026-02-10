@@ -295,6 +295,8 @@ def ddd(
         raise ValueError("gname is required. Please specify the treatment group column.")
     if pname is None:
         raise ValueError("pname is required. Please specify the partition/eligibility column.")
+    if panel and idname is None:
+        raise ValueError("idname must be provided when panel=True.")
     if est_method not in ("dr", "reg", "ipw"):
         raise ValueError(f"est_method='{est_method}' is not valid. Must be 'dr', 'reg', or 'ipw'.")
     if control_group not in ("nevertreated", "notyettreated"):
@@ -309,6 +311,8 @@ def ddd(
         raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted' or 'multiplier'.")
     if not 0 < trim_level < 1:
         raise ValueError(f"trim_level={trim_level} is not valid. Must be between 0 and 1 (exclusive).")
+    if not isinstance(n_jobs, int) or (n_jobs < 1 and n_jobs != -1):
+        raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
 
     is_rcs = detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel)
 

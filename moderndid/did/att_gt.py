@@ -221,6 +221,8 @@ def att_gt(
     """
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")
+    if panel and idname is None:
+        raise ValueError("idname must be provided when panel=True.")
 
     if isinstance(control_group, str) and control_group not in ("nevertreated", "notyettreated"):
         raise ValueError(f"control_group='{control_group}' is not valid. Must be 'nevertreated' or 'notyettreated'.")
@@ -234,6 +236,10 @@ def att_gt(
         raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
     if not isinstance(anticipation, int | float) or anticipation < 0:
         raise ValueError(f"anticipation={anticipation} is not valid. Must be a non-negative number.")
+    if not isinstance(n_jobs, int) or (n_jobs < 1 and n_jobs != -1):
+        raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
+    if clustervars is not None and isinstance(clustervars, str):
+        raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
 
     control_group_enum = ControlGroup(control_group)
     est_method_enum = EstimationMethod(est_method) if isinstance(est_method, str) else est_method

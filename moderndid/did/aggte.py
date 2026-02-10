@@ -226,6 +226,8 @@ def aggte(
         raise ValueError(f"balance_e={balance_e} is not valid. Must be a non-negative integer.")
     if min_e > max_e:
         raise ValueError(f"min_e={min_e} must be less than or equal to max_e={max_e}.")
+    if clustervars is not None and isinstance(clustervars, str):
+        raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
 
     call_info = {
         "function": f"aggte(MP, type='{type}')",
