@@ -322,6 +322,7 @@ def test_estimation_params_stored(simple_panel_data, param_key, expected_value):
     assert result.estimation_params[param_key] == expected_value
 
 
+@pytest.mark.filterwarnings("ignore:Keeping bidirectional switchers:UserWarning")
 @pytest.mark.parametrize("keep_bidirectional", [True, False])
 def test_bidirectional_switchers_handling(bidirectional_panel_data, keep_bidirectional):
     result = did_multiplegt(

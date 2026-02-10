@@ -63,7 +63,7 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 
 - **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
 - **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
-- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, optional thread-based parallelism via `n_jobs`, and optional GPU accelerated regression and propensity score estimation across all doubly robust and IPW estimators via [CuPy](https://cupy.dev/)
+- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, optional thread-based parallelism via the `n_jobs` parameter, and optional GPU accelerated regression and propensity score estimation across all doubly robust and IPW estimators via [CuPy](https://cupy.dev/)
 - **Native plots** - Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
 - **Documentation** - [https://moderndid.readthedocs.io/en/latest/index.html](https://moderndid.readthedocs.io/en/latest/index.html)
@@ -153,50 +153,50 @@ print(attgt_result)
 The output shows treatment effects for each group-time pair, along with simultaneous confidence bands that account for multiple testing:
 
 ```
-    ==============================================================================
-     Group-Time Average Treatment Effects
-    ==============================================================================
+==============================================================================
+Group-Time Average Treatment Effects
+==============================================================================
 
-    ┌───────┬──────┬──────────┬────────────┬────────────────────────────┐
-    │ Group │ Time │ ATT(g,t) │ Std. Error │ [95% Pointwise Conf. Band] │
-    ├───────┼──────┼──────────┼────────────┼────────────────────────────┤
-    │  2004 │ 2004 │  -0.0105 │     0.0255 │ [-0.0659,  0.0449]         │
-    │  2004 │ 2005 │   0.0704 │     0.0315 │ [-0.0030,  0.1437]         │
-    │  2004 │ 2006 │  -0.0232 │     0.0204 │ [-0.0715,  0.0250]         │
-    │  2004 │ 2007 │   0.0311 │     0.0255 │ [-0.0311,  0.0934]         │
-    │  2006 │ 2006 │  -0.0457 │     0.0193 │ [-0.0925,  0.0010]         │
-    │  2006 │ 2007 │  -0.0176 │     0.0227 │ [-0.0724,  0.0371]         │
-    │  2006 │ 2004 │  -0.0046 │     0.0175 │ [-0.0469,  0.0378]         │
-    │  2007 │ 2007 │  -0.0311 │     0.0167 │ [-0.0706,  0.0083]         │
-    │  2007 │ 2004 │  -0.0031 │     0.0161 │ [-0.0421,  0.0360]         │
-    └───────┴──────┴──────────┴────────────┴────────────────────────────┘
+┌───────┬──────┬──────────┬────────────┬────────────────────────────┐
+│ Group │ Time │ ATT(g,t) │ Std. Error │ [95% Pointwise Conf. Band] │
+├───────┼──────┼──────────┼────────────┼────────────────────────────┤
+│  2004 │ 2004 │  -0.0105 │     0.0255 │ [-0.0659,  0.0449]         │
+│  2004 │ 2005 │   0.0704 │     0.0315 │ [-0.0030,  0.1437]         │
+│  2004 │ 2006 │  -0.0232 │     0.0204 │ [-0.0715,  0.0250]         │
+│  2004 │ 2007 │   0.0311 │     0.0255 │ [-0.0311,  0.0934]         │
+│  2006 │ 2006 │  -0.0457 │     0.0193 │ [-0.0925,  0.0010]         │
+│  2006 │ 2007 │  -0.0176 │     0.0227 │ [-0.0724,  0.0371]         │
+│  2006 │ 2004 │  -0.0046 │     0.0175 │ [-0.0469,  0.0378]         │
+│  2007 │ 2007 │  -0.0311 │     0.0167 │ [-0.0706,  0.0083]         │
+│  2007 │ 2004 │  -0.0031 │     0.0161 │ [-0.0421,  0.0360]         │
+└───────┴──────┴──────────┴────────────┴────────────────────────────┘
 
-    ------------------------------------------------------------------------------
-     Signif. codes: '*' confidence band does not cover 0
+------------------------------------------------------------------------------
+Signif. codes: '*' confidence band does not cover 0
 
-    ------------------------------------------------------------------------------
-     Data Info
-    ------------------------------------------------------------------------------
-     Num observations: 2500
-     Num units: 500
-     Num time periods: 5
-     Control group: Not yet treated
+------------------------------------------------------------------------------
+Data Info
+------------------------------------------------------------------------------
+Num observations: 2500
+Num units: 500
+Num time periods: 5
+Control group: Not yet treated
 
-    ------------------------------------------------------------------------------
-     Estimation Details
-    ------------------------------------------------------------------------------
-     Estimation method: Doubly Robust (dr)
-     Base period: Varying
-     Anticipation periods: 0
+------------------------------------------------------------------------------
+Estimation Details
+------------------------------------------------------------------------------
+Estimation method: Doubly Robust (dr)
+Base period: Varying
+Anticipation periods: 0
 
-    ------------------------------------------------------------------------------
-     Inference
-    ------------------------------------------------------------------------------
-     Significance level: 0.05
-     Bootstrap iterations: 999
-     Bootstrap type: Weighted
-    ==============================================================================
-     Reference: Callaway and Sant'Anna (2021)
+------------------------------------------------------------------------------
+Inference
+------------------------------------------------------------------------------
+Significance level: 0.05
+Bootstrap iterations: 999
+Bootstrap type: Weighted
+==============================================================================
+Reference: Callaway and Sant'Anna (2021)
 ```
 
 Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
@@ -217,56 +217,56 @@ print(event_study)
 ```
 
 ```
-    ==============================================================================
-     Aggregate Treatment Effects (Event Study)
-    ==============================================================================
+==============================================================================
+Aggregate Treatment Effects (Event Study)
+==============================================================================
 
-     Overall summary of ATT's based on event study/dynamic aggregation:
+Overall summary of ATT's based on event study/dynamic aggregation:
 
-    ┌─────────┬────────────┬────────────────────────┐
-    │     ATT │ Std. Error │ [95% Conf. Interval]   │
-    ├─────────┼────────────┼────────────────────────┤
-    │ -0.0042 │     0.0119 │ [ -0.0275,   0.0191]   │
-    └─────────┴────────────┴────────────────────────┘
+┌─────────┬────────────┬────────────────────────┐
+│     ATT │ Std. Error │ [95% Conf. Interval]   │
+├─────────┼────────────┼────────────────────────┤
+│ -0.0042 │     0.0119 │ [ -0.0275,   0.0191]   │
+└─────────┴────────────┴────────────────────────┘
 
 
-     Dynamic Effects:
+Dynamic Effects:
 
-    ┌────────────┬──────────┬────────────┬──────────────────────────┐
-    │ Event time │ Estimate │ Std. Error │ [95% Simult. Conf. Band] │
-    ├────────────┼──────────┼────────────┼──────────────────────────┤
-    │         -3 │  -0.0031 │     0.0161 │ [-0.0445,  0.0383]       │
-    │         -2 │  -0.0046 │     0.0175 │ [-0.0499,  0.0406]       │
-    │         -1 │   0.0000 │         NA │ NA                       │
-    │          0 │  -0.0212 │     0.0162 │ [-0.0629,  0.0204]       │
-    │          1 │   0.0264 │     0.0333 │ [-0.0596,  0.1124]       │
-    │          2 │  -0.0232 │     0.0204 │ [-0.0758,  0.0293]       │
-    │          3 │   0.0311 │     0.0255 │ [-0.0346,  0.0967]       │
-    └────────────┴──────────┴────────────┴──────────────────────────┘
+┌────────────┬──────────┬────────────┬──────────────────────────┐
+│ Event time │ Estimate │ Std. Error │ [95% Simult. Conf. Band] │
+├────────────┼──────────┼────────────┼──────────────────────────┤
+│         -3 │  -0.0031 │     0.0161 │ [-0.0445,  0.0383]       │
+│         -2 │  -0.0046 │     0.0175 │ [-0.0499,  0.0406]       │
+│         -1 │   0.0000 │         NA │ NA                       │
+│          0 │  -0.0212 │     0.0162 │ [-0.0629,  0.0204]       │
+│          1 │   0.0264 │     0.0333 │ [-0.0596,  0.1124]       │
+│          2 │  -0.0232 │     0.0204 │ [-0.0758,  0.0293]       │
+│          3 │   0.0311 │     0.0255 │ [-0.0346,  0.0967]       │
+└────────────┴──────────┴────────────┴──────────────────────────┘
 
-    ------------------------------------------------------------------------------
-     Signif. codes: '*' confidence band does not cover 0
+------------------------------------------------------------------------------
+Signif. codes: '*' confidence band does not cover 0
 
-    ------------------------------------------------------------------------------
-     Data Info
-    ------------------------------------------------------------------------------
-     Control group: Not yet treated
+------------------------------------------------------------------------------
+Data Info
+------------------------------------------------------------------------------
+Control group: Not yet treated
 
-    ------------------------------------------------------------------------------
-     Estimation Details
-    ------------------------------------------------------------------------------
-     Estimation method: Doubly Robust (dr)
-     Base period: Varying
-     Anticipation periods: 0
+------------------------------------------------------------------------------
+Estimation Details
+------------------------------------------------------------------------------
+Estimation method: Doubly Robust (dr)
+Base period: Varying
+Anticipation periods: 0
 
-    ------------------------------------------------------------------------------
-     Inference
-    ------------------------------------------------------------------------------
-     Significance level: 0.05
-     Bootstrap iterations: 999
-     Bootstrap type: Weighted
-    ==============================================================================
-     Reference: Callaway and Sant'Anna (2021)
+------------------------------------------------------------------------------
+Inference
+------------------------------------------------------------------------------
+Significance level: 0.05
+Bootstrap iterations: 999
+Bootstrap type: Weighted
+==============================================================================
+Reference: Callaway and Sant'Anna (2021)
 ```
 
 Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero support the parallel trends assumption, while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.

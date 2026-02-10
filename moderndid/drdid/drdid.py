@@ -249,6 +249,10 @@ def drdid(
 
     if not 0 < trim_level < 1:
         raise ValueError(f"trim_level={trim_level} is not valid. Must be between 0 and 1 (exclusive).")
+    if boot_type not in ("weighted", "multiplier"):
+        raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted' or 'multiplier'.")
+    if not isinstance(n_boot, int) or n_boot < 1:
+        raise ValueError(f"n_boot={n_boot} is not valid. Must be a positive integer.")
 
     call_params = {
         "yname": yname,

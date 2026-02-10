@@ -313,6 +313,7 @@ def test_preprocess_ddd_small_subgroup():
         )
 
 
+@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 def test_preprocess_ddd_with_cluster():
     result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
