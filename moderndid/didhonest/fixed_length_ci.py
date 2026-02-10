@@ -5,6 +5,7 @@ from typing import NamedTuple
 import cvxpy as cp
 import numpy as np
 from scipy import stats
+from scipy.optimize import brentq
 
 from .utils import basis_vector, validate_conformable
 
@@ -528,11 +529,11 @@ def folded_normal_quantile(
     if mu_abs == 0:
         return sd * stats.halfnorm.ppf(p)
 
-    rng = np.random.default_rng(seed)
-    n_samples = 10**6
-    normal_samples = rng.normal(mu_abs, sd, n_samples)
-    folded_samples = np.abs(normal_samples)
-    return np.quantile(folded_samples, p)
+    upper_bracket = mu_abs + 8 * sd
+    while _folded_normal_cdf(upper_bracket, mu_abs, sd) - p < 0:
+        upper_bracket *= 2
+
+    return brentq(_folded_normal_cdf, 0, upper_bracket, args=(mu_abs, sd, p))
 
 
 def get_min_bias_h(
@@ -846,3 +847,8 @@ def _create_diff_matrix(size):
         for i in range(1, size):
             mat[i, i - 1] = -1
     return mat
+
+
+def _folded_normal_cdf(x, mu_abs, sd, p=0.0):
+    """CDF of the folded normal distribution minus p, for root-finding."""
+    return stats.norm.cdf((x - mu_abs) / sd) - stats.norm.cdf((-x - mu_abs) / sd) - p

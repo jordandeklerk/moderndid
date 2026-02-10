@@ -2,7 +2,6 @@
 
 try:
     import cvxpy
-    import sympy
 except ImportError as e:
     raise ImportError(
         "The 'didhonest' module requires additional dependencies. "

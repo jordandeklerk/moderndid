@@ -8,7 +8,6 @@ from moderndid.didhonest.arp_nuisance import (
     _check_if_solution,
     _compute_flci_vlo_vup,
     _construct_gamma,
-    _find_leading_one_column,
     _lp_dual_wrapper,
     _round_eps,
     _solve_max_program,
@@ -108,22 +107,6 @@ def test_round_eps(value, eps, expected):
         assert _round_eps(value) == expected
     else:
         assert _round_eps(value, eps) == expected
-
-
-def test_find_leading_one_column():
-    rref_matrix = np.array(
-        [
-            [1, 0, 0, 2],
-            [0, 1, 0, 3],
-            [0, 0, 1, 4],
-        ]
-    )
-    assert _find_leading_one_column(0, rref_matrix) == 0
-    assert _find_leading_one_column(1, rref_matrix) == 1
-    assert _find_leading_one_column(2, rref_matrix) == 2
-
-    with pytest.raises(ValueError):
-        _find_leading_one_column(0, np.zeros((3, 3)))
 
 
 @pytest.mark.parametrize(
