@@ -1030,7 +1030,7 @@ def _extract_scalar(val):
 def bc_data():
     r_data = r_get_bc_data()
     if r_data is None:
-        pytest.skip("Could not load BC data from R")
+        pytest.fail("Could not load BC data from R")
 
     betahat = np.array(r_data["betahat"]).flatten()
     sigma_list = r_data["sigma"]
@@ -1075,7 +1075,7 @@ def test_original_cs_bc_data(bc_data):
     )
 
     if r_result is None:
-        pytest.skip("R construct original CS failed")
+        pytest.fail("R construct original CS failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = construct_original_cs(
@@ -1100,7 +1100,7 @@ def test_original_cs_synthetic(synthetic_event_study):
     )
 
     if r_result is None:
-        pytest.skip("R construct original CS failed")
+        pytest.fail("R construct original CS failed")
 
     l_vec = basis_vector(1, synthetic_event_study["num_post_periods"])
     py_result = construct_original_cs(
@@ -1127,7 +1127,7 @@ def test_flci_bc_data(bc_data, m_bar):
     )
 
     if r_result is None:
-        pytest.skip("R FLCI computation failed")
+        pytest.fail("R FLCI computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = compute_flci(
@@ -1156,7 +1156,7 @@ def test_flci_synthetic(synthetic_event_study, m_bar):
     )
 
     if r_result is None:
-        pytest.skip("R FLCI computation failed")
+        pytest.fail("R FLCI computation failed")
 
     l_vec = basis_vector(1, synthetic_event_study["num_post_periods"])
     py_result = compute_flci(
@@ -1184,7 +1184,7 @@ def test_identified_set_sd_bc_data(bc_data, m_bar):
     )
 
     if r_result is None:
-        pytest.skip("R identified set SD computation failed")
+        pytest.fail("R identified set SD computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = compute_identified_set_sd(
@@ -1211,7 +1211,7 @@ def test_identified_set_rm_bc_data(bc_data, m_bar):
     )
 
     if r_result is None:
-        pytest.skip("R identified set RM computation failed")
+        pytest.fail("R identified set RM computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = compute_identified_set_rm(
@@ -1240,7 +1240,7 @@ def test_sensitivity_sm_flci_bc_data(bc_data):
     )
 
     if r_result is None:
-        pytest.skip("R sensitivity SM FLCI failed")
+        pytest.fail("R sensitivity SM FLCI failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = create_sensitivity_results_sm(
@@ -1284,7 +1284,7 @@ def test_sensitivity_sm_methods_bc_data(bc_data, method):
     )
 
     if r_result is None:
-        pytest.skip(f"R sensitivity SM {method} failed")
+        pytest.fail(f"R sensitivity SM {method} failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = create_sensitivity_results_sm(
@@ -1329,7 +1329,7 @@ def test_sensitivity_rm_clf_bc_data(bc_data):
     )
 
     if r_result is None:
-        pytest.skip("R sensitivity RM C-LF failed")
+        pytest.fail("R sensitivity RM C-LF failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = create_sensitivity_results_rm(
@@ -1375,7 +1375,7 @@ def test_sensitivity_sm_monotonicity(bc_data, monotonicity_direction):
     )
 
     if r_result is None:
-        pytest.skip(f"R sensitivity SM with monotonicity {monotonicity_direction} failed")
+        pytest.fail(f"R sensitivity SM with monotonicity {monotonicity_direction} failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = create_sensitivity_results_sm(
@@ -1410,7 +1410,7 @@ def test_sensitivity_sm_bias_direction(bc_data, bias_direction):
     )
 
     if r_result is None:
-        pytest.skip(f"R sensitivity SM with bias {bias_direction} failed")
+        pytest.fail(f"R sensitivity SM with bias {bias_direction} failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = create_sensitivity_results_sm(
@@ -1443,7 +1443,7 @@ def test_conditional_cs_sd_flci_bc_data(bc_data):
     )
 
     if r_result is None:
-        pytest.skip("R conditional CS SD FLCI failed")
+        pytest.fail("R conditional CS SD FLCI failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = compute_conditional_cs_sd(
@@ -1486,7 +1486,7 @@ def test_conditional_cs_sd_methods(bc_data, method):
     )
 
     if r_result is None:
-        pytest.skip(f"R conditional CS SD {method} failed")
+        pytest.fail(f"R conditional CS SD {method} failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = compute_conditional_cs_sd(
@@ -1741,7 +1741,7 @@ def test_full_pipeline_consistency(bc_data):
     )
 
     if r_original is None or r_robust is None:
-        pytest.skip("R full pipeline failed")
+        pytest.fail("R full pipeline failed")
 
     py_original = construct_original_cs(
         betahat=bc_data["betahat"],
@@ -1793,7 +1793,7 @@ def test_identified_set_rmb_bc_data(bc_data, m_bar, bias_direction):
     )
 
     if r_result is None:
-        pytest.skip("R identified set RMB computation failed")
+        pytest.fail("R identified set RMB computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"]).flatten()
     py_result = compute_identified_set_rmb(
@@ -1826,7 +1826,7 @@ def test_conditional_cs_rmb_bc_data(bc_data, bias_direction):
     )
 
     if r_result is None:
-        pytest.skip("R conditional CS RMB computation failed")
+        pytest.fail("R conditional CS RMB computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"]).flatten()
     py_result = compute_conditional_cs_rmb(
@@ -1872,7 +1872,7 @@ def test_identified_set_rmm_bc_data(bc_data, m_bar, monotonicity_direction):
     )
 
     if r_result is None:
-        pytest.skip("R identified set RMM computation failed")
+        pytest.fail("R identified set RMM computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"]).flatten()
     py_result = compute_identified_set_rmm(
@@ -1905,7 +1905,7 @@ def test_conditional_cs_rmm_bc_data(bc_data, monotonicity_direction):
     )
 
     if r_result is None:
-        pytest.skip("R conditional CS RMM computation failed")
+        pytest.fail("R conditional CS RMM computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"]).flatten()
     py_result = compute_conditional_cs_rmm(
@@ -1949,7 +1949,7 @@ def test_identified_set_sdrm_bc_data(bc_data, m_bar):
     )
 
     if r_result is None:
-        pytest.skip("R identified set SDRM computation failed")
+        pytest.fail("R identified set SDRM computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"]).flatten()
     py_result = compute_identified_set_sdrm(
@@ -1979,7 +1979,7 @@ def test_conditional_cs_sdrm_bc_data(bc_data):
     )
 
     if r_result is None:
-        pytest.skip("R conditional CS SDRM computation failed")
+        pytest.fail("R conditional CS SDRM computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = compute_conditional_cs_sdrm(
@@ -2024,7 +2024,7 @@ def test_identified_set_sdrmb_bc_data(bc_data, m_bar, bias_direction):
     )
 
     if r_result is None:
-        pytest.skip("R identified set SDRMB computation failed")
+        pytest.fail("R identified set SDRMB computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"]).flatten()
     py_result = compute_identified_set_sdrmb(
@@ -2057,7 +2057,7 @@ def test_conditional_cs_sdrmb_bc_data(bc_data, bias_direction):
     )
 
     if r_result is None:
-        pytest.skip("R conditional CS SDRMB computation failed")
+        pytest.fail("R conditional CS SDRMB computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = compute_conditional_cs_sdrmb(
@@ -2103,7 +2103,7 @@ def test_identified_set_sdrmm_bc_data(bc_data, m_bar, monotonicity_direction):
     )
 
     if r_result is None:
-        pytest.skip("R identified set SDRMM computation failed")
+        pytest.fail("R identified set SDRMM computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"]).flatten()
     py_result = compute_identified_set_sdrmm(
@@ -2136,7 +2136,7 @@ def test_conditional_cs_sdrmm_bc_data(bc_data, monotonicity_direction):
     )
 
     if r_result is None:
-        pytest.skip("R conditional CS SDRMM computation failed")
+        pytest.fail("R conditional CS SDRMM computation failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = compute_conditional_cs_sdrmm(
