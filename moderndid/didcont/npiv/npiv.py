@@ -37,116 +37,155 @@ def npiv(
 ):
     r"""Estimate nonparametric instrumental variables model with uniform confidence bands.
 
-    Estimates the structural function :math:`h_0(x)` in the nonparametric IV model
+    Estimates the structural function :math:`h_0` and its derivatives in the
+    nonparametric IV model
 
     .. math::
-        \mathbb{E}[Y - h_0(X) \mid W] = 0
+        \mathbb{E}[Y - h_0(X) \mid W] = 0 \quad \text{(a.s.)}
 
-    using B-spline sieves. Provides data-driven dimension selection when sieve dimensions
-    are not specified, and constructs uniform confidence bands via multiplier bootstrap.
+    where :math:`Y` is a scalar outcome, :math:`X` is a (possibly endogenous)
+    regressor vector, and :math:`W` is a vector of instrumental variables. The
+    function is approximated by a B-spline sieve :math:`h_0(x) \approx (\psi^J(x))' c_J`
+    and coefficients are estimated by two-stage least squares using :math:`K`
+    B-spline basis functions of :math:`W` as instruments
+
+    .. math::
+        \hat{c}_J = (\boldsymbol{\Psi}_J' \mathbf{P}_K \boldsymbol{\Psi}_J)^{-}
+        \boldsymbol{\Psi}_J' \mathbf{P}_K \mathbf{Y},
+
+    where :math:`\mathbf{P}_K = \mathbf{B}_K (\mathbf{B}_K' \mathbf{B}_K)^{-} \mathbf{B}_K'`
+    projects onto the instrument space. Function and derivative estimates are then given by
+
+    .. math::
+        \hat{h}_J(x) = (\psi^J(x))' \hat{c}_J, \quad
+        \partial^a \hat{h}_J(x) = (\partial^a \psi^J(x))' \hat{c}_J.
+
+    When ``j_x_segments`` is None, a bootstrap implementation of Lepski's
+    method selects the sieve dimension :math:`\tilde{J}` that adapts to the
+    unknown smoothness of :math:`h_0` and instrument strength, achieving the
+    minimax sup-norm convergence rate for both :math:`h_0` and its derivatives.
+
+    The adaptive CCK procedure then constructs honest uniform confidence bands
+    that guarantee coverage uniformly over a class of data-generating processes.
+    When a fixed ``j_x_segments`` is supplied, the standard undersmoothing approach
+    of [1]_ is used instead.
 
     Parameters
     ----------
-    y : ndarray
-        Dependent variable vector of length :math:`n`.
-    x : ndarray
-        Endogenous regressor matrix of shape :math:`(n, p_x)`.
-    w : ndarray
-        Instrument matrix of shape :math:`(n, p_w)`.
-    x_eval : ndarray, optional
-        Evaluation points for :math:`X`. If None, uses :math:`x`.
+    y : ndarray of shape (n,)
+        Outcome variable.
+    x : ndarray of shape (n,) or (n, p_x)
+        Endogenous regressors. Automatically promoted to 2-d if needed.
+    w : ndarray of shape (n,) or (n, p_w)
+        Instrumental variables. Requires :math:`K \geq J`.
+    x_eval : ndarray of shape (m, p_x), optional
+        Points at which to evaluate :math:`\hat{h}` and its derivatives. If
+        None, evaluates at the sample points ``x``.
     x_grid : ndarray, optional
-        Alternative name for x_eval (for R compatibility). Ignored if x_eval provided.
+        Alias for ``x_eval``. Ignored when ``x_eval`` is provided.
     alpha : float, default=0.05
-        Significance level for confidence bands.
+        Significance level for :math:`100(1-\alpha)\%` confidence bands.
     basis : {"tensor", "additive", "glp"}, default="tensor"
-        Type of basis for multivariate :math:`X`:
+        Multivariate basis construction for :math:`X`:
 
-        - "tensor": Full tensor product of univariate bases
-        - "additive": Sum of univariate bases
-        - "glp": Generalized linear product (hierarchical)
+        - ``"tensor"``: Full tensor product of univariate B-splines.
+        - ``"additive"``: Sum of univariate B-splines (additive model).
+        - ``"glp"``: Generalized linear product (hierarchical interactions).
     boot_num : int, default=99
-        Number of bootstrap replications for confidence bands.
+        Number of multiplier bootstrap draws for critical value computation.
+        Each draw generates i.i.d. :math:`N(0,1)` weights
+        :math:`(\varpi_i)_{i=1}^n` to form bootstrap sup-:math:`t` statistics.
     j_x_degree : int, default=3
-        Degree of B-spline basis for endogenous variable :math:`X`.
+        Degree of B-spline basis for :math:`X` (order
+        :math:`r = \text{degree} + 1`). For UCBs of first derivatives, degree
+        :math:`\geq 2` is required; for second derivatives, :math:`\geq 3`.
     j_x_segments : int, optional
-        Number of segments for :math:`X` basis. If None, chosen via data-driven selection.
+        Number of segments for the :math:`X` basis, determining sieve dimension
+        :math:`J`. When None, the data-driven Lepski procedure selects
+        :math:`\tilde{J}` adaptively. Supplying a fixed value triggers the
+        undersmoothing UCB approach.
     k_w_degree : int, default=4
-        Degree of B-spline basis for instruments :math:`W`.
+        Degree of B-spline basis for :math:`W`. Defaults to
+        ``j_x_degree + 1`` because the reduced form
+        :math:`\mathbb{E}[h_0(X) \mid W]` is smoother than :math:`h_0`.
     k_w_segments : int, optional
-        Number of segments for the instrument basis. If None, chosen proportionally to the number
-        of segments for the :math:`X` basis.
+        Number of segments for the instrument basis. When None, chosen
+        proportionally to ``j_x_segments`` via the resolution-level mapping
+        :math:`l_w = \lceil (l + q) \, d / d_w \rceil`, where :math:`q` is controlled by ``k_w_smooth``.
     k_w_smooth : int, default=2
-        Smoothness parameter for automatic K selection.
+        Controls the resolution gap :math:`q` between the :math:`X` and
+        :math:`W` bases in the data-driven procedure. Larger values yield more
+        instrument basis functions relative to the :math:`X` basis.
     knots : {"uniform", "quantiles"}, default="uniform"
-        Knot placement method:
+        Knot placement strategy:
 
-        - "uniform": Uniformly spaced knots
-        - "quantiles": Knots at empirical quantiles
+        - ``"uniform"``: Equally spaced knots on the support.
+        - ``"quantiles"``: Knots at empirical quantiles of the data.
     ucb_h : bool, default=True
-        Whether to compute uniform confidence bands for function estimates.
+        Compute uniform confidence bands for :math:`\hat{h}`.
     ucb_deriv : bool, default=True
-        Whether to compute uniform confidence bands for derivative estimates.
+        Compute uniform confidence bands for :math:`\partial^a \hat{h}`.
     deriv_index : int, default=1
-        Index (1-based) of :math:`X` variable for derivative computation.
+        Which component of :math:`X` to differentiate with respect to
+        (1-based indexing).
     deriv_order : int, default=1
-        Order of derivative to compute (1=first derivative, 2=second, etc.).
+        Order :math:`|a|` of the derivative (1 = first, 2 = second, etc.).
     check_is_fullrank : bool, default=False
-        Whether to check if basis matrices have full rank.
-    w_min : float, optional
-        Minimum value for :math:`W` range. If None, uses data minimum.
-    w_max : float, optional
-        Maximum value for :math:`W` range. If None, uses data maximum.
-    x_min : float, optional
-        Minimum value for :math:`X` range. If None, uses data minimum.
-    x_max : float, optional
-        Maximum value for :math:`X` range. If None, uses data maximum.
+        Verify that the basis matrices :math:`\boldsymbol{\Psi}_J` and
+        :math:`\mathbf{B}_K` have full column rank before estimation.
+    w_min, w_max : float, optional
+        Override the support bounds for :math:`W`. Defaults to data range.
+    x_min, x_max : float, optional
+        Override the support bounds for :math:`X`. Defaults to data range.
+    seed : int, optional
+        Random seed for bootstrap reproducibility.
 
     Returns
     -------
     NPIVResult
-        NPIVResult object containing:
+        Named tuple with the following fields:
 
-        - **h**: Function estimates
-        - **h_lower**, **h_upper**: Uniform confidence bands for function estimates
-        - **deriv**: Derivative estimates
-        - **h_lower_deriv**, **h_upper_deriv**: Uniform confidence bands for derivative estimates
-        - **beta**: Coefficient vector
-        - **asy_se**, **deriv_asy_se**: Asymptotic standard errors
-        - **cv**, **cv_deriv**: Critical values for confidence bands
-        - **residuals**: Model residuals
-        - **j_x_degree**, **j_x_segments**: :math:`X` basis parameters
-        - **k_w_degree**, **k_w_segments**: :math:`W` basis parameters
-        - **args**: Additional diagnostic information
+        - **h** -- Estimated :math:`\hat{h}_J(x)` at evaluation points.
+        - **deriv** -- Estimated :math:`\partial^a \hat{h}_J(x)`.
+        - **h_lower**, **h_upper** -- Lower/upper UCB for :math:`h_0`.
+        - **h_lower_deriv**, **h_upper_deriv** -- Lower/upper UCB for
+          :math:`\partial^a h_0`.
+        - **beta** -- Sieve coefficient vector :math:`\hat{c}_J`.
+        - **asy_se** -- Pointwise asymptotic standard errors
+          :math:`\hat{\sigma}_J(x)`.
+        - **deriv_asy_se** -- Pointwise asymptotic standard errors
+          :math:`\hat{\sigma}_J^a(x)` for derivatives.
+        - **cv**, **cv_deriv** -- Bootstrap critical values
+          :math:`z_{1-\alpha}^*` used for band construction.
+        - **residuals** -- TSLS residuals
+          :math:`\hat{u}_{i,J} = Y_i - \hat{h}_J(X_i)`.
+        - **j_x_degree**, **j_x_segments** -- Basis parameters for :math:`X`
+          (segments may differ from input when data-driven).
+        - **k_w_degree**, **k_w_segments** -- Basis parameters for :math:`W`.
+        - **args** -- Diagnostic dictionary. When data-driven selection is
+          used, includes ``j_x_seg``, ``k_w_seg``, ``j_hat_max``,
+          ``theta_star``, and other selection diagnostics.
 
-    Notes
-    -----
-    The NPIV estimator solves the population moment condition
-
-    .. math::
-        \mathbb{E}[W \epsilon] = 0
-
-    by projecting onto the space spanned by the instrument basis functions. For the
-    choice of basis dimensions, when `j_x_segments` is not provided, the function uses
-    Lepski's method for data-driven selection following [1]_.
-
-    The uniform confidence bands are constructed using the supremum of
-    studentized bootstrap statistics, providing simultaneous coverage
-    over the entire evaluation domain.
+    See Also
+    --------
+    npiv_est : Core sieve TSLS estimation (no confidence bands).
+    compute_ucb : Multiplier bootstrap confidence band construction.
+    npiv_choose_j : Data-driven sieve dimension selection.
 
     References
     ----------
 
     .. [1] Chen, X., & Christensen, T. M. (2018). Optimal sup-norm rates and
-        uniform inference on nonlinear functionals of nonparametric IV regression.
-        Quantitative Economics, 9(1), 39-84. https://arxiv.org/abs/1508.03365.
+        uniform inference on nonlinear functionals of nonparametric IV
+        regression. *Quantitative Economics*, 9(1), 39-84.
 
-    .. [2] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
-        Adaptive Estimation and Uniform Confidence Bands for Nonparametric
-        Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
+    .. [2] Chen, X., Christensen, T. M., & Kankanala, S. (2024). Adaptive
+        estimation and uniform confidence bands for nonparametric structural
+        functions and elasticities. *Review of Economic Studies*.
+        https://arxiv.org/abs/2107.11869.
 
-    .. [3] Newey, W. K., & Powell, J. L. (2003). Instrumental variable estimation of
-        nonparametric models. Econometrica, 71(5), 1565-1578.
+    .. [3] Newey, W. K., & Powell, J. L. (2003). Instrumental variable
+        estimation of nonparametric models. *Econometrica*, 71(5), 1565-1578.
     """
     y = np.asarray(y)
     x = np.asarray(x)

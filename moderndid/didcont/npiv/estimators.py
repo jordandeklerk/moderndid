@@ -29,58 +29,25 @@ def npiv_est(
     x_max=None,
     data_driven=False,
 ):
-    r"""Nonparametric instrumental variables estimation with B-splines.
+    r"""Core sieve TSLS estimation for the nonparametric IV model.
 
-    Estimates the structural function :math:`h_0(x)` in the nonparametric IV model,
-    identified by the conditional moment restriction
-
-    .. math::
-
-        \mathbb{E}[Y - h_0(X) \mid W] = 0 \quad (\text{almost surely}),
-
-    where :math:`X` is a vector of endogenous regressors and :math:`W` is a vector of
-    instrumental variables. The function :math:`h_0` is approximated by a linear
-    combination of :math:`J` basis functions (a sieve), such that
-    :math:`h_0(x) \approx (\psi^J(x))' c_J`.
-
-    The coefficients :math:`c_J` are estimated using a two-stage least squares (TSLS)
-    regression of :math:`Y` on the basis functions of :math:`X`, using :math:`K` basis
-    functions of :math:`W` as instruments, where :math:`K \geq J`.
-
-    The TSLS estimator for the coefficients is given by
-
-    .. math::
-
-        \hat{c}_J = (\boldsymbol{\Psi}_{J}' \mathbf{P}_{K} \boldsymbol{\Psi}_{J})^{-}
-        \boldsymbol{\Psi}_{J}' \mathbf{P}_{K} \mathbf{Y},
-
-    where :math:`\boldsymbol{\Psi}_{J}` is the :math:`n \times J` matrix of basis functions for :math:`X`,
-    :math:`\mathbf{B}_{K}` is the :math:`n \times K` matrix of basis functions for :math:`W`,
-    :math:`\mathbf{P}_{K} = \mathbf{B}_{K}(\mathbf{B}_{K}' \mathbf{B}_{K})^{-} \mathbf{B}_{K}'` is the projection matrix
-    onto the instrument space, and :math:`\mathbf{Y}` is the :math:`n \times 1` vector of outcomes.
-
-    The estimator for :math:`h_0(x)` and its derivative :math:`\partial^a h_0(x)` are then
-
-    .. math::
-
-        \hat{h}_J(x) = (\psi^J(x))' \hat{c}_J, \quad \partial^a \hat{h}_J(x) = (\partial^a \psi^J(x))' \hat{c}_J.
+    Computational backend for :func:`npiv` that constructs B-spline bases
+    for :math:`X` and :math:`W`, estimates the sieve coefficient vector
+    :math:`\hat{c}_J` by two-stage least squares, and evaluates the function
+    estimate :math:`\hat{h}_J` and its derivatives at the requested points.
 
     Parameters
     ----------
-    y : ndarray
-        Dependent variable vector of length :math:`n`.
-    x : ndarray
-        Endogenous regressor matrix of shape :math:`(n, p_x)`.
-    w : ndarray
-        Instrument matrix of shape :math:`(n, p_w)`.
-    x_eval : ndarray, optional
-        Evaluation points for :math:`X`. If None, uses :math:`x`.
+    y : ndarray of shape (n,)
+        Outcome variable.
+    x : ndarray of shape (n,) or (n, p_x)
+        Endogenous regressors.
+    w : ndarray of shape (n,) or (n, p_w)
+        Instrumental variables.
+    x_eval : ndarray of shape (m, p_x), optional
+        Evaluation points for :math:`\hat{h}`. If None, uses ``x``.
     basis : {"tensor", "additive", "glp"}, default="tensor"
-        Type of basis for multivariate X:
-
-        - "tensor": Full tensor product
-        - "additive": Additive components
-        - "glp": Generalized linear product
+        Multivariate basis construction for :math:`X`.
     j_x_degree : int, default=3
         Degree of B-spline basis for :math:`X`.
     j_x_segments : int, optional
@@ -92,34 +59,24 @@ def npiv_est(
     knots : {"uniform", "quantiles"}, default="uniform"
         Knot placement method.
     deriv_index : int, default=1
-        Index (1-based) of :math:`X` variable for derivative computation.
+        Which component of :math:`X` to differentiate (1-based).
     deriv_order : int, default=1
         Order of derivative to compute.
     check_is_fullrank : bool, default=False
-        Whether to check if design matrices have full rank.
-    w_min : float, optional
-        Minimum value for :math:`W` range.
-    w_max : float, optional
-        Maximum value for :math:`W` range.
-    x_min : float, optional
-        Minimum value for :math:`X` range.
-    x_max : float, optional
-        Maximum value for :math:`X` range.
+        Verify full column rank of basis matrices before estimation.
+    w_min, w_max : float, optional
+        Override support bounds for :math:`W`.
+    x_min, x_max : float, optional
+        Override support bounds for :math:`X`.
 
     Returns
     -------
     NPIVResult
-        NamedTuple containing estimation results.
+        Named tuple containing estimation results.
 
-    References
-    ----------
-
-    .. [1] Chen, X., & Christensen, T. M. (2018). Optimal sup-norm rates and
-        uniform inference on nonlinear functionals of nonparametric IV regression.
-        Quantitative Economics, 9(1), 39-84. https://arxiv.org/abs/1508.03365.
-
-    .. [2] Chen, X., Christensen, T. M., & Tamer, E. (2018). Monte Carlo confidence
-        sets for identified sets. Econometrica, 86(6), 1965-2018.
+    See Also
+    --------
+    npiv : Public API with data-driven selection and confidence bands.
     """
     y = np.asarray(y).ravel()
     x = np.atleast_2d(x)

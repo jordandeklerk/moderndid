@@ -6,44 +6,49 @@ import numpy as np
 
 
 class NPIVResult(NamedTuple):
-    """Result from nonparametric instrumental variables estimation.
+    r"""Result from nonparametric instrumental variables estimation.
 
     Attributes
     ----------
     h : ndarray
-        Function estimates at evaluation points.
+        Estimated structural function :math:`\hat{h}_J(x)` at evaluation
+        points.
     h_lower : ndarray or None
-        Lower uniform confidence band for function estimates.
+        Lower uniform confidence band for :math:`h_0`.
     h_upper : ndarray or None
-        Upper uniform confidence band for function estimates.
+        Upper uniform confidence band for :math:`h_0`.
     deriv : ndarray
-        Derivative estimates at evaluation points.
+        Estimated derivative :math:`\partial^a \hat{h}_J(x)` at evaluation
+        points.
     h_lower_deriv : ndarray or None
-        Lower uniform confidence band for derivative estimates.
+        Lower uniform confidence band for :math:`\partial^a h_0`.
     h_upper_deriv : ndarray or None
-        Upper uniform confidence band for derivative estimates.
+        Upper uniform confidence band for :math:`\partial^a h_0`.
     beta : ndarray
-        Coefficient vector from NPIV regression.
+        Sieve coefficient vector :math:`\hat{c}_J`.
     asy_se : ndarray
-        Asymptotic standard errors for function estimates.
+        Pointwise asymptotic standard errors :math:`\hat{\sigma}_J(x)`.
     deriv_asy_se : ndarray
-        Asymptotic standard errors for derivative estimates.
+        Pointwise asymptotic standard errors :math:`\hat{\sigma}_J^a(x)` for
+        derivatives.
     cv : float or None
-        Critical value for function uniform confidence bands.
+        Bootstrap critical value :math:`z_{1-\alpha}^*` for function UCBs.
     cv_deriv : float or None
-        Critical value for derivative uniform confidence bands.
+        Bootstrap critical value :math:`z_{1-\alpha}^{a*}` for derivative UCBs.
     residuals : ndarray
-        Residuals from NPIV estimation.
+        TSLS residuals :math:`\hat{u}_{i,J} = Y_i - \hat{h}_J(X_i)`.
     j_x_degree : int
-        Degree of B-spline basis for endogenous variable X.
+        Degree of B-spline basis for :math:`X`.
     j_x_segments : int
-        Number of segments for X basis.
+        Number of segments for :math:`X` basis.
     k_w_degree : int
-        Degree of B-spline basis for instruments W.
+        Degree of B-spline basis for :math:`W`.
     k_w_segments : int
-        Number of segments for W basis.
+        Number of segments for :math:`W` basis.
     args : dict
-        Additional diagnostic information and parameters.
+        Diagnostic information. When data-driven selection is used, includes
+        ``j_x_seg``, ``k_w_seg``, ``j_hat_max``, ``theta_star``, and other
+        selection diagnostics from the Lepski procedure.
     """
 
     h: np.ndarray
