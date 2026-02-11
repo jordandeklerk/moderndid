@@ -47,6 +47,7 @@ Extras are additive. They add functionality to the base install, so you always g
 uv pip install moderndid[didcont]     # Base estimators + cont_did
 uv pip install moderndid[didhonest]   # Base estimators + sensitivity analysis
 uv pip install moderndid[numba]       # Base estimators with faster computations
+uv pip install moderndid[parallel]    # Base estimators with distributed computing
 uv pip install moderndid[gpu]         # Base estimators with GPU acceleration
 uv pip install moderndid[plots,numba] # Combine multiple extras
 ```
