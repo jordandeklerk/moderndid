@@ -88,7 +88,7 @@ result = did.att_gt(
     tname="year",
     idname="countyreal",
     gname="first.treat",
-    backend="dask",
+    backend="dask", # Specify the Dask backend for distributed compute
 )
 ```
 
@@ -97,7 +97,7 @@ Each `(group, time)` cell is submitted as a `dask.delayed` task, so the Dask sch
 For single-machine parallelism, the `n_jobs` parameter uses threads with no extra dependencies:
 
 ```python
-result = did.att_gt(..., n_jobs=-1)  # use all cores, no extra install needed
+result = did.att_gt(..., n_jobs=-1)  # Use all cores, no extra install needed
 ```
 
 ### GPU Acceleration
@@ -107,7 +107,7 @@ On machines with NVIDIA GPUs, you can install the `gpu` extra and activate the C
 ```python
 import moderndid as did
 
-did.set_backend("cupy")
+did.set_backend("cupy") # Specify the GPU backend
 
 # All estimators now use GPU-accelerated computations
 result = did.att_gt(data,
