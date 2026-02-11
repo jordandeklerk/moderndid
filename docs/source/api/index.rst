@@ -32,6 +32,7 @@ methodology are found in :ref:`background`.
    :caption: Utilities
    :maxdepth: 2
 
+   panel
    propensity
    bootstrap
    plotting
