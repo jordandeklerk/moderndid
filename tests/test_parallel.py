@@ -13,7 +13,7 @@ from moderndid.core.preprocess import preprocess_did
 from moderndid.did.compute_att_gt import compute_att_gt
 from moderndid.didcont.cont_did import cont_did
 from moderndid.didtriple.ddd import ddd
-from moderndid.didtriple.dgp import gen_dgp_mult_periods
+from moderndid.didtriple.dgp import gen_dgp_2periods, gen_dgp_mult_periods
 from tests.conftest import (
     CountingScheduler,
     _add,
@@ -250,6 +250,36 @@ def test_ddd_invalid_n_jobs_raises(n_jobs):
             gname="group",
             pname="partition",
             n_jobs=n_jobs,
+        )
+
+
+def test_ddd_warns_parallel_args_ignored_for_2_period_panel():
+    dgp = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    with pytest.warns(UserWarning, match="ignored for 2-period data"):
+        ddd(
+            data=dgp["data"],
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            n_jobs=2,
+            backend="dask",
+        )
+
+
+def test_ddd_warns_parallel_args_ignored_for_2_period_rcs():
+    dgp = gen_dgp_2periods(n=200, dgp_type=1, panel=False, random_state=42)
+    with pytest.warns(UserWarning, match="ignored for 2-period data"):
+        ddd(
+            data=dgp["data"],
+            yname="y",
+            tname="time",
+            gname="state",
+            pname="partition",
+            panel=False,
+            n_jobs=2,
+            backend="dask",
         )
 
 

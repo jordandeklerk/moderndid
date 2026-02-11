@@ -1,5 +1,7 @@
 """Main wrapper for Triple Difference-in-Differences estimation."""
 
+import warnings
+
 import numpy as np
 import polars as pl
 
@@ -379,6 +381,13 @@ def ddd(
             random_state=random_state,
             n_jobs=n_jobs,
             backend=backend,
+        )
+
+    if n_jobs != 1 or backend != "threads":
+        warnings.warn(
+            "n_jobs and backend are ignored for 2-period data in ddd(). Using the 2-period estimator path instead.",
+            UserWarning,
+            stacklevel=2,
         )
 
     if is_rcs:

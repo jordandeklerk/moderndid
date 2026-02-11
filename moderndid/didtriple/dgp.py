@@ -361,7 +361,9 @@ def gen_dgp_mult_periods(
         pi_0b = 1 - (pi_2a + pi_2b + pi_3a + pi_3b + pi_0a)
 
         probs_pscore = np.column_stack([pi_2a, pi_2b, pi_3a, pi_3b, pi_0a, pi_0b])
-        group_types = np.array([rng.choice(6, p=probs_pscore[i]) + 1 for i in range(n)])
+        cumprobs = np.cumsum(probs_pscore, axis=1)
+        cumprobs[:, -1] = 1.0
+        group_types = (rng.uniform(size=n)[:, np.newaxis] > cumprobs).sum(axis=1) + 1
 
         partition = np.isin(group_types, [1, 3, 5]).astype(int)
         cohort = np.where(
@@ -432,26 +434,36 @@ def gen_dgp_mult_periods(
             }
         )
 
-        df_list = []
-        for t, y_vals in enumerate([y_t1, y_t2, y_t3], start=1):
-            df_t = pl.DataFrame(
-                {
-                    "id": np.arange(1, n + 1),
-                    "group": cohort,
-                    "partition": partition,
-                    "time": np.full(n, t, dtype=int),
-                    "y": y_vals,
-                    "cov1": z[:, 0],
-                    "cov2": z[:, 1],
-                    "cov3": z[:, 2],
-                    "cov4": z[:, 3],
-                    "cluster": clusters,
-                }
-            )
-            df_list.append(df_t)
+        ids = np.arange(1, n + 1)
+        n_periods = 3
+        ids_interleaved = np.repeat(ids, n_periods)
+        group_interleaved = np.repeat(cohort, n_periods)
+        partition_interleaved = np.repeat(partition, n_periods)
+        time_interleaved = np.tile(np.arange(1, n_periods + 1), n)
+        y_interleaved = np.empty(n * n_periods)
+        y_interleaved[0::n_periods] = y_t1
+        y_interleaved[1::n_periods] = y_t2
+        y_interleaved[2::n_periods] = y_t3
+        cov1_interleaved = np.repeat(z[:, 0], n_periods)
+        cov2_interleaved = np.repeat(z[:, 1], n_periods)
+        cov3_interleaved = np.repeat(z[:, 2], n_periods)
+        cov4_interleaved = np.repeat(z[:, 3], n_periods)
+        cluster_interleaved = np.repeat(clusters, n_periods)
 
-        data = pl.concat(df_list)
-        data = data.sort(["id", "time"])
+        data = pl.DataFrame(
+            {
+                "id": ids_interleaved,
+                "group": group_interleaved,
+                "partition": partition_interleaved,
+                "time": time_interleaved,
+                "y": y_interleaved,
+                "cov1": cov1_interleaved,
+                "cov2": cov2_interleaved,
+                "cov3": cov3_interleaved,
+                "cov4": cov4_interleaved,
+                "cluster": cluster_interleaved,
+            }
+        )
 
         return {
             "data": data,
@@ -501,7 +513,9 @@ def gen_dgp_mult_periods(
         all_pi_3a.extend(pi_3a)
 
         probs_pscore = np.column_stack([pi_2a, pi_2b, pi_3a, pi_3b, pi_0a, pi_0b])
-        group_types = np.array([rng.choice(6, p=probs_pscore[i]) + 1 for i in range(n)])
+        cumprobs = np.cumsum(probs_pscore, axis=1)
+        cumprobs[:, -1] = 1.0
+        group_types = (rng.uniform(size=n)[:, np.newaxis] > cumprobs).sum(axis=1) + 1
 
         partition = np.isin(group_types, [1, 3, 5]).astype(int)
         cohort = np.where(
