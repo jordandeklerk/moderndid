@@ -54,6 +54,8 @@ __all__ = [
     "NPIVResult",
     "OriginalCSResult",
     "PTEParams",
+    # panel module
+    "PanelDiagnostics",
     "SensitivityResult",
     "SplineBase",
     # Version
@@ -68,12 +70,16 @@ __all__ = [
     "aipw_did_panel",
     "aipw_did_rc_imp1",
     "aipw_did_rc_imp2",
+    # panel module (lowercase)
+    "are_varying",
+    "assign_rc_ids",
     "att_gt",
     "avoid_zero_division",
     "basis_dimension",
     "basis_vector",
     "bin_factor",
     "calculate_pscore_ipt",
+    "complete_data",
     "compute_aggte",
     "compute_arp_ci",
     "compute_arp_nuisance_ci",
@@ -120,6 +126,8 @@ __all__ = [
     "ddd_mp_rc",
     "ddd_panel",
     "ddd_rc",
+    "deduplicate_panel",
+    "diagnose_panel",
     "did_multiplegt",
     "drdid",
     "drdid_imp_local_rc",
@@ -130,6 +138,7 @@ __all__ = [
     "drdid_trad_rc",
     "estimate_lowerbound_m_conditional_test",
     "extract_vars_from_formula",
+    "fill_panel_gaps",
     "folded_normal_quantile",
     "format_aggte_result",
     "format_mp_pretest_result",
@@ -139,11 +148,15 @@ __all__ = [
     "generate_simple_ddd_data",
     # GPU backend
     "get_backend",
+    "get_first_difference",
+    "get_group",
+    "has_gaps",
     "honest_did",
     "ipw_did_panel",
     "ipw_did_rc",
     "ipw_rc",
     "ipwdid",
+    "is_balanced_panel",
     "is_full_rank",
     "lee_coefficient",
     "load_ehec",
@@ -152,6 +165,7 @@ __all__ = [
     "load_mpdta",
     "load_nsw",
     "lp_conditional_test",
+    "make_balanced_panel",
     "matrix_sqrt",
     "maximize_bias",
     "mboot",
@@ -168,6 +182,7 @@ __all__ = [
     "npiv_jhat_max",
     "ols_panel",
     "ordid",
+    "panel_to_wide",
     "parse_formula",
     # Optional: plots (requires plotnine)
     "plot_agg",
@@ -181,6 +196,7 @@ __all__ = [
     "prodspline",
     "reg_did_panel",
     "reg_did_rc",
+    "scan_gaps",
     "selection_matrix",
     "set_backend",
     "setup_pte",
@@ -213,6 +229,7 @@ __all__ = [
     "wboot_std_ipw_rc",
     "wboot_twfe_panel",
     "wboot_twfe_rc",
+    "wide_to_panel",
     "wols_panel",
     "wols_rc",
 ]
@@ -220,7 +237,7 @@ __all__ = [
 # Submodules that can be loaded lazily
 # Note: drdid is excluded because we want `from moderndid import drdid` to get
 # the drdid() function, not the drdid submodule. Access submodule via moderndid.drdid.
-_submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "plots"]
+_submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "panel", "plots"]
 
 # Map attribute names to their module paths (for base/always-available imports)
 _lazy_imports = {
@@ -241,6 +258,22 @@ _lazy_imports = {
     "preprocess_did": "moderndid.core.preprocess",
     "extract_vars_from_formula": "moderndid.core.preprocess.utils",
     "parse_formula": "moderndid.core.preprocess.utils",
+    # panel
+    "PanelDiagnostics": "moderndid.panel",
+    "are_varying": "moderndid.panel",
+    "assign_rc_ids": "moderndid.panel",
+    "complete_data": "moderndid.panel",
+    "deduplicate_panel": "moderndid.panel",
+    "diagnose_panel": "moderndid.panel",
+    "fill_panel_gaps": "moderndid.panel",
+    "get_first_difference": "moderndid.panel",
+    "get_group": "moderndid.panel",
+    "has_gaps": "moderndid.panel",
+    "is_balanced_panel": "moderndid.panel",
+    "make_balanced_panel": "moderndid.panel",
+    "panel_to_wide": "moderndid.panel",
+    "scan_gaps": "moderndid.panel",
+    "wide_to_panel": "moderndid.panel",
     # did
     "AGGTEResult": "moderndid.did.aggte_obj",
     "format_aggte_result": "moderndid.did.format",

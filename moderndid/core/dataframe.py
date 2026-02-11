@@ -1,4 +1,4 @@
-"""DataFrame compatibility layer for pandas/polars interoperability."""
+"""DataFrame compatibility layer for Arrow-compatible DataFrames."""
 
 from typing import Any
 
@@ -41,4 +41,35 @@ def to_polars(df: Any) -> pl.DataFrame:
         return nw.from_arrow(df, backend=pl).to_native()
 
     msg = f"Expected object implementing '__arrow_c_stream__', got: {type(df).__name__}"
+    raise TypeError(msg)
+
+
+def from_polars(result: pl.DataFrame, like: Any) -> Any:
+    """Convert polars DataFrame back to the format of ``like``.
+
+    Parameters
+    ----------
+    result : pl.DataFrame
+        Polars DataFrame to convert.
+    like : Any
+        Original input whose type determines the output format.
+
+    Returns
+    -------
+    Any
+        DataFrame in the same format as ``like``.
+
+    Raises
+    ------
+    TypeError
+        If ``like`` is not a recognized DataFrame type.
+    """
+    if isinstance(like, pl.DataFrame):
+        return result
+
+    if hasattr(like, "__arrow_c_stream__"):
+        native_ns = nw.get_native_namespace(nw.from_native(like, eager_only=True))
+        return nw.from_arrow(result.to_arrow(), backend=native_ns).to_native()
+
+    msg = f"Cannot convert back to {type(like).__name__}"
     raise TypeError(msg)
