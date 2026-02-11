@@ -17,7 +17,7 @@ def to_polars(df: Any) -> pl.DataFrame:
         Input DataFrame. Supports any object implementing the Arrow PyCapsule
         Interface (__arrow_c_stream__), including:
         - polars DataFrame
-        - pandas DataFrame (2.0+)
+        - pandas DataFrame
         - duckdb results
         - pyarrow Table
         - ibis expressions
@@ -39,6 +39,15 @@ def to_polars(df: Any) -> pl.DataFrame:
     # Arrow PyCapsule Interface
     if hasattr(df, "__arrow_c_stream__"):
         return nw.from_arrow(df, backend=pl).to_native()
+
+    # Fallback for pandas without __arrow_c_stream__ (pre-2.1)
+    try:
+        import pandas as pd
+
+        if isinstance(df, pd.DataFrame):
+            return pl.from_pandas(df)
+    except ImportError:
+        pass
 
     msg = f"Expected object implementing '__arrow_c_stream__', got: {type(df).__name__}"
     raise TypeError(msg)
