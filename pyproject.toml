@@ -69,6 +69,7 @@ test = [
     "pytest-benchmark",
     "pytest-cov",
     "pyfixest>=0.30.2",
+    "dask[distributed]>=2024.1.0",
 ]
 doc = [
     "sphinx-book-theme",

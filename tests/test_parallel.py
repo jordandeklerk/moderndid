@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import pickle
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
+dask = pytest.importorskip("dask")
+distributed = pytest.importorskip("distributed")
+Client = distributed.Client
+Future = distributed.Future
+
 from moderndid import att_gt, load_mpdta, simulate_cont_did_data
-from moderndid.core.parallel import _parallel_map_dask, dask_available, parallel_map
+from moderndid.core.parallel import (
+    _parallel_map_dask,
+    _scatter_shared_args,
+    dask_available,
+    parallel_map,
+)
 from moderndid.core.preprocess import preprocess_did
 from moderndid.did.compute_att_gt import compute_att_gt
 from moderndid.didcont.cont_did import cont_did
@@ -21,6 +32,7 @@ from tests.conftest import (
     _raise_on_two,
     _square,
     requires_dask,
+    requires_distributed,
 )
 
 
@@ -74,8 +86,6 @@ def test_exception_propagates_threads():
 
 @requires_dask
 def test_dask_delayed_builds_lazy_graph():
-    import dask
-
     call_count = 0
 
     def _counting_square(x):
@@ -93,8 +103,6 @@ def test_dask_delayed_builds_lazy_graph():
 
 @requires_dask
 def test_dask_dispatches_through_scheduler():
-    import dask
-
     scheduler = CountingScheduler()
     with dask.config.set(scheduler=scheduler):
         result = parallel_map(_square, [(i,) for i in range(5)], n_jobs=2, backend="dask")
@@ -105,8 +113,6 @@ def test_dask_dispatches_through_scheduler():
 @requires_dask
 @pytest.mark.parametrize("scheduler", ["synchronous", "threads"])
 def test_dask_backend_across_schedulers(scheduler):
-    import dask
-
     args = [(i,) for i in range(10)]
     with dask.config.set(scheduler=scheduler):
         result = parallel_map(_square, args, n_jobs=2, backend="dask")
@@ -382,8 +388,6 @@ def test_ddd_parallel_matches_sequential(backend):
 
 @requires_dask
 def test_att_gt_dask_dispatches_through_scheduler():
-    import dask
-
     data = preprocess_did(
         load_mpdta(),
         yname="lemp",
@@ -402,3 +406,217 @@ def test_att_gt_dask_dispatches_through_scheduler():
 
     assert scheduler.total_computes > 0
     assert len(result.attgt_list) > 0
+
+
+@pytest.mark.parametrize(
+    "args_list",
+    [
+        [],
+        [("a", "b", "c")],
+    ],
+    ids=["empty", "single_task"],
+)
+def test_scatter_noop_short_args(args_list):
+    result = _scatter_shared_args(args_list)
+    assert result is args_list
+
+
+def test_scatter_noop_no_distributed():
+    shared = [1, 2, 3]
+    args_list = [(shared, 0), (shared, 1), (shared, 2)]
+    result = _scatter_shared_args(args_list)
+    assert result is args_list
+
+
+def test_scatter_noop_no_shared_objects():
+    args_list = [([1], "a"), ([2], "b"), ([3], "c")]
+    result = _scatter_shared_args(args_list)
+    assert result is args_list
+
+
+@requires_dask
+@pytest.mark.parametrize(
+    "scheduler_override",
+    [
+        "synchronous",
+        "threads",
+        pytest.param(CountingScheduler(), id="custom_callable"),
+    ],
+)
+def test_scatter_noop_when_scheduler_overridden(scheduler_override):
+    shared = list(range(1000))
+    args_list = [(shared, i) for i in range(5)]
+
+    with dask.config.set(scheduler=scheduler_override):
+        result = _scatter_shared_args(args_list)
+    assert result is args_list
+
+
+@requires_dask
+def test_dask_with_custom_scheduler_and_shared_data():
+    shared_data = np.arange(100)
+    args_list = [(shared_data, i) for i in range(5)]
+
+    def _sum_with_offset(data, offset):
+        return data.sum() + offset
+
+    scheduler = CountingScheduler()
+    with dask.config.set(scheduler=scheduler):
+        result = parallel_map(_sum_with_offset, args_list, n_jobs=2, backend="dask")
+
+    expected_sum = shared_data.sum()
+    assert result == [expected_sum + i for i in range(5)]
+    assert scheduler.total_computes > 0
+
+
+@requires_dask
+@pytest.mark.parametrize("scheduler", ["synchronous", "threads"])
+def test_dask_with_builtin_scheduler_and_shared_data(scheduler):
+    shared_data = list(range(50))
+    args_list = [(shared_data, i) for i in range(4)]
+
+    def _len_plus(data, offset):
+        return len(data) + offset
+
+    with dask.config.set(scheduler=scheduler):
+        result = parallel_map(_len_plus, args_list, n_jobs=2, backend="dask")
+
+    assert result == [50, 51, 52, 53]
+
+
+@requires_distributed
+def test_scatter_replaces_shared_args_with_futures():
+    shared_data = np.arange(100)
+    args_list = [(shared_data, 0), (shared_data, 1), (shared_data, 2)]
+
+    with Client(n_workers=1, threads_per_worker=1, dashboard_address=None):
+        result = _scatter_shared_args(args_list)
+
+    assert all(isinstance(args[0], Future) for args in result)
+    assert result[0][0] is result[1][0] is result[2][0]
+    assert [args[1] for args in result] == [0, 1, 2]
+
+
+@requires_distributed
+def test_scatter_leaves_unique_args_as_values():
+    shared_data = np.arange(100)
+    args_list = [(shared_data, 0), (shared_data, 1)]
+
+    with Client(n_workers=1, threads_per_worker=1, dashboard_address=None):
+        result = _scatter_shared_args(args_list)
+
+    assert isinstance(result[0][0], Future)
+    assert not isinstance(result[0][1], Future)
+    assert not isinstance(result[1][1], Future)
+
+
+@requires_distributed
+def test_scatter_multiple_shared_objects():
+    data_a = np.arange(50)
+    data_b = np.arange(30)
+    args_list = [(data_a, data_b, 0), (data_a, data_b, 1), (data_a, data_b, 2)]
+
+    with Client(n_workers=1, threads_per_worker=1, dashboard_address=None):
+        result = _scatter_shared_args(args_list)
+
+    assert all(isinstance(args[0], Future) for args in result)
+    assert all(isinstance(args[1], Future) for args in result)
+    assert all(isinstance(args[2], int) for args in result)
+
+
+@requires_distributed
+def test_scatter_noop_with_no_shared_objects_and_client():
+    args_list = [([1], "a"), ([2], "b"), ([3], "c")]
+
+    with Client(n_workers=1, threads_per_worker=1, dashboard_address=None):
+        result = _scatter_shared_args(args_list)
+
+    assert result is args_list
+
+
+@requires_distributed
+def test_parallel_map_dask_with_distributed_client():
+    shared_data = np.arange(100)
+    args_list = [(shared_data, i) for i in range(5)]
+
+    def _sum_with_offset(data, offset):
+        return data.sum() + offset
+
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
+        result = parallel_map(_sum_with_offset, args_list, n_jobs=2, backend="dask")
+
+    expected_sum = shared_data.sum()
+    assert result == [expected_sum + i for i in range(5)]
+
+
+@requires_distributed
+def test_parallel_map_dask_distributed_matches_sequential():
+    rng = np.random.default_rng(42)
+    n, k = 200, 3
+    args = []
+    for _ in range(8):
+        x = rng.standard_normal((n, k))
+        x[:, 0] = 1.0
+        y = x @ np.array([1.0, 2.0, -0.5]) + rng.standard_normal(n) * 0.1
+        args.append((x, y))
+
+    result_seq = parallel_map(_ols_cell, args, n_jobs=1)
+
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
+        result_dist = parallel_map(_ols_cell, args, n_jobs=2, backend="dask")
+
+    for r_seq, r_dist in zip(result_seq, result_dist):
+        np.testing.assert_allclose(r_seq, r_dist, rtol=1e-12)
+
+
+@requires_distributed
+def test_att_gt_with_distributed_client():
+    data = preprocess_did(
+        load_mpdta(),
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~lpop",
+        panel=True,
+        control_group="nevertreated",
+        base_period="varying",
+    )
+
+    result_seq = compute_att_gt(data, n_jobs=1)
+
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
+        result_dist = compute_att_gt(data, n_jobs=2, backend="dask")
+
+    assert len(result_seq.attgt_list) == len(result_dist.attgt_list)
+    for r1, r2 in zip(result_seq.attgt_list, result_dist.attgt_list):
+        np.testing.assert_allclose(r1.att, r2.att, rtol=1e-10)
+
+
+@requires_distributed
+def test_exception_propagates_distributed():
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None), pytest.raises(ValueError, match="boom"):
+        parallel_map(_raise_on_two, [(1,), (2,), (3,)], n_jobs=2, backend="dask")
+
+
+@requires_distributed
+def test_result_objects_survive_pickle_roundtrip():
+    data = preprocess_did(
+        load_mpdta(),
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~lpop",
+        panel=True,
+        control_group="nevertreated",
+        base_period="varying",
+    )
+
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
+        result = compute_att_gt(data, n_jobs=2, backend="dask")
+
+    roundtripped = pickle.loads(pickle.dumps(result))
+    assert len(roundtripped.attgt_list) == len(result.attgt_list)
+    for r1, r2 in zip(result.attgt_list, roundtripped.attgt_list):
+        np.testing.assert_allclose(r1.att, r2.att, rtol=1e-14)

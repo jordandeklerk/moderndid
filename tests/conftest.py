@@ -92,3 +92,15 @@ def staggered_panel():
             "treat": [0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0],
         }
     )
+
+
+def _distributed_available():
+    try:
+        import distributed  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+requires_distributed = pytest.mark.skipif(not _distributed_available(), reason="distributed not installed")
