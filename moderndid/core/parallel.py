@@ -105,7 +105,7 @@ def _scatter_shared_args(args_list):
 
     shared_oids = list(shared.keys())
     shared_objs = [shared[oid] for oid in shared_oids]
-    futures = client.scatter(shared_objs, broadcast=True)
+    futures = client.scatter(shared_objs)
     id_to_future = dict(zip(shared_oids, futures, strict=True))
 
     return [tuple(id_to_future.get(id(arg), arg) for arg in args) for args in args_list]
