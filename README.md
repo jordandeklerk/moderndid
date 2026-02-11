@@ -39,8 +39,8 @@ Extras are additive. They add functionality to the base install, so you always g
 - **`didhonest`** - Base + sensitivity analysis (`honest_did`)
 - **`plots`** - Base + visualization (`plot_gt`, `plot_event_study`, ...)
 - **`numba`** - Base + faster bootstrap inference
-- **`parallel`** - Base + distributed computing via [Dask](https://www.dask.org/)
-- **`gpu`** - Base + GPU-accelerated estimation (requires CUDA)
+- **`parallel`** - Base + distributed computing via Dask
+- **`gpu`** - Base + GPU-accelerated estimation (requires CUDA) via CuPY
 - **`all`** - Everything (except `gpu`, which requires CUDA hardware)
 
 ```bash
