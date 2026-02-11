@@ -65,5 +65,47 @@ def _parallel_map_dask(func, args_list):
         raise ImportError("Dask is required for backend='dask'. Install it with: uv pip install moderndid[parallel]")
     import dask
 
+    args_list = _scatter_shared_args(args_list)
     delayed_results = [dask.delayed(func)(*args) for args in args_list]
     return list(dask.compute(*delayed_results))
+
+
+def _scatter_shared_args(args_list):
+    """Pre-scatter objects shared across tasks to avoid per-task serialization.
+
+    When a distributed client is active, objects that appear in multiple task
+    argument tuples (by identity) are scattered to workers once. Each delayed
+    task then receives a lightweight Future reference instead of the full object,
+    preventing the scheduler from serializing large datasets repeatedly.
+
+    Falls back to a no-op when no distributed client is available (e.g. when
+    using the synchronous or threaded Dask schedulers).
+    """
+    if len(args_list) <= 1:
+        return args_list
+
+    try:
+        from distributed import get_client
+
+        client = get_client()
+    except (ImportError, ValueError):
+        return args_list
+
+    ref_counts = {}
+    for args in args_list:
+        for arg in args:
+            oid = id(arg)
+            if oid not in ref_counts:
+                ref_counts[oid] = [arg, 0]
+            ref_counts[oid][1] += 1
+
+    shared = {oid: info[0] for oid, info in ref_counts.items() if info[1] > 1}
+    if not shared:
+        return args_list
+
+    shared_oids = list(shared.keys())
+    shared_objs = [shared[oid] for oid in shared_oids]
+    futures = client.scatter(shared_objs, broadcast=True)
+    id_to_future = dict(zip(shared_oids, futures, strict=True))
+
+    return [tuple(id_to_future.get(id(arg), arg) for arg in args) for args in args_list]
