@@ -57,9 +57,6 @@ Or install from source:
 uv pip install git+https://github.com/jordandeklerk/moderndid.git
 ```
 
-> [!TIP]
-> Most users will only need a single estimator, since each estimator targets a distinct research design. The real value is in the extras that improve your workflow across all of them. `plots` gives you batteries-included plotting with one function call. `numba` JIT-compiles the bootstrap loop for significantly faster inference. `parallel` lets you distribute group-time cells across a Dask cluster for large datasets. `gpu` offloads regressions to NVIDIA hardware via CuPy. Install what you need, or grab everything at once with `uv pip install moderndid[all]`.
-
 ## Features
 
 - **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
