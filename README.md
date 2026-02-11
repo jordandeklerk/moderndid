@@ -71,31 +71,6 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
 - **Documentation** - [https://moderndid.readthedocs.io/en/latest/index.html](https://moderndid.readthedocs.io/en/latest/index.html)
 
-### GPU Acceleration
-
-On machines with NVIDIA GPUs, you can install the `gpu` extra and activate the CuPy backend to offload regression and propensity score estimation to the GPU. See the [GPU troubleshooting section](#common-troubleshooting-for-gpu) below for guidance on common issues:
-
-```python
-import moderndid as did
-
-did.set_backend("cupy")
-
-# All estimators now use GPU-accelerated computations
-result = did.att_gt(data,
-                    yname="lemp",
-                    tname="year",
-                    idname="countyreal",
-                    gname="first.treat")
-```
-
-To switch back to the default CPU path:
-
-```python
-did.set_backend("numpy")
-```
-
-See [GPU benchmark results](scripts/README.md) for performance comparisons across Tesla T4, A100, and H100 GPUs.
-
 ### Distributed Computing
 
 For datasets too large for a single machine, ModernDiD can distribute group-time cell estimation across a [Dask](https://www.dask.org/) cluster. Install the `parallel` extra and set `backend="dask"`:
@@ -126,6 +101,31 @@ For single-machine parallelism, the `n_jobs` parameter uses threads with no extr
 ```python
 result = did.att_gt(..., n_jobs=-1)  # use all cores, no extra install needed
 ```
+
+### GPU Acceleration
+
+On machines with NVIDIA GPUs, you can install the `gpu` extra and activate the CuPy backend to offload regression and propensity score estimation to the GPU. See the [GPU troubleshooting section](#common-troubleshooting-for-gpu) below for guidance on common issues:
+
+```python
+import moderndid as did
+
+did.set_backend("cupy")
+
+# All estimators now use GPU-accelerated computations
+result = did.att_gt(data,
+                    yname="lemp",
+                    tname="year",
+                    idname="countyreal",
+                    gname="first.treat")
+```
+
+To switch back to the default CPU path:
+
+```python
+did.set_backend("numpy")
+```
+
+See [GPU benchmark results](scripts/README.md) for performance comparisons across Tesla T4, A100, and H100 GPUs.
 
 ### Consistent API
 
