@@ -748,6 +748,40 @@ def test_cont_did_various_degree_knot_combinations(contdid_data, degree, num_kno
         assert np.all(result.att_d_se >= 0)
 
 
+def test_cont_did_parallel_consistency(contdid_data):
+    result_seq = cont_did(
+        data=contdid_data,
+        yname="Y",
+        tname="period",
+        idname="id",
+        gname="G",
+        dname="D",
+        degree=2,
+        num_knots=0,
+        biters=10,
+        n_jobs=1,
+        random_state=42,
+    )
+
+    result_par = cont_did(
+        data=contdid_data,
+        yname="Y",
+        tname="period",
+        idname="id",
+        gname="G",
+        dname="D",
+        degree=2,
+        num_knots=0,
+        biters=10,
+        n_jobs=2,
+        random_state=42,
+    )
+
+    np.testing.assert_allclose(result_seq.overall_att, result_par.overall_att, rtol=1e-10)
+    np.testing.assert_allclose(result_seq.att_d, result_par.att_d, rtol=1e-10)
+    np.testing.assert_allclose(result_seq.acrt_d, result_par.acrt_d, rtol=1e-10)
+
+
 @pytest.mark.parametrize("contdid_converted", ["pandas", "pyarrow", "duckdb"], indirect=True)
 def test_cont_did_dataframe_interoperability(contdid_converted, cont_did_baseline_result):
     result = cont_did(

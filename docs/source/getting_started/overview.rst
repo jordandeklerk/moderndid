@@ -84,8 +84,17 @@ DataFrame including polars, pandas, pyarrow, and duckdb. Internal operations
 use Polars for fast grouping and reshaping. Bootstrap procedures use
 `Numba <https://numba.pydata.org/>`_ JIT compilation for near-C speeds.
 Estimators that loop over group-time cells support optional thread-based
-parallelism via the ``n_jobs`` parameter. On machines with NVIDIA GPUs,
-installing the ``gpu`` extra (``uv pip install moderndid[gpu]``) enables
+parallelism via the ``n_jobs`` parameter.
+
+**Distributed computing.** For datasets too large for a single machine,
+installing the ``parallel`` extra (``uv pip install moderndid[parallel]``)
+enables `Dask <https://www.dask.org/>`_-based distribution of group-time cell
+estimation across a cluster. Set ``backend="dask"`` on any multi-period
+estimator (``att_gt``, ``ddd``, ``cont_did``) and the Dask scheduler handles
+task distribution, fault tolerance, and resource management.
+
+**GPU acceleration.** On machines with NVIDIA GPUs, installing the ``gpu``
+extra (``uv pip install moderndid[gpu]``) enables
 `CuPy <https://cupy.dev/>`_-accelerated regression and propensity score
 estimation across all doubly robust and IPW estimators.
 

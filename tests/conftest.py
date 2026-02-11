@@ -1,7 +1,49 @@
 """Shared fixtures for the top-level test directory."""
 
+import numpy as np
 import polars as pl
 import pytest
+
+from moderndid.core.parallel import dask_available
+
+requires_dask = pytest.mark.skipif(not dask_available(), reason="dask not installed")
+
+
+class CountingScheduler:
+    """Dask scheduler that counts the number of compute calls.
+
+    Adapted from xarray's test infrastructure. Plugs into
+    ``dask.config.set(scheduler=...)`` and proves that work actually
+    flows through the dask graph rather than being silently bypassed.
+    """
+
+    def __init__(self):
+        self.total_computes = 0
+
+    def __call__(self, dsk, keys, **kwargs):
+        import dask
+
+        self.total_computes += 1
+        return dask.local.get_sync(dsk, keys, **kwargs)
+
+
+def _square(x):
+    return x * x
+
+
+def _add(a, b):
+    return a + b
+
+
+def _ols_cell(x, y):
+    xtx_inv = np.linalg.inv(x.T @ x)
+    return xtx_inv @ (x.T @ y)
+
+
+def _raise_on_two(x):
+    if x == 2:
+        raise ValueError("boom")
+    return x
 
 
 @pytest.fixture

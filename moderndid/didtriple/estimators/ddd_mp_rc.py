@@ -87,6 +87,7 @@ def ddd_mp_rc(
     trim_level=0.995,
     random_state=None,
     n_jobs=1,
+    backend="threads",
 ):
     r"""Compute the multi-period doubly robust DDD estimator for the ATT with repeated cross-section data.
 
@@ -174,6 +175,9 @@ def ddd_mp_rc(
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
+    backend : {"threads", "dask"}, default="threads"
+        Execution backend. ``"threads"`` uses a local thread pool;
+        ``"dask"`` distributes work across a Dask cluster.
 
     Returns
     -------
@@ -250,7 +254,7 @@ def ddd_mp_rc(
                 )
             )
 
-    cell_results = parallel_map(_process_gt_cell_rc, args_list, n_jobs=n_jobs)
+    cell_results = parallel_map(_process_gt_cell_rc, args_list, n_jobs=n_jobs, backend=backend)
 
     attgt_list = []
     for counter, result in enumerate(cell_results):

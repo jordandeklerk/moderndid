@@ -39,6 +39,7 @@ Extras are additive. They add functionality to the base install, so you always g
 - **`didhonest`** - Base + sensitivity analysis (`honest_did`)
 - **`plots`** - Base + visualization (`plot_gt`, `plot_event_study`, ...)
 - **`numba`** - Base + faster bootstrap inference
+- **`parallel`** - Base + distributed computing via [Dask](https://www.dask.org/)
 - **`gpu`** - Base + GPU-accelerated estimation (requires CUDA)
 - **`all`** - Everything (except `gpu`, which requires CUDA hardware)
 
@@ -57,14 +58,16 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 ```
 
 > [!TIP]
-> We recommend `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant performance gains for bootstrap inference and the `plots` extra provides customizable, batteries-included plotting out of the box. On machines with NVIDIA GPUs, use `uv pip install moderndid[all,gpu]` to also enable CuPy-accelerated estimation. Install minimal extras only if you have specific dependency constraints.
+> Most users will only need a single estimator, since each estimator targets a distinct research design. The real value is in the extras that improve your workflow across all of them. `plots` gives you batteries-included plotting with one function call. `numba` JIT-compiles the bootstrap loop for significantly faster inference. `parallel` lets you distribute group-time cells across a Dask cluster for large datasets. `gpu` offloads regressions to NVIDIA hardware via CuPy. Install what you need, or grab everything at once with `uv pip install moderndid[all]`.
 
 ## Features
 
 - **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
 - **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
-- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, optional thread-based parallelism via the `n_jobs` parameter, and optional GPU accelerated regression and propensity score estimation across all doubly robust and IPW estimators via [CuPy](https://cupy.dev/)
-- **Native plots** - Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
+- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and optional thread-based parallelism via the `n_jobs` parameter
+- **Distributed computing** - Scale to large datasets by distributing group-time cell estimation across a [Dask](https://www.dask.org/) cluster with `backend="dask"` (`uv pip install moderndid[parallel]`)
+- **GPU acceleration** - Offload regression and propensity score estimation to NVIDIA GPUs via [CuPy](https://cupy.dev/) across all doubly robust and IPW estimators (`uv pip install moderndid[gpu]`)
+- **Native plots** - Batteries-included plots built on [plotnine](https://plotnine.org/) with full plotting customization support via the `ggplot` object
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
 - **Documentation** - [https://moderndid.readthedocs.io/en/latest/index.html](https://moderndid.readthedocs.io/en/latest/index.html)
 
@@ -92,6 +95,37 @@ did.set_backend("numpy")
 ```
 
 See [GPU benchmark results](scripts/README.md) for performance comparisons across Tesla T4, A100, and H100 GPUs.
+
+### Distributed Computing
+
+For datasets too large for a single machine, ModernDiD can distribute group-time cell estimation across a [Dask](https://www.dask.org/) cluster. Install the `parallel` extra and set `backend="dask"`:
+
+```bash
+uv pip install moderndid[parallel]
+```
+
+```python
+from dask.distributed import Client
+
+client = Client("scheduler-address:8786")  # connect to your cluster
+
+result = did.att_gt(
+    data=data,
+    yname="lemp",
+    tname="year",
+    idname="countyreal",
+    gname="first.treat",
+    backend="dask",
+)
+```
+
+Each `(group, time)` cell is submitted as a `dask.delayed` task, so the Dask scheduler handles distribution, fault tolerance, and resource management. The `backend="dask"` parameter is supported by `att_gt`, `ddd`, and `cont_did`.
+
+For single-machine parallelism, the `n_jobs` parameter uses threads with no extra dependencies:
+
+```python
+result = did.att_gt(..., n_jobs=-1)  # use all cores, no extra install needed
+```
 
 ### Consistent API
 

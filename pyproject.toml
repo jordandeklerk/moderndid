@@ -58,8 +58,11 @@ numba = [
 gpu = [
     "cupy-cuda12x>=13.0",
 ]
+parallel = [
+    "dask[distributed]>=2024.1.0",
+]
 all = [
-    "moderndid[didcont,didhonest,plots,numba]",
+    "moderndid[didcont,didhonest,plots,numba,parallel]",
 ]
 test = [
     "pytest",

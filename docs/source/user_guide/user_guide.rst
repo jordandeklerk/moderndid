@@ -502,6 +502,105 @@ If your data has sampling weights, specify them using ``weightsname``.
     )
 
 
+Scaling Up with Parallel and Distributed Computing
+---------------------------------------------------
+
+At this point we know how to configure and run any of the estimators. The
+examples above all execute sequentially, which is fine for moderately sized
+datasets. But every ModernDiD estimator works by looping over independent
+group-time cells, and that structure means the workload is embarrassingly
+parallel. When your dataset grows and sequential execution becomes a
+bottleneck, two parameters let you scale up without changing anything else
+about your analysis.
+
+The first is ``n_jobs``. Setting it to a value greater than one distributes
+cell computations across a local thread pool. Threads work well here because
+the per-cell computation is dominated by NumPy, SciPy, and statsmodels C
+extensions that release the GIL.
+
+.. code-block:: python
+
+    result = did.att_gt(
+        data=data,
+        yname="outcome",
+        tname="year",
+        idname="unit_id",
+        gname="first_treated",
+        n_jobs=4,
+    )
+
+    result = did.att_gt(..., n_jobs=-1)
+
+For datasets that exceed the capacity of a single machine, the second
+parameter, ``backend``, switches from the local thread pool to
+`Dask <https://www.dask.org/>`_. Each cell becomes a ``dask.delayed`` task,
+so the work is distributed across whatever Dask cluster you have running.
+Install the parallel extra first.
+
+.. code-block:: bash
+
+    uv pip install 'moderndid[parallel]'
+
+Then point ModernDiD at your cluster.
+
+.. code-block:: python
+
+    from dask.distributed import Client
+
+    client = Client("scheduler-address:8786")
+
+    result = did.att_gt(
+        data=data,
+        yname="outcome",
+        tname="year",
+        idname="unit_id",
+        gname="first_treated",
+        n_jobs=2,
+        backend="dask",
+    )
+
+Both ``n_jobs`` and ``backend`` are available on
+:func:`~moderndid.did.att_gt`, :func:`~moderndid.didcont.cont_did`, and
+:func:`~moderndid.didtriple.ddd`. When ``n_jobs=1`` (the default), the
+backend is ignored and execution is always sequential.
+
+
+Speeding Up with GPU Acceleration
+----------------------------------
+
+Parallelism helps when you have many cells to compute. If the bottleneck is
+instead the per-cell computation itself, such as large regressions or
+high-dimensional propensity scores, you can move that work to the GPU.
+ModernDiD offloads matrix operations to `CuPy <https://cupy.dev/>`_, which
+routes them through cuBLAS and cuSOLVER on NVIDIA hardware. Install the GPU
+extra.
+
+.. code-block:: bash
+
+    uv pip install 'moderndid[gpu]'
+
+Then activate the CuPy backend before running an estimator.
+
+.. code-block:: python
+
+    from moderndid.cupy.backend import set_backend
+
+    set_backend("cupy")
+
+    result = did.att_gt(
+        data=data,
+        yname="outcome",
+        tname="year",
+        idname="unit_id",
+        gname="first_treated",
+    )
+
+All downstream calls will use the GPU until you call
+``set_backend("numpy")`` to switch back. The two strategies also compose.
+Dask can distribute cells across a cluster while each worker runs its
+regressions on a GPU, giving you both scale and speed at once.
+
+
 Visualization
 -------------
 

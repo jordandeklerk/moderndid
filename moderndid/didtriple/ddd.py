@@ -35,6 +35,7 @@ def ddd(
     allow_unbalanced_panel=False,
     random_state=None,
     n_jobs=1,
+    backend="threads",
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
 
@@ -135,6 +136,10 @@ def ddd(
         Number of parallel jobs for group-time estimation in multi-period
         settings. 1 = sequential (default), -1 = all cores, >1 = that many
         workers. Ignored for 2-period data.
+    backend : {"threads", "dask"}, default="threads"
+        Execution backend. ``"threads"`` uses a local thread pool;
+        ``"dask"`` distributes work across a Dask cluster via
+        ``dask.delayed``. Ignored for 2-period data.
 
     Returns
     -------
@@ -313,6 +318,8 @@ def ddd(
         raise ValueError(f"trim_level={trim_level} is not valid. Must be between 0 and 1 (exclusive).")
     if not isinstance(n_jobs, int) or (n_jobs < 1 and n_jobs != -1):
         raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
+    if backend not in ("threads", "dask"):
+        raise ValueError(f"backend='{backend}' is not valid. Must be 'threads' or 'dask'.")
 
     is_rcs = detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel)
 
@@ -351,6 +358,7 @@ def ddd(
                 trim_level=trim_level,
                 random_state=random_state,
                 n_jobs=n_jobs,
+                backend=backend,
             )
         return ddd_mp(
             data=data,
@@ -370,6 +378,7 @@ def ddd(
             alpha=alpha,
             random_state=random_state,
             n_jobs=n_jobs,
+            backend=backend,
         )
 
     if is_rcs:

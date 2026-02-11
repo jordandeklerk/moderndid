@@ -7,6 +7,7 @@ import numpy as np
 import polars as pl
 
 from moderndid.core.dataframe import to_polars
+from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess import (
     choose_knots_quantile as _choose_knots_quantile,
 )
@@ -48,6 +49,8 @@ def pte(
     ret_quantile=None,
     process_dose_gt_fun=None,
     biters=100,
+    n_jobs=1,
+    backend="threads",
     random_state=None,
     **kwargs,
 ):
@@ -87,6 +90,11 @@ def pte(
         Function to process dose results.
     biters : int, default=100
         Number of bootstrap iterations.
+    n_jobs : int, default=1
+        Number of parallel jobs. 1 = sequential, -1 = all cores, >1 = that many workers.
+    backend : {"threads", "dask"}, default="threads"
+        Execution backend. ``"threads"`` uses a local thread pool;
+        ``"dask"`` distributes work across a Dask cluster.
     random_state : int, Generator, optional
         Controls the randomness of the bootstrap. Pass an int for reproducible
         results across multiple function calls. Can also accept a NumPy
@@ -115,7 +123,7 @@ def pte(
         **kwargs,
     )
 
-    res = compute_pte(ptep=ptep, subset_fun=subset_fun, attgt_fun=attgt_fun, **kwargs)
+    res = compute_pte(ptep=ptep, subset_fun=subset_fun, attgt_fun=attgt_fun, n_jobs=n_jobs, backend=backend, **kwargs)
 
     aggregation = kwargs.get("aggregation", "dose")
     if gt_type == "dose" and aggregation == "dose":
@@ -216,7 +224,7 @@ def pte(
     return PTEResult(att_gt=att_gt, overall_att=overall_att, event_study=event_study, ptep=ptep)
 
 
-def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
+def compute_pte(ptep, subset_fun, attgt_fun, n_jobs=1, backend="threads", **kwargs):
     """Compute panel treatment effects for all group-time combinations.
 
     Parameters
@@ -227,6 +235,11 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
         Function to create appropriate data subset for each (g,t).
     attgt_fun : callable
         Function to compute ATT for a single group-time.
+    n_jobs : int, default=1
+        Number of parallel jobs. 1 = sequential, -1 = all cores, >1 = that many workers.
+    backend : {"threads", "dask"}, default="threads"
+        Execution backend. ``"threads"`` uses a local thread pool;
+        ``"dask"`` distributes work across a Dask cluster.
     **kwargs
         Additional arguments passed to subset_fun and attgt_fun.
 
@@ -259,7 +272,7 @@ def compute_pte(ptep, subset_fun, attgt_fun, **kwargs):
         for g in groups
     ]
 
-    cell_results = [_process_pte_cell(*args) for args in args_list]
+    cell_results = parallel_map(_process_pte_cell, args_list, n_jobs=n_jobs, backend=backend)
 
     attgt_list = []
     extra_gt_returns = []
@@ -460,10 +473,67 @@ def pte_default(
     alp=0.05,
     boot_type="multiplier",
     biters=100,
+    n_jobs=1,
+    backend="threads",
     random_state=None,
     **kwargs,
 ):
-    """Compute panel treatment effects with default settings."""
+    """Compute panel treatment effects with default settings.
+
+    Parameters
+    ----------
+    yname : str
+        Name of outcome variable.
+    gname : str
+        Name of group variable (first treatment period).
+    tname : str
+        Name of time period variable.
+    idname : str
+        Name of unit ID variable.
+    data : pd.DataFrame | pl.DataFrame
+        Panel data. Accepts both pandas and polars DataFrames.
+    xformula : str, default="~1"
+        Formula for covariates.
+    d_outcome : bool, default=False
+        Whether to use first-differenced outcomes.
+    d_covs_formula : str, default="~ -1"
+        Formula for first-differenced covariates.
+    lagged_outcome_cov : bool, default=False
+        Whether to include lagged outcome as covariate.
+    est_method : str, default="dr"
+        Estimation method ("dr", "reg", or "ipw").
+    anticipation : int, default=0
+        Number of anticipation periods.
+    base_period : str, default="varying"
+        Type of base period ("varying" or "universal").
+    control_group : str, default="notyettreated"
+        Control group type ("notyettreated" or "nevertreated").
+    weightsname : str, optional
+        Name of weights variable.
+    cband : bool, default=True
+        Whether to compute uniform confidence bands.
+    alp : float, default=0.05
+        Significance level.
+    boot_type : str, default="multiplier"
+        Bootstrap type ("multiplier" or "empirical").
+    biters : int, default=100
+        Number of bootstrap iterations.
+    n_jobs : int, default=1
+        Number of parallel jobs. 1 = sequential, -1 = all cores, >1 = that many workers.
+    backend : {"threads", "dask"}, default="threads"
+        Execution backend. ``"threads"`` uses a local thread pool;
+        ``"dask"`` distributes work across a Dask cluster.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls.
+    **kwargs
+        Additional arguments passed through.
+
+    Returns
+    -------
+    PTEResult
+        Results object containing group-time ATTs, overall ATT, and event study.
+    """
     res = pte(
         yname=yname,
         gname=gname,
@@ -486,6 +556,8 @@ def pte_default(
         alp=alp,
         boot_type=boot_type,
         biters=biters,
+        n_jobs=n_jobs,
+        backend=backend,
         random_state=random_state,
         **kwargs,
     )

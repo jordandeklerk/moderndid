@@ -508,35 +508,58 @@ When writing Numba functions, avoid Python objects and stick to NumPy arrays
 and scalar types. Numba works best with simple numerical code. If you need
 complex logic, keep it in pure Python and only JIT-compile the hot loops.
 
-Thread-Based Parallelism
-------------------------
+Parallel and Distributed Execution
+-----------------------------------
 
 Estimators that loop over group-time cells can use the ``parallel_map``
-utility in ``moderndid.core.parallel`` to distribute work across threads.
-Threads work well here because the per-cell computation is dominated by
-NumPy, SciPy, and statsmodels C extensions that release the GIL. This
-avoids the serialization overhead of multiprocessing while still achieving
-concurrency.
+utility in ``moderndid.core.parallel`` to run cells concurrently. The
+function supports two backends selected by the ``backend`` parameter.
+
+The **threads** backend (the default) uses a :class:`~concurrent.futures.ThreadPoolExecutor`.
+Threads work well because the per-cell computation is dominated by NumPy,
+SciPy, and statsmodels C extensions that release the GIL. This avoids the
+serialization overhead of multiprocessing while still achieving concurrency,
+and requires no extra dependencies.
+
+The `Dask <https://www.dask.org/>`_ backend uses :func:`dask.delayed` and :func:`dask.compute` to
+build a lazy task graph and execute it on whatever Dask scheduler is active.
+When a user has a ``dask.distributed.Client`` connected to a cluster, cell
+computations are automatically distributed across workers. When no
+distributed client is active, Dask falls back to its local synchronous
+scheduler. The dask backend is available when the ``parallel`` optional
+extra is installed (``uv pip install 'moderndid[parallel]'``).
+
+Availability of dask is checked at runtime via ``importlib.util.find_spec``,
+cached with :func:`functools.lru_cache`, and dask itself is only imported
+inside ``_parallel_map_dask`` to avoid import-time failures when dask is
+not installed.
 
 .. code-block:: python
 
    from moderndid.core.parallel import parallel_map
 
-   # Build a list of argument tuples, one per group-time cell
    args_list = [
        (group_idx, time_idx, data)
        for group_idx in range(n_groups)
        for time_idx in range(n_times)
    ]
 
-   # Run sequentially or in parallel depending on n_jobs
+   # Local thread pool (default)
    results = parallel_map(estimate_single_cell, args_list, n_jobs=n_jobs)
 
+   # Distribute across a Dask cluster
+   results = parallel_map(
+       estimate_single_cell, args_list, n_jobs=n_jobs, backend="dask"
+   )
+
 The ``n_jobs`` parameter follows scikit-learn conventions: ``1`` runs
-sequentially, ``-1`` uses all available cores, and any value ``> 1`` uses
-that many worker threads. Expose ``n_jobs`` as a parameter on your
-estimator function with a default of ``1`` so that sequential execution
-remains the default and parallelism is opt-in.
+sequentially (ignoring the backend), ``-1`` uses all available cores, and
+any value ``> 1`` uses that many workers. Expose both ``n_jobs`` and
+``backend`` as parameters on your estimator function with defaults of
+``1`` and ``"threads"`` so that sequential execution remains the default
+and parallelism is opt-in. Thread the parameters through to the
+``parallel_map`` call without interpreting them; validation happens inside
+``parallel_map`` itself.
 
 CuPy GPU Acceleration
 ---------------------

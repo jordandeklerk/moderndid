@@ -43,6 +43,7 @@ def att_gt(
     base_period="varying",
     random_state=None,
     n_jobs=1,
+    backend="threads",
 ):
     r"""Compute group-time average treatment effects.
 
@@ -156,6 +157,10 @@ def att_gt(
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
+    backend : {"threads", "dask"}, default="threads"
+        Execution backend. ``"threads"`` uses a local thread pool;
+        ``"dask"`` distributes work across a Dask cluster via
+        ``dask.delayed``.
 
     Returns
     -------
@@ -238,6 +243,8 @@ def att_gt(
         raise ValueError(f"anticipation={anticipation} is not valid. Must be a non-negative number.")
     if not isinstance(n_jobs, int) or (n_jobs < 1 and n_jobs != -1):
         raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
+    if backend not in ("threads", "dask"):
+        raise ValueError(f"backend='{backend}' is not valid. Must be 'threads' or 'dask'.")
     if clustervars is not None and isinstance(clustervars, str):
         raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
 
@@ -267,7 +274,7 @@ def att_gt(
 
     builder = PreprocessDataBuilder()
     dp = builder.with_data(data).with_config(config).validate().transform().build()
-    results = compute_att_gt(dp, n_jobs=n_jobs)
+    results = compute_att_gt(dp, n_jobs=n_jobs, backend=backend)
 
     att_gt_list = results.attgt_list
     influence_functions = results.influence_functions

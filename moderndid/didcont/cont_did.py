@@ -58,6 +58,8 @@ def cont_did(
     biters=1000,
     clustervars=None,
     base_period="varying",
+    n_jobs=1,
+    backend="threads",
     random_state=None,
     **kwargs,
 ):
@@ -190,6 +192,13 @@ def cont_did(
 
         - "varying": Use different base periods for different timing groups
         - "universal": Use the same base period for all comparisons
+    n_jobs : int, default=1
+        Number of parallel jobs for group-time estimation. 1 = sequential
+        (default), -1 = all cores, >1 = that many workers.
+    backend : {"threads", "dask"}, default="threads"
+        Execution backend. ``"threads"`` uses a local thread pool;
+        ``"dask"`` distributes work across a Dask cluster via
+        ``dask.delayed``.
     random_state : int, Generator, optional
         Controls the randomness of the bootstrap. Pass an int for reproducible
         results across multiple function calls. Can also accept a NumPy
@@ -304,6 +313,10 @@ def cont_did(
         raise ValueError(f"num_knots={num_knots} is not valid. Must be non-negative.")
     if treatment_type not in ("continuous", "discrete"):
         raise ValueError(f"treatment_type='{treatment_type}' is not valid. Must be 'continuous' or 'discrete'.")
+    if not isinstance(n_jobs, int) or (n_jobs < 1 and n_jobs != -1):
+        raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
+    if backend not in ("threads", "dask"):
+        raise ValueError(f"backend='{backend}' is not valid. Must be 'threads' or 'dask'.")
 
     data = to_polars(data)
 
@@ -377,6 +390,8 @@ def cont_did(
         return _estimate_cck(
             cont_did_data=cont_did_data,
             original_data=data,
+            n_jobs=n_jobs,
+            backend=backend,
             random_state=random_state,
             **kwargs,
         )
@@ -427,6 +442,8 @@ def cont_did(
         control_group=control_group,
         base_period=base_period,
         weightsname=weightsname,
+        n_jobs=n_jobs,
+        backend=backend,
         random_state=random_state,
         **pte_kwargs,
     )
@@ -587,7 +604,7 @@ def cont_two_by_two_subset(
     return {"gt_data": subset_data, "n1": n1, "disidx": disidx}
 
 
-def _estimate_cck(cont_did_data, original_data, random_state=None, **kwargs):
+def _estimate_cck(cont_did_data, original_data, n_jobs=1, backend="threads", random_state=None, **kwargs):
     """Compute the CCK non-parametric estimator."""
     config = cont_did_data.config
     data = cont_did_data.data.clone()
@@ -674,6 +691,8 @@ def _estimate_cck(cont_did_data, original_data, random_state=None, **kwargs):
         boot_type="multiplier",
         biters=config.biters,
         alp=config.alp,
+        n_jobs=n_jobs,
+        backend=backend,
         random_state=random_state,
     )
 
