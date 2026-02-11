@@ -85,6 +85,12 @@ def _scatter_shared_args(args_list):
         return args_list
 
     try:
+        import dask
+
+        current = dask.config.get("scheduler", default=None)
+        if current is not None and current != "distributed":
+            return args_list
+
         from distributed import get_client
 
         client = get_client()
