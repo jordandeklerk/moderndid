@@ -4,8 +4,8 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
-
 import polars as pl
+
 from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
 from moderndid.core.partition import build_gt_partitions, concat_partitions
@@ -272,18 +272,60 @@ def compute_pte(ptep, subset_fun, attgt_fun, n_jobs=1, backend="threads", **kwar
         all_group_vals = sorted(set(gv for (gv, _) in gt_partitions))
         kwargs = {**kwargs, "_gt_partitions": gt_partitions, "_all_group_vals": all_group_vals}
 
-    args_list = [
-        (tp, g, data, base_period, anticipation, subset_fun, attgt_fun, ptep.gt_type, ptep, n_units, kwargs)
-        for tp in time_periods
-        for g in groups
-    ]
+    dose_params = None
+    if ptep.gt_type == "dose":
+        dose_params = {
+            "dvals": ptep.dvals,
+            "knots": ptep.knots,
+            "degree": ptep.degree,
+            "num_knots": ptep.num_knots,
+        }
 
-    cell_results = parallel_map(_process_pte_cell, args_list, n_jobs=n_jobs, backend=backend)
+    worker_kwargs = {k: v for k, v in kwargs.items() if k not in ("_gt_partitions", "_all_group_vals")}
+
+    n_groups = len(groups)
+    total_cells = n_groups * n_times
+    all_results = [None] * total_cells
+    worker_args = []
+    worker_indices = []
+
+    idx = 0
+    for tp in time_periods:
+        for g in groups:
+            if base_period == "universal" and tp == (g - 1 - anticipation):
+                all_results[idx] = {
+                    "att_entry": {"att": 0, "group": g, "time_period": tp},
+                    "extra_entry": {"extra_gt_returns": None, "group": g, "time_period": tp},
+                    "inf_func_data": ("zero", None, None),
+                }
+                idx += 1
+                continue
+
+            gt_subset = subset_fun(data, g, tp, **kwargs)
+            gt_data = gt_subset["gt_data"]
+            n1 = gt_subset["n1"]
+            disidx = gt_subset["disidx"]
+
+            worker_args.append(
+                (tp, g, gt_data, n1, disidx, attgt_fun, ptep.gt_type, dose_params, n_units, worker_kwargs)
+            )
+            worker_indices.append(idx)
+            idx += 1
+
+    if "G" in data.columns and "period" in data.columns:
+        del gt_partitions
+
+    worker_results = parallel_map(_process_pte_cell, worker_args, n_jobs=n_jobs, backend=backend)
+
+    for i, result in enumerate(worker_results):
+        all_results[worker_indices[i]] = result
 
     attgt_list = []
     extra_gt_returns = []
 
-    for counter, result in enumerate(cell_results):
+    for counter, result in enumerate(all_results):
+        if result is None:
+            continue
         attgt_list.append(result["att_entry"])
         extra_gt_returns.append(result["extra_entry"])
 
@@ -657,36 +699,40 @@ def setup_pte_cont(
     return PTEParams(**pte_params_dict)
 
 
-def _process_pte_cell(tp, g, data, base_period, anticipation, subset_fun, attgt_fun, gt_type, ptep, n_units, kwargs):
+def _process_pte_cell(tp, g, gt_data, n1, disidx, attgt_fun, gt_type, dose_params, n_units, kwargs):
     """Process a single (tp, g) cell for panel treatment effects.
+
+    Parameters
+    ----------
+    tp : int
+        Time period.
+    g : int
+        Treatment cohort.
+    gt_data : pl.DataFrame
+        Pre-assembled data subset for this cell.
+    n1 : int
+        Number of unique units in the cell.
+    disidx : ndarray
+        Boolean mask of units in the cell.
+    attgt_fun : callable
+        Function to compute ATT for a single group-time.
+    gt_type : str
+        Type of group-time effect.
+    dose_params : dict or None
+        Dose-related parameters (dvals, knots, degree, num_knots).
+    n_units : int
+        Total number of units in the dataset.
+    kwargs : dict
+        Additional arguments passed to attgt_fun.
 
     Returns
     -------
     dict
         Dictionary with keys: att_entry, extra_entry, inf_func_data (or None).
     """
-    if base_period == "universal" and tp == (g - 1 - anticipation):
-        return {
-            "att_entry": {"att": 0, "group": g, "time_period": tp},
-            "extra_entry": {"extra_gt_returns": None, "group": g, "time_period": tp},
-            "inf_func_data": ("zero", None, None),
-        }
-
-    gt_subset = subset_fun(data, g, tp, **kwargs)
-    gt_data = gt_subset["gt_data"]
-    n1 = gt_subset["n1"]
-    disidx = gt_subset["disidx"]
-
     attgt_kwargs = kwargs.copy()
-    if gt_type == "dose":
-        attgt_kwargs.update(
-            {
-                "dvals": ptep.dvals,
-                "knots": ptep.knots,
-                "degree": ptep.degree,
-                "num_knots": ptep.num_knots,
-            }
-        )
+    if gt_type == "dose" and dose_params is not None:
+        attgt_kwargs.update(dose_params)
 
     attgt_result = attgt_fun(gt_data=gt_data, **attgt_kwargs)
 

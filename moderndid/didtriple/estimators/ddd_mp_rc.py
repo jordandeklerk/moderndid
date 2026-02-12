@@ -6,9 +6,9 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
+import polars as pl
 from scipy import stats
 
-import polars as pl
 from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
 from moderndid.core.partition import build_gt_partitions, concat_partitions
@@ -233,18 +233,51 @@ def ddd_mp_rc(
     gt_partitions = build_gt_partitions(data_with_idx, group_col, time_col)
     all_group_vals = sorted(set(gv for (gv, _) in gt_partitions))
 
-    args_list = []
+    total_cells = n_cohorts * tlist_length
+    all_results = [None] * total_cells
+    worker_args = []
+    worker_indices = []
+
+    idx = 0
     for g in glist:
         for t_idx in range(tlist_length):
             t = tlist[t_idx + tfac]
-            args_list.append(
+
+            pret = _get_base_period_rc(g, t_idx, tlist, base_period)
+            if pret is None:
+                warnings.warn(f"No pre-treatment periods for group {g}. Skipping.", UserWarning)
+                idx += 1
+                continue
+
+            post_treat = int(g <= t)
+            if post_treat:
+                pre_periods = tlist[tlist < g]
+                if len(pre_periods) == 0:
+                    idx += 1
+                    continue
+                pret = pre_periods[-1]
+
+            if base_period == "universal" and pret == t:
+                all_results[idx] = (ATTgtRCResult(att=0.0, group=int(g), time=int(t), post=0), None, None)
+                idx += 1
+                continue
+
+            cell_data, available_controls = _get_cell_data_rc(
+                gt_partitions, all_group_vals, g, t, pret, control_group, group_col
+            )
+
+            if cell_data is None or len(available_controls) == 0:
+                idx += 1
+                continue
+
+            worker_args.append(
                 (
                     g,
                     t,
-                    t_idx,
-                    tlist,
-                    base_period,
-                    control_group,
+                    pret,
+                    post_treat,
+                    cell_data,
+                    available_controls,
                     y_col,
                     time_col,
                     id_col,
@@ -254,15 +287,20 @@ def ddd_mp_rc(
                     est_method,
                     trim_level,
                     n_obs,
-                    gt_partitions,
-                    all_group_vals,
                 )
             )
+            worker_indices.append(idx)
+            idx += 1
 
-    cell_results = parallel_map(_process_gt_cell_rc, args_list, n_jobs=n_jobs, backend=backend)
+    del gt_partitions
+
+    worker_results = parallel_map(_process_gt_cell_rc, worker_args, n_jobs=n_jobs, backend=backend)
+
+    for i, result in enumerate(worker_results):
+        all_results[worker_indices[i]] = result
 
     attgt_list = []
-    for counter, result in enumerate(cell_results):
+    for counter, result in enumerate(all_results):
         if result is not None:
             att_entry, inf_data, se_val = result
             if att_entry is not None:
@@ -347,10 +385,10 @@ def ddd_mp_rc(
 def _process_gt_cell_rc(
     g,
     t,
-    t_idx,
-    tlist,
-    base_period,
-    control_group,
+    pret,
+    post_treat,
+    cell_data,
+    available_controls,
     y_col,
     time_col,
     _id_col,
@@ -360,10 +398,33 @@ def _process_gt_cell_rc(
     est_method,
     trim_level,
     n_obs,
-    gt_partitions,
-    all_group_vals,
 ):
     """Process a single (g,t) cell and return results for RCS.
+
+    Parameters
+    ----------
+    g : int
+        Treatment cohort.
+    t : int
+        Time period.
+    pret : int
+        Pre-treatment period for comparison.
+    post_treat : int
+        1 if t >= g (post-treatment), 0 otherwise.
+    cell_data : pl.DataFrame
+        Pre-assembled data for this cell.
+    available_controls : list
+        Control group values available for this cell.
+    y_col, time_col, _id_col, group_col, partition_col : str
+        Column names.
+    covariate_cols : list of str or None
+        Covariate column names.
+    est_method : str
+        Estimation method.
+    trim_level : float
+        Trimming level for propensity scores.
+    n_obs : int
+        Total number of observations in the dataset.
 
     Returns
     -------
@@ -371,28 +432,6 @@ def _process_gt_cell_rc(
         (ATTgtRCResult, (inf_func_scaled, obs_indices) or None, se or None),
         or None if cell is skipped entirely.
     """
-    pret = _get_base_period_rc(g, t_idx, tlist, base_period)
-    if pret is None:
-        warnings.warn(f"No pre-treatment periods for group {g}. Skipping.", UserWarning)
-        return None
-
-    post_treat = int(g <= t)
-    if post_treat:
-        pre_periods = tlist[tlist < g]
-        if len(pre_periods) == 0:
-            return None
-        pret = pre_periods[-1]
-
-    if base_period == "universal" and pret == t:
-        return (ATTgtRCResult(att=0.0, group=int(g), time=int(t), post=0), None, None)
-
-    cell_data, available_controls = _get_cell_data_rc(
-        gt_partitions, all_group_vals, g, t, pret, control_group, group_col
-    )
-
-    if cell_data is None or len(available_controls) == 0:
-        return None
-
     n_cell = len(cell_data)
 
     if len(available_controls) == 1:
