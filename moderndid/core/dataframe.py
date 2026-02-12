@@ -3,7 +3,6 @@
 from typing import Any
 
 import narwhals as nw
-
 import polars as pl
 
 DataFrame = Any  # Any object implementing __arrow_c_stream__
@@ -42,6 +41,16 @@ def to_polars(df: Any) -> pl.DataFrame:
     """
     if isinstance(df, pl.DataFrame):
         return df
+
+    # Dask DataFrames must use the distributed path, not be collected.
+    from moderndid.dask import is_dask_dataframe
+
+    if is_dask_dataframe(df):
+        raise TypeError(
+            "Cannot convert a Dask DataFrame to Polars via to_polars(). "
+            "Pass the Dask DataFrame directly to the estimator (e.g. att_gt, ddd, cont_did) "
+            "with backend='dask' to use the distributed execution path."
+        )
 
     # PyArrow, DuckDB >= 0.8, cuDF, and pandas >= 3.0 all expose
     # __arrow_c_stream__.  We route through narwhals for a uniform

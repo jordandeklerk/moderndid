@@ -89,7 +89,6 @@ def ddd_mp(
     alpha=0.05,
     random_state=None,
     n_jobs=1,
-    backend="threads",
 ):
     r"""Compute the multi-period doubly robust DDD estimator for the ATT with panel data.
 
@@ -178,9 +177,6 @@ def ddd_mp(
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
-    backend : {"threads", "dask"}, default="threads"
-        Execution backend. ``"threads"`` uses a local thread pool;
-        ``"dask"`` distributes work across a Dask cluster.
 
     Returns
     -------
@@ -305,7 +301,7 @@ def ddd_mp(
 
     del gt_partitions
 
-    worker_results = parallel_map(_process_gt_cell, worker_args, n_jobs=n_jobs, backend=backend)
+    worker_results = parallel_map(_process_gt_cell, worker_args, n_jobs=n_jobs)
 
     for i, result in enumerate(worker_results):
         all_results[worker_indices[i]] = result
@@ -573,7 +569,7 @@ def _process_single_control(
         return None, None, None
 
     inf_func_scaled = (n_units / n_cell) * inf_func
-    cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
+    cell_id_list = cell_data.filter(pl.col(time_col) == t).sort(id_col)[id_col].to_numpy()
     return att_result, inf_func_scaled, cell_id_list
 
 
@@ -613,8 +609,8 @@ def _process_multiple_controls(
         ddd_results.append(att_result)
 
         inf_full = np.zeros(n_cell)
-        subset_ids = subset_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
-        cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy()
+        subset_ids = subset_data.filter(pl.col(time_col) == t).sort(id_col)[id_col].to_numpy()
+        cell_id_list = cell_data.filter(pl.col(time_col) == t).sort(id_col)[id_col].unique().to_numpy()
         cell_id_to_local = {uid: idx for idx, uid in enumerate(cell_id_list)}
 
         for i, uid in enumerate(subset_ids):
@@ -628,7 +624,7 @@ def _process_multiple_controls(
 
     att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_funcs_local), n_units)
     inf_func_scaled = (n_units / n_cell) * if_gmm
-    cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy()
+    cell_id_list = cell_data.filter(pl.col(time_col) == t).sort(id_col)[id_col].unique().to_numpy()
     return att_gmm, inf_func_scaled, cell_id_list, se_gmm
 
 

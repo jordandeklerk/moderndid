@@ -6,6 +6,8 @@ from scipy.interpolate import BSpline as ScipyBSpline
 from .base import SplineBase
 from .utils import drop_first_column
 
+_USE_NUMPY = False
+
 
 class BSpline(SplineBase):
     r"""B-spline basis functions.
@@ -64,10 +66,93 @@ class BSpline(SplineBase):
         return self.degree + 1
 
     @staticmethod
+    def _deboor_derivative(x, knot_seq, degree, derivs=1):
+        """Compute B-spline derivative matrix using the analytic recursion."""
+        t = np.asarray(knot_seq, dtype=np.float64)
+        k = degree
+        n = len(t) - k - 1
+
+        if k < derivs:
+            return np.zeros((len(x), n))
+
+        lower_basis = BSpline._deboor_eval(x, t, k - derivs)
+        cur = lower_basis  # shape: (len(x), len(t) - (k-derivs) - 1)
+        for d in range(derivs):
+            p = k - derivs + d + 1  # current degree being differentiated
+            n_cur = len(t) - p - 1
+            n_prev = cur.shape[1]
+            result = np.zeros((len(x), n_cur))
+            for i in range(n_cur):
+                left_denom = t[i + p] - t[i]
+                right_denom = t[i + p + 1] - t[i + 1]
+                left = cur[:, i] / left_denom if left_denom > 0 else np.zeros(len(x))
+                right = cur[:, i + 1] / right_denom if (i + 1 < n_prev and right_denom > 0) else np.zeros(len(x))
+                result[:, i] = p * (left - right)
+            cur = result
+
+        return cur
+
+    @staticmethod
+    def _deboor_eval(x, knot_seq, degree):
+        """Evaluate B-spline basis matrix using the de Boor recursion in pure numpy.
+
+        Used as fallback when scipy's C/Fortran extensions are unavailable
+        (e.g. in Dask forked worker subprocesses).  Handles extrapolation
+        outside the knot range.
+        """
+        t = np.asarray(knot_seq, dtype=np.float64)
+        k = degree
+        n = len(t) - k - 1
+
+        B = np.zeros((len(x), n + k))
+        for i in range(n + k):
+            if t[i] < t[i + 1]:
+                B[:, i] = ((x >= t[i]) & (x < t[i + 1])).astype(np.float64)
+
+        # Left extrapolation: assign x < first breakpoint to first real interval
+        left = x < t[k]
+        if np.any(left):
+            for i in range(n + k):
+                if t[i] < t[i + 1]:
+                    B[left, i] = 1.0
+                    break
+
+        # Right boundary: assign x >= last breakpoint to last real interval
+        right = x >= t[-k - 1]
+        if np.any(right):
+            for i in range(n + k - 1, -1, -1):
+                if t[i] < t[i + 1] and t[i + 1] == t[-1]:
+                    B[right, i] = 1.0
+                    break
+
+        for d in range(1, k + 1):
+            ncols = n + k - d
+            B_new = np.zeros((len(x), ncols))
+            for i in range(ncols):
+                denom_l = t[i + d] - t[i]
+                denom_r = t[i + d + 1] - t[i + 1]
+                if denom_l > 0:
+                    B_new[:, i] += (x - t[i]) / denom_l * B[:, i]
+                if denom_r > 0:
+                    B_new[:, i] += (t[i + d + 1] - x) / denom_r * B[:, i + 1]
+            B = B_new
+
+        return B[:, :n]
+
+    @staticmethod
     def _get_design_matrix(x, knot_seq, degree):
         """Get the design matrix."""
-        design_sparse = ScipyBSpline.design_matrix(x, knot_seq, degree, extrapolate=True)
-        return design_sparse.toarray()
+        global _USE_NUMPY
+        x = np.ascontiguousarray(x, dtype=np.float64)
+        knot_seq = np.ascontiguousarray(knot_seq, dtype=np.float64)
+        if _USE_NUMPY:
+            return BSpline._deboor_eval(x, knot_seq, degree)
+        try:
+            design_sparse = ScipyBSpline.design_matrix(x, knot_seq, degree, extrapolate=True)
+            return design_sparse.toarray()
+        except (ValueError, OSError):
+            _USE_NUMPY = True
+            return BSpline._deboor_eval(x, knot_seq, degree)
 
     def basis(self, complete_basis=True):
         """Compute B-spline basis functions.
@@ -129,17 +214,32 @@ class BSpline(SplineBase):
                 n_cols -= 1
             return np.zeros((len(self.x), n_cols))
 
+        global _USE_NUMPY
         n_basis = len(self.knot_sequence) - self.degree - 1
-        deriv_mat = np.zeros((len(self.x), n_basis))
 
-        for i in range(n_basis):
-            c = np.zeros(n_basis)
-            c[i] = 1.0
-
-            spl = ScipyBSpline(self.knot_sequence, c, self.degree, extrapolate=True)
-
-            deriv_spl = spl.derivative(nu=derivs)
-            deriv_mat[:, i] = deriv_spl(self.x)
+        if _USE_NUMPY:
+            deriv_mat = self._deboor_derivative(
+                np.ascontiguousarray(self.x, dtype=np.float64),
+                np.ascontiguousarray(self.knot_sequence, dtype=np.float64),
+                self.degree,
+                derivs,
+            )
+        else:
+            deriv_mat = np.zeros((len(self.x), n_basis))
+            try:
+                for i in range(n_basis):
+                    c = np.zeros(n_basis)
+                    c[i] = 1.0
+                    spl = ScipyBSpline(self.knot_sequence, c, self.degree, extrapolate=True)
+                    deriv_mat[:, i] = spl.derivative(nu=derivs)(self.x)
+            except (ValueError, OSError):
+                _USE_NUMPY = True
+                deriv_mat = self._deboor_derivative(
+                    np.ascontiguousarray(self.x, dtype=np.float64),
+                    np.ascontiguousarray(self.knot_sequence, dtype=np.float64),
+                    self.degree,
+                    derivs,
+                )
 
         if self._is_extended_knot_sequence:
             deriv_mat = deriv_mat[:, self.degree : deriv_mat.shape[1] - self.degree]
@@ -173,11 +273,8 @@ class BSpline(SplineBase):
         for i in range(n_basis):
             c = np.zeros(n_basis)
             c[i] = 1.0
-
             spl = ScipyBSpline(self.knot_sequence, c, self.degree, extrapolate=True)
-
-            integral_spl = spl.antiderivative(nu=1)
-            integral_mat[:, i] = integral_spl(self.x)
+            integral_mat[:, i] = spl.antiderivative(nu=1)(self.x)
 
         if self._is_extended_knot_sequence:
             integral_mat = integral_mat[:, self.degree : integral_mat.shape[1] - self.degree]

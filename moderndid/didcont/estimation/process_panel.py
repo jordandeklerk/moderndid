@@ -51,7 +51,6 @@ def pte(
     process_dose_gt_fun=None,
     biters=100,
     n_jobs=1,
-    backend="threads",
     random_state=None,
     **kwargs,
 ):
@@ -93,9 +92,6 @@ def pte(
         Number of bootstrap iterations.
     n_jobs : int, default=1
         Number of parallel jobs. 1 = sequential, -1 = all cores, >1 = that many workers.
-    backend : {"threads", "dask"}, default="threads"
-        Execution backend. ``"threads"`` uses a local thread pool;
-        ``"dask"`` distributes work across a Dask cluster.
     random_state : int, Generator, optional
         Controls the randomness of the bootstrap. Pass an int for reproducible
         results across multiple function calls. Can also accept a NumPy
@@ -124,7 +120,7 @@ def pte(
         **kwargs,
     )
 
-    res = compute_pte(ptep=ptep, subset_fun=subset_fun, attgt_fun=attgt_fun, n_jobs=n_jobs, backend=backend, **kwargs)
+    res = compute_pte(ptep=ptep, subset_fun=subset_fun, attgt_fun=attgt_fun, n_jobs=n_jobs, **kwargs)
 
     aggregation = kwargs.get("aggregation", "dose")
     if gt_type == "dose" and aggregation == "dose":
@@ -225,7 +221,7 @@ def pte(
     return PTEResult(att_gt=att_gt, overall_att=overall_att, event_study=event_study, ptep=ptep)
 
 
-def compute_pte(ptep, subset_fun, attgt_fun, n_jobs=1, backend="threads", **kwargs):
+def compute_pte(ptep, subset_fun, attgt_fun, n_jobs=1, **kwargs):
     """Compute panel treatment effects for all group-time combinations.
 
     Parameters
@@ -238,9 +234,6 @@ def compute_pte(ptep, subset_fun, attgt_fun, n_jobs=1, backend="threads", **kwar
         Function to compute ATT for a single group-time.
     n_jobs : int, default=1
         Number of parallel jobs. 1 = sequential, -1 = all cores, >1 = that many workers.
-    backend : {"threads", "dask"}, default="threads"
-        Execution backend. ``"threads"`` uses a local thread pool;
-        ``"dask"`` distributes work across a Dask cluster.
     **kwargs
         Additional arguments passed to subset_fun and attgt_fun.
 
@@ -315,7 +308,7 @@ def compute_pte(ptep, subset_fun, attgt_fun, n_jobs=1, backend="threads", **kwar
     if "G" in data.columns and "period" in data.columns:
         del gt_partitions
 
-    worker_results = parallel_map(_process_pte_cell, worker_args, n_jobs=n_jobs, backend=backend)
+    worker_results = parallel_map(_process_pte_cell, worker_args, n_jobs=n_jobs)
 
     for i, result in enumerate(worker_results):
         all_results[worker_indices[i]] = result
@@ -522,7 +515,6 @@ def pte_default(
     boot_type="multiplier",
     biters=100,
     n_jobs=1,
-    backend="threads",
     random_state=None,
     **kwargs,
 ):
@@ -568,9 +560,6 @@ def pte_default(
         Number of bootstrap iterations.
     n_jobs : int, default=1
         Number of parallel jobs. 1 = sequential, -1 = all cores, >1 = that many workers.
-    backend : {"threads", "dask"}, default="threads"
-        Execution backend. ``"threads"`` uses a local thread pool;
-        ``"dask"`` distributes work across a Dask cluster.
     random_state : int, Generator, optional
         Controls the randomness of the bootstrap. Pass an int for reproducible
         results across multiple function calls.
@@ -605,7 +594,6 @@ def pte_default(
         boot_type=boot_type,
         biters=biters,
         n_jobs=n_jobs,
-        backend=backend,
         random_state=random_state,
         **kwargs,
     )

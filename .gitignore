@@ -168,7 +168,6 @@ cython_debug/
 .m*
 uv.lock
 
-dask/
 triplediff/
 py_did_mult*/
 

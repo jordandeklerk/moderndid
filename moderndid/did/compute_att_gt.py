@@ -35,7 +35,7 @@ class ComputeATTgtResult(NamedTuple):
     influence_functions: sp.csr_matrix
 
 
-def compute_att_gt(data: DIDData, n_jobs=1, backend="threads"):
+def compute_att_gt(data: DIDData, n_jobs=1):
     """Compute group-time average treatment effects.
 
     Parameters
@@ -44,9 +44,6 @@ def compute_att_gt(data: DIDData, n_jobs=1, backend="threads"):
         Preprocessed DiD data object containing all necessary data and configuration.
     n_jobs : int, default=1
         Number of parallel jobs. 1 = sequential, -1 = all cores, >1 = that many workers.
-    backend : {"threads", "dask"}, default="threads"
-        Execution backend. ``"threads"`` uses a local thread pool;
-        ``"dask"`` distributes work across a Dask cluster.
 
     Returns
     -------
@@ -61,7 +58,7 @@ def compute_att_gt(data: DIDData, n_jobs=1, backend="threads"):
     group_time_pairs = [(g, t) for g in range(data.config.treated_groups_count) for t in range(n_time_periods)]
 
     args_list = [(g_idx, t_idx, data) for g_idx, t_idx in group_time_pairs]
-    cell_results = parallel_map(_process_gt_cell_did, args_list, n_jobs=n_jobs, backend=backend)
+    cell_results = parallel_map(_process_gt_cell_did, args_list, n_jobs=n_jobs)
 
     att_results = []
     influence_func_list = []

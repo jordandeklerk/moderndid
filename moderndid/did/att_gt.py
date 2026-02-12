@@ -95,7 +95,8 @@ def att_gt(
     data : DataFrame
         Panel data in long format. Accepts any object implementing the Arrow
         PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
-        pyarrow Table, and cudf DataFrames.
+        pyarrow Table, and cudf DataFrames. For distributed execution, pass a
+        Dask DataFrame directly (requires a ``distributed.Client``).
     yname : str
         The name of the outcome variable.
     tname : str
@@ -158,9 +159,10 @@ def att_gt(
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
     backend : {"threads", "dask"}, default="threads"
-        Execution backend. ``"threads"`` uses a local thread pool;
-        ``"dask"`` distributes work across a Dask cluster via
-        ``dask.delayed``.
+        Execution backend for local DataFrames. ``"threads"`` uses a local
+        thread pool; ``"dask"`` requires a Dask DataFrame as input (raises
+        ``TypeError`` otherwise). When a Dask DataFrame is passed, the backend
+        is automatically set to ``"dask"`` regardless of this parameter.
 
     Returns
     -------
@@ -214,6 +216,37 @@ def att_gt(
            ...: )
            ...: print(result)
 
+    For datasets that exceed available memory, pass a Dask DataFrame to
+    distribute computation across a cluster. Built-in datasets return Polars
+    DataFrames, so convert via Pandas first:
+
+    .. code-block:: python
+
+        import dask.dataframe as dd
+        from distributed import Client
+        from moderndid import att_gt, load_mpdta
+
+        client = Client(n_workers=4)
+
+        df = load_mpdta()
+        ddf = dd.from_pandas(df.to_pandas(), npartitions=4)
+
+        result = att_gt(
+            data=ddf,
+            yname="lemp",
+            tname="year",
+            gname="first.treat",
+            idname="countyreal",
+        )
+
+    For data already stored as Parquet, load directly into Dask to avoid
+    collecting the full dataset on the client:
+
+    .. code-block:: python
+
+        ddf = dd.read_parquet("s3://bucket/data/*.parquet")
+        result = att_gt(data=ddf, yname="lemp", ...)
+
     See Also
     --------
     aggte : Aggregate group-time average treatment effects.
@@ -248,6 +281,85 @@ def att_gt(
     if clustervars is not None and isinstance(clustervars, str):
         raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
 
+    from moderndid.dask import is_dask_dataframe
+
+    if is_dask_dataframe(data):
+        if backend != "dask":
+            warnings.warn("Switching to backend='dask' for Dask DataFrame input.", UserWarning, stacklevel=2)
+
+        from moderndid.dask.did import compute_att_gt_dask
+
+        results = compute_att_gt_dask(
+            ddf=data,
+            yname=yname,
+            tname=tname,
+            idname=idname,
+            gname=gname,
+            xformla=xformla if xformla is not None else "~1",
+            panel=panel,
+            control_group=control_group,
+            anticipation=anticipation,
+            base_period=base_period,
+            est_method=est_method if isinstance(est_method, str) else "dr",
+            weightsname=weightsname,
+        )
+
+        att_gt_list = results.attgt_list
+        influence_functions = results.influence_functions
+
+        groups = np.array([att.group for att in att_gt_list])
+        times = np.array([att.year for att in att_gt_list])
+        att_values = np.array([float(att.att) for att in att_gt_list])
+
+        if hasattr(influence_functions, "toarray"):
+            influence_functions_dense = to_numpy(influence_functions.toarray())
+        else:
+            influence_functions_dense = to_numpy(np.array(influence_functions))
+
+        n_units = results.influence_functions.shape[0]
+        variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units
+        standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
+        standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
+
+        critical_value = scipy.stats.norm.ppf(1 - alp / 2)
+
+        estimation_params = {
+            "control_group": control_group,
+            "anticipation_periods": anticipation,
+            "estimation_method": est_method if isinstance(est_method, str) else "custom",
+            "bootstrap": boot,
+            "uniform_bands": cband,
+            "base_period": base_period,
+            "panel": panel,
+            "clustervars": clustervars,
+            "biters": biters,
+            "random_state": random_state,
+        }
+
+        return mp(
+            groups=groups,
+            times=times,
+            att_gt=att_values,
+            vcov_analytical=variance_matrix,
+            se_gt=standard_errors,
+            critical_value=critical_value,
+            influence_func=influence_functions_dense,
+            n_units=n_units,
+            wald_stat=None,
+            wald_pvalue=None,
+            alpha=alp,
+            estimation_params=estimation_params,
+            G=None,
+            weights_ind=None,
+        )
+
+    if backend == "dask":
+        raise TypeError(
+            "backend='dask' requires a Dask DataFrame as input. "
+            "Load data with dd.read_parquet() or convert with "
+            "dd.from_pandas(df, npartitions=N), then pass the Dask DataFrame directly."
+        )
+
     control_group_enum = ControlGroup(control_group)
     est_method_enum = EstimationMethod(est_method) if isinstance(est_method, str) else est_method
     base_period_enum = BasePeriod(base_period)
@@ -274,7 +386,7 @@ def att_gt(
 
     builder = PreprocessDataBuilder()
     dp = builder.with_data(data).with_config(config).validate().transform().build()
-    results = compute_att_gt(dp, n_jobs=n_jobs, backend=backend)
+    results = compute_att_gt(dp, n_jobs=n_jobs)
 
     att_gt_list = results.attgt_list
     influence_functions = results.influence_functions

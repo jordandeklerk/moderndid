@@ -78,7 +78,8 @@ def ddd(
     data : DataFrame
         Data in long format. Accepts any object implementing the Arrow
         PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
-        pyarrow Table, and cudf DataFrames.
+        pyarrow Table, and cudf DataFrames. For distributed execution, pass a
+        Dask DataFrame directly (requires a ``distributed.Client``).
     yname : str
         Name of outcome variable column.
     tname : str
@@ -139,9 +140,11 @@ def ddd(
         settings. 1 = sequential (default), -1 = all cores, >1 = that many
         workers. Ignored for 2-period data.
     backend : {"threads", "dask"}, default="threads"
-        Execution backend. ``"threads"`` uses a local thread pool;
-        ``"dask"`` distributes work across a Dask cluster via
-        ``dask.delayed``. Ignored for 2-period data.
+        Execution backend for local DataFrames. ``"threads"`` uses a local
+        thread pool; ``"dask"`` requires a Dask DataFrame as input (raises
+        ``TypeError`` otherwise). When a Dask DataFrame is passed, the backend
+        is automatically set to ``"dask"`` regardless of this parameter.
+        Ignored for 2-period data.
 
     Returns
     -------
@@ -270,6 +273,39 @@ def ddd(
            ...: )
            ...: result_mp_rcs
 
+    For datasets that exceed available memory, pass a Dask DataFrame to
+    distribute computation across a cluster. Built-in datasets return Polars
+    DataFrames, so convert via Pandas first:
+
+    .. code-block:: python
+
+        import dask.dataframe as dd
+        from distributed import Client
+        from moderndid import ddd, gen_dgp_mult_periods
+
+        client = Client(n_workers=4)
+
+        dgp = gen_dgp_mult_periods(n=5000, random_state=42)
+        ddf = dd.from_pandas(dgp["data"].to_pandas(), npartitions=8)
+
+        result = ddd(
+            data=ddf,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            est_method="dr",
+        )
+
+    For data already stored as Parquet, load directly into Dask to avoid
+    collecting the full dataset on the client:
+
+    .. code-block:: python
+
+        ddf = dd.read_parquet("s3://bucket/data/*.parquet")
+        result = ddd(data=ddf, yname="y", ...)
+
     Notes
     -----
     The DDD estimator identifies treatment effects in settings where units must satisfy
@@ -323,6 +359,65 @@ def ddd(
     if backend not in ("threads", "dask"):
         raise ValueError(f"backend='{backend}' is not valid. Must be 'threads' or 'dask'.")
 
+    from moderndid.dask import is_dask_dataframe
+
+    if is_dask_dataframe(data):
+        if backend != "dask":
+            warnings.warn("Switching to backend='dask' for Dask DataFrame input.", UserWarning, stacklevel=2)
+        is_rcs = not panel
+        if not is_rcs:
+            from moderndid.dask.ddd import ddd_mp_dask
+
+            covariate_cols = get_covariate_names(xformla)
+            return ddd_mp_dask(
+                ddf=data,
+                y_col=yname,
+                time_col=tname,
+                id_col=idname,
+                group_col=gname,
+                partition_col=pname,
+                covariate_cols=covariate_cols,
+                control_group=control_group,
+                base_period=base_period,
+                est_method=est_method,
+                boot=boot,
+                biters=biters,
+                cband=False,
+                cluster=cluster,
+                alpha=alpha,
+                random_state=random_state,
+            )
+        else:
+            from moderndid.dask.ddd_rc import ddd_mp_rc_dask
+
+            covariate_cols = get_covariate_names(xformla)
+            return ddd_mp_rc_dask(
+                ddf=data,
+                y_col=yname,
+                time_col=tname,
+                id_col=idname,
+                group_col=gname,
+                partition_col=pname,
+                covariate_cols=covariate_cols,
+                control_group=control_group,
+                base_period=base_period,
+                est_method=est_method,
+                boot=boot,
+                biters=biters,
+                cband=False,
+                cluster=cluster,
+                alpha=alpha,
+                trim_level=trim_level,
+                random_state=random_state,
+            )
+
+    if backend == "dask":
+        raise TypeError(
+            "backend='dask' requires a Dask DataFrame as input. "
+            "Load data with dd.read_parquet() or convert with "
+            "dd.from_pandas(df, npartitions=N), then pass the Dask DataFrame directly."
+        )
+
     is_rcs = detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel)
 
     data = to_polars(data)
@@ -360,7 +455,6 @@ def ddd(
                 trim_level=trim_level,
                 random_state=random_state,
                 n_jobs=n_jobs,
-                backend=backend,
             )
         return ddd_mp(
             data=data,
@@ -380,7 +474,6 @@ def ddd(
             alpha=alpha,
             random_state=random_state,
             n_jobs=n_jobs,
-            backend=backend,
         )
 
     if n_jobs != 1 or backend != "threads":

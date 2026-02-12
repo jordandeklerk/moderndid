@@ -4,10 +4,10 @@ import warnings
 from functools import partial
 
 import numpy as np
+import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
-import polars as pl
 from moderndid.core.dataframe import to_polars
 from moderndid.core.partition import concat_partitions
 from moderndid.core.preprocess import (
@@ -108,7 +108,8 @@ def cont_did(
     data : DataFrame
         Panel data in long format. Accepts any object implementing the Arrow
         PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
-        pyarrow Table, and cudf DataFrames.
+        pyarrow Table, and cudf DataFrames. For distributed execution, pass a
+        Dask DataFrame directly (requires a ``distributed.Client``).
     yname : str
         Name of the column containing the outcome variable.
     tname : str
@@ -197,9 +198,10 @@ def cont_did(
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
     backend : {"threads", "dask"}, default="threads"
-        Execution backend. ``"threads"`` uses a local thread pool;
-        ``"dask"`` distributes work across a Dask cluster via
-        ``dask.delayed``.
+        Execution backend for local DataFrames. ``"threads"`` uses a local
+        thread pool; ``"dask"`` requires a Dask DataFrame as input (raises
+        ``TypeError`` otherwise). When a Dask DataFrame is passed, the backend
+        is automatically set to ``"dask"`` regardless of this parameter.
     random_state : int, Generator, optional
         Controls the randomness of the bootstrap. Pass an int for reproducible
         results across multiple function calls. Can also accept a NumPy
@@ -274,6 +276,39 @@ def cont_did(
            ...: )
            ...: cck_result
 
+    For datasets that exceed available memory, pass a Dask DataFrame to
+    distribute computation across a cluster. Built-in datasets return Polars
+    DataFrames, so convert via Pandas first:
+
+    .. code-block:: python
+
+        import dask.dataframe as dd
+        from distributed import Client
+        import moderndid
+
+        client = Client(n_workers=4)
+
+        data = moderndid.simulate_cont_did_data(n=5000, seed=42)
+        ddf = dd.from_pandas(data.to_pandas(), npartitions=8)
+
+        result = moderndid.cont_did(
+            data=ddf,
+            yname="Y",
+            tname="time_period",
+            idname="id",
+            gname="G",
+            dname="D",
+            aggregation="dose",
+        )
+
+    For data already stored as Parquet, load directly into Dask to avoid
+    collecting the full dataset on the client:
+
+    .. code-block:: python
+
+        ddf = dd.read_parquet("s3://bucket/data/*.parquet")
+        result = moderndid.cont_did(data=ddf, yname="Y", ...)
+
     References
     ----------
 
@@ -318,6 +353,51 @@ def cont_did(
         raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
     if backend not in ("threads", "dask"):
         raise ValueError(f"backend='{backend}' is not valid. Must be 'threads' or 'dask'.")
+
+    from moderndid.dask import is_dask_dataframe
+
+    if is_dask_dataframe(data):
+        if backend != "dask":
+            warnings.warn("Switching to backend='dask' for Dask DataFrame input.", UserWarning, stacklevel=2)
+
+        if gname is None:
+            raise ValueError("gname is required for Dask DataFrame input.")
+
+        if dose_est_method == "cck":
+            raise ValueError("CCK estimator is not supported with Dask DataFrame input.")
+
+        from moderndid.dask.pte import pte_dask
+
+        return pte_dask(
+            ddf=data,
+            yname=yname,
+            gname=gname,
+            tname=tname,
+            idname=idname,
+            dname=dname,
+            target_parameter=target_parameter,
+            aggregation=aggregation,
+            degree=degree,
+            num_knots=num_knots,
+            dvals=dvals,
+            control_group=control_group,
+            anticipation=anticipation,
+            base_period=base_period,
+            weightsname=weightsname,
+            alp=alp,
+            cband=cband,
+            boot_type=boot_type,
+            biters=biters,
+            random_state=random_state,
+            **kwargs,
+        )
+
+    if backend == "dask":
+        raise TypeError(
+            "backend='dask' requires a Dask DataFrame as input. "
+            "Load data with dd.read_parquet() or convert with "
+            "dd.from_pandas(df, npartitions=N), then pass the Dask DataFrame directly."
+        )
 
     data = to_polars(data)
 
@@ -392,7 +472,6 @@ def cont_did(
             cont_did_data=cont_did_data,
             original_data=data,
             n_jobs=n_jobs,
-            backend=backend,
             random_state=random_state,
             **kwargs,
         )
@@ -444,7 +523,6 @@ def cont_did(
         base_period=base_period,
         weightsname=weightsname,
         n_jobs=n_jobs,
-        backend=backend,
         random_state=random_state,
         **pte_kwargs,
     )
@@ -617,7 +695,7 @@ def cont_two_by_two_subset(
     return {"gt_data": subset_data, "n1": n1, "disidx": disidx}
 
 
-def _estimate_cck(cont_did_data, original_data, n_jobs=1, backend="threads", random_state=None, **kwargs):
+def _estimate_cck(cont_did_data, original_data, n_jobs=1, random_state=None, **kwargs):
     """Compute the CCK non-parametric estimator."""
     config = cont_did_data.config
     data = cont_did_data.data.clone()
@@ -705,7 +783,6 @@ def _estimate_cck(cont_did_data, original_data, n_jobs=1, backend="threads", ran
         biters=config.biters,
         alp=config.alp,
         n_jobs=n_jobs,
-        backend=backend,
         random_state=random_state,
     )
 
