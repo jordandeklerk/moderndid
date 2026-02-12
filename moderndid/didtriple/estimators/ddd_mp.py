@@ -11,7 +11,7 @@ from scipy import stats
 
 from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
-from moderndid.core.partition import build_gt_partitions, concat_partitions
+from moderndid.core.partition import build_gt_partitions
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from .ddd_panel import ddd_panel
@@ -274,11 +274,11 @@ def ddd_mp(
                 idx += 1
                 continue
 
-            cell_data, available_controls = _get_cell_data(
+            cell_parts, available_controls = _get_cell_parts(
                 gt_partitions, all_group_vals, g, t, pret, control_group, group_col
             )
 
-            if cell_data is None or len(available_controls) == 0:
+            if not cell_parts or len(available_controls) == 0:
                 idx += 1
                 continue
 
@@ -288,7 +288,7 @@ def ddd_mp(
                     t,
                     pret,
                     post_treat,
-                    cell_data,
+                    cell_parts,
                     available_controls,
                     y_col,
                     time_col,
@@ -403,7 +403,7 @@ def _process_gt_cell(
     t,
     pret,
     post_treat,
-    cell_data,
+    cell_parts,
     available_controls,
     y_col,
     time_col,
@@ -426,8 +426,8 @@ def _process_gt_cell(
         Pre-treatment period for comparison.
     post_treat : int
         1 if t >= g (post-treatment), 0 otherwise.
-    cell_data : pl.DataFrame
-        Pre-assembled data for this cell (treatment + control groups, two periods).
+    cell_parts : sequence of pl.DataFrame
+        Pre-selected (group,time) partitions for this cell.
     available_controls : list
         Control group values available for this cell.
     y_col, time_col, id_col, group_col, partition_col : str
@@ -445,6 +445,16 @@ def _process_gt_cell(
         (ATTgtResult, (inf_func_scaled, cell_id_list) or None, se or None),
         or None if cell is skipped entirely.
     """
+    if cell_parts is None:
+        return None
+
+    if isinstance(cell_parts, pl.DataFrame):
+        cell_data = cell_parts
+    elif len(cell_parts) == 1:
+        cell_data = cell_parts[0]
+    else:
+        cell_data = pl.concat(cell_parts)
+
     n_cell = cell_data[id_col].n_unique()
 
     if len(available_controls) == 1:
@@ -508,8 +518,8 @@ def _get_base_period(g, t_idx, tlist, base_period):
     return tlist[t_idx]
 
 
-def _get_cell_data(gt_partitions, all_group_vals, g, t, pret, control_group, group_col):
-    """Get data for a specific (g,t) cell and available controls."""
+def _get_cell_parts(gt_partitions, all_group_vals, g, t, pret, control_group, group_col):
+    """Get partition list for a specific (g,t) cell and available controls."""
     max_period = max(t, pret)
 
     if control_group == "nevertreated":
@@ -521,14 +531,15 @@ def _get_cell_data(gt_partitions, all_group_vals, g, t, pret, control_group, gro
             if (gv == 0 or (isinstance(gv, float) and not np.isfinite(gv)) or gv > max_period) and gv != g
         ]
 
-    cell_data = concat_partitions(gt_partitions, [g, *control_groups], [t, pret])
-
-    if cell_data is None or len(cell_data) == 0:
+    cell_parts = [
+        gt_partitions[k] for gv in [g, *control_groups] for tv in [t, pret] if (k := (gv, tv)) in gt_partitions
+    ]
+    if not cell_parts:
         return None, []
 
     available_controls = [gv for gv in control_groups if any((gv, tv) in gt_partitions for tv in [t, pret])]
 
-    return cell_data, available_controls
+    return tuple(cell_parts), available_controls
 
 
 def _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter):
