@@ -4,10 +4,11 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
-import polars as pl
 
+import polars as pl
 from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
+from moderndid.core.partition import build_gt_partitions, concat_partitions
 from moderndid.core.preprocess import (
     choose_knots_quantile as _choose_knots_quantile,
 )
@@ -265,6 +266,11 @@ def compute_pte(ptep, subset_fun, attgt_fun, n_jobs=1, backend="threads", **kwar
     n_groups = len(groups)
     n_times = len(time_periods)
     inffunc = np.full((n_units, n_groups * n_times), np.nan)
+
+    if "G" in data.columns and "period" in data.columns:
+        gt_partitions = build_gt_partitions(data, "G", "period")
+        all_group_vals = sorted(set(gv for (gv, _) in gt_partitions))
+        kwargs = {**kwargs, "_gt_partitions": gt_partitions, "_all_group_vals": all_group_vals}
 
     args_list = [
         (tp, g, data, base_period, anticipation, subset_fun, attgt_fun, ptep.gt_type, ptep, n_units, kwargs)
@@ -829,15 +835,29 @@ def _two_by_two_subset(
     else:  # universal
         base_period_val = main_base_period
 
-    if control_group == "notyettreated":
-        unit_mask = (pl.col("G") == g) | (pl.col("G") > tp) | (pl.col("G") == 0)
+    gt_partitions = kwargs.get("_gt_partitions")
+    all_group_vals = kwargs.get("_all_group_vals")
+
+    if gt_partitions is not None:
+        if control_group == "notyettreated":
+            group_vals = [gv for gv in all_group_vals if gv == g or gv > tp or gv == 0]
+        else:
+            group_vals = [
+                gv for gv in all_group_vals if gv == g or (isinstance(gv, float) and not np.isfinite(gv)) or gv == 0
+            ]
+        this_data = concat_partitions(gt_partitions, group_vals, [tp, base_period_val])
+        if this_data is None:
+            this_data = pl.DataFrame()
     else:
-        unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite() | (pl.col("G") == 0)
+        if control_group == "notyettreated":
+            unit_mask = (pl.col("G") == g) | (pl.col("G") > tp) | (pl.col("G") == 0)
+        else:
+            unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite() | (pl.col("G") == 0)
 
-    this_data = data.filter(unit_mask)
+        this_data = data.filter(unit_mask)
 
-    time_mask = (pl.col("period") == tp) | (pl.col("period") == base_period_val)
-    this_data = this_data.filter(time_mask)
+        time_mask = (pl.col("period") == tp) | (pl.col("period") == base_period_val)
+        this_data = this_data.filter(time_mask)
 
     this_data = this_data.with_columns(
         pl.when(pl.col("period") == tp).then(pl.lit("post")).otherwise(pl.lit("pre")).alias("name"),

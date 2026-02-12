@@ -704,7 +704,7 @@ def test_cont_did_missing_dname_raises():
 
 
 def test_cont_did_invalid_data_type_raises():
-    with pytest.raises(TypeError, match="Expected object implementing '__arrow_c_stream__'"):
+    with pytest.raises(TypeError, match="Cannot convert"):
         cont_did(
             data=[[1, 2, 3]],
             yname="Y",

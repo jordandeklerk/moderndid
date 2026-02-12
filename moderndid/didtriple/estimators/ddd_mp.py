@@ -6,11 +6,12 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
-import polars as pl
 from scipy import stats
 
+import polars as pl
 from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
+from moderndid.core.partition import build_gt_partitions, concat_partitions
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from .ddd_panel import ddd_panel
@@ -241,13 +242,15 @@ def ddd_mp(
     unique_ids = data[id_col].unique().to_numpy()
     id_to_idx = {uid: idx for idx, uid in enumerate(unique_ids)}
 
+    gt_partitions = build_gt_partitions(data, group_col, time_col)
+    all_group_vals = sorted(set(gv for (gv, _) in gt_partitions))
+
     args_list = []
     for g in glist:
         for t_idx in range(tlist_length):
             t = tlist[t_idx + tfac]
             args_list.append(
                 (
-                    data,
                     g,
                     t,
                     t_idx,
@@ -262,6 +265,8 @@ def ddd_mp(
                     covariate_cols,
                     est_method,
                     n_units,
+                    gt_partitions,
+                    all_group_vals,
                 )
             )
 
@@ -356,7 +361,6 @@ def ddd_mp(
 
 
 def _process_gt_cell(
-    data,
     g,
     t,
     t_idx,
@@ -371,6 +375,8 @@ def _process_gt_cell(
     covariate_cols,
     est_method,
     n_units,
+    gt_partitions,
+    all_group_vals,
 ):
     """Process a single (g,t) cell and return results.
 
@@ -395,7 +401,7 @@ def _process_gt_cell(
     if base_period == "universal" and pret == t:
         return (ATTgtResult(att=0.0, group=int(g), time=int(t), post=0), None, None)
 
-    cell_data, available_controls = _get_cell_data(data, g, t, pret, control_group, time_col, group_col)
+    cell_data, available_controls = _get_cell_data(gt_partitions, all_group_vals, g, t, pret, control_group, group_col)
 
     if cell_data is None or len(available_controls) == 0:
         return None
@@ -463,27 +469,25 @@ def _get_base_period(g, t_idx, tlist, base_period):
     return tlist[t_idx]
 
 
-def _get_cell_data(data, g, t, pret, control_group, time_col, group_col):
+def _get_cell_data(gt_partitions, all_group_vals, g, t, pret, control_group, group_col):
     """Get data for a specific (g,t) cell and available controls."""
     max_period = max(t, pret)
 
     if control_group == "nevertreated":
-        control_expr = (pl.col(group_col) == 0) | (~pl.col(group_col).is_finite())
+        control_groups = [gv for gv in all_group_vals if gv == 0 or (isinstance(gv, float) and not np.isfinite(gv))]
     else:
-        control_expr = (
-            (pl.col(group_col) == 0) | (~pl.col(group_col).is_finite()) | (pl.col(group_col) > max_period)
-        ) & (pl.col(group_col) != g)
+        control_groups = [
+            gv
+            for gv in all_group_vals
+            if (gv == 0 or (isinstance(gv, float) and not np.isfinite(gv)) or gv > max_period) and gv != g
+        ]
 
-    treat_expr = pl.col(group_col) == g
-    cell_expr = treat_expr | control_expr
-    time_expr = pl.col(time_col).is_in([t, pret])
-    cell_data = data.filter(cell_expr & time_expr)
+    cell_data = concat_partitions(gt_partitions, [g, *control_groups], [t, pret])
 
-    if len(cell_data) == 0:
+    if cell_data is None or len(cell_data) == 0:
         return None, []
 
-    control_data = cell_data.filter(~pl.col(group_col).is_in([g]))
-    available_controls = [c for c in control_data[group_col].unique().to_list() if c != g]
+    available_controls = [gv for gv in control_groups if any((gv, tv) in gt_partitions for tv in [t, pret])]
 
     return cell_data, available_controls
 

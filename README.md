@@ -80,7 +80,7 @@ uv pip install moderndid[parallel]
 ```python
 from dask.distributed import Client
 
-client = Client()  # connect to your cluster
+client = Client()  # Connect to your cluster
 
 result = did.att_gt(
     data=data,

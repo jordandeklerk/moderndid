@@ -215,7 +215,7 @@ def test_make_balanced_panel_already_balanced(panel_data_balanced):
 
 
 def test_make_balanced_panel_invalid_input():
-    with pytest.raises(TypeError, match="Expected object implementing '__arrow_c_stream__'"):
+    with pytest.raises(TypeError, match="Cannot convert"):
         _make_balanced_panel([1, 2, 3], "id", "time")
 
 

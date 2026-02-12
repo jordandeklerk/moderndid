@@ -4,11 +4,12 @@ import warnings
 from functools import partial
 
 import numpy as np
-import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
+import polars as pl
 from moderndid.core.dataframe import to_polars
+from moderndid.core.partition import concat_partitions
 from moderndid.core.preprocess import (
     get_first_difference as _get_first_difference,
 )
@@ -582,14 +583,26 @@ def cont_two_by_two_subset(
     else:
         base_period_val = main_base_period
 
-    if control_group == "notyettreated":
-        unit_mask = (pl.col("G") == g) | (pl.col("G") > tp)
-    else:
-        unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite()
+    gt_partitions = kwargs.get("_gt_partitions")
+    all_group_vals = kwargs.get("_all_group_vals")
 
-    subset_data = data.filter(unit_mask)
-    time_mask = (pl.col("period") == tp) | (pl.col("period") == base_period_val)
-    subset_data = subset_data.filter(time_mask)
+    if gt_partitions is not None:
+        if control_group == "notyettreated":
+            group_vals = [gv for gv in all_group_vals if gv == g or gv > tp]
+        else:
+            group_vals = [gv for gv in all_group_vals if gv == g or (isinstance(gv, float) and not np.isfinite(gv))]
+        subset_data = concat_partitions(gt_partitions, group_vals, [tp, base_period_val])
+        if subset_data is None:
+            subset_data = pl.DataFrame()
+    else:
+        if control_group == "notyettreated":
+            unit_mask = (pl.col("G") == g) | (pl.col("G") > tp)
+        else:
+            unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite()
+
+        subset_data = data.filter(unit_mask)
+        time_mask = (pl.col("period") == tp) | (pl.col("period") == base_period_val)
+        subset_data = subset_data.filter(time_mask)
     subset_data = subset_data.with_columns(
         pl.when(pl.col("period") == tp).then(pl.lit("post")).otherwise(pl.lit("pre")).alias("name")
     )
