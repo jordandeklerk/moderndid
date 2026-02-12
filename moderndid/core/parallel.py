@@ -92,59 +92,70 @@ def _parallel_map_dask(func, args_list):
 
 
 def _submit_with_scattered_args(client, func, args_list):
-    """Scatter large objects and submit tasks via client.submit.
+    """Scatter large objects and submit tasks via client.submit in batches.
 
-    ``client.submit`` only resolves Futures that are top-level positional
-    arguments.  Futures nested inside tuples or lists are serialized into the
-    task graph verbatim, which defeats the purpose of scattering.
+    DataFrames and arrays are scattered to workers with identity-based
+    deduplication, then swapped for their Future references inside each
+    task's argument tuple.  ``client.submit`` resolves nested Futures
+    automatically (via ``parse_input`` in Dask's task spec layer), so
+    containers like ``cell_parts = (future1, future2)`` are transparently
+    materialized on the worker.
 
-    To handle arguments like ``cell_parts`` (a tuple of DataFrames), this
-    function encodes each task's argument structure as a lightweight
-    *template* and passes every DataFrame as a separate top-level Future.
-    A thin wrapper on the worker reconstructs the original argument tuple
-    from the template before calling *func*.
+    Tasks are processed in batches so that only a subset of partition data
+    lives on the cluster at any given time, preventing workers from exceeding
+    their memory budgets on very large datasets.
     """
-    to_scatter: dict[int, pl.DataFrame | np.ndarray] = {}
+    has_large_objs = False
     for args in args_list:
         for arg in args:
-            _collect_scatterable(arg, to_scatter)
+            if isinstance(arg, (pl.DataFrame, np.ndarray)):
+                has_large_objs = True
+                break
+            if isinstance(arg, (tuple, list)):
+                for item in arg:
+                    if isinstance(item, (pl.DataFrame, np.ndarray)):
+                        has_large_objs = True
+                        break
+            if has_large_objs:
+                break
+        if has_large_objs:
+            break
 
-    if not to_scatter:
+    if not has_large_objs:
         import dask
 
         delayed_results = [dask.delayed(func)(*args) for args in args_list]
         return list(dask.compute(*delayed_results))
 
-    oids = list(to_scatter.keys())
-    objs = [to_scatter[oid] for oid in oids]
-    futures = client.scatter(objs, hash=False)
-    id_to_future = dict(zip(oids, futures, strict=True))
+    n_workers = max(len(client.scheduler_info()["workers"]), 1)
+    batch_size = n_workers * 2
 
-    task_futures = []
-    for args in args_list:
-        df_futures: list = []
-        template: list = []
-        for arg in args:
-            _encode_arg(arg, id_to_future, df_futures, template)
-        task_futures.append(client.submit(_apply_template, func, template, *df_futures, pure=False))
+    all_results: list = []
 
-    return client.gather(task_futures)
+    for batch_start in range(0, len(args_list), batch_size):
+        batch = args_list[batch_start : batch_start + batch_size]
 
+        to_scatter: dict[int, pl.DataFrame | np.ndarray] = {}
+        for args in batch:
+            for arg in args:
+                _collect_scatterable(arg, to_scatter)
 
-def _apply_template(func, template, *resolved):
-    """Reconstruct the original args from *template* + resolved DataFrames."""
-    args = []
-    for entry in template:
-        kind = entry[0]
-        if kind == "v":
-            args.append(entry[1])
-        elif kind == "f":
-            args.append(resolved[entry[1]])
-        elif kind == "t":
-            args.append(tuple(resolved[i] if is_f else val for is_f, i, val in entry[1]))
-        elif kind == "l":
-            args.append([resolved[i] if is_f else val for is_f, i, val in entry[1]])
-    return func(*args)
+        oid_list = list(to_scatter.keys())
+        obj_list = [to_scatter[oid] for oid in oid_list]
+        scattered = client.scatter(obj_list, hash=False)
+        id_to_future = dict(zip(oid_list, scattered, strict=True))
+
+        task_futures = []
+        for args in batch:
+            resolved_args = tuple(_replace_with_futures(arg, id_to_future) for arg in args)
+            task_futures.append(client.submit(func, *resolved_args, pure=False))
+
+        all_results.extend(client.gather(task_futures))
+
+        del id_to_future, scattered, to_scatter
+        client.cancel(task_futures)
+
+    return all_results
 
 
 def _scatter_args(args_list):
@@ -201,26 +212,13 @@ def _collect_scatterable(obj, to_scatter):
             _collect_scatterable(item, to_scatter)
 
 
-def _encode_arg(arg, id_to_future, df_futures, template):
-    """Encode a single argument into *template* and append Futures to *df_futures*."""
-    oid = id(arg)
+def _replace_with_futures(obj, id_to_future):
+    """Recursively replace DataFrames/arrays with their scattered Futures."""
+    oid = id(obj)
     if oid in id_to_future:
-        template.append(("f", len(df_futures)))
-        df_futures.append(id_to_future[oid])
-    elif isinstance(arg, (tuple, list)):
-        items = []
-        has_futures = False
-        for item in arg:
-            item_oid = id(item)
-            if item_oid in id_to_future:
-                items.append((True, len(df_futures), None))
-                df_futures.append(id_to_future[item_oid])
-                has_futures = True
-            else:
-                items.append((False, 0, item))
-        if has_futures:
-            template.append(("t" if isinstance(arg, tuple) else "l", items))
-        else:
-            template.append(("v", arg))
-    else:
-        template.append(("v", arg))
+        return id_to_future[oid]
+    if isinstance(obj, tuple):
+        return tuple(_replace_with_futures(item, id_to_future) for item in obj)
+    if isinstance(obj, list):
+        return [_replace_with_futures(item, id_to_future) for item in obj]
+    return obj
