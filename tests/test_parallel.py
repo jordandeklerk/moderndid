@@ -616,6 +616,7 @@ def test_scattered_futures_persist_across_batches():
 
 @requires_distributed
 def test_scattered_futures_cleaned_on_exception():
+    """Scattered data futures are cancelled even when a task raises."""
     import polars as pl
 
     from moderndid.core.parallel import _submit_with_scattered_args
@@ -649,6 +650,44 @@ def test_scattered_futures_cleaned_on_exception():
         not hasattr(f, "key") or "row_count" not in str(getattr(f, "key", "")) for f in cancelled_futures
     )
     assert has_scattered_cancel
+
+
+@requires_distributed
+def test_scattered_futures_released_after_last_use():
+    """Scattered data for early-only tasks is released before later tasks run."""
+    import polars as pl
+
+    from moderndid.core.parallel import _submit_with_scattered_args
+
+    df_early = pl.DataFrame({"x": list(range(100))})
+    df_late = pl.DataFrame({"x": list(range(200))})
+
+    def _row_count(df):
+        return df.shape[0]
+
+    # With 1 worker → max_inflight=2.
+    # Initial window (tasks 0-1): scatter df_early.
+    # Backfill task 2: scatter df_late (df_early released when ref hits 0).
+    # Backfill task 3: df_late already scattered.
+    args_list = [(df_early,), (df_early,), (df_late,), (df_late,)]
+
+    with Client(n_workers=1, threads_per_worker=1, dashboard_address=None) as client:
+        original_scatter = client.scatter
+        scatter_object_counts: list[int] = []
+
+        def _tracking_scatter(objs, **kwargs):
+            scatter_object_counts.append(len(objs))
+            return original_scatter(objs, **kwargs)
+
+        client.scatter = _tracking_scatter
+
+        result = _submit_with_scattered_args(client, _row_count, args_list)
+
+    assert result == [100, 100, 200, 200]
+    # Each unique DataFrame scattered exactly once (total 2 objects),
+    # in separate calls (incremental, not all upfront).
+    assert sum(scatter_object_counts) == 2
+    assert len(scatter_object_counts) == 2
 
 
 @requires_distributed

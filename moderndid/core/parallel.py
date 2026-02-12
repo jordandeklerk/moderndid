@@ -92,7 +92,7 @@ def _parallel_map_dask(func, args_list):
 
 
 def _submit_with_scattered_args(client, func, args_list):
-    """Scatter large objects and submit tasks via client.submit in batches.
+    """Scatter large objects and submit tasks via ``client.submit``.
 
     DataFrames and arrays are scattered to workers with identity-based
     deduplication, then swapped for their Future references inside each
@@ -101,11 +101,15 @@ def _submit_with_scattered_args(client, func, args_list):
     containers like ``cell_parts = (future1, future2)`` are transparently
     materialized on the worker.
 
-    Tasks are processed in batches so that only a bounded number of
-    concurrent tasks are in flight at once.  Scattered data futures are
-    persisted across batches so that partitions shared by multiple tasks
-    are transferred to workers exactly once, avoiding redundant scatter
-    traffic that can overwhelm the event loop on very large datasets.
+    Following Dask's recommended ``as_completed`` pattern for
+    memory-constrained workloads, up to ``max_inflight`` tasks are kept
+    in flight at once.  As each task completes, its result is collected
+    and the next task is submitted.  Scattered data futures persist
+    across tasks so that partitions shared by multiple tasks are
+    transferred to workers exactly once.  Reference counting tracks how
+    many remaining tasks need each scattered object; once the last task
+    using an object completes, its future is cancelled immediately so
+    workers can reclaim memory.
     """
     has_large_objs = False
     for args in args_list:
@@ -129,37 +133,83 @@ def _submit_with_scattered_args(client, func, args_list):
         delayed_results = [dask.delayed(func)(*args) for args in args_list]
         return list(dask.compute(*delayed_results))
 
-    n_workers = max(len(client.scheduler_info()["workers"]), 1)
-    batch_size = n_workers * 2
+    from distributed import as_completed as _as_completed
 
-    all_results: list = []
+    n_workers = max(len(client.scheduler_info()["workers"]), 1)
+    max_inflight = n_workers * 2
+
+    # Pre-compute scatterable object IDs per task and reference counts so
+    # scattered futures can be released as soon as all tasks referencing
+    # them have completed, keeping worker memory bounded.
+    task_obj_ids: list[set[int]] = []
+    all_scatterable: dict[int, pl.DataFrame | np.ndarray] = {}
+    ref_counts: dict[int, int] = {}
+    for args in args_list:
+        per_task: dict[int, pl.DataFrame | np.ndarray] = {}
+        for arg in args:
+            _collect_scatterable(arg, per_task)
+        task_obj_ids.append(set(per_task.keys()))
+        all_scatterable.update(per_task)
+        for oid in per_task:
+            ref_counts[oid] = ref_counts.get(oid, 0) + 1
+
+    all_results = [None] * len(args_list)
     id_to_future: dict[int, object] = {}
+    future_to_idx: dict[object, int] = {}
+
+    def _scatter_new(task_indices):
+        """Batch-scatter objects needed by the given tasks not yet on cluster."""
+        new_oids: list[int] = []
+        seen: set[int] = set()
+        for i in task_indices:
+            for oid in task_obj_ids[i]:
+                if oid not in id_to_future and oid not in seen:
+                    new_oids.append(oid)
+                    seen.add(oid)
+        if new_oids:
+            objs = [all_scatterable[oid] for oid in new_oids]
+            scattered = client.scatter(objs, hash=False)
+            id_to_future.update(zip(new_oids, scattered, strict=True))
+
+    def _submit_task(task_idx):
+        """Submit a single task with its args resolved to scattered futures."""
+        args = args_list[task_idx]
+        resolved = tuple(_replace_with_futures(arg, id_to_future) for arg in args)
+        fut = client.submit(func, *resolved, pure=False)
+        future_to_idx[fut] = task_idx
+        return fut
 
     try:
-        for batch_start in range(0, len(args_list), batch_size):
-            batch = args_list[batch_start : batch_start + batch_size]
+        # Scatter data and submit the initial window of tasks.
+        initial = min(max_inflight, len(args_list))
+        _scatter_new(range(initial))
+        for i in range(initial):
+            _submit_task(i)
+        next_task = initial
 
-            to_scatter: dict[int, pl.DataFrame | np.ndarray] = {}
-            for args in batch:
-                for arg in args:
-                    _collect_scatterable(arg, to_scatter)
+        # Process results as they arrive, backfilling new tasks.
+        ac = _as_completed(list(future_to_idx.keys()))
+        for completed in ac:
+            idx = future_to_idx.pop(completed)
+            all_results[idx] = completed.result()
 
-            new_oids = [oid for oid in to_scatter if oid not in id_to_future]
-            if new_oids:
-                new_objs = [to_scatter[oid] for oid in new_oids]
-                scattered = client.scatter(new_objs, hash=False)
-                id_to_future.update(zip(new_oids, scattered, strict=True))
+            # Release scattered data no longer needed by remaining tasks.
+            for oid in task_obj_ids[idx]:
+                ref_counts[oid] -= 1
+                if ref_counts[oid] == 0 and oid in id_to_future:
+                    client.cancel([id_to_future.pop(oid)])
 
-            task_futures = []
-            for args in batch:
-                resolved_args = tuple(_replace_with_futures(arg, id_to_future) for arg in args)
-                task_futures.append(client.submit(func, *resolved_args, pure=False))
-
-            all_results.extend(client.gather(task_futures))
-            client.cancel(task_futures)
+            # Backfill: scatter any new data and submit the next task.
+            if next_task < len(args_list):
+                _scatter_new([next_task])
+                fut = _submit_task(next_task)
+                ac.add(fut)
+                next_task += 1
     finally:
         if id_to_future:
             client.cancel(list(id_to_future.values()))
+        if future_to_idx:
+            client.cancel(list(future_to_idx.keys()))
 
     return all_results
 
