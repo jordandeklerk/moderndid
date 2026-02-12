@@ -16,7 +16,7 @@ Future = distributed.Future
 from moderndid import att_gt, load_mpdta, simulate_cont_did_data
 from moderndid.core.parallel import (
     _parallel_map_dask,
-    _scatter_shared_args,
+    _scatter_args,
     dask_available,
     parallel_map,
 )
@@ -417,20 +417,20 @@ def test_att_gt_dask_dispatches_through_scheduler():
     ids=["empty", "single_task"],
 )
 def test_scatter_noop_short_args(args_list):
-    result = _scatter_shared_args(args_list)
+    result = _scatter_args(args_list)
     assert result is args_list
 
 
 def test_scatter_noop_no_distributed():
     shared = [1, 2, 3]
     args_list = [(shared, 0), (shared, 1), (shared, 2)]
-    result = _scatter_shared_args(args_list)
+    result = _scatter_args(args_list)
     assert result is args_list
 
 
 def test_scatter_noop_no_shared_objects():
     args_list = [([1], "a"), ([2], "b"), ([3], "c")]
-    result = _scatter_shared_args(args_list)
+    result = _scatter_args(args_list)
     assert result is args_list
 
 
@@ -448,7 +448,7 @@ def test_scatter_noop_when_scheduler_overridden(scheduler_override):
     args_list = [(shared, i) for i in range(5)]
 
     with dask.config.set(scheduler=scheduler_override):
-        result = _scatter_shared_args(args_list)
+        result = _scatter_args(args_list)
     assert result is args_list
 
 
@@ -490,7 +490,7 @@ def test_scatter_replaces_shared_args_with_futures():
     args_list = [(shared_data, 0), (shared_data, 1), (shared_data, 2)]
 
     with Client(n_workers=1, threads_per_worker=1, dashboard_address=None):
-        result = _scatter_shared_args(args_list)
+        result = _scatter_args(args_list)
 
     assert all(isinstance(args[0], Future) for args in result)
     assert result[0][0] is result[1][0] is result[2][0]
@@ -503,7 +503,7 @@ def test_scatter_leaves_unique_args_as_values():
     args_list = [(shared_data, 0), (shared_data, 1)]
 
     with Client(n_workers=1, threads_per_worker=1, dashboard_address=None):
-        result = _scatter_shared_args(args_list)
+        result = _scatter_args(args_list)
 
     assert isinstance(result[0][0], Future)
     assert not isinstance(result[0][1], Future)
@@ -517,7 +517,7 @@ def test_scatter_multiple_shared_objects():
     args_list = [(data_a, data_b, 0), (data_a, data_b, 1), (data_a, data_b, 2)]
 
     with Client(n_workers=1, threads_per_worker=1, dashboard_address=None):
-        result = _scatter_shared_args(args_list)
+        result = _scatter_args(args_list)
 
     assert all(isinstance(args[0], Future) for args in result)
     assert all(isinstance(args[1], Future) for args in result)
@@ -529,9 +529,23 @@ def test_scatter_noop_with_no_shared_objects_and_client():
     args_list = [([1], "a"), ([2], "b"), ([3], "c")]
 
     with Client(n_workers=1, threads_per_worker=1, dashboard_address=None):
-        result = _scatter_shared_args(args_list)
+        result = _scatter_args(args_list)
 
     assert result is args_list
+
+
+@requires_distributed
+def test_scatter_unique_per_task_arrays():
+    arr_a = np.arange(100)
+    arr_b = np.arange(200)
+    arr_c = np.arange(300)
+    args_list = [(arr_a, 0), (arr_b, 1), (arr_c, 2)]
+
+    with Client(n_workers=1, threads_per_worker=1, dashboard_address=None):
+        result = _scatter_args(args_list)
+
+    assert all(isinstance(args[0], Future) for args in result)
+    assert all(not isinstance(args[1], Future) for args in result)
 
 
 @requires_distributed

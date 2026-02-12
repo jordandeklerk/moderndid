@@ -7,6 +7,9 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 
+import numpy as np
+import polars as pl
+
 
 @lru_cache
 def dask_available() -> bool:
@@ -65,53 +68,47 @@ def _parallel_map_dask(func, args_list):
         raise ImportError("Dask is required for backend='dask'. Install it with: uv pip install moderndid[parallel]")
     import dask
 
-    args_list = _scatter_shared_args(args_list)
+    args_list = _scatter_args(args_list)
     delayed_results = [dask.delayed(func)(*args) for args in args_list]
     return list(dask.compute(*delayed_results))
 
 
-def _scatter_shared_args(args_list):
-    """Pre-scatter objects shared across tasks to avoid per-task serialization.
+def _scatter_args(args_list):
+    """Scatter large objects to workers to keep the task graph lightweight.
 
-    When a distributed client is active, objects that appear in multiple task
-    argument tuples (by identity) are scattered to workers once. Each delayed
-    task then receives a lightweight Future reference instead of the full object,
-    preventing the scheduler from serializing large datasets repeatedly.
+    When a distributed client is active, DataFrames and arrays are sent
+    directly to workers via ``client.scatter()``. Each delayed task then
+    receives a lightweight Future reference instead of the full object,
+    preventing the scheduler from serializing large datasets into the task
+    graph. Objects that appear in multiple tasks (by identity) are scattered
+    only once.
 
     Falls back to a no-op when no distributed client is available (e.g. when
     using the synchronous or threaded Dask schedulers).
     """
-    if len(args_list) <= 1:
+    if not args_list:
         return args_list
 
     try:
-        import dask
-
-        current = dask.config.get("scheduler", default=None)
-        if current is not None and current not in ("distributed", "dask.distributed"):
-            return args_list
-
         from distributed import get_client
 
         client = get_client()
     except (ImportError, ValueError):
         return args_list
 
-    ref_counts = {}
+    to_scatter = {}
     for args in args_list:
         for arg in args:
             oid = id(arg)
-            if oid not in ref_counts:
-                ref_counts[oid] = [arg, 0]
-            ref_counts[oid][1] += 1
+            if oid not in to_scatter and isinstance(arg, (pl.DataFrame, np.ndarray)):
+                to_scatter[oid] = arg
 
-    shared = {oid: info[0] for oid, info in ref_counts.items() if info[1] > 1}
-    if not shared:
+    if not to_scatter:
         return args_list
 
-    shared_oids = list(shared.keys())
-    shared_objs = [shared[oid] for oid in shared_oids]
-    futures = client.scatter(shared_objs)
-    id_to_future = dict(zip(shared_oids, futures, strict=True))
+    oids = list(to_scatter.keys())
+    objs = [to_scatter[oid] for oid in oids]
+    futures = client.scatter(objs, hash=False)
+    id_to_future = dict(zip(oids, futures, strict=True))
 
     return [tuple(id_to_future.get(id(arg), arg) for arg in args) for args in args_list]
