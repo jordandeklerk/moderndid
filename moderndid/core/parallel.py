@@ -101,9 +101,11 @@ def _submit_with_scattered_args(client, func, args_list):
     containers like ``cell_parts = (future1, future2)`` are transparently
     materialized on the worker.
 
-    Tasks are processed in batches so that only a subset of partition data
-    lives on the cluster at any given time, preventing workers from exceeding
-    their memory budgets on very large datasets.
+    Tasks are processed in batches so that only a bounded number of
+    concurrent tasks are in flight at once.  Scattered data futures are
+    persisted across batches so that partitions shared by multiple tasks
+    are transferred to workers exactly once, avoiding redundant scatter
+    traffic that can overwhelm the event loop on very large datasets.
     """
     has_large_objs = False
     for args in args_list:
@@ -131,29 +133,33 @@ def _submit_with_scattered_args(client, func, args_list):
     batch_size = n_workers * 2
 
     all_results: list = []
+    id_to_future: dict[int, object] = {}
 
-    for batch_start in range(0, len(args_list), batch_size):
-        batch = args_list[batch_start : batch_start + batch_size]
+    try:
+        for batch_start in range(0, len(args_list), batch_size):
+            batch = args_list[batch_start : batch_start + batch_size]
 
-        to_scatter: dict[int, pl.DataFrame | np.ndarray] = {}
-        for args in batch:
-            for arg in args:
-                _collect_scatterable(arg, to_scatter)
+            to_scatter: dict[int, pl.DataFrame | np.ndarray] = {}
+            for args in batch:
+                for arg in args:
+                    _collect_scatterable(arg, to_scatter)
 
-        oid_list = list(to_scatter.keys())
-        obj_list = [to_scatter[oid] for oid in oid_list]
-        scattered = client.scatter(obj_list, hash=False)
-        id_to_future = dict(zip(oid_list, scattered, strict=True))
+            new_oids = [oid for oid in to_scatter if oid not in id_to_future]
+            if new_oids:
+                new_objs = [to_scatter[oid] for oid in new_oids]
+                scattered = client.scatter(new_objs, hash=False)
+                id_to_future.update(zip(new_oids, scattered, strict=True))
 
-        task_futures = []
-        for args in batch:
-            resolved_args = tuple(_replace_with_futures(arg, id_to_future) for arg in args)
-            task_futures.append(client.submit(func, *resolved_args, pure=False))
+            task_futures = []
+            for args in batch:
+                resolved_args = tuple(_replace_with_futures(arg, id_to_future) for arg in args)
+                task_futures.append(client.submit(func, *resolved_args, pure=False))
 
-        all_results.extend(client.gather(task_futures))
-
-        del id_to_future, scattered, to_scatter
-        client.cancel(task_futures)
+            all_results.extend(client.gather(task_futures))
+            client.cancel(task_futures)
+    finally:
+        if id_to_future:
+            client.cancel(list(id_to_future.values()))
 
     return all_results
 

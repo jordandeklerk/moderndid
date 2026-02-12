@@ -584,6 +584,74 @@ def test_parallel_map_dask_distributed_matches_sequential():
 
 
 @requires_distributed
+def test_scattered_futures_persist_across_batches():
+    import polars as pl
+
+    from moderndid.core.parallel import _submit_with_scattered_args
+
+    shared_df = pl.DataFrame({"x": list(range(100))})
+
+    def _row_count_plus(df, offset):
+        return df.shape[0] + offset
+
+    args_list = [(shared_df, i) for i in range(6)]
+
+    with Client(n_workers=1, threads_per_worker=1, dashboard_address=None) as client:
+        original_scatter = client.scatter
+
+        scatter_call_count = 0
+
+        def _counting_scatter(*args, **kwargs):
+            nonlocal scatter_call_count
+            scatter_call_count += 1
+            return original_scatter(*args, **kwargs)
+
+        client.scatter = _counting_scatter
+
+        result = _submit_with_scattered_args(client, _row_count_plus, args_list)
+
+    assert result == [100 + i for i in range(6)]
+    assert scatter_call_count == 1
+
+
+@requires_distributed
+def test_scattered_futures_cleaned_on_exception():
+    import polars as pl
+
+    from moderndid.core.parallel import _submit_with_scattered_args
+
+    shared_df = pl.DataFrame({"x": list(range(100))})
+
+    def _fail_on_three(df, offset):
+        if offset == 3:
+            raise ValueError("boom")
+        return df.shape[0] + offset
+
+    args_list = [(shared_df, i) for i in range(6)]
+
+    with Client(n_workers=1, threads_per_worker=1, dashboard_address=None) as client:
+        original_cancel = client.cancel
+        cancelled_futures = []
+
+        def _tracking_cancel(futures, **kwargs):
+            if isinstance(futures, list):
+                cancelled_futures.extend(futures)
+            else:
+                cancelled_futures.append(futures)
+            return original_cancel(futures, **kwargs)
+
+        client.cancel = _tracking_cancel
+
+        with pytest.raises(ValueError, match="boom"):
+            _submit_with_scattered_args(client, _fail_on_three, args_list)
+
+    has_scattered_cancel = any(
+        not hasattr(f, "key") or "row_count" not in str(getattr(f, "key", "")) for f in cancelled_futures
+    )
+    assert has_scattered_cancel
+
+
+@requires_distributed
 def test_att_gt_with_distributed_client():
     data = preprocess_did(
         load_mpdta(),
