@@ -60,6 +60,7 @@ def ddd_mp_dask(
     all_group_vals = meta["all_group_vals"]
     n_units = int(meta["n_units"])
     unique_ids = meta["unique_ids"]
+    sorted_ids = np.sort(unique_ids)
 
     n_periods = len(tlist)
     n_cohorts = len(glist)
@@ -140,36 +141,49 @@ def ddd_mp_dask(
         cleanup_persisted(client, persisted)
         raise ValueError("No valid (g,t) cells found.")
 
-    worker_results = execute_cell_tasks(client, persisted, group_to_parts, cell_specs, _process_gt_cell_dask)
+    def _handle_result(local_idx, result):
+        """Stream worker payloads into pre-allocated arrays to cap driver memory."""
+        global_idx = cell_indices[local_idx]
+        if result is None:
+            all_results[global_idx] = None
+            return None
 
-    for i, result in enumerate(worker_results):
-        all_results[cell_indices[i]] = result
+        att_entry, inf_data, se_val = result
+        if att_entry is None:
+            all_results[global_idx] = None
+            return None
 
-    attgt_list = []
-    deferred_updates = []
-    for counter, result in enumerate(all_results):
-        if result is not None:
-            att_entry, inf_data, se_val = result
-            if att_entry is not None:
-                attgt_list.append(att_entry)
-                deferred_updates.append((counter, inf_data, se_val))
+        if inf_data is not None:
+            inf_func_scaled, cell_id_list = inf_data
+            _searchsorted_update(inf_func_mat, inf_func_scaled, cell_id_list, sorted_ids, global_idx)
+
+        if se_val is not None:
+            se_array[global_idx] = se_val
+
+        all_results[global_idx] = (att_entry, None, se_val)
+        return None
+
+    execute_cell_tasks(
+        client,
+        persisted,
+        group_to_parts,
+        cell_specs,
+        _process_gt_cell_dask,
+        result_handler=_handle_result,
+    )
+
+    valid_indices = [i for i, result in enumerate(all_results) if result is not None and result[0] is not None]
+    attgt_list = [all_results[i][0] for i in valid_indices]
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
 
-    sorted_ids = np.sort(unique_ids)
-    for counter, inf_data, se_val in deferred_updates:
-        if inf_data is not None:
-            inf_func_scaled, cell_id_list = inf_data
-            _searchsorted_update(inf_func_mat, inf_func_scaled, cell_id_list, sorted_ids, counter)
-        if se_val is not None:
-            se_array[counter] = se_val
-
     att_array = np.array([r.att for r in attgt_list])
     groups_array = np.array([r.group for r in attgt_list])
     times_array = np.array([r.time for r in attgt_list])
+    se_override = se_array[valid_indices]
 
-    inf_func_trimmed = inf_func_mat[:, : len(attgt_list)]
+    inf_func_trimmed = inf_func_mat[:, valid_indices]
 
     if boot:
         boot_result = mboot_ddd(
@@ -180,15 +194,15 @@ def ddd_mp_dask(
             random_state=random_state,
         )
         se_computed = boot_result.se.copy()
-        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
-        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
+        valid_se_mask = ~np.isnan(se_override[: len(se_computed)])
+        se_computed[valid_se_mask] = se_override[: len(se_computed)][valid_se_mask]
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
     else:
         V = inf_func_trimmed.T @ inf_func_trimmed / n_units
         se_computed = np.sqrt(np.diag(V) / n_units)
-        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
-        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
+        valid_se_mask = ~np.isnan(se_override[: len(se_computed)])
+        se_computed[valid_se_mask] = se_override[: len(se_computed)][valid_se_mask]
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = stats.norm.ppf(1 - alpha / 2)
 

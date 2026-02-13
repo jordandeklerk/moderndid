@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 
 
@@ -149,7 +151,7 @@ def _partition_unique_groups(pdf, group_col):
     return {float(g) for g in pdf[group_col].unique()}
 
 
-def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, worker_fn):
+def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, worker_fn, result_handler=None):
     """Submit cell tasks with concurrency control, gather results, and clean up.
 
     Pins exactly one cell to each worker at a time using a sliding-window
@@ -172,6 +174,11 @@ def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, w
     worker_fn : callable
         Worker function signature:
         ``worker_fn(*partition_dfs, **cell_kwargs)``.
+    result_handler : callable or None, default None
+        Optional callback invoked as ``result_handler(cell_index, result)``
+        immediately when each task finishes.  Use this to process large
+        payloads in a streaming fashion and avoid accumulating all results in
+        driver memory.
 
     Returns
     -------
@@ -184,6 +191,18 @@ def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, w
 
     partition_futures = _get_partition_futures(persisted_ddf)
     worker_addrs = list(client.scheduler_info()["workers"].keys())
+    n_workers = len(worker_addrs)
+
+    max_active = n_workers
+    raw_max = os.getenv("MODERNDID_DASK_MAX_ACTIVE_CELLS")
+    if raw_max is not None:
+        try:
+            parsed = int(raw_max)
+            if parsed > 0:
+                max_active = min(parsed, n_workers)
+        except ValueError:
+            # Ignore invalid values and keep default behavior.
+            pass
 
     n_tasks = len(cell_specs)
     results = [None] * n_tasks
@@ -216,8 +235,8 @@ def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, w
         # future -> (cell_idx, worker_addr)
         active = {}
 
-        # Submit initial batch: 1 cell per worker
-        for worker in worker_addrs:
+        # Submit initial batch: up to max_active cells.
+        for worker in worker_addrs[:max_active]:
             if not remaining:
                 break
             idx = remaining.popleft()
@@ -228,7 +247,13 @@ def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, w
         ac = as_completed(active)
         for completed in ac:
             idx, worker = active.pop(completed)
-            results[idx] = completed.result()
+            result = completed.result()
+            if result_handler is not None:
+                handled = result_handler(idx, result)
+                if handled is not None:
+                    results[idx] = handled
+            else:
+                results[idx] = result
 
             if remaining:
                 next_idx = remaining.popleft()
