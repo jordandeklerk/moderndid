@@ -48,19 +48,17 @@ def ddd_mp_dask(
 
     ddf = client.persist(ddf)
 
-    meta = compute_dask_metadata(ddf, group_col, time_col, id_col, need_unique_ids=True)
+    meta = compute_dask_metadata(ddf, group_col, time_col, id_col, need_unique_ids=False)
     tlist = meta["tlist"]
     glist = meta["glist"]
     all_group_vals = meta["all_group_vals"]
     n_units = meta["n_units"]
-    unique_ids = meta["unique_ids"]
 
     n_periods = len(tlist)
     n_cohorts = len(glist)
     tfac = 0 if base_period == "universal" else 1
     tlist_length = n_periods - tfac
 
-    sorted_ids = np.sort(unique_ids)
     inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
@@ -130,6 +128,8 @@ def ddd_mp_dask(
             )
             cell_indices.append(idx)
             idx += 1
+
+    sorted_ids = np.sort(ddf[id_col].unique().compute().to_numpy())
 
     if not cell_specs:
         cleanup_persisted(client, persisted)

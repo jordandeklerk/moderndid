@@ -38,12 +38,10 @@ def compute_att_gt_dask(
 
     ddf = client.persist(ddf)
 
-    meta = compute_dask_metadata(ddf, gname, tname, idname, need_unique_ids=True)
+    meta = compute_dask_metadata(ddf, gname, tname, idname, need_unique_ids=False)
     tlist = meta["tlist"]
     glist = meta["glist"]
     n_units = meta["n_units"]
-    unique_ids = meta["unique_ids"]
-    sorted_ids = np.sort(unique_ids)
 
     persisted, group_to_parts, sentinel = persist_by_group(client, ddf, gname, meta["all_group_vals"])
 
@@ -135,6 +133,8 @@ def compute_att_gt_dask(
                     "skip": False,
                 }
             )
+
+    sorted_ids = np.sort(ddf[idname].unique().compute().to_numpy())
 
     if cell_specs:
         worker_results = execute_cell_tasks(client, persisted, group_to_parts, cell_specs, _process_gt_cell_did_dask)

@@ -68,14 +68,12 @@ def pte_dask(
 
     ddf = ddf.assign(**{gname: ddf[gname].where(ddf[gname] != 0, np.inf)})
 
-    meta = compute_dask_metadata(ddf, gname, tname, idname, need_unique_ids=True)
+    meta = compute_dask_metadata(ddf, gname, tname, idname, need_unique_ids=False)
     tlist = meta["tlist"]
     glist = meta["glist"]
     all_group_vals = meta["all_group_vals"]
     n_units = meta["n_units"]
-    unique_ids = meta["unique_ids"]
     sorted_tlist = np.sort(tlist)
-    sorted_ids = np.sort(unique_ids)
 
     id_group_df = ddf.groupby(idname)[gname].first().compute()
 
@@ -180,6 +178,8 @@ def pte_dask(
                 }
             )
             cell_meta.append({"skip": False, "g": g, "tp": tp})
+
+    sorted_ids = np.sort(ddf[idname].unique().compute().to_numpy())
 
     if cell_specs:
         worker_results = execute_cell_tasks(client, persisted, group_to_parts, cell_specs, _process_pte_cell_dask)
