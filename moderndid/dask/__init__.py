@@ -1,17 +1,17 @@
 """Dask DataFrame distributed backend for moderndid."""
 
 from moderndid.dask.backend import (
+    cleanup_persisted,
     compute_dask_metadata,
-    gather_and_cleanup,
+    execute_cell_tasks,
     is_dask_dataframe,
     persist_by_group,
-    submit_cell_tasks,
 )
 
 __all__ = [
+    "cleanup_persisted",
     "compute_dask_metadata",
-    "gather_and_cleanup",
+    "execute_cell_tasks",
     "is_dask_dataframe",
     "persist_by_group",
-    "submit_cell_tasks",
 ]

@@ -7,7 +7,7 @@ import pandas as pd
 import polars as pl
 
 
-def combine_partitions(*partition_dfs, group_col, sentinel, required_groups=None):
+def combine_partitions(*partition_dfs, group_col, sentinel, required_groups=None, time_col=None, times=None):
     """Concatenate partition Pandas DataFrames, restore inf sentinel, convert to Polars.
 
     Parameters
@@ -24,6 +24,11 @@ def combine_partitions(*partition_dfs, group_col, sentinel, required_groups=None
         Group values to keep (using the original values, i.e. ``inf`` not
         sentinel).  Partitions from ``set_index`` may contain multiple
         groups; this filters to only the groups needed for this cell.
+    time_col : str or None
+        Time column name for early filtering.
+    times : list or None
+        Time values to keep.  When provided with *time_col*, each partition
+        is filtered before concatenation to reduce peak memory.
 
     Returns
     -------
@@ -31,9 +36,19 @@ def combine_partitions(*partition_dfs, group_col, sentinel, required_groups=None
         Combined Polars DataFrame with the group column restored as a
         regular column.
     """
-    combined = pd.concat(partition_dfs, ignore_index=False)
+    if time_col is not None and times is not None:
+        time_set = set(times)
+        parts = []
+        for pdf in partition_dfs:
+            pdf_f = pdf.loc[pdf[time_col].isin(time_set)]
+            if len(pdf_f) > 0:
+                parts.append(pdf_f)
+        if not parts:
+            return pl.DataFrame()
+        combined = pd.concat(parts, ignore_index=False)
+    else:
+        combined = pd.concat(partition_dfs, ignore_index=False)
 
-    # Restore group column from index
     combined = combined.reset_index()
 
     if sentinel is not None:
@@ -43,7 +58,6 @@ def combine_partitions(*partition_dfs, group_col, sentinel, required_groups=None
 
     df = pl.from_pandas(combined)
 
-    # Filter to only the required groups for this cell
     if required_groups is not None:
         df = df.filter(pl.col(group_col).is_in(required_groups))
 

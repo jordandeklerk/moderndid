@@ -137,8 +137,13 @@ def _build_group_to_partitions(divisions, sentinel, finite_groups):
     return group_to_parts
 
 
-def submit_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, worker_fn):
-    """Submit tasks for all (g,t) cells with relevant partition Futures.
+def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, worker_fn):
+    """Submit cell tasks with concurrency control, gather results, and clean up.
+
+    Uses a sliding-window approach via ``as_completed`` to limit the number of
+    simultaneously active tasks to ``2 * n_workers``.  This prevents worker OOM
+    when individual cells require large fractions of the dataset (e.g. a large
+    never-treated control group).
 
     Parameters
     ----------
@@ -157,28 +162,50 @@ def submit_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, wo
 
     Returns
     -------
-    list of Future
-        One result Future per cell spec.
+    list
+        One result per cell spec (in order).
     """
+    from distributed import as_completed
+
     partition_futures = _get_partition_futures(persisted_ddf)
+    n_workers = len(client.scheduler_info()["workers"])
+    max_concurrent = max(n_workers * 2, 1)
 
-    result_futures = []
-    for spec in cell_specs:
-        required_groups = spec["required_groups"]
-        cell_kwargs = spec["cell_kwargs"]
+    n_tasks = len(cell_specs)
+    results = [None] * n_tasks
 
-        needed_indices = set()
-        for g in required_groups:
-            needed_indices.update(group_to_partitions.get(g, []))
-
-        part_futs = [partition_futures[i] for i in sorted(needed_indices) if i < len(partition_futures)]
-
+    def _make_future(idx):
+        spec = cell_specs[idx]
+        needed = set()
+        for g in spec["required_groups"]:
+            needed.update(group_to_partitions.get(g, []))
+        part_futs = [partition_futures[i] for i in sorted(needed) if i < len(partition_futures)]
         if not part_futs:
-            result_futures.append(client.submit(lambda **kw: None, **cell_kwargs, pure=False))
-        else:
-            result_futures.append(client.submit(worker_fn, *part_futs, **cell_kwargs, pure=False))
+            return client.submit(lambda **kw: None, **spec["cell_kwargs"], pure=False)
+        return client.submit(worker_fn, *part_futs, **spec["cell_kwargs"], pure=False)
 
-    return result_futures
+    try:
+        task_iter = iter(range(n_tasks))
+        pending = {}
+
+        for _ in range(min(max_concurrent, n_tasks)):
+            idx = next(task_iter)
+            pending[_make_future(idx)] = idx
+
+        ac = as_completed(pending)
+        for completed in ac:
+            idx = pending.pop(completed)
+            results[idx] = completed.result()
+
+            next_idx = next(task_iter, None)
+            if next_idx is not None:
+                new_fut = _make_future(next_idx)
+                pending[new_fut] = next_idx
+                ac.add(new_fut)
+    finally:
+        cleanup_persisted(client, persisted_ddf)
+
+    return results
 
 
 def _get_partition_futures(persisted_ddf):
@@ -188,28 +215,20 @@ def _get_partition_futures(persisted_ddf):
     return futures_of(persisted_ddf)
 
 
-def gather_and_cleanup(client, result_futures, persisted_ddf):
-    """Gather results and cancel partition futures.
+def cleanup_persisted(client, persisted_ddf):
+    """Cancel partition futures for a persisted Dask DataFrame.
 
     Parameters
     ----------
     client : distributed.Client
         Active distributed client.
-    result_futures : list of Future
-        Futures from ``submit_cell_tasks``.
     persisted_ddf : dask.dataframe.DataFrame
         The persisted Dask DataFrame whose partition futures should be
-        cancelled after gathering.
-
-    Returns
-    -------
-    list
-        Gathered results, one per cell.
+        cancelled.
     """
     try:
-        results = client.gather(result_futures)
-    finally:
         partition_futures = _get_partition_futures(persisted_ddf)
         if partition_futures:
             client.cancel(partition_futures)
-    return results
+    except Exception:  # noqa: BLE001
+        pass

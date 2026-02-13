@@ -5,15 +5,17 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
+import moderndid.didcont.spline.bspline as _bspline_mod
 from moderndid.core.preprocess import choose_knots_quantile as _choose_knots_quantile
 from moderndid.dask import (
+    cleanup_persisted,
     compute_dask_metadata,
-    gather_and_cleanup,
+    execute_cell_tasks,
     persist_by_group,
-    submit_cell_tasks,
 )
-from moderndid.dask.backend import _get_partition_futures
+from moderndid.dask.worker_utils import combine_partitions
 from moderndid.didcont.estimation.container import PTEParams, PTEResult
+from moderndid.didcont.estimation.estimators import pte_attgt
 from moderndid.didcont.estimation.process_aggte import aggregate_att_gt
 from moderndid.didcont.estimation.process_attgt import process_att_gt
 from moderndid.didcont.estimation.process_dose import process_dose_gt
@@ -47,7 +49,6 @@ def pte_dask(
     from distributed import get_client
 
     from moderndid.didcont.cont_did import cont_did_acrt
-    from moderndid.didcont.estimation.estimators import pte_attgt
 
     client = get_client()
 
@@ -93,7 +94,6 @@ def pte_dask(
         [g for g in glist if g in t_list and len(sorted_tlist[sorted_tlist < (g - anticipation)]) >= req_pre_periods]
     )
 
-    # 4. Determine attgt_fun
     if aggregation == "eventstudy" and target_parameter != "slope":
         attgt_fun = pte_attgt
         gt_type = "att"
@@ -182,13 +182,10 @@ def pte_dask(
             cell_meta.append({"skip": False, "g": g, "tp": tp})
 
     if cell_specs:
-        result_futures = submit_cell_tasks(client, persisted, group_to_parts, cell_specs, _process_pte_cell_dask)
-        worker_results = gather_and_cleanup(client, result_futures, persisted)
+        worker_results = execute_cell_tasks(client, persisted, group_to_parts, cell_specs, _process_pte_cell_dask)
     else:
         worker_results = []
-        pf = _get_partition_futures(persisted)
-        if pf:
-            client.cancel(pf)
+        cleanup_persisted(client, persisted)
 
     inffunc = np.full((n_units, n_groups * n_times), np.nan)
     attgt_list = []
@@ -228,8 +225,6 @@ def pte_dask(
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
 
-    # Filter influence matrix to only columns with valid results,
-    # ensuring alignment with attgt_list entries
     if valid_columns:
         inffunc = inffunc[:, valid_columns]
 
@@ -333,24 +328,18 @@ def _process_pte_cell_dask(
     Receives Pandas DataFrames, combines them, converts to Polars,
     applies subsetting logic, and calls the ATT estimation function.
     """
-    import polars as pl
-
-    from moderndid.dask.worker_utils import combine_partitions, filter_by_times
-
     cell_data = combine_partitions(
         *partition_dfs,
         group_col=gname,
         sentinel=sentinel,
         required_groups=cell_required_groups,
+        time_col=tname,
+        times=[tp, base_period_val],
     )
-
-    # Filter to relevant time periods
-    cell_data = filter_by_times(cell_data, tname, [tp, base_period_val])
 
     if cell_data.height == 0:
         return None
 
-    # Rename to standard PTE columns
     cell_data = cell_data.with_columns(
         pl.col(gname).alias("G"),
         pl.col(idname).alias("id"),
@@ -363,13 +352,11 @@ def _process_pte_cell_dask(
     else:
         cell_data = cell_data.with_columns(pl.lit(0.0).alias("D"))
 
-    # Add post/pre name column; D = dose * (G == g) matching cont_two_by_two_subset
     cell_data = cell_data.with_columns(
         pl.when(pl.col("period") == tp).then(pl.lit("post")).otherwise(pl.lit("pre")).alias("name"),
         (pl.col("D") * (pl.col("G") == g).cast(pl.Float64)).alias("D"),
     )
 
-    # Add weights
     if weightsname and weightsname in cell_data.columns:
         cell_data = cell_data.with_columns(pl.col(weightsname).alias(".w"))
     else:
@@ -381,12 +368,8 @@ def _process_pte_cell_dask(
     if post_data.height == 0:
         return None
 
-    # IDs sorted to match _get_first_difference's sort order inside attgt_fun.
-    # cont_did_acrt sorts by (id, time), so inf_func is in sorted-id order.
     post_ids = np.sort(post_data["id"].unique().to_numpy())
 
-    # Call attgt_fun — ensure numpy arrays in dose_params are C-contiguous
-    # float64 after Dask serialization roundtrip
     attgt_kwargs = {}
     if gt_type == "dose" and dose_params is not None:
         fixed_params = {}
@@ -398,11 +381,6 @@ def _process_pte_cell_dask(
         attgt_kwargs.update(fixed_params)
     if d_outcome:
         attgt_kwargs["d_outcome"] = True
-
-    # Force pure-numpy B-spline evaluation in worker subprocesses.
-    # Scipy's C/Fortran extensions can fail non-deterministically in forked
-    # processes, causing inconsistent results across cells.
-    import moderndid.didcont.spline.bspline as _bspline_mod
 
     _bspline_mod._USE_PURE_NUMPY = True
 

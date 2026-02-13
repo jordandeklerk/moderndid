@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import numpy as np
+import polars as pl
 import scipy.sparse as sp
 
+from moderndid.core.preprocess import EstimationMethod
 from moderndid.dask import (
+    cleanup_persisted,
     compute_dask_metadata,
-    gather_and_cleanup,
+    execute_cell_tasks,
     persist_by_group,
-    submit_cell_tasks,
 )
-from moderndid.dask.backend import _get_partition_futures
-from moderndid.did.compute_att_gt import ATTgtResult, ComputeATTgtResult
+from moderndid.dask.worker_utils import combine_partitions
+from moderndid.did.compute_att_gt import ATTgtResult, ComputeATTgtResult, run_drdid
 
 
 def compute_att_gt_dask(
@@ -133,13 +135,10 @@ def compute_att_gt_dask(
             )
 
     if cell_specs:
-        result_futures = submit_cell_tasks(client, persisted, group_to_parts, cell_specs, _process_gt_cell_did_dask)
-        worker_results = gather_and_cleanup(client, result_futures, persisted)
+        worker_results = execute_cell_tasks(client, persisted, group_to_parts, cell_specs, _process_gt_cell_did_dask)
     else:
         worker_results = []
-        pf = _get_partition_futures(persisted)
-        if pf:
-            client.cancel(pf)
+        cleanup_persisted(client, persisted)
 
     att_results = []
     influence_func_list = []
@@ -238,20 +237,14 @@ def _process_gt_cell_did_dask(
     local cohort index, extracts outcome tensors, and calls ``run_drdid``
     directly.
     """
-    import polars as pl
-
-    from moderndid.core.preprocess import EstimationMethod
-    from moderndid.dask.worker_utils import combine_partitions, filter_by_times
-    from moderndid.did.compute_att_gt import run_drdid
-
     cell_data = combine_partitions(
         *partition_dfs,
         group_col=gname,
         sentinel=sentinel,
         required_groups=cell_required_groups,
+        time_col=tname,
+        times=[t, pret],
     )
-
-    cell_data = filter_by_times(cell_data, tname, [t, pret])
 
     if cell_data.height == 0:
         return None

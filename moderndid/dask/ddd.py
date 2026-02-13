@@ -8,11 +8,12 @@ import numpy as np
 from scipy import stats
 
 from moderndid.dask import (
+    cleanup_persisted,
     compute_dask_metadata,
-    gather_and_cleanup,
+    execute_cell_tasks,
     persist_by_group,
-    submit_cell_tasks,
 )
+from moderndid.dask.worker_utils import combine_partitions
 from moderndid.didtriple.bootstrap.mboot_ddd import mboot_ddd
 from moderndid.didtriple.estimators.ddd_mp import (
     ATTgtResult,
@@ -130,11 +131,10 @@ def ddd_mp_dask(
             idx += 1
 
     if not cell_specs:
+        cleanup_persisted(client, persisted)
         raise ValueError("No valid (g,t) cells found.")
 
-    result_futures = submit_cell_tasks(client, persisted, group_to_parts, cell_specs, _process_gt_cell_dask)
-
-    worker_results = gather_and_cleanup(client, result_futures, persisted)
+    worker_results = execute_cell_tasks(client, persisted, group_to_parts, cell_specs, _process_gt_cell_dask)
 
     for i, result in enumerate(worker_results):
         all_results[cell_indices[i]] = result
@@ -262,17 +262,14 @@ def _process_gt_cell_dask(
     restores inf sentinel, filters to required groups and time periods,
     and calls the existing ``_process_gt_cell``.
     """
-    from moderndid.dask.worker_utils import combine_partitions, filter_by_times
-
     cell_data = combine_partitions(
         *partition_dfs,
         group_col=group_col,
         sentinel=sentinel,
         required_groups=cell_required_groups,
+        time_col=time_col,
+        times=[t, pret],
     )
-
-    relevant_times = [t, pret]
-    cell_data = filter_by_times(cell_data, time_col, relevant_times)
 
     if cell_data.height == 0:
         return None
