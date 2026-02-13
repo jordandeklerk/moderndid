@@ -8,20 +8,18 @@ from threading import Event, Thread
 logger = logging.getLogger(__name__)
 
 
-def log_cluster_status(client):
-    """Log a one-line cluster health summary."""
+def _format_status(client):
+    """Build a one-line cluster health string. Returns None on failure."""
     try:
         info = client.scheduler_info()
     except OSError:
-        logger.warning("Cannot reach scheduler")
-        return
+        return None
 
     workers = info.get("workers", {})
     n_workers = len(workers)
 
     if n_workers == 0:
-        logger.warning("No workers connected")
-        return
+        return "[monitor] No workers connected"
 
     total_mem = 0
     total_limit = 0
@@ -55,29 +53,59 @@ def log_cluster_status(client):
     if erred > 0:
         status = f"ERRORS ({erred} erred tasks)"
 
-    logger.info(
-        "workers=%d  mem=%.1f/%.1f GB (%d%%)  tasks: %d running, %d done, %d waiting  status=%s",
-        n_workers,
-        mem_gb,
-        limit_gb,
-        pct,
-        processing,
-        mem_tasks,
-        waiting,
-        status,
+    return (
+        f"[monitor] workers={n_workers}  "
+        f"mem={mem_gb:.1f}/{limit_gb:.1f} GB ({pct:.0f}%)  "
+        f"tasks: {processing} running, {mem_tasks} done, {waiting} waiting  "
+        f"status={status}"
     )
 
 
-def monitor_cluster(client, interval=10):
-    """Start background monitoring that logs cluster health every ``interval`` seconds.
+def log_cluster_status(client, emit=None):
+    """Log a one-line cluster health summary.
 
-    Returns a callable ``stop()`` to terminate the monitor thread.
+    Parameters
+    ----------
+    client : distributed.Client
+        Active Dask client.
+    emit : callable, optional
+        Function to call with the status string. Defaults to ``logger.info``.
+        Pass ``print`` for visible output in Databricks notebooks.
     """
+    if emit is None:
+        emit = logger.info
+    msg = _format_status(client)
+    if msg is not None:
+        emit(msg)
+
+
+def monitor_cluster(client, interval=10, emit=None):
+    """Start background monitoring that reports cluster health every ``interval`` seconds.
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Active Dask client.
+    interval : int
+        Seconds between status reports.
+    emit : callable, optional
+        Function to call with each status string. Defaults to ``logger.info``.
+        Pass ``print`` for visible output in Databricks notebooks.
+
+    Returns
+    -------
+    stop : callable
+        Call ``stop()`` to terminate the monitor thread.
+    """
+    if emit is None:
+        emit = logger.info
     event = Event()
 
     def _loop():
         while not event.is_set():
-            log_cluster_status(client)
+            msg = _format_status(client)
+            if msg is not None:
+                emit(msg)
             event.wait(interval)
 
     t = Thread(target=_loop, daemon=True)
@@ -86,6 +114,6 @@ def monitor_cluster(client, interval=10):
     def stop():
         event.set()
         t.join(timeout=2)
-        logger.info("monitor stopped")
+        emit("[monitor] stopped")
 
     return stop
