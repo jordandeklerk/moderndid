@@ -70,13 +70,13 @@ def ddd_mp_dask(
     inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
-    persisted, group_to_parts, sentinel = persist_by_group(client, ddf, group_col, all_group_vals)
-
-    # Compute unit_groups NOW while data is persisted, not after cleanup.
-    id_group_df = persisted.loc[persisted[time_col] == tlist[0]].groupby(id_col)[group_col].first().compute()
-    if sentinel is not None:
-        id_group_df = id_group_df.replace(sentinel, np.inf)
+    # Compute unit_groups from original ddf BEFORE persisting.  Using the
+    # original DataFrame (backed by Parquet) avoids depending on persisted
+    # futures which can fail with "lost dependencies" under memory pressure.
+    id_group_df = ddf.loc[ddf[time_col] == tlist[0]].groupby(id_col)[group_col].first().compute()
     unit_groups = id_group_df.reindex(sorted_ids).values
+
+    persisted, group_to_parts, sentinel = persist_by_group(client, ddf, group_col, all_group_vals)
 
     total_cells = n_cohorts * tlist_length
     all_results = [None] * total_cells
