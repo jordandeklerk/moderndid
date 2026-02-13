@@ -72,6 +72,12 @@ def ddd_mp_dask(
 
     persisted, group_to_parts, sentinel = persist_by_group(client, ddf, group_col, all_group_vals)
 
+    # Compute unit_groups NOW while data is persisted, not after cleanup.
+    id_group_df = persisted.loc[persisted[time_col] == tlist[0]].groupby(id_col)[group_col].first().compute()
+    if sentinel is not None:
+        id_group_df = id_group_df.replace(sentinel, np.inf)
+    unit_groups = id_group_df.reindex(sorted_ids).values
+
     total_cells = n_cohorts * tlist_length
     all_results = [None] * total_cells
     cell_specs = []
@@ -208,10 +214,6 @@ def ddd_mp_dask(
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
-
-    # Compute unit_groups aligned with sorted_ids (row ordering must match inf_func_mat)
-    id_group_df = ddf.loc[ddf[time_col] == tlist[0]].groupby(id_col)[group_col].first().compute()
-    unit_groups = id_group_df.reindex(sorted_ids).values
 
     args = {
         "control_group": control_group,

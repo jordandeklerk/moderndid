@@ -33,32 +33,47 @@ def combine_partitions(*partition_dfs, group_col, sentinel, required_groups=None
         Combined Polars DataFrame.
     """
     time_set = set(times) if (time_col is not None and times is not None) else None
-    group_set = set(required_groups) if required_groups is not None else None
 
-    polars_parts = []
+    # Build a filter set that uses sentinel values (matching persisted data)
+    # so we can filter BEFORE the copy-heavy sentinel restoration.
+    if required_groups is not None and sentinel is not None:
+        filter_set = {sentinel if (isinstance(g, float) and not np.isfinite(g)) else g for g in required_groups}
+    elif required_groups is not None:
+        filter_set = set(required_groups)
+    else:
+        filter_set = None
+
+    pandas_parts = []
     for pdf in partition_dfs:
+        # Time filter first — biggest reduction for panel data with many periods.
         if time_set is not None:
             pdf = pdf.loc[pdf[time_col].isin(time_set)]
             if len(pdf) == 0:
                 continue
 
-        if sentinel is not None:
-            mask = pdf[group_col] == sentinel
-            if mask.any():
-                pdf = pdf.copy()
-                pdf.loc[mask, group_col] = np.inf
-
-        if group_set is not None:
-            pdf = pdf.loc[pdf[group_col].isin(group_set)]
+        # Group filter using sentinel-aware values — no copy needed.
+        if filter_set is not None:
+            pdf = pdf.loc[pdf[group_col].isin(filter_set)]
             if len(pdf) == 0:
                 continue
 
-        polars_parts.append(pl.from_pandas(pdf))
+        pandas_parts.append(pdf)
 
-    if not polars_parts:
+    if not pandas_parts:
         return pl.DataFrame()
 
-    return pl.concat(polars_parts)
+    import pandas as pd
+
+    combined = pd.concat(pandas_parts, copy=False)
+
+    # Convert to Polars once and restore sentinel there (zero-copy replace).
+    result = pl.from_pandas(combined)
+    if sentinel is not None:
+        result = result.with_columns(
+            pl.when(pl.col(group_col) == sentinel).then(np.inf).otherwise(pl.col(group_col)).alias(group_col)
+        )
+
+    return result
 
 
 def filter_by_times(df, time_col, times):
