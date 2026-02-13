@@ -140,10 +140,11 @@ def _build_group_to_partitions(divisions, sentinel, finite_groups):
 def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, worker_fn):
     """Submit cell tasks with concurrency control, gather results, and clean up.
 
-    Uses a sliding-window approach via ``as_completed`` to limit the number of
-    simultaneously active tasks to ``2 * n_workers``.  This prevents worker OOM
-    when individual cells require large fractions of the dataset (e.g. a large
-    never-treated control group).
+    Pins exactly one cell to each worker at a time using a sliding-window
+    approach.  When a worker finishes its cell, the next queued cell is
+    submitted to that same worker.  This guarantees at most one cell per
+    worker regardless of the worker's ``nthreads`` setting, preventing OOM
+    when individual cells require large fractions of the dataset.
 
     Parameters
     ----------
@@ -165,42 +166,62 @@ def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, w
     list
         One result per cell spec (in order).
     """
+    from collections import deque
+
     from distributed import as_completed
 
     partition_futures = _get_partition_futures(persisted_ddf)
-    n_workers = len(client.scheduler_info()["workers"])
-    max_concurrent = max(n_workers * 2, 1)
+    worker_addrs = list(client.scheduler_info()["workers"].keys())
 
     n_tasks = len(cell_specs)
     results = [None] * n_tasks
 
-    def _make_future(idx):
+    def _make_future(idx, worker):
         spec = cell_specs[idx]
         needed = set()
         for g in spec["required_groups"]:
             needed.update(group_to_partitions.get(g, []))
         part_futs = [partition_futures[i] for i in sorted(needed) if i < len(partition_futures)]
         if not part_futs:
-            return client.submit(lambda **kw: None, **spec["cell_kwargs"], pure=False)
-        return client.submit(worker_fn, *part_futs, **spec["cell_kwargs"], pure=False)
+            return client.submit(
+                lambda **kw: None,
+                **spec["cell_kwargs"],
+                workers=[worker],
+                allow_other_workers=False,
+                pure=False,
+            )
+        return client.submit(
+            worker_fn,
+            *part_futs,
+            **spec["cell_kwargs"],
+            workers=[worker],
+            allow_other_workers=False,
+            pure=False,
+        )
 
     try:
-        task_iter = iter(range(n_tasks))
-        pending = {}
+        remaining = deque(range(n_tasks))
+        # future -> (cell_idx, worker_addr)
+        active = {}
 
-        for _ in range(min(max_concurrent, n_tasks)):
-            idx = next(task_iter)
-            pending[_make_future(idx)] = idx
+        # Submit initial batch: 1 cell per worker
+        for worker in worker_addrs:
+            if not remaining:
+                break
+            idx = remaining.popleft()
+            fut = _make_future(idx, worker)
+            active[fut] = (idx, worker)
 
-        ac = as_completed(pending)
+        # Sliding window: when a worker finishes, give it the next cell
+        ac = as_completed(active)
         for completed in ac:
-            idx = pending.pop(completed)
+            idx, worker = active.pop(completed)
             results[idx] = completed.result()
 
-            next_idx = next(task_iter, None)
-            if next_idx is not None:
-                new_fut = _make_future(next_idx)
-                pending[new_fut] = next_idx
+            if remaining:
+                next_idx = remaining.popleft()
+                new_fut = _make_future(next_idx, worker)
+                active[new_fut] = (next_idx, worker)
                 ac.add(new_fut)
     finally:
         cleanup_persisted(client, persisted_ddf)

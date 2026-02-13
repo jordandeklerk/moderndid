@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 import polars as pl
 
 
@@ -36,32 +35,38 @@ def combine_partitions(*partition_dfs, group_col, sentinel, required_groups=None
         Combined Polars DataFrame with the group column restored as a
         regular column.
     """
-    if time_col is not None and times is not None:
-        time_set = set(times)
-        parts = []
-        for pdf in partition_dfs:
-            pdf_f = pdf.loc[pdf[time_col].isin(time_set)]
-            if len(pdf_f) > 0:
-                parts.append(pdf_f)
-        if not parts:
-            return pl.DataFrame()
-        combined = pd.concat(parts, ignore_index=False)
-    else:
-        combined = pd.concat(partition_dfs, ignore_index=False)
+    # Convert each partition to Polars individually to avoid holding a full
+    # pandas concat alongside the full Polars DataFrame (saves ~N bytes peak).
+    time_set = set(times) if (time_col is not None and times is not None) else None
+    group_set = set(required_groups) if required_groups is not None else None
 
-    combined = combined.reset_index()
+    polars_parts = []
+    for pdf in partition_dfs:
+        # Early time filter on the pandas partition (before any copies)
+        if time_set is not None:
+            pdf = pdf.loc[pdf[time_col].isin(time_set)]
+            if len(pdf) == 0:
+                continue
 
-    if sentinel is not None:
-        mask = combined[group_col] == sentinel
-        if mask.any():
-            combined.loc[mask, group_col] = np.inf
+        pdf = pdf.reset_index()
 
-    df = pl.from_pandas(combined)
+        if sentinel is not None:
+            mask = pdf[group_col] == sentinel
+            if mask.any():
+                pdf.loc[mask, group_col] = np.inf
 
-    if required_groups is not None:
-        df = df.filter(pl.col(group_col).is_in(required_groups))
+        # Early group filter on the pandas partition
+        if group_set is not None:
+            pdf = pdf.loc[pdf[group_col].isin(group_set)]
+            if len(pdf) == 0:
+                continue
 
-    return df
+        polars_parts.append(pl.from_pandas(pdf))
+
+    if not polars_parts:
+        return pl.DataFrame()
+
+    return pl.concat(polars_parts)
 
 
 def filter_by_times(df, time_col, times):
