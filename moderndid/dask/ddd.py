@@ -46,6 +46,8 @@ def ddd_mp_dask(
 
     client = get_client()
 
+    ddf = client.persist(ddf)
+
     meta = compute_dask_metadata(ddf, group_col, time_col, id_col, need_unique_ids=True)
     tlist = meta["tlist"]
     glist = meta["glist"]
@@ -62,7 +64,7 @@ def ddd_mp_dask(
     inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
-    persisted, group_to_parts, sentinel = persist_by_group(client, ddf, group_col)
+    persisted, group_to_parts, sentinel = persist_by_group(client, ddf, group_col, all_group_vals)
 
     total_cells = n_cohorts * tlist_length
     all_results = [None] * total_cells

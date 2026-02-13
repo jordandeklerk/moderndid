@@ -55,7 +55,7 @@ def compute_dask_metadata(ddf, group_col, time_col, id_col=None, need_unique_ids
     }
 
 
-def persist_by_group(client, ddf, group_col):
+def persist_by_group(client, ddf, group_col, all_group_vals=None):
     """Persist the DataFrame and build a group-to-partition mapping.
 
     Replaces ``inf`` in *group_col* with a sentinel value, persists the
@@ -68,9 +68,14 @@ def persist_by_group(client, ddf, group_col):
     client : distributed.Client
         Active Dask distributed client.
     ddf : dask.dataframe.DataFrame
-        Input Dask DataFrame.
+        Input Dask DataFrame.  Should already be persisted for best
+        performance (avoids redundant Parquet reads).
     group_col : str
         Column to partition by.
+    all_group_vals : list, optional
+        Pre-computed sorted list of all group values (from
+        ``compute_dask_metadata``).  When provided, avoids redundant
+        ``.compute()`` calls to discover group values.
 
     Returns
     -------
@@ -81,11 +86,15 @@ def persist_by_group(client, ddf, group_col):
         *sentinel* : the value that replaced ``inf``, or ``None`` if no ``inf``
         values existed.
     """
-    finite_groups = ddf[group_col].loc[np.isfinite(ddf[group_col])].unique().compute().to_numpy()
+    if all_group_vals is not None:
+        finite_groups = np.array([g for g in all_group_vals if np.isfinite(g)])
+        has_inf = any(not np.isfinite(g) for g in all_group_vals)
+    else:
+        finite_groups = ddf[group_col].loc[np.isfinite(ddf[group_col])].unique().compute().to_numpy()
+        has_inf = np.isinf(ddf[group_col].max().compute())
 
     sentinel = None
-    max_group = ddf[group_col].max().compute()
-    if np.isinf(max_group):
+    if has_inf:
         sentinel = float(np.max(finite_groups) + 1)
         ddf = ddf.map_partitions(_replace_inf_with_sentinel, group_col=group_col, sentinel=sentinel)
 

@@ -36,6 +36,8 @@ def compute_att_gt_dask(
 
     client = get_client()
 
+    ddf = client.persist(ddf)
+
     meta = compute_dask_metadata(ddf, gname, tname, idname, need_unique_ids=True)
     tlist = meta["tlist"]
     glist = meta["glist"]
@@ -43,7 +45,7 @@ def compute_att_gt_dask(
     unique_ids = meta["unique_ids"]
     sorted_ids = np.sort(unique_ids)
 
-    persisted, group_to_parts, sentinel = persist_by_group(client, ddf, gname)
+    persisted, group_to_parts, sentinel = persist_by_group(client, ddf, gname, meta["all_group_vals"])
 
     tfac = 0 if base_period == "universal" else 1
     n_time_periods = len(tlist) - tfac if base_period != "universal" else len(tlist)

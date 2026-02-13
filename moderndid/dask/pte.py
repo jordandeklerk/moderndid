@@ -59,6 +59,8 @@ def pte_dask(
     drop_mask = (ddf[gname] > 0) & (ddf[tname] >= ddf[gname]) & (ddf[dname] == 0)
     ddf = ddf.loc[~drop_mask]
 
+    ddf = client.persist(ddf)
+
     n_periods = ddf[tname].nunique().compute()
     unit_counts = ddf.groupby(idname)[tname].count().compute()
     balanced_ids = unit_counts[unit_counts == n_periods].index.tolist()
@@ -88,7 +90,6 @@ def pte_dask(
     req_pre_periods = 1
     t_list = sorted_tlist.copy() if base_period == "universal" else sorted_tlist[req_pre_periods:]
 
-    # Groups must have sufficient pre-treatment periods
     g_list = np.array(
         [g for g in glist if g in t_list and len(sorted_tlist[sorted_tlist < (g - anticipation)]) >= req_pre_periods]
     )
@@ -109,7 +110,7 @@ def pte_dask(
 
     d_outcome = aggregation == "eventstudy"
 
-    persisted, group_to_parts, sentinel = persist_by_group(client, ddf, gname)
+    persisted, group_to_parts, sentinel = persist_by_group(client, ddf, gname, all_group_vals)
 
     n_groups = len(g_list)
     n_times = len(t_list)
