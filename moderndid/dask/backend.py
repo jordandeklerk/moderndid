@@ -56,12 +56,12 @@ def compute_dask_metadata(ddf, group_col, time_col, id_col=None, need_unique_ids
 
 
 def persist_by_group(client, ddf, group_col):
-    """Replace ``inf`` with a sentinel, ``set_index`` by *group_col*, and persist.
+    """Persist the DataFrame and build a group-to-partition mapping.
 
-    Never-treated units have ``group = inf`` which is incompatible with
-    ``set_index``.  This function replaces ``inf`` with a sentinel value
-    one greater than the largest finite group value, persists the shuffled
-    DataFrame, and returns the mapping from group values to partition indices.
+    Replaces ``inf`` in *group_col* with a sentinel value, persists the
+    DataFrame **without shuffling**, and scans each partition to determine
+    which groups it contains.  This avoids the expensive all-to-all shuffle
+    that ``set_index`` triggers on large datasets.
 
     Parameters
     ----------
@@ -75,7 +75,7 @@ def persist_by_group(client, ddf, group_col):
     Returns
     -------
     tuple of (persisted_ddf, group_to_partitions, sentinel)
-        *persisted_ddf* : the persisted Dask DataFrame indexed by *group_col*.
+        *persisted_ddf* : the persisted Dask DataFrame.
         *group_to_partitions* : ``dict[group_value, list[int]]`` mapping each
         group value to its partition indices.
         *sentinel* : the value that replaced ``inf``, or ``None`` if no ``inf``
@@ -89,11 +89,9 @@ def persist_by_group(client, ddf, group_col):
         sentinel = float(np.max(finite_groups) + 1)
         ddf = ddf.map_partitions(_replace_inf_with_sentinel, group_col=group_col, sentinel=sentinel)
 
-    ddf = ddf.set_index(group_col, sorted=False)
     ddf = client.persist(ddf)
 
-    divisions = ddf.divisions
-    group_to_partitions = _build_group_to_partitions(divisions, sentinel, finite_groups)
+    group_to_partitions = _scan_group_partitions(client, ddf, group_col, finite_groups, sentinel)
 
     return ddf, group_to_partitions, sentinel
 
@@ -107,39 +105,35 @@ def _replace_inf_with_sentinel(pdf, group_col, sentinel):
     return pdf
 
 
-def _build_group_to_partitions(divisions, sentinel, finite_groups):
-    """Build a mapping from group value to list of partition indices.
+def _scan_group_partitions(client, persisted_ddf, group_col, finite_groups, sentinel):
+    """Build group-to-partitions mapping by scanning persisted partitions.
 
-    After ``set_index``, ``ddf.divisions`` gives the boundary values for each
-    partition.  A group value ``g`` falls in partition ``i`` if
-    ``divisions[i] <= g < divisions[i+1]`` (last partition uses ``<=``).
+    Submits a lightweight function to each partition that returns its unique
+    group values, then builds the reverse mapping.
     """
-    group_to_parts: dict[float, list[int]] = {}
-    n_partitions = len(divisions) - 1
+    from distributed import futures_of
 
-    all_vals = list(finite_groups)
+    partition_futures = futures_of(persisted_ddf)
+
+    scan_futures = [client.submit(_partition_unique_groups, fut, group_col, pure=False) for fut in partition_futures]
+    partition_group_sets = client.gather(scan_futures)
+
+    all_vals = set(finite_groups.tolist())
     if sentinel is not None:
-        all_vals.append(sentinel)
+        all_vals.add(sentinel)
 
-    for g in all_vals:
-        parts = []
-        for i in range(n_partitions):
-            lo, hi = divisions[i], divisions[i + 1]
-            if lo is None or hi is None:
-                parts.append(i)
-                continue
-            if i == n_partitions - 1:
-                if lo <= g <= hi:
-                    parts.append(i)
-            else:
-                if lo <= g < hi:
-                    parts.append(i)
-        if not parts:
-            # Fallback: scan all partitions
-            parts = list(range(n_partitions))
-        group_to_parts[g] = parts
+    group_to_parts: dict[float, list[int]] = {g: [] for g in all_vals}
+    for i, groups_in_part in enumerate(partition_group_sets):
+        for g in groups_in_part:
+            if g in group_to_parts:
+                group_to_parts[g].append(i)
 
     return group_to_parts
+
+
+def _partition_unique_groups(pdf, group_col):
+    """Worker-side: return unique group values in a single partition."""
+    return {float(g) for g in pdf[group_col].unique()}
 
 
 def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, worker_fn):
