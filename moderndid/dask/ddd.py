@@ -46,13 +46,20 @@ def ddd_mp_dask(
 
     client = get_client()
 
-    ddf = client.persist(ddf)
+    # Reduce graph size and IO by projecting to required columns early.
+    required_cols = [y_col, time_col, id_col, group_col, partition_col]
+    if covariate_cols is not None:
+        required_cols.extend(covariate_cols)
+    required_cols = list(dict.fromkeys(required_cols))
+    ddf = ddf[required_cols]
 
-    meta = compute_dask_metadata(ddf, group_col, time_col, id_col, need_unique_ids=False)
+    # Need unique ids for influence-function alignment and agg_ddd compatibility.
+    meta = compute_dask_metadata(ddf, group_col, time_col, id_col, need_unique_ids=True)
     tlist = meta["tlist"]
     glist = meta["glist"]
     all_group_vals = meta["all_group_vals"]
-    n_units = meta["n_units"]
+    n_units = int(meta["n_units"])
+    unique_ids = meta["unique_ids"]
 
     n_periods = len(tlist)
     n_cohorts = len(glist)
@@ -129,8 +136,6 @@ def ddd_mp_dask(
             cell_indices.append(idx)
             idx += 1
 
-    sorted_ids = np.sort(ddf[id_col].unique().compute().to_numpy())
-
     if not cell_specs:
         cleanup_persisted(client, persisted)
         raise ValueError("No valid (g,t) cells found.")
@@ -141,19 +146,24 @@ def ddd_mp_dask(
         all_results[cell_indices[i]] = result
 
     attgt_list = []
+    deferred_updates = []
     for counter, result in enumerate(all_results):
         if result is not None:
             att_entry, inf_data, se_val = result
             if att_entry is not None:
                 attgt_list.append(att_entry)
-                if inf_data is not None:
-                    inf_func_scaled, cell_id_list = inf_data
-                    _searchsorted_update(inf_func_mat, inf_func_scaled, cell_id_list, sorted_ids, counter)
-                if se_val is not None:
-                    se_array[counter] = se_val
+                deferred_updates.append((counter, inf_data, se_val))
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
+
+    sorted_ids = np.sort(unique_ids)
+    for counter, inf_data, se_val in deferred_updates:
+        if inf_data is not None:
+            inf_func_scaled, cell_id_list = inf_data
+            _searchsorted_update(inf_func_mat, inf_func_scaled, cell_id_list, sorted_ids, counter)
+        if se_val is not None:
+            se_array[counter] = se_val
 
     att_array = np.array([r.att for r in attgt_list])
     groups_array = np.array([r.group for r in attgt_list])

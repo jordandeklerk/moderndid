@@ -49,7 +49,12 @@ def ddd_mp_rc_dask(
 
     client = get_client()
 
-    ddf = client.persist(ddf)
+    # Reduce graph size and IO by projecting to required columns early.
+    required_cols = [y_col, time_col, id_col, group_col, partition_col]
+    if covariate_cols is not None:
+        required_cols.extend(covariate_cols)
+    required_cols = list(dict.fromkeys(required_cols))
+    ddf = ddf[required_cols]
 
     meta = compute_dask_metadata(ddf, group_col, time_col, id_col, need_unique_ids=False)
     tlist = meta["tlist"]

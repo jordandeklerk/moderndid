@@ -42,10 +42,17 @@ def _format_status(client):
         s = ts if isinstance(ts, str) else ts.get("state", "unknown")
         task_state[s] = task_state.get(s, 0) + 1
 
-    processing = task_state.get("processing", 0)
+    # Some schedulers do not expose task details in scheduler_info(); fall back
+    # to worker metrics so task counts remain informative.
+    if not task_state:
+        for w in workers.values():
+            for s, count in w.get("metrics", {}).get("task_counts", {}).items():
+                task_state[s] = task_state.get(s, 0) + int(count)
+
+    processing = task_state.get("processing", 0) + task_state.get("executing", 0)
     mem_tasks = task_state.get("memory", 0)
-    waiting = task_state.get("waiting", 0)
-    erred = task_state.get("erred", 0)
+    waiting = task_state.get("waiting", 0) + task_state.get("ready", 0) + task_state.get("queued", 0)
+    erred = task_state.get("erred", 0) + task_state.get("error", 0)
 
     status = "OK"
     if spilling > 0:

@@ -98,7 +98,11 @@ def persist_by_group(client, ddf, group_col, all_group_vals=None):
         sentinel = float(np.max(finite_groups) + 1)
         ddf = ddf.map_partitions(_replace_inf_with_sentinel, group_col=group_col, sentinel=sentinel)
 
-    ddf = client.persist(ddf)
+    from distributed import futures_of
+
+    # Avoid duplicating a collection that is already persisted upstream.
+    if not futures_of(ddf):
+        ddf = client.persist(ddf)
 
     group_to_partitions = _scan_group_partitions(client, ddf, group_col, finite_groups, sentinel)
 
