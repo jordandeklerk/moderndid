@@ -10,7 +10,7 @@ def is_dask_dataframe(obj) -> bool:
     return type(obj).__module__.startswith("dask.dataframe") and type(obj).__name__ == "DataFrame"
 
 
-def compute_dask_metadata(ddf, group_col, time_col, id_col=None):
+def compute_dask_metadata(ddf, group_col, time_col, id_col=None, need_unique_ids=True):
     """Compute metadata from a Dask DataFrame via distributed aggregations.
 
     Parameters
@@ -23,12 +23,15 @@ def compute_dask_metadata(ddf, group_col, time_col, id_col=None):
         Time period column name.
     id_col : str, optional
         Unit identifier column name.
+    need_unique_ids : bool, default True
+        If False, skip materializing all unique IDs (only compute ``n_units``).
+        Set to False when only analytical SEs are needed.
 
     Returns
     -------
     dict
         Keys: ``tlist``, ``glist``, ``all_group_vals``, ``n_units``,
-        ``unique_ids`` (None when *id_col* is None).
+        ``unique_ids`` (None when *id_col* is None or *need_unique_ids* is False).
     """
     tlist = np.sort(ddf[time_col].unique().compute().to_numpy())
 
@@ -40,7 +43,8 @@ def compute_dask_metadata(ddf, group_col, time_col, id_col=None):
     unique_ids = None
     if id_col is not None:
         n_units = ddf[id_col].nunique().compute()
-        unique_ids = ddf[id_col].unique().compute().to_numpy()
+        if need_unique_ids:
+            unique_ids = ddf[id_col].unique().compute().to_numpy()
 
     return {
         "tlist": tlist,
@@ -80,7 +84,8 @@ def persist_by_group(client, ddf, group_col):
     finite_groups = ddf[group_col].loc[np.isfinite(ddf[group_col])].unique().compute().to_numpy()
 
     sentinel = None
-    if np.any(np.isinf(ddf[group_col].compute().to_numpy())):
+    max_group = ddf[group_col].max().compute()
+    if np.isinf(max_group):
         sentinel = float(np.max(finite_groups) + 1)
         ddf = ddf.map_partitions(_replace_inf_with_sentinel, group_col=group_col, sentinel=sentinel)
 

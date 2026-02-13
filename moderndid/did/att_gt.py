@@ -323,6 +323,19 @@ def att_gt(
 
         critical_value = scipy.stats.norm.ppf(1 - alp / 2)
 
+        from moderndid.dask import compute_dask_metadata
+
+        meta = compute_dask_metadata(data, gname, tname, idname, need_unique_ids=True)
+        sorted_ids = np.sort(meta["unique_ids"])
+        tlist = meta["tlist"]
+        id_group_df = data.loc[data[tname] == tlist[0]].groupby(idname)[gname].first().compute()
+        group_assignments = id_group_df.reindex(sorted_ids).values
+
+        sampling_weights = None
+        if weightsname is not None:
+            id_weights_df = data.loc[data[tname] == tlist[0]].groupby(idname)[weightsname].first().compute()
+            sampling_weights = id_weights_df.reindex(sorted_ids).values
+
         estimation_params = {
             "control_group": control_group,
             "anticipation_periods": anticipation,
@@ -349,8 +362,8 @@ def att_gt(
             wald_pvalue=None,
             alpha=alp,
             estimation_params=estimation_params,
-            G=None,
-            weights_ind=None,
+            G=group_assignments,
+            weights_ind=sampling_weights,
         )
 
     if backend == "dask":

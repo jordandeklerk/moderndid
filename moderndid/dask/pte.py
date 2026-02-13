@@ -66,17 +66,16 @@ def pte_dask(
 
     ddf = ddf.assign(**{gname: ddf[gname].where(ddf[gname] != 0, np.inf)})
 
-    meta = compute_dask_metadata(ddf, gname, tname, idname)
+    meta = compute_dask_metadata(ddf, gname, tname, idname, need_unique_ids=True)
     tlist = meta["tlist"]
     glist = meta["glist"]
     all_group_vals = meta["all_group_vals"]
     n_units = meta["n_units"]
     unique_ids = meta["unique_ids"]
     sorted_tlist = np.sort(tlist)
-    id_to_idx = {uid: idx for idx, uid in enumerate(np.sort(unique_ids))}
+    sorted_ids = np.sort(unique_ids)
 
     id_group_df = ddf.groupby(idname)[gname].first().compute()
-    id_to_group = dict(zip(id_group_df.index, id_group_df.values, strict=False))
 
     treated_doses = ddf.loc[ddf[gname] > 0, dname].compute().to_numpy()
     positive_doses = treated_doses[treated_doses > 0]
@@ -217,9 +216,10 @@ def pte_dask(
             kind, adjusted_inf_func, cell_ids = inf_data
             if kind == "values" and cell_ids is not None:
                 this_inf_func = np.zeros(n_units)
-                for uid, val in zip(cell_ids, adjusted_inf_func, strict=False):
-                    if uid in id_to_idx:
-                        this_inf_func[id_to_idx[uid]] = val
+                indices = np.searchsorted(sorted_ids, cell_ids)
+                valid = (indices < len(sorted_ids)) & (sorted_ids[np.minimum(indices, len(sorted_ids) - 1)] == cell_ids)
+                n_valid = min(len(adjusted_inf_func), len(cell_ids))
+                this_inf_func[indices[valid][:n_valid]] = adjusted_inf_func[:n_valid][valid[:n_valid]]
                 inffunc[:, counter] = this_inf_func
 
     if len(attgt_list) == 0:
@@ -234,9 +234,15 @@ def pte_dask(
         "extra_gt_returns": extra_gt_returns,
     }
 
-    sorted_ids = np.sort(unique_ids)
     n_t = len(sorted_tlist)
-    unit_groups = np.array([id_to_group.get(uid, 0) for uid in sorted_ids])
+    id_group_ids = id_group_df.index.to_numpy()
+    id_group_vals = id_group_df.values
+    group_indices = np.searchsorted(sorted_ids, id_group_ids)
+    unit_groups = np.zeros(len(sorted_ids))
+    valid = (group_indices < len(sorted_ids)) & (
+        sorted_ids[np.minimum(group_indices, len(sorted_ids) - 1)] == id_group_ids
+    )
+    unit_groups[group_indices[valid]] = id_group_vals[valid]
     minimal_data = pl.DataFrame(
         {
             idname: np.repeat(sorted_ids, n_t),

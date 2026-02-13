@@ -49,7 +49,7 @@ def ddd_mp_rc_dask(
 
     client = get_client()
 
-    meta = compute_dask_metadata(ddf, group_col, time_col, id_col)
+    meta = compute_dask_metadata(ddf, group_col, time_col, id_col, need_unique_ids=False)
     tlist = meta["tlist"]
     glist = meta["glist"]
     all_group_vals = meta["all_group_vals"]
@@ -61,11 +61,11 @@ def ddd_mp_rc_dask(
     tfac = 0 if base_period == "universal" else 1
     tlist_length = n_periods - tfac
 
-    inf_func_mat = np.zeros((n_obs, n_cohorts * tlist_length))
-    se_array = np.full(n_cohorts * tlist_length, np.nan)
-
     ddf = ddf.assign(**{"_obs_idx": 1})
     ddf["_obs_idx"] = ddf["_obs_idx"].cumsum() - 1
+
+    inf_func_mat = np.zeros((n_obs, n_cohorts * tlist_length))
+    se_array = np.full(n_cohorts * tlist_length, np.nan)
 
     persisted, group_to_parts, sentinel = persist_by_group(client, ddf, group_col)
 
@@ -162,6 +162,7 @@ def ddd_mp_rc_dask(
     att_array = np.array([r.att for r in attgt_list])
     groups_array = np.array([r.group for r in attgt_list])
     times_array = np.array([r.time for r in attgt_list])
+
     inf_func_trimmed = inf_func_mat[:, : len(attgt_list)]
 
     if boot:
@@ -210,7 +211,7 @@ def ddd_mp_rc_dask(
         times=times_array,
         glist=glist,
         tlist=tlist,
-        inf_func_mat=inf_func_mat[:, : len(attgt_list)],
+        inf_func_mat=inf_func_trimmed,
         n=n_obs,
         args=args,
     )

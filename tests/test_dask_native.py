@@ -1,10 +1,19 @@
-"""Tests for Dask DataFrame distributed backend."""
-
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
+import polars as pl
 import pytest
+from distributed import futures_of
 
+from moderndid.core.data import load_mpdta, simulate_cont_did_data
+from moderndid.dask import compute_dask_metadata, is_dask_dataframe, persist_by_group
+from moderndid.did.aggte import aggte
+from moderndid.did.att_gt import att_gt
+from moderndid.didcont.cont_did import cont_did
+from moderndid.didtriple.agg_ddd import agg_ddd
+from moderndid.didtriple.ddd import ddd
+from moderndid.didtriple.dgp import gen_dgp_mult_periods
 from tests.conftest import requires_distributed
 
 distributed = pytest.importorskip("distributed")
@@ -19,10 +28,6 @@ def _polars_to_dask(pl_df, npartitions=4):
 
 @requires_distributed
 def test_is_dask_dataframe_true():
-    import polars as pl
-
-    from moderndid.dask import is_dask_dataframe
-
     df = pl.DataFrame({"a": [1, 2, 3]})
     ddf = _polars_to_dask(df)
     assert is_dask_dataframe(ddf)
@@ -30,30 +35,18 @@ def test_is_dask_dataframe_true():
 
 @requires_distributed
 def test_is_dask_dataframe_false_for_polars():
-    import polars as pl
-
-    from moderndid.dask import is_dask_dataframe
-
     df = pl.DataFrame({"a": [1, 2, 3]})
     assert not is_dask_dataframe(df)
 
 
 @requires_distributed
 def test_is_dask_dataframe_false_for_pandas():
-    import pandas as pd
-
-    from moderndid.dask import is_dask_dataframe
-
     df = pd.DataFrame({"a": [1, 2, 3]})
     assert not is_dask_dataframe(df)
 
 
 @requires_distributed
 def test_compute_dask_metadata():
-    import polars as pl
-
-    from moderndid.dask import compute_dask_metadata
-
     df = pl.DataFrame(
         {
             "id": [1, 1, 2, 2, 3, 3],
@@ -74,10 +67,6 @@ def test_compute_dask_metadata():
 
 @requires_distributed
 def test_persist_by_group_handles_inf():
-    import polars as pl
-
-    from moderndid.dask import persist_by_group
-
     df = pl.DataFrame(
         {
             "id": [1, 2, 3, 4],
@@ -96,8 +85,6 @@ def test_persist_by_group_handles_inf():
         result = persisted.compute().reset_index()
         assert len(result) == 4
 
-        from distributed import futures_of
-
         futs = futures_of(persisted)
         if futs:
             client.cancel(futs)
@@ -105,10 +92,6 @@ def test_persist_by_group_handles_inf():
 
 @requires_distributed
 def test_persist_by_group_no_inf():
-    import polars as pl
-
-    from moderndid.dask import persist_by_group
-
     df = pl.DataFrame(
         {
             "id": [1, 2, 3],
@@ -123,8 +106,6 @@ def test_persist_by_group_no_inf():
         assert sentinel is None
         assert isinstance(group_to_parts, dict)
 
-        from distributed import futures_of
-
         futs = futures_of(persisted)
         if futs:
             client.cancel(futs)
@@ -132,9 +113,6 @@ def test_persist_by_group_no_inf():
 
 @requires_distributed
 def test_ddd_panel_dask_matches_regular():
-    from moderndid.didtriple.ddd import ddd
-    from moderndid.didtriple.dgp import gen_dgp_mult_periods
-
     dgp = gen_dgp_mult_periods(n=200, random_state=42)
     pl_data = dgp["data"]
     ddf = _polars_to_dask(pl_data, npartitions=4)
@@ -161,9 +139,6 @@ def test_ddd_panel_dask_matches_regular():
 
 @requires_distributed
 def test_ddd_panel_dask_notyettreated():
-    from moderndid.didtriple.ddd import ddd
-    from moderndid.didtriple.dgp import gen_dgp_mult_periods
-
     dgp = gen_dgp_mult_periods(n=200, random_state=123)
     pl_data = dgp["data"]
     ddf = _polars_to_dask(pl_data, npartitions=4)
@@ -189,9 +164,6 @@ def test_ddd_panel_dask_notyettreated():
 
 @requires_distributed
 def test_ddd_panel_dask_varying_base_period():
-    from moderndid.didtriple.ddd import ddd
-    from moderndid.didtriple.dgp import gen_dgp_mult_periods
-
     dgp = gen_dgp_mult_periods(n=200, random_state=7)
     pl_data = dgp["data"]
     ddf = _polars_to_dask(pl_data, npartitions=4)
@@ -217,9 +189,6 @@ def test_ddd_panel_dask_varying_base_period():
 
 @requires_distributed
 def test_ddd_rc_dask_matches_regular():
-    from moderndid.didtriple.ddd import ddd
-    from moderndid.didtriple.dgp import gen_dgp_mult_periods
-
     dgp = gen_dgp_mult_periods(n=200, panel=False, random_state=42)
     pl_data = dgp["data"]
     ddf = _polars_to_dask(pl_data, npartitions=4)
@@ -247,9 +216,6 @@ def test_ddd_rc_dask_matches_regular():
 
 @requires_distributed
 def test_did_dask_matches_regular():
-    from moderndid.core.data import load_mpdta
-    from moderndid.did.att_gt import att_gt
-
     pl_data = load_mpdta()
     ddf = _polars_to_dask(pl_data, npartitions=4)
 
@@ -276,9 +242,6 @@ def test_did_dask_matches_regular():
 
 @requires_distributed
 def test_did_dask_notyettreated():
-    from moderndid.core.data import load_mpdta
-    from moderndid.did.att_gt import att_gt
-
     pl_data = load_mpdta()
     ddf = _polars_to_dask(pl_data, npartitions=4)
 
@@ -303,9 +266,6 @@ def test_did_dask_notyettreated():
 
 @requires_distributed
 def test_did_dask_universal_base_period():
-    from moderndid.core.data import load_mpdta
-    from moderndid.did.att_gt import att_gt
-
     pl_data = load_mpdta()
     ddf = _polars_to_dask(pl_data, npartitions=4)
 
@@ -330,9 +290,6 @@ def test_did_dask_universal_base_period():
 
 @requires_distributed
 def test_pte_dose_dask_matches_regular():
-    from moderndid.core.data import simulate_cont_did_data
-    from moderndid.didcont.cont_did import cont_did
-
     pl_data = simulate_cont_did_data(n=200, seed=42).rename({"time_period": "period"})
     ddf = _polars_to_dask(pl_data, npartitions=4)
 
@@ -361,9 +318,6 @@ def test_pte_dose_dask_matches_regular():
 
 @requires_distributed
 def test_pte_eventstudy_dask_matches_regular():
-    from moderndid.core.data import simulate_cont_did_data
-    from moderndid.didcont.cont_did import cont_did
-
     pl_data = simulate_cont_did_data(n=200, seed=42).rename({"time_period": "period"})
     ddf = _polars_to_dask(pl_data, npartitions=4)
 
@@ -393,9 +347,6 @@ def test_pte_eventstudy_dask_matches_regular():
 
 @requires_distributed
 def test_dask_auto_switches_backend():
-    from moderndid.didtriple.ddd import ddd
-    from moderndid.didtriple.dgp import gen_dgp_mult_periods
-
     dgp = gen_dgp_mult_periods(n=200, random_state=42)
     ddf = _polars_to_dask(dgp["data"], npartitions=4)
 
@@ -419,9 +370,6 @@ def test_dask_auto_switches_backend():
 
 @requires_distributed
 def test_dask_multiple_npartitions():
-    from moderndid.didtriple.ddd import ddd
-    from moderndid.didtriple.dgp import gen_dgp_mult_periods
-
     dgp = gen_dgp_mult_periods(n=200, random_state=42)
     pl_data = dgp["data"]
 
@@ -441,3 +389,162 @@ def test_dask_multiple_npartitions():
 
     np.testing.assert_allclose(result_2.att, result_8.att, rtol=1e-10)
     np.testing.assert_allclose(result_2.se, result_8.se, rtol=1e-10)
+
+
+@requires_distributed
+def test_ddd_panel_dask_aggte_matches_regular():
+    dgp = gen_dgp_mult_periods(n=200, random_state=42)
+    pl_data = dgp["data"]
+    ddf = _polars_to_dask(pl_data, npartitions=4)
+
+    common = dict(
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method="reg",
+    )
+
+    result_regular = ddd(data=pl_data, **common)
+
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
+        result_dask = ddd(data=ddf, **common, backend="dask")
+
+    for agg_type in ["simple", "group", "calendar", "eventstudy"]:
+        agg_regular = agg_ddd(result_regular, aggregation_type=agg_type, boot=False, cband=False)
+        agg_dask_result = agg_ddd(result_dask, aggregation_type=agg_type, boot=False, cband=False)
+
+        np.testing.assert_allclose(
+            agg_dask_result.overall_att,
+            agg_regular.overall_att,
+            rtol=1e-10,
+            err_msg=f"overall_att mismatch for {agg_type}",
+        )
+        np.testing.assert_allclose(
+            agg_dask_result.overall_se,
+            agg_regular.overall_se,
+            rtol=1e-10,
+            err_msg=f"overall_se mismatch for {agg_type}",
+        )
+        if agg_regular.att_egt is not None:
+            np.testing.assert_allclose(
+                agg_dask_result.att_egt,
+                agg_regular.att_egt,
+                rtol=1e-10,
+                err_msg=f"att_egt mismatch for {agg_type}",
+            )
+            np.testing.assert_allclose(
+                agg_dask_result.se_egt,
+                agg_regular.se_egt,
+                rtol=1e-10,
+                err_msg=f"se_egt mismatch for {agg_type}",
+            )
+        else:
+            assert agg_dask_result.att_egt is None
+
+
+@requires_distributed
+def test_ddd_panel_dask_inf_func_mat_matches_regular():
+    dgp = gen_dgp_mult_periods(n=200, random_state=42)
+    pl_data = dgp["data"]
+    ddf = _polars_to_dask(pl_data, npartitions=4)
+
+    common = dict(
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method="reg",
+    )
+
+    result_regular = ddd(data=pl_data, **common)
+
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
+        result_dask = ddd(data=ddf, **common, backend="dask")
+
+    assert result_dask.inf_func_mat.shape == result_regular.inf_func_mat.shape
+    assert result_dask.inf_func_mat.shape[1] > 0, "inf_func_mat should not be empty"
+    np.testing.assert_allclose(result_dask.inf_func_mat, result_regular.inf_func_mat, rtol=1e-10)
+
+
+@requires_distributed
+def test_ddd_panel_dask_unit_groups_matches_regular():
+    dgp = gen_dgp_mult_periods(n=200, random_state=42)
+    pl_data = dgp["data"]
+    ddf = _polars_to_dask(pl_data, npartitions=4)
+
+    common = dict(
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method="reg",
+    )
+
+    result_regular = ddd(data=pl_data, **common)
+
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
+        result_dask = ddd(data=ddf, **common, backend="dask")
+
+    assert len(result_dask.unit_groups) == len(result_regular.unit_groups)
+    regular_props = {g: np.mean(result_regular.unit_groups == g) for g in np.unique(result_regular.unit_groups)}
+    dask_props = {g: np.mean(result_dask.unit_groups == g) for g in np.unique(result_dask.unit_groups)}
+    assert regular_props.keys() == dask_props.keys()
+    for g in regular_props:
+        np.testing.assert_allclose(dask_props[g], regular_props[g], rtol=1e-10)
+
+
+@requires_distributed
+def test_did_dask_aggte_matches_regular():
+    pl_data = load_mpdta()
+    ddf = _polars_to_dask(pl_data, npartitions=4)
+
+    common = dict(
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        panel=True,
+        control_group="nevertreated",
+        base_period="varying",
+    )
+
+    result_regular = att_gt(data=pl_data, **common)
+
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
+        result_dask = att_gt(data=ddf, **common, backend="dask")
+
+    for agg_type in ["simple", "group", "calendar", "dynamic"]:
+        agg_regular = aggte(result_regular, type=agg_type)
+        agg_dask_result = aggte(result_dask, type=agg_type)
+
+        np.testing.assert_allclose(
+            agg_dask_result.overall_att,
+            agg_regular.overall_att,
+            rtol=1e-10,
+            err_msg=f"overall_att mismatch for {agg_type}",
+        )
+        np.testing.assert_allclose(
+            agg_dask_result.overall_se,
+            agg_regular.overall_se,
+            rtol=1e-10,
+            err_msg=f"overall_se mismatch for {agg_type}",
+        )
+        if agg_regular.att_by_event is not None:
+            np.testing.assert_allclose(
+                agg_dask_result.att_by_event,
+                agg_regular.att_by_event,
+                rtol=1e-10,
+                err_msg=f"att_by_event mismatch for {agg_type}",
+            )
+            np.testing.assert_allclose(
+                agg_dask_result.se_by_event,
+                agg_regular.se_by_event,
+                rtol=1e-10,
+                err_msg=f"se_by_event mismatch for {agg_type}",
+            )
+        else:
+            assert agg_dask_result.att_by_event is None

@@ -36,12 +36,12 @@ def compute_att_gt_dask(
 
     client = get_client()
 
-    meta = compute_dask_metadata(ddf, gname, tname, idname)
+    meta = compute_dask_metadata(ddf, gname, tname, idname, need_unique_ids=True)
     tlist = meta["tlist"]
     glist = meta["glist"]
     n_units = meta["n_units"]
     unique_ids = meta["unique_ids"]
-    id_to_idx = {uid: idx for idx, uid in enumerate(np.sort(unique_ids))}
+    sorted_ids = np.sort(unique_ids)
 
     persisted, group_to_parts, sentinel = persist_by_group(client, ddf, gname)
 
@@ -189,9 +189,10 @@ def compute_att_gt_dask(
 
         global_inf = np.zeros(n_units)
         if cell_ids is not None:
-            for uid, val in zip(cell_ids, inf_func, strict=False):
-                if uid in id_to_idx:
-                    global_inf[id_to_idx[uid]] = val
+            indices = np.searchsorted(sorted_ids, cell_ids)
+            valid = (indices < len(sorted_ids)) & (sorted_ids[np.minimum(indices, len(sorted_ids) - 1)] == cell_ids)
+            n_valid = min(len(inf_func), len(cell_ids))
+            global_inf[indices[valid][:n_valid]] = inf_func[:n_valid][valid[:n_valid]]
 
         att_results.append(
             ATTgtResult(

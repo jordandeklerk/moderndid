@@ -20,7 +20,6 @@ from moderndid.didtriple.estimators.ddd_mp import (
     DDDMultiPeriodResult,
     _get_base_period,
     _process_gt_cell,
-    _update_inf_func_matrix,
 )
 
 
@@ -47,19 +46,19 @@ def ddd_mp_dask(
 
     client = get_client()
 
-    meta = compute_dask_metadata(ddf, group_col, time_col, id_col)
+    meta = compute_dask_metadata(ddf, group_col, time_col, id_col, need_unique_ids=True)
     tlist = meta["tlist"]
     glist = meta["glist"]
     all_group_vals = meta["all_group_vals"]
     n_units = meta["n_units"]
     unique_ids = meta["unique_ids"]
-    id_to_idx = {uid: idx for idx, uid in enumerate(np.sort(unique_ids))}
 
     n_periods = len(tlist)
     n_cohorts = len(glist)
     tfac = 0 if base_period == "universal" else 1
     tlist_length = n_periods - tfac
 
+    sorted_ids = np.sort(unique_ids)
     inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
@@ -147,7 +146,7 @@ def ddd_mp_dask(
                 attgt_list.append(att_entry)
                 if inf_data is not None:
                     inf_func_scaled, cell_id_list = inf_data
-                    _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter)
+                    _searchsorted_update(inf_func_mat, inf_func_scaled, cell_id_list, sorted_ids, counter)
                 if se_val is not None:
                     se_array[counter] = se_val
 
@@ -157,6 +156,7 @@ def ddd_mp_dask(
     att_array = np.array([r.att for r in attgt_list])
     groups_array = np.array([r.group for r in attgt_list])
     times_array = np.array([r.time for r in attgt_list])
+
     inf_func_trimmed = inf_func_mat[:, : len(attgt_list)]
 
     if boot:
@@ -183,8 +183,9 @@ def ddd_mp_dask(
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
 
-    first_period_ddf = ddf.loc[ddf[time_col] == tlist[0]]
-    unit_groups = first_period_ddf[group_col].compute().to_numpy()
+    # Compute unit_groups aligned with sorted_ids (row ordering must match inf_func_mat)
+    id_group_df = ddf.loc[ddf[time_col] == tlist[0]].groupby(id_col)[group_col].first().compute()
+    unit_groups = id_group_df.reindex(sorted_ids).values
 
     args = {
         "control_group": control_group,
@@ -206,11 +207,19 @@ def ddd_mp_dask(
         times=times_array,
         glist=glist,
         tlist=tlist,
-        inf_func_mat=inf_func_mat[:, : len(attgt_list)],
+        inf_func_mat=inf_func_trimmed,
         n=n_units,
         args=args,
         unit_groups=unit_groups,
     )
+
+
+def _searchsorted_update(inf_func_mat, inf_func_scaled, cell_id_list, sorted_ids, counter):
+    """Update influence function matrix using searchsorted instead of dict lookups."""
+    indices = np.searchsorted(sorted_ids, cell_id_list)
+    valid = (indices < len(sorted_ids)) & (sorted_ids[np.minimum(indices, len(sorted_ids) - 1)] == cell_id_list)
+    valid_indices = indices[valid]
+    inf_func_mat[valid_indices, counter] = inf_func_scaled[: len(cell_id_list)][valid]
 
 
 def _get_required_groups(all_group_vals, g, t, pret, control_group):
