@@ -464,9 +464,12 @@ def test_ddd_panel_dask_inf_func_mat_matches_regular():
     with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
         result_dask = ddd(data=ddf, **common, backend="dask")
 
-    assert result_dask.inf_func_mat.shape == result_regular.inf_func_mat.shape
-    assert result_dask.inf_func_mat.shape[1] > 0, "inf_func_mat should not be empty"
-    np.testing.assert_allclose(result_dask.inf_func_mat, result_regular.inf_func_mat, rtol=1e-10)
+    dask_inf = result_dask.inf_func_mat
+    if hasattr(dask_inf, "toarray"):
+        dask_inf = dask_inf.toarray()
+    assert dask_inf.shape == result_regular.inf_func_mat.shape
+    assert dask_inf.shape[1] > 0, "inf_func_mat should not be empty"
+    np.testing.assert_allclose(dask_inf, result_regular.inf_func_mat, rtol=1e-10)
 
 
 @requires_distributed

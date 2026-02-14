@@ -38,8 +38,13 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
     times = np.array([item["time_period"] for item in attgt_list])
     extra_gt_returns = att_gt_results.get("extra_gt_returns", [])
 
+    import scipy.sparse as _sp
+
     n_units = influence_func.shape[0]
-    vcov_analytical = influence_func.T @ influence_func / n_units
+    vcov_analytical = influence_func.T @ influence_func
+    if _sp.issparse(vcov_analytical):
+        vcov_analytical = vcov_analytical.toarray()
+    vcov_analytical = vcov_analytical / n_units
 
     cband = pte_params.cband
     alpha = pte_params.alp
@@ -139,8 +144,8 @@ def multiplier_bootstrap(influence_func, biters=1000, alpha=0.05, rng=None):
     bootstrap_results = []
 
     for _ in range(biters):
-        weights = rng.choice([-1, 1], size=n_obs, replace=True)
-        bootstrap_draw = np.sqrt(n_obs) * np.mean(weights[:, np.newaxis] * influence_func, axis=0)
+        weights = rng.choice([-1, 1], size=n_obs, replace=True).astype(np.float64)
+        bootstrap_draw = (influence_func.T @ weights) * (np.sqrt(n_obs) / n_obs)
         bootstrap_results.append(bootstrap_draw)
 
     bootstrap_results = np.array(bootstrap_results)

@@ -143,7 +143,7 @@ def compute_att_gt_dask(
         cleanup_persisted(client, persisted)
 
     att_results = []
-    influence_func_list = []
+    sparse_cols = []  # list of (row_indices, values) or None per column
 
     spec_idx = 0
     for cmeta in cell_meta_list:
@@ -156,7 +156,7 @@ def compute_att_gt_dask(
                     post=int(cmeta["is_post"]),
                 )
             )
-            influence_func_list.append(np.zeros(n_units))
+            sparse_cols.append(None)  # zero column
             continue
 
         result = worker_results[spec_idx]
@@ -172,7 +172,7 @@ def compute_att_gt_dask(
                         post=int(cmeta["is_post"]),
                     )
                 )
-                influence_func_list.append(np.zeros(n_units))
+                sparse_cols.append(None)
             continue
 
         att_val, inf_func, cell_ids = result
@@ -186,15 +186,16 @@ def compute_att_gt_dask(
                         post=int(cmeta["is_post"]),
                     )
                 )
-                influence_func_list.append(np.zeros(n_units))
+                sparse_cols.append(None)
             continue
 
-        global_inf = np.zeros(n_units)
         if cell_ids is not None:
             indices = np.searchsorted(sorted_ids, cell_ids)
             valid = (indices < len(sorted_ids)) & (sorted_ids[np.minimum(indices, len(sorted_ids) - 1)] == cell_ids)
             n_valid = min(len(inf_func), len(cell_ids))
-            global_inf[indices[valid][:n_valid]] = inf_func[:n_valid][valid[:n_valid]]
+            sparse_cols.append((indices[valid][:n_valid], inf_func[:n_valid][valid[:n_valid]]))
+        else:
+            sparse_cols.append(None)
 
         att_results.append(
             ATTgtResult(
@@ -204,13 +205,14 @@ def compute_att_gt_dask(
                 post=int(cmeta["is_post"]),
             )
         )
-        influence_func_list.append(global_inf)
 
-    if influence_func_list:
-        influence_matrix = np.column_stack(influence_func_list)
-        sparse_influence_funcs = sp.csr_matrix(influence_matrix)
+    n_inf_cols = len(sparse_cols)
+    if n_inf_cols > 0:
+        from moderndid.dask.ddd import _build_sparse_inf
+
+        sparse_influence_funcs = _build_sparse_inf(sparse_cols, n_units, n_inf_cols)
     else:
-        sparse_influence_funcs = sp.csr_matrix((n_units, 0))
+        sparse_influence_funcs = sp.csc_matrix((n_units, 0))
 
     return ComputeATTgtResult(attgt_list=att_results, influence_functions=sparse_influence_funcs)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
+import scipy.sparse as sp
 from scipy import stats
 
 from moderndid.dask import (
@@ -13,7 +14,7 @@ from moderndid.dask import (
     execute_cell_tasks,
     persist_by_group,
 )
-from moderndid.dask.ddd import _get_required_groups
+from moderndid.dask.ddd import _build_sparse_inf, _get_required_groups
 from moderndid.dask.worker_utils import combine_partitions
 from moderndid.didtriple.bootstrap.mboot_ddd import mboot_ddd
 from moderndid.didtriple.estimators.ddd_mp_rc import (
@@ -21,7 +22,6 @@ from moderndid.didtriple.estimators.ddd_mp_rc import (
     DDDMultiPeriodRCResult,
     _get_base_period_rc,
     _process_gt_cell_rc,
-    _update_inf_func_matrix_rc,
 )
 
 
@@ -139,7 +139,7 @@ def ddd_mp_rc_dask(
         cleanup_persisted(client, persisted)
         raise ValueError("No valid (g,t) cells found.")
 
-    inf_func_mat = np.zeros((n_obs, n_columns))
+    sparse_cols = [None] * n_columns
     se_array = np.full(n_columns, np.nan)
     att_entries = [None] * n_columns
 
@@ -147,7 +147,7 @@ def ddd_mp_rc_dask(
         att_entries[c] = entry
 
     def _handle_result(local_idx, result):
-        """Stream worker payloads into pre-allocated arrays to cap driver memory."""
+        """Stream worker payloads into sparse column storage."""
         if result is None:
             return None
 
@@ -160,7 +160,8 @@ def ddd_mp_rc_dask(
 
         if inf_data is not None:
             inf_func_scaled, obs_indices = inf_data
-            _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, col)
+            n_valid = min(len(inf_func_scaled), len(obs_indices))
+            sparse_cols[col] = (obs_indices[:n_valid].astype(np.int64), inf_func_scaled[:n_valid])  # noqa: F821
 
         if se_val is not None:
             se_array[col] = se_val
@@ -178,6 +179,9 @@ def ddd_mp_rc_dask(
         )
     else:
         cleanup_persisted(client, persisted)
+
+    inf_func_mat = _build_sparse_inf(sparse_cols, n_obs, n_columns)
+    del sparse_cols
 
     valid_mask = np.array([e is not None for e in att_entries])
     if not valid_mask.any():
@@ -198,7 +202,7 @@ def ddd_mp_rc_dask(
 
     if boot:
         boot_result = mboot_ddd(
-            inf_func=inf_func_final,
+            inf_func=inf_func_final.toarray() if sp.issparse(inf_func_final) else inf_func_final,
             biters=biters,
             alpha=alpha,
             cluster=None,
@@ -210,7 +214,10 @@ def ddd_mp_rc_dask(
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
     else:
-        V = inf_func_final.T @ inf_func_final / n_obs
+        V = inf_func_final.T @ inf_func_final
+        if sp.issparse(V):
+            V = V.toarray()
+        V = V / n_obs
         se_computed = np.sqrt(np.diag(V) / n_obs)
         valid_se_mask = ~np.isnan(se_override[: len(se_computed)])
         se_computed[valid_se_mask] = se_override[: len(se_computed)][valid_se_mask]
@@ -219,9 +226,6 @@ def ddd_mp_rc_dask(
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
-
-    if inf_func_final is not inf_func_mat:
-        del inf_func_mat
 
     args = {
         "panel": False,

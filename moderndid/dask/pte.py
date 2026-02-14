@@ -187,7 +187,8 @@ def pte_dask(
         worker_results = []
         cleanup_persisted(client, persisted)
 
-    inffunc = np.full((n_units, n_groups * n_times), np.nan)
+    n_total_cols = n_groups * n_times
+    _sparse_cols = [None] * n_total_cols
     attgt_list = []
     extra_gt_returns = []
     valid_columns = []
@@ -198,7 +199,6 @@ def pte_dask(
             if cm.get("att_zero"):
                 attgt_list.append({"att": 0, "group": cm["g"], "time_period": cm["tp"]})
                 extra_gt_returns.append({"extra_gt_returns": None, "group": cm["g"], "time_period": cm["tp"]})
-                inffunc[:, counter] = 0
                 valid_columns.append(counter)
             continue
 
@@ -216,15 +216,18 @@ def pte_dask(
         if inf_data is not None:
             kind, adjusted_inf_func, cell_ids = inf_data
             if kind == "values" and cell_ids is not None:
-                this_inf_func = np.zeros(n_units)
                 indices = np.searchsorted(sorted_ids, cell_ids)
                 valid = (indices < len(sorted_ids)) & (sorted_ids[np.minimum(indices, len(sorted_ids) - 1)] == cell_ids)
                 n_valid = min(len(adjusted_inf_func), len(cell_ids))
-                this_inf_func[indices[valid][:n_valid]] = adjusted_inf_func[:n_valid][valid[:n_valid]]
-                inffunc[:, counter] = this_inf_func
+                _sparse_cols[counter] = (indices[valid][:n_valid], adjusted_inf_func[:n_valid][valid[:n_valid]])
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
+
+    from moderndid.dask.ddd import _build_sparse_inf
+
+    inffunc = _build_sparse_inf(_sparse_cols, n_units, n_total_cols)
+    del _sparse_cols
 
     if valid_columns:
         inffunc = inffunc[:, valid_columns]

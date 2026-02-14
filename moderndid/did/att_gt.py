@@ -311,13 +311,16 @@ def att_gt(
         times = np.array([att.year for att in att_gt_list])
         att_values = np.array([float(att.att) for att in att_gt_list])
 
+        n_units = results.influence_functions.shape[0]
+
+        # Compute variance on sparse to avoid materialising the full dense
+        # matrix (which can exceed 72 GB at 300M+ units).
         if hasattr(influence_functions, "toarray"):
+            variance_matrix = (influence_functions.T @ influence_functions).toarray() / n_units
             influence_functions_dense = to_numpy(influence_functions.toarray())
         else:
             influence_functions_dense = to_numpy(np.array(influence_functions))
-
-        n_units = results.influence_functions.shape[0]
-        variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units
+            variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units
         standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
         standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
@@ -408,13 +411,14 @@ def att_gt(
     times = np.array([att.year for att in att_gt_list])
     att_values = np.array([float(att.att) for att in att_gt_list])
 
+    n_units = dp.config.id_count
+
     if hasattr(influence_functions, "toarray"):
+        variance_matrix = (influence_functions.T @ influence_functions).toarray() / n_units
         influence_functions_dense = to_numpy(influence_functions.toarray())
     else:
         influence_functions_dense = to_numpy(np.array(influence_functions))
-
-    n_units = dp.config.id_count
-    variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units
+        variance_matrix = influence_functions_dense.T @ influence_functions_dense / n_units
     standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 

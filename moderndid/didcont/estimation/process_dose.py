@@ -3,6 +3,7 @@
 import warnings
 
 import numpy as np
+import scipy.sparse as _sp
 import scipy.stats as st
 
 from ..spline import BSpline
@@ -80,6 +81,8 @@ def process_dose_gt(
     x_expanded_by_group = [(item.get("x_expanded") if item else None) for item in inner_extra_gt_returns]
 
     acrt_influence_matrix = gt_results["influence_func"]
+    if _sp.issparse(acrt_influence_matrix):
+        acrt_influence_matrix = acrt_influence_matrix.toarray()
     n_obs = acrt_influence_matrix.shape[0]
     bootstrap_iterations = pte_params.biters
     alpha = pte_params.alp
@@ -88,6 +91,8 @@ def process_dose_gt(
     overall_att = float(np.nansum(att_overall_by_group * weights_dict["weights"]))
 
     att_influence_matrix = att_gt.influence_func
+    if _sp.issparse(att_influence_matrix):
+        att_influence_matrix = att_influence_matrix.toarray()
     overall_att_inf_func = _compute_overall_att_inf_func(weights_dict["weights"], att_influence_matrix)
     overall_att_se = float(
         get_se(

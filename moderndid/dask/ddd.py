@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
+import scipy.sparse as sp
 from scipy import stats
 
 from moderndid.dask import (
@@ -144,19 +145,19 @@ def ddd_mp_dask(
         cleanup_persisted(client, persisted)
         raise ValueError("No valid (g,t) cells found.")
 
-    # Pre-allocate inf_func_mat with the exact number of output columns,
-    # avoiding the oversized allocation + expensive column-copy that doubles
-    # driver memory for 100M-unit datasets.  Zero-ATT columns stay all-zero.
-    inf_func_mat = np.zeros((n_units, n_columns))
+    # Collect influence-function columns as sparse (row_indices, values)
+    # pairs instead of filling a dense (n_units x n_columns) matrix.
+    # At 300M+ units the dense matrix would consume ~72 GB on the driver;
+    # sparse storage drops this to ~5 GB (each column is ~5 % dense).
+    sparse_cols = [None] * n_columns  # (row_indices, values) per column
     se_array = np.full(n_columns, np.nan)
     att_entries = [None] * n_columns
 
-    # Fill in the zero-ATT entries immediately.
     for c, entry in zero_att_cols.items():
         att_entries[c] = entry
 
     def _handle_result(local_idx, result):
-        """Stream worker payloads into pre-allocated arrays to cap driver memory."""
+        """Stream worker payloads into sparse column storage."""
         if result is None:
             return None
 
@@ -169,7 +170,8 @@ def ddd_mp_dask(
 
         if inf_data is not None:
             inf_func_scaled, cell_id_list = inf_data
-            _searchsorted_update(inf_func_mat, inf_func_scaled, cell_id_list, sorted_ids, col)
+            row_idx, vals = _searchsorted_sparse(inf_func_scaled, cell_id_list, sorted_ids)
+            sparse_cols[col] = (row_idx, vals)  # noqa: F821
 
         if se_val is not None:
             se_array[col] = se_val
@@ -187,6 +189,10 @@ def ddd_mp_dask(
         )
     else:
         cleanup_persisted(client, persisted)
+
+    # Build a sparse CSC matrix from collected columns.
+    inf_func_mat = _build_sparse_inf(sparse_cols, n_units, n_columns)
+    del sparse_cols
 
     # Trim to columns that produced results (zero-ATT + valid worker cells).
     valid_mask = np.array([e is not None for e in att_entries])
@@ -208,7 +214,7 @@ def ddd_mp_dask(
 
     if boot:
         boot_result = mboot_ddd(
-            inf_func=inf_func_final,
+            inf_func=inf_func_final.toarray() if sp.issparse(inf_func_final) else inf_func_final,
             biters=biters,
             alpha=alpha,
             cluster=None,
@@ -220,7 +226,10 @@ def ddd_mp_dask(
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
     else:
-        V = inf_func_final.T @ inf_func_final / n_units
+        V = inf_func_final.T @ inf_func_final
+        if sp.issparse(V):
+            V = V.toarray()
+        V = V / n_units
         se_computed = np.sqrt(np.diag(V) / n_units)
         valid_se_mask = ~np.isnan(se_override[: len(se_computed)])
         se_computed[valid_se_mask] = se_override[: len(se_computed)][valid_se_mask]
@@ -229,10 +238,6 @@ def ddd_mp_dask(
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
-
-    # Free the oversized matrix if we had to trim.
-    if inf_func_final is not inf_func_mat:
-        del inf_func_mat
 
     args = {
         "control_group": control_group,
@@ -261,12 +266,31 @@ def ddd_mp_dask(
     )
 
 
-def _searchsorted_update(inf_func_mat, inf_func_scaled, cell_id_list, sorted_ids, counter):
-    """Update influence function matrix using searchsorted instead of dict lookups."""
+def _searchsorted_sparse(inf_func_scaled, cell_id_list, sorted_ids):
+    """Map cell-local influence values to global row indices (sparse)."""
     indices = np.searchsorted(sorted_ids, cell_id_list)
     valid = (indices < len(sorted_ids)) & (sorted_ids[np.minimum(indices, len(sorted_ids) - 1)] == cell_id_list)
-    valid_indices = indices[valid]
-    inf_func_mat[valid_indices, counter] = inf_func_scaled[: len(cell_id_list)][valid]
+    return indices[valid], inf_func_scaled[: len(cell_id_list)][valid]
+
+
+def _build_sparse_inf(sparse_cols, n_rows, n_cols):
+    """Assemble sparse CSC matrix from per-column (row_indices, values) pairs."""
+    all_data = []
+    all_rows = []
+    all_cols = []
+    for c in range(n_cols):
+        entry = sparse_cols[c]
+        if entry is not None:
+            rows, vals = entry
+            all_data.append(vals)
+            all_rows.append(rows)
+            all_cols.append(np.full(len(rows), c, dtype=np.int32))
+    if all_data:
+        return sp.csc_matrix(
+            (np.concatenate(all_data), (np.concatenate(all_rows), np.concatenate(all_cols))),
+            shape=(n_rows, n_cols),
+        )
+    return sp.csc_matrix((n_rows, n_cols))
 
 
 def _get_required_groups(all_group_vals, g, t, pret, control_group):

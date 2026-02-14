@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 import polars as pl
+import scipy.sparse as _sp
 import scipy.stats as st
 
 from moderndid.core.preprocess import map_to_idx as _map_to_idx
@@ -41,7 +42,9 @@ def aggregate_att_gt(
     original_time = np.asarray(att_gt_result.times)
 
     att = np.asarray(att_gt_result.att, dtype=float)
-    inf_func = np.asarray(att_gt_result.influence_func)
+    inf_func = att_gt_result.influence_func
+    if not _sp.issparse(inf_func):
+        inf_func = np.asarray(inf_func)
     pte_params = att_gt_result.pte_params
 
     if pte_params is None:
