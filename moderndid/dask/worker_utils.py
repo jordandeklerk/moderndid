@@ -65,9 +65,11 @@ def combine_partitions(*partition_dfs, group_col, sentinel, required_groups=None
     import pandas as pd
 
     combined = pd.concat(pandas_parts, copy=False)
+    del pandas_parts
 
     # Convert to Polars once and restore sentinel there (zero-copy replace).
     result = pl.from_pandas(combined)
+    del combined
     if sentinel is not None:
         result = result.with_columns(
             pl.when(pl.col(group_col) == sentinel).then(np.inf).otherwise(pl.col(group_col)).alias(group_col)

@@ -593,6 +593,8 @@ def _process_multiple_controls(
     ddd_results = []
     inf_funcs_local = []
 
+    cell_id_list = np.sort(cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy())
+
     for ctrl in available_controls:
         ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
         subset_data = cell_data.filter(ctrl_expr)
@@ -610,12 +612,10 @@ def _process_multiple_controls(
 
         inf_full = np.zeros(n_cell)
         subset_ids = subset_data.filter(pl.col(time_col) == t).sort(id_col)[id_col].to_numpy()
-        cell_id_list = cell_data.filter(pl.col(time_col) == t).sort(id_col)[id_col].unique().to_numpy()
-        cell_id_to_local = {uid: idx for idx, uid in enumerate(cell_id_list)}
-
-        for i, uid in enumerate(subset_ids):
-            if uid in cell_id_to_local and i < len(inf_func_scaled):
-                inf_full[cell_id_to_local[uid]] = inf_func_scaled[i]
+        indices = np.searchsorted(cell_id_list, subset_ids)
+        valid = (indices < len(cell_id_list)) & (cell_id_list[np.minimum(indices, len(cell_id_list) - 1)] == subset_ids)
+        n_valid = min(len(inf_func_scaled), len(subset_ids))
+        inf_full[indices[valid][:n_valid]] = inf_func_scaled[:n_valid][valid[:n_valid]]
 
         inf_funcs_local.append(inf_full)
 
@@ -624,7 +624,6 @@ def _process_multiple_controls(
 
     att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_funcs_local), n_units)
     inf_func_scaled = (n_units / n_cell) * if_gmm
-    cell_id_list = cell_data.filter(pl.col(time_col) == t).sort(id_col)[id_col].unique().to_numpy()
     return att_gmm, inf_func_scaled, cell_id_list, se_gmm
 
 
@@ -645,15 +644,12 @@ def _compute_single_ddd(
     post_data = cell_data.filter(pl.col(time_col) == t).sort(id_col)
     pre_data = cell_data.filter(pl.col(time_col) == pret).sort(id_col)
 
-    post_ids = set(post_data[id_col].to_list())
-    pre_ids = set(pre_data[id_col].to_list())
-    common_ids = post_ids & pre_ids
-    if len(common_ids) == 0:
+    common_ids_df = post_data.select(id_col).unique().join(pre_data.select(id_col).unique(), on=id_col, how="inner")
+    if common_ids_df.height == 0:
         return None, None
 
-    common_ids_list = list(common_ids)
-    post_data = post_data.filter(pl.col(id_col).is_in(common_ids_list)).sort(id_col)
-    pre_data = pre_data.filter(pl.col(id_col).is_in(common_ids_list)).sort(id_col)
+    post_data = post_data.join(common_ids_df, on=id_col, how="semi").sort(id_col)
+    pre_data = pre_data.join(common_ids_df, on=id_col, how="semi").sort(id_col)
 
     y1 = post_data[y_col].to_numpy()
     y0 = pre_data[y_col].to_numpy()
