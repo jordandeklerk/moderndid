@@ -274,23 +274,32 @@ def _searchsorted_sparse(inf_func_scaled, cell_id_list, sorted_ids):
 
 
 def _build_sparse_inf(sparse_cols, n_rows, n_cols):
-    """Assemble sparse CSC matrix from per-column (row_indices, values) pairs."""
-    all_data = []
-    all_rows = []
-    all_cols = []
+    """Assemble sparse CSC matrix from per-column (row_indices, values) pairs.
+
+    Builds the CSC representation directly from per-column data, avoiding
+    an intermediate COO matrix, the column-index array, and the COO→CSC
+    sort.  Row indices within each column are already sorted (they come
+    from ``np.searchsorted``), so no additional sorting is needed.
+    """
+    indptr = np.zeros(n_cols + 1, dtype=np.int64)
+    for c in range(n_cols):
+        entry = sparse_cols[c]
+        if entry is not None:
+            indptr[c + 1] = len(entry[0])
+    np.cumsum(indptr, out=indptr)
+    nnz = int(indptr[-1])
+    if nnz == 0:
+        return sp.csc_matrix((n_rows, n_cols))
+    indices = np.empty(nnz, dtype=np.int64)
+    data = np.empty(nnz, dtype=np.float64)
     for c in range(n_cols):
         entry = sparse_cols[c]
         if entry is not None:
             rows, vals = entry
-            all_data.append(vals)
-            all_rows.append(rows)
-            all_cols.append(np.full(len(rows), c, dtype=np.int32))
-    if all_data:
-        return sp.csc_matrix(
-            (np.concatenate(all_data), (np.concatenate(all_rows), np.concatenate(all_cols))),
-            shape=(n_rows, n_cols),
-        )
-    return sp.csc_matrix((n_rows, n_cols))
+            start, end = indptr[c], indptr[c + 1]
+            indices[start:end] = rows
+            data[start:end] = vals
+    return sp.csc_matrix((data, indices, indptr), shape=(n_rows, n_cols))
 
 
 def _get_required_groups(all_group_vals, g, t, pret, control_group):
