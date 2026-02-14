@@ -253,15 +253,18 @@ def _process_gt_cell_did_dask(
         return None
 
     if panel:
-        post_ids = set(cell_data.filter(pl.col(tname) == t)[idname].to_list())
-        pre_ids = set(cell_data.filter(pl.col(tname) == pret)[idname].to_list())
-        common_ids = sorted(post_ids & pre_ids)
+        common_ids_df = (
+            cell_data.filter(pl.col(tname) == t)
+            .select(idname)
+            .unique()
+            .join(cell_data.filter(pl.col(tname) == pret).select(idname).unique(), on=idname, how="inner")
+        )
 
-        if not common_ids:
+        if common_ids_df.height == 0:
             return None
 
-        cell_data = cell_data.filter(pl.col(idname).is_in(common_ids))
-        cell_id_arr = np.array(common_ids)
+        cell_data = cell_data.join(common_ids_df, on=idname, how="semi")
+        cell_id_arr = common_ids_df[idname].sort().to_numpy()
 
         post_data = cell_data.filter(pl.col(tname) == t).sort(idname)
         pre_data = cell_data.filter(pl.col(tname) == pret).sort(idname)

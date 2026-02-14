@@ -39,7 +39,7 @@ def did_attgt(gt_data, xformula="~1", **kwargs):
 
     gt_data_wide = gt_data.pivot(index=["id", "D"], on="name", values="Y").sort("id")
 
-    pre_data_aligned = pre_data.sort("id").filter(pl.col("id").is_in(gt_data_wide["id"].to_list()))
+    pre_data_aligned = pre_data.sort("id").join(gt_data_wide.select("id"), on="id", how="semi")
 
     covariates = model_matrix(xformula, data=pre_data_aligned).__wrapped__.to_numpy()
 
@@ -116,9 +116,9 @@ def pte_attgt(
     y_post = gt_data_wide["post"].to_numpy()
     y_pre = gt_data_wide["pre"].to_numpy()
 
-    wide_ids = gt_data_wide["id"].to_list()
-    pre_data_aligned = pre_data.filter(pl.col("id").is_in(wide_ids)).sort("id")
-    post_data_aligned = post_data.filter(pl.col("id").is_in(wide_ids)).sort("id")
+    wide_ids_df = gt_data_wide.select("id")
+    pre_data_aligned = pre_data.join(wide_ids_df, on="id", how="semi").sort("id")
+    post_data_aligned = post_data.join(wide_ids_df, on="id", how="semi").sort("id")
 
     covariates = model_matrix(xformula, data=pre_data_aligned).__wrapped__.to_numpy()
 

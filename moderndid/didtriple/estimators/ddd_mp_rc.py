@@ -527,9 +527,8 @@ def _get_cell_parts_rc(gt_partitions, all_group_vals, g, t, pret, control_group,
 
 def _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter):
     """Update influence function matrix with scaled values for a cell in RCS."""
-    for i, idx in enumerate(obs_indices):
-        if i < len(inf_func_scaled):
-            inf_func_mat[idx, counter] = inf_func_scaled[i]
+    n_valid = min(len(inf_func_scaled), len(obs_indices))
+    inf_func_mat[obs_indices[:n_valid], counter] = inf_func_scaled[:n_valid]
 
 
 def _process_single_control_rc(
@@ -580,7 +579,7 @@ def _process_multiple_controls_rc(
     inf_funcs_local = []
 
     cell_obs_indices = cell_data["_obs_idx"].to_numpy()
-    cell_idx_to_local = {idx: i for i, idx in enumerate(cell_obs_indices)}
+    sorted_cell_obs = np.sort(cell_obs_indices)
 
     for ctrl in available_controls:
         ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
@@ -598,9 +597,12 @@ def _process_multiple_controls_rc(
         ddd_results.append(att_result)
 
         inf_full = np.zeros(n_cell)
-        for i, idx in enumerate(subset_obs_indices):
-            if idx in cell_idx_to_local and i < len(inf_func_scaled):
-                inf_full[cell_idx_to_local[idx]] = inf_func_scaled[i]
+        indices = np.searchsorted(sorted_cell_obs, subset_obs_indices)
+        valid = (indices < len(sorted_cell_obs)) & (
+            sorted_cell_obs[np.minimum(indices, len(sorted_cell_obs) - 1)] == subset_obs_indices
+        )
+        n_valid = min(len(inf_func_scaled), len(subset_obs_indices))
+        inf_full[indices[valid][:n_valid]] = inf_func_scaled[:n_valid][valid[:n_valid]]
 
         inf_funcs_local.append(inf_full)
 

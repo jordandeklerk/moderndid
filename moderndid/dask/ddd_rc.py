@@ -64,24 +64,19 @@ def ddd_mp_rc_dask(
     n_obs = len(ddf)
 
     n_periods = len(tlist)
-    n_cohorts = len(glist)
     tfac = 0 if base_period == "universal" else 1
     tlist_length = n_periods - tfac
 
     ddf = ddf.assign(**{"_obs_idx": 1})
     ddf["_obs_idx"] = ddf["_obs_idx"].cumsum() - 1
 
-    inf_func_mat = np.zeros((n_obs, n_cohorts * tlist_length))
-    se_array = np.full(n_cohorts * tlist_length, np.nan)
-
     persisted, group_to_parts, sentinel = persist_by_group(client, ddf, group_col, all_group_vals)
 
-    total_cells = n_cohorts * tlist_length
-    all_results = [None] * total_cells
     cell_specs = []
-    cell_indices = []
+    spec_to_col = []
+    zero_att_cols = {}
+    col_idx = 0
 
-    idx = 0
     for g in glist:
         for t_idx in range(tlist_length):
             t = tlist[t_idx + tfac]
@@ -89,26 +84,23 @@ def ddd_mp_rc_dask(
             pret = _get_base_period_rc(g, t_idx, tlist, base_period)
             if pret is None:
                 warnings.warn(f"No pre-treatment periods for group {g}. Skipping.", UserWarning)
-                idx += 1
                 continue
 
             post_treat = int(g <= t)
             if post_treat:
                 pre_periods = tlist[tlist < g]
                 if len(pre_periods) == 0:
-                    idx += 1
                     continue
                 pret = pre_periods[-1]
 
             if base_period == "universal" and pret == t:
-                all_results[idx] = (ATTgtRCResult(att=0.0, group=int(g), time=int(t), post=0), None, None)
-                idx += 1
+                zero_att_cols[col_idx] = ATTgtRCResult(att=0.0, group=int(g), time=int(t), post=0)
+                col_idx += 1
                 continue
 
             required_groups, available_controls = _get_required_groups(all_group_vals, g, t, pret, control_group)
 
             if len(available_controls) == 0:
-                idx += 1
                 continue
 
             lookup_groups = [
@@ -139,60 +131,74 @@ def ddd_mp_rc_dask(
                     },
                 }
             )
-            cell_indices.append(idx)
-            idx += 1
+            spec_to_col.append(col_idx)
+            col_idx += 1
 
-    if not cell_specs:
+    n_columns = col_idx
+    if n_columns == 0:
         cleanup_persisted(client, persisted)
         raise ValueError("No valid (g,t) cells found.")
 
+    inf_func_mat = np.zeros((n_obs, n_columns))
+    se_array = np.full(n_columns, np.nan)
+    att_entries = [None] * n_columns
+
+    for c, entry in zero_att_cols.items():
+        att_entries[c] = entry
+
     def _handle_result(local_idx, result):
         """Stream worker payloads into pre-allocated arrays to cap driver memory."""
-        global_idx = cell_indices[local_idx]
         if result is None:
-            all_results[global_idx] = None
             return None
 
         att_entry, inf_data, se_val = result
         if att_entry is None:
-            all_results[global_idx] = None
             return None
+
+        col = spec_to_col[local_idx]
+        att_entries[col] = att_entry
 
         if inf_data is not None:
             inf_func_scaled, obs_indices = inf_data
-            _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, global_idx)
+            _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, col)
 
         if se_val is not None:
-            se_array[global_idx] = se_val
+            se_array[col] = se_val
 
-        all_results[global_idx] = (att_entry, None, se_val)
         return None
 
-    execute_cell_tasks(
-        client,
-        persisted,
-        group_to_parts,
-        cell_specs,
-        _process_gt_cell_rc_dask,
-        result_handler=_handle_result,
-    )
+    if cell_specs:
+        execute_cell_tasks(
+            client,
+            persisted,
+            group_to_parts,
+            cell_specs,
+            _process_gt_cell_rc_dask,
+            result_handler=_handle_result,
+        )
+    else:
+        cleanup_persisted(client, persisted)
 
-    valid_indices = [i for i, result in enumerate(all_results) if result is not None and result[0] is not None]
-    attgt_list = [all_results[i][0] for i in valid_indices]
-
-    if len(attgt_list) == 0:
+    valid_mask = np.array([e is not None for e in att_entries])
+    if not valid_mask.any():
         raise ValueError("No valid (g,t) cells found.")
 
+    attgt_list = [e for e in att_entries if e is not None]
     att_array = np.array([r.att for r in attgt_list])
     groups_array = np.array([r.group for r in attgt_list])
     times_array = np.array([r.time for r in attgt_list])
-    se_override = se_array[valid_indices]
 
-    inf_func_trimmed = inf_func_mat[:, valid_indices]
+    if valid_mask.all():
+        inf_func_final = inf_func_mat
+        se_override = se_array
+    else:
+        valid_idx = np.where(valid_mask)[0]
+        inf_func_final = inf_func_mat[:, valid_idx]
+        se_override = se_array[valid_idx]
 
     if boot:
         boot_result = mboot_ddd(
-            inf_func=inf_func_trimmed,
+            inf_func=inf_func_final,
             biters=biters,
             alpha=alpha,
             cluster=None,
@@ -204,7 +210,7 @@ def ddd_mp_rc_dask(
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
     else:
-        V = inf_func_trimmed.T @ inf_func_trimmed / n_obs
+        V = inf_func_final.T @ inf_func_final / n_obs
         se_computed = np.sqrt(np.diag(V) / n_obs)
         valid_se_mask = ~np.isnan(se_override[: len(se_computed)])
         se_computed[valid_se_mask] = se_override[: len(se_computed)][valid_se_mask]
@@ -213,6 +219,9 @@ def ddd_mp_rc_dask(
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
+
+    if inf_func_final is not inf_func_mat:
+        del inf_func_mat
 
     args = {
         "panel": False,
@@ -236,7 +245,7 @@ def ddd_mp_rc_dask(
         times=times_array,
         glist=glist,
         tlist=tlist,
-        inf_func_mat=inf_func_trimmed,
+        inf_func_mat=inf_func_final,
         n=n_obs,
         args=args,
     )
