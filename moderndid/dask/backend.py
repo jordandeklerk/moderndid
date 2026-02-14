@@ -99,12 +99,16 @@ def persist_by_group(client, ddf, group_col, all_group_vals=None):
     if has_inf:
         sentinel = float(np.max(finite_groups) + 1)
         ddf = ddf.map_partitions(_replace_inf_with_sentinel, group_col=group_col, sentinel=sentinel)
-
-    from distributed import futures_of
-
-    # Avoid duplicating a collection that is already persisted upstream.
-    if not futures_of(ddf):
+        # Always re-persist after map_partitions so that the sentinel
+        # replacement is materialised.  Without this, futures_of() finds
+        # upstream futures from an earlier persist and the scan reads the
+        # old data (still containing inf instead of sentinel).
         ddf = client.persist(ddf)
+    else:
+        from distributed import futures_of
+
+        if not futures_of(ddf):
+            ddf = client.persist(ddf)
 
     group_to_partitions = _scan_group_partitions(client, ddf, group_col, finite_groups, sentinel)
 
