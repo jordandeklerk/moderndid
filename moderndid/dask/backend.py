@@ -155,7 +155,9 @@ def _partition_unique_groups(pdf, group_col):
     return {float(g) for g in pdf[group_col].unique()}
 
 
-def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, worker_fn, result_handler=None):
+def execute_cell_tasks(
+    client, persisted_ddf, group_to_partitions, cell_specs, worker_fn, result_handler=None, worker_result_fn=None
+):
     """Submit cell tasks with concurrency control, gather results, and clean up.
 
     Pins exactly one cell to each worker at a time using a sliding-window
@@ -183,12 +185,23 @@ def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, w
         immediately when each task finishes.  Use this to process large
         payloads in a streaming fashion and avoid accumulating all results in
         driver memory.
+    worker_result_fn : callable or None, default None
+        Optional post-processing function submitted on the same worker after
+        a cell completes.  When provided, the cell result is split into a
+        tiny driver payload (transferred) and a worker payload (kept as a
+        Future on the worker).  The driver payload is passed to
+        *result_handler*; worker payloads are returned as a dict mapping
+        ``cell_index -> (future, worker_addr)``.
 
     Returns
     -------
-    list
-        One result per cell spec (in order).
+    list or tuple of (list, dict)
+        When *worker_result_fn* is None: one result per cell spec (in order).
+        When *worker_result_fn* is set: ``(results, worker_futures)`` where
+        *worker_futures* maps cell indices to ``(Future, worker_addr)`` pairs
+        for data that remained on workers.
     """
+    import operator
     from collections import deque
 
     from distributed import as_completed
@@ -210,6 +223,7 @@ def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, w
 
     n_tasks = len(cell_specs)
     results = [None] * n_tasks
+    worker_futures = {} if worker_result_fn is not None else None
 
     def _make_future(idx, worker):
         spec = cell_specs[idx]
@@ -251,7 +265,32 @@ def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, w
         ac = as_completed(active)
         for completed in ac:
             idx, worker = active.pop(completed)
-            result = completed.result()
+
+            if worker_result_fn is not None:
+                post_fut = client.submit(
+                    worker_result_fn,
+                    completed,
+                    workers=[worker],
+                    allow_other_workers=False,
+                    pure=False,
+                )
+                driver_fut = client.submit(
+                    operator.itemgetter(0),
+                    post_fut,
+                    workers=[worker],
+                    pure=False,
+                )
+                worker_data_fut = client.submit(
+                    operator.itemgetter(1),
+                    post_fut,
+                    workers=[worker],
+                    pure=False,
+                )
+                result = driver_fut.result()
+                worker_futures[idx] = (worker_data_fut, worker)
+            else:
+                result = completed.result()
+
             if result_handler is not None:
                 handled = result_handler(idx, result)
                 if handled is not None:
@@ -267,6 +306,8 @@ def execute_cell_tasks(client, persisted_ddf, group_to_partitions, cell_specs, w
     finally:
         cleanup_persisted(client, persisted_ddf)
 
+    if worker_result_fn is not None:
+        return results, worker_futures
     return results
 
 

@@ -234,10 +234,20 @@ def ddd_mp_dask(
         se_computed[valid_se_mask] = se_override[: len(se_computed)][valid_se_mask]
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = stats.norm.ppf(1 - alpha / 2)
-        # Wrap sparse columns in a lazy matrix that supports the
-        # [:, keepers] @ weights pattern used by agg_ddd without
+        # Build a compact Gram-matrix representation (V = IF^T @ IF)
+        # that supports analytical SE computation in agg_ddd without
         # materializing the full n_units x n_columns matrix.
-        inf_func_final = _SparseColumnIF(sparse_cols, n_units, valid_col_indices)
+        from moderndid.dask.gram import compute_gram_from_sparse_cols
+
+        inf_func_final = compute_gram_from_sparse_cols(
+            sparse_cols,
+            n_units,
+            n_columns,
+            unit_groups,
+            glist,
+            valid_col_indices,
+        )
+        del sparse_cols
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed

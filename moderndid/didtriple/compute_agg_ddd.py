@@ -83,6 +83,14 @@ def compute_agg_ddd(
     glist = ddd_result.glist.copy()
     unit_groups = ddd_result.unit_groups.copy()
 
+    if _is_gram(inf_func_mat) and boot:
+        raise ValueError(
+            "Bootstrap (boot=True) requires the full influence function matrix. "
+            "The Dask DDD estimator with boot=False uses a compact Gram matrix "
+            "representation that only supports analytical SEs. Re-run ddd() with "
+            "boot=True to enable bootstrap aggregation."
+        )
+
     args = {
         "aggregation_type": aggregation_type,
         "boot": boot,
@@ -212,8 +220,25 @@ def _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, biters, alpha, 
         simple_att = np.nan
 
     weights = pg_obs[keepers] / pg_obs[keepers].sum()
-    simple_if = _get_agg_inf_func(inf_func_mat, keepers, weights)
 
+    if _is_gram(inf_func_mat):
+        from moderndid.dask.gram import gram_se
+
+        simple_se = _clamp_se(gram_se(inf_func_mat.V, keepers, weights, n))
+        return DDDAggResult(
+            overall_att=simple_att,
+            overall_se=simple_se,
+            aggregation_type="simple",
+            egt=None,
+            att_egt=None,
+            se_egt=None,
+            crit_val=stats.norm.ppf(1 - alpha / 2),
+            inf_func=None,
+            inf_func_overall=None,
+            args=args,
+        )
+
+    simple_if = _get_agg_inf_func(inf_func_mat, keepers, weights)
     simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state)
 
     return DDDAggResult(
@@ -251,6 +276,23 @@ def _compute_group(
     unit_groups,
 ):
     """Compute group-specific ATT aggregation."""
+    if _is_gram(inf_func_mat):
+        return _compute_group_gram(
+            att,
+            inf_func_mat,
+            group,
+            t,
+            glist_recoded,
+            orig_glist,
+            pgg,
+            pg_obs,
+            n,
+            max_e,
+            alpha,
+            args,
+            unit_groups,
+        )
+
     selective_att_g = np.zeros(len(glist_recoded))
     selective_inf_funcs = []
     selective_se_g = np.zeros(len(glist_recoded))
@@ -304,6 +346,62 @@ def _compute_group(
     )
 
 
+def _compute_group_gram(
+    att, inf_func_mat, group, t, glist_recoded, orig_glist, pgg, pg_obs, n, max_e, alpha, args, unit_groups
+):
+    """Gram-based group aggregation (analytical SEs, no bootstrap)."""
+    from moderndid.dask.gram import gram_group_overall_se, gram_se
+
+    n_groups = len(glist_recoded)
+    selective_att_g = np.zeros(n_groups)
+    selective_se_g = np.zeros(n_groups)
+    keepers_per_group = [None] * n_groups
+    weights_per_group = [None] * n_groups
+
+    for i, g in enumerate(glist_recoded):
+        whichg = np.where((group == g) & (g <= t) & (t <= g + max_e))[0]
+
+        if len(whichg) > 0:
+            selective_att_g[i] = np.mean(att[whichg])
+            weights_g = pg_obs[whichg] / pg_obs[whichg].sum()
+            selective_se_g[i] = _clamp_se(gram_se(inf_func_mat.V, whichg, weights_g, n))
+            keepers_per_group[i] = whichg
+            weights_per_group[i] = weights_g
+        else:
+            selective_att_g[i] = np.nan
+            selective_se_g[i] = np.nan
+
+    selective_att_g_clean = np.where(np.isnan(selective_att_g), 0, selective_att_g)
+    selective_att = np.sum(selective_att_g_clean * pgg) / pgg.sum()
+
+    keepers_wif = np.arange(n_groups)
+    selective_se = _clamp_se(
+        gram_group_overall_se(
+            inf_func_mat,
+            keepers_per_group,
+            weights_per_group,
+            selective_att_g_clean,
+            pgg,
+            orig_glist,
+            keepers_wif,
+            n,
+        )
+    )
+
+    return DDDAggResult(
+        overall_att=selective_att,
+        overall_se=selective_se,
+        aggregation_type="group",
+        egt=orig_glist,
+        att_egt=selective_att_g,
+        se_egt=selective_se_g,
+        crit_val=stats.norm.ppf(1 - alpha / 2),
+        inf_func=None,
+        inf_func_overall=None,
+        args=args,
+    )
+
+
 def _compute_calendar(
     att,
     inf_func_mat,
@@ -322,12 +420,19 @@ def _compute_calendar(
     random_state,
 ):
     """Compute calendar time ATT aggregation."""
+    use_gram = _is_gram(inf_func_mat)
     min_g = group.min()
     calendar_tlist = tlist_recoded[tlist_recoded >= min_g]
 
     calendar_att_t = np.zeros(len(calendar_tlist))
-    calendar_inf_funcs = []
     calendar_se_t = np.zeros(len(calendar_tlist))
+
+    if use_gram:
+        from moderndid.dask.gram import gram_overall_se_from_parts, gram_se
+
+    keepers_list = []
+    weights_list = []
+    calendar_inf_funcs = [] if not use_gram else None
 
     for i, t1 in enumerate(calendar_tlist):
         whicht = np.where((t == t1) & (group <= t))[0]
@@ -335,14 +440,55 @@ def _compute_calendar(
         if len(whicht) > 0:
             pgt = pg_obs[whicht] / pg_obs[whicht].sum()
             calendar_att_t[i] = np.sum(pgt * att[whicht])
-            inf_func_t = _get_agg_inf_func(inf_func_mat, whicht, pgt)
-            calendar_se_t[i] = _compute_se(inf_func_t, n, boot, biters, alpha, random_state)
+
+            if use_gram:
+                calendar_se_t[i] = _clamp_se(gram_se(inf_func_mat.V, whicht, pgt, n))
+                keepers_list.append(whicht)
+                weights_list.append(pgt)
+            else:
+                inf_func_t = _get_agg_inf_func(inf_func_mat, whicht, pgt)
+                calendar_se_t[i] = _compute_se(inf_func_t, n, boot, biters, alpha, random_state)
+                calendar_inf_funcs.append(inf_func_t)
         else:
             calendar_att_t[i] = np.nan
-            inf_func_t = np.zeros(n)
             calendar_se_t[i] = np.nan
+            if use_gram:
+                keepers_list.append(None)
+                weights_list.append(None)
+            else:
+                calendar_inf_funcs.append(np.zeros(n))
 
-        calendar_inf_funcs.append(inf_func_t)
+    calendar_att = np.nanmean(calendar_att_t)
+    orig_calendar_tlist = np.array([_t2orig(tc, orig_gtlist, uniquet) for tc in calendar_tlist])
+
+    if use_gram:
+        weights_calendar = np.ones(len(calendar_tlist)) / len(calendar_tlist)
+        valid = [j for j in range(len(keepers_list)) if keepers_list[j] is not None]
+        if valid:
+            calendar_se = _clamp_se(
+                gram_overall_se_from_parts(
+                    inf_func_mat.V,
+                    [keepers_list[j] for j in valid],
+                    [weights_list[j] for j in valid],
+                    [weights_calendar[j] for j in valid],
+                    n,
+                )
+            )
+        else:
+            calendar_se = np.nan
+
+        return DDDAggResult(
+            overall_att=calendar_att,
+            overall_se=calendar_se,
+            aggregation_type="calendar",
+            egt=orig_calendar_tlist,
+            att_egt=calendar_att_t,
+            se_egt=calendar_se_t,
+            crit_val=stats.norm.ppf(1 - alpha / 2),
+            inf_func=None,
+            inf_func_overall=None,
+            args=args,
+        )
 
     calendar_inf_func_t = np.column_stack(calendar_inf_funcs)
 
@@ -350,13 +496,9 @@ def _compute_calendar(
     if cband and boot:
         calendar_crit_val = _get_crit_val(calendar_inf_func_t, biters, alpha, random_state)
 
-    calendar_att = np.nanmean(calendar_att_t)
-
     weights_calendar = np.ones(len(calendar_tlist)) / len(calendar_tlist)
     calendar_inf_func = calendar_inf_func_t @ weights_calendar
     calendar_se = _compute_se(calendar_inf_func, n, boot, biters, alpha, random_state)
-
-    orig_calendar_tlist = np.array([_t2orig(tc, orig_gtlist, uniquet) for tc in calendar_tlist])
 
     return DDDAggResult(
         overall_att=calendar_att,
@@ -395,6 +537,7 @@ def _compute_eventstudy(
     random_state,
 ):
     """Compute event study ATT aggregation."""
+    use_gram = _is_gram(inf_func_mat)
     eseq = np.unique(orig_periods - orig_group)
     eseq = np.sort(eseq)
 
@@ -414,8 +557,14 @@ def _compute_eventstudy(
     eseq = eseq[(eseq >= min_e) & (eseq <= max_e)]
 
     dynamic_att_e = np.zeros(len(eseq))
-    dynamic_inf_funcs = []
     dynamic_se_e = np.zeros(len(eseq))
+
+    if use_gram:
+        from moderndid.dask.gram import gram_overall_se_from_parts, gram_se
+
+    keepers_list = []
+    weights_list = []
+    dynamic_inf_funcs = [] if not use_gram else None
 
     for i, e in enumerate(eseq):
         whiche = np.where(((orig_periods - orig_group) == e) & include_balanced_gt)[0]
@@ -423,14 +572,64 @@ def _compute_eventstudy(
         if len(whiche) > 0:
             pge = pg_obs[whiche] / pg_obs[whiche].sum()
             dynamic_att_e[i] = np.sum(att[whiche] * pge)
-            inf_func_e = _get_agg_inf_func(inf_func_mat, whiche, pge)
-            dynamic_se_e[i] = _compute_se(inf_func_e, n, boot, biters, alpha, random_state)
+
+            if use_gram:
+                dynamic_se_e[i] = _clamp_se(gram_se(inf_func_mat.V, whiche, pge, n))
+                keepers_list.append(whiche)
+                weights_list.append(pge)
+            else:
+                inf_func_e = _get_agg_inf_func(inf_func_mat, whiche, pge)
+                dynamic_se_e[i] = _compute_se(inf_func_e, n, boot, biters, alpha, random_state)
+                dynamic_inf_funcs.append(inf_func_e)
         else:
             dynamic_att_e[i] = np.nan
-            inf_func_e = np.zeros(n)
             dynamic_se_e[i] = np.nan
+            if use_gram:
+                keepers_list.append(None)
+                weights_list.append(None)
+            else:
+                dynamic_inf_funcs.append(np.zeros(n))
 
-        dynamic_inf_funcs.append(inf_func_e)
+    args_out = args.copy()
+    args_out["min_e"] = min_e
+    args_out["max_e"] = max_e
+    args_out["balance_e"] = balance_e
+
+    if use_gram:
+        epos = eseq >= 0
+        if epos.any():
+            dynamic_att = np.nanmean(dynamic_att_e[epos])
+            epos_indices = np.where(epos)[0]
+            valid_pos = [j for j in epos_indices if keepers_list[j] is not None]
+            if valid_pos:
+                n_pos = len(valid_pos)
+                dynamic_se = _clamp_se(
+                    gram_overall_se_from_parts(
+                        inf_func_mat.V,
+                        [keepers_list[j] for j in valid_pos],
+                        [weights_list[j] for j in valid_pos],
+                        [1.0 / n_pos] * n_pos,
+                        n,
+                    )
+                )
+            else:
+                dynamic_se = np.nan
+        else:
+            dynamic_att = np.nan
+            dynamic_se = np.nan
+
+        return DDDAggResult(
+            overall_att=dynamic_att,
+            overall_se=dynamic_se,
+            aggregation_type="eventstudy",
+            egt=eseq.astype(int),
+            att_egt=dynamic_att_e,
+            se_egt=dynamic_se_e,
+            crit_val=stats.norm.ppf(1 - alpha / 2),
+            inf_func=None,
+            inf_func_overall=None,
+            args=args_out,
+        )
 
     dynamic_inf_func_e = np.column_stack(dynamic_inf_funcs) if dynamic_inf_funcs else np.zeros((n, 0))
 
@@ -448,11 +647,6 @@ def _compute_eventstudy(
         dynamic_att = np.nan
         dynamic_se = np.nan
         dynamic_inf_func = np.zeros(n)
-
-    args_out = args.copy()
-    args_out["min_e"] = min_e
-    args_out["max_e"] = max_e
-    args_out["balance_e"] = balance_e
 
     return DDDAggResult(
         overall_att=dynamic_att,
@@ -476,10 +670,7 @@ def _compute_se(inf_func, n, boot, biters, alpha, random_state):
     else:
         se = np.sqrt(np.mean(inf_func**2) / n)
 
-    if not np.isnan(se) and se <= np.sqrt(np.finfo(float).eps) * 10:
-        se = np.nan
-
-    return se
+    return _clamp_se(se)
 
 
 def _get_crit_val(inf_func_mat, biters, alpha, random_state):
@@ -537,3 +728,15 @@ def _get_agg_inf_func(inf_func_mat, whichones, weights):
     """Combine influence functions with weights to get aggregated influence function."""
     weights = np.asarray(weights, dtype=np.float64).flatten()
     return inf_func_mat[:, whichones] @ weights
+
+
+def _is_gram(obj):
+    """Check if *obj* is a GramIF (duck-type check)."""
+    return hasattr(obj, "V") and hasattr(obj, "col_sums") and hasattr(obj, "M_g")
+
+
+def _clamp_se(se):
+    """Clamp tiny SE values to NaN."""
+    if not np.isnan(se) and se <= np.sqrt(np.finfo(float).eps) * 10:
+        return np.nan
+    return se

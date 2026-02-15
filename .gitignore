@@ -179,3 +179,4 @@ benchmark/output/*.csv
 benchmark/output/*.json
 !benchmark/output/.gitkeep
 plot_gpu_benchmark.py
+xgboost/

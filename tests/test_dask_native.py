@@ -446,6 +446,8 @@ def test_ddd_panel_dask_aggte_matches_regular():
 
 @requires_distributed
 def test_ddd_panel_dask_inf_func_mat_matches_regular():
+    from moderndid.dask.gram import GramIF
+
     dgp = gen_dgp_mult_periods(n=200, random_state=42)
     pl_data = dgp["data"]
     ddf = _polars_to_dask(pl_data, npartitions=4)
@@ -464,12 +466,39 @@ def test_ddd_panel_dask_inf_func_mat_matches_regular():
     with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
         result_dask = ddd(data=ddf, **common, backend="dask")
 
-    dask_inf = result_dask.inf_func_mat
-    if hasattr(dask_inf, "toarray"):
-        dask_inf = dask_inf.toarray()
-    assert dask_inf.shape == result_regular.inf_func_mat.shape
-    assert dask_inf.shape[1] > 0, "inf_func_mat should not be empty"
-    np.testing.assert_allclose(dask_inf, result_regular.inf_func_mat, rtol=1e-10)
+    gram_if = result_dask.inf_func_mat
+    assert isinstance(gram_if, GramIF)
+    assert gram_if.shape == result_regular.inf_func_mat.shape
+
+    reg_inf = result_regular.inf_func_mat
+    expected_V = reg_inf.T @ reg_inf
+    np.testing.assert_allclose(gram_if.V, expected_V, rtol=1e-10)
+
+    expected_col_sums = reg_inf.sum(axis=0)
+    np.testing.assert_allclose(gram_if.col_sums, expected_col_sums, atol=1e-10)
+
+
+@requires_distributed
+def test_ddd_boot_true_uses_full_if():
+    from moderndid.dask.gram import GramIF
+
+    dgp = gen_dgp_mult_periods(n=200, random_state=42)
+    pl_data = dgp["data"]
+    ddf = _polars_to_dask(pl_data, npartitions=4)
+
+    common = dict(
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method="reg",
+    )
+
+    with Client(n_workers=2, threads_per_worker=1, dashboard_address=None):
+        result_dask = ddd(data=ddf, **common, backend="dask", boot=True, biters=10)
+
+    assert not isinstance(result_dask.inf_func_mat, GramIF)
 
 
 @requires_distributed
