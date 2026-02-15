@@ -145,19 +145,21 @@ def ddd_mp_dask(
         cleanup_persisted(client, persisted)
         raise ValueError("No valid (g,t) cells found.")
 
-    # Collect influence-function columns as sparse (row_indices, values)
-    # pairs instead of filling a dense (n_units x n_columns) matrix.
-    # At 300M+ units the dense matrix would consume ~72 GB on the driver;
-    # sparse storage drops this to ~5 GB (each column is ~5 % dense).
-    sparse_cols = [None] * n_columns  # (row_indices, values) per column
+    # Storage for results streamed back from workers.
     se_array = np.full(n_columns, np.nan)
     att_entries = [None] * n_columns
+    # diag_V accumulates sum-of-squares per column on the fly for
+    # individual (g,t) SE computation.
+    diag_V = np.zeros(n_columns)
+    # Per-column sparse data for the influence-function matrix.
+    # agg_ddd needs this for aggregated SEs.
+    sparse_cols = [None] * n_columns
 
     for c, entry in zero_att_cols.items():
         att_entries[c] = entry
 
     def _handle_result(local_idx, result):
-        """Stream worker payloads into sparse column storage."""
+        """Stream worker payloads — accumulate diag(V) and store sparse columns."""
         if result is None:
             return None
 
@@ -171,6 +173,7 @@ def ddd_mp_dask(
         if inf_data is not None:
             inf_func_scaled, cell_id_list = inf_data
             row_idx, vals = _searchsorted_sparse(inf_func_scaled, cell_id_list, sorted_ids)
+            diag_V[col] = np.dot(vals, vals)
             sparse_cols[col] = (row_idx, vals)
 
         if se_val is not None:
@@ -208,7 +211,7 @@ def ddd_mp_dask(
         se_override = se_array[valid_col_indices]
 
     if boot:
-        # Bootstrap needs the full matrix — build it eagerly.
+        # Bootstrap needs the full dense matrix.
         inf_func_mat = _build_sparse_inf(sparse_cols, n_units, n_columns)
         inf_func_final = inf_func_mat[:, valid_col_indices] if not valid_mask.all() else inf_func_mat
         del sparse_cols
@@ -225,28 +228,16 @@ def ddd_mp_dask(
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
     else:
-        # Compute SE directly from per-column data — O(k) memory, no
-        # matrix materialisation.  Each diagonal element of the Gram
-        # matrix V = IF.T @ IF is just the squared L2-norm of that column.
-        n_valid = len(valid_col_indices)
-        diag_V = np.empty(n_valid)
-        for i, c in enumerate(valid_col_indices):
-            entry = sparse_cols[c]
-            if entry is not None:
-                _, vals = entry
-                diag_V[i] = np.dot(vals, vals)
-            else:
-                diag_V[i] = 0.0
-        diag_V /= n_units
-        se_computed = np.sqrt(diag_V / n_units)
+        # SE from diag(V) already accumulated during streaming.
+        se_computed = np.sqrt(diag_V[valid_col_indices] / (n_units * n_units))
         valid_se_mask = ~np.isnan(se_override[: len(se_computed)])
         se_computed[valid_se_mask] = se_override[: len(se_computed)][valid_se_mask]
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = stats.norm.ppf(1 - alpha / 2)
-
-        # Defer full matrix construction — only materialises when
-        # downstream code (e.g. agg_ddd) actually accesses data.
-        inf_func_final = _LazyInfFunc(sparse_cols, n_units, valid_col_indices)
+        # Wrap sparse columns in a lazy matrix that supports the
+        # [:, keepers] @ weights pattern used by agg_ddd without
+        # materializing the full n_units x n_columns matrix.
+        inf_func_final = _SparseColumnIF(sparse_cols, n_units, valid_col_indices)
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
@@ -289,7 +280,7 @@ def _build_sparse_inf(sparse_cols, n_rows, n_cols):
     """Assemble sparse CSC matrix from per-column (row_indices, values) pairs.
 
     Builds the CSC representation directly from per-column data, avoiding
-    an intermediate COO matrix, the column-index array, and the COO→CSC
+    an intermediate COO matrix, the column-index array, and the COO->CSC
     sort.  Row indices within each column are already sorted (they come
     from ``np.searchsorted``), so no additional sorting is needed.
     """
@@ -393,67 +384,74 @@ def _process_gt_cell_dask(
     )
 
 
-class _LazyInfFunc:
-    """Deferred influence-function matrix.
+class _SparseColumnIF:
+    """Lazy influence-function matrix stored as per-column sparse data.
 
-    Stores per-column sparse data and only builds the full CSC matrix
-    when downstream code (e.g. ``agg_ddd``) actually accesses data.
-    For the common ``boot=False`` path the matrix is never materialised.
+    Supports the ``[:, keepers] @ weights`` pattern used by
+    ``compute_agg_ddd`` without materializing the full dense matrix.
+    Peak memory is the per-column sparse data (already accumulated
+    during streaming) plus one n_rows result vector per matvec.
     """
 
-    def __init__(self, sparse_cols, n_rows, valid_col_indices):
+    def __init__(self, sparse_cols, n_rows, valid_col_indices=None):
         self._sparse_cols = sparse_cols
         self._n_rows = n_rows
-        self._valid_cols = np.asarray(valid_col_indices)
-        self._mat = None
+        self._valid_cols = np.asarray(valid_col_indices) if valid_col_indices is not None else None
+        self._n_cols = len(self._valid_cols) if self._valid_cols is not None else len(sparse_cols)
 
     @property
     def shape(self):
-        return (self._n_rows, len(self._valid_cols))
-
-    def _materialize(self):
-        if self._mat is not None:
-            return self._mat
-        cols = self._valid_cols
-        n_cols = len(cols)
-        indptr = np.zeros(n_cols + 1, dtype=np.int64)
-        for i, c in enumerate(cols):
-            entry = self._sparse_cols[c]
-            if entry is not None:
-                indptr[i + 1] = len(entry[0])
-        np.cumsum(indptr, out=indptr)
-        nnz = int(indptr[-1])
-        if nnz == 0:
-            self._mat = sp.csc_matrix((self._n_rows, n_cols))
-        else:
-            indices = np.empty(nnz, dtype=np.int64)
-            data = np.empty(nnz, dtype=np.float64)
-            for i, c in enumerate(cols):
-                entry = self._sparse_cols[c]
-                if entry is not None:
-                    rows, vals = entry
-                    start, end = indptr[i], indptr[i + 1]
-                    indices[start:end] = rows
-                    data[start:end] = vals
-            self._mat = sp.csc_matrix((data, indices, indptr), shape=(self._n_rows, n_cols))
-        self._sparse_cols = None
-        return self._mat
-
-    def toarray(self):
-        return self._materialize().toarray()
+        return (self._n_rows, self._n_cols)
 
     def copy(self):
-        return self._materialize().copy()
+        return self
+
+    def _resolve_col(self, i):
+        """Map external column index to sparse_cols index."""
+        if self._valid_cols is not None:
+            return int(self._valid_cols[i])
+        return i
+
+    def __getitem__(self, key):
+        if isinstance(key, tuple) and len(key) == 2:
+            row_key, col_key = key
+            if isinstance(row_key, slice) and row_key == slice(None):
+                # Column slicing: self[:, col_indices]
+                col_indices = np.atleast_1d(np.asarray(col_key))
+                new_indices = np.array([self._resolve_col(i) for i in col_indices])
+                return _SparseColumnIF(self._sparse_cols, self._n_rows, new_indices)
+        # Fallback: materialize for unsupported indexing.
+        return self.toarray()[key]
+
+    def __matmul__(self, other):
+        """Matrix-vector product: self @ weights -> dense array."""
+        other = np.asarray(other, dtype=np.float64).flatten()
+        if len(other) != self._n_cols:
+            raise ValueError(f"Shape mismatch: ({self._n_rows}, {self._n_cols}) @ ({len(other)},)")
+        result = np.zeros(self._n_rows)
+        for i, w in enumerate(other):
+            if w == 0:
+                continue
+            idx = self._resolve_col(i)
+            entry = self._sparse_cols[idx]
+            if entry is not None:
+                row_idx, vals = entry
+                result[row_idx] += w * vals
+        return result
+
+    def __rmatmul__(self, other):
+        return other @ self.toarray()
 
     @property
     def T(self):
-        return self._materialize().T
+        return self.toarray().T
 
-    def __matmul__(self, other):
-        return self._materialize() @ other
-
-    def __rmatmul__(self, other):
-        return other @ self._materialize()
-
-    def __getitem__(self, key):
-        return self._materialize()[key]
+    def toarray(self):
+        mat = np.zeros((self._n_rows, self._n_cols))
+        for i in range(self._n_cols):
+            idx = self._resolve_col(i)
+            entry = self._sparse_cols[idx]
+            if entry is not None:
+                row_idx, vals = entry
+                mat[row_idx, i] = vals
+        return mat

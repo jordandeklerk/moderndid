@@ -14,7 +14,7 @@ from moderndid.dask import (
     execute_cell_tasks,
     persist_by_group,
 )
-from moderndid.dask.ddd import _build_sparse_inf, _get_required_groups, _LazyInfFunc
+from moderndid.dask.ddd import _build_sparse_inf, _get_required_groups, _SparseColumnIF
 from moderndid.dask.worker_utils import combine_partitions
 from moderndid.didtriple.bootstrap.mboot_ddd import mboot_ddd
 from moderndid.didtriple.estimators.ddd_mp_rc import (
@@ -139,15 +139,21 @@ def ddd_mp_rc_dask(
         cleanup_persisted(client, persisted)
         raise ValueError("No valid (g,t) cells found.")
 
-    sparse_cols = [None] * n_columns
+    # Storage for results streamed back from workers.
     se_array = np.full(n_columns, np.nan)
     att_entries = [None] * n_columns
+    # diag_V accumulates sum-of-squares per column on the fly for
+    # individual (g,t) SE computation.
+    diag_V = np.zeros(n_columns)
+    # Per-column sparse data for the influence-function matrix.
+    # agg_ddd needs this for aggregated SEs.
+    sparse_cols = [None] * n_columns
 
     for c, entry in zero_att_cols.items():
         att_entries[c] = entry
 
     def _handle_result(local_idx, result):
-        """Stream worker payloads into sparse column storage."""
+        """Stream worker payloads — accumulate diag(V) and store sparse columns."""
         if result is None:
             return None
 
@@ -161,7 +167,10 @@ def ddd_mp_rc_dask(
         if inf_data is not None:
             inf_func_scaled, obs_indices = inf_data
             n_valid = min(len(inf_func_scaled), len(obs_indices))
-            sparse_cols[col] = (obs_indices[:n_valid].astype(np.int64), inf_func_scaled[:n_valid])
+            row_idx = obs_indices[:n_valid].astype(np.int64)
+            vals = inf_func_scaled[:n_valid]
+            diag_V[col] = np.dot(vals, vals)
+            sparse_cols[col] = (row_idx, vals)
 
         if se_val is not None:
             se_array[col] = se_val
@@ -197,6 +206,7 @@ def ddd_mp_rc_dask(
         se_override = se_array[valid_col_indices]
 
     if boot:
+        # Bootstrap needs the full dense matrix.
         inf_func_mat = _build_sparse_inf(sparse_cols, n_obs, n_columns)
         inf_func_final = inf_func_mat[:, valid_col_indices] if not valid_mask.all() else inf_func_mat
         del sparse_cols
@@ -213,23 +223,16 @@ def ddd_mp_rc_dask(
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
     else:
-        n_valid = len(valid_col_indices)
-        diag_V = np.empty(n_valid)
-        for i, c in enumerate(valid_col_indices):
-            entry = sparse_cols[c]
-            if entry is not None:
-                _, vals = entry
-                diag_V[i] = np.dot(vals, vals)
-            else:
-                diag_V[i] = 0.0
-        diag_V /= n_obs
-        se_computed = np.sqrt(diag_V / n_obs)
+        # SE from diag(V) already accumulated during streaming.
+        se_computed = np.sqrt(diag_V[valid_col_indices] / (n_obs * n_obs))
         valid_se_mask = ~np.isnan(se_override[: len(se_computed)])
         se_computed[valid_se_mask] = se_override[: len(se_computed)][valid_se_mask]
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = stats.norm.ppf(1 - alpha / 2)
-
-        inf_func_final = _LazyInfFunc(sparse_cols, n_obs, valid_col_indices)
+        # Wrap sparse columns in a lazy matrix that supports the
+        # [:, keepers] @ weights pattern used by agg_ddd without
+        # materializing the full n_obs x n_columns matrix.
+        inf_func_final = _SparseColumnIF(sparse_cols, n_obs, valid_col_indices)
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
