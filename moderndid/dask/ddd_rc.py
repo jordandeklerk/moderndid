@@ -14,7 +14,7 @@ from moderndid.dask import (
     execute_cell_tasks,
     persist_by_group,
 )
-from moderndid.dask.ddd import _build_sparse_inf, _get_required_groups
+from moderndid.dask.ddd import _build_sparse_inf, _get_required_groups, _LazyInfFunc
 from moderndid.dask.worker_utils import combine_partitions
 from moderndid.didtriple.bootstrap.mboot_ddd import mboot_ddd
 from moderndid.didtriple.estimators.ddd_mp_rc import (
@@ -161,7 +161,7 @@ def ddd_mp_rc_dask(
         if inf_data is not None:
             inf_func_scaled, obs_indices = inf_data
             n_valid = min(len(inf_func_scaled), len(obs_indices))
-            sparse_cols[col] = (obs_indices[:n_valid].astype(np.int64), inf_func_scaled[:n_valid])  # noqa: F821
+            sparse_cols[col] = (obs_indices[:n_valid].astype(np.int64), inf_func_scaled[:n_valid])
 
         if se_val is not None:
             se_array[col] = se_val
@@ -180,9 +180,6 @@ def ddd_mp_rc_dask(
     else:
         cleanup_persisted(client, persisted)
 
-    inf_func_mat = _build_sparse_inf(sparse_cols, n_obs, n_columns)
-    del sparse_cols
-
     valid_mask = np.array([e is not None for e in att_entries])
     if not valid_mask.any():
         raise ValueError("No valid (g,t) cells found.")
@@ -193,14 +190,16 @@ def ddd_mp_rc_dask(
     times_array = np.array([r.time for r in attgt_list])
 
     if valid_mask.all():
-        inf_func_final = inf_func_mat
+        valid_col_indices = np.arange(n_columns)
         se_override = se_array
     else:
-        valid_idx = np.where(valid_mask)[0]
-        inf_func_final = inf_func_mat[:, valid_idx]
-        se_override = se_array[valid_idx]
+        valid_col_indices = np.where(valid_mask)[0]
+        se_override = se_array[valid_col_indices]
 
     if boot:
+        inf_func_mat = _build_sparse_inf(sparse_cols, n_obs, n_columns)
+        inf_func_final = inf_func_mat[:, valid_col_indices] if not valid_mask.all() else inf_func_mat
+        del sparse_cols
         boot_result = mboot_ddd(
             inf_func=inf_func_final.toarray() if sp.issparse(inf_func_final) else inf_func_final,
             biters=biters,
@@ -214,15 +213,23 @@ def ddd_mp_rc_dask(
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
     else:
-        V = inf_func_final.T @ inf_func_final
-        if sp.issparse(V):
-            V = V.toarray()
-        V = V / n_obs
-        se_computed = np.sqrt(np.diag(V) / n_obs)
+        n_valid = len(valid_col_indices)
+        diag_V = np.empty(n_valid)
+        for i, c in enumerate(valid_col_indices):
+            entry = sparse_cols[c]
+            if entry is not None:
+                _, vals = entry
+                diag_V[i] = np.dot(vals, vals)
+            else:
+                diag_V[i] = 0.0
+        diag_V /= n_obs
+        se_computed = np.sqrt(diag_V / n_obs)
         valid_se_mask = ~np.isnan(se_override[: len(se_computed)])
         se_computed[valid_se_mask] = se_override[: len(se_computed)][valid_se_mask]
         se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         cv = stats.norm.ppf(1 - alpha / 2)
+
+        inf_func_final = _LazyInfFunc(sparse_cols, n_obs, valid_col_indices)
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
