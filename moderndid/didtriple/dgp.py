@@ -361,7 +361,9 @@ def gen_dgp_mult_periods(
         pi_0b = 1 - (pi_2a + pi_2b + pi_3a + pi_3b + pi_0a)
 
         probs_pscore = np.column_stack([pi_2a, pi_2b, pi_3a, pi_3b, pi_0a, pi_0b])
-        group_types = np.array([rng.choice(6, p=probs_pscore[i]) + 1 for i in range(n)])
+        cum_probs = np.cumsum(probs_pscore, axis=1)
+        u = rng.uniform(size=n)
+        group_types = (u[:, None] >= cum_probs).sum(axis=1) + 1
 
         partition = np.isin(group_types, [1, 3, 5]).astype(int)
         cohort = np.where(
@@ -501,7 +503,9 @@ def gen_dgp_mult_periods(
         all_pi_3a.extend(pi_3a)
 
         probs_pscore = np.column_stack([pi_2a, pi_2b, pi_3a, pi_3b, pi_0a, pi_0b])
-        group_types = np.array([rng.choice(6, p=probs_pscore[i]) + 1 for i in range(n)])
+        cum_probs = np.cumsum(probs_pscore, axis=1)
+        u = rng.uniform(size=n)
+        group_types = (u[:, None] >= cum_probs).sum(axis=1) + 1
 
         partition = np.isin(group_types, [1, 3, 5]).astype(int)
         cohort = np.where(
