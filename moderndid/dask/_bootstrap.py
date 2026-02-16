@@ -9,52 +9,6 @@ import numpy as np
 from ._gram import tree_reduce
 
 
-def _local_bootstrap(inf_func_local, biters, seed):
-    """Compute local bootstrap contributions on one partition.
-
-    Generates per-partition Mammen weights and computes the local
-    contribution to the bootstrap statistic.
-
-    Parameters
-    ----------
-    inf_func_local : ndarray of shape (n_local, k)
-        Influence function values for this partition.
-    biters : int
-        Number of bootstrap iterations.
-    seed : int
-        RNG seed for this partition.
-
-    Returns
-    -------
-    local_bres : ndarray of shape (biters, k)
-        Local bootstrap contributions.
-    zeros : ndarray of shape (k,)
-        Placeholder for tree-reduce compatibility.
-    n_local : int
-        Number of observations in this partition.
-    """
-    rng = np.random.default_rng(seed)
-    n_local = inf_func_local.shape[0]
-    k = inf_func_local.shape[1]
-
-    p_kappa = 0.5 * (1 + np.sqrt(5)) / np.sqrt(5)
-    k1 = 0.5 * (1 - np.sqrt(5))
-    k2 = 0.5 * (1 + np.sqrt(5))
-
-    local_bres = np.zeros((biters, k))
-    for b in range(biters):
-        draws = rng.binomial(1, p_kappa, size=n_local)
-        v = np.where(draws == 1, k1, k2)
-        local_bres[b] = np.sum(inf_func_local * v[:, None], axis=0)
-
-    return local_bres, np.zeros(k), n_local
-
-
-def _sum_bootstrap_pair(a, b):
-    """Sum two (local_bres, zeros, n) tuples."""
-    return a[0] + b[0], a[1] + b[1], a[2] + b[2]
-
-
 def distributed_mboot_ddd(
     client,
     inf_func_partitions,
@@ -63,11 +17,13 @@ def distributed_mboot_ddd(
     alpha=0.05,
     random_state=None,
 ):
-    """Compute multiplier bootstrap for DDD using distributed partitions.
+    r"""Compute multiplier bootstrap for DDD using distributed partitions.
 
     Each worker generates local Mammen weights and computes local bootstrap
-    contributions ``sum(inf_func_local * v)``. Results are tree-reduced so
-    the driver only sees ``(biters, k)`` arrays.
+    contributions :math:`\\sum \\psi_i v_i`. Results are tree-reduced so
+    the driver only sees :math:`(B, k)` arrays, where :math:`B` is the
+    number of bootstrap iterations and :math:`k` is the number of
+    group-time cells.
 
     Parameters
     ----------
@@ -102,8 +58,6 @@ def distributed_mboot_ddd(
     ]
 
     total_bres, _, _ = tree_reduce(client, futures, _sum_bootstrap_pair)
-
-    # Scale: bres[b] = sqrt(n) * mean(inf * v) = sqrt(n) * sum(inf * v) / n
     bres = np.sqrt(n_total) * total_bres / n_total
 
     k = bres.shape[1]
@@ -130,3 +84,27 @@ def distributed_mboot_ddd(
             crit_val = np.percentile(b_t_finite, 100 * (1 - alpha))
 
     return bres, se_full, crit_val
+
+
+def _local_bootstrap(inf_func_local, biters, seed):
+    """Compute local bootstrap contributions on one partition."""
+    rng = np.random.default_rng(seed)
+    n_local = inf_func_local.shape[0]
+    k = inf_func_local.shape[1]
+
+    p_kappa = 0.5 * (1 + np.sqrt(5)) / np.sqrt(5)
+    k1 = 0.5 * (1 - np.sqrt(5))
+    k2 = 0.5 * (1 + np.sqrt(5))
+
+    local_bres = np.zeros((biters, k))
+    for b in range(biters):
+        draws = rng.binomial(1, p_kappa, size=n_local)
+        v = np.where(draws == 1, k1, k2)
+        local_bres[b] = np.sum(inf_func_local * v[:, None], axis=0)
+
+    return local_bres, np.zeros(k), n_local
+
+
+def _sum_bootstrap_pair(a, b):
+    """Sum two (local_bres, zeros, n) tuples."""
+    return a[0] + b[0], a[1] + b[1], a[2] + b[2]

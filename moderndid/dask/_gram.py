@@ -10,7 +10,7 @@ log = logging.getLogger("moderndid.dask.gram")
 
 
 def partition_gram(X, W, y):
-    """Compute local sufficient statistics on one partition.
+    """Compute local sufficient statistics :math:`X^T W X` and :math:`X^T W y` on one partition.
 
     Parameters
     ----------
@@ -24,9 +24,9 @@ def partition_gram(X, W, y):
     Returns
     -------
     XtWX : ndarray of shape (k, k)
-        Local X'WX gram matrix.
+        Local :math:`X^T W X` Gram matrix.
     XtWy : ndarray of shape (k,)
-        Local X'Wy vector.
+        Local :math:`X^T W y` vector.
     n : int
         Number of observations in this partition.
     """
@@ -34,31 +34,14 @@ def partition_gram(X, W, y):
     return XtW @ X, XtW @ y, len(y)
 
 
-def _sum_gram_pair(a, b):
-    """Sum two (XtWX, XtWy, n) tuples element-wise."""
-    return a[0] + b[0], a[1] + b[1], a[2] + b[2]
-
-
-def _reduce_group(combine_fn, *items):
-    """Reduce a group of items on a single worker.
-
-    Applies ``combine_fn`` pairwise to a group so the entire group
-    is reduced in one task instead of creating intermediate futures.
-    """
-    result = items[0]
-    for item in items[1:]:
-        result = combine_fn(result, item)
-    return result
-
-
 def tree_reduce(client, futures, combine_fn, split_every=8):
     """Tree-reduce a list of futures with configurable fan-in.
 
     Groups ``split_every`` futures per reduction step and reduces each
-    group in a **single task** on one worker, following the pattern
-    used by Dask's internal reductions.  With 64 futures and
-    ``split_every=8`` this produces 9 tasks (8 + 1) instead of the
-    63 tasks created by pairwise reduction.
+    group in a single task on one worker, following the pattern used by
+    Dask's internal reductions. With 64 futures and ``split_every=8``
+    this produces 9 tasks (8 + 1) instead of the 63 tasks created by
+    pairwise reduction.
 
     Parameters
     ----------
@@ -67,14 +50,14 @@ def tree_reduce(client, futures, combine_fn, split_every=8):
     futures : list of Future
         Futures to reduce.
     combine_fn : callable
-        Function ``(a, b) -> c`` that combines two results.
+        Pairwise combiner ``(a, b) -> c``.
     split_every : int, default 8
         Number of futures to combine per reduction step.
 
     Returns
     -------
     result
-        The fully reduced result.
+        The fully reduced result, materialized on the driver.
     """
     while len(futures) > 1:
         new_futures = []
@@ -91,8 +74,8 @@ def tree_reduce(client, futures, combine_fn, split_every=8):
 def distributed_gram(client, partitions):
     """Compute global sufficient statistics from distributed partitions.
 
-    Submits ``partition_gram`` to each worker and tree-reduces the results
-    into global ``X'WX`` (K x K) and ``X'Wy`` (K) matrices.
+    Submits :func:`partition_gram` to each worker and tree-reduces the
+    results into global :math:`X^T W X` and :math:`X^T W y` matrices.
 
     Parameters
     ----------
@@ -104,9 +87,9 @@ def distributed_gram(client, partitions):
     Returns
     -------
     XtWX : ndarray of shape (k, k)
-        Global gram matrix.
+        Global Gram matrix.
     XtWy : ndarray of shape (k,)
-        Global X'Wy vector.
+        Global :math:`X^T W y` vector.
     n_total : int
         Total number of observations across all partitions.
     """
@@ -116,7 +99,7 @@ def distributed_gram(client, partitions):
 
 
 def solve_gram(XtWX, XtWy):
-    """Solve the normal equations from sufficient statistics.
+    r"""Solve the normal equations :math:`\\hat{\\beta} = (X^T W X)^{-1} X^T W y`.
 
     Parameters
     ----------
@@ -131,3 +114,16 @@ def solve_gram(XtWX, XtWy):
         Solution vector.
     """
     return np.linalg.solve(XtWX, XtWy)
+
+
+def _sum_gram_pair(a, b):
+    """Sum two (XtWX, XtWy, n) tuples element-wise."""
+    return a[0] + b[0], a[1] + b[1], a[2] + b[2]
+
+
+def _reduce_group(combine_fn, *items):
+    """Reduce a group of items by applying combine_fn pairwise."""
+    result = items[0]
+    for item in items[1:]:
+        result = combine_fn(result, item)
+    return result

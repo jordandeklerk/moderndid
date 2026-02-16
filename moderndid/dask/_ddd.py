@@ -306,22 +306,7 @@ def dask_ddd(
 
 
 def _detect_multiple_periods_dask(ddf, tname, gname):
-    """Detect multiple periods from a Dask DataFrame.
-
-    Parameters
-    ----------
-    ddf : dask.dataframe.DataFrame
-        Input Dask DataFrame.
-    tname : str
-        Time column name.
-    gname : str
-        Group column name.
-
-    Returns
-    -------
-    bool
-        True if data has more than 2 time periods or treatment groups.
-    """
+    """Detect whether data has more than 2 time periods or treatment groups."""
     n_time = ddf[tname].nunique().compute()
 
     gvals = ddf[gname].unique().compute().values

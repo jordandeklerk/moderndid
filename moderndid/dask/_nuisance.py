@@ -27,28 +27,6 @@ class DistOutcomeRegResult(NamedTuple):
     reg_coeff: np.ndarray | None
 
 
-def _build_partitions_for_subset(X, W, y, n_partitions):
-    """Split arrays into roughly equal partitions.
-
-    Parameters
-    ----------
-    X : ndarray of shape (n, k)
-        Design matrix.
-    W : ndarray of shape (n,)
-        Weight vector.
-    y : ndarray of shape (n,)
-        Response vector.
-    n_partitions : int
-        Number of partitions.
-
-    Returns
-    -------
-    list of (X_part, W_part, y_part) tuples
-    """
-    splits = np.array_split(np.arange(len(y)), n_partitions)
-    return [(X[idx], W[idx], y[idx]) for idx in splits if len(idx) > 0]
-
-
 def compute_all_nuisances_distributed(
     client,
     y1,
@@ -60,10 +38,13 @@ def compute_all_nuisances_distributed(
     trim_level=0.995,
     n_partitions=None,
 ):
-    """Compute all nuisance parameters using distributed regression.
+    r"""Compute all nuisance parameters using distributed regression.
 
-    Mirrors ``moderndid.didtriple.nuisance.compute_all_nuisances`` but uses
-    distributed WLS and logistic IRLS.
+    Estimates propensity scores and outcome regressions for the three
+    subgroup comparisons :math:`(4, 3)`, :math:`(4, 2)`, and
+    :math:`(4, 1)` required by the DDD estimator. Propensity scores are
+    estimated via distributed logistic IRLS and outcome regressions via
+    distributed WLS, both using tree-reduced Gram matrices.
 
     Parameters
     ----------
@@ -76,21 +57,25 @@ def compute_all_nuisances_distributed(
     subgroup : ndarray
         Subgroup indicators (1, 2, 3, or 4).
     covariates : ndarray
-        Covariates including intercept, shape (n, k).
+        Covariates including intercept, shape :math:`(n, k)`.
     weights : ndarray
         Observation weights.
     est_method : {"dr", "reg", "ipw"}, default "dr"
-        Estimation method.
+        Estimation method. ``"dr"`` estimates both propensity scores and
+        outcome regressions. ``"reg"`` skips propensity scores.
+        ``"ipw"`` skips outcome regressions.
     trim_level : float, default 0.995
         Trimming level for propensity scores.
     n_partitions : int or None
         Number of partitions for distributed computation. If None, uses
-        the number of workers in the client.
+        the number of threads across all workers.
 
     Returns
     -------
-    tuple[list[DistPScoreResult], list[DistOutcomeRegResult]]
-        Propensity score and outcome regression results for comparisons [3, 2, 1].
+    pscores : list of DistPScoreResult
+        Propensity score results for comparisons [3, 2, 1].
+    or_results : list of DistOutcomeRegResult
+        Outcome regression results for comparisons [3, 2, 1].
     """
     if n_partitions is None:
         n_partitions = get_default_partitions(client)
@@ -138,6 +123,12 @@ def compute_all_nuisances_distributed(
         or_results = [or_futures[sg].result() for sg in [3, 2, 1]]
 
     return pscores, or_results
+
+
+def _build_partitions_for_subset(X, W, y, n_partitions):
+    """Split arrays into roughly equal partitions."""
+    splits = np.array_split(np.arange(len(y)), n_partitions)
+    return [(X[idx], W[idx], y[idx]) for idx in splits if len(idx) > 0]
 
 
 def _compute_pscore_distributed(client, subgroup, covariates, weights, comp_subgroup, trim_level, n_partitions):

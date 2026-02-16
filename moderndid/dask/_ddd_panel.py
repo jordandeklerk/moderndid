@@ -31,7 +31,18 @@ def dask_ddd_panel(
     random_state=None,
     n_partitions=None,
 ):
-    """Distributed 2-period doubly robust DDD estimator for panel data.
+    r"""Distributed 2-period doubly robust DDD estimator for panel data.
+
+    Computes the triple-difference ATT for a two-period panel using
+    distributed nuisance estimation and influence-function-based
+    inference. The DDD estimand is:
+
+    .. math::
+
+        \text{ATT}^{DDD} = \text{DiD}(4, 3) + \text{DiD}(4, 2) - \text{DiD}(4, 1)
+
+    where subgroup 4 is treated-eligible, 3 is treated-ineligible,
+    2 is control-eligible, and 1 is control-ineligible.
 
     Parameters
     ----------
@@ -44,7 +55,7 @@ def dask_ddd_panel(
     subgroup : ndarray
         Subgroup indicators (1, 2, 3, or 4).
     covariates : ndarray
-        Covariates including intercept, shape (n, k).
+        Covariates including intercept, shape :math:`(n, k)`.
     i_weights : ndarray or None
         Observation weights.
     est_method : {"dr", "reg", "ipw"}, default "dr"
@@ -60,12 +71,14 @@ def dask_ddd_panel(
     random_state : int or None
         Random seed for bootstrap.
     n_partitions : int or None
-        Number of partitions. Defaults to number of workers.
+        Number of partitions. Defaults to number of threads across
+        all workers.
 
     Returns
     -------
     DDDPanelResult
-        Same result type as the local estimator.
+        Result containing ATT, standard error, confidence intervals,
+        bootstrap draws (if requested), and influence function.
     """
     y1, y0, subgroup, covariates, i_weights, n_units = _validate_inputs(y1, y0, subgroup, covariates, i_weights)
 

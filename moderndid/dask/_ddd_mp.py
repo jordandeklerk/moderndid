@@ -561,14 +561,7 @@ def _compute_cell_streaming(
     counter,
     n_partitions,
 ):
-    """Compute one (g,t) cell via streaming — data never leaves workers.
-
-    Updates ``inf_func_mat`` and ``se_array`` in-place.
-
-    Returns
-    -------
-    ATTgtResult or None
-    """
+    """Compute one (g,t) cell via streaming."""
     if control_group == "nevertreated":
         att = streaming_cell_single_control(
             client,

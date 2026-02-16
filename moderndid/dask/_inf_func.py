@@ -20,11 +20,19 @@ def compute_did_distributed(
     n_total,
     n_partitions,
 ):
-    """Compute all DiD components and combine into DDD estimate.
+    r"""Compute all DiD components and combine into DDD estimate.
 
-    Distributed version of ``moderndid.didtriple.nuisance.compute_all_did``.
-    Influence functions are computed locally per partition and variance is
-    computed via distributed gram of the influence function matrix.
+    Computes the three pairwise DiD comparisons and combines them into
+    the triple-difference estimand:
+
+    .. math::
+
+        \text{ATT}^{DDD} = \text{DiD}(4, 3) + \text{DiD}(4, 2) - \text{DiD}(4, 1)
+
+    where subgroup 4 is treated-eligible, 3 is treated-ineligible,
+    2 is control-eligible, and 1 is control-ineligible. The combined
+    influence function is a weighted sum of the per-comparison influence
+    functions, with weights :math:`w_s = n / n_s`.
 
     Parameters
     ----------
@@ -33,7 +41,7 @@ def compute_did_distributed(
     subgroup : ndarray
         Subgroup indicators (1, 2, 3, or 4).
     covariates : ndarray
-        Covariates including intercept, shape (n, k).
+        Covariates including intercept, shape :math:`(n, k)`.
     weights : ndarray
         Observation weights.
     pscores : list of DistPScoreResult
@@ -49,8 +57,12 @@ def compute_did_distributed(
 
     Returns
     -------
-    tuple[list, float, ndarray]
-        DiD results list, DDD ATT estimate, combined influence function.
+    did_results : list of tuple[float, ndarray]
+        Per-comparison DiD ATT estimates and influence functions.
+    ddd_att : float
+        The DDD ATT point estimate.
+    inf_func : ndarray of shape :math:`(n,)`
+        Combined influence function.
     """
     did_results = []
     for i, comp_subgroup in enumerate([3, 2, 1]):
@@ -87,11 +99,12 @@ def compute_did_distributed(
 
 
 def compute_variance_distributed(client, inf_func_partitions, n_total, k):
-    """Compute variance from distributed influence function partitions.
+    r"""Compute variance from distributed influence function partitions.
 
-    Computes ``V = (1/n) * Psi' @ Psi`` without materializing the full
-    matrix on one node. Each worker computes its local ``Psi_i' @ Psi_i``
-    and results are tree-reduced.
+    Computes :math:`V = (1/n) \, \Psi^\top \Psi` without materializing
+    the full matrix on one node. Each worker computes its local Gram
+    matrix :math:`\Psi_i^\top \Psi_i` and results are tree-reduced.
+    Standard errors are :math:`\sqrt{\operatorname{diag}(V) / n}`.
 
     Parameters
     ----------
@@ -106,7 +119,7 @@ def compute_variance_distributed(client, inf_func_partitions, n_total, k):
 
     Returns
     -------
-    se : ndarray of shape (k,)
+    se : ndarray of shape :math:`(k,)`
         Standard errors.
     """
 
@@ -130,16 +143,7 @@ def _compute_did(
     est_method,
     n_total,
 ):
-    """Compute doubly robust DiD for one subgroup comparison.
-
-    This mirrors ``moderndid.didtriple.nuisance._compute_did`` exactly,
-    operating on in-memory arrays.
-
-    Returns
-    -------
-    tuple[float, ndarray]
-        ATT estimate and full-length influence function.
-    """
+    """Compute doubly robust DiD for one subgroup comparison."""
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     sub_subgroup = subgroup[mask]
     sub_covariates = covariates[mask]
@@ -223,10 +227,7 @@ def _compute_inf_func(
     mean_w_control,
     est_method,
 ):
-    """Compute influence function for one DiD comparison.
-
-    Mirrors ``moderndid.didtriple.nuisance._compute_inf_func``.
-    """
+    """Compute influence function for one DiD comparison."""
     n_sub = len(sub_weights)
 
     if est_method == "reg":
