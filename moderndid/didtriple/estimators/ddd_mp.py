@@ -325,6 +325,9 @@ def ddd_mp(
     lci = att_array - cv * se_computed
 
     args = {
+        "panel": True,
+        "yname": y_col,
+        "pname": partition_col,
         "control_group": control_group,
         "base_period": base_period,
         "est_method": est_method,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from typing import NamedTuple
 
 import numpy as np
 import polars as pl
@@ -23,6 +23,17 @@ from ._ddd_panel import dask_ddd_panel
 from ._utils import get_default_partitions
 
 log = logging.getLogger("moderndid.dask.backend")
+
+
+class CellArrays(NamedTuple):
+    """Pre-merged cell data as numpy arrays (one row per unit)."""
+
+    ids: np.ndarray
+    y_post: np.ndarray
+    y_pre: np.ndarray
+    groups: np.ndarray
+    partitions: np.ndarray
+    covariates: np.ndarray | None
 
 
 def dask_ddd_mp(
@@ -179,16 +190,6 @@ def dask_ddd_mp(
             )
         return _get_cell_data(data_pl, g, t, pret, control_group, time_col, group_col)
 
-    compute_indices = [i for i, s in enumerate(cell_specs) if s[4] == "compute"]
-    prefetch_pool = ThreadPoolExecutor(max_workers=1)
-    pending_fetch = None
-    next_pf = 0
-
-    if compute_indices:
-        s = cell_specs[compute_indices[0]]
-        pending_fetch = prefetch_pool.submit(_fetch_data, s[0], s[1], s[2])
-        next_pf = 1
-
     for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
         log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
 
@@ -199,13 +200,7 @@ def dask_ddd_mp(
             attgt_list.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
             continue
 
-        cell_data, available_controls = pending_fetch.result()
-        pending_fetch = None
-
-        if next_pf < len(compute_indices):
-            ns = cell_specs[compute_indices[next_pf]]
-            pending_fetch = prefetch_pool.submit(_fetch_data, ns[0], ns[1], ns[2])
-            next_pf += 1
+        cell_data, available_controls = _fetch_data(g, t, pret)
 
         result = _compute_cell_result(
             client=client,
@@ -235,8 +230,6 @@ def dask_ddd_mp(
                     _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, unique_ids, counter)
                 if se_val is not None:
                     se_array[counter] = se_val
-
-    prefetch_pool.shutdown(wait=False)
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
@@ -288,6 +281,9 @@ def dask_ddd_mp(
     lci = att_array - cv * se_computed
 
     args = {
+        "panel": True,
+        "yname": y_col,
+        "pname": partition_col,
         "control_group": control_group,
         "base_period": base_period,
         "est_method": est_method,
@@ -317,9 +313,7 @@ def dask_ddd_mp(
 def _get_cell_data_from_dask(
     client, dask_data, g, t, pret, control_group, time_col, group_col, id_col, y_col, partition_col, covariate_cols
 ):
-    """Extract cell data."""
-    import pandas as pd
-
+    """Extract cell data as numpy arrays without materializing DataFrames on driver."""
     max_period = max(t, pret)
 
     if control_group == "nevertreated":
@@ -332,25 +326,67 @@ def _get_cell_data_from_dask(
     post_dask = filtered.loc[filtered[time_col] == t]
     pre_dask = filtered.loc[filtered[time_col] == pret]
 
-    keep_cols = [id_col, group_col, partition_col, y_col]
+    post_cols = [id_col, group_col, partition_col, y_col]
     if covariate_cols:
-        keep_cols = keep_cols + [c for c in covariate_cols if c not in keep_cols]
-    post_selected = post_dask[keep_cols]
-    pre_selected = pre_dask[[id_col, y_col]].rename(columns={y_col: "__y_pre"})
-    merged = post_selected.merge(pre_selected, on=id_col, how="inner")
+        post_cols = post_cols + [c for c in covariate_cols if c not in post_cols]
 
-    parts = client.gather(client.compute(merged.to_delayed()))
-    non_empty = [p for p in parts if len(p) > 0]
-    if not non_empty:
+    post_parts = client.gather(client.compute(post_dask[post_cols].to_delayed()))
+    pre_parts = client.gather(client.compute(pre_dask[[id_col, y_col]].to_delayed()))
+
+    post_nonempty = [p for p in post_parts if len(p) > 0]
+    pre_nonempty = [p for p in pre_parts if len(p) > 0]
+    del post_parts, pre_parts
+
+    if not post_nonempty or not pre_nonempty:
         return None, []
 
-    cell_pdf = pd.concat(non_empty, ignore_index=True)
-    cell_data = to_polars(cell_pdf)
+    post_ids = np.concatenate([p[id_col].values for p in post_nonempty])
+    post_y = np.concatenate([p[y_col].values for p in post_nonempty])
+    post_groups = np.concatenate([p[group_col].values for p in post_nonempty])
+    post_parts_arr = np.concatenate([p[partition_col].values for p in post_nonempty])
+    post_covs = np.vstack([p[covariate_cols].values for p in post_nonempty]) if covariate_cols else None
+    del post_nonempty
 
-    control_data = cell_data.filter(~pl.col(group_col).is_in([g]))
-    available_controls = [c for c in control_data[group_col].unique().to_list() if c != g]
+    pre_ids = np.concatenate([p[id_col].values for p in pre_nonempty])
+    pre_y = np.concatenate([p[y_col].values for p in pre_nonempty])
+    del pre_nonempty
 
-    return cell_data, available_controls
+    post_order = np.argsort(post_ids)
+    post_ids = post_ids[post_order]
+    post_y = post_y[post_order]
+    post_groups = post_groups[post_order]
+    post_parts_arr = post_parts_arr[post_order]
+    if post_covs is not None:
+        post_covs = post_covs[post_order]
+    del post_order
+
+    pre_order = np.argsort(pre_ids)
+    pre_ids = pre_ids[pre_order]
+    pre_y = pre_y[pre_order]
+    del pre_order
+
+    idx_in_pre = np.searchsorted(pre_ids, post_ids)
+    idx_in_pre = np.clip(idx_in_pre, 0, max(len(pre_ids) - 1, 0))
+    common_mask = pre_ids[idx_in_pre] == post_ids
+
+    ids = post_ids[common_mask]
+    y_post = post_y[common_mask]
+    groups = post_groups[common_mask]
+    parts_arr = post_parts_arr[common_mask]
+    covs = post_covs[common_mask] if post_covs is not None else None
+
+    pre_idx = np.searchsorted(pre_ids, ids)
+    y_pre = pre_y[pre_idx]
+
+    del post_ids, post_y, post_groups, post_parts_arr, post_covs
+    del pre_ids, pre_y
+
+    if len(ids) == 0:
+        return None, []
+
+    available_controls = [int(c) for c in np.unique(groups) if c != g]
+
+    return CellArrays(ids, y_post, y_pre, groups, parts_arr, covs), available_controls
 
 
 def _compute_cell_result(
@@ -375,8 +411,9 @@ def _compute_cell_result(
     if cell_data is None or len(available_controls) == 0:
         return None
 
-    is_merged = "__y_pre" in cell_data.columns
-    n_cell = cell_data[id_col].n_unique()
+    is_arrays = isinstance(cell_data, CellArrays)
+
+    n_cell = len(cell_data.ids) if is_arrays else cell_data[id_col].n_unique()
 
     if len(available_controls) == 1:
         result = _compute_single_ddd_distributed(
@@ -397,10 +434,7 @@ def _compute_cell_result(
         att_result, inf_func = result
         if att_result is not None:
             inf_func_scaled = (n_units / n_cell) * inf_func
-            if is_merged:
-                cell_id_arr = cell_data[id_col].to_numpy()
-            else:
-                cell_id_arr = cell_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
+            cell_id_arr = cell_data.ids if is_arrays else cell_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
             return (
                 ATTgtResult(att=att_result, group=int(g), time=int(t), post=post_treat),
                 (inf_func_scaled, cell_id_arr),
@@ -411,14 +445,25 @@ def _compute_cell_result(
         ddd_results = []
         inf_funcs_local = []
 
-        if is_merged:
-            cell_id_arr = np.sort(cell_data[id_col].unique().to_numpy())
+        if is_arrays:
+            cell_id_arr = np.sort(np.unique(cell_data.ids))
         else:
             cell_id_arr = np.sort(cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy())
 
         for ctrl in available_controls:
-            ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
-            subset_data = cell_data.filter(ctrl_expr)
+            if is_arrays:
+                mask = (cell_data.groups == g) | (cell_data.groups == ctrl)
+                subset_data = CellArrays(
+                    ids=cell_data.ids[mask],
+                    y_post=cell_data.y_post[mask],
+                    y_pre=cell_data.y_pre[mask],
+                    groups=cell_data.groups[mask],
+                    partitions=cell_data.partitions[mask],
+                    covariates=cell_data.covariates[mask] if cell_data.covariates is not None else None,
+                )
+            else:
+                ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
+                subset_data = cell_data.filter(ctrl_expr)
 
             att_result, inf_func = _compute_single_ddd_distributed(
                 client,
@@ -439,15 +484,12 @@ def _compute_cell_result(
             if att_result is None:
                 continue
 
-            n_subset = subset_data[id_col].n_unique()
+            n_subset = len(subset_data.ids) if is_arrays else subset_data[id_col].n_unique()
             inf_func_scaled = (n_cell / n_subset) * inf_func
             ddd_results.append(att_result)
 
             inf_full = np.zeros(n_cell)
-            if is_merged:
-                subset_ids = subset_data[id_col].to_numpy()
-            else:
-                subset_ids = subset_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
+            subset_ids = subset_data.ids if is_arrays else subset_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
             n_map = min(len(inf_func_scaled), len(subset_ids))
             indices = np.searchsorted(cell_id_arr, subset_ids[:n_map])
             clamped = np.minimum(indices, len(cell_id_arr) - 1)
@@ -484,27 +526,34 @@ def _compute_single_ddd_distributed(
     n_partitions,
 ):
     """Compute DDD for a single (g,t) cell using distributed panel estimator."""
-    treat_col = (pl.col(group_col) == g).cast(pl.Int64).alias("treat")
-    subgroup_expr = (
-        4 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
-        + 3 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
-        + 2 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
-        + 1 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
-    ).alias("subgroup")
+    if isinstance(cell_data, CellArrays):
+        treat = (cell_data.groups == g).astype(np.int64)
+        part = cell_data.partitions.astype(np.int64)
+        subgroup_arr = 4 * treat * part + 3 * treat * (1 - part) + 2 * (1 - treat) * part + 1 * (1 - treat) * (1 - part)
 
-    cell_data = cell_data.with_columns([treat_col]).with_columns([subgroup_expr])
+        order = np.argsort(cell_data.ids)
+        y1 = cell_data.y_post[order]
+        y0 = cell_data.y_pre[order]
+        subgroup_arr = subgroup_arr[order]
 
-    is_merged = "__y_pre" in cell_data.columns
-
-    if is_merged:
-        cell_data = cell_data.sort(id_col)
-        if len(cell_data) == 0:
+        if len(y1) == 0 or 4 not in np.unique(subgroup_arr):
             return None, None
-        y1 = cell_data[y_col].to_numpy()
-        y0 = cell_data["__y_pre"].to_numpy()
-        subgroup_arr = cell_data["subgroup"].to_numpy()
-        data_for_covariates = cell_data
+
+        if covariate_cols is not None and cell_data.covariates is not None:
+            X = np.hstack([np.ones((len(y1), 1)), cell_data.covariates[order]])
+        else:
+            X = np.ones((len(y1), 1))
     else:
+        treat_col = (pl.col(group_col) == g).cast(pl.Int64).alias("treat")
+        subgroup_expr = (
+            4 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
+            + 3 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
+            + 2 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
+            + 1 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
+        ).alias("subgroup")
+
+        cell_data = cell_data.with_columns([treat_col]).with_columns([subgroup_expr])
+
         post_data = cell_data.filter(pl.col(time_col) == t).sort(id_col)
         pre_data = cell_data.filter(pl.col(time_col) == pret).sort(id_col)
 
@@ -516,17 +565,15 @@ def _compute_single_ddd_distributed(
         y1 = post_data[y_col].to_numpy()
         y0 = pre_data[y_col].to_numpy()
         subgroup_arr = post_data["subgroup"].to_numpy()
-        data_for_covariates = post_data
 
-    if 4 not in np.unique(subgroup_arr):
-        return None, None
+        if 4 not in np.unique(subgroup_arr):
+            return None, None
 
-    if covariate_cols is None:
-        X = np.ones((len(y1), 1))
-    else:
-        cov_matrix = data_for_covariates.select(covariate_cols).to_numpy()
-        intercept = np.ones((len(y1), 1))
-        X = np.hstack([intercept, cov_matrix])
+        if covariate_cols is None:
+            X = np.ones((len(y1), 1))
+        else:
+            cov_matrix = post_data.select(covariate_cols).to_numpy()
+            X = np.hstack([np.ones((len(y1), 1)), cov_matrix])
 
     try:
         result = dask_ddd_panel(
@@ -545,7 +592,7 @@ def _compute_single_ddd_distributed(
 
 
 def _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, sorted_unique_ids, counter):
-    """Update influence function matrix with scaled values for a cell."""
+    """Update influence function matrix."""
     n = min(len(inf_func_scaled), len(cell_id_arr))
     indices = np.searchsorted(sorted_unique_ids, cell_id_arr[:n])
     valid = (indices < len(sorted_unique_ids)) & (

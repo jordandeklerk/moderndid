@@ -90,6 +90,10 @@ def compute_agg_ddd(
         "cband": cband,
         "alpha": alpha,
     }
+    src_args = getattr(ddd_result, "args", {}) or {}
+    for key in ("yname", "pname", "est_method", "control_group", "base_period", "panel"):
+        if key in src_args:
+            args[key] = src_args[key]
 
     if not dropna and np.any(np.isnan(att)):
         raise ValueError("Missing values in ATT(g,t) found. Set dropna=True to remove them.")

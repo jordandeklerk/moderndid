@@ -295,11 +295,26 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
         return _multiplier_bootstrap_cupy(inf_func, biters, random_state)
 
     n = inf_func.shape[0]
+    k = inf_func.shape[1]
     rng = np.random.default_rng(random_state)
     p_kappa = 0.5 * (1 + np.sqrt(5)) / np.sqrt(5)
-    weights_matrix = rng.binomial(1, p_kappa, size=(biters, n)).astype(np.int8)
+    max_batch_bytes = 1 << 30
+    batch_size = max(1, max_batch_bytes // n)
+    batch_size = min(batch_size, biters)
 
-    return _multiplier_bootstrap_impl(np.ascontiguousarray(inf_func), weights_matrix)
+    inf_c = np.ascontiguousarray(inf_func)
+
+    if batch_size >= biters:
+        weights_matrix = rng.binomial(1, p_kappa, size=(biters, n)).astype(np.int8)
+        return _multiplier_bootstrap_impl(inf_c, weights_matrix)
+
+    bres = np.empty((biters, k), dtype=np.float64)
+    for start in range(0, biters, batch_size):
+        end = min(start + batch_size, biters)
+        b = end - start
+        weights_batch = rng.binomial(1, p_kappa, size=(b, n)).astype(np.int8)
+        bres[start:end] = _multiplier_bootstrap_impl(inf_c, weights_batch)
+    return bres
 
 
 def aggregate_by_cluster(inf_func, cluster):
