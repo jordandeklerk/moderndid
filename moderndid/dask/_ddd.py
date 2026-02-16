@@ -31,54 +31,188 @@ def dask_ddd(
     random_state=None,
     n_partitions=None,
 ):
-    """Compute the distributed DDD estimator for Dask DataFrames.
+    r"""Compute the distributed triple difference-in-differences estimator.
 
-    Automatically detects whether the data has multiple periods and dispatches
-    to the appropriate distributed estimator.
+    Distributed implementation of the DDD estimator from [1]_ for datasets
+    that exceed single-machine memory. This function accepts a Dask DataFrame,
+    automatically detects whether the data has two periods or multiple periods
+    with staggered adoption, and dispatches to the appropriate distributed
+    estimator.
+
+    The underlying methodology is identical to :func:`~moderndid.ddd`: for each
+    group-time cell :math:`(g,t)`, the estimator computes
+
+    .. math::
+
+        ATT(g,t) = \mathbb{E}[Y_{i,t}(g) - Y_{i,t}(\infty) \mid S_i = g, Q_i = 1],
+
+    where :math:`S_i` is the period when treatment is enabled for unit
+    :math:`i`'s group and :math:`Q_i \in \{0,1\}` indicates eligibility.
+    Identification relies on a DDD conditional parallel trends assumption that
+    allows differential trends between eligible and ineligible units, provided
+    these differentials are stable across treatment-enabling groups.
+
+    The distributed backend computes sufficient statistics (Gram matrices,
+    cross-products) partition-by-partition and aggregates via tree-reduce,
+    avoiding full materialization of the dataset on any single worker.
+
+    Users do not need to call this function directly. Passing a Dask DataFrame
+    to :func:`~moderndid.ddd` will automatically dispatch here.
 
     Parameters
     ----------
     data : dask.dataframe.DataFrame
-        Dask DataFrame in long format.
+        Panel data in long format as a Dask DataFrame. Each partition should
+        contain complete observations (all columns) for a subset of units.
+        Use ``dask.dataframe.read_parquet``, ``dask.dataframe.read_csv``, or
+        ``dask.dataframe.from_pandas`` to construct the input.
     yname : str
-        Outcome variable column name.
+        Name of the outcome variable column.
     tname : str
-        Time period column name.
-    idname : str or None
-        Unit identifier column name.
+        Name of the column containing time periods.
+    idname : str, optional
+        Name of the unit identifier column. Required for panel data.
     gname : str
-        Treatment group column name.
+        Name of the treatment group column. Should be 0 for never-treated
+        units and a positive value indicating the first period when treatment
+        is enabled for the unit's group.
     pname : str
-        Partition/eligibility column name.
-    xformla : str or None
-        Covariate formula "~ x1 + x2".
-    client : distributed.Client or None
-        Dask client. Created automatically if None.
-    control_group : {"nevertreated", "notyettreated"}, default "nevertreated"
-        Which units to use as controls.
-    base_period : {"universal", "varying"}, default "universal"
-        Base period selection.
-    est_method : {"dr", "reg", "ipw"}, default "dr"
-        Estimation method.
-    boot : bool, default False
-        Whether to use multiplier bootstrap.
-    biters : int, default 1000
-        Number of bootstrap iterations.
-    cband : bool, default False
-        Whether to compute uniform confidence bands.
-    cluster : str or None
-        Cluster variable for clustered SEs.
-    alpha : float, default 0.05
-        Significance level.
-    random_state : int or None
-        Random seed for bootstrap.
-    n_partitions : int or None
-        Number of partitions. Defaults to number of workers.
+        Name of the partition/eligibility column (1=eligible, 0=ineligible).
+        This identifies which units within a treatment-enabling group are
+        actually eligible to receive treatment.
+    xformla : str, optional
+        Formula for covariates in the form ``"~ x1 + x2"``. If None, only
+        an intercept is used.
+    client : distributed.Client, optional
+        Dask distributed client. If None, a local client is created
+        automatically via :func:`~moderndid.dask.get_or_create_client`.
+    control_group : {"nevertreated", "notyettreated"}, default="nevertreated"
+        Which units to use as controls. ``"nevertreated"`` uses only units
+        that are never treated. ``"notyettreated"`` additionally includes
+        units not yet treated by period :math:`t`.
+    base_period : {"universal", "varying"}, default="universal"
+        Base period selection for multi-period settings. ``"universal"`` uses
+        the period immediately before the first treated period for all
+        group-time cells. ``"varying"`` uses the period immediately before
+        each group's treatment onset.
+    est_method : {"dr", "reg", "ipw"}, default="dr"
+        Estimation method. ``"dr"`` uses doubly robust estimation combining
+        outcome regression and inverse probability weighting. ``"reg"`` uses
+        outcome regression only. ``"ipw"`` uses inverse probability weighting
+        only.
+    boot : bool, default=False
+        Whether to use the multiplier bootstrap for inference.
+    biters : int, default=1000
+        Number of bootstrap iterations. Only used when ``boot=True``.
+    cband : bool, default=False
+        Whether to compute uniform confidence bands that cover all group-time
+        average treatment effects simultaneously. Only used when
+        ``boot=True``.
+    cluster : str, optional
+        Name of the clustering variable for clustered standard errors.
+    alpha : float, default=0.05
+        Significance level for confidence intervals.
+    random_state : int, optional
+        Random seed for reproducibility of bootstrap draws.
+    n_partitions : int, optional
+        Number of Dask partitions for distributing computation. If None,
+        defaults to the total number of threads across all workers via
+        :func:`~moderndid.dask.get_default_partitions`.
 
     Returns
     -------
     DDDPanelResult or DDDMultiPeriodResult
-        Same result types as the local estimators.
+        For 2-period data, returns ``DDDPanelResult`` containing:
+
+        - **att**: The DDD point estimate for the ATT
+        - **se**: Standard error
+        - **uci**, **lci**: Confidence interval bounds
+        - **boots**: Bootstrap draws (if requested)
+        - **att_inf_func**: Influence function
+        - **did_atts**: Individual DiD ATT estimates
+        - **subgroup_counts**: Number of units per subgroup
+        - **args**: Estimation arguments
+
+        For multi-period data, returns ``DDDMultiPeriodResult`` containing:
+
+        - **att**: Array of ATT(g,t) point estimates
+        - **se**: Standard errors for each ATT(g,t)
+        - **uci**, **lci**: Confidence interval bounds
+        - **groups**, **times**: Treatment cohort and time for each estimate
+        - **glist**, **tlist**: Unique cohorts and periods
+        - **inf_func_mat**: Influence function matrix
+        - **n**: Number of units
+        - **args**: Estimation arguments
+
+    Examples
+    --------
+    For datasets that fit in memory, create a Dask DataFrame from an existing
+    pandas or polars DataFrame:
+
+    .. code-block:: python
+
+        import dask.dataframe as dd
+        from moderndid import ddd, gen_dgp_mult_periods
+
+        dgp = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+        ddf = dd.from_pandas(dgp["data"].to_pandas(), npartitions=4)
+
+        result = ddd(
+            data=ddf,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            est_method="dr",
+        )
+
+    For large datasets stored on disk, read directly into Dask:
+
+    .. code-block:: python
+
+        ddf = dd.read_parquet("large_panel/*.parquet")
+        result = ddd(
+            data=ddf,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+        )
+
+    To connect to an existing Dask cluster instead of the default local one:
+
+    .. code-block:: python
+
+        from dask.distributed import Client
+        from moderndid.dask import dask_ddd
+
+        client = Client("scheduler-address:8786")
+        result = dask_ddd(
+            data=ddf,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            client=client,
+        )
+
+    See Also
+    --------
+    ddd : Local (non-distributed) DDD estimator. Automatically dispatches
+        to ``dask_ddd`` when passed a Dask DataFrame.
+    get_or_create_client : Get or create a Dask distributed client.
+    get_default_partitions : Compute default partition count from cluster.
+    monitor_cluster : Monitor cluster memory and task statistics.
+
+    References
+    ----------
+
+    .. [1] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025).
+        *Better Understanding Triple Differences Estimators.*
+        arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
     if gname is None:
         raise ValueError("gname is required.")
