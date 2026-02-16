@@ -11,6 +11,7 @@ from scipy import stats
 from moderndid.didtriple.estimators.ddd_panel import DDDPanelResult
 
 from ._bootstrap import distributed_mboot_ddd
+from ._checks import get_default_partitions
 from ._inf_func import compute_did_distributed
 from ._nuisance import compute_all_nuisances_distributed
 
@@ -69,7 +70,7 @@ def dask_ddd_panel(
     y1, y0, subgroup, covariates, i_weights, n_units = _validate_inputs(y1, y0, subgroup, covariates, i_weights)
 
     if n_partitions is None:
-        n_partitions = max(len(client.scheduler_info()["workers"]), 1)
+        n_partitions = get_default_partitions(client)
 
     subgroup_counts = {
         "subgroup_1": int(np.sum(subgroup == 1)),

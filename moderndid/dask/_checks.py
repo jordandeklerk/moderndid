@@ -44,6 +44,29 @@ def validate_dask_input(ddf, required_cols):
         raise ValueError(f"Columns not found in Dask DataFrame: {missing}")
 
 
+def get_default_partitions(client):
+    """Compute default partition count from total cluster threads.
+
+    Uses the total number of threads across all workers so that every
+    thread has at least one partition to work on, rather than defaulting
+    to the number of workers (which leaves most threads idle).
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Dask distributed client.
+
+    Returns
+    -------
+    int
+        Recommended number of partitions (total threads, minimum 1).
+    """
+    info = client.scheduler_info()
+    workers = info.get("workers", {})
+    total_threads = sum(w.get("nthreads", 1) for w in workers.values())
+    return max(total_threads, 1)
+
+
 def get_or_create_client(client=None):
     """Get an existing Dask client or create a local one.
 

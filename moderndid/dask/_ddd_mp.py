@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import warnings
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import polars as pl
@@ -19,6 +19,7 @@ from moderndid.didtriple.estimators.ddd_mp import (
 )
 
 from ._bootstrap import distributed_mboot_ddd
+from ._checks import get_default_partitions
 from ._ddd_panel import dask_ddd_panel
 
 log = logging.getLogger("moderndid.dask.backend")
@@ -91,7 +92,7 @@ def dask_ddd_mp(
         Same result type as the local multi-period estimator.
     """
     if n_partitions is None:
-        n_partitions = max(len(client.scheduler_info()["workers"]), 1)
+        n_partitions = get_default_partitions(client)
 
     # Extract metadata via Dask aggregations — avoids materializing full dataset
     is_dask = hasattr(data, "compute")
@@ -103,7 +104,8 @@ def dask_ddd_mp(
         n_units = int(data[id_col].nunique().compute())
         # Sorted unique IDs for searchsorted-based indexing
         unique_ids = np.sort(data[id_col].drop_duplicates().compute().values)
-        dask_data = data
+        dask_data = data.persist()
+        log.info("persisted Dask DataFrame in worker memory")
     else:
         data = to_polars(data)
         tlist = np.sort(data[time_col].unique().to_numpy())
@@ -130,45 +132,106 @@ def dask_ddd_mp(
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
     attgt_list = []
-    counter = 0
     total_cells = n_cohorts * tlist_length
 
+    # Pre-compute cell specs
+    cell_specs = []
     for g in glist:
         for t_idx in range(tlist_length):
             t = tlist[t_idx + tfac]
-            log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
+            pret = _get_base_period(g, t_idx, tlist, base_period)
 
-            result = _process_gt_cell_distributed(
-                client=client,
-                dask_data=dask_data,
-                data=data if not is_dask else None,
-                g=g,
-                t=t,
-                t_idx=t_idx,
-                tlist=tlist,
-                base_period=base_period,
-                control_group=control_group,
-                y_col=y_col,
-                time_col=time_col,
-                id_col=id_col,
-                group_col=group_col,
-                partition_col=partition_col,
-                covariate_cols=covariate_cols,
-                est_method=est_method,
-                n_units=n_units,
-                n_partitions=n_partitions,
+            if pret is None:
+                cell_specs.append((g, t, pret, 0, "skip"))
+                continue
+
+            post_treat = int(g <= t)
+            if post_treat:
+                pre_periods = tlist[tlist < g]
+                if len(pre_periods) == 0:
+                    cell_specs.append((g, t, pret, post_treat, "skip"))
+                    continue
+                pret = pre_periods[-1]
+
+            if base_period == "universal" and pret == t:
+                cell_specs.append((g, t, pret, 0, "zero"))
+                continue
+
+            cell_specs.append((g, t, pret, post_treat, "compute"))
+
+    data_pl = data if not is_dask else None
+
+    def _fetch_data(g, t, pret):
+        if dask_data is not None:
+            return _get_cell_data_from_dask(
+                dask_data,
+                g,
+                t,
+                pret,
+                control_group,
+                time_col,
+                group_col,
             )
+        return _get_cell_data(data_pl, g, t, pret, control_group, time_col, group_col)
 
-            if result is not None:
-                att_entry, inf_data, se_val = result
-                if att_entry is not None:
-                    attgt_list.append(att_entry)
-                    if inf_data is not None:
-                        inf_func_scaled, cell_id_arr = inf_data
-                        _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, unique_ids, counter)
-                    if se_val is not None:
-                        se_array[counter] = se_val
-            counter += 1
+    compute_indices = [i for i, s in enumerate(cell_specs) if s[4] == "compute"]
+    prefetch_pool = ThreadPoolExecutor(max_workers=1)
+    pending_fetch = None
+    next_pf = 0
+
+    if compute_indices:
+        s = cell_specs[compute_indices[0]]
+        pending_fetch = prefetch_pool.submit(_fetch_data, s[0], s[1], s[2])
+        next_pf = 1
+
+    for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
+        log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
+
+        if action == "skip":
+            continue
+
+        if action == "zero":
+            attgt_list.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
+            continue
+
+        cell_data, available_controls = pending_fetch.result()
+        pending_fetch = None
+
+        if next_pf < len(compute_indices):
+            ns = cell_specs[compute_indices[next_pf]]
+            pending_fetch = prefetch_pool.submit(_fetch_data, ns[0], ns[1], ns[2])
+            next_pf += 1
+
+        result = _compute_cell_result(
+            client=client,
+            cell_data=cell_data,
+            available_controls=available_controls,
+            g=g,
+            t=t,
+            pret=pret,
+            post_treat=post_treat,
+            y_col=y_col,
+            time_col=time_col,
+            id_col=id_col,
+            group_col=group_col,
+            partition_col=partition_col,
+            covariate_cols=covariate_cols,
+            est_method=est_method,
+            n_units=n_units,
+            n_partitions=n_partitions,
+        )
+
+        if result is not None:
+            att_entry, inf_data, se_val = result
+            if att_entry is not None:
+                attgt_list.append(att_entry)
+                if inf_data is not None:
+                    inf_func_scaled, cell_id_arr = inf_data
+                    _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, unique_ids, counter)
+                if se_val is not None:
+                    se_array[counter] = se_val
+
+    prefetch_pool.shutdown(wait=False)
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
@@ -268,16 +331,14 @@ def _get_cell_data_from_dask(dask_data, g, t, pret, control_group, time_col, gro
     return cell_data, available_controls
 
 
-def _process_gt_cell_distributed(
+def _compute_cell_result(
     client,
-    dask_data,
-    data,
+    cell_data,
+    available_controls,
     g,
     t,
-    t_idx,
-    tlist,
-    base_period,
-    control_group,
+    pret,
+    post_treat,
     y_col,
     time_col,
     id_col,
@@ -288,29 +349,7 @@ def _process_gt_cell_distributed(
     n_units,
     n_partitions,
 ):
-    """Process a single (g,t) cell using distributed estimation."""
-    pret = _get_base_period(g, t_idx, tlist, base_period)
-    if pret is None:
-        warnings.warn(f"No pre-treatment periods for group {g}. Skipping.", UserWarning)
-        return None
-
-    post_treat = int(g <= t)
-    if post_treat:
-        pre_periods = tlist[tlist < g]
-        if len(pre_periods) == 0:
-            return None
-        pret = pre_periods[-1]
-
-    if base_period == "universal" and pret == t:
-        return (ATTgtResult(att=0.0, group=int(g), time=int(t), post=0), None, None)
-
-    if dask_data is not None:
-        cell_data, available_controls = _get_cell_data_from_dask(
-            dask_data, g, t, pret, control_group, time_col, group_col
-        )
-    else:
-        cell_data, available_controls = _get_cell_data(data, g, t, pret, control_group, time_col, group_col)
-
+    """Compute DDD result for a cell with already-fetched data."""
     if cell_data is None or len(available_controls) == 0:
         return None
 

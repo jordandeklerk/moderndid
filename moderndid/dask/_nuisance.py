@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
 import numpy as np
 
+from ._checks import get_default_partitions
 from ._regression import distributed_logistic_irls, distributed_wls
 
 
@@ -91,27 +93,49 @@ def compute_all_nuisances_distributed(
         Propensity score and outcome regression results for comparisons [3, 2, 1].
     """
     if n_partitions is None:
-        n_partitions = max(len(client.scheduler_info()["workers"]), 1)
+        n_partitions = get_default_partitions(client)
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        ps_futures = {}
+        or_futures = {}
 
-    pscores = []
-    or_results = []
+        for comp_subgroup in [3, 2, 1]:
+            if est_method == "reg":
+                ps_futures[comp_subgroup] = pool.submit(_compute_pscore_null, subgroup, comp_subgroup)
+            else:
+                ps_futures[comp_subgroup] = pool.submit(
+                    _compute_pscore_distributed,
+                    client,
+                    subgroup,
+                    covariates,
+                    weights,
+                    comp_subgroup,
+                    trim_level,
+                    n_partitions,
+                )
 
-    for comp_subgroup in [3, 2, 1]:
-        if est_method == "reg":
-            ps_result = _compute_pscore_null(subgroup, comp_subgroup)
-        else:
-            ps_result = _compute_pscore_distributed(
-                client, subgroup, covariates, weights, comp_subgroup, trim_level, n_partitions
-            )
-        pscores.append(ps_result)
+            if est_method == "ipw":
+                or_futures[comp_subgroup] = pool.submit(
+                    _compute_outcome_regression_null,
+                    y1,
+                    y0,
+                    subgroup,
+                    comp_subgroup,
+                )
+            else:
+                or_futures[comp_subgroup] = pool.submit(
+                    _compute_outcome_regression_distributed,
+                    client,
+                    y1,
+                    y0,
+                    subgroup,
+                    covariates,
+                    weights,
+                    comp_subgroup,
+                    n_partitions,
+                )
 
-        if est_method == "ipw":
-            or_result = _compute_outcome_regression_null(y1, y0, subgroup, comp_subgroup)
-        else:
-            or_result = _compute_outcome_regression_distributed(
-                client, y1, y0, subgroup, covariates, weights, comp_subgroup, n_partitions
-            )
-        or_results.append(or_result)
+        pscores = [ps_futures[sg].result() for sg in [3, 2, 1]]
+        or_results = [or_futures[sg].result() for sg in [3, 2, 1]]
 
     return pscores, or_results
 
