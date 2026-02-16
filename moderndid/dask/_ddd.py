@@ -6,7 +6,7 @@ import logging
 
 import numpy as np
 
-from ._checks import get_or_create_client, validate_dask_input
+from ._utils import get_or_create_client, validate_dask_input
 
 log = logging.getLogger("moderndid.dask.backend")
 

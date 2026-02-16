@@ -19,8 +19,8 @@ from moderndid.didtriple.estimators.ddd_mp import (
 )
 
 from ._bootstrap import distributed_mboot_ddd
-from ._checks import get_default_partitions
 from ._ddd_panel import dask_ddd_panel
+from ._utils import get_default_partitions
 
 log = logging.getLogger("moderndid.dask.backend")
 

@@ -291,7 +291,7 @@ def ddd(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
-    from moderndid.dask._checks import is_dask_collection
+    from moderndid.dask._utils import is_dask_collection
 
     if is_dask_collection(data):
         from moderndid.dask._ddd import dask_ddd

@@ -11,9 +11,9 @@ from scipy import stats
 from moderndid.didtriple.estimators.ddd_panel import DDDPanelResult
 
 from ._bootstrap import distributed_mboot_ddd
-from ._checks import get_default_partitions
 from ._inf_func import compute_did_distributed
 from ._nuisance import compute_all_nuisances_distributed
+from ._utils import get_default_partitions
 
 
 def dask_ddd_panel(

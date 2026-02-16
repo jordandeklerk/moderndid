@@ -7,8 +7,8 @@ from typing import NamedTuple
 
 import numpy as np
 
-from ._checks import get_default_partitions
 from ._regression import distributed_logistic_irls, distributed_wls
+from ._utils import get_default_partitions
 
 
 class DistPScoreResult(NamedTuple):

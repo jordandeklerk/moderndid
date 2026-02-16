@@ -1,6 +1,6 @@
 """Dask distributed backend for moderndid DDD estimators."""
 
-from ._checks import get_default_partitions, get_or_create_client, is_dask_collection, validate_dask_input
+from ._utils import get_default_partitions, get_or_create_client, is_dask_collection, validate_dask_input
 from ._ddd import dask_ddd
 from .monitor import monitor_cluster
 
