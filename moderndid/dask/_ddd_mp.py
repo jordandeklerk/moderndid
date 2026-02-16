@@ -172,6 +172,10 @@ def dask_ddd_mp(
                 control_group,
                 time_col,
                 group_col,
+                id_col,
+                y_col,
+                partition_col,
+                covariate_cols,
             )
         return _get_cell_data(data_pl, g, t, pret, control_group, time_col, group_col)
 
@@ -243,10 +247,10 @@ def dask_ddd_mp(
 
     inf_func_trimmed = inf_func_mat[:, : len(attgt_list)]
 
-    # Get unit groups for aggregation
     first_period = tlist[0]
     if is_dask:
-        unit_data = to_polars(dask_data.loc[dask_data[time_col] == first_period].compute()).sort(id_col)
+        unit_dask = dask_data.loc[dask_data[time_col] == first_period][[id_col, group_col]]
+        unit_data = to_polars(unit_dask.compute()).sort(id_col)
     else:
         unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
     unit_groups = unit_data[group_col].to_numpy()
@@ -310,13 +314,10 @@ def dask_ddd_mp(
     )
 
 
-def _get_cell_data_from_dask(client, dask_data, g, t, pret, control_group, time_col, group_col):
-    """Extract cell data from a Dask DataFrame, computing only the cell subset.
-
-    Uses partition-by-partition gathering to avoid Dask's internal
-    ``repartitiontofewer`` coalescing, which concentrates data on one
-    worker and causes OOM at scale.
-    """
+def _get_cell_data_from_dask(
+    client, dask_data, g, t, pret, control_group, time_col, group_col, id_col, y_col, partition_col, covariate_cols
+):
+    """Extract cell data."""
     import pandas as pd
 
     max_period = max(t, pret)
@@ -326,15 +327,23 @@ def _get_cell_data_from_dask(client, dask_data, g, t, pret, control_group, time_
     else:
         group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
 
-    time_filter = dask_data[time_col].isin([t, pret])
-    filtered = dask_data.loc[group_filter & time_filter]
+    filtered = dask_data.loc[group_filter]
 
-    # Gather partition-by-partition to the driver instead of .compute(),
-    # which triggers repartitiontofewer and OOMs one worker at 900M obs.
-    parts = client.gather(client.compute(filtered.to_delayed()))
+    post_dask = filtered.loc[filtered[time_col] == t]
+    pre_dask = filtered.loc[filtered[time_col] == pret]
+
+    keep_cols = [id_col, group_col, partition_col, y_col]
+    if covariate_cols:
+        keep_cols = keep_cols + [c for c in covariate_cols if c not in keep_cols]
+    post_selected = post_dask[keep_cols]
+    pre_selected = pre_dask[[id_col, y_col]].rename(columns={y_col: "__y_pre"})
+    merged = post_selected.merge(pre_selected, on=id_col, how="inner")
+
+    parts = client.gather(client.compute(merged.to_delayed()))
     non_empty = [p for p in parts if len(p) > 0]
     if not non_empty:
         return None, []
+
     cell_pdf = pd.concat(non_empty, ignore_index=True)
     cell_data = to_polars(cell_pdf)
 
@@ -366,6 +375,7 @@ def _compute_cell_result(
     if cell_data is None or len(available_controls) == 0:
         return None
 
+    is_merged = "__y_pre" in cell_data.columns
     n_cell = cell_data[id_col].n_unique()
 
     if len(available_controls) == 1:
@@ -387,7 +397,10 @@ def _compute_cell_result(
         att_result, inf_func = result
         if att_result is not None:
             inf_func_scaled = (n_units / n_cell) * inf_func
-            cell_id_arr = cell_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
+            if is_merged:
+                cell_id_arr = cell_data[id_col].to_numpy()
+            else:
+                cell_id_arr = cell_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
             return (
                 ATTgtResult(att=att_result, group=int(g), time=int(t), post=post_treat),
                 (inf_func_scaled, cell_id_arr),
@@ -398,7 +411,10 @@ def _compute_cell_result(
         ddd_results = []
         inf_funcs_local = []
 
-        cell_id_arr = np.sort(cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy())
+        if is_merged:
+            cell_id_arr = np.sort(cell_data[id_col].unique().to_numpy())
+        else:
+            cell_id_arr = np.sort(cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy())
 
         for ctrl in available_controls:
             ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
@@ -428,7 +444,10 @@ def _compute_cell_result(
             ddd_results.append(att_result)
 
             inf_full = np.zeros(n_cell)
-            subset_ids = subset_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
+            if is_merged:
+                subset_ids = subset_data[id_col].to_numpy()
+            else:
+                subset_ids = subset_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
             n_map = min(len(inf_func_scaled), len(subset_ids))
             indices = np.searchsorted(cell_id_arr, subset_ids[:n_map])
             clamped = np.minimum(indices, len(cell_id_arr) - 1)
@@ -475,26 +494,37 @@ def _compute_single_ddd_distributed(
 
     cell_data = cell_data.with_columns([treat_col]).with_columns([subgroup_expr])
 
-    post_data = cell_data.filter(pl.col(time_col) == t).sort(id_col)
-    pre_data = cell_data.filter(pl.col(time_col) == pret).sort(id_col)
+    is_merged = "__y_pre" in cell_data.columns
 
-    post_data = post_data.join(pre_data.select(id_col).unique(), on=id_col, how="semi").sort(id_col)
-    pre_data = pre_data.join(post_data.select(id_col).unique(), on=id_col, how="semi").sort(id_col)
+    if is_merged:
+        cell_data = cell_data.sort(id_col)
+        if len(cell_data) == 0:
+            return None, None
+        y1 = cell_data[y_col].to_numpy()
+        y0 = cell_data["__y_pre"].to_numpy()
+        subgroup_arr = cell_data["subgroup"].to_numpy()
+        data_for_covariates = cell_data
+    else:
+        post_data = cell_data.filter(pl.col(time_col) == t).sort(id_col)
+        pre_data = cell_data.filter(pl.col(time_col) == pret).sort(id_col)
 
-    if len(post_data) == 0:
-        return None, None
+        post_data = post_data.join(pre_data.select(id_col).unique(), on=id_col, how="semi").sort(id_col)
+        pre_data = pre_data.join(post_data.select(id_col).unique(), on=id_col, how="semi").sort(id_col)
 
-    y1 = post_data[y_col].to_numpy()
-    y0 = pre_data[y_col].to_numpy()
-    subgroup = post_data["subgroup"].to_numpy()
+        if len(post_data) == 0:
+            return None, None
+        y1 = post_data[y_col].to_numpy()
+        y0 = pre_data[y_col].to_numpy()
+        subgroup_arr = post_data["subgroup"].to_numpy()
+        data_for_covariates = post_data
 
-    if 4 not in np.unique(subgroup):
+    if 4 not in np.unique(subgroup_arr):
         return None, None
 
     if covariate_cols is None:
         X = np.ones((len(y1), 1))
     else:
-        cov_matrix = post_data.select(covariate_cols).to_numpy()
+        cov_matrix = data_for_covariates.select(covariate_cols).to_numpy()
         intercept = np.ones((len(y1), 1))
         X = np.hstack([intercept, cov_matrix])
 
@@ -503,7 +533,7 @@ def _compute_single_ddd_distributed(
             client=client,
             y1=y1,
             y0=y0,
-            subgroup=subgroup,
+            subgroup=subgroup_arr,
             covariates=X,
             est_method=est_method,
             influence_func=True,
