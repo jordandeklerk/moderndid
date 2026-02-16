@@ -93,8 +93,6 @@ def dask_ddd_mp(
     """
     if n_partitions is None:
         n_partitions = get_default_partitions(client)
-
-    # Extract metadata via Dask aggregations — avoids materializing full dataset
     is_dask = hasattr(data, "compute")
     if is_dask:
         log.info("extracting metadata via Dask aggregations")
@@ -102,9 +100,11 @@ def dask_ddd_mp(
         glist_raw = data[group_col].drop_duplicates().compute().values
         glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
         n_units = int(data[id_col].nunique().compute())
-        # Sorted unique IDs for searchsorted-based indexing
         unique_ids = np.sort(data[id_col].drop_duplicates().compute().values)
+        from distributed import wait
+
         dask_data = data.persist()
+        wait(dask_data)
         log.info("persisted Dask DataFrame in worker memory")
     else:
         data = to_polars(data)

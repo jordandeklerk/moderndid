@@ -39,8 +39,26 @@ def _sum_gram_pair(a, b):
     return a[0] + b[0], a[1] + b[1], a[2] + b[2]
 
 
-def tree_reduce(client, futures, combine_fn):
-    """Tree-reduce a list of futures using a pairwise combine function.
+def _reduce_group(combine_fn, *items):
+    """Reduce a group of items on a single worker.
+
+    Applies ``combine_fn`` pairwise to a group so the entire group
+    is reduced in one task instead of creating intermediate futures.
+    """
+    result = items[0]
+    for item in items[1:]:
+        result = combine_fn(result, item)
+    return result
+
+
+def tree_reduce(client, futures, combine_fn, split_every=8):
+    """Tree-reduce a list of futures with configurable fan-in.
+
+    Groups ``split_every`` futures per reduction step and reduces each
+    group in a **single task** on one worker, following the pattern
+    used by Dask's internal reductions.  With 64 futures and
+    ``split_every=8`` this produces 9 tasks (8 + 1) instead of the
+    63 tasks created by pairwise reduction.
 
     Parameters
     ----------
@@ -50,6 +68,8 @@ def tree_reduce(client, futures, combine_fn):
         Futures to reduce.
     combine_fn : callable
         Function ``(a, b) -> c`` that combines two results.
+    split_every : int, default 8
+        Number of futures to combine per reduction step.
 
     Returns
     -------
@@ -58,11 +78,12 @@ def tree_reduce(client, futures, combine_fn):
     """
     while len(futures) > 1:
         new_futures = []
-        for i in range(0, len(futures), 2):
-            if i + 1 < len(futures):
-                new_futures.append(client.submit(combine_fn, futures[i], futures[i + 1]))
+        for i in range(0, len(futures), split_every):
+            group = futures[i : i + split_every]
+            if len(group) == 1:
+                new_futures.append(group[0])
             else:
-                new_futures.append(futures[i])
+                new_futures.append(client.submit(_reduce_group, combine_fn, *group))
         futures = new_futures
     return futures[0].result()
 
