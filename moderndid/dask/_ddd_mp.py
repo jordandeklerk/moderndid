@@ -51,7 +51,7 @@ def dask_ddd_mp(
     client : distributed.Client
         Dask distributed client.
     data : DataFrame
-        Panel data in long format (will be converted to Polars).
+        Panel data in long format (Dask or Polars DataFrame).
     y_col : str
         Outcome variable column name.
     time_col : str
@@ -90,17 +90,29 @@ def dask_ddd_mp(
     DDDMultiPeriodResult
         Same result type as the local multi-period estimator.
     """
-    # Convert Dask DataFrame to Polars for metadata extraction
-    data = to_polars(data.compute())
-
     if n_partitions is None:
         n_partitions = max(len(client.scheduler_info()["workers"]), 1)
 
-    tlist = np.sort(data[time_col].unique().to_numpy())
-    glist_raw = data[group_col].unique().to_numpy()
-    glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
+    # Extract metadata via Dask aggregations — avoids materializing full dataset
+    is_dask = hasattr(data, "compute")
+    if is_dask:
+        log.info("extracting metadata via Dask aggregations")
+        tlist = np.sort(data[time_col].drop_duplicates().compute().values)
+        glist_raw = data[group_col].drop_duplicates().compute().values
+        glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
+        n_units = int(data[id_col].nunique().compute())
+        # Sorted unique IDs for searchsorted-based indexing
+        unique_ids = np.sort(data[id_col].drop_duplicates().compute().values)
+        dask_data = data
+    else:
+        data = to_polars(data)
+        tlist = np.sort(data[time_col].unique().to_numpy())
+        glist_raw = data[group_col].unique().to_numpy()
+        glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
+        n_units = data[id_col].n_unique()
+        unique_ids = np.sort(data[id_col].unique().to_numpy())
+        dask_data = None
 
-    n_units = data[id_col].n_unique()
     n_periods = len(tlist)
     n_cohorts = len(glist)
     log.info(
@@ -117,9 +129,6 @@ def dask_ddd_mp(
     inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
-    unique_ids = data[id_col].unique().to_numpy()
-    id_to_idx = {uid: idx for idx, uid in enumerate(unique_ids)}
-
     attgt_list = []
     counter = 0
     total_cells = n_cohorts * tlist_length
@@ -131,7 +140,8 @@ def dask_ddd_mp(
 
             result = _process_gt_cell_distributed(
                 client=client,
-                data=data,
+                dask_data=dask_data,
+                data=data if not is_dask else None,
                 g=g,
                 t=t,
                 t_idx=t_idx,
@@ -154,8 +164,8 @@ def dask_ddd_mp(
                 if att_entry is not None:
                     attgt_list.append(att_entry)
                     if inf_data is not None:
-                        inf_func_scaled, cell_id_list = inf_data
-                        _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter)
+                        inf_func_scaled, cell_id_arr = inf_data
+                        _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, unique_ids, counter)
                     if se_val is not None:
                         se_array[counter] = se_val
             counter += 1
@@ -169,8 +179,12 @@ def dask_ddd_mp(
 
     inf_func_trimmed = inf_func_mat[:, : len(attgt_list)]
 
+    # Get unit groups for aggregation
     first_period = tlist[0]
-    unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
+    if is_dask:
+        unit_data = to_polars(dask_data.loc[dask_data[time_col] == first_period].compute()).sort(id_col)
+    else:
+        unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
     unit_groups = unit_data[group_col].to_numpy()
 
     if boot:
@@ -232,8 +246,31 @@ def dask_ddd_mp(
     )
 
 
+def _get_cell_data_from_dask(dask_data, g, t, pret, control_group, time_col, group_col):
+    """Extract cell data from a Dask DataFrame, computing only the cell subset."""
+    max_period = max(t, pret)
+
+    if control_group == "nevertreated":
+        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
+    else:
+        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
+
+    time_filter = dask_data[time_col].isin([t, pret])
+    cell_pdf = dask_data.loc[group_filter & time_filter].compute()
+    cell_data = to_polars(cell_pdf)
+
+    if len(cell_data) == 0:
+        return None, []
+
+    control_data = cell_data.filter(~pl.col(group_col).is_in([g]))
+    available_controls = [c for c in control_data[group_col].unique().to_list() if c != g]
+
+    return cell_data, available_controls
+
+
 def _process_gt_cell_distributed(
     client,
+    dask_data,
     data,
     g,
     t,
@@ -267,7 +304,12 @@ def _process_gt_cell_distributed(
     if base_period == "universal" and pret == t:
         return (ATTgtResult(att=0.0, group=int(g), time=int(t), post=0), None, None)
 
-    cell_data, available_controls = _get_cell_data(data, g, t, pret, control_group, time_col, group_col)
+    if dask_data is not None:
+        cell_data, available_controls = _get_cell_data_from_dask(
+            dask_data, g, t, pret, control_group, time_col, group_col
+        )
+    else:
+        cell_data, available_controls = _get_cell_data(data, g, t, pret, control_group, time_col, group_col)
 
     if cell_data is None or len(available_controls) == 0:
         return None
@@ -293,16 +335,18 @@ def _process_gt_cell_distributed(
         att_result, inf_func = result
         if att_result is not None:
             inf_func_scaled = (n_units / n_cell) * inf_func
-            cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
+            cell_id_arr = cell_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
             return (
                 ATTgtResult(att=att_result, group=int(g), time=int(t), post=post_treat),
-                (inf_func_scaled, cell_id_list),
+                (inf_func_scaled, cell_id_arr),
                 None,
             )
         return None
     else:
         ddd_results = []
         inf_funcs_local = []
+
+        cell_id_arr = np.sort(cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy())
 
         for ctrl in available_controls:
             ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
@@ -333,12 +377,11 @@ def _process_gt_cell_distributed(
 
             inf_full = np.zeros(n_cell)
             subset_ids = subset_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
-            cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy()
-            cell_id_to_local = {uid: idx for idx, uid in enumerate(cell_id_list)}
-
-            for i, uid in enumerate(subset_ids):
-                if uid in cell_id_to_local and i < len(inf_func_scaled):
-                    inf_full[cell_id_to_local[uid]] = inf_func_scaled[i]
+            n_map = min(len(inf_func_scaled), len(subset_ids))
+            indices = np.searchsorted(cell_id_arr, subset_ids[:n_map])
+            clamped = np.minimum(indices, len(cell_id_arr) - 1)
+            valid = (indices < len(cell_id_arr)) & (cell_id_arr[clamped] == subset_ids[:n_map])
+            inf_full[indices[valid]] = inf_func_scaled[:n_map][valid]
 
             inf_funcs_local.append(inf_full)
 
@@ -347,10 +390,9 @@ def _process_gt_cell_distributed(
 
         att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_funcs_local), n_units)
         inf_func_scaled = (n_units / n_cell) * if_gmm
-        cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy()
         return (
             ATTgtResult(att=att_gmm, group=int(g), time=int(t), post=post_treat),
-            (inf_func_scaled, cell_id_list),
+            (inf_func_scaled, cell_id_arr),
             se_gmm,
         )
 
@@ -384,21 +426,17 @@ def _compute_single_ddd_distributed(
     post_data = cell_data.filter(pl.col(time_col) == t).sort(id_col)
     pre_data = cell_data.filter(pl.col(time_col) == pret).sort(id_col)
 
-    post_ids = set(post_data[id_col].to_list())
-    pre_ids = set(pre_data[id_col].to_list())
-    common_ids = post_ids & pre_ids
-    if len(common_ids) == 0:
-        return None, None
+    post_data = post_data.join(pre_data.select(id_col).unique(), on=id_col, how="semi").sort(id_col)
+    pre_data = pre_data.join(post_data.select(id_col).unique(), on=id_col, how="semi").sort(id_col)
 
-    common_ids_list = list(common_ids)
-    post_data = post_data.filter(pl.col(id_col).is_in(common_ids_list)).sort(id_col)
-    pre_data = pre_data.filter(pl.col(id_col).is_in(common_ids_list)).sort(id_col)
+    if len(post_data) == 0:
+        return None, None
 
     y1 = post_data[y_col].to_numpy()
     y0 = pre_data[y_col].to_numpy()
     subgroup = post_data["subgroup"].to_numpy()
 
-    if 4 not in set(subgroup):
+    if 4 not in np.unique(subgroup):
         return None, None
 
     if covariate_cols is None:
@@ -424,8 +462,11 @@ def _compute_single_ddd_distributed(
         return None, None
 
 
-def _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter):
+def _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, sorted_unique_ids, counter):
     """Update influence function matrix with scaled values for a cell."""
-    for i, uid in enumerate(cell_id_list):
-        if uid in id_to_idx and i < len(inf_func_scaled):
-            inf_func_mat[id_to_idx[uid], counter] = inf_func_scaled[i]
+    n = min(len(inf_func_scaled), len(cell_id_arr))
+    indices = np.searchsorted(sorted_unique_ids, cell_id_arr[:n])
+    valid = (indices < len(sorted_unique_ids)) & (
+        sorted_unique_ids[np.minimum(indices, len(sorted_unique_ids) - 1)] == cell_id_arr[:n]
+    )
+    inf_func_mat[indices[valid], counter] = inf_func_scaled[:n][valid]
