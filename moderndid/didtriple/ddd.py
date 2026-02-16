@@ -291,6 +291,29 @@ def ddd(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
+    from moderndid.dask._checks import is_dask_collection
+
+    if is_dask_collection(data):
+        from moderndid.dask._ddd import dask_ddd
+
+        return dask_ddd(
+            data,
+            yname,
+            tname,
+            idname,
+            gname,
+            pname,
+            xformla,
+            control_group=control_group,
+            base_period=base_period,
+            est_method=est_method,
+            boot=boot,
+            biters=biters,
+            cluster=cluster,
+            alpha=alpha,
+            random_state=random_state,
+        )
+
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")
     if pname is None:

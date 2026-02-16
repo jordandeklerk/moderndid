@@ -120,6 +120,7 @@ __all__ = [
     "create_sensitivity_results_sm",
     "create_sign_constraint_matrix",
     # Core data
+    "dask_ddd",
     "data",
     "ddd",
     "ddd_mp",
@@ -456,6 +457,8 @@ _optional_imports = {
     "test_in_identified_set_max": ("moderndid.didhonest", "didhonest"),
     "validate_conformable": ("moderndid.didhonest", "didhonest"),
     "validate_symmetric_psd": ("moderndid.didhonest", "didhonest"),
+    # dask (requires dask + distributed)
+    "dask_ddd": ("moderndid.dask", "dask"),
     # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),
     "plot_dose_response": ("moderndid.plots", "plots"),

@@ -1,0 +1,200 @@
+"""Distributed nuisance estimation for DDD estimators."""
+
+from __future__ import annotations
+
+from typing import NamedTuple
+
+import numpy as np
+
+from ._regression import distributed_logistic_irls, distributed_wls
+
+
+class DistPScoreResult(NamedTuple):
+    """Result from distributed propensity score estimation."""
+
+    propensity_scores: np.ndarray
+    hessian_matrix: np.ndarray | None
+    keep_ps: np.ndarray
+
+
+class DistOutcomeRegResult(NamedTuple):
+    """Result from distributed outcome regression."""
+
+    delta_y: np.ndarray
+    or_delta: np.ndarray
+    reg_coeff: np.ndarray | None
+
+
+def _build_partitions_for_subset(X, W, y, n_partitions):
+    """Split arrays into roughly equal partitions.
+
+    Parameters
+    ----------
+    X : ndarray of shape (n, k)
+        Design matrix.
+    W : ndarray of shape (n,)
+        Weight vector.
+    y : ndarray of shape (n,)
+        Response vector.
+    n_partitions : int
+        Number of partitions.
+
+    Returns
+    -------
+    list of (X_part, W_part, y_part) tuples
+    """
+    splits = np.array_split(np.arange(len(y)), n_partitions)
+    return [(X[idx], W[idx], y[idx]) for idx in splits if len(idx) > 0]
+
+
+def compute_all_nuisances_distributed(
+    client,
+    y1,
+    y0,
+    subgroup,
+    covariates,
+    weights,
+    est_method="dr",
+    trim_level=0.995,
+    n_partitions=None,
+):
+    """Compute all nuisance parameters using distributed regression.
+
+    Mirrors ``moderndid.didtriple.nuisance.compute_all_nuisances`` but uses
+    distributed WLS and logistic IRLS.
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Dask distributed client.
+    y1 : ndarray
+        Post-treatment outcomes.
+    y0 : ndarray
+        Pre-treatment outcomes.
+    subgroup : ndarray
+        Subgroup indicators (1, 2, 3, or 4).
+    covariates : ndarray
+        Covariates including intercept, shape (n, k).
+    weights : ndarray
+        Observation weights.
+    est_method : {"dr", "reg", "ipw"}, default "dr"
+        Estimation method.
+    trim_level : float, default 0.995
+        Trimming level for propensity scores.
+    n_partitions : int or None
+        Number of partitions for distributed computation. If None, uses
+        the number of workers in the client.
+
+    Returns
+    -------
+    tuple[list[DistPScoreResult], list[DistOutcomeRegResult]]
+        Propensity score and outcome regression results for comparisons [3, 2, 1].
+    """
+    if n_partitions is None:
+        n_partitions = max(len(client.scheduler_info()["workers"]), 1)
+
+    pscores = []
+    or_results = []
+
+    for comp_subgroup in [3, 2, 1]:
+        if est_method == "reg":
+            ps_result = _compute_pscore_null(subgroup, comp_subgroup)
+        else:
+            ps_result = _compute_pscore_distributed(
+                client, subgroup, covariates, weights, comp_subgroup, trim_level, n_partitions
+            )
+        pscores.append(ps_result)
+
+        if est_method == "ipw":
+            or_result = _compute_outcome_regression_null(y1, y0, subgroup, comp_subgroup)
+        else:
+            or_result = _compute_outcome_regression_distributed(
+                client, y1, y0, subgroup, covariates, weights, comp_subgroup, n_partitions
+            )
+        or_results.append(or_result)
+
+    return pscores, or_results
+
+
+def _compute_pscore_distributed(client, subgroup, covariates, weights, comp_subgroup, trim_level, n_partitions):
+    """Compute propensity scores using distributed logistic IRLS."""
+    mask = (subgroup == 4) | (subgroup == comp_subgroup)
+    sub_covariates = covariates[mask]
+    sub_weights = weights[mask]
+    sub_subgroup = subgroup[mask]
+
+    pa4 = (sub_subgroup == 4).astype(np.float64)
+
+    partitions = _build_partitions_for_subset(sub_covariates, sub_weights, pa4, n_partitions)
+
+    try:
+        beta = distributed_logistic_irls(client, partitions)
+    except (np.linalg.LinAlgError, RuntimeError) as e:
+        raise ValueError(
+            f"Failed to estimate propensity scores for subgroup {comp_subgroup} due to singular matrix."
+        ) from e
+
+    if np.any(np.isnan(beta)):
+        raise ValueError(f"Propensity score model has NA coefficients for comparison with subgroup {comp_subgroup}.")
+
+    ps_fit = 1.0 / (1.0 + np.exp(-(sub_covariates @ beta)))
+    ps_fit = np.clip(ps_fit, 1e-10, 1 - 1e-10)
+    ps_fit = np.minimum(ps_fit, 1 - 1e-6)
+
+    keep_ps = np.ones(len(pa4), dtype=bool)
+    keep_ps[pa4 == 0] = ps_fit[pa4 == 0] < trim_level
+
+    n_sub = len(sub_weights)
+    W = sub_weights * ps_fit * (1 - ps_fit)
+    info_matrix = sub_covariates.T @ (W[:, None] * sub_covariates)
+    hessian_matrix = np.linalg.inv(info_matrix) * n_sub
+
+    return DistPScoreResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
+
+
+def _compute_pscore_null(subgroup, comp_subgroup):
+    """Compute null propensity scores for REG method."""
+    mask = (subgroup == 4) | (subgroup == comp_subgroup)
+    n_sub = int(np.sum(mask))
+    return DistPScoreResult(
+        propensity_scores=np.ones(n_sub),
+        hessian_matrix=None,
+        keep_ps=np.ones(n_sub, dtype=bool),
+    )
+
+
+def _compute_outcome_regression_distributed(client, y1, y0, subgroup, covariates, weights, comp_subgroup, n_partitions):
+    """Compute outcome regression using distributed WLS."""
+    mask = (subgroup == 4) | (subgroup == comp_subgroup)
+    control_mask = subgroup == comp_subgroup
+
+    sub_y1 = y1[mask]
+    sub_y0 = y0[mask]
+    sub_covariates = covariates[mask]
+    delta_y = sub_y1 - sub_y0
+
+    control_delta_y = (y1 - y0)[control_mask]
+    control_covariates = covariates[control_mask]
+    control_weights = weights[control_mask]
+
+    partitions = _build_partitions_for_subset(control_covariates, control_weights, control_delta_y, n_partitions)
+
+    try:
+        reg_coeff = distributed_wls(client, partitions)
+    except (np.linalg.LinAlgError, RuntimeError) as e:
+        raise ValueError(f"Failed to estimate outcome regression for subgroup {comp_subgroup}.") from e
+
+    if np.any(np.isnan(reg_coeff)):
+        raise ValueError(f"Outcome regression model has NA coefficients for comparison with subgroup {comp_subgroup}.")
+
+    or_delta = sub_covariates @ reg_coeff
+
+    return DistOutcomeRegResult(delta_y=delta_y, or_delta=or_delta, reg_coeff=reg_coeff)
+
+
+def _compute_outcome_regression_null(y1, y0, subgroup, comp_subgroup):
+    """Compute null outcome regression for IPW method."""
+    mask = (subgroup == 4) | (subgroup == comp_subgroup)
+    delta_y = (y1 - y0)[mask]
+    or_delta = np.zeros(len(delta_y))
+    return DistOutcomeRegResult(delta_y=delta_y, or_delta=or_delta, reg_coeff=None)
