@@ -113,7 +113,8 @@ def compute_variance_distributed(client, inf_func_partitions, n_total, k):
     def _local_gram(chunk):
         return chunk.T @ chunk, np.zeros(chunk.shape[1]), chunk.shape[0]
 
-    futures = [client.submit(_local_gram, part) for part in inf_func_partitions]
+    scattered = client.scatter(inf_func_partitions)
+    futures = [client.submit(_local_gram, pf) for pf in scattered]
     PtP, _, _ = tree_reduce(client, futures, _sum_gram_pair)
     V = PtP / n_total
     return np.sqrt(np.diag(V) / n_total)

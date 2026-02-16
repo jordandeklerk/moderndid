@@ -96,10 +96,8 @@ def distributed_mboot_ddd(
     master_rng = np.random.default_rng(random_state)
     seeds = [int(master_rng.integers(0, 2**31)) for _ in inf_func_partitions]
 
-    futures = [
-        client.submit(_local_bootstrap, part, biters, seed)
-        for part, seed in zip(inf_func_partitions, seeds, strict=True)
-    ]
+    scattered = client.scatter(inf_func_partitions)
+    futures = [client.submit(_local_bootstrap, pf, biters, seed) for pf, seed in zip(scattered, seeds, strict=True)]
 
     total_bres, _, _ = tree_reduce(client, futures, _sum_bootstrap_pair)
 

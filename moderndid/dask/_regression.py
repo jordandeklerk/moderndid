@@ -25,7 +25,11 @@ def distributed_wls(client, partitions):
     beta : ndarray of shape (k,)
         Coefficient vector.
     """
-    futures = [client.submit(partition_gram, X, W, y) for X, W, y in partitions]
+    Xs, Ws, ys = zip(*partitions, strict=True)
+    Xs_f = client.scatter(list(Xs))
+    Ws_f = client.scatter(list(Ws))
+    ys_f = client.scatter(list(ys))
+    futures = [client.submit(partition_gram, xf, wf, yf) for xf, wf, yf in zip(Xs_f, Ws_f, ys_f, strict=True)]
     XtWX, XtWy, _ = tree_reduce(client, futures, _sum_gram_pair)
     return solve_gram(XtWX, XtWy)
 
@@ -88,8 +92,17 @@ def distributed_logistic_irls(client, partitions, max_iter=25, tol=1e-8):
     k = partitions[0][0].shape[1]
     beta = np.zeros(k, dtype=np.float64)
 
+    # Scatter partition data once; reuse across IRLS iterations
+    Xs, Ws, ys = zip(*partitions, strict=True)
+    Xs_f = client.scatter(list(Xs))
+    Ws_f = client.scatter(list(Ws))
+    ys_f = client.scatter(list(ys))
+
     for _ in range(max_iter):
-        futures = [client.submit(_irls_local_stats_with_y, X, w, y, beta) for X, w, y in partitions]
+        futures = [
+            client.submit(_irls_local_stats_with_y, xf, wf, yf, beta)
+            for xf, wf, yf in zip(Xs_f, Ws_f, ys_f, strict=True)
+        ]
         XtWX, XtWz, _ = tree_reduce(client, futures, _sum_gram_pair)
         beta_new = solve_gram(XtWX, XtWz)
 
