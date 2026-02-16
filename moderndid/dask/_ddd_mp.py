@@ -20,6 +20,7 @@ from moderndid.didtriple.estimators.ddd_mp import (
 
 from ._bootstrap import distributed_mboot_ddd
 from ._ddd_panel import dask_ddd_panel
+from ._streaming import streaming_cell_multi_control, streaming_cell_single_control
 from ._utils import get_default_partitions
 
 log = logging.getLogger("moderndid.dask.backend")
@@ -172,24 +173,6 @@ def dask_ddd_mp(
 
     data_pl = data if not is_dask else None
 
-    def _fetch_data(g, t, pret):
-        if dask_data is not None:
-            return _get_cell_data_from_dask(
-                client,
-                dask_data,
-                g,
-                t,
-                pret,
-                control_group,
-                time_col,
-                group_col,
-                id_col,
-                y_col,
-                partition_col,
-                covariate_cols,
-            )
-        return _get_cell_data(data_pl, g, t, pret, control_group, time_col, group_col)
-
     for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
         log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
 
@@ -200,36 +183,70 @@ def dask_ddd_mp(
             attgt_list.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
             continue
 
-        cell_data, available_controls = _fetch_data(g, t, pret)
+        if is_dask:
+            result = _compute_cell_streaming(
+                client=client,
+                dask_data=dask_data,
+                g=g,
+                t=t,
+                pret=pret,
+                post_treat=post_treat,
+                control_group=control_group,
+                time_col=time_col,
+                group_col=group_col,
+                id_col=id_col,
+                y_col=y_col,
+                partition_col=partition_col,
+                covariate_cols=covariate_cols,
+                est_method=est_method,
+                n_units=n_units,
+                unique_ids=unique_ids,
+                inf_func_mat=inf_func_mat,
+                se_array=se_array,
+                counter=counter,
+                n_partitions=n_partitions,
+            )
+            if result is not None:
+                attgt_list.append(result)
+        else:
+            cell_data, available_controls = _get_cell_data(
+                data_pl,
+                g,
+                t,
+                pret,
+                control_group,
+                time_col,
+                group_col,
+            )
 
-        result = _compute_cell_result(
-            client=client,
-            cell_data=cell_data,
-            available_controls=available_controls,
-            g=g,
-            t=t,
-            pret=pret,
-            post_treat=post_treat,
-            y_col=y_col,
-            time_col=time_col,
-            id_col=id_col,
-            group_col=group_col,
-            partition_col=partition_col,
-            covariate_cols=covariate_cols,
-            est_method=est_method,
-            n_units=n_units,
-            n_partitions=n_partitions,
-        )
+            result = _compute_cell_result(
+                client=client,
+                cell_data=cell_data,
+                available_controls=available_controls,
+                g=g,
+                t=t,
+                pret=pret,
+                post_treat=post_treat,
+                y_col=y_col,
+                time_col=time_col,
+                id_col=id_col,
+                group_col=group_col,
+                partition_col=partition_col,
+                covariate_cols=covariate_cols,
+                est_method=est_method,
+                n_units=n_units,
+                n_partitions=n_partitions,
+            )
 
-        if result is not None:
-            att_entry, inf_data, se_val = result
-            if att_entry is not None:
-                attgt_list.append(att_entry)
-                if inf_data is not None:
-                    inf_func_scaled, cell_id_arr = inf_data
-                    _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, unique_ids, counter)
-                if se_val is not None:
-                    se_array[counter] = se_val
+            if result is not None:
+                att_entry, inf_data, se_val = result
+                if att_entry is not None:
+                    attgt_list.append(att_entry)
+                    if inf_data is not None:
+                        inf_func_scaled, cell_id_arr = inf_data
+                        _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, unique_ids, counter)
+                    if se_val is not None:
+                        se_array[counter] = se_val
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
@@ -308,85 +325,6 @@ def dask_ddd_mp(
         args=args,
         unit_groups=unit_groups,
     )
-
-
-def _get_cell_data_from_dask(
-    client, dask_data, g, t, pret, control_group, time_col, group_col, id_col, y_col, partition_col, covariate_cols
-):
-    """Extract cell data as numpy arrays without materializing DataFrames on driver."""
-    max_period = max(t, pret)
-
-    if control_group == "nevertreated":
-        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
-    else:
-        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
-
-    filtered = dask_data.loc[group_filter]
-
-    post_dask = filtered.loc[filtered[time_col] == t]
-    pre_dask = filtered.loc[filtered[time_col] == pret]
-
-    post_cols = [id_col, group_col, partition_col, y_col]
-    if covariate_cols:
-        post_cols = post_cols + [c for c in covariate_cols if c not in post_cols]
-
-    post_parts = client.gather(client.compute(post_dask[post_cols].to_delayed()))
-    pre_parts = client.gather(client.compute(pre_dask[[id_col, y_col]].to_delayed()))
-
-    post_nonempty = [p for p in post_parts if len(p) > 0]
-    pre_nonempty = [p for p in pre_parts if len(p) > 0]
-    del post_parts, pre_parts
-
-    if not post_nonempty or not pre_nonempty:
-        return None, []
-
-    post_ids = np.concatenate([p[id_col].values for p in post_nonempty])
-    post_y = np.concatenate([p[y_col].values for p in post_nonempty])
-    post_groups = np.concatenate([p[group_col].values for p in post_nonempty])
-    post_parts_arr = np.concatenate([p[partition_col].values for p in post_nonempty])
-    post_covs = np.vstack([p[covariate_cols].values for p in post_nonempty]) if covariate_cols else None
-    del post_nonempty
-
-    pre_ids = np.concatenate([p[id_col].values for p in pre_nonempty])
-    pre_y = np.concatenate([p[y_col].values for p in pre_nonempty])
-    del pre_nonempty
-
-    post_order = np.argsort(post_ids)
-    post_ids = post_ids[post_order]
-    post_y = post_y[post_order]
-    post_groups = post_groups[post_order]
-    post_parts_arr = post_parts_arr[post_order]
-    if post_covs is not None:
-        post_covs = post_covs[post_order]
-    del post_order
-
-    pre_order = np.argsort(pre_ids)
-    pre_ids = pre_ids[pre_order]
-    pre_y = pre_y[pre_order]
-    del pre_order
-
-    idx_in_pre = np.searchsorted(pre_ids, post_ids)
-    idx_in_pre = np.clip(idx_in_pre, 0, max(len(pre_ids) - 1, 0))
-    common_mask = pre_ids[idx_in_pre] == post_ids
-
-    ids = post_ids[common_mask]
-    y_post = post_y[common_mask]
-    groups = post_groups[common_mask]
-    parts_arr = post_parts_arr[common_mask]
-    covs = post_covs[common_mask] if post_covs is not None else None
-
-    pre_idx = np.searchsorted(pre_ids, ids)
-    y_pre = pre_y[pre_idx]
-
-    del post_ids, post_y, post_groups, post_parts_arr, post_covs
-    del pre_ids, pre_y
-
-    if len(ids) == 0:
-        return None, []
-
-    available_controls = [int(c) for c in np.unique(groups) if c != g]
-
-    return CellArrays(ids, y_post, y_pre, groups, parts_arr, covs), available_controls
 
 
 def _compute_cell_result(
@@ -599,3 +537,99 @@ def _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, sorted_u
         sorted_unique_ids[np.minimum(indices, len(sorted_unique_ids) - 1)] == cell_id_arr[:n]
     )
     inf_func_mat[indices[valid], counter] = inf_func_scaled[:n][valid]
+
+
+def _compute_cell_streaming(
+    client,
+    dask_data,
+    g,
+    t,
+    pret,
+    post_treat,
+    control_group,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    partition_col,
+    covariate_cols,
+    est_method,
+    n_units,
+    unique_ids,
+    inf_func_mat,
+    se_array,
+    counter,
+    n_partitions,
+):
+    """Compute one (g,t) cell via streaming — data never leaves workers.
+
+    Updates ``inf_func_mat`` and ``se_array`` in-place.
+
+    Returns
+    -------
+    ATTgtResult or None
+    """
+    if control_group == "nevertreated":
+        att = streaming_cell_single_control(
+            client,
+            dask_data,
+            g,
+            t,
+            pret,
+            time_col,
+            group_col,
+            id_col,
+            y_col,
+            partition_col,
+            covariate_cols,
+            est_method,
+            n_partitions,
+            n_units,
+            unique_ids,
+            inf_func_mat,
+            counter,
+        )
+        if att is None:
+            return None
+        return ATTgtResult(att=att, group=int(g), time=int(t), post=post_treat)
+
+    else:
+        max_period = max(t, pret)
+        glist_raw = dask_data[group_col].drop_duplicates().compute().values
+        available_controls = sorted(
+            [int(c) for c in glist_raw if c != g and (c == 0 or c > max_period) and np.isfinite(c)]
+        )
+
+        if len(available_controls) == 0:
+            return None
+
+        result = streaming_cell_multi_control(
+            client,
+            dask_data,
+            g,
+            t,
+            pret,
+            available_controls,
+            time_col,
+            group_col,
+            id_col,
+            y_col,
+            partition_col,
+            covariate_cols,
+            est_method,
+            n_partitions,
+            n_units,
+            unique_ids,
+            inf_func_mat,
+            counter,
+        )
+
+        if result is None:
+            return None
+
+        if isinstance(result, tuple):
+            att_gmm, se_gmm = result
+            se_array[counter] = se_gmm
+            return ATTgtResult(att=att_gmm, group=int(g), time=int(t), post=post_treat)
+        else:
+            return ATTgtResult(att=result, group=int(g), time=int(t), post=post_treat)

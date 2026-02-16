@@ -112,3 +112,74 @@ def distributed_logistic_irls(client, partitions, max_iter=25, tol=1e-8):
         beta = beta_new
 
     return beta
+
+
+def distributed_logistic_irls_from_futures(client, part_futures, gram_fn, k, max_iter=25, tol=1e-8):
+    """IRLS on partition futures.
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Dask distributed client.
+    part_futures : list of Future
+        Futures to partition dicts from ``_build_partition_arrays``.
+    gram_fn : callable
+        ``gram_fn(part_data, beta) -> (XtWX, XtWz, n) or None``.
+    k : int
+        Number of covariates (columns of X).
+    max_iter : int, default 25
+        Maximum IRLS iterations.
+    tol : float, default 1e-8
+        Convergence tolerance.
+
+    Returns
+    -------
+    beta : ndarray of shape (k,)
+    """
+    beta = np.zeros(k, dtype=np.float64)
+
+    for _ in range(max_iter):
+        futures = [client.submit(gram_fn, pf, beta) for pf in part_futures]
+        XtWX, XtWz, _ = tree_reduce(client, futures, _sum_gram_pair_or_none)
+        if XtWX is None:
+            break
+        beta_new = solve_gram(XtWX, XtWz)
+
+        if np.max(np.abs(beta_new - beta)) < tol:
+            beta = beta_new
+            break
+        beta = beta_new
+
+    return beta
+
+
+def distributed_wls_from_futures(client, part_futures, gram_fn):
+    """WLS on partition futures.
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Dask distributed client.
+    part_futures : list of Future
+        Futures to partition dicts from ``_build_partition_arrays``.
+    gram_fn : callable
+        ``gram_fn(part_data) -> (XtWX, XtWy, n) or None``.
+
+    Returns
+    -------
+    beta : ndarray of shape (k,)
+    """
+    futures = [client.submit(gram_fn, pf) for pf in part_futures]
+    XtWX, XtWy, _ = tree_reduce(client, futures, _sum_gram_pair_or_none)
+    if XtWX is None:
+        raise ValueError("No data available for WLS regression.")
+    return solve_gram(XtWX, XtWy)
+
+
+def _sum_gram_pair_or_none(a, b):
+    """Sum two (XtWX, XtWy, n) tuples, handling None from empty partitions."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a[0] + b[0], a[1] + b[1], a[2] + b[2]
