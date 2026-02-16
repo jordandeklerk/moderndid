@@ -164,6 +164,7 @@ def dask_ddd_mp(
     def _fetch_data(g, t, pret):
         if dask_data is not None:
             return _get_cell_data_from_dask(
+                client,
                 dask_data,
                 g,
                 t,
@@ -309,8 +310,15 @@ def dask_ddd_mp(
     )
 
 
-def _get_cell_data_from_dask(dask_data, g, t, pret, control_group, time_col, group_col):
-    """Extract cell data from a Dask DataFrame, computing only the cell subset."""
+def _get_cell_data_from_dask(client, dask_data, g, t, pret, control_group, time_col, group_col):
+    """Extract cell data from a Dask DataFrame, computing only the cell subset.
+
+    Uses partition-by-partition gathering to avoid Dask's internal
+    ``repartitiontofewer`` coalescing, which concentrates data on one
+    worker and causes OOM at scale.
+    """
+    import pandas as pd
+
     max_period = max(t, pret)
 
     if control_group == "nevertreated":
@@ -319,11 +327,16 @@ def _get_cell_data_from_dask(dask_data, g, t, pret, control_group, time_col, gro
         group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
 
     time_filter = dask_data[time_col].isin([t, pret])
-    cell_pdf = dask_data.loc[group_filter & time_filter].compute()
-    cell_data = to_polars(cell_pdf)
+    filtered = dask_data.loc[group_filter & time_filter]
 
-    if len(cell_data) == 0:
+    # Gather partition-by-partition to the driver instead of .compute(),
+    # which triggers repartitiontofewer and OOMs one worker at 900M obs.
+    parts = client.gather(client.compute(filtered.to_delayed()))
+    non_empty = [p for p in parts if len(p) > 0]
+    if not non_empty:
         return None, []
+    cell_pdf = pd.concat(non_empty, ignore_index=True)
+    cell_data = to_polars(cell_pdf)
 
     control_data = cell_data.filter(~pl.col(group_col).is_in([g]))
     available_controls = [c for c in control_data[group_col].unique().to_list() if c != g]
