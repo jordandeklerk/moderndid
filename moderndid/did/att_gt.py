@@ -43,6 +43,9 @@ def att_gt(
     base_period="varying",
     random_state=None,
     n_jobs=1,
+    n_partitions=None,
+    max_cohorts=None,
+    progress_bar=False,
 ):
     r"""Compute group-time average treatment effects.
 
@@ -156,6 +159,15 @@ def att_gt(
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
+    n_partitions : int or None, default=None
+        Number of Dask partitions per cell. Only used when ``data`` is a Dask
+        DataFrame; ignored for non-Dask inputs.
+    max_cohorts : int or None, default=None
+        Maximum number of treatment cohorts to process in parallel. Only used
+        when ``data`` is a Dask DataFrame; ignored for non-Dask inputs.
+    progress_bar : bool, default=False
+        Whether to display a tqdm progress bar during distributed computation.
+        Only used when ``data`` is a Dask DataFrame; ignored for non-Dask inputs.
 
     Returns
     -------
@@ -219,6 +231,32 @@ def att_gt(
            with multiple time periods." Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001
     """
+    from moderndid.dask._utils import is_dask_collection
+
+    if is_dask_collection(data):
+        from moderndid.dask._did import dask_att_gt
+
+        return dask_att_gt(
+            data,
+            yname,
+            tname,
+            idname,
+            gname,
+            xformla=xformla,
+            control_group=control_group,
+            base_period=base_period,
+            anticipation=anticipation,
+            est_method=est_method,
+            boot=boot,
+            biters=biters,
+            cband=cband,
+            alp=alp,
+            random_state=random_state,
+            n_partitions=n_partitions,
+            max_cohorts=max_cohorts,
+            progress_bar=progress_bar,
+        )
+
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")
     if panel and idname is None:

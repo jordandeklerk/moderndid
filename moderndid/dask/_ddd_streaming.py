@@ -10,6 +10,7 @@ from distributed import as_completed, wait
 
 from ._gram import tree_reduce
 from ._regression import distributed_logistic_irls_from_futures, distributed_wls_from_futures
+from ._utils import sum_global_stats
 
 
 def streaming_cell_single_control(
@@ -548,93 +549,6 @@ def prepare_cell_partitions(
     return part_futures, n_cell
 
 
-def prepare_cohort_wide_pivot(
-    client,
-    dask_data,
-    g,
-    cells,
-    time_col,
-    group_col,
-    id_col,
-    y_col,
-    partition_col,
-    covariate_cols,
-    n_partitions,
-):
-    """Build a single wide-pivoted DataFrame for all cells in a cohort.
-
-    Instead of performing one shuffle join per :math:`(g, t)` cell, this
-    function collects every time period required by the cohort's cells,
-    merges them into a single wide DataFrame (one row per unit, one
-    ``_y_{period}`` column per time period), and does a single
-    ``repartition().persist()`` cycle. Downstream callers then extract
-    per-cell arrays via :func:`_build_partition_arrays_wide` with no
-    additional shuffles.
-
-    Parameters
-    ----------
-    client : distributed.Client
-        Dask distributed client.
-    dask_data : dask.dataframe.DataFrame
-        Persisted Dask DataFrame in long panel format.
-    g : int or float
-        Treatment cohort identifier.
-    cells : list of tuple
-        Cell specifications ``(counter, g, t, pret, post_treat, action)``
-        for this cohort. Only ``action == "compute"`` cells are used.
-    time_col, group_col, id_col, y_col, partition_col : str
-        Column names.
-    covariate_cols : list of str or None
-        Covariate column names.
-    n_partitions : int
-        Number of Dask partitions for the wide DataFrame.
-
-    Returns
-    -------
-    wide_dask : dask.dataframe.DataFrame or None
-        Persisted wide DataFrame, or ``None`` if no data.
-    n_wide : int
-        Number of units in the wide DataFrame.
-    """
-    all_times = set()
-    for _counter, _g, t, pret, _pt, action in cells:
-        if action != "compute" or pret is None:
-            continue
-        all_times.add(t)
-        all_times.add(pret)
-
-    all_times = sorted(all_times)
-    if not all_times:
-        return None, 0
-
-    # Filter to cohort groups once (treated g + never-treated 0)
-    group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
-    filtered = dask_data.loc[group_filter]
-
-    # Base: unit-level info from the first available time period
-    base_cols = [id_col, group_col, partition_col]
-    if covariate_cols:
-        base_cols = base_cols + [c for c in covariate_cols if c not in base_cols]
-
-    base = filtered.loc[filtered[time_col] == all_times[0]][base_cols]
-
-    # Merge each time period's y as a separate column
-    for tp in all_times:
-        period_y = filtered.loc[filtered[time_col] == tp][[id_col, y_col]]
-        period_y = period_y.rename(columns={y_col: f"_y_{tp}"})
-        base = base.merge(period_y, on=id_col, how="inner")
-
-    # Single repartition + persist
-    wide_dask = base.repartition(npartitions=n_partitions).persist()
-    wait(wide_dask)
-
-    n_wide = len(wide_dask)
-    if n_wide == 0:
-        return None, 0
-
-    return wide_dask, n_wide
-
-
 def streaming_nuisance_coefficients(client, part_futures, est_method, k):
     r"""Compute nuisance model coefficients for all three DDD comparisons.
 
@@ -776,7 +690,7 @@ def streaming_global_stats(client, part_futures, ps_betas, or_betas, est_method,
             for pf in part_futures
         ]
 
-        agg = tree_reduce(client, futures, _sum_global_stats)
+        agg = tree_reduce(client, futures, sum_global_stats)
 
         if agg is None or agg["n_sub"] == 0:
             return comp_sg, None, None, None, None
@@ -1042,23 +956,6 @@ def _partition_global_stats(part_data, comp_sg, ps_beta, or_beta, est_method, tr
     else:
         result["info_gram"] = np.zeros((k, k), dtype=np.float64)
 
-    return result
-
-
-def _sum_global_stats(a, b):
-    """Pairwise sum for tree-reduce of global stats."""
-    if a is None:
-        return b
-    if b is None:
-        return a
-    result = {}
-    for key in a:
-        if a[key] is None:
-            result[key] = b[key]
-        elif isinstance(a[key], (int, float)):
-            result[key] = a[key] + b[key]
-        else:
-            result[key] = a[key] + b[key]
     return result
 
 

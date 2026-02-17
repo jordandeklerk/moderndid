@@ -2,29 +2,30 @@
 
 import numpy as np
 
-from moderndid.dask._ddd_mp import _chunked_se, _update_inf_func_matrix
+from moderndid.dask._ddd_mp import _update_inf_func_matrix
+from moderndid.dask._utils import chunked_vcov
 
 
-def test_chunked_se_matches_direct(rng):
+def test_chunked_vcov_matches_direct(rng):
     n, k = 200, 5
     inf_func = rng.standard_normal((n, k))
-    se = _chunked_se(inf_func, n)
-    V = inf_func.T @ inf_func / n
-    expected = np.sqrt(np.diag(V) / n)
-    np.testing.assert_allclose(se, expected, atol=1e-12)
+    V = chunked_vcov(inf_func, n)
+    expected = inf_func.T @ inf_func / n
+    np.testing.assert_allclose(V, expected, atol=1e-12)
 
 
-def test_chunked_se_shape(rng):
+def test_chunked_vcov_shape(rng):
     n, k = 100, 3
     inf_func = rng.standard_normal((n, k))
-    se = _chunked_se(inf_func, n)
-    assert se.shape == (k,)
+    V = chunked_vcov(inf_func, n)
+    assert V.shape == (k, k)
 
 
-def test_chunked_se_positive(rng):
+def test_chunked_vcov_se_positive(rng):
     n, k = 80, 4
     inf_func = rng.standard_normal((n, k))
-    se = _chunked_se(inf_func, n)
+    V = chunked_vcov(inf_func, n)
+    se = np.sqrt(np.diag(V) / n)
     assert np.all(se > 0)
 
 

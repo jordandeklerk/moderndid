@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import logging
 
-import numpy as np
-
-from ._utils import get_or_create_client, validate_dask_input
+from ._utils import detect_multiple_periods, get_or_create_client, validate_dask_input
 
 
 def dask_ddd(
@@ -233,7 +231,7 @@ def dask_ddd(
         required_cols.append(idname)
     validate_dask_input(data, required_cols)
 
-    multiple_periods = _detect_multiple_periods_dask(data, tname, gname, client=client)
+    multiple_periods = detect_multiple_periods(data, tname, gname, client=client)
 
     if multiple_periods:
         from moderndid.didtriple.utils import get_covariate_names
@@ -309,20 +307,3 @@ def dask_ddd(
         random_state=random_state,
         n_partitions=n_partitions,
     )
-
-
-def _detect_multiple_periods_dask(ddf, tname, gname, client=None):
-    """Detect whether data has more than 2 time periods or treatment groups."""
-    if client is not None:
-        t_fut = client.compute(ddf[tname].nunique())
-        g_fut = client.compute(ddf[gname].unique())
-        n_time, gvals = client.gather([t_fut, g_fut])
-        gvals = gvals.values
-    else:
-        n_time = ddf[tname].nunique().compute()
-        gvals = ddf[gname].unique().compute().values
-
-    finite_gvals = [g for g in gvals if np.isfinite(g)]
-    n_groups = len(finite_gvals)
-
-    return max(n_time, n_groups) > 2

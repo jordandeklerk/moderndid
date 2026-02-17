@@ -4,14 +4,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from moderndid.dask._streaming import (
+from moderndid.dask._ddd_streaming import (
     _build_partition_arrays,
     _filter_partition_for_ctrl,
     _partition_global_stats,
     _partition_or_gram,
     _partition_pscore_gram,
-    _sum_global_stats,
 )
+from moderndid.dask._utils import sum_global_stats
 
 
 def _make_merged_pdf(n=40, g=3, covariate_cols=None, rng=None):
@@ -158,10 +158,10 @@ def _make_stats_dict(rng, k=2):
     [(False, True), (True, False), (False, False)],
     ids=["none_a", "none_b", "both_none"],
 )
-def test_sum_global_stats_none_handling(use_a, use_b, rng):
+def testsum_global_stats_none_handling(use_a, use_b, rng):
     a = _make_stats_dict(rng) if use_a else None
     b = _make_stats_dict(rng) if use_b else None
-    result = _sum_global_stats(a, b)
+    result = sum_global_stats(a, b)
     if not use_a and not use_b:
         assert result is None
     elif not use_a:
@@ -170,10 +170,10 @@ def test_sum_global_stats_none_handling(use_a, use_b, rng):
         assert result is a
 
 
-def test_sum_global_stats_sum(rng):
+def testsum_global_stats_sum(rng):
     a = _make_stats_dict(rng)
     b = _make_stats_dict(rng)
-    result = _sum_global_stats(a, b)
+    result = sum_global_stats(a, b)
     np.testing.assert_allclose(result["sum_w_treat"], a["sum_w_treat"] + b["sum_w_treat"])
     np.testing.assert_allclose(result["or_xpx"], a["or_xpx"] + b["or_xpx"])
     assert result["n_sub"] == a["n_sub"] + b["n_sub"]

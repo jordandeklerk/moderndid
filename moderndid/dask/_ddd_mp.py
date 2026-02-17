@@ -26,17 +26,18 @@ from moderndid.didtriple.estimators.ddd_mp import (
 
 from ._bootstrap import distributed_mboot_ddd
 from ._ddd_panel import dask_ddd_panel
-from ._streaming import (
+from ._ddd_streaming import (
     _build_partition_arrays_wide,
-    prepare_cohort_wide_pivot,
     streaming_cell_multi_control,
     streaming_cell_single_control,
 )
-from ._utils import auto_tune_partitions, get_default_partitions
-
-_MEMMAP_THRESHOLD = 1 * 1024**3
-_CHUNKED_SE_THRESHOLD = 10_000_000
-_SE_CHUNK_SIZE = 1_000_000
+from ._utils import (
+    MEMMAP_THRESHOLD,
+    auto_tune_partitions,
+    chunked_vcov,
+    get_default_partitions,
+    prepare_cohort_wide_pivot,
+)
 
 
 class CellArrays(NamedTuple):
@@ -158,7 +159,7 @@ def dask_ddd_mp(
     mat_bytes = n_units * n_cols * 8
     memmap_path = None
 
-    if mat_bytes > _MEMMAP_THRESHOLD:
+    if mat_bytes > MEMMAP_THRESHOLD:
         memmap_fd, memmap_path = tempfile.mkstemp(suffix=".dat", prefix="ddd_inf_")
         os.close(memmap_fd)
         inf_func_mat = np.memmap(memmap_path, dtype=np.float64, mode="w+", shape=(n_units, n_cols))
@@ -239,6 +240,8 @@ def dask_ddd_mp(
                     cohort_results = future.result()
                     attgt_list.extend(cohort_results)
             pbar.close()
+            attgt_list.sort(key=lambda x: x[0])
+            attgt_list = [r for _, r in attgt_list]
         else:
             for counter, (g, t, pret, post_treat, action) in enumerate(
                 tqdm(cell_specs, desc="Cells", unit="cell", disable=not progress_bar)
@@ -327,7 +330,8 @@ def dask_ddd_mp(
 
             cv = crit_val_boot if cband and np.isfinite(crit_val_boot) else stats.norm.ppf(1 - alpha / 2)
         else:
-            se_computed = _chunked_se(inf_func_trimmed, n_units)
+            V = chunked_vcov(inf_func_trimmed, n_units)
+            se_computed = np.sqrt(np.diag(V) / n_units)
 
             valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
             se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
@@ -423,9 +427,9 @@ def _process_cohort_cells(
                     group_col,
                     id_col,
                     y_col,
-                    partition_col,
                     covariate_cols,
                     n_partitions,
+                    extra_cols=[partition_col],
                 )
 
             if wide_dask is not None and n_wide > 0:
@@ -438,7 +442,7 @@ def _process_cohort_cells(
                             pbar.update(1)
                         continue
                     if action == "zero":
-                        results.append(ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0))
+                        results.append((counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
                         if pbar is not None:
                             pbar.update(1)
                         continue
@@ -484,13 +488,13 @@ def _process_cohort_cells(
                     )
 
                     if att is not None:
-                        results.append(ATTgtResult(att=att, group=int(g_), time=int(t), post=post_treat))
+                        results.append((counter, ATTgtResult(att=att, group=int(g_), time=int(t), post=post_treat)))
                     if pbar is not None:
                         pbar.update(1)
             else:
                 for _counter, g_, t, _pret, _post_treat, action in cells:
                     if action == "zero":
-                        results.append(ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0))
+                        results.append((_counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
                     if pbar is not None:
                         pbar.update(1)
         else:
@@ -501,7 +505,7 @@ def _process_cohort_cells(
                         pbar.update(1)
                     continue
                 if action == "zero":
-                    results.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
+                    results.append((counter, ATTgtResult(att=0.0, group=int(g), time=int(t), post=0)))
                     if pbar is not None:
                         pbar.update(1)
                     continue
@@ -530,7 +534,7 @@ def _process_cohort_cells(
                     glist_raw=glist_raw,
                 )
                 if result is not None:
-                    results.append(result)
+                    results.append((counter, result))
                 if pbar is not None:
                     pbar.update(1)
     finally:
@@ -538,21 +542,6 @@ def _process_cohort_cells(
             del wide_dask
 
     return results
-
-
-def _chunked_se(inf_func, n_units):
-    """Compute standard errors, chunking the Gram product for large n."""
-    n_rows, n_cols = inf_func.shape
-    if n_rows <= _CHUNKED_SE_THRESHOLD:
-        V = inf_func.T @ inf_func / n_units
-        return np.sqrt(np.diag(V) / n_units)
-
-    V = np.zeros((n_cols, n_cols), dtype=np.float64)
-    for start in range(0, n_rows, _SE_CHUNK_SIZE):
-        chunk = np.array(inf_func[start : start + _SE_CHUNK_SIZE])
-        V += chunk.T @ chunk
-    V /= n_units
-    return np.sqrt(np.diag(V) / n_units)
 
 
 def _compute_cell_result(
