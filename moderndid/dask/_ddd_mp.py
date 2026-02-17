@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import NamedTuple
 
@@ -29,6 +31,7 @@ from ._utils import auto_tune_partitions, get_default_partitions
 
 log = logging.getLogger("moderndid.dask.backend")
 
+_MAX_CONCURRENT_COHORTS = 4
 _MEMMAP_THRESHOLD = 1 * 1024**3
 _CHUNKED_SE_THRESHOLD = 10_000_000
 _SE_CHUNK_SIZE = 1_000_000
@@ -194,60 +197,55 @@ def dask_ddd_mp(
 
     data_pl = data if not is_dask else None
 
-    current_cohort = None
-    filtered_cohort = None
-
     try:
-        for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
-            log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
+        if is_dask:
+            cohort_cells = defaultdict(list)
+            for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
+                cohort_cells[g].append((counter, g, t, pret, post_treat, action))
 
-            if action == "skip":
-                continue
+            max_workers = min(len(cohort_cells), _MAX_CONCURRENT_COHORTS)
+            log.info("processing %d cohorts with %d concurrent workers", len(cohort_cells), max_workers)
 
-            if action == "zero":
-                attgt_list.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
-                continue
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(
+                        _process_cohort_cells,
+                        cells=cells,
+                        client=client,
+                        dask_data=dask_data,
+                        control_group=control_group,
+                        time_col=time_col,
+                        group_col=group_col,
+                        id_col=id_col,
+                        y_col=y_col,
+                        partition_col=partition_col,
+                        covariate_cols=covariate_cols,
+                        est_method=est_method,
+                        n_units=n_units,
+                        unique_ids=unique_ids,
+                        inf_func_mat=inf_func_mat,
+                        se_array=se_array,
+                        n_partitions=n_partitions,
+                        glist_raw=glist_raw,
+                        total_cells=total_cells,
+                    ): g
+                    for g, cells in cohort_cells.items()
+                }
 
-            if is_dask:
-                cohort_data = None
-                if control_group == "nevertreated":
-                    if current_cohort != g:
-                        if filtered_cohort is not None:
-                            del filtered_cohort
-                        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
-                        filtered_cohort = dask_data.loc[group_filter].persist()
-                        wait(filtered_cohort)
-                        current_cohort = g
-                        log.info("  persisted cohort data for g=%s", g)
-                    cohort_data = filtered_cohort
+                for future in as_completed(futures):
+                    cohort_results = future.result()
+                    attgt_list.extend(cohort_results)
+        else:
+            for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
+                log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
 
-                result = _compute_cell_streaming(
-                    client=client,
-                    dask_data=dask_data,
-                    g=g,
-                    t=t,
-                    pret=pret,
-                    post_treat=post_treat,
-                    control_group=control_group,
-                    time_col=time_col,
-                    group_col=group_col,
-                    id_col=id_col,
-                    y_col=y_col,
-                    partition_col=partition_col,
-                    covariate_cols=covariate_cols,
-                    est_method=est_method,
-                    n_units=n_units,
-                    unique_ids=unique_ids,
-                    inf_func_mat=inf_func_mat,
-                    se_array=se_array,
-                    counter=counter,
-                    n_partitions=n_partitions,
-                    glist_raw=glist_raw,
-                    filtered_data=cohort_data,
-                )
-                if result is not None:
-                    attgt_list.append(result)
-            else:
+                if action == "skip":
+                    continue
+
+                if action == "zero":
+                    attgt_list.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
+                    continue
+
                 cell_data, available_controls = _get_cell_data(
                     data_pl,
                     g,
@@ -286,10 +284,6 @@ def dask_ddd_mp(
                             _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, unique_ids, counter)
                         if se_val is not None:
                             se_array[counter] = se_val
-
-        if filtered_cohort is not None:
-            del filtered_cohort
-            filtered_cohort = None
 
         if len(attgt_list) == 0:
             raise ValueError("No valid (g,t) cells found.")
@@ -377,6 +371,82 @@ def dask_ddd_mp(
         args=args,
         unit_groups=unit_groups,
     )
+
+
+def _process_cohort_cells(
+    cells,
+    client,
+    dask_data,
+    control_group,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    partition_col,
+    covariate_cols,
+    est_method,
+    n_units,
+    unique_ids,
+    inf_func_mat,
+    se_array,
+    n_partitions,
+    glist_raw,
+    total_cells,
+):
+    """Process all cells for a single cohort. Thread-safe."""
+    results = []
+    filtered_cohort = None
+
+    try:
+        for counter, g, t, pret, post_treat, action in cells:
+            log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
+
+            if action == "skip":
+                continue
+            if action == "zero":
+                results.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
+                continue
+
+            cohort_data = None
+            if control_group == "nevertreated":
+                if filtered_cohort is None:
+                    group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
+                    filtered_cohort = dask_data.loc[group_filter].persist()
+                    wait(filtered_cohort)
+                    log.info("  persisted cohort data for g=%s", g)
+                cohort_data = filtered_cohort
+
+            result = _compute_cell_streaming(
+                client=client,
+                dask_data=dask_data,
+                g=g,
+                t=t,
+                pret=pret,
+                post_treat=post_treat,
+                control_group=control_group,
+                time_col=time_col,
+                group_col=group_col,
+                id_col=id_col,
+                y_col=y_col,
+                partition_col=partition_col,
+                covariate_cols=covariate_cols,
+                est_method=est_method,
+                n_units=n_units,
+                unique_ids=unique_ids,
+                inf_func_mat=inf_func_mat,
+                se_array=se_array,
+                counter=counter,
+                n_partitions=n_partitions,
+                glist_raw=glist_raw,
+                filtered_data=cohort_data,
+            )
+            if result is not None:
+                results.append(result)
+    finally:
+        if filtered_cohort is not None:
+            del filtered_cohort
+
+    return results
 
 
 def _chunked_se(inf_func, n_units):
