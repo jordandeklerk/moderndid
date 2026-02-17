@@ -70,6 +70,7 @@ def dask_ddd_mp(
     random_state=None,
     n_partitions=None,
     max_cohorts=None,
+    progress_bar=False,
 ):
     """Distributed multi-period doubly robust DDD estimator for panel data.
 
@@ -111,6 +112,8 @@ def dask_ddd_mp(
         Random seed for bootstrap.
     n_partitions : int or None
         Number of partitions per cell. Defaults to number of workers.
+    progress_bar : bool, default False
+        Whether to display a tqdm progress bar tracking cell completion.
 
     Returns
     -------
@@ -205,7 +208,7 @@ def dask_ddd_mp(
                 n_workers = len(client.scheduler_info().get("workers", {}))
                 max_workers = min(len(cohort_cells), max(1, n_workers))
 
-            pbar = tqdm(total=total_cells, desc="Cells", unit="cell")
+            pbar = tqdm(total=total_cells, desc="Cells", unit="cell", disable=not progress_bar)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(
@@ -237,7 +240,9 @@ def dask_ddd_mp(
                     attgt_list.extend(cohort_results)
             pbar.close()
         else:
-            for counter, (g, t, pret, post_treat, action) in enumerate(tqdm(cell_specs, desc="Cells", unit="cell")):
+            for counter, (g, t, pret, post_treat, action) in enumerate(
+                tqdm(cell_specs, desc="Cells", unit="cell", disable=not progress_bar)
+            ):
                 if action == "skip":
                     continue
 

@@ -29,6 +29,7 @@ def dask_ddd(
     random_state=None,
     n_partitions=None,
     max_cohorts=None,
+    progress_bar=False,
 ):
     r"""Compute the distributed triple difference-in-differences estimator.
 
@@ -120,6 +121,9 @@ def dask_ddd(
     max_cohorts : int or None, default None
         Maximum number of treatment cohorts to process in parallel.
         When ``None``, defaults to the number of Dask workers.
+    progress_bar : bool, default False
+        Whether to display a ``tqdm`` progress bar tracking cell
+        completion during multi-period estimation.
 
     Returns
     -------
@@ -258,6 +262,7 @@ def dask_ddd(
             random_state=random_state,
             n_partitions=n_partitions,
             max_cohorts=max_cohorts,
+            progress_bar=progress_bar,
         )
 
     # 2-period panel path: compute to numpy and use distributed panel estimator

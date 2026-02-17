@@ -36,6 +36,7 @@ def ddd(
     random_state=None,
     n_jobs=1,
     max_cohorts=None,
+    progress_bar=False,
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
 
@@ -148,6 +149,9 @@ def ddd(
         For best performance, set this equal to the total number of
         treatment cohorts so that all cohorts run concurrently. Reduce
         the value if the cluster runs out of memory.
+    progress_bar : bool, default=False
+        Whether to display a ``tqdm`` progress bar during distributed
+        estimation. Ignored for non-Dask inputs.
 
     Returns
     -------
@@ -326,6 +330,7 @@ def ddd(
             alpha=alpha,
             random_state=random_state,
             max_cohorts=max_cohorts,
+            progress_bar=progress_bar,
         )
 
     if gname is None:
