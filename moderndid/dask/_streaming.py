@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import warnings
+from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 
 import numpy as np
 from distributed import as_completed, wait
@@ -34,6 +35,8 @@ def streaming_cell_single_control(
     counter,
     trim_level=0.995,
     filtered_data=None,
+    part_futures=None,
+    n_cell_override=None,
 ):
     r"""Streaming DDD computation for one :math:`(g, t)` cell with a single control group.
 
@@ -96,6 +99,12 @@ def streaming_cell_single_control(
     filtered_data : dask.dataframe.DataFrame or None, default None
         Pre-filtered cohort data. When provided, ``prepare_cell_partitions``
         skips the group filter and uses this DataFrame directly.
+    part_futures : list of Future or None, default None
+        Pre-built partition futures from the wide-pivot path. When provided,
+        ``prepare_cell_partitions`` is skipped entirely.
+    n_cell_override : int or None, default None
+        Number of units in the cell. Required when ``part_futures`` is
+        provided.
 
     Returns
     -------
@@ -103,22 +112,25 @@ def streaming_cell_single_control(
         The DDD ATT for this cell, or ``None`` if the cell has
         insufficient data.
     """
-    part_futures, n_cell = prepare_cell_partitions(
-        client,
-        dask_data,
-        g,
-        t,
-        pret,
-        "nevertreated",
-        time_col,
-        group_col,
-        id_col,
-        y_col,
-        partition_col,
-        covariate_cols,
-        n_partitions,
-        filtered_data=filtered_data,
-    )
+    if part_futures is not None:
+        n_cell = n_cell_override if n_cell_override is not None else 0
+    else:
+        part_futures, n_cell = prepare_cell_partitions(
+            client,
+            dask_data,
+            g,
+            t,
+            pret,
+            "nevertreated",
+            time_col,
+            group_col,
+            id_col,
+            y_col,
+            partition_col,
+            covariate_cols,
+            n_partitions,
+            filtered_data=filtered_data,
+        )
 
     if part_futures is None or n_cell == 0:
         return None
@@ -539,6 +551,94 @@ def prepare_cell_partitions(
     return part_futures, n_cell
 
 
+def prepare_cohort_wide_pivot(
+    client,
+    dask_data,
+    g,
+    cells,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    partition_col,
+    covariate_cols,
+    n_partitions,
+):
+    """Build a single wide-pivoted DataFrame for all cells in a cohort.
+
+    Instead of performing one shuffle join per :math:`(g, t)` cell, this
+    function collects every time period required by the cohort's cells,
+    merges them into a single wide DataFrame (one row per unit, one
+    ``_y_{period}`` column per time period), and does a single
+    ``repartition().persist()`` cycle. Downstream callers then extract
+    per-cell arrays via :func:`_build_partition_arrays_wide` with no
+    additional shuffles.
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Dask distributed client.
+    dask_data : dask.dataframe.DataFrame
+        Persisted Dask DataFrame in long panel format.
+    g : int or float
+        Treatment cohort identifier.
+    cells : list of tuple
+        Cell specifications ``(counter, g, t, pret, post_treat, action)``
+        for this cohort. Only ``action == "compute"`` cells are used.
+    time_col, group_col, id_col, y_col, partition_col : str
+        Column names.
+    covariate_cols : list of str or None
+        Covariate column names.
+    n_partitions : int
+        Number of Dask partitions for the wide DataFrame.
+
+    Returns
+    -------
+    wide_dask : dask.dataframe.DataFrame or None
+        Persisted wide DataFrame, or ``None`` if no data.
+    n_wide : int
+        Number of units in the wide DataFrame.
+    """
+    all_times = set()
+    for _counter, _g, t, pret, _pt, action in cells:
+        if action != "compute" or pret is None:
+            continue
+        all_times.add(t)
+        all_times.add(pret)
+
+    all_times = sorted(all_times)
+    if not all_times:
+        return None, 0
+
+    # Filter to cohort groups once (treated g + never-treated 0)
+    group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
+    filtered = dask_data.loc[group_filter]
+
+    # Base: unit-level info from the first available time period
+    base_cols = [id_col, group_col, partition_col]
+    if covariate_cols:
+        base_cols = base_cols + [c for c in covariate_cols if c not in base_cols]
+
+    base = filtered.loc[filtered[time_col] == all_times[0]][base_cols]
+
+    # Merge each time period's y as a separate column
+    for tp in all_times:
+        period_y = filtered.loc[filtered[time_col] == tp][[id_col, y_col]]
+        period_y = period_y.rename(columns={y_col: f"_y_{tp}"})
+        base = base.merge(period_y, on=id_col, how="inner")
+
+    # Single repartition + persist
+    wide_dask = base.repartition(npartitions=n_partitions).persist()
+    wait(wide_dask)
+
+    n_wide = len(wide_dask)
+    if n_wide == 0:
+        return None, 0
+
+    log.info("  wide pivot for g=%s: %d units, %d time cols", g, n_wide, len(all_times))
+    return wide_dask, n_wide
+
+
 def streaming_nuisance_coefficients(client, part_futures, est_method, k):
     r"""Compute nuisance model coefficients for all three DDD comparisons.
 
@@ -575,11 +675,11 @@ def streaming_nuisance_coefficients(client, part_futures, est_method, k):
     ps_betas = {}
     or_betas = {}
 
-    for comp_sg in [3, 2, 1]:
+    def _fit_one(comp_sg):
         if est_method == "reg":
-            ps_betas[comp_sg] = np.zeros(k, dtype=np.float64)
+            ps_b = np.zeros(k, dtype=np.float64)
         else:
-            ps_betas[comp_sg] = distributed_logistic_irls_from_futures(
+            ps_b = distributed_logistic_irls_from_futures(
                 client,
                 part_futures,
                 lambda pd, beta, _cs=comp_sg: _partition_pscore_gram(pd, _cs, beta),
@@ -587,13 +687,21 @@ def streaming_nuisance_coefficients(client, part_futures, est_method, k):
             )
 
         if est_method == "ipw":
-            or_betas[comp_sg] = np.zeros(k, dtype=np.float64)
+            or_b = np.zeros(k, dtype=np.float64)
         else:
-            or_betas[comp_sg] = distributed_wls_from_futures(
+            or_b = distributed_wls_from_futures(
                 client,
                 part_futures,
                 lambda pd, _cs=comp_sg: _partition_or_gram(pd, _cs),
             )
+        return comp_sg, ps_b, or_b
+
+    with _ThreadPoolExecutor(max_workers=3) as pool:
+        futs = [pool.submit(_fit_one, cs) for cs in [3, 2, 1]]
+        for f in futs:
+            comp_sg, ps_b, or_b = f.result()
+            ps_betas[comp_sg] = ps_b
+            or_betas[comp_sg] = or_b
 
     return ps_betas, or_betas
 
@@ -655,7 +763,7 @@ def streaming_global_stats(client, part_futures, ps_betas, or_betas, est_method,
     precomp_xpx_inv_m1 = {}
     precomp_xpx_inv_m3 = {}
 
-    for comp_sg in [3, 2, 1]:
+    def _reduce_one(comp_sg):
         ps_b = ps_betas[comp_sg]
         or_b = or_betas[comp_sg]
 
@@ -675,11 +783,7 @@ def streaming_global_stats(client, part_futures, ps_betas, or_betas, est_method,
         agg = tree_reduce(client, futures, _sum_global_stats)
 
         if agg is None or agg["n_sub"] == 0:
-            global_agg[comp_sg] = None
-            precomp_hess_m2[comp_sg] = None
-            precomp_xpx_inv_m1[comp_sg] = None
-            precomp_xpx_inv_m3[comp_sg] = None
-            continue
+            return comp_sg, None, None, None, None
 
         n_sub = agg["n_sub"]
         mean_w_treat = agg["sum_w_treat"] / n_sub
@@ -687,7 +791,7 @@ def streaming_global_stats(client, part_futures, ps_betas, or_betas, est_method,
         att_treat = (agg["sum_riesz_treat"] / n_sub) / mean_w_treat if mean_w_treat > 0 else 0.0
         att_control = (agg["sum_riesz_control"] / n_sub) / mean_w_control if mean_w_control > 0 else 0.0
 
-        global_agg[comp_sg] = {
+        agg_result = {
             "mean_w_treat": mean_w_treat,
             "mean_w_control": mean_w_control,
             "att_treat": att_treat,
@@ -701,9 +805,9 @@ def streaming_global_stats(client, part_futures, ps_betas, or_betas, est_method,
         if est_method != "reg":
             info_gram = agg["info_gram"]
             hessian = np.linalg.inv(info_gram) * n_sub
-            precomp_hess_m2[comp_sg] = hessian @ m2
+            hm2 = hessian @ m2
         else:
-            precomp_hess_m2[comp_sg] = np.zeros_like(m2)
+            hm2 = np.zeros_like(m2)
 
         if est_method != "ipw":
             m1 = agg["sum_wt_X"] / n_sub
@@ -718,12 +822,23 @@ def streaming_global_stats(client, part_futures, ps_betas, or_betas, est_method,
             else:
                 xpx_inv = np.linalg.solve(xpx, np.eye(xpx.shape[0]))
 
-            precomp_xpx_inv_m1[comp_sg] = xpx_inv @ m1
-            precomp_xpx_inv_m3[comp_sg] = xpx_inv @ m3
+            xim1 = xpx_inv @ m1
+            xim3 = xpx_inv @ m3
         else:
-            k = len(m2)
-            precomp_xpx_inv_m1[comp_sg] = np.zeros(k, dtype=np.float64)
-            precomp_xpx_inv_m3[comp_sg] = np.zeros(k, dtype=np.float64)
+            k_dim = len(m2)
+            xim1 = np.zeros(k_dim, dtype=np.float64)
+            xim3 = np.zeros(k_dim, dtype=np.float64)
+
+        return comp_sg, agg_result, hm2, xim1, xim3
+
+    with _ThreadPoolExecutor(max_workers=3) as pool:
+        futs = [pool.submit(_reduce_one, cs) for cs in [3, 2, 1]]
+        for f in futs:
+            comp_sg, agg_r, hm2, xim1, xim3 = f.result()
+            global_agg[comp_sg] = agg_r
+            precomp_hess_m2[comp_sg] = hm2
+            precomp_xpx_inv_m1[comp_sg] = xim1
+            precomp_xpx_inv_m3[comp_sg] = xim3
 
     return global_agg, precomp_hess_m2, precomp_xpx_inv_m1, precomp_xpx_inv_m3
 
@@ -746,6 +861,45 @@ def _build_partition_arrays(merged_pdf, id_col, y_col, group_col, partition_col,
     n = len(ids)
     if covariate_cols:
         cov = merged_pdf[covariate_cols].values.astype(np.float64)
+        X = np.hstack([np.ones((n, 1), dtype=np.float64), cov])
+    else:
+        X = np.ones((n, 1), dtype=np.float64)
+
+    return {
+        "ids": ids,
+        "y1": y1,
+        "y0": y0,
+        "subgroup": subgroup,
+        "X": X,
+        "n": n,
+        "groups_raw": groups,
+        "parts_raw": parts,
+    }
+
+
+def _build_partition_arrays_wide(wide_pdf, id_col, group_col, partition_col, g, covariate_cols, y_post_col, y_pre_col):
+    """Convert one wide-pivot pandas partition to numpy arrays.
+
+    Same output format as :func:`_build_partition_arrays` but reads the
+    post-period and pre-period outcome from named columns in the wide
+    DataFrame rather than from fixed ``y_col`` / ``_y_pre`` columns.
+    """
+    if len(wide_pdf) == 0:
+        return None
+
+    ids = wide_pdf[id_col].values
+    y1 = wide_pdf[y_post_col].values.astype(np.float64)
+    y0 = wide_pdf[y_pre_col].values.astype(np.float64)
+    groups = wide_pdf[group_col].values
+    parts = wide_pdf[partition_col].values
+
+    treat = (groups == g).astype(np.int64)
+    part = parts.astype(np.int64)
+    subgroup = 4 * treat * part + 3 * treat * (1 - part) + 2 * (1 - treat) * part + 1 * (1 - treat) * (1 - part)
+
+    n = len(ids)
+    if covariate_cols:
+        cov = wide_pdf[covariate_cols].values.astype(np.float64)
         X = np.hstack([np.ones((n, 1), dtype=np.float64), cov])
     else:
         X = np.ones((n, 1), dtype=np.float64)

@@ -30,6 +30,7 @@ def dask_ddd(
     alpha=0.05,
     random_state=None,
     n_partitions=None,
+    max_cohorts=None,
 ):
     r"""Compute the distributed triple difference-in-differences estimator.
 
@@ -118,6 +119,9 @@ def dask_ddd(
         Number of Dask partitions for distributing computation. If None,
         defaults to the total number of threads across all workers via
         :func:`~moderndid.dask.get_default_partitions`.
+    max_cohorts : int or None, default None
+        Maximum number of treatment cohorts to process in parallel.
+        When ``None``, defaults to the number of Dask workers.
 
     Returns
     -------
@@ -228,7 +232,7 @@ def dask_ddd(
         required_cols.append(idname)
     validate_dask_input(data, required_cols)
 
-    multiple_periods = _detect_multiple_periods_dask(data, tname, gname)
+    multiple_periods = _detect_multiple_periods_dask(data, tname, gname, client=client)
     log.info("dask_ddd: multiple_periods=%s", multiple_periods)
 
     if multiple_periods:
@@ -257,6 +261,7 @@ def dask_ddd(
             alpha=alpha,
             random_state=random_state,
             n_partitions=n_partitions,
+            max_cohorts=max_cohorts,
         )
 
     # 2-period panel path: compute to numpy and use distributed panel estimator
@@ -305,11 +310,17 @@ def dask_ddd(
     )
 
 
-def _detect_multiple_periods_dask(ddf, tname, gname):
+def _detect_multiple_periods_dask(ddf, tname, gname, client=None):
     """Detect whether data has more than 2 time periods or treatment groups."""
-    n_time = ddf[tname].nunique().compute()
+    if client is not None:
+        t_fut = client.compute(ddf[tname].nunique())
+        g_fut = client.compute(ddf[gname].unique())
+        n_time, gvals = client.gather([t_fut, g_fut])
+        gvals = gvals.values
+    else:
+        n_time = ddf[tname].nunique().compute()
+        gvals = ddf[gname].unique().compute().values
 
-    gvals = ddf[gname].unique().compute().values
     finite_gvals = [g for g in gvals if np.isfinite(g)]
     n_groups = len(finite_gvals)
 

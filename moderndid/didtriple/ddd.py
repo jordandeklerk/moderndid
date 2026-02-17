@@ -35,6 +35,7 @@ def ddd(
     allow_unbalanced_panel=False,
     random_state=None,
     n_jobs=1,
+    max_cohorts=None,
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
 
@@ -135,6 +136,14 @@ def ddd(
         Number of parallel jobs for group-time estimation in multi-period
         settings. 1 = sequential (default), -1 = all cores, >1 = that many
         workers. Ignored for 2-period data.
+    max_cohorts : int or None, default=None
+        Maximum number of treatment cohorts to process in parallel when
+        using the Dask distributed backend. Each cohort's group-time cells
+        are computed concurrently within a thread, so this controls how
+        many cohorts share the cluster simultaneously. Higher values
+        increase throughput but require more memory on workers to hold the
+        per-cohort wide-pivoted DataFrames. When ``None``, defaults to the
+        number of Dask workers. Ignored for non-Dask inputs.
 
     Returns
     -------
@@ -312,6 +321,7 @@ def ddd(
             cluster=cluster,
             alpha=alpha,
             random_state=random_state,
+            max_cohorts=max_cohorts,
         )
 
     if gname is None:

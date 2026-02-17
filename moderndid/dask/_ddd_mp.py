@@ -26,12 +26,15 @@ from moderndid.didtriple.estimators.ddd_mp import (
 
 from ._bootstrap import distributed_mboot_ddd
 from ._ddd_panel import dask_ddd_panel
-from ._streaming import streaming_cell_multi_control, streaming_cell_single_control
+from ._streaming import (
+    _build_partition_arrays_wide,
+    prepare_cohort_wide_pivot,
+    streaming_cell_multi_control,
+    streaming_cell_single_control,
+)
 from ._utils import auto_tune_partitions, get_default_partitions
 
 log = logging.getLogger("moderndid.dask.backend")
-
-_MAX_CONCURRENT_COHORTS = 4
 _MEMMAP_THRESHOLD = 1 * 1024**3
 _CHUNKED_SE_THRESHOLD = 10_000_000
 _SE_CHUNK_SIZE = 1_000_000
@@ -67,6 +70,7 @@ def dask_ddd_mp(
     alpha=0.05,
     random_state=None,
     n_partitions=None,
+    max_cohorts=None,
 ):
     """Distributed multi-period doubly robust DDD estimator for panel data.
 
@@ -119,11 +123,15 @@ def dask_ddd_mp(
     is_dask = hasattr(data, "compute")
     if is_dask:
         log.info("extracting metadata via Dask aggregations")
-        tlist = np.sort(data[time_col].drop_duplicates().compute().values)
-        glist_raw = data[group_col].drop_duplicates().compute().values
+        t_fut = client.compute(data[time_col].drop_duplicates())
+        g_fut = client.compute(data[group_col].drop_duplicates())
+        id_fut = client.compute(data[id_col].drop_duplicates())
+        t_vals, g_vals, id_vals = client.gather([t_fut, g_fut, id_fut])
+        tlist = np.sort(t_vals.values)
+        glist_raw = g_vals.values
         glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
-        n_units = int(data[id_col].nunique().compute())
-        unique_ids = np.sort(data[id_col].drop_duplicates().compute().values)
+        unique_ids = np.sort(id_vals.values)
+        n_units = len(unique_ids)
 
         dask_data = data.persist()
         wait(dask_data)
@@ -203,7 +211,11 @@ def dask_ddd_mp(
             for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
                 cohort_cells[g].append((counter, g, t, pret, post_treat, action))
 
-            max_workers = min(len(cohort_cells), _MAX_CONCURRENT_COHORTS)
+            if max_cohorts is not None:
+                max_workers = min(len(cohort_cells), max_cohorts)
+            else:
+                n_workers = len(client.scheduler_info().get("workers", {}))
+                max_workers = min(len(cohort_cells), max(1, n_workers))
             log.info("processing %d cohorts with %d concurrent workers", len(cohort_cells), max_workers)
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -393,58 +405,136 @@ def _process_cohort_cells(
     glist_raw,
     total_cells,
 ):
-    """Process all cells for a single cohort. Thread-safe."""
+    """Process all cells for a single cohort.
+
+    For the ``nevertreated`` control group, a single wide-pivoted
+    DataFrame is built for the cohort (one ``repartition().persist()``
+    cycle) and every cell extracts its post/pre columns via pure numpy.
+
+    For ``notyettreated``, the per-cell streaming path is preserved
+    because each cell may require a different set of control groups.
+    """
     results = []
-    filtered_cohort = None
+    wide_dask = None
 
     try:
-        for counter, g, t, pret, post_treat, action in cells:
-            log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
+        if control_group == "nevertreated":
+            g = cells[0][1]
+            compute_cells = [c for c in cells if c[5] == "compute"]
 
-            if action == "skip":
-                continue
-            if action == "zero":
-                results.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
-                continue
+            if compute_cells:
+                wide_dask, n_wide = prepare_cohort_wide_pivot(
+                    client,
+                    dask_data,
+                    g,
+                    compute_cells,
+                    time_col,
+                    group_col,
+                    id_col,
+                    y_col,
+                    partition_col,
+                    covariate_cols,
+                    n_partitions,
+                )
 
-            cohort_data = None
-            if control_group == "nevertreated":
-                if filtered_cohort is None:
-                    group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
-                    filtered_cohort = dask_data.loc[group_filter].persist()
-                    wait(filtered_cohort)
-                    log.info("  persisted cohort data for g=%s", g)
-                cohort_data = filtered_cohort
+            if wide_dask is not None and n_wide > 0:
+                wide_delayed = wide_dask.to_delayed()
+                wide_pdf_futures = client.compute(wide_delayed)
 
-            result = _compute_cell_streaming(
-                client=client,
-                dask_data=dask_data,
-                g=g,
-                t=t,
-                pret=pret,
-                post_treat=post_treat,
-                control_group=control_group,
-                time_col=time_col,
-                group_col=group_col,
-                id_col=id_col,
-                y_col=y_col,
-                partition_col=partition_col,
-                covariate_cols=covariate_cols,
-                est_method=est_method,
-                n_units=n_units,
-                unique_ids=unique_ids,
-                inf_func_mat=inf_func_mat,
-                se_array=se_array,
-                counter=counter,
-                n_partitions=n_partitions,
-                glist_raw=glist_raw,
-                filtered_data=cohort_data,
-            )
-            if result is not None:
-                results.append(result)
+                for counter, g_, t, pret, post_treat, action in cells:
+                    log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g_, t)
+
+                    if action == "skip":
+                        continue
+                    if action == "zero":
+                        results.append(ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0))
+                        continue
+
+                    y_post_col = f"_y_{t}"
+                    y_pre_col = f"_y_{pret}"
+
+                    part_futures = [
+                        client.submit(
+                            _build_partition_arrays_wide,
+                            pdf_f,
+                            id_col,
+                            group_col,
+                            partition_col,
+                            g_,
+                            covariate_cols,
+                            y_post_col,
+                            y_pre_col,
+                        )
+                        for pdf_f in wide_pdf_futures
+                    ]
+
+                    att = streaming_cell_single_control(
+                        client,
+                        dask_data,
+                        g_,
+                        t,
+                        pret,
+                        time_col,
+                        group_col,
+                        id_col,
+                        y_col,
+                        partition_col,
+                        covariate_cols,
+                        est_method,
+                        n_partitions,
+                        n_units,
+                        unique_ids,
+                        inf_func_mat,
+                        counter,
+                        part_futures=part_futures,
+                        n_cell_override=n_wide,
+                    )
+
+                    if att is not None:
+                        results.append(ATTgtResult(att=att, group=int(g_), time=int(t), post=post_treat))
+            else:
+                for _counter, g_, t, _pret, _post_treat, action in cells:
+                    if action == "zero":
+                        results.append(ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0))
+        else:
+            # notyettreated: keep existing per-cell streaming path
+            for counter, g, t, pret, post_treat, action in cells:
+                log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
+
+                if action == "skip":
+                    continue
+                if action == "zero":
+                    results.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
+                    continue
+
+                result = _compute_cell_streaming(
+                    client=client,
+                    dask_data=dask_data,
+                    g=g,
+                    t=t,
+                    pret=pret,
+                    post_treat=post_treat,
+                    control_group=control_group,
+                    time_col=time_col,
+                    group_col=group_col,
+                    id_col=id_col,
+                    y_col=y_col,
+                    partition_col=partition_col,
+                    covariate_cols=covariate_cols,
+                    est_method=est_method,
+                    n_units=n_units,
+                    unique_ids=unique_ids,
+                    inf_func_mat=inf_func_mat,
+                    se_array=se_array,
+                    counter=counter,
+                    n_partitions=n_partitions,
+                    glist_raw=glist_raw,
+                )
+                if result is not None:
+                    results.append(result)
     finally:
-        if filtered_cohort is not None:
-            del filtered_cohort
+        if wide_dask is not None:
+            del wide_dask
 
     return results
 
