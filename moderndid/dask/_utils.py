@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 
 def is_dask_collection(data) -> bool:
     """Check if data is a Dask DataFrame.
@@ -65,6 +67,33 @@ def get_default_partitions(client):
     workers = info.get("workers", {})
     total_threads = sum(w.get("nthreads", 1) for w in workers.values())
     return max(total_threads, 1)
+
+
+def auto_tune_partitions(n_default, n_units, k, target_bytes=500 * 1024**2):
+    """Increase partition count when per-partition X matrices would exceed target_bytes.
+
+    Parameters
+    ----------
+    n_default : int
+        Default partition count (from cluster thread count).
+    n_units : int
+        Total number of units.
+    k : int
+        Number of columns in the design matrix (intercept + covariates).
+    target_bytes : int, default 500 MB
+        Maximum per-partition X matrix size in bytes.
+
+    Returns
+    -------
+    int
+        Adjusted partition count.
+    """
+    rows_per_part = n_units / max(n_default, 1)
+    part_bytes = rows_per_part * k * 8
+    if part_bytes <= target_bytes:
+        return n_default
+    needed = int(np.ceil(n_units * k * 8 / target_bytes))
+    return max(n_default, needed)
 
 
 def get_or_create_client(client=None):

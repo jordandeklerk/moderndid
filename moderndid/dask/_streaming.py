@@ -6,6 +6,7 @@ import logging
 import warnings
 
 import numpy as np
+from distributed import as_completed, wait
 
 from ._gram import tree_reduce
 from ._regression import distributed_logistic_irls_from_futures, distributed_wls_from_futures
@@ -32,6 +33,7 @@ def streaming_cell_single_control(
     inf_func_mat,
     counter,
     trim_level=0.995,
+    filtered_data=None,
 ):
     r"""Streaming DDD computation for one :math:`(g, t)` cell with a single control group.
 
@@ -91,6 +93,9 @@ def streaming_cell_single_control(
         Column index into ``inf_func_mat`` for this cell.
     trim_level : float, default 0.995
         Propensity score trimming threshold.
+    filtered_data : dask.dataframe.DataFrame or None, default None
+        Pre-filtered cohort data. When provided, ``prepare_cell_partitions``
+        skips the group filter and uses this DataFrame directly.
 
     Returns
     -------
@@ -98,8 +103,6 @@ def streaming_cell_single_control(
         The DDD ATT for this cell, or ``None`` if the cell has
         insufficient data.
     """
-    from distributed import as_completed
-
     part_futures, n_cell = prepare_cell_partitions(
         client,
         dask_data,
@@ -114,6 +117,7 @@ def streaming_cell_single_control(
         partition_col,
         covariate_cols,
         n_partitions,
+        filtered_data=filtered_data,
     )
 
     if part_futures is None or n_cell == 0:
@@ -211,6 +215,10 @@ def streaming_cell_multi_control(
     :func:`streaming_cell_single_control`. The per-control estimates are then
     combined via GMM to produce a single efficient ATT and standard error.
 
+    Data is filtered and merged once for all controls, then per-control
+    subsetting is done via numpy masks on workers (no per-control Dask
+    shuffles).
+
     The influence function matrix ``inf_func_mat`` is updated in-place with
     the GMM-combined influence function for this cell.
 
@@ -262,8 +270,6 @@ def streaming_cell_multi_control(
         a scalar ATT when only one control is available, or ``None`` if the
         cell has insufficient data.
     """
-    from distributed import as_completed, wait
-
     from moderndid.didtriple.estimators.ddd_mp import _gmm_aggregate
 
     if len(available_controls) == 1:
@@ -311,44 +317,38 @@ def streaming_cell_multi_control(
 
     cell_ids = np.sort(merged_dask[id_col].drop_duplicates().compute().values)
 
+    delayed_parts = merged_dask.to_delayed()
+    pdf_futures = client.compute(delayed_parts)
+    all_part_futures = [
+        client.submit(
+            _build_partition_arrays,
+            pdf_f,
+            id_col,
+            y_col,
+            group_col,
+            partition_col,
+            g,
+            covariate_cols,
+        )
+        for pdf_f in pdf_futures
+    ]
+
     ddd_results = []
     inf_funcs_local = []
 
     for ctrl in available_controls:
-        subset_dask = merged_dask.loc[(merged_dask[group_col] == g) | (merged_dask[group_col] == ctrl)]
-        subset_dask = subset_dask.repartition(npartitions=n_partitions).persist()
-        wait(subset_dask)
+        ctrl_part_futures = [client.submit(_filter_partition_for_ctrl, pf, g, ctrl) for pf in all_part_futures]
 
-        n_subset = len(subset_dask)
-        if n_subset == 0:
-            continue
-
-        delayed_parts = subset_dask.to_delayed()
-        pdf_futures = client.compute(delayed_parts)
-        part_futures = [
-            client.submit(
-                _build_partition_arrays,
-                pdf_f,
-                id_col,
-                y_col,
-                group_col,
-                partition_col,
-                g,
-                covariate_cols,
-            )
-            for pdf_f in pdf_futures
-        ]
-
-        first = part_futures[0].result()
+        first = ctrl_part_futures[0].result()
         if first is None:
             continue
         k = first["X"].shape[1]
 
-        ps_betas, or_betas = streaming_nuisance_coefficients(client, part_futures, est_method, k)
+        ps_betas, or_betas = streaming_nuisance_coefficients(client, ctrl_part_futures, est_method, k)
 
         global_agg, precomp_hess_m2, precomp_xpx_inv_m1, precomp_xpx_inv_m3 = streaming_global_stats(
             client,
-            part_futures,
+            ctrl_part_futures,
             ps_betas,
             or_betas,
             est_method,
@@ -359,13 +359,13 @@ def streaming_cell_multi_control(
         if not all_valid:
             continue
 
-        n_s = n_subset
+        n_subset = sum(f.result()["n"] for f in ctrl_part_futures if f.result() is not None)
         n3 = global_agg[3]["n_sub"]
         n2 = global_agg[2]["n_sub"]
         n1 = global_agg[1]["n_sub"]
-        w3_val = n_s / n3 if n3 > 0 else 0.0
-        w2_val = n_s / n2 if n2 > 0 else 0.0
-        w1_val = n_s / n1 if n1 > 0 else 0.0
+        w3_val = n_subset / n3 if n3 > 0 else 0.0
+        w2_val = n_subset / n2 if n2 > 0 else 0.0
+        w1_val = n_subset / n1 if n1 > 0 else 0.0
 
         att_ctrl = global_agg[3]["dr_att"] + global_agg[2]["dr_att"] - global_agg[1]["dr_att"]
         ddd_results.append(att_ctrl)
@@ -386,11 +386,11 @@ def streaming_cell_multi_control(
                 precomp_xpx_inv_m1,
                 precomp_xpx_inv_m3,
             )
-            for pf in part_futures
+            for pf in ctrl_part_futures
         ]
 
         inf_full = np.zeros(n_cell, dtype=np.float64)
-        scale_ctrl = n_cell / n_subset
+        scale_ctrl = n_cell / n_subset if n_subset > 0 else 0.0
 
         for fut in as_completed(if_futures):
             ids_part, if_part = fut.result()
@@ -438,6 +438,7 @@ def prepare_cell_partitions(
     partition_col,
     covariate_cols,
     n_partitions,
+    filtered_data=None,
 ):
     """Filter and merge post/pre periods on workers, returning partition futures.
 
@@ -446,6 +447,9 @@ def prepare_cell_partitions(
     plus controls), merges each unit's post-period and pre-period outcomes
     via a distributed shuffle join, repartitions, persists, and converts
     each partition to a numpy dict via ``_build_partition_arrays``.
+
+    When ``filtered_data`` is provided, the group filter step is skipped
+    and the pre-filtered DataFrame is used directly.
 
     Parameters
     ----------
@@ -475,6 +479,8 @@ def prepare_cell_partitions(
         Covariate column names.
     n_partitions : int
         Number of Dask partitions for the merged data.
+    filtered_data : dask.dataframe.DataFrame or None, default None
+        Pre-filtered cohort data. When provided, the group filter is skipped.
 
     Returns
     -------
@@ -484,16 +490,19 @@ def prepare_cell_partitions(
     n_cell : int
         Number of units in the cell.
     """
-    from distributed import wait
-
-    max_period = max(t, pret)
-
-    if control_group == "nevertreated":
-        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
+    if filtered_data is not None:
+        filtered = filtered_data
     else:
-        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
+        max_period = max(t, pret)
 
-    filtered = dask_data.loc[group_filter]
+        if control_group == "nevertreated":
+            group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
+        else:
+            group_filter = (
+                (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
+            )
+
+        filtered = dask_data.loc[group_filter]
 
     post_cols = [id_col, group_col, partition_col, y_col]
     if covariate_cols:
@@ -741,7 +750,43 @@ def _build_partition_arrays(merged_pdf, id_col, y_col, group_col, partition_col,
     else:
         X = np.ones((n, 1), dtype=np.float64)
 
-    return {"ids": ids, "y1": y1, "y0": y0, "subgroup": subgroup, "X": X, "n": n}
+    return {
+        "ids": ids,
+        "y1": y1,
+        "y0": y0,
+        "subgroup": subgroup,
+        "X": X,
+        "n": n,
+        "groups_raw": groups,
+        "parts_raw": parts,
+    }
+
+
+def _filter_partition_for_ctrl(part_data, g, ctrl):
+    """Filter partition arrays to keep only the treated cohort and one control."""
+    if part_data is None:
+        return None
+
+    groups = part_data["groups_raw"]
+    mask = (groups == g) | (groups == ctrl)
+    if not np.any(mask):
+        return None
+
+    parts = part_data["parts_raw"][mask]
+    treat = (groups[mask] == g).astype(np.int64)
+    part = parts.astype(np.int64)
+    subgroup = 4 * treat * part + 3 * treat * (1 - part) + 2 * (1 - treat) * part + 1 * (1 - treat) * (1 - part)
+
+    return {
+        "ids": part_data["ids"][mask],
+        "y1": part_data["y1"][mask],
+        "y0": part_data["y0"][mask],
+        "subgroup": subgroup,
+        "X": part_data["X"][mask],
+        "n": int(np.sum(mask)),
+        "groups_raw": groups[mask],
+        "parts_raw": parts,
+    }
 
 
 def _partition_pscore_gram(part_data, comp_sg, beta):
@@ -985,8 +1030,6 @@ def _streaming_single_ctrl_for_multi(
     trim_level,
 ):
     """Single-control streaming for notyettreated with exactly one control."""
-    from distributed import as_completed, wait
-
     group_filter = (dask_data[group_col] == ctrl) | (dask_data[group_col] == g)
     filtered = dask_data.loc[group_filter]
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-__all__ = ["gen_dgp_2periods", "gen_dgp_mult_periods", "generate_simple_ddd_data"]
+__all__ = ["gen_dgp_2periods", "gen_dgp_mult_periods", "gen_dgp_scalable", "generate_simple_ddd_data"]
 
 _MEAN_Z1 = np.exp(0.25 / 2)
 _SD_Z1 = np.sqrt((np.exp(0.25) - 1) * np.exp(0.25))
@@ -660,6 +660,232 @@ def generate_simple_ddd_data(
     return df
 
 
+def gen_dgp_scalable(
+    n: int,
+    dgp_type: int = 1,
+    n_periods: int = 10,
+    n_cohorts: int = 8,
+    n_covariates: int = 20,
+    att_base: float = 10.0,
+    panel: bool = True,
+    random_state=None,
+) -> dict:
+    """Generate configurable staggered DDD data for stress-testing.
+
+    Parameters
+    ----------
+    n : int
+        Number of units (panel) or observations per period (repeated
+        cross-section).
+    dgp_type : {1, 2, 3, 4}, default=1
+        Controls nuisance function specification:
+
+        - 1: Both propensity score and outcome regression use Z (both correct)
+        - 2: Propensity score uses X, outcome regression uses Z (OR correct)
+        - 3: Propensity score uses Z, outcome regression uses X (PS correct)
+        - 4: Both use X (both misspecified when estimating with Z)
+
+    n_periods : int, default=10
+        Total number of time periods (labeled 1..T). Must be >= 2.
+    n_cohorts : int, default=8
+        Number of treated cohorts (excludes never-treated g=0). Must be >= 1
+        and < n_periods. Cohorts adopt treatment at times 2, 3, ...,
+        n_cohorts+1.
+    n_covariates : int, default=20
+        Total covariates. Must be >= 4. First 4 get nonlinear transform via
+        ``_transform_covariates``; rest are raw standard normals.
+    att_base : float, default=10.0
+        Base treatment effect. Cohort g at period t >= g gets
+        ``att_base * g * (t - g + 1) * partition``.
+    panel : bool, default=True
+        If True, generate panel data. If False, generate repeated
+        cross-section data with disjoint units per period.
+    random_state : int, Generator, or None, default=None
+        Controls randomness for reproducibility.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+
+        - *data*: pl.DataFrame in long format with columns [id, group,
+          partition, time, y, cov1..covK, cluster]
+        - *data_wide*: pl.DataFrame in wide format (panel with
+          n_periods <= 20 only)
+        - *att_config*: dict mapping each treated cohort g to
+          ``att_base * g``
+        - *cohort_values*: list of all cohort values
+          [0, 2, 3, ..., n_cohorts+1]
+        - *n_periods*: number of periods
+        - *n_covariates*: number of covariates
+    """
+    if dgp_type not in {1, 2, 3, 4}:
+        raise ValueError(f"dgp_type must be 1, 2, 3, or 4, got {dgp_type}")
+    if n_periods < 2:
+        raise ValueError(f"n_periods must be >= 2, got {n_periods}")
+    if n_cohorts < 1:
+        raise ValueError(f"n_cohorts must be >= 1, got {n_cohorts}")
+    if n_cohorts >= n_periods:
+        raise ValueError(f"n_cohorts must be < n_periods, got n_cohorts={n_cohorts}, n_periods={n_periods}")
+    if n_covariates < 4:
+        raise ValueError(f"n_covariates must be >= 4, got {n_covariates}")
+
+    rng = np.random.default_rng(random_state)
+    xsi_ps = 0.4
+    b1 = np.array([27.4, 13.7, 13.7, 13.7])
+
+    cohort_values = np.array([0, *list(range(2, n_cohorts + 2))])
+    n_free = 2 * (n_cohorts + 1) - 1
+    coef_rng = np.random.default_rng(12345)
+    ws, psis, cs = _generate_ps_coefficients(coef_rng, n_free)
+
+    if panel:
+        x_first4 = rng.standard_normal((n, 4))
+        z_first4 = _transform_covariates(x_first4)
+        x_extra = rng.standard_normal((n, n_covariates - 4)) if n_covariates > 4 else None
+
+        ps_covars, or_covars = _select_covars(dgp_type, x_first4, z_first4)
+        cohort, partition = _assign_cohort_partition(
+            rng,
+            n,
+            n_free,
+            ws,
+            psis,
+            cs,
+            ps_covars,
+            cohort_values,
+            xsi_ps,
+        )
+
+        index_lin = _freg(b1, or_covars)
+        index_partition = partition * index_lin
+        index_unobs_het = cohort * index_lin + index_partition
+        index_trend = index_lin
+
+        v = rng.normal(loc=index_unobs_het, scale=1.0)
+        index_pt_violation = v / 10
+        baseline = index_lin + index_partition + v
+
+        clusters = rng.integers(1, 51, size=n)
+        cov_dict = _build_cov_dict(z_first4, x_extra, n_covariates)
+
+        y_all = {}
+        df_list = []
+        for t in range(1, n_periods + 1):
+            y_t = _compute_scalable_outcome(
+                t,
+                baseline,
+                index_trend,
+                index_pt_violation,
+                cohort,
+                partition,
+                cohort_values,
+                att_base,
+                n,
+                rng,
+            )
+            y_all[t] = y_t
+            row_dict = {
+                "id": np.arange(1, n + 1),
+                "group": cohort,
+                "partition": partition,
+                "time": np.full(n, t, dtype=int),
+                "y": y_t,
+            }
+            row_dict.update(cov_dict)
+            row_dict["cluster"] = clusters
+            df_list.append(pl.DataFrame(row_dict))
+
+        data = pl.concat(df_list).sort(["id", "time"])
+
+        if n_periods <= 20:
+            wide_dict = {
+                "id": np.arange(1, n + 1),
+                "group": cohort,
+                "partition": partition,
+            }
+            for t in range(1, n_periods + 1):
+                wide_dict[f"y_t{t}"] = y_all[t]
+            wide_dict.update(cov_dict)
+            wide_dict["cluster"] = clusters
+            data_wide = pl.DataFrame(wide_dict)
+        else:
+            data_wide = None
+
+    else:
+        df_list = []
+        id_offset = 0
+
+        for t in range(1, n_periods + 1):
+            x_first4 = rng.standard_normal((n, 4))
+            z_first4 = _transform_covariates(x_first4)
+            x_extra = rng.standard_normal((n, n_covariates - 4)) if n_covariates > 4 else None
+
+            ps_covars, or_covars = _select_covars(dgp_type, x_first4, z_first4)
+            cohort, partition = _assign_cohort_partition(
+                rng,
+                n,
+                n_free,
+                ws,
+                psis,
+                cs,
+                ps_covars,
+                cohort_values,
+                xsi_ps,
+            )
+
+            index_lin = _freg(b1, or_covars)
+            index_partition = partition * index_lin
+            index_unobs_het = cohort * index_lin + index_partition
+            index_trend = index_lin
+
+            v = rng.normal(loc=index_unobs_het, scale=1.0)
+            index_pt_violation = v / 10
+            baseline = index_lin + index_partition + v
+
+            y_t = _compute_scalable_outcome(
+                t,
+                baseline,
+                index_trend,
+                index_pt_violation,
+                cohort,
+                partition,
+                cohort_values,
+                att_base,
+                n,
+                rng,
+            )
+
+            clusters = rng.integers(1, 51, size=n)
+            cov_dict = _build_cov_dict(z_first4, x_extra, n_covariates)
+
+            row_dict = {
+                "id": np.arange(id_offset + 1, id_offset + n + 1),
+                "group": cohort,
+                "partition": partition,
+                "time": np.full(n, t, dtype=int),
+                "y": y_t,
+            }
+            row_dict.update(cov_dict)
+            row_dict["cluster"] = clusters
+            df_list.append(pl.DataFrame(row_dict))
+            id_offset += n
+
+        data = pl.concat(df_list)
+        data_wide = None
+
+    att_config = {int(g): att_base * g for g in cohort_values if g != 0}
+
+    return {
+        "data": data,
+        "data_wide": data_wide,
+        "att_config": att_config,
+        "cohort_values": cohort_values.tolist(),
+        "n_periods": n_periods,
+        "n_covariates": n_covariates,
+    }
+
+
 def _transform_covariates(x: np.ndarray) -> np.ndarray:
     """Transform X to Z via nonlinear functions for doubly robust testing."""
     x1, x2, x3, x4 = x[:, 0], x[:, 1], x[:, 2], x[:, 3]
@@ -690,3 +916,100 @@ def _fps2(psi: float, coefs: np.ndarray, xvars: np.ndarray, c: float) -> np.ndar
 def _freg(coefs: np.ndarray, xvars: np.ndarray) -> np.ndarray:
     """Compute outcome regression index."""
     return 210 + xvars @ coefs
+
+
+def _generate_ps_coefficients(coef_rng, n_free):
+    """Deterministic weight vectors, psi signs, and constants for multinomial."""
+    ws = np.empty((n_free, 4))
+    psis = np.empty(n_free)
+    cs = np.empty(n_free)
+    for i in range(n_free):
+        w = coef_rng.standard_normal(4)
+        w /= np.linalg.norm(w)
+        ws[i] = w
+        psis[i] = 1.0 if i % 2 == 0 else -1.0
+        cs[i] = coef_rng.uniform(-2.0, 2.0)
+    return ws, psis, cs
+
+
+def _assign_cohort_partition(
+    rng,
+    n,
+    n_free,
+    ws,
+    psis,
+    cs,
+    ps_covars,
+    cohort_values,
+    xsi_ps,
+):
+    """Vectorized multinomial draw to (cohort, partition) arrays."""
+    exp_vals = np.empty((n, n_free))
+    for i in range(n_free):
+        exp_vals[:, i] = np.exp(_fps2(xsi_ps * psis[i], ws[i], ps_covars, cs[i]))
+
+    sum_exp = 1.0 + exp_vals.sum(axis=1, keepdims=True)
+    probs = exp_vals / sum_exp
+    prob_ref = 1.0 / sum_exp
+
+    all_probs = np.column_stack([probs, prob_ref])
+    cum_probs = np.cumsum(all_probs, axis=1)
+    u = rng.uniform(size=n)
+    group_types = (u[:, None] >= cum_probs).sum(axis=1)
+
+    treated_cohorts = cohort_values[cohort_values != 0]
+    all_cohorts = np.concatenate([treated_cohorts, [0]])
+    cohort_idx = group_types // 2
+    cohort = all_cohorts[cohort_idx]
+    partition = 1 - (group_types % 2)
+
+    return cohort, partition
+
+
+def _compute_scalable_outcome(
+    t,
+    baseline,
+    index_trend,
+    index_pt_violation,
+    cohort,
+    partition,
+    cohort_values,
+    att_base,
+    n,
+    rng,
+):
+    """Per-period outcome with treatment effects for all active cohorts."""
+    baseline_t = baseline + (t - 1) * index_trend + (t - 1) * index_pt_violation
+    y = baseline_t + rng.standard_normal(n)
+
+    for g in cohort_values:
+        if g == 0 or t < g:
+            continue
+        k = t - g + 1
+        y_g = baseline_t + rng.standard_normal(n) + att_base * g * k * partition
+        mask = (cohort == g) & (partition == 1)
+        y[mask] = y_g[mask]
+
+    return y
+
+
+def _build_cov_dict(z_first4, x_raw, n_covariates):
+    """Build {"cov1": ..., "covK": ...} dict from transformed + raw arrays."""
+    d = {}
+    for i in range(4):
+        d[f"cov{i + 1}"] = z_first4[:, i]
+    if x_raw is not None:
+        for i in range(n_covariates - 4):
+            d[f"cov{i + 5}"] = x_raw[:, i]
+    return d
+
+
+def _select_covars(dgp_type, x_first4, z_first4):
+    """Return (ps_covars_4col, or_covars_4col) tuple per dgp_type."""
+    if dgp_type == 1:
+        return z_first4, z_first4
+    if dgp_type == 2:
+        return x_first4, z_first4
+    if dgp_type == 3:
+        return z_first4, x_first4
+    return x_first4, x_first4

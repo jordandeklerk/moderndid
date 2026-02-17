@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
+from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
 import polars as pl
+from distributed import wait
 from scipy import stats
 
 from moderndid.core.dataframe import to_polars
@@ -21,9 +25,13 @@ from moderndid.didtriple.estimators.ddd_mp import (
 from ._bootstrap import distributed_mboot_ddd
 from ._ddd_panel import dask_ddd_panel
 from ._streaming import streaming_cell_multi_control, streaming_cell_single_control
-from ._utils import get_default_partitions
+from ._utils import auto_tune_partitions, get_default_partitions
 
 log = logging.getLogger("moderndid.dask.backend")
+
+_MEMMAP_THRESHOLD = 1 * 1024**3
+_CHUNKED_SE_THRESHOLD = 10_000_000
+_SE_CHUNK_SIZE = 1_000_000
 
 
 class CellArrays(NamedTuple):
@@ -113,7 +121,6 @@ def dask_ddd_mp(
         glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
         n_units = int(data[id_col].nunique().compute())
         unique_ids = np.sort(data[id_col].drop_duplicates().compute().values)
-        from distributed import wait
 
         dask_data = data.persist()
         wait(dask_data)
@@ -129,6 +136,10 @@ def dask_ddd_mp(
 
     n_periods = len(tlist)
     n_cohorts = len(glist)
+
+    k = len(covariate_cols) + 1 if covariate_cols else 1
+    n_partitions = auto_tune_partitions(n_partitions, n_units, k)
+
     log.info(
         "dask_ddd_mp: %d units, %d cohorts, %d periods, %d partitions",
         n_units,
@@ -140,13 +151,23 @@ def dask_ddd_mp(
     tfac = 0 if base_period == "universal" else 1
     tlist_length = n_periods - tfac
 
-    inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
-    se_array = np.full(n_cohorts * tlist_length, np.nan)
+    n_cols = n_cohorts * tlist_length
+    mat_bytes = n_units * n_cols * 8
+    memmap_path = None
+
+    if mat_bytes > _MEMMAP_THRESHOLD:
+        memmap_fd, memmap_path = tempfile.mkstemp(suffix=".dat", prefix="ddd_inf_")
+        os.close(memmap_fd)
+        inf_func_mat = np.memmap(memmap_path, dtype=np.float64, mode="w+", shape=(n_units, n_cols))
+        log.info("allocated memmap inf_func_mat at %s (%.1f GB)", memmap_path, mat_bytes / 1e9)
+    else:
+        inf_func_mat = np.zeros((n_units, n_cols))
+
+    se_array = np.full(n_cols, np.nan)
 
     attgt_list = []
-    total_cells = n_cohorts * tlist_length
+    total_cells = n_cols
 
-    # Pre-compute cell specs
     cell_specs = []
     for g in glist:
         for t_idx in range(tlist_length):
@@ -173,129 +194,160 @@ def dask_ddd_mp(
 
     data_pl = data if not is_dask else None
 
-    for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
-        log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
+    current_cohort = None
+    filtered_cohort = None
 
-        if action == "skip":
-            continue
+    try:
+        for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
+            log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
 
-        if action == "zero":
-            attgt_list.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
-            continue
+            if action == "skip":
+                continue
 
+            if action == "zero":
+                attgt_list.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
+                continue
+
+            if is_dask:
+                cohort_data = None
+                if control_group == "nevertreated":
+                    if current_cohort != g:
+                        if filtered_cohort is not None:
+                            del filtered_cohort
+                        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
+                        filtered_cohort = dask_data.loc[group_filter].persist()
+                        wait(filtered_cohort)
+                        current_cohort = g
+                        log.info("  persisted cohort data for g=%s", g)
+                    cohort_data = filtered_cohort
+
+                result = _compute_cell_streaming(
+                    client=client,
+                    dask_data=dask_data,
+                    g=g,
+                    t=t,
+                    pret=pret,
+                    post_treat=post_treat,
+                    control_group=control_group,
+                    time_col=time_col,
+                    group_col=group_col,
+                    id_col=id_col,
+                    y_col=y_col,
+                    partition_col=partition_col,
+                    covariate_cols=covariate_cols,
+                    est_method=est_method,
+                    n_units=n_units,
+                    unique_ids=unique_ids,
+                    inf_func_mat=inf_func_mat,
+                    se_array=se_array,
+                    counter=counter,
+                    n_partitions=n_partitions,
+                    glist_raw=glist_raw,
+                    filtered_data=cohort_data,
+                )
+                if result is not None:
+                    attgt_list.append(result)
+            else:
+                cell_data, available_controls = _get_cell_data(
+                    data_pl,
+                    g,
+                    t,
+                    pret,
+                    control_group,
+                    time_col,
+                    group_col,
+                )
+
+                result = _compute_cell_result(
+                    client=client,
+                    cell_data=cell_data,
+                    available_controls=available_controls,
+                    g=g,
+                    t=t,
+                    pret=pret,
+                    post_treat=post_treat,
+                    y_col=y_col,
+                    time_col=time_col,
+                    id_col=id_col,
+                    group_col=group_col,
+                    partition_col=partition_col,
+                    covariate_cols=covariate_cols,
+                    est_method=est_method,
+                    n_units=n_units,
+                    n_partitions=n_partitions,
+                )
+
+                if result is not None:
+                    att_entry, inf_data, se_val = result
+                    if att_entry is not None:
+                        attgt_list.append(att_entry)
+                        if inf_data is not None:
+                            inf_func_scaled, cell_id_arr = inf_data
+                            _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, unique_ids, counter)
+                        if se_val is not None:
+                            se_array[counter] = se_val
+
+        if filtered_cohort is not None:
+            del filtered_cohort
+            filtered_cohort = None
+
+        if len(attgt_list) == 0:
+            raise ValueError("No valid (g,t) cells found.")
+
+        att_array = np.array([r.att for r in attgt_list])
+        groups_array = np.array([r.group for r in attgt_list])
+        times_array = np.array([r.time for r in attgt_list])
+
+        n_valid = len(attgt_list)
+        inf_func_trimmed = inf_func_mat[:, :n_valid]
+
+        first_period = tlist[0]
         if is_dask:
-            result = _compute_cell_streaming(
-                client=client,
-                dask_data=dask_data,
-                g=g,
-                t=t,
-                pret=pret,
-                post_treat=post_treat,
-                control_group=control_group,
-                time_col=time_col,
-                group_col=group_col,
-                id_col=id_col,
-                y_col=y_col,
-                partition_col=partition_col,
-                covariate_cols=covariate_cols,
-                est_method=est_method,
-                n_units=n_units,
-                unique_ids=unique_ids,
-                inf_func_mat=inf_func_mat,
-                se_array=se_array,
-                counter=counter,
-                n_partitions=n_partitions,
-            )
-            if result is not None:
-                attgt_list.append(result)
+            unit_dask = dask_data.loc[dask_data[time_col] == first_period][[id_col, group_col]]
+            unit_data = to_polars(unit_dask.compute()).sort(id_col)
         else:
-            cell_data, available_controls = _get_cell_data(
-                data_pl,
-                g,
-                t,
-                pret,
-                control_group,
-                time_col,
-                group_col,
-            )
+            unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
+        unit_groups = unit_data[group_col].to_numpy()
 
-            result = _compute_cell_result(
+        if boot:
+            splits = np.array_split(np.arange(n_units), n_partitions)
+            inf_partitions = [np.array(inf_func_trimmed[idx]) for idx in splits if len(idx) > 0]
+
+            _bres, se_boot, crit_val_boot = distributed_mboot_ddd(
                 client=client,
-                cell_data=cell_data,
-                available_controls=available_controls,
-                g=g,
-                t=t,
-                pret=pret,
-                post_treat=post_treat,
-                y_col=y_col,
-                time_col=time_col,
-                id_col=id_col,
-                group_col=group_col,
-                partition_col=partition_col,
-                covariate_cols=covariate_cols,
-                est_method=est_method,
-                n_units=n_units,
-                n_partitions=n_partitions,
+                inf_func_partitions=inf_partitions,
+                n_total=n_units,
+                biters=biters,
+                alpha=alpha,
+                random_state=random_state,
             )
+            se_computed = se_boot.copy()
 
-            if result is not None:
-                att_entry, inf_data, se_val = result
-                if att_entry is not None:
-                    attgt_list.append(att_entry)
-                    if inf_data is not None:
-                        inf_func_scaled, cell_id_arr = inf_data
-                        _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_arr, unique_ids, counter)
-                    if se_val is not None:
-                        se_array[counter] = se_val
+            valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
+            se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
+            se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
-    if len(attgt_list) == 0:
-        raise ValueError("No valid (g,t) cells found.")
+            cv = crit_val_boot if cband and np.isfinite(crit_val_boot) else stats.norm.ppf(1 - alpha / 2)
+        else:
+            se_computed = _chunked_se(inf_func_trimmed, n_units)
 
-    att_array = np.array([r.att for r in attgt_list])
-    groups_array = np.array([r.group for r in attgt_list])
-    times_array = np.array([r.time for r in attgt_list])
+            valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
+            se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
+            se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
-    inf_func_trimmed = inf_func_mat[:, : len(attgt_list)]
+            cv = stats.norm.ppf(1 - alpha / 2)
 
-    first_period = tlist[0]
-    if is_dask:
-        unit_dask = dask_data.loc[dask_data[time_col] == first_period][[id_col, group_col]]
-        unit_data = to_polars(unit_dask.compute()).sort(id_col)
-    else:
-        unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
-    unit_groups = unit_data[group_col].to_numpy()
+        uci = att_array + cv * se_computed
+        lci = att_array - cv * se_computed
 
-    if boot:
-        splits = np.array_split(np.arange(n_units), n_partitions)
-        inf_partitions = [inf_func_trimmed[idx] for idx in splits if len(idx) > 0]
+        inf_func_result = np.array(inf_func_trimmed)
 
-        _bres, se_boot, crit_val_boot = distributed_mboot_ddd(
-            client=client,
-            inf_func_partitions=inf_partitions,
-            n_total=n_units,
-            biters=biters,
-            alpha=alpha,
-            random_state=random_state,
-        )
-        se_computed = se_boot.copy()
-
-        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
-        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
-        se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-
-        cv = crit_val_boot if cband and np.isfinite(crit_val_boot) else stats.norm.ppf(1 - alpha / 2)
-    else:
-        V = inf_func_trimmed.T @ inf_func_trimmed / n_units
-        se_computed = np.sqrt(np.diag(V) / n_units)
-
-        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
-        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
-        se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-
-        cv = stats.norm.ppf(1 - alpha / 2)
-
-    uci = att_array + cv * se_computed
-    lci = att_array - cv * se_computed
+    finally:
+        if memmap_path is not None:
+            if isinstance(inf_func_mat, np.memmap):
+                del inf_func_mat
+            Path(memmap_path).unlink(missing_ok=True)
+            log.info("cleaned up memmap file %s", memmap_path)
 
     args = {
         "panel": True,
@@ -320,11 +372,26 @@ def dask_ddd_mp(
         times=times_array,
         glist=glist,
         tlist=tlist,
-        inf_func_mat=inf_func_mat[:, : len(attgt_list)],
+        inf_func_mat=inf_func_result,
         n=n_units,
         args=args,
         unit_groups=unit_groups,
     )
+
+
+def _chunked_se(inf_func, n_units):
+    """Compute standard errors, chunking the Gram product for large n."""
+    n_rows, n_cols = inf_func.shape
+    if n_rows <= _CHUNKED_SE_THRESHOLD:
+        V = inf_func.T @ inf_func / n_units
+        return np.sqrt(np.diag(V) / n_units)
+
+    V = np.zeros((n_cols, n_cols), dtype=np.float64)
+    for start in range(0, n_rows, _SE_CHUNK_SIZE):
+        chunk = np.array(inf_func[start : start + _SE_CHUNK_SIZE])
+        V += chunk.T @ chunk
+    V /= n_units
+    return np.sqrt(np.diag(V) / n_units)
 
 
 def _compute_cell_result(
@@ -560,6 +627,8 @@ def _compute_cell_streaming(
     se_array,
     counter,
     n_partitions,
+    glist_raw=None,
+    filtered_data=None,
 ):
     """Compute one (g,t) cell via streaming."""
     if control_group == "nevertreated":
@@ -581,6 +650,7 @@ def _compute_cell_streaming(
             unique_ids,
             inf_func_mat,
             counter,
+            filtered_data=filtered_data,
         )
         if att is None:
             return None
@@ -588,7 +658,8 @@ def _compute_cell_streaming(
 
     else:
         max_period = max(t, pret)
-        glist_raw = dask_data[group_col].drop_duplicates().compute().values
+        if glist_raw is None:
+            glist_raw = dask_data[group_col].drop_duplicates().compute().values
         available_controls = sorted(
             [int(c) for c in glist_raw if c != g and (c == 0 or c > max_period) and np.isfinite(c)]
         )

@@ -146,6 +146,7 @@ __all__ = [
     "format_mp_result",
     "gen_dgp_2periods",
     "gen_dgp_mult_periods",
+    "gen_dgp_scalable",
     "generate_simple_ddd_data",
     # GPU backend
     "get_backend",
@@ -357,6 +358,7 @@ _lazy_imports = {
     "ddd_rc": "moderndid.didtriple.estimators.ddd_rc",
     "gen_dgp_2periods": "moderndid.didtriple.dgp",
     "gen_dgp_mult_periods": "moderndid.didtriple.dgp",
+    "gen_dgp_scalable": "moderndid.didtriple.dgp",
     "generate_simple_ddd_data": "moderndid.didtriple.dgp",
     "mboot_ddd": "moderndid.didtriple.bootstrap",
     "wboot_ddd": "moderndid.didtriple.bootstrap",
