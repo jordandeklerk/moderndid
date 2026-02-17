@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import warnings
 from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 
@@ -11,8 +10,6 @@ from distributed import as_completed, wait
 
 from ._gram import tree_reduce
 from ._regression import distributed_logistic_irls_from_futures, distributed_wls_from_futures
-
-log = logging.getLogger("moderndid.dask.streaming")
 
 
 def streaming_cell_single_control(
@@ -635,7 +632,6 @@ def prepare_cohort_wide_pivot(
     if n_wide == 0:
         return None, 0
 
-    log.info("  wide pivot for g=%s: %d units, %d time cols", g, n_wide, len(all_times))
     return wide_dask, n_wide
 
 

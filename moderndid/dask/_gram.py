@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import logging
-
 import numpy as np
-
-log = logging.getLogger("moderndid.dask.gram")
 
 
 def partition_gram(X, W, y):
@@ -93,7 +89,6 @@ def distributed_gram(client, partitions):
     n_total : int
         Total number of observations across all partitions.
     """
-    log.info("distributed_gram: %d partitions → tree-reduce", len(partitions))
     futures = [client.submit(partition_gram, X, W, y) for X, W, y in partitions]
     return tree_reduce(client, futures, _sum_gram_pair)
 

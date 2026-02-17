@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import tempfile
 from collections import defaultdict
@@ -14,6 +13,7 @@ import numpy as np
 import polars as pl
 from distributed import wait
 from scipy import stats
+from tqdm.auto import tqdm
 
 from moderndid.core.dataframe import to_polars
 from moderndid.didtriple.estimators.ddd_mp import (
@@ -34,7 +34,6 @@ from ._streaming import (
 )
 from ._utils import auto_tune_partitions, get_default_partitions
 
-log = logging.getLogger("moderndid.dask.backend")
 _MEMMAP_THRESHOLD = 1 * 1024**3
 _CHUNKED_SE_THRESHOLD = 10_000_000
 _SE_CHUNK_SIZE = 1_000_000
@@ -122,7 +121,6 @@ def dask_ddd_mp(
         n_partitions = get_default_partitions(client)
     is_dask = hasattr(data, "compute")
     if is_dask:
-        log.info("extracting metadata via Dask aggregations")
         t_fut = client.compute(data[time_col].drop_duplicates())
         g_fut = client.compute(data[group_col].drop_duplicates())
         id_fut = client.compute(data[id_col].drop_duplicates())
@@ -135,7 +133,6 @@ def dask_ddd_mp(
 
         dask_data = data.persist()
         wait(dask_data)
-        log.info("persisted Dask DataFrame in worker memory")
     else:
         data = to_polars(data)
         tlist = np.sort(data[time_col].unique().to_numpy())
@@ -151,14 +148,6 @@ def dask_ddd_mp(
     k = len(covariate_cols) + 1 if covariate_cols else 1
     n_partitions = auto_tune_partitions(n_partitions, n_units, k)
 
-    log.info(
-        "dask_ddd_mp: %d units, %d cohorts, %d periods, %d partitions",
-        n_units,
-        n_cohorts,
-        n_periods,
-        n_partitions,
-    )
-
     tfac = 0 if base_period == "universal" else 1
     tlist_length = n_periods - tfac
 
@@ -170,7 +159,6 @@ def dask_ddd_mp(
         memmap_fd, memmap_path = tempfile.mkstemp(suffix=".dat", prefix="ddd_inf_")
         os.close(memmap_fd)
         inf_func_mat = np.memmap(memmap_path, dtype=np.float64, mode="w+", shape=(n_units, n_cols))
-        log.info("allocated memmap inf_func_mat at %s (%.1f GB)", memmap_path, mat_bytes / 1e9)
     else:
         inf_func_mat = np.zeros((n_units, n_cols))
 
@@ -216,8 +204,8 @@ def dask_ddd_mp(
             else:
                 n_workers = len(client.scheduler_info().get("workers", {}))
                 max_workers = min(len(cohort_cells), max(1, n_workers))
-            log.info("processing %d cohorts with %d concurrent workers", len(cohort_cells), max_workers)
 
+            pbar = tqdm(total=total_cells, desc="Cells", unit="cell")
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(
@@ -239,7 +227,7 @@ def dask_ddd_mp(
                         se_array=se_array,
                         n_partitions=n_partitions,
                         glist_raw=glist_raw,
-                        total_cells=total_cells,
+                        pbar=pbar,
                     ): g
                     for g, cells in cohort_cells.items()
                 }
@@ -247,10 +235,9 @@ def dask_ddd_mp(
                 for future in as_completed(futures):
                     cohort_results = future.result()
                     attgt_list.extend(cohort_results)
+            pbar.close()
         else:
-            for counter, (g, t, pret, post_treat, action) in enumerate(cell_specs):
-                log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
-
+            for counter, (g, t, pret, post_treat, action) in enumerate(tqdm(cell_specs, desc="Cells", unit="cell")):
                 if action == "skip":
                     continue
 
@@ -353,7 +340,6 @@ def dask_ddd_mp(
             if isinstance(inf_func_mat, np.memmap):
                 del inf_func_mat
             Path(memmap_path).unlink(missing_ok=True)
-            log.info("cleaned up memmap file %s", memmap_path)
 
     args = {
         "panel": True,
@@ -403,7 +389,7 @@ def _process_cohort_cells(
     se_array,
     n_partitions,
     glist_raw,
-    total_cells,
+    pbar=None,
 ):
     """Process all cells for a single cohort.
 
@@ -442,12 +428,14 @@ def _process_cohort_cells(
                 wide_pdf_futures = client.compute(wide_delayed)
 
                 for counter, g_, t, pret, post_treat, action in cells:
-                    log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g_, t)
-
                     if action == "skip":
+                        if pbar is not None:
+                            pbar.update(1)
                         continue
                     if action == "zero":
                         results.append(ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0))
+                        if pbar is not None:
+                            pbar.update(1)
                         continue
 
                     y_post_col = f"_y_{t}"
@@ -492,19 +480,25 @@ def _process_cohort_cells(
 
                     if att is not None:
                         results.append(ATTgtResult(att=att, group=int(g_), time=int(t), post=post_treat))
+                    if pbar is not None:
+                        pbar.update(1)
             else:
                 for _counter, g_, t, _pret, _post_treat, action in cells:
                     if action == "zero":
                         results.append(ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0))
+                    if pbar is not None:
+                        pbar.update(1)
         else:
             # notyettreated: keep existing per-cell streaming path
             for counter, g, t, pret, post_treat, action in cells:
-                log.info("  cell %d/%d: g=%s, t=%s", counter + 1, total_cells, g, t)
-
                 if action == "skip":
+                    if pbar is not None:
+                        pbar.update(1)
                     continue
                 if action == "zero":
                     results.append(ATTgtResult(att=0.0, group=int(g), time=int(t), post=0))
+                    if pbar is not None:
+                        pbar.update(1)
                     continue
 
                 result = _compute_cell_streaming(
@@ -532,6 +526,8 @@ def _process_cohort_cells(
                 )
                 if result is not None:
                     results.append(result)
+                if pbar is not None:
+                    pbar.update(1)
     finally:
         if wide_dask is not None:
             del wide_dask

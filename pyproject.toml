@@ -55,6 +55,11 @@ plots = [
 numba = [
     "numba>=0.57.0",
 ]
+dask = [
+    "dask[dataframe]>=2024.1.0",
+    "distributed>=2024.1.0",
+    "tqdm>=4.0",
+]
 gpu = [
     "cupy-cuda12x>=13.0",
 ]

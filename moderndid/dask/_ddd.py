@@ -8,8 +8,6 @@ import numpy as np
 
 from ._utils import get_or_create_client, validate_dask_input
 
-log = logging.getLogger("moderndid.dask.backend")
-
 
 def dask_ddd(
     data,
@@ -224,8 +222,7 @@ def dask_ddd(
         raise ValueError("pname is required.")
 
     client = get_or_create_client(client)
-    n_workers = len(client.scheduler_info()["workers"])
-    log.info("dask_ddd: connected to %d workers", n_workers)
+    logging.getLogger("distributed.shuffle").setLevel(logging.ERROR)
 
     required_cols = [yname, tname, gname, pname]
     if idname is not None:
@@ -233,7 +230,6 @@ def dask_ddd(
     validate_dask_input(data, required_cols)
 
     multiple_periods = _detect_multiple_periods_dask(data, tname, gname, client=client)
-    log.info("dask_ddd: multiple_periods=%s", multiple_periods)
 
     if multiple_periods:
         from moderndid.didtriple.utils import get_covariate_names
