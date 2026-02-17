@@ -141,9 +141,13 @@ def ddd(
         using the Dask distributed backend. Each cohort's group-time cells
         are computed concurrently within a thread, so this controls how
         many cohorts share the cluster simultaneously. Higher values
-        increase throughput but require more memory on workers to hold the
-        per-cohort wide-pivoted DataFrames. When ``None``, defaults to the
-        number of Dask workers. Ignored for non-Dask inputs.
+        increase throughput but require more memory on workers to hold
+        the per-cohort wide-pivoted DataFrames. When ``None``, defaults
+        to the number of Dask workers. Ignored for non-Dask inputs.
+
+        For best performance, set this equal to the total number of
+        treatment cohorts so that all cohorts run concurrently. Reduce
+        the value if the cluster runs out of memory.
 
     Returns
     -------
