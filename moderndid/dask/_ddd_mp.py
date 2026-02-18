@@ -1,4 +1,4 @@
-"""Distributed multi-period panel DDD estimator."""
+"""Distributed multi-period DDD estimator."""
 
 from __future__ import annotations
 
@@ -31,6 +31,8 @@ from ._ddd_streaming import (
     _build_partition_arrays_wide,
     streaming_cell_multi_control,
     streaming_cell_single_control,
+    streaming_ddd_rc_cell_multi_control,
+    streaming_ddd_rc_cell_single_control,
 )
 from ._utils import (
     MEMMAP_THRESHOLD,
@@ -76,15 +78,16 @@ def dask_ddd_mp(
     n_partitions=None,
     max_cohorts=None,
     progress_bar=False,
+    panel=True,
 ):
-    """Distributed multi-period doubly robust DDD estimator for panel data.
+    """Distributed multi-period doubly robust DDD estimator.
 
     Parameters
     ----------
     client : distributed.Client
         Dask distributed client.
     data : DataFrame
-        Panel data in long format (Dask or Polars DataFrame).
+        Data in long format (Dask or Polars DataFrame).
     y_col : str
         Outcome variable column name.
     time_col : str
@@ -131,18 +134,24 @@ def dask_ddd_mp(
     if is_dask:
         t_fut = client.compute(data[time_col].drop_duplicates())
         g_fut = client.compute(data[group_col].drop_duplicates())
-        id_fut = client.compute(data[id_col].drop_duplicates())
-        t_vals, g_vals, id_vals = client.gather([t_fut, g_fut, id_fut])
+        t_vals, g_vals = client.gather([t_fut, g_fut])
         tlist = np.sort(t_vals.values)
         glist_raw = g_vals.values
         glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
-        unique_ids = np.sort(id_vals.values)
-        n_units = len(unique_ids)
+
+        if panel:
+            id_fut = client.compute(data[id_col].drop_duplicates())
+            id_vals = client.gather(id_fut)
+            unique_ids = np.sort(id_vals.values)
+            n_units = len(unique_ids)
+        else:
+            n_units = len(data)
+            unique_ids = None
 
         dask_data = data.persist()
         wait(dask_data)
 
-        if not allow_unbalanced_panel:
+        if panel and not allow_unbalanced_panel:
             unit_counts = dask_data.groupby(id_col)[time_col].count().compute()
             complete_ids = unit_counts[unit_counts == len(tlist)].index
             n_dropped = len(unit_counts) - len(complete_ids)
@@ -157,11 +166,16 @@ def dask_ddd_mp(
         tlist = np.sort(data[time_col].unique().to_numpy())
         glist_raw = data[group_col].unique().to_numpy()
         glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
-        n_units = data[id_col].n_unique()
-        unique_ids = np.sort(data[id_col].unique().to_numpy())
+
+        if panel:
+            n_units = data[id_col].n_unique()
+            unique_ids = np.sort(data[id_col].unique().to_numpy())
+        else:
+            n_units = len(data)
+            unique_ids = None
         dask_data = None
 
-        if not allow_unbalanced_panel:
+        if panel and not allow_unbalanced_panel:
             unit_counts = data.group_by(id_col).len()
             complete_units = unit_counts.filter(pl.col("len") == len(tlist))[id_col].to_list()
             n_dropped = unit_counts.height - len(complete_units)
@@ -234,11 +248,13 @@ def dask_ddd_mp(
                 n_workers = len(client.scheduler_info().get("workers", {}))
                 max_workers = min(len(cohort_cells), max(1, n_workers))
 
+            cohort_processor = _process_cohort_cells if panel else _process_cohort_cells_rc
+
             pbar = tqdm(total=total_cells, desc="Cells", unit="cell", disable=not progress_bar)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(
-                        _process_cohort_cells,
+                        cohort_processor,
                         cells=cells,
                         client=client,
                         dask_data=dask_data,
@@ -329,13 +345,16 @@ def dask_ddd_mp(
         n_valid = len(attgt_list)
         inf_func_trimmed = inf_func_mat[:, :n_valid]
 
-        first_period = tlist[0]
-        if is_dask:
-            unit_dask = dask_data.loc[dask_data[time_col] == first_period][[id_col, group_col]]
-            unit_data = to_polars(unit_dask.compute()).sort(id_col)
+        if panel:
+            first_period = tlist[0]
+            if is_dask:
+                unit_dask = dask_data.loc[dask_data[time_col] == first_period][[id_col, group_col]]
+                unit_data = to_polars(unit_dask.compute()).sort(id_col)
+            else:
+                unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
+            unit_groups = unit_data[group_col].to_numpy()
         else:
-            unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
-        unit_groups = unit_data[group_col].to_numpy()
+            unit_groups = None
 
         if boot:
             splits = np.array_split(np.arange(n_units), n_partitions)
@@ -378,7 +397,7 @@ def dask_ddd_mp(
             Path(memmap_path).unlink(missing_ok=True)
 
     args = {
-        "panel": True,
+        "panel": panel,
         "allow_unbalanced_panel": allow_unbalanced_panel,
         "yname": y_col,
         "pname": partition_col,
@@ -577,6 +596,139 @@ def _process_cohort_cells(
     finally:
         if wide_dask is not None:
             del wide_dask
+
+    return results
+
+
+def _process_cohort_cells_rc(
+    cells,
+    client,
+    dask_data,
+    control_group,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    partition_col,
+    covariate_cols,
+    est_method,
+    weightsname=None,
+    n_units=0,
+    unique_ids=None,
+    inf_func_mat=None,
+    se_array=None,
+    n_partitions=1,
+    glist_raw=None,
+    trim_level=0.995,
+    pbar=None,
+):
+    """Process all cells for a single cohort using repeated cross-section."""
+    results = []
+
+    for counter, g, t, pret, post_treat, action in cells:
+        if action == "skip":
+            if pbar is not None:
+                pbar.update(1)
+            continue
+        if action == "zero":
+            results.append((counter, ATTgtResult(att=0.0, group=int(g), time=int(t), post=0)))
+            if pbar is not None:
+                pbar.update(1)
+            continue
+
+        if control_group == "nevertreated":
+            att = streaming_ddd_rc_cell_single_control(
+                client,
+                dask_data,
+                g,
+                t,
+                pret,
+                time_col,
+                group_col,
+                id_col,
+                y_col,
+                partition_col,
+                covariate_cols,
+                est_method,
+                n_partitions,
+                n_units,
+                inf_func_mat,
+                counter,
+                trim_level=trim_level,
+                weightsname=weightsname,
+            )
+            if att is not None:
+                results.append((counter, ATTgtResult(att=att, group=int(g), time=int(t), post=post_treat)))
+        else:
+            max_period = max(t, pret)
+            if glist_raw is None:
+                glist_raw = dask_data[group_col].drop_duplicates().compute().values
+            available_controls = sorted(
+                [int(c) for c in glist_raw if c != g and (c == 0 or c > max_period) and np.isfinite(c)]
+            )
+
+            if len(available_controls) == 0:
+                if pbar is not None:
+                    pbar.update(1)
+                continue
+
+            if len(available_controls) == 1:
+                att = streaming_ddd_rc_cell_single_control(
+                    client,
+                    dask_data,
+                    g,
+                    t,
+                    pret,
+                    time_col,
+                    group_col,
+                    id_col,
+                    y_col,
+                    partition_col,
+                    covariate_cols,
+                    est_method,
+                    n_partitions,
+                    n_units,
+                    inf_func_mat,
+                    counter,
+                    trim_level=trim_level,
+                    control_group=control_group,
+                    weightsname=weightsname,
+                )
+                if att is not None:
+                    results.append((counter, ATTgtResult(att=att, group=int(g), time=int(t), post=post_treat)))
+            else:
+                result = streaming_ddd_rc_cell_multi_control(
+                    client,
+                    dask_data,
+                    g,
+                    t,
+                    pret,
+                    available_controls,
+                    time_col,
+                    group_col,
+                    id_col,
+                    y_col,
+                    partition_col,
+                    covariate_cols,
+                    est_method,
+                    n_partitions,
+                    n_units,
+                    inf_func_mat,
+                    counter,
+                    trim_level=trim_level,
+                    weightsname=weightsname,
+                )
+
+                if result is not None:
+                    if isinstance(result, tuple):
+                        att_gmm, se_gmm = result
+                        se_array[counter] = se_gmm
+                    else:
+                        att_gmm = result
+                    results.append((counter, ATTgtResult(att=att_gmm, group=int(g), time=int(t), post=post_treat)))
+
+        if pbar is not None:
+            pbar.update(1)
 
     return results
 

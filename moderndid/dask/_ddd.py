@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from ._utils import detect_multiple_periods, get_or_create_client, validate_dask_input
+from ._utils import get_or_create_client, validate_dask_input
 
 
 def dask_ddd(
@@ -26,6 +26,7 @@ def dask_ddd(
     cluster=None,
     alpha=0.05,
     trim_level=0.995,
+    panel=True,
     allow_unbalanced_panel=False,
     random_state=None,
     n_partitions=None,
@@ -35,10 +36,8 @@ def dask_ddd(
     r"""Compute the distributed triple difference-in-differences estimator.
 
     Distributed implementation of the DDD estimator from [1]_ for datasets
-    that exceed single-machine memory. This function accepts a Dask DataFrame,
-    automatically detects whether the data has two periods or multiple periods
-    with staggered adoption, and dispatches to the appropriate distributed
-    estimator.
+    that exceed single-machine memory. This function accepts a Dask DataFrame
+    and dispatches to the distributed multi-period estimator.
 
     The underlying methodology is identical to :func:`~moderndid.ddd`: for each
     group-time cell :math:`(g,t)`, the estimator computes
@@ -63,10 +62,11 @@ def dask_ddd(
     Parameters
     ----------
     data : dask.dataframe.DataFrame
-        Panel data in long format as a Dask DataFrame. Each partition should
-        contain complete observations (all columns) for a subset of units.
-        Use ``dask.dataframe.read_parquet``, ``dask.dataframe.read_csv``, or
-        ``dask.dataframe.from_pandas`` to construct the input.
+        Data in long format as a Dask DataFrame. Each partition should
+        contain complete observations (all columns) for a subset of
+        units or individuals. Use ``dask.dataframe.read_parquet``,
+        ``dask.dataframe.read_csv``, or ``dask.dataframe.from_pandas``
+        to construct the input.
     yname : str
         Name of the outcome variable column.
     tname : str
@@ -128,19 +128,8 @@ def dask_ddd(
 
     Returns
     -------
-    DDDPanelResult or DDDMultiPeriodResult
-        For 2-period data, returns ``DDDPanelResult`` containing:
-
-        - **att**: The DDD point estimate for the ATT
-        - **se**: Standard error
-        - **uci**, **lci**: Confidence interval bounds
-        - **boots**: Bootstrap draws (if requested)
-        - **att_inf_func**: Influence function
-        - **did_atts**: Individual DiD ATT estimates
-        - **subgroup_counts**: Number of units per subgroup
-        - **args**: Estimation arguments
-
-        For multi-period data, returns ``DDDMultiPeriodResult`` containing:
+    DDDMultiPeriodResult
+        Group-time DDD average treatment effect results containing:
 
         - **att**: Array of ATT(g,t) point estimates
         - **se**: Standard errors for each ATT(g,t)
@@ -236,82 +225,35 @@ def dask_ddd(
         required_cols.append(weightsname)
     validate_dask_input(data, required_cols)
 
-    multiple_periods = detect_multiple_periods(data, tname, gname, client=client)
+    from moderndid.didtriple.utils import get_covariate_names
 
-    if multiple_periods:
-        from moderndid.didtriple.utils import get_covariate_names
+    from ._ddd_mp import dask_ddd_mp
 
-        from ._ddd_mp import dask_ddd_mp
+    covariate_cols = get_covariate_names(xformla)
 
-        covariate_cols = get_covariate_names(xformla)
-
-        return dask_ddd_mp(
-            client=client,
-            data=data,
-            y_col=yname,
-            time_col=tname,
-            id_col=idname,
-            group_col=gname,
-            partition_col=pname,
-            covariate_cols=covariate_cols,
-            control_group=control_group,
-            base_period=base_period,
-            est_method=est_method,
-            weightsname=weightsname,
-            boot=boot,
-            biters=biters,
-            cband=cband,
-            cluster=cluster,
-            alpha=alpha,
-            trim_level=trim_level,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            max_cohorts=max_cohorts,
-            progress_bar=progress_bar,
-        )
-
-    # 2-period panel path: compute to numpy and use distributed panel estimator
-    from moderndid.core.dataframe import to_polars
-    from moderndid.core.preprocessing import preprocess_ddd_2periods
-    from moderndid.didtriple.utils import add_intercept
-
-    from ._ddd_panel import dask_ddd_panel
-
-    df = to_polars(data.compute())
-
-    ddd_data = preprocess_ddd_2periods(
-        data=df,
-        yname=yname,
-        tname=tname,
-        idname=idname,
-        gname=gname,
-        pname=pname,
-        xformla=xformla,
+    return dask_ddd_mp(
+        client=client,
+        data=data,
+        y_col=yname,
+        time_col=tname,
+        id_col=idname,
+        group_col=gname,
+        partition_col=pname,
+        covariate_cols=covariate_cols,
+        control_group=control_group,
+        base_period=base_period,
         est_method=est_method,
         weightsname=weightsname,
         boot=boot,
-        boot_type="multiplier",
-        n_boot=biters,
-        cluster=cluster,
-        alp=alpha,
-        inf_func=True,
-    )
-
-    covariates_with_intercept = add_intercept(ddd_data.covariates)
-
-    return dask_ddd_panel(
-        client=client,
-        y1=ddd_data.y1,
-        y0=ddd_data.y0,
-        subgroup=ddd_data.subgroup,
-        covariates=covariates_with_intercept,
-        i_weights=ddd_data.weights,
-        est_method=est_method,
-        boot=boot,
         biters=biters,
-        influence_func=True,
+        cband=cband,
+        cluster=cluster,
         alpha=alpha,
+        trim_level=trim_level,
+        allow_unbalanced_panel=allow_unbalanced_panel,
         random_state=random_state,
         n_partitions=n_partitions,
+        max_cohorts=max_cohorts,
+        progress_bar=progress_bar,
+        panel=panel,
     )

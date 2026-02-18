@@ -1207,3 +1207,858 @@ def _streaming_single_ctrl_for_multi(
         del ids_part, if_part
 
     return ddd_att
+
+
+def streaming_ddd_rc_cell_single_control(
+    client,
+    dask_data,
+    g,
+    t,
+    pret,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    partition_col,
+    covariate_cols,
+    est_method,
+    n_partitions,
+    n_obs,
+    inf_func_mat,
+    counter,
+    trim_level=0.995,
+    weightsname=None,
+):
+    """Streaming DDD RC computation for one (g,t) cell (nevertreated)."""
+    from ._did_streaming import _precompute_did_rc_corrections
+
+    part_futures, n_cell = _prepare_ddd_rc_cell_partitions(
+        client,
+        dask_data,
+        g,
+        t,
+        pret,
+        "nevertreated",
+        time_col,
+        group_col,
+        id_col,
+        y_col,
+        partition_col,
+        covariate_cols,
+        n_partitions,
+        weightsname=weightsname,
+    )
+
+    if part_futures is None or n_cell == 0:
+        return None
+
+    first = part_futures[0].result()
+    if first is None:
+        return None
+    k = first["X"].shape[1]
+
+    ps_betas = {}
+    or_betas_all = {}
+    global_aggs = {}
+    precomps = {}
+
+    def _fit_comparison(comp_sg):
+        if est_method == "reg":
+            ps_b = np.zeros(k, dtype=np.float64)
+        else:
+            ps_b = distributed_logistic_irls_from_futures(
+                client,
+                part_futures,
+                lambda pd, beta, _cs=comp_sg: _partition_ddd_rc_pscore_gram(pd, _cs, beta),
+                k,
+            )
+
+        or_b = {}
+        if est_method == "ipw":
+            for key in ["cont_pre", "cont_post", "treat_pre", "treat_post"]:
+                or_b[key] = np.zeros(k, dtype=np.float64)
+        else:
+            for d_val, post_val, key in [
+                (0, 0, "cont_pre"),
+                (0, 1, "cont_post"),
+                (1, 0, "treat_pre"),
+                (1, 1, "treat_post"),
+            ]:
+                or_b[key] = distributed_wls_from_futures(
+                    client,
+                    part_futures,
+                    lambda pd, _cs=comp_sg, _d=d_val, _p=post_val: _partition_ddd_rc_or_gram(pd, _cs, _d, _p),
+                )
+
+        futures = [
+            client.submit(_partition_ddd_rc_global_stats, pf, comp_sg, ps_b, or_b, est_method, trim_level)
+            for pf in part_futures
+        ]
+        agg = tree_reduce(client, futures, sum_global_stats)
+        if agg is None or agg["n_sub"] == 0:
+            return comp_sg, None, None, None, None
+
+        n_sub = agg["n_sub"]
+        ga = _build_rc_global_agg(agg, n_sub)
+        pc = _precompute_did_rc_corrections(agg, ga, est_method, n_sub, k)
+        return comp_sg, ps_b, or_b, ga, pc
+
+    with _ThreadPoolExecutor(max_workers=3) as pool:
+        futs = [pool.submit(_fit_comparison, cs) for cs in [3, 2, 1]]
+        for f in futs:
+            comp_sg, ps_b, or_b, ga, pc = f.result()
+            ps_betas[comp_sg] = ps_b
+            or_betas_all[comp_sg] = or_b
+            global_aggs[comp_sg] = ga
+            precomps[comp_sg] = pc
+
+    for cs in [3, 2, 1]:
+        if global_aggs[cs] is None:
+            return None
+
+    n3 = global_aggs[3]["n_sub"]
+    n2 = global_aggs[2]["n_sub"]
+    n1 = global_aggs[1]["n_sub"]
+    w3_val = n_cell / n3 if n3 > 0 else 0.0
+    w2_val = n_cell / n2 if n2 > 0 else 0.0
+    w1_val = n_cell / n1 if n1 > 0 else 0.0
+
+    ddd_att = global_aggs[3]["dr_att"] + global_aggs[2]["dr_att"] - global_aggs[1]["dr_att"]
+
+    if_futures = [
+        client.submit(
+            _partition_compute_ddd_rc_if,
+            pf,
+            ps_betas,
+            or_betas_all,
+            global_aggs,
+            precomps,
+            est_method,
+            trim_level,
+            w3_val,
+            w2_val,
+            w1_val,
+        )
+        for pf in part_futures
+    ]
+
+    scale = n_obs / n_cell
+    for fut in as_completed(if_futures):
+        ids_part, if_part = fut.result()
+        if len(ids_part) == 0:
+            continue
+        inf_func_mat[ids_part, counter] = scale * if_part
+        del ids_part, if_part
+
+    return ddd_att
+
+
+def streaming_ddd_rc_cell_multi_control(
+    client,
+    dask_data,
+    g,
+    t,
+    pret,
+    available_controls,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    partition_col,
+    covariate_cols,
+    est_method,
+    n_partitions,
+    n_obs,
+    inf_func_mat,
+    counter,
+    trim_level=0.995,
+    weightsname=None,
+):
+    """Streaming DDD RC computation for one cell with multiple controls (notyettreated)."""
+    from moderndid.didtriple.estimators.ddd_mp import _gmm_aggregate
+
+    if len(available_controls) == 1:
+        ctrl = available_controls[0]
+        group_filter = (dask_data[group_col] == ctrl) | (dask_data[group_col] == g)
+        filtered = dask_data.loc[group_filter]
+        part_futures, n_cell = _prepare_ddd_rc_cell_partitions(
+            client,
+            filtered,
+            g,
+            t,
+            pret,
+            "nevertreated",
+            time_col,
+            group_col,
+            id_col,
+            y_col,
+            partition_col,
+            covariate_cols,
+            n_partitions,
+            weightsname=weightsname,
+            pre_filtered=True,
+        )
+        if part_futures is None or n_cell == 0:
+            return None
+        return _ddd_rc_single_from_parts(
+            client,
+            part_futures,
+            n_cell,
+            n_obs,
+            inf_func_mat,
+            counter,
+            est_method,
+            trim_level,
+        )
+
+    max_period = max(t, pret)
+    full_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
+    filtered = dask_data.loc[full_filter]
+
+    all_part_futures, n_all = _prepare_ddd_rc_cell_partitions(
+        client,
+        filtered,
+        g,
+        t,
+        pret,
+        "nevertreated",
+        time_col,
+        group_col,
+        id_col,
+        y_col,
+        partition_col,
+        covariate_cols,
+        n_partitions,
+        weightsname=weightsname,
+        pre_filtered=True,
+    )
+
+    if all_part_futures is None or n_all == 0:
+        return None
+
+    ddd_results = []
+    inf_funcs_local = []
+
+    for ctrl in available_controls:
+        ctrl_part_futures = [client.submit(_filter_rc_partition_for_ctrl, pf, g, ctrl) for pf in all_part_futures]
+
+        first = ctrl_part_futures[0].result()
+        if first is None:
+            continue
+
+        result = _ddd_rc_single_from_parts_collect(client, ctrl_part_futures, est_method, trim_level)
+        if result is None:
+            continue
+
+        att_ctrl, inf_full, n_subset = result
+        ddd_results.append(att_ctrl)
+        inf_scaled = (n_all / n_subset) * inf_full if n_subset > 0 else inf_full
+        inf_funcs_local.append(inf_scaled)
+
+    if len(ddd_results) == 0:
+        return None
+
+    att_gmm, if_gmm, se_gmm = _gmm_aggregate(
+        np.array(ddd_results),
+        np.column_stack(inf_funcs_local),
+        n_obs,
+    )
+
+    scale = n_obs / n_all
+    for pf in all_part_futures:
+        pd = pf.result()
+        if pd is None:
+            continue
+        ids = pd["ids"]
+        valid_ids = ids[ids < len(if_gmm)]
+        inf_func_mat[valid_ids, counter] = scale * if_gmm[valid_ids]
+
+    return att_gmm, se_gmm
+
+
+def _prepare_ddd_rc_cell_partitions(
+    client,
+    dask_data,
+    g,
+    t,
+    pret,
+    control_group,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    partition_col,
+    covariate_cols,
+    n_partitions,
+    weightsname=None,
+    pre_filtered=False,
+):
+    """Concatenate post/pre periods for DDD RC, returning partition futures."""
+    if not pre_filtered:
+        max_period = max(t, pret)
+        if control_group == "nevertreated":
+            group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
+        else:
+            group_filter = (
+                (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
+            )
+        filtered = dask_data.loc[group_filter]
+    else:
+        filtered = dask_data
+
+    time_filter = (filtered[time_col] == t) | (filtered[time_col] == pret)
+    concat_dask = filtered.loc[time_filter]
+    concat_dask = concat_dask.assign(_post=(concat_dask[time_col] == t).astype(int))
+
+    keep_cols = [id_col, group_col, partition_col, y_col, "_post"]
+    if weightsname is not None:
+        keep_cols.append(weightsname)
+    if covariate_cols:
+        keep_cols = keep_cols + [c for c in covariate_cols if c not in keep_cols]
+
+    concat_dask = concat_dask[keep_cols]
+    concat_dask = concat_dask.reset_index(drop=True)
+    concat_dask = concat_dask.repartition(npartitions=n_partitions).persist()
+    wait(concat_dask)
+
+    n_cell = len(concat_dask)
+    if n_cell == 0:
+        return None, 0
+
+    partition_lengths = concat_dask.map_partitions(len).compute()
+    offsets = np.cumsum([0, *list(partition_lengths.values)[:-1]])
+
+    delayed_parts = concat_dask.to_delayed()
+    pdf_futures = client.compute(delayed_parts)
+    part_futures = [
+        client.submit(
+            _build_ddd_rc_partition_arrays,
+            pdf_f,
+            offset,
+            y_col,
+            group_col,
+            partition_col,
+            g,
+            covariate_cols,
+            weightsname,
+        )
+        for pdf_f, offset in zip(pdf_futures, offsets, strict=False)
+    ]
+
+    return part_futures, n_cell
+
+
+def _build_ddd_rc_partition_arrays(
+    concat_pdf,
+    offset,
+    y_col,
+    group_col,
+    partition_col,
+    g,
+    covariate_cols,
+    weightsname=None,
+):
+    """Convert one concatenated pandas partition to numpy arrays for DDD RC."""
+    if len(concat_pdf) == 0:
+        return None
+
+    n = len(concat_pdf)
+    ids = np.arange(offset, offset + n, dtype=np.int64)
+    y = concat_pdf[y_col].values.astype(np.float64)
+    post = concat_pdf["_post"].values.astype(np.float64)
+    groups = concat_pdf[group_col].values
+    parts = concat_pdf[partition_col].values
+
+    treat = (groups == g).astype(np.int64)
+    part = parts.astype(np.int64)
+    subgroup = 4 * treat * part + 3 * treat * (1 - part) + 2 * (1 - treat) * part + 1 * (1 - treat) * (1 - part)
+
+    if covariate_cols:
+        cov = concat_pdf[covariate_cols].values.astype(np.float64)
+        X = np.hstack([np.ones((n, 1), dtype=np.float64), cov])
+    else:
+        X = np.ones((n, 1), dtype=np.float64)
+
+    if weightsname is not None and weightsname in concat_pdf.columns:
+        weights = concat_pdf[weightsname].values.astype(np.float64)
+    else:
+        weights = np.ones(n, dtype=np.float64)
+
+    return {
+        "ids": ids,
+        "y": y,
+        "post": post,
+        "subgroup": subgroup,
+        "X": X,
+        "n": n,
+        "weights": weights,
+        "groups_raw": groups,
+        "parts_raw": parts,
+    }
+
+
+def _filter_rc_partition_for_ctrl(part_data, g, ctrl):
+    """Filter RC partition to keep only treated cohort and one control."""
+    if part_data is None:
+        return None
+
+    groups = part_data["groups_raw"]
+    mask = (groups == g) | (groups == ctrl)
+    if not np.any(mask):
+        return None
+
+    parts = part_data["parts_raw"][mask]
+    treat = (groups[mask] == g).astype(np.int64)
+    part = parts.astype(np.int64)
+    subgroup = 4 * treat * part + 3 * treat * (1 - part) + 2 * (1 - treat) * part + 1 * (1 - treat) * (1 - part)
+
+    return {
+        "ids": part_data["ids"][mask],
+        "y": part_data["y"][mask],
+        "post": part_data["post"][mask],
+        "subgroup": subgroup,
+        "X": part_data["X"][mask],
+        "n": int(np.sum(mask)),
+        "weights": part_data["weights"][mask],
+        "groups_raw": groups[mask],
+        "parts_raw": parts,
+    }
+
+
+def _partition_ddd_rc_pscore_gram(part_data, comp_sg, beta):
+    """IRLS Gram for P(sg==4|sg in {4,comp_sg}, X) on RC partition."""
+    if part_data is None:
+        return None
+    sg = part_data["subgroup"]
+    mask = (sg == 4) | (sg == comp_sg)
+    if not np.any(mask):
+        return None
+
+    X = part_data["X"][mask]
+    w = part_data["weights"][mask]
+    pa4 = (sg[mask] == 4).astype(np.float64)
+
+    eta = X @ beta
+    mu = 1.0 / (1.0 + np.exp(-eta))
+    mu = np.clip(mu, 1e-10, 1 - 1e-10)
+    W_irls = w * mu * (1 - mu)
+    z = eta + (pa4 - mu) / (mu * (1 - mu))
+    XtW = X.T * W_irls
+    return XtW @ X, XtW @ z, int(np.sum(mask))
+
+
+def _partition_ddd_rc_or_gram(part_data, comp_sg, d_val, post_val):
+    """WLS Gram for Y on X in a (D,post) cell within comparison pair."""
+    if part_data is None:
+        return None
+    sg = part_data["subgroup"]
+    post = part_data["post"]
+    mask_pair = (sg == 4) | (sg == comp_sg)
+    pa4 = (sg == 4).astype(np.float64)
+    D = pa4
+    cell_mask = mask_pair & (d_val == D) & (post == post_val)
+    if not np.any(cell_mask):
+        return None
+
+    X = part_data["X"][cell_mask]
+    y = part_data["y"][cell_mask]
+    W = part_data["weights"][cell_mask]
+    XtW = X.T * W
+    return XtW @ X, XtW @ y, int(np.sum(cell_mask))
+
+
+def _partition_ddd_rc_global_stats(part_data, comp_sg, ps_beta, or_betas, est_method, trim_level):
+    """Compute RC global stats for one partition for one DDD comparison."""
+    if part_data is None:
+        return None
+    sg = part_data["subgroup"]
+    mask = (sg == 4) | (sg == comp_sg)
+    if not np.any(mask):
+        return None
+
+    X = part_data["X"][mask]
+    y = part_data["y"][mask]
+    post = part_data["post"][mask]
+    sub_sg = sg[mask]
+    n_sub = int(np.sum(mask))
+    k = X.shape[1]
+    obs_w = part_data["weights"][mask]
+    pa4 = (sub_sg == 4).astype(np.float64)
+    pa_comp = (sub_sg == comp_sg).astype(np.float64)
+
+    if est_method == "reg":
+        pscore = np.ones(n_sub, dtype=np.float64)
+        keep_ps = np.ones(n_sub, dtype=np.float64)
+    else:
+        eta = X @ ps_beta
+        pscore = 1.0 / (1.0 + np.exp(-eta))
+        pscore = np.clip(pscore, 1e-10, 1 - 1e-10)
+        pscore = np.minimum(pscore, 1 - 1e-6)
+        keep_ps = np.ones(n_sub, dtype=np.float64)
+        keep_ps[pa4 == 0] = (pscore[pa4 == 0] < trim_level).astype(np.float64)
+
+    if est_method == "ipw":
+        out_cp = out_cpo = out_tp = out_tpo = np.zeros(n_sub, dtype=np.float64)
+    else:
+        out_cp = X @ or_betas["cont_pre"]
+        out_cpo = X @ or_betas["cont_post"]
+        out_tp = X @ or_betas["treat_pre"]
+        out_tpo = X @ or_betas["treat_post"]
+
+    out_y_cont = post * out_cpo + (1 - post) * out_cp
+
+    w_treat_pre = keep_ps * obs_w * pa4 * (1 - post)
+    w_treat_post = keep_ps * obs_w * pa4 * post
+    if est_method == "reg":
+        w_cont_pre = keep_ps * obs_w * pa_comp * (1 - post)
+        w_cont_post = keep_ps * obs_w * pa_comp * post
+    else:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            w_cont_pre = keep_ps * obs_w * pscore * pa_comp * (1 - post) / (1 - pscore)
+            w_cont_post = keep_ps * obs_w * pscore * pa_comp * post / (1 - pscore)
+        w_cont_pre = np.nan_to_num(w_cont_pre)
+        w_cont_post = np.nan_to_num(w_cont_post)
+
+    w_d = keep_ps * obs_w * pa4
+    w_dt1 = keep_ps * obs_w * pa4 * post
+    w_dt0 = keep_ps * obs_w * pa4 * (1 - post)
+
+    result = {
+        "sum_w_treat_pre": float(np.sum(w_treat_pre)),
+        "sum_w_treat_post": float(np.sum(w_treat_post)),
+        "sum_w_cont_pre": float(np.sum(w_cont_pre)),
+        "sum_w_cont_post": float(np.sum(w_cont_post)),
+        "sum_w_d": float(np.sum(w_d)),
+        "sum_w_dt1": float(np.sum(w_dt1)),
+        "sum_w_dt0": float(np.sum(w_dt0)),
+        "sum_eta_treat_pre": float(np.sum(w_treat_pre * (y - out_y_cont))),
+        "sum_eta_treat_post": float(np.sum(w_treat_post * (y - out_y_cont))),
+        "sum_eta_cont_pre": float(np.sum(w_cont_pre * (y - out_y_cont))),
+        "sum_eta_cont_post": float(np.sum(w_cont_post * (y - out_y_cont))),
+        "sum_eta_d_post": float(np.sum(w_d * (out_tpo - out_cpo))),
+        "sum_eta_dt1_post": float(np.sum(w_dt1 * (out_tpo - out_cpo))),
+        "sum_eta_d_pre": float(np.sum(w_d * (out_tp - out_cp))),
+        "sum_eta_dt0_pre": float(np.sum(w_dt0 * (out_tp - out_cp))),
+        "n_sub": n_sub,
+    }
+
+    for d_val, post_val, key_prefix in [
+        (0, 0, "or_xpx_cont_pre"),
+        (0, 1, "or_xpx_cont_post"),
+        (1, 0, "or_xpx_treat_pre"),
+        (1, 1, "or_xpx_treat_post"),
+    ]:
+        D = pa4
+        cell_mask = (d_val == D) & (post == post_val)
+        cell_w = obs_w[cell_mask]
+        cell_X = X[cell_mask]
+        result[key_prefix] = (cell_w[:, None] * cell_X).T @ cell_X
+
+    if est_method != "reg":
+        W_info = obs_w * pscore * (1 - pscore)
+        result["info_gram"] = (W_info[:, None] * X).T @ X
+    else:
+        result["info_gram"] = np.zeros((k, k), dtype=np.float64)
+
+    result["sum_wt_post_X"] = np.sum((w_treat_post * post)[:, None] * X, axis=0)
+    result["sum_wt_pre_X"] = np.sum((w_treat_pre * (1 - post))[:, None] * X, axis=0)
+    result["sum_wc_post_y_cont_X"] = np.sum((w_cont_post * (y - out_y_cont))[:, None] * X, axis=0)
+    result["sum_wc_pre_y_cont_X"] = np.sum((w_cont_pre * (y - out_y_cont))[:, None] * X, axis=0)
+    result["sum_wc_post_post_X"] = np.sum((w_cont_post * post)[:, None] * X, axis=0)
+    result["sum_wc_pre_1mp_X"] = np.sum((w_cont_pre * (1 - post))[:, None] * X, axis=0)
+    result["sum_wc_post_X"] = np.sum(w_cont_post[:, None] * X, axis=0)
+    result["sum_wc_pre_X"] = np.sum(w_cont_pre[:, None] * X, axis=0)
+    result["sum_wd_X"] = np.sum(w_d[:, None] * X, axis=0)
+    result["sum_wdt1_X"] = np.sum(w_dt1[:, None] * X, axis=0)
+    result["sum_wdt0_X"] = np.sum(w_dt0[:, None] * X, axis=0)
+
+    return result
+
+
+def _partition_compute_ddd_rc_if(
+    part_data,
+    ps_betas,
+    or_betas_all,
+    global_aggs,
+    precomps,
+    est_method,
+    trim_level,
+    w3,
+    w2,
+    w1,
+):
+    """Compute combined DDD RC influence function for all 3 comparisons."""
+    if part_data is None:
+        return np.array([], dtype=np.int64), np.array([], dtype=np.float64)
+
+    from ._did_streaming import _partition_compute_did_rc_if
+
+    ids = part_data["ids"]
+    n_part = part_data["n"]
+    sg = part_data["subgroup"]
+    ddd_if = np.zeros(n_part, dtype=np.float64)
+
+    for comp_sg, weight_sign in [(3, w3), (2, w2), (1, -w1)]:
+        mask = (sg == 4) | (sg == comp_sg)
+        if not np.any(mask):
+            continue
+        ga = global_aggs[comp_sg]
+        if ga is None:
+            continue
+
+        pa4 = (sg[mask] == 4).astype(np.float64)
+        sub_part = {
+            "ids": ids[mask],
+            "y": part_data["y"][mask],
+            "post": part_data["post"][mask],
+            "D": pa4,
+            "X": part_data["X"][mask],
+            "n": int(np.sum(mask)),
+            "weights": part_data["weights"][mask],
+        }
+
+        _, sub_if = _partition_compute_did_rc_if(
+            sub_part,
+            ps_betas[comp_sg],
+            or_betas_all[comp_sg],
+            ga,
+            precomps[comp_sg],
+            est_method,
+            trim_level,
+        )
+
+        inf_full = np.zeros(n_part, dtype=np.float64)
+        inf_full[mask] = sub_if
+        ddd_if += weight_sign * inf_full
+
+    return ids, ddd_if
+
+
+def _ddd_rc_single_from_parts(client, part_futures, n_cell, n_obs, inf_func_mat, counter, est_method, trim_level):
+    """Run DDD RC estimation from pre-built part_futures and write to inf_func_mat."""
+    from ._did_streaming import _precompute_did_rc_corrections
+
+    first = part_futures[0].result()
+    if first is None:
+        return None
+    k = first["X"].shape[1]
+
+    ps_betas, or_betas_all, global_aggs, precomps = {}, {}, {}, {}
+
+    def _fit_comparison(comp_sg):
+        if est_method == "reg":
+            ps_b = np.zeros(k, dtype=np.float64)
+        else:
+            ps_b = distributed_logistic_irls_from_futures(
+                client,
+                part_futures,
+                lambda pd, beta, _cs=comp_sg: _partition_ddd_rc_pscore_gram(pd, _cs, beta),
+                k,
+            )
+        or_b = {}
+        if est_method == "ipw":
+            for key in ["cont_pre", "cont_post", "treat_pre", "treat_post"]:
+                or_b[key] = np.zeros(k, dtype=np.float64)
+        else:
+            for d_val, post_val, key in [
+                (0, 0, "cont_pre"),
+                (0, 1, "cont_post"),
+                (1, 0, "treat_pre"),
+                (1, 1, "treat_post"),
+            ]:
+                or_b[key] = distributed_wls_from_futures(
+                    client,
+                    part_futures,
+                    lambda pd, _cs=comp_sg, _d=d_val, _p=post_val: _partition_ddd_rc_or_gram(pd, _cs, _d, _p),
+                )
+        futures = [
+            client.submit(_partition_ddd_rc_global_stats, pf, comp_sg, ps_b, or_b, est_method, trim_level)
+            for pf in part_futures
+        ]
+        agg = tree_reduce(client, futures, sum_global_stats)
+        if agg is None or agg["n_sub"] == 0:
+            return comp_sg, None, None, None, None
+        n_sub = agg["n_sub"]
+        ga = _build_rc_global_agg(agg, n_sub)
+        pc = _precompute_did_rc_corrections(agg, ga, est_method, n_sub, k)
+        return comp_sg, ps_b, or_b, ga, pc
+
+    with _ThreadPoolExecutor(max_workers=3) as pool:
+        futs = [pool.submit(_fit_comparison, cs) for cs in [3, 2, 1]]
+        for f in futs:
+            comp_sg, ps_b, or_b, ga, pc = f.result()
+            ps_betas[comp_sg] = ps_b
+            or_betas_all[comp_sg] = or_b
+            global_aggs[comp_sg] = ga
+            precomps[comp_sg] = pc
+
+    for cs in [3, 2, 1]:
+        if global_aggs[cs] is None:
+            return None
+
+    n3, n2, n1 = global_aggs[3]["n_sub"], global_aggs[2]["n_sub"], global_aggs[1]["n_sub"]
+    w3_val = n_cell / n3 if n3 > 0 else 0.0
+    w2_val = n_cell / n2 if n2 > 0 else 0.0
+    w1_val = n_cell / n1 if n1 > 0 else 0.0
+
+    ddd_att = global_aggs[3]["dr_att"] + global_aggs[2]["dr_att"] - global_aggs[1]["dr_att"]
+
+    if_futures = [
+        client.submit(
+            _partition_compute_ddd_rc_if,
+            pf,
+            ps_betas,
+            or_betas_all,
+            global_aggs,
+            precomps,
+            est_method,
+            trim_level,
+            w3_val,
+            w2_val,
+            w1_val,
+        )
+        for pf in part_futures
+    ]
+
+    scale = n_obs / n_cell
+    for fut in as_completed(if_futures):
+        ids_part, if_part = fut.result()
+        if len(ids_part) == 0:
+            continue
+        inf_func_mat[ids_part, counter] = scale * if_part
+        del ids_part, if_part
+
+    return ddd_att
+
+
+def _ddd_rc_single_from_parts_collect(client, part_futures, est_method, trim_level):
+    """Like _ddd_rc_single_from_parts but collects IF instead of writing to matrix."""
+    from ._did_streaming import _precompute_did_rc_corrections
+
+    first = part_futures[0].result()
+    if first is None:
+        return None
+    k = first["X"].shape[1]
+
+    ps_betas, or_betas_all, global_aggs, precomps = {}, {}, {}, {}
+
+    def _fit_comparison(comp_sg):
+        if est_method == "reg":
+            ps_b = np.zeros(k, dtype=np.float64)
+        else:
+            ps_b = distributed_logistic_irls_from_futures(
+                client,
+                part_futures,
+                lambda pd, beta, _cs=comp_sg: _partition_ddd_rc_pscore_gram(pd, _cs, beta),
+                k,
+            )
+        or_b = {}
+        if est_method == "ipw":
+            for key in ["cont_pre", "cont_post", "treat_pre", "treat_post"]:
+                or_b[key] = np.zeros(k, dtype=np.float64)
+        else:
+            for d_val, post_val, key in [
+                (0, 0, "cont_pre"),
+                (0, 1, "cont_post"),
+                (1, 0, "treat_pre"),
+                (1, 1, "treat_post"),
+            ]:
+                or_b[key] = distributed_wls_from_futures(
+                    client,
+                    part_futures,
+                    lambda pd, _cs=comp_sg, _d=d_val, _p=post_val: _partition_ddd_rc_or_gram(pd, _cs, _d, _p),
+                )
+        futures = [
+            client.submit(_partition_ddd_rc_global_stats, pf, comp_sg, ps_b, or_b, est_method, trim_level)
+            for pf in part_futures
+        ]
+        agg = tree_reduce(client, futures, sum_global_stats)
+        if agg is None or agg["n_sub"] == 0:
+            return comp_sg, None, None, None, None
+        n_sub = agg["n_sub"]
+        ga = _build_rc_global_agg(agg, n_sub)
+        pc = _precompute_did_rc_corrections(agg, ga, est_method, n_sub, k)
+        return comp_sg, ps_b, or_b, ga, pc
+
+    with _ThreadPoolExecutor(max_workers=3) as pool:
+        futs = [pool.submit(_fit_comparison, cs) for cs in [3, 2, 1]]
+        for f in futs:
+            comp_sg, ps_b, or_b, ga, pc = f.result()
+            ps_betas[comp_sg] = ps_b
+            or_betas_all[comp_sg] = or_b
+            global_aggs[comp_sg] = ga
+            precomps[comp_sg] = pc
+
+    for cs in [3, 2, 1]:
+        if global_aggs[cs] is None:
+            return None
+
+    n_total = sum(f.result()["n"] for f in part_futures if f.result() is not None)
+    n3, n2, n1 = global_aggs[3]["n_sub"], global_aggs[2]["n_sub"], global_aggs[1]["n_sub"]
+    w3_val = n_total / n3 if n3 > 0 else 0.0
+    w2_val = n_total / n2 if n2 > 0 else 0.0
+    w1_val = n_total / n1 if n1 > 0 else 0.0
+
+    ddd_att = global_aggs[3]["dr_att"] + global_aggs[2]["dr_att"] - global_aggs[1]["dr_att"]
+
+    if_futures = [
+        client.submit(
+            _partition_compute_ddd_rc_if,
+            pf,
+            ps_betas,
+            or_betas_all,
+            global_aggs,
+            precomps,
+            est_method,
+            trim_level,
+            w3_val,
+            w2_val,
+            w1_val,
+        )
+        for pf in part_futures
+    ]
+
+    inf_full = np.zeros(n_total, dtype=np.float64)
+    for fut in as_completed(if_futures):
+        ids_part, if_part = fut.result()
+        if len(ids_part) == 0:
+            continue
+        inf_full[ids_part] = if_part
+
+    return ddd_att, inf_full, n_total
+
+
+def _build_rc_global_agg(agg, n_sub):
+    """Build global aggregation dict from raw sums."""
+    mw = {}
+    for key in ["treat_pre", "treat_post", "cont_pre", "cont_post", "d", "dt1", "dt0"]:
+        mw[key] = agg[f"sum_w_{key}"] / n_sub
+
+    def _att(sum_key, w_key):
+        return (agg[sum_key] / n_sub) / mw[w_key] if mw[w_key] > 0 else 0.0
+
+    return {
+        "mean_w_treat_pre": mw["treat_pre"],
+        "mean_w_treat_post": mw["treat_post"],
+        "mean_w_cont_pre": mw["cont_pre"],
+        "mean_w_cont_post": mw["cont_post"],
+        "mean_w_d": mw["d"],
+        "mean_w_dt1": mw["dt1"],
+        "mean_w_dt0": mw["dt0"],
+        "att_treat_pre": _att("sum_eta_treat_pre", "treat_pre"),
+        "att_treat_post": _att("sum_eta_treat_post", "treat_post"),
+        "att_cont_pre": _att("sum_eta_cont_pre", "cont_pre"),
+        "att_cont_post": _att("sum_eta_cont_post", "cont_post"),
+        "att_d_post": _att("sum_eta_d_post", "d"),
+        "att_dt1_post": _att("sum_eta_dt1_post", "dt1"),
+        "att_d_pre": _att("sum_eta_d_pre", "d"),
+        "att_dt0_pre": _att("sum_eta_dt0_pre", "dt0"),
+        "n_sub": n_sub,
+        "dr_att": (
+            _att("sum_eta_treat_post", "treat_post")
+            - _att("sum_eta_treat_pre", "treat_pre")
+            - (_att("sum_eta_cont_post", "cont_post") - _att("sum_eta_cont_pre", "cont_pre"))
+            + (_att("sum_eta_d_post", "d") - _att("sum_eta_dt1_post", "dt1"))
+            - (_att("sum_eta_d_pre", "d") - _att("sum_eta_dt0_pre", "dt0"))
+        ),
+    }

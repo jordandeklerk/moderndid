@@ -24,106 +24,36 @@ def dask_client():
 
 
 @pytest.fixture(scope="module")
-def mp_dgp_data():
-    return gen_dgp_mult_periods(n=300, dgp_type=1, random_state=42)
+def did_rc_data():
+    return gen_did_scalable(
+        n=200,
+        dgp_type=1,
+        n_periods=4,
+        n_cohorts=2,
+        n_covariates=4,
+        panel=False,
+        random_state=42,
+    )
 
 
 @pytest.fixture(scope="module")
-def did_2period_panel_data():
-    return gen_did_scalable(n=200, dgp_type=1, n_periods=2, n_cohorts=1, panel=True, random_state=42)
+def ddd_rc_data():
+    return gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
 
 
 @pytest.fixture(scope="module")
-def ddd_2period_panel_data():
-    return gen_dgp_scalable(n=200, dgp_type=1, n_periods=2, n_cohorts=1, panel=True, random_state=42)
+def did_2period_rc_data():
+    return gen_did_scalable(n=200, dgp_type=1, n_periods=2, n_cohorts=1, panel=False, random_state=42)
 
 
-def test_ddd_mp_point_estimates_close_to_local(dask_client, mp_dgp_data):
-    data = mp_dgp_data["data"]
-    ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
-
-    local_result = ddd(
-        data=data,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        pname="partition",
-        est_method="reg",
-        random_state=42,
-    )
-
-    dask_result = dask_ddd(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        pname="partition",
-        est_method="reg",
-        random_state=42,
-        client=dask_client,
-    )
-
-    local_order = np.lexsort((local_result.times, local_result.groups))
-    dask_order = np.lexsort((dask_result.times, dask_result.groups))
-
-    local_att = local_result.att[local_order]
-    dask_att = dask_result.att[dask_order]
-    local_se = local_result.se[local_order]
-    dask_se = dask_result.se[dask_order]
-
-    n_compare = min(len(local_att), len(dask_att))
-    np.testing.assert_allclose(dask_att[:n_compare], local_att[:n_compare], atol=1e-10)
-
-    finite = np.isfinite(local_se[:n_compare]) & np.isfinite(dask_se[:n_compare])
-    np.testing.assert_allclose(dask_se[:n_compare][finite], local_se[:n_compare][finite], atol=1e-10)
+@pytest.fixture(scope="module")
+def ddd_2period_rc_data():
+    return gen_dgp_scalable(n=200, dgp_type=1, n_periods=2, n_cohorts=1, panel=False, random_state=42)
 
 
-def test_ddd_mp_result_structure(dask_client, mp_dgp_data):
-    data = mp_dgp_data["data"]
-    ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
-
-    result = dask_ddd(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        pname="partition",
-        est_method="reg",
-        random_state=42,
-        client=dask_client,
-    )
-
-    assert len(result.att) == len(result.se)
-    assert len(result.att) == len(result.groups)
-    assert len(result.att) == len(result.times)
-    assert result.n > 0
-    assert np.any(np.isfinite(result.se))
-
-
-def test_ddd_mp_dask_dispatch(dask_client, mp_dgp_data):
-    data = mp_dgp_data["data"]
-    ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
-
-    with dask_client.as_current():
-        result = ddd(
-            data=ddf,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="group",
-            pname="partition",
-            est_method="reg",
-        )
-
-    assert len(result.glist) > 0
-    assert len(result.tlist) > 0
-
-
-def test_did_2period_panel_estimates_close_to_local(dask_client, did_2period_panel_data):
-    data = did_2period_panel_data["data"]
+@pytest.mark.parametrize("est_method", ["reg", "dr"])
+def test_did_rc_estimates_close_to_local(dask_client, did_rc_data, est_method):
+    data = did_rc_data["data"]
     ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
 
     local_result = att_gt(
@@ -132,8 +62,9 @@ def test_did_2period_panel_estimates_close_to_local(dask_client, did_2period_pan
         tname="time",
         idname="id",
         gname="group",
-        est_method="reg",
-        panel=True,
+        xformla="~ cov1 + cov2 + cov3 + cov4",
+        est_method=est_method,
+        panel=False,
         random_state=42,
     )
 
@@ -143,8 +74,9 @@ def test_did_2period_panel_estimates_close_to_local(dask_client, did_2period_pan
         tname="time",
         idname="id",
         gname="group",
-        est_method="reg",
-        panel=True,
+        xformla="~ cov1 + cov2 + cov3 + cov4",
+        est_method=est_method,
+        panel=False,
         random_state=42,
         client=dask_client,
     )
@@ -164,8 +96,185 @@ def test_did_2period_panel_estimates_close_to_local(dask_client, did_2period_pan
     np.testing.assert_allclose(dask_se[:n_compare][finite], local_se[:n_compare][finite], atol=1e-10)
 
 
-def test_did_2period_panel_result_structure(dask_client, did_2period_panel_data):
-    data = did_2period_panel_data["data"]
+def test_did_rc_result_structure(dask_client, did_rc_data):
+    data = did_rc_data["data"]
+    ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
+
+    result = dask_att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~ cov1 + cov2 + cov3 + cov4",
+        est_method="reg",
+        panel=False,
+        random_state=42,
+        client=dask_client,
+    )
+
+    assert len(result.att_gt) == len(result.se_gt)
+    assert len(result.att_gt) == len(result.groups)
+    assert len(result.att_gt) == len(result.times)
+    assert result.n_units > 0
+    assert np.any(np.isfinite(result.se_gt))
+    assert result.influence_func.shape[1] == len(result.att_gt)
+
+
+def test_did_rc_dispatch_via_att_gt(dask_client, did_rc_data):
+    data = did_rc_data["data"]
+    ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
+
+    with dask_client.as_current():
+        result = att_gt(
+            data=ddf,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            xformla="~ cov1 + cov2 + cov3 + cov4",
+            est_method="reg",
+            panel=False,
+        )
+
+    assert len(result.groups) > 0
+    assert len(result.times) > 0
+
+
+@pytest.mark.parametrize("est_method", ["reg", "dr"])
+def test_ddd_rc_estimates_close_to_local(dask_client, ddd_rc_data, est_method):
+    data = ddd_rc_data["data"]
+    ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
+
+    local_result = ddd(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method=est_method,
+        panel=False,
+        random_state=42,
+    )
+
+    dask_result = dask_ddd(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method=est_method,
+        panel=False,
+        random_state=42,
+        client=dask_client,
+    )
+
+    local_order = np.lexsort((local_result.times, local_result.groups))
+    dask_order = np.lexsort((dask_result.times, dask_result.groups))
+
+    local_att = local_result.att[local_order]
+    dask_att = dask_result.att[dask_order]
+    local_se = local_result.se[local_order]
+    dask_se = dask_result.se[dask_order]
+
+    n_compare = min(len(local_att), len(dask_att))
+    np.testing.assert_allclose(dask_att[:n_compare], local_att[:n_compare], atol=1e-10)
+
+    finite = np.isfinite(local_se[:n_compare]) & np.isfinite(dask_se[:n_compare])
+    np.testing.assert_allclose(dask_se[:n_compare][finite], local_se[:n_compare][finite], atol=1e-10)
+
+
+def test_ddd_rc_result_structure(dask_client, ddd_rc_data):
+    data = ddd_rc_data["data"]
+    ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
+
+    result = dask_ddd(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method="reg",
+        panel=False,
+        random_state=42,
+        client=dask_client,
+    )
+
+    assert len(result.att) == len(result.se)
+    assert len(result.att) == len(result.groups)
+    assert len(result.att) == len(result.times)
+    assert result.n > 0
+    assert np.any(np.isfinite(result.se))
+    assert result.inf_func_mat.shape[1] == len(result.att)
+
+
+def test_ddd_rc_dispatch_via_ddd(dask_client, ddd_rc_data):
+    data = ddd_rc_data["data"]
+    ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
+
+    with dask_client.as_current():
+        result = ddd(
+            data=ddf,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            est_method="reg",
+            panel=False,
+        )
+
+    assert len(result.glist) > 0
+    assert len(result.tlist) > 0
+
+
+def test_did_2period_rc_estimates_close_to_local(dask_client, did_2period_rc_data):
+    data = did_2period_rc_data["data"]
+    ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
+
+    local_result = att_gt(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="reg",
+        panel=False,
+        random_state=42,
+    )
+
+    dask_result = dask_att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="reg",
+        panel=False,
+        random_state=42,
+        client=dask_client,
+    )
+
+    local_order = np.lexsort((local_result.times, local_result.groups))
+    dask_order = np.lexsort((dask_result.times, dask_result.groups))
+
+    local_att = local_result.att_gt[local_order]
+    dask_att = dask_result.att_gt[dask_order]
+    local_se = local_result.se_gt[local_order]
+    dask_se = dask_result.se_gt[dask_order]
+
+    n_compare = min(len(local_att), len(dask_att))
+    np.testing.assert_allclose(dask_att[:n_compare], local_att[:n_compare], atol=1e-10)
+
+    finite = np.isfinite(local_se[:n_compare]) & np.isfinite(dask_se[:n_compare])
+    np.testing.assert_allclose(dask_se[:n_compare][finite], local_se[:n_compare][finite], atol=1e-10)
+
+
+def test_did_2period_rc_result_structure(dask_client, did_2period_rc_data):
+    data = did_2period_rc_data["data"]
     ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
 
     result = dask_att_gt(
@@ -175,7 +284,7 @@ def test_did_2period_panel_result_structure(dask_client, did_2period_panel_data)
         idname="id",
         gname="group",
         est_method="reg",
-        panel=True,
+        panel=False,
         random_state=42,
         client=dask_client,
     )
@@ -187,8 +296,8 @@ def test_did_2period_panel_result_structure(dask_client, did_2period_panel_data)
     assert len(result.att_gt) >= 1
 
 
-def test_ddd_2period_panel_estimates_close_to_local(dask_client, ddd_2period_panel_data):
-    data = ddd_2period_panel_data["data"]
+def test_ddd_2period_rc_estimates_close_to_local(dask_client, ddd_2period_rc_data):
+    data = ddd_2period_rc_data["data"]
     ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
 
     local_result = ddd(
@@ -199,6 +308,7 @@ def test_ddd_2period_panel_estimates_close_to_local(dask_client, ddd_2period_pan
         gname="group",
         pname="partition",
         est_method="reg",
+        panel=False,
         random_state=42,
     )
 
@@ -210,6 +320,7 @@ def test_ddd_2period_panel_estimates_close_to_local(dask_client, ddd_2period_pan
         gname="group",
         pname="partition",
         est_method="reg",
+        panel=False,
         random_state=42,
         client=dask_client,
     )
@@ -224,8 +335,8 @@ def test_ddd_2period_panel_estimates_close_to_local(dask_client, ddd_2period_pan
     np.testing.assert_allclose(dask_se, local_se, rtol=0.01)
 
 
-def test_ddd_2period_panel_result_structure(dask_client, ddd_2period_panel_data):
-    data = ddd_2period_panel_data["data"]
+def test_ddd_2period_rc_result_structure(dask_client, ddd_2period_rc_data):
+    data = ddd_2period_rc_data["data"]
     ddf = dd.from_pandas(data.to_pandas(), npartitions=4)
 
     result = dask_ddd(
@@ -236,6 +347,7 @@ def test_ddd_2period_panel_result_structure(dask_client, ddd_2period_panel_data)
         gname="group",
         pname="partition",
         est_method="reg",
+        panel=False,
         random_state=42,
         client=dask_client,
     )

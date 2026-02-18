@@ -124,40 +124,6 @@ def get_or_create_client(client=None):
         return Client()
 
 
-def detect_multiple_periods(ddf, tname, gname, client=None):
-    """Detect whether data has more than 2 time periods or treatment groups.
-
-    Parameters
-    ----------
-    ddf : dask.dataframe.DataFrame
-        Dask DataFrame to inspect.
-    tname : str
-        Time period column name.
-    gname : str
-        Treatment group column name.
-    client : distributed.Client or None
-        Dask distributed client.
-
-    Returns
-    -------
-    bool
-        True if there are more than 2 time periods or treatment groups.
-    """
-    if client is not None:
-        t_fut = client.compute(ddf[tname].nunique())
-        g_fut = client.compute(ddf[gname].unique())
-        n_time, gvals = client.gather([t_fut, g_fut])
-        gvals = gvals.values
-    else:
-        n_time = ddf[tname].nunique().compute()
-        gvals = ddf[gname].unique().compute().values
-
-    finite_gvals = [g for g in gvals if np.isfinite(g)]
-    n_groups = len(finite_gvals)
-
-    return max(n_time, n_groups) > 2
-
-
 def sum_global_stats(a, b):
     """Pairwise sum for tree-reduce of global stats dicts.
 

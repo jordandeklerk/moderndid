@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from ._utils import detect_multiple_periods, get_or_create_client, validate_dask_input
+from ._utils import get_or_create_client, validate_dask_input
 
 
 def dask_att_gt(
@@ -19,6 +19,7 @@ def dask_att_gt(
     base_period="varying",
     anticipation=0,
     est_method="dr",
+    panel=True,
     weightsname=None,
     boot=False,
     biters=1000,
@@ -35,10 +36,8 @@ def dask_att_gt(
     r"""Compute the distributed group-time average treatment effects.
 
     Distributed implementation of the DiD estimator from [1]_ for datasets
-    that exceed single-machine memory. This function accepts a Dask DataFrame,
-    automatically detects whether the data has two periods or multiple periods
-    with staggered adoption, and dispatches to the appropriate distributed
-    estimator.
+    that exceed single-machine memory. This function accepts a Dask DataFrame
+    and dispatches to the distributed multi-period estimator.
 
     The underlying methodology is identical to :func:`~moderndid.att_gt`: for
     each group-time cell :math:`(g,t)`, the estimator computes
@@ -57,7 +56,7 @@ def dask_att_gt(
     Parameters
     ----------
     data : dask.dataframe.DataFrame
-        Panel data in long format as a Dask DataFrame.
+        Data in long format as a Dask DataFrame.
     yname : str
         Name of the outcome variable column.
     tname : str
@@ -127,63 +126,35 @@ def dask_att_gt(
                 required_cols.append(cv)
     validate_dask_input(data, required_cols)
 
-    multiple_periods = detect_multiple_periods(data, tname, gname, client=client)
+    from moderndid.core.preprocess.utils import get_covariate_names_from_formula
 
-    if multiple_periods:
-        from moderndid.core.preprocess.utils import get_covariate_names_from_formula
+    from ._did_mp import dask_att_gt_mp
 
-        from ._did_mp import dask_att_gt_mp
+    covariate_cols = get_covariate_names_from_formula(xformla)
 
-        covariate_cols = get_covariate_names_from_formula(xformla)
-
-        return dask_att_gt_mp(
-            client=client,
-            data=data,
-            y_col=yname,
-            time_col=tname,
-            id_col=idname,
-            group_col=gname,
-            covariate_cols=covariate_cols,
-            control_group=control_group,
-            base_period=base_period,
-            anticipation=anticipation,
-            est_method=est_method,
-            weightsname=weightsname,
-            boot=boot,
-            biters=biters,
-            cband=cband,
-            alp=alp,
-            clustervars=clustervars,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            trim_level=trim_level,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            max_cohorts=max_cohorts,
-            progress_bar=progress_bar,
-        )
-
-    from moderndid.core.dataframe import to_polars
-    from moderndid.did.att_gt import att_gt as local_att_gt
-
-    df = to_polars(data.compute())
-
-    return local_att_gt(
-        data=df,
-        yname=yname,
-        tname=tname,
-        idname=idname,
-        gname=gname,
-        xformla=xformla,
-        weightsname=weightsname,
+    return dask_att_gt_mp(
+        client=client,
+        data=data,
+        y_col=yname,
+        time_col=tname,
+        id_col=idname,
+        group_col=gname,
+        covariate_cols=covariate_cols,
         control_group=control_group,
+        base_period=base_period,
         anticipation=anticipation,
         est_method=est_method,
-        base_period=base_period,
-        allow_unbalanced_panel=allow_unbalanced_panel,
-        clustervars=clustervars,
+        weightsname=weightsname,
         boot=boot,
         biters=biters,
         cband=cband,
         alp=alp,
+        clustervars=clustervars,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+        trim_level=trim_level,
         random_state=random_state,
+        n_partitions=n_partitions,
+        max_cohorts=max_cohorts,
+        progress_bar=progress_bar,
+        panel=panel,
     )

@@ -334,6 +334,7 @@ def ddd(
             cluster=cluster,
             alpha=alpha,
             trim_level=trim_level,
+            panel=panel,
             allow_unbalanced_panel=allow_unbalanced_panel,
             random_state=random_state,
             n_partitions=n_partitions,

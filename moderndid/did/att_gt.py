@@ -247,6 +247,7 @@ def att_gt(
             base_period=base_period,
             anticipation=anticipation,
             est_method=est_method,
+            panel=panel,
             weightsname=weightsname,
             boot=boot,
             biters=biters,

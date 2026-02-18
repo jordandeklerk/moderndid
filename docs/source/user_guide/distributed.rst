@@ -17,9 +17,9 @@ This page focuses on practical usage. For internal implementation details, see
 When to use distributed estimation
 ----------------------------------
 
-Distributed estimation is most useful when the panel does not fit in memory
+Distributed estimation is most useful when the dataset does not fit in memory
 on one machine, when local runtime is too long for your iteration cycle, when
-you need to run many model specifications over the same large panel, or when
+you need to run many model specifications over the same large dataset, or when
 you already maintain a Dask cluster for analytics workloads.
 
 Distributed execution has scheduler and communication overhead. If local
@@ -121,13 +121,15 @@ specific cluster, set the client as current via ``client.as_current()``.
 Current support and limits
 --------------------------
 
-The distributed path is designed for panel workflows, with strongest scaling
-in multi-period estimation. When a Dask DataFrame has more than two time
-periods or treatment groups, ``att_gt`` and ``ddd`` use the fully distributed
-cell-level backend. Two-period designs currently materialize the Dask
-DataFrame on the driver and run the local two-period path. This keeps API
-behavior consistent but is not the scaling path for very large two-period
-datasets.
+The distributed path supports both panel data and repeated cross-section
+data, with strongest scaling in multi-period estimation. When a Dask
+DataFrame has more than two time periods or treatment groups, ``att_gt``
+and ``ddd`` use the fully distributed cell-level backend. Set
+``panel=False`` for repeated cross-section data where different individuals
+are observed in each period. Two-period designs currently materialize the
+Dask DataFrame on the driver and run the local two-period path. This keeps
+API behavior consistent but is not the scaling path for very large
+two-period datasets.
 
 The distributed-specific tuning controls are ``n_partitions``,
 ``max_cohorts``, and ``progress_bar`` on high-level wrappers, plus
@@ -145,24 +147,24 @@ defaults to ``True``), so set ``cband=True`` explicitly if you want uniform
 confidence bands.
 
 Some parameters accepted by local wrappers are not yet active in
-distributed dispatch. ``att_gt`` with Dask input ignores ``weightsname``,
-``clustervars``, ``panel``, ``allow_unbalanced_panel``, and ``n_jobs``, and
-does not support callable ``est_method``. ``ddd`` with Dask input ignores
-``weightsname``, ``boot_type``, ``trim_level``, ``panel``,
-``allow_unbalanced_panel``, and ``n_jobs``. The ``cluster`` parameter in
-multi-period distributed ``ddd`` is accepted for API compatibility and result
-metadata but does not change the inference path.
+distributed dispatch. ``att_gt`` with Dask input does not support callable
+``est_method`` or ``n_jobs``. ``ddd`` with Dask input ignores
+``boot_type`` and ``n_jobs``. The ``cluster`` parameter in multi-period
+distributed ``ddd`` is accepted for API compatibility and result metadata
+but does not change the inference path.
 
 
 Preparing input data
 --------------------
 
-The distributed estimators expect a Dask DataFrame in long panel format.
-Include all required columns in the same frame, keep ``time`` and treatment
-group columns numeric, ensure unit identifiers are stable across periods,
-and prefer one record per unit-period for standard panel designs. Loading
-from Parquet is the most reliable path because Parquet preserves column types
-and supports efficient partition pruning.
+The distributed estimators expect a Dask DataFrame in long format. Include
+all required columns in the same frame and keep ``time`` and treatment group
+columns numeric. For panel data (``panel=True``), ensure unit identifiers
+are stable across periods and prefer one record per unit-period. For
+repeated cross-section data (``panel=False``), each row is an independent
+observation and unit identifiers are not required. Loading from Parquet is
+the most reliable path because Parquet preserves column types and supports
+efficient partition pruning.
 
 .. code-block:: python
 
