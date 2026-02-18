@@ -35,6 +35,7 @@ def ddd(
     allow_unbalanced_panel=False,
     random_state=None,
     n_jobs=1,
+    n_partitions=None,
     max_cohorts=None,
     progress_bar=False,
 ):
@@ -137,6 +138,9 @@ def ddd(
         Number of parallel jobs for group-time estimation in multi-period
         settings. 1 = sequential (default), -1 = all cores, >1 = that many
         workers. Ignored for 2-period data.
+    n_partitions : int or None, default=None
+        Number of Dask partitions per cell. Only used when ``data`` is a Dask
+        DataFrame; ignored for non-Dask inputs.
     max_cohorts : int or None, default=None
         Maximum number of treatment cohorts to process in parallel when
         using the Dask distributed backend. Each cohort's group-time cells
@@ -329,6 +333,7 @@ def ddd(
             cluster=cluster,
             alpha=alpha,
             random_state=random_state,
+            n_partitions=n_partitions,
             max_cohorts=max_cohorts,
             progress_bar=progress_bar,
         )

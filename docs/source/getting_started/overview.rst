@@ -36,33 +36,36 @@ plotting functions accept results from any module.
 Methods
 -------
 
-**Multi-period staggered DiD** (:mod:`~moderndid.did`) implements
+ModernDiD covers the main DiD designs used in applied work.
+
+**Multi-period staggered adoption** (:mod:`~moderndid.did`) implements
 `Callaway and Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_
-for estimating group-time average treatment effects with staggered adoption,
-including aggregation to event studies, group effects, and calendar time effects.
+to estimate group-time average treatment effects with staggered adoption,
+then aggregate them into event-study, group, or calendar summaries.
 
-**Doubly robust two-period DiD** (``drdid``) provides
+**Two-period doubly robust DiD** (``drdid``) provides
 `Sant'Anna and Zhao (2020) <https://arxiv.org/abs/1812.01723>`_
-estimators for classic two-period, two-group settings with inverse probability
-weighting, outcome regression, or doubly robust combinations.
+estimators for classic two-period, two-group designs using inverse
+probability weighting, outcome regression, or doubly robust combinations.
 
-**Continuous treatment DiD** (:mod:`~moderndid.didcont`) implements
+**Continuous-treatment DiD** (:mod:`~moderndid.didcont`) implements
 `Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_
-for settings with continuous treatment intensity, producing dose-response
-functions showing how effects vary with treatment dose.
+for settings where treatment intensity varies, producing dose-response
+functions that show how effects change with dose.
 
-**Triple difference-in-differences** (:mod:`~moderndid.didtriple`)
-implements `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
-which leverages a third dimension of variation (such as eligibility status)
-to relax parallel trends assumptions.
+**Triple-difference DiD** (:mod:`~moderndid.didtriple`) implements
+`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_,
+which adds a third dimension (such as eligibility status) to relax
+parallel trends assumptions.
 
 **Intertemporal DiD** (:mod:`~moderndid.didinter`) implements
 `de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
-for non-binary, non-absorbing treatments where lagged treatments may affect outcomes.
+for non-binary, non-absorbing treatments where current outcomes may depend
+on treatment history.
 
 **Sensitivity analysis** (:mod:`~moderndid.didhonest`) provides
 `Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_
-tools for robust inference under violations of parallel trends.
+for robust inference when parallel trends may be violated.
 
 
 .. _whatis-design:
@@ -70,32 +73,43 @@ tools for robust inference under violations of parallel trends.
 Design
 ------
 
-**Correctness.** Every estimator is validated against reference R packages.
-Test suites include numerical comparisons ensuring ModernDiD produces the
-same point estimates, standard errors, and confidence intervals.
+ModernDiD is built around practical design principles.
 
-**Sensible defaults.** Doubly robust estimation is default because it protects
-against misspecification. Never-treated units serve as the default control
-group to avoid contamination from already-treated units.
+**Correctness first.** Every estimator is validated against reference R
+packages. Test suites include numerical checks for point estimates, standard
+errors, and confidence intervals.
 
-**Performance.** ModernDiD accepts any
+**Safe defaults.** Doubly robust estimation is the default to protect against
+model misspecification. Never-treated units are the default control group to
+avoid contamination from already treated units.
+
+**Performance on a single machine.** ModernDiD accepts any
 `Arrow-compatible <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_
-DataFrame including polars, pandas, pyarrow, and duckdb. Internal operations
-use Polars for fast grouping and reshaping. Bootstrap procedures use
-`Numba <https://numba.pydata.org/>`_ JIT compilation for near-C speeds.
-Estimators that loop over group-time cells support optional thread-based
-parallelism via the ``n_jobs`` parameter. On machines with NVIDIA GPUs,
-installing the ``gpu`` extra (``uv pip install moderndid[gpu]``) enables
+DataFrame, including polars, pandas, pyarrow, and duckdb. Internally it uses
+Polars for grouping and reshaping, and uses
+`Numba <https://numba.pydata.org/>`_ JIT compilation for bootstrap-intensive
+code paths. Estimators that loop over group-time cells support thread-based
+parallelism via ``n_jobs``. On NVIDIA hardware, installing the ``gpu`` extra
+(``uv pip install moderndid[gpu]``) enables
 `CuPy <https://cupy.dev/>`_-accelerated regression and propensity score
-estimation across all doubly robust and IPW estimators.
+estimation for doubly robust and IPW estimators.
 
-**Transparency.** Result objects include influence functions, variance-covariance
-matrices, and estimation metadata. Warning messages explain when data issues
-might affect results.
+**Distributed computing when needed.** For data that exceed single-machine memory,
+passing a `Dask <https://www.dask.org/>`_ DataFrame to ``att_gt`` or ``ddd``
+activates the distributed backend. Computation runs on workers using
+partition-level sufficient statistics, and only small summary matrices are
+returned to the driver. The backend supports multi-node clusters
+(Databricks, YARN, Kubernetes) and matches local estimator results
+numerically. See the :ref:`Distributed Computing guide <distributed>` for
+architecture details.
 
-**Visualization.** All modules include plotting functions built on
+**Transparent outputs.** Result objects include influence functions,
+variance-covariance matrices, and estimation metadata. Warnings explain data
+conditions that may affect inference.
+
+**Consistent visualization.** All modules provide plotting functions built on
 `plotnine <https://plotnine.org/>`_ for event studies, dose-response curves,
-and sensitivity plots with full customization through the grammar of graphics.
+and sensitivity plots, with full grammar-of-graphics customization.
 
 
 .. toctree::

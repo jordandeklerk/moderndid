@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-from distributed import wait
 
 MEMMAP_THRESHOLD = 1 * 1024**3
 CHUNKED_SE_THRESHOLD = 10_000_000
@@ -289,6 +288,8 @@ def prepare_cohort_wide_pivot(
         period_y = filtered.loc[filtered[time_col] == tp][[id_col, y_col]]
         period_y = period_y.rename(columns={y_col: f"_y_{tp}"})
         base = base.merge(period_y, on=id_col, how="inner")
+
+    from distributed import wait
 
     wide_dask = base.repartition(npartitions=n_partitions).persist()
     wait(wide_dask)

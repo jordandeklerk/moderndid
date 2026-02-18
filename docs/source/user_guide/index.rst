@@ -11,7 +11,15 @@ features; details are found in :ref:`api`.
    :caption: Getting started
    :maxdepth: 2
 
-   user_guide
+   quickstart
+   panel_utilities
+   estimator_overview
+
+.. toctree::
+   :caption: Distributed Computing
+   :maxdepth: 2
+
+   distributed
 
 .. toctree::
    :caption: Examples
