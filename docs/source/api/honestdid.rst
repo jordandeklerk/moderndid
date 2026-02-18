@@ -85,7 +85,7 @@ Smoothness Restrictions
    compute_identified_set_sdm
 
 Combined Restrictions
-^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^
 
 .. autosummary::
    :toctree: generated/honestdid/
@@ -97,3 +97,17 @@ Combined Restrictions
    compute_identified_set_sdrmb
    compute_conditional_cs_sdrmm
    compute_identified_set_sdrmm
+
+Result Objects
+--------------
+
+.. autosummary::
+   :toctree: generated/honestdid/
+   :nosignatures:
+
+   HonestDiDResult
+   OriginalCSResult
+   SensitivityResult
+   FLCIResult
+   APRCIResult
+   ARPNuisanceCIResult

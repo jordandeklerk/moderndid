@@ -38,6 +38,7 @@ def ddd(
     n_partitions=None,
     max_cohorts=None,
     progress_bar=False,
+    backend=None,
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
 
@@ -156,6 +157,12 @@ def ddd(
     progress_bar : bool, default=False
         Whether to display a ``tqdm`` progress bar during distributed
         estimation. Ignored for non-Dask inputs.
+    backend : {"numpy", "cupy"} or None, default=None
+        Array backend to use for this call only. When set, the backend is
+        activated for the duration of this call and reverted automatically
+        when the call returns. ``None`` (the default) uses whatever backend
+        is currently active (see :func:`~moderndid.set_backend`). Ignored
+        when ``data`` is a Dask DataFrame.
 
     Returns
     -------
@@ -312,6 +319,38 @@ def ddd(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
+    if backend is not None:
+        from moderndid.cupy.backend import use_backend
+
+        with use_backend(backend):
+            return ddd(
+                data=data,
+                yname=yname,
+                tname=tname,
+                idname=idname,
+                gname=gname,
+                pname=pname,
+                xformla=xformla,
+                control_group=control_group,
+                base_period=base_period,
+                est_method=est_method,
+                weightsname=weightsname,
+                boot=boot,
+                boot_type=boot_type,
+                biters=biters,
+                cluster=cluster,
+                alpha=alpha,
+                trim_level=trim_level,
+                panel=panel,
+                allow_unbalanced_panel=allow_unbalanced_panel,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                n_partitions=n_partitions,
+                max_cohorts=max_cohorts,
+                progress_bar=progress_bar,
+                backend=None,
+            )
+
     from moderndid.dask._utils import is_dask_collection
 
     if is_dask_collection(data):

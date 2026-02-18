@@ -41,3 +41,16 @@ Multi-Period Estimators
 
    ddd_mp
    ddd_mp_rc
+
+Result Objects
+--------------
+
+.. autosummary::
+   :toctree: generated/didtriple/
+   :nosignatures:
+
+   DDDMultiPeriodResult
+   DDDMultiPeriodRCResult
+   DDDPanelResult
+   DDDRCResult
+   DDDAggResult

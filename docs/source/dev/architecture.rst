@@ -545,8 +545,11 @@ On machines with NVIDIA GPUs, ModernDiD can offload regression and propensity
 score estimation to the GPU via `CuPy <https://cupy.dev/>`_. All GPU-related
 code lives in the ``moderndid/cupy/`` module, which provides three files:
 
-- ``backend.py`` — ``get_backend()``, ``set_backend()``, ``to_device()``,
-  ``to_numpy()`` for switching between NumPy and CuPy array libraries.
+- ``backend.py`` — ``get_backend()``, ``set_backend()``, ``use_backend()``,
+  ``to_device()``, ``to_numpy()`` for switching between NumPy and CuPy
+  array libraries. The active backend is stored in a ``ContextVar``, so
+  ``use_backend()`` scopes the override to a block and reverts
+  automatically.
 - ``regression.py`` — ``cupy_wls`` (weighted least squares) and
   ``cupy_logistic_irls`` (logistic regression via IRLS), implemented with
   the current backend's array operations.
@@ -574,9 +577,10 @@ with no overhead.
        params = result.params
 
 Users enable GPU acceleration by installing the ``gpu`` extra
-(``uv pip install moderndid[gpu]``) and calling ``set_backend("cupy")``
-before running an estimator. The ``gpu`` extra is not included in ``all``
-because it requires CUDA hardware.
+(``uv pip install moderndid[gpu]``) and either passing ``backend="cupy"``
+to ``att_gt``/``ddd`` or calling ``set_backend("cupy")`` before running
+an estimator. The ``gpu`` extra is not included in ``all`` because it
+requires CUDA hardware.
 
 The Formatting System
 =====================

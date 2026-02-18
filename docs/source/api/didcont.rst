@@ -65,3 +65,17 @@ B-Spline Basis
    :nosignatures:
 
    BSpline
+
+Result Objects
+--------------
+
+.. currentmodule:: moderndid.didcont
+
+.. autosummary::
+   :toctree: generated/didcont/
+   :nosignatures:
+
+   NPIVResult
+   PTEAggteResult
+   GroupTimeATTResult
+   DoseResult

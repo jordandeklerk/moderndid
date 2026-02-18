@@ -120,6 +120,7 @@ __all__ = [
     "create_sensitivity_results_sm",
     "create_sign_constraint_matrix",
     # Core data
+    "dask_att_gt",
     "dask_ddd",
     "data",
     "ddd",
@@ -215,6 +216,7 @@ __all__ = [
     "test_in_identified_set_max",
     "twfe_did_panel",
     "twfe_did_rc",
+    "use_backend",
     "validate_conformable",
     "validate_symmetric_psd",
     "wboot_ddd",
@@ -248,6 +250,7 @@ _lazy_imports = {
     "HAS_CUPY": "moderndid.cupy.backend",
     "get_backend": "moderndid.cupy.backend",
     "set_backend": "moderndid.cupy.backend",
+    "use_backend": "moderndid.cupy.backend",
     # core.data
     "data": "moderndid.core",
     "load_ehec": "moderndid.core.data",
@@ -462,6 +465,7 @@ _optional_imports = {
     "validate_conformable": ("moderndid.didhonest", "didhonest"),
     "validate_symmetric_psd": ("moderndid.didhonest", "didhonest"),
     # dask (requires dask + distributed)
+    "dask_att_gt": ("moderndid.dask", "dask"),
     "dask_ddd": ("moderndid.dask", "dask"),
     # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),

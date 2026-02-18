@@ -36,3 +36,10 @@ methodology are found in :ref:`background`.
    propensity
    bootstrap
    plotting
+   data
+
+.. toctree::
+   :caption: Distributed
+   :maxdepth: 2
+
+   dask

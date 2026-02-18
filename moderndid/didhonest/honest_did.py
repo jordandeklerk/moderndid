@@ -15,7 +15,21 @@ from .utils import basis_vector
 
 
 class HonestDiDResult(NamedTuple):
-    """Result from honest_did analysis."""
+    """Result from honest_did analysis.
+
+    Attributes
+    ----------
+    robust_ci : pl.DataFrame
+        DataFrame with columns for the smoothness/relative magnitude
+        parameter (M or Mbar) and the corresponding lower and upper
+        confidence interval bounds that are robust to violations of
+        parallel trends.
+    original_ci : OriginalCSResult
+        Original confidence set assuming exact parallel trends holds.
+    sensitivity_type : str
+        Type of sensitivity analysis performed ('smoothness' or
+        'relative_magnitude').
+    """
 
     robust_ci: pl.DataFrame
     original_ci: OriginalCSResult

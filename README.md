@@ -107,26 +107,20 @@ See the [Distributed Estimation guide](moderndid/dask) for architecture details 
 
 ### GPU Acceleration
 
-On machines with NVIDIA GPUs, you can install the `gpu` extra and activate the CuPy backend to offload regression and propensity score estimation to the GPU. See the [GPU troubleshooting section](#common-troubleshooting-for-gpu) below for guidance on common issues:
+On machines with NVIDIA GPUs, install the `gpu` extra and pass `backend="cupy"` to offload regression and propensity score estimation to the GPU. The backend activates only for that call and reverts automatically. See the [GPU troubleshooting section](#common-troubleshooting-for-gpu) below for guidance on common issues:
 
 ```python
 import moderndid as did
 
-did.set_backend("cupy")
-
-# All estimators now use GPU-accelerated computations
 result = did.att_gt(data,
                     yname="lemp",
                     tname="year",
                     idname="countyreal",
-                    gname="first.treat")
+                    gname="first.treat",
+                    backend="cupy")
 ```
 
-To switch back to the default CPU path:
-
-```python
-did.set_backend("numpy")
-```
+You can also set the backend globally with `did.set_backend("cupy")` and revert with `did.set_backend("numpy")`.
 
 See [GPU benchmark results](scripts/README.md) for performance comparisons across Tesla T4, A100, and H100 GPUs.
 

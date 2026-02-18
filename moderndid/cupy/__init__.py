@@ -1,6 +1,6 @@
 """CuPy GPU acceleration module for moderndid."""
 
-from .backend import HAS_CUPY, get_backend, set_backend, to_device, to_numpy
+from .backend import HAS_CUPY, get_backend, set_backend, to_device, to_numpy, use_backend
 from .bootstrap import (
     _aggregate_by_cluster_cupy,
     _multiplier_bootstrap_cupy,
@@ -17,4 +17,5 @@ __all__ = [
     "set_backend",
     "to_device",
     "to_numpy",
+    "use_backend",
 ]

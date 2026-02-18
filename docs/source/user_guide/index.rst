@@ -16,10 +16,11 @@ features; details are found in :ref:`api`.
    estimator_overview
 
 .. toctree::
-   :caption: Distributed Computing
+   :caption: Scaling
    :maxdepth: 2
 
    distributed
+   gpu
 
 .. toctree::
    :caption: Examples

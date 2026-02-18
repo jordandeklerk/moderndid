@@ -1,8 +1,8 @@
 .. _example_honest_did:
 
-=======================================
+==========================================
 Sensitivity Analysis for Parallel Trends
-=======================================
+==========================================
 
 Flat pre-trends are a good sign in any difference-in-differences analysis,
 but they do not guarantee that parallel trends would have continued after

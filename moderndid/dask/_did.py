@@ -100,6 +100,11 @@ def dask_att_gt(
     MPResult
         Group-time average treatment effect results.
 
+    See Also
+    --------
+    att_gt : Local (non-distributed) DiD estimator. Automatically dispatches
+        to ``dask_att_gt`` when passed a Dask DataFrame.
+
     References
     ----------
 

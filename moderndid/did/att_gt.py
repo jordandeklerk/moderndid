@@ -46,6 +46,7 @@ def att_gt(
     n_partitions=None,
     max_cohorts=None,
     progress_bar=False,
+    backend=None,
 ):
     r"""Compute group-time average treatment effects.
 
@@ -168,6 +169,12 @@ def att_gt(
     progress_bar : bool, default=False
         Whether to display a tqdm progress bar during distributed computation.
         Only used when ``data`` is a Dask DataFrame; ignored for non-Dask inputs.
+    backend : {"numpy", "cupy"} or None, default=None
+        Array backend to use for this call only. When set, the backend is
+        activated for the duration of this call and reverted automatically
+        when the call returns. ``None`` (the default) uses whatever backend
+        is currently active (see :func:`~moderndid.set_backend`). Ignored
+        when ``data`` is a Dask DataFrame.
 
     Returns
     -------
@@ -231,6 +238,37 @@ def att_gt(
            with multiple time periods." Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001
     """
+    if backend is not None:
+        from moderndid.cupy.backend import use_backend
+
+        with use_backend(backend):
+            return att_gt(
+                data=data,
+                yname=yname,
+                tname=tname,
+                idname=idname,
+                gname=gname,
+                xformla=xformla,
+                weightsname=weightsname,
+                alp=alp,
+                cband=cband,
+                boot=boot,
+                biters=biters,
+                clustervars=clustervars,
+                est_method=est_method,
+                panel=panel,
+                allow_unbalanced_panel=allow_unbalanced_panel,
+                control_group=control_group,
+                anticipation=anticipation,
+                base_period=base_period,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                n_partitions=n_partitions,
+                max_cohorts=max_cohorts,
+                progress_bar=progress_bar,
+                backend=None,
+            )
+
     from moderndid.dask._utils import is_dask_collection
 
     if is_dask_collection(data):

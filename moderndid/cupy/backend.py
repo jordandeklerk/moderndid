@@ -1,5 +1,10 @@
 """GPU backend dispatch for array operations."""
 
+from __future__ import annotations
+
+import contextlib
+from contextvars import ContextVar
+
 import numpy as np
 
 try:
@@ -16,27 +21,34 @@ __all__ = [
     "set_backend",
     "to_device",
     "to_numpy",
+    "use_backend",
 ]
 
-_active_backend = "numpy"
+_active_backend: ContextVar[str] = ContextVar("moderndid_backend", default="numpy")
 
 
-def set_backend(name):
-    """Set the active array backend.
+def _validate_backend_name(name):
+    """Validate and normalise a backend name.
 
     Parameters
     ----------
-    name : {"numpy", "cupy"}
-        Backend to activate. Setting "cupy" requires CuPy to be installed.
+    name : str
+        Backend name (case-insensitive).
+
+    Returns
+    -------
+    str
+        Normalised backend name (``"numpy"`` or ``"cupy"``).
 
     Raises
     ------
     ValueError
         If *name* is not a recognised backend.
     ImportError
-        If "cupy" is requested but CuPy is not installed.
+        If ``"cupy"`` is requested but CuPy is not installed.
+    RuntimeError
+        If ``"cupy"`` is requested but no CUDA GPU is available.
     """
-    global _active_backend
     name = name.lower()
     if name not in ("numpy", "cupy"):
         raise ValueError(f"Unknown backend {name!r}. Choose 'numpy' or 'cupy'.")
@@ -56,7 +68,28 @@ def set_backend(name):
             raise RuntimeError(
                 "CuPy is installed but no CUDA GPU is available. Check your CUDA installation or use backend='numpy'."
             )
-    _active_backend = name
+    return name
+
+
+def set_backend(name):
+    """Set the active array backend.
+
+    Parameters
+    ----------
+    name : {"numpy", "cupy"}
+        Backend to activate. Setting "cupy" requires CuPy to be installed.
+
+    Raises
+    ------
+    ValueError
+        If *name* is not a recognised backend.
+    ImportError
+        If "cupy" is requested but CuPy is not installed.
+    RuntimeError
+        If "cupy" is requested but no CUDA GPU is available.
+    """
+    name = _validate_backend_name(name)
+    _active_backend.set(name)
 
 
 def get_backend():
@@ -67,9 +100,31 @@ def get_backend():
     module
         ``numpy`` when the backend is "numpy", ``cupy`` when "cupy".
     """
-    if _active_backend == "cupy":
+    if _active_backend.get() == "cupy":
         return cp
     return np
+
+
+@contextlib.contextmanager
+def use_backend(name):
+    """Context manager that temporarily activates a backend.
+
+    The previous backend is restored when the context exits, even if an
+    exception is raised.  Each ``copy_context()`` snapshot inherits the
+    value set here, so ``use_backend`` composes correctly with
+    :func:`~moderndid.core.parallel.parallel_map`.
+
+    Parameters
+    ----------
+    name : {"numpy", "cupy"}
+        Backend to activate for the duration of the block.
+    """
+    name = _validate_backend_name(name)
+    token = _active_backend.set(name)
+    try:
+        yield
+    finally:
+        _active_backend.reset(token)
 
 
 def to_device(arr):

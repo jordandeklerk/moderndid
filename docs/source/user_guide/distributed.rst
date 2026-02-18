@@ -122,14 +122,10 @@ Current support and limits
 --------------------------
 
 The distributed path supports both panel data and repeated cross-section
-data, with strongest scaling in multi-period estimation. When a Dask
-DataFrame has more than two time periods or treatment groups, ``att_gt``
-and ``ddd`` use the fully distributed cell-level backend. Set
-``panel=False`` for repeated cross-section data where different individuals
-are observed in each period. Two-period designs currently materialize the
-Dask DataFrame on the driver and run the local two-period path. This keeps
-API behavior consistent but is not the scaling path for very large
-two-period datasets.
+data for any number of time periods. When a Dask DataFrame is passed to
+``att_gt`` or ``ddd``, the fully distributed cell-level backend handles
+all designs, including two-period data. Set ``panel=False`` for repeated
+cross-section data where different individuals are observed in each period.
 
 The distributed-specific tuning controls are ``n_partitions``,
 ``max_cohorts``, and ``progress_bar`` on high-level wrappers, plus
@@ -206,6 +202,54 @@ This boundary separates data-pipeline failures from estimator failures,
 which makes debugging faster.
 
 
+From local to distributed
+-------------------------
+
+A practical workflow is to develop and validate your specification locally
+on a sample, then scale up to the full dataset by swapping in a Dask
+DataFrame. The estimator arguments stay the same.
+
+.. code-block:: python
+
+    import polars as pl
+    import dask.dataframe as dd
+    import moderndid as did
+
+    # Step 1: develop locally on a sample
+    sample = pl.read_parquet("panel_data.parquet").sample(n=10_000, seed=42)
+
+    local_result = did.att_gt(
+        data=sample,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~ x1 + x2",
+        est_method="dr",
+        control_group="nevertreated",
+    )
+
+    local_es = did.aggte(local_result, type="dynamic")
+    did.plot_event_study(local_es)
+
+    # Step 2: scale to the full dataset
+    ddf = dd.read_parquet("panel_data.parquet")
+
+    dist_result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~ x1 + x2",
+        est_method="dr",
+        control_group="nevertreated",
+    )
+
+    dist_es = did.aggte(dist_result, type="dynamic")
+    did.plot_event_study(dist_es)
+
+
 Connecting to a cluster
 -----------------------
 
@@ -240,6 +284,22 @@ from ``dask_databricks``.
 
     cluster = DatabricksCluster()
     client = Client(cluster)
+
+For local development with controlled resources, create a ``LocalCluster``
+explicitly to set worker count and memory limits.
+
+.. code-block:: python
+
+    from dask.distributed import Client, LocalCluster
+
+    cluster = LocalCluster(n_workers=4, threads_per_worker=2, memory_limit="4GB")
+    client = Client(cluster)
+
+    with client.as_current():
+        result = did.att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group")
+
+    client.close()
+    cluster.close()
 
 For more predictable runtime in autoscaling environments, warm the cluster
 and persist input data before launching long model runs.
@@ -296,6 +356,239 @@ approach memory limits, and increase it gradually when memory headroom is
 large.
 
 
+Bootstrap inference
+-------------------
+
+Bootstrap inference works in distributed mode with the same interface as
+local estimation. The multiplier bootstrap generates Mammen two-point
+weights on workers and tree-reduces them back to the driver.
+
+.. code-block:: python
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        boot=True,
+        biters=1000,
+        alp=0.05,
+        random_state=42,
+    )
+
+    event_study = did.aggte(result, type="dynamic")
+
+Set ``cband=True`` if you want uniform confidence bands. The distributed
+default is ``cband=False`` to reduce computation, while local ``att_gt``
+defaults to ``cband=True``.
+
+.. code-block:: python
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        boot=True,
+        biters=1000,
+        cband=True,
+        random_state=42,
+    )
+
+
+Clustered standard errors
+-------------------------
+
+The distributed DiD estimator supports clustered standard errors through
+the ``clustervars`` parameter. Pass a list of one or two column names to
+cluster on.
+
+.. code-block:: python
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        boot=True,
+        biters=1000,
+        clustervars=["state_id"],
+        random_state=42,
+    )
+
+Two-way clustering is also supported.
+
+.. code-block:: python
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        boot=True,
+        biters=1000,
+        clustervars=["state_id", "industry_id"],
+        random_state=42,
+    )
+
+The cluster variable columns must be present in the Dask DataFrame. Pass
+``clustervars`` as a list, not a bare string. Passing a string raises a
+``TypeError``.
+
+
+Repeated cross-section data
+----------------------------
+
+For repeated cross-section designs where different individuals are observed
+in each period, set ``panel=False``.
+
+.. code-block:: python
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        panel=False,
+    )
+
+The same option works for triple differences.
+
+.. code-block:: python
+
+    result = did.ddd(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method="dr",
+        panel=False,
+    )
+
+
+Unbalanced panels
+-----------------
+
+When panel data has units that do not appear in every time period, the
+distributed estimator can either drop those units (the default) or keep
+them. Set ``allow_unbalanced_panel=True`` to retain all units.
+
+.. code-block:: python
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        allow_unbalanced_panel=True,
+    )
+
+With the default ``allow_unbalanced_panel=False``, the estimator logs a
+warning showing how many units were dropped for not appearing in all
+periods.
+
+
+Weights
+-------
+
+Sampling weights are supported in distributed mode through the
+``weightsname`` parameter.
+
+.. code-block:: python
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        weightsname="sample_weight",
+    )
+
+The weight column must be present in the Dask DataFrame.
+
+
+Running multiple specifications
+-------------------------------
+
+When running multiple specifications over the same data, persist the Dask
+DataFrame once and reuse it across calls. This avoids re-reading and
+re-shuffling the data for each specification.
+
+.. code-block:: python
+
+    from dask.distributed import Client, wait
+
+    client = Client("tcp://scheduler-host:8786")
+    ddf = dd.read_parquet("panel_data.parquet").persist()
+    wait(ddf)
+
+    specifications = [
+        {"est_method": "dr", "control_group": "nevertreated"},
+        {"est_method": "dr", "control_group": "notyettreated"},
+        {"est_method": "reg", "control_group": "nevertreated"},
+    ]
+
+    results = {}
+    with client.as_current():
+        for spec in specifications:
+            results[str(spec)] = did.att_gt(
+                data=ddf,
+                yname="y",
+                tname="time",
+                idname="id",
+                gname="group",
+                xformla="~ x1 + x2",
+                **spec,
+            )
+
+
+Monitoring the cluster
+----------------------
+
+For long-running jobs, the Dask dashboard (typically at
+``http://scheduler-host:8787``) provides real-time visibility into task
+progress, worker memory, and task stream. The ``progress_bar`` parameter
+provides a simpler alternative that works in notebooks and scripts.
+
+ModernDiD also provides a cluster monitor that periodically logs memory
+and task statistics.
+
+.. code-block:: python
+
+    from moderndid.dask import dask_att_gt
+    from moderndid.dask._utils import monitor_cluster
+
+    stop = monitor_cluster(client, interval=15)
+
+    result = dask_att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        client=client,
+        progress_bar=True,
+    )
+
+    stop()
+
+
 Reproducibility
 ---------------
 
@@ -335,6 +628,9 @@ Common error messages and their first checks:
 ``No valid (g,t) cells found.``
     Check treatment timing, control-group choice, and pre-period availability.
 
+``clustervars must be a list of strings, not a string.``
+    Wrap the cluster variable in a list, e.g. ``clustervars=["state_id"]``.
+
 Operational issues can also appear in cluster environments. If the client
 connection fails, verify the scheduler address and network routing. If workers
 restart mid-run, check memory limits and reduce concurrency with
@@ -360,6 +656,7 @@ Next steps
 
 - :ref:`Quickstart <quickstart>` covers estimation options, aggregation
   types, and visualization for local workflows.
+- :doc:`gpu` describes GPU acceleration for single-machine workloads.
 - :ref:`Estimator Overview <estimator-overview>` surveys all available
   estimators and their distributed support.
 - The :ref:`Examples <user-guide>` section walks through each estimator

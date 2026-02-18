@@ -13,6 +13,35 @@ individual example pages. The baseline staggered DiD estimator follows
 `Callaway and Sant'Anna (2021) <https://doi.org/10.1016/j.jeconom.2020.12.001>`_.
 
 
+Choosing the right estimator
+-----------------------------
+
+The choice depends on the structure of your treatment variable.
+
+Most applied settings involve a binary treatment that turns on permanently
+at staggered times across groups. :func:`~moderndid.att_gt` handles this
+standard case and should be the starting point for most analyses.
+
+When treatment intensity varies continuously across units,
+:func:`~moderndid.cont_did` extends the framework to recover
+dose-response functions showing how effects scale with dosage.
+
+When a policy enables treatment for a group but only a subset of units
+within that group is actually eligible, :func:`~moderndid.ddd` exploits
+this additional within-group variation. Parental leave affecting women but
+not men, or minimum wage affecting hourly but not salaried workers, are
+canonical examples.
+
+When treatment is not permanent and can switch on and off or change
+intensity over time, :func:`~moderndid.did_multiplegt` provides valid
+inference by comparing units whose treatment changed to those with the
+same baseline treatment that have not yet changed.
+
+After running any estimator, :func:`~moderndid.honest_did` assesses how
+large violations of the parallel trends assumption would need to be to
+overturn your conclusions.
+
+
 Continuous Treatment DiD
 ------------------------
 
@@ -203,4 +232,4 @@ analysis with real or simulated data.
 - :doc:`example_honest_did` for sensitivity analysis with ``honest_did``
 
 For scaling any of these estimators to large datasets, see
-:ref:`Distributed Estimation <distributed>`.
+:doc:`distributed`.
