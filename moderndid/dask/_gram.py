@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from moderndid.cupy.backend import to_numpy
+
 
 def partition_gram(X, W, y):
     """Compute local sufficient statistics :math:`X^T W X` and :math:`X^T W y` on one partition.
@@ -20,14 +22,14 @@ def partition_gram(X, W, y):
     Returns
     -------
     XtWX : ndarray of shape (k, k)
-        Local :math:`X^T W X` Gram matrix.
+        Local :math:`X^T W X` Gram matrix (NumPy).
     XtWy : ndarray of shape (k,)
-        Local :math:`X^T W y` vector.
+        Local :math:`X^T W y` vector (NumPy).
     n : int
         Number of observations in this partition.
     """
     XtW = X.T * W  # (k, n_local)
-    return XtW @ X, XtW @ y, len(y)
+    return to_numpy(XtW @ X), to_numpy(XtW @ y), len(y)
 
 
 def tree_reduce(client, futures, combine_fn, split_every=8):

@@ -34,6 +34,7 @@ from ._ddd_streaming import (
     streaming_ddd_rc_cell_multi_control,
     streaming_ddd_rc_cell_single_control,
 )
+from ._gpu import _maybe_to_gpu
 from ._utils import (
     MEMMAP_THRESHOLD,
     auto_tune_partitions,
@@ -79,6 +80,7 @@ def dask_ddd_mp(
     max_cohorts=None,
     progress_bar=False,
     panel=True,
+    use_gpu=False,
 ):
     """Distributed multi-period doubly robust DDD estimator.
 
@@ -275,6 +277,7 @@ def dask_ddd_mp(
                         glist_raw=glist_raw,
                         trim_level=trim_level,
                         pbar=pbar,
+                        use_gpu=use_gpu,
                     ): g
                     for g, cells in cohort_cells.items()
                 }
@@ -448,6 +451,7 @@ def _process_cohort_cells(
     glist_raw=None,
     trim_level=0.995,
     pbar=None,
+    use_gpu=False,
 ):
     """Process all cells for a single cohort.
 
@@ -517,6 +521,7 @@ def _process_cohort_cells(
                         )
                         for pdf_f in wide_pdf_futures
                     ]
+                    part_futures = _maybe_to_gpu(client, part_futures, use_gpu)
 
                     att = streaming_cell_single_control(
                         client,
@@ -539,6 +544,7 @@ def _process_cohort_cells(
                         trim_level=trim_level,
                         part_futures=part_futures,
                         n_cell_override=n_wide,
+                        use_gpu=use_gpu,
                     )
 
                     if att is not None:
@@ -588,6 +594,7 @@ def _process_cohort_cells(
                     n_partitions=n_partitions,
                     glist_raw=glist_raw,
                     trim_level=trim_level,
+                    use_gpu=use_gpu,
                 )
                 if result is not None:
                     results.append((counter, result))
@@ -621,6 +628,7 @@ def _process_cohort_cells_rc(
     glist_raw=None,
     trim_level=0.995,
     pbar=None,
+    use_gpu=False,
 ):
     """Process all cells for a single cohort using repeated cross-section."""
     results = []
@@ -656,6 +664,7 @@ def _process_cohort_cells_rc(
                 counter,
                 trim_level=trim_level,
                 weightsname=weightsname,
+                use_gpu=use_gpu,
             )
             if att is not None:
                 results.append((counter, ATTgtResult(att=att, group=int(g), time=int(t), post=post_treat)))
@@ -693,6 +702,7 @@ def _process_cohort_cells_rc(
                     trim_level=trim_level,
                     control_group=control_group,
                     weightsname=weightsname,
+                    use_gpu=use_gpu,
                 )
                 if att is not None:
                     results.append((counter, ATTgtResult(att=att, group=int(g), time=int(t), post=post_treat)))
@@ -717,6 +727,7 @@ def _process_cohort_cells_rc(
                     counter,
                     trim_level=trim_level,
                     weightsname=weightsname,
+                    use_gpu=use_gpu,
                 )
 
                 if result is not None:
@@ -970,6 +981,7 @@ def _compute_cell_streaming(
     glist_raw=None,
     trim_level=0.995,
     filtered_data=None,
+    use_gpu=False,
 ):
     """Compute one (g,t) cell via streaming."""
     if control_group == "nevertreated":
@@ -994,6 +1006,7 @@ def _compute_cell_streaming(
             trim_level=trim_level,
             filtered_data=filtered_data,
             weightsname=weightsname,
+            use_gpu=use_gpu,
         )
         if att is None:
             return None
@@ -1031,6 +1044,7 @@ def _compute_cell_streaming(
             counter,
             trim_level=trim_level,
             weightsname=weightsname,
+            use_gpu=use_gpu,
         )
 
         if result is None:

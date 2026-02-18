@@ -281,15 +281,69 @@ Checking the active backend
     print(xp.__name__)  # "numpy" or "cupy"
 
 
+.. _gpu-dask-workers:
+
 Combining GPU and Dask
 ----------------------
 
-The GPU backend and the Dask distributed backend operate at different
-levels. Dask distributes group-time cells across workers, while the GPU
-backend accelerates the linear algebra within each cell. Currently these
-two backends are independent. The Dask workers use CPU computation via
-their own streaming and tree-reduce pipeline, regardless of the
-``backend`` parameter or ``set_backend`` setting on the driver.
+The GPU backend and the Dask distributed backend can be combined.
+Pass ``backend="cupy"`` to :func:`~moderndid.dask.dask_att_gt` or
+:func:`~moderndid.dask.dask_ddd` (or to the high-level wrappers
+:func:`~moderndid.att_gt` / :func:`~moderndid.ddd` with a Dask
+DataFrame) to run partition-level linear algebra on worker GPUs:
+
+.. code-block:: python
+
+    import dask.dataframe as dd
+    import moderndid as did
+
+    ddf = dd.read_parquet("panel_data.parquet")
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        backend="cupy",
+    )
+
+When ``backend="cupy"`` is active, each worker converts its partition
+arrays to CuPy after building them from pandas. All Gram matrix
+accumulation, IRLS iterations, and influence function computation run on
+the worker's GPU. Results are converted back to NumPy before leaving the
+worker, so driver-side aggregation (tree-reduce, precomputation) stays
+on the CPU.
+
+CuPy must be installed on every worker. For multi-GPU machines, use
+``dask-cuda`` with a ``LocalCUDACluster`` to pin one worker per GPU:
+
+.. code-block:: python
+
+    from dask.distributed import Client
+    from dask_cuda import LocalCUDACluster
+
+    cluster = LocalCUDACluster()
+    client = Client(cluster)
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        backend="cupy",
+        client=client,
+    )
+
+For multi-node clusters, use ``CUDA_VISIBLE_DEVICES`` on each node to
+control GPU pinning.
+
+The ``set_backend`` / ``use_backend`` context manager does **not**
+propagate to Dask worker processes. Always use the ``backend`` parameter
+on the estimator call instead.
 
 
 Next steps

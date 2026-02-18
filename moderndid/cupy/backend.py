@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import functools
+import shutil
 from contextvars import ContextVar
 
 import numpy as np
@@ -17,6 +19,7 @@ except ImportError:
 
 __all__ = [
     "HAS_CUPY",
+    "_array_module",
     "get_backend",
     "set_backend",
     "to_device",
@@ -25,6 +28,86 @@ __all__ = [
 ]
 
 _active_backend: ContextVar[str] = ContextVar("moderndid_backend", default="numpy")
+
+
+def _array_module(*arrays):
+    """Return ``cupy`` if any array is a CuPy ndarray, else ``numpy``.
+
+    This is used by Dask partition functions to detect whether their
+    input arrays are CuPy or NumPy and use the matching ``xp`` module,
+    without relying on the ``ContextVar``-based ``get_backend()`` which
+    does not propagate to Dask worker processes.
+
+    Parameters
+    ----------
+    *arrays : array_like
+        One or more arrays to inspect.
+
+    Returns
+    -------
+    module
+        ``cupy`` if any input is a CuPy ndarray, ``numpy`` otherwise.
+    """
+    if HAS_CUPY and hasattr(cp, "ndarray"):
+        for arr in arrays:
+            if isinstance(arr, cp.ndarray):
+                return cp
+    return np
+
+
+@functools.lru_cache(1)
+def _detect_cuda_version():
+    """Try to detect the CUDA major version."""
+    import re
+    import subprocess
+
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+        )
+        for line in out.splitlines():
+            if "CUDA Version" in line:
+                part = line.split("CUDA Version:")[-1].strip().rstrip("|").strip()
+                return int(part.split(".")[0])
+    except (OSError, ValueError):
+        pass
+
+    if shutil.which("nvcc") is not None:
+        try:
+            out = subprocess.check_output(
+                ["nvcc", "--version"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=5,
+            )
+            m = re.search(r"release (\d+)\.", out)
+            if m:
+                return int(m.group(1))
+        except (OSError, ValueError):
+            pass
+
+    return None
+
+
+def _cupy_install_message():
+    """Build an actionable CuPy install error message."""
+    cuda_ver = _detect_cuda_version()
+    if cuda_ver is not None:
+        wheel = f"cupy-cuda{cuda_ver}x"
+        return (
+            f"CuPy is not installed. Detected CUDA {cuda_ver}.x on this machine.\n"
+            f"Install the matching wheel:\n"
+            f"  uv pip install {wheel}"
+        )
+    return (
+        "CuPy is not installed. Install the wheel matching your CUDA version "
+        "(run 'nvidia-smi' or 'nvcc --version' to check):\n"
+        "  uv pip install cupy-cuda11x   # CUDA 11.x\n"
+        "  uv pip install cupy-cuda12x   # CUDA 12.x"
+    )
 
 
 def _validate_backend_name(name):
@@ -39,21 +122,12 @@ def _validate_backend_name(name):
     -------
     str
         Normalised backend name (``"numpy"`` or ``"cupy"``).
-
-    Raises
-    ------
-    ValueError
-        If *name* is not a recognised backend.
-    ImportError
-        If ``"cupy"`` is requested but CuPy is not installed.
-    RuntimeError
-        If ``"cupy"`` is requested but no CUDA GPU is available.
     """
     name = name.lower()
     if name not in ("numpy", "cupy"):
         raise ValueError(f"Unknown backend {name!r}. Choose 'numpy' or 'cupy'.")
     if name == "cupy" and not HAS_CUPY:
-        raise ImportError("CuPy is not installed. Install with: uv pip install 'moderndid[gpu]'")
+        raise ImportError(_cupy_install_message())
     if name == "cupy":
         _cupy_ok = False
         if hasattr(cp, "is_available"):
@@ -78,15 +152,6 @@ def set_backend(name):
     ----------
     name : {"numpy", "cupy"}
         Backend to activate. Setting "cupy" requires CuPy to be installed.
-
-    Raises
-    ------
-    ValueError
-        If *name* is not a recognised backend.
-    ImportError
-        If "cupy" is requested but CuPy is not installed.
-    RuntimeError
-        If "cupy" is requested but no CUDA GPU is available.
     """
     name = _validate_backend_name(name)
     _active_backend.set(name)

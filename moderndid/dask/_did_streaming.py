@@ -7,6 +7,9 @@ import warnings
 import numpy as np
 from distributed import as_completed, wait
 
+from moderndid.cupy.backend import _array_module, to_numpy
+
+from ._gpu import _maybe_to_gpu
 from ._gram import tree_reduce
 from ._regression import distributed_logistic_irls_from_futures, distributed_wls_from_futures
 from ._utils import sum_global_stats
@@ -35,6 +38,7 @@ def streaming_did_cell_single_control(
     n_cell_override=None,
     control_group="nevertreated",
     weightsname=None,
+    use_gpu=False,
 ):
     r"""Streaming DiD computation for one :math:`(g, t)` cell with a single control group.
 
@@ -101,6 +105,7 @@ def streaming_did_cell_single_control(
     """
     if part_futures is not None:
         n_cell = n_cell_override if n_cell_override is not None else 0
+        part_futures = _maybe_to_gpu(client, part_futures, use_gpu)
     else:
         part_futures, n_cell = prepare_did_cell_partitions(
             client,
@@ -117,6 +122,7 @@ def streaming_did_cell_single_control(
             n_partitions,
             filtered_data=filtered_data,
             weightsname=weightsname,
+            use_gpu=use_gpu,
         )
 
     if part_futures is None or n_cell == 0:
@@ -188,6 +194,7 @@ def prepare_did_cell_partitions(
     n_partitions,
     filtered_data=None,
     weightsname=None,
+    use_gpu=False,
 ):
     """Filter and merge post/pre periods on workers, returning partition futures.
 
@@ -268,6 +275,7 @@ def prepare_did_cell_partitions(
         )
         for pdf_f in pdf_futures
     ]
+    part_futures = _maybe_to_gpu(client, part_futures, use_gpu)
 
     return part_futures, n_cell
 
@@ -505,14 +513,16 @@ def _partition_did_pscore_gram(part_data, beta):
     if n == 0:
         return None
 
+    xp = _array_module(X)
+    beta = xp.asarray(beta)
     w = part_data["weights"]
     eta = X @ beta
-    mu = 1.0 / (1.0 + np.exp(-eta))
-    mu = np.clip(mu, 1e-10, 1 - 1e-10)
+    mu = 1.0 / (1.0 + xp.exp(-eta))
+    mu = xp.clip(mu, 1e-10, 1 - 1e-10)
     W_irls = w * mu * (1 - mu)
     z = eta + (D - mu) / (mu * (1 - mu))
     XtW = X.T * W_irls
-    return XtW @ X, XtW @ z, n
+    return to_numpy(XtW @ X), to_numpy(XtW @ z), n
 
 
 def _partition_did_or_gram(part_data):
@@ -521,15 +531,16 @@ def _partition_did_or_gram(part_data):
         return None
 
     D = part_data["D"]
+    xp = _array_module(D)
     mask = D == 0
-    if not np.any(mask):
+    if not xp.any(mask):
         return None
 
     X = part_data["X"][mask]
     delta_y = (part_data["y1"] - part_data["y0"])[mask]
     W = part_data["weights"][mask]
     XtW = X.T * W
-    return XtW @ X, XtW @ delta_y, int(np.sum(mask))
+    return to_numpy(XtW @ X), to_numpy(XtW @ delta_y), int(xp.sum(mask))
 
 
 def _partition_did_global_stats(part_data, ps_beta, or_beta, est_method, trim_level):
@@ -548,19 +559,23 @@ def _partition_did_global_stats(part_data, ps_beta, or_beta, est_method, trim_le
     if n_sub == 0:
         return None
 
+    xp = _array_module(X)
+    ps_beta = xp.asarray(ps_beta)
+    or_beta = xp.asarray(or_beta)
+
     if est_method == "reg":
-        pscore = np.ones(n_sub, dtype=np.float64)
-        keep_ps = np.ones(n_sub, dtype=np.float64)
+        pscore = xp.ones(n_sub, dtype=xp.float64)
+        keep_ps = xp.ones(n_sub, dtype=xp.float64)
     else:
         eta = X @ ps_beta
-        pscore = 1.0 / (1.0 + np.exp(-eta))
-        pscore = np.clip(pscore, 1e-10, 1 - 1e-10)
-        pscore = np.minimum(pscore, 1 - 1e-6)
-        keep_ps = np.ones(n_sub, dtype=np.float64)
-        keep_ps[D == 0] = (pscore[D == 0] < trim_level).astype(np.float64)
+        pscore = 1.0 / (1.0 + xp.exp(-eta))
+        pscore = xp.clip(pscore, 1e-10, 1 - 1e-10)
+        pscore = xp.minimum(pscore, 1 - 1e-6)
+        keep_ps = xp.ones(n_sub, dtype=xp.float64)
+        keep_ps[D == 0] = (pscore[D == 0] < trim_level).astype(xp.float64)
 
     obs_w = part_data["weights"]
-    or_delta = np.zeros(n_sub, dtype=np.float64) if est_method == "ipw" else X @ or_beta
+    or_delta = xp.zeros(n_sub, dtype=xp.float64) if est_method == "ipw" else X @ or_beta
 
     w_treat = keep_ps * D * obs_w
     w_control = keep_ps * (1 - D) * obs_w if est_method == "reg" else keep_ps * pscore * (1 - D) / (1 - pscore) * obs_w
@@ -569,26 +584,26 @@ def _partition_did_global_stats(part_data, ps_beta, or_beta, est_method, trim_le
     riesz_control = w_control * (delta_y - or_delta)
 
     result = {
-        "sum_w_treat": float(np.sum(w_treat)),
-        "sum_w_control": float(np.sum(w_control)),
-        "sum_riesz_treat": float(np.sum(riesz_treat)),
-        "sum_riesz_control": float(np.sum(riesz_control)),
+        "sum_w_treat": float(xp.sum(w_treat)),
+        "sum_w_control": float(xp.sum(w_control)),
+        "sum_riesz_treat": float(xp.sum(riesz_treat)),
+        "sum_riesz_control": float(xp.sum(riesz_control)),
         "n_sub": n_sub,
     }
 
-    result["sum_wt_X"] = np.sum(w_treat[:, None] * X, axis=0)
-    result["sum_wc_X"] = np.sum(w_control[:, None] * X, axis=0)
+    result["sum_wt_X"] = to_numpy(xp.sum(w_treat[:, None] * X, axis=0))
+    result["sum_wc_X"] = to_numpy(xp.sum(w_control[:, None] * X, axis=0))
 
     # Partial sums — att_control is not yet known, driver completes m2 later
-    result["sum_wc_dy_or_X"] = np.sum((w_control * (delta_y - or_delta))[:, None] * X, axis=0)
+    result["sum_wc_dy_or_X"] = to_numpy(xp.sum((w_control * (delta_y - or_delta))[:, None] * X, axis=0))
 
     ctrl_mask = D == 0
-    or_x_weights = ctrl_mask.astype(np.float64) * obs_w
-    result["or_xpx"] = (or_x_weights[:, None] * X).T @ X
+    or_x_weights = ctrl_mask.astype(xp.float64) * obs_w
+    result["or_xpx"] = to_numpy((or_x_weights[:, None] * X).T @ X)
 
     if est_method != "reg":
         W_info = obs_w * pscore * (1 - pscore)
-        result["info_gram"] = (W_info[:, None] * X).T @ X
+        result["info_gram"] = to_numpy((W_info[:, None] * X).T @ X)
     else:
         result["info_gram"] = np.zeros((k, k), dtype=np.float64)
 
@@ -618,6 +633,13 @@ def _partition_compute_did_if(
     y0 = part_data["y0"]
     delta_y = y1 - y0
 
+    xp = _array_module(X)
+    ps_beta = xp.asarray(ps_beta)
+    or_beta = xp.asarray(or_beta)
+    precomp_hess_m2 = xp.asarray(precomp_hess_m2)
+    precomp_xpx_inv_m1 = xp.asarray(precomp_xpx_inv_m1)
+    precomp_xpx_inv_m3 = xp.asarray(precomp_xpx_inv_m3)
+
     mean_w_treat = global_agg["mean_w_treat"]
     mean_w_control = global_agg["mean_w_control"]
     att_treat = global_agg["att_treat"]
@@ -626,17 +648,17 @@ def _partition_compute_did_if(
     obs_w = part_data["weights"]
 
     if est_method == "reg":
-        pscore = np.ones(n_part, dtype=np.float64)
-        keep_ps = np.ones(n_part, dtype=np.float64)
+        pscore = xp.ones(n_part, dtype=xp.float64)
+        keep_ps = xp.ones(n_part, dtype=xp.float64)
     else:
         eta = X @ ps_beta
-        pscore = 1.0 / (1.0 + np.exp(-eta))
-        pscore = np.clip(pscore, 1e-10, 1 - 1e-10)
-        pscore = np.minimum(pscore, 1 - 1e-6)
-        keep_ps = np.ones(n_part, dtype=np.float64)
-        keep_ps[D == 0] = (pscore[D == 0] < trim_level).astype(np.float64)
+        pscore = 1.0 / (1.0 + xp.exp(-eta))
+        pscore = xp.clip(pscore, 1e-10, 1 - 1e-10)
+        pscore = xp.minimum(pscore, 1 - 1e-6)
+        keep_ps = xp.ones(n_part, dtype=xp.float64)
+        keep_ps[D == 0] = (pscore[D == 0] < trim_level).astype(xp.float64)
 
-    or_delta = np.zeros(n_part, dtype=np.float64) if est_method == "ipw" else X @ or_beta
+    or_delta = xp.zeros(n_part, dtype=xp.float64) if est_method == "ipw" else X @ or_beta
 
     w_treat = keep_ps * D * obs_w
     w_control = keep_ps * (1 - D) * obs_w if est_method == "reg" else keep_ps * pscore * (1 - D) / (1 - pscore) * obs_w
@@ -645,14 +667,14 @@ def _partition_compute_did_if(
     inf_cont_1 = w_control * (delta_y - or_delta) - w_control * att_control
 
     if est_method == "reg":
-        inf_cont_ps = np.zeros(n_part, dtype=np.float64)
+        inf_cont_ps = xp.zeros(n_part, dtype=xp.float64)
     else:
         score_ps = (obs_w * (D - pscore))[:, None] * X
         inf_cont_ps = score_ps @ precomp_hess_m2
 
     if est_method == "ipw":
-        inf_treat_or = np.zeros(n_part, dtype=np.float64)
-        inf_cont_or = np.zeros(n_part, dtype=np.float64)
+        inf_treat_or = xp.zeros(n_part, dtype=xp.float64)
+        inf_cont_or = xp.zeros(n_part, dtype=xp.float64)
     else:
         ctrl_mask = D == 0
         or_ex = (ctrl_mask * obs_w * (delta_y - or_delta))[:, None] * X
@@ -664,7 +686,7 @@ def _partition_compute_did_if(
 
     att_inf_func = inf_treat - inf_control
 
-    return ids, att_inf_func
+    return ids, to_numpy(att_inf_func)
 
 
 def streaming_did_rc_cell_single_control(
@@ -687,6 +709,7 @@ def streaming_did_rc_cell_single_control(
     control_group="nevertreated",
     weightsname=None,
     collect_if=False,
+    use_gpu=False,
 ):
     r"""Streaming DiD RC computation for one :math:`(g, t)` cell.
 
@@ -748,6 +771,7 @@ def streaming_did_rc_cell_single_control(
         covariate_cols,
         n_partitions,
         weightsname=weightsname,
+        use_gpu=use_gpu,
     )
 
     if part_futures is None or n_cell == 0:
@@ -945,6 +969,7 @@ def prepare_did_rc_cell_partitions(
     covariate_cols,
     n_partitions,
     weightsname=None,
+    use_gpu=False,
 ):
     """Filter and concatenate post/pre periods for RC, returning partition futures.
 
@@ -1010,6 +1035,7 @@ def prepare_did_rc_cell_partitions(
         )
         for pdf_f, offset in zip(pdf_futures, offsets, strict=False)
     ]
+    part_futures = _maybe_to_gpu(client, part_futures, use_gpu)
 
     return part_futures, n_cell
 
@@ -1059,14 +1085,16 @@ def _partition_did_rc_pscore_gram(part_data, beta):
     if n == 0:
         return None
 
+    xp = _array_module(X)
+    beta = xp.asarray(beta)
     w = part_data["weights"]
     eta = X @ beta
-    mu = 1.0 / (1.0 + np.exp(-eta))
-    mu = np.clip(mu, 1e-10, 1 - 1e-10)
+    mu = 1.0 / (1.0 + xp.exp(-eta))
+    mu = xp.clip(mu, 1e-10, 1 - 1e-10)
     W_irls = w * mu * (1 - mu)
     z = eta + (D - mu) / (mu * (1 - mu))
     XtW = X.T * W_irls
-    return XtW @ X, XtW @ z, n
+    return to_numpy(XtW @ X), to_numpy(XtW @ z), n
 
 
 def _partition_did_rc_or_gram(part_data, d_val, post_val):
@@ -1076,15 +1104,16 @@ def _partition_did_rc_or_gram(part_data, d_val, post_val):
 
     D = part_data["D"]
     post = part_data["post"]
+    xp = _array_module(D)
     mask = (d_val == D) & (post == post_val)
-    if not np.any(mask):
+    if not xp.any(mask):
         return None
 
     X = part_data["X"][mask]
     y = part_data["y"][mask]
     W = part_data["weights"][mask]
     XtW = X.T * W
-    return XtW @ X, XtW @ y, int(np.sum(mask))
+    return to_numpy(XtW @ X), to_numpy(XtW @ y), int(xp.sum(mask))
 
 
 def _partition_did_rc_global_stats(part_data, ps_beta, or_betas, est_method, trim_level):
@@ -1103,20 +1132,26 @@ def _partition_did_rc_global_stats(part_data, ps_beta, or_betas, est_method, tri
     if n_sub == 0:
         return None
 
+    xp = _array_module(X)
+    ps_beta = xp.asarray(ps_beta)
+    _or_betas = {key: xp.asarray(v) for key, v in or_betas.items()}
+
     # Propensity score
     if est_method == "reg":
-        pscore = np.ones(n_sub, dtype=np.float64)
-        keep_ps = np.ones(n_sub, dtype=np.float64)
+        pscore = xp.ones(n_sub, dtype=xp.float64)
+        keep_ps = xp.ones(n_sub, dtype=xp.float64)
     else:
         eta = X @ ps_beta
-        pscore = 1.0 / (1.0 + np.exp(-eta))
-        pscore = np.clip(pscore, 1e-10, 1 - 1e-10)
-        pscore = np.minimum(pscore, 1 - 1e-6)
-        keep_ps = np.ones(n_sub, dtype=np.float64)
-        keep_ps[D == 0] = (pscore[D == 0] < trim_level).astype(np.float64)
+        pscore = 1.0 / (1.0 + xp.exp(-eta))
+        pscore = xp.clip(pscore, 1e-10, 1 - 1e-10)
+        pscore = xp.minimum(pscore, 1 - 1e-6)
+        keep_ps = xp.ones(n_sub, dtype=xp.float64)
+        keep_ps[D == 0] = (pscore[D == 0] < trim_level).astype(xp.float64)
 
-    out_y_cont_pre = X @ or_betas["cont_pre"] if est_method != "ipw" else np.zeros(n_sub, dtype=np.float64)
-    out_y_cont_post = X @ or_betas["cont_post"] if est_method != "ipw" else np.zeros(n_sub, dtype=np.float64)
+    out_y_cont_pre = X @ _or_betas["cont_pre"] if est_method != "ipw" else xp.zeros(n_sub, dtype=xp.float64)
+    out_y_cont_post = X @ _or_betas["cont_post"] if est_method != "ipw" else xp.zeros(n_sub, dtype=xp.float64)
+
+    _to_np = to_numpy  # local alias
 
     if est_method == "reg":
         w_treat_pre = obs_w * D * (1 - post)
@@ -1128,12 +1163,12 @@ def _partition_did_rc_global_stats(part_data, ps_beta, or_betas, est_method, tri
         reg_att_cont = w_d * (out_y_cont_post - out_y_cont_pre)
 
         result = {
-            "sum_w_treat_pre": float(np.sum(w_treat_pre)),
-            "sum_w_treat_post": float(np.sum(w_treat_post)),
-            "sum_w_d": float(np.sum(w_d)),
-            "sum_reg_att_treat_pre": float(np.sum(reg_att_treat_pre)),
-            "sum_reg_att_treat_post": float(np.sum(reg_att_treat_post)),
-            "sum_reg_att_cont": float(np.sum(reg_att_cont)),
+            "sum_w_treat_pre": float(xp.sum(w_treat_pre)),
+            "sum_w_treat_post": float(xp.sum(w_treat_post)),
+            "sum_w_d": float(xp.sum(w_d)),
+            "sum_reg_att_treat_pre": float(xp.sum(reg_att_treat_pre)),
+            "sum_reg_att_treat_post": float(xp.sum(reg_att_treat_post)),
+            "sum_reg_att_cont": float(xp.sum(reg_att_cont)),
             "n_sub": n_sub,
         }
 
@@ -1144,30 +1179,29 @@ def _partition_did_rc_global_stats(part_data, ps_beta, or_betas, est_method, tri
             cell_mask = (d_val == D) & (post == post_val)
             cell_w = obs_w[cell_mask]
             cell_X = X[cell_mask]
-            result[key_prefix] = (cell_w[:, None] * cell_X).T @ cell_X
+            result[key_prefix] = _to_np((cell_w[:, None] * cell_X).T @ cell_X)
 
         result["info_gram"] = np.zeros((k, k), dtype=np.float64)
-        result["sum_wd_X"] = np.sum(w_d[:, None] * X, axis=0)
+        result["sum_wd_X"] = _to_np(xp.sum(w_d[:, None] * X, axis=0))
         return result
 
     # DR/IPW path: need all 4 OR predictions and PS-weighted control weights
     if est_method == "ipw":
-        out_y_treat_pre = np.zeros(n_sub, dtype=np.float64)
-        out_y_treat_post = np.zeros(n_sub, dtype=np.float64)
+        out_y_treat_pre = xp.zeros(n_sub, dtype=xp.float64)
+        out_y_treat_post = xp.zeros(n_sub, dtype=xp.float64)
     else:
-        out_y_treat_pre = X @ or_betas["treat_pre"]
-        out_y_treat_post = X @ or_betas["treat_post"]
+        out_y_treat_pre = X @ _or_betas["treat_pre"]
+        out_y_treat_post = X @ _or_betas["treat_post"]
 
     out_y_cont = post * out_y_cont_post + (1 - post) * out_y_cont_pre
 
     w_treat_pre = keep_ps * obs_w * D * (1 - post)
     w_treat_post = keep_ps * obs_w * D * post
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = keep_ps * obs_w * pscore * (1 - D) * (1 - post) / (1 - pscore)
-        w_cont_post = keep_ps * obs_w * pscore * (1 - D) * post / (1 - pscore)
-    w_cont_pre = np.nan_to_num(w_cont_pre)
-    w_cont_post = np.nan_to_num(w_cont_post)
+    w_cont_pre = keep_ps * obs_w * pscore * (1 - D) * (1 - post) / (1 - pscore)
+    w_cont_post = keep_ps * obs_w * pscore * (1 - D) * post / (1 - pscore)
+    w_cont_pre = xp.nan_to_num(w_cont_pre)
+    w_cont_post = xp.nan_to_num(w_cont_post)
 
     w_d = keep_ps * obs_w * D
     w_dt1 = keep_ps * obs_w * D * post
@@ -1183,21 +1217,21 @@ def _partition_did_rc_global_stats(part_data, ps_beta, or_betas, est_method, tri
     eta_dt0_pre = w_dt0 * (out_y_treat_pre - out_y_cont_pre)
 
     result = {
-        "sum_w_treat_pre": float(np.sum(w_treat_pre)),
-        "sum_w_treat_post": float(np.sum(w_treat_post)),
-        "sum_w_cont_pre": float(np.sum(w_cont_pre)),
-        "sum_w_cont_post": float(np.sum(w_cont_post)),
-        "sum_w_d": float(np.sum(w_d)),
-        "sum_w_dt1": float(np.sum(w_dt1)),
-        "sum_w_dt0": float(np.sum(w_dt0)),
-        "sum_eta_treat_pre": float(np.sum(eta_treat_pre)),
-        "sum_eta_treat_post": float(np.sum(eta_treat_post)),
-        "sum_eta_cont_pre": float(np.sum(eta_cont_pre)),
-        "sum_eta_cont_post": float(np.sum(eta_cont_post)),
-        "sum_eta_d_post": float(np.sum(eta_d_post)),
-        "sum_eta_dt1_post": float(np.sum(eta_dt1_post)),
-        "sum_eta_d_pre": float(np.sum(eta_d_pre)),
-        "sum_eta_dt0_pre": float(np.sum(eta_dt0_pre)),
+        "sum_w_treat_pre": float(xp.sum(w_treat_pre)),
+        "sum_w_treat_post": float(xp.sum(w_treat_post)),
+        "sum_w_cont_pre": float(xp.sum(w_cont_pre)),
+        "sum_w_cont_post": float(xp.sum(w_cont_post)),
+        "sum_w_d": float(xp.sum(w_d)),
+        "sum_w_dt1": float(xp.sum(w_dt1)),
+        "sum_w_dt0": float(xp.sum(w_dt0)),
+        "sum_eta_treat_pre": float(xp.sum(eta_treat_pre)),
+        "sum_eta_treat_post": float(xp.sum(eta_treat_post)),
+        "sum_eta_cont_pre": float(xp.sum(eta_cont_pre)),
+        "sum_eta_cont_post": float(xp.sum(eta_cont_post)),
+        "sum_eta_d_post": float(xp.sum(eta_d_post)),
+        "sum_eta_dt1_post": float(xp.sum(eta_dt1_post)),
+        "sum_eta_d_pre": float(xp.sum(eta_d_pre)),
+        "sum_eta_dt0_pre": float(xp.sum(eta_dt0_pre)),
         "n_sub": n_sub,
     }
 
@@ -1211,27 +1245,27 @@ def _partition_did_rc_global_stats(part_data, ps_beta, or_betas, est_method, tri
         cell_mask = (d_val == D) & (post == post_val)
         cell_w = obs_w[cell_mask]
         cell_X = X[cell_mask]
-        result[key_prefix] = (cell_w[:, None] * cell_X).T @ cell_X
+        result[key_prefix] = _to_np((cell_w[:, None] * cell_X).T @ cell_X)
 
     # PS Hessian
     if est_method != "reg":
         W_info = obs_w * pscore * (1 - pscore)
-        result["info_gram"] = (W_info[:, None] * X).T @ X
+        result["info_gram"] = _to_np((W_info[:, None] * X).T @ X)
     else:
         result["info_gram"] = np.zeros((k, k), dtype=np.float64)
 
     # Moment vectors for IF correction
-    result["sum_wt_post_X"] = np.sum((w_treat_post * post)[:, None] * X, axis=0)
-    result["sum_wt_pre_X"] = np.sum((w_treat_pre * (1 - post))[:, None] * X, axis=0)
-    result["sum_wc_post_y_cont_X"] = np.sum((w_cont_post * (y - out_y_cont))[:, None] * X, axis=0)
-    result["sum_wc_pre_y_cont_X"] = np.sum((w_cont_pre * (y - out_y_cont))[:, None] * X, axis=0)
-    result["sum_wc_post_post_X"] = np.sum((w_cont_post * post)[:, None] * X, axis=0)
-    result["sum_wc_pre_1mp_X"] = np.sum((w_cont_pre * (1 - post))[:, None] * X, axis=0)
-    result["sum_wc_post_X"] = np.sum(w_cont_post[:, None] * X, axis=0)
-    result["sum_wc_pre_X"] = np.sum(w_cont_pre[:, None] * X, axis=0)
-    result["sum_wd_X"] = np.sum(w_d[:, None] * X, axis=0)
-    result["sum_wdt1_X"] = np.sum(w_dt1[:, None] * X, axis=0)
-    result["sum_wdt0_X"] = np.sum(w_dt0[:, None] * X, axis=0)
+    result["sum_wt_post_X"] = _to_np(xp.sum((w_treat_post * post)[:, None] * X, axis=0))
+    result["sum_wt_pre_X"] = _to_np(xp.sum((w_treat_pre * (1 - post))[:, None] * X, axis=0))
+    result["sum_wc_post_y_cont_X"] = _to_np(xp.sum((w_cont_post * (y - out_y_cont))[:, None] * X, axis=0))
+    result["sum_wc_pre_y_cont_X"] = _to_np(xp.sum((w_cont_pre * (y - out_y_cont))[:, None] * X, axis=0))
+    result["sum_wc_post_post_X"] = _to_np(xp.sum((w_cont_post * post)[:, None] * X, axis=0))
+    result["sum_wc_pre_1mp_X"] = _to_np(xp.sum((w_cont_pre * (1 - post))[:, None] * X, axis=0))
+    result["sum_wc_post_X"] = _to_np(xp.sum(w_cont_post[:, None] * X, axis=0))
+    result["sum_wc_pre_X"] = _to_np(xp.sum(w_cont_pre[:, None] * X, axis=0))
+    result["sum_wd_X"] = _to_np(xp.sum(w_d[:, None] * X, axis=0))
+    result["sum_wdt1_X"] = _to_np(xp.sum(w_dt1[:, None] * X, axis=0))
+    result["sum_wdt0_X"] = _to_np(xp.sum(w_dt0[:, None] * X, axis=0))
 
     return result
 
@@ -1369,8 +1403,11 @@ def _partition_compute_did_rc_reg_if(part_data, or_betas, global_agg, precomp):
     obs_w = part_data["weights"]
     mw = global_agg
 
-    out_y_pre = X @ or_betas["cont_pre"]
-    out_y_post = X @ or_betas["cont_post"]
+    xp = _array_module(X)
+    _or_betas = {key: xp.asarray(v) for key, v in or_betas.items()}
+
+    out_y_pre = X @ _or_betas["cont_pre"]
+    out_y_post = X @ _or_betas["cont_post"]
 
     w_treat_pre = obs_w * D * (1 - post)
     w_treat_post = obs_w * D * post
@@ -1383,39 +1420,39 @@ def _partition_compute_did_rc_reg_if(part_data, or_betas, global_agg, precomp):
     inf_treat_pre = (
         (reg_att_treat_pre - w_treat_pre * mw["eta_treat_pre"]) / mw["mean_w_treat_pre"]
         if mw["mean_w_treat_pre"] > 0
-        else np.zeros(n_part)
+        else xp.zeros(n_part)
     )
     inf_treat_post = (
         (reg_att_treat_post - w_treat_post * mw["eta_treat_post"]) / mw["mean_w_treat_post"]
         if mw["mean_w_treat_post"] > 0
-        else np.zeros(n_part)
+        else xp.zeros(n_part)
     )
     inf_treat = inf_treat_post - inf_treat_pre
 
     inf_cont_1 = reg_att_cont - w_cont * mw["eta_cont"]
 
-    control_ols_deriv = precomp["control_ols_deriv"]
+    control_ols_deriv = xp.asarray(precomp["control_ols_deriv"])
 
     mask_cont_post = (D == 0) & (post == 1)
     mask_cont_pre = (D == 0) & (post == 0)
 
-    asy_or_post = np.zeros(n_part, dtype=np.float64)
-    asy_or_pre = np.zeros(n_part, dtype=np.float64)
-    if np.any(mask_cont_post):
+    asy_or_post = xp.zeros(n_part, dtype=xp.float64)
+    asy_or_pre = xp.zeros(n_part, dtype=xp.float64)
+    if xp.any(mask_cont_post):
         resid_post = obs_w[mask_cont_post] * (y[mask_cont_post] - out_y_post[mask_cont_post])
         asy_or_post[mask_cont_post] = (resid_post[:, None] * X[mask_cont_post]) @ (
-            precomp["or_xpx_cont_post_inv"] @ control_ols_deriv
+            xp.asarray(precomp["or_xpx_cont_post_inv"]) @ control_ols_deriv
         )
-    if np.any(mask_cont_pre):
+    if xp.any(mask_cont_pre):
         resid_pre = obs_w[mask_cont_pre] * (y[mask_cont_pre] - out_y_pre[mask_cont_pre])
         asy_or_pre[mask_cont_pre] = (resid_pre[:, None] * X[mask_cont_pre]) @ (
-            precomp["or_xpx_cont_pre_inv"] @ control_ols_deriv
+            xp.asarray(precomp["or_xpx_cont_pre_inv"]) @ control_ols_deriv
         )
 
-    inf_control = (inf_cont_1 + asy_or_post - asy_or_pre) / mw["mean_w_d"] if mw["mean_w_d"] > 0 else np.zeros(n_part)
+    inf_control = (inf_cont_1 + asy_or_post - asy_or_pre) / mw["mean_w_d"] if mw["mean_w_d"] > 0 else xp.zeros(n_part)
 
     att_inf_func = inf_treat - inf_control
-    return ids, att_inf_func
+    return ids, to_numpy(att_inf_func)
 
 
 def _partition_compute_did_rc_if(
@@ -1439,30 +1476,35 @@ def _partition_compute_did_rc_if(
     post = part_data["post"]
     obs_w = part_data["weights"]
 
+    xp = _array_module(X)
+    ps_beta = xp.asarray(ps_beta)
+    _or_betas = {key: xp.asarray(v) for key, v in or_betas.items()}
+    _precomp = {key: xp.asarray(v) if hasattr(v, "shape") else v for key, v in precomp.items()}
+
     mw = global_agg
 
     # Recompute local quantities
     if est_method == "reg":
-        pscore = np.ones(n_part, dtype=np.float64)
-        keep_ps = np.ones(n_part, dtype=np.float64)
+        pscore = xp.ones(n_part, dtype=xp.float64)
+        keep_ps = xp.ones(n_part, dtype=xp.float64)
     else:
         eta = X @ ps_beta
-        pscore = 1.0 / (1.0 + np.exp(-eta))
-        pscore = np.clip(pscore, 1e-10, 1 - 1e-10)
-        pscore = np.minimum(pscore, 1 - 1e-6)
-        keep_ps = np.ones(n_part, dtype=np.float64)
-        keep_ps[D == 0] = (pscore[D == 0] < trim_level).astype(np.float64)
+        pscore = 1.0 / (1.0 + xp.exp(-eta))
+        pscore = xp.clip(pscore, 1e-10, 1 - 1e-10)
+        pscore = xp.minimum(pscore, 1 - 1e-6)
+        keep_ps = xp.ones(n_part, dtype=xp.float64)
+        keep_ps[D == 0] = (pscore[D == 0] < trim_level).astype(xp.float64)
 
     if est_method == "ipw":
-        out_y_cont_pre = np.zeros(n_part, dtype=np.float64)
-        out_y_cont_post = np.zeros(n_part, dtype=np.float64)
-        out_y_treat_pre = np.zeros(n_part, dtype=np.float64)
-        out_y_treat_post = np.zeros(n_part, dtype=np.float64)
+        out_y_cont_pre = xp.zeros(n_part, dtype=xp.float64)
+        out_y_cont_post = xp.zeros(n_part, dtype=xp.float64)
+        out_y_treat_pre = xp.zeros(n_part, dtype=xp.float64)
+        out_y_treat_post = xp.zeros(n_part, dtype=xp.float64)
     else:
-        out_y_cont_pre = X @ or_betas["cont_pre"]
-        out_y_cont_post = X @ or_betas["cont_post"]
-        out_y_treat_pre = X @ or_betas["treat_pre"]
-        out_y_treat_post = X @ or_betas["treat_post"]
+        out_y_cont_pre = X @ _or_betas["cont_pre"]
+        out_y_cont_post = X @ _or_betas["cont_post"]
+        out_y_treat_pre = X @ _or_betas["treat_pre"]
+        out_y_treat_post = X @ _or_betas["treat_post"]
 
     out_y_cont = post * out_y_cont_post + (1 - post) * out_y_cont_pre
 
@@ -1473,11 +1515,10 @@ def _partition_compute_did_rc_if(
         w_cont_pre = keep_ps * obs_w * (1 - D) * (1 - post)
         w_cont_post = keep_ps * obs_w * (1 - D) * post
     else:
-        with np.errstate(divide="ignore", invalid="ignore"):
-            w_cont_pre = keep_ps * obs_w * pscore * (1 - D) * (1 - post) / (1 - pscore)
-            w_cont_post = keep_ps * obs_w * pscore * (1 - D) * post / (1 - pscore)
-        w_cont_pre = np.nan_to_num(w_cont_pre)
-        w_cont_post = np.nan_to_num(w_cont_post)
+        w_cont_pre = keep_ps * obs_w * pscore * (1 - D) * (1 - post) / (1 - pscore)
+        w_cont_post = keep_ps * obs_w * pscore * (1 - D) * post / (1 - pscore)
+        w_cont_pre = xp.nan_to_num(w_cont_pre)
+        w_cont_post = xp.nan_to_num(w_cont_post)
 
     w_d = keep_ps * obs_w * D
     w_dt1 = keep_ps * obs_w * D * post
@@ -1485,36 +1526,36 @@ def _partition_compute_did_rc_if(
 
     # Eta terms
     eta_treat_pre = (
-        w_treat_pre * (y - out_y_cont) / mw["mean_w_treat_pre"] if mw["mean_w_treat_pre"] > 0 else np.zeros(n_part)
+        w_treat_pre * (y - out_y_cont) / mw["mean_w_treat_pre"] if mw["mean_w_treat_pre"] > 0 else xp.zeros(n_part)
     )
     eta_treat_post = (
-        w_treat_post * (y - out_y_cont) / mw["mean_w_treat_post"] if mw["mean_w_treat_post"] > 0 else np.zeros(n_part)
+        w_treat_post * (y - out_y_cont) / mw["mean_w_treat_post"] if mw["mean_w_treat_post"] > 0 else xp.zeros(n_part)
     )
     eta_cont_pre = (
-        w_cont_pre * (y - out_y_cont) / mw["mean_w_cont_pre"] if mw["mean_w_cont_pre"] > 0 else np.zeros(n_part)
+        w_cont_pre * (y - out_y_cont) / mw["mean_w_cont_pre"] if mw["mean_w_cont_pre"] > 0 else xp.zeros(n_part)
     )
     eta_cont_post = (
-        w_cont_post * (y - out_y_cont) / mw["mean_w_cont_post"] if mw["mean_w_cont_post"] > 0 else np.zeros(n_part)
+        w_cont_post * (y - out_y_cont) / mw["mean_w_cont_post"] if mw["mean_w_cont_post"] > 0 else xp.zeros(n_part)
     )
-    eta_d_post = w_d * (out_y_treat_post - out_y_cont_post) / mw["mean_w_d"] if mw["mean_w_d"] > 0 else np.zeros(n_part)
+    eta_d_post = w_d * (out_y_treat_post - out_y_cont_post) / mw["mean_w_d"] if mw["mean_w_d"] > 0 else xp.zeros(n_part)
     eta_dt1_post = (
-        w_dt1 * (out_y_treat_post - out_y_cont_post) / mw["mean_w_dt1"] if mw["mean_w_dt1"] > 0 else np.zeros(n_part)
+        w_dt1 * (out_y_treat_post - out_y_cont_post) / mw["mean_w_dt1"] if mw["mean_w_dt1"] > 0 else xp.zeros(n_part)
     )
-    eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / mw["mean_w_d"] if mw["mean_w_d"] > 0 else np.zeros(n_part)
+    eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / mw["mean_w_d"] if mw["mean_w_d"] > 0 else xp.zeros(n_part)
     eta_dt0_pre = (
-        w_dt0 * (out_y_treat_pre - out_y_cont_pre) / mw["mean_w_dt0"] if mw["mean_w_dt0"] > 0 else np.zeros(n_part)
+        w_dt0 * (out_y_treat_pre - out_y_cont_pre) / mw["mean_w_dt0"] if mw["mean_w_dt0"] > 0 else xp.zeros(n_part)
     )
 
     # === Treated component IF ===
     inf_treat_pre = (
         eta_treat_pre - w_treat_pre * mw["att_treat_pre"] / mw["mean_w_treat_pre"]
         if mw["mean_w_treat_pre"] > 0
-        else np.zeros(n_part)
+        else xp.zeros(n_part)
     )
     inf_treat_post = (
         eta_treat_post - w_treat_post * mw["att_treat_post"] / mw["mean_w_treat_post"]
         if mw["mean_w_treat_post"] > 0
-        else np.zeros(n_part)
+        else xp.zeros(n_part)
     )
 
     # OR correction for treated component
@@ -1523,64 +1564,62 @@ def _partition_compute_did_rc_if(
         mask_cont_post = (D == 0) & (post == 1)
         mask_cont_pre = (D == 0) & (post == 0)
 
-        asy_or_cont_post = np.zeros(n_part, dtype=np.float64)
-        asy_or_cont_pre = np.zeros(n_part, dtype=np.float64)
-        if np.any(mask_cont_post):
+        asy_or_cont_post = xp.zeros(n_part, dtype=xp.float64)
+        asy_or_cont_pre = xp.zeros(n_part, dtype=xp.float64)
+        if xp.any(mask_cont_post):
             resid_post = obs_w[mask_cont_post] * (y[mask_cont_post] - out_y_cont_post[mask_cont_post])
-            asy_or_cont_post_sub = (resid_post[:, None] * X[mask_cont_post]) @ precomp["treat_or_post"]
+            asy_or_cont_post_sub = (resid_post[:, None] * X[mask_cont_post]) @ _precomp["treat_or_post"]
             asy_or_cont_post[mask_cont_post] = asy_or_cont_post_sub
-        if np.any(mask_cont_pre):
+        if xp.any(mask_cont_pre):
             resid_pre = obs_w[mask_cont_pre] * (y[mask_cont_pre] - out_y_cont_pre[mask_cont_pre])
-            asy_or_cont_pre_sub = (resid_pre[:, None] * X[mask_cont_pre]) @ precomp["treat_or_pre"]
+            asy_or_cont_pre_sub = (resid_pre[:, None] * X[mask_cont_pre]) @ _precomp["treat_or_pre"]
             asy_or_cont_pre[mask_cont_pre] = asy_or_cont_pre_sub
         inf_treat_or = asy_or_cont_post + asy_or_cont_pre
     else:
-        inf_treat_or = np.zeros(n_part, dtype=np.float64)
+        inf_treat_or = xp.zeros(n_part, dtype=xp.float64)
 
     inf_treat = inf_treat_post - inf_treat_pre + inf_treat_or
-
-    # === Control component IF ===
     inf_cont_pre = (
         eta_cont_pre - w_cont_pre * mw["att_cont_pre"] / mw["mean_w_cont_pre"]
         if mw["mean_w_cont_pre"] > 0
-        else np.zeros(n_part)
+        else xp.zeros(n_part)
     )
     inf_cont_post = (
         eta_cont_post - w_cont_post * mw["att_cont_post"] / mw["mean_w_cont_post"]
         if mw["mean_w_cont_post"] > 0
-        else np.zeros(n_part)
+        else xp.zeros(n_part)
     )
 
     # PS correction
     if est_method != "reg":
         score_ps = (obs_w * (D - pscore))[:, None] * X
-        inf_cont_ps = score_ps @ precomp["ps_correction"]
+        inf_cont_ps = score_ps @ _precomp["ps_correction"]
     else:
-        inf_cont_ps = np.zeros(n_part, dtype=np.float64)
+        inf_cont_ps = xp.zeros(n_part, dtype=xp.float64)
 
     # OR correction for control component
     if est_method != "ipw":
-        asy_or_cont_post_c = np.zeros(n_part, dtype=np.float64)
-        asy_or_cont_pre_c = np.zeros(n_part, dtype=np.float64)
-        if np.any(mask_cont_post):
+        asy_or_cont_post_c = xp.zeros(n_part, dtype=xp.float64)
+        asy_or_cont_pre_c = xp.zeros(n_part, dtype=xp.float64)
+        if xp.any(mask_cont_post):
             resid_post = obs_w[mask_cont_post] * (y[mask_cont_post] - out_y_cont_post[mask_cont_post])
-            asy_or_cont_post_c[mask_cont_post] = (resid_post[:, None] * X[mask_cont_post]) @ precomp["cont_or_post"]
-        if np.any(mask_cont_pre):
+            asy_or_cont_post_c[mask_cont_post] = (resid_post[:, None] * X[mask_cont_post]) @ _precomp["cont_or_post"]
+        if xp.any(mask_cont_pre):
             resid_pre = obs_w[mask_cont_pre] * (y[mask_cont_pre] - out_y_cont_pre[mask_cont_pre])
-            asy_or_cont_pre_c[mask_cont_pre] = (resid_pre[:, None] * X[mask_cont_pre]) @ precomp["cont_or_pre"]
+            asy_or_cont_pre_c[mask_cont_pre] = (resid_pre[:, None] * X[mask_cont_pre]) @ _precomp["cont_or_pre"]
         inf_cont_or = asy_or_cont_post_c + asy_or_cont_pre_c
     else:
-        inf_cont_or = np.zeros(n_part, dtype=np.float64)
+        inf_cont_or = xp.zeros(n_part, dtype=xp.float64)
 
     inf_cont = inf_cont_post - inf_cont_pre + inf_cont_ps + inf_cont_or
 
     # === Efficiency adjustment IF ===
-    inf_eff1 = eta_d_post - w_d * mw["att_d_post"] / mw["mean_w_d"] if mw["mean_w_d"] > 0 else np.zeros(n_part)
+    inf_eff1 = eta_d_post - w_d * mw["att_d_post"] / mw["mean_w_d"] if mw["mean_w_d"] > 0 else xp.zeros(n_part)
     inf_eff2 = (
-        eta_dt1_post - w_dt1 * mw["att_dt1_post"] / mw["mean_w_dt1"] if mw["mean_w_dt1"] > 0 else np.zeros(n_part)
+        eta_dt1_post - w_dt1 * mw["att_dt1_post"] / mw["mean_w_dt1"] if mw["mean_w_dt1"] > 0 else xp.zeros(n_part)
     )
-    inf_eff3 = eta_d_pre - w_d * mw["att_d_pre"] / mw["mean_w_d"] if mw["mean_w_d"] > 0 else np.zeros(n_part)
-    inf_eff4 = eta_dt0_pre - w_dt0 * mw["att_dt0_pre"] / mw["mean_w_dt0"] if mw["mean_w_dt0"] > 0 else np.zeros(n_part)
+    inf_eff3 = eta_d_pre - w_d * mw["att_d_pre"] / mw["mean_w_d"] if mw["mean_w_d"] > 0 else xp.zeros(n_part)
+    inf_eff4 = eta_dt0_pre - w_dt0 * mw["att_dt0_pre"] / mw["mean_w_dt0"] if mw["mean_w_dt0"] > 0 else xp.zeros(n_part)
     inf_eff = (inf_eff1 - inf_eff2) - (inf_eff3 - inf_eff4)
 
     # OR correction for efficiency adjustment
@@ -1589,30 +1628,30 @@ def _partition_compute_did_rc_if(
         mask_treat_post = (D == 1) & (post == 1)
         mask_treat_pre = (D == 1) & (post == 0)
 
-        inf_or_post = np.zeros(n_part, dtype=np.float64)
-        inf_or_pre = np.zeros(n_part, dtype=np.float64)
+        inf_or_post = xp.zeros(n_part, dtype=xp.float64)
+        inf_or_pre = xp.zeros(n_part, dtype=xp.float64)
 
         # Post: (asy_lin_rep_ols_post_treat - asy_lin_rep_ols_post) @ mom_post
-        if np.any(mask_treat_post):
+        if xp.any(mask_treat_post):
             resid_tp = obs_w[mask_treat_post] * (y[mask_treat_post] - out_y_treat_post[mask_treat_post])
-            inf_or_post[mask_treat_post] += (resid_tp[:, None] * X[mask_treat_post]) @ precomp["eff_or_post_treat"]
-        if np.any(mask_cont_post):
+            inf_or_post[mask_treat_post] += (resid_tp[:, None] * X[mask_treat_post]) @ _precomp["eff_or_post_treat"]
+        if xp.any(mask_cont_post):
             resid_cp = obs_w[mask_cont_post] * (y[mask_cont_post] - out_y_cont_post[mask_cont_post])
-            inf_or_post[mask_cont_post] -= (resid_cp[:, None] * X[mask_cont_post]) @ precomp["eff_or_post_cont"]
+            inf_or_post[mask_cont_post] -= (resid_cp[:, None] * X[mask_cont_post]) @ _precomp["eff_or_post_cont"]
 
         # Pre: (asy_lin_rep_ols_pre_treat - asy_lin_rep_ols_pre) @ mom_pre
-        if np.any(mask_treat_pre):
+        if xp.any(mask_treat_pre):
             resid_tpr = obs_w[mask_treat_pre] * (y[mask_treat_pre] - out_y_treat_pre[mask_treat_pre])
-            inf_or_pre[mask_treat_pre] += (resid_tpr[:, None] * X[mask_treat_pre]) @ precomp["eff_or_pre_treat"]
-        if np.any(mask_cont_pre):
+            inf_or_pre[mask_treat_pre] += (resid_tpr[:, None] * X[mask_treat_pre]) @ _precomp["eff_or_pre_treat"]
+        if xp.any(mask_cont_pre):
             resid_cpr = obs_w[mask_cont_pre] * (y[mask_cont_pre] - out_y_cont_pre[mask_cont_pre])
-            inf_or_pre[mask_cont_pre] -= (resid_cpr[:, None] * X[mask_cont_pre]) @ precomp["eff_or_pre_cont"]
+            inf_or_pre[mask_cont_pre] -= (resid_cpr[:, None] * X[mask_cont_pre]) @ _precomp["eff_or_pre_cont"]
 
         inf_or = inf_or_post - inf_or_pre
     else:
-        inf_or = np.zeros(n_part, dtype=np.float64)
+        inf_or = xp.zeros(n_part, dtype=xp.float64)
 
     # Combine
     att_inf_func = (inf_treat - inf_cont) + inf_eff + inf_or
 
-    return ids, att_inf_func
+    return ids, to_numpy(att_inf_func)

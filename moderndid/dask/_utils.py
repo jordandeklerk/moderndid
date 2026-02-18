@@ -27,6 +27,13 @@ def is_dask_collection(data) -> bool:
 
         return isinstance(data, dd.DataFrame)
     except ImportError:
+        _type_name = type(data).__module__ + "." + type(data).__qualname__
+        if "dask" in _type_name.lower():
+            raise ImportError(
+                f"Input data appears to be a Dask object ({_type_name}) but "
+                "the dask extra is not installed. Install with: "
+                "uv pip install 'moderndid[dask]'"
+            ) from None
         return False
 
 

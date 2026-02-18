@@ -32,6 +32,7 @@ def dask_att_gt(
     n_partitions=None,
     max_cohorts=None,
     progress_bar=False,
+    backend=None,
 ):
     r"""Compute the distributed group-time average treatment effects.
 
@@ -114,6 +115,13 @@ def dask_att_gt(
     if callable(est_method):
         raise ValueError("Callable est_method is not supported for Dask inputs. Use 'dr', 'reg', or 'ipw'.")
 
+    use_gpu = False
+    if backend is not None:
+        from moderndid.cupy.backend import _validate_backend_name
+
+        _validate_backend_name(backend)
+        use_gpu = backend.lower() == "cupy"
+
     client = get_or_create_client(client)
     logging.getLogger("distributed.shuffle").setLevel(logging.ERROR)
 
@@ -162,4 +170,5 @@ def dask_att_gt(
         max_cohorts=max_cohorts,
         progress_bar=progress_bar,
         panel=panel,
+        use_gpu=use_gpu,
     )

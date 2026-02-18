@@ -39,15 +39,17 @@ Extras are additive. They add functionality to the base install, so you always g
 - **`didhonest`** - Base + sensitivity analysis (`honest_did`)
 - **`plots`** - Base + visualization (`plot_gt`, `plot_event_study`, ...)
 - **`numba`** - Base + faster bootstrap inference
+- **`dask`** - Base + distributed estimation via Dask
 - **`gpu`** - Base + GPU-accelerated estimation (requires CUDA)
-- **`all`** - Everything (except `gpu`, which requires CUDA hardware)
+- **`all`** - Everything (except `dask` and `gpu`, which require specific infrastructure)
 
 ```bash
 uv pip install moderndid[didcont]     # Base estimators + cont_did
 uv pip install moderndid[didhonest]   # Base estimators + sensitivity analysis
 uv pip install moderndid[numba]       # Base estimators with faster computations
+uv pip install moderndid[dask]        # Base estimators with Dask distributed
 uv pip install moderndid[gpu]         # Base estimators with GPU acceleration
-uv pip install moderndid[plots,numba] # Combine multiple extras
+uv pip install moderndid[gpu,dask]    # Combine multiple extras
 ```
 
 Or install from source:
@@ -56,19 +58,17 @@ Or install from source:
 uv pip install git+https://github.com/jordandeklerk/moderndid.git
 ```
 
-> [!TIP]
-> We recommend `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant performance gains for bootstrap inference and the `plots` extra provides customizable, batteries-included plotting out of the box. On machines with NVIDIA GPUs, use `uv pip install moderndid[all,gpu]` to also enable CuPy-accelerated estimation. Install minimal extras only if you have specific dependency constraints.
-
 ## Features
 
 - **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
 - **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
 - **Distributed computing** - Scale DiD estimators to billions of observations across multi-node [Dask](https://www.dask.org/) clusters with automatic dispatch. Simply pass a Dask DataFrame and the distributed backend activates transparently
 - **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and optional thread-based parallelism via the `n_jobs` parameter
-- **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated regression and propensity score estimation across all doubly robust and IPW estimators on NVIDIA GPUs
+- **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated regression and propensity score estimation across all doubly robust and IPW estimators on NVIDIA GPUs, with multi-GPU scaling via Dask
 - **Native plots** - Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
-- **Documentation** - [https://moderndid.readthedocs.io/en/latest/index.html](https://moderndid.readthedocs.io/en/latest/index.html)
+
+For detailed documentation, including user guides and API reference, see [moderndid.readthedocs.io](https://moderndid.readthedocs.io/en/latest/).
 
 ### Distributed Computing
 
@@ -97,11 +97,14 @@ result = did.att_gt(
     n_partitions=64,         # partitions per cell (default: total cluster threads)
     max_cohorts=4,           # cohorts to process in parallel
     progress_bar=True,       # track cell completion
+    backend="cupy",          # run worker linear algebra on GPUs (optional)
 )
 
 # Post-estimation works identically
 event_study = did.aggte(result, type="dynamic")
 ```
+
+Add `backend="cupy"` to run worker-side linear algebra on GPUs. For multi-GPU machines, use `dask-cuda` with a `LocalCUDACluster` to pin one worker per GPU.
 
 See the [Distributed Estimation guide](moderndid/dask) for architecture details and deployment recommendations.
 
@@ -120,7 +123,7 @@ result = did.att_gt(data,
                     backend="cupy")
 ```
 
-You can also set the backend globally with `did.set_backend("cupy")` and revert with `did.set_backend("numpy")`.
+You can also set the backend globally with `did.set_backend("cupy")` and revert with `did.set_backend("numpy")`. For multi-GPU scaling, combine with a Dask DataFrame as shown [above](#distributed-computing). See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) for details.
 
 See [GPU benchmark results](scripts/README.md) for performance comparisons across Tesla T4, A100, and H100 GPUs.
 

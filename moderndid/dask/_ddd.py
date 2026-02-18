@@ -32,6 +32,7 @@ def dask_ddd(
     n_partitions=None,
     max_cohorts=None,
     progress_bar=False,
+    backend=None,
 ):
     r"""Compute the distributed triple difference-in-differences estimator.
 
@@ -215,6 +216,13 @@ def dask_ddd(
     if pname is None:
         raise ValueError("pname is required.")
 
+    use_gpu = False
+    if backend is not None:
+        from moderndid.cupy.backend import _validate_backend_name
+
+        _validate_backend_name(backend)
+        use_gpu = backend.lower() == "cupy"
+
     client = get_or_create_client(client)
     logging.getLogger("distributed.shuffle").setLevel(logging.ERROR)
 
@@ -256,4 +264,5 @@ def dask_ddd(
         max_cohorts=max_cohorts,
         progress_bar=progress_bar,
         panel=panel,
+        use_gpu=use_gpu,
     )

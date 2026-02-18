@@ -128,9 +128,9 @@ all designs, including two-period data. Set ``panel=False`` for repeated
 cross-section data where different individuals are observed in each period.
 
 The distributed-specific tuning controls are ``n_partitions``,
-``max_cohorts``, and ``progress_bar`` on high-level wrappers, plus
-``client`` on the low-level functions. High-level wrappers pick up the
-active client via ``client.as_current()``.
+``max_cohorts``, ``progress_bar``, and ``backend`` on high-level
+wrappers, plus ``client`` on the low-level functions. High-level
+wrappers pick up the active client via ``client.as_current()``.
 
 All standard estimation options that affect identification work in
 distributed mode, including ``control_group``, ``anticipation``,
@@ -521,6 +521,16 @@ Sampling weights are supported in distributed mode through the
     )
 
 The weight column must be present in the Dask DataFrame.
+
+
+GPU acceleration on workers
+---------------------------
+
+Pass ``backend="cupy"`` to run partition-level linear algebra on worker
+GPUs. For multi-GPU machines, use ``dask-cuda`` with a
+``LocalCUDACluster`` to pin one worker per GPU. See
+:ref:`Combining GPU and Dask <gpu-dask-workers>` for setup, code
+examples, and memory management details.
 
 
 Running multiple specifications

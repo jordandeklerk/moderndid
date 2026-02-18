@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from moderndid.cupy.backend import _array_module, to_numpy
+
 from ._gram import _sum_gram_pair, partition_gram, solve_gram, tree_reduce
 
 
@@ -173,13 +175,15 @@ def distributed_wls_from_futures(client, part_futures, gram_fn):
 
 def _irls_local_stats_with_y(X, weights, y, beta):
     """Compute local IRLS sufficient statistics for one partition."""
+    xp = _array_module(X)
+    beta = xp.asarray(beta)
     eta = X @ beta
-    mu = 1.0 / (1.0 + np.exp(-eta))
-    mu = np.clip(mu, 1e-10, 1 - 1e-10)
+    mu = 1.0 / (1.0 + xp.exp(-eta))
+    mu = xp.clip(mu, 1e-10, 1 - 1e-10)
     W_irls = weights * mu * (1 - mu)
     z = eta + (y - mu) / (mu * (1 - mu))
     XtW = X.T * W_irls
-    return XtW @ X, XtW @ z, len(y)
+    return to_numpy(XtW @ X), to_numpy(XtW @ z), len(y)
 
 
 def _sum_gram_pair_or_none(a, b):
