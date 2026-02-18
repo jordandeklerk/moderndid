@@ -55,10 +55,14 @@ def dask_att_gt_mp(
     base_period="varying",
     anticipation=0,
     est_method="dr",
+    weightsname=None,
     boot=False,
     biters=1000,
     cband=False,
     alp=0.05,
+    clustervars=None,
+    allow_unbalanced_panel=False,
+    trim_level=0.995,
     random_state=None,
     n_partitions=None,
     max_cohorts=None,
@@ -129,6 +133,17 @@ def dask_att_gt_mp(
 
         dask_data = data.persist()
         wait(dask_data)
+
+        if not allow_unbalanced_panel:
+            unit_counts = dask_data.groupby(id_col)[time_col].count().compute()
+            complete_ids = unit_counts[unit_counts == len(tlist)].index
+            n_dropped = len(unit_counts) - len(complete_ids)
+            if n_dropped > 0:
+                warnings.warn(f"Dropped {n_dropped} units while converting to balanced panel")
+                dask_data = dask_data[dask_data[id_col].isin(complete_ids)].persist()
+                wait(dask_data)
+                unique_ids = np.sort(complete_ids.values)
+                n_units = len(unique_ids)
     else:
         data = to_polars(data)
         tlist = np.sort(data[time_col].unique().to_numpy())
@@ -137,6 +152,16 @@ def dask_att_gt_mp(
         n_units = data[id_col].n_unique()
         unique_ids = np.sort(data[id_col].unique().to_numpy())
         dask_data = None
+
+        if not allow_unbalanced_panel:
+            unit_counts = data.group_by(id_col).len()
+            complete_units = unit_counts.filter(pl.col("len") == len(tlist))[id_col].to_list()
+            n_dropped = unit_counts.height - len(complete_units)
+            if n_dropped > 0:
+                warnings.warn(f"Dropped {n_dropped} units while converting to balanced panel")
+                data = data.filter(pl.col(id_col).is_in(complete_units))
+                unique_ids = np.sort(np.array(complete_units))
+                n_units = len(unique_ids)
 
     n_periods = len(tlist)
     n_cohorts = len(glist)
@@ -220,12 +245,14 @@ def dask_att_gt_mp(
                         y_col=y_col,
                         covariate_cols=covariate_cols,
                         est_method=est_method,
+                        weightsname=weightsname,
                         n_units=n_units,
                         unique_ids=unique_ids,
                         inf_func_mat=inf_func_mat,
                         se_array=se_array,
                         n_partitions=n_partitions,
                         glist_raw=glist_raw,
+                        trim_level=trim_level,
                         pbar=pbar,
                     ): g
                     for g, cells in cohort_cells.items()
@@ -263,14 +290,60 @@ def dask_att_gt_mp(
 
         se_overrides = se_array[non_skip_counters[:n_valid]]
 
+        # Cluster-level bootstrap aggregation
+        cluster = None
+        n_bootstrap_units = n_units
+        if clustervars is not None and len(clustervars) > 0:
+            if len(clustervars) > 2:
+                raise ValueError("Can cluster on at most 2 variables.")
+
+            if not boot:
+                warnings.warn(
+                    "Clustering the standard errors requires using the bootstrap, "
+                    "resulting standard errors are NOT accounting for clustering",
+                    UserWarning,
+                )
+
+            first_period = tlist[0]
+            if is_dask:
+                cluster_cols = [id_col] + [cv for cv in clustervars if cv != id_col]
+                unit_cluster_dask = dask_data.loc[dask_data[time_col] == first_period][cluster_cols]
+                unit_cluster_df = to_polars(unit_cluster_dask.compute()).sort(id_col)
+            else:
+                cluster_cols = [id_col] + [cv for cv in clustervars if cv != id_col]
+                unit_cluster_df = data.filter(pl.col(time_col) == first_period).select(cluster_cols).sort(id_col)
+
+            if len(clustervars) == 1:
+                cluster = unit_cluster_df[clustervars[0]].to_numpy()
+            else:
+                combined = unit_cluster_df[clustervars[0]].cast(str) + "_" + unit_cluster_df[clustervars[1]].cast(str)
+                unique_vals = combined.unique()
+                val_to_code = {v: i for i, v in enumerate(unique_vals.to_list())}
+                cluster = np.array([val_to_code[v] for v in combined.to_list()])
+
         if boot:
-            splits = np.array_split(np.arange(n_units), n_partitions)
-            inf_partitions = [np.array(inf_func_trimmed[idx]) for idx in splits if len(idx) > 0]
+            if cluster is not None:
+                # Aggregate IF at cluster level before bootstrap
+                _, cluster_inverse, cluster_counts = np.unique(cluster, return_inverse=True, return_counts=True)
+                n_clusters = len(cluster_counts)
+
+                n_params = inf_func_trimmed.shape[1]
+                cluster_sum_inf = np.zeros((n_clusters, n_params))
+                for i in range(n_params):
+                    cluster_sum_inf[:, i] = np.bincount(cluster_inverse, weights=inf_func_trimmed[:, i])
+                cluster_inf = cluster_sum_inf / cluster_counts[:, np.newaxis]
+
+                splits = np.array_split(np.arange(n_clusters), n_partitions)
+                inf_partitions = [np.array(cluster_inf[idx]) for idx in splits if len(idx) > 0]
+                n_bootstrap_units = n_clusters
+            else:
+                splits = np.array_split(np.arange(n_units), n_partitions)
+                inf_partitions = [np.array(inf_func_trimmed[idx]) for idx in splits if len(idx) > 0]
 
             _bres, se_boot, crit_val_boot = distributed_mboot_ddd(
                 client=client,
                 inf_func_partitions=inf_partitions,
-                n_total=n_units,
+                n_total=n_bootstrap_units,
                 biters=biters,
                 alpha=alp,
                 random_state=random_state,
@@ -293,12 +366,18 @@ def dask_att_gt_mp(
 
         first_period = tlist[0]
         if is_dask:
-            unit_dask = dask_data.loc[dask_data[time_col] == first_period][[id_col, group_col]]
+            fetch_cols = [id_col, group_col]
+            if weightsname is not None:
+                fetch_cols.append(weightsname)
+            unit_dask = dask_data.loc[dask_data[time_col] == first_period][fetch_cols]
             unit_data = to_polars(unit_dask.compute()).sort(id_col)
         else:
             unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
 
         group_assignments = unit_data[group_col] if group_col in unit_data.columns else None
+        weights_ind = None
+        if weightsname is not None and weightsname in unit_data.columns:
+            weights_ind = unit_data[weightsname]
 
         inf_func_result = np.array(inf_func_trimmed)
 
@@ -316,7 +395,8 @@ def dask_att_gt_mp(
         "uniform_bands": cband,
         "base_period": base_period,
         "panel": True,
-        "clustervars": None,
+        "allow_unbalanced_panel": allow_unbalanced_panel,
+        "clustervars": clustervars,
         "biters": biters,
         "random_state": random_state,
     }
@@ -335,7 +415,7 @@ def dask_att_gt_mp(
         alpha=alp,
         estimation_params=estimation_params,
         G=group_assignments,
-        weights_ind=None,
+        weights_ind=weights_ind,
     )
 
 
@@ -351,12 +431,14 @@ def _process_did_cohort_cells(
     y_col,
     covariate_cols,
     est_method,
-    n_units,
-    unique_ids,
-    inf_func_mat,
-    se_array,
-    n_partitions,
-    glist_raw,
+    weightsname=None,
+    n_units=0,
+    unique_ids=None,
+    inf_func_mat=None,
+    se_array=None,
+    n_partitions=1,
+    glist_raw=None,
+    trim_level=0.995,
     pbar=None,
 ):
     """Process all cells for a single cohort.
@@ -374,6 +456,7 @@ def _process_did_cohort_cells(
             compute_cells = [c for c in cells if c[5] == "compute"]
 
             if compute_cells:
+                extra_cols = [weightsname] if weightsname else None
                 wide_dask, n_wide = prepare_cohort_wide_pivot(
                     client,
                     dask_data,
@@ -385,6 +468,7 @@ def _process_did_cohort_cells(
                     y_col,
                     covariate_cols,
                     n_partitions,
+                    extra_cols=extra_cols,
                 )
 
             if wide_dask is not None and n_wide > 0:
@@ -415,6 +499,7 @@ def _process_did_cohort_cells(
                             covariate_cols,
                             y_post_col,
                             y_pre_col,
+                            weightsname,
                         )
                         for pdf_f in wide_pdf_futures
                     ]
@@ -436,6 +521,7 @@ def _process_did_cohort_cells(
                         unique_ids,
                         inf_func_mat,
                         counter,
+                        trim_level=trim_level,
                         part_futures=part_futures,
                         n_cell_override=n_wide,
                     )
@@ -477,6 +563,7 @@ def _process_did_cohort_cells(
                     y_col=y_col,
                     covariate_cols=covariate_cols,
                     est_method=est_method,
+                    weightsname=weightsname,
                     n_units=n_units,
                     unique_ids=unique_ids,
                     inf_func_mat=inf_func_mat,
@@ -484,6 +571,7 @@ def _process_did_cohort_cells(
                     counter=counter,
                     n_partitions=n_partitions,
                     glist_raw=glist_raw,
+                    trim_level=trim_level,
                 )
                 if result is not None:
                     results.append((counter, result))
@@ -511,13 +599,15 @@ def _compute_did_cell_streaming(
     y_col,
     covariate_cols,
     est_method,
-    n_units,
-    unique_ids,
-    inf_func_mat,
-    se_array,
-    counter,
-    n_partitions,
+    weightsname=None,
+    n_units=0,
+    unique_ids=None,
+    inf_func_mat=None,
+    se_array=None,
+    counter=0,
+    n_partitions=1,
     glist_raw=None,
+    trim_level=0.995,
 ):
     """Compute one (g,t) cell via streaming."""
     att = streaming_did_cell_single_control(
@@ -537,7 +627,9 @@ def _compute_did_cell_streaming(
         unique_ids,
         inf_func_mat,
         counter,
+        trim_level=trim_level,
         control_group=control_group,
+        weightsname=weightsname,
     )
     if att is None:
         return None

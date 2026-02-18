@@ -35,6 +35,7 @@ def streaming_cell_single_control(
     filtered_data=None,
     part_futures=None,
     n_cell_override=None,
+    weightsname=None,
 ):
     r"""Streaming DDD computation for one :math:`(g, t)` cell with a single control group.
 
@@ -128,6 +129,7 @@ def streaming_cell_single_control(
             covariate_cols,
             n_partitions,
             filtered_data=filtered_data,
+            weightsname=weightsname,
         )
 
     if part_futures is None or n_cell == 0:
@@ -216,6 +218,7 @@ def streaming_cell_multi_control(
     inf_func_mat,
     counter,
     trim_level=0.995,
+    weightsname=None,
 ):
     """Streaming DDD computation for one :math:`(g, t)` cell with multiple control groups.
 
@@ -303,6 +306,7 @@ def streaming_cell_multi_control(
             inf_func_mat,
             counter,
             trim_level,
+            weightsname,
         )
 
     max_period = max(t, pret)
@@ -310,6 +314,8 @@ def streaming_cell_multi_control(
     filtered = dask_data.loc[full_filter]
 
     post_cols = [id_col, group_col, partition_col, y_col]
+    if weightsname is not None:
+        post_cols.append(weightsname)
     if covariate_cols:
         post_cols = post_cols + [c for c in covariate_cols if c not in post_cols]
 
@@ -339,6 +345,7 @@ def streaming_cell_multi_control(
             partition_col,
             g,
             covariate_cols,
+            weightsname,
         )
         for pdf_f in pdf_futures
     ]
@@ -449,6 +456,7 @@ def prepare_cell_partitions(
     covariate_cols,
     n_partitions,
     filtered_data=None,
+    weightsname=None,
 ):
     """Filter and merge post/pre periods on workers, returning partition futures.
 
@@ -515,6 +523,8 @@ def prepare_cell_partitions(
         filtered = dask_data.loc[group_filter]
 
     post_cols = [id_col, group_col, partition_col, y_col]
+    if weightsname is not None:
+        post_cols.append(weightsname)
     if covariate_cols:
         post_cols = post_cols + [c for c in covariate_cols if c not in post_cols]
 
@@ -542,6 +552,7 @@ def prepare_cell_partitions(
             partition_col,
             g,
             covariate_cols,
+            weightsname,
         )
         for pdf_f in pdf_futures
     ]
@@ -753,7 +764,7 @@ def streaming_global_stats(client, part_futures, ps_betas, or_betas, est_method,
     return global_agg, precomp_hess_m2, precomp_xpx_inv_m1, precomp_xpx_inv_m3
 
 
-def _build_partition_arrays(merged_pdf, id_col, y_col, group_col, partition_col, g, covariate_cols):
+def _build_partition_arrays(merged_pdf, id_col, y_col, group_col, partition_col, g, covariate_cols, weightsname=None):
     """Convert one merged pandas partition to numpy arrays."""
     if len(merged_pdf) == 0:
         return None
@@ -775,6 +786,11 @@ def _build_partition_arrays(merged_pdf, id_col, y_col, group_col, partition_col,
     else:
         X = np.ones((n, 1), dtype=np.float64)
 
+    if weightsname is not None and weightsname in merged_pdf.columns:
+        weights = merged_pdf[weightsname].values.astype(np.float64)
+    else:
+        weights = np.ones(n, dtype=np.float64)
+
     return {
         "ids": ids,
         "y1": y1,
@@ -784,10 +800,13 @@ def _build_partition_arrays(merged_pdf, id_col, y_col, group_col, partition_col,
         "n": n,
         "groups_raw": groups,
         "parts_raw": parts,
+        "weights": weights,
     }
 
 
-def _build_partition_arrays_wide(wide_pdf, id_col, group_col, partition_col, g, covariate_cols, y_post_col, y_pre_col):
+def _build_partition_arrays_wide(
+    wide_pdf, id_col, group_col, partition_col, g, covariate_cols, y_post_col, y_pre_col, weightsname=None
+):
     """Convert one wide-pivot pandas partition to numpy arrays.
 
     Same output format as :func:`_build_partition_arrays` but reads the
@@ -814,6 +833,11 @@ def _build_partition_arrays_wide(wide_pdf, id_col, group_col, partition_col, g, 
     else:
         X = np.ones((n, 1), dtype=np.float64)
 
+    if weightsname is not None and weightsname in wide_pdf.columns:
+        weights = wide_pdf[weightsname].values.astype(np.float64)
+    else:
+        weights = np.ones(n, dtype=np.float64)
+
     return {
         "ids": ids,
         "y1": y1,
@@ -823,6 +847,7 @@ def _build_partition_arrays_wide(wide_pdf, id_col, group_col, partition_col, g, 
         "n": n,
         "groups_raw": groups,
         "parts_raw": parts,
+        "weights": weights,
     }
 
 
@@ -850,6 +875,7 @@ def _filter_partition_for_ctrl(part_data, g, ctrl):
         "n": int(np.sum(mask)),
         "groups_raw": groups[mask],
         "parts_raw": parts,
+        "weights": part_data["weights"][mask],
     }
 
 
@@ -863,12 +889,13 @@ def _partition_pscore_gram(part_data, comp_sg, beta):
         return None
 
     X = part_data["X"][mask]
+    w = part_data["weights"][mask]
     pa4 = (sg[mask] == 4).astype(np.float64)
 
     eta = X @ beta
     mu = 1.0 / (1.0 + np.exp(-eta))
     mu = np.clip(mu, 1e-10, 1 - 1e-10)
-    W_irls = mu * (1 - mu)
+    W_irls = w * mu * (1 - mu)
     z = eta + (pa4 - mu) / (mu * (1 - mu))
     XtW = X.T * W_irls
     return XtW @ X, XtW @ z, int(np.sum(mask))
@@ -885,7 +912,7 @@ def _partition_or_gram(part_data, comp_sg):
 
     X = part_data["X"][mask]
     delta_y = (part_data["y1"] - part_data["y0"])[mask]
-    W = np.ones(int(np.sum(mask)), dtype=np.float64)
+    W = part_data["weights"][mask]
     XtW = X.T * W
     return XtW @ X, XtW @ delta_y, int(np.sum(mask))
 
@@ -907,6 +934,7 @@ def _partition_global_stats(part_data, comp_sg, ps_beta, or_beta, est_method, tr
     n_sub = int(np.sum(mask))
     k = X.shape[1]
 
+    obs_w = part_data["weights"][mask]
     pa4 = (sub_sg == 4).astype(np.float64)
     pa_comp = (sub_sg == comp_sg).astype(np.float64)
 
@@ -923,8 +951,8 @@ def _partition_global_stats(part_data, comp_sg, ps_beta, or_beta, est_method, tr
 
     or_delta = np.zeros(n_sub, dtype=np.float64) if est_method == "ipw" else X @ or_beta
 
-    w_treat = keep_ps * pa4
-    w_control = keep_ps * pa_comp if est_method == "reg" else keep_ps * pscore * pa_comp / (1 - pscore)
+    w_treat = keep_ps * pa4 * obs_w
+    w_control = keep_ps * pa_comp * obs_w if est_method == "reg" else keep_ps * pscore * pa_comp / (1 - pscore) * obs_w
 
     riesz_treat = w_treat * (delta_y - or_delta)
     riesz_control = w_control * (delta_y - or_delta)
@@ -944,13 +972,13 @@ def _partition_global_stats(part_data, comp_sg, ps_beta, or_beta, est_method, tr
     result["sum_wc_dy_or_X"] = np.sum((w_control * (delta_y - or_delta))[:, None] * X, axis=0)
     result["sum_wc_att_part"] = float(np.sum(w_control))
 
-    or_x_weights = pa_comp
+    or_x_weights = pa_comp * obs_w
     result["sum_or_x_X"] = np.sum((or_x_weights[:, None] * X).T @ X, axis=None)
     result["or_xpx"] = (or_x_weights[:, None] * X).T @ X
     result["sum_or_ex"] = np.sum((or_x_weights * (delta_y - or_delta))[:, None] * X, axis=0)
 
     if est_method != "reg":
-        W_info = pscore * (1 - pscore)
+        W_info = obs_w * pscore * (1 - pscore)
         result["info_gram"] = (W_info[:, None] * X).T @ X
         result["sum_score_ps"] = None
     else:
@@ -984,6 +1012,7 @@ def _partition_compute_ddd_if(
     y1 = part_data["y1"]
     y0 = part_data["y0"]
     delta_y = y1 - y0
+    all_weights = part_data["weights"]
 
     ddd_if = np.zeros(n_part, dtype=np.float64)
 
@@ -999,6 +1028,7 @@ def _partition_compute_ddd_if(
         X_m = X[mask]
         dy_m = delta_y[mask]
         sg_m = sg[mask]
+        obs_w = all_weights[mask]
         pa4 = (sg_m == 4).astype(np.float64)
         pa_comp = (sg_m == comp_sg).astype(np.float64)
 
@@ -1015,8 +1045,10 @@ def _partition_compute_ddd_if(
 
         or_delta = np.zeros(int(np.sum(mask)), dtype=np.float64) if est_method == "ipw" else X_m @ or_betas[comp_sg]
 
-        w_treat = keep_ps * pa4
-        w_control = keep_ps * pa_comp if est_method == "reg" else keep_ps * pscore * pa_comp / (1 - pscore)
+        w_treat = keep_ps * pa4 * obs_w
+        w_control = (
+            keep_ps * pa_comp * obs_w if est_method == "reg" else keep_ps * pscore * pa_comp / (1 - pscore) * obs_w
+        )
 
         riesz_treat = w_treat * (dy_m - or_delta)
         riesz_control = w_control * (dy_m - or_delta)
@@ -1028,7 +1060,7 @@ def _partition_compute_ddd_if(
             inf_control_pscore = np.zeros(int(np.sum(mask)), dtype=np.float64)
         else:
             hess_m2 = precomp_hess_m2[comp_sg]
-            score_ps = (pa4 - pscore)[:, None] * X_m
+            score_ps = (obs_w * (pa4 - pscore))[:, None] * X_m
             inf_control_pscore = score_ps @ hess_m2
 
         if est_method == "ipw":
@@ -1037,7 +1069,7 @@ def _partition_compute_ddd_if(
         else:
             xpx_inv_m1 = precomp_xpx_inv_m1[comp_sg]
             xpx_inv_m3 = precomp_xpx_inv_m3[comp_sg]
-            or_ex = (pa_comp * (dy_m - or_delta))[:, None] * X_m
+            or_ex = (pa_comp * obs_w * (dy_m - or_delta))[:, None] * X_m
             asy_linear_or_m1 = or_ex @ xpx_inv_m1
             asy_linear_or_m3 = or_ex @ xpx_inv_m3
             inf_treat_or = -asy_linear_or_m1
@@ -1075,12 +1107,15 @@ def _streaming_single_ctrl_for_multi(
     inf_func_mat,
     counter,
     trim_level,
+    weightsname=None,
 ):
     """Single-control streaming for notyettreated with exactly one control."""
     group_filter = (dask_data[group_col] == ctrl) | (dask_data[group_col] == g)
     filtered = dask_data.loc[group_filter]
 
     post_cols = [id_col, group_col, partition_col, y_col]
+    if weightsname is not None:
+        post_cols.append(weightsname)
     if covariate_cols:
         post_cols = post_cols + [c for c in covariate_cols if c not in post_cols]
 
@@ -1108,6 +1143,7 @@ def _streaming_single_ctrl_for_multi(
             partition_col,
             g,
             covariate_cols,
+            weightsname,
         )
         for pdf_f in pdf_futures
     ]

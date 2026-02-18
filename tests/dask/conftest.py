@@ -75,4 +75,5 @@ def partition_dict(rng):
         "n": n,
         "groups_raw": groups_raw,
         "parts_raw": parts_raw,
+        "weights": np.ones(n, dtype=np.float64),
     }

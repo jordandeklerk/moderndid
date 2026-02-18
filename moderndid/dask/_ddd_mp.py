@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import warnings
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -63,11 +64,14 @@ def dask_ddd_mp(
     control_group="nevertreated",
     base_period="universal",
     est_method="dr",
+    weightsname=None,
     boot=False,
     biters=1000,
     cband=False,
     cluster=None,
     alpha=0.05,
+    trim_level=0.995,
+    allow_unbalanced_panel=False,
     random_state=None,
     n_partitions=None,
     max_cohorts=None,
@@ -137,6 +141,17 @@ def dask_ddd_mp(
 
         dask_data = data.persist()
         wait(dask_data)
+
+        if not allow_unbalanced_panel:
+            unit_counts = dask_data.groupby(id_col)[time_col].count().compute()
+            complete_ids = unit_counts[unit_counts == len(tlist)].index
+            n_dropped = len(unit_counts) - len(complete_ids)
+            if n_dropped > 0:
+                warnings.warn(f"Dropped {n_dropped} units while converting to balanced panel")
+                dask_data = dask_data[dask_data[id_col].isin(complete_ids)].persist()
+                wait(dask_data)
+                unique_ids = np.sort(complete_ids.values)
+                n_units = len(unique_ids)
     else:
         data = to_polars(data)
         tlist = np.sort(data[time_col].unique().to_numpy())
@@ -145,6 +160,16 @@ def dask_ddd_mp(
         n_units = data[id_col].n_unique()
         unique_ids = np.sort(data[id_col].unique().to_numpy())
         dask_data = None
+
+        if not allow_unbalanced_panel:
+            unit_counts = data.group_by(id_col).len()
+            complete_units = unit_counts.filter(pl.col("len") == len(tlist))[id_col].to_list()
+            n_dropped = unit_counts.height - len(complete_units)
+            if n_dropped > 0:
+                warnings.warn(f"Dropped {n_dropped} units while converting to balanced panel")
+                data = data.filter(pl.col(id_col).is_in(complete_units))
+                unique_ids = np.sort(np.array(complete_units))
+                n_units = len(unique_ids)
 
     n_periods = len(tlist)
     n_cohorts = len(glist)
@@ -225,12 +250,14 @@ def dask_ddd_mp(
                         partition_col=partition_col,
                         covariate_cols=covariate_cols,
                         est_method=est_method,
+                        weightsname=weightsname,
                         n_units=n_units,
                         unique_ids=unique_ids,
                         inf_func_mat=inf_func_mat,
                         se_array=se_array,
                         n_partitions=n_partitions,
                         glist_raw=glist_raw,
+                        trim_level=trim_level,
                         pbar=pbar,
                     ): g
                     for g, cells in cohort_cells.items()
@@ -352,6 +379,7 @@ def dask_ddd_mp(
 
     args = {
         "panel": True,
+        "allow_unbalanced_panel": allow_unbalanced_panel,
         "yname": y_col,
         "pname": partition_col,
         "control_group": control_group,
@@ -392,12 +420,14 @@ def _process_cohort_cells(
     partition_col,
     covariate_cols,
     est_method,
-    n_units,
-    unique_ids,
-    inf_func_mat,
-    se_array,
-    n_partitions,
-    glist_raw,
+    weightsname=None,
+    n_units=0,
+    unique_ids=None,
+    inf_func_mat=None,
+    se_array=None,
+    n_partitions=1,
+    glist_raw=None,
+    trim_level=0.995,
     pbar=None,
 ):
     """Process all cells for a single cohort.
@@ -418,6 +448,9 @@ def _process_cohort_cells(
             compute_cells = [c for c in cells if c[5] == "compute"]
 
             if compute_cells:
+                extra_cols = [partition_col]
+                if weightsname:
+                    extra_cols.append(weightsname)
                 wide_dask, n_wide = prepare_cohort_wide_pivot(
                     client,
                     dask_data,
@@ -429,7 +462,7 @@ def _process_cohort_cells(
                     y_col,
                     covariate_cols,
                     n_partitions,
-                    extra_cols=[partition_col],
+                    extra_cols=extra_cols,
                 )
 
             if wide_dask is not None and n_wide > 0:
@@ -461,6 +494,7 @@ def _process_cohort_cells(
                             covariate_cols,
                             y_post_col,
                             y_pre_col,
+                            weightsname,
                         )
                         for pdf_f in wide_pdf_futures
                     ]
@@ -483,6 +517,7 @@ def _process_cohort_cells(
                         unique_ids,
                         inf_func_mat,
                         counter,
+                        trim_level=trim_level,
                         part_futures=part_futures,
                         n_cell_override=n_wide,
                     )
@@ -525,6 +560,7 @@ def _process_cohort_cells(
                     partition_col=partition_col,
                     covariate_cols=covariate_cols,
                     est_method=est_method,
+                    weightsname=weightsname,
                     n_units=n_units,
                     unique_ids=unique_ids,
                     inf_func_mat=inf_func_mat,
@@ -532,6 +568,7 @@ def _process_cohort_cells(
                     counter=counter,
                     n_partitions=n_partitions,
                     glist_raw=glist_raw,
+                    trim_level=trim_level,
                 )
                 if result is not None:
                     results.append((counter, result))
@@ -771,13 +808,15 @@ def _compute_cell_streaming(
     partition_col,
     covariate_cols,
     est_method,
-    n_units,
-    unique_ids,
-    inf_func_mat,
-    se_array,
-    counter,
-    n_partitions,
+    weightsname=None,
+    n_units=0,
+    unique_ids=None,
+    inf_func_mat=None,
+    se_array=None,
+    counter=0,
+    n_partitions=1,
     glist_raw=None,
+    trim_level=0.995,
     filtered_data=None,
 ):
     """Compute one (g,t) cell via streaming."""
@@ -800,7 +839,9 @@ def _compute_cell_streaming(
             unique_ids,
             inf_func_mat,
             counter,
+            trim_level=trim_level,
             filtered_data=filtered_data,
+            weightsname=weightsname,
         )
         if att is None:
             return None
@@ -836,6 +877,8 @@ def _compute_cell_streaming(
             unique_ids,
             inf_func_mat,
             counter,
+            trim_level=trim_level,
+            weightsname=weightsname,
         )
 
         if result is None:

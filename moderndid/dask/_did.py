@@ -19,10 +19,14 @@ def dask_att_gt(
     base_period="varying",
     anticipation=0,
     est_method="dr",
+    weightsname=None,
     boot=False,
     biters=1000,
     cband=False,
     alp=0.05,
+    clustervars=None,
+    allow_unbalanced_panel=False,
+    trim_level=0.995,
     random_state=None,
     n_partitions=None,
     max_cohorts=None,
@@ -109,9 +113,18 @@ def dask_att_gt(
     client = get_or_create_client(client)
     logging.getLogger("distributed.shuffle").setLevel(logging.ERROR)
 
+    if clustervars is not None and isinstance(clustervars, str):
+        raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
+
     required_cols = [yname, tname, gname]
     if idname is not None:
         required_cols.append(idname)
+    if weightsname is not None:
+        required_cols.append(weightsname)
+    if clustervars is not None:
+        for cv in clustervars:
+            if cv not in required_cols:
+                required_cols.append(cv)
     validate_dask_input(data, required_cols)
 
     multiple_periods = detect_multiple_periods(data, tname, gname, client=client)
@@ -135,10 +148,14 @@ def dask_att_gt(
             base_period=base_period,
             anticipation=anticipation,
             est_method=est_method,
+            weightsname=weightsname,
             boot=boot,
             biters=biters,
             cband=cband,
             alp=alp,
+            clustervars=clustervars,
+            allow_unbalanced_panel=allow_unbalanced_panel,
+            trim_level=trim_level,
             random_state=random_state,
             n_partitions=n_partitions,
             max_cohorts=max_cohorts,
@@ -157,10 +174,13 @@ def dask_att_gt(
         idname=idname,
         gname=gname,
         xformla=xformla,
+        weightsname=weightsname,
         control_group=control_group,
         anticipation=anticipation,
         est_method=est_method,
         base_period=base_period,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+        clustervars=clustervars,
         boot=boot,
         biters=biters,
         cband=cband,

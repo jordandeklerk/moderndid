@@ -38,7 +38,7 @@ def test_build_partition_arrays_basic():
     pdf = _make_merged_pdf(n=30, g=3)
     result = _build_partition_arrays(pdf, "id", "y", "group", "partition", 3, None)
     assert result is not None
-    assert set(result.keys()) == {"ids", "y1", "y0", "subgroup", "X", "n", "groups_raw", "parts_raw"}
+    assert set(result.keys()) == {"ids", "y1", "y0", "subgroup", "X", "n", "groups_raw", "parts_raw", "weights"}
     assert result["n"] == 30
     assert result["X"].shape == (30, 1)
 

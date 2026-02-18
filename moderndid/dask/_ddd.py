@@ -19,11 +19,14 @@ def dask_ddd(
     control_group="nevertreated",
     base_period="universal",
     est_method="dr",
+    weightsname=None,
     boot=False,
     biters=1000,
     cband=False,
     cluster=None,
     alpha=0.05,
+    trim_level=0.995,
+    allow_unbalanced_panel=False,
     random_state=None,
     n_partitions=None,
     max_cohorts=None,
@@ -229,6 +232,8 @@ def dask_ddd(
     required_cols = [yname, tname, gname, pname]
     if idname is not None:
         required_cols.append(idname)
+    if weightsname is not None:
+        required_cols.append(weightsname)
     validate_dask_input(data, required_cols)
 
     multiple_periods = detect_multiple_periods(data, tname, gname, client=client)
@@ -252,11 +257,14 @@ def dask_ddd(
             control_group=control_group,
             base_period=base_period,
             est_method=est_method,
+            weightsname=weightsname,
             boot=boot,
             biters=biters,
             cband=cband,
             cluster=cluster,
             alpha=alpha,
+            trim_level=trim_level,
+            allow_unbalanced_panel=allow_unbalanced_panel,
             random_state=random_state,
             n_partitions=n_partitions,
             max_cohorts=max_cohorts,
@@ -281,7 +289,7 @@ def dask_ddd(
         pname=pname,
         xformla=xformla,
         est_method=est_method,
-        weightsname=None,
+        weightsname=weightsname,
         boot=boot,
         boot_type="multiplier",
         n_boot=biters,
