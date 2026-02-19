@@ -82,8 +82,8 @@ import moderndid as did
 # Load data as a Dask DataFrame
 ddf = dd.read_parquet("panel_data.parquet")
 
-# For multi-node clusters (Databricks, YARN, Kubernetes)
-client = Client("scheduler-address:8786")
+# Start a Dask client (connects to existing cluster or starts a local one)
+client = Client()
 
 # Same API, distributed backend activates automatically
 result = did.att_gt(
