@@ -104,9 +104,11 @@ def detect_rcs_mode(data: DataFrame, tname: str, idname: str | None, panel: bool
     """
     df = to_polars(data)
 
-    errors, _ = _check_panel_mismatch(df, idname, tname, panel)
+    errors, warns = _check_panel_mismatch(df, idname, tname, panel)
     if errors:
         raise ValueError(errors[0])
+    for w in warns:
+        warnings.warn(w, UserWarning, stacklevel=2)
 
     if not panel:
         return True

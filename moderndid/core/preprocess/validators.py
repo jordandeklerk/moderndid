@@ -717,10 +717,10 @@ def _check_panel_mismatch(df: pl.DataFrame, idname: str | None, tname: str, pane
             "Set panel=False to use the repeated cross-section estimator."
         )
     elif not panel and max_obs == n_time_periods and n_time_periods > 1:
-        errors.append(
+        warnings.append(
             "panel=False was specified, but units appear across all time periods. "
             "Your data appears to be panel data. "
-            "Set panel=True to use the panel estimator."
+            "Consider setting panel=True to use the panel estimator."
         )
 
     return errors, warnings

@@ -590,8 +590,8 @@ class TestDataIntegrity:
         )
 
         result = validator.validate(df, config)
-        assert not result.is_valid
-        assert any("panel=False was specified" in err for err in result.errors)
+        assert result.is_valid
+        assert any("panel=False was specified" in w for w in result.warnings)
 
     def test_treatment_reversibility(self):
         df = create_test_panel_data()
