@@ -77,3 +77,56 @@ def partition_dict(rng):
         "parts_raw": parts_raw,
         "weights": np.ones(n, dtype=np.float64),
     }
+
+
+@pytest.fixture
+def did_partition(rng):
+    n = 50
+    groups = np.array([3] * 25 + [0] * 25)
+    return {
+        "ids": np.arange(n),
+        "y1": rng.standard_normal(n),
+        "y0": rng.standard_normal(n),
+        "D": (groups == 3).astype(np.float64),
+        "X": np.column_stack([np.ones(n), rng.standard_normal(n)]),
+        "n": n,
+        "groups_raw": groups,
+        "weights": np.ones(n, dtype=np.float64),
+    }
+
+
+@pytest.fixture
+def did_rc_partition(rng):
+    n = 60
+    groups = np.array([3] * 30 + [0] * 30)
+    post = np.array([1, 0] * 30, dtype=np.float64)
+    return {
+        "ids": np.arange(n, dtype=np.int64),
+        "y": rng.standard_normal(n),
+        "post": post,
+        "D": (groups == 3).astype(np.float64),
+        "X": np.column_stack([np.ones(n), rng.standard_normal(n)]),
+        "n": n,
+        "weights": np.ones(n, dtype=np.float64),
+    }
+
+
+@pytest.fixture
+def ddd_rc_partition(rng):
+    n = 80
+    groups = np.array([3] * 40 + [0] * 40)
+    parts = np.tile([1, 0], 40)
+    treat = (groups == 3).astype(np.int64)
+    part = parts.astype(np.int64)
+    subgroup = 4 * treat * part + 3 * treat * (1 - part) + 2 * (1 - treat) * part + 1 * (1 - treat) * (1 - part)
+    return {
+        "ids": np.arange(n, dtype=np.int64),
+        "y": rng.standard_normal(n),
+        "post": np.tile([1.0, 0.0], 40),
+        "subgroup": subgroup,
+        "X": np.column_stack([np.ones(n), rng.standard_normal(n)]),
+        "n": n,
+        "weights": np.ones(n, dtype=np.float64),
+        "groups_raw": groups,
+        "parts_raw": parts,
+    }
