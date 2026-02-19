@@ -13,7 +13,7 @@ treatments (:func:`~moderndid.didcont.cont_did`), triple differences
 (:mod:`~moderndid.didhonest`). Most estimators support both panel data and
 repeated cross-sections.
 
-All estimators share a consistent API built around four core arguments that
+All estimators share a consistent API built around core parameters that
 describe your data structure. For an introduction to difference-in-differences
 terminology and setup, see :ref:`Introduction to Difference-in-Differences <causal_inference>`.
 For theoretical details on each estimator, see the :ref:`Background <background>` section.
@@ -88,7 +88,8 @@ Basic Usage
 -----------
 
 Estimation in ModernDiD is typically a two-step process. First, compute group-time
-effects, then aggregate them into the summary you need.
+effects, then aggregate them into the summary you need. We will focus on the :func:`~moderndid.did.att_gt` function
+for now, but the same pattern generally applies to all estimators.
 
 The :func:`~moderndid.did.att_gt` function
 estimates a separate average treatment effect for every combination of
@@ -116,24 +117,20 @@ into one of four summary forms, each answering a different question.
 .. code-block:: python
 
     # Event study: average effect at each time relative to treatment
-    # (e.g., 1 year before, year of treatment, 1 year after, ...)
     event_study = did.aggte(result, type="dynamic")
 
     # Simple: single weighted average across all groups and periods
     overall = did.aggte(result, type="simple")
 
-    # Group: one average per treatment cohort, showing whether
-    # early vs. late adopters experienced different effects
+    # Group: one average per treatment cohort
     by_group = did.aggte(result, type="group")
 
-    # Calendar: one average per calendar period, showing how the
-    # overall treatment effect changes over time
+    # Calendar: one average per calendar period
     by_time = did.aggte(result, type="calendar")
 
 The ``"dynamic"`` aggregation is the most common starting point because the
-resulting event study plot lets you visually assess pre-trends (effects
-before treatment should be near zero) and trace how treatment effects build
-or fade over time.
+resulting event study plot lets you visually assess pre-trends and trace how
+treatment effects build or fade over time.
 
 
 Estimation Options

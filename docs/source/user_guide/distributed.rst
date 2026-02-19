@@ -36,9 +36,18 @@ Install the Dask extra before running distributed estimators.
 
     uv pip install moderndid[dask]
 
-The ``all`` extra does not include ``dask``. Install it explicitly when you
-plan to use distributed estimation. The distributed path expects a Dask
-DataFrame input and a working ``distributed`` scheduler.
+The ``all`` extra includes ``dask``, so ``uv pip install moderndid[all]``
+also works. The distributed path expects a Dask DataFrame input and a
+working ``distributed`` scheduler.
+
+ModernDiD cannot set up your Dask environment for you. Creating clusters,
+managing workers, and building Dask DataFrames is the responsibility of the
+user. Once you have a Dask DataFrame, ModernDiD handles the rest. If you
+are new to Dask, the
+`10 Minutes to Dask <https://docs.dask.org/en/stable/10-minutes-to-dask.html>`_
+guide and the
+`Distributed documentation <https://distributed.dask.org/en/stable/>`_
+are good starting points.
 
 
 Quick start
@@ -97,8 +106,10 @@ wrappers ``att_gt`` and ``ddd`` are the recommended entry points. The
 low-level functions ``dask_att_gt`` and ``dask_ddd`` in
 :mod:`moderndid.dask` give you explicit control over the Dask client.
 
-High-level wrappers do not expose a ``client`` argument. To run them on a
-specific cluster, set the client as current via ``client.as_current()``.
+High-level wrappers do not expose a ``client`` argument. Creating a
+``Client`` registers it as the global default, so estimator calls pick it
+up automatically. The low-level functions accept a ``client`` argument
+directly.
 
 .. code-block:: python
 
@@ -106,16 +117,12 @@ specific cluster, set the client as current via ``client.as_current()``.
     from moderndid.dask import dask_att_gt
     from dask.distributed import Client
 
-    # Recommended high-level entry point
+    # High-level entry point (uses the global default client)
+    client = Client("scheduler-address:8786")
     result_a = did.att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group")
 
-    # High-level wrapper with an explicit existing client
-    client = Client("scheduler-address:8786")
-    with client.as_current():
-        result_b = did.att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group")
-
-    # Equivalent explicit distributed entry point
-    result_c = dask_att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group", client=client)
+    # Low-level entry point (accepts client explicitly)
+    result_b = dask_att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group", client=client)
 
 
 Current support and limits
@@ -124,7 +131,7 @@ Current support and limits
 The distributed path supports both panel and repeated cross-section data
 for any number of time periods. All standard estimation options work in
 distributed mode, including ``control_group``, ``anticipation``,
-``base_period``, and ``est_method`` (string values only; callable
+``base_period``, and ``est_method`` (callable
 ``est_method`` is not supported). When ``boot=True``, the multiplier
 bootstrap runs fully distributed with Mammen two-point weights generated
 on workers and tree-reduced to the driver.
@@ -143,21 +150,80 @@ are stable across periods and prefer one record per unit-period. For
 repeated cross-section data (``panel=False``), each row is an independent
 observation and unit identifiers are not required.
 
+Staging large datasets in batches
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When the full dataset is too large to build in driver memory, write it to
+Parquet in batches and read it back as a Dask DataFrame. This keeps driver
+memory constant regardless of total dataset size.
+
 .. code-block:: python
 
-    import dask.dataframe as dd
+    import gc
 
-    cols = ["id", "time", "group", "partition", "y", "x1", "x2"]
-    ddf = dd.read_parquet("data/panel/*.parquet", columns=cols)
+    import dask
+    import dask.dataframe as dd
+    import moderndid as did
+    from dask.distributed import Client
+
+    client = Client()   # or connect to an existing scheduler
+    n_workers = len(client.scheduler_info()["workers"])
+
+    N_TOTAL = 100_000_000
+    CHUNK_SIZE = 500_000
+    N_CHUNKS = N_TOTAL // CHUNK_SIZE
+    BATCH_SIZE = n_workers * 2          # chunks written per round
+    PARQUET_PATH = "/tmp/panel_data"
+
+    # Define a delayed function that builds one chunk
+    @dask.delayed
+    def _generate_chunk(chunk_id, n):
+        dgp = did.gen_did_scalable(
+            n=n, dgp_type=1, n_periods=10, n_cohorts=6,
+            n_covariates=30, panel=True, random_state=chunk_id,
+        )
+        df = dgp["data"].to_pandas()
+        df["id"] = df["id"] + chunk_id * n   # ensure globally unique IDs
+        return df
+
+    # Write in batches so the driver never holds the full dataset
+    meta = _generate_chunk(0, 10).compute()   # schema for Dask
+
+    for batch_start in range(0, N_CHUNKS, BATCH_SIZE):
+        batch_end = min(batch_start + BATCH_SIZE, N_CHUNKS)
+        chunks = [_generate_chunk(i, CHUNK_SIZE)
+                  for i in range(batch_start, batch_end)]
+        ddf_batch = dd.from_delayed(chunks, meta=meta)
+        ddf_batch.to_parquet(
+            PARQUET_PATH,
+            append=(batch_start > 0),
+            engine="pyarrow",
+        )
+        del ddf_batch, chunks
+        gc.collect()
+
+    # Read back as a distributed DataFrame
+    ddf = dd.read_parquet(PARQUET_PATH, engine="pyarrow")
+
+The same pattern applies when your raw data comes from a database, an API,
+or any other source that must be fetched incrementally. Replace the body of
+``_generate_chunk`` with whatever logic produces a single pandas DataFrame,
+and the rest of the pipeline stays the same.
+
+Partition layout
+^^^^^^^^^^^^^^^^
 
 Partition layout affects both runtime and memory. Extremely small partitions
 increase scheduler overhead, and extremely large partitions increase worker
-memory pressure. If you plan to run multiple model specifications over the same data,
-repartition once and persist before the first fit.
+memory pressure. If you plan to run multiple model specifications over the
+same data, repartition once and persist before the first fit.
 
 .. code-block:: python
 
     ddf = ddf.repartition(npartitions=64)
+
+Persist and sanity-check
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 Dask is lazy by default, so heavy work can execute later than expected,
 including inside estimator calls. In practice this means upstream ETL issues
@@ -212,8 +278,9 @@ Connecting to a cluster
 -----------------------
 
 If no client exists, ModernDiD creates a local client automatically, which
-is convenient for development. For multi-node runs, create a client for your
-scheduler and run the estimator within ``client.as_current()``.
+is convenient for development. For multi-node runs, create a ``Client``
+pointing at your scheduler. Creating the client registers it as the global
+default, so estimator calls use it automatically.
 
 .. code-block:: python
 
@@ -222,16 +289,17 @@ scheduler and run the estimator within ``client.as_current()``.
 
     client = Client("tcp://scheduler-host:8786")
 
-    with client.as_current():
-        result = did.att_gt(
-            data=ddf,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="group",
-        )
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+    )
 
-This pattern works with any Dask-compatible scheduler endpoint.
+This works with any Dask-compatible scheduler endpoint. If you need to
+direct calls to a specific client (for example, when multiple clients are
+active), use ``client.as_current()``.
 
 For local development with controlled resources, create a ``LocalCluster``
 explicitly to set worker count and memory limits.
@@ -243,11 +311,7 @@ explicitly to set worker count and memory limits.
     cluster = LocalCluster(n_workers=4, threads_per_worker=2, memory_limit="4GB")
     client = Client(cluster)
 
-    with client.as_current():
-        result = did.att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group")
-
-    client.close()
-    cluster.close()
+    result = did.att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group")
 
 For more predictable runtime in autoscaling environments, warm the cluster
 and persist input data before launching long model runs.
@@ -353,17 +417,16 @@ re-shuffling the data for each specification.
     ]
 
     results = {}
-    with client.as_current():
-        for spec in specifications:
-            results[str(spec)] = did.att_gt(
-                data=ddf,
-                yname="y",
-                tname="time",
-                idname="id",
-                gname="group",
-                xformla="~ x1 + x2",
-                **spec,
-            )
+    for spec in specifications:
+        results[str(spec)] = did.att_gt(
+            data=ddf,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            xformla="~ x1 + x2",
+            **spec,
+        )
 
 
 Monitoring the cluster

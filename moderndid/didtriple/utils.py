@@ -11,6 +11,7 @@ from moderndid.core.preprocess.utils import (
     is_balanced_panel,
     parse_formula,
 )
+from moderndid.core.preprocess.validators import _check_panel_mismatch
 
 __all__ = [
     "add_intercept",
@@ -101,21 +102,17 @@ def detect_rcs_mode(data: DataFrame, tname: str, idname: str | None, panel: bool
     bool
         True if RCS mode should be used.
     """
+    df = to_polars(data)
+
+    errors, _ = _check_panel_mismatch(df, idname, tname, panel)
+    if errors:
+        raise ValueError(errors[0])
+
     if not panel:
         return True
 
     if idname is None:
         return True
-
-    df = to_polars(data)
-    obs_per_unit = df.group_by(idname).len()
-    max_obs_per_unit = obs_per_unit["len"].max()
-
-    if max_obs_per_unit == 1:
-        raise ValueError(
-            "panel=True was specified, but no units appear in multiple time periods. "
-            "Set panel=False to use the repeated cross-section estimator."
-        )
 
     return bool(allow_unbalanced_panel and not is_balanced_panel(data, tname, idname))
 

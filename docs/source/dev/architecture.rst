@@ -1054,6 +1054,3 @@ estimators.
        event_times: np.ndarray | None
        att_by_event: np.ndarray | None
        estimation_params: dict
-
-.. toctree::
-   :hidden:

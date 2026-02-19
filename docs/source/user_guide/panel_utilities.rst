@@ -12,8 +12,8 @@ what the pipeline is doing under the hood, or when you want to make cleaning
 decisions yourself rather than relying on the defaults.
 
 Like the estimators, every panel utility function accepts any
-Arrow-compatible DataFrame (pandas, polars, pyarrow, etc.), converts to
-Polars internally for speed, and returns results in your original
+Arrow-compatible DataFrame, converts to
+Polars internally for speed, and returns results in your original dataframe
 format.
 
 
@@ -89,7 +89,7 @@ dropped and can decide whether that is acceptable for your analysis.
 Fixing the Gaps
 ---------------
 
-If you do want to handle the gaps yourself, the diagnostics suggest two
+If you do want to handle the gaps yourself, the diagnostics suggest a couple of
 strategies.
 
 :func:`~moderndid.panel.fill_panel_gaps` keeps every county and fills

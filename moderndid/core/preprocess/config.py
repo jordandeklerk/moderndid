@@ -138,6 +138,8 @@ class DDDConfig(ConfigMixin):
     cband: bool = False
     alp: float = DEFAULT_ALPHA
     inf_func: bool = False
+    panel: bool = True
+    allow_unbalanced_panel: bool = False
 
     time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
     time_periods_count: int = 0

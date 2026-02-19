@@ -23,7 +23,7 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 - **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
 - **Distributed computing** - Scale DiD estimators to billions of observations across multi-node [Dask](https://www.dask.org/) clusters with automatic dispatch. Simply pass a Dask DataFrame and the distributed backend activates transparently
 - **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and optional thread-based parallelism via the `n_jobs` parameter
-- **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated regression and propensity score estimation across all doubly robust and IPW estimators on NVIDIA GPUs, with multi-GPU scaling via Dask
+- **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated regression and propensity score estimation across all doubly robust and IPW estimators on NVIDIA GPUs, with multi-GPU scaling in distributed environments
 - **Native plots** - Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
 

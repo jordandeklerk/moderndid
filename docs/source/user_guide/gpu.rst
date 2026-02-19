@@ -9,7 +9,7 @@ ModernDiD can offload numerical operations to NVIDIA GPUs via
 operations in the two-period doubly robust estimators (weighted least
 squares, logistic IRLS, influence function computation) run on the GPU
 using cuBLAS and cuSOLVER, which can substantially reduce runtime for
-large datasets.
+large datasets on powerful GPUs.
 
 
 Requirements
@@ -107,38 +107,39 @@ the two-period estimators that :func:`~moderndid.att_gt` and
 :func:`~moderndid.ddd` call for each group-time cell, for both panel
 and repeated cross-section data with any ``est_method``.
 
-**Weighted least squares** for outcome regression (``reg``, ``dr``)
-    Design matrix multiplication, normal equation solve via cuSOLVER,
-    and fitted value computation via cuBLAS.
+- **Weighted least squares** (``reg``, ``dr``) — Design matrix
+  multiplication, normal equation solve via cuSOLVER, and fitted value
+  computation via cuBLAS.
 
-**Logistic IRLS** for propensity score estimation (``ipw``, ``dr``)
-    Iteratively reweighted least squares for the propensity score model.
-    Each iteration runs sigmoid evaluation, Gram matrix accumulation,
-    and a linear solve on the GPU.
+- **Logistic IRLS** (``ipw``, ``dr``) — Iteratively reweighted least
+  squares for the propensity score model. Each iteration runs sigmoid
+  evaluation, Gram matrix accumulation, and a linear solve on the GPU.
 
-**Influence function computation** for standard errors
-    All matrix algebra in the influence function (inverse Hessians,
-    score products, weighted sums) runs on GPU arrays. Results are
-    transferred back to CPU only at function boundaries.
+- **Influence function computation** — All matrix algebra in the
+  influence function (inverse Hessians, score products, weighted sums)
+  runs on GPU arrays. Results transfer back to CPU only at function
+  boundaries.
 
-**Multiplier bootstrap** draws and aggregation
-    Random Mammen weight generation and the batched matrix multiply
-    for bootstrap replication run on the GPU. The bootstrap
-    implementation batches draws to stay within a configurable memory
-    budget (1 GB by default) so that large bootstrap runs do not exhaust
-    GPU memory.
+- **Multiplier bootstrap** — Random Mammen weight generation and the
+  batched matrix multiply for bootstrap replication run on the GPU.
+  Draws are batched to stay within a configurable memory budget (1 GB
+  by default) so that large bootstrap runs do not exhaust GPU memory.
 
-**Cluster aggregation** for clustered standard errors
-    Scatter-add operations to aggregate influence functions at the
-    cluster level use GPU kernels.
+- **Cluster aggregation** — Scatter-add operations to aggregate
+  influence functions at the cluster level use GPU kernels.
 
 These operations are dominated by dense linear algebra (matrix
 multiplication, triangular solves) that maps well to GPU hardware.
 The group-time loop, cell scheduling, and aggregation logic remain
-on the CPU. The continuous treatment estimator
-(:func:`~moderndid.cont_did`), the intertemporal estimator
-(:func:`~moderndid.did_multiplegt`), and the sensitivity analysis
-module (:func:`~moderndid.honest_did`) do not use the GPU backend.
+on the CPU.
+
+The continuous treatment estimator (:func:`~moderndid.cont_did`),
+the intertemporal estimator (:func:`~moderndid.did_multiplegt`), and
+the sensitivity analysis module (:func:`~moderndid.honest_did`) do
+not use the GPU backend. These estimators operate on small matrices
+(spline bases, per-group comparisons, and LP constraints respectively)
+where GPU kernel launch and data transfer overhead would exceed any
+computation benefit.
 
 
 When it helps
@@ -234,6 +235,9 @@ device context:
             idname="id", gname="group", backend="cupy",
         )
 
+For multi-GPU parallelism, use Dask with ``dask-cuda`` to pin one
+worker per GPU. See :ref:`Combining GPU and Dask <gpu-dask-workers>`.
+
 
 Benchmarking correctly
 ----------------------
@@ -271,10 +275,11 @@ Combining GPU and Dask
 ----------------------
 
 The GPU backend and the Dask distributed backend can be combined.
-Pass ``backend="cupy"`` to :func:`~moderndid.dask.dask_att_gt` or
-:func:`~moderndid.dask.dask_ddd` (or to the high-level wrappers
-:func:`~moderndid.att_gt` / :func:`~moderndid.ddd` with a Dask
-DataFrame) to run partition-level linear algebra on worker GPUs:
+Pass ``backend="cupy"`` to :func:`~moderndid.att_gt` or
+:func:`~moderndid.ddd` with a Dask DataFrame to run partition-level
+linear algebra on worker GPUs. The low-level functions
+:func:`~moderndid.dask.dask_att_gt` and :func:`~moderndid.dask.dask_ddd`
+also accept the ``backend`` parameter:
 
 .. code-block:: python
 
@@ -311,35 +316,30 @@ CuPy must be installed on every worker. For multi-GPU machines, use
     cluster = LocalCUDACluster()
     client = Client(cluster)
 
-    with client.as_current():
-        result = did.att_gt(
-            data=ddf,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="group",
-            est_method="dr",
-            backend="cupy",
-        )
-
-For multi-node clusters, use ``CUDA_VISIBLE_DEVICES`` on each node to
-control GPU pinning.
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        backend="cupy",
+    )
 
 The ``set_backend`` / ``use_backend`` context manager does **not**
 propagate to Dask worker processes. Always use the ``backend`` parameter
 on the estimator call instead.
 
-The following example shows a complete workflow: connect to a multi-GPU
+The following example shows a complete workflow where we connect to a multi-GPU
 cluster, read data, run estimation with cluster monitoring, and clean up.
 
 .. code-block:: python
 
     import dask.dataframe as dd
-    from dask.distributed import Client
+    from dask.distributed import Client, wait
     from dask_cuda import LocalCUDACluster
 
     import moderndid as did
-    from moderndid.dask import dask_att_gt
 
     # Start one worker per GPU
     cluster = LocalCUDACluster()
@@ -347,8 +347,9 @@ cluster, read data, run estimation with cluster monitoring, and clean up.
 
     # Read and persist input data
     ddf = dd.read_parquet("panel_data.parquet").persist()
+    wait(ddf)
 
-    result = dask_att_gt(
+    result = did.att_gt(
         data=ddf,
         yname="y",
         tname="time",
@@ -357,11 +358,7 @@ cluster, read data, run estimation with cluster monitoring, and clean up.
         xformla="~ x1 + x2",
         est_method="dr",
         backend="cupy",
-        client=client,
-        progress_bar=True,
     )
-
-    stop()
 
     # Post-estimation stays the same
     event_study = did.aggte(result, type="dynamic")
@@ -373,8 +370,7 @@ cluster, read data, run estimation with cluster monitoring, and clean up.
 When you need explicit control over the client (for example on
 Databricks or a managed cluster), use the low-level
 :func:`~moderndid.dask.dask_att_gt` entry point which accepts a
-``client`` parameter directly. The high-level :func:`~moderndid.att_gt`
-wrapper does not accept ``client`` — use ``client.as_current()`` instead.
+``client`` parameter directly.
 
 
 Next steps

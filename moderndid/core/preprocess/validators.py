@@ -137,21 +137,23 @@ class PanelStructureValidator(BaseValidator):
         errors = []
         warnings = []
 
-        if not config.panel or not config.idname:
-            return self._create_result(errors, warnings)
+        mismatch_errors, mismatch_warnings = _check_panel_mismatch(df, config.idname, config.tname, config.panel)
+        errors.extend(mismatch_errors)
+        warnings.extend(mismatch_warnings)
 
-        if df.select([config.idname, config.tname]).is_duplicated().any():
-            errors.append(
-                "The value of idname must be unique (by tname). Some units are observed more than once in a period."
-            )
+        if config.panel and config.idname:
+            if df.select([config.idname, config.tname]).is_duplicated().any():
+                errors.append(
+                    "The value of idname must be unique (by tname). Some units are observed more than once in a period."
+                )
 
-        if not config.allow_unbalanced_panel:
-            n_time_periods = df[config.tname].n_unique()
-            unit_counts = df.group_by(config.idname).len()
+            if not config.allow_unbalanced_panel:
+                n_time_periods = df[config.tname].n_unique()
+                unit_counts = df.group_by(config.idname).len()
 
-            if not (unit_counts["len"] == n_time_periods).all():
-                n_unbalanced = (unit_counts["len"] != n_time_periods).sum()
-                warnings.append(f"{n_unbalanced} units have unbalanced observations and will be dropped")
+                if not (unit_counts["len"] == n_time_periods).all():
+                    n_unbalanced = (unit_counts["len"] != n_time_periods).sum()
+                    warnings.append(f"{n_unbalanced} units have unbalanced observations and will be dropped")
 
         return self._create_result(errors, warnings)
 
@@ -369,16 +371,21 @@ class PrePostPanelValidator(BaseValidator):
         errors = []
         warnings = []
 
-        if not isinstance(config, TwoPeriodDIDConfig) or not config.panel or not config.idname:
+        if not isinstance(config, TwoPeriodDIDConfig):
             return self._create_result(errors, warnings)
 
-        treat_counts = df.group_by(config.idname).agg(pl.col(config.treat_col).n_unique().alias("n_unique"))
-        if (treat_counts["n_unique"] > 1).any():
-            invalid_ids = treat_counts.filter(pl.col("n_unique") > 1)[config.idname].to_list()
-            errors.append(
-                f"Treatment indicator ('{config.treat_col}') must be unique for each ID ('{config.idname}'). "
-                f"IDs with varying treatment: {invalid_ids}."
-            )
+        mismatch_errors, mismatch_warnings = _check_panel_mismatch(df, config.idname, config.tname, config.panel)
+        errors.extend(mismatch_errors)
+        warnings.extend(mismatch_warnings)
+
+        if config.panel and config.idname:
+            treat_counts = df.group_by(config.idname).agg(pl.col(config.treat_col).n_unique().alias("n_unique"))
+            if (treat_counts["n_unique"] > 1).any():
+                invalid_ids = treat_counts.filter(pl.col("n_unique") > 1)[config.idname].to_list()
+                errors.append(
+                    f"Treatment indicator ('{config.treat_col}') must be unique for each ID ('{config.idname}'). "
+                    f"IDs with varying treatment: {invalid_ids}."
+                )
 
         return self._create_result(errors, warnings)
 
@@ -609,6 +616,20 @@ class DDDDataValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
 
 
+class DDDPanelStructureValidator(BaseValidator):
+    """DDD panel structure validator."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate panel structure for DDD data."""
+        if not isinstance(config, DDDConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        df = to_polars(data)
+        panel = getattr(config, "panel", True)
+        errors, warnings = _check_panel_mismatch(df, config.idname, config.tname, panel)
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
 class CompositeValidator(BaseValidator):
     """Composite validator."""
 
@@ -644,6 +665,7 @@ class CompositeValidator(BaseValidator):
             return [
                 DDDColumnValidator(),
                 DDDArgumentValidator(),
+                DDDPanelStructureValidator(),
                 DDDInvarianceValidator(),
                 DDDDataValidator(),
                 WeightValidator(),
@@ -674,6 +696,34 @@ class CompositeValidator(BaseValidator):
             all_warnings.extend(result.warnings)
 
         return ValidationResult(is_valid=len(all_errors) == 0, errors=all_errors, warnings=all_warnings)
+
+
+def _check_panel_mismatch(df: pl.DataFrame, idname: str | None, tname: str, panel: bool) -> tuple[list[str], list[str]]:
+    """Check for mismatches between the panel parameter and actual data structure."""
+    errors = []
+    warnings = []
+
+    if not idname:
+        return errors, warnings
+
+    obs_per_unit = df.group_by(idname).len()
+    max_obs = obs_per_unit["len"].max()
+    n_time_periods = df[tname].n_unique()
+
+    if panel and max_obs == 1:
+        errors.append(
+            "panel=True was specified, but no units appear in multiple time periods. "
+            "Your data appears to be repeated cross-sections. "
+            "Set panel=False to use the repeated cross-section estimator."
+        )
+    elif not panel and max_obs == n_time_periods and n_time_periods > 1:
+        errors.append(
+            "panel=False was specified, but units appear across all time periods. "
+            "Your data appears to be panel data. "
+            "Set panel=True to use the panel estimator."
+        )
+
+    return errors, warnings
 
 
 def _is_numeric_dtype(series: pl.Series) -> bool:

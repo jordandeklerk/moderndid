@@ -52,7 +52,7 @@ Key features
   errors, and confidence intervals.
 - **DataFrame agnostic.** ModernDiD accepts any
   `Arrow-compatible <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_
-  DataFrame, including polars, pandas, pyarrow, and duckdb, with no manual
+  DataFrame, including polars, pandas, pyarrow, duckdb, and more, with no manual
   conversion.
 - **Scales to clusters.** For data that exceed single-machine memory, passing a
   `Dask <https://www.dask.org/>`_ DataFrame to ``att_gt`` or ``ddd`` activates

@@ -340,6 +340,7 @@ def ddd_mp_rc_result():
             "control_group": "nevertreated",
             "base_period": "universal",
         },
+        unit_groups=rng.choice([0, 3, 4], size=1500),
     )
 
 

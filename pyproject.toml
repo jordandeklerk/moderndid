@@ -64,7 +64,7 @@ gpu = [
     "cupy-cuda12x>=13.0",
 ]
 all = [
-    "moderndid[didcont,didhonest,plots,numba]",
+    "moderndid[didcont,didhonest,plots,numba,dask]",
 ]
 test = [
     "pytest",

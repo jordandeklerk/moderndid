@@ -18,7 +18,7 @@ understand how distributed estimation is implemented. It covers execution
 decomposition for ``att_gt`` and ``ddd``, distributed nuisance estimation,
 aggregation, and memory-management strategies for large panels.
 
-The distributed backend is designed around a single rule. **Never
+The distributed backend is designed around a single rule: **Never
 materialize the full dataset on any single machine.** All computation
 happens on workers via partition-level sufficient statistics. Only small
 summary matrices return to the driver.
@@ -27,25 +27,21 @@ summary matrices return to the driver.
 Execution modes
 ===============
 
-The architecture described below is the multi-period distributed path for
-``att_gt`` and ``ddd``.
-
-Two-period Dask calls currently use a compatibility path that materializes the
-input Dask DataFrame on the driver before estimator-specific computation. This
-keeps API behavior consistent but is not the scaling path for very large
-datasets.
+The Dask entry points ``dask_att_gt`` and ``dask_ddd`` unconditionally
+delegate to their multi-period implementations ``dask_att_gt_mp`` and
+``dask_ddd_mp``. The multi-period path handles both two-period and
+staggered designs.
 
 .. code-block:: python
 
-    # Entry-point dispatch shape (simplified from dask_att_gt / dask_ddd)
-    multiple_periods = detect_multiple_periods(data, tname, gname, client=client)
+    # Entry-point dispatch (simplified from dask_att_gt / dask_ddd)
+    from ._did_mp import dask_att_gt_mp
 
-    if multiple_periods:
-        return dask_att_gt_mp(...)  # or dask_ddd_mp(...)
-
-    # 2-period compatibility path
-    df = to_polars(data.compute())
-    return local_att_gt(...)  # or local/triple 2-period routine
+    return dask_att_gt_mp(
+        client=client,
+        data=data,
+        ...
+    )
 
 
 Cell-level decomposition
@@ -71,8 +67,8 @@ propensity score, running WLS for the outcome regression, and computing the
 influence function, all in memory on one machine.
 
 In the distributed backend, each of these steps is decomposed into
-per-partition operations that execute on workers. The key insight is that
-the logistic regression and WLS problems can be expressed entirely in terms
+per-partition operations that execute on workers. The key here is that the
+logistic regression and WLS problems can be expressed entirely in terms
 of *sufficient statistics*, small :math:`k \times k` matrices and
 :math:`k`-vectors (where :math:`k` is the number of covariates) that can be
 computed independently on each partition and then summed. The driver only
@@ -108,7 +104,7 @@ Each IRLS iteration follows five steps.
 3. Each worker forms the local Gram matrix :math:`X_j^T W_j X_j` (a
    :math:`k \times k` matrix) and the local score vector
    :math:`X_j^T W_j z_j` (a :math:`k`-vector).
-4. These per-partition matrices are tree-reduced (see below) to form
+4. These per-partition matrices are tree-reduced (see :ref:`tree-reduce-aggregation`) to form
    the global Gram matrix and score vector on the driver.
 5. The driver solves the :math:`k \times k` normal equations
    :math:`\beta^{(t+1)} = (X^TWX)^{-1}X^TWz` and broadcasts the updated
@@ -125,10 +121,10 @@ regardless of partition row count.
     beta = np.zeros(k)
     for _ in range(max_iter):
         part_futures = [
-            client.submit(local_irls_stats, part, beta)  # returns (XtWX_j, XtWz_j)
+            client.submit(_irls_local_stats, part, beta)  # returns (XtWX_j, XtWz_j, n_j)
             for part in partitions
         ]
-        XtWX, XtWz = tree_reduce(client, part_futures, combine_fn=sum_pairs)
+        XtWX, XtWz, _ = tree_reduce(client, part_futures, combine_fn=_sum_gram_pair)
         beta_new = np.linalg.solve(XtWX, XtWz)
         if np.max(np.abs(beta_new - beta)) < tol:
             beta = beta_new
@@ -149,19 +145,23 @@ requires just one round of communication.
     XtWX, XtWy, _ = distributed_gram(client, partitions)
     gamma = solve_gram(XtWX, XtWy)
 
+.. _tree-reduce-aggregation:
+
 Tree-reduce aggregation
 =======================
 
-When 64 partitions must be summed, naive reduction does 63 sequential pairwise
-adds on the driver. That serializes the critical path and limits throughput.
+Both IRLS and WLS produce one :math:`k \times k` Gram matrix per partition.
+These must be summed into a single global matrix before the driver can solve
+the normal equations. The default partition count equals total worker threads
+(see ``get_default_partitions``), so a cluster with 64 threads, for example, produces 64
+partition-level matrices. Naive reduction does 63 sequential pairwise adds
+on the driver, which serializes the critical path and limits throughput.
 
 ModernDiD uses a tree-reduce pattern with configurable fan-in
 (``split_every=8`` by default). Futures are reduced in batches on workers,
-then recursively combined.
-
-With 64 partitions and fan-in 8, this produces 9 reduction tasks instead of
-63 pairwise additions. The pattern is used for Gram aggregation, global
-statistics, and bootstrap sums.
+then recursively combined. With 64 partitions and fan-in 8, this produces
+9 reduction tasks instead of 63 pairwise additions. The pattern is used for
+Gram aggregation, global statistics, and bootstrap sums.
 
 .. code-block:: python
 
@@ -183,7 +183,22 @@ shuffle join per cell to merge post and pre outcomes by unit ID. That means
 
 The wide-pivot optimization removes this redundancy. It builds one wide
 DataFrame per cohort with one row per unit and one ``_y_{period}`` column for
-every period needed by any cell in the cohort.
+every period needed by any cell in the cohort. For cohort :math:`g = 5` with
+cells requiring periods 1 through 4, the wide DataFrame looks like:
+
+.. code-block:: text
+
+    ┌────────┬───────┬──────┬──────┬──────┬──────┬──────┬──────┐
+    │ id     │ group │ x1   │ x2   │ _y_1 │ _y_2 │ _y_3 │ _y_4 │
+    ├────────┼───────┼──────┼──────┼──────┼──────┼──────┼──────┤
+    │ 1      │ 5     │ 0.3  │ -0.1 │ 1.2  │ 1.5  │ 1.8  │ 2.4  │
+    │ 2      │ 0     │ -0.5 │ 0.7  │ 0.9  │ 1.1  │ 1.3  │ 1.4  │
+    │ 3      │ 5     │ 0.1  │ 0.4  │ 1.0  │ 1.3  │ 1.7  │ 2.1  │
+    │ ...    │ ...   │ ...  │ ...  │ ...  │ ...  │ ...  │ ...  │
+    └────────┴───────┴──────┴──────┴──────┴──────┴──────┴──────┘
+
+Each cell then selects its post and pre outcome columns (e.g.
+``_y_4 - _y_3`` for cell ``(5, 4)``) without any additional shuffle.
 
 After this one shuffle join, each cell uses column selection for pre and post
 outcomes. No additional worker-to-worker movement is required.
@@ -207,6 +222,7 @@ builds a separate merged DataFrame per cell. This is the main reason
         y_col=y_col,
         covariate_cols=covariate_cols,
         n_partitions=n_partitions,
+        extra_cols=extra_cols,       # e.g. [partition_col] for DDD
     )
 
 
@@ -231,10 +247,11 @@ memory-rich clusters.
 
 .. code-block:: python
 
-    # Cohort-level concurrency pattern (simplified from _did_mp / _ddd_mp)
+    # Cohort-level concurrency pattern (simplified)
+    # DiD uses _process_did_cohort_cells, DDD uses _process_cohort_cells
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(_process_cohort_cells, cells, ...): g
+            executor.submit(process_cohort_fn, cells, ...): g
             for g, cells in cohort_cells.items()
         }
         for future in as_completed(futures):
@@ -260,11 +277,13 @@ released. Peak driver memory stays bounded by one partition-sized chunk.
 .. code-block:: python
 
     # Streaming influence function gathering (conceptual)
+    scale = n_units / n_cell
     for future in as_completed(if_futures):
         ids_part, if_part = future.result()
+        if_scaled = scale * if_part
         indices = np.searchsorted(unique_ids, ids_part)
-        inf_func_mat[indices, cell_index] = if_part
-        del ids_part, if_part  # free immediately
+        inf_func_mat[indices, cell_index] = if_scaled
+        del ids_part, if_part, if_scaled  # free immediately
 
 
 End-to-end data flow

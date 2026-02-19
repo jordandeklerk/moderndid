@@ -16,7 +16,8 @@ individual example pages. The baseline staggered DiD estimator follows
 Choosing the right estimator
 -----------------------------
 
-The choice depends on the structure of your treatment variable.
+The choice of estimator depends on the structure of your treatment variable
+and research question.
 
 - Many applied settings involve a binary treatment that turns on permanently
   at staggered times across groups. :func:`~moderndid.att_gt` handles this
