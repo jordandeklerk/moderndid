@@ -105,7 +105,7 @@ event_study = did.aggte(result, type="dynamic")
 
 Add `backend="cupy"` to run worker-side linear algebra on GPUs. For multi-GPU machines, use `dask-cuda` with a `LocalCUDACluster` to pin one worker per GPU.
 
-See the [Distributed Estimation guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html) for usage and the [architecture overview](https://moderndid.readthedocs.io/en/latest/dev/distributed_architecture.html) for details on the distributed backend design.
+See the [Distributed Estimation guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html) for usage and the [Dsitributed Backend Architecture](https://moderndid.readthedocs.io/en/latest/dev/distributed_architecture.html) for details on the design.
 
 ### GPU Acceleration
 
