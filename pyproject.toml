@@ -70,6 +70,7 @@ test = [
     "pytest",
     "pytest-benchmark",
     "pytest-cov",
+    "pytest-timeout",
     "pyfixest>=0.30.2",
 ]
 doc = [
