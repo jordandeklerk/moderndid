@@ -123,9 +123,7 @@ result = did.att_gt(data,
                     backend="cupy")
 ```
 
-You can also set the backend globally with `did.set_backend("cupy")` and revert with `did.set_backend("numpy")`. For multi-GPU scaling, combine with a Dask DataFrame as shown above. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) for details.
-
-See [GPU benchmark results](scripts/README.md) for performance comparisons across Tesla T4, A100, and H100 GPUs.
+You can also set the backend globally with `did.set_backend("cupy")` and revert with `did.set_backend("numpy")`. For multi-GPU scaling, combine with a Dask DataFrame as shown above. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) for details and [GPU benchmark results](scripts/README.md) for performance comparisons across several NVIDIA GPUs.
 
 ### Consistent API
 
