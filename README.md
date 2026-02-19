@@ -134,16 +134,12 @@ All estimators share a unified interface for core parameters, making it easy to 
 ```python
 # Staggered DiD
 result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
-
 # Triple DiD
 result = did.ddd(data, yname="y", tname="t", idname="id", gname="g", pname="p", ...)
-
 # Continuous DiD
 result = did.cont_did(data, yname="y", tname="t", idname="id", gname="g", dname="dose", ...)
-
 # Doubly robust 2-period DiD
 result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", ...)
-
 # Intertemporal DiD
 result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
 ```
@@ -160,11 +156,21 @@ did.load_engel()       # Household expenditure
 did.load_favara_imbs() # Bank lending
 ```
 
+Synthetic data generators are also available for simulations and benchmarking:
+
+```python
+did.gen_did_scalable()           # Staggered DiD panel
+did.simulate_cont_did_data()     # Continuous treatment DiD
+did.gen_dgp_2periods()           # Two-period triple DiD
+did.gen_dgp_mult_periods()       # Staggered triple DiD
+did.gen_dgp_scalable()           # Large-scale triple DiD
+```
+
 ## Quick Start
 
 This example uses county-level teen employment data to estimate the effect of minimum wage increases. States adopted higher minimum wages at different times (2004, 2006, or 2007), making this a staggered adoption design.
 
-The `att_gt` function estimates the average treatment effect for each group g (defined by when units were first treated) at each time period t. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
+The `att_gt` function is a core __ModernDiD__ DiD estimator that estimates the average treatment effect for each group g (defined by when units were first treated) at each time period t. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
 
 ```python
 import moderndid as did
