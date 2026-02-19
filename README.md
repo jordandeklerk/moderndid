@@ -192,49 +192,49 @@ The output shows treatment effects for each group-time pair, along with pointwis
 
 ```
 ==============================================================================
-Group-Time Average Treatment Effects
+ Group-Time Average Treatment Effects
 ==============================================================================
 
 ┌───────┬──────┬──────────┬────────────┬────────────────────────────┐
 │ Group │ Time │ ATT(g,t) │ Std. Error │ [95% Pointwise Conf. Band] │
 ├───────┼──────┼──────────┼────────────┼────────────────────────────┤
-│  2004 │ 2004 │  -0.0105 │     0.0255 │ [-0.0659,  0.0449]         │
-│  2004 │ 2005 │   0.0704 │     0.0315 │ [-0.0030,  0.1437]         │
-│  2004 │ 2006 │  -0.0232 │     0.0204 │ [-0.0715,  0.0250]         │
-│  2004 │ 2007 │   0.0311 │     0.0255 │ [-0.0311,  0.0934]         │
-│  2006 │ 2006 │  -0.0457 │     0.0193 │ [-0.0925,  0.0010]         │
-│  2006 │ 2007 │  -0.0176 │     0.0227 │ [-0.0724,  0.0371]         │
-│  2006 │ 2004 │  -0.0046 │     0.0175 │ [-0.0469,  0.0378]         │
-│  2007 │ 2007 │  -0.0311 │     0.0167 │ [-0.0706,  0.0083]         │
-│  2007 │ 2004 │  -0.0031 │     0.0161 │ [-0.0421,  0.0360]         │
+│  2004 │ 2004 │  -0.0105 │     0.0233 │ [-0.0561,  0.0351]         │
+│  2004 │ 2005 │  -0.0704 │     0.0310 │ [-0.1312, -0.0097] *       │
+│  2004 │ 2006 │  -0.1373 │     0.0364 │ [-0.2087, -0.0658] *       │
+│  2004 │ 2007 │  -0.1008 │     0.0344 │ [-0.1682, -0.0335] *       │
+│  2006 │ 2004 │   0.0065 │     0.0233 │ [-0.0392,  0.0522]         │
+│  2006 │ 2005 │  -0.0028 │     0.0196 │ [-0.0411,  0.0356]         │
+│  2006 │ 2006 │  -0.0046 │     0.0178 │ [-0.0394,  0.0302]         │
+│  2006 │ 2007 │  -0.0412 │     0.0202 │ [-0.0809, -0.0016] *       │
+│  2007 │ 2004 │   0.0305 │     0.0150 │ [ 0.0010,  0.0600] *       │
+│  2007 │ 2005 │  -0.0027 │     0.0164 │ [-0.0349,  0.0294]         │
+│  2007 │ 2006 │  -0.0311 │     0.0179 │ [-0.0661,  0.0040]         │
+│  2007 │ 2007 │  -0.0261 │     0.0167 │ [-0.0587,  0.0066]         │
 └───────┴──────┴──────────┴────────────┴────────────────────────────┘
 
 ------------------------------------------------------------------------------
-Signif. codes: '*' confidence band does not cover 0
+ Signif. codes: '*' confidence band does not cover 0
+
+ P-value for pre-test of parallel trends assumption:  0.1681
 
 ------------------------------------------------------------------------------
-Data Info
+ Data Info
 ------------------------------------------------------------------------------
-Num observations: 2500
-Num units: 500
-Num time periods: 5
-Control group: Not yet treated
+ Control Group:  Never Treated
+ Anticipation Periods:  0
 
 ------------------------------------------------------------------------------
-Estimation Details
+ Estimation Details
 ------------------------------------------------------------------------------
-Estimation method: Doubly Robust (dr)
-Base period: Varying
-Anticipation periods: 0
+ Estimation Method:  Doubly Robust
 
 ------------------------------------------------------------------------------
-Inference
+ Inference
 ------------------------------------------------------------------------------
-Significance level: 0.05
-Bootstrap iterations: 999
-Bootstrap type: Weighted
+ Significance level: 0.05
+ Analytical standard errors
 ==============================================================================
-Reference: Callaway and Sant'Anna (2021)
+ Reference: Callaway and Sant'Anna (2021)
 ```
 
 Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
@@ -250,61 +250,59 @@ did.plot_gt(attgt_result)
 While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The `aggte` function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
 
 ```python
-event_study = did.aggte(result, type="dynamic")
+event_study = did.aggte(attgt_result, type="dynamic")
 print(event_study)
 ```
 
 ```
 ==============================================================================
-Aggregate Treatment Effects (Event Study)
+ Aggregate Treatment Effects (Event Study)
 ==============================================================================
 
-Overall summary of ATT's based on event study/dynamic aggregation:
+ Overall summary of ATT's based on event-study/dynamic aggregation:
 
 ┌─────────┬────────────┬────────────────────────┐
 │     ATT │ Std. Error │ [95% Conf. Interval]   │
 ├─────────┼────────────┼────────────────────────┤
-│ -0.0042 │     0.0119 │ [ -0.0275,   0.0191]   │
+│ -0.0772 │     0.0200 │ [ -0.1164,  -0.0381] * │
 └─────────┴────────────┴────────────────────────┘
 
 
-Dynamic Effects:
+ Dynamic Effects:
 
-┌────────────┬──────────┬────────────┬──────────────────────────┐
-│ Event time │ Estimate │ Std. Error │ [95% Simult. Conf. Band] │
-├────────────┼──────────┼────────────┼──────────────────────────┤
-│         -3 │  -0.0031 │     0.0161 │ [-0.0445,  0.0383]       │
-│         -2 │  -0.0046 │     0.0175 │ [-0.0499,  0.0406]       │
-│         -1 │   0.0000 │         NA │ NA                       │
-│          0 │  -0.0212 │     0.0162 │ [-0.0629,  0.0204]       │
-│          1 │   0.0264 │     0.0333 │ [-0.0596,  0.1124]       │
-│          2 │  -0.0232 │     0.0204 │ [-0.0758,  0.0293]       │
-│          3 │   0.0311 │     0.0255 │ [-0.0346,  0.0967]       │
-└────────────┴──────────┴────────────┴──────────────────────────┘
-
-------------------------------------------------------------------------------
-Signif. codes: '*' confidence band does not cover 0
+┌────────────┬──────────┬────────────┬────────────────────────────┐
+│ Event time │ Estimate │ Std. Error │ [95% Pointwise Conf. Band] │
+├────────────┼──────────┼────────────┼────────────────────────────┤
+│         -3 │   0.0305 │     0.0150 │ [-0.0078,  0.0688]         │
+│         -2 │  -0.0006 │     0.0133 │ [-0.0344,  0.0333]         │
+│         -1 │  -0.0245 │     0.0142 │ [-0.0607,  0.0118]         │
+│          0 │  -0.0199 │     0.0118 │ [-0.0501,  0.0102]         │
+│          1 │  -0.0510 │     0.0169 │ [-0.0940, -0.0079] *       │
+│          2 │  -0.1373 │     0.0364 │ [-0.2301, -0.0444] *       │
+│          3 │  -0.1008 │     0.0344 │ [-0.1883, -0.0133] *       │
+└────────────┴──────────┴────────────┴────────────────────────────┘
 
 ------------------------------------------------------------------------------
-Data Info
-------------------------------------------------------------------------------
-Control group: Not yet treated
+ Signif. codes: '*' confidence band does not cover 0
 
 ------------------------------------------------------------------------------
-Estimation Details
+ Data Info
 ------------------------------------------------------------------------------
-Estimation method: Doubly Robust (dr)
-Base period: Varying
-Anticipation periods: 0
+ Control Group: Never Treated
+ Anticipation Periods: 0
 
 ------------------------------------------------------------------------------
-Inference
+ Estimation Details
 ------------------------------------------------------------------------------
-Significance level: 0.05
-Bootstrap iterations: 999
-Bootstrap type: Weighted
+ Estimation Method: Doubly Robust
+
+------------------------------------------------------------------------------
+ Inference
+------------------------------------------------------------------------------
+ Significance level: 0.05
+ Analytical standard errors
 ==============================================================================
-Reference: Callaway and Sant'Anna (2021)
+ Reference: Callaway and Sant'Anna (2021)
 ```
 
 Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero lean in support of the parallel trends assumption (but do not confirm it), while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
