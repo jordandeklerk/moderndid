@@ -35,6 +35,17 @@ Functions for visualizing dose-response relationships from continuous treatment 
 
    plot_dose_response
 
+Intertemporal DiD Plots
+-----------------------
+
+Functions for visualizing dynamic treatment effects from the intertemporal DiD estimator.
+
+.. autosummary::
+   :toctree: generated/plotting/
+   :nosignatures:
+
+   plot_multiplegt
+
 Sensitivity Analysis Plots
 --------------------------
 

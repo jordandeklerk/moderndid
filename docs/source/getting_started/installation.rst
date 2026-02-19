@@ -39,7 +39,8 @@ get the core estimators plus whatever extras you specify.
 - **plots** - Base + visualization (``plot_gt``, ``plot_event_study``, ...)
 - **numba** - Base + faster bootstrap inference
 - **gpu** - Base + GPU-accelerated estimation (requires CUDA)
-- **all** - Everything (except ``gpu``, which requires CUDA hardware)
+- **dask** - Base + distributed estimation on Dask clusters
+- **all** - Everything (except ``gpu`` and ``dask``, which have hardware-specific requirements)
 
 .. code-block:: console
 

@@ -30,3 +30,17 @@ Inference
 
    compute_clustered_variance
    compute_joint_test
+
+Result Objects
+--------------
+
+.. currentmodule:: moderndid
+
+.. autosummary::
+   :toctree: generated/didinter/
+   :nosignatures:
+
+   DIDInterResult
+   DIDInterEffectsResult
+   DIDInterPlacebosResult
+   DIDInterATEResult

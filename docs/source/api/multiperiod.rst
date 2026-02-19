@@ -18,3 +18,16 @@ Main Functions
 
    att_gt
    aggte
+
+Result Objects
+--------------
+
+.. autosummary::
+   :toctree: generated/multiperiod/
+   :nosignatures:
+
+   MPResult
+   AGGTEResult
+   ATTgtResult
+   ComputeATTgtResult
+   MPPretestResult

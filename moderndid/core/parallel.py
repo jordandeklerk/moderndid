@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -13,6 +14,10 @@ def parallel_map(func, args_list, n_jobs=1):
     dominated by NumPy/scipy/statsmodels C extensions that release the GIL.
     Threads avoid the large serialization overhead of pickling data to
     subprocesses.
+
+    ``ContextVar`` values (e.g. the active backend set by
+    :func:`~moderndid.cupy.backend.use_backend`) are propagated to each
+    worker thread via :func:`contextvars.copy_context`.
 
     Parameters
     ----------
@@ -33,8 +38,16 @@ def parallel_map(func, args_list, n_jobs=1):
 
     max_workers = os.cpu_count() if n_jobs == -1 else n_jobs
     results = [None] * len(args_list)
+
+    # Each task gets its own snapshot so Context.run() is never called
+    # concurrently on the same object (which would raise RuntimeError).
+    contexts = [contextvars.copy_context() for _ in args_list]
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_idx = {executor.submit(func, *args): i for i, args in enumerate(args_list)}
+        future_to_idx = {
+            executor.submit(ctx.run, func, *args): i
+            for i, (ctx, args) in enumerate(zip(contexts, args_list, strict=True))
+        }
         for future in as_completed(future_to_idx):
             idx = future_to_idx[future]
             results[idx] = future.result()

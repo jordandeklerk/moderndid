@@ -43,6 +43,10 @@ def att_gt(
     base_period="varying",
     random_state=None,
     n_jobs=1,
+    n_partitions=None,
+    max_cohorts=None,
+    progress_bar=False,
+    backend=None,
 ):
     r"""Compute group-time average treatment effects.
 
@@ -156,6 +160,21 @@ def att_gt(
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
+    n_partitions : int or None, default=None
+        Number of Dask partitions per cell. Only used when ``data`` is a Dask
+        DataFrame; ignored for non-Dask inputs.
+    max_cohorts : int or None, default=None
+        Maximum number of treatment cohorts to process in parallel. Only used
+        when ``data`` is a Dask DataFrame; ignored for non-Dask inputs.
+    progress_bar : bool, default=False
+        Whether to display a tqdm progress bar during distributed computation.
+        Only used when ``data`` is a Dask DataFrame; ignored for non-Dask inputs.
+    backend : {"numpy", "cupy"} or None, default=None
+        Array backend to use for this call only. When set, the backend is
+        activated for the duration of this call and reverted automatically
+        when the call returns. ``None`` (the default) uses whatever backend
+        is currently active (see :func:`~moderndid.set_backend`). Ignored
+        when ``data`` is a Dask DataFrame.
 
     Returns
     -------
@@ -219,6 +238,69 @@ def att_gt(
            with multiple time periods." Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001
     """
+    if backend is not None:
+        from moderndid.cupy.backend import use_backend
+
+        with use_backend(backend):
+            return att_gt(
+                data=data,
+                yname=yname,
+                tname=tname,
+                idname=idname,
+                gname=gname,
+                xformla=xformla,
+                weightsname=weightsname,
+                alp=alp,
+                cband=cband,
+                boot=boot,
+                biters=biters,
+                clustervars=clustervars,
+                est_method=est_method,
+                panel=panel,
+                allow_unbalanced_panel=allow_unbalanced_panel,
+                control_group=control_group,
+                anticipation=anticipation,
+                base_period=base_period,
+                random_state=random_state,
+                n_jobs=n_jobs,
+                n_partitions=n_partitions,
+                max_cohorts=max_cohorts,
+                progress_bar=progress_bar,
+                backend=None,
+            )
+
+    from moderndid.dask._utils import is_dask_collection
+
+    if is_dask_collection(data):
+        from moderndid.dask._did import dask_att_gt
+
+        return dask_att_gt(
+            data,
+            yname,
+            tname,
+            idname,
+            gname,
+            xformla=xformla,
+            control_group=control_group,
+            base_period=base_period,
+            anticipation=anticipation,
+            est_method=est_method,
+            panel=panel,
+            weightsname=weightsname,
+            boot=boot,
+            biters=biters,
+            cband=cband,
+            alp=alp,
+            clustervars=clustervars,
+            allow_unbalanced_panel=allow_unbalanced_panel,
+            trim_level=0.995,
+            random_state=random_state,
+            n_partitions=n_partitions,
+            max_cohorts=max_cohorts,
+            progress_bar=progress_bar,
+            backend=backend,
+        )
+
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")
     if panel and idname is None:

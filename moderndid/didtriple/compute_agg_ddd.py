@@ -90,6 +90,10 @@ def compute_agg_ddd(
         "cband": cband,
         "alpha": alpha,
     }
+    src_args = getattr(ddd_result, "args", {}) or {}
+    for key in ("yname", "pname", "est_method", "control_group", "base_period", "panel"):
+        if key in src_args:
+            args[key] = src_args[key]
 
     if not dropna and np.any(np.isnan(att)):
         raise ValueError("Missing values in ATT(g,t) found. Set dropna=True to remove them.")
@@ -253,7 +257,6 @@ def _compute_group(
     """Compute group-specific ATT aggregation."""
     selective_att_g = np.zeros(len(glist_recoded))
     selective_inf_funcs = []
-    selective_se_g = np.zeros(len(glist_recoded))
 
     for i, g in enumerate(glist_recoded):
         whichg = np.where((group == g) & (g <= t) & (t <= g + max_e))[0]
@@ -262,19 +265,23 @@ def _compute_group(
             selective_att_g[i] = np.mean(att[whichg])
             weights_g = pg_obs[whichg] / pg_obs[whichg].sum()
             inf_func_g = _get_agg_inf_func(inf_func_mat, whichg, weights_g)
-            selective_se_g[i] = _compute_se(inf_func_g, n, boot, biters, alpha, random_state)
         else:
             selective_att_g[i] = np.nan
             inf_func_g = np.zeros(n)
-            selective_se_g[i] = np.nan
 
         selective_inf_funcs.append(inf_func_g)
 
     selective_inf_func_g = np.column_stack(selective_inf_funcs)
 
-    selective_crit_val = stats.norm.ppf(1 - alpha / 2)
-    if cband and boot:
-        selective_crit_val = _get_crit_val(selective_inf_func_g, biters, alpha, random_state)
+    selective_se_g, selective_crit_val, _bres = _batched_bootstrap(
+        selective_inf_func_g,
+        n,
+        boot,
+        biters,
+        alpha,
+        cband,
+        random_state,
+    )
 
     selective_att_g_clean = np.where(np.isnan(selective_att_g), 0, selective_att_g)
     selective_att = np.sum(selective_att_g_clean * pgg) / pgg.sum()
@@ -327,7 +334,6 @@ def _compute_calendar(
 
     calendar_att_t = np.zeros(len(calendar_tlist))
     calendar_inf_funcs = []
-    calendar_se_t = np.zeros(len(calendar_tlist))
 
     for i, t1 in enumerate(calendar_tlist):
         whicht = np.where((t == t1) & (group <= t))[0]
@@ -336,25 +342,37 @@ def _compute_calendar(
             pgt = pg_obs[whicht] / pg_obs[whicht].sum()
             calendar_att_t[i] = np.sum(pgt * att[whicht])
             inf_func_t = _get_agg_inf_func(inf_func_mat, whicht, pgt)
-            calendar_se_t[i] = _compute_se(inf_func_t, n, boot, biters, alpha, random_state)
         else:
             calendar_att_t[i] = np.nan
             inf_func_t = np.zeros(n)
-            calendar_se_t[i] = np.nan
 
         calendar_inf_funcs.append(inf_func_t)
 
     calendar_inf_func_t = np.column_stack(calendar_inf_funcs)
 
-    calendar_crit_val = stats.norm.ppf(1 - alpha / 2)
-    if cband and boot:
-        calendar_crit_val = _get_crit_val(calendar_inf_func_t, biters, alpha, random_state)
+    calendar_se_t, calendar_crit_val, bres = _batched_bootstrap(
+        calendar_inf_func_t,
+        n,
+        boot,
+        biters,
+        alpha,
+        cband,
+        random_state,
+    )
 
     calendar_att = np.nanmean(calendar_att_t)
 
     weights_calendar = np.ones(len(calendar_tlist)) / len(calendar_tlist)
     calendar_inf_func = calendar_inf_func_t @ weights_calendar
-    calendar_se = _compute_se(calendar_inf_func, n, boot, biters, alpha, random_state)
+    if boot and bres is not None:
+        calendar_se = _overall_se_from_bres(
+            bres,
+            np.ones(len(calendar_tlist), dtype=bool),
+            weights_calendar,
+            n,
+        )
+    else:
+        calendar_se = _compute_se(calendar_inf_func, n, False, biters, alpha, random_state)
 
     orig_calendar_tlist = np.array([_t2orig(tc, orig_gtlist, uniquet) for tc in calendar_tlist])
 
@@ -415,7 +433,6 @@ def _compute_eventstudy(
 
     dynamic_att_e = np.zeros(len(eseq))
     dynamic_inf_funcs = []
-    dynamic_se_e = np.zeros(len(eseq))
 
     for i, e in enumerate(eseq):
         whiche = np.where(((orig_periods - orig_group) == e) & include_balanced_gt)[0]
@@ -424,26 +441,33 @@ def _compute_eventstudy(
             pge = pg_obs[whiche] / pg_obs[whiche].sum()
             dynamic_att_e[i] = np.sum(att[whiche] * pge)
             inf_func_e = _get_agg_inf_func(inf_func_mat, whiche, pge)
-            dynamic_se_e[i] = _compute_se(inf_func_e, n, boot, biters, alpha, random_state)
         else:
             dynamic_att_e[i] = np.nan
             inf_func_e = np.zeros(n)
-            dynamic_se_e[i] = np.nan
 
         dynamic_inf_funcs.append(inf_func_e)
 
     dynamic_inf_func_e = np.column_stack(dynamic_inf_funcs) if dynamic_inf_funcs else np.zeros((n, 0))
 
-    dynamic_crit_val = stats.norm.ppf(1 - alpha / 2)
-    if cband and boot and len(eseq) > 0:
-        dynamic_crit_val = _get_crit_val(dynamic_inf_func_e, biters, alpha, random_state)
+    dynamic_se_e, dynamic_crit_val, bres = _batched_bootstrap(
+        dynamic_inf_func_e,
+        n,
+        boot,
+        biters,
+        alpha,
+        cband and len(eseq) > 0,
+        random_state,
+    )
 
     epos = eseq >= 0
     if epos.any():
         dynamic_att = np.nanmean(dynamic_att_e[epos])
         n_pos = epos.sum()
         dynamic_inf_func = dynamic_inf_func_e[:, epos] @ (np.ones(n_pos) / n_pos)
-        dynamic_se = _compute_se(dynamic_inf_func, n, boot, biters, alpha, random_state)
+        if boot and bres is not None:
+            dynamic_se = _overall_se_from_bres(bres, epos, np.ones(n_pos) / n_pos, n)
+        else:
+            dynamic_se = _compute_se(dynamic_inf_func, n, False, biters, alpha, random_state)
     else:
         dynamic_att = np.nan
         dynamic_se = np.nan
@@ -478,6 +502,60 @@ def _compute_se(inf_func, n, boot, biters, alpha, random_state):
 
     if not np.isnan(se) and se <= np.sqrt(np.finfo(float).eps) * 10:
         se = np.nan
+
+    return se
+
+
+def _batched_bootstrap(inf_func_mat, n, boot, biters, alpha, cband, random_state):
+    """Compute per-column SEs and critical value from stacked influence functions."""
+    k = inf_func_mat.shape[1]
+    pointwise_crit = stats.norm.ppf(1 - alpha / 2)
+
+    if k == 0:
+        return np.array([]), pointwise_crit, None
+
+    if not boot:
+        se_array = np.sqrt(np.mean(inf_func_mat**2, axis=0) / n)
+        eps_thresh = np.sqrt(np.finfo(float).eps) * 10
+        se_array = np.where((~np.isnan(se_array)) & (se_array <= eps_thresh), np.nan, se_array)
+        return se_array, pointwise_crit, None
+
+    boot_result = mboot_ddd(inf_func_mat, biters, alpha, random_state=random_state)
+    se_array = boot_result.se.copy()
+
+    eps_thresh = np.sqrt(np.finfo(float).eps) * 10
+    se_array = np.where((~np.isnan(se_array)) & (se_array <= eps_thresh), np.nan, se_array)
+
+    crit_val = pointwise_crit
+    if cband:
+        cv = boot_result.crit_val
+        if cv is None or not np.isfinite(cv):
+            warnings.warn("Simultaneous critical value is NA. Reporting pointwise conf. intervals.")
+        elif cv < pointwise_crit:
+            warnings.warn("Simultaneous conf. band smaller than pointwise. Reporting pointwise intervals.")
+        else:
+            if cv >= 7:
+                warnings.warn("Simultaneous critical value is arguably too large to be reliable.")
+            crit_val = cv
+
+    return se_array, crit_val, boot_result.bres
+
+
+def _overall_se_from_bres(bres, col_mask, weights, n):
+    """Derive overall SE from stacked bootstrap draws."""
+    overall_bres = bres[:, col_mask] @ weights
+
+    q75 = np.percentile(overall_bres, 75)
+    q25 = np.percentile(overall_bres, 25)
+    b_sigma = (q75 - q25) / 1.3489795
+
+    eps_thresh = np.sqrt(np.finfo(float).eps) * 10
+    if np.isnan(b_sigma) or b_sigma <= eps_thresh:
+        return np.nan
+
+    se = b_sigma / np.sqrt(n)
+    if se <= eps_thresh:
+        return np.nan
 
     return se
 

@@ -4,98 +4,109 @@
 What is ModernDiD?
 ******************
 
-ModernDiD is a Python library for modern difference-in-differences (DiD)
-methods for causal inference. DiD methods estimate causal effects by comparing how
-outcomes change over time for treated units against how they change for
-untreated units, attributing the divergence to the treatment itself.
+Difference-in-differences (DiD) is one of the most widely used methods for
+causal inference from observational data. The modern DiD literature has
+produced many estimators, but implementations are scattered across separate
+R and Stata packages with incompatible APIs and output formats.
 
-Recent econometric advances have extended the DiD framework to handle staggered treatment
-adoption, continuous treatment intensities, heterogeneous effects, intertemporal
-dynamics, potential violations of the parallel trends assumption, and more. ModernDiD
-brings these methods together under a single, unified API.
+ModernDiD brings them altogether into a single Python library with a consistent API,
+shared result objects, and unified plotting. It runs locally, scales to distributed Dask
+clusters for datasets that exceed single-machine memory, and accelerates computation on NVIDIA
+GPUs via CuPy.
 
+.. code-block:: python
 
-.. _whatis-unified:
+    import moderndid as did
 
-Why a unified package?
-----------------------
+    data = did.load_mpdta()
 
-The modern DiD literature has produced many methodological advances, but
-implementations remain fragmented across separate R and Stata packages, each
-with its own API, data requirements, and output formats. Researchers must
-learn multiple interfaces, convert data between formats, and reconcile
-different output structures.
+    result = did.att_gt(
+        data=data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+    )
 
-ModernDiD provides a single interface where the same parameter names
-work across all estimators. Result objects share common structures and
-plotting functions accept results from any module.
+    event_study = did.aggte(result, type="dynamic")
+    did.plot_event_study(event_study)
 
+Install with:
 
-.. _whatis-methods:
+.. code-block:: console
 
-Methods
--------
-
-**Multi-period staggered DiD** (:mod:`~moderndid.did`) implements
-`Callaway and Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_
-for estimating group-time average treatment effects with staggered adoption,
-including aggregation to event studies, group effects, and calendar time effects.
-
-**Doubly robust two-period DiD** (``drdid``) provides
-`Sant'Anna and Zhao (2020) <https://arxiv.org/abs/1812.01723>`_
-estimators for classic two-period, two-group settings with inverse probability
-weighting, outcome regression, or doubly robust combinations.
-
-**Continuous treatment DiD** (:mod:`~moderndid.didcont`) implements
-`Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_
-for settings with continuous treatment intensity, producing dose-response
-functions showing how effects vary with treatment dose.
-
-**Triple difference-in-differences** (:mod:`~moderndid.didtriple`)
-implements `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
-which leverages a third dimension of variation (such as eligibility status)
-to relax parallel trends assumptions.
-
-**Intertemporal DiD** (:mod:`~moderndid.didinter`) implements
-`de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
-for non-binary, non-absorbing treatments where lagged treatments may affect outcomes.
-
-**Sensitivity analysis** (:mod:`~moderndid.didhonest`) provides
-`Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_
-tools for robust inference under violations of parallel trends.
+    uv pip install moderndid
 
 
 .. _whatis-design:
 
-Design
-------
+Key features
+------------
 
-**Correctness.** Every estimator is validated against reference R packages.
-Test suites include numerical comparisons ensuring ModernDiD produces the
-same point estimates, standard errors, and confidence intervals.
+- **Consistent API across all estimators.** The same parameter names
+  (``yname``, ``tname``, ``idname``, ``gname``) work across all estimators.
+  Result objects share common structures and plotting functions accept
+  results from any module.
+- **Correctness first.** Every estimator is validated against reference R
+  packages. Test suites include numerical checks for point estimates, standard
+  errors, and confidence intervals.
+- **DataFrame agnostic.** ModernDiD accepts any
+  `Arrow-compatible <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_
+  DataFrame, including polars, pandas, pyarrow, duckdb, and more, with no manual
+  conversion.
+- **Scales to clusters.** For data that exceed single-machine memory, passing a
+  `Dask <https://www.dask.org/>`_ DataFrame to ``att_gt`` or ``ddd`` activates
+  the :doc:`distributed backend </user_guide/distributed>`. Computation runs
+  on workers using partition-level sufficient statistics, and supports
+  multi-node clusters (Databricks, YARN, Kubernetes).
+- **Fast.** Internally it uses Polars for grouping and reshaping,
+  `Numba <https://numba.pydata.org/>`_ JIT compilation for bootstrap paths,
+  and thread-based parallelism via ``n_jobs``. On NVIDIA hardware, the
+  :doc:`GPU backend </user_guide/gpu>` accelerates regression and propensity
+  score estimation via `CuPy <https://cupy.dev/>`_.
+- **Consistent visualization.** All modules provide plotting functions built on
+  `plotnine <https://plotnine.org/>`_ for event studies, dose-response curves,
+  and sensitivity plots, with full grammar-of-graphics customization.
 
-**Sensible defaults.** Doubly robust estimation is default because it protects
-against misspecification. Never-treated units serve as the default control
-group to avoid contamination from already-treated units.
 
-**Performance.** ModernDiD accepts any
-`Arrow-compatible <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_
-DataFrame including polars, pandas, pyarrow, and duckdb. Internal operations
-use Polars for fast grouping and reshaping. Bootstrap procedures use
-`Numba <https://numba.pydata.org/>`_ JIT compilation for near-C speeds.
-Estimators that loop over group-time cells support optional thread-based
-parallelism via the ``n_jobs`` parameter. On machines with NVIDIA GPUs,
-installing the ``gpu`` extra (``uv pip install moderndid[gpu]``) enables
-`CuPy <https://cupy.dev/>`_-accelerated regression and propensity score
-estimation across all doubly robust and IPW estimators.
+.. _whatis-methods:
 
-**Transparency.** Result objects include influence functions, variance-covariance
-matrices, and estimation metadata. Warning messages explain when data issues
-might affect results.
+Estimators
+----------
 
-**Visualization.** All modules include plotting functions built on
-`plotnine <https://plotnine.org/>`_ for event studies, dose-response curves,
-and sensitivity plots with full customization through the grammar of graphics.
+ModernDiD covers the main DiD designs used in applied work.
+
+- **Staggered adoption** (:mod:`~moderndid.did`) —
+  `Callaway and Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_.
+  Group-time average treatment effects with staggered adoption, aggregated
+  into event-study, group, or calendar summaries.
+- **Two-period doubly robust DiD** (``drdid``) —
+  `Sant'Anna and Zhao (2020) <https://arxiv.org/abs/1812.01723>`_.
+  Classic two-period, two-group designs using inverse probability weighting,
+  outcome regression, or doubly robust combinations.
+- **Continuous treatment** (:mod:`~moderndid.didcont`) —
+  `Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_.
+  Dose-response functions for settings where treatment intensity varies.
+- **Triple differences** (:mod:`~moderndid.didtriple`) —
+  `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_.
+  Adds a third dimension (such as eligibility status) to relax parallel
+  trends assumptions.
+- **Intertemporal treatment** (:mod:`~moderndid.didinter`) —
+  `de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_.
+  Non-binary, non-absorbing treatments where current outcomes may depend on
+  treatment history.
+- **Sensitivity analysis** (:mod:`~moderndid.didhonest`) —
+  `Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_.
+  Robust inference when parallel trends may be violated.
+
+
+Next steps
+----------
+
+- :doc:`installation` for detailed install options and optional extras.
+- :ref:`Quickstart <quickstart>` to learn the API with working examples.
+- :ref:`Introduction to DiD <causal_inference>` for background on the
+  difference-in-differences framework.
 
 
 .. toctree::

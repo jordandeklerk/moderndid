@@ -53,6 +53,8 @@ class DDDMultiPeriodRCResult(NamedTuple):
         Number of observations (not units, since this is RCS).
     args : dict
         Arguments used for estimation.
+    unit_groups : ndarray
+        Array of treatment group for each observation (length n).
     """
 
     att: np.ndarray
@@ -66,6 +68,7 @@ class DDDMultiPeriodRCResult(NamedTuple):
     inf_func_mat: np.ndarray
     n: int
     args: dict
+    unit_groups: np.ndarray
 
 
 def ddd_mp_rc(
@@ -309,6 +312,8 @@ def ddd_mp_rc(
 
     args = {
         "panel": False,
+        "yname": y_col,
+        "pname": partition_col,
         "control_group": control_group,
         "base_period": base_period,
         "est_method": est_method,
@@ -319,6 +324,8 @@ def ddd_mp_rc(
         "alpha": alpha,
         "trim_level": trim_level,
     }
+
+    obs_groups = data[group_col].to_numpy()
 
     return DDDMultiPeriodRCResult(
         att=att_array,
@@ -332,6 +339,7 @@ def ddd_mp_rc(
         inf_func_mat=inf_func_mat[:, : len(attgt_list)],
         n=n_obs,
         args=args,
+        unit_groups=obs_groups,
     )
 
 
@@ -470,7 +478,7 @@ def _get_cell_data_rc(data, g, t, pret, control_group, time_col, group_col):
 
 
 def _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter):
-    """Update influence function matrix with scaled values for a cell in RCS."""
+    """Update influence function matrix."""
     for i, idx in enumerate(obs_indices):
         if i < len(inf_func_scaled):
             inf_func_mat[idx, counter] = inf_func_scaled[i]

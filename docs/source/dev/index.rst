@@ -19,3 +19,4 @@ internals; for usage documentation see the :ref:`User Guide <user-guide>`.
    :maxdepth: 2
 
    architecture
+   distributed_architecture

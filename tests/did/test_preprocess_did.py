@@ -560,6 +560,39 @@ class TestDataIntegrity:
         assert not result.is_valid
         assert any("observed more than once" in err for err in result.errors)
 
+    def test_panel_true_with_rcs_data(self):
+        df = create_test_repeated_cross_section()
+        df = df.with_row_index("id")
+
+        validator = PanelStructureValidator()
+        config = DIDConfig(
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            panel=True,
+        )
+
+        result = validator.validate(df, config)
+        assert not result.is_valid
+        assert any("panel=True was specified" in err for err in result.errors)
+
+    def test_panel_false_with_panel_data(self):
+        df = create_test_panel_data()
+
+        validator = PanelStructureValidator()
+        config = DIDConfig(
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="g",
+            panel=False,
+        )
+
+        result = validator.validate(df, config)
+        assert result.is_valid
+        assert any("panel=False was specified" in w for w in result.warnings)
+
     def test_treatment_reversibility(self):
         df = create_test_panel_data()
         treated_unit = df.filter(pl.col("g") > 0)["id"][0]

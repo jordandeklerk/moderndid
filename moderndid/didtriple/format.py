@@ -419,8 +419,25 @@ def format_ddd_agg_result(result):
     lines.extend(format_significance_note(band=True))
 
     lines.extend(format_section_header("Data Info"))
+    panel = result.args.get("panel", True)
+    lines.append(" Panel Data" if panel else " Repeated Cross-Section Data")
+
+    yname = result.args.get("yname", "y")
+    lines.append(f" Outcome variable: {yname}")
+
+    pname = result.args.get("pname", "partition")
+    lines.append(f" Qualification variable: {pname}")
+
+    control_group = result.args.get("control_group", "nevertreated")
+    control_type = "Never Treated" if control_group == "nevertreated" else "Not Yet Treated (GMM-based)"
+    lines.append(f" Control group: {control_type}")
+
+    base_period = result.args.get("base_period", "universal")
+    lines.append(f" Base period: {base_period}")
 
     lines.extend(format_section_header("Estimation Details"))
+    est_method_lower = result.args.get("est_method", "dr")
+    lines.extend(_estimation_method_lines(est_method_lower))
 
     lines.extend(format_section_header("Inference"))
     lines.append(f" Significance level: {alpha}")

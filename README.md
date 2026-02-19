@@ -12,10 +12,22 @@
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
 
-__ModernDiD__ is a unified Python implementation of modern difference-in-differences (DiD) methodologies, bringing together the fragmented landscape of DiD estimators into a single, coherent framework. This package consolidates methods from leading econometric research and various R packages into one comprehensive Python library with a consistent API.
+__ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Dask clusters.
 
 > [!WARNING]
 > This package is currently in active development with core estimators and some sensitivity analysis implemented. The API is subject to change.
+
+## Features
+
+- **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
+- **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
+- **Distributed computing** - Scale DiD estimators to billions of observations across multi-node [Dask](https://www.dask.org/) clusters with automatic dispatch. Simply pass a Dask DataFrame and the distributed backend activates transparently
+- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and optional thread-based parallelism via the `n_jobs` parameter
+- **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated regression and propensity score estimation across all doubly robust and IPW estimators on NVIDIA GPUs, with multi-GPU scaling in distributed environments
+- **Native plots** - Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
+- **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
+
+For detailed documentation, including user guides and API reference, see [moderndid.readthedocs.io](https://moderndid.readthedocs.io/en/latest/).
 
 ## Installation
 
@@ -39,15 +51,17 @@ Extras are additive. They add functionality to the base install, so you always g
 - **`didhonest`** - Base + sensitivity analysis (`honest_did`)
 - **`plots`** - Base + visualization (`plot_gt`, `plot_event_study`, ...)
 - **`numba`** - Base + faster bootstrap inference
+- **`dask`** - Base + distributed estimation via Dask
 - **`gpu`** - Base + GPU-accelerated estimation (requires CUDA)
-- **`all`** - Everything (except `gpu`, which requires CUDA hardware)
+- **`all`** - Everything (except `dask` and `gpu`, which require specific infrastructure)
 
 ```bash
 uv pip install moderndid[didcont]     # Base estimators + cont_did
 uv pip install moderndid[didhonest]   # Base estimators + sensitivity analysis
 uv pip install moderndid[numba]       # Base estimators with faster computations
+uv pip install moderndid[dask]        # Base estimators with Dask distributed
 uv pip install moderndid[gpu]         # Base estimators with GPU acceleration
-uv pip install moderndid[plots,numba] # Combine multiple extras
+uv pip install moderndid[gpu,dask]    # Combine multiple extras
 ```
 
 Or install from source:
@@ -56,42 +70,60 @@ Or install from source:
 uv pip install git+https://github.com/jordandeklerk/moderndid.git
 ```
 
-> [!TIP]
-> We recommend `uv pip install moderndid[all]` for full functionality. The `numba` extra provides significant performance gains for bootstrap inference and the `plots` extra provides customizable, batteries-included plotting out of the box. On machines with NVIDIA GPUs, use `uv pip install moderndid[all,gpu]` to also enable CuPy-accelerated estimation. Install minimal extras only if you have specific dependency constraints.
+### Distributed Computing
 
-## Features
+For datasets that exceed single-machine memory, pass a [Dask](https://www.dask.org/) DataFrame to `att_gt` or `ddd` and the distributed backend activates automatically. All computation happens on workers via partition-level sufficient statistics. Only small summary matrices return to the driver. Results are numerically identical to the local estimators.
 
-- **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
-- **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
-- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, optional thread-based parallelism via the `n_jobs` parameter, and optional GPU accelerated regression and propensity score estimation across all doubly robust and IPW estimators via [CuPy](https://cupy.dev/)
-- **Native plots** - Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
-- **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands
-- **Documentation** - [https://moderndid.readthedocs.io/en/latest/index.html](https://moderndid.readthedocs.io/en/latest/index.html)
+```python
+import dask.dataframe as dd
+from dask.distributed import Client
+import moderndid as did
+
+# Load data as a Dask DataFrame
+ddf = dd.read_parquet("panel_data.parquet")
+
+# For multi-node clusters (Databricks, YARN, Kubernetes)
+client = Client("scheduler-address:8786")
+
+# Same API, distributed backend activates automatically
+result = did.att_gt(
+    data=ddf,
+    yname="y",
+    tname="time",
+    idname="id",
+    gname="group",
+    est_method="dr",
+    client=client,           # omit for automatic LocalCluster
+    n_partitions=64,         # partitions per cell (default: total cluster threads)
+    max_cohorts=4,           # cohorts to process in parallel
+    progress_bar=True,       # track cell completion
+    backend="cupy",          # run worker linear algebra on GPUs (optional)
+)
+
+# Post-estimation works identically
+event_study = did.aggte(result, type="dynamic")
+```
+
+Add `backend="cupy"` to run worker-side linear algebra on GPUs. For multi-GPU machines, use `dask-cuda` with a `LocalCUDACluster` to pin one worker per GPU.
+
+See the [Distributed Estimation guide](moderndid/dask) for architecture details and deployment recommendations.
 
 ### GPU Acceleration
 
-On machines with NVIDIA GPUs, you can install the `gpu` extra and activate the CuPy backend to offload regression and propensity score estimation to the GPU. See the [GPU troubleshooting section](#common-troubleshooting-for-gpu) below for guidance on common issues:
+On machines with NVIDIA GPUs, install the `gpu` extra and pass `backend="cupy"` to offload regression and propensity score estimation to the GPU. The backend activates only for that call and reverts automatically. See the [GPU troubleshooting section](#common-troubleshooting-for-gpu) below for guidance on common issues:
 
 ```python
 import moderndid as did
 
-did.set_backend("cupy")
-
-# All estimators now use GPU-accelerated computations
 result = did.att_gt(data,
                     yname="lemp",
                     tname="year",
                     idname="countyreal",
-                    gname="first.treat")
+                    gname="first.treat",
+                    backend="cupy")
 ```
 
-To switch back to the default CPU path:
-
-```python
-did.set_backend("numpy")
-```
-
-See [GPU benchmark results](scripts/README.md) for performance comparisons across Tesla T4, A100, and H100 GPUs.
+You can also set the backend globally with `did.set_backend("cupy")` and revert with `did.set_backend("numpy")`. For multi-GPU scaling, combine with a Dask DataFrame as shown above. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) for details and [GPU benchmark results](scripts/README.md) for performance comparisons across several NVIDIA GPUs.
 
 ### Consistent API
 
@@ -100,16 +132,12 @@ All estimators share a unified interface for core parameters, making it easy to 
 ```python
 # Staggered DiD
 result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
-
 # Triple DiD
 result = did.ddd(data, yname="y", tname="t", idname="id", gname="g", pname="p", ...)
-
 # Continuous DiD
 result = did.cont_did(data, yname="y", tname="t", idname="id", gname="g", dname="dose", ...)
-
 # Doubly robust 2-period DiD
 result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", ...)
-
 # Intertemporal DiD
 result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
 ```
@@ -126,11 +154,21 @@ did.load_engel()       # Household expenditure
 did.load_favara_imbs() # Bank lending
 ```
 
+Synthetic data generators are also available for simulations and benchmarking:
+
+```python
+did.gen_did_scalable()           # Staggered DiD panel
+did.simulate_cont_did_data()     # Continuous treatment DiD
+did.gen_dgp_2periods()           # Two-period triple DiD
+did.gen_dgp_mult_periods()       # Staggered triple DiD
+did.gen_dgp_scalable()           # Large-scale triple DiD
+```
+
 ## Quick Start
 
 This example uses county-level teen employment data to estimate the effect of minimum wage increases. States adopted higher minimum wages at different times (2004, 2006, or 2007), making this a staggered adoption design.
 
-The `att_gt` function estimates the average treatment effect for each group g (defined by when units were first treated) at each time period t. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
+The `att_gt` function is a core __ModernDiD__ estimator that estimates the average treatment effect for each group g (defined by when units were first treated) at each time period t. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
 
 ```python
 import moderndid as did
@@ -154,49 +192,49 @@ The output shows treatment effects for each group-time pair, along with pointwis
 
 ```
 ==============================================================================
-Group-Time Average Treatment Effects
+ Group-Time Average Treatment Effects
 ==============================================================================
 
 ┌───────┬──────┬──────────┬────────────┬────────────────────────────┐
 │ Group │ Time │ ATT(g,t) │ Std. Error │ [95% Pointwise Conf. Band] │
 ├───────┼──────┼──────────┼────────────┼────────────────────────────┤
-│  2004 │ 2004 │  -0.0105 │     0.0255 │ [-0.0659,  0.0449]         │
-│  2004 │ 2005 │   0.0704 │     0.0315 │ [-0.0030,  0.1437]         │
-│  2004 │ 2006 │  -0.0232 │     0.0204 │ [-0.0715,  0.0250]         │
-│  2004 │ 2007 │   0.0311 │     0.0255 │ [-0.0311,  0.0934]         │
-│  2006 │ 2006 │  -0.0457 │     0.0193 │ [-0.0925,  0.0010]         │
-│  2006 │ 2007 │  -0.0176 │     0.0227 │ [-0.0724,  0.0371]         │
-│  2006 │ 2004 │  -0.0046 │     0.0175 │ [-0.0469,  0.0378]         │
-│  2007 │ 2007 │  -0.0311 │     0.0167 │ [-0.0706,  0.0083]         │
-│  2007 │ 2004 │  -0.0031 │     0.0161 │ [-0.0421,  0.0360]         │
+│  2004 │ 2004 │  -0.0105 │     0.0233 │ [-0.0561,  0.0351]         │
+│  2004 │ 2005 │  -0.0704 │     0.0310 │ [-0.1312, -0.0097] *       │
+│  2004 │ 2006 │  -0.1373 │     0.0364 │ [-0.2087, -0.0658] *       │
+│  2004 │ 2007 │  -0.1008 │     0.0344 │ [-0.1682, -0.0335] *       │
+│  2006 │ 2004 │   0.0065 │     0.0233 │ [-0.0392,  0.0522]         │
+│  2006 │ 2005 │  -0.0028 │     0.0196 │ [-0.0411,  0.0356]         │
+│  2006 │ 2006 │  -0.0046 │     0.0178 │ [-0.0394,  0.0302]         │
+│  2006 │ 2007 │  -0.0412 │     0.0202 │ [-0.0809, -0.0016] *       │
+│  2007 │ 2004 │   0.0305 │     0.0150 │ [ 0.0010,  0.0600] *       │
+│  2007 │ 2005 │  -0.0027 │     0.0164 │ [-0.0349,  0.0294]         │
+│  2007 │ 2006 │  -0.0311 │     0.0179 │ [-0.0661,  0.0040]         │
+│  2007 │ 2007 │  -0.0261 │     0.0167 │ [-0.0587,  0.0066]         │
 └───────┴──────┴──────────┴────────────┴────────────────────────────┘
 
 ------------------------------------------------------------------------------
-Signif. codes: '*' confidence band does not cover 0
+ Signif. codes: '*' confidence band does not cover 0
+
+ P-value for pre-test of parallel trends assumption:  0.1681
 
 ------------------------------------------------------------------------------
-Data Info
+ Data Info
 ------------------------------------------------------------------------------
-Num observations: 2500
-Num units: 500
-Num time periods: 5
-Control group: Not yet treated
+ Control Group:  Never Treated
+ Anticipation Periods:  0
 
 ------------------------------------------------------------------------------
-Estimation Details
+ Estimation Details
 ------------------------------------------------------------------------------
-Estimation method: Doubly Robust (dr)
-Base period: Varying
-Anticipation periods: 0
+ Estimation Method:  Doubly Robust
 
 ------------------------------------------------------------------------------
-Inference
+ Inference
 ------------------------------------------------------------------------------
-Significance level: 0.05
-Bootstrap iterations: 999
-Bootstrap type: Weighted
+ Significance level: 0.05
+ Analytical standard errors
 ==============================================================================
-Reference: Callaway and Sant'Anna (2021)
+ Reference: Callaway and Sant'Anna (2021)
 ```
 
 Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
@@ -212,61 +250,59 @@ did.plot_gt(attgt_result)
 While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The `aggte` function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
 
 ```python
-event_study = did.aggte(result, type="dynamic")
+event_study = did.aggte(attgt_result, type="dynamic")
 print(event_study)
 ```
 
 ```
 ==============================================================================
-Aggregate Treatment Effects (Event Study)
+ Aggregate Treatment Effects (Event Study)
 ==============================================================================
 
-Overall summary of ATT's based on event study/dynamic aggregation:
+ Overall summary of ATT's based on event-study/dynamic aggregation:
 
 ┌─────────┬────────────┬────────────────────────┐
 │     ATT │ Std. Error │ [95% Conf. Interval]   │
 ├─────────┼────────────┼────────────────────────┤
-│ -0.0042 │     0.0119 │ [ -0.0275,   0.0191]   │
+│ -0.0772 │     0.0200 │ [ -0.1164,  -0.0381] * │
 └─────────┴────────────┴────────────────────────┘
 
 
-Dynamic Effects:
+ Dynamic Effects:
 
-┌────────────┬──────────┬────────────┬──────────────────────────┐
-│ Event time │ Estimate │ Std. Error │ [95% Simult. Conf. Band] │
-├────────────┼──────────┼────────────┼──────────────────────────┤
-│         -3 │  -0.0031 │     0.0161 │ [-0.0445,  0.0383]       │
-│         -2 │  -0.0046 │     0.0175 │ [-0.0499,  0.0406]       │
-│         -1 │   0.0000 │         NA │ NA                       │
-│          0 │  -0.0212 │     0.0162 │ [-0.0629,  0.0204]       │
-│          1 │   0.0264 │     0.0333 │ [-0.0596,  0.1124]       │
-│          2 │  -0.0232 │     0.0204 │ [-0.0758,  0.0293]       │
-│          3 │   0.0311 │     0.0255 │ [-0.0346,  0.0967]       │
-└────────────┴──────────┴────────────┴──────────────────────────┘
-
-------------------------------------------------------------------------------
-Signif. codes: '*' confidence band does not cover 0
+┌────────────┬──────────┬────────────┬────────────────────────────┐
+│ Event time │ Estimate │ Std. Error │ [95% Pointwise Conf. Band] │
+├────────────┼──────────┼────────────┼────────────────────────────┤
+│         -3 │   0.0305 │     0.0150 │ [-0.0078,  0.0688]         │
+│         -2 │  -0.0006 │     0.0133 │ [-0.0344,  0.0333]         │
+│         -1 │  -0.0245 │     0.0142 │ [-0.0607,  0.0118]         │
+│          0 │  -0.0199 │     0.0118 │ [-0.0501,  0.0102]         │
+│          1 │  -0.0510 │     0.0169 │ [-0.0940, -0.0079] *       │
+│          2 │  -0.1373 │     0.0364 │ [-0.2301, -0.0444] *       │
+│          3 │  -0.1008 │     0.0344 │ [-0.1883, -0.0133] *       │
+└────────────┴──────────┴────────────┴────────────────────────────┘
 
 ------------------------------------------------------------------------------
-Data Info
-------------------------------------------------------------------------------
-Control group: Not yet treated
+ Signif. codes: '*' confidence band does not cover 0
 
 ------------------------------------------------------------------------------
-Estimation Details
+ Data Info
 ------------------------------------------------------------------------------
-Estimation method: Doubly Robust (dr)
-Base period: Varying
-Anticipation periods: 0
+ Control Group: Never Treated
+ Anticipation Periods: 0
 
 ------------------------------------------------------------------------------
-Inference
+ Estimation Details
 ------------------------------------------------------------------------------
-Significance level: 0.05
-Bootstrap iterations: 999
-Bootstrap type: Weighted
+ Estimation Method: Doubly Robust
+
+------------------------------------------------------------------------------
+ Inference
+------------------------------------------------------------------------------
+ Significance level: 0.05
+ Analytical standard errors
 ==============================================================================
-Reference: Callaway and Sant'Anna (2021)
+ Reference: Callaway and Sant'Anna (2021)
 ```
 
 Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero lean in support of the parallel trends assumption (but do not confirm it), while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.

@@ -120,6 +120,8 @@ __all__ = [
     "create_sensitivity_results_sm",
     "create_sign_constraint_matrix",
     # Core data
+    "dask_att_gt",
+    "dask_ddd",
     "data",
     "ddd",
     "ddd_mp",
@@ -145,6 +147,8 @@ __all__ = [
     "format_mp_result",
     "gen_dgp_2periods",
     "gen_dgp_mult_periods",
+    "gen_dgp_scalable",
+    "gen_did_scalable",
     "generate_simple_ddd_data",
     # GPU backend
     "get_backend",
@@ -212,6 +216,7 @@ __all__ = [
     "test_in_identified_set_max",
     "twfe_did_panel",
     "twfe_did_rc",
+    "use_backend",
     "validate_conformable",
     "validate_symmetric_psd",
     "wboot_ddd",
@@ -245,6 +250,7 @@ _lazy_imports = {
     "HAS_CUPY": "moderndid.cupy.backend",
     "get_backend": "moderndid.cupy.backend",
     "set_backend": "moderndid.cupy.backend",
+    "use_backend": "moderndid.cupy.backend",
     # core.data
     "data": "moderndid.core",
     "load_ehec": "moderndid.core.data",
@@ -356,6 +362,8 @@ _lazy_imports = {
     "ddd_rc": "moderndid.didtriple.estimators.ddd_rc",
     "gen_dgp_2periods": "moderndid.didtriple.dgp",
     "gen_dgp_mult_periods": "moderndid.didtriple.dgp",
+    "gen_dgp_scalable": "moderndid.didtriple.dgp",
+    "gen_did_scalable": "moderndid.core.data",
     "generate_simple_ddd_data": "moderndid.didtriple.dgp",
     "mboot_ddd": "moderndid.didtriple.bootstrap",
     "wboot_ddd": "moderndid.didtriple.bootstrap",
@@ -456,6 +464,9 @@ _optional_imports = {
     "test_in_identified_set_max": ("moderndid.didhonest", "didhonest"),
     "validate_conformable": ("moderndid.didhonest", "didhonest"),
     "validate_symmetric_psd": ("moderndid.didhonest", "didhonest"),
+    # dask (requires dask + distributed)
+    "dask_att_gt": ("moderndid.dask", "dask"),
+    "dask_ddd": ("moderndid.dask", "dask"),
     # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),
     "plot_dose_response": ("moderndid.plots", "plots"),

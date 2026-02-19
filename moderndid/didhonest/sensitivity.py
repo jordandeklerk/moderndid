@@ -15,7 +15,22 @@ from .wrappers import DeltaMethodSelector
 
 
 class SensitivityResult(NamedTuple):
-    """Result from sensitivity analysis."""
+    """Result from sensitivity analysis.
+
+    Attributes
+    ----------
+    lb : float
+        Lower bound of the robust confidence interval.
+    ub : float
+        Upper bound of the robust confidence interval.
+    method : str
+        Confidence interval method used (e.g. 'FLCI', 'Conditional',
+        'C-F', 'C-LF').
+    delta : str
+        Type of restriction set used (e.g. 'DeltaSD', 'DeltaRM').
+    m : float
+        Value of the smoothness or relative magnitude bound parameter.
+    """
 
     lb: float
     ub: float
@@ -25,7 +40,21 @@ class SensitivityResult(NamedTuple):
 
 
 class OriginalCSResult(NamedTuple):
-    """Result from original confidence set construction."""
+    """Result from original confidence set construction.
+
+    Attributes
+    ----------
+    lb : float
+        Lower bound of the original confidence interval assuming exact
+        parallel trends.
+    ub : float
+        Upper bound of the original confidence interval assuming exact
+        parallel trends.
+    method : str
+        Confidence interval method, defaults to 'Original'.
+    delta : str or None
+        Restriction type, defaults to None for the original estimate.
+    """
 
     lb: float
     ub: float
