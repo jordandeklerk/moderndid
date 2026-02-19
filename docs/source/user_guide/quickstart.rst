@@ -353,7 +353,8 @@ If your data has sampling weights, specify them using ``weightsname``.
 Visualization
 -------------
 
-ModernDiD provides built-in plotting functions using plotnine.
+ModernDiD provides built-in plotting functions that return
+`plotnine <https://plotnine.org/>`_ ``ggplot`` objects.
 
 .. code-block:: python
 
@@ -362,6 +363,32 @@ ModernDiD provides built-in plotting functions using plotnine.
 
     # Plot event study
     did.plot_event_study(event_study)
+
+Because the return value is a standard ``ggplot`` object, you can customize
+it with any plotnine layer using the ``+`` operator.
+
+.. code-block:: python
+
+    from plotnine import labs, theme, element_text
+
+    plot = did.plot_event_study(event_study, ref_period=-1)
+    plot = (
+        plot
+        + labs(
+            title="Effect of Minimum Wage on Employment",
+            x="Years Relative to Treatment",
+            y="ATT (log points)",
+        )
+        + theme(plot_title=element_text(size=14, weight="bold"))
+    )
+
+ModernDiD also ships with ready-made themes for common use cases.
+
+.. code-block:: python
+
+    from moderndid.plots import theme_publication
+
+    did.plot_event_study(event_study) + theme_publication()
 
 
 Next steps

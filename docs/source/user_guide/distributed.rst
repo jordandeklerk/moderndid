@@ -141,9 +141,7 @@ all required columns in the same frame and keep ``time`` and treatment group
 columns numeric. For panel data (``panel=True``), ensure unit identifiers
 are stable across periods and prefer one record per unit-period. For
 repeated cross-section data (``panel=False``), each row is an independent
-observation and unit identifiers are not required. Loading from Parquet is
-the most reliable path because Parquet preserves column types and supports
-efficient partition pruning.
+observation and unit identifiers are not required.
 
 .. code-block:: python
 
@@ -151,9 +149,6 @@ efficient partition pruning.
 
     cols = ["id", "time", "group", "partition", "y", "x1", "x2"]
     ddf = dd.read_parquet("data/panel/*.parquet", columns=cols)
-
-    # Optional light cleaning before estimation
-    ddf = ddf.dropna(subset=["id", "time", "group", "y"])
 
 Partition layout affects both runtime and memory. Extremely small partitions
 increase scheduler overhead, and extremely large partitions increase worker
@@ -190,7 +185,7 @@ From local to distributed
 
 A practical workflow is to develop and validate your specification locally
 on a sample, then scale up to the full dataset by swapping in a Dask
-DataFrame. The estimator arguments stay the same — only the input type
+DataFrame. The estimator arguments stay the same. Only the input type
 changes.
 
 .. code-block:: python
@@ -204,11 +199,11 @@ changes.
         xformla="~ x1 + x2", est_method="dr", control_group="nevertreated",
     )
 
-    # Step 1: develop locally on a sample
+    # Develop locally on a sample
     sample = pl.read_parquet("panel_data.parquet").sample(n=10_000, seed=42)
     local_result = did.att_gt(data=sample, **shared_args)
 
-    # Step 2: scale to the full dataset
+    # Scale to the full dataset
     ddf = dd.read_parquet("panel_data.parquet")
     dist_result = did.att_gt(data=ddf, **shared_args)
 
@@ -236,17 +231,7 @@ scheduler and run the estimator within ``client.as_current()``.
             gname="group",
         )
 
-This pattern works with any Dask-compatible scheduler endpoint, including
-Kubernetes, Coiled, and Databricks. On Databricks, you can build the client
-from ``dask_databricks``.
-
-.. code-block:: python
-
-    from dask.distributed import Client
-    from dask_databricks import DatabricksCluster
-
-    cluster = DatabricksCluster()
-    client = Client(cluster)
+This pattern works with any Dask-compatible scheduler endpoint.
 
 For local development with controlled resources, create a ``LocalCluster``
 explicitly to set worker count and memory limits.
@@ -327,32 +312,23 @@ Supported estimation features
 -----------------------------
 
 All standard estimator arguments work in distributed mode with the same
-interface as local estimation. The table below summarizes what is
-supported and any distributed-specific behavior.
+interface as local estimation.
 
-.. list-table::
-   :widths: 30 70
-   :header-rows: 1
-
-   * - Feature
-     - Distributed behavior
-   * - Bootstrap (``boot=True``)
-     - Mammen two-point weights generated on workers and tree-reduced to
-       the driver. ``cband`` defaults to ``False`` (local defaults to
-       ``True``); set ``cband=True`` explicitly for uniform bands.
-   * - Clustered SEs (``clustervars``)
-     - One-way and two-way clustering supported. Pass a list, not a bare
-       string.
-   * - Repeated cross-sections (``panel=False``)
-     - Fully supported for both ``att_gt`` and ``ddd``.
-   * - Unbalanced panels (``allow_unbalanced_panel``)
-     - Supported. Default ``False`` logs a warning with the number of
-       dropped units.
-   * - Sampling weights (``weightsname``)
-     - Supported. Weight column must be present in the Dask DataFrame.
-   * - GPU on workers (``backend="cupy"``)
-     - Runs partition-level linear algebra on worker GPUs. See
-       :ref:`Combining GPU and Dask <gpu-dask-workers>` for setup.
+- **Bootstrap** (``boot=True``) — Mammen two-point weights generated on
+  workers and tree-reduced to the driver. ``cband`` defaults to ``False``
+  (local defaults to ``True``); set ``cband=True`` explicitly for uniform
+  bands.
+- **Clustered SEs** (``clustervars``) — one-way and two-way clustering
+  supported. Pass a list, not a bare string.
+- **Repeated cross-sections** (``panel=False``) — fully supported for both
+  ``att_gt`` and ``ddd``.
+- **Unbalanced panels** (``allow_unbalanced_panel``) — supported. Default
+  ``False`` logs a warning with the number of dropped units.
+- **Sampling weights** (``weightsname``) — supported. Weight column must be
+  present in the Dask DataFrame.
+- **GPU on workers** (``backend="cupy"``) — runs partition-level linear
+  algebra on worker GPUs. See
+  :ref:`Combining GPU and Dask <gpu-dask-workers>` for setup.
 
 
 Running multiple specifications
@@ -393,21 +369,13 @@ re-shuffling the data for each specification.
 Monitoring the cluster
 ----------------------
 
-For long-running jobs, the Dask dashboard (typically at
-``http://scheduler-host:8787``) provides real-time visibility into task
+For long-running jobs, the Dask dashboard provides real-time visibility into task
 progress, worker memory, and task stream. The ``progress_bar`` parameter
 provides a simpler alternative that works in notebooks and scripts.
 
-ModernDiD also provides a cluster monitor that periodically logs memory
-and task statistics. Pass ``per_worker=True`` to include per-worker
-breakdowns, or replace the default ``emit`` callable to route output to
-a logger.
-
 .. code-block:: python
 
-    from moderndid.dask import dask_att_gt, monitor_cluster
-
-    stop = monitor_cluster(client, interval=15)
+    from moderndid.dask import dask_att_gt
 
     result = dask_att_gt(
         data=ddf,
@@ -416,10 +384,8 @@ a logger.
         idname="id",
         gname="group",
         client=client,
-        progress_bar=True,
+        progress_bar=True,    # Track cell completion
     )
-
-    stop()
 
 
 Reproducibility
@@ -436,48 +402,6 @@ hardware, fix the partition count and input file layout, set the estimator
 ``random_state`` explicitly, and run on a quiet cluster.
 
 
-Tuning and troubleshooting
---------------------------
-
-Start with default tuning and adjust based on cluster telemetry.
-
-**Workers idle, tasks short** — increase ``n_partitions`` to expose more
-parallel work.
-
-**Scheduler busy, workers underutilized** — reduce ``n_partitions`` to
-lower scheduling overhead.
-
-**Workers hitting memory limits** — reduce ``max_cohorts`` so fewer
-cohort-wide tables are active at once.
-
-**Slow ``notyettreated`` runs** — try ``nevertreated`` when
-identification assumptions allow it.
-
-**Progress bar stalled** — check the Dask dashboard task stream and worker
-memory for a skewed partition or overloaded worker.
-
-Common error messages and their first checks:
-
-``Columns not found in Dask DataFrame: [...]``
-    Verify column names and upstream renaming logic before estimation.
-
-``Callable est_method is not supported for Dask inputs. Use 'dr', 'reg', or 'ipw'.``
-    Use one of the built-in string methods for distributed runs.
-
-``No valid (g,t) cells found.``
-    Check treatment timing, control-group choice, and pre-period availability.
-
-If the client connection fails, verify the scheduler address and network
-routing. If workers restart mid-run, check memory limits and reduce
-concurrency with ``max_cohorts``. If there is a long startup before the
-first cell, persist input data and wait for workers to reach steady state
-before calling the estimator.
-
-For architecture-level details on reduction patterns, memory strategy, and
-execution decomposition, see
-:ref:`Distributed Backend Architecture <distributed-architecture>`.
-
-
 Next steps
 ----------
 
@@ -488,3 +412,6 @@ Next steps
   estimators and their distributed support.
 - The :ref:`Examples <user-guide>` section walks through each estimator
   end-to-end with real and simulated data.
+- For architecture-level details on reduction patterns, memory strategy, and
+  execution decomposition, see
+  :ref:`Distributed Backend Architecture <distributed-architecture>`.

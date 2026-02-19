@@ -157,10 +157,67 @@ The output shows six distinct deregulation cohorts plus the
 never-treated group (``0``). This ``"G"`` column can be passed directly
 to ``gname`` in any estimator.
 
-See :ref:`api-panel` for the full list of panel utility functions,
-including :func:`~moderndid.panel.scan_gaps` for listing exactly which
-unit-time pairs are missing and :func:`~moderndid.panel.are_varying`
-for checking which columns change within units over time.
+Inspection Helpers
+------------------
+
+Several lightweight functions answer common questions about a panel
+without running full diagnostics.
+
+.. code-block:: python
+
+    # Quick boolean checks
+    did.is_balanced_panel(data, idname="county", tname="year")
+    did.has_gaps(data, idname="county", tname="year")
+
+    # Which columns change within units over time?
+    did.are_varying(data, idname="county", cols=["inter_bra", "state"])
+    # {"inter_bra": True, "state": False}
+
+    # List the exact missing unit-time pairs
+    gaps = did.scan_gaps(data, idname="county", tname="year")
+
+:func:`~moderndid.panel.complete_data` keeps only units observed in at
+least ``min_periods`` time periods, which is useful for dropping units
+with too few observations.
+
+.. code-block:: python
+
+    # Keep units observed in at least 10 of 12 periods
+    trimmed = did.complete_data(data, idname="county", tname="year", min_periods=10)
+
+:func:`~moderndid.panel.deduplicate_panel` removes duplicate unit-time
+pairs. The default keeps the last occurrence; ``strategy="mean"`` averages
+numeric columns instead.
+
+.. code-block:: python
+
+    deduped = did.deduplicate_panel(data, idname="county", tname="year", strategy="last")
+
+
+Reshaping and Transformations
+-----------------------------
+
+These functions convert between panel formats and compute common
+transformations.
+
+.. code-block:: python
+
+    # Pivot long panel to wide (one column per period)
+    wide = did.panel_to_wide(data, idname="county", tname="year")
+
+    # Unpivot wide back to long
+    long = did.wide_to_panel(wide, idname="county", stub_names=["outcome"], tname="year")
+
+    # First-difference the outcome variable (adds a "dy" column)
+    diffed = did.get_first_difference(data, idname="county", yname="outcome", tname="year")
+
+For repeated cross-section data (no unit tracked over time),
+:func:`~moderndid.panel.assign_rc_ids` adds a unique ``"rowid"`` column
+that some estimators require.
+
+.. code-block:: python
+
+    rc_data = did.assign_rc_ids(data)
 
 
 Next steps

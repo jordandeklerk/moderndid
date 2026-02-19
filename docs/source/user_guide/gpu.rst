@@ -329,6 +329,53 @@ The ``set_backend`` / ``use_backend`` context manager does **not**
 propagate to Dask worker processes. Always use the ``backend`` parameter
 on the estimator call instead.
 
+The following example shows a complete workflow: connect to a multi-GPU
+cluster, read data, run estimation with cluster monitoring, and clean up.
+
+.. code-block:: python
+
+    import dask.dataframe as dd
+    from dask.distributed import Client
+    from dask_cuda import LocalCUDACluster
+
+    import moderndid as did
+    from moderndid.dask import dask_att_gt
+
+    # Start one worker per GPU
+    cluster = LocalCUDACluster()
+    client = Client(cluster)
+
+    # Read and persist input data
+    ddf = dd.read_parquet("panel_data.parquet").persist()
+
+    result = dask_att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~ x1 + x2",
+        est_method="dr",
+        backend="cupy",
+        client=client,
+        progress_bar=True,
+    )
+
+    stop()
+
+    # Post-estimation stays the same
+    event_study = did.aggte(result, type="dynamic")
+    did.plot_event_study(event_study)
+
+    client.close()
+    cluster.close()
+
+When you need explicit control over the client (for example on
+Databricks or a managed cluster), use the low-level
+:func:`~moderndid.dask.dask_att_gt` entry point which accepts a
+``client`` parameter directly. The high-level :func:`~moderndid.att_gt`
+wrapper does not accept ``client`` — use ``client.as_current()`` instead.
+
 
 Next steps
 ----------

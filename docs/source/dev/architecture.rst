@@ -172,76 +172,36 @@ Column Name Parameters
 
 These parameters specify column names in the input data:
 
-.. list-table::
-   :header-rows: 1
-   :widths: 20 80
-
-   * - Parameter
-     - Description
-   * - ``yname``
-     - Outcome/dependent variable column
-   * - ``tname``
-     - Time period column
-   * - ``idname``
-     - Unit/entity identifier column (required for panel data)
-   * - ``gname``
-     - Treatment group column (first period treated, 0 for never-treated)
-   * - ``dname``
-     - Dose/treatment intensity column (continuous treatment only)
-   * - ``pname``
-     - Partition/eligibility indicator (triple differences only)
-   * - ``treatname``
-     - Binary treatment indicator (two-period models only)
-   * - ``weightsname``
-     - Sampling weights column
+- ``yname`` — outcome/dependent variable column
+- ``tname`` — time period column
+- ``idname`` — unit/entity identifier column (required for panel data)
+- ``gname`` — treatment group column (first period treated, 0 for never-treated)
+- ``dname`` — dose/treatment intensity column (continuous treatment only)
+- ``pname`` — partition/eligibility indicator (triple differences only)
+- ``treatname`` — binary treatment indicator (two-period models only)
+- ``weightsname`` — sampling weights column
 
 Estimation Parameters
 ---------------------
 
-.. list-table::
-   :header-rows: 1
-   :widths: 20 80
-
-   * - Parameter
-     - Description
-   * - ``xformla``
-     - Covariate formula in Wilkinson notation (e.g., ``"~ x1 + x2"``)
-   * - ``est_method``
-     - Estimation method: ``"dr"``, ``"ipw"``, or ``"reg"``
-   * - ``control_group``
-     - Control group: ``"nevertreated"`` or ``"notyettreated"``
-   * - ``base_period``
-     - Base period: ``"varying"`` or ``"universal"``
-   * - ``anticipation``
-     - Number of anticipation periods (default: 0)
-   * - ``panel``
-     - Whether data is panel (True) or repeated cross-section (False)
-   * - ``allow_unbalanced_panel``
-     - Whether to allow unbalanced panel data
+- ``xformla`` — covariate formula in Wilkinson notation (e.g., ``"~ x1 + x2"``)
+- ``est_method`` — estimation method: ``"dr"``, ``"ipw"``, or ``"reg"``
+- ``control_group`` — control group: ``"nevertreated"`` or ``"notyettreated"``
+- ``base_period`` — base period: ``"varying"`` or ``"universal"``
+- ``anticipation`` — number of anticipation periods (default: 0)
+- ``panel`` — whether data is panel (True) or repeated cross-section (False)
+- ``allow_unbalanced_panel`` — whether to allow unbalanced panel data
 
 Inference Parameters
 --------------------
 
-.. list-table::
-   :header-rows: 1
-   :widths: 20 80
-
-   * - Parameter
-     - Description
-   * - ``alp``
-     - Significance level (default: 0.05)
-   * - ``boot``
-     - Whether to use bootstrap inference
-   * - ``biters``
-     - Number of bootstrap iterations (default: 1000)
-   * - ``boot_type``
-     - Bootstrap type: ``"weighted"`` or ``"multiplier"``
-   * - ``cband``
-     - Whether to compute simultaneous confidence bands
-   * - ``clustervars``
-     - Variables for clustered standard errors
-   * - ``random_state``
-     - Random seed for reproducibility
+- ``alp`` — significance level (default: 0.05)
+- ``boot`` — whether to use bootstrap inference
+- ``biters`` — number of bootstrap iterations (default: 1000)
+- ``boot_type`` — bootstrap type: ``"weighted"`` or ``"multiplier"``
+- ``cband`` — whether to compute simultaneous confidence bands
+- ``clustervars`` — variables for clustered standard errors
+- ``random_state`` — random seed for reproducibility
 
 Result Object Design
 ====================
@@ -614,37 +574,19 @@ The ``moderndid.core.format`` module provides helper functions that produce
 consistent output across all estimators. Format functions should compose these
 helpers rather than building strings from scratch.
 
-``format_title(title, subtitle=None)``
-   Produces the title block with thick ``=`` separators.
+The helpers fall into two categories:
 
-``format_section_header(label)``
-   Produces a labeled section with thin ``-`` separators (used for Data Info,
-   Estimation Details, Inference).
+- **Structure** — ``format_title``, ``format_section_header``,
+  ``format_footer``, ``format_significance_note``, and ``adjust_separators``
+  produce the framing elements (title blocks, section dividers, footers)
+  that wrap every printed result.
+- **Tables** — ``format_single_result_table``, ``format_event_table``,
+  ``format_group_time_table``, and ``format_horizon_table`` build the data
+  tables for different result layouts (single-row summaries, event studies,
+  group-time matrices, horizon-indexed effects).
 
-``format_footer(reference=None)``
-   Produces a closing ``=`` separator with an optional citation line.
-
-``format_significance_note(band=False)``
-   Produces the significance code legend. Pass ``band=True`` when the table
-   shows confidence bands rather than confidence intervals.
-
-``format_single_result_table(label, att, se, conf_level, lci, uci, ...)``
-   Builds a one-row summary table (e.g., for an overall ATT).
-
-``format_event_table(col1_header, event_values, att, se, lower, upper, conf_level, band_type)``
-   Builds a multi-row event study table.
-
-``format_group_time_table(groups, times, att, se, lci, uci, conf_level, band_type)``
-   Builds a group-time ATT table.
-
-``format_horizon_table(horizons, estimates, std_errors, ci_lower, ci_upper, conf_level, ...)``
-   Builds a horizon-indexed table for intertemporal effects.
-
-``adjust_separators(lines)``
-   Widens ``=`` and ``-`` separator lines to match the widest content line,
-   useful when tables are wider than the default 78-character width.
-
-All table helpers use `prettytable <https://github.com/prettytable/prettytable>`_ with the ``SINGLE_BORDER`` style internally.
+All table helpers use `prettytable <https://github.com/prettytable/prettytable>`_
+with the ``SINGLE_BORDER`` style internally.
 
 Writing a Format Function
 -------------------------
