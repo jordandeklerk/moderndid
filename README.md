@@ -93,7 +93,6 @@ result = did.att_gt(
     idname="id",
     gname="group",
     est_method="dr",
-    client=client,           # omit for automatic LocalCluster
     n_partitions=64,         # partitions per cell (default: total cluster threads)
     max_cohorts=4,           # cohorts to process in parallel
     progress_bar=True,       # track cell completion
