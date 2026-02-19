@@ -298,6 +298,7 @@ def att_gt(
             n_partitions=n_partitions,
             max_cohorts=max_cohorts,
             progress_bar=progress_bar,
+            backend=backend,
         )
 
     if gname is None:

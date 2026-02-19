@@ -121,33 +121,16 @@ specific cluster, set the client as current via ``client.as_current()``.
 Current support and limits
 --------------------------
 
-The distributed path supports both panel data and repeated cross-section
-data for any number of time periods. When a Dask DataFrame is passed to
-``att_gt`` or ``ddd``, the fully distributed cell-level backend handles
-all designs, including two-period data. Set ``panel=False`` for repeated
-cross-section data where different individuals are observed in each period.
-
-The distributed-specific tuning controls are ``n_partitions``,
-``max_cohorts``, ``progress_bar``, and ``backend`` on high-level
-wrappers, plus ``client`` on the low-level functions. High-level
-wrappers pick up the active client via ``client.as_current()``.
-
-All standard estimation options that affect identification work in
+The distributed path supports both panel and repeated cross-section data
+for any number of time periods. All standard estimation options work in
 distributed mode, including ``control_group``, ``anticipation``,
-``base_period``, and ``est_method`` (string values only). When ``boot=True``,
-the multiplier bootstrap runs fully distributed with Mammen two-point weights
-generated on workers and tree-reduced to the driver, so bootstrap inference
-scales with the cluster. One default differs from local estimation.
-``cband`` defaults to ``False`` in distributed mode (local ``att_gt``
-defaults to ``True``), so set ``cband=True`` explicitly if you want uniform
-confidence bands.
+``base_period``, and ``est_method`` (string values only; callable
+``est_method`` is not supported). When ``boot=True``, the multiplier
+bootstrap runs fully distributed with Mammen two-point weights generated
+on workers and tree-reduced to the driver.
 
-Some parameters accepted by local wrappers are not yet active in
-distributed dispatch. ``att_gt`` with Dask input does not support callable
-``est_method`` or ``n_jobs``. ``ddd`` with Dask input ignores
-``boot_type`` and ``n_jobs``. The ``cluster`` parameter in multi-period
-distributed ``ddd`` is accepted for API compatibility and result metadata
-but does not change the inference path.
+The ``n_jobs`` parameter is not used in distributed mode. For ``ddd``,
+``boot_type`` is also ignored.
 
 
 Preparing input data
@@ -207,7 +190,8 @@ From local to distributed
 
 A practical workflow is to develop and validate your specification locally
 on a sample, then scale up to the full dataset by swapping in a Dask
-DataFrame. The estimator arguments stay the same.
+DataFrame. The estimator arguments stay the same — only the input type
+changes.
 
 .. code-block:: python
 
@@ -215,39 +199,18 @@ DataFrame. The estimator arguments stay the same.
     import dask.dataframe as dd
     import moderndid as did
 
-    # Step 1: develop locally on a sample
-    sample = pl.read_parquet("panel_data.parquet").sample(n=10_000, seed=42)
-
-    local_result = did.att_gt(
-        data=sample,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        xformla="~ x1 + x2",
-        est_method="dr",
-        control_group="nevertreated",
+    shared_args = dict(
+        yname="y", tname="time", idname="id", gname="group",
+        xformla="~ x1 + x2", est_method="dr", control_group="nevertreated",
     )
 
-    local_es = did.aggte(local_result, type="dynamic")
-    did.plot_event_study(local_es)
+    # Step 1: develop locally on a sample
+    sample = pl.read_parquet("panel_data.parquet").sample(n=10_000, seed=42)
+    local_result = did.att_gt(data=sample, **shared_args)
 
     # Step 2: scale to the full dataset
     ddf = dd.read_parquet("panel_data.parquet")
-
-    dist_result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        xformla="~ x1 + x2",
-        est_method="dr",
-        control_group="nevertreated",
-    )
-
-    dist_es = did.aggte(dist_result, type="dynamic")
-    did.plot_event_study(dist_es)
+    dist_result = did.att_gt(data=ddf, **shared_args)
 
 
 Connecting to a cluster
@@ -331,6 +294,10 @@ small set of controls.
     Enables a ``tqdm`` progress bar in multi-period runs. Each tick corresponds
     to one group-time cell.
 
+``backend``
+    Set to ``"cupy"`` to run partition-level linear algebra on worker GPUs.
+    See :ref:`Combining GPU and Dask <gpu-dask-workers>` for setup details.
+
 .. code-block:: python
 
     from moderndid.dask import dask_att_gt
@@ -356,181 +323,36 @@ approach memory limits, and increase it gradually when memory headroom is
 large.
 
 
-Bootstrap inference
--------------------
+Supported estimation features
+-----------------------------
 
-Bootstrap inference works in distributed mode with the same interface as
-local estimation. The multiplier bootstrap generates Mammen two-point
-weights on workers and tree-reduces them back to the driver.
+All standard estimator arguments work in distributed mode with the same
+interface as local estimation. The table below summarizes what is
+supported and any distributed-specific behavior.
 
-.. code-block:: python
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
 
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        boot=True,
-        biters=1000,
-        alp=0.05,
-        random_state=42,
-    )
-
-    event_study = did.aggte(result, type="dynamic")
-
-Set ``cband=True`` if you want uniform confidence bands. The distributed
-default is ``cband=False`` to reduce computation, while local ``att_gt``
-defaults to ``cband=True``.
-
-.. code-block:: python
-
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        boot=True,
-        biters=1000,
-        cband=True,
-        random_state=42,
-    )
-
-
-Clustered standard errors
--------------------------
-
-The distributed DiD estimator supports clustered standard errors through
-the ``clustervars`` parameter. Pass a list of one or two column names to
-cluster on.
-
-.. code-block:: python
-
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        boot=True,
-        biters=1000,
-        clustervars=["state_id"],
-        random_state=42,
-    )
-
-Two-way clustering is also supported.
-
-.. code-block:: python
-
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        boot=True,
-        biters=1000,
-        clustervars=["state_id", "industry_id"],
-        random_state=42,
-    )
-
-The cluster variable columns must be present in the Dask DataFrame. Pass
-``clustervars`` as a list, not a bare string. Passing a string raises a
-``TypeError``.
-
-
-Repeated cross-section data
-----------------------------
-
-For repeated cross-section designs where different individuals are observed
-in each period, set ``panel=False``.
-
-.. code-block:: python
-
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        panel=False,
-    )
-
-The same option works for triple differences.
-
-.. code-block:: python
-
-    result = did.ddd(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        pname="partition",
-        est_method="dr",
-        panel=False,
-    )
-
-
-Unbalanced panels
------------------
-
-When panel data has units that do not appear in every time period, the
-distributed estimator can either drop those units (the default) or keep
-them. Set ``allow_unbalanced_panel=True`` to retain all units.
-
-.. code-block:: python
-
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        allow_unbalanced_panel=True,
-    )
-
-With the default ``allow_unbalanced_panel=False``, the estimator logs a
-warning showing how many units were dropped for not appearing in all
-periods.
-
-
-Weights
--------
-
-Sampling weights are supported in distributed mode through the
-``weightsname`` parameter.
-
-.. code-block:: python
-
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        weightsname="sample_weight",
-    )
-
-The weight column must be present in the Dask DataFrame.
-
-
-GPU acceleration on workers
----------------------------
-
-Pass ``backend="cupy"`` to run partition-level linear algebra on worker
-GPUs. For multi-GPU machines, use ``dask-cuda`` with a
-``LocalCUDACluster`` to pin one worker per GPU. See
-:ref:`Combining GPU and Dask <gpu-dask-workers>` for setup, code
-examples, and memory management details.
+   * - Feature
+     - Distributed behavior
+   * - Bootstrap (``boot=True``)
+     - Mammen two-point weights generated on workers and tree-reduced to
+       the driver. ``cband`` defaults to ``False`` (local defaults to
+       ``True``); set ``cband=True`` explicitly for uniform bands.
+   * - Clustered SEs (``clustervars``)
+     - One-way and two-way clustering supported. Pass a list, not a bare
+       string.
+   * - Repeated cross-sections (``panel=False``)
+     - Fully supported for both ``att_gt`` and ``ddd``.
+   * - Unbalanced panels (``allow_unbalanced_panel``)
+     - Supported. Default ``False`` logs a warning with the number of
+       dropped units.
+   * - Sampling weights (``weightsname``)
+     - Supported. Weight column must be present in the Dask DataFrame.
+   * - GPU on workers (``backend="cupy"``)
+     - Runs partition-level linear algebra on worker GPUs. See
+       :ref:`Combining GPU and Dask <gpu-dask-workers>` for setup.
 
 
 Running multiple specifications
@@ -577,12 +399,13 @@ progress, worker memory, and task stream. The ``progress_bar`` parameter
 provides a simpler alternative that works in notebooks and scripts.
 
 ModernDiD also provides a cluster monitor that periodically logs memory
-and task statistics.
+and task statistics. Pass ``per_worker=True`` to include per-worker
+breakdowns, or replace the default ``emit`` callable to route output to
+a logger.
 
 .. code-block:: python
 
-    from moderndid.dask import dask_att_gt
-    from moderndid.dask._utils import monitor_cluster
+    from moderndid.dask import dask_att_gt, monitor_cluster
 
     stop = monitor_cluster(client, interval=15)
 
@@ -616,16 +439,22 @@ hardware, fix the partition count and input file layout, set the estimator
 Tuning and troubleshooting
 --------------------------
 
-When runtime or memory does not match expectations, use the symptom to guide
-tuning. If workers show low utilization while tasks are short, increase
-``n_partitions`` to expose more parallel work. If the scheduler is busy but
-workers do little useful work, reduce ``n_partitions`` to lower scheduling
-overhead. If workers hit memory limits or spill frequently, reduce
-``max_cohorts`` and consider increasing partition count. If runtime grows
-sharply with ``notyettreated`` controls, try ``nevertreated`` when
-identification assumptions allow it. If the progress bar appears stalled,
-check the dashboard task stream and worker memory for a skewed partition or
-overloaded worker.
+Start with default tuning and adjust based on cluster telemetry.
+
+**Workers idle, tasks short** — increase ``n_partitions`` to expose more
+parallel work.
+
+**Scheduler busy, workers underutilized** — reduce ``n_partitions`` to
+lower scheduling overhead.
+
+**Workers hitting memory limits** — reduce ``max_cohorts`` so fewer
+cohort-wide tables are active at once.
+
+**Slow ``notyettreated`` runs** — try ``nevertreated`` when
+identification assumptions allow it.
+
+**Progress bar stalled** — check the Dask dashboard task stream and worker
+memory for a skewed partition or overloaded worker.
 
 Common error messages and their first checks:
 
@@ -638,23 +467,11 @@ Common error messages and their first checks:
 ``No valid (g,t) cells found.``
     Check treatment timing, control-group choice, and pre-period availability.
 
-``clustervars must be a list of strings, not a string.``
-    Wrap the cluster variable in a list, e.g. ``clustervars=["state_id"]``.
-
-Operational issues can also appear in cluster environments. If the client
-connection fails, verify the scheduler address and network routing. If workers
-restart mid-run, check memory limits and reduce concurrency with
-``max_cohorts``. If there is a long startup before the first cell, persist
-input data and wait for workers to reach steady state before calling the
-estimator.
-
-A reliable scaling workflow is to validate the specification locally on a
-small sample first, then move to Dask with the same estimator arguments.
-Persist and inspect the Dask DataFrame before fitting, run one baseline
-distributed fit with default tuning, then adjust ``n_partitions`` and
-``max_cohorts`` based on cluster telemetry. Keep configuration fixed for
-reproducibility-sensitive comparisons, and save aggregated outputs for
-auditability.
+If the client connection fails, verify the scheduler address and network
+routing. If workers restart mid-run, check memory limits and reduce
+concurrency with ``max_cohorts``. If there is a long startup before the
+first cell, persist input data and wait for workers to reach steady state
+before calling the estimator.
 
 For architecture-level details on reduction patterns, memory strategy, and
 execution decomposition, see
@@ -666,7 +483,7 @@ Next steps
 
 - :ref:`Quickstart <quickstart>` covers estimation options, aggregation
   types, and visualization for local workflows.
-- :doc:`gpu` describes GPU acceleration for single-machine workloads.
+- :doc:`gpu` describes GPU acceleration for local and distributed workloads.
 - :ref:`Estimator Overview <estimator-overview>` surveys all available
   estimators and their distributed support.
 - The :ref:`Examples <user-guide>` section walks through each estimator

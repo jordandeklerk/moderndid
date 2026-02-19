@@ -450,6 +450,373 @@ def streaming_cell_multi_control(
     return att_gmm, se_gmm
 
 
+def streaming_ddd_rc_cell_single_control(
+    client,
+    dask_data,
+    g,
+    t,
+    pret,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    partition_col,
+    covariate_cols,
+    est_method,
+    n_partitions,
+    n_obs,
+    inf_func_mat,
+    counter,
+    trim_level=0.995,
+    weightsname=None,
+    use_gpu=False,
+):
+    r"""Streaming DDD RC computation for one :math:`(g, t)` cell using the never-treated control group.
+
+    Repeated cross-section variant of :func:`streaming_cell_single_control`.
+    Concatenates post and pre observations (instead of merging on ``id_col``),
+    fits nuisance models for each of the three DDD comparisons, and computes
+    the influence function using the RC formula.
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Dask distributed client.
+    dask_data : dask.dataframe.DataFrame
+        Persisted Dask DataFrame in long format.
+    g : int or float
+        Treatment cohort identifier.
+    t : int or float
+        Current time period.
+    pret : int or float
+        Pre-treatment (base) period.
+    time_col, group_col, id_col, y_col : str
+        Column names.
+    partition_col : str
+        Column identifying the eligibility partition (1=eligible, 0=ineligible).
+    covariate_cols : list of str or None
+        Covariate column names.
+    est_method : {"dr", "reg", "ipw"}
+        Estimation method.
+    n_partitions : int
+        Number of Dask partitions.
+    n_obs : int
+        Total number of observations in the full long-format data.
+    inf_func_mat : ndarray of shape (n_obs, n_cells)
+        Influence function matrix, updated in-place.
+    counter : int
+        Column index into ``inf_func_mat``.
+    trim_level : float, default 0.995
+        Propensity score trimming threshold.
+    weightsname : str or None
+        Weight column name.
+    use_gpu : bool, default False
+        Convert partition arrays to CuPy for GPU-accelerated computation.
+
+    Returns
+    -------
+    float or None
+        The DDD ATT for this cell, or None if the cell has no data.
+    """
+    from ._did_streaming import _precompute_did_rc_corrections
+
+    part_futures, n_cell = _prepare_ddd_rc_cell_partitions(
+        client,
+        dask_data,
+        g,
+        t,
+        pret,
+        "nevertreated",
+        time_col,
+        group_col,
+        id_col,
+        y_col,
+        partition_col,
+        covariate_cols,
+        n_partitions,
+        weightsname=weightsname,
+        use_gpu=use_gpu,
+    )
+
+    if part_futures is None or n_cell == 0:
+        return None
+
+    first = part_futures[0].result()
+    if first is None:
+        return None
+    k = first["X"].shape[1]
+
+    ps_betas = {}
+    or_betas_all = {}
+    global_aggs = {}
+    precomps = {}
+
+    def _fit_comparison(comp_sg):
+        if est_method == "reg":
+            ps_b = np.zeros(k, dtype=np.float64)
+        else:
+            ps_b = distributed_logistic_irls_from_futures(
+                client,
+                part_futures,
+                lambda pd, beta, _cs=comp_sg: _partition_ddd_rc_pscore_gram(pd, _cs, beta),
+                k,
+            )
+
+        or_b = {}
+        if est_method == "ipw":
+            for key in ["cont_pre", "cont_post", "treat_pre", "treat_post"]:
+                or_b[key] = np.zeros(k, dtype=np.float64)
+        else:
+            for d_val, post_val, key in [
+                (0, 0, "cont_pre"),
+                (0, 1, "cont_post"),
+                (1, 0, "treat_pre"),
+                (1, 1, "treat_post"),
+            ]:
+                or_b[key] = distributed_wls_from_futures(
+                    client,
+                    part_futures,
+                    lambda pd, _cs=comp_sg, _d=d_val, _p=post_val: _partition_ddd_rc_or_gram(pd, _cs, _d, _p),
+                )
+
+        futures = [
+            client.submit(_partition_ddd_rc_global_stats, pf, comp_sg, ps_b, or_b, est_method, trim_level)
+            for pf in part_futures
+        ]
+        agg = tree_reduce(client, futures, sum_global_stats)
+        if agg is None or agg["n_sub"] == 0:
+            return comp_sg, None, None, None, None
+
+        n_sub = agg["n_sub"]
+        ga = _build_rc_global_agg(agg, n_sub)
+        pc = _precompute_did_rc_corrections(agg, ga, est_method, n_sub, k)
+        return comp_sg, ps_b, or_b, ga, pc
+
+    with _ThreadPoolExecutor(max_workers=3) as pool:
+        futs = [pool.submit(_fit_comparison, cs) for cs in [3, 2, 1]]
+        for f in futs:
+            comp_sg, ps_b, or_b, ga, pc = f.result()
+            ps_betas[comp_sg] = ps_b
+            or_betas_all[comp_sg] = or_b
+            global_aggs[comp_sg] = ga
+            precomps[comp_sg] = pc
+
+    for cs in [3, 2, 1]:
+        if global_aggs[cs] is None:
+            return None
+
+    n3 = global_aggs[3]["n_sub"]
+    n2 = global_aggs[2]["n_sub"]
+    n1 = global_aggs[1]["n_sub"]
+    w3_val = n_cell / n3 if n3 > 0 else 0.0
+    w2_val = n_cell / n2 if n2 > 0 else 0.0
+    w1_val = n_cell / n1 if n1 > 0 else 0.0
+
+    ddd_att = global_aggs[3]["dr_att"] + global_aggs[2]["dr_att"] - global_aggs[1]["dr_att"]
+
+    if_futures = [
+        client.submit(
+            _partition_compute_ddd_rc_if,
+            pf,
+            ps_betas,
+            or_betas_all,
+            global_aggs,
+            precomps,
+            est_method,
+            trim_level,
+            w3_val,
+            w2_val,
+            w1_val,
+        )
+        for pf in part_futures
+    ]
+
+    scale = n_obs / n_cell
+    for fut in as_completed(if_futures):
+        ids_part, if_part = fut.result()
+        if len(ids_part) == 0:
+            continue
+        inf_func_mat[ids_part, counter] = scale * if_part
+        del ids_part, if_part
+
+    return ddd_att
+
+
+def streaming_ddd_rc_cell_multi_control(
+    client,
+    dask_data,
+    g,
+    t,
+    pret,
+    available_controls,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    partition_col,
+    covariate_cols,
+    est_method,
+    n_partitions,
+    n_obs,
+    inf_func_mat,
+    counter,
+    trim_level=0.995,
+    weightsname=None,
+    use_gpu=False,
+):
+    r"""Streaming DDD RC computation for one :math:`(g, t)` cell with multiple control groups.
+
+    Repeated cross-section variant of :func:`streaming_cell_multi_control`.
+    For each available control cohort, computes the per-control DDD ATT and
+    influence function via :func:`_ddd_rc_single_from_parts_collect`, then
+    combines estimates via GMM aggregation.
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Dask distributed client.
+    dask_data : dask.dataframe.DataFrame
+        Persisted Dask DataFrame in long format.
+    g : int or float
+        Treatment cohort identifier.
+    t : int or float
+        Current time period.
+    pret : int or float
+        Pre-treatment (base) period.
+    available_controls : list of int
+        Control cohort identifiers eligible for this cell.
+    time_col, group_col, id_col, y_col : str
+        Column names.
+    partition_col : str
+        Column identifying the eligibility partition (1=eligible, 0=ineligible).
+    covariate_cols : list of str or None
+        Covariate column names.
+    est_method : {"dr", "reg", "ipw"}
+        Estimation method.
+    n_partitions : int
+        Number of Dask partitions.
+    n_obs : int
+        Total number of observations in the full long-format data.
+    inf_func_mat : ndarray of shape (n_obs, n_cells)
+        Influence function matrix, updated in-place.
+    counter : int
+        Column index into ``inf_func_mat``.
+    trim_level : float, default 0.995
+        Propensity score trimming threshold.
+    weightsname : str or None
+        Weight column name.
+    use_gpu : bool, default False
+        Convert partition arrays to CuPy for GPU-accelerated computation.
+
+    Returns
+    -------
+    float or (float, float) or None
+        The DDD ATT for this cell. When GMM aggregation produces a
+        standard error override, returns ``(att, se)``.
+    """
+    from moderndid.didtriple.estimators.ddd_mp import _gmm_aggregate
+
+    if len(available_controls) == 1:
+        ctrl = available_controls[0]
+        group_filter = (dask_data[group_col] == ctrl) | (dask_data[group_col] == g)
+        filtered = dask_data.loc[group_filter]
+        part_futures, n_cell = _prepare_ddd_rc_cell_partitions(
+            client,
+            filtered,
+            g,
+            t,
+            pret,
+            "nevertreated",
+            time_col,
+            group_col,
+            id_col,
+            y_col,
+            partition_col,
+            covariate_cols,
+            n_partitions,
+            weightsname=weightsname,
+            pre_filtered=True,
+            use_gpu=use_gpu,
+        )
+        if part_futures is None or n_cell == 0:
+            return None
+        return _ddd_rc_single_from_parts(
+            client,
+            part_futures,
+            n_cell,
+            n_obs,
+            inf_func_mat,
+            counter,
+            est_method,
+            trim_level,
+        )
+
+    max_period = max(t, pret)
+    full_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
+    filtered = dask_data.loc[full_filter]
+
+    all_part_futures, n_all = _prepare_ddd_rc_cell_partitions(
+        client,
+        filtered,
+        g,
+        t,
+        pret,
+        "nevertreated",
+        time_col,
+        group_col,
+        id_col,
+        y_col,
+        partition_col,
+        covariate_cols,
+        n_partitions,
+        weightsname=weightsname,
+        pre_filtered=True,
+        use_gpu=use_gpu,
+    )
+
+    if all_part_futures is None or n_all == 0:
+        return None
+
+    ddd_results = []
+    inf_funcs_local = []
+
+    for ctrl in available_controls:
+        ctrl_part_futures = [client.submit(_filter_rc_partition_for_ctrl, pf, g, ctrl) for pf in all_part_futures]
+
+        first = ctrl_part_futures[0].result()
+        if first is None:
+            continue
+
+        result = _ddd_rc_single_from_parts_collect(client, ctrl_part_futures, est_method, trim_level)
+        if result is None:
+            continue
+
+        att_ctrl, inf_full, n_subset = result
+        ddd_results.append(att_ctrl)
+        inf_scaled = (n_all / n_subset) * inf_full if n_subset > 0 else inf_full
+        inf_funcs_local.append(inf_scaled)
+
+    if len(ddd_results) == 0:
+        return None
+
+    att_gmm, if_gmm, se_gmm = _gmm_aggregate(
+        np.array(ddd_results),
+        np.column_stack(inf_funcs_local),
+        n_obs,
+    )
+
+    scale = n_obs / n_all
+    for pf in all_part_futures:
+        pd = pf.result()
+        if pd is None:
+            continue
+        ids = pd["ids"]
+        valid_ids = ids[ids < len(if_gmm)]
+        inf_func_mat[valid_ids, counter] = scale * if_gmm[valid_ids]
+
+    return att_gmm, se_gmm
+
+
 def prepare_cell_partitions(
     client,
     dask_data,
@@ -1234,278 +1601,6 @@ def _streaming_single_ctrl_for_multi(
         del ids_part, if_part
 
     return ddd_att
-
-
-def streaming_ddd_rc_cell_single_control(
-    client,
-    dask_data,
-    g,
-    t,
-    pret,
-    time_col,
-    group_col,
-    id_col,
-    y_col,
-    partition_col,
-    covariate_cols,
-    est_method,
-    n_partitions,
-    n_obs,
-    inf_func_mat,
-    counter,
-    trim_level=0.995,
-    weightsname=None,
-    use_gpu=False,
-):
-    """Streaming DDD RC computation for one (g,t) cell (nevertreated)."""
-    from ._did_streaming import _precompute_did_rc_corrections
-
-    part_futures, n_cell = _prepare_ddd_rc_cell_partitions(
-        client,
-        dask_data,
-        g,
-        t,
-        pret,
-        "nevertreated",
-        time_col,
-        group_col,
-        id_col,
-        y_col,
-        partition_col,
-        covariate_cols,
-        n_partitions,
-        weightsname=weightsname,
-        use_gpu=use_gpu,
-    )
-
-    if part_futures is None or n_cell == 0:
-        return None
-
-    first = part_futures[0].result()
-    if first is None:
-        return None
-    k = first["X"].shape[1]
-
-    ps_betas = {}
-    or_betas_all = {}
-    global_aggs = {}
-    precomps = {}
-
-    def _fit_comparison(comp_sg):
-        if est_method == "reg":
-            ps_b = np.zeros(k, dtype=np.float64)
-        else:
-            ps_b = distributed_logistic_irls_from_futures(
-                client,
-                part_futures,
-                lambda pd, beta, _cs=comp_sg: _partition_ddd_rc_pscore_gram(pd, _cs, beta),
-                k,
-            )
-
-        or_b = {}
-        if est_method == "ipw":
-            for key in ["cont_pre", "cont_post", "treat_pre", "treat_post"]:
-                or_b[key] = np.zeros(k, dtype=np.float64)
-        else:
-            for d_val, post_val, key in [
-                (0, 0, "cont_pre"),
-                (0, 1, "cont_post"),
-                (1, 0, "treat_pre"),
-                (1, 1, "treat_post"),
-            ]:
-                or_b[key] = distributed_wls_from_futures(
-                    client,
-                    part_futures,
-                    lambda pd, _cs=comp_sg, _d=d_val, _p=post_val: _partition_ddd_rc_or_gram(pd, _cs, _d, _p),
-                )
-
-        futures = [
-            client.submit(_partition_ddd_rc_global_stats, pf, comp_sg, ps_b, or_b, est_method, trim_level)
-            for pf in part_futures
-        ]
-        agg = tree_reduce(client, futures, sum_global_stats)
-        if agg is None or agg["n_sub"] == 0:
-            return comp_sg, None, None, None, None
-
-        n_sub = agg["n_sub"]
-        ga = _build_rc_global_agg(agg, n_sub)
-        pc = _precompute_did_rc_corrections(agg, ga, est_method, n_sub, k)
-        return comp_sg, ps_b, or_b, ga, pc
-
-    with _ThreadPoolExecutor(max_workers=3) as pool:
-        futs = [pool.submit(_fit_comparison, cs) for cs in [3, 2, 1]]
-        for f in futs:
-            comp_sg, ps_b, or_b, ga, pc = f.result()
-            ps_betas[comp_sg] = ps_b
-            or_betas_all[comp_sg] = or_b
-            global_aggs[comp_sg] = ga
-            precomps[comp_sg] = pc
-
-    for cs in [3, 2, 1]:
-        if global_aggs[cs] is None:
-            return None
-
-    n3 = global_aggs[3]["n_sub"]
-    n2 = global_aggs[2]["n_sub"]
-    n1 = global_aggs[1]["n_sub"]
-    w3_val = n_cell / n3 if n3 > 0 else 0.0
-    w2_val = n_cell / n2 if n2 > 0 else 0.0
-    w1_val = n_cell / n1 if n1 > 0 else 0.0
-
-    ddd_att = global_aggs[3]["dr_att"] + global_aggs[2]["dr_att"] - global_aggs[1]["dr_att"]
-
-    if_futures = [
-        client.submit(
-            _partition_compute_ddd_rc_if,
-            pf,
-            ps_betas,
-            or_betas_all,
-            global_aggs,
-            precomps,
-            est_method,
-            trim_level,
-            w3_val,
-            w2_val,
-            w1_val,
-        )
-        for pf in part_futures
-    ]
-
-    scale = n_obs / n_cell
-    for fut in as_completed(if_futures):
-        ids_part, if_part = fut.result()
-        if len(ids_part) == 0:
-            continue
-        inf_func_mat[ids_part, counter] = scale * if_part
-        del ids_part, if_part
-
-    return ddd_att
-
-
-def streaming_ddd_rc_cell_multi_control(
-    client,
-    dask_data,
-    g,
-    t,
-    pret,
-    available_controls,
-    time_col,
-    group_col,
-    id_col,
-    y_col,
-    partition_col,
-    covariate_cols,
-    est_method,
-    n_partitions,
-    n_obs,
-    inf_func_mat,
-    counter,
-    trim_level=0.995,
-    weightsname=None,
-    use_gpu=False,
-):
-    """Streaming DDD RC computation for one cell with multiple controls (notyettreated)."""
-    from moderndid.didtriple.estimators.ddd_mp import _gmm_aggregate
-
-    if len(available_controls) == 1:
-        ctrl = available_controls[0]
-        group_filter = (dask_data[group_col] == ctrl) | (dask_data[group_col] == g)
-        filtered = dask_data.loc[group_filter]
-        part_futures, n_cell = _prepare_ddd_rc_cell_partitions(
-            client,
-            filtered,
-            g,
-            t,
-            pret,
-            "nevertreated",
-            time_col,
-            group_col,
-            id_col,
-            y_col,
-            partition_col,
-            covariate_cols,
-            n_partitions,
-            weightsname=weightsname,
-            pre_filtered=True,
-            use_gpu=use_gpu,
-        )
-        if part_futures is None or n_cell == 0:
-            return None
-        return _ddd_rc_single_from_parts(
-            client,
-            part_futures,
-            n_cell,
-            n_obs,
-            inf_func_mat,
-            counter,
-            est_method,
-            trim_level,
-        )
-
-    max_period = max(t, pret)
-    full_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
-    filtered = dask_data.loc[full_filter]
-
-    all_part_futures, n_all = _prepare_ddd_rc_cell_partitions(
-        client,
-        filtered,
-        g,
-        t,
-        pret,
-        "nevertreated",
-        time_col,
-        group_col,
-        id_col,
-        y_col,
-        partition_col,
-        covariate_cols,
-        n_partitions,
-        weightsname=weightsname,
-        pre_filtered=True,
-        use_gpu=use_gpu,
-    )
-
-    if all_part_futures is None or n_all == 0:
-        return None
-
-    ddd_results = []
-    inf_funcs_local = []
-
-    for ctrl in available_controls:
-        ctrl_part_futures = [client.submit(_filter_rc_partition_for_ctrl, pf, g, ctrl) for pf in all_part_futures]
-
-        first = ctrl_part_futures[0].result()
-        if first is None:
-            continue
-
-        result = _ddd_rc_single_from_parts_collect(client, ctrl_part_futures, est_method, trim_level)
-        if result is None:
-            continue
-
-        att_ctrl, inf_full, n_subset = result
-        ddd_results.append(att_ctrl)
-        inf_scaled = (n_all / n_subset) * inf_full if n_subset > 0 else inf_full
-        inf_funcs_local.append(inf_scaled)
-
-    if len(ddd_results) == 0:
-        return None
-
-    att_gmm, if_gmm, se_gmm = _gmm_aggregate(
-        np.array(ddd_results),
-        np.column_stack(inf_funcs_local),
-        n_obs,
-    )
-
-    scale = n_obs / n_all
-    for pf in all_part_futures:
-        pd = pf.result()
-        if pd is None:
-            continue
-        ids = pd["ids"]
-        valid_ids = ids[ids < len(if_gmm)]
-        inf_func_mat[valid_ids, counter] = scale * if_gmm[valid_ids]
-
-    return att_gmm, se_gmm
 
 
 def _prepare_ddd_rc_cell_partitions(

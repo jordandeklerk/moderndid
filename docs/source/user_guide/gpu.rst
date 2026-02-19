@@ -83,20 +83,29 @@ globally or use the :func:`~moderndid.use_backend` context manager:
         result2 = did.ddd(...)
 
 All three approaches are thread-safe and compose correctly with
-``n_jobs > 1``. The ``backend`` parameter is ignored when ``data`` is a
-Dask DataFrame, since Dask workers use their own computation pipeline.
+``n_jobs > 1``. When ``data`` is a Dask DataFrame, ``backend="cupy"``
+enables GPU-accelerated linear algebra on worker GPUs (see
+:ref:`Combining GPU and Dask <gpu-dask-workers>`).
 
 If CuPy is installed but no GPU is available, ``backend="cupy"``
 raises a ``RuntimeError`` with an actionable message. If CuPy is not
 installed at all, it raises an ``ImportError``.
+
+To check the active backend at any point:
+
+.. code-block:: python
+
+    xp = did.get_backend()
+    print(xp.__name__)  # "numpy" or "cupy"
 
 
 What gets accelerated
 ---------------------
 
 The GPU backend accelerates the low-level numerical operations inside
-the two-period estimators that ``att_gt`` and ``ddd`` call for each
-group-time cell.
+the two-period estimators that :func:`~moderndid.att_gt` and
+:func:`~moderndid.ddd` call for each group-time cell, for both panel
+and repeated cross-section data with any ``est_method``.
 
 **Weighted least squares** for outcome regression (``reg``, ``dr``)
     Design matrix multiplication, normal equation solve via cuSOLVER,
@@ -126,24 +135,10 @@ group-time cell.
 These operations are dominated by dense linear algebra (matrix
 multiplication, triangular solves) that maps well to GPU hardware.
 The group-time loop, cell scheduling, and aggregation logic remain
-on the CPU.
-
-
-Which estimators support GPU
-----------------------------
-
-Every estimator that calls two-period DRDID routines benefits from the
-GPU backend. This includes:
-
-- :func:`~moderndid.att_gt` with ``est_method="dr"``, ``"reg"``, or
-  ``"ipw"`` for both panel and repeated cross-section data
-- :func:`~moderndid.ddd` for both panel and repeated cross-section data
-- All bootstrap variants (multiplier, cluster) for the estimators above
-
-The continuous treatment estimator (:func:`~moderndid.cont_did`), the
-intertemporal estimator (:func:`~moderndid.did_multiplegt`), and the
-sensitivity analysis module (:func:`~moderndid.honest_did`) do not use
-the GPU backend.
+on the CPU. The continuous treatment estimator
+(:func:`~moderndid.cont_did`), the intertemporal estimator
+(:func:`~moderndid.did_multiplegt`), and the sensitivity analysis
+module (:func:`~moderndid.honest_did`) do not use the GPU backend.
 
 
 When it helps
@@ -270,17 +265,6 @@ initialization and kernel compilation. CuPy caches compiled kernels in
 sessions are faster.
 
 
-Checking the active backend
----------------------------
-
-.. code-block:: python
-
-    import moderndid as did
-
-    xp = did.get_backend()
-    print(xp.__name__)  # "numpy" or "cupy"
-
-
 .. _gpu-dask-workers:
 
 Combining GPU and Dask
@@ -327,16 +311,16 @@ CuPy must be installed on every worker. For multi-GPU machines, use
     cluster = LocalCUDACluster()
     client = Client(cluster)
 
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        backend="cupy",
-        client=client,
-    )
+    with client.as_current():
+        result = did.att_gt(
+            data=ddf,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            est_method="dr",
+            backend="cupy",
+        )
 
 For multi-node clusters, use ``CUDA_VISIBLE_DEVICES`` on each node to
 control GPU pinning.

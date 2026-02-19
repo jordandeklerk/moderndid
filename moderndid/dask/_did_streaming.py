@@ -179,6 +179,376 @@ def streaming_did_cell_single_control(
     return dr_att
 
 
+def streaming_did_rc_cell_single_control(
+    client,
+    dask_data,
+    g,
+    t,
+    pret,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    covariate_cols,
+    est_method,
+    n_partitions,
+    n_obs,
+    inf_func_mat,
+    counter,
+    trim_level=0.995,
+    control_group="nevertreated",
+    weightsname=None,
+    collect_if=False,
+    use_gpu=False,
+):
+    r"""Streaming DiD RC computation for one :math:`(g, t)` cell.
+
+    Unlike the panel path which merges post/pre on ``id_col``, this
+    concatenates post and pre observations and adds a ``post`` indicator.
+    Uses 4 outcome regressions (one per ``(D, post)`` cell) and the
+    RC influence function formula from ``drdid_rc.py``.
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Dask distributed client.
+    dask_data : dask.dataframe.DataFrame
+        Persisted Dask DataFrame in long format.
+    g, t, pret : int or float
+        Treatment cohort, current period, pre-treatment period.
+    time_col, group_col, id_col, y_col : str
+        Column names.
+    covariate_cols : list of str or None
+        Covariate column names.
+    est_method : {"dr", "reg", "ipw"}
+        Estimation method.
+    n_partitions : int
+        Number of Dask partitions.
+    n_obs : int
+        Total number of observations in the full long-format data.
+    inf_func_mat : ndarray of shape (n_obs, n_cells) or None
+        Influence function matrix, updated in-place. Ignored when
+        ``collect_if=True``.
+    counter : int
+        Column index into ``inf_func_mat``.
+    trim_level : float, default 0.995
+        Propensity score trimming threshold.
+    control_group : {"nevertreated", "notyettreated"}
+        Control group type.
+    weightsname : str or None
+        Weight column name.
+    collect_if : bool, default False
+        When True, return ``(att, if_array)`` instead of writing IF
+        directly to ``inf_func_mat``.
+
+    Returns
+    -------
+    float or (float, ndarray) or None
+        The DiD ATT for this cell.  When ``collect_if=True``, returns
+        ``(att, if_array)`` where ``if_array`` has length ``n_obs``.
+    """
+    part_futures, n_cell = prepare_did_rc_cell_partitions(
+        client,
+        dask_data,
+        g,
+        t,
+        pret,
+        control_group,
+        time_col,
+        group_col,
+        id_col,
+        y_col,
+        covariate_cols,
+        n_partitions,
+        weightsname=weightsname,
+        use_gpu=use_gpu,
+    )
+
+    if part_futures is None or n_cell == 0:
+        return None
+
+    first = part_futures[0].result()
+    if first is None:
+        return None
+    k = first["X"].shape[1]
+
+    # Propensity score: P(D=1 | X) on all obs
+    if est_method == "reg":
+        ps_beta = np.zeros(k, dtype=np.float64)
+    else:
+        ps_beta = distributed_logistic_irls_from_futures(
+            client,
+            part_futures,
+            _partition_did_rc_pscore_gram,
+            k,
+        )
+
+    or_betas = {}
+    if est_method == "ipw":
+        for key in ["cont_pre", "cont_post", "treat_pre", "treat_post"]:
+            or_betas[key] = np.zeros(k, dtype=np.float64)
+    elif est_method == "reg":
+        for d_val, post_val, key in [
+            (0, 0, "cont_pre"),
+            (0, 1, "cont_post"),
+        ]:
+            or_betas[key] = distributed_wls_from_futures(
+                client,
+                part_futures,
+                lambda pd, _d=d_val, _p=post_val: _partition_did_rc_or_gram(pd, _d, _p),
+            )
+    else:
+        for d_val, post_val, key in [
+            (0, 0, "cont_pre"),
+            (0, 1, "cont_post"),
+            (1, 0, "treat_pre"),
+            (1, 1, "treat_post"),
+        ]:
+            or_betas[key] = distributed_wls_from_futures(
+                client,
+                part_futures,
+                lambda pd, _d=d_val, _p=post_val: _partition_did_rc_or_gram(pd, _d, _p),
+            )
+
+    # Global stats via tree-reduce
+    futures = [
+        client.submit(
+            _partition_did_rc_global_stats,
+            pf,
+            ps_beta,
+            or_betas,
+            est_method,
+            trim_level,
+        )
+        for pf in part_futures
+    ]
+    agg = tree_reduce(client, futures, sum_global_stats)
+
+    if agg is None or agg["n_sub"] == 0:
+        return None
+
+    n_sub = agg["n_sub"]
+
+    if est_method == "reg":
+        mean_w_treat_pre = agg["sum_w_treat_pre"] / n_sub
+        mean_w_treat_post = agg["sum_w_treat_post"] / n_sub
+        mean_w_d = agg["sum_w_d"] / n_sub
+
+        eta_treat_pre = (agg["sum_reg_att_treat_pre"] / n_sub) / mean_w_treat_pre if mean_w_treat_pre > 0 else 0.0
+        eta_treat_post = (agg["sum_reg_att_treat_post"] / n_sub) / mean_w_treat_post if mean_w_treat_post > 0 else 0.0
+        eta_cont = (agg["sum_reg_att_cont"] / n_sub) / mean_w_d if mean_w_d > 0 else 0.0
+
+        dr_att = (eta_treat_post - eta_treat_pre) - eta_cont
+
+        global_agg = {
+            "mean_w_treat_pre": mean_w_treat_pre,
+            "mean_w_treat_post": mean_w_treat_post,
+            "mean_w_d": mean_w_d,
+            "eta_treat_pre": eta_treat_pre,
+            "eta_treat_post": eta_treat_post,
+            "eta_cont": eta_cont,
+            "n_sub": n_sub,
+            "dr_att": dr_att,
+        }
+
+        precomp = _precompute_did_rc_reg_corrections(agg, global_agg, n_sub, k)
+    else:
+        mean_w_treat_pre = agg["sum_w_treat_pre"] / n_sub
+        mean_w_treat_post = agg["sum_w_treat_post"] / n_sub
+        mean_w_cont_pre = agg["sum_w_cont_pre"] / n_sub
+        mean_w_cont_post = agg["sum_w_cont_post"] / n_sub
+        mean_w_d = agg["sum_w_d"] / n_sub
+        mean_w_dt1 = agg["sum_w_dt1"] / n_sub
+        mean_w_dt0 = agg["sum_w_dt0"] / n_sub
+
+        att_treat_pre = (agg["sum_eta_treat_pre"] / n_sub) / mean_w_treat_pre if mean_w_treat_pre > 0 else 0.0
+        att_treat_post = (agg["sum_eta_treat_post"] / n_sub) / mean_w_treat_post if mean_w_treat_post > 0 else 0.0
+        att_cont_pre = (agg["sum_eta_cont_pre"] / n_sub) / mean_w_cont_pre if mean_w_cont_pre > 0 else 0.0
+        att_cont_post = (agg["sum_eta_cont_post"] / n_sub) / mean_w_cont_post if mean_w_cont_post > 0 else 0.0
+        att_d_post = (agg["sum_eta_d_post"] / n_sub) / mean_w_d if mean_w_d > 0 else 0.0
+        att_dt1_post = (agg["sum_eta_dt1_post"] / n_sub) / mean_w_dt1 if mean_w_dt1 > 0 else 0.0
+        att_d_pre = (agg["sum_eta_d_pre"] / n_sub) / mean_w_d if mean_w_d > 0 else 0.0
+        att_dt0_pre = (agg["sum_eta_dt0_pre"] / n_sub) / mean_w_dt0 if mean_w_dt0 > 0 else 0.0
+
+        dr_att = (
+            (att_treat_post - att_treat_pre)
+            - (att_cont_post - att_cont_pre)
+            + (att_d_post - att_dt1_post)
+            - (att_d_pre - att_dt0_pre)
+        )
+
+        global_agg = {
+            "mean_w_treat_pre": mean_w_treat_pre,
+            "mean_w_treat_post": mean_w_treat_post,
+            "mean_w_cont_pre": mean_w_cont_pre,
+            "mean_w_cont_post": mean_w_cont_post,
+            "mean_w_d": mean_w_d,
+            "mean_w_dt1": mean_w_dt1,
+            "mean_w_dt0": mean_w_dt0,
+            "att_treat_pre": att_treat_pre,
+            "att_treat_post": att_treat_post,
+            "att_cont_pre": att_cont_pre,
+            "att_cont_post": att_cont_post,
+            "att_d_post": att_d_post,
+            "att_dt1_post": att_dt1_post,
+            "att_d_pre": att_d_pre,
+            "att_dt0_pre": att_dt0_pre,
+            "n_sub": n_sub,
+            "dr_att": dr_att,
+        }
+
+        precomp = _precompute_did_rc_corrections(agg, global_agg, est_method, n_sub, k)
+
+    if est_method == "reg":
+        if_futures = [
+            client.submit(
+                _partition_compute_did_rc_reg_if,
+                pf,
+                or_betas,
+                global_agg,
+                precomp,
+            )
+            for pf in part_futures
+        ]
+    else:
+        if_futures = [
+            client.submit(
+                _partition_compute_did_rc_if,
+                pf,
+                ps_beta,
+                or_betas,
+                global_agg,
+                precomp,
+                est_method,
+                trim_level,
+            )
+            for pf in part_futures
+        ]
+
+    scale = n_obs / n_cell
+    if collect_if:
+        if_full = np.zeros(n_obs, dtype=np.float64)
+        for fut in as_completed(if_futures):
+            ids_part, if_part = fut.result()
+            if len(ids_part) == 0:
+                continue
+            if_full[ids_part] = scale * if_part
+            del ids_part, if_part
+        return dr_att, if_full
+    else:
+        for fut in as_completed(if_futures):
+            ids_part, if_part = fut.result()
+            if len(ids_part) == 0:
+                continue
+            inf_func_mat[ids_part, counter] = scale * if_part
+            del ids_part, if_part
+        return dr_att
+
+
+def prepare_did_rc_cell_partitions(
+    client,
+    dask_data,
+    g,
+    t,
+    pret,
+    control_group,
+    time_col,
+    group_col,
+    id_col,
+    y_col,
+    covariate_cols,
+    n_partitions,
+    weightsname=None,
+    use_gpu=False,
+):
+    """Filter and concatenate post/pre periods for RC, returning partition futures.
+
+    Instead of merging on ``id_col``, concatenates post and pre rows and
+    adds a ``_post`` indicator column.
+
+    Parameters
+    ----------
+    client : distributed.Client
+        Dask distributed client.
+    dask_data : dask.dataframe.DataFrame
+        Persisted Dask DataFrame in long format.
+    g : int or float
+        Treatment cohort identifier.
+    t : int or float
+        Current time period.
+    pret : int or float
+        Pre-treatment (base) period.
+    control_group : {"nevertreated", "notyettreated"}
+        Which units to include as controls.
+    time_col, group_col, id_col, y_col : str
+        Column names.
+    covariate_cols : list of str or None
+        Covariate column names.
+    n_partitions : int
+        Number of Dask partitions.
+    weightsname : str or None
+        Weight column name.
+    use_gpu : bool, default False
+        Convert partition arrays to CuPy for GPU-accelerated computation.
+
+    Returns
+    -------
+    part_futures : list of Future or None
+        Futures to partition dicts, or None if no data.
+    n_cell : int
+        Total number of observations (pre + post).
+    """
+    max_period = max(t, pret)
+
+    if control_group == "nevertreated":
+        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
+    else:
+        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
+
+    filtered = dask_data.loc[group_filter]
+
+    time_filter = (filtered[time_col] == t) | (filtered[time_col] == pret)
+    concat_dask = filtered.loc[time_filter]
+    concat_dask = concat_dask.assign(_post=(concat_dask[time_col] == t).astype(int))
+
+    keep_cols = [id_col, group_col, y_col, "_post"]
+    if weightsname is not None:
+        keep_cols.append(weightsname)
+    if covariate_cols:
+        keep_cols = keep_cols + [c for c in covariate_cols if c not in keep_cols]
+
+    concat_dask = concat_dask[keep_cols]
+    concat_dask = concat_dask.reset_index(drop=True)
+    concat_dask = concat_dask.repartition(npartitions=n_partitions).persist()
+    wait(concat_dask)
+
+    n_cell = len(concat_dask)
+    if n_cell == 0:
+        return None, 0
+
+    partition_lengths = concat_dask.map_partitions(len).compute()
+    offsets = np.cumsum([0, *list(partition_lengths.values)[:-1]])
+
+    delayed_parts = concat_dask.to_delayed()
+    pdf_futures = client.compute(delayed_parts)
+    part_futures = [
+        client.submit(
+            _build_did_rc_partition_arrays,
+            pdf_f,
+            offset,
+            y_col,
+            group_col,
+            g,
+            covariate_cols,
+            weightsname,
+        )
+        for pdf_f, offset in zip(pdf_futures, offsets, strict=False)
+    ]
+    part_futures = _maybe_to_gpu(client, part_futures, use_gpu)
+
+    return part_futures, n_cell
+
+
 def prepare_did_cell_partitions(
     client,
     dask_data,
@@ -689,357 +1059,6 @@ def _partition_compute_did_if(
     return ids, to_numpy(att_inf_func)
 
 
-def streaming_did_rc_cell_single_control(
-    client,
-    dask_data,
-    g,
-    t,
-    pret,
-    time_col,
-    group_col,
-    id_col,
-    y_col,
-    covariate_cols,
-    est_method,
-    n_partitions,
-    n_obs,
-    inf_func_mat,
-    counter,
-    trim_level=0.995,
-    control_group="nevertreated",
-    weightsname=None,
-    collect_if=False,
-    use_gpu=False,
-):
-    r"""Streaming DiD RC computation for one :math:`(g, t)` cell.
-
-    Unlike the panel path which merges post/pre on ``id_col``, this
-    concatenates post and pre observations and adds a ``post`` indicator.
-    Uses 4 outcome regressions (one per ``(D, post)`` cell) and the
-    RC influence function formula from ``drdid_rc.py``.
-
-    Parameters
-    ----------
-    client : distributed.Client
-        Dask distributed client.
-    dask_data : dask.dataframe.DataFrame
-        Persisted Dask DataFrame in long format.
-    g, t, pret : int or float
-        Treatment cohort, current period, pre-treatment period.
-    time_col, group_col, id_col, y_col : str
-        Column names.
-    covariate_cols : list of str or None
-        Covariate column names.
-    est_method : {"dr", "reg", "ipw"}
-        Estimation method.
-    n_partitions : int
-        Number of Dask partitions.
-    n_obs : int
-        Total number of observations in the full long-format data.
-    inf_func_mat : ndarray of shape (n_obs, n_cells) or None
-        Influence function matrix, updated in-place. Ignored when
-        ``collect_if=True``.
-    counter : int
-        Column index into ``inf_func_mat``.
-    trim_level : float, default 0.995
-        Propensity score trimming threshold.
-    control_group : {"nevertreated", "notyettreated"}
-        Control group type.
-    weightsname : str or None
-        Weight column name.
-    collect_if : bool, default False
-        When True, return ``(att, if_array)`` instead of writing IF
-        directly to ``inf_func_mat``.
-
-    Returns
-    -------
-    float or (float, ndarray) or None
-        The DiD ATT for this cell.  When ``collect_if=True``, returns
-        ``(att, if_array)`` where ``if_array`` has length ``n_obs``.
-    """
-    part_futures, n_cell = prepare_did_rc_cell_partitions(
-        client,
-        dask_data,
-        g,
-        t,
-        pret,
-        control_group,
-        time_col,
-        group_col,
-        id_col,
-        y_col,
-        covariate_cols,
-        n_partitions,
-        weightsname=weightsname,
-        use_gpu=use_gpu,
-    )
-
-    if part_futures is None or n_cell == 0:
-        return None
-
-    first = part_futures[0].result()
-    if first is None:
-        return None
-    k = first["X"].shape[1]
-
-    # Propensity score: P(D=1 | X) on all obs
-    if est_method == "reg":
-        ps_beta = np.zeros(k, dtype=np.float64)
-    else:
-        ps_beta = distributed_logistic_irls_from_futures(
-            client,
-            part_futures,
-            _partition_did_rc_pscore_gram,
-            k,
-        )
-
-    or_betas = {}
-    if est_method == "ipw":
-        for key in ["cont_pre", "cont_post", "treat_pre", "treat_post"]:
-            or_betas[key] = np.zeros(k, dtype=np.float64)
-    elif est_method == "reg":
-        for d_val, post_val, key in [
-            (0, 0, "cont_pre"),
-            (0, 1, "cont_post"),
-        ]:
-            or_betas[key] = distributed_wls_from_futures(
-                client,
-                part_futures,
-                lambda pd, _d=d_val, _p=post_val: _partition_did_rc_or_gram(pd, _d, _p),
-            )
-    else:
-        for d_val, post_val, key in [
-            (0, 0, "cont_pre"),
-            (0, 1, "cont_post"),
-            (1, 0, "treat_pre"),
-            (1, 1, "treat_post"),
-        ]:
-            or_betas[key] = distributed_wls_from_futures(
-                client,
-                part_futures,
-                lambda pd, _d=d_val, _p=post_val: _partition_did_rc_or_gram(pd, _d, _p),
-            )
-
-    # Global stats via tree-reduce
-    futures = [
-        client.submit(
-            _partition_did_rc_global_stats,
-            pf,
-            ps_beta,
-            or_betas,
-            est_method,
-            trim_level,
-        )
-        for pf in part_futures
-    ]
-    agg = tree_reduce(client, futures, sum_global_stats)
-
-    if agg is None or agg["n_sub"] == 0:
-        return None
-
-    n_sub = agg["n_sub"]
-
-    if est_method == "reg":
-        mean_w_treat_pre = agg["sum_w_treat_pre"] / n_sub
-        mean_w_treat_post = agg["sum_w_treat_post"] / n_sub
-        mean_w_d = agg["sum_w_d"] / n_sub
-
-        eta_treat_pre = (agg["sum_reg_att_treat_pre"] / n_sub) / mean_w_treat_pre if mean_w_treat_pre > 0 else 0.0
-        eta_treat_post = (agg["sum_reg_att_treat_post"] / n_sub) / mean_w_treat_post if mean_w_treat_post > 0 else 0.0
-        eta_cont = (agg["sum_reg_att_cont"] / n_sub) / mean_w_d if mean_w_d > 0 else 0.0
-
-        dr_att = (eta_treat_post - eta_treat_pre) - eta_cont
-
-        global_agg = {
-            "mean_w_treat_pre": mean_w_treat_pre,
-            "mean_w_treat_post": mean_w_treat_post,
-            "mean_w_d": mean_w_d,
-            "eta_treat_pre": eta_treat_pre,
-            "eta_treat_post": eta_treat_post,
-            "eta_cont": eta_cont,
-            "n_sub": n_sub,
-            "dr_att": dr_att,
-        }
-
-        precomp = _precompute_did_rc_reg_corrections(agg, global_agg, n_sub, k)
-    else:
-        mean_w_treat_pre = agg["sum_w_treat_pre"] / n_sub
-        mean_w_treat_post = agg["sum_w_treat_post"] / n_sub
-        mean_w_cont_pre = agg["sum_w_cont_pre"] / n_sub
-        mean_w_cont_post = agg["sum_w_cont_post"] / n_sub
-        mean_w_d = agg["sum_w_d"] / n_sub
-        mean_w_dt1 = agg["sum_w_dt1"] / n_sub
-        mean_w_dt0 = agg["sum_w_dt0"] / n_sub
-
-        att_treat_pre = (agg["sum_eta_treat_pre"] / n_sub) / mean_w_treat_pre if mean_w_treat_pre > 0 else 0.0
-        att_treat_post = (agg["sum_eta_treat_post"] / n_sub) / mean_w_treat_post if mean_w_treat_post > 0 else 0.0
-        att_cont_pre = (agg["sum_eta_cont_pre"] / n_sub) / mean_w_cont_pre if mean_w_cont_pre > 0 else 0.0
-        att_cont_post = (agg["sum_eta_cont_post"] / n_sub) / mean_w_cont_post if mean_w_cont_post > 0 else 0.0
-        att_d_post = (agg["sum_eta_d_post"] / n_sub) / mean_w_d if mean_w_d > 0 else 0.0
-        att_dt1_post = (agg["sum_eta_dt1_post"] / n_sub) / mean_w_dt1 if mean_w_dt1 > 0 else 0.0
-        att_d_pre = (agg["sum_eta_d_pre"] / n_sub) / mean_w_d if mean_w_d > 0 else 0.0
-        att_dt0_pre = (agg["sum_eta_dt0_pre"] / n_sub) / mean_w_dt0 if mean_w_dt0 > 0 else 0.0
-
-        dr_att = (
-            (att_treat_post - att_treat_pre)
-            - (att_cont_post - att_cont_pre)
-            + (att_d_post - att_dt1_post)
-            - (att_d_pre - att_dt0_pre)
-        )
-
-        global_agg = {
-            "mean_w_treat_pre": mean_w_treat_pre,
-            "mean_w_treat_post": mean_w_treat_post,
-            "mean_w_cont_pre": mean_w_cont_pre,
-            "mean_w_cont_post": mean_w_cont_post,
-            "mean_w_d": mean_w_d,
-            "mean_w_dt1": mean_w_dt1,
-            "mean_w_dt0": mean_w_dt0,
-            "att_treat_pre": att_treat_pre,
-            "att_treat_post": att_treat_post,
-            "att_cont_pre": att_cont_pre,
-            "att_cont_post": att_cont_post,
-            "att_d_post": att_d_post,
-            "att_dt1_post": att_dt1_post,
-            "att_d_pre": att_d_pre,
-            "att_dt0_pre": att_dt0_pre,
-            "n_sub": n_sub,
-            "dr_att": dr_att,
-        }
-
-        precomp = _precompute_did_rc_corrections(agg, global_agg, est_method, n_sub, k)
-
-    if est_method == "reg":
-        if_futures = [
-            client.submit(
-                _partition_compute_did_rc_reg_if,
-                pf,
-                or_betas,
-                global_agg,
-                precomp,
-            )
-            for pf in part_futures
-        ]
-    else:
-        if_futures = [
-            client.submit(
-                _partition_compute_did_rc_if,
-                pf,
-                ps_beta,
-                or_betas,
-                global_agg,
-                precomp,
-                est_method,
-                trim_level,
-            )
-            for pf in part_futures
-        ]
-
-    scale = n_obs / n_cell
-    if collect_if:
-        if_full = np.zeros(n_obs, dtype=np.float64)
-        for fut in as_completed(if_futures):
-            ids_part, if_part = fut.result()
-            if len(ids_part) == 0:
-                continue
-            if_full[ids_part] = scale * if_part
-            del ids_part, if_part
-        return dr_att, if_full
-    else:
-        for fut in as_completed(if_futures):
-            ids_part, if_part = fut.result()
-            if len(ids_part) == 0:
-                continue
-            inf_func_mat[ids_part, counter] = scale * if_part
-            del ids_part, if_part
-        return dr_att
-
-
-def prepare_did_rc_cell_partitions(
-    client,
-    dask_data,
-    g,
-    t,
-    pret,
-    control_group,
-    time_col,
-    group_col,
-    id_col,
-    y_col,
-    covariate_cols,
-    n_partitions,
-    weightsname=None,
-    use_gpu=False,
-):
-    """Filter and concatenate post/pre periods for RC, returning partition futures.
-
-    Instead of merging on ``id_col``, concatenates post and pre rows and
-    adds a ``_post`` indicator column.
-
-    Returns
-    -------
-    part_futures : list of Future or None
-    n_cell : int
-        Total number of observations (pre + post).
-    """
-    max_period = max(t, pret)
-
-    if control_group == "nevertreated":
-        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] == g)
-    else:
-        group_filter = (dask_data[group_col] == 0) | (dask_data[group_col] > max_period) | (dask_data[group_col] == g)
-
-    filtered = dask_data.loc[group_filter]
-
-    # Select rows for post and pre periods
-    time_filter = (filtered[time_col] == t) | (filtered[time_col] == pret)
-    concat_dask = filtered.loc[time_filter]
-
-    # Add _post indicator
-    concat_dask = concat_dask.assign(_post=(concat_dask[time_col] == t).astype(int))
-
-    # Select columns
-    keep_cols = [id_col, group_col, y_col, "_post"]
-    if weightsname is not None:
-        keep_cols.append(weightsname)
-    if covariate_cols:
-        keep_cols = keep_cols + [c for c in covariate_cols if c not in keep_cols]
-
-    concat_dask = concat_dask[keep_cols]
-
-    # Add observation index
-    concat_dask = concat_dask.reset_index(drop=True)
-    concat_dask = concat_dask.repartition(npartitions=n_partitions).persist()
-    wait(concat_dask)
-
-    n_cell = len(concat_dask)
-    if n_cell == 0:
-        return None, 0
-
-    # Assign cumulative observation indices
-    partition_lengths = concat_dask.map_partitions(len).compute()
-    offsets = np.cumsum([0, *list(partition_lengths.values)[:-1]])
-
-    delayed_parts = concat_dask.to_delayed()
-    pdf_futures = client.compute(delayed_parts)
-    part_futures = [
-        client.submit(
-            _build_did_rc_partition_arrays,
-            pdf_f,
-            offset,
-            y_col,
-            group_col,
-            g,
-            covariate_cols,
-            weightsname,
-        )
-        for pdf_f, offset in zip(pdf_futures, offsets, strict=False)
-    ]
-    part_futures = _maybe_to_gpu(client, part_futures, use_gpu)
-
-    return part_futures, n_cell
-
-
 def _build_did_rc_partition_arrays(concat_pdf, offset, y_col, group_col, g, covariate_cols, weightsname=None):
     """Convert one concatenated pandas partition to numpy arrays for RC DiD."""
     if len(concat_pdf) == 0:
@@ -1508,7 +1527,6 @@ def _partition_compute_did_rc_if(
 
     out_y_cont = post * out_y_cont_post + (1 - post) * out_y_cont_pre
 
-    # Weights
     w_treat_pre = keep_ps * obs_w * D * (1 - post)
     w_treat_post = keep_ps * obs_w * D * post
     if est_method == "reg":
@@ -1524,7 +1542,6 @@ def _partition_compute_did_rc_if(
     w_dt1 = keep_ps * obs_w * D * post
     w_dt0 = keep_ps * obs_w * D * (1 - post)
 
-    # Eta terms
     eta_treat_pre = (
         w_treat_pre * (y - out_y_cont) / mw["mean_w_treat_pre"] if mw["mean_w_treat_pre"] > 0 else xp.zeros(n_part)
     )
@@ -1546,7 +1563,7 @@ def _partition_compute_did_rc_if(
         w_dt0 * (out_y_treat_pre - out_y_cont_pre) / mw["mean_w_dt0"] if mw["mean_w_dt0"] > 0 else xp.zeros(n_part)
     )
 
-    # === Treated component IF ===
+    # Treated component IF
     inf_treat_pre = (
         eta_treat_pre - w_treat_pre * mw["att_treat_pre"] / mw["mean_w_treat_pre"]
         if mw["mean_w_treat_pre"] > 0
@@ -1613,7 +1630,7 @@ def _partition_compute_did_rc_if(
 
     inf_cont = inf_cont_post - inf_cont_pre + inf_cont_ps + inf_cont_or
 
-    # === Efficiency adjustment IF ===
+    # Efficiency adjustment IF
     inf_eff1 = eta_d_post - w_d * mw["att_d_post"] / mw["mean_w_d"] if mw["mean_w_d"] > 0 else xp.zeros(n_part)
     inf_eff2 = (
         eta_dt1_post - w_dt1 * mw["att_dt1_post"] / mw["mean_w_dt1"] if mw["mean_w_dt1"] > 0 else xp.zeros(n_part)
@@ -1651,7 +1668,6 @@ def _partition_compute_did_rc_if(
     else:
         inf_or = xp.zeros(n_part, dtype=xp.float64)
 
-    # Combine
     att_inf_func = (inf_treat - inf_cont) + inf_eff + inf_or
 
     return ids, to_numpy(att_inf_func)

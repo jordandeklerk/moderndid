@@ -1,7 +1,7 @@
 .. _api-dask:
 
-Distributed Computing (Dask)
-=============================
+Dask
+=====
 
 The Dask module provides distributed implementations of the core estimators
 for datasets that exceed single-machine memory. Most users should simply pass
