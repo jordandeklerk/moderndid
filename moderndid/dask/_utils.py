@@ -193,9 +193,17 @@ def prepare_cohort_wide_pivot(
         period_y = period_y.rename(columns={y_col: f"_y_{tp}"})
         period_dfs.append(period_y)
 
-    from functools import reduce
-
-    wide_y = reduce(lambda left, right: left.merge(right, on=id_col, how="inner"), period_dfs)
+    # Balanced binary merge tree: O(log N) graph depth instead of O(N)
+    level = period_dfs
+    while len(level) > 1:
+        next_level = []
+        for i in range(0, len(level), 2):
+            if i + 1 < len(level):
+                next_level.append(level[i].merge(level[i + 1], on=id_col, how="inner"))
+            else:
+                next_level.append(level[i])
+        level = next_level
+    wide_y = level[0]
     base = base.merge(wide_y, on=id_col, how="inner")
 
     from distributed import wait
