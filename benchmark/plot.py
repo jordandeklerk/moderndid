@@ -44,7 +44,7 @@ ESTIMATOR_CONFIG = {
     "didinter": {
         "name": "Intertemporal DiD",
         "order": 3,
-        "patterns": ["benchmark_didinter_custom_*.csv"],
+        "patterns": ["benchmark_didinter_scaling_vs_r_*.csv"],
         "filter": {"boot": False, "n_periods": 8, "effects": 3},
     },
     "contdid": {
@@ -99,7 +99,7 @@ def main():
     parser.add_argument(
         "--max-obs",
         type=int,
-        default=None,
+        default=2_000_000,
         help="Maximum observations to include (filter out larger datasets)",
     )
 
@@ -184,9 +184,10 @@ def generate_plot(
         )
         + facet_wrap("~estimator", ncol=ncol, scales="free", labeller=labeller(estimator=_strip_prefix))
         + scale_x_log10(
+            breaks=[2000, 20000, 200000, 2000000],
             labels=lambda x: [
                 f"{int(v / 1000000)}M" if v >= 1000000 else f"{int(v / 1000)}K" if v >= 1000 else str(int(v)) for v in x
-            ]
+            ],
         )
         + scale_y_log10()
         + scale_color_manual(values={"Python": "#1f77b4", "R": "#d62728"})

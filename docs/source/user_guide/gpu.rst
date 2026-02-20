@@ -1,8 +1,8 @@
 .. _gpu:
 
-========================
-GPU Acceleration (CuPy)
-========================
+===========================
+GPU Acceleration with CuPy
+===========================
 
 ModernDiD can offload numerical operations to NVIDIA GPUs via
 `CuPy <https://cupy.dev/>`_. When the GPU backend is active, matrix

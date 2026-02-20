@@ -231,7 +231,6 @@ gc(verbose = FALSE, full = TRUE, reset = TRUE)
 
 # Load packages with minimal overhead
 suppressPackageStartupMessages({{
-    library(polars)
     library(DIDmultiplegtDYN)
     library(jsonlite)
     library(data.table)

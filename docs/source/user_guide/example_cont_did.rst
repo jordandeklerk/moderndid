@@ -153,24 +153,41 @@ this, showing significant positive effects.
 The ``degree`` and ``num_knots`` parameters control the flexibility of the
 B-spline approximation. Higher values allow more complex dose-response shapes
 but increase variance. With ``degree=3`` and ``num_knots=1``, we use a cubic
-spline with one interior knot, which provides reasonable flexibility for most
-applications.
+spline with one interior knot.
 
 
 Understanding ATT versus ACRT
 -----------------------------
 
-Which one you should target depends on your research question.
+Which estimate you should target depends on your research question.
 
-The :math:`ATT(d)` estimate answers the question of what is the average effect of receiving dose :math:`d`
-compared to no treatment. This is the level of the dose-response curve at each
-point. For policy evaluation, ATT tells you the expected benefit of a specific
-treatment intensity.
+**ATT(d)** estimates the average effect of receiving dose :math:`d` compared
+to no treatment.
 
-The :math:`ACRT(d)` estimate answers the question of what is the marginal effect of increasing the
-dose. This is the derivative of the dose-response curve. For policy optimization,
-ACRT tells you whether increasing treatment intensity would yield additional
-benefits.
+- Level of the dose-response curve at each point
+- For policy evaluation, tells you the expected benefit of a specific
+  treatment intensity
+- Identified under standard parallel trends
+- Recovers :math:`ATT(d)`, a local effect for units who received dose
+  :math:`d`
+
+**ACRT(d)** estimates the marginal effect of increasing the dose.
+
+- Derivative (slope) of the dose-response curve
+- For policy optimization, tells you whether increasing intensity yields
+  additional benefits
+- Identified under strong parallel trends (typically stronger)
+- Recovers :math:`ATE(d)` and :math:`ACRT(d)` as population-level
+  parameters
+
+Both parameters come from the same underlying comparison, the change in
+outcomes for dose group :math:`d` minus the change for untreated units. What
+differs is the causal interpretation. Under standard parallel trends, this
+comparison identifies :math:`ATT(d)`, a local effect specific to units who
+actually received dose :math:`d`. Under strong parallel trends, it also
+identifies :math:`ATE(d)`, the effect for the general population, and
+:math:`ACRT(d)` gains a causal interpretation as the derivative of this
+curve.
 
 When the dose-response is linear, ATT and ACRT have a simple relationship
 because the slope is constant. With our quadratic specification, the ACRT
@@ -184,30 +201,50 @@ ATT and ACRT require different identifying assumptions, so which one you
 report depends on both your research question and what you are willing to
 assume.
 
-The :math:`ATT(d)` estimate is identified under standard parallel trends, the same assumption
-as in binary DiD extended to the continuous case. We assume that untreated
-potential outcomes would have evolved similarly across dose groups. If you
-believe that absent treatment, high-dose and low-dose units would have
-followed parallel outcome paths, ATT(d) is identified. This is the right
-target when you want to know the effect of receiving dose d versus no
-treatment.
+**ATT(d) and standard parallel trends**
 
-The :math:`ACRT(d)` estimate requires a stronger "strong parallel trends" assumption. To
-interpret outcome differences *across* dose groups as causal responses to
-dose changes, we need to rule out selection on gains. If units that benefit
-more from treatment systematically choose higher doses, comparing across
-dose groups conflates the causal effect with this selection. ACRT is the
-right target when you want to know the marginal benefit of increasing dose,
-but you should be explicit that this requires assuming no selection on gains.
+This is the same assumption as in binary DiD extended to the continuous
+case. We assume that untreated potential outcomes would have evolved
+similarly across dose groups. If you believe that absent treatment, high-dose
+and low-dose units would have followed parallel outcome paths, ATT(d) is
+identified. This is the right target when you want to know the effect of
+receiving dose d versus no treatment.
+
+**ACRT(d) and strong parallel trends**
+
+This is a typically stronger assumption than standard parallel trends (the
+two are technically non-nested, but in practice strong parallel trends is the
+more demanding condition). Standard parallel trends alone is not enough
+because comparing outcomes across dose groups mixes together the true causal
+response with a selection bias term. Even if untreated potential outcomes
+evolve identically, the observed outcome paths of different dose groups can
+diverge because units who chose different doses may experience different
+treatment effects from the same dose.
+
+Strong parallel trends eliminates this selection bias by ruling out
+systematic treatment effect heterogeneity across dose groups.
+
+- When combined with standard parallel trends, it is equivalent to assuming
+  :math:`ATT(d) = ATE(d)` for all :math:`d`, meaning the effect of dose
+  :math:`d` on units who chose that dose equals its effect on the general
+  population
+- This rules out selection on gains, where units that benefit more from
+  treatment systematically choose higher doses
+- ACRT is the right target when you want the marginal benefit of increasing
+  dose, but you should be explicit that this requires assuming away
+  selection on gains
+
 Consider whether units in your setting plausibly sort into doses based on
 expected benefits. When dose is assigned by policy rules or randomization
 rather than chosen by units, strong parallel trends is more defensible.
 
-One important caveat. Flat pre-treatment estimates are consistent with
-standard parallel trends, but they say nothing about whether strong parallel
-trends holds. Pre-treatment periods only involve untreated potential outcomes,
-while strong parallel trends restricts how *treated* potential outcomes vary
-across dose groups.
+.. important::
+
+   Flat pre-treatment estimates are consistent with standard parallel
+   trends, but they say nothing about whether strong parallel trends holds.
+   Pre-treatment periods only involve untreated potential outcomes, while
+   strong parallel trends restricts how *treated* potential outcomes vary
+   across dose groups.
 
 For the full theoretical treatment of these assumptions, see the
 :ref:`Background on Continuous DiD <background-didcont>`.
