@@ -31,7 +31,7 @@ def monitor_spark(spark, interval=15, emit=print, per_executor=False):
             try:
                 sc = spark.sparkContext
                 status = sc.statusTracker()
-                active_jobs = status.getActiveJobIds()
+                active_jobs = status.getActiveJobsIds()
                 active_stages = status.getActiveStageIds()
 
                 # Get executor info via JVM bridge
