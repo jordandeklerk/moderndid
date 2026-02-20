@@ -207,6 +207,8 @@ __all__ = [
     "setup_pte_basic",
     "setup_pte_cont",
     "simulate_cont_did_data",
+    "spark_att_gt",
+    "spark_ddd",
     "std_ipw_did_panel",
     "std_ipw_did_rc",
     "summary_mp_pretest",
@@ -467,6 +469,9 @@ _optional_imports = {
     # dask (requires dask + distributed)
     "dask_att_gt": ("moderndid.dask", "dask"),
     "dask_ddd": ("moderndid.dask", "dask"),
+    # spark (requires pyspark)
+    "spark_att_gt": ("moderndid.spark", "spark"),
+    "spark_ddd": ("moderndid.spark", "spark"),
     # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),
     "plot_dose_response": ("moderndid.plots", "plots"),

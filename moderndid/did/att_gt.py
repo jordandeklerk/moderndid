@@ -301,6 +301,38 @@ def att_gt(
             backend=backend,
         )
 
+    from moderndid.spark._utils import is_spark_dataframe
+
+    if is_spark_dataframe(data):
+        from moderndid.spark._did import spark_att_gt
+
+        return spark_att_gt(
+            data,
+            yname,
+            tname,
+            idname,
+            gname,
+            xformla=xformla,
+            control_group=control_group,
+            base_period=base_period,
+            anticipation=anticipation,
+            est_method=est_method,
+            panel=panel,
+            weightsname=weightsname,
+            boot=boot,
+            biters=biters,
+            cband=cband,
+            alp=alp,
+            clustervars=clustervars,
+            allow_unbalanced_panel=allow_unbalanced_panel,
+            trim_level=0.995,
+            random_state=random_state,
+            n_partitions=n_partitions,
+            max_cohorts=max_cohorts,
+            progress_bar=progress_bar,
+            backend=backend,
+        )
+
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")
     if panel and idname is None:

@@ -382,6 +382,37 @@ def ddd(
             backend=backend,
         )
 
+    from moderndid.spark._utils import is_spark_dataframe
+
+    if is_spark_dataframe(data):
+        from moderndid.spark._ddd import spark_ddd
+
+        return spark_ddd(
+            data,
+            yname,
+            tname,
+            idname,
+            gname,
+            pname,
+            xformla,
+            control_group=control_group,
+            base_period=base_period,
+            est_method=est_method,
+            weightsname=weightsname,
+            boot=boot,
+            biters=biters,
+            cluster=cluster,
+            alpha=alpha,
+            trim_level=trim_level,
+            panel=panel,
+            allow_unbalanced_panel=allow_unbalanced_panel,
+            random_state=random_state,
+            n_partitions=n_partitions,
+            max_cohorts=max_cohorts,
+            progress_bar=progress_bar,
+            backend=backend,
+        )
+
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")
     if pname is None:
