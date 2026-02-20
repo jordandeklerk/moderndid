@@ -805,7 +805,10 @@ def _collect_partitions(cached_sdf, n_chunks=None):
     if n_chunks is None:
         n_chunks = max(1, cached_sdf.rdd.getNumPartitions())
     n_chunks = max(1, min(n_chunks, len(full_pdf)))
-    return list(np.array_split(full_pdf, n_chunks))
+    # Use iloc slicing instead of np.array_split to guarantee pandas
+    # DataFrames (np.array_split can convert to ndarray on some versions).
+    boundaries = np.array_split(np.arange(len(full_pdf)), n_chunks)
+    return [full_pdf.iloc[idx] for idx in boundaries if len(idx) > 0]
 
 
 def _compute_wald_pretest(att_array, groups_array, times_array, vcov_analytical, se_computed, n_units):
