@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 
 from moderndid.distributed._bootstrap import (
     _local_bootstrap,
     _sum_bootstrap_pair,
+    compute_bootstrap_se,
 )
 
 from ._gram import tree_reduce
@@ -63,29 +62,5 @@ def distributed_mboot_ddd(
     ]
 
     total_bres, _, _ = tree_reduce(client, futures, _sum_bootstrap_pair)
-    bres = np.sqrt(n_total) * total_bres / n_total
 
-    k = bres.shape[1]
-    col_sums_sq = np.sum(bres**2, axis=0)
-    ndg_dim = (~np.isnan(col_sums_sq)) & (col_sums_sq > np.sqrt(np.finfo(float).eps) * 10)
-    bres_clean = bres[:, ndg_dim]
-
-    se_full = np.full(k, np.nan)
-    crit_val = np.nan
-
-    if bres_clean.shape[1] > 0:
-        q75 = np.percentile(bres_clean, 75, axis=0)
-        q25 = np.percentile(bres_clean, 25, axis=0)
-        b_sigma = (q75 - q25) / 1.3489795
-        b_sigma[b_sigma <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-        se_full[ndg_dim] = b_sigma / np.sqrt(n_total)
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            b_t = np.max(np.abs(bres_clean / b_sigma), axis=1)
-
-        b_t_finite = b_t[np.isfinite(b_t)]
-        if len(b_t_finite) > 0:
-            crit_val = np.percentile(b_t_finite, 100 * (1 - alpha))
-
-    return bres, se_full, crit_val
+    return compute_bootstrap_se(total_bres, n_total, alpha=alpha)

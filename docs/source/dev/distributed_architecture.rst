@@ -1,8 +1,8 @@
 .. _distributed-architecture:
 
-======================================
-Distributed Backend Architecture
-======================================
+======================
+Distributed Computing
+======================
 
 This document describes the internal design of ModernDiD's distributed
 backend built on `Dask <https://www.dask.org/>`_ and

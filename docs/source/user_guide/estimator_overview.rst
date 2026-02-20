@@ -4,13 +4,11 @@
 Estimator Overview
 ==================
 
-ModernDiD provides additional estimators beyond :func:`~moderndid.did.att_gt`
-for different research designs. All estimators share the same core API, so
-once you learn one, the others follow the same pattern with
-estimator-specific parameters. This page provides a brief overview of each
-estimator and its key arguments. For detailed usage with real data, see the
-individual example pages. The baseline staggered DiD estimator follows
-`Callaway and Sant'Anna (2021) <https://doi.org/10.1016/j.jeconom.2020.12.001>`_.
+ModernDiD provides several estimators for different research designs. All
+estimators share a common API pattern, so once you learn one the others
+follow naturally. This page provides an overview of each estimator, its key
+arguments, and important caveats. For detailed usage with real data, see the
+individual example pages.
 
 
 Choosing the right estimator
@@ -39,19 +37,18 @@ and research question.
   overturn your conclusions.
 
 
-Continuous Treatment DiD
-------------------------
+Staggered DiD
+-------------
 
-The :func:`~moderndid.didcont.cont_did` function handles settings with
-treatment intensity rather than binary treatment. We can compare the function
-signatures for the binary treatment case and the continuous treatment case.
-This implements the
-`Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_
+The :func:`~moderndid.did.att_gt` function is the primary estimator for
+staggered treatment adoption with binary, absorbing treatment. It estimates
+group-time average treatment effects on the treated (ATT(g,t)) and
+is the recommended starting point for most DiD analyses. This implements the
+`Callaway and Sant'Anna (2021) <https://doi.org/10.1016/j.jeconom.2020.12.001>`_
 framework.
 
 .. code-block:: python
 
-    # Binary treatment (att_gt)
     result = did.att_gt(
         data=data,
         yname="outcome",
@@ -63,21 +60,43 @@ framework.
         est_method="dr",
     )
 
-    # Continuous treatment (cont_did)
-    result = did.cont_did(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        gname="first_treated",
-        dname="dose",                  # additional dose variable
-        xformula="~ covariate",
-        control_group="notyettreated",
-    )
+The result includes group-time ATT estimates, analytical standard errors, a
+variance-covariance matrix, and influence functions. A Wald pre-test for
+parallel trends is computed automatically from pre-treatment periods.
 
-The core arguments are identical. The continuous treatment estimator adds
-``dname`` to specify the dose variable. It also provides method-specific
-options for dose-response estimation.
+Group-time estimates are typically aggregated into interpretable summary
+parameters using :func:`~moderndid.aggte`:
+
+.. code-block:: python
+
+    # Event study (dynamic effects relative to treatment)
+    event_study = did.aggte(result, type="dynamic")
+
+    # Simple weighted average across all post-treatment (g,t) cells
+    simple_agg = did.aggte(result, type="simple")
+
+    # Group-level averages (one ATT per cohort)
+    group_agg = did.aggte(result, type="group")
+
+    # Calendar-time averages (one ATT per period)
+    calendar_agg = did.aggte(result, type="calendar")
+
+Clustered standard errors require ``boot=True``. When ``clustervars`` is
+specified without the bootstrap, the reported standard errors do not account
+for clustering. At most two clustering variables are supported.
+
+When a Spark or Dask DataFrame is passed as ``data``, the estimator
+automatically routes to a distributed implementation. See :doc:`distributed`
+for configuration details.
+
+
+Continuous Treatment DiD
+------------------------
+
+The :func:`~moderndid.didcont.cont_did` function handles settings with
+treatment intensity rather than binary treatment. This implements the
+`Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_
+framework.
 
 .. code-block:: python
 
@@ -88,8 +107,6 @@ options for dose-response estimation.
         idname="unit_id",
         gname="first_treated",
         dname="dose",
-        # Shared options
-        xformula="~ covariate",
         control_group="notyettreated",
         anticipation=0,
         base_period="varying",
@@ -103,10 +120,18 @@ options for dose-response estimation.
         dose_est_method="parametric",  # parametric or cck
     )
 
-All the inference options (``alp``, ``boot``, ``biters``, ``clustervars``, ``cband``)
-work the same way across estimators. The shared estimation options
-(``control_group``, ``anticipation``, ``base_period``) also behave
+All the inference options (``alp``, ``boot``, ``biters``, ``clustervars``,
+``cband``) work the same way across estimators. The shared estimation
+options (``control_group``, ``anticipation``, ``base_period``) also behave
 identically.
+
+.. important::
+
+   The continuous treatment estimator does not yet support covariates (only
+   ``xformla="~1"``), unbalanced panels, or discrete treatment values.
+   Two-way clustering is not supported. The CCK estimation method
+   (``dose_est_method="cck"``) requires exactly two groups and two time
+   periods, and cannot be combined with event study aggregation.
 
 
 Triple Difference-in-Differences
@@ -127,7 +152,7 @@ framework.
         tname="year",
         idname="unit_id",
         gname="first_treated",
-        pname="eligible",              # additional: partition/eligibility
+        pname="eligible",              # partition/eligibility variable
         xformla="~ covariate",
         control_group="nevertreated",
         est_method="dr",
@@ -136,6 +161,13 @@ framework.
 The triple DiD estimator adds ``pname`` to specify the partition variable
 that identifies eligible units within treatment groups. All other core
 arguments work the same as ``att_gt``.
+
+The estimator automatically detects whether the data has two periods or
+multiple periods, and whether the data is a balanced panel or repeated
+cross-sections. For two-period data the ``control_group`` and
+``base_period`` parameters are ignored since there is only one possible
+comparison. Like ``att_gt``, passing a Spark or Dask DataFrame automatically
+routes to a distributed implementation.
 
 
 Intertemporal DiD
@@ -164,7 +196,9 @@ Unlike ``att_gt`` which requires a ``gname`` (first treatment period), the
 intertemporal estimator uses ``dname`` directly since treatment can change
 multiple times. The estimator compares units whose treatment changes
 ("switchers") to units with the same baseline treatment that have not yet
-switched.
+switched. Setting ``effects=L`` produces estimates for each period of
+exposure from 1 through L, and ``placebo=K`` produces K pre-treatment
+placebo estimates for testing parallel trends.
 
 .. code-block:: python
 
@@ -175,27 +209,44 @@ switched.
         idname="unit_id",
         dname="treatment",
         # Effect options
-        effects=5,                    # dynamic effects for 5 periods
-        placebo=3,                    # 3 placebo periods
+        effects=5,
+        placebo=3,
         normalized=True,              # normalize by cumulative treatment change
+        effects_equal=True,           # chi-squared test for equal effects
         # Inference options
         cluster="unit_id",
         ci_level=95.0,
-        boot=True,                    # bootstrap inference
+        boot=True,
         biters=1000,
         # Control options
         controls=["covariate1", "covariate2"],
         trends_lin=True,              # unit-specific linear trends
     )
 
+By default, units that experience both treatment increases and decreases
+(bidirectional switchers) are dropped because they can violate the
+no-sign-reversal property required for causal identification. Set
+``keep_bidirectional_switchers=True`` to override this, but interpret
+results with caution.
+
+The result includes an average total effect (ATE) per unit of treatment
+that accounts for both contemporaneous and lagged effects. The ATE is not
+computed when ``trends_lin=True``.
+
+.. important::
+
+   When ``continuous > 0``, the variance estimators are not backed by
+   proven asymptotic normality. Bootstrap inference (``boot=True``) is
+   recommended.
+
 
 Sensitivity Analysis
 --------------------
 
 The :mod:`~moderndid.didhonest` module assesses robustness to parallel
-trends violations. It takes results from ``att_gt``, or external event study results,
-and produces confidence intervals that remain valid under specified degrees of
-parallel trends violation. This follows the
+trends violations. It takes results from ``att_gt``, or external event
+study results, and produces confidence intervals that remain valid under
+specified degrees of parallel trends violation. This follows the
 `Rambachan and Roth (2023) <https://doi.org/10.1093/restud/rdad018>`_
 framework.
 
@@ -212,9 +263,18 @@ framework.
         gname="first_treated",
     )
 
-    # Then conduct sensitivity analysis on the event study
+    # Aggregate into an event study (required)
     event_study = did.aggte(result, type="dynamic")
+
+    # Then conduct sensitivity analysis
     sensitivity = honest_did(event_study, event_time=0, sensitivity_type="smoothness")
+
+The input must be a dynamic event study aggregation (not group- or
+calendar-level), and the event study must have influence functions computed.
+Pre-treatment and post-treatment event times must be consecutive integers
+with no gaps. The requested ``event_time`` must exist in the post-treatment
+periods.
+
 
 Next steps
 ----------

@@ -12,8 +12,8 @@ features; details are found in :ref:`api`.
    :maxdepth: 2
 
    quickstart
-   panel_utilities
    estimator_overview
+   panel_utilities
 
 .. toctree::
    :caption: Scaling
