@@ -231,6 +231,7 @@ gc(verbose = FALSE, full = TRUE, reset = TRUE)
 
 # Load packages with minimal overhead
 suppressPackageStartupMessages({{
+    library(polars)
     library(DIDmultiplegtDYN)
     library(jsonlite)
     library(data.table)
@@ -305,6 +306,7 @@ writeLines(toJSON(out, auto_unbox = TRUE), "{result_path}")
             )
 
             if proc.returncode != 0:
+                stderr_tail = proc.stderr[-2000:] if len(proc.stderr) > 2000 else proc.stderr
                 return TimingResult(
                     mean_time=float("nan"),
                     std_time=float("nan"),
@@ -313,7 +315,7 @@ writeLines(toJSON(out, auto_unbox = TRUE), "{result_path}")
                     times=[],
                     n_estimates=0,
                     success=False,
-                    error=f"R script failed: {proc.stderr}",
+                    error=f"R script failed (exit {proc.returncode}): {stderr_tail}",
                 )
 
             with open(result_path, encoding="utf-8") as f:
