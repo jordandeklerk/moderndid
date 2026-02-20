@@ -8,7 +8,11 @@ import numpy as np
 import pandas as pd
 from pyspark.sql.types import BinaryType, StructField, StructType
 
-from moderndid.cupy.backend import _array_module, to_numpy
+from moderndid.distributed._regression import (
+    _irls_local_stats_with_y,
+    logistic_irls_from_partition_list,
+    wls_from_partition_list,
+)
 
 from ._gram import _reduce_gram_list, partition_gram, solve_gram
 
@@ -84,15 +88,13 @@ def distributed_logistic_irls(spark, partitions, max_iter=25, tol=1e-8):
 def distributed_logistic_irls_from_partitions(spark, part_data_list, gram_fn, k, max_iter=25, tol=1e-8):
     r"""Distributed logistic regression via IRLS on partition data dicts.
 
-    Unlike :func:`distributed_logistic_irls`, this variant operates on
-    partition dicts that are already materialized. At each step the current
-    :math:`\beta` is applied to all partitions via ``gram_fn``, results
-    are collected and summed on the driver.
+    Thin wrapper around :func:`moderndid.distributed._regression.logistic_irls_from_partition_list`
+    that accepts and ignores the ``spark`` parameter for backwards compatibility.
 
     Parameters
     ----------
     spark : pyspark.sql.SparkSession
-        Active Spark session.
+        Active Spark session (unused; kept for API compatibility).
     part_data_list : list of dict
         Partition dicts produced by ``_build_partition_arrays``.
     gram_fn : callable
@@ -110,34 +112,19 @@ def distributed_logistic_irls_from_partitions(spark, part_data_list, gram_fn, k,
     beta : ndarray of shape (k,)
         Coefficient vector.
     """
-    beta = np.zeros(k, dtype=np.float64)
-
-    for _ in range(max_iter):
-        gram_list = [gram_fn(pd, beta) for pd in part_data_list]
-        result = _reduce_gram_list(gram_list)
-        if result is None:
-            break
-        XtWX, XtWz, _ = result
-        beta_new = solve_gram(XtWX, XtWz)
-
-        if np.max(np.abs(beta_new - beta)) < tol:
-            beta = beta_new
-            break
-        beta = beta_new
-
-    return beta
+    return logistic_irls_from_partition_list(part_data_list, gram_fn, k, max_iter=max_iter, tol=tol)
 
 
 def distributed_wls_from_partitions(spark, part_data_list, gram_fn):
     r"""Distributed weighted least squares on partition data dicts.
 
-    Each partition dict is processed by ``gram_fn`` to produce local
-    sufficient statistics, which are summed on the driver.
+    Thin wrapper around :func:`moderndid.distributed._regression.wls_from_partition_list`
+    that accepts and ignores the ``spark`` parameter for backwards compatibility.
 
     Parameters
     ----------
     spark : pyspark.sql.SparkSession
-        Active Spark session.
+        Active Spark session (unused; kept for API compatibility).
     part_data_list : list of dict
         Partition dicts produced by ``_build_partition_arrays``.
     gram_fn : callable
@@ -154,12 +141,7 @@ def distributed_wls_from_partitions(spark, part_data_list, gram_fn):
     ValueError
         If all partitions return ``None`` (no data available).
     """
-    gram_list = [gram_fn(pd) for pd in part_data_list]
-    result = _reduce_gram_list(gram_list)
-    if result is None:
-        raise ValueError("No data available for WLS regression.")
-    XtWX, XtWy, _ = result
-    return solve_gram(XtWX, XtWy)
+    return wls_from_partition_list(part_data_list, gram_fn)
 
 
 def distributed_logistic_irls_spark_df(spark, cached_df, build_fn, build_args, k, max_iter=25, tol=1e-8):
@@ -224,25 +206,3 @@ def distributed_logistic_irls_spark_df(spark, cached_df, build_fn, build_args, k
         beta = beta_new
 
     return beta
-
-
-def _irls_local_stats_with_y(X, weights, y, beta):
-    """Compute local IRLS sufficient statistics for one partition."""
-    xp = _array_module(X)
-    beta = xp.asarray(beta)
-    eta = X @ beta
-    mu = 1.0 / (1.0 + xp.exp(-eta))
-    mu = xp.clip(mu, 1e-10, 1 - 1e-10)
-    W_irls = weights * mu * (1 - mu)
-    z = eta + (y - mu) / (mu * (1 - mu))
-    XtW = X.T * W_irls
-    return to_numpy(XtW @ X), to_numpy(XtW @ z), len(y)
-
-
-def _sum_gram_pair_or_none(a, b):
-    """Sum two (XtWX, XtWy, n) tuples, handling None from empty partitions."""
-    if a is None:
-        return b
-    if b is None:
-        return a
-    return a[0] + b[0], a[1] + b[1], a[2] + b[2]

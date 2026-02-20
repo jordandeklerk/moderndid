@@ -339,10 +339,6 @@ small set of controls.
     cohort-wide tables are active at once. Higher values can improve
     throughput on memory-rich clusters.
 
-``progress_bar``
-    Enables a ``tqdm`` progress bar in multi-period runs. Each tick corresponds
-    to one group-time cell.
-
 ``backend``
     Set to ``"cupy"`` to run partition-level linear algebra on worker GPUs.
     See :ref:`Combining GPU and Dask <gpu-dask-workers>` for setup details.
@@ -363,7 +359,6 @@ small set of controls.
         client=client,
         n_partitions=64,
         max_cohorts=4,
-        progress_bar=True,
     )
 
 Start with defaults and record runtime and peak memory. Increase
@@ -433,23 +428,9 @@ re-shuffling the data for each specification.
 Monitoring the cluster
 ----------------------
 
-For long-running jobs, the Dask dashboard provides real-time visibility into task
-progress, worker memory, and task stream. The ``progress_bar`` parameter
-provides a simpler alternative that works in notebooks and scripts.
-
-.. code-block:: python
-
-    from moderndid.dask import dask_att_gt
-
-    result = dask_att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        client=client,
-        progress_bar=True,    # Track cell completion
-    )
+For long-running jobs, the Dask dashboard (default port 8787) provides
+real-time visibility into task progress, worker memory, and the task stream.
+Access it at ``http://scheduler-host:8787/status`` after creating a client.
 
 
 Reproducibility

@@ -162,7 +162,7 @@ def spark_ddd_mp(
             n_dropped = n_units - len(complete_ids)
             if n_dropped > 0:
                 warnings.warn(f"Dropped {n_dropped} units while converting to balanced panel")
-                sdf_new = sdf.join(complete_units_df.select(id_col), on=id_col, how="inner").cache()
+                sdf_new = sdf.join(F.broadcast(complete_units_df.select(id_col)), on=id_col, how="leftsemi").cache()
                 sdf_new.count()
                 sdf.unpersist()
                 sdf = sdf_new

@@ -6,6 +6,11 @@ import warnings
 
 import numpy as np
 
+from moderndid.distributed._bootstrap import (
+    _local_bootstrap,
+    _sum_bootstrap_pair,
+)
+
 from ._gram import tree_reduce
 
 
@@ -84,27 +89,3 @@ def distributed_mboot_ddd(
             crit_val = np.percentile(b_t_finite, 100 * (1 - alpha))
 
     return bres, se_full, crit_val
-
-
-def _local_bootstrap(inf_func_local, biters, seed):
-    """Compute local bootstrap contributions on one partition."""
-    rng = np.random.default_rng(seed)
-    n_local = inf_func_local.shape[0]
-    k = inf_func_local.shape[1]
-
-    p_kappa = 0.5 * (1 + np.sqrt(5)) / np.sqrt(5)
-    k1 = 0.5 * (1 - np.sqrt(5))
-    k2 = 0.5 * (1 + np.sqrt(5))
-
-    local_bres = np.zeros((biters, k))
-    for b in range(biters):
-        draws = rng.binomial(1, p_kappa, size=n_local)
-        v = np.where(draws == 1, k1, k2)
-        local_bres[b] = np.sum(inf_func_local * v[:, None], axis=0)
-
-    return local_bres, np.zeros(k), n_local
-
-
-def _sum_bootstrap_pair(a, b):
-    """Sum two (local_bres, zeros, n) tuples."""
-    return a[0] + b[0], a[1] + b[1], a[2] + b[2]

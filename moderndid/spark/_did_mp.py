@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import pickle
 import tempfile
 import warnings
 from collections import defaultdict
@@ -12,12 +11,10 @@ from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
-import pandas as pd
 import polars as pl
 import scipy.linalg as la
 import scipy.stats
 from pyspark.sql import functions as F
-from pyspark.sql.types import BinaryType, StructField, StructType
 
 from moderndid.core.dataframe import to_polars
 from moderndid.did.multiperiod_obj import mp
@@ -147,14 +144,15 @@ def spark_att_gt_mp(
 
         if panel and not allow_unbalanced_panel:
             unit_counts = sdf.groupBy(id_col).count()
-            complete_rows = unit_counts.filter(F.col("count") == len(tlist)).select(id_col).collect()
-            complete_ids = np.sort(np.array([row[0] for row in complete_rows]))
-            n_dropped = n_units - len(complete_ids)
+            complete_ids_sdf = unit_counts.filter(F.col("count") == len(tlist)).select(id_col)
+            n_complete = complete_ids_sdf.count()
+            n_dropped = n_units - n_complete
             if n_dropped > 0:
                 warnings.warn(f"Dropped {n_dropped} units while converting to balanced panel")
-                sdf = sdf.filter(F.col(id_col).isin(complete_ids.tolist())).cache()
+                sdf = sdf.join(F.broadcast(complete_ids_sdf), on=id_col, how="leftsemi").cache()
                 sdf.count()
-                unique_ids = complete_ids
+                id_rows = sdf.select(id_col).distinct().collect()
+                unique_ids = np.sort(np.array([row[0] for row in id_rows]))
                 n_units = len(unique_ids)
     else:
         data = to_polars(data)
@@ -491,7 +489,7 @@ def _process_did_cohort_cells(
 
             if wide_sdf is not None and n_wide > 0:
                 # Collect partitions to driver as list of pandas DataFrames
-                wide_pdf_list = _collect_partitions(wide_sdf)
+                wide_pdf_list = _collect_partitions(wide_sdf, n_chunks=n_partitions)
 
                 for counter, g_, t, pret, post_treat, action in cells:
                     if action == "skip":
@@ -781,33 +779,33 @@ def _compute_did_cell_streaming(
     return ATTgtResult(att=att, group=int(g), time=int(t), post=post_treat)
 
 
-def _collect_partitions(cached_sdf):
-    """Collect partitions of a cached Spark DataFrame as a list of pandas DataFrames.
+def _collect_partitions(cached_sdf, n_chunks=None):
+    """Collect a cached Spark DataFrame as a list of pandas DataFrame chunks.
 
-    Uses ``toLocalIterator`` to stream partitions one at a time rather than
-    calling ``.toPandas()`` on the entire DataFrame at once.
+    Uses Arrow-based ``.toPandas()`` on the already-cached DataFrame, then
+    splits the result into roughly equal chunks for downstream iteration.
 
     Parameters
     ----------
     cached_sdf : pyspark.sql.DataFrame
         A cached Spark DataFrame.
+    n_chunks : int or None
+        Number of chunks to split into.  When ``None`` the number of
+        Spark RDD partitions is used so chunk boundaries mirror the
+        original partitioning.
 
     Returns
     -------
     list of pandas.DataFrame
-        One pandas DataFrame per Spark partition.
+        Chunked pandas DataFrames.
     """
-    # Use mapInPandas to yield each partition as a pandas DF
-    out_schema = StructType([StructField("partition_bytes", BinaryType(), False)])
-
-    def _yield_partition(iterator):
-        for pdf in iterator:
-            if len(pdf) > 0:
-                yield pd.DataFrame({"partition_bytes": [pickle.dumps(pdf)]})
-
-    result_df = cached_sdf.mapInPandas(_yield_partition, schema=out_schema)
-    rows = result_df.collect()
-    return [pickle.loads(row["partition_bytes"]) for row in rows]
+    full_pdf = cached_sdf.toPandas()
+    if len(full_pdf) == 0:
+        return []
+    if n_chunks is None:
+        n_chunks = max(1, cached_sdf.rdd.getNumPartitions())
+    n_chunks = max(1, min(n_chunks, len(full_pdf)))
+    return list(np.array_split(full_pdf, n_chunks))
 
 
 def _compute_wald_pretest(att_array, groups_array, times_array, vcov_analytical, se_computed, n_units):

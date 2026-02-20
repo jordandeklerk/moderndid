@@ -331,7 +331,7 @@ propagate to Dask worker processes. Always use the ``backend`` parameter
 on the estimator call instead.
 
 The following example shows a complete workflow where we connect to a multi-GPU
-cluster, read data, run estimation with cluster monitoring, and clean up.
+cluster, read data, run estimation, and clean up.
 
 .. code-block:: python
 

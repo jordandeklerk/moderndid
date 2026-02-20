@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from moderndid.cupy.backend import _array_module, to_numpy
+from moderndid.distributed._regression import (
+    _irls_local_stats_with_y,
+    _sum_gram_pair_or_none,
+)
 
 from ._gram import _sum_gram_pair, partition_gram, solve_gram, tree_reduce
 
@@ -171,25 +174,3 @@ def distributed_wls_from_futures(client, part_futures, gram_fn):
     if XtWX is None:
         raise ValueError("No data available for WLS regression.")
     return solve_gram(XtWX, XtWy)
-
-
-def _irls_local_stats_with_y(X, weights, y, beta):
-    """Compute local IRLS sufficient statistics for one partition."""
-    xp = _array_module(X)
-    beta = xp.asarray(beta)
-    eta = X @ beta
-    mu = 1.0 / (1.0 + xp.exp(-eta))
-    mu = xp.clip(mu, 1e-10, 1 - 1e-10)
-    W_irls = weights * mu * (1 - mu)
-    z = eta + (y - mu) / (mu * (1 - mu))
-    XtW = X.T * W_irls
-    return to_numpy(XtW @ X), to_numpy(XtW @ z), len(y)
-
-
-def _sum_gram_pair_or_none(a, b):
-    """Sum two (XtWX, XtWy, n) tuples, handling None from empty partitions."""
-    if a is None:
-        return b
-    if b is None:
-        return a
-    return a[0] + b[0], a[1] + b[1], a[2] + b[2]

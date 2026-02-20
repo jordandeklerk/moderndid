@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
-import numpy as np
+from moderndid.distributed._utils import (
+    CHUNKED_SE_THRESHOLD,
+    MEMMAP_THRESHOLD,
+    SE_CHUNK_SIZE,
+    auto_tune_partitions,
+    chunked_vcov,
+    sum_global_stats,
+)
 
-MEMMAP_THRESHOLD = 1 * 1024**3
-CHUNKED_SE_THRESHOLD = 10_000_000
-SE_CHUNK_SIZE = 1_000_000
+__all__ = [
+    "CHUNKED_SE_THRESHOLD",
+    "MEMMAP_THRESHOLD",
+    "SE_CHUNK_SIZE",
+    "auto_tune_partitions",
+    "chunked_vcov",
+    "sum_global_stats",
+]
 
 
 def is_dask_collection(data) -> bool:
@@ -80,33 +92,6 @@ def get_default_partitions(client):
     return max(total_threads, 1)
 
 
-def auto_tune_partitions(n_default, n_units, k, target_bytes=500 * 1024**2):
-    """Increase partition count when per-partition X matrices would exceed target_bytes.
-
-    Parameters
-    ----------
-    n_default : int
-        Default partition count (from cluster thread count).
-    n_units : int
-        Total number of units.
-    k : int
-        Number of columns in the design matrix (intercept + covariates).
-    target_bytes : int, default 500 MB
-        Maximum per-partition X matrix size in bytes.
-
-    Returns
-    -------
-    int
-        Adjusted partition count.
-    """
-    rows_per_part = n_units / max(n_default, 1)
-    part_bytes = rows_per_part * k * 8
-    if part_bytes <= target_bytes:
-        return n_default
-    needed = int(np.ceil(n_units * k * 8 / target_bytes))
-    return max(n_default, needed)
-
-
 def get_or_create_client(client=None):
     """Get an existing Dask client or create a local one.
 
@@ -129,61 +114,6 @@ def get_or_create_client(client=None):
         return Client.current()
     except ValueError:
         return Client()
-
-
-def sum_global_stats(a, b):
-    """Pairwise sum for tree-reduce of global stats dicts.
-
-    Parameters
-    ----------
-    a, b : dict or None
-        Per-partition aggregate statistics.
-
-    Returns
-    -------
-    dict or None
-        Element-wise sum of the two dicts.
-    """
-    if a is None:
-        return b
-    if b is None:
-        return a
-    result = {}
-    for key in a:
-        if a[key] is None:
-            result[key] = b[key]
-        elif isinstance(a[key], (int, float)):
-            result[key] = a[key] + b[key]
-        else:
-            result[key] = a[key] + b[key]
-    return result
-
-
-def chunked_vcov(inf_func, n_units):
-    """Compute variance-covariance matrix, chunking for large n.
-
-    Parameters
-    ----------
-    inf_func : ndarray of shape (n_units, n_cells)
-        Influence function matrix.
-    n_units : int
-        Total number of units.
-
-    Returns
-    -------
-    ndarray of shape (n_cells, n_cells)
-        Variance-covariance matrix.
-    """
-    n_rows, n_cols = inf_func.shape
-    if n_rows <= CHUNKED_SE_THRESHOLD:
-        return inf_func.T @ inf_func / n_units
-
-    V = np.zeros((n_cols, n_cols), dtype=np.float64)
-    for start in range(0, n_rows, SE_CHUNK_SIZE):
-        chunk = np.array(inf_func[start : start + SE_CHUNK_SIZE])
-        V += chunk.T @ chunk
-    V /= n_units
-    return V
 
 
 def prepare_cohort_wide_pivot(
@@ -257,10 +187,16 @@ def prepare_cohort_wide_pivot(
 
     base = filtered.loc[filtered[time_col] == all_times[0]][base_cols]
 
+    period_dfs = []
     for tp in all_times:
         period_y = filtered.loc[filtered[time_col] == tp][[id_col, y_col]]
         period_y = period_y.rename(columns={y_col: f"_y_{tp}"})
-        base = base.merge(period_y, on=id_col, how="inner")
+        period_dfs.append(period_y)
+
+    from functools import reduce
+
+    wide_y = reduce(lambda left, right: left.merge(right, on=id_col, how="inner"), period_dfs)
+    base = base.merge(wide_y, on=id_col, how="inner")
 
     from distributed import wait
 

@@ -95,7 +95,6 @@ result = did.att_gt(
     est_method="dr",
     n_partitions=64,         # partitions per cell (default: total cluster threads)
     max_cohorts=4,           # cohorts to process in parallel
-    progress_bar=True,       # track cell completion
     backend="cupy",          # run worker linear algebra on GPUs (optional)
 )
 

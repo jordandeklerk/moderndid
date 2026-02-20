@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from moderndid.spark._inf_func import _compute_did, _compute_inf_func
-from moderndid.spark._nuisance import DistOutcomeRegResult, DistPScoreResult
+from moderndid.distributed._inf_func import _compute_did, _compute_inf_func
+from moderndid.distributed._nuisance import DistOutcomeRegResult, DistPScoreResult
 
 
 def _make_nuisance(subgroup, comp_subgroup, est_method, covariates, y1, y0):

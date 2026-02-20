@@ -3,28 +3,19 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from typing import NamedTuple
 
 import numpy as np
 
+from moderndid.distributed._nuisance import (
+    DistOutcomeRegResult,
+    DistPScoreResult,
+    _build_partitions_for_subset,
+    _compute_outcome_regression_null,
+    _compute_pscore_null,
+)
+
 from ._regression import distributed_logistic_irls, distributed_wls
 from ._utils import get_default_partitions
-
-
-class DistPScoreResult(NamedTuple):
-    """Result from distributed propensity score estimation."""
-
-    propensity_scores: np.ndarray
-    hessian_matrix: np.ndarray | None
-    keep_ps: np.ndarray
-
-
-class DistOutcomeRegResult(NamedTuple):
-    """Result from distributed outcome regression."""
-
-    delta_y: np.ndarray
-    or_delta: np.ndarray
-    reg_coeff: np.ndarray | None
 
 
 def compute_all_nuisances_distributed(
@@ -120,12 +111,6 @@ def compute_all_nuisances_distributed(
     return pscores, or_results
 
 
-def _build_partitions_for_subset(X, W, y, n_partitions):
-    """Split arrays into roughly equal partitions."""
-    splits = np.array_split(np.arange(len(y)), n_partitions)
-    return [(X[idx], W[idx], y[idx]) for idx in splits if len(idx) > 0]
-
-
 def _compute_pscore_distributed(spark, subgroup, covariates, weights, comp_subgroup, trim_level, n_partitions):
     """Compute propensity scores using distributed logistic IRLS."""
     mask = (subgroup == 4) | (subgroup == comp_subgroup)
@@ -162,17 +147,6 @@ def _compute_pscore_distributed(spark, subgroup, covariates, weights, comp_subgr
     return DistPScoreResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
 
 
-def _compute_pscore_null(subgroup, comp_subgroup):
-    """Compute null propensity scores for REG method."""
-    mask = (subgroup == 4) | (subgroup == comp_subgroup)
-    n_sub = int(np.sum(mask))
-    return DistPScoreResult(
-        propensity_scores=np.ones(n_sub),
-        hessian_matrix=None,
-        keep_ps=np.ones(n_sub, dtype=bool),
-    )
-
-
 def _compute_outcome_regression_distributed(spark, y1, y0, subgroup, covariates, weights, comp_subgroup, n_partitions):
     """Compute outcome regression using distributed WLS."""
     mask = (subgroup == 4) | (subgroup == comp_subgroup)
@@ -200,11 +174,3 @@ def _compute_outcome_regression_distributed(spark, y1, y0, subgroup, covariates,
     or_delta = sub_covariates @ reg_coeff
 
     return DistOutcomeRegResult(delta_y=delta_y, or_delta=or_delta, reg_coeff=reg_coeff)
-
-
-def _compute_outcome_regression_null(y1, y0, subgroup, comp_subgroup):
-    """Compute null outcome regression for IPW method."""
-    mask = (subgroup == 4) | (subgroup == comp_subgroup)
-    delta_y = (y1 - y0)[mask]
-    or_delta = np.zeros(len(delta_y))
-    return DistOutcomeRegResult(delta_y=delta_y, or_delta=or_delta, reg_coeff=None)

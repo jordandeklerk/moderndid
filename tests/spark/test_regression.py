@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from moderndid.spark._regression import _irls_local_stats_with_y, _sum_gram_pair_or_none
+from moderndid.distributed._regression import _irls_local_stats_with_y, _sum_gram_pair_or_none
 
 
 def test_irls_local_stats_shapes(small_design_matrix, small_weights, small_binary_response):
