@@ -351,6 +351,7 @@ small set of controls.
 
     from moderndid.dask import dask_att_gt
 
+    # Low-level entry point (accepts client explicitly)
     result = dask_att_gt(
         data=ddf,
         yname="y",

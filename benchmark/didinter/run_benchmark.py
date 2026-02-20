@@ -70,6 +70,8 @@ def run_single_benchmark(
 
         if r_result.success:
             logger.info("R: %.4fs (std: %.4fs)", r_result.mean_time, r_result.std_time)
+        else:
+            logger.warning("R failed: %s", r_result.error)
 
     speedup = float("nan")
     if py_result.success and r_result is not None and r_result.success:

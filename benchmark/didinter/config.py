@@ -79,4 +79,16 @@ DIDINTER_BENCHMARK_SUITES: dict[str, list[DIDInterBenchmarkConfig]] = {
         DIDInterBenchmarkConfig(n_units=50000, n_periods=10, effects=3, placebo=2),
         DIDInterBenchmarkConfig(n_units=100000, n_periods=10, effects=3, placebo=2),
     ],
+    # Python vs R scaling (10K to 5M obs)
+    "scaling_vs_r": [
+        DIDInterBenchmarkConfig(n_units=1_250, n_periods=8, n_warmup=1, n_runs=3),
+        DIDInterBenchmarkConfig(n_units=6_250, n_periods=8, n_warmup=1, n_runs=3),
+        DIDInterBenchmarkConfig(n_units=12_500, n_periods=8, n_warmup=1, n_runs=3),
+        DIDInterBenchmarkConfig(n_units=25_000, n_periods=8, n_warmup=1, n_runs=3),
+        DIDInterBenchmarkConfig(n_units=37_500, n_periods=8, n_warmup=1, n_runs=3),
+        DIDInterBenchmarkConfig(n_units=62_500, n_periods=8, n_warmup=1, n_runs=3),
+        DIDInterBenchmarkConfig(n_units=125_000, n_periods=8, n_warmup=1, n_runs=3),
+        DIDInterBenchmarkConfig(n_units=250_000, n_periods=8, n_warmup=1, n_runs=3),
+        DIDInterBenchmarkConfig(n_units=625_000, n_periods=8, n_warmup=1, n_runs=3),
+    ],
 }

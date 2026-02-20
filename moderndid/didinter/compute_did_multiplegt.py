@@ -256,10 +256,11 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
     influence_funcs = []
     influence_funcs_unnorm = []
 
+    df = df.sort([gname, tname])
+
     for idx, h in enumerate(horizons):
         abs_h = abs(h)
 
-        df = df.sort([gname, tname])
         diff_col = f"diff_y_{abs_h}"
 
         if horizon_type == "effect":
@@ -399,8 +400,10 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
 
         switcher_flag = f"is_switcher_{abs_h}"
         weighted_diff = f"weighted_diff_{abs_h}"
-        df = df.with_columns(pl.col(dist_col).cast(pl.Int64).alias(switcher_flag))
-        df = df.with_columns((pl.col(diff_col).fill_null(0.0) * pl.col("weight_gt")).alias(weighted_diff))
+        df = df.with_columns(
+            pl.col(dist_col).cast(pl.Int64).alias(switcher_flag),
+            (pl.col(diff_col).fill_null(0.0) * pl.col("weight_gt")).alias(weighted_diff),
+        )
 
         df = compute_cohort_dof(df, abs_h, config, config.cluster)
         df = compute_control_dof(df, abs_h, config, config.cluster)
@@ -415,11 +418,11 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         dummy_u_gg_col = f"dummy_u_gg_{abs_h}"
         time_constraint_col = f"time_constraint_{abs_h}"
 
-        df = df.with_columns((pl.lit(abs_h) <= (pl.col("T_g") - 1)).cast(pl.Int64).alias(dummy_u_gg_col))
         df = df.with_columns(
+            (pl.lit(abs_h) <= (pl.col("T_g") - 1)).cast(pl.Int64).alias(dummy_u_gg_col),
             ((pl.col(tname) >= pl.lit(abs_h + 1)) & (pl.col(tname) <= pl.col("T_g")))
             .cast(pl.Int64)
-            .alias(time_constraint_col)
+            .alias(time_constraint_col),
         )
 
         if e_hat_col in df.columns:

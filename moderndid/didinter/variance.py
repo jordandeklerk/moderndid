@@ -55,20 +55,7 @@ def build_treatment_paths(df, horizon, config):
 
     if h == 1:
         df = df.with_columns(pl.col("d_sq").alias("treat_h0"))
-        df = df.with_columns(
-            pl.concat_str(
-                [
-                    pl.col("treat_h0").cast(pl.Utf8),
-                    pl.lit("|"),
-                    pl.col("F_g").cast(pl.Utf8),
-                ]
-            )
-            .cast(pl.Categorical)
-            .to_physical()
-            .cast(pl.Int64)
-            .add(1)
-            .alias("path_0")
-        )
+        df = df.with_columns(pl.struct(["treat_h0", "F_g"]).hash(seed=42).alias("path_0"))
 
     if h > 1 and f"treat_h{h - 1}" in df.columns:
         df = df.with_columns(
@@ -80,20 +67,7 @@ def build_treatment_paths(df, horizon, config):
 
     prev_path = f"path_{h - 1}" if h > 1 else "path_0"
     if prev_path in df.columns:
-        df = df.with_columns(
-            pl.concat_str(
-                [
-                    pl.col(prev_path).cast(pl.Utf8),
-                    pl.lit("|"),
-                    pl.col(f"treat_h{h}").cast(pl.Utf8),
-                ]
-            )
-            .cast(pl.Categorical)
-            .to_physical()
-            .cast(pl.Int64)
-            .add(1)
-            .alias(f"path_{h}")
-        )
+        df = df.with_columns(pl.struct([prev_path, f"treat_h{h}"]).hash(seed=42).alias(f"path_{h}"))
 
     if h == 1 and "path_0" in df.columns:
         df = df.with_columns(pl.col(gname).n_unique().over("path_0").alias("n_groups_path_0"))
@@ -146,9 +120,9 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
     val_diff = pl.when(is_switcher).then(pl.col(weighted_diff)).otherwise(None)
 
     df = df.with_columns(
-        pl.when(is_switcher).then(val_weight.sum().over(group_vars)).otherwise(None).alias(weight_sum_col)
+        pl.when(is_switcher).then(val_weight.sum().over(group_vars)).otherwise(None).alias(weight_sum_col),
+        pl.when(is_switcher).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col),
     )
-    df = df.with_columns(pl.when(is_switcher).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col))
 
     dof_col = f"dof_switcher_{h}"
     if cluster_col is None:
@@ -214,9 +188,9 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
     val_diff = pl.when(is_control).then(pl.col(weighted_diff)).otherwise(None)
 
     df = df.with_columns(
-        pl.when(is_control).then(val_weight.sum().over(group_vars)).otherwise(None).alias(weight_sum_col)
+        pl.when(is_control).then(val_weight.sum().over(group_vars)).otherwise(None).alias(weight_sum_col),
+        pl.when(is_control).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col),
     )
-    df = df.with_columns(pl.when(is_control).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col))
 
     if cluster_col is None:
         val_dof = pl.when(is_control).then(pl.lit(1)).otherwise(None)
@@ -287,9 +261,9 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
     val_diff = pl.when(is_union).then(pl.col(weighted_diff)).otherwise(None)
 
     df = df.with_columns(
-        pl.when(is_union).then(val_weight.sum().over(group_vars)).otherwise(None).alias(weight_sum_col)
+        pl.when(is_union).then(val_weight.sum().over(group_vars)).otherwise(None).alias(weight_sum_col),
+        pl.when(is_union).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col),
     )
-    df = df.with_columns(pl.when(is_union).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col))
 
     if cluster_col is None:
         val_dof = pl.when(is_union).then(pl.col(union_flag)).otherwise(None)
