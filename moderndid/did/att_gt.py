@@ -297,7 +297,6 @@ def att_gt(
             random_state=random_state,
             n_partitions=n_partitions,
             max_cohorts=max_cohorts,
-            progress_bar=progress_bar,
             backend=backend,
         )
 
@@ -329,7 +328,6 @@ def att_gt(
             random_state=random_state,
             n_partitions=n_partitions,
             max_cohorts=max_cohorts,
-            progress_bar=progress_bar,
             backend=backend,
         )
 

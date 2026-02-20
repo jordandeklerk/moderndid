@@ -31,7 +31,6 @@ def dask_att_gt(
     random_state=None,
     n_partitions=None,
     max_cohorts=None,
-    progress_bar=False,
     backend=None,
 ):
     r"""Compute the distributed group-time average treatment effects.
@@ -93,8 +92,6 @@ def dask_att_gt(
         Number of Dask partitions per cell.
     max_cohorts : int or None, default None
         Maximum number of treatment cohorts to process in parallel.
-    progress_bar : bool, default False
-        Whether to display a tqdm progress bar.
 
     Returns
     -------
@@ -168,7 +165,6 @@ def dask_att_gt(
         random_state=random_state,
         n_partitions=n_partitions,
         max_cohorts=max_cohorts,
-        progress_bar=progress_bar,
         panel=panel,
         use_gpu=use_gpu,
     )

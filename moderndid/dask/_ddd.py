@@ -31,7 +31,6 @@ def dask_ddd(
     random_state=None,
     n_partitions=None,
     max_cohorts=None,
-    progress_bar=False,
     backend=None,
 ):
     r"""Compute the distributed triple difference-in-differences estimator.
@@ -123,9 +122,6 @@ def dask_ddd(
     max_cohorts : int or None, default None
         Maximum number of treatment cohorts to process in parallel.
         When ``None``, defaults to the number of Dask workers.
-    progress_bar : bool, default False
-        Whether to display a ``tqdm`` progress bar tracking cell
-        completion during multi-period estimation.
 
     Returns
     -------
@@ -202,7 +198,6 @@ def dask_ddd(
         to ``dask_ddd`` when passed a Dask DataFrame.
     get_or_create_client : Get or create a Dask distributed client.
     get_default_partitions : Compute default partition count from cluster.
-    monitor_cluster : Monitor cluster memory and task statistics.
 
     References
     ----------
@@ -262,7 +257,6 @@ def dask_ddd(
         random_state=random_state,
         n_partitions=n_partitions,
         max_cohorts=max_cohorts,
-        progress_bar=progress_bar,
         panel=panel,
         use_gpu=use_gpu,
     )
