@@ -393,42 +393,15 @@ def _compute_group_att(
     group_influence_functions = np.column_stack(group_influence_functions)
     group_att_clean = np.where(np.isnan(group_att), 0, group_att)
 
-    group_se = np.zeros(len(unique_groups_recoded))
-    for i in range(len(unique_groups_recoded)):
-        if not np.isnan(group_att[i]):
-            group_se[i] = _compute_se(
-                influence_function=group_influence_functions[:, i],
-                n_units=n_units,
-                estimation_params=estimation_params,
-                bootstrap_iterations=bootstrap_iterations,
-                alpha=alpha,
-                random_state=random_state,
-            )
-        else:
-            group_se[i] = np.nan
-
-    critical_value = _get_z_critical(alpha / 2)
-    if estimation_params.get("uniform_bands", False):
-        if not estimation_params.get("bootstrap", False):
-            warnings.warn("Used bootstrap procedure to compute simultaneous confidence band")
-
-        mboot_result = mboot(
-            inf_func=group_influence_functions,
-            n_units=n_units,
-            biters=bootstrap_iterations,
-            alp=alpha,
-            random_state=random_state,
-        )
-        critical_value = mboot_result["crit_val"]
-
-        if np.isnan(critical_value) or np.isinf(critical_value):
-            warnings.warn(
-                "Simultaneous critical value is NA. This probably happened because "
-                "we cannot compute t-statistic (std errors are NA). "
-                "We then report pointwise conf. intervals."
-            )
-            critical_value = _get_z_critical(alpha / 2)
-            estimation_params["uniform_bands"] = False
+    group_se, critical_value, _ = _batched_se(
+        group_influence_functions,
+        group_att,
+        n_units,
+        estimation_params,
+        bootstrap_iterations,
+        alpha,
+        random_state,
+    )
 
     # Overall ATT: weighted average across groups
     overall_att = np.sum(group_att_clean * group_probabilities) / np.sum(group_probabilities)
@@ -566,42 +539,15 @@ def _compute_dynamic_att(
 
     dynamic_influence_functions = np.column_stack(dynamic_influence_functions)
 
-    dynamic_se = np.zeros(len(unique_event_times))
-    for i in range(len(unique_event_times)):
-        if not np.isnan(dynamic_att[i]):
-            dynamic_se[i] = _compute_se(
-                influence_function=dynamic_influence_functions[:, i],
-                n_units=n_units,
-                estimation_params=estimation_params,
-                bootstrap_iterations=bootstrap_iterations,
-                alpha=alpha,
-                random_state=random_state,
-            )
-        else:
-            dynamic_se[i] = np.nan
-
-    critical_value = _get_z_critical(alpha / 2)
-    if estimation_params.get("uniform_bands", False):
-        if not estimation_params.get("bootstrap", False):
-            warnings.warn("Used bootstrap procedure to compute simultaneous confidence band")
-
-        mboot_result = mboot(
-            inf_func=dynamic_influence_functions,
-            n_units=n_units,
-            biters=bootstrap_iterations,
-            alp=alpha,
-            random_state=random_state,
-        )
-        critical_value = mboot_result["crit_val"]
-
-        if np.isnan(critical_value) or np.isinf(critical_value):
-            warnings.warn(
-                "Simultaneous critical value is NA. This probably happened because "
-                "we cannot compute t-statistic (std errors are NA). "
-                "We then report pointwise conf. intervals."
-            )
-            critical_value = _get_z_critical(alpha / 2)
-            estimation_params["uniform_bands"] = False
+    dynamic_se, critical_value, _ = _batched_se(
+        dynamic_influence_functions,
+        dynamic_att,
+        n_units,
+        estimation_params,
+        bootstrap_iterations,
+        alpha,
+        random_state,
+    )
 
     # Overall ATT: average over non-negative event times
     post_mask = unique_event_times >= 0
@@ -715,42 +661,15 @@ def _compute_calendar_att(
 
     calendar_influence_functions = np.column_stack(calendar_influence_functions)
 
-    calendar_se = np.zeros(len(calendar_times))
-    for i in range(len(calendar_times)):
-        if not np.isnan(calendar_att[i]):
-            calendar_se[i] = _compute_se(
-                influence_function=calendar_influence_functions[:, i],
-                n_units=n_units,
-                estimation_params=estimation_params,
-                bootstrap_iterations=bootstrap_iterations,
-                alpha=alpha,
-                random_state=random_state,
-            )
-        else:
-            calendar_se[i] = np.nan
-
-    critical_value = _get_z_critical(alpha / 2)
-    if estimation_params.get("uniform_bands", False):
-        if not estimation_params.get("bootstrap", False):
-            warnings.warn("Used bootstrap procedure to compute simultaneous confidence band")
-
-        mboot_result = mboot(
-            inf_func=calendar_influence_functions,
-            n_units=n_units,
-            biters=bootstrap_iterations,
-            alp=alpha,
-            random_state=random_state,
-        )
-        critical_value = mboot_result["crit_val"]
-
-        if np.isnan(critical_value) or np.isinf(critical_value):
-            warnings.warn(
-                "Simultaneous critical value is NA. This probably happened because "
-                "we cannot compute t-statistic (std errors are NA). "
-                "We then report pointwise conf. intervals."
-            )
-            critical_value = _get_z_critical(alpha / 2)
-            estimation_params["uniform_bands"] = False
+    calendar_se, critical_value, _ = _batched_se(
+        calendar_influence_functions,
+        calendar_att,
+        n_units,
+        estimation_params,
+        bootstrap_iterations,
+        alpha,
+        random_state,
+    )
 
     # Overall ATT: simple average across time periods
     overall_att = np.nanmean(calendar_att)
@@ -975,6 +894,98 @@ def _compute_se(
         standard_error = np.nan
 
     return standard_error
+
+
+def _batched_se(inf_func_mat, att_vec, n_units, estimation_params, biters, alpha, random_state):
+    """Compute per-column SEs and critical value in a single bootstrap pass.
+
+    Parameters
+    ----------
+    inf_func_mat : ndarray
+        Influence function matrix of shape (n_units, n_cols).
+    att_vec : ndarray
+        ATT estimates, length n_cols. Columns with NaN ATT are skipped.
+    n_units : int
+        Number of cross-sectional units.
+    estimation_params : dict
+        Estimation parameters (bootstrap, uniform_bands, ...).
+    biters : int
+        Number of bootstrap iterations.
+    alpha : float
+        Significance level.
+    random_state : int, Generator, or None
+        Controls bootstrap randomness.
+
+    Returns
+    -------
+    se : ndarray
+        Standard errors, length n_cols (NaN where ATT is NaN).
+    critical_value : float
+        Critical value for confidence bands.
+    bres : ndarray or None
+        Bootstrap results matrix, or None if analytical SEs used.
+    """
+    n_cols = inf_func_mat.shape[1]
+    eps_thresh = np.sqrt(np.finfo(float).eps) * 10
+
+    nan_mask = np.isnan(att_vec)
+    valid_cols = ~nan_mask
+    se = np.full(n_cols, np.nan)
+
+    if not valid_cols.any():
+        return se, _get_z_critical(alpha / 2), None
+
+    valid_inf = inf_func_mat[:, valid_cols]
+    use_bootstrap = estimation_params.get("bootstrap", False)
+    use_uniform = estimation_params.get("uniform_bands", False)
+    bres = None
+
+    if not use_bootstrap:
+        se_valid = np.sqrt(np.mean(valid_inf**2, axis=0) / n_units)
+        se_valid = np.where(se_valid <= eps_thresh, np.nan, se_valid)
+        se[valid_cols] = se_valid
+    else:
+        mboot_result = mboot(
+            inf_func=valid_inf,
+            n_units=n_units,
+            biters=biters,
+            alp=alpha,
+            random_state=random_state,
+        )
+        se_valid = mboot_result["se"]
+        se_valid = np.where((~np.isnan(se_valid)) & (se_valid <= eps_thresh), np.nan, se_valid)
+        se[valid_cols] = se_valid
+        bres = mboot_result["bres"]
+
+    critical_value = _get_z_critical(alpha / 2)
+    if use_uniform:
+        if not use_bootstrap:
+            warnings.warn("Used bootstrap procedure to compute simultaneous confidence band")
+
+        if use_bootstrap:
+            cv = mboot_result["crit_val"]
+        else:
+            band_result = mboot(
+                inf_func=valid_inf,
+                n_units=n_units,
+                biters=biters,
+                alp=alpha,
+                random_state=random_state,
+            )
+            cv = band_result["crit_val"]
+            bres = band_result["bres"]
+
+        if np.isfinite(cv):
+            critical_value = cv
+        else:
+            warnings.warn(
+                "Simultaneous critical value is NA. This probably happened because "
+                "we cannot compute t-statistic (std errors are NA). "
+                "We then report pointwise conf. intervals."
+            )
+            estimation_params["uniform_bands"] = False
+
+    return se, critical_value, bres
 
 
 def _get_z_critical(alpha):
