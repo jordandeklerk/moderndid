@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 import pandas as pd
 from pyspark.sql import functions as F
@@ -15,6 +13,7 @@ from moderndid.distributed._did_partition import (
     _build_did_partition_arrays,
     _build_did_partition_arrays_wide,  # noqa: F401
     _build_did_rc_partition_arrays,
+    _finalize_global_stats,
     _partition_compute_did_if,
     _partition_compute_did_rc_if,
     _partition_compute_did_rc_reg_if,
@@ -820,51 +819,4 @@ def streaming_did_global_stats(spark, part_data_list, ps_beta, or_beta, est_meth
     for s in stats_list:
         agg = sum_global_stats(agg, s)
 
-    if agg is None or agg["n_sub"] == 0:
-        return None, None, None, None
-
-    n_sub = agg["n_sub"]
-    mean_w_treat = agg["sum_w_treat"] / n_sub
-    mean_w_control = agg["sum_w_control"] / n_sub
-    att_treat = (agg["sum_riesz_treat"] / n_sub) / mean_w_treat if mean_w_treat > 0 else 0.0
-    att_control = (agg["sum_riesz_control"] / n_sub) / mean_w_control if mean_w_control > 0 else 0.0
-
-    agg_result = {
-        "mean_w_treat": mean_w_treat,
-        "mean_w_control": mean_w_control,
-        "att_treat": att_treat,
-        "att_control": att_control,
-        "dr_att": att_treat - att_control,
-        "n_sub": n_sub,
-    }
-
-    m2 = (agg["sum_wc_dy_or_X"] - att_control * agg["sum_wc_X"]) / n_sub
-
-    if est_method != "reg":
-        info_gram = agg["info_gram"]
-        hessian = np.linalg.inv(info_gram) * n_sub
-        hm2 = hessian @ m2
-    else:
-        hm2 = np.zeros_like(m2)
-
-    if est_method != "ipw":
-        m1 = agg["sum_wt_X"] / n_sub
-        m3 = agg["sum_wc_X"] / n_sub
-        xpx = agg["or_xpx"] / n_sub
-
-        s = np.linalg.svd(xpx, compute_uv=False)
-        cond_num = s[0] / s[-1] if s[-1] > 0 else float("inf")
-        if cond_num > 1 / np.finfo(float).eps:
-            warnings.warn("Outcome regression design matrix is nearly singular.", UserWarning)
-            xpx_inv = np.linalg.pinv(xpx)
-        else:
-            xpx_inv = np.linalg.solve(xpx, np.eye(xpx.shape[0]))
-
-        xim1 = xpx_inv @ m1
-        xim3 = xpx_inv @ m3
-    else:
-        k_dim = len(m2)
-        xim1 = np.zeros(k_dim, dtype=np.float64)
-        xim3 = np.zeros(k_dim, dtype=np.float64)
-
-    return agg_result, hm2, xim1, xim3
+    return _finalize_global_stats(agg, est_method)

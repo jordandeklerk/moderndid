@@ -689,6 +689,92 @@ def _partition_compute_ddd_rc_if(
     return ids, to_numpy(ddd_if)
 
 
+def _build_ddd_ps_gram_from_wide(pdf, g, id_col, group_col, partition_col, covariate_cols, weightsname, comp_sg, beta):
+    """IRLS Gram from a wide-pivot pandas batch for DDD PS logistic regression."""
+    base = _build_ddd_base_partition(pdf, id_col, group_col, partition_col, g, covariate_cols, weightsname)
+    if base is None:
+        return None
+    return _partition_pscore_gram(base, comp_sg, beta)
+
+
+def _build_ddd_or_gram_from_wide(
+    pdf, g, id_col, group_col, partition_col, covariate_cols, weightsname, comp_sg, y_post_col, y_pre_col
+):
+    """WLS Gram from a wide-pivot pandas batch for DDD outcome regression."""
+    base = _build_ddd_base_partition(pdf, id_col, group_col, partition_col, g, covariate_cols, weightsname)
+    if base is None:
+        return None
+    cell = _attach_ddd_cell_outcomes(base, pdf, y_post_col, y_pre_col)
+    return _partition_or_gram(cell, comp_sg)
+
+
+def _build_ddd_global_stats_from_wide(
+    pdf,
+    g,
+    id_col,
+    group_col,
+    partition_col,
+    covariate_cols,
+    weightsname,
+    comp_sg,
+    ps_beta,
+    or_beta,
+    est_method,
+    trim_level,
+    y_post_col,
+    y_pre_col,
+):
+    """Global stats from a wide-pivot pandas batch for one DDD comparison."""
+    base = _build_ddd_base_partition(pdf, id_col, group_col, partition_col, g, covariate_cols, weightsname)
+    if base is None:
+        return None
+    cell = _attach_ddd_cell_outcomes(base, pdf, y_post_col, y_pre_col)
+    return _partition_global_stats(cell, comp_sg, ps_beta, or_beta, est_method, trim_level)
+
+
+def _build_ddd_if_from_wide(
+    pdf,
+    g,
+    id_col,
+    group_col,
+    partition_col,
+    covariate_cols,
+    weightsname,
+    ps_betas,
+    or_betas,
+    global_agg,
+    est_method,
+    trim_level,
+    w3,
+    w2,
+    w1,
+    precomp_hess_m2,
+    precomp_xpx_inv_m1,
+    precomp_xpx_inv_m3,
+    y_post_col,
+    y_pre_col,
+):
+    """DDD influence function values from a wide-pivot pandas batch."""
+    base = _build_ddd_base_partition(pdf, id_col, group_col, partition_col, g, covariate_cols, weightsname)
+    if base is None:
+        return None
+    cell = _attach_ddd_cell_outcomes(base, pdf, y_post_col, y_pre_col)
+    return _partition_compute_ddd_if(
+        cell,
+        ps_betas,
+        or_betas,
+        global_agg,
+        est_method,
+        trim_level,
+        w3,
+        w2,
+        w1,
+        precomp_hess_m2,
+        precomp_xpx_inv_m1,
+        precomp_xpx_inv_m3,
+    )
+
+
 def _build_rc_global_agg(agg, n_sub):
     """Build global aggregation dict from raw sums."""
     mw = {}

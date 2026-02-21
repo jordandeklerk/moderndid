@@ -144,6 +144,127 @@ def distributed_wls_from_partitions(spark, part_data_list, gram_fn):
     return wls_from_partition_list(part_data_list, gram_fn)
 
 
+def distributed_wls_spark_df(spark, cached_df, build_fn, build_args):
+    r"""Distributed weighted least squares using Spark DataFrame ``mapInPandas``.
+
+    Each worker applies ``build_fn`` to its pandas partition to compute
+    local :math:`X^T W X` and :math:`X^T W y`; results are collected to
+    the driver and summed, then normal equations are solved.
+
+    Parameters
+    ----------
+    spark : pyspark.sql.SparkSession
+        Active Spark session.
+    cached_df : pyspark.sql.DataFrame
+        Cached Spark DataFrame.
+    build_fn : callable
+        Function ``(pandas_df, *build_args) -> (XtWX, XtWy, n)`` or ``None``.
+    build_args : tuple
+        Additional arguments for ``build_fn``.
+
+    Returns
+    -------
+    beta : ndarray of shape (k,)
+        Coefficient vector.
+    """
+    out_schema = StructType([StructField("gram_bytes", BinaryType(), False)])
+
+    def _wls_udf(iterator, _build_fn=build_fn, _build_args=build_args):
+        for pdf in iterator:
+            if len(pdf) == 0:
+                continue
+            gram_tuple = _build_fn(pdf, *_build_args)
+            if gram_tuple is not None:
+                yield pd.DataFrame({"gram_bytes": [pickle.dumps(gram_tuple)]})
+
+    rows = cached_df.mapInPandas(_wls_udf, schema=out_schema).collect()
+    gram_list = [pickle.loads(row["gram_bytes"]) for row in rows]
+    result = _reduce_gram_list(gram_list)
+    if result is None:
+        raise ValueError("No data available for WLS regression.")
+    XtWX, XtWy, _ = result
+    return solve_gram(XtWX, XtWy)
+
+
+def distributed_aggregate_spark_df(spark, cached_df, build_fn, build_args, reduce_fn):
+    r"""Aggregate partition statistics using Spark DataFrame ``mapInPandas``.
+
+    Each worker applies ``build_fn`` to produce a partial result dict;
+    partial results are collected and combined via ``reduce_fn``.
+
+    Parameters
+    ----------
+    spark : pyspark.sql.SparkSession
+        Active Spark session.
+    cached_df : pyspark.sql.DataFrame
+        Cached Spark DataFrame.
+    build_fn : callable
+        Function ``(pandas_df, *build_args) -> dict`` or ``None``.
+    build_args : tuple
+        Additional arguments for ``build_fn``.
+    reduce_fn : callable
+        Function ``(a, b) -> dict`` for pairwise reduction.
+
+    Returns
+    -------
+    dict or None
+        Aggregated result.
+    """
+    out_schema = StructType([StructField("result_bytes", BinaryType(), False)])
+
+    def _agg_udf(iterator, _build_fn=build_fn, _build_args=build_args):
+        for pdf in iterator:
+            if len(pdf) == 0:
+                continue
+            result = _build_fn(pdf, *_build_args)
+            if result is not None:
+                yield pd.DataFrame({"result_bytes": [pickle.dumps(result)]})
+
+    rows = cached_df.mapInPandas(_agg_udf, schema=out_schema).collect()
+    agg = None
+    for row in rows:
+        agg = reduce_fn(agg, pickle.loads(row["result_bytes"]))
+    return agg
+
+
+def distributed_collect_if_spark_df(spark, cached_df, build_fn, build_args):
+    r"""Stream influence function values from workers via ``toLocalIterator``.
+
+    Each worker applies ``build_fn`` to its partition to produce
+    ``(ids, if_values)`` tuples. Results are streamed one partition
+    at a time to avoid collecting all IF data at once.
+
+    Parameters
+    ----------
+    spark : pyspark.sql.SparkSession
+        Active Spark session.
+    cached_df : pyspark.sql.DataFrame
+        Cached Spark DataFrame.
+    build_fn : callable
+        Function ``(pandas_df, *build_args) -> (ids, if_values)`` or ``None``.
+    build_args : tuple
+        Additional arguments for ``build_fn``.
+
+    Yields
+    ------
+    tuple of (ndarray, ndarray)
+        ``(ids, if_values)`` per partition.
+    """
+    out_schema = StructType([StructField("result_bytes", BinaryType(), False)])
+
+    def _collect_udf(iterator, _build_fn=build_fn, _build_args=build_args):
+        for pdf in iterator:
+            if len(pdf) == 0:
+                continue
+            result = _build_fn(pdf, *_build_args)
+            if result is not None:
+                yield pd.DataFrame({"result_bytes": [pickle.dumps(result)]})
+
+    result_df = cached_df.mapInPandas(_collect_udf, schema=out_schema)
+    for row in result_df.toLocalIterator(prefetchPartitions=True):
+        yield pickle.loads(row["result_bytes"])
+
+
 def distributed_logistic_irls_spark_df(spark, cached_df, build_fn, build_args, k, max_iter=25, tol=1e-8):
     r"""Distributed logistic IRLS using Spark DataFrame ``mapInPandas``.
 

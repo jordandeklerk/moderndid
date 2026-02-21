@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 
 import numpy as np
@@ -26,7 +25,7 @@ from moderndid.distributed._ddd_partition import (
     _partition_or_gram,
     _partition_pscore_gram,
 )
-from moderndid.distributed._did_partition import _precompute_did_rc_corrections
+from moderndid.distributed._did_partition import _finalize_global_stats, _precompute_did_rc_corrections
 
 from ._gpu import _maybe_to_gpu
 from ._gram import tree_reduce
@@ -1110,54 +1109,7 @@ def streaming_global_stats(client, part_futures, ps_betas, or_betas, est_method,
         ]
 
         agg = tree_reduce(client, futures, sum_global_stats)
-
-        if agg is None or agg["n_sub"] == 0:
-            return comp_sg, None, None, None, None
-
-        n_sub = agg["n_sub"]
-        mean_w_treat = agg["sum_w_treat"] / n_sub
-        mean_w_control = agg["sum_w_control"] / n_sub
-        att_treat = (agg["sum_riesz_treat"] / n_sub) / mean_w_treat if mean_w_treat > 0 else 0.0
-        att_control = (agg["sum_riesz_control"] / n_sub) / mean_w_control if mean_w_control > 0 else 0.0
-
-        agg_result = {
-            "mean_w_treat": mean_w_treat,
-            "mean_w_control": mean_w_control,
-            "att_treat": att_treat,
-            "att_control": att_control,
-            "dr_att": att_treat - att_control,
-            "n_sub": n_sub,
-        }
-
-        m2 = (agg["sum_wc_dy_or_X"] - att_control * agg["sum_wc_X"]) / n_sub
-
-        if est_method != "reg":
-            info_gram = agg["info_gram"]
-            hessian = np.linalg.inv(info_gram) * n_sub
-            hm2 = hessian @ m2
-        else:
-            hm2 = np.zeros_like(m2)
-
-        if est_method != "ipw":
-            m1 = agg["sum_wt_X"] / n_sub
-            m3 = agg["sum_wc_X"] / n_sub
-            xpx = agg["or_xpx"] / n_sub
-
-            s = np.linalg.svd(xpx, compute_uv=False)
-            cond_num = s[0] / s[-1] if s[-1] > 0 else float("inf")
-            if cond_num > 1 / np.finfo(float).eps:
-                warnings.warn("Outcome regression design matrix is nearly singular.", UserWarning)
-                xpx_inv = np.linalg.pinv(xpx)
-            else:
-                xpx_inv = np.linalg.solve(xpx, np.eye(xpx.shape[0]))
-
-            xim1 = xpx_inv @ m1
-            xim3 = xpx_inv @ m3
-        else:
-            k_dim = len(m2)
-            xim1 = np.zeros(k_dim, dtype=np.float64)
-            xim3 = np.zeros(k_dim, dtype=np.float64)
-
+        agg_result, hm2, xim1, xim3 = _finalize_global_stats(agg, est_method)
         return comp_sg, agg_result, hm2, xim1, xim3
 
     with _ThreadPoolExecutor(max_workers=3) as pool:

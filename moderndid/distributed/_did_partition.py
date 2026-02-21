@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from moderndid.cupy.backend import _array_module, to_numpy
@@ -936,3 +938,145 @@ def _partition_compute_did_rc_if(
     att_inf_func = (inf_treat - inf_cont) + inf_eff + inf_or
 
     return ids, to_numpy(att_inf_func)
+
+
+def _finalize_global_stats(agg, est_method):
+    """Convert summed partition stats into global means and precomputed vectors.
+
+    Takes the output of ``sum_global_stats`` (element-wise sums of
+    per-partition dicts) and produces the global ATT components plus the
+    inverse-Hessian and Gram-inverse products needed by the influence
+    function.
+
+    Parameters
+    ----------
+    agg : dict
+        Aggregated sufficient statistics from ``sum_global_stats``.
+    est_method : {"dr", "reg", "ipw"}
+        Estimation method.
+
+    Returns
+    -------
+    global_agg : dict or None
+        Aggregate statistics including ``mean_w_treat``, ``mean_w_control``,
+        ``att_treat``, ``att_control``, ``dr_att``, and ``n_sub``.
+    hm2 : ndarray of shape (k,) or None
+        Precomputed :math:`H^{-1} m_2` vector for PS correction.
+    xim1 : ndarray of shape (k,) or None
+        Precomputed :math:`(X^T X)^{-1} m_1` for OR correction (treated).
+    xim3 : ndarray of shape (k,) or None
+        Precomputed :math:`(X^T X)^{-1} m_3` for OR correction (control).
+    """
+    if agg is None or agg["n_sub"] == 0:
+        return None, None, None, None
+
+    n_sub = agg["n_sub"]
+    mean_w_treat = agg["sum_w_treat"] / n_sub
+    mean_w_control = agg["sum_w_control"] / n_sub
+    att_treat = (agg["sum_riesz_treat"] / n_sub) / mean_w_treat if mean_w_treat > 0 else 0.0
+    att_control = (agg["sum_riesz_control"] / n_sub) / mean_w_control if mean_w_control > 0 else 0.0
+
+    agg_result = {
+        "mean_w_treat": mean_w_treat,
+        "mean_w_control": mean_w_control,
+        "att_treat": att_treat,
+        "att_control": att_control,
+        "dr_att": att_treat - att_control,
+        "n_sub": n_sub,
+    }
+
+    m2 = (agg["sum_wc_dy_or_X"] - att_control * agg["sum_wc_X"]) / n_sub
+
+    if est_method != "reg":
+        info_gram = agg["info_gram"]
+        hessian = np.linalg.inv(info_gram) * n_sub
+        hm2 = hessian @ m2
+    else:
+        hm2 = np.zeros_like(m2)
+
+    if est_method != "ipw":
+        m1 = agg["sum_wt_X"] / n_sub
+        m3 = agg["sum_wc_X"] / n_sub
+        xpx = agg["or_xpx"] / n_sub
+
+        s = np.linalg.svd(xpx, compute_uv=False)
+        cond_num = s[0] / s[-1] if s[-1] > 0 else float("inf")
+        if cond_num > 1 / np.finfo(float).eps:
+            warnings.warn("Outcome regression design matrix is nearly singular.", UserWarning)
+            xpx_inv = np.linalg.pinv(xpx)
+        else:
+            xpx_inv = np.linalg.solve(xpx, np.eye(xpx.shape[0]))
+
+        xim1 = xpx_inv @ m1
+        xim3 = xpx_inv @ m3
+    else:
+        k_dim = len(m2)
+        xim1 = np.zeros(k_dim, dtype=np.float64)
+        xim3 = np.zeros(k_dim, dtype=np.float64)
+
+    return agg_result, hm2, xim1, xim3
+
+
+def _build_did_ps_gram_from_wide(pdf, g, id_col, group_col, covariate_cols, weightsname, beta):
+    """IRLS Gram from a wide-pivot pandas batch for PS logistic regression."""
+    base = _build_did_base_partition(pdf, id_col, group_col, g, covariate_cols, weightsname)
+    if base is None:
+        return None
+    return _partition_did_pscore_gram(base, beta)
+
+
+def _build_did_or_gram_from_wide(pdf, g, id_col, group_col, covariate_cols, weightsname, y_post_col, y_pre_col):
+    """WLS Gram from a wide-pivot pandas batch for outcome regression."""
+    base = _build_did_base_partition(pdf, id_col, group_col, g, covariate_cols, weightsname)
+    if base is None:
+        return None
+    cell = _attach_cell_outcomes(base, pdf, y_post_col, y_pre_col)
+    return _partition_did_or_gram(cell)
+
+
+def _build_did_global_stats_from_wide(
+    pdf,
+    g,
+    id_col,
+    group_col,
+    covariate_cols,
+    weightsname,
+    ps_beta,
+    or_beta,
+    est_method,
+    trim_level,
+    y_post_col,
+    y_pre_col,
+):
+    """Global stats from a wide-pivot pandas batch."""
+    base = _build_did_base_partition(pdf, id_col, group_col, g, covariate_cols, weightsname)
+    if base is None:
+        return None
+    cell = _attach_cell_outcomes(base, pdf, y_post_col, y_pre_col)
+    return _partition_did_global_stats(cell, ps_beta, or_beta, est_method, trim_level)
+
+
+def _build_did_if_from_wide(
+    pdf,
+    g,
+    id_col,
+    group_col,
+    covariate_cols,
+    weightsname,
+    ps_beta,
+    or_beta,
+    global_agg,
+    est_method,
+    trim_level,
+    hm2,
+    xim1,
+    xim3,
+    y_post_col,
+    y_pre_col,
+):
+    """Influence function values from a wide-pivot pandas batch."""
+    base = _build_did_base_partition(pdf, id_col, group_col, g, covariate_cols, weightsname)
+    if base is None:
+        return None
+    cell = _attach_cell_outcomes(base, pdf, y_post_col, y_pre_col)
+    return _partition_compute_did_if(cell, ps_beta, or_beta, global_agg, est_method, trim_level, hm2, xim1, xim3)
