@@ -6,6 +6,8 @@ import numpy as np
 
 from moderndid.cupy.backend import _array_module, to_numpy
 
+from ._gram import weighted_gram
+
 
 def _build_partition_arrays(merged_pdf, id_col, y_col, group_col, partition_col, g, covariate_cols, weightsname=None):
     """Convert one merged pandas partition to numpy arrays."""
@@ -89,6 +91,60 @@ def _build_partition_arrays_wide(
     }
 
 
+def _build_ddd_base_partition(wide_pdf, id_col, group_col, partition_col, g, covariate_cols, weightsname=None):
+    """Build partition dict with cohort-constant arrays (no y1/y0).
+
+    Extracts only the arrays that are invariant across cells within a
+    cohort: ids, subgroup, X, weights, groups_raw, parts_raw.
+    """
+    if len(wide_pdf) == 0:
+        return None
+
+    ids = wide_pdf[id_col].values
+    groups = wide_pdf[group_col].values
+    parts = wide_pdf[partition_col].values
+
+    treat = (groups == g).astype(np.int64)
+    part = parts.astype(np.int64)
+    subgroup = 4 * treat * part + 3 * treat * (1 - part) + 2 * (1 - treat) * part + 1 * (1 - treat) * (1 - part)
+
+    n = len(ids)
+    if covariate_cols:
+        cov = wide_pdf[covariate_cols].values.astype(np.float64)
+        X = np.hstack([np.ones((n, 1), dtype=np.float64), cov])
+    else:
+        X = np.ones((n, 1), dtype=np.float64)
+
+    if weightsname is not None and weightsname in wide_pdf.columns:
+        weights = wide_pdf[weightsname].values.astype(np.float64)
+    else:
+        weights = np.ones(n, dtype=np.float64)
+
+    return {
+        "ids": ids,
+        "subgroup": subgroup,
+        "X": X,
+        "n": n,
+        "groups_raw": groups,
+        "parts_raw": parts,
+        "weights": weights,
+    }
+
+
+def _attach_ddd_cell_outcomes(base_dict, wide_pdf, y_post_col, y_pre_col, use_gpu=False):
+    """Create per-cell dict by merging base with y1/y0 from the wide pivot."""
+    y1 = wide_pdf[y_post_col].values.astype(np.float64)
+    y0 = wide_pdf[y_pre_col].values.astype(np.float64)
+    if use_gpu:
+        try:
+            import cupy as cp
+
+            y1, y0 = cp.asarray(y1), cp.asarray(y0)
+        except ImportError:
+            pass
+    return {**base_dict, "y1": y1, "y0": y0}
+
+
 def _filter_partition_for_ctrl(part_data, g, ctrl):
     """Filter partition arrays to keep only the treated cohort and one control."""
     if part_data is None:
@@ -138,8 +194,8 @@ def _partition_pscore_gram(part_data, comp_sg, beta):
     mu = xp.clip(mu, 1e-10, 1 - 1e-10)
     W_irls = w * mu * (1 - mu)
     z = eta + (pa4 - mu) / (mu * (1 - mu))
-    XtW = X.T * W_irls
-    return to_numpy(XtW @ X), to_numpy(XtW @ z), int(xp.sum(mask))
+    XtWX, XtWz = weighted_gram(X, W_irls, z)
+    return XtWX, XtWz, int(xp.sum(mask))
 
 
 def _partition_or_gram(part_data, comp_sg):
@@ -155,8 +211,8 @@ def _partition_or_gram(part_data, comp_sg):
     X = part_data["X"][mask]
     delta_y = (part_data["y1"] - part_data["y0"])[mask]
     W = part_data["weights"][mask]
-    XtW = X.T * W
-    return to_numpy(XtW @ X), to_numpy(XtW @ delta_y), int(xp.sum(mask))
+    XtWX, XtWy = weighted_gram(X, W, delta_y)
+    return XtWX, XtWy, int(xp.sum(mask))
 
 
 def _partition_global_stats(part_data, comp_sg, ps_beta, or_beta, est_method, trim_level):
@@ -218,13 +274,14 @@ def _partition_global_stats(part_data, comp_sg, ps_beta, or_beta, est_method, tr
     result["sum_wc_att_part"] = float(xp.sum(w_control))
 
     or_x_weights = pa_comp * obs_w
-    result["sum_or_x_X"] = float(xp.sum((or_x_weights[:, None] * X).T @ X))
-    result["or_xpx"] = to_numpy((or_x_weights[:, None] * X).T @ X)
+    or_xpx = weighted_gram(X, or_x_weights)
+    result["sum_or_x_X"] = float(np.sum(or_xpx))
+    result["or_xpx"] = or_xpx
     result["sum_or_ex"] = to_numpy(xp.sum((or_x_weights * (delta_y - or_delta))[:, None] * X, axis=0))
 
     if est_method != "reg":
         W_info = obs_w * pscore * (1 - pscore)
-        result["info_gram"] = to_numpy((W_info[:, None] * X).T @ X)
+        result["info_gram"] = weighted_gram(X, W_info)
         result["sum_score_ps"] = None
     else:
         result["info_gram"] = np.zeros((k, k), dtype=np.float64)
@@ -437,8 +494,8 @@ def _partition_ddd_rc_pscore_gram(part_data, comp_sg, beta):
     mu = xp.clip(mu, 1e-10, 1 - 1e-10)
     W_irls = w * mu * (1 - mu)
     z = eta + (pa4 - mu) / (mu * (1 - mu))
-    XtW = X.T * W_irls
-    return to_numpy(XtW @ X), to_numpy(XtW @ z), int(xp.sum(mask))
+    XtWX, XtWz = weighted_gram(X, W_irls, z)
+    return XtWX, XtWz, int(xp.sum(mask))
 
 
 def _partition_ddd_rc_or_gram(part_data, comp_sg, d_val, post_val):
@@ -458,8 +515,8 @@ def _partition_ddd_rc_or_gram(part_data, comp_sg, d_val, post_val):
     X = part_data["X"][cell_mask]
     y = part_data["y"][cell_mask]
     W = part_data["weights"][cell_mask]
-    XtW = X.T * W
-    return to_numpy(XtW @ X), to_numpy(XtW @ y), int(xp.sum(cell_mask))
+    XtWX, XtWy = weighted_gram(X, W, y)
+    return XtWX, XtWy, int(xp.sum(cell_mask))
 
 
 def _partition_ddd_rc_global_stats(part_data, comp_sg, ps_beta, or_betas, est_method, trim_level):
@@ -549,11 +606,11 @@ def _partition_ddd_rc_global_stats(part_data, comp_sg, ps_beta, or_betas, est_me
         cell_mask = (d_val == D) & (post == post_val)
         cell_w = obs_w[cell_mask]
         cell_X = X[cell_mask]
-        result[key_prefix] = to_numpy((cell_w[:, None] * cell_X).T @ cell_X)
+        result[key_prefix] = weighted_gram(cell_X, cell_w)
 
     if est_method != "reg":
         W_info = obs_w * pscore * (1 - pscore)
-        result["info_gram"] = to_numpy((W_info[:, None] * X).T @ X)
+        result["info_gram"] = weighted_gram(X, W_info)
     else:
         result["info_gram"] = np.zeros((k, k), dtype=np.float64)
 

@@ -11,6 +11,8 @@ from pyspark.sql import functions as F
 
 from moderndid.didtriple.estimators.ddd_mp import _gmm_aggregate
 from moderndid.distributed._ddd_partition import (
+    _attach_ddd_cell_outcomes,  # noqa: F401
+    _build_ddd_base_partition,  # noqa: F401
     _build_ddd_rc_partition_arrays,
     _build_partition_arrays,
     _build_partition_arrays_wide,  # noqa: F401
@@ -57,6 +59,7 @@ def streaming_cell_single_control(
     n_cell_override=None,
     weightsname=None,
     use_gpu=False,
+    pscores=None,
 ):
     r"""Streaming DDD computation for one :math:`(g, t)` cell with a single control group.
 
@@ -165,7 +168,20 @@ def streaming_cell_single_control(
         return None
     k = first["X"].shape[1]
 
-    ps_betas, or_betas = streaming_nuisance_coefficients(spark, part_data_list, est_method, k)
+    if pscores is not None:
+        ps_betas = pscores
+        or_betas = {}
+        for comp_sg in [3, 2, 1]:
+            if est_method == "ipw":
+                or_betas[comp_sg] = np.zeros(k, dtype=np.float64)
+            else:
+                or_betas[comp_sg] = distributed_wls_from_partitions(
+                    spark,
+                    part_data_list,
+                    lambda pd, _cs=comp_sg: _partition_or_gram(pd, _cs),
+                )
+    else:
+        ps_betas, or_betas = streaming_nuisance_coefficients(spark, part_data_list, est_method, k)
 
     global_agg, precomp_hess_m2, precomp_xpx_inv_m1, precomp_xpx_inv_m3 = streaming_global_stats(
         spark,

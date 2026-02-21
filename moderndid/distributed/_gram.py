@@ -4,7 +4,62 @@ from __future__ import annotations
 
 import numpy as np
 
-from moderndid.cupy.backend import to_numpy
+from moderndid.cupy.backend import _array_module, to_numpy
+
+
+def weighted_gram(X, w, z=None, block_size=128):
+    r"""Memory-efficient :math:`X^T \mathrm{diag}(w) X` with optional :math:`X^T \mathrm{diag}(w) z`.
+
+    For :math:`k \le` ``block_size``, uses direct computation.
+    For :math:`k >` ``block_size``, tiles the k dimension in blocks
+    to reduce peak intermediate memory from :math:`O(k \times n)` to
+    :math:`O(\text{block\_size} \times n)`.
+
+    Parameters
+    ----------
+    X : ndarray of shape (n, k)
+        Design matrix.
+    w : ndarray of shape (n,)
+        Weight vector.
+    z : ndarray of shape (n,) or None, default None
+        Optional right-hand side vector.
+    block_size : int, default 128
+        Block size for tiling the k dimension.
+
+    Returns
+    -------
+    gram : ndarray of shape (k, k)
+        Weighted Gram matrix (NumPy).
+    rhs : ndarray of shape (k,) or None
+        Weighted right-hand side (NumPy), returned only when ``z`` is not None.
+        When ``z`` is None, only ``gram`` is returned (not a tuple).
+    """
+    xp = _array_module(X)
+    k = X.shape[1]
+
+    if k <= block_size:
+        XtW = X.T * w
+        gram = XtW @ X
+        if z is not None:
+            return to_numpy(gram), to_numpy(XtW @ z)
+        return to_numpy(gram)
+
+    gram = xp.zeros((k, k), dtype=X.dtype)
+    rhs = xp.zeros(k, dtype=X.dtype) if z is not None else None
+    for i in range(0, k, block_size):
+        bi = min(block_size, k - i)
+        XtWi = X[:, i : i + bi].T * w  # (bi, n)
+        if z is not None:
+            rhs[i : i + bi] = XtWi @ z
+        for j in range(i, k, block_size):
+            bj = min(block_size, k - j)
+            gram[i : i + bi, j : j + bj] = XtWi @ X[:, j : j + bj]
+            if i != j:
+                gram[j : j + bj, i : i + bi] = gram[i : i + bi, j : j + bj].T
+
+    if rhs is not None:
+        return to_numpy(gram), to_numpy(rhs)
+    return to_numpy(gram)
 
 
 def partition_gram(X, W, y):
@@ -28,8 +83,8 @@ def partition_gram(X, W, y):
     n : int
         Number of observations in this partition.
     """
-    XtW = X.T * W  # (k, n_local)
-    return to_numpy(XtW @ X), to_numpy(XtW @ y), len(y)
+    XtWX, XtWy = weighted_gram(X, W, y)
+    return XtWX, XtWy, len(y)
 
 
 def solve_gram(XtWX, XtWy):

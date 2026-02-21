@@ -19,14 +19,17 @@ from pyspark.sql import functions as F
 from moderndid.core.dataframe import to_polars
 from moderndid.did.multiperiod_obj import mp
 from moderndid.didtriple.estimators.ddd_mp import _gmm_aggregate
+from moderndid.distributed._did_partition import _partition_did_pscore_gram
 
 from ._bootstrap import distributed_mboot_ddd
 from ._did_streaming import (
-    _build_did_partition_arrays_wide,
+    _attach_cell_outcomes,
+    _build_did_base_partition,
     streaming_did_cell_single_control,
     streaming_did_rc_cell_single_control,
 )
 from ._gpu import _maybe_to_gpu_dict
+from ._regression import distributed_logistic_irls_from_partitions
 from ._utils import (
     MEMMAP_THRESHOLD,
     auto_tune_partitions,
@@ -491,6 +494,21 @@ def _process_did_cohort_cells(
                 # Collect partitions to driver as list of pandas DataFrames
                 wide_pdf_list = _collect_partitions(wide_sdf, n_chunks=n_partitions)
 
+                base_parts = [
+                    _build_did_base_partition(pdf, id_col, group_col, g, covariate_cols, weightsname)
+                    for pdf in wide_pdf_list
+                ]
+                if use_gpu:
+                    base_parts = [_maybe_to_gpu_dict(bp, use_gpu) for bp in base_parts]
+
+                k = base_parts[0]["X"].shape[1]
+                if est_method != "reg":
+                    cached_ps_beta = distributed_logistic_irls_from_partitions(
+                        spark, base_parts, _partition_did_pscore_gram, k
+                    )
+                else:
+                    cached_ps_beta = np.zeros(k, dtype=np.float64)
+
                 for counter, g_, t, pret, post_treat, action in cells:
                     if action == "skip":
                         continue
@@ -501,20 +519,11 @@ def _process_did_cohort_cells(
                     y_post_col = f"_y_{t}"
                     y_pre_col = f"_y_{pret}"
 
+                    # Attach per-cell y1/y0 to shared base
                     part_data_list = [
-                        _build_did_partition_arrays_wide(
-                            pdf,
-                            id_col,
-                            group_col,
-                            g_,
-                            covariate_cols,
-                            y_post_col,
-                            y_pre_col,
-                            weightsname,
-                        )
-                        for pdf in wide_pdf_list
+                        _attach_cell_outcomes(base_parts[i], pdf, y_post_col, y_pre_col, use_gpu)
+                        for i, pdf in enumerate(wide_pdf_list)
                     ]
-                    part_data_list = [_maybe_to_gpu_dict(pd, use_gpu) for pd in part_data_list]
 
                     att = streaming_did_cell_single_control(
                         spark,
@@ -537,6 +546,7 @@ def _process_did_cohort_cells(
                         part_data_list=part_data_list,
                         n_cell_override=n_wide,
                         use_gpu=use_gpu,
+                        ps_beta=cached_ps_beta,
                     )
 
                     if att is not None:

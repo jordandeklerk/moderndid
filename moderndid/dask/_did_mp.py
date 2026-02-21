@@ -18,14 +18,17 @@ from distributed import wait
 
 from moderndid.core.dataframe import to_polars
 from moderndid.did.multiperiod_obj import mp
+from moderndid.distributed._did_partition import _partition_did_pscore_gram
 
 from ._bootstrap import distributed_mboot_ddd
 from ._did_streaming import (
-    _build_did_partition_arrays_wide,
+    _attach_cell_outcomes,
+    _build_did_base_partition,
     streaming_did_cell_single_control,
     streaming_did_rc_cell_single_control,
 )
 from ._gpu import _maybe_to_gpu
+from ._regression import distributed_logistic_irls_from_futures
 from ._utils import (
     MEMMAP_THRESHOLD,
     auto_tune_partitions,
@@ -487,6 +490,29 @@ def _process_did_cohort_cells(
                 wide_delayed = wide_dask.to_delayed()
                 wide_pdf_futures = client.compute(wide_delayed)
 
+                base_futures = [
+                    client.submit(
+                        _build_did_base_partition,
+                        pdf_f,
+                        id_col,
+                        group_col,
+                        g,
+                        covariate_cols,
+                        weightsname,
+                    )
+                    for pdf_f in wide_pdf_futures
+                ]
+                base_futures = _maybe_to_gpu(client, base_futures, use_gpu)
+
+                first_base = base_futures[0].result()
+                k = first_base["X"].shape[1]
+                if est_method != "reg":
+                    cached_ps_beta = distributed_logistic_irls_from_futures(
+                        client, base_futures, _partition_did_pscore_gram, k
+                    )
+                else:
+                    cached_ps_beta = np.zeros(k, dtype=np.float64)
+
                 for counter, g_, t, pret, post_treat, action in cells:
                     if action == "skip":
                         continue
@@ -499,19 +525,15 @@ def _process_did_cohort_cells(
 
                     part_futures = [
                         client.submit(
-                            _build_did_partition_arrays_wide,
+                            _attach_cell_outcomes,
+                            bf,
                             pdf_f,
-                            id_col,
-                            group_col,
-                            g_,
-                            covariate_cols,
                             y_post_col,
                             y_pre_col,
-                            weightsname,
+                            use_gpu,
                         )
-                        for pdf_f in wide_pdf_futures
+                        for bf, pdf_f in zip(base_futures, wide_pdf_futures, strict=False)
                     ]
-                    part_futures = _maybe_to_gpu(client, part_futures, use_gpu)
 
                     att = streaming_did_cell_single_control(
                         client,
@@ -534,6 +556,7 @@ def _process_did_cohort_cells(
                         part_futures=part_futures,
                         n_cell_override=n_wide,
                         use_gpu=use_gpu,
+                        ps_beta=cached_ps_beta,
                     )
 
                     if att is not None:

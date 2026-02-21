@@ -8,6 +8,8 @@ import numpy as np
 from distributed import as_completed, wait
 
 from moderndid.distributed._did_partition import (
+    _attach_cell_outcomes,  # noqa: F401
+    _build_did_base_partition,  # noqa: F401
     _build_did_partition_arrays,
     _build_did_partition_arrays_wide,  # noqa: F401
     _build_did_rc_partition_arrays,
@@ -54,6 +56,7 @@ def streaming_did_cell_single_control(
     control_group="nevertreated",
     weightsname=None,
     use_gpu=False,
+    ps_beta=None,
 ):
     r"""Streaming DiD computation for one :math:`(g, t)` cell with a single control group.
 
@@ -148,7 +151,17 @@ def streaming_did_cell_single_control(
         return None
     k = first["X"].shape[1]
 
-    ps_beta, or_beta = streaming_did_nuisance_coefficients(client, part_futures, est_method, k)
+    if ps_beta is not None:
+        if est_method == "ipw":
+            or_beta = np.zeros(k, dtype=np.float64)
+        else:
+            or_beta = distributed_wls_from_futures(
+                client,
+                part_futures,
+                _partition_did_or_gram,
+            )
+    else:
+        ps_beta, or_beta = streaming_did_nuisance_coefficients(client, part_futures, est_method, k)
 
     global_agg, precomp_hess_m2, precomp_xpx_inv_m1, precomp_xpx_inv_m3 = streaming_did_global_stats(
         client,

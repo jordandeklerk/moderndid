@@ -24,17 +24,22 @@ from moderndid.didtriple.estimators.ddd_mp import (
     _get_cell_data,
     _gmm_aggregate,
 )
+from moderndid.distributed._ddd_partition import (
+    _attach_ddd_cell_outcomes,
+    _build_ddd_base_partition,
+    _partition_pscore_gram,
+)
 
 from ._bootstrap import distributed_mboot_ddd
 from ._ddd_panel import spark_ddd_panel
 from ._ddd_streaming import (
-    _build_partition_arrays_wide,
     streaming_cell_multi_control,
     streaming_cell_single_control,
     streaming_ddd_rc_cell_multi_control,
     streaming_ddd_rc_cell_single_control,
 )
 from ._gpu import _maybe_to_gpu_dict
+from ._regression import distributed_logistic_irls_from_partitions
 from ._utils import (
     MEMMAP_THRESHOLD,
     auto_tune_partitions,
@@ -498,6 +503,32 @@ def _process_cohort_cells(
                     wide_pdf_parts.iloc[i : i + chunk_size] for i in range(0, len(wide_pdf_parts), chunk_size)
                 ]
 
+                valid_pairs = []
+                for chunk in wide_pdf_chunks:
+                    bp = _build_ddd_base_partition(
+                        chunk, id_col, group_col, partition_col, g, covariate_cols, weightsname
+                    )
+                    if bp is not None:
+                        valid_pairs.append((bp, chunk))
+                base_parts = [p[0] for p in valid_pairs]
+                valid_chunks = [p[1] for p in valid_pairs]
+                if use_gpu:
+                    base_parts = [_maybe_to_gpu_dict(bp, use_gpu) for bp in base_parts]
+
+                k = base_parts[0]["X"].shape[1]
+                cached_pscores = {}
+                if est_method != "reg":
+                    for comp_sg in [3, 2, 1]:
+                        cached_pscores[comp_sg] = distributed_logistic_irls_from_partitions(
+                            spark,
+                            base_parts,
+                            lambda pd, beta, _cs=comp_sg: _partition_pscore_gram(pd, _cs, beta),
+                            k,
+                        )
+                else:
+                    for comp_sg in [3, 2, 1]:
+                        cached_pscores[comp_sg] = np.zeros(k, dtype=np.float64)
+
                 for counter, g_, t, pret, post_treat, action in cells:
                     if action == "skip":
                         continue
@@ -508,22 +539,11 @@ def _process_cohort_cells(
                     y_post_col = f"_y_{t}"
                     y_pre_col = f"_y_{pret}"
 
+                    # Only attach y1/y0 per cell
                     part_data_list = [
-                        _build_partition_arrays_wide(
-                            chunk,
-                            id_col,
-                            group_col,
-                            partition_col,
-                            g_,
-                            covariate_cols,
-                            y_post_col,
-                            y_pre_col,
-                            weightsname,
-                        )
-                        for chunk in wide_pdf_chunks
+                        _attach_ddd_cell_outcomes(bp, chunk, y_post_col, y_pre_col, use_gpu)
+                        for bp, chunk in zip(base_parts, valid_chunks, strict=False)
                     ]
-                    if use_gpu:
-                        part_data_list = [_maybe_to_gpu_dict(pd, use_gpu) for pd in part_data_list]
 
                     att = streaming_cell_single_control(
                         spark,
@@ -547,6 +567,7 @@ def _process_cohort_cells(
                         part_data_list=part_data_list,
                         n_cell_override=n_wide,
                         use_gpu=use_gpu,
+                        pscores=cached_pscores,
                     )
 
                     if att is not None:

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from moderndid.cupy.backend import _array_module, to_numpy
+from moderndid.cupy.backend import _array_module
 
-from ._gram import solve_gram
+from ._gram import solve_gram, weighted_gram
 from ._utils import _reduce_gram_list
 
 
@@ -19,8 +19,8 @@ def _irls_local_stats_with_y(X, weights, y, beta):
     mu = xp.clip(mu, 1e-10, 1 - 1e-10)
     W_irls = weights * mu * (1 - mu)
     z = eta + (y - mu) / (mu * (1 - mu))
-    XtW = X.T * W_irls
-    return to_numpy(XtW @ X), to_numpy(XtW @ z), len(y)
+    XtWX, XtWz = weighted_gram(X, W_irls, z)
+    return XtWX, XtWz, len(y)
 
 
 def _sum_gram_pair_or_none(a, b):

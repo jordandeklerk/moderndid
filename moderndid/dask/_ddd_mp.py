@@ -23,17 +23,22 @@ from moderndid.didtriple.estimators.ddd_mp import (
     _get_cell_data,
     _gmm_aggregate,
 )
+from moderndid.distributed._ddd_partition import (
+    _attach_ddd_cell_outcomes,
+    _build_ddd_base_partition,
+    _partition_pscore_gram,
+)
 
 from ._bootstrap import distributed_mboot_ddd
 from ._ddd_panel import dask_ddd_panel
 from ._ddd_streaming import (
-    _build_partition_arrays_wide,
     streaming_cell_multi_control,
     streaming_cell_single_control,
     streaming_ddd_rc_cell_multi_control,
     streaming_ddd_rc_cell_single_control,
 )
 from ._gpu import _maybe_to_gpu
+from ._regression import distributed_logistic_irls_from_futures
 from ._utils import (
     MEMMAP_THRESHOLD,
     auto_tune_partitions,
@@ -481,6 +486,36 @@ def _process_cohort_cells(
                 wide_delayed = wide_dask.to_delayed()
                 wide_pdf_futures = client.compute(wide_delayed)
 
+                base_futures = [
+                    client.submit(
+                        _build_ddd_base_partition,
+                        pdf_f,
+                        id_col,
+                        group_col,
+                        partition_col,
+                        g,
+                        covariate_cols,
+                        weightsname,
+                    )
+                    for pdf_f in wide_pdf_futures
+                ]
+                base_futures = _maybe_to_gpu(client, base_futures, use_gpu)
+
+                first_base = base_futures[0].result()
+                k = first_base["X"].shape[1]
+                cached_pscores = {}
+                if est_method != "reg":
+                    for comp_sg in [3, 2, 1]:
+                        cached_pscores[comp_sg] = distributed_logistic_irls_from_futures(
+                            client,
+                            base_futures,
+                            lambda pd, beta, _cs=comp_sg: _partition_pscore_gram(pd, _cs, beta),
+                            k,
+                        )
+                else:
+                    for comp_sg in [3, 2, 1]:
+                        cached_pscores[comp_sg] = np.zeros(k, dtype=np.float64)
+
                 for counter, g_, t, pret, post_treat, action in cells:
                     if action == "skip":
                         continue
@@ -493,20 +528,15 @@ def _process_cohort_cells(
 
                     part_futures = [
                         client.submit(
-                            _build_partition_arrays_wide,
+                            _attach_ddd_cell_outcomes,
+                            bf,
                             pdf_f,
-                            id_col,
-                            group_col,
-                            partition_col,
-                            g_,
-                            covariate_cols,
                             y_post_col,
                             y_pre_col,
-                            weightsname,
+                            use_gpu,
                         )
-                        for pdf_f in wide_pdf_futures
+                        for bf, pdf_f in zip(base_futures, wide_pdf_futures, strict=False)
                     ]
-                    part_futures = _maybe_to_gpu(client, part_futures, use_gpu)
 
                     att = streaming_cell_single_control(
                         client,
@@ -530,6 +560,7 @@ def _process_cohort_cells(
                         part_futures=part_futures,
                         n_cell_override=n_wide,
                         use_gpu=use_gpu,
+                        pscores=cached_pscores,
                     )
 
                     if att is not None:

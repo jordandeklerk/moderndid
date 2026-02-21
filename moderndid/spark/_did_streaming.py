@@ -10,6 +10,8 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import IntegerType, StructField, StructType
 
 from moderndid.distributed._did_partition import (
+    _attach_cell_outcomes,  # noqa: F401
+    _build_did_base_partition,  # noqa: F401
     _build_did_partition_arrays,
     _build_did_partition_arrays_wide,  # noqa: F401
     _build_did_rc_partition_arrays,
@@ -85,6 +87,7 @@ def streaming_did_cell_single_control(
     control_group="nevertreated",
     weightsname=None,
     use_gpu=False,
+    ps_beta=None,
 ):
     r"""Streaming DiD computation for one :math:`(g, t)` cell with a single control group.
 
@@ -184,7 +187,17 @@ def streaming_did_cell_single_control(
         return None
     k = first["X"].shape[1]
 
-    ps_beta, or_beta = streaming_did_nuisance_coefficients(spark, part_data_list, est_method, k)
+    if ps_beta is not None:
+        if est_method == "ipw":
+            or_beta = np.zeros(k, dtype=np.float64)
+        else:
+            or_beta = distributed_wls_from_partitions(
+                spark,
+                part_data_list,
+                _partition_did_or_gram,
+            )
+    else:
+        ps_beta, or_beta = streaming_did_nuisance_coefficients(spark, part_data_list, est_method, k)
 
     global_agg, precomp_hess_m2, precomp_xpx_inv_m1, precomp_xpx_inv_m3 = streaming_did_global_stats(
         spark,
@@ -319,7 +332,6 @@ def streaming_did_rc_cell_single_control(
         return None
     k = first["X"].shape[1]
 
-    # Propensity score: P(D=1 | X) on all obs
     if est_method == "reg":
         ps_beta = np.zeros(k, dtype=np.float64)
     else:
