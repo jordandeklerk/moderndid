@@ -152,39 +152,59 @@ def spark_ddd_mp(
     is_spark = isinstance(data, SparkDataFrame)
 
     if is_spark:
-        t_rows = data.select(time_col).distinct().collect()
-        tlist = np.sort(np.array([row[0] for row in t_rows]))
+        agg_exprs = [
+            F.collect_set(time_col).alias("_times"),
+            F.collect_set(group_col).alias("_groups"),
+        ]
+        if panel:
+            agg_exprs.append(F.countDistinct(id_col).alias("_n_units"))
 
-        g_rows = data.select(group_col).distinct().collect()
-        glist_raw = np.array([row[0] for row in g_rows])
+        stats_row = data.agg(*agg_exprs).collect()[0]
+        tlist = np.sort(np.array(stats_row["_times"]))
+        glist_raw = np.array(stats_row["_groups"])
         glist = np.sort(np.array([g for g in glist_raw if g > 0 and np.isfinite(g)]))
 
         if panel:
-            id_rows = data.select(id_col).distinct().collect()
-            unique_ids = np.sort(np.array([row[0] for row in id_rows]))
-            n_units = len(unique_ids)
+            n_units = stats_row["_n_units"]
+            unique_ids = None
         else:
             n_units = data.count()
             unique_ids = None
 
         sdf = data.cache()
-        sdf.count()  # force materialization
 
         if panel and not allow_unbalanced_panel:
-            n_times = len(tlist)
-            unit_counts = sdf.groupBy(id_col).count()
-            complete_units_df = unit_counts.filter(F.col("count") == n_times)
-            complete_ids_rows = complete_units_df.select(id_col).collect()
-            complete_ids = np.sort(np.array([row[0] for row in complete_ids_rows]))
-            n_dropped = n_units - len(complete_ids)
+            unit_counts = sdf.groupBy(id_col).agg(F.count("*").alias("cnt"))
+            balance_stats = unit_counts.agg(
+                F.count("*").alias("n_total"),
+                F.sum(F.when(F.col("cnt") == len(tlist), 1).otherwise(0)).alias("n_complete"),
+            ).collect()[0]
+
+            n_units_total = balance_stats["n_total"]
+            n_complete = balance_stats["n_complete"]
+            n_dropped = n_units_total - n_complete
+
             if n_dropped > 0:
                 warnings.warn(f"Dropped {n_dropped} units while converting to balanced panel")
-                sdf_new = sdf.join(F.broadcast(complete_units_df.select(id_col)), on=id_col, how="leftsemi").cache()
+                complete_ids_sdf = unit_counts.filter(F.col("cnt") == len(tlist)).select(id_col)
+                sdf_new = sdf.join(F.broadcast(complete_ids_sdf), on=id_col, how="leftsemi").cache()
                 sdf_new.count()
                 sdf.unpersist()
                 sdf = sdf_new
-                unique_ids = complete_ids
-                n_units = len(unique_ids)
+                n_units = n_complete
+            else:
+                n_units = n_units_total
+        else:
+            sdf.count()
+
+        if panel and unique_ids is None:
+            first_period = int(tlist[0])
+            if allow_unbalanced_panel:
+                id_rows = sdf.select(id_col).distinct().collect()
+            else:
+                id_rows = sdf.filter(F.col(time_col) == first_period).select(id_col).collect()
+            unique_ids = np.sort(np.array([row[0] for row in id_rows]))
+            n_units = len(unique_ids)
 
         data_pl = None
     else:
