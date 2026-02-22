@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from moderndid.distributed._utils import (  # noqa: F401
     MEMMAP_THRESHOLD,
     auto_tune_partitions,
@@ -183,3 +185,33 @@ def prepare_cohort_wide_pivot(
         return None, 0
 
     return wide_sdf, n_wide
+
+
+def collect_partitions(cached_sdf, n_chunks=None):
+    """Collect a cached Spark DataFrame as a list of pandas DataFrame chunks.
+
+    Uses Arrow-based ``.toPandas()`` on the already-cached DataFrame, then
+    splits the result into roughly equal chunks for downstream iteration.
+
+    Parameters
+    ----------
+    cached_sdf : pyspark.sql.DataFrame
+        A cached Spark DataFrame.
+    n_chunks : int or None
+        Number of chunks to split into.  When ``None`` the number of
+        Spark RDD partitions is used so chunk boundaries mirror the
+        original partitioning.
+
+    Returns
+    -------
+    list of pandas.DataFrame
+        Chunked pandas DataFrames.
+    """
+    full_pdf = cached_sdf.toPandas()
+    if len(full_pdf) == 0:
+        return []
+    if n_chunks is None:
+        n_chunks = max(1, cached_sdf.rdd.getNumPartitions())
+    n_chunks = max(1, min(n_chunks, len(full_pdf)))
+    boundaries = np.array_split(np.arange(len(full_pdf)), n_chunks)
+    return [full_pdf.iloc[idx] for idx in boundaries if len(idx) > 0]

@@ -1213,11 +1213,6 @@ def _streaming_single_ctrl_for_multi(
     return ddd_att
 
 
-# ---------------------------------------------------------------------------
-# RC (repeated cross-section) helpers
-# ---------------------------------------------------------------------------
-
-
 def _prepare_ddd_rc_cell_partitions(
     spark,
     sdf,
@@ -1463,11 +1458,6 @@ def _ddd_rc_single_from_parts_collect(spark, part_data_list, est_method, trim_le
         inf_full[ids_part] = if_part
 
     return ddd_att, inf_full, n_total
-
-
-# ---------------------------------------------------------------------------
-# Driver-side reduce helper
-# ---------------------------------------------------------------------------
 
 
 def _driver_reduce_stats(stats_list):

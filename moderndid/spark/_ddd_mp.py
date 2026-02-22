@@ -27,14 +27,8 @@ from moderndid.didtriple.estimators.ddd_mp import (
 from moderndid.distributed._ddd_partition import (
     _attach_ddd_cell_outcomes,
     _build_ddd_base_partition,
-    _build_ddd_global_stats_from_wide,
-    _build_ddd_if_from_wide,
-    _build_ddd_or_gram_from_wide,
-    _build_ddd_ps_gram_from_wide,
     _partition_pscore_gram,
 )
-from moderndid.distributed._did_partition import _finalize_global_stats
-from moderndid.distributed._utils import sum_global_stats
 
 from ._bootstrap import distributed_mboot_ddd
 from ._ddd_panel import spark_ddd_panel
@@ -46,16 +40,13 @@ from ._ddd_streaming import (
 )
 from ._gpu import _maybe_to_gpu_dict
 from ._regression import (
-    distributed_aggregate_spark_df,
-    distributed_collect_if_spark_df,
     distributed_logistic_irls_from_partitions,
-    distributed_logistic_irls_spark_df,
-    distributed_wls_spark_df,
 )
 from ._utils import (
     MEMMAP_THRESHOLD,
     auto_tune_partitions,
     chunked_vcov,
+    collect_partitions,
     get_default_partitions,
     prepare_cohort_wide_pivot,
 )
@@ -528,191 +519,74 @@ def _process_cohort_cells(
                 )
 
             if wide_sdf is not None and n_wide > 0:
-                if use_gpu:
-                    wide_pdf_parts = wide_sdf.toPandas()
-                    chunk_size = max(1, len(wide_pdf_parts) // n_partitions)
-                    wide_pdf_chunks = [
-                        wide_pdf_parts.iloc[i : i + chunk_size] for i in range(0, len(wide_pdf_parts), chunk_size)
+                wide_pdf_list = collect_partitions(wide_sdf, n_chunks=n_partitions)
+
+                valid_pairs = []
+                for chunk in wide_pdf_list:
+                    bp = _build_ddd_base_partition(
+                        chunk, id_col, group_col, partition_col, g, covariate_cols, weightsname
+                    )
+                    if bp is not None:
+                        valid_pairs.append((bp, chunk))
+                base_parts = [_maybe_to_gpu_dict(p[0], use_gpu) for p in valid_pairs]
+                valid_chunks = [p[1] for p in valid_pairs]
+
+                k = base_parts[0]["X"].shape[1]
+                cached_pscores = {}
+                if est_method != "reg":
+                    for comp_sg in [3, 2, 1]:
+                        cached_pscores[comp_sg] = distributed_logistic_irls_from_partitions(
+                            spark,
+                            base_parts,
+                            lambda pd, beta, _cs=comp_sg: _partition_pscore_gram(pd, _cs, beta),
+                            k,
+                        )
+                else:
+                    for comp_sg in [3, 2, 1]:
+                        cached_pscores[comp_sg] = np.zeros(k, dtype=np.float64)
+
+                for counter, g_, t, pret, post_treat, action in cells:
+                    if action == "skip":
+                        continue
+                    if action == "zero":
+                        results.append((counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
+                        continue
+
+                    y_post_col = f"_y_{t}"
+                    y_pre_col = f"_y_{pret}"
+
+                    part_data_list = [
+                        _attach_ddd_cell_outcomes(bp, chunk, y_post_col, y_pre_col, use_gpu)
+                        for bp, chunk in zip(base_parts, valid_chunks, strict=False)
                     ]
 
-                    valid_pairs = []
-                    for chunk in wide_pdf_chunks:
-                        bp = _build_ddd_base_partition(
-                            chunk, id_col, group_col, partition_col, g, covariate_cols, weightsname
-                        )
-                        if bp is not None:
-                            valid_pairs.append((bp, chunk))
-                    base_parts = [_maybe_to_gpu_dict(p[0], use_gpu) for p in valid_pairs]
-                    valid_chunks = [p[1] for p in valid_pairs]
+                    att = streaming_cell_single_control(
+                        spark,
+                        sdf,
+                        g_,
+                        t,
+                        pret,
+                        time_col,
+                        group_col,
+                        id_col,
+                        y_col,
+                        partition_col,
+                        covariate_cols,
+                        est_method,
+                        n_partitions,
+                        n_units,
+                        unique_ids,
+                        inf_func_mat,
+                        counter,
+                        trim_level=trim_level,
+                        part_data_list=part_data_list,
+                        n_cell_override=n_wide,
+                        use_gpu=use_gpu,
+                        pscores=cached_pscores,
+                    )
 
-                    k = base_parts[0]["X"].shape[1]
-                    cached_pscores = {}
-                    if est_method != "reg":
-                        for comp_sg in [3, 2, 1]:
-                            cached_pscores[comp_sg] = distributed_logistic_irls_from_partitions(
-                                spark,
-                                base_parts,
-                                lambda pd, beta, _cs=comp_sg: _partition_pscore_gram(pd, _cs, beta),
-                                k,
-                            )
-                    else:
-                        for comp_sg in [3, 2, 1]:
-                            cached_pscores[comp_sg] = np.zeros(k, dtype=np.float64)
-
-                    for counter, g_, t, pret, post_treat, action in cells:
-                        if action == "skip":
-                            continue
-                        if action == "zero":
-                            results.append((counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
-                            continue
-
-                        y_post_col = f"_y_{t}"
-                        y_pre_col = f"_y_{pret}"
-
-                        part_data_list = [
-                            _attach_ddd_cell_outcomes(bp, chunk, y_post_col, y_pre_col, use_gpu)
-                            for bp, chunk in zip(base_parts, valid_chunks, strict=False)
-                        ]
-
-                        att = streaming_cell_single_control(
-                            spark,
-                            sdf,
-                            g_,
-                            t,
-                            pret,
-                            time_col,
-                            group_col,
-                            id_col,
-                            y_col,
-                            partition_col,
-                            covariate_cols,
-                            est_method,
-                            n_partitions,
-                            n_units,
-                            unique_ids,
-                            inf_func_mat,
-                            counter,
-                            trim_level=trim_level,
-                            part_data_list=part_data_list,
-                            n_cell_override=n_wide,
-                            use_gpu=use_gpu,
-                            pscores=cached_pscores,
-                        )
-
-                        if att is not None:
-                            results.append((counter, ATTgtResult(att=att, group=int(g_), time=int(t), post=post_treat)))
-                else:
-                    common = (g, id_col, group_col, partition_col, covariate_cols, weightsname)
-                    k = len(covariate_cols) + 1 if covariate_cols else 1
-
-                    cached_pscores = {}
-                    if est_method != "reg":
-                        for comp_sg in [3, 2, 1]:
-                            cached_pscores[comp_sg] = distributed_logistic_irls_spark_df(
-                                spark,
-                                wide_sdf,
-                                _build_ddd_ps_gram_from_wide,
-                                (*common, comp_sg),
-                                k,
-                            )
-                    else:
-                        for comp_sg in [3, 2, 1]:
-                            cached_pscores[comp_sg] = np.zeros(k, dtype=np.float64)
-
-                    for counter, g_, t, pret, post_treat, action in cells:
-                        if action == "skip":
-                            continue
-                        if action == "zero":
-                            results.append((counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
-                            continue
-
-                        y_post_col = f"_y_{t}"
-                        y_pre_col = f"_y_{pret}"
-
-                        or_betas = {}
-                        for comp_sg in [3, 2, 1]:
-                            if est_method != "ipw":
-                                or_betas[comp_sg] = distributed_wls_spark_df(
-                                    spark,
-                                    wide_sdf,
-                                    _build_ddd_or_gram_from_wide,
-                                    (*common, comp_sg, y_post_col, y_pre_col),
-                                )
-                            else:
-                                or_betas[comp_sg] = np.zeros(k, dtype=np.float64)
-
-                        global_agg = {}
-                        precomp_hess_m2 = {}
-                        precomp_xpx_inv_m1 = {}
-                        precomp_xpx_inv_m3 = {}
-                        skip_cell = False
-                        for comp_sg in [3, 2, 1]:
-                            agg = distributed_aggregate_spark_df(
-                                spark,
-                                wide_sdf,
-                                _build_ddd_global_stats_from_wide,
-                                (
-                                    *common,
-                                    comp_sg,
-                                    cached_pscores[comp_sg],
-                                    or_betas[comp_sg],
-                                    est_method,
-                                    trim_level,
-                                    y_post_col,
-                                    y_pre_col,
-                                ),
-                                sum_global_stats,
-                            )
-                            ga, hm2, xim1, xim3 = _finalize_global_stats(agg, est_method)
-                            if ga is None:
-                                skip_cell = True
-                                break
-                            global_agg[comp_sg] = ga
-                            precomp_hess_m2[comp_sg] = hm2
-                            precomp_xpx_inv_m1[comp_sg] = xim1
-                            precomp_xpx_inv_m3[comp_sg] = xim3
-
-                        if skip_cell:
-                            continue
-
-                        n3 = global_agg[3]["n_sub"]
-                        n2 = global_agg[2]["n_sub"]
-                        n1 = global_agg[1]["n_sub"]
-                        w3 = n_wide / n3 if n3 > 0 else 0.0
-                        w2 = n_wide / n2 if n2 > 0 else 0.0
-                        w1 = n_wide / n1 if n1 > 0 else 0.0
-                        ddd_att = global_agg[3]["dr_att"] + global_agg[2]["dr_att"] - global_agg[1]["dr_att"]
-
-                        scale = n_units / n_wide
-                        for ids, if_vals in distributed_collect_if_spark_df(
-                            spark,
-                            wide_sdf,
-                            _build_ddd_if_from_wide,
-                            (
-                                *common,
-                                cached_pscores,
-                                or_betas,
-                                global_agg,
-                                est_method,
-                                trim_level,
-                                w3,
-                                w2,
-                                w1,
-                                precomp_hess_m2,
-                                precomp_xpx_inv_m1,
-                                precomp_xpx_inv_m3,
-                                y_post_col,
-                                y_pre_col,
-                            ),
-                        ):
-                            if_scaled = scale * if_vals
-                            indices = np.searchsorted(unique_ids, ids)
-                            valid = (indices < len(unique_ids)) & (
-                                unique_ids[np.minimum(indices, len(unique_ids) - 1)] == ids
-                            )
-                            inf_func_mat[indices[valid], counter] = if_scaled[valid]
-
-                        results.append((counter, ATTgtResult(att=ddd_att, group=int(g_), time=int(t), post=post_treat)))
+                    if att is not None:
+                        results.append((counter, ATTgtResult(att=att, group=int(g_), time=int(t), post=post_treat)))
             else:
                 for _counter, g_, t, _pret, _post_treat, action in cells:
                     if action == "zero":

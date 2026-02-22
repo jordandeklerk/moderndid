@@ -19,15 +19,7 @@ from pyspark.sql import functions as F
 from moderndid.core.dataframe import to_polars
 from moderndid.did.multiperiod_obj import mp
 from moderndid.didtriple.estimators.ddd_mp import _gmm_aggregate
-from moderndid.distributed._did_partition import (
-    _build_did_global_stats_from_wide,
-    _build_did_if_from_wide,
-    _build_did_or_gram_from_wide,
-    _build_did_ps_gram_from_wide,
-    _finalize_global_stats,
-    _partition_did_pscore_gram,
-)
-from moderndid.distributed._utils import sum_global_stats
+from moderndid.distributed._did_partition import _partition_did_pscore_gram
 
 from ._bootstrap import distributed_mboot_ddd
 from ._did_streaming import (
@@ -38,16 +30,13 @@ from ._did_streaming import (
 )
 from ._gpu import _maybe_to_gpu_dict
 from ._regression import (
-    distributed_aggregate_spark_df,
-    distributed_collect_if_spark_df,
     distributed_logistic_irls_from_partitions,
-    distributed_logistic_irls_spark_df,
-    distributed_wls_spark_df,
 )
 from ._utils import (
     MEMMAP_THRESHOLD,
     auto_tune_partitions,
     chunked_vcov,
+    collect_partitions,
     get_default_partitions,
     is_spark_dataframe,
     prepare_cohort_wide_pivot,
@@ -531,135 +520,62 @@ def _process_did_cohort_cells(
                 )
 
             if wide_sdf is not None and n_wide > 0:
-                if use_gpu:
-                    wide_pdf_list = _collect_partitions(wide_sdf, n_chunks=n_partitions)
+                wide_pdf_list = collect_partitions(wide_sdf, n_chunks=n_partitions)
 
-                    base_parts = [
-                        _build_did_base_partition(pdf, id_col, group_col, g, covariate_cols, weightsname)
-                        for pdf in wide_pdf_list
-                    ]
-                    base_parts = [_maybe_to_gpu_dict(bp, use_gpu) for bp in base_parts]
+                base_parts = [
+                    _build_did_base_partition(pdf, id_col, group_col, g, covariate_cols, weightsname)
+                    for pdf in wide_pdf_list
+                ]
+                base_parts = [_maybe_to_gpu_dict(bp, use_gpu) for bp in base_parts]
 
-                    k = base_parts[0]["X"].shape[1]
-                    if est_method != "reg":
-                        cached_ps_beta = distributed_logistic_irls_from_partitions(
-                            spark, base_parts, _partition_did_pscore_gram, k
-                        )
-                    else:
-                        cached_ps_beta = np.zeros(k, dtype=np.float64)
-
-                    for counter, g_, t, pret, post_treat, action in cells:
-                        if action == "skip":
-                            continue
-                        if action == "zero":
-                            results.append((counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
-                            continue
-
-                        y_post_col = f"_y_{t}"
-                        y_pre_col = f"_y_{pret}"
-
-                        part_data_list = [
-                            _attach_cell_outcomes(base_parts[i], pdf, y_post_col, y_pre_col, use_gpu)
-                            for i, pdf in enumerate(wide_pdf_list)
-                        ]
-
-                        att = streaming_did_cell_single_control(
-                            spark,
-                            sdf,
-                            g_,
-                            t,
-                            pret,
-                            time_col,
-                            group_col,
-                            id_col,
-                            y_col,
-                            covariate_cols,
-                            est_method,
-                            n_partitions,
-                            n_units,
-                            unique_ids,
-                            inf_func_mat,
-                            counter,
-                            trim_level=trim_level,
-                            part_data_list=part_data_list,
-                            n_cell_override=n_wide,
-                            use_gpu=use_gpu,
-                            ps_beta=cached_ps_beta,
-                        )
-
-                        if att is not None:
-                            results.append((counter, ATTgtResult(att=att, group=int(g_), time=int(t), post=post_treat)))
+                k = base_parts[0]["X"].shape[1]
+                if est_method != "reg":
+                    cached_ps_beta = distributed_logistic_irls_from_partitions(
+                        spark, base_parts, _partition_did_pscore_gram, k
+                    )
                 else:
-                    common = (g, id_col, group_col, covariate_cols, weightsname)
-                    k = len(covariate_cols) + 1 if covariate_cols else 1
+                    cached_ps_beta = np.zeros(k, dtype=np.float64)
 
-                    if est_method != "reg":
-                        cached_ps_beta = distributed_logistic_irls_spark_df(
-                            spark, wide_sdf, _build_did_ps_gram_from_wide, common, k
-                        )
-                    else:
-                        cached_ps_beta = np.zeros(k, dtype=np.float64)
+                for counter, g_, t, pret, post_treat, action in cells:
+                    if action == "skip":
+                        continue
+                    if action == "zero":
+                        results.append((counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
+                        continue
 
-                    for counter, g_, t, pret, post_treat, action in cells:
-                        if action == "skip":
-                            continue
-                        if action == "zero":
-                            results.append((counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
-                            continue
+                    y_post_col = f"_y_{t}"
+                    y_pre_col = f"_y_{pret}"
 
-                        y_post_col = f"_y_{t}"
-                        y_pre_col = f"_y_{pret}"
+                    part_data_list = [
+                        _attach_cell_outcomes(base_parts[i], pdf, y_post_col, y_pre_col, use_gpu)
+                        for i, pdf in enumerate(wide_pdf_list)
+                    ]
 
-                        if est_method != "ipw":
-                            or_beta = distributed_wls_spark_df(
-                                spark,
-                                wide_sdf,
-                                _build_did_or_gram_from_wide,
-                                (*common, y_post_col, y_pre_col),
-                            )
-                        else:
-                            or_beta = np.zeros(k, dtype=np.float64)
+                    att = streaming_did_cell_single_control(
+                        spark,
+                        sdf,
+                        g_,
+                        t,
+                        pret,
+                        time_col,
+                        group_col,
+                        id_col,
+                        y_col,
+                        covariate_cols,
+                        est_method,
+                        n_partitions,
+                        n_units,
+                        unique_ids,
+                        inf_func_mat,
+                        counter,
+                        trim_level=trim_level,
+                        part_data_list=part_data_list,
+                        n_cell_override=n_wide,
+                        use_gpu=use_gpu,
+                        ps_beta=cached_ps_beta,
+                    )
 
-                        agg = distributed_aggregate_spark_df(
-                            spark,
-                            wide_sdf,
-                            _build_did_global_stats_from_wide,
-                            (*common, cached_ps_beta, or_beta, est_method, trim_level, y_post_col, y_pre_col),
-                            sum_global_stats,
-                        )
-
-                        global_agg, hm2, xim1, xim3 = _finalize_global_stats(agg, est_method)
-                        if global_agg is None:
-                            continue
-
-                        att = global_agg["dr_att"]
-
-                        scale = n_units / n_wide
-                        for ids, if_vals in distributed_collect_if_spark_df(
-                            spark,
-                            wide_sdf,
-                            _build_did_if_from_wide,
-                            (
-                                *common,
-                                cached_ps_beta,
-                                or_beta,
-                                global_agg,
-                                est_method,
-                                trim_level,
-                                hm2,
-                                xim1,
-                                xim3,
-                                y_post_col,
-                                y_pre_col,
-                            ),
-                        ):
-                            if_scaled = scale * if_vals
-                            indices = np.searchsorted(unique_ids, ids)
-                            valid = (indices < len(unique_ids)) & (
-                                unique_ids[np.minimum(indices, len(unique_ids) - 1)] == ids
-                            )
-                            inf_func_mat[indices[valid], counter] = if_scaled[valid]
-
+                    if att is not None:
                         results.append((counter, ATTgtResult(att=att, group=int(g_), time=int(t), post=post_treat)))
             else:
                 for counter, g_, t, _pret, _post_treat, action in cells:
@@ -897,38 +813,6 @@ def _compute_did_cell_streaming(
     if att is None:
         return None
     return ATTgtResult(att=att, group=int(g), time=int(t), post=post_treat)
-
-
-def _collect_partitions(cached_sdf, n_chunks=None):
-    """Collect a cached Spark DataFrame as a list of pandas DataFrame chunks.
-
-    Uses Arrow-based ``.toPandas()`` on the already-cached DataFrame, then
-    splits the result into roughly equal chunks for downstream iteration.
-
-    Parameters
-    ----------
-    cached_sdf : pyspark.sql.DataFrame
-        A cached Spark DataFrame.
-    n_chunks : int or None
-        Number of chunks to split into.  When ``None`` the number of
-        Spark RDD partitions is used so chunk boundaries mirror the
-        original partitioning.
-
-    Returns
-    -------
-    list of pandas.DataFrame
-        Chunked pandas DataFrames.
-    """
-    full_pdf = cached_sdf.toPandas()
-    if len(full_pdf) == 0:
-        return []
-    if n_chunks is None:
-        n_chunks = max(1, cached_sdf.rdd.getNumPartitions())
-    n_chunks = max(1, min(n_chunks, len(full_pdf)))
-    # Use iloc slicing instead of np.array_split to guarantee pandas
-    # DataFrames (np.array_split can convert to ndarray on some versions).
-    boundaries = np.array_split(np.arange(len(full_pdf)), n_chunks)
-    return [full_pdf.iloc[idx] for idx in boundaries if len(idx) > 0]
 
 
 def _compute_wald_pretest(att_array, groups_array, times_array, vcov_analytical, se_computed, n_units):
