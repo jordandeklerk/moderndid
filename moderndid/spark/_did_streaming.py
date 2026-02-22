@@ -32,36 +32,6 @@ from ._gpu import _maybe_to_gpu_dict
 from ._regression import distributed_logistic_irls_from_partitions, distributed_wls_from_partitions
 
 
-def _collect_partition_data(cached_df, build_fn, build_args):
-    """Collect partition-level numpy dicts from a cached Spark DataFrame.
-
-    Iterates over Spark partitions using ``toLocalIterator``, applying
-    ``build_fn`` to each pandas partition to produce numpy dicts.
-
-    Parameters
-    ----------
-    cached_df : pyspark.sql.DataFrame
-        Cached Spark DataFrame.
-    build_fn : callable
-        Function ``(pandas_df, *build_args) -> dict or None``.
-    build_args : tuple
-        Additional arguments for ``build_fn``.
-
-    Returns
-    -------
-    list of dict
-        Non-None partition dicts.
-    """
-    part_data_list = []
-    for pdf in cached_df.toLocalIterator(prefetchPartitions=True):
-        if len(pdf) == 0:
-            continue
-        part = build_fn(pdf, *build_args)
-        if part is not None:
-            part_data_list.append(part)
-    return part_data_list
-
-
 def streaming_did_cell_single_control(
     spark,
     sdf,
@@ -820,3 +790,33 @@ def streaming_did_global_stats(spark, part_data_list, ps_beta, or_beta, est_meth
         agg = sum_global_stats(agg, s)
 
     return _finalize_global_stats(agg, est_method)
+
+
+def _collect_partition_data(cached_df, build_fn, build_args):
+    """Collect partition-level numpy dicts from a cached Spark DataFrame.
+
+    Iterates over Spark partitions using ``toLocalIterator``, applying
+    ``build_fn`` to each pandas partition to produce numpy dicts.
+
+    Parameters
+    ----------
+    cached_df : pyspark.sql.DataFrame
+        Cached Spark DataFrame.
+    build_fn : callable
+        Function ``(pandas_df, *build_args) -> dict or None``.
+    build_args : tuple
+        Additional arguments for ``build_fn``.
+
+    Returns
+    -------
+    list of dict
+        Non-None partition dicts.
+    """
+    part_data_list = []
+    for pdf in cached_df.toLocalIterator(prefetchPartitions=True):
+        if len(pdf) == 0:
+            continue
+        part = build_fn(pdf, *build_args)
+        if part is not None:
+            part_data_list.append(part)
+    return part_data_list
