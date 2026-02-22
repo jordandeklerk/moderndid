@@ -10,7 +10,7 @@ from .compute_agg_ddd import compute_agg_ddd
 
 def agg_ddd(
     ddd_result,
-    aggregation_type="eventstudy",
+    type="eventstudy",
     balance_e=None,
     min_e=-np.inf,
     max_e=np.inf,
@@ -67,7 +67,7 @@ def agg_ddd(
     ----------
     ddd_result : DDDMultiPeriodResult
         Result from :func:`ddd_mp` containing group-time ATTs.
-    aggregation_type : {"simple", "eventstudy", "group", "calendar"}, default="eventstudy"
+    type : {"simple", "eventstudy", "group", "calendar"}, default="eventstudy"
         Type of aggregation to perform:
 
         - 'simple': Weighted average of all post-treatment ATT(g,t) with weights
@@ -77,7 +77,7 @@ def agg_ddd(
         - 'group': Average treatment effects across different treatment cohorts.
         - 'calendar': Average treatment effects across different calendar time periods.
     balance_e : int, optional
-        If set (and aggregation_type="eventstudy"), balances the sample with respect
+        If set (and type="eventstudy"), balances the sample with respect
         to event time. For example, if balance_e=2, groups not exposed for at least
         3 periods (e=0, 1, 2) are dropped.
     min_e : float, default=-inf
@@ -144,7 +144,7 @@ def agg_ddd(
     .. ipython::
         :okwarning:
 
-        In [2]: simple_agg = agg_ddd(ddd_result, aggregation_type="simple")
+        In [2]: simple_agg = agg_ddd(ddd_result, type="simple")
            ...: print(simple_agg)
 
     The "group" aggregation computes average treatment effects separately for each treatment
@@ -153,7 +153,7 @@ def agg_ddd(
     .. ipython::
         :okwarning:
 
-        In [3]: group_agg = agg_ddd(ddd_result, aggregation_type="group")
+        In [3]: group_agg = agg_ddd(ddd_result, type="group")
            ...: print(group_agg)
 
     The "eventstudy" aggregation (default) creates an event study, showing how treatment
@@ -162,7 +162,7 @@ def agg_ddd(
     .. ipython::
         :okwarning:
 
-        In [4]: es_agg = agg_ddd(ddd_result, aggregation_type="eventstudy")
+        In [4]: es_agg = agg_ddd(ddd_result, type="eventstudy")
            ...: print(es_agg)
 
     We can also limit the event study to specific event times:
@@ -172,7 +172,7 @@ def agg_ddd(
 
         In [5]: es_limited = agg_ddd(
            ...:     ddd_result,
-           ...:     aggregation_type="eventstudy",
+           ...:     type="eventstudy",
            ...:     min_e=-2,
            ...:     max_e=2
            ...: )
@@ -183,7 +183,7 @@ def agg_ddd(
     .. ipython::
         :okwarning:
 
-        In [6]: calendar_agg = agg_ddd(ddd_result, aggregation_type="calendar")
+        In [6]: calendar_agg = agg_ddd(ddd_result, type="calendar")
            ...: print(calendar_agg)
 
     See Also
@@ -204,11 +204,8 @@ def agg_ddd(
            https://arxiv.org/abs/2505.09942
     """
     valid_types = ("simple", "eventstudy", "group", "calendar")
-    if aggregation_type not in valid_types:
-        raise ValueError(
-            f"aggregation_type='{aggregation_type}' is not valid. "
-            f"Must be one of: 'simple', 'eventstudy', 'group', 'calendar'."
-        )
+    if type not in valid_types:
+        raise ValueError(f"type='{type}' is not valid. Must be one of: 'simple', 'eventstudy', 'group', 'calendar'.")
     if not 0 < alpha < 1:
         raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
     if not isinstance(biters, int) or biters < 1:
@@ -220,7 +217,7 @@ def agg_ddd(
 
     return compute_agg_ddd(
         ddd_result=ddd_result,
-        aggregation_type=aggregation_type,
+        aggregation_type=type,
         balance_e=balance_e,
         min_e=min_e,
         max_e=max_e,

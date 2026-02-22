@@ -640,7 +640,7 @@ def test_agg_overall_att_matches(mp_ddd_data, agg_type):
         partition_col="partition",
         est_method="reg",
     )
-    py_agg = agg_ddd(py_mp_result, aggregation_type=agg_type, boot=False, cband=False)
+    py_agg = agg_ddd(py_mp_result, type=agg_type, boot=False, cband=False)
 
     r_result = r_estimate_multiperiod_agg(data, agg_type)
 
@@ -670,7 +670,7 @@ def test_agg_overall_se_matches(mp_ddd_data, agg_type):
         partition_col="partition",
         est_method="reg",
     )
-    py_agg = agg_ddd(py_mp_result, aggregation_type=agg_type, boot=False, cband=False)
+    py_agg = agg_ddd(py_mp_result, type=agg_type, boot=False, cband=False)
 
     r_result = r_estimate_multiperiod_agg(data, agg_type)
 
@@ -700,7 +700,7 @@ def test_agg_disaggregated_effects_match(mp_ddd_data, agg_type):
         partition_col="partition",
         est_method="reg",
     )
-    py_agg = agg_ddd(py_mp_result, aggregation_type=agg_type, boot=False, cband=False)
+    py_agg = agg_ddd(py_mp_result, type=agg_type, boot=False, cband=False)
 
     r_result = r_estimate_multiperiod_agg(data, agg_type)
 
@@ -751,7 +751,7 @@ def test_agg_with_bootstrap_matches(mp_ddd_data, agg_type):
     )
     py_agg = agg_ddd(
         py_mp_result,
-        aggregation_type=agg_type,
+        type=agg_type,
         boot=True,
         biters=100,
         cband=True,
@@ -864,7 +864,7 @@ def test_agg_alpha_levels_match(mp_ddd_data, alpha):
     )
     py_agg = agg_ddd(
         py_mp_result,
-        aggregation_type="simple",
+        type="simple",
         boot=False,
         cband=False,
         alpha=alpha,
@@ -1002,7 +1002,7 @@ def test_agg_se_egt_matches(mp_ddd_data, agg_type):
         partition_col="partition",
         est_method="reg",
     )
-    py_agg = agg_ddd(py_mp_result, aggregation_type=agg_type, boot=False, cband=False)
+    py_agg = agg_ddd(py_mp_result, type=agg_type, boot=False, cband=False)
 
     r_result = r_estimate_multiperiod_agg(data, agg_type)
 
@@ -1176,7 +1176,7 @@ def test_estimation_methods_valid(two_period_dgp_result, est_method):
 
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
 def test_aggregation_produces_valid_output(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type=agg_type, boot=False, cband=False)
 
     assert hasattr(result, "overall_att"), "Missing overall_att"
     assert hasattr(result, "overall_se"), "Missing overall_se"
@@ -1189,7 +1189,7 @@ def test_aggregation_produces_valid_output(mp_ddd_result, agg_type):
 
 @pytest.mark.parametrize("agg_type", ["eventstudy", "group", "calendar"])
 def test_disaggregated_effects_structure(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type=agg_type, boot=False, cband=False)
 
     assert result.egt is not None, "egt is None"
     assert result.att_egt is not None, "att_egt is None"
@@ -1200,7 +1200,7 @@ def test_disaggregated_effects_structure(mp_ddd_result, agg_type):
 
 
 def test_simple_has_no_disaggregated(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="simple", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="simple", boot=False, cband=False)
 
     assert result.egt is None, "simple should have egt=None"
     assert result.att_egt is None, "simple should have att_egt=None"
@@ -1208,7 +1208,7 @@ def test_simple_has_no_disaggregated(mp_ddd_result):
 
 
 def test_influence_function_overall(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="simple", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="simple", boot=False, cband=False)
 
     assert result.inf_func_overall is not None, "inf_func_overall is None"
     assert isinstance(result.inf_func_overall, np.ndarray), "inf_func_overall not ndarray"

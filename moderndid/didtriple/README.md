@@ -24,7 +24,7 @@ result = did.ddd(
 )
 
 # Aggregate to event study
-event_study = did.agg_ddd(result, aggregation_type="eventstudy")
+event_study = did.agg_ddd(result, type="eventstudy")
 
 # Plot results
 did.plot_event_study(event_study)
@@ -41,7 +41,7 @@ did.plot_event_study(event_study)
 - `"nevertreated"` (default): Never-treated units only
 - `"notyettreated"`: Include not-yet-treated units
 
-**Aggregation types** (`agg_ddd(..., aggregation_type=)`)
+**Aggregation types** (`agg_ddd(..., type=)`)
 - `"eventstudy"`: Event study
 - `"simple"`: Overall ATT
 - `"group"`: By treatment cohort

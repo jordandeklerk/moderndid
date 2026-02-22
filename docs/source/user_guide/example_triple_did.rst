@@ -332,7 +332,7 @@ much easier to see the overall pattern.
 
 .. code-block:: python
 
-    event_study = did.agg_ddd(result_mp, aggregation_type="eventstudy")
+    event_study = did.agg_ddd(result_mp, type="eventstudy")
     print(event_study)
 
 .. code-block:: text
@@ -401,7 +401,7 @@ heterogeneity across groups that adopted at different times.
 
 .. code-block:: python
 
-    group_agg = did.agg_ddd(result_mp, aggregation_type="group")
+    group_agg = did.agg_ddd(result_mp, type="group")
     print(group_agg)
 
 .. code-block:: text
@@ -468,7 +468,7 @@ all post-treatment group-time cells.
 
 .. code-block:: python
 
-    simple_agg = did.agg_ddd(result_mp, aggregation_type="simple")
+    simple_agg = did.agg_ddd(result_mp, type="simple")
     print(simple_agg)
 
 .. code-block:: text
