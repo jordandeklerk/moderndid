@@ -85,7 +85,7 @@ Clustered standard errors require ``boot=True``. When ``clustervars`` is
 specified without the bootstrap, the reported standard errors do not account
 for clustering. At most two clustering variables are supported.
 
-When a Spark or Dask DataFrame is passed as ``data``, the estimator
+When a Dask or Spark DataFrame is passed as ``data``, the estimator
 automatically routes to a distributed implementation. See :doc:`distributed`
 for configuration details.
 
@@ -166,7 +166,7 @@ The estimator automatically detects whether the data has two periods or
 multiple periods, and whether the data is a balanced panel or repeated
 cross-sections. For two-period data the ``control_group`` and
 ``base_period`` parameters are ignored since there is only one possible
-comparison. Like ``att_gt``, passing a Spark or Dask DataFrame automatically
+comparison. Like ``att_gt``, passing a Dask or Spark DataFrame automatically
 routes to a distributed implementation.
 
 

@@ -54,11 +54,11 @@ methodological considerations, see the
 :ref:`Background <background-tripledid>` section.
 
 
-Empirical application -- agricultural insurance in rural China
---------------------------------------------------------------
+Empirical application
+---------------------
 
-We apply the DDD estimator to real data, replicating the empirical analysis
-from `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_,
+This example replicates the empirical analysis from
+`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_,
 which revisits `Cai (2016) <https://doi.org/10.1257/pol.20130371>`_.
 
 In 2003, the People's Insurance Company of China (PICC) introduced a
@@ -153,8 +153,8 @@ tobacco households, 161 treated non-tobacco households, and 837 treated tobacco
 households (the group that actually receives insurance).
 
 
-Running the estimator
-^^^^^^^^^^^^^^^^^^^^^
+Estimation
+^^^^^^^^^^
 
 We estimate group-time treatment effects using the doubly robust DDD estimator
 with household size and age as covariates, following the specification in

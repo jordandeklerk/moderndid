@@ -83,9 +83,10 @@ globally or use the :func:`~moderndid.use_backend` context manager:
         result2 = did.ddd(...)
 
 All three approaches are thread-safe and compose correctly with
-``n_jobs > 1``. When ``data`` is a Dask DataFrame, ``backend="cupy"``
-enables GPU-accelerated linear algebra on worker GPUs (see
-:ref:`Combining GPU and Dask <gpu-dask-workers>`).
+``n_jobs > 1``. When ``data`` is a Dask or Spark DataFrame,
+``backend="cupy"`` enables GPU-accelerated linear algebra on worker GPUs
+(see :ref:`Combining GPU and Dask <gpu-dask-workers>` and
+:ref:`Combining GPU and Spark <gpu-spark-workers>`).
 
 If CuPy is installed but no GPU is available, ``backend="cupy"``
 raises a ``RuntimeError`` with an actionable message. If CuPy is not
@@ -373,12 +374,77 @@ Databricks or a managed cluster), use the low-level
 ``client`` parameter directly.
 
 
+.. _gpu-spark-workers:
+
+Combining GPU and Spark
+-----------------------
+
+The GPU backend and the Spark distributed backend can be combined.
+Pass ``backend="cupy"`` to :func:`~moderndid.att_gt` or
+:func:`~moderndid.ddd` with a PySpark DataFrame to run partition-level
+linear algebra on executor GPUs. The low-level functions
+:func:`~moderndid.spark.spark_att_gt` and :func:`~moderndid.spark.spark_ddd`
+also accept the ``backend`` parameter:
+
+.. code-block:: python
+
+    from pyspark.sql import SparkSession
+    import moderndid as did
+
+    spark = SparkSession.builder.master("local[*]").getOrCreate()
+    sdf = spark.read.parquet("panel_data.parquet")
+
+    result = did.att_gt(
+        data=sdf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        backend="cupy",
+    )
+
+When ``backend="cupy"`` is active, partition arrays are converted to CuPy
+after collection. All Gram matrix accumulation, IRLS iterations, and
+influence function computation run on the GPU. Results are converted back
+to NumPy before being stored in the result object.
+
+CuPy must be installed on the driver (and on executors if using Spark's
+``mapInPandas`` GPU paths). On GPU-enabled Spark clusters (e.g., Databricks
+ML Runtime with GPU instances, or YARN with GPU resource scheduling),
+configure executors with GPU resources:
+
+.. code-block:: python
+
+    spark = (
+        SparkSession.builder
+        .master("yarn")
+        .config("spark.executor.resource.gpu.amount", "1")
+        .config("spark.task.resource.gpu.amount", "1")
+        .getOrCreate()
+    )
+
+    result = did.att_gt(
+        data=sdf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        est_method="dr",
+        backend="cupy",
+    )
+
+The ``set_backend`` / ``use_backend`` context manager does **not**
+propagate to Spark executor processes. Always use the ``backend`` parameter
+on the estimator call instead.
+
+
 Next steps
 ----------
 
 - :ref:`Quickstart <quickstart>` covers estimation options, aggregation
   types, and visualization for local workflows.
-- :doc:`distributed` describes the Dask backend for datasets that exceed
-  single-machine memory.
+- :doc:`distributed` describes the Dask and Spark backends for datasets that
+  exceed single-machine memory.
 - The :ref:`Examples <user-guide>` section walks through each estimator
   end-to-end with real and simulated data.
