@@ -103,7 +103,6 @@ def test_ddd_mp_spark_dispatch(spark_session, mp_dgp_data):
         gname="group",
         pname="partition",
         est_method="reg",
-        spark=spark_session,
     )
 
     assert len(result.glist) > 0

@@ -32,6 +32,7 @@ from moderndid.distributed._utils import sum_global_stats
 
 from ._gpu import _maybe_to_gpu_dict
 from ._regression import distributed_logistic_irls_from_partitions, distributed_wls_from_partitions
+from ._utils import collect_partitions
 
 
 def streaming_cell_single_control(
@@ -368,8 +369,10 @@ def streaming_cell_multi_control(
 
         cell_ids = np.sort(np.array([row[id_col] for row in cached_cell_df.select(id_col).distinct().collect()]))
 
+        pdf_chunks = collect_partitions(cached_cell_df, n_chunks=n_partitions)
+
         all_part_data_list = []
-        for pdf in cached_cell_df.toLocalIterator(prefetchPartitions=True):
+        for pdf in pdf_chunks:
             if len(pdf) == 0:
                 continue
             part = _build_partition_arrays(pdf, id_col, y_col, group_col, partition_col, g, covariate_cols, weightsname)
@@ -928,8 +931,10 @@ def prepare_cell_partitions(
         if n_cell == 0:
             return None, 0
 
+        pdf_chunks = collect_partitions(cached_cell_df, n_chunks=n_partitions)
+
         part_data_list = []
-        for pdf in cached_cell_df.toLocalIterator(prefetchPartitions=True):
+        for pdf in pdf_chunks:
             if len(pdf) == 0:
                 continue
             part = _build_partition_arrays(pdf, id_col, y_col, group_col, partition_col, g, covariate_cols, weightsname)
@@ -1144,8 +1149,10 @@ def _streaming_single_ctrl_for_multi(
         if n_cell == 0:
             return None
 
+        pdf_chunks = collect_partitions(cached_cell_df, n_chunks=n_partitions)
+
         part_data_list = []
-        for pdf in cached_cell_df.toLocalIterator(prefetchPartitions=True):
+        for pdf in pdf_chunks:
             if len(pdf) == 0:
                 continue
             part = _build_partition_arrays(pdf, id_col, y_col, group_col, partition_col, g, covariate_cols, weightsname)
@@ -1254,25 +1261,26 @@ def _prepare_ddd_rc_cell_partitions(
 
     concat_sdf = concat_sdf.select(*keep_cols)
     cached_cell_df = concat_sdf.repartition(n_partitions).cache()
-    try:
-        n_cell = cached_cell_df.count()
-        if n_cell == 0:
-            return None, 0
-
-        part_data_list = []
-        offset = 0
-        for pdf in cached_cell_df.toLocalIterator(prefetchPartitions=True):
-            if len(pdf) == 0:
-                continue
-            part = _build_ddd_rc_partition_arrays(
-                pdf, offset, y_col, group_col, partition_col, g, covariate_cols, weightsname
-            )
-            if part is not None:
-                part = _maybe_to_gpu_dict(part, use_gpu)
-                part_data_list.append(part)
-            offset += len(pdf)
-    finally:
+    n_cell = cached_cell_df.count()
+    if n_cell == 0:
         cached_cell_df.unpersist()
+        return None, 0
+
+    pdf_chunks = collect_partitions(cached_cell_df, n_chunks=n_partitions)
+    cached_cell_df.unpersist()
+
+    part_data_list = []
+    offset = 0
+    for pdf in pdf_chunks:
+        if len(pdf) == 0:
+            continue
+        part = _build_ddd_rc_partition_arrays(
+            pdf, offset, y_col, group_col, partition_col, g, covariate_cols, weightsname
+        )
+        if part is not None:
+            part = _maybe_to_gpu_dict(part, use_gpu)
+            part_data_list.append(part)
+        offset += len(pdf)
 
     if not part_data_list:
         return None, 0

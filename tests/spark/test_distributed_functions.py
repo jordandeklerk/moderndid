@@ -210,7 +210,7 @@ def test_prepare_cohort_wide_pivot_basic(spark_session):
     ]
     wide, n_wide = prepare_cohort_wide_pivot(
         spark=spark_session,
-        spark_data=sdf,
+        sdf=sdf,
         g=5,
         cells=cells,
         time_col="time",
@@ -245,7 +245,7 @@ def test_prepare_cohort_wide_pivot_no_compute_cells(spark_session):
     cells = [(0, 5, 2, 1, True, "skip")]
     wide, n_wide = prepare_cohort_wide_pivot(
         spark=spark_session,
-        spark_data=sdf,
+        sdf=sdf,
         g=5,
         cells=cells,
         time_col="time",
@@ -276,7 +276,7 @@ def test_prepare_cohort_wide_pivot_extra_cols(spark_session):
     cells = [(0, 5, 2, 1, True, "compute")]
     wide, n_wide = prepare_cohort_wide_pivot(
         spark=spark_session,
-        spark_data=sdf,
+        sdf=sdf,
         g=5,
         cells=cells,
         time_col="time",

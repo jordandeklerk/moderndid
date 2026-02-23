@@ -122,7 +122,6 @@ def test_did_rc_dispatch_via_att_gt(spark_session, did_rc_data):
         xformla="~ cov1 + cov2 + cov3 + cov4",
         est_method="reg",
         panel=False,
-        spark=spark_session,
     )
 
     assert len(result.groups) > 0
@@ -212,7 +211,6 @@ def test_ddd_rc_dispatch_via_ddd(spark_session, ddd_rc_data):
         pname="partition",
         est_method="reg",
         panel=False,
-        spark=spark_session,
     )
 
     assert len(result.glist) > 0

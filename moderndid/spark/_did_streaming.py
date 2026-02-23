@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 from pyspark.sql import functions as F
-from pyspark.sql.types import IntegerType, StructField, StructType
 
 from moderndid.distributed._did_partition import (
     _attach_cell_outcomes,  # noqa: F401
@@ -30,6 +28,7 @@ from moderndid.distributed._utils import sum_global_stats
 
 from ._gpu import _maybe_to_gpu_dict
 from ._regression import distributed_logistic_irls_from_partitions, distributed_wls_from_partitions
+from ._utils import collect_partitions
 
 
 def streaming_did_cell_single_control(
@@ -560,32 +559,20 @@ def prepare_did_rc_cell_partitions(
         concat_sdf.unpersist()
         return None, 0
 
-    # Compute partition offsets for positional IDs
-    offset_schema = StructType([StructField("_part_len", IntegerType(), False)])
+    # Collect as pandas chunks and build partition arrays
+    pdf_chunks = collect_partitions(concat_sdf, n_chunks=n_partitions)
+    concat_sdf.unpersist()
 
-    def _count_partition(iterator):
-        for pdf in iterator:
-            yield pd.DataFrame({"_part_len": [len(pdf)]})
-
-    len_rows = concat_sdf.mapInPandas(_count_partition, schema=offset_schema).collect()
-    partition_lengths = [row["_part_len"] for row in len_rows]
-    offsets = np.cumsum([0, *partition_lengths[:-1]])
-
-    # Collect partition data
     part_data_list = []
-    offset_idx = 0
-    for pdf in concat_sdf.toLocalIterator(prefetchPartitions=True):
+    offset = 0
+    for pdf in pdf_chunks:
         if len(pdf) == 0:
-            offset_idx += 1
             continue
-        offset = int(offsets[offset_idx]) if offset_idx < len(offsets) else 0
         part = _build_did_rc_partition_arrays(pdf, offset, y_col, group_col, g, covariate_cols, weightsname)
         if part is not None:
             part = _maybe_to_gpu_dict(part, use_gpu)
             part_data_list.append(part)
-        offset_idx += 1
-
-    concat_sdf.unpersist()
+        offset += len(pdf)
 
     if not part_data_list:
         return None, 0
@@ -812,8 +799,9 @@ def _collect_partition_data(cached_df, build_fn, build_args):
     list of dict
         Non-None partition dicts.
     """
+    pdf_chunks = collect_partitions(cached_df)
     part_data_list = []
-    for pdf in cached_df.toLocalIterator(prefetchPartitions=True):
+    for pdf in pdf_chunks:
         if len(pdf) == 0:
             continue
         part = build_fn(pdf, *build_args)

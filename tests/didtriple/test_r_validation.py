@@ -795,7 +795,7 @@ def test_eventstudy_balance_e_matches(mp_ddd_data):
     )
     py_agg = agg_ddd(
         py_mp_result,
-        aggregation_type="eventstudy",
+        type="eventstudy",
         balance_e=1,
         boot=False,
         cband=False,
@@ -830,7 +830,7 @@ def test_eventstudy_min_max_e_matches(mp_ddd_data):
     )
     py_agg = agg_ddd(
         py_mp_result,
-        aggregation_type="eventstudy",
+        type="eventstudy",
         min_e=-1,
         max_e=2,
         boot=False,
@@ -899,7 +899,7 @@ def test_group_agg_all_groups_match(mp_ddd_data):
     )
     py_agg = agg_ddd(
         py_mp_result,
-        aggregation_type="group",
+        type="group",
         boot=False,
         cband=False,
     )
@@ -951,7 +951,7 @@ def test_calendar_agg_all_times_match(mp_ddd_data):
     )
     py_agg = agg_ddd(
         py_mp_result,
-        aggregation_type="calendar",
+        type="calendar",
         boot=False,
         cband=False,
     )
