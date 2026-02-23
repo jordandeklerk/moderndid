@@ -129,8 +129,6 @@ result = did.att_gt(
 event_study = did.aggte(result, type="dynamic")
 ```
 
-On Databricks, the `SparkSession` is pre-configured and available as `spark` in notebooks.
-
 See the [Spark Distributed Estimation guide](https://moderndid.readthedocs.io/en/latest/user_guide/spark.html) for usage and the [Distributed Backend Architecture](https://moderndid.readthedocs.io/en/latest/dev/distributed_architecture.html) for details on the design.
 
 ### GPU Acceleration
