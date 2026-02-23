@@ -26,8 +26,6 @@ from moderndid import (
 )
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 
-from ..helpers import importorskip
-
 np = importorskip("numpy")
 pd = importorskip("pandas")
 
