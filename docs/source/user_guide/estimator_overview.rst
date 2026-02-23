@@ -37,8 +37,8 @@ and research question.
   overturn your conclusions.
 
 
-Staggered DiD
--------------
+Staggered Difference-in-Differences
+-----------------------------------
 
 The :func:`~moderndid.did.att_gt` function is the primary estimator for
 staggered treatment adoption with binary, absorbing treatment. It estimates
@@ -90,8 +90,44 @@ automatically routes to a distributed implementation. See :doc:`distributed`
 for configuration details.
 
 
-Continuous Treatment DiD
-------------------------
+Triple Difference-in-Differences
+--------------------------------
+
+The :func:`~moderndid.didtriple.ddd` function leverages an additional
+dimension of variation such as eligibility status. The API follows
+the same pattern as the other estimators.
+This implements the
+`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
+framework.
+
+.. code-block:: python
+
+    result = did.ddd(
+        data=data,
+        yname="outcome",
+        tname="year",
+        idname="unit_id",
+        gname="first_treated",
+        pname="eligible",              # partition/eligibility variable
+        xformla="~ covariate",
+        control_group="nevertreated",
+        est_method="dr",
+    )
+
+The triple DiD estimator adds ``pname`` to specify the partition variable
+that identifies eligible units within treatment groups. All other core
+arguments work the same as ``att_gt``.
+
+The estimator automatically detects whether the data has two periods or
+multiple periods, and whether the data is a balanced panel or repeated
+cross-sections. For two-period data the ``control_group`` and
+``base_period`` parameters are ignored since there is only one possible
+comparison. Like ``att_gt``, passing a Dask or Spark DataFrame automatically
+routes to a distributed implementation.
+
+
+Difference-in-Differences with Continuous Treatments
+----------------------------------------------------
 
 The :func:`~moderndid.didcont.cont_did` function handles settings with
 treatment intensity rather than binary treatment. This implements the
@@ -134,44 +170,8 @@ identically.
    periods, and cannot be combined with event study aggregation.
 
 
-Triple Difference-in-Differences
---------------------------------
-
-The :func:`~moderndid.didtriple.ddd` function leverages an additional
-dimension of variation such as eligibility status. The API follows
-the same pattern as the other estimators.
-This implements the
-`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
-framework.
-
-.. code-block:: python
-
-    result = did.ddd(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        gname="first_treated",
-        pname="eligible",              # partition/eligibility variable
-        xformla="~ covariate",
-        control_group="nevertreated",
-        est_method="dr",
-    )
-
-The triple DiD estimator adds ``pname`` to specify the partition variable
-that identifies eligible units within treatment groups. All other core
-arguments work the same as ``att_gt``.
-
-The estimator automatically detects whether the data has two periods or
-multiple periods, and whether the data is a balanced panel or repeated
-cross-sections. For two-period data the ``control_group`` and
-``base_period`` parameters are ignored since there is only one possible
-comparison. Like ``att_gt``, passing a Dask or Spark DataFrame automatically
-routes to a distributed implementation.
-
-
-Intertemporal DiD
------------------
+Difference-in-Differences with Intertemporal Treatment Effects
+--------------------------------------------------------------
 
 The :func:`~moderndid.didinter.did_multiplegt` function handles settings with
 non-binary, non-absorbing (time-varying) treatments where lagged treatments
@@ -240,8 +240,8 @@ computed when ``trends_lin=True``.
    recommended.
 
 
-Sensitivity Analysis
---------------------
+Sensitivity Analysis for Parallel Trends Violations
+---------------------------------------------------
 
 The :mod:`~moderndid.didhonest` module assesses robustness to parallel
 trends violations. It takes results from ``att_gt``, or external event

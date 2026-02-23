@@ -99,6 +99,7 @@ def plot_gt(
         + geom_point(size=3, alpha=0.8)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
+            limits=["Pre", "Post"],
             name="Treatment Status",
         )
         + scale_x_continuous(breaks=x_breaks)
