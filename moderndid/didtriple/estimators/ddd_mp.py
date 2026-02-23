@@ -234,7 +234,7 @@ def ddd_mp(
     inf_func_mat = np.zeros((n_units, n_cohorts * tlist_length))
     se_array = np.full(n_cohorts * tlist_length, np.nan)
 
-    unique_ids = data[id_col].unique().to_numpy()
+    unique_ids = np.sort(data[id_col].unique().to_numpy())
     id_to_idx = {uid: idx for idx, uid in enumerate(unique_ids)}
 
     args_list = []
@@ -284,15 +284,13 @@ def ddd_mp(
 
     inf_func_trimmed = inf_func_mat[:, : len(attgt_list)]
 
+    unit_info = data.sort([id_col, time_col]).group_by(id_col, maintain_order=True).first().sort(id_col)
+
     cluster_vals = None
     if cluster is not None:
-        first_period = tlist[0]
-        cluster_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
-        cluster_vals = cluster_data[cluster].to_numpy()
+        cluster_vals = unit_info[cluster].to_numpy()
 
-    first_period = tlist[0]
-    unit_data = data.filter(pl.col(time_col) == first_period).sort(id_col)
-    unit_groups = unit_data[group_col].to_numpy()
+    unit_groups = unit_info[group_col].to_numpy()
 
     if boot:
         boot_result = mboot_ddd(
@@ -510,16 +508,15 @@ def _process_single_control(
     n_cell,
 ):
     """Process a (g,t) cell with a single control group."""
-    att_result, inf_func = _compute_single_ddd(
+    att_result, inf_func, common_ids = _compute_single_ddd(
         cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
     )
 
     if att_result is None:
         return None, None, None
 
-    inf_func_scaled = (n_units / n_cell) * inf_func
-    cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
-    return att_result, inf_func_scaled, cell_id_list
+    inf_func_scaled = (n_units / len(common_ids)) * inf_func
+    return att_result, inf_func_scaled, common_ids
 
 
 def _process_multiple_controls(
@@ -541,39 +538,42 @@ def _process_multiple_controls(
     """Process a (g,t) cell with multiple control groups using GMM aggregation."""
     ddd_results = []
     inf_funcs_local = []
+    all_common_ids = set()
 
     for ctrl in available_controls:
         ctrl_expr = (pl.col(group_col) == g) | (pl.col(group_col) == ctrl)
         subset_data = cell_data.filter(ctrl_expr)
 
-        att_result, inf_func = _compute_single_ddd(
+        att_result, inf_func, common_ids = _compute_single_ddd(
             subset_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
         )
 
         if att_result is None:
             continue
 
-        n_subset = subset_data[id_col].n_unique()
-        inf_func_scaled = (n_cell / n_subset) * inf_func
+        all_common_ids.update(common_ids)
         ddd_results.append(att_result)
 
-        inf_full = np.zeros(n_cell)
-        subset_ids = subset_data.filter(pl.col(time_col) == t)[id_col].to_numpy()
-        cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy()
-        cell_id_to_local = {uid: idx for idx, uid in enumerate(cell_id_list)}
-
-        for i, uid in enumerate(subset_ids):
-            if uid in cell_id_to_local and i < len(inf_func_scaled):
-                inf_full[cell_id_to_local[uid]] = inf_func_scaled[i]
-
-        inf_funcs_local.append(inf_full)
+        inf_funcs_local.append((inf_func, common_ids))
 
     if len(ddd_results) == 0:
         return None, None, None, None
 
-    att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_funcs_local), n_units)
-    inf_func_scaled = (n_units / n_cell) * if_gmm
-    cell_id_list = cell_data.filter(pl.col(time_col) == t)[id_col].unique().to_numpy()
+    cell_id_list = np.sort(np.array(list(all_common_ids)))
+    cell_id_to_local = {uid: idx for idx, uid in enumerate(cell_id_list)}
+    n_cell_actual = len(cell_id_list)
+
+    inf_mat_local = []
+    for inf_func, common_ids in inf_funcs_local:
+        inf_func_scaled = (n_cell_actual / len(common_ids)) * inf_func
+        inf_full = np.zeros(n_cell_actual)
+        for i, uid in enumerate(common_ids):
+            if uid in cell_id_to_local and i < len(inf_func_scaled):
+                inf_full[cell_id_to_local[uid]] = inf_func_scaled[i]
+        inf_mat_local.append(inf_full)
+
+    att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_mat_local), n_units)
+    inf_func_scaled = (n_units / n_cell_actual) * if_gmm
     return att_gmm, inf_func_scaled, cell_id_list, se_gmm
 
 
@@ -598,18 +598,20 @@ def _compute_single_ddd(
     pre_ids = set(pre_data[id_col].to_list())
     common_ids = post_ids & pre_ids
     if len(common_ids) == 0:
-        return None, None
+        return None, None, None
 
     common_ids_list = list(common_ids)
     post_data = post_data.filter(pl.col(id_col).is_in(common_ids_list)).sort(id_col)
     pre_data = pre_data.filter(pl.col(id_col).is_in(common_ids_list)).sort(id_col)
+
+    common_ids_arr = post_data[id_col].to_numpy()
 
     y1 = post_data[y_col].to_numpy()
     y0 = pre_data[y_col].to_numpy()
     subgroup = post_data["subgroup"].to_numpy()
 
     if 4 not in set(subgroup):
-        return None, None
+        return None, None, None
 
     if covariate_cols is None:
         X = np.ones((len(y1), 1))
@@ -620,9 +622,9 @@ def _compute_single_ddd(
 
     try:
         result = ddd_panel(y1=y1, y0=y0, subgroup=subgroup, covariates=X, est_method=est_method, influence_func=True)
-        return result.att, result.att_inf_func
+        return result.att, result.att_inf_func, common_ids_arr
     except (ValueError, np.linalg.LinAlgError):
-        return None, None
+        return None, None, None
 
 
 def _gmm_aggregate(att_vals, inf_mat, n_total):

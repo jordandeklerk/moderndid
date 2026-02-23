@@ -163,6 +163,7 @@ __all__ = [
     "is_balanced_panel",
     "is_full_rank",
     "lee_coefficient",
+    "load_cai2016",
     "load_ehec",
     "load_engel",
     "load_favara_imbs",
@@ -244,7 +245,7 @@ __all__ = [
 # Submodules that can be loaded lazily
 # Note: drdid is excluded because we want `from moderndid import drdid` to get
 # the drdid() function, not the drdid submodule. Access submodule via moderndid.drdid.
-_submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "panel", "plots"]
+_submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "plots"]
 
 # Map attribute names to their module paths (for base/always-available imports)
 _lazy_imports = {
@@ -255,6 +256,7 @@ _lazy_imports = {
     "use_backend": "moderndid.cupy.backend",
     # core.data
     "data": "moderndid.core",
+    "load_cai2016": "moderndid.core.data",
     "load_ehec": "moderndid.core.data",
     "load_engel": "moderndid.core.data",
     "load_favara_imbs": "moderndid.core.data",
@@ -266,22 +268,22 @@ _lazy_imports = {
     "preprocess_did": "moderndid.core.preprocess",
     "extract_vars_from_formula": "moderndid.core.preprocess.utils",
     "parse_formula": "moderndid.core.preprocess.utils",
-    # panel
-    "PanelDiagnostics": "moderndid.panel",
-    "are_varying": "moderndid.panel",
-    "assign_rc_ids": "moderndid.panel",
-    "complete_data": "moderndid.panel",
-    "deduplicate_panel": "moderndid.panel",
-    "diagnose_panel": "moderndid.panel",
-    "fill_panel_gaps": "moderndid.panel",
-    "get_first_difference": "moderndid.panel",
-    "get_group": "moderndid.panel",
-    "has_gaps": "moderndid.panel",
-    "is_balanced_panel": "moderndid.panel",
-    "make_balanced_panel": "moderndid.panel",
-    "panel_to_wide": "moderndid.panel",
-    "scan_gaps": "moderndid.panel",
-    "wide_to_panel": "moderndid.panel",
+    # panel (core.panel)
+    "PanelDiagnostics": "moderndid.core.panel",
+    "are_varying": "moderndid.core.panel",
+    "assign_rc_ids": "moderndid.core.panel",
+    "complete_data": "moderndid.core.panel",
+    "deduplicate_panel": "moderndid.core.panel",
+    "diagnose_panel": "moderndid.core.panel",
+    "fill_panel_gaps": "moderndid.core.panel",
+    "get_first_difference": "moderndid.core.panel",
+    "get_group": "moderndid.core.panel",
+    "has_gaps": "moderndid.core.panel",
+    "is_balanced_panel": "moderndid.core.panel",
+    "make_balanced_panel": "moderndid.core.panel",
+    "panel_to_wide": "moderndid.core.panel",
+    "scan_gaps": "moderndid.core.panel",
+    "wide_to_panel": "moderndid.core.panel",
     # did
     "AGGTEResult": "moderndid.did.aggte_obj",
     "format_aggte_result": "moderndid.did.format",

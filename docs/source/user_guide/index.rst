@@ -27,7 +27,7 @@ features; details are found in :ref:`api`.
    :maxdepth: 2
 
    example_staggered_did
-   example_cont_did
    example_triple_did
+   example_cont_did
    example_inter_did
    example_honest_did

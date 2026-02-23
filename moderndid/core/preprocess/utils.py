@@ -82,7 +82,7 @@ def get_first_difference(df, idname, yname, tname):
     return data.with_columns((pl.col(yname) - pl.col(yname).shift(1).over(idname)).alias("dy"))
 
 
-def get_group(df, idname, tname, treatname):
+def get_group(df, idname, tname, treatname, treat_period=None):
     """Get group.
 
     Parameters
@@ -95,6 +95,10 @@ def get_group(df, idname, tname, treatname):
         Name of time column.
     treatname : str
         Name of treatment column.
+    treat_period : int or None
+        Known treatment onset period. When provided, units with any positive
+        value of *treatname* are assigned ``G = treat_period`` and all others
+        receive ``G = 0``, bypassing the first-switch detection logic.
 
     Returns
     -------
@@ -102,6 +106,21 @@ def get_group(df, idname, tname, treatname):
         DataFrame with original columns plus 'G' column containing group assignment.
     """
     data = to_polars(df)
+
+    if treat_period is not None:
+        ever_treated = (
+            data.group_by(idname)
+            .agg((pl.col(treatname) > 0).any().alias("_ever"))
+            .with_columns(
+                pl.when(pl.col("_ever"))
+                .then(pl.lit(treat_period, dtype=pl.Int64))
+                .otherwise(pl.lit(0, dtype=pl.Int64))
+                .alias("G")
+            )
+            .drop("_ever")
+        )
+        return data.join(ever_treated, on=idname, how="left")
+
     df_sorted = data.sort([idname, tname])
 
     df_with_treat = df_sorted.with_columns(

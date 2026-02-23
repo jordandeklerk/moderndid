@@ -7,7 +7,8 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import ddd_mp
+from moderndid import ddd, ddd_mp
+from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
 
 
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
@@ -269,3 +270,33 @@ def test_ddd_mp_parallel_matches_sequential(mp_ddd_data, base_period):
     np.testing.assert_array_equal(result_seq.times, result_par.times)
     np.testing.assert_allclose(result_seq.se, result_par.se, rtol=1e-10, equal_nan=True)
     np.testing.assert_allclose(result_seq.inf_func_mat, result_par.inf_func_mat, rtol=1e-10)
+
+
+def test_ddd_unbalanced_panel_uses_panel_mode(mp_ddd_data):
+    rng = np.random.default_rng(99)
+    n_rows = len(mp_ddd_data)
+    drop_mask = rng.random(n_rows) < 0.05
+    keep_idx = [i for i in range(n_rows) if not drop_mask[i]]
+    unbalanced = mp_ddd_data[keep_idx]
+
+    assert unbalanced["id"].n_unique() == mp_ddd_data["id"].n_unique()
+
+    result = ddd(
+        data=unbalanced,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        allow_unbalanced_panel=True,
+    )
+
+    assert isinstance(result, DDDMultiPeriodResult)
+    assert len(result.att) > 0
+    assert len(result.att) == len(result.se)
+    assert len(result.att) == len(result.groups)
+    assert len(result.att) == len(result.times)
+    assert result.n == unbalanced["id"].n_unique()
+    assert result.inf_func_mat.shape == (result.n, len(result.att))
+    assert all(np.isfinite(result.att))
+    assert result.args["panel"] is True

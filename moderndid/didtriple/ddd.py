@@ -130,9 +130,12 @@ def ddd(
         Panel data has the same units observed across time periods. Repeated
         cross-section data has different samples in each period.
     allow_unbalanced_panel : bool, default=False
-        If True and panel=True, allows unbalanced panel data by treating it as
-        repeated cross-section data. If the panel is unbalanced and this is False,
-        an error will be raised.
+        If True and panel=True, allows unbalanced panel data. For multi-period
+        settings, estimation stays in panel mode (preserving panel efficiency)
+        while handling units that appear in different subsets of periods. For
+        2-period settings, unbalanced data falls back to repeated cross-section
+        mode. If the panel is unbalanced and this is False, an error will be
+        raised.
     random_state : int, Generator, optional
         Random seed for reproducibility of bootstrap.
     n_jobs : int, default=1
@@ -451,7 +454,8 @@ def ddd(
             if missing_covs:
                 raise ValueError(f"Covariates not found in data: {missing_covs}")
 
-        if is_rcs:
+        use_panel = panel and idname is not None and idname != "_row_id"
+        if not use_panel:
             return ddd_mp_rc(
                 data=data,
                 y_col=yname,
