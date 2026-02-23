@@ -10,7 +10,7 @@ COLORS = {
     "line": "#3a3a3a",
     "ci_fill": "#bfbfbf",
     "reference": "gray",
-    "original": "#4a4a4a",
+    "original": "#d4a017",
     "flci": "#1a3a5c",
     "conditional": "#2ecc71",
     "c_f": "#9b59b6",

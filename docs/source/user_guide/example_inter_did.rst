@@ -23,12 +23,45 @@ to those with the same baseline treatment that have not yet changed. This
 allows for valid causal inference even when treatment intensity varies and
 past treatments affect current outcomes.
 
-This example demonstrates the estimator using county-level data on bank
-lending and interstate branching deregulation from 1994 to 2005.
+
+Empirical application
+---------------------
+
+This example replicates the empirical analysis from
+`de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_,
+which revisits `Favara and Imbs (2015) <https://doi.org/10.1257/aer.20121416>`_.
+
+In 1994, the Interstate Banking and Branching Efficiency Act (IBBEA) allowed
+US banks to operate across state borders without formal authorization from
+state authorities. However, states could still impose up to four restrictions
+on interstate branching. These included requiring explicit state approval for
+de novo branching, setting minimum age requirements for merger targets,
+prohibiting the acquisition of individual branches, and capping the statewide
+deposits controlled by a single bank. States lifted these restrictions at
+different times and in different combinations between 1994 and 2005, creating
+a non-binary, time-varying treatment.
+
+The outcome of interest is the change in log volume of bank loans
+(``Dl_vloans_b``), measuring the growth rate of mortgage lending at the
+county level. The dataset contains 1,045 counties observed annually from
+1994 to 2005, nested within states (``state_n``). The treatment
+``inter_bra`` indicates whether interstate branching was permitted. Of
+the 1,045 counties, 916 eventually experience a change in deregulation
+status and 129 never switch. Most states that deregulate do so for the
+first time between 1995 and 1998.
+
+`Favara and Imbs (2015) <https://doi.org/10.1257/aer.20121416>`_ originally
+concluded that deregulation had only short-lived effects on credit supply,
+based on local-projection coefficients that became small and insignificant
+at longer horizons. However,
+`de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
+show that this apparent fading was an artifact of the local-projection
+weights turning negative at longer horizons. Their estimator avoids these
+weighting problems and finds persistent effects of deregulation on lending.
 
 
-Loading data
-------------
+Loading the data
+^^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
@@ -57,21 +90,15 @@ Loading data
     │ 2003 ┆ 1001   ┆ 1       ┆ 0.202691    ┆ 1         ┆ 0.975312 ┆ 0.024043 │
     └──────┴────────┴─────────┴─────────────┴───────────┴──────────┴──────────┘
 
-The dataset contains 1,045 counties observed annually from 1994 to 2005. The
-outcome ``Dl_vloans_b`` is the change in log volume of bank loans. The treatment
-``inter_bra`` indicates whether interstate branching was permitted. Counties
-are nested within states (``state_n``), which matters for clustering standard
-errors.
-
-This county switched from no interstate branching (``inter_bra = 0``) to
-permitted (``inter_bra = 1``) in 1998. In this dataset, deregulation is
-one-directional (states lifted restrictions but did not reimpose them),
-though the estimator can handle non-absorbing treatments where reversals
-occur.
+The first county in the output switched from no interstate branching
+(``inter_bra = 0``) to permitted (``inter_bra = 1``) in 1998. In this
+dataset, deregulation is one-directional since states lifted restrictions
+but did not reimpose them. The estimator can also handle non-absorbing
+treatments where reversals occur.
 
 
-Estimating treatment effects
-----------------------------
+Estimation
+^^^^^^^^^^
 
 The estimator compares the outcome evolution of "switchers" (counties whose
 treatment changes) to "non-switchers" with the same baseline treatment. The
@@ -150,8 +177,7 @@ imprecise (only horizon 5 is individually significant), but the statistically
 significant Average Total Effect of 0.035 indicates a meaningful overall
 impact of deregulation on lending.
 
-Of the 1,045 counties, 916 eventually switch treatment status and 129 never
-switch. The 905 switchers at each horizon represents the subset used for that
+The 905 switchers at each horizon represents the subset used for that
 specific comparison. The declining sample sizes at longer horizons (from 3,810
 at horizon 1 to 1,800 at horizon 5) reflect the panel structure, since fewer
 switchers have enough post-treatment periods to contribute to later horizons.
@@ -162,7 +188,7 @@ The same logic applies to placebos.
 
 
 Adding placebo tests
---------------------
+^^^^^^^^^^^^^^^^^^^^
 
 It is always good practice to check whether switchers and non-switchers had
 similar outcome trends before the treatment change. Significant pre-treatment
@@ -259,7 +285,7 @@ this reflects noise or a pre-existing divergence.
 
 
 Normalized effects
-------------------
+^^^^^^^^^^^^^^^^^^
 
 When treatment intensity varies across units, raw effects can be hard to
 interpret on their own. Normalized effects divide by the cumulative treatment
@@ -360,15 +386,11 @@ roughly constant impact on loan growth.
 
 The ``effects_equal=True`` option tests whether the normalized effects are
 equal across all horizons. With a p-value of 0.13, we cannot reject the
-null of equal effects. This is an important finding.
-`Favara and Imbs (2015) <https://doi.org/10.1257/aer.20121416>`_ originally concluded that
-deregulation had only short-lived effects on mortgage volume, based on
-local-projection coefficients that became small and insignificant at longer
-horizons. But as de Chaisemartin and D'Haultfoeuille (2024) show, this
-apparent fading was an artifact of the local-projection weights turning
-negative at longer horizons, not of the treatment effects actually
-diminishing. The estimator used here avoids these weighting problems and
-finds persistent effects.
+null of equal effects. This goes against the original conclusion that
+deregulation had only short-lived effects on mortgage volume and is
+consistent with the finding that the apparent fading in the local-projection
+results was an artifact of negative weights rather than diminishing
+treatment effects.
 
 The ``same_switchers=True`` option ensures the same set of units contributes
 to each horizon, making effects more comparable across horizons at the cost
@@ -377,7 +399,7 @@ across horizons could confound the comparison.
 
 
 Plotting results
-----------------
+^^^^^^^^^^^^^^^^
 
 We can visualize both pre-treatment placebos and post-treatment effects on
 the same axis, making it easy to assess parallel trends and see how effects
@@ -391,8 +413,8 @@ evolve over time.
    :alt: Intertemporal treatment effects event study plot
    :width: 100%
 
-The gray points at negative horizons are pre-treatment placebos. They cluster
-around zero, consistent with parallel trends. The blue points at positive
+The blue points at negative horizons are pre-treatment placebos. They cluster
+around zero, consistent with parallel trends. The red points at positive
 horizons show treatment effects that are positive and relatively stable over
 time after normalization.
 

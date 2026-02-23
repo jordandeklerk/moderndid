@@ -628,9 +628,9 @@ def test_att_gt_bootstrap_se(mpdta_small, mpdta_small_csv_path):
             if not np.isnan(py_se) and not np.isnan(r_se_val) and r_se_val > 0:
                 se_ratios.append(py_se / r_se_val)
 
-    if len(se_ratios) > 0:
-        mean_ratio = np.mean(se_ratios)
-        assert 0.7 < mean_ratio < 1.3, f"Bootstrap SE ratio outside reasonable range: {mean_ratio:.2f}"
+    assert len(se_ratios) > 0, "No valid SE pairs to compare between Python and R"
+    mean_ratio = np.mean(se_ratios)
+    assert 0.7 < mean_ratio < 1.3, f"Bootstrap SE ratio outside reasonable range: {mean_ratio:.2f}"
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
@@ -726,6 +726,7 @@ def test_aggte_disaggregated_effects(mpdta_data, mpdta_csv_path, agg_type):
     common_egt = set(py_agg_result.event_times) & set(r_egt)
     assert len(common_egt) > 0, f"{agg_type}: No common event times between Python and R"
 
+    compared = 0
     for e in common_egt:
         py_idx = np.where(py_agg_result.event_times == e)[0][0]
         r_idx = np.where(r_egt == e)[0][0]
@@ -734,15 +735,18 @@ def test_aggte_disaggregated_effects(mpdta_data, mpdta_csv_path, agg_type):
         r_att = r_att_egt[r_idx]
 
         if np.isnan(py_att) and np.isnan(r_att):
+            compared += 1
             continue
-        if not np.isnan(py_att) and not np.isnan(r_att):
-            np.testing.assert_allclose(
-                py_att,
-                r_att,
-                rtol=1e-5,
-                atol=1e-6,
-                err_msg=f"{agg_type} e={e}: ATT mismatch",
-            )
+        assert not (np.isnan(py_att) ^ np.isnan(r_att)), f"{agg_type} e={e}: NaN mismatch (Python={py_att}, R={r_att})"
+        np.testing.assert_allclose(
+            py_att,
+            r_att,
+            rtol=1e-5,
+            atol=1e-6,
+            err_msg=f"{agg_type} e={e}: ATT mismatch",
+        )
+        compared += 1
+    assert compared > 0, f"{agg_type}: No event times were compared"
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
@@ -871,9 +875,10 @@ def test_aggte_bootstrap_se(mpdta_small, mpdta_small_csv_path, agg_type):
         err_msg=f"{agg_type}: Overall ATT mismatch (bootstrap)",
     )
 
-    if not np.isnan(py_agg_result.overall_se) and not np.isnan(r_result["overall_se"]):
-        se_ratio = py_agg_result.overall_se / r_result["overall_se"]
-        assert 0.5 < se_ratio < 2.0, f"{agg_type}: Bootstrap SE ratio outside reasonable range: {se_ratio:.2f}"
+    assert not np.isnan(py_agg_result.overall_se), f"{agg_type}: Python returned NaN for overall SE"
+    assert not np.isnan(r_result["overall_se"]), f"{agg_type}: R returned NaN for overall SE"
+    se_ratio = py_agg_result.overall_se / r_result["overall_se"]
+    assert 0.5 < se_ratio < 2.0, f"{agg_type}: Bootstrap SE ratio outside reasonable range: {se_ratio:.2f}"
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")

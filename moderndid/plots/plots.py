@@ -99,6 +99,7 @@ def plot_gt(
         + geom_point(size=3, alpha=0.8)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
+            limits=["Pre", "Post"],
             name="Treatment Status",
         )
         + scale_x_continuous(breaks=x_breaks)
@@ -206,6 +207,7 @@ def plot_event_study(
         + geom_point(aes(color="treatment_status"), size=3.5)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
+            limits=["Pre", "Post"],
             name="Treatment Status",
         )
         + scale_x_continuous(breaks=x_breaks)
@@ -485,6 +487,7 @@ def plot_multiplegt(
         A plotnine ggplot object that can be further customized.
     """
     df = didinterresult_to_polars(result)
+    x_breaks = sorted(df["horizon"].unique().to_list())
 
     plot = ggplot(df, aes(x="horizon", y="att"))
 
@@ -506,8 +509,10 @@ def plot_multiplegt(
         + geom_point(aes(color="treatment_status"), size=3.5)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
+            limits=["Pre", "Post"],
             name="Treatment Status",
         )
+        + scale_x_continuous(breaks=x_breaks)
         + labs(
             x=xlab or "Horizon",
             y=ylab or "Effect",

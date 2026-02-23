@@ -37,8 +37,8 @@ and research question.
   overturn your conclusions.
 
 
-Staggered DiD
--------------
+Staggered Difference-in-Differences
+-----------------------------------
 
 The :func:`~moderndid.did.att_gt` function is the primary estimator for
 staggered treatment adoption with binary, absorbing treatment. It estimates
@@ -90,8 +90,44 @@ automatically routes to a distributed implementation. See :doc:`distributed`
 for configuration details.
 
 
-Continuous Treatment DiD
-------------------------
+Triple Difference-in-Differences
+--------------------------------
+
+The :func:`~moderndid.didtriple.ddd` function leverages an additional
+dimension of variation such as eligibility status. The API follows
+the same pattern as the other estimators.
+This implements the
+`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
+framework.
+
+.. code-block:: python
+
+    result = did.ddd(
+        data=data,
+        yname="outcome",
+        tname="year",
+        idname="unit_id",
+        gname="first_treated",
+        pname="eligible",              # partition/eligibility variable
+        xformla="~ covariate",
+        control_group="nevertreated",
+        est_method="dr",
+    )
+
+The triple DiD estimator adds ``pname`` to specify the partition variable
+that identifies eligible units within treatment groups. All other core
+arguments work the same as :func:`~moderndid.att_gt`.
+
+The estimator automatically detects whether the data has two periods or
+multiple periods, and whether the data is a balanced panel or repeated
+cross-sections. For two-period data the ``control_group`` and
+``base_period`` parameters are ignored since there is only one possible
+comparison. Like :func:`~moderndid.att_gt`, passing a Dask or Spark DataFrame automatically
+routes to a distributed implementation.
+
+
+Difference-in-Differences with Continuous Treatments
+----------------------------------------------------
 
 The :func:`~moderndid.didcont.cont_did` function handles settings with
 treatment intensity rather than binary treatment. This implements the
@@ -134,44 +170,8 @@ identically.
    periods, and cannot be combined with event study aggregation.
 
 
-Triple Difference-in-Differences
---------------------------------
-
-The :func:`~moderndid.didtriple.ddd` function leverages an additional
-dimension of variation such as eligibility status. The API follows
-the same pattern as the other estimators.
-This implements the
-`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
-framework.
-
-.. code-block:: python
-
-    result = did.ddd(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        gname="first_treated",
-        pname="eligible",              # partition/eligibility variable
-        xformla="~ covariate",
-        control_group="nevertreated",
-        est_method="dr",
-    )
-
-The triple DiD estimator adds ``pname`` to specify the partition variable
-that identifies eligible units within treatment groups. All other core
-arguments work the same as ``att_gt``.
-
-The estimator automatically detects whether the data has two periods or
-multiple periods, and whether the data is a balanced panel or repeated
-cross-sections. For two-period data the ``control_group`` and
-``base_period`` parameters are ignored since there is only one possible
-comparison. Like ``att_gt``, passing a Dask or Spark DataFrame automatically
-routes to a distributed implementation.
-
-
-Intertemporal DiD
------------------
+Difference-in-Differences with Intertemporal Treatment Effects
+--------------------------------------------------------------
 
 The :func:`~moderndid.didinter.did_multiplegt` function handles settings with
 non-binary, non-absorbing (time-varying) treatments where lagged treatments
@@ -192,7 +192,7 @@ framework.
         cluster="unit_id",
     )
 
-Unlike ``att_gt`` which requires a ``gname`` (first treatment period), the
+Unlike :func:`~moderndid.att_gt` which requires a ``gname`` (first treatment period), the
 intertemporal estimator uses ``dname`` directly since treatment can change
 multiple times. The estimator compares units whose treatment changes
 ("switchers") to units with the same baseline treatment that have not yet
@@ -240,11 +240,33 @@ computed when ``trends_lin=True``.
    recommended.
 
 
-Sensitivity Analysis
---------------------
+.. tip::
+
+   Both :func:`~moderndid.cont_did` and :func:`~moderndid.did_multiplegt` accept
+   a dose/treatment variable ``dname``, but they target fundamentally
+   different settings.
+
+   - :func:`~moderndid.cont_did` assumes treatment is **absorbing**. Once
+     treated, a unit stays treated. Units differ only in how *much*
+     treatment they receive (e.g., different minimum wage amounts across
+     counties). The goal is to recover a dose-response function.
+
+   - :func:`~moderndid.did_multiplegt` allows treatment to be
+     **non-absorbing**. A unit's treatment can change, reverse, or
+     fluctuate over time (e.g., tax rates adjusted every year). The goal is
+     to estimate the effect of a treatment *change*, accounting for dynamics
+     and lagged effects.
+
+   As a rule of thumb, if each unit receives a fixed dose at adoption, use
+   :func:`~moderndid.cont_did`. If treatment values shift period to period,
+   use :func:`~moderndid.did_multiplegt`.
+
+
+Sensitivity Analysis for Parallel Trends Violations
+---------------------------------------------------
 
 The :mod:`~moderndid.didhonest` module assesses robustness to parallel
-trends violations. It takes results from ``att_gt``, or external event
+trends violations. It takes results from :func:`~moderndid.att_gt`, or external event
 study results, and produces confidence intervals that remain valid under
 specified degrees of parallel trends violation. This follows the
 `Rambachan and Roth (2023) <https://doi.org/10.1093/restud/rdad018>`_
@@ -282,11 +304,11 @@ Next steps
 Each estimator has a dedicated example page that walks through a full
 analysis with real or simulated data.
 
-- :doc:`example_staggered_did` for staggered adoption with ``att_gt``
-- :doc:`example_cont_did` for dose-response with ``cont_did``
-- :doc:`example_triple_did` for triple differences with ``ddd``
-- :doc:`example_inter_did` for time-varying treatments with ``did_multiplegt``
-- :doc:`example_honest_did` for sensitivity analysis with ``honest_did``
+- :doc:`example_staggered_did` for staggered adoption with :func:`~moderndid.att_gt`
+- :doc:`example_cont_did` for dose-response with :func:`~moderndid.cont_did`
+- :doc:`example_triple_did` for triple differences with :func:`~moderndid.ddd`
+- :doc:`example_inter_did` for time-varying treatments with :func:`~moderndid.did_multiplegt`
+- :doc:`example_honest_did` for sensitivity analysis with :func:`~moderndid.honest_did`
 
 For scaling any of these estimators to large datasets, see
 :doc:`distributed`.

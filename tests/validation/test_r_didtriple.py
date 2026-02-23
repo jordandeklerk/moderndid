@@ -26,8 +26,6 @@ from moderndid import (
 )
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 
-from ..helpers import importorskip
-
 np = importorskip("numpy")
 pd = importorskip("pandas")
 
@@ -129,8 +127,8 @@ result <- ddd(
 output <- list(
     att = result$ATT,
     se = result$se,
-    groups = result$group,
-    times = result$t
+    groups = result$groups,
+    times = result$periods
 )
 
 write_json(output, "{result_path}", auto_unbox = TRUE)
@@ -294,8 +292,8 @@ result <- ddd(
 output <- list(
     att = result$ATT,
     se = result$se,
-    groups = result$group,
-    times = result$t,
+    groups = result$groups,
+    times = result$periods,
     is_multiperiod = TRUE
 )
 
@@ -497,16 +495,9 @@ def test_mp_att_gt_estimates_match(mp_ddd_data, est_method):
     r_groups = np.atleast_1d(r_result["groups"])
     r_times = np.atleast_1d(r_result["times"])
 
-    if len(r_att) != len(r_groups) or len(r_att) != len(r_times):
-        r_pairs = []
-        for g in r_groups:
-            for t in r_times:
-                if 0 < g <= t:
-                    r_pairs.append((g, t))
-
-        assert len(py_result.att) > 0, f"{est_method}: Python returned no ATTs"
-        assert len(r_att) > 0, f"{est_method}: R returned no ATTs"
-        return
+    assert len(r_att) == len(r_groups) == len(r_times), (
+        f"{est_method}: R returned mismatched lengths: att={len(r_att)}, groups={len(r_groups)}, times={len(r_times)}"
+    )
 
     matches = 0
     for i, (g, t) in enumerate(zip(py_result.groups, py_result.times)):
@@ -547,7 +538,26 @@ def test_mp_control_group_options(mp_ddd_data, control_group):
     if r_result is None:
         pytest.fail("R estimation failed")
 
+    r_att = np.atleast_1d(r_result["att"])
     assert len(py_result.att) > 0, f"Python returned no ATTs for {control_group}"
+    assert len(r_att) > 0, f"R returned no ATTs for {control_group}"
+
+    matches = 0
+    r_groups = np.atleast_1d(r_result["groups"])
+    r_times = np.atleast_1d(r_result["times"])
+    for i, (g, t) in enumerate(zip(py_result.groups, py_result.times)):
+        r_mask = (r_groups == g) & (r_times == t)
+        if np.any(r_mask):
+            r_idx = np.where(r_mask)[0][0]
+            py_att = py_result.att[i]
+            r_att_val = r_att[r_idx]
+            if np.isnan(py_att) and np.isnan(r_att_val):
+                matches += 1
+            elif not np.isnan(py_att) and not np.isnan(r_att_val):
+                if np.allclose(py_att, r_att_val, rtol=1e-4, atol=1e-4):
+                    matches += 1
+    match_rate = matches / len(py_result.att) if len(py_result.att) > 0 else 0
+    assert match_rate > 0.95, f"{control_group}: Only {match_rate:.1%} of ATT(g,t) estimates match"
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -571,7 +581,26 @@ def test_mp_base_period_options(mp_ddd_data, base_period):
     if r_result is None:
         pytest.fail("R estimation failed")
 
+    r_att = np.atleast_1d(r_result["att"])
     assert len(py_result.att) > 0, f"Python returned no ATTs for {base_period}"
+    assert len(r_att) > 0, f"R returned no ATTs for {base_period}"
+
+    matches = 0
+    r_groups = np.atleast_1d(r_result["groups"])
+    r_times = np.atleast_1d(r_result["times"])
+    for i, (g, t) in enumerate(zip(py_result.groups, py_result.times)):
+        r_mask = (r_groups == g) & (r_times == t)
+        if np.any(r_mask):
+            r_idx = np.where(r_mask)[0][0]
+            py_att = py_result.att[i]
+            r_att_val = r_att[r_idx]
+            if np.isnan(py_att) and np.isnan(r_att_val):
+                matches += 1
+            elif not np.isnan(py_att) and not np.isnan(r_att_val):
+                if np.allclose(py_att, r_att_val, rtol=1e-4, atol=1e-4):
+                    matches += 1
+    match_rate = matches / len(py_result.att) if len(py_result.att) > 0 else 0
+    assert match_rate > 0.95, f"{base_period}: Only {match_rate:.1%} of ATT(g,t) estimates match"
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -842,10 +871,11 @@ def test_eventstudy_min_max_e_matches(mp_ddd_data):
     if r_result is None:
         pytest.fail("R aggregation with min_e/max_e failed")
 
-    if "egt" in r_result and r_result["egt"] is not None:
-        r_egt = np.array(r_result["egt"])
-        assert all(-1 <= e <= 2 for e in py_agg.egt), "Python egt outside [min_e, max_e]"
-        assert all(-1 <= e <= 2 for e in r_egt), "R egt outside [min_e, max_e]"
+    assert "egt" in r_result and r_result["egt"] is not None, "R result missing egt field"
+    r_egt = np.array(r_result["egt"])
+    assert all(-1 <= e <= 2 for e in py_agg.egt), "Python egt outside [min_e, max_e]"
+    assert all(-1 <= e <= 2 for e in r_egt), "R egt outside [min_e, max_e]"
+    np.testing.assert_array_equal(np.sort(py_agg.egt), np.sort(r_egt), err_msg="Event times mismatch")
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -1369,8 +1399,8 @@ result <- ddd(
 output <- list(
     att = result$ATT,
     se = result$se,
-    groups = result$group,
-    times = result$t
+    groups = result$groups,
+    times = result$periods
 )
 
 write_json(output, "{result_path}", auto_unbox = TRUE)
@@ -1493,10 +1523,10 @@ def test_mp_rcs_att_gt_estimates_match(mp_rcs_data, est_method):
     r_groups = np.atleast_1d(r_result["groups"])
     r_times = np.atleast_1d(r_result["times"])
 
-    if len(r_att) != len(r_groups) or len(r_att) != len(r_times):
-        assert len(py_result.att) > 0, f"RCS {est_method}: Python returned no ATTs"
-        assert len(r_att) > 0, f"RCS {est_method}: R returned no ATTs"
-        return
+    assert len(r_att) == len(r_groups) == len(r_times), (
+        f"RCS {est_method}: R returned mismatched lengths: "
+        f"att={len(r_att)}, groups={len(r_groups)}, times={len(r_times)}"
+    )
 
     matches = 0
     for i, (g, t) in enumerate(zip(py_result.groups, py_result.times)):
@@ -1527,7 +1557,26 @@ def test_mp_rcs_control_group_options(mp_rcs_data, control_group):
     if r_result is None:
         pytest.fail("R RCS estimation failed")
 
+    r_att = np.atleast_1d(r_result["att"])
+    r_groups = np.atleast_1d(r_result["groups"])
+    r_times = np.atleast_1d(r_result["times"])
     assert len(py_result.att) > 0, f"RCS Python returned no ATTs for {control_group}"
+    assert len(r_att) > 0, f"RCS R returned no ATTs for {control_group}"
+
+    matches = 0
+    for i, (g, t) in enumerate(zip(py_result.groups, py_result.times)):
+        r_mask = (r_groups == g) & (r_times == t)
+        if np.any(r_mask):
+            r_idx = np.where(r_mask)[0][0]
+            py_att = py_result.att[i]
+            r_att_val = r_att[r_idx]
+            if np.isnan(py_att) and np.isnan(r_att_val):
+                matches += 1
+            elif not np.isnan(py_att) and not np.isnan(r_att_val):
+                if np.allclose(py_att, r_att_val, rtol=1e-4, atol=1e-4):
+                    matches += 1
+    match_rate = matches / len(py_result.att) if len(py_result.att) > 0 else 0
+    assert match_rate > 0.95, f"RCS {control_group}: Only {match_rate:.1%} of ATT(g,t) match"
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
@@ -1541,7 +1590,26 @@ def test_mp_rcs_base_period_options(mp_rcs_data, base_period):
     if r_result is None:
         pytest.fail("R RCS estimation failed")
 
+    r_att = np.atleast_1d(r_result["att"])
+    r_groups = np.atleast_1d(r_result["groups"])
+    r_times = np.atleast_1d(r_result["times"])
     assert len(py_result.att) > 0, f"RCS Python returned no ATTs for {base_period}"
+    assert len(r_att) > 0, f"RCS R returned no ATTs for {base_period}"
+
+    matches = 0
+    for i, (g, t) in enumerate(zip(py_result.groups, py_result.times)):
+        r_mask = (r_groups == g) & (r_times == t)
+        if np.any(r_mask):
+            r_idx = np.where(r_mask)[0][0]
+            py_att = py_result.att[i]
+            r_att_val = r_att[r_idx]
+            if np.isnan(py_att) and np.isnan(r_att_val):
+                matches += 1
+            elif not np.isnan(py_att) and not np.isnan(r_att_val):
+                if np.allclose(py_att, r_att_val, rtol=1e-4, atol=1e-4):
+                    matches += 1
+    match_rate = matches / len(py_result.att) if len(py_result.att) > 0 else 0
+    assert match_rate > 0.95, f"RCS {base_period}: Only {match_rate:.1%} of ATT(g,t) match"
 
 
 def test_ddd_rc_basic_functionality(two_period_rcs_data):
