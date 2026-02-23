@@ -3,28 +3,12 @@ import pytest
 
 pyspark = pytest.importorskip("pyspark")
 
-from pyspark.sql import SparkSession
-
 from moderndid.core.data import gen_did_scalable
 from moderndid.did.att_gt import att_gt
 from moderndid.didtriple.ddd import ddd
 from moderndid.didtriple.dgp import gen_dgp_mult_periods, gen_dgp_scalable
 from moderndid.spark._ddd import spark_ddd
 from moderndid.spark._did import spark_att_gt
-
-
-@pytest.fixture(scope="module")
-def spark_session():
-    spark = (
-        SparkSession.builder.master("local[2]")
-        .appName("moderndid_integration_test")
-        .config("spark.ui.enabled", "false")
-        .config("spark.sql.shuffle.partitions", "2")
-        .config("spark.default.parallelism", "2")
-        .getOrCreate()
-    )
-    yield spark
-    spark.stop()
 
 
 @pytest.fixture(scope="module")

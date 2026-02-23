@@ -4,6 +4,56 @@ import numpy as np
 import pytest
 
 
+def _spark_available():
+    """Return True if a local SparkSession can be created."""
+    try:
+        from pyspark.sql import SparkSession
+
+        spark = (
+            SparkSession.builder.master("local[1]").appName("_probe").config("spark.ui.enabled", "false").getOrCreate()
+        )
+        spark.stop()
+        return True
+    except (RuntimeError, OSError, ImportError):
+        return False
+
+
+_HAS_SPARK = None
+
+
+def has_spark():
+    """Cached check for Spark availability."""
+    global _HAS_SPARK
+    if _HAS_SPARK is None:
+        _HAS_SPARK = _spark_available()
+    return _HAS_SPARK
+
+
+requires_spark = pytest.mark.skipif(
+    "not config.getini('markers')",  # deferred evaluation
+    reason="Spark/Java not available",
+)
+
+
+@pytest.fixture(scope="module")
+def spark_session():
+    """Shared SparkSession fixture that skips when Java is not available."""
+    if not has_spark():
+        pytest.skip("Spark/Java not available")
+    from pyspark.sql import SparkSession
+
+    spark = (
+        SparkSession.builder.master("local[2]")
+        .appName("moderndid_test")
+        .config("spark.ui.enabled", "false")
+        .config("spark.sql.shuffle.partitions", "2")
+        .config("spark.default.parallelism", "2")
+        .getOrCreate()
+    )
+    yield spark
+    spark.stop()
+
+
 @pytest.fixture
 def rng():
     return np.random.default_rng(42)

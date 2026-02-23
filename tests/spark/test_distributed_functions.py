@@ -6,8 +6,6 @@ import pytest
 
 pyspark = pytest.importorskip("pyspark")
 
-from pyspark.sql import SparkSession
-
 from moderndid.spark._bootstrap import distributed_mboot_ddd
 from moderndid.spark._gram import partition_gram
 from moderndid.spark._inf_func import compute_variance_distributed
@@ -19,25 +17,6 @@ from moderndid.spark._regression import (
     distributed_wls_from_partitions,
 )
 from moderndid.spark._utils import get_default_partitions, get_or_create_spark, prepare_cohort_wide_pivot
-
-
-@pytest.fixture(scope="module")
-def spark_session():
-    spark = (
-        SparkSession.builder.master("local[2]")
-        .appName("moderndid_test")
-        .config("spark.ui.enabled", "false")
-        .config("spark.sql.shuffle.partitions", "2")
-        .config("spark.default.parallelism", "2")
-        .getOrCreate()
-    )
-    yield spark
-    spark.stop()
-
-
-@pytest.fixture
-def rng():
-    return np.random.default_rng(42)
 
 
 @pytest.fixture

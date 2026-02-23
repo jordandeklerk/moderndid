@@ -37,38 +37,17 @@ def test_is_spark_dataframe_non_spark(obj):
     assert is_spark_dataframe(obj) is False
 
 
-def test_is_spark_dataframe_spark_df():
-    pytest.importorskip("pyspark")
-    from pyspark.sql import SparkSession
-
-    spark = SparkSession.builder.master("local[1]").appName("test_utils").getOrCreate()
-    try:
-        sdf = spark.createDataFrame([(1, 2)], ["a", "b"])
-        assert is_spark_dataframe(sdf) is True
-    finally:
-        spark.stop()
+def test_is_spark_dataframe_spark_df(spark_session):
+    sdf = spark_session.createDataFrame([(1, 2)], ["a", "b"])
+    assert is_spark_dataframe(sdf) is True
 
 
-def test_validate_spark_input_passes():
-    pytest.importorskip("pyspark")
-    from pyspark.sql import SparkSession
-
-    spark = SparkSession.builder.master("local[1]").appName("test_validate").getOrCreate()
-    try:
-        sdf = spark.createDataFrame([(1, 2)], ["a", "b"])
-        validate_spark_input(sdf, ["a", "b"])
-    finally:
-        spark.stop()
+def test_validate_spark_input_passes(spark_session):
+    sdf = spark_session.createDataFrame([(1, 2)], ["a", "b"])
+    validate_spark_input(sdf, ["a", "b"])
 
 
-def test_validate_spark_input_missing_raises():
-    pytest.importorskip("pyspark")
-    from pyspark.sql import SparkSession
-
-    spark = SparkSession.builder.master("local[1]").appName("test_validate_err").getOrCreate()
-    try:
-        sdf = spark.createDataFrame([(1,)], ["a"])
-        with pytest.raises(ValueError, match="Columns not found"):
-            validate_spark_input(sdf, ["a", "z"])
-    finally:
-        spark.stop()
+def test_validate_spark_input_missing_raises(spark_session):
+    sdf = spark_session.createDataFrame([(1,)], ["a"])
+    with pytest.raises(ValueError, match="Columns not found"):
+        validate_spark_input(sdf, ["a", "z"])
