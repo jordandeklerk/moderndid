@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import warnings
 
 import numpy as np
@@ -22,8 +21,6 @@ from moderndid.distributed._didcont_partition import (
     build_cell_subset,
     process_pte_cell_from_subset,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def spark_cont_did_mp(
@@ -141,8 +138,6 @@ def spark_cont_did_mp(
     local_data = pl.from_pandas(pdf)
     local_data = to_polars(local_data)
 
-    logger.info("Collected %d rows to driver for cont_did preprocessing", len(local_data))
-
     if dname is None:
         raise ValueError("dname is required.")
     if xformla != "~1":
@@ -251,22 +246,13 @@ def spark_cont_did_mp(
             cell_payloads.append((arrow_bytes, tp, g, gt_type, n_units, n1, cell_kwargs))
 
     n_cells = len(cell_payloads)
-    logger.info("Distributing %d (g,t) cells via Spark", n_cells)
 
     sc = spark.sparkContext
     num_slices = min(n_cells, sc.defaultParallelism) if n_cells > 0 else 1
 
-    def _process_partition(payloads):
-        results = []
-        for payload in payloads:
-            ab, tp_, g_, gt_, nu, n1_, ck = payload
-            res = process_pte_cell_from_subset(ab, tp_, g_, gt_, nu, n1_, ck)
-            results.append(res)
-        return iter(results)
-
     if n_cells > 0:
         rdd = sc.parallelize(cell_payloads, numSlices=num_slices)
-        raw_results = rdd.mapPartitions(_process_partition).collect()
+        raw_results = rdd.mapPartitions(_process_cell_partition).collect()
     else:
         raw_results = []
 
@@ -355,3 +341,13 @@ def spark_cont_did_mp(
         overall_att = aggregate_att_gt(att_gt, aggregation_type="overall")
 
     return PTEResult(att_gt=att_gt, overall_att=overall_att, event_study=event_study, ptep=ptep)
+
+
+def _process_cell_partition(payloads):
+    """Process a batch of (group, time) cell payloads on a Spark worker."""
+    results = []
+    for payload in payloads:
+        ab, tp_, g_, gt_, nu, n1_, ck = payload
+        res = process_pte_cell_from_subset(ab, tp_, g_, gt_, nu, n1_, ck)
+        results.append(res)
+    return iter(results)

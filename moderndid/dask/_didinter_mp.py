@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 import numpy as np
 import polars as pl
 from scipy import stats
@@ -37,8 +35,6 @@ from moderndid.distributed._didinter_partition import (
     reduce_global_scalars,
     reduce_group_sums,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def dask_did_multiplegt_mp(
@@ -146,8 +142,6 @@ def dask_did_multiplegt_mp(
     pdf = data.compute()
     local_data = pl.from_pandas(pdf) if not isinstance(pdf, pl.DataFrame) else pdf
 
-    logger.info("Collected %d rows to driver for didinter estimation", len(local_data))
-
     config = DIDInterConfig(
         yname=yname,
         tname=tname,
@@ -188,7 +182,6 @@ def dask_did_multiplegt_mp(
     needs_local = bool(covariate_names or config.trends_lin or config.trends_nonparam or config.predict_het)
 
     if needs_local:
-        logger.info("Falling back to local computation for complex features")
         return _run_local_path(preprocessed)
 
     if config.same_switchers:

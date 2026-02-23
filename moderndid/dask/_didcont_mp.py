@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import warnings
 
 import numpy as np
@@ -23,8 +22,6 @@ from moderndid.distributed._didcont_partition import (
     build_cell_subset,
     process_pte_cell_from_subset,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def dask_cont_did_mp(
@@ -370,8 +367,6 @@ def _distributed_cont_did(
     n_times = len(time_periods)
 
     cell_args = [(tp, g) for tp in time_periods for g in groups]
-    n_cells = len(cell_args)
-    logger.info("Distributing %d (g,t) cells across Dask workers", n_cells)
 
     cell_kwargs = {}
     if gt_type == "dose":

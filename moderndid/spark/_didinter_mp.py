@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import functools
-import logging
 
 import numpy as np
 import polars as pl
@@ -37,8 +36,6 @@ from moderndid.distributed._didinter_partition import (
     reduce_global_scalars,
     reduce_group_sums,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def spark_did_multiplegt_mp(
@@ -155,8 +152,6 @@ def spark_did_multiplegt_mp(
     pdf = data.toPandas()
     local_data = pl.from_pandas(pdf)
 
-    logger.info("Collected %d rows to driver for didinter estimation", len(local_data))
-
     config = DIDInterConfig(
         yname=yname,
         tname=tname,
@@ -197,7 +192,6 @@ def spark_did_multiplegt_mp(
     needs_local = bool(covariate_names or config.trends_lin or config.trends_nonparam or config.predict_het)
 
     if needs_local:
-        logger.info("Falling back to local computation for complex features")
         return _run_local_path(preprocessed)
 
     if config.same_switchers:
@@ -398,24 +392,23 @@ def _distributed_did_effects(
     for idx, h in enumerate(horizons):
         abs_h = abs(h)
 
-        def _local_ops(part, _ah=abs_h, _ht=horizon_type, _cd=config_dict, _tm=t_max):
-            return partition_horizon_local_ops(part, _ah, _ht, _cd, _tm)
-
         old_rdd = parts_rdd
-        parts_rdd = parts_rdd.map(_local_ops).cache()
+        parts_rdd = parts_rdd.map(
+            functools.partial(
+                partition_horizon_local_ops,
+                abs_h=abs_h,
+                horizon_type=horizon_type,
+                config_dict=config_dict,
+                t_max=t_max,
+            )
+        ).cache()
         parts_rdd.count()
         old_rdd.unpersist()
 
-        def _group_sums(part, _ah=abs_h):
-            return partition_group_sums(part, _ah)
-
-        gs_list = parts_rdd.map(_group_sums).collect()
+        gs_list = parts_rdd.map(functools.partial(partition_group_sums, abs_h=abs_h)).collect()
         global_group_sums = functools.reduce(reduce_group_sums, gs_list) if gs_list else {}
 
-        def _global_scalars(part, _ah=abs_h):
-            return partition_global_scalars(part, _ah)
-
-        sc_list = parts_rdd.map(_global_scalars).collect()
+        sc_list = parts_rdd.map(functools.partial(partition_global_scalars, abs_h=abs_h)).collect()
         global_scalars = (
             functools.reduce(reduce_global_scalars, sc_list)
             if sc_list
@@ -432,21 +425,18 @@ def _distributed_did_effects(
             n_obs_arr[idx] = 0
             continue
 
-        gs_bc = sc.broadcast(global_group_sums)
-
-        def _apply_globals(part, _ah=abs_h, _bc=gs_bc):
-            return partition_apply_globals(part, _ah, _bc.value)
-
         old_rdd = parts_rdd
-        parts_rdd = parts_rdd.map(_apply_globals).cache()
+        parts_rdd = parts_rdd.map(
+            functools.partial(partition_apply_globals, abs_h=abs_h, global_group_sums=global_group_sums)
+        ).cache()
         parts_rdd.count()
         old_rdd.unpersist()
-        gs_bc.unpersist()
 
-        def _compute_if(part, _ah=abs_h, _ng=n_groups, _nsw=n_switchers_weighted):
-            return partition_compute_influence(part, _ah, _ng, _nsw)
-
-        if_results = parts_rdd.map(_compute_if).collect()
+        if_results = parts_rdd.map(
+            functools.partial(
+                partition_compute_influence, abs_h=abs_h, n_groups=n_groups, n_switchers_weighted=n_switchers_weighted
+            )
+        ).collect()
 
         inf_func_full = np.zeros(len(sorted_gnames))
         total_if_sum = 0.0
@@ -465,32 +455,19 @@ def _distributed_did_effects(
 
         delta_d = None
         if config.normalized or horizon_type == "effect":
-
-            def _extract_switcher_weights(part, _ah=abs_h):
-                dist_col = part.get(f"dist_{_ah}")
-                if dist_col is None:
-                    return {}
-                gname_arr = part["gname"]
-                weight_arr = part["weight_gt"]
-                valid = (~np.isnan(dist_col)) & (dist_col == 1.0)
-                result = {}
-                for i in range(len(gname_arr)):
-                    if valid[i]:
-                        result[gname_arr[i]] = weight_arr[i]
-                return result
-
-            sw_list = parts_rdd.map(_extract_switcher_weights).collect()
+            sw_list = parts_rdd.map(functools.partial(_extract_switcher_weights, abs_h=abs_h)).collect()
             switcher_gnames_with_weight = {}
             for d in sw_list:
                 switcher_gnames_with_weight.update(d)
 
-            sw_bc = sc.broadcast(switcher_gnames_with_weight)
-
-            def _delta_d_fn(part, _ah=abs_h, _ht=horizon_type, _bc=sw_bc):
-                return partition_delta_d(part, _ah, _ht, _bc.value)
-
-            dd_results = parts_rdd.map(_delta_d_fn).collect()
-            sw_bc.unpersist()
+            dd_results = parts_rdd.map(
+                functools.partial(
+                    partition_delta_d,
+                    abs_h=abs_h,
+                    _horizon_type=horizon_type,
+                    switcher_gnames_with_weight=switcher_gnames_with_weight,
+                )
+            ).collect()
 
             total_dd = 0.0
             total_dd_weight = 0.0
@@ -507,27 +484,22 @@ def _distributed_did_effects(
 
         estimates[idx] = did_estimate
 
-        def _dof_stats(part, _ah=abs_h, _cl=config.cluster):
-            return partition_dof_stats(part, _ah, _cl)
-
-        dof_list = parts_rdd.map(_dof_stats).collect()
+        dof_list = parts_rdd.map(
+            functools.partial(partition_dof_stats, abs_h=abs_h, cluster_col=config.cluster)
+        ).collect()
         global_dof = functools.reduce(reduce_dof_stats, dof_list) if dof_list else {}
 
-        dof_bc = sc.broadcast(global_dof)
-
-        def _var_if(
-            part,
-            _ah=abs_h,
-            _ng=n_groups,
-            _nsw=n_switchers_weighted,
-            _bc=dof_bc,
-            _cl=config.cluster,
-            _lc=config.less_conservative_se,
-        ):
-            return partition_variance_influence(part, _ah, _ng, _nsw, _bc.value, _cl, _lc)
-
-        var_if_results = parts_rdd.map(_var_if).collect()
-        dof_bc.unpersist()
+        var_if_results = parts_rdd.map(
+            functools.partial(
+                partition_variance_influence,
+                abs_h=abs_h,
+                n_groups=n_groups,
+                n_switchers_weighted=n_switchers_weighted,
+                global_dof=global_dof,
+                cluster_col=config.cluster,
+                less_conservative_se=config.less_conservative_se,
+            )
+        ).collect()
 
         inf_var_full = np.zeros(len(sorted_gnames))
         for gname_var_if in var_if_results:
@@ -536,16 +508,6 @@ def _distributed_did_effects(
                     inf_var_full[gname_to_idx[gn]] = val
 
         if config.cluster:
-
-            def _extract_cluster_ids(part):
-                result = {}
-                first_mask = part["first_obs_by_gp"] == 1.0
-                if "cluster" in part:
-                    for i in range(len(part["gname"])):
-                        if first_mask[i]:
-                            result[part["gname"][i]] = part["cluster"][i]
-                return result
-
             cluster_maps = parts_rdd.map(_extract_cluster_ids).collect()
             cluster_ids = np.zeros(len(sorted_gnames), dtype=object)
             for cm in cluster_maps:
@@ -566,10 +528,7 @@ def _distributed_did_effects(
         std_errors[idx] = std_error
         n_switchers_arr[idx] = n_switchers_unweighted
 
-        def _count_obs(part, _ah=abs_h):
-            return partition_count_obs(part, _ah)
-
-        obs_counts = parts_rdd.map(_count_obs).collect()
+        obs_counts = parts_rdd.map(functools.partial(partition_count_obs, abs_h=abs_h)).collect()
         n_obs_arr[idx] = sum(obs_counts)
 
     parts_rdd.unpersist()
@@ -613,3 +572,29 @@ def _partition_by_unit(df, gname, n_partitions):
 def _run_local_path(preprocessed):
     """Fall back to single-node DID estimation on the driver."""
     return compute_did_multiplegt(preprocessed)
+
+
+def _extract_switcher_weights(part, abs_h):
+    """Extract switcher unit-to-weight mapping from a partition."""
+    dist_col = part.get(f"dist_{abs_h}")
+    if dist_col is None:
+        return {}
+    gname_arr = part["gname"]
+    weight_arr = part["weight_gt"]
+    valid = (~np.isnan(dist_col)) & (dist_col == 1.0)
+    result = {}
+    for i in range(len(gname_arr)):
+        if valid[i]:
+            result[gname_arr[i]] = weight_arr[i]
+    return result
+
+
+def _extract_cluster_ids(part):
+    """Extract unit-to-cluster-ID mapping from a partition."""
+    result = {}
+    first_mask = part["first_obs_by_gp"] == 1.0
+    if "cluster" in part:
+        for i in range(len(part["gname"])):
+            if first_mask[i]:
+                result[part["gname"][i]] = part["cluster"][i]
+    return result
