@@ -121,7 +121,9 @@ __all__ = [
     "create_sign_constraint_matrix",
     # Core data
     "dask_att_gt",
+    "dask_cont_did",
     "dask_ddd",
+    "dask_did_multiplegt",
     "data",
     "ddd",
     "ddd_mp",
@@ -209,7 +211,9 @@ __all__ = [
     "setup_pte_cont",
     "simulate_cont_did_data",
     "spark_att_gt",
+    "spark_cont_did",
     "spark_ddd",
+    "spark_did_multiplegt",
     "std_ipw_did_panel",
     "std_ipw_did_rc",
     "summary_mp_pretest",
@@ -470,10 +474,14 @@ _optional_imports = {
     "validate_symmetric_psd": ("moderndid.didhonest", "didhonest"),
     # dask (requires dask + distributed)
     "dask_att_gt": ("moderndid.dask", "dask"),
+    "dask_cont_did": ("moderndid.dask", "dask"),
     "dask_ddd": ("moderndid.dask", "dask"),
+    "dask_did_multiplegt": ("moderndid.dask", "dask"),
     # spark (requires pyspark)
     "spark_att_gt": ("moderndid.spark", "spark"),
+    "spark_cont_did": ("moderndid.spark", "spark"),
     "spark_ddd": ("moderndid.spark", "spark"),
+    "spark_did_multiplegt": ("moderndid.spark", "spark"),
     # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),
     "plot_dose_response": ("moderndid.plots", "plots"),

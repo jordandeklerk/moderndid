@@ -52,7 +52,7 @@ did.plot_dose_response(result, effect_type="att")
 
 ## Documentation
 
-- For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/contdid.html).
+- For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/didcont.html).
 - For a complete worked example with output, see the [Continuous DiD Example](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html).
 - For theoretical background, see the [Background section](https://moderndid.readthedocs.io/en/latest/background/didcont.html).
 

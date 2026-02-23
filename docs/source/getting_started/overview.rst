@@ -11,8 +11,8 @@ R and Stata packages with incompatible APIs and output formats.
 
 ModernDiD brings them altogether into a single Python library with a consistent API,
 shared result objects, and unified plotting. It runs locally, scales to distributed Dask
-clusters for datasets that exceed single-machine memory, and accelerates computation on NVIDIA
-GPUs via CuPy.
+and Spark clusters for datasets that exceed single-machine memory, and accelerates computation
+on NVIDIA GPUs via CuPy.
 
 .. code-block:: python
 
@@ -55,7 +55,7 @@ Key features
   DataFrame, including polars, pandas, pyarrow, duckdb, and more, with no manual
   conversion.
 - **Scales to clusters.** For data that exceed single-machine memory, passing a
-  `Dask <https://www.dask.org/>`_ DataFrame to ``att_gt`` or ``ddd`` activates
+  `Dask <https://www.dask.org/>`_ or `Spark <https://spark.apache.org/>`_ DataFrame to ``att_gt`` or ``ddd`` activates
   the :doc:`distributed backend </user_guide/distributed>`. Computation runs
   on workers using partition-level sufficient statistics, and supports
   multi-node clusters (Databricks, YARN, Kubernetes).

@@ -36,6 +36,7 @@ def did_multiplegt(
     boot=False,
     biters=1000,
     random_state=None,
+    n_partitions=None,
 ):
     r"""Estimate intertemporal treatment effects with non-binary, non-absorbing treatments.
 
@@ -171,6 +172,10 @@ def did_multiplegt(
         Number of bootstrap iterations when ``boot=True``.
     random_state : int, Generator, optional
         Random seed for reproducibility of bootstrap.
+    n_partitions : int, optional
+        Number of partitions for distributed computation when ``data`` is a
+        Dask or Spark DataFrame. If ``None``, defaults to the framework's
+        default parallelism.
 
     Returns
     -------
@@ -314,6 +319,78 @@ def did_multiplegt(
         not isinstance(trends_nonparam, list) or not all(isinstance(v, str) for v in trends_nonparam)
     ):
         raise ValueError("trends_nonparam must be a list of variable name strings.")
+
+    from moderndid.dask._utils import is_dask_collection
+
+    if is_dask_collection(data):
+        from moderndid.dask._didinter import dask_did_multiplegt
+
+        return dask_did_multiplegt(
+            data,
+            yname,
+            tname,
+            idname,
+            dname,
+            cluster=cluster,
+            weightsname=weightsname,
+            xformla=xformla,
+            effects=effects,
+            placebo=placebo,
+            normalized=normalized,
+            effects_equal=effects_equal,
+            predict_het=predict_het,
+            switchers=switchers,
+            only_never_switchers=only_never_switchers,
+            same_switchers=same_switchers,
+            same_switchers_pl=same_switchers_pl,
+            trends_lin=trends_lin,
+            trends_nonparam=trends_nonparam,
+            continuous=continuous,
+            ci_level=ci_level,
+            less_conservative_se=less_conservative_se,
+            keep_bidirectional_switchers=keep_bidirectional_switchers,
+            drop_missing_preswitch=drop_missing_preswitch,
+            boot=boot,
+            biters=biters,
+            random_state=random_state,
+            n_partitions=n_partitions,
+        )
+
+    from moderndid.spark._utils import is_spark_dataframe
+
+    if is_spark_dataframe(data):
+        from moderndid.spark._didinter import spark_did_multiplegt
+
+        return spark_did_multiplegt(
+            data,
+            yname,
+            tname,
+            idname,
+            dname,
+            cluster=cluster,
+            weightsname=weightsname,
+            xformla=xformla,
+            effects=effects,
+            placebo=placebo,
+            normalized=normalized,
+            effects_equal=effects_equal,
+            predict_het=predict_het,
+            switchers=switchers,
+            only_never_switchers=only_never_switchers,
+            same_switchers=same_switchers,
+            same_switchers_pl=same_switchers_pl,
+            trends_lin=trends_lin,
+            trends_nonparam=trends_nonparam,
+            continuous=continuous,
+            ci_level=ci_level,
+            less_conservative_se=less_conservative_se,
+            keep_bidirectional_switchers=keep_bidirectional_switchers,
+            drop_missing_preswitch=drop_missing_preswitch,
+            boot=boot,
+            biters=biters,
+            random_state=random_state,
+            n_partitions=n_partitions,
+        )
 
     config = DIDInterConfig(
         yname=yname,
