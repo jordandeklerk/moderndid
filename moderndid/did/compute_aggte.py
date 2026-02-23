@@ -161,6 +161,11 @@ def compute_aggte(
     unit_level_groups = multi_period_result.G
     unit_level_weights = multi_period_result.weights_ind
 
+    if unit_level_groups is not None and not isinstance(unit_level_groups, np.ndarray):
+        unit_level_groups = np.asarray(unit_level_groups)
+    if unit_level_weights is not None and not isinstance(unit_level_weights, np.ndarray):
+        unit_level_weights = np.asarray(unit_level_weights)
+
     # If weights not provided, use uniform weights
     if unit_level_weights is None:
         if unit_level_groups is not None:
@@ -179,9 +184,7 @@ def compute_aggte(
             unit_level_groups = None
 
     if unit_level_groups is not None and unit_level_weights is not None:
-        unit_level_groups_recoded = np.array(
-            [_orig2t(g, unique_original_times_and_groups, recoded_times) for g in unit_level_groups]
-        )
+        unit_level_groups_recoded = _orig2t_array(unit_level_groups, unique_original_times_and_groups, recoded_times)
 
         group_probabilities = np.array(
             [np.mean(unit_level_weights * (unit_level_groups_recoded == g)) for g in unique_groups_recoded]
@@ -1002,6 +1005,20 @@ def _orig2t(orig, unique_original_times_and_groups, recoded_times):
         return recoded_times[idx]
     except IndexError:
         return np.nan
+
+
+def _orig2t_array(arr, unique_original_times_and_groups, recoded_times):
+    """Vectorized version of _orig2t for array inputs."""
+    arr = np.asarray(arr)
+    n_lookup = len(unique_original_times_and_groups)
+    if n_lookup == 0 or len(arr) == 0:
+        return np.full(len(arr), np.nan)
+    indices = np.searchsorted(unique_original_times_and_groups, arr)
+    clamped = np.minimum(indices, n_lookup - 1)
+    valid = unique_original_times_and_groups[clamped] == arr
+    result = np.full(len(arr), np.nan)
+    result[valid] = recoded_times[clamped[valid]]
+    return result
 
 
 def _t2orig(t, unique_original_times_and_groups, recoded_times):
