@@ -175,6 +175,7 @@ did.load_nsw()         # NSW job training program
 did.load_ehec()        # Medicaid expansion
 did.load_engel()       # Household expenditure
 did.load_favara_imbs() # Bank lending
+did.load_cai2016()     # Crop insurance
 ```
 
 Synthetic data generators are also available for simulations and benchmarking:
