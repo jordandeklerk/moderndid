@@ -127,8 +127,8 @@ result <- ddd(
 output <- list(
     att = result$ATT,
     se = result$se,
-    groups = result$group,
-    times = result$t
+    groups = result$groups,
+    times = result$periods
 )
 
 write_json(output, "{result_path}", auto_unbox = TRUE)
@@ -292,8 +292,8 @@ result <- ddd(
 output <- list(
     att = result$ATT,
     se = result$se,
-    groups = result$group,
-    times = result$t,
+    groups = result$groups,
+    times = result$periods,
     is_multiperiod = TRUE
 )
 
@@ -1399,8 +1399,8 @@ result <- ddd(
 output <- list(
     att = result$ATT,
     se = result$se,
-    groups = result$group,
-    times = result$t
+    groups = result$groups,
+    times = result$periods
 )
 
 write_json(output, "{result_path}", auto_unbox = TRUE)

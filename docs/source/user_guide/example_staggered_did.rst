@@ -16,12 +16,38 @@ estimator addresses this by computing separate treatment effects for each
 cohort at each time period, then aggregating them into interpretable summaries
 like event studies.
 
-This example demonstrates the estimator using county-level employment data
-from states that raised their minimum wage between 2004 and 2007.
+
+Empirical application
+---------------------
+
+This example replicates the empirical analysis from
+`Callaway and Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_,
+which studies the effect of minimum wage increases on teen employment.
+
+From 2001 to 2007, the US federal minimum wage was flat at $5.15 per hour.
+During this period, some states raised their minimum wage above the federal
+level while others did not. This variation in timing creates a natural
+staggered adoption design. States that raised their minimum wage form
+treatment cohorts defined by the year of the increase, while states that
+kept the federal minimum serve as a never-treated control group.
+
+The outcome of interest is log county-level teen employment, drawn from
+the Quarterly Workforce Indicators (QWI). The dataset contains 500
+counties observed annually from 2003 to 2007, with treatment cohorts in
+2004, 2006, and 2007. The hypothesis is that minimum wage increases reduce
+teen employment, since teenagers are disproportionately represented among
+minimum wage workers and their labor demand is relatively elastic.
+
+There are notable differences between treated and untreated counties.
+Treated counties tend to be in the Midwest, have larger populations
+(94,000 vs 53,000 on average), and higher median incomes. These
+compositional differences motivate the use of conditional parallel trends
+with covariates, as unconditional comparisons may not adequately control
+for pre-existing differences between groups.
 
 
-Loading data
-------------
+Loading the data
+^^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
@@ -45,18 +71,14 @@ Loading data
     │ 2007 ┆ 8001       ┆ 5.896761 ┆ 8.487352 ┆ 2007        ┆ 1     │
     └──────┴────────────┴──────────┴──────────┴─────────────┴───────┘
 
-The dataset contains 500 counties observed annually from 2003 to 2007. Some
-counties are in states that raised their minimum wage in 2004, others in 2006
-or 2007, and some never raised it during this period. The ``first.treat``
-variable encodes this timing, with 0 indicating never-treated counties.
-
-This is a balanced panel where each county appears exactly once per year.
-The estimator can handle unbalanced panels, but balanced data simplifies
-interpretation and improves precision.
+The ``first.treat`` variable encodes treatment timing, with 0 indicating
+never-treated counties. This is a balanced panel where each county appears
+exactly once per year. The estimator can handle unbalanced panels, but
+balanced data simplifies interpretation and improves precision.
 
 
-Estimating group-time effects
------------------------------
+Estimation
+^^^^^^^^^^
 
 We start by estimating treatment effects separately for each cohort at each
 time period. This avoids the negative weighting problem that can bias
@@ -149,7 +171,7 @@ the impact to accumulate.
 
 
 Aggregating into an event study
--------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 With 12 group-time estimates, there is a lot to take in. The event study
 aggregation simplifies things by aligning all cohorts relative to their
@@ -232,7 +254,7 @@ cohorts and is less precisely estimated.
 
 
 Summarizing the overall effect
-------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Sometimes you just need a single number to summarize the overall treatment
 effect. The ``"simple"`` aggregation provides exactly that by averaging
@@ -291,7 +313,7 @@ examine the dynamic effects before reporting only the overall ATT.
 
 
 Examining heterogeneity by cohort
----------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 We might expect different cohorts to experience different effects due to
 variation in local economic conditions, policy implementation, or the
@@ -365,7 +387,7 @@ study and cohort-specific effects gives your readers a more complete picture.
 
 
 Plotting results
-----------------
+^^^^^^^^^^^^^^^^
 
 Visualizations make it easier to communicate findings and spot patterns. We
 can plot the group-time estimates organized by cohort.
