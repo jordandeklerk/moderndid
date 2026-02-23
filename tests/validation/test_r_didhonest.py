@@ -1253,6 +1253,7 @@ def test_sensitivity_sm_flci_bc_data(bc_data):
         l_vec=l_vec,
     )
 
+    compared = 0
     for i, m in enumerate(m_vec):
         py_row = py_result.filter(pl.col("m") == m)
         if len(py_row) == 0:
@@ -1265,8 +1266,11 @@ def test_sensitivity_sm_flci_bc_data(bc_data):
 
         if not np.isnan(py_lb) and not np.isnan(r_lb):
             np.testing.assert_allclose(py_lb, r_lb, rtol=0.05, atol=1e-2)
+            compared += 1
         if not np.isnan(py_ub) and not np.isnan(r_ub):
             np.testing.assert_allclose(py_ub, r_ub, rtol=0.05, atol=1e-2)
+            compared += 1
+    assert compared > 0, "SM FLCI: No non-NaN values to compare"
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -1298,6 +1302,7 @@ def test_sensitivity_sm_methods_bc_data(bc_data, method):
         grid_points=100,
     )
 
+    compared = 0
     for i, m in enumerate(m_vec):
         py_row = py_result.filter(pl.col("m") == m)
         if len(py_row) == 0:
@@ -1310,8 +1315,11 @@ def test_sensitivity_sm_methods_bc_data(bc_data, method):
 
         if not np.isnan(py_lb) and not np.isnan(r_lb):
             np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+            compared += 1
         if not np.isnan(py_ub) and not np.isnan(r_ub):
             np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+            compared += 1
+    assert compared > 0, f"SM {method}: No non-NaN values to compare"
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -1343,6 +1351,7 @@ def test_sensitivity_rm_clf_bc_data(bc_data):
         grid_points=100,
     )
 
+    compared = 0
     for i, mbar in enumerate(m_bar_vec):
         py_row = py_result.filter(pl.col("Mbar") == mbar)
         if len(py_row) == 0:
@@ -1355,8 +1364,11 @@ def test_sensitivity_rm_clf_bc_data(bc_data):
 
         if not np.isnan(py_lb) and not np.isnan(r_lb):
             np.testing.assert_allclose(py_lb, r_lb, rtol=0.2, atol=0.1)
+            compared += 1
         if not np.isnan(py_ub) and not np.isnan(r_ub):
             np.testing.assert_allclose(py_ub, r_ub, rtol=0.2, atol=0.1)
+            compared += 1
+    assert compared > 0, "RM C-LF: No non-NaN values to compare"
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -1390,8 +1402,22 @@ def test_sensitivity_sm_monotonicity(bc_data, monotonicity_direction):
         grid_points=100,
     )
 
-    assert py_result is not None
-    assert len(py_result) == len(m_vec)
+    compared = 0
+    for i, m in enumerate(m_vec):
+        py_row = py_result.filter(pl.col("m") == m)
+        if len(py_row) == 0:
+            continue
+        py_lb = py_row["lb"][0]
+        py_ub = py_row["ub"][0]
+        r_lb = r_result["lb"][i]
+        r_ub = r_result["ub"][i]
+        if not np.isnan(py_lb) and not np.isnan(r_lb):
+            np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+            compared += 1
+        if not np.isnan(py_ub) and not np.isnan(r_ub):
+            np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+            compared += 1
+    assert compared > 0, f"monotonicity={monotonicity_direction}: No non-NaN values to compare"
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -1425,8 +1451,22 @@ def test_sensitivity_sm_bias_direction(bc_data, bias_direction):
         grid_points=100,
     )
 
-    assert py_result is not None
-    assert len(py_result) == len(m_vec)
+    compared = 0
+    for i, m in enumerate(m_vec):
+        py_row = py_result.filter(pl.col("m") == m)
+        if len(py_row) == 0:
+            continue
+        py_lb = py_row["lb"][0]
+        py_ub = py_row["ub"][0]
+        r_lb = r_result["lb"][i]
+        r_ub = r_result["ub"][i]
+        if not np.isnan(py_lb) and not np.isnan(r_lb):
+            np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+            compared += 1
+        if not np.isnan(py_ub) and not np.isnan(r_ub):
+            np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+            compared += 1
+    assert compared > 0, f"bias={bias_direction}: No non-NaN values to compare"
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -1465,10 +1505,14 @@ def test_conditional_cs_sd_flci_bc_data(bc_data):
         py_lb = np.nan
         py_ub = np.nan
 
+    compared = 0
     if not np.isnan(py_lb) and not np.isnan(r_result["lb"]):
         np.testing.assert_allclose(py_lb, r_result["lb"], rtol=0.15, atol=0.05)
+        compared += 1
     if not np.isnan(py_ub) and not np.isnan(r_result["ub"]):
         np.testing.assert_allclose(py_ub, r_result["ub"], rtol=0.15, atol=0.05)
+        compared += 1
+    assert compared > 0, "Conditional CS SD FLCI: No non-NaN values to compare"
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -1500,9 +1544,22 @@ def test_conditional_cs_sd_methods(bc_data, method):
         grid_points=100,
     )
 
-    assert py_result is not None
-    assert "grid" in py_result
-    assert "accept" in py_result
+    accept_idx = np.where(py_result["accept"])[0]
+    if len(accept_idx) > 0:
+        py_lb = py_result["grid"][accept_idx[0]]
+        py_ub = py_result["grid"][accept_idx[-1]]
+    else:
+        py_lb = np.nan
+        py_ub = np.nan
+
+    compared = 0
+    if not np.isnan(py_lb) and not np.isnan(r_result["lb"]):
+        np.testing.assert_allclose(py_lb, r_result["lb"], rtol=0.15, atol=0.05)
+        compared += 1
+    if not np.isnan(py_ub) and not np.isnan(r_result["ub"]):
+        np.testing.assert_allclose(py_ub, r_result["ub"], rtol=0.15, atol=0.05)
+        compared += 1
+    assert compared > 0, f"conditional CS SD {method}: No non-NaN values to compare"
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -1764,6 +1821,7 @@ def test_full_pipeline_consistency(bc_data):
     np.testing.assert_allclose(py_original.lb, r_original["lb"], rtol=1e-3, atol=1e-4)
     np.testing.assert_allclose(py_original.ub, r_original["ub"], rtol=1e-3, atol=1e-4)
 
+    compared = 0
     for i, m in enumerate(m_vec):
         py_row = py_robust.filter(pl.col("m") == m)
         if len(py_row) > 0:
@@ -1774,8 +1832,11 @@ def test_full_pipeline_consistency(bc_data):
 
             if not np.isnan(py_lb) and not np.isnan(r_lb):
                 np.testing.assert_allclose(py_lb, r_lb, rtol=0.1, atol=0.02)
+                compared += 1
             if not np.isnan(py_ub) and not np.isnan(r_ub):
                 np.testing.assert_allclose(py_ub, r_ub, rtol=0.1, atol=0.02)
+                compared += 1
+    assert compared > 0, "Full pipeline: No non-NaN robust values to compare"
 
 
 # Tests for RM with bias direction (RMB)
@@ -1851,10 +1912,14 @@ def test_conditional_cs_rmb_bc_data(bc_data, bias_direction):
     r_lb = _extract_scalar(r_result["lb"])
     r_ub = _extract_scalar(r_result["ub"])
 
+    compared = 0
     if not np.isnan(py_lb) and not np.isnan(r_lb):
         np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+        compared += 1
     if not np.isnan(py_ub) and not np.isnan(r_ub):
         np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+        compared += 1
+    assert compared > 0, f"Conditional CS RMB {bias_direction}: No non-NaN values to compare"
 
 
 # Tests for RM with monotonicity (RMM)
@@ -1930,10 +1995,14 @@ def test_conditional_cs_rmm_bc_data(bc_data, monotonicity_direction):
     r_lb = _extract_scalar(r_result["lb"])
     r_ub = _extract_scalar(r_result["ub"])
 
+    compared = 0
     if not np.isnan(py_lb) and not np.isnan(r_lb):
         np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+        compared += 1
     if not np.isnan(py_ub) and not np.isnan(r_ub):
         np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+        compared += 1
+    assert compared > 0, f"Conditional CS RMM m_bar=0.5 {monotonicity_direction}: No non-NaN values to compare"
 
 
 # Tests for SD + RM combined (SDRM)
@@ -2003,10 +2072,14 @@ def test_conditional_cs_sdrm_bc_data(bc_data):
     r_lb = _extract_scalar(r_result["lb"])
     r_ub = _extract_scalar(r_result["ub"])
 
+    compared = 0
     if not np.isnan(py_lb) and not np.isnan(r_lb):
         np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+        compared += 1
     if not np.isnan(py_ub) and not np.isnan(r_ub):
         np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+        compared += 1
+    assert compared > 0, "Conditional CS SDRM m_bar=0.5: No non-NaN values to compare"
 
 
 # Tests for SD + RM with bias direction (SDRMB)
@@ -2082,10 +2155,14 @@ def test_conditional_cs_sdrmb_bc_data(bc_data, bias_direction):
     r_lb = _extract_scalar(r_result["lb"])
     r_ub = _extract_scalar(r_result["ub"])
 
+    compared = 0
     if not np.isnan(py_lb) and not np.isnan(r_lb):
         np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+        compared += 1
     if not np.isnan(py_ub) and not np.isnan(r_ub):
         np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+        compared += 1
+    assert compared > 0, f"Conditional CS SDRMB m_bar=0.5 {bias_direction}: No non-NaN values to compare"
 
 
 # Tests for SD + RM with monotonicity (SDRMM)
@@ -2161,7 +2238,11 @@ def test_conditional_cs_sdrmm_bc_data(bc_data, monotonicity_direction):
     r_lb = _extract_scalar(r_result["lb"])
     r_ub = _extract_scalar(r_result["ub"])
 
+    compared = 0
     if not np.isnan(py_lb) and not np.isnan(r_lb):
         np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+        compared += 1
     if not np.isnan(py_ub) and not np.isnan(r_ub):
         np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+        compared += 1
+    assert compared > 0, f"Conditional CS SDRMM m_bar=0.5 {monotonicity_direction}: No non-NaN values to compare"

@@ -23,8 +23,8 @@ methodology are found in :ref:`background`.
    :caption: Extensions
    :maxdepth: 2
 
-   didcont
    didtriple
+   didcont
    didinter
    honestdid
 
