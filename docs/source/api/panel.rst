@@ -7,7 +7,7 @@ The panel module provides diagnostic, validation, and transformation tools
 for preparing panel data before estimation. All functions accept any
 Arrow-compatible DataFrame and return the same format.
 
-.. currentmodule:: moderndid.panel
+.. currentmodule:: moderndid.core.panel
 
 Diagnostics
 -----------

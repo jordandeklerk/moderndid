@@ -15,18 +15,20 @@ import polars as pl
 import scipy.linalg as la
 import scipy.stats
 from distributed import wait
-from tqdm.auto import tqdm
 
 from moderndid.core.dataframe import to_polars
 from moderndid.did.multiperiod_obj import mp
+from moderndid.distributed._did_partition import _partition_did_pscore_gram
 
 from ._bootstrap import distributed_mboot_ddd
 from ._did_streaming import (
-    _build_did_partition_arrays_wide,
+    _attach_cell_outcomes,
+    _build_did_base_partition,
     streaming_did_cell_single_control,
     streaming_did_rc_cell_single_control,
 )
 from ._gpu import _maybe_to_gpu
+from ._regression import distributed_logistic_irls_from_futures
 from ._utils import (
     MEMMAP_THRESHOLD,
     auto_tune_partitions,
@@ -68,7 +70,6 @@ def dask_att_gt_mp(
     random_state=None,
     n_partitions=None,
     max_cohorts=None,
-    progress_bar=False,
     panel=True,
     use_gpu=False,
 ):
@@ -112,8 +113,6 @@ def dask_att_gt_mp(
         Number of partitions per cell.
     max_cohorts : int or None, default None
         Maximum number of treatment cohorts to process in parallel.
-    progress_bar : bool, default False
-        Whether to display a tqdm progress bar.
 
     Returns
     -------
@@ -201,7 +200,6 @@ def dask_att_gt_mp(
     se_array = np.full(n_cols, np.nan)
 
     attgt_list = []
-    total_cells = n_cols
 
     cell_specs = []
     for g in glist:
@@ -246,7 +244,6 @@ def dask_att_gt_mp(
 
             cohort_processor = _process_did_cohort_cells if panel else _process_did_cohort_cells_rc
 
-            pbar = tqdm(total=total_cells, desc="Cells", unit="cell", disable=not progress_bar)
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(
@@ -270,7 +267,6 @@ def dask_att_gt_mp(
                         n_partitions=n_partitions,
                         glist_raw=glist_raw,
                         trim_level=trim_level,
-                        pbar=pbar,
                         use_gpu=use_gpu,
                     ): g
                     for g, cells in cohort_cells.items()
@@ -279,14 +275,11 @@ def dask_att_gt_mp(
                 for future in as_completed(futures):
                     cohort_results = future.result()
                     attgt_list.extend(cohort_results)
-            pbar.close()
 
             attgt_list.sort(key=lambda x: x[0])
             attgt_list = [r for _, r in attgt_list]
         else:
-            for _counter, (g, t, _pret, _post_treat, action) in enumerate(
-                tqdm(cell_specs, desc="Cells", unit="cell", disable=not progress_bar)
-            ):
+            for _counter, (g, t, _pret, _post_treat, action) in enumerate(cell_specs):
                 if action == "skip":
                     continue
                 if action == "zero":
@@ -461,7 +454,6 @@ def _process_did_cohort_cells(
     n_partitions=1,
     glist_raw=None,
     trim_level=0.995,
-    pbar=None,
     use_gpu=False,
 ):
     """Process all cells for a single cohort.
@@ -498,15 +490,34 @@ def _process_did_cohort_cells(
                 wide_delayed = wide_dask.to_delayed()
                 wide_pdf_futures = client.compute(wide_delayed)
 
+                base_futures = [
+                    client.submit(
+                        _build_did_base_partition,
+                        pdf_f,
+                        id_col,
+                        group_col,
+                        g,
+                        covariate_cols,
+                        weightsname,
+                    )
+                    for pdf_f in wide_pdf_futures
+                ]
+                base_futures = _maybe_to_gpu(client, base_futures, use_gpu)
+
+                first_base = base_futures[0].result()
+                k = first_base["X"].shape[1]
+                if est_method != "reg":
+                    cached_ps_beta = distributed_logistic_irls_from_futures(
+                        client, base_futures, _partition_did_pscore_gram, k
+                    )
+                else:
+                    cached_ps_beta = np.zeros(k, dtype=np.float64)
+
                 for counter, g_, t, pret, post_treat, action in cells:
                     if action == "skip":
-                        if pbar is not None:
-                            pbar.update(1)
                         continue
                     if action == "zero":
                         results.append((counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
-                        if pbar is not None:
-                            pbar.update(1)
                         continue
 
                     y_post_col = f"_y_{t}"
@@ -514,19 +525,15 @@ def _process_did_cohort_cells(
 
                     part_futures = [
                         client.submit(
-                            _build_did_partition_arrays_wide,
+                            _attach_cell_outcomes,
+                            bf,
                             pdf_f,
-                            id_col,
-                            group_col,
-                            g_,
-                            covariate_cols,
                             y_post_col,
                             y_pre_col,
-                            weightsname,
+                            use_gpu,
                         )
-                        for pdf_f in wide_pdf_futures
+                        for bf, pdf_f in zip(base_futures, wide_pdf_futures, strict=False)
                     ]
-                    part_futures = _maybe_to_gpu(client, part_futures, use_gpu)
 
                     att = streaming_did_cell_single_control(
                         client,
@@ -549,28 +556,21 @@ def _process_did_cohort_cells(
                         part_futures=part_futures,
                         n_cell_override=n_wide,
                         use_gpu=use_gpu,
+                        ps_beta=cached_ps_beta,
                     )
 
                     if att is not None:
                         results.append((counter, ATTgtResult(att=att, group=int(g_), time=int(t), post=post_treat)))
-                    if pbar is not None:
-                        pbar.update(1)
             else:
                 for counter, g_, t, _pret, _post_treat, action in cells:
                     if action == "zero":
                         results.append((counter, ATTgtResult(att=0.0, group=int(g_), time=int(t), post=0)))
-                    if pbar is not None:
-                        pbar.update(1)
         else:
             for counter, g, t, pret, post_treat, action in cells:
                 if action == "skip":
-                    if pbar is not None:
-                        pbar.update(1)
                     continue
                 if action == "zero":
                     results.append((counter, ATTgtResult(att=0.0, group=int(g), time=int(t), post=0)))
-                    if pbar is not None:
-                        pbar.update(1)
                     continue
 
                 result = _compute_did_cell_streaming(
@@ -601,8 +601,6 @@ def _process_did_cohort_cells(
                 )
                 if result is not None:
                     results.append((counter, result))
-                if pbar is not None:
-                    pbar.update(1)
     finally:
         if wide_dask is not None:
             del wide_dask
@@ -630,7 +628,6 @@ def _process_did_cohort_cells_rc(
     n_partitions=1,
     glist_raw=None,
     trim_level=0.995,
-    pbar=None,
     use_gpu=False,
 ):
     """Process all cells for a single cohort using repeated cross-section."""
@@ -638,13 +635,9 @@ def _process_did_cohort_cells_rc(
 
     for counter, g, t, pret, post_treat, action in cells:
         if action == "skip":
-            if pbar is not None:
-                pbar.update(1)
             continue
         if action == "zero":
             results.append((counter, ATTgtResult(att=0.0, group=int(g), time=int(t), post=0)))
-            if pbar is not None:
-                pbar.update(1)
             continue
 
         if control_group == "nevertreated":
@@ -679,8 +672,6 @@ def _process_did_cohort_cells_rc(
             )
 
             if len(available_controls) == 0:
-                if pbar is not None:
-                    pbar.update(1)
                 continue
 
             if len(available_controls) == 1:
@@ -750,9 +741,6 @@ def _process_did_cohort_cells_rc(
                         inf_func_mat[: len(if_gmm), counter] = if_gmm
                         se_array[counter] = se_gmm
                     results.append((counter, ATTgtResult(att=att_final, group=int(g), time=int(t), post=post_treat)))
-
-        if pbar is not None:
-            pbar.update(1)
 
     return results
 

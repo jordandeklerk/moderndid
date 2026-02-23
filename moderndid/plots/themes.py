@@ -5,16 +5,16 @@ from __future__ import annotations
 from plotnine import element_blank, element_line, element_rect, element_text, theme
 
 COLORS = {
-    "pre_treatment": "#3498db",
-    "post_treatment": "#e74c3c",
+    "pre_treatment": "#1a3a5c",
+    "post_treatment": "#c0392b",
     "line": "#3a3a3a",
     "ci_fill": "#bfbfbf",
     "reference": "gray",
-    "original": "#2c3e50",
-    "flci": "#3498db",
+    "original": "#4a4a4a",
+    "flci": "#1a3a5c",
     "conditional": "#2ecc71",
     "c_f": "#9b59b6",
-    "c_lf": "#e74c3c",
+    "c_lf": "#c0392b",
 }
 
 

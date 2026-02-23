@@ -48,56 +48,330 @@ are common across groups or across eligibility status, isolating the effect
 of treatment on eligible units in treated groups.
 
 
-Assumptions of DDD
--------------------
-
-DDD relaxes the standard DiD assumption in an important way. Standard DiD
-requires that treated and control groups would have followed parallel trends
-absent treatment. DDD instead requires that the *gap* between eligible and
-ineligible units evolves similarly across treated and control groups.
-
-This is weaker because DDD allows for the following.
-
-- Different trends between treated and control groups (as long as eligible
-  and ineligible units within each group diverge similarly)
-- Different trends between eligible and ineligible units (as long as this
-  difference is stable across groups)
-
-DDD is appropriate when you have reason to believe that group-level or
-eligibility-level confounders exist, but that these confounders affect
-eligible and ineligible units similarly within groups.
+For a detailed discussion of the identifying assumptions, why standard
+three-way fixed effects regressions can fail with covariates, and other
+methodological considerations, see the
+:ref:`Background <background-tripledid>` section.
 
 
-Common pitfalls of DDD
------------------------
+Empirical application
+---------------------
 
-There are several common pitfalls to avoid when estimating DDD.
+This example replicates the empirical analysis from
+`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_,
+which revisits `Cai (2016) <https://doi.org/10.1257/pol.20130371>`_.
 
-- **Computing DDD as the difference of two DiDs.** Running DiD separately
-  within treated groups (eligible vs ineligible) and control groups, then
-  subtracting, produces biased estimates when covariates matter. Each DiD
-  integrates over its own covariate distribution rather than the treated
-  population's distribution.
+In 2003, the People's Insurance Company of China (PICC) introduced a
+weather-indexed crop insurance program for tobacco farmers in select counties
+of Jiangxi province. The program was rolled out in specific treatment regions
+while other counties served as controls. Within each region, tobacco-growing
+households were eligible for the insurance while non-tobacco households were
+not. This creates the three dimensions of variation needed for DDD: treatment
+region (county 3 vs others), household eligibility (tobacco vs non-tobacco
+farmers), and time (pre/post 2003).
 
-- **Pooling not-yet-treated groups in staggered designs.** Unlike standard
-  staggered DiD, pooling all not-yet-treated units as a single comparison
-  group can bias DDD estimates. Different cohorts may have different
-  eligibility compositions, and the DDD assumption allows group-specific
-  trend deviations that don't average out when pooling. The estimator here
-  uses each comparison cohort separately and combines them optimally.
+The outcome of interest is the flexible-term saving ratio
+(``checksaving_ratio``), which measures the share of household income allocated
+to liquid savings. The hypothesis is that access to crop insurance reduces
+income risk, allowing households to shift savings toward more productive but
+less liquid investments. We follow `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_ in
+using the doubly robust DDD estimator with household-level covariates.
 
-- **Relying on three-way fixed effects with covariates.** Adding covariates
-  linearly to a three-way fixed effects regression doesn't properly account
-  for covariate-specific trends in DDD designs. Use the doubly robust
-  estimator instead, which correctly integrates over the treated units'
-  covariate distribution.
+
+Loading the data
+^^^^^^^^^^^^^^^^
+
+The dataset is included with ModernDiD and contains 3,659 households observed
+from 2000 to 2008. The panel is unbalanced, with most households appearing in all 9
+years, but some have fewer observations.
+
+.. code-block:: python
+
+    import moderndid as did
+
+    df = did.load_cai2016()
+    print(df.shape)
+    print(df.head(6))
+
+.. code-block:: text
+
+    (32391, 10)
+    shape: (6, 10)
+    ┌──────┬──────┬───────────┬────────┬───┬────────┬──────┬────────────┬────────┐
+    │ hhno ┆ year ┆ treatment ┆ sector ┆ … ┆ hhsize ┆ age  ┆ educ_scale ┆ county │
+    │ ---  ┆ ---  ┆ ---       ┆ ---    ┆   ┆ ---    ┆ ---  ┆ ---        ┆ ---    │
+    │ i64  ┆ i64  ┆ i64       ┆ i64    ┆   ┆ f64    ┆ f64  ┆ f64        ┆ i64    │
+    ╞══════╪══════╪═══════════╪════════╪═══╪════════╪══════╪════════════╪════════╡
+    │ 1    ┆ 2000 ┆ 1         ┆ 1      ┆ … ┆ 4.0    ┆ 44.0 ┆ 2.0        ┆ 3      │
+    │ 1    ┆ 2001 ┆ 1         ┆ 1      ┆ … ┆ 4.0    ┆ 45.0 ┆ 2.0        ┆ 3      │
+    │ 1    ┆ 2002 ┆ 1         ┆ 1      ┆ … ┆ 4.0    ┆ 46.0 ┆ 2.0        ┆ 3      │
+    │ 1    ┆ 2003 ┆ 1         ┆ 1      ┆ … ┆ 4.0    ┆ 47.0 ┆ 2.0        ┆ 3      │
+    │ 1    ┆ 2004 ┆ 1         ┆ 1      ┆ … ┆ 4.0    ┆ 48.0 ┆ 2.0        ┆ 3      │
+    │ 1    ┆ 2005 ┆ 1         ┆ 1      ┆ … ┆ 4.0    ┆ 49.0 ┆ 2.0        ┆ 3      │
+    └──────┴──────┴───────────┴────────┴───┴────────┴──────┴────────────┴────────┘
+
+
+Data preparation
+^^^^^^^^^^^^^^^^
+
+The ``treatment`` variable indicates whether a household is in the treatment
+region (county 3). Because this indicator is static (it equals 1 in every
+period for treated households), we pass ``treat_period=2003`` to
+:func:`get_group` so that treated units are assigned ``G = 2003`` and
+controls receive ``G = 0``. We then rename the column to ``group``.
+
+.. code-block:: python
+
+    df = did.get_group(df, idname="hhno", tname="year",
+                       treatname="treatment", treat_period=2003)
+    df = df.rename({"G": "group"})
+
+    # Subgroup counts (one row per household)
+    unit_info = df.sort(["hhno", "year"]).group_by("hhno", maintain_order=True).first()
+    print(
+        unit_info.group_by(["treatment", "sector"])
+        .len()
+        .sort(["treatment", "sector"])
+    )
+
+.. code-block:: text
+
+    shape: (4, 3)
+    ┌───────────┬────────┬──────┐
+    │ treatment ┆ sector ┆ len  │
+    │ ---       ┆ ---    ┆ ---  │
+    │ i64       ┆ i64    ┆ u32  │
+    ╞═══════════╪════════╪══════╡
+    │ 0         ┆ 0      ┆ 1390 │
+    │ 0         ┆ 1      ┆ 1271 │
+    │ 1         ┆ 0      ┆ 161  │
+    │ 1         ┆ 1      ┆ 837  │
+    └───────────┴────────┴──────┘
+
+The four subgroups are 1,390 untreated non-tobacco households, 1,271 untreated
+tobacco households, 161 treated non-tobacco households, and 837 treated tobacco
+households (the group that actually receives insurance).
+
+
+Estimation
+^^^^^^^^^^
+
+We estimate group-time treatment effects using the doubly robust DDD estimator
+with household size and age as covariates, following the specification in
+`Ortiz-Villavicencio and Sant'Anna (2025, Figure 5) <https://arxiv.org/abs/2505.09942>`_. Setting
+``allow_unbalanced_panel=True`` keeps the estimation in panel mode while
+handling households that appear in different subsets of years, preserving
+panel-efficient standard errors. We use 999 bootstrap repetitions for
+inference.
+
+.. code-block:: python
+
+    result = did.ddd(
+        data=df,
+        yname="checksaving_ratio",
+        tname="year",
+        idname="hhno",
+        gname="group",
+        pname="sector",
+        xformla="~ hhsize + age",
+        control_group="nevertreated",
+        base_period="universal",
+        est_method="dr",
+        allow_unbalanced_panel=True,
+        boot=True,
+        biters=999,
+        random_state=7,
+    )
+
+    event_study = did.agg_ddd(
+        result, type="eventstudy", biters=999, cband=False, random_state=7
+    )
+    print(event_study)
+
+.. code-block:: text
+
+    ==============================================================================
+     Aggregate DDD Treatment Effects (Event Study)
+    ==============================================================================
+
+     Overall summary of ATT's based on event-study aggregation:
+
+    ┌────────┬────────────┬────────────────────────┐
+    │    ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├────────┼────────────┼────────────────────────┤
+    │ 0.0548 │     0.0137 │ [  0.0278,   0.0817] * │
+    └────────┴────────────┴────────────────────────┘
+
+
+     Dynamic Effects:
+
+    ┌────────────┬──────────┬────────────┬────────────────────────────┐
+    │ Event time │ Estimate │ Std. Error │ [95% Pointwise Conf. Band] │
+    ├────────────┼──────────┼────────────┼────────────────────────────┤
+    │         -3 │  -0.0545 │     0.0197 │ [-0.0931, -0.0158] *       │
+    │         -2 │  -0.0321 │     0.0203 │ [-0.0720,  0.0077]         │
+    │         -1 │   0.0000 │         NA │ NA                         │
+    │          0 │   0.0070 │     0.0205 │ [-0.0332,  0.0471]         │
+    │          1 │   0.0317 │     0.0199 │ [-0.0072,  0.0706]         │
+    │          2 │   0.0484 │     0.0247 │ [ 0.0000,  0.0967] *       │
+    │          3 │   0.0422 │     0.0205 │ [ 0.0019,  0.0825] *       │
+    │          4 │   0.0684 │     0.0262 │ [ 0.0171,  0.1197] *       │
+    │          5 │   0.1309 │     0.0234 │ [ 0.0851,  0.1767] *       │
+    └────────────┴──────────┴────────────┴────────────────────────────┘
+
+    ------------------------------------------------------------------------------
+     Signif. codes: '*' confidence band does not cover 0
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+     Panel Data
+     Outcome variable: checksaving_ratio
+     Qualification variable: sector
+     Control group: Never Treated
+     Base period: universal
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+     Outcome regression: OLS
+     Propensity score: Logistic regression (MLE)
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Bootstrap standard errors
+    ==============================================================================
+     See Ortiz-Villavicencio and Sant'Anna (2025) for details.
+
+
+Comparing with three-way fixed effects
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_ compare their DR-DDD estimator against
+the standard three-way fixed effects (3WFE) event study specification from
+`Cai (2016, Equation 6.1) <https://doi.org/10.1257/pol.20130371>`_
+
+.. math::
+
+    Y_{i,t} = \gamma_i + \gamma_{r,t} + \gamma_{j,t}
+    + \sum_{e \neq -1} \beta_e \, \mathbf{1}\{E_{i,t} = e\}
+    + X'_{i,j,r} \theta + u_{i,t},
+
+where :math:`\gamma_i` are household fixed effects, :math:`\gamma_{r,t}` are
+county-by-year fixed effects, :math:`\gamma_{j,t}` are sector-by-year fixed
+effects, and :math:`E_{i,t} = t - G_i` is the event time for treated eligible
+households. We estimate this using `pyfixest <https://github.com/py-econometrics/pyfixest>`_.
+
+.. code-block:: python
+
+    import numpy as np
+    import pyfixest as pf
+
+    pdf = df.to_pandas()
+    pdf["rel_time"] = np.where(
+        (pdf["treatment"] == 1) & (pdf["sector"] == 1),
+        pdf["year"] - 2003,
+        -99,
+    )
+
+    fit = pf.feols(
+        "checksaving_ratio ~ i(rel_time, ref=-1) + hhsize + age"
+        " | hhno + county^year + sector^year",
+        data=pdf,
+        vcov={"CRV1": "hhno"},
+    )
+
+Both estimators yield similar point estimates, but the DR-DDD produces
+tighter confidence intervals at later event times. We overlay the two sets of
+estimates following the presentation in `Ortiz-Villavicencio and Sant'Anna
+(2025, Figure 5 Panel C) <https://arxiv.org/abs/2505.09942>`_. After extracting the event-time coefficients from
+both ``event_study`` and ``fit`` into a combined pandas DataFrame
+(``plot_df``) with columns ``event_time``, ``att``, ``ci_lower``,
+``ci_upper``, and ``estimator``.
+
+.. code-block:: python
+
+    from plotnine import (
+        aes, annotate, element_blank, element_line, element_text,
+        geom_errorbar, geom_hline, geom_point, geom_vline, ggplot,
+        labs, position_dodge, scale_color_manual, scale_shape_manual,
+        scale_x_continuous, theme, theme_minimal,
+    )
+
+    dodge = position_dodge(width=0.25)
+
+    p = (
+        ggplot(plot_df, aes(x="event_time", y="att", color="estimator",
+                            shape="estimator"))
+        + geom_hline(yintercept=0, color="black", size=0.4)
+        + geom_vline(xintercept=-1, linetype="dashed", color="gray", size=0.4)
+        + geom_errorbar(
+            aes(ymin="ci_lower", ymax="ci_upper"),
+            width=0.15, size=0.6, position=dodge,
+        )
+        + geom_point(size=3, position=dodge)
+        + scale_color_manual(values={"3WFE": "#1a3a5c", "DR-DDD": "#c0392b"})
+        + scale_shape_manual(values={"3WFE": "o", "DR-DDD": "^"})
+        + scale_x_continuous(
+            breaks=sorted(plot_df["event_time"].unique()),
+        )
+        + annotate(
+            "text", x=-0.5, y=plot_df["ci_upper"].max() * 0.95,
+            label=(f"$\\widehat{{ES}}_{{avg}}$"
+                   f" = {es_avg:.3f}  [{es_lci:.3f}, {es_uci:.3f}]"),
+            ha="left", va="top", size=9,
+        )
+        + labs(
+            x="Event time",
+            y="Treatment Effect",
+            title="Insurance Provision on Saving Rate",
+            color="Estimator",
+            shape="Estimator",
+        )
+        + theme_minimal()
+        + theme(
+            panel_grid=element_blank(),
+            axis_line_x=element_line(color="black", size=0.4),
+            axis_line_y=element_line(color="black", size=0.4),
+            legend_position="right",
+            legend_title=element_blank(),
+            plot_title=element_text(size=12),
+        )
+    )
+    p.save("plot_ddd_cai_event_study.png", dpi=200, width=8, height=4.5)
+
+.. image:: /_static/images/plot_ddd_cai_event_study.png
+   :alt: Comparison of DR-DDD and 3WFE event study estimates for Cai (2016)
+   :width: 100%
+
+The figure restricts the pre-treatment window to event times :math:`-2` and
+:math:`-1` to match the presentation in `Ortiz-Villavicencio and Sant'Anna
+(2025, Figure 5) <https://arxiv.org/abs/2505.09942>`_. Both pre-treatment estimates are close to zero and
+statistically insignificant, supporting the DDD parallel trends assumption.
+The post-treatment estimates show a gradually increasing pattern, with the effect
+on the flexible-term saving ratio is near zero at the time of insurance
+introduction (event time 0) and grows to about 0.13 by five years after
+treatment (event time 5). Event times 2 through 5 are statistically
+significant under pointwise confidence bands for the DR-DDD estimator.
+
+The DR-DDD average post-treatment effect is
+:math:`\widehat{ES}_{avg} = 0.055` with 95% CI [0.028, 0.082].
+The 3WFE confidence intervals are visibly wider at later event times,
+consistent with the paper's finding that 3WFE intervals can be up to 1.15
+times wider than the DR-DDD intervals for this application. This precision
+gain arises because the doubly robust estimator correctly integrates over the
+treated population's covariate distribution rather than imposing linear
+covariate adjustments.
 
 
 Simulating data
 ---------------
 
-For this walkthrough, we use simulated panel data with the four subgroups
-described above.
+The following examples use simulated panel data with four subgroups:
+treated eligible, treated ineligible, untreated eligible, and untreated
+ineligible.
 
 .. code-block:: python
 
@@ -332,7 +606,7 @@ much easier to see the overall pattern.
 
 .. code-block:: python
 
-    event_study = did.agg_ddd(result_mp, aggregation_type="eventstudy")
+    event_study = did.agg_ddd(result_mp, type="eventstudy")
     print(event_study)
 
 .. code-block:: text
@@ -401,7 +675,7 @@ heterogeneity across groups that adopted at different times.
 
 .. code-block:: python
 
-    group_agg = did.agg_ddd(result_mp, aggregation_type="group")
+    group_agg = did.agg_ddd(result_mp, type="group")
     print(group_agg)
 
 .. code-block:: text
@@ -468,7 +742,7 @@ all post-treatment group-time cells.
 
 .. code-block:: python
 
-    simple_agg = did.agg_ddd(result_mp, aggregation_type="simple")
+    simple_agg = did.agg_ddd(result_mp, type="simple")
     print(simple_agg)
 
 .. code-block:: text

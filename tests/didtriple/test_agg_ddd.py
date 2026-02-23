@@ -8,7 +8,7 @@ from moderndid import agg_ddd
 
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
 def test_agg_ddd_basic(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type=agg_type, boot=False, cband=False)
 
     assert result.aggregation_type == agg_type
     assert isinstance(result.overall_att, float | np.floating)
@@ -17,7 +17,7 @@ def test_agg_ddd_basic(mp_ddd_result, agg_type):
 
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
 def test_agg_ddd_result_structure(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type=agg_type, boot=False, cband=False)
 
     assert hasattr(result, "overall_att")
     assert hasattr(result, "overall_se")
@@ -44,16 +44,16 @@ def test_agg_ddd_result_structure(mp_ddd_result, agg_type):
 
 def test_agg_ddd_invalid_type(mp_ddd_result):
     with pytest.raises(ValueError, match="Must be one of"):
-        agg_ddd(mp_ddd_result, aggregation_type="invalid")
+        agg_ddd(mp_ddd_result, type="invalid")
 
 
 def test_agg_ddd_cband_requires_boot(mp_ddd_result):
     with pytest.raises(ValueError, match="cband=True requires boot=True"):
-        agg_ddd(mp_ddd_result, aggregation_type="group", cband=True, boot=False)
+        agg_ddd(mp_ddd_result, type="group", cband=True, boot=False)
 
 
 def test_agg_ddd_eventstudy_balance(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="eventstudy", balance_e=1, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="eventstudy", balance_e=1, boot=False, cband=False)
 
     assert result.aggregation_type == "eventstudy"
     assert result.args.get("balance_e") == 1
@@ -61,7 +61,7 @@ def test_agg_ddd_eventstudy_balance(mp_ddd_result):
 
 
 def test_agg_ddd_eventstudy_min_max_e(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="eventstudy", min_e=-1, max_e=2, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="eventstudy", min_e=-1, max_e=2, boot=False, cband=False)
 
     assert result.aggregation_type == "eventstudy"
     assert result.args.get("min_e") == -1
@@ -70,14 +70,14 @@ def test_agg_ddd_eventstudy_min_max_e(mp_ddd_result):
 
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
 def test_agg_ddd_dropna(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, dropna=True, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type=agg_type, dropna=True, boot=False, cband=False)
 
     assert result.aggregation_type == agg_type
     assert isinstance(result.overall_att, float | np.floating)
 
 
 def test_agg_ddd_influence_function(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="simple", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="simple", boot=False, cband=False)
 
     assert result.inf_func_overall is not None
     assert isinstance(result.inf_func_overall, np.ndarray)
@@ -85,7 +85,7 @@ def test_agg_ddd_influence_function(mp_ddd_result):
 
 
 def test_agg_ddd_inf_func_eventstudy(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="eventstudy", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="eventstudy", boot=False, cband=False)
 
     if result.inf_func is not None:
         assert result.inf_func.shape[0] == mp_ddd_result.n
@@ -93,7 +93,7 @@ def test_agg_ddd_inf_func_eventstudy(mp_ddd_result):
 
 
 def test_agg_ddd_inf_func_group(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="group", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="group", boot=False, cband=False)
 
     if result.inf_func is not None:
         assert result.inf_func.shape[0] == mp_ddd_result.n
@@ -101,7 +101,7 @@ def test_agg_ddd_inf_func_group(mp_ddd_result):
 
 
 def test_agg_ddd_inf_func_calendar(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="calendar", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="calendar", boot=False, cband=False)
 
     if result.inf_func is not None:
         assert result.inf_func.shape[0] == mp_ddd_result.n
@@ -110,7 +110,7 @@ def test_agg_ddd_inf_func_calendar(mp_ddd_result):
 
 @pytest.mark.parametrize("agg_type", ["eventstudy", "group", "calendar"])
 def test_agg_ddd_bootstrap(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=True, biters=50, cband=False)
+    result = agg_ddd(mp_ddd_result, type=agg_type, boot=True, biters=50, cband=False)
 
     assert result.aggregation_type == agg_type
     assert result.args.get("boot") is True
@@ -119,7 +119,7 @@ def test_agg_ddd_bootstrap(mp_ddd_result, agg_type):
 
 @pytest.mark.parametrize("agg_type", ["eventstudy", "group", "calendar"])
 def test_agg_ddd_cband(mp_ddd_result, agg_type):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=True, biters=50, cband=True)
+    result = agg_ddd(mp_ddd_result, type=agg_type, boot=True, biters=50, cband=True)
 
     assert result.args.get("cband") is True
     assert result.crit_val is not None
@@ -129,7 +129,7 @@ def test_agg_ddd_cband(mp_ddd_result, agg_type):
 def test_agg_ddd_reproducibility(mp_ddd_result, agg_type):
     result1 = agg_ddd(
         mp_ddd_result,
-        aggregation_type=agg_type,
+        type=agg_type,
         boot=True,
         biters=50,
         cband=False,
@@ -137,7 +137,7 @@ def test_agg_ddd_reproducibility(mp_ddd_result, agg_type):
     )
     result2 = agg_ddd(
         mp_ddd_result,
-        aggregation_type=agg_type,
+        type=agg_type,
         boot=True,
         biters=50,
         cband=False,
@@ -153,7 +153,7 @@ def test_agg_ddd_reproducibility(mp_ddd_result, agg_type):
 def test_agg_ddd_args_stored(mp_ddd_result):
     result = agg_ddd(
         mp_ddd_result,
-        aggregation_type="eventstudy",
+        type="eventstudy",
         boot=True,
         biters=100,
         cband=True,
@@ -168,13 +168,13 @@ def test_agg_ddd_args_stored(mp_ddd_result):
 
 
 def test_agg_ddd_alpha(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="simple", alpha=0.10, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="simple", alpha=0.10, boot=False, cband=False)
 
     assert result.args.get("alpha") == 0.10
 
 
 def test_agg_ddd_group_structure(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="group", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="group", boot=False, cband=False)
 
     assert result.aggregation_type == "group"
     assert result.egt is not None
@@ -184,14 +184,14 @@ def test_agg_ddd_group_structure(mp_ddd_result):
 
 
 def test_agg_ddd_calendar_structure(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="calendar", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="calendar", boot=False, cband=False)
 
     assert result.aggregation_type == "calendar"
     assert result.egt is not None
 
 
 def test_agg_ddd_eventstudy_structure(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="eventstudy", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="eventstudy", boot=False, cband=False)
 
     assert result.aggregation_type == "eventstudy"
     assert result.egt is not None
@@ -202,7 +202,7 @@ def test_agg_ddd_eventstudy_structure(mp_ddd_result):
 
 
 def test_agg_ddd_simple_no_disaggregated(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="simple", boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="simple", boot=False, cband=False)
 
     assert result.egt is None
     assert result.att_egt is None
@@ -215,11 +215,11 @@ def test_agg_ddd_missing_values_error(mp_ddd_result):
     mp_ddd_result.att[0] = np.nan
 
     with pytest.raises(ValueError, match="Missing values"):
-        agg_ddd(mp_ddd_result, aggregation_type="simple", dropna=False, boot=False, cband=False)
+        agg_ddd(mp_ddd_result, type="simple", dropna=False, boot=False, cband=False)
 
 
 def test_agg_ddd_eventstudy_no_post(mp_ddd_result):
-    result = agg_ddd(mp_ddd_result, aggregation_type="eventstudy", max_e=-1, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type="eventstudy", max_e=-1, boot=False, cband=False)
 
     assert np.isnan(result.overall_att)
     assert np.isnan(result.overall_se)
@@ -235,7 +235,7 @@ def test_agg_ddd_eventstudy_no_post(mp_ddd_result):
     ],
 )
 def test_agg_ddd_print(mp_ddd_result, agg_type, expected_text):
-    result = agg_ddd(mp_ddd_result, aggregation_type=agg_type, boot=False, cband=False)
+    result = agg_ddd(mp_ddd_result, type=agg_type, boot=False, cband=False)
     output = str(result)
 
     assert "Aggregate DDD Treatment Effects" in output

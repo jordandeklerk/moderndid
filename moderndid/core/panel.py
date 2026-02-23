@@ -228,7 +228,7 @@ def diagnose_panel(
     )
 
 
-def get_group(data: Any, idname: str, tname: str, treatname: str) -> Any:
+def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: int | None = None) -> Any:
     """Extract treatment-group timing into a ``"G"`` column.
 
     Staggered difference-in-differences estimators like :func:`att_gt`
@@ -239,6 +239,13 @@ def get_group(data: Any, idname: str, tname: str, treatname: str) -> Any:
     variable ``"G"`` expected by the estimator. For each treated unit,
     ``G`` equals the first period where the treatment indicator is
     positive. For never-treated units, ``G`` is 0.
+
+    When the treatment indicator is *static* (e.g., a region dummy that
+    equals 1 in every period for treated units), the first-switch logic
+    would incorrectly assign ``G`` to the earliest observed period.  In
+    this case, pass ``treat_period`` to directly specify the known
+    treatment onset: any unit with a positive value of *treatname* in any
+    period receives ``G = treat_period``, and all others receive ``G = 0``.
 
     Parameters
     ----------
@@ -252,6 +259,12 @@ def get_group(data: Any, idname: str, tname: str, treatname: str) -> Any:
         Time period column.
     treatname : str
         Binary treatment indicator column.
+    treat_period : int or None
+        Known treatment onset period.  When provided, units with any
+        positive value of *treatname* are assigned ``G = treat_period``
+        and all others receive ``G = 0``, bypassing the first-switch
+        detection logic.  Useful for static treatment indicators that do
+        not switch on at a specific time.
 
     Returns
     -------
@@ -260,6 +273,9 @@ def get_group(data: Any, idname: str, tname: str, treatname: str) -> Any:
 
     Examples
     --------
+    When the treatment indicator switches on at a specific period, the
+    default behaviour detects the first switch automatically:
+
     .. ipython::
 
         In [1]: from moderndid import get_group, load_favara_imbs
@@ -268,12 +284,24 @@ def get_group(data: Any, idname: str, tname: str, treatname: str) -> Any:
            ...: df = get_group(df, idname="county", tname="year", treatname="inter_bra")
            ...: df.select("county", "year", "inter_bra", "G").head(10)
 
+    When the treatment indicator is static (e.g., a region dummy), pass
+    ``treat_period`` to specify the known onset:
+
+    .. ipython::
+
+        In [2]: from moderndid import get_group, load_cai2016
+           ...:
+           ...: df = load_cai2016()
+           ...: df = get_group(df, idname="hhno", tname="year",
+           ...:                treatname="treatment", treat_period=2003)
+           ...: df.select("hhno", "year", "treatment", "G").head(10)
+
     See Also
     --------
     att_gt : Estimate group-time average treatment effects.
     diagnose_panel : Check whether treatment varies within units.
     """
-    result = _get_group_impl(data, idname, tname, treatname)
+    result = _get_group_impl(data, idname, tname, treatname, treat_period=treat_period)
     return from_polars(result, data)
 
 

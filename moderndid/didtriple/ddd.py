@@ -130,9 +130,12 @@ def ddd(
         Panel data has the same units observed across time periods. Repeated
         cross-section data has different samples in each period.
     allow_unbalanced_panel : bool, default=False
-        If True and panel=True, allows unbalanced panel data by treating it as
-        repeated cross-section data. If the panel is unbalanced and this is False,
-        an error will be raised.
+        If True and panel=True, allows unbalanced panel data. For multi-period
+        settings, estimation stays in panel mode (preserving panel efficiency)
+        while handling units that appear in different subsets of periods. For
+        2-period settings, unbalanced data falls back to repeated cross-section
+        mode. If the panel is unbalanced and this is False, an error will be
+        raised.
     random_state : int, Generator, optional
         Random seed for reproducibility of bootstrap.
     n_jobs : int, default=1
@@ -378,7 +381,36 @@ def ddd(
             random_state=random_state,
             n_partitions=n_partitions,
             max_cohorts=max_cohorts,
-            progress_bar=progress_bar,
+            backend=backend,
+        )
+
+    from moderndid.spark._utils import is_spark_dataframe
+
+    if is_spark_dataframe(data):
+        from moderndid.spark._ddd import spark_ddd
+
+        return spark_ddd(
+            data,
+            yname,
+            tname,
+            idname,
+            gname,
+            pname,
+            xformla,
+            control_group=control_group,
+            base_period=base_period,
+            est_method=est_method,
+            weightsname=weightsname,
+            boot=boot,
+            biters=biters,
+            cluster=cluster,
+            alpha=alpha,
+            trim_level=trim_level,
+            panel=panel,
+            allow_unbalanced_panel=allow_unbalanced_panel,
+            random_state=random_state,
+            n_partitions=n_partitions,
+            max_cohorts=max_cohorts,
             backend=backend,
         )
 
@@ -422,7 +454,8 @@ def ddd(
             if missing_covs:
                 raise ValueError(f"Covariates not found in data: {missing_covs}")
 
-        if is_rcs:
+        use_panel = panel and idname is not None and idname != "_row_id"
+        if not use_panel:
             return ddd_mp_rc(
                 data=data,
                 y_col=yname,

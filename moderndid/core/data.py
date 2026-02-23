@@ -19,6 +19,7 @@ from .dataframe import to_polars
 
 __all__ = [
     "gen_did_scalable",
+    "load_cai2016",
     "load_ehec",
     "load_engel",
     "load_favara_imbs",
@@ -268,6 +269,59 @@ def load_favara_imbs() -> pl.DataFrame:
     if not data_path.exists():
         raise FileNotFoundError(
             f"Favara-Imbs data file not found at {data_path}. "
+            "Please ensure the data file is included in the moderndid installation."
+        )
+
+    return pl.read_csv(data_path)
+
+
+def load_cai2016() -> pl.DataFrame:
+    """Load the Cai (2016) agricultural insurance dataset.
+
+    This dataset contains household-level panel data from rural Jiangxi province
+    in China (2000-2008), used to study the effects of weather-indexed crop
+    insurance on household saving behavior. The People's Insurance Company of
+    China (PICC) introduced crop insurance for tobacco farmers in select counties
+    in 2003, creating a triple difference-in-differences (DDD) design with three
+    sources of variation: treatment region, household eligibility (tobacco vs
+    non-tobacco farmers), and time (pre/post 2003).
+
+    The dataset includes all households with non-missing outcome and covariate
+    values, forming an unbalanced panel of 3,659 households (32,391
+    observations). Most households are observed in all 9 years, but some have
+    fewer observations.
+
+    Returns
+    -------
+    pl.DataFrame
+        A DataFrame with the following columns:
+
+        - *hhno*: Household identifier
+        - *year*: Year (2000-2008)
+        - *treatment*: Treatment region indicator (1 if in treated county, 0 otherwise)
+        - *sector*: Eligibility indicator (1 for tobacco farmers, 0 for non-tobacco)
+        - *checksaving_ratio*: Flexible-term saving ratio (outcome variable)
+        - *savingtotal_rate*: Total saving rate
+        - *hhsize*: Household size
+        - *age*: Age of head of household
+        - *educ_scale*: Education level of head of household
+        - *county*: County identifier (for clustering)
+
+    References
+    ----------
+
+    .. [1] Cai, J. (2016). The impact of insurance provision on household
+        production and financial decisions. American Economic Journal:
+        Economic Policy, 8(2), 44-88.
+
+    .. [2] Ortiz-Villavicencio, J. & Sant'Anna, P. H. C. (2025). Triple
+        Differences with Multiple Periods. arXiv preprint arXiv:2505.09942.
+    """
+    data_path = Path(__file__).parent / "datasets" / "cai2016.csv.gz"
+
+    if not data_path.exists():
+        raise FileNotFoundError(
+            f"Cai (2016) data file not found at {data_path}. "
             "Please ensure the data file is included in the moderndid installation."
         )
 

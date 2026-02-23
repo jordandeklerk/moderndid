@@ -12,7 +12,7 @@
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 
 
-__ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Dask clusters.
+__ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Dask and Spark clusters.
 
 > [!WARNING]
 > This package is currently in active development with core estimators and some sensitivity analysis implemented. The API is subject to change.
@@ -21,7 +21,7 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 
 - **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest)
 - **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/)
-- **Distributed computing** - Scale DiD estimators to billions of observations across multi-node [Dask](https://www.dask.org/) clusters with automatic dispatch. Simply pass a Dask DataFrame to supported estimators and the distributed backend activates transparently
+- **Distributed computing** - Scale DiD estimators to billions of observations across multi-node [Dask](https://www.dask.org/) and [Spark](https://spark.apache.org/) clusters with automatic dispatch. Simply pass a Dask or Spark DataFrame to supported estimators and the distributed backend activates transparently
 - **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and optional thread-based parallelism via the `n_jobs` parameter
 - **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated regression and propensity score estimation across all doubly robust and IPW estimators on NVIDIA GPUs, with multi-GPU scaling in distributed environments
 - **Native plots** - Built on [plotnine](https://plotnine.org/) with full plotting customization support with the `ggplot` object
@@ -52,14 +52,16 @@ Extras are additive. They add functionality to the base install, so you always g
 - **`plots`** - Base + visualization (`plot_gt`, `plot_event_study`, ...)
 - **`numba`** - Base + faster bootstrap inference
 - **`dask`** - Base + distributed estimation via Dask
+- **`spark`** - Base + distributed estimation via PySpark
 - **`gpu`** - Base + GPU-accelerated estimation (requires CUDA)
-- **`all`** - Everything (except `dask` and `gpu`, which require specific infrastructure)
+- **`all`** - Everything (except `gpu`, which requires specific infrastructure)
 
 ```bash
 uv pip install moderndid[didcont]     # Base estimators + cont_did
 uv pip install moderndid[didhonest]   # Base estimators + sensitivity analysis
 uv pip install moderndid[numba]       # Base estimators with faster computations
 uv pip install moderndid[dask]        # Base estimators with Dask distributed
+uv pip install moderndid[spark]       # Base estimators with Spark distributed
 uv pip install moderndid[gpu]         # Base estimators with GPU acceleration
 uv pip install moderndid[gpu,dask]    # Combine multiple extras
 ```
@@ -72,20 +74,18 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 
 ### Distributed Computing
 
-For datasets that exceed single-machine memory, you can pass a Dask dataFrame to [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) or [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html#moderndid.ddd) and the distributed backend activates automatically. All computation happens on workers via partition-level sufficient statistics. Only small summary matrices return to the driver. Results are numerically identical to the local estimators.
+For datasets that exceed single-machine memory, pass a Dask or Spark dataFrame to [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) or [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html#moderndid.ddd) and the distributed backend activates automatically. All computation happens on workers via partition-level sufficient statistics. Only small summary matrices return to the driver. Results are numerically identical to the local estimators.
+
+**Dask**
 
 ```python
 import dask.dataframe as dd
 from dask.distributed import Client
 import moderndid as did
 
-# Load data as a Dask DataFrame
 ddf = dd.read_parquet("panel_data.parquet")
-
-# Start a Dask client (connects to existing cluster or starts a local one)
 client = Client()
 
-# Same API, distributed backend activates automatically
 result = did.att_gt(
     data=ddf,
     yname="y",
@@ -95,17 +95,39 @@ result = did.att_gt(
     est_method="dr",
     n_partitions=64,         # partitions per cell (default: total cluster threads)
     max_cohorts=4,           # cohorts to process in parallel
-    progress_bar=True,       # track cell completion
     backend="cupy",          # run worker linear algebra on GPUs (optional)
 )
 
-# Post-estimation works identically
 event_study = did.aggte(result, type="dynamic")
 ```
 
 Add `backend="cupy"` to run worker-side linear algebra on GPUs. For multi-GPU machines, use `dask-cuda` with a `LocalCUDACluster` to pin one worker per GPU.
 
-See the [Distributed Estimation guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html) for usage and the [Dsitributed Backend Architecture](https://moderndid.readthedocs.io/en/latest/dev/distributed_architecture.html) for details on the design.
+**Spark**
+
+```python
+from pyspark.sql import SparkSession
+import moderndid as did
+
+spark = SparkSession.builder.master("local[*]").getOrCreate()
+sdf = spark.read.parquet("panel_data.parquet")
+
+result = did.att_gt(
+    data=sdf,
+    yname="y",
+    tname="time",
+    idname="id",
+    gname="group",
+    est_method="dr",
+    n_partitions=64,         # partitions per cell (default: Spark parallelism)
+    max_cohorts=4,           # cohorts to process in parallel
+    backend="cupy",          # run partition linear algebra on GPUs (optional)
+)
+
+event_study = did.aggte(result, type="dynamic")
+```
+
+See the [Distributed Estimation guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html) for usage and the [Distributed Backend Architecture](https://moderndid.readthedocs.io/en/latest/dev/distributed_architecture.html) for details on the design.
 
 ### GPU Acceleration
 
@@ -153,6 +175,7 @@ did.load_nsw()         # NSW job training program
 did.load_ehec()        # Medicaid expansion
 did.load_engel()       # Household expenditure
 did.load_favara_imbs() # Bank lending
+did.load_cai2016()     # Crop insurance
 ```
 
 Synthetic data generators are also available for simulations and benchmarking:

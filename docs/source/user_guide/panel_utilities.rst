@@ -4,7 +4,7 @@
 Panel Data Utilities
 ====================
 
-ModernDiD's :mod:`~moderndid.panel` module provides tools for inspecting and
+ModernDiD's :mod:`~moderndid.core.panel` module provides tools for inspecting and
 cleaning panel data before estimation. Every estimator has a robust
 preprocessing pipeline that automatically handles most panel irregularities,
 so these utilities are optional. They are useful when you want to understand
@@ -20,7 +20,7 @@ format.
 Diagnosing the Data
 -------------------
 
-:func:`~moderndid.panel.diagnose_panel` gives you a quick summary of
+:func:`~moderndid.core.panel.diagnose_panel` gives you a quick summary of
 the panel's structure before you hand it to an estimator. Here we load
 the `Favara and Imbs (2015) <https://doi.org/10.1257/aer.20121416>`_
 banking-deregulation dataset, a county-level panel that, like many real
@@ -92,7 +92,7 @@ Fixing the Gaps
 If you do want to handle the gaps yourself, the diagnostics suggest a couple of
 strategies.
 
-:func:`~moderndid.panel.fill_panel_gaps` keeps every county and fills
+:func:`~moderndid.core.panel.fill_panel_gaps` keeps every county and fills
 the 38 missing county-year pairs with ``null`` rows. This preserves as
 many units as possible, which is useful when you plan to impute the
 missing values or pass the data to an estimator with
@@ -109,7 +109,7 @@ missing values or pass the data to an estimator with
 
 The panel is now a full 1048 x 12 rectangle.
 
-:func:`~moderndid.panel.make_balanced_panel` takes the opposite
+:func:`~moderndid.core.panel.make_balanced_panel` takes the opposite
 approach and drops the 5 incomplete counties entirely. You lose a few
 units, but every remaining county is observed in all 12 years with no
 nulls. This is what the preprocessing pipeline does by default when
@@ -129,7 +129,7 @@ That gives 1043 counties x 12 years.
 If your data had duplicate unit-time pairs, you would need to resolve
 those before calling any estimator, since duplicates cause a hard
 error in the preprocessing pipeline.
-:func:`~moderndid.panel.deduplicate_panel` handles this by keeping the
+:func:`~moderndid.core.panel.deduplicate_panel` handles this by keeping the
 last occurrence by default, or can average numeric columns with
 ``strategy="mean"``.
 
@@ -140,7 +140,7 @@ Building the Group-Timing Variable
 Most ModernDiD estimators take ``gname`` as an argument, a column indicating the first
 period each unit was treated (0 for never-treated). Many datasets
 instead store a raw binary treatment indicator that flips from 0 to 1
-when treatment begins. :func:`~moderndid.panel.get_group` converts
+when treatment begins. :func:`~moderndid.core.panel.get_group` converts
 between the two. It looks at when each unit's treatment first turns on
 and writes that period into a new ``"G"`` column.
 
@@ -176,7 +176,7 @@ without running full diagnostics.
     # List the exact missing unit-time pairs
     gaps = did.scan_gaps(data, idname="county", tname="year")
 
-:func:`~moderndid.panel.complete_data` keeps only units observed in at
+:func:`~moderndid.core.panel.complete_data` keeps only units observed in at
 least ``min_periods`` time periods, which is useful for dropping units
 with too few observations.
 
@@ -185,7 +185,7 @@ with too few observations.
     # Keep units observed in at least 10 of 12 periods
     trimmed = did.complete_data(data, idname="county", tname="year", min_periods=10)
 
-:func:`~moderndid.panel.deduplicate_panel` removes duplicate unit-time
+:func:`~moderndid.core.panel.deduplicate_panel` removes duplicate unit-time
 pairs. The default keeps the last occurrence; ``strategy="mean"`` averages
 numeric columns instead.
 
@@ -212,7 +212,7 @@ transformations.
     diffed = did.get_first_difference(data, idname="county", yname="outcome", tname="year")
 
 For repeated cross-section data (no unit tracked over time),
-:func:`~moderndid.panel.assign_rc_ids` adds a unique ``"rowid"`` column
+:func:`~moderndid.core.panel.assign_rc_ids` adds a unique ``"rowid"`` column
 that some estimators require.
 
 .. code-block:: python

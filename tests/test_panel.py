@@ -8,7 +8,7 @@ pl = importorskip("polars")
 pd = importorskip("pandas")
 pa = importorskip("pyarrow")
 
-from moderndid.panel import (
+from moderndid.core.panel import (
     PanelDiagnostics,
     are_varying,
     assign_rc_ids,
@@ -79,6 +79,31 @@ def test_get_group_correct_groups(staggered_panel):
 def test_get_group_all_untreated():
     df = pl.DataFrame({"id": [1, 1, 2, 2], "time": [1, 2, 1, 2], "treat": [0, 0, 0, 0]})
     result = get_group(df, "id", "time", "treat")
+    assert (result["G"] == 0).all()
+
+
+def test_get_group_static_indicator():
+    df = pl.DataFrame(
+        {
+            "id": [1, 1, 1, 2, 2, 2, 3, 3, 3],
+            "time": [1, 2, 3, 1, 2, 3, 1, 2, 3],
+            "treat": [1, 1, 1, 1, 1, 1, 0, 0, 0],
+        }
+    )
+    result = get_group(df, "id", "time", "treat", treat_period=2)
+    g_by_id = result.group_by("id").agg(pl.col("G").first()).sort("id")
+    assert g_by_id["G"].to_list() == [2, 2, 0]
+
+
+def test_get_group_treat_period_all_untreated():
+    df = pl.DataFrame(
+        {
+            "id": [1, 1, 2, 2],
+            "time": [1, 2, 1, 2],
+            "treat": [0, 0, 0, 0],
+        }
+    )
+    result = get_group(df, "id", "time", "treat", treat_period=5)
     assert (result["G"] == 0).all()
 
 

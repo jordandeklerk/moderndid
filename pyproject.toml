@@ -58,13 +58,15 @@ numba = [
 dask = [
     "dask[dataframe]>=2024.1.0",
     "distributed>=2024.1.0",
-    "tqdm>=4.0",
+]
+spark = [
+    "pyspark>=3.4.0",
 ]
 gpu = [
     "cupy-cuda12x>=13.0",
 ]
 all = [
-    "moderndid[didcont,didhonest,plots,numba,dask]",
+    "moderndid[didcont,didhonest,plots,numba,dask,spark]",
 ]
 test = [
     "pytest",

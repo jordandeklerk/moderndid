@@ -42,4 +42,4 @@ methodology are found in :ref:`background`.
    :caption: Distributed
    :maxdepth: 2
 
-   dask
+   distributed

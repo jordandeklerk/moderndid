@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 
+from moderndid.core.numba_utils import multiplier_bootstrap
 from moderndid.cupy.backend import get_backend
 from moderndid.cupy.bootstrap import _multiplier_bootstrap_cupy
 
@@ -151,20 +152,4 @@ def _run_multiplier_bootstrap(
     if xp is not np:
         return _multiplier_bootstrap_cupy(inf_func, biters, random_state)
 
-    # Mammen weights
-    sqrt5 = np.sqrt(5)
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    pkappa = 0.5 * (1 + sqrt5) / sqrt5
-
-    n, k = inf_func.shape
-    rng = np.random.default_rng(random_state)
-    bres = np.zeros((biters, k))
-
-    for b in range(biters):
-        v = rng.binomial(1, pkappa, size=n)
-        v = np.where(v == 1, k1, k2)
-
-        bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
-
-    return bres
+    return multiplier_bootstrap(inf_func, biters, random_state)

@@ -1,13 +1,20 @@
 .. _distributed-architecture:
 
-======================================
-Distributed Backend Architecture
-======================================
+.. _spark-architecture:
+
+======================
+Distributed Computing
+======================
 
 This document describes the internal design of ModernDiD's distributed
-backend built on `Dask <https://www.dask.org/>`_ and
-`Dask Distributed <https://distributed.dask.org/>`_. For usage
-documentation, see the :ref:`Distributed Computing guide <distributed>`.
+backends for `Dask <https://www.dask.org/>`_ and
+`Apache Spark <https://spark.apache.org/>`_. Both backends share the same
+algorithmic decomposition; only the communication primitives differ. The
+sections below use Dask code examples for concreteness.
+:ref:`Spark-specific mechanics <spark-mechanics>` are described at the end.
+
+For usage documentation, see the :ref:`Dask guide <distributed>` and the
+:ref:`Spark guide <spark>`.
 
 
 Scope and design rule
@@ -18,7 +25,7 @@ understand how distributed estimation is implemented. It covers execution
 decomposition for ``att_gt`` and ``ddd``, distributed nuisance estimation,
 aggregation, and memory-management strategies for large panels.
 
-The distributed backend is designed around a single rule: **Never
+The distributed backends are designed around a single rule: **Never
 materialize the full dataset on any single machine.** All computation
 happens on workers via partition-level sufficient statistics. Only small
 summary matrices return to the driver.
@@ -384,3 +391,87 @@ chunks of 1 million rows. Chunk-level partial products are then summed.
 
     # Chunked vcov path for very large influence-function matrices
     V = chunked_vcov(inf_func_trimmed, n_units)
+
+
+.. _spark-mechanics:
+
+Spark backend mechanics
+=======================
+
+The Spark backend (``moderndid.spark``) implements the same algorithmic
+decomposition described above. The entry points ``spark_att_gt`` and
+``spark_ddd`` delegate to ``spark_att_gt_mp`` and ``spark_ddd_mp``
+respectively. Cell-level decomposition, nuisance estimation, wide-pivot
+optimization, cohort-level parallelism, influence function streaming, and
+memory management all follow the same design. Only the communication
+primitives differ.
+
+The table below maps each Dask primitive to its Spark equivalent.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 35
+
+   * - Operation
+     - Dask
+     - Spark
+   * - Task submission
+     - ``client.submit()`` per partition
+     - ``mapInPandas`` across DataFrame partitions
+   * - Broadcast
+     - ``client.scatter(beta, broadcast=True)``
+     - ``SparkContext.broadcast(beta)``
+   * - Small-result reduction
+     - Custom ``tree_reduce`` with fan-in
+     - ``collect()`` + driver-side ``_reduce_gram_list``
+   * - Large-result reduction
+     - Custom ``tree_reduce`` with fan-in
+     - ``RDD.treeReduce(depth=3)``
+   * - IF streaming
+     - ``as_completed(futures)``
+     - ``toLocalIterator(prefetchPartitions=True)``
+   * - Caching
+     - ``persist()`` + ``wait()``
+     - ``.cache()`` + ``.count()``
+   * - Default partitions
+     - Total worker threads
+     - ``spark.sparkContext.defaultParallelism``
+
+**Gram collection.** For IRLS and WLS, each executor computes its local
+Gram matrix via ``mapInPandas``, serializes it with pickle, and the driver
+collects the small binary results with ``collect()``. Gram matrices are
+tiny (kilobytes), so driver-side collection is efficient.
+
+.. code-block:: python
+
+    # mapInPandas + collect pattern (from spark._gram)
+    result_df = cached_df.mapInPandas(_compute_gram_udf, schema=out_schema)
+    rows = result_df.collect()
+    gram_list = [pickle.loads(row["gram_bytes"]) for row in rows]
+    XtWX, XtWy, n = _reduce_gram_list(gram_list)
+
+**IRLS broadcast.** Each IRLS iteration broadcasts :math:`\beta` via
+``SparkContext.broadcast()`` and destroys the broadcast variable after
+collection to avoid memory leaks.
+
+.. code-block:: python
+
+    beta_bc = sc.broadcast(beta)
+    rows = cached_df.mapInPandas(_irls_udf, schema=out_schema).collect()
+    beta_bc.destroy()
+
+**Bootstrap via RDD treeReduce.** Per-partition ``(B, k)`` bootstrap
+matrices are larger than Gram matrices, so the Spark backend uses
+``RDD.treeReduce()`` instead of ``collect()`` to avoid materializing
+all intermediate results on the driver at once.
+
+.. code-block:: python
+
+    # From spark._bootstrap
+    rdd = sc.parallelize(partitions_with_seeds)
+    rdd = rdd.map(lambda args: _local_bootstrap(*args))
+    total_result = rdd.treeReduce(_sum_bootstrap_pair, depth=3)
+
+**Cache management.** Cohort-wide DataFrames are cached with ``.cache()``
+and unpersisted immediately after processing all cells in the cohort to
+prevent stale cached tables from consuming executor memory.

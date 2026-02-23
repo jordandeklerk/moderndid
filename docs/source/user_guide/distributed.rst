@@ -1,14 +1,14 @@
 .. _distributed:
 
-================================
-Distributed Estimation with Dask
-================================
+======================
+Distributed Estimation
+======================
 
 ModernDiD includes distributed backends for :func:`~moderndid.att_gt` and
 :func:`~moderndid.ddd` on top of `Dask <https://www.dask.org/>`_ and
-`Dask Distributed <https://distributed.dask.org/>`_. The distributed backend
-scales from one machine to many workers and returns the same result object
-types as local estimation, so your post-estimation workflow stays the same.
+`Apache Spark <https://spark.apache.org/>`_. Both backends scale from one
+machine to a full cluster and return the same result object types as local
+estimation, so your post-estimation workflow stays the same.
 
 This page focuses on practical usage. For internal implementation details, see
 :ref:`Distributed Backend Architecture <distributed-architecture>`.
@@ -20,7 +20,7 @@ When to use distributed estimation
 Distributed estimation is most useful when the dataset does not fit in memory
 on one machine, when local runtime is too long for your iteration cycle, when
 you need to run many model specifications over the same large dataset, or when
-you already maintain a Dask cluster for analytics workloads.
+you already maintain a Dask or Spark cluster for analytics workloads.
 
 Distributed execution has scheduler and communication overhead. If local
 estimation is fast and memory safe, local execution is often simpler and easier
@@ -30,33 +30,36 @@ to debug.
 Requirements
 ------------
 
-Install the Dask extra before running distributed estimators.
+Install the extra for the backend you plan to use.
 
 .. code-block:: console
 
-    uv pip install moderndid[dask]
+    uv pip install moderndid[dask]     # Dask backend
+    uv pip install moderndid[spark]    # Spark backend
 
-The ``all`` extra includes ``dask``, so ``uv pip install moderndid[all]``
-also works. The distributed path expects a Dask DataFrame input and a
-working ``distributed`` scheduler.
+The ``all`` extra includes both, so ``uv pip install moderndid[all]``
+also works. ModernDiD cannot set up your cluster environment for you.
+Creating clusters, managing workers/executors, and building distributed
+DataFrames is the responsibility of the user. Once you have a Dask or Spark
+DataFrame, ModernDiD handles the rest.
 
-ModernDiD cannot set up your Dask environment for you. Creating clusters,
-managing workers, and building Dask DataFrames is the responsibility of the
-user. Once you have a Dask DataFrame, ModernDiD handles the rest. If you
-are new to Dask, the
-`10 Minutes to Dask <https://docs.dask.org/en/stable/10-minutes-to-dask.html>`_
-guide and the
-`Distributed documentation <https://distributed.dask.org/en/stable/>`_
-are good starting points.
+If you are new to either framework:
+
+- `10 Minutes to Dask <https://docs.dask.org/en/stable/10-minutes-to-dask.html>`_
+  and the `Distributed documentation <https://distributed.dask.org/en/stable/>`_
+- `PySpark Getting Started <https://spark.apache.org/docs/latest/api/python/getting_started/index.html>`_
+  and the `Spark documentation <https://spark.apache.org/docs/latest/>`_
 
 
 Quick start
 -----------
 
 The distributed backend activates automatically when ``data`` is a Dask
-DataFrame. If ``data`` is any other type, the local estimator runs instead.
-This lets you move from local development to cluster execution without
-rewriting estimator arguments.
+or PySpark DataFrame. If ``data`` is any other type, the local estimator
+runs instead. This lets you move from local development to cluster execution
+without rewriting estimator arguments.
+
+**Dask**
 
 .. code-block:: python
 
@@ -79,12 +82,35 @@ rewriting estimator arguments.
     event_study = did.aggte(result, type="dynamic")
     did.plot_event_study(event_study)
 
-The same pattern works for triple differences.
+**Spark**
+
+.. code-block:: python
+
+    from pyspark.sql import SparkSession
+    import moderndid as did
+
+    spark = SparkSession.builder.master("local[*]").getOrCreate()
+    sdf = spark.read.parquet("panel_data.parquet")
+
+    result = did.att_gt(
+        data=sdf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~ x1 + x2",
+        est_method="dr",
+    )
+
+    event_study = did.aggte(result, type="dynamic")
+    did.plot_event_study(event_study)
+
+The same pattern works for triple differences with both backends.
 
 .. code-block:: python
 
     result = did.ddd(
-        data=ddf,
+        data=ddf,       # or sdf
         yname="y",
         tname="time",
         idname="id",
@@ -103,13 +129,14 @@ Interfaces
 
 You can use distributed estimation through two API layers. The high-level
 wrappers ``att_gt`` and ``ddd`` are the recommended entry points. The
-low-level functions ``dask_att_gt`` and ``dask_ddd`` in
-:mod:`moderndid.dask` give you explicit control over the Dask client.
+low-level functions give you explicit control over the client or session.
+
+**Dask**
 
 High-level wrappers do not expose a ``client`` argument. Creating a
 ``Client`` registers it as the global default, so estimator calls pick it
-up automatically. The low-level functions accept a ``client`` argument
-directly.
+up automatically. The low-level functions ``dask_att_gt`` and ``dask_ddd``
+in :mod:`moderndid.dask` accept a ``client`` argument directly.
 
 .. code-block:: python
 
@@ -117,12 +144,32 @@ directly.
     from moderndid.dask import dask_att_gt
     from dask.distributed import Client
 
-    # High-level entry point (uses the global default client)
+    # High-level (uses the global default client)
     client = Client("scheduler-address:8786")
     result_a = did.att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group")
 
-    # Low-level entry point (accepts client explicitly)
+    # Low-level (accepts client explicitly)
     result_b = dask_att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group", client=client)
+
+**Spark**
+
+High-level wrappers do not expose a ``spark`` argument. ModernDiD uses the
+active session or creates a local one automatically. The low-level functions
+``spark_att_gt`` and ``spark_ddd`` in :mod:`moderndid.spark` accept a
+``spark`` argument directly.
+
+.. code-block:: python
+
+    import moderndid as did
+    from moderndid.spark import spark_att_gt
+    from pyspark.sql import SparkSession
+
+    # High-level (uses the active session)
+    spark = SparkSession.builder.master("local[*]").getOrCreate()
+    result_a = did.att_gt(data=sdf, yname="y", tname="time", idname="id", gname="group")
+
+    # Low-level (accepts spark session explicitly)
+    result_b = spark_att_gt(data=sdf, yname="y", tname="time", idname="id", gname="group", spark=spark)
 
 
 Current support and limits
@@ -143,19 +190,19 @@ The ``n_jobs`` parameter is not used in distributed mode. For ``ddd``,
 Preparing input data
 --------------------
 
-The distributed estimators expect a Dask DataFrame in long format. Include
-all required columns in the same frame and keep ``time`` and treatment group
-columns numeric. For panel data (``panel=True``), ensure unit identifiers
-are stable across periods and prefer one record per unit-period. For
-repeated cross-section data (``panel=False``), each row is an independent
+The distributed estimators expect a Dask or PySpark DataFrame in long format.
+Include all required columns in the same frame and keep ``time`` and treatment
+group columns numeric. For panel data (``panel=True``), ensure unit
+identifiers are stable across periods and prefer one record per unit-period.
+For repeated cross-section data (``panel=False``), each row is an independent
 observation and unit identifiers are not required.
 
-Staging large datasets in batches
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Reading large datasets
+^^^^^^^^^^^^^^^^^^^^^^
 
-When the full dataset is too large to build in driver memory, write it to
-Parquet in batches and read it back as a Dask DataFrame. This keeps driver
-memory constant regardless of total dataset size.
+**Dask.** When the full dataset is too large to build in driver memory, write
+it to Parquet in batches and read it back as a Dask DataFrame. This keeps
+driver memory constant regardless of total dataset size.
 
 .. code-block:: python
 
@@ -205,31 +252,44 @@ memory constant regardless of total dataset size.
     # Read back as a distributed DataFrame
     ddf = dd.read_parquet(PARQUET_PATH, engine="pyarrow")
 
-The same pattern applies when your raw data comes from a database, an API,
-or any other source that must be fetched incrementally. Replace the body of
-``_generate_chunk`` with whatever logic produces a single pandas DataFrame,
-and the rest of the pipeline stays the same.
+**Spark.** Spark reads data lazily, so you can point directly at Parquet,
+CSV, or any Spark-supported source and the data stays distributed across
+executors without staging batches on the driver.
+
+.. code-block:: python
+
+    from pyspark.sql import SparkSession
+
+    spark = SparkSession.builder.master("local[*]").getOrCreate()
+    sdf = spark.read.parquet("hdfs:///data/panel_data.parquet")
 
 Partition layout
 ^^^^^^^^^^^^^^^^
 
 Partition layout affects both runtime and memory. Extremely small partitions
-increase scheduler overhead, and extremely large partitions increase worker
-memory pressure. If you plan to run multiple model specifications over the
-same data, repartition once and persist before the first fit.
+increase scheduler overhead, and extremely large partitions increase
+worker/executor memory pressure. If you plan to run multiple model
+specifications over the same data, repartition once and persist/cache before
+the first fit.
 
 .. code-block:: python
 
+    # Dask
     ddf = ddf.repartition(npartitions=64)
+
+    # Spark
+    sdf = sdf.repartition(64)
 
 Persist and sanity-check
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Dask is lazy by default, so heavy work can execute later than expected,
-including inside estimator calls. In practice this means upstream ETL issues
-may surface during ``att_gt`` or ``ddd`` even when your data construction
-code appears to run without errors. A good pattern is to persist and
-sanity-check the input before fitting.
+Both frameworks evaluate lazily, so heavy work can execute later than
+expected, including inside estimator calls. A good pattern is to
+persist/cache and sanity-check the input before fitting. This boundary
+separates data-pipeline failures from estimator failures, which makes
+debugging faster.
+
+**Dask**
 
 .. code-block:: python
 
@@ -238,26 +298,31 @@ sanity-check the input before fitting.
     ddf = ddf.persist()
     wait(ddf)
 
-    # Lightweight checks before estimation
     print(ddf.columns)
     print(ddf[["id", "time", "group"]].head())
 
-This boundary separates data-pipeline failures from estimator failures,
-which makes debugging faster.
+**Spark**
+
+.. code-block:: python
+
+    sdf = sdf.cache()
+    sdf.count()  # force materialization
+
+    print(sdf.columns)
+    sdf.select("id", "time", "group").show(5)
 
 
 From local to distributed
 -------------------------
 
 A practical workflow is to develop and validate your specification locally
-on a sample, then scale up to the full dataset by swapping in a Dask
+on a sample, then scale up to the full dataset by swapping in a distributed
 DataFrame. The estimator arguments stay the same. Only the input type
 changes.
 
 .. code-block:: python
 
     import polars as pl
-    import dask.dataframe as dd
     import moderndid as did
 
     shared_args = dict(
@@ -269,18 +334,24 @@ changes.
     sample = pl.read_parquet("panel_data.parquet").sample(n=10_000, seed=42)
     local_result = did.att_gt(data=sample, **shared_args)
 
-    # Scale to the full dataset
+    # Scale with Dask
+    import dask.dataframe as dd
     ddf = dd.read_parquet("panel_data.parquet")
-    dist_result = did.att_gt(data=ddf, **shared_args)
+    dask_result = did.att_gt(data=ddf, **shared_args)
+
+    # Or scale with Spark
+    from pyspark.sql import SparkSession
+    spark = SparkSession.builder.master("local[*]").getOrCreate()
+    sdf = spark.read.parquet("panel_data.parquet")
+    spark_result = did.att_gt(data=sdf, **shared_args)
 
 
 Connecting to a cluster
 -----------------------
 
-If no client exists, ModernDiD creates a local client automatically, which
-is convenient for development. For multi-node runs, create a ``Client``
-pointing at your scheduler. Creating the client registers it as the global
-default, so estimator calls use it automatically.
+**Dask.** If no client exists, ModernDiD creates a local client
+automatically. For multi-node runs, create a ``Client`` pointing at your
+scheduler. Creating the client registers it as the global default.
 
 .. code-block:: python
 
@@ -313,8 +384,55 @@ explicitly to set worker count and memory limits.
 
     result = did.att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group")
 
-For more predictable runtime in autoscaling environments, warm the cluster
-and persist input data before launching long model runs.
+**Spark.** If no active session exists, ModernDiD creates a local Spark
+session automatically. For cluster runs, create a ``SparkSession`` pointing
+at your cluster manager.
+
+.. code-block:: python
+
+    from pyspark.sql import SparkSession
+    import moderndid as did
+
+    spark = (
+        SparkSession.builder
+        .master("yarn")
+        .appName("moderndid-estimation")
+        .config("spark.executor.memory", "8g")
+        .config("spark.executor.cores", "4")
+        .getOrCreate()
+    )
+
+    sdf = spark.read.parquet("hdfs:///data/panel_data.parquet")
+
+    result = did.att_gt(
+        data=sdf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+    )
+
+This works with any Spark-compatible cluster manager (standalone, YARN,
+Mesos, Kubernetes). For Databricks, the ``SparkSession`` is pre-configured
+and available as ``spark`` in notebooks, so you can pass Spark DataFrames
+directly to estimators without additional setup.
+
+For local development with controlled resources, configure executor
+settings explicitly.
+
+.. code-block:: python
+
+    from pyspark.sql import SparkSession
+
+    spark = (
+        SparkSession.builder
+        .master("local[4]")
+        .config("spark.driver.memory", "4g")
+        .config("spark.executor.memory", "4g")
+        .getOrCreate()
+    )
+
+    result = did.att_gt(data=sdf, yname="y", tname="time", idname="id", gname="group")
 
 
 Distributed-specific parameters
@@ -323,35 +441,38 @@ Distributed-specific parameters
 In addition to standard estimator arguments, distributed execution uses a
 small set of controls.
 
-``client``
+``client`` **(Dask only)**
     A ``distributed.Client`` for low-level calls (``dask_att_gt``,
     ``dask_ddd``). If omitted, ModernDiD first tries ``Client.current()`` and
     creates a local client when none is active.
 
+``spark`` **(Spark only)**
+    A ``pyspark.sql.SparkSession`` for low-level calls (``spark_att_gt``,
+    ``spark_ddd``). If omitted, ModernDiD first tries
+    ``SparkSession.getActiveSession()`` and creates a local session when none
+    is active.
+
 ``n_partitions``
-    Number of Dask partitions per cell computation. The default equals total
-    worker threads, and the backend can increase it when estimated partition
-    design matrices would be too large.
+    Number of partitions per cell computation. The default equals total
+    worker threads (Dask) or Spark's default parallelism (Spark), and the
+    backend can increase it when estimated partition design matrices would be
+    too large.
 
 ``max_cohorts``
     Maximum number of treatment cohorts processed concurrently. Defaults to
-    the number of Dask workers. Lower values reduce peak memory because fewer
-    cohort-wide tables are active at once. Higher values can improve
-    throughput on memory-rich clusters.
-
-``progress_bar``
-    Enables a ``tqdm`` progress bar in multi-period runs. Each tick corresponds
-    to one group-time cell.
+    the number of workers (Dask) or executor cores (Spark). Lower values
+    reduce peak memory because fewer cohort-wide tables are active at once.
+    Higher values can improve throughput on memory-rich clusters.
 
 ``backend``
     Set to ``"cupy"`` to run partition-level linear algebra on worker GPUs.
-    See :ref:`Combining GPU and Dask <gpu-dask-workers>` for setup details.
+    See :ref:`Combining GPU and Dask <gpu-dask-workers>` and
+    :ref:`Combining GPU and Spark <gpu-spark-workers>` for setup details.
 
 .. code-block:: python
 
     from moderndid.dask import dask_att_gt
 
-    # Low-level entry point (accepts client explicitly)
     result = dask_att_gt(
         data=ddf,
         yname="y",
@@ -363,7 +484,23 @@ small set of controls.
         client=client,
         n_partitions=64,
         max_cohorts=4,
-        progress_bar=True,
+    )
+
+.. code-block:: python
+
+    from moderndid.spark import spark_att_gt
+
+    result = spark_att_gt(
+        data=sdf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~ x1 + x2",
+        est_method="dr",
+        spark=spark,
+        n_partitions=64,
+        max_cohorts=4,
     )
 
 Start with defaults and record runtime and peak memory. Increase
@@ -390,18 +527,18 @@ interface as local estimation.
 - **Unbalanced panels** (``allow_unbalanced_panel``) — supported. Default
   ``False`` logs a warning with the number of dropped units.
 - **Sampling weights** (``weightsname``) — supported. Weight column must be
-  present in the Dask DataFrame.
+  present in the distributed DataFrame.
 - **GPU on workers** (``backend="cupy"``) — runs partition-level linear
-  algebra on worker GPUs. See
-  :ref:`Combining GPU and Dask <gpu-dask-workers>` for setup.
+  algebra on worker GPUs. See :ref:`Combining GPU and Dask <gpu-dask-workers>`
+  and :ref:`Combining GPU and Spark <gpu-spark-workers>` for setup.
 
 
 Running multiple specifications
 -------------------------------
 
-When running multiple specifications over the same data, persist the Dask
-DataFrame once and reuse it across calls. This avoids re-reading and
-re-shuffling the data for each specification.
+When running multiple specifications over the same data, persist/cache the
+distributed DataFrame once and reuse it across calls. This avoids re-reading
+and re-shuffling the data for each specification.
 
 .. code-block:: python
 
@@ -433,23 +570,14 @@ re-shuffling the data for each specification.
 Monitoring the cluster
 ----------------------
 
-For long-running jobs, the Dask dashboard provides real-time visibility into task
-progress, worker memory, and task stream. The ``progress_bar`` parameter
-provides a simpler alternative that works in notebooks and scripts.
+For long-running jobs, the cluster dashboard provides real-time visibility
+into task progress, worker memory, and the task stream.
 
-.. code-block:: python
-
-    from moderndid.dask import dask_att_gt
-
-    result = dask_att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        client=client,
-        progress_bar=True,    # Track cell completion
-    )
+- **Dask**: Access the dashboard at ``http://scheduler-host:8787/status``
+  after creating a client.
+- **Spark**: Access the Spark UI at ``http://driver-host:4040`` after
+  creating a session. On Databricks, the Spark UI is available directly
+  from the cluster page.
 
 
 Reproducibility
