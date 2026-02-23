@@ -129,7 +129,7 @@ result = did.att_gt(
 event_study = did.aggte(result, type="dynamic")
 ```
 
-See the [Spark Distributed Estimation guide](https://moderndid.readthedocs.io/en/latest/user_guide/spark.html) for usage and the [Distributed Backend Architecture](https://moderndid.readthedocs.io/en/latest/dev/distributed_architecture.html) for details on the design.
+See the [Spark Distributed Estimation guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html) for usage and the [Distributed Backend Architecture](https://moderndid.readthedocs.io/en/latest/dev/distributed_architecture.html) for details on the design.
 
 ### GPU Acceleration
 

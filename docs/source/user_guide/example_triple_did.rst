@@ -74,7 +74,7 @@ The outcome of interest is the flexible-term saving ratio
 (``checksaving_ratio``), which measures the share of household income allocated
 to liquid savings. The hypothesis is that access to crop insurance reduces
 income risk, allowing households to shift savings toward more productive but
-less liquid investments. We follow Ortiz-Villavicencio and Sant'Anna (2025) in
+less liquid investments. We follow `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_ in
 using the doubly robust DDD estimator with household-level covariates.
 
 
@@ -158,7 +158,7 @@ Estimation
 
 We estimate group-time treatment effects using the doubly robust DDD estimator
 with household size and age as covariates, following the specification in
-Ortiz-Villavicencio and Sant'Anna (2025, Figure 5). Setting
+`Ortiz-Villavicencio and Sant'Anna (2025, Figure 5) <https://arxiv.org/abs/2505.09942>`_. Setting
 ``allow_unbalanced_panel=True`` keeps the estimation in panel mode while
 handling households that appear in different subsets of years, preserving
 panel-efficient standard errors. We use 999 bootstrap repetitions for
@@ -249,9 +249,9 @@ inference.
 Comparing with three-way fixed effects
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Ortiz-Villavicencio and Sant'Anna (2025) compare their DR-DDD estimator against
+`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_ compare their DR-DDD estimator against
 the standard three-way fixed effects (3WFE) event study specification from
-Cai (2016, Equation 6.1)
+`Cai (2016, Equation 6.1) <https://doi.org/10.1257/pol.20130371>`_
 
 .. math::
 
@@ -285,8 +285,8 @@ households. We estimate this using `pyfixest <https://github.com/py-econometrics
 
 Both estimators yield similar point estimates, but the DR-DDD produces
 tighter confidence intervals at later event times. We overlay the two sets of
-estimates following the presentation in Ortiz-Villavicencio and Sant'Anna
-(2025, Figure 5 Panel C). After extracting the event-time coefficients from
+estimates following the presentation in `Ortiz-Villavicencio and Sant'Anna
+(2025, Figure 5 Panel C) <https://arxiv.org/abs/2505.09942>`_. After extracting the event-time coefficients from
 both ``event_study`` and ``fit`` into a combined pandas DataFrame
 (``plot_df``) with columns ``event_time``, ``att``, ``ci_lower``,
 ``ci_upper``, and ``estimator``.
@@ -347,8 +347,8 @@ both ``event_study`` and ``fit`` into a combined pandas DataFrame
    :width: 100%
 
 The figure restricts the pre-treatment window to event times :math:`-2` and
-:math:`-1` to match the presentation in Ortiz-Villavicencio and Sant'Anna
-(2025, Figure 5). Both pre-treatment estimates are close to zero and
+:math:`-1` to match the presentation in `Ortiz-Villavicencio and Sant'Anna
+(2025, Figure 5) <https://arxiv.org/abs/2505.09942>`_. Both pre-treatment estimates are close to zero and
 statistically insignificant, supporting the DDD parallel trends assumption.
 The post-treatment estimates show a gradually increasing pattern, with the effect
 on the flexible-term saving ratio is near zero at the time of insurance
@@ -369,8 +369,9 @@ covariate adjustments.
 Simulating data
 ---------------
 
-The following examples use simulated panel data with the four subgroups
-described above.
+The following examples use simulated panel data with four subgroups:
+treated eligible, treated ineligible, untreated eligible, and untreated
+ineligible.
 
 .. code-block:: python
 
