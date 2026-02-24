@@ -7,7 +7,7 @@ import polars as pl
 
 
 def build_didinter_partition_arrays(pdf, col_config):
-    """Convert a pandas DataFrame partition into a dictionary of NumPy arrays.
+    """Convert a pandas or polars DataFrame partition into a dictionary of NumPy arrays.
 
     Extracts and casts all columns needed for the interactive DiD estimator
     into float64 NumPy arrays, producing a lightweight dictionary that
@@ -15,7 +15,7 @@ def build_didinter_partition_arrays(pdf, col_config):
 
     Parameters
     ----------
-    pdf : pandas.DataFrame
+    pdf : pandas.DataFrame or polars.DataFrame
         A single partition of the panel data containing group, time,
         outcome, treatment, and pre-computed auxiliary columns.
     col_config : dict
@@ -30,52 +30,66 @@ def build_didinter_partition_arrays(pdf, col_config):
         ``"gname"``, ``"y"``, ``"weight_gt"``) plus an ``"n_rows"``
         integer.
     """
+    _is_polars = isinstance(pdf, pl.DataFrame)
+
+    def _col_f64(col):
+        if _is_polars:
+            return pdf[col].to_numpy(allow_copy=True).astype(np.float64)
+        return pdf[col].values.astype(np.float64)
+
+    def _col_raw(col):
+        if _is_polars:
+            return pdf[col].to_numpy(allow_copy=True)
+        return pdf[col].values
+
+    cols = pdf.columns
+
     gname = col_config["gname"]
     tname = col_config["tname"]
     yname = col_config["yname"]
     dname = col_config["dname"]
 
     d = {
-        "gname": pdf[gname].values.astype(np.float64),
-        "tname": pdf[tname].values.astype(np.float64),
-        "y": pdf[yname].values.astype(np.float64),
-        "d": pdf[dname].values.astype(np.float64),
-        "F_g": pdf["F_g"].values.astype(np.float64),
-        "L_g": pdf["L_g"].values.astype(np.float64),
-        "S_g": pdf["S_g"].values.astype(np.float64),
-        "d_sq": pdf["d_sq"].values.astype(np.float64),
-        "weight_gt": pdf["weight_gt"].values.astype(np.float64),
-        "first_obs_by_gp": pdf["first_obs_by_gp"].values.astype(np.float64),
-        "T_g": pdf["T_g"].values.astype(np.float64),
+        "gname": _col_f64(gname),
+        "tname": _col_f64(tname),
+        "y": _col_f64(yname),
+        "d": _col_f64(dname),
+        "F_g": _col_f64("F_g"),
+        "L_g": _col_f64("L_g"),
+        "S_g": _col_f64("S_g"),
+        "d_sq": _col_f64("d_sq"),
+        "weight_gt": _col_f64("weight_gt"),
+        "first_obs_by_gp": _col_f64("first_obs_by_gp"),
+        "T_g": _col_f64("T_g"),
         "n_rows": len(pdf),
     }
 
-    if "d_fg" in pdf.columns:
-        d["d_fg"] = pdf["d_fg"].values.astype(np.float64)
-    if col_config.get("cluster") and col_config["cluster"] in pdf.columns:
-        d["cluster"] = pdf[col_config["cluster"]].values
-    if "same_switcher_valid" in pdf.columns:
-        d["same_switcher_valid"] = pdf["same_switcher_valid"].values.astype(np.float64)
-    if "t_max_by_group" in pdf.columns:
-        d["t_max_by_group"] = pdf["t_max_by_group"].values.astype(np.float64)
+    if "d_fg" in cols:
+        d["d_fg"] = _col_f64("d_fg")
+    if col_config.get("cluster") and col_config["cluster"] in cols:
+        d["cluster"] = _col_raw(col_config["cluster"])
+    if "same_switcher_valid" in cols:
+        d["same_switcher_valid"] = _col_f64("same_switcher_valid")
+    if "t_max_by_group" in cols:
+        d["t_max_by_group"] = _col_f64("t_max_by_group")
 
     covariate_names = col_config.get("covariate_names")
     if covariate_names:
         for ctrl in covariate_names:
-            if ctrl in pdf.columns:
-                d[ctrl] = pdf[ctrl].values.astype(np.float64)
+            if ctrl in cols:
+                d[ctrl] = _col_f64(ctrl)
 
     trends_nonparam = col_config.get("trends_nonparam")
     if trends_nonparam:
         for tnp in trends_nonparam:
-            if tnp in pdf.columns:
-                d[tnp] = pdf[tnp].values.astype(np.float64)
+            if tnp in cols:
+                d[tnp] = _col_f64(tnp)
 
     het_covariates = col_config.get("het_covariates")
     if het_covariates:
         for hc in het_covariates:
-            if hc not in d and hc in pdf.columns:
-                d[hc] = pdf[hc].values.astype(np.float64)
+            if hc not in d and hc in cols:
+                d[hc] = _col_f64(hc)
 
     return d
 

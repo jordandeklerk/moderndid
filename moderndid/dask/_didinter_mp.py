@@ -222,7 +222,7 @@ def dask_did_multiplegt_mp(
     delayed_parts = ddf.to_delayed()
     pdf_futures = client.compute(delayed_parts)
 
-    phase_a_futures = [client.submit(partition_preprocess_local, pf, col_config, config_flags) for pf in pdf_futures]
+    phase_a_futures = [client.submit(_preprocess_local_from_pandas, pf, col_config, config_flags) for pf in pdf_futures]
     distributed.wait(phase_a_futures)
 
     meta_futures = [client.submit(partition_extract_metadata, pf, config_flags) for pf in phase_a_futures]
@@ -773,11 +773,14 @@ def _distributed_heterogeneity(client, part_futures, effects, predict_het, trend
     return results if len(results) > 0 else None
 
 
+def _preprocess_local_from_pandas(pdf, col_config, config_flags):
+    """Convert pandas partition to polars and run partition-local preprocessing."""
+    return partition_preprocess_local(pl.from_pandas(pdf), col_config, config_flags)
+
+
 def _apply_global_preprocess(pdf, metadata, col_config, config_flags):
     """Apply global preprocessing with broadcast metadata and convert to NumPy partition dict."""
-    import pandas as pd
-
-    if not isinstance(pdf, pd.DataFrame) or len(pdf) == 0:
+    if pdf is None or len(pdf) == 0:
         return None
     preprocessed = partition_preprocess_global(pdf, metadata, col_config, config_flags)
     if len(preprocessed) == 0:

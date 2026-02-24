@@ -5,21 +5,23 @@ import warnings
 import numpy as np
 import polars as pl
 
-from moderndid.core.dataframe import to_polars
-from moderndid.core.preprocess import get_group
-from moderndid.core.preprocessing import preprocess_cont_did
 from moderndid.didcont.cont_did import _estimate_cck
 from moderndid.didcont.estimation.container import PTEResult
 from moderndid.didcont.estimation.process_aggte import aggregate_att_gt
 from moderndid.didcont.estimation.process_attgt import process_att_gt
 from moderndid.didcont.estimation.process_dose import process_dose_gt
-from moderndid.didcont.estimation.process_panel import (
-    OverallResult,
-    _build_pte_params,
-)
+from moderndid.didcont.estimation.process_panel import OverallResult
 from moderndid.distributed._didcont_partition import (
     build_cell_subset,
     process_pte_cell_from_subset,
+)
+from moderndid.distributed._didcont_preprocess import (
+    balance_panel,
+    compute_pte_params,
+    filter_early_treated,
+    normalize_weights,
+    partition_preprocess,
+    recode_time_periods,
 )
 
 
@@ -54,12 +56,12 @@ def spark_cont_did_mp(
     n_partitions,
     **kwargs,
 ):
-    """Estimate continuous difference-in-differences via Spark using multi-period design.
+    """Estimate continuous difference-in-differences via Spark.
 
-    Collects a Spark DataFrame to the driver, preprocesses it locally, then
-    distributes the per-cell ``(group, time)`` estimation across Spark workers.
-    Supports both ATT and dose-response estimation with event-study or
-    dose-response aggregation.
+    Distributes preprocessing across Spark workers so the driver never
+    sees the full raw dataset. Only collects a small preprocessed
+    DataFrame (5-6 columns, filtered rows) before building PTEParams
+    and distributing cell-level estimation.
 
     Parameters
     ----------
@@ -88,8 +90,7 @@ def spark_cont_did_mp(
     treatment_type : {"continuous"}
         Type of treatment variable. Only ``"continuous"`` is currently supported.
     dose_est_method : {"dr", "cck"}
-        Dose-response estimation method. ``"dr"`` uses doubly-robust estimation;
-        ``"cck"`` uses the Callaway, Callaway, and Keliijian method.
+        Dose-response estimation method.
     dvals : array_like or None
         Dose values at which to evaluate the dose-response function.
     degree : int
@@ -134,9 +135,7 @@ def spark_cont_did_mp(
         Result container holding group-time ATT estimates, overall ATT,
         event-study aggregation, and the preprocessed parameters object.
     """
-    pdf = data.toPandas()
-    local_data = pl.from_pandas(pdf)
-    local_data = to_polars(local_data)
+    from pyspark.sql import functions as F
 
     if dname is None:
         raise ValueError("dname is required.")
@@ -150,12 +149,177 @@ def spark_cont_did_mp(
         warnings.warn("Two-way clustering not currently supported", UserWarning)
         clustervars = None
 
+    req_pre_periods = 0 if dose_est_method == "cck" else 1
+    dvals_arr = np.asarray(dvals) if dvals is not None else None
+
+    needed_cols = [yname, tname, idname, dname]
+    if gname is not None:
+        needed_cols.append(gname)
+    if weightsname is not None:
+        needed_cols.append(weightsname)
+    needed_cols = list(dict.fromkeys(needed_cols))
+    sdf = data.select(*needed_cols)
+
+    gname_provided = gname is not None
     if gname is None:
-        local_data = get_group(local_data, idname=idname, tname=tname, treatname=dname)
-        local_data = local_data.rename({"G": ".G"})
+        from pyspark.sql.window import Window
+
+        w = Window.partitionBy(idname).orderBy(tname)
+        sdf_with_treat = (
+            sdf.withColumn("_is_treated", F.when(F.col(dname) > 0, F.lit(True)).otherwise(F.lit(False)))
+            .withColumn("_cumtreated", F.sum(F.when(F.col("_is_treated"), 1).otherwise(0)).over(w))
+            .withColumn(
+                "_first_treat",
+                F.when((F.col("_cumtreated") == 1) & F.col("_is_treated"), F.col(tname)).otherwise(F.lit(None)),
+            )
+        )
+
+        group_df = (
+            sdf_with_treat.groupBy(idname)
+            .agg(F.min("_first_treat").alias(".G"))
+            .withColumn(".G", F.when(F.col(".G").isNull(), F.lit(float("inf"))).otherwise(F.col(".G")))
+        )
+
+        sdf = sdf.join(group_df, on=idname, how="left")
+        sdf = sdf.drop("_is_treated", "_cumtreated", "_first_treat")
         gname = ".G"
 
-    req_pre_periods = 0 if dose_est_method == "cck" else 1
+    max_time = float(sdf.agg(F.max(tname)).collect()[0][0])
+
+    local_data_raw = pl.from_pandas(sdf.toPandas())
+
+    col_config = {
+        "yname": yname,
+        "tname": tname,
+        "idname": idname,
+        "gname": gname,
+        "dname": dname,
+        "weightsname": weightsname,
+        "anticipation": anticipation,
+        "required_pre_periods": req_pre_periods,
+    }
+
+    local_data = partition_preprocess(local_data_raw, col_config, max_time, gname_provided)
+
+    if len(local_data) == 0:
+        raise ValueError("No data remaining after preprocessing.")
+
+    if dose_est_method == "cck":
+        return _cck_path(
+            local_data,
+            yname,
+            tname,
+            idname,
+            gname,
+            dname,
+            xformla,
+            target_parameter,
+            aggregation,
+            treatment_type,
+            dose_est_method,
+            dvals_arr,
+            degree,
+            num_knots,
+            allow_unbalanced_panel,
+            control_group,
+            anticipation,
+            weightsname,
+            alp,
+            cband,
+            boot,
+            boot_type,
+            biters,
+            clustervars,
+            base_period,
+            random_state,
+            req_pre_periods,
+            **kwargs,
+        )
+
+    local_data = filter_early_treated(local_data, gname, tname, anticipation, req_pre_periods)
+    local_data, time_map = recode_time_periods(local_data, tname)
+    local_data = balance_panel(local_data, idname, tname)
+    local_data = normalize_weights(local_data, weightsname)
+    local_data = local_data.sort([tname, gname, idname])
+
+    if aggregation == "eventstudy":
+        gt_type = "dose" if target_parameter == "slope" else "att"
+    elif target_parameter in ["level", "slope"]:
+        gt_type = "dose"
+    else:
+        raise ValueError(f"Invalid combination: {target_parameter}, {aggregation}")
+
+    ptep = compute_pte_params(
+        collected_data=local_data,
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        gname=gname,
+        dname=dname,
+        time_map=time_map,
+        weightsname=weightsname,
+        xformla=xformla,
+        target_parameter=target_parameter,
+        aggregation=aggregation,
+        treatment_type=treatment_type,
+        dose_est_method=dose_est_method,
+        control_group=control_group,
+        anticipation=anticipation,
+        base_period=base_period,
+        boot_type=boot_type,
+        alp=alp,
+        cband=cband,
+        biters=biters,
+        degree=degree,
+        num_knots=num_knots,
+        dvals=dvals_arr,
+        required_pre_periods=req_pre_periods,
+        gt_type=gt_type,
+    )
+
+    pte_kwargs = kwargs.copy()
+    if aggregation == "eventstudy":
+        pte_kwargs["d_outcome"] = True
+
+    return _run_cell_estimation_spark(spark, ptep, gt_type, random_state, aggregation, pte_kwargs)
+
+
+def _cck_path(
+    local_data,
+    yname,
+    tname,
+    idname,
+    gname,
+    dname,
+    xformla,
+    target_parameter,
+    aggregation,
+    treatment_type,
+    dose_est_method,
+    dvals,
+    degree,
+    num_knots,
+    allow_unbalanced_panel,
+    control_group,
+    anticipation,
+    weightsname,
+    alp,
+    cband,
+    boot,
+    boot_type,
+    biters,
+    clustervars,
+    base_period,
+    random_state,
+    req_pre_periods,
+    **kwargs,
+):
+    """Handle the CCK estimation path.
+
+    Constructs the ContDIDData needed by ``_estimate_cck`` from the
+    collected preprocessed data.
+    """
+    from moderndid.core.preprocessing import preprocess_cont_did
 
     cont_did_data = preprocess_cont_did(
         data=local_data,
@@ -186,27 +350,41 @@ def spark_cont_did_mp(
         dose_est_method=dose_est_method,
     )
 
-    if dose_est_method == "cck":
-        return _estimate_cck(
-            cont_did_data=cont_did_data,
-            original_data=local_data,
-            random_state=random_state,
-            **kwargs,
-        )
+    return _estimate_cck(
+        cont_did_data=cont_did_data,
+        original_data=local_data,
+        random_state=random_state,
+        **kwargs,
+    )
 
-    if aggregation == "eventstudy":
-        gt_type = "dose" if target_parameter == "slope" else "att"
-    elif target_parameter in ["level", "slope"]:
-        gt_type = "dose"
-    else:
-        raise ValueError(f"Invalid combination: {target_parameter}, {aggregation}")
 
-    pte_kwargs = kwargs.copy()
-    if aggregation == "eventstudy":
-        pte_kwargs["d_outcome"] = True
+def _run_cell_estimation_spark(spark, ptep, gt_type, random_state, aggregation, pte_kwargs):
+    """Run distributed cell estimation for continuous treatment DiD via Spark.
 
-    ptep = _build_pte_params(cont_did_data, gt_type=gt_type)
+    Builds cell subsets from ``ptep.data``, serializes them to Arrow IPC,
+    distributes them via ``sc.parallelize`` + ``mapPartitions``, collects
+    results, and aggregates into the requested summary.
 
+    Parameters
+    ----------
+    spark : pyspark.sql.SparkSession
+        Active Spark session.
+    ptep : PTEParams
+        Panel treatment effects parameters.
+    gt_type : str
+        Group-time effect type (``"att"`` or ``"dose"``).
+    random_state : int or None
+        Seed for reproducible bootstrap draws.
+    aggregation : str
+        Aggregation strategy.
+    pte_kwargs : dict
+        Additional keyword arguments for aggregation.
+
+    Returns
+    -------
+    PTEResult or DoseResult
+        Estimation results.
+    """
     pte_data = ptep.data
     n_units = pte_data[ptep.idname].n_unique()
 

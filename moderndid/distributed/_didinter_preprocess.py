@@ -11,7 +11,7 @@ def partition_preprocess_local(pdf, col_config, config_flags):
     """Column selection, missing-data handling, switcher identification/filtering, and partial data preparation.
 
     All operations group by gname which is partition-local after repartitioning by unit ID.
-    Accepts a pandas DataFrame (native Spark/Dask partition format), converts to Polars internally.
+    Accepts a pandas or polars DataFrame. Always returns a polars DataFrame.
     """
     if len(pdf) == 0:
         return pdf
@@ -21,7 +21,7 @@ def partition_preprocess_local(pdf, col_config, config_flags):
     yname = col_config["yname"]
     dname = col_config["dname"]
 
-    df = pl.from_pandas(pdf)
+    df = pdf if isinstance(pdf, pl.DataFrame) else pl.from_pandas(pdf)
 
     cols_to_keep = [yname, tname, gname, dname]
     weightsname = config_flags.get("weightsname")
@@ -55,7 +55,7 @@ def partition_preprocess_local(pdf, col_config, config_flags):
     df = df.filter(pl.col("_mean_D").is_not_null() & pl.col("_mean_Y").is_not_null())
     df = df.drop(["_mean_D", "_mean_Y"])
     if len(df) == 0:
-        return df.to_pandas()
+        return df
 
     df = df.sort([gname, tname])
     df = df.with_columns((pl.col(dname) - pl.col(dname).shift(1).over(gname)).alias("_d_diff"))
@@ -110,7 +110,7 @@ def partition_preprocess_local(pdf, col_config, config_flags):
 
     df = df.drop(["_ever_strict_increase", "_ever_strict_decrease", "_d_sq_pre", "_diff_from_sq"])
     if len(df) == 0:
-        return df.to_pandas()
+        return df
 
     first_switch = (
         df.filter((pl.col("_d_diff") != 0) & pl.col("_d_diff").is_not_null())
@@ -174,7 +174,7 @@ def partition_preprocess_local(pdf, col_config, config_flags):
         df = df.filter(pl.col(gname).is_in(valid_units))
 
     if len(df) == 0:
-        return df.to_pandas()
+        return df
 
     df = df.sort([gname, tname])
     df = df.with_columns(pl.lit(1.0).alias("weight_gt"))
@@ -196,7 +196,7 @@ def partition_preprocess_local(pdf, col_config, config_flags):
     t_max_by_group = df.group_by(gname).agg(pl.col(tname).max().alias("t_max_by_group"))
     df = df.join(t_max_by_group, on=gname, how="left")
 
-    return df.to_pandas()
+    return df
 
 
 def partition_extract_metadata(pdf, config_flags):
@@ -329,7 +329,7 @@ def partition_preprocess_global(pdf, metadata, col_config, config_flags):
     """Weight normalization, filtering, panel balancing, trends-lin, remaining data preparation, and sorting.
 
     Uses broadcast metadata from the driver to apply cross-partition transformations.
-    Accepts pandas, converts to Polars internally, returns pandas for NumPy conversion.
+    Accepts pandas or polars, always returns polars.
     """
     if len(pdf) == 0:
         return pdf
@@ -359,7 +359,7 @@ def partition_preprocess_global(pdf, metadata, col_config, config_flags):
         df = df.drop(["_var_F_g", "_F_g_for_std"])
 
     if len(df) == 0:
-        return df.to_pandas()
+        return df
 
     df = df.with_columns(pl.when(pl.col("F_g") == float("inf")).then(1).otherwise(0).alias("_never_change_d"))
     ctrl_group = [tname, "d_sq"]
@@ -370,7 +370,7 @@ def partition_preprocess_global(pdf, metadata, col_config, config_flags):
     df = df.drop(["_never_change_d", "_controls_time"])
 
     if len(df) == 0:
-        return df.to_pandas()
+        return df
 
     continuous = config_flags.get("continuous", 0)
     if continuous > 0:
@@ -449,7 +449,7 @@ def partition_preprocess_global(pdf, metadata, col_config, config_flags):
 
     df = df.sort([gname, tname])
 
-    return df.to_pandas()
+    return df
 
 
 def cap_effects_placebo(config_flags, metadata):

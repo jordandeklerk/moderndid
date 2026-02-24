@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import functools
+import pickle
 
 import numpy as np
 import pandas as pd
 import polars as pl
+from pyspark.sql.types import BinaryType, StructField, StructType
 from scipy import stats
 
 from moderndid.core.preprocess.utils import get_covariate_names_from_formula
@@ -225,9 +227,12 @@ def spark_did_multiplegt_mp(
     sdf = data.select(*needed_cols)
     sdf = sdf.repartition(n_workers, F.col(idname))
 
-    col_names = sdf.columns
-    rdd_a = sdf.rdd.mapPartitions(lambda rows: _preprocess_partition(rows, col_names, col_config, config_flags)).cache()
-    rdd_a.count()
+    payload_schema = StructType([StructField("payload", BinaryType(), True)])
+    udf = functools.partial(_preprocess_udf, col_config=col_config, config_flags=config_flags)
+    packed_sdf = sdf.mapInPandas(udf, schema=payload_schema).cache()
+    packed_sdf.count()
+    rdd_a = packed_sdf.rdd.map(lambda row: pickle.loads(row[0])).cache()
+    packed_sdf.unpersist()
 
     meta_rdd = rdd_a.map(lambda pdf: partition_extract_metadata(pdf, config_flags))
     meta_list = meta_rdd.collect()
@@ -820,21 +825,21 @@ def _distributed_heterogeneity(parts_rdd, effects, predict_het, trends_nonparam,
     return results if len(results) > 0 else None
 
 
-def _preprocess_partition(row_iterator, col_names, col_config, config_flags):
-    """Convert Spark Row iterator to pandas and run partition-local preprocessing."""
-    rows = list(row_iterator)
-    if not rows:
-        return iter([])
-    pdf = pd.DataFrame([r.asDict() for r in rows], columns=col_names)
-    result = partition_preprocess_local(pdf, col_config, config_flags)
+def _preprocess_udf(iterator, col_config, config_flags):
+    """MapInPandas UDF: concat batches, run local preprocessing, yield pickled polars result."""
+    dfs = [pdf for pdf in iterator if len(pdf) > 0]
+    if not dfs:
+        return
+    pdf = pd.concat(dfs, ignore_index=True) if len(dfs) > 1 else dfs[0]
+    result = partition_preprocess_local(pl.from_pandas(pdf), col_config, config_flags)
     if len(result) == 0:
-        return iter([])
-    return iter([result])
+        return
+    yield pd.DataFrame({"payload": [pickle.dumps(result)]})
 
 
 def _apply_global_preprocess(pdf, metadata, col_config, config_flags):
     """Apply global preprocessing with broadcast metadata and convert to NumPy partition dict."""
-    if not isinstance(pdf, pd.DataFrame) or len(pdf) == 0:
+    if pdf is None or len(pdf) == 0:
         return None
     preprocessed = partition_preprocess_global(pdf, metadata, col_config, config_flags)
     if len(preprocessed) == 0:
