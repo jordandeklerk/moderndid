@@ -54,9 +54,8 @@ def partition_infer_group(df, idname, tname, dname):
 def partition_preprocess(df, col_config, max_time, gname_provided):
     """Run all partition-level preprocessing steps on a single partition.
 
-    Performs column selection, treatment encoding (gname=0 → inf,
-    gname > max_time → inf), missing data handling, early-treatment
-    filtering, dose validation, and weight normalization.
+    Performs column selection, treatment encoding, missing data handling,
+    early-treatment filtering, dose validation, and weight normalization.
 
     Parameters
     ----------
