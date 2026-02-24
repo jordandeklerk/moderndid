@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 
+import distributed
 import numpy as np
 import polars as pl
 from scipy import stats
@@ -222,7 +223,7 @@ def dask_did_multiplegt_mp(
     pdf_futures = client.compute(delayed_parts)
 
     phase_a_futures = [client.submit(partition_preprocess_local, pf, col_config, config_flags) for pf in pdf_futures]
-    client.gather(phase_a_futures)
+    distributed.wait(phase_a_futures)
 
     meta_futures = [client.submit(partition_extract_metadata, pf, config_flags) for pf in phase_a_futures]
     meta_list = client.gather(meta_futures)
@@ -238,14 +239,10 @@ def dask_did_multiplegt_mp(
     part_futures = [
         client.submit(_apply_global_preprocess, pf, global_metadata, col_config, config_flags) for pf in phase_a_futures
     ]
-    part_results = client.gather(part_futures)
 
-    valid_futures = []
-    for i, result in enumerate(part_results):
-        if result is not None and result.get("n_rows", 0) > 0:
-            valid_futures.append(part_futures[i])
-
-    part_futures = valid_futures
+    nrow_futures = [client.submit(_get_nrows, pf) for pf in part_futures]
+    nrow_results = client.gather(nrow_futures)
+    part_futures = [pf for pf, nr in zip(part_futures, nrow_results, strict=False) if nr > 0]
 
     config_dict = {
         "switchers": switchers,
@@ -257,6 +254,14 @@ def dask_did_multiplegt_mp(
 
     sorted_gnames = np.array(sorted(global_metadata["all_gnames_first_obs"]))
     gname_to_idx = {g: i for i, g in enumerate(sorted_gnames)}
+
+    cluster_id_map = None
+    if cluster:
+        cid_futures = [client.submit(_extract_cluster_ids, pf) for pf in part_futures]
+        cid_maps = client.gather(cid_futures)
+        cluster_id_map = {}
+        for cm in cid_maps:
+            cluster_id_map.update(cm)
 
     effects_results = _distributed_did_effects(
         client,
@@ -274,6 +279,7 @@ def dask_did_multiplegt_mp(
         covariate_names=covariate_names if covariate_names else None,
         trend_vars=trend_vars,
         trends_lin=trends_lin,
+        cluster_id_map=cluster_id_map,
     )
 
     placebos_results = None
@@ -294,6 +300,7 @@ def dask_did_multiplegt_mp(
             covariate_names=covariate_names if covariate_names else None,
             trend_vars=trend_vars,
             trends_lin=trends_lin,
+            cluster_id_map=cluster_id_map,
         )
 
     heterogeneity = None
@@ -392,6 +399,7 @@ def _distributed_did_effects(
     covariate_names=None,
     trend_vars=None,
     trends_lin=False,
+    cluster_id_map=None,
 ):
     """Estimate horizon-level treatment effects across Dask partitions.
 
@@ -432,6 +440,9 @@ def _distributed_did_effects(
         Non-parametric trend variable names for extended grouping.
     trends_lin : bool
         Whether to apply linear trend accumulation after all horizons.
+    cluster_id_map : dict or None
+        Pre-extracted ``{gname: cluster_id}`` mapping. Computed once
+        by the caller to avoid pulling full partitions per horizon.
 
     Returns
     -------
@@ -643,17 +654,11 @@ def _distributed_did_effects(
                         if gn in gname_to_idx:
                             inf_var_full[gname_to_idx[gn]] -= val
 
-        if cluster_col:
+        if cluster_col and cluster_id_map:
             cluster_ids = np.zeros(len(sorted_gnames), dtype=object)
-            for fut in part_futures:
-                part = fut.result()
-                first_mask = part["first_obs_by_gp"] == 1.0
-                if "cluster" in part:
-                    gn_arr = part["gname"][first_mask]
-                    cl_arr = part["cluster"][first_mask]
-                    for gn, cid in zip(gn_arr.tolist(), cl_arr.tolist(), strict=False):
-                        if gn in gname_to_idx:
-                            cluster_ids[gname_to_idx[gn]] = cid
+            for gn, cid in cluster_id_map.items():
+                if gn in gname_to_idx:
+                    cluster_ids[gname_to_idx[gn]] = cid
             std_error = compute_clustered_variance(inf_var_full, cluster_ids, n_groups)
         else:
             std_error = np.sqrt(np.sum(inf_var_full**2)) / n_groups
@@ -671,17 +676,11 @@ def _distributed_did_effects(
 
     if trends_lin and len(influence_funcs) == n_horizons and n_horizons > 0:
         cluster_ids_for_trends = None
-        if cluster_col:
+        if cluster_col and cluster_id_map:
             cluster_ids_for_trends = np.zeros(len(sorted_gnames), dtype=object)
-            for fut in part_futures:
-                part = fut.result()
-                first_mask = part["first_obs_by_gp"] == 1.0
-                if "cluster" in part:
-                    gn_arr = part["gname"][first_mask]
-                    cl_arr = part["cluster"][first_mask]
-                    for gn, cid in zip(gn_arr.tolist(), cl_arr.tolist(), strict=False):
-                        if gn in gname_to_idx:
-                            cluster_ids_for_trends[gname_to_idx[gn]] = cid
+            for gn, cid in cluster_id_map.items():
+                if gn in gname_to_idx:
+                    cluster_ids_for_trends[gname_to_idx[gn]] = cid
 
         estimates, std_errors, influence_funcs = apply_trends_lin_accumulation(
             estimates,
@@ -784,3 +783,20 @@ def _apply_global_preprocess(pdf, metadata, col_config, config_flags):
     if len(preprocessed) == 0:
         return None
     return build_didinter_partition_arrays(preprocessed, col_config)
+
+
+def _get_nrows(part):
+    """Return partition row count without transferring the full partition."""
+    if part is None:
+        return 0
+    return part.get("n_rows", 0)
+
+
+def _extract_cluster_ids(part):
+    """Extract unit-to-cluster-ID mapping from a partition."""
+    first_mask = part["first_obs_by_gp"] == 1.0
+    if "cluster" in part:
+        gn = part["gname"][first_mask]
+        cl = part["cluster"][first_mask]
+        return dict(zip(gn.tolist(), cl.tolist(), strict=False))
+    return {}

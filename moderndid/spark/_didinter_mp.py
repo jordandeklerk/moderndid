@@ -263,6 +263,13 @@ def spark_did_multiplegt_mp(
     sorted_gnames = np.array(sorted(global_metadata["all_gnames_first_obs"]))
     gname_to_idx = {g: i for i, g in enumerate(sorted_gnames)}
 
+    cluster_id_map = None
+    if cluster:
+        cid_maps = parts_rdd.map(_extract_cluster_ids).collect()
+        cluster_id_map = {}
+        for cm in cid_maps:
+            cluster_id_map.update(cm)
+
     effects_results = _distributed_did_effects(
         sc,
         parts_rdd,
@@ -279,6 +286,7 @@ def spark_did_multiplegt_mp(
         covariate_names=covariate_names if covariate_names else None,
         trend_vars=trend_vars,
         trends_lin=trends_lin,
+        cluster_id_map=cluster_id_map,
     )
 
     placebos_results = None
@@ -299,6 +307,7 @@ def spark_did_multiplegt_mp(
             covariate_names=covariate_names if covariate_names else None,
             trend_vars=trend_vars,
             trends_lin=trends_lin,
+            cluster_id_map=cluster_id_map,
         )
 
     heterogeneity = None
@@ -401,6 +410,7 @@ def _distributed_did_effects(
     covariate_names=None,
     trend_vars=None,
     trends_lin=False,
+    cluster_id_map=None,
 ):
     """Distribute horizon-level DID estimation across Spark workers.
 
@@ -443,6 +453,9 @@ def _distributed_did_effects(
         Non-parametric trend variable names for extended grouping.
     trends_lin : bool
         Whether to apply linear trend accumulation after all horizons.
+    cluster_id_map : dict or None
+        Pre-extracted ``{gname: cluster_id}`` mapping. Computed once
+        by the caller to avoid pulling full partitions per horizon.
 
     Returns
     -------
@@ -682,13 +695,11 @@ def _distributed_did_effects(
                         if gn in gname_to_idx:
                             inf_var_full[gname_to_idx[gn]] -= val
 
-        if cluster_col:
-            cluster_maps = parts_rdd.map(_extract_cluster_ids).collect()
+        if cluster_col and cluster_id_map:
             cluster_ids = np.zeros(len(sorted_gnames), dtype=object)
-            for cm in cluster_maps:
-                for gn, cid in cm.items():
-                    if gn in gname_to_idx:
-                        cluster_ids[gname_to_idx[gn]] = cid
+            for gn, cid in cluster_id_map.items():
+                if gn in gname_to_idx:
+                    cluster_ids[gname_to_idx[gn]] = cid
             std_error = compute_clustered_variance(inf_var_full, cluster_ids, n_groups)
         else:
             std_error = np.sqrt(np.sum(inf_var_full**2)) / n_groups
@@ -708,13 +719,11 @@ def _distributed_did_effects(
 
     if trends_lin and len(influence_funcs) == n_horizons and n_horizons > 0:
         cluster_ids_for_trends = None
-        if cluster_col:
+        if cluster_col and cluster_id_map:
             cluster_ids_for_trends = np.zeros(len(sorted_gnames), dtype=object)
-            cluster_maps = parts_rdd.map(_extract_cluster_ids).collect()
-            for cm in cluster_maps:
-                for gn, cid in cm.items():
-                    if gn in gname_to_idx:
-                        cluster_ids_for_trends[gname_to_idx[gn]] = cid
+            for gn, cid in cluster_id_map.items():
+                if gn in gname_to_idx:
+                    cluster_ids_for_trends[gname_to_idx[gn]] = cid
 
         estimates, std_errors, influence_funcs = apply_trends_lin_accumulation(
             estimates,
