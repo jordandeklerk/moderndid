@@ -26,19 +26,16 @@ from moderndid.distributed._didinter_partition import (
     build_didinter_partition_arrays,
     partition_apply_control_adjustment,
     partition_apply_globals,
-    partition_compute_influence,
+    partition_check_group_level_covariates,
     partition_compute_variance_part2,
     partition_control_gram,
     partition_control_influence_sums,
-    partition_count_obs,
-    partition_delta_d,
-    partition_dof_stats,
+    partition_delta_and_variance,
     partition_extract_het_data,
-    partition_global_scalars,
-    partition_group_sums,
+    partition_group_sums_and_scalars,
     partition_horizon_covariate_ops,
     partition_horizon_local_ops,
-    partition_variance_influence,
+    partition_influence_and_meta,
     prepare_het_sample,
     reduce_control_gram,
     reduce_control_influence_sums,
@@ -171,6 +168,7 @@ def dask_did_multiplegt_mp(
         "cluster": cluster,
         "covariate_names": covariate_names if covariate_names else None,
         "trends_nonparam": trend_vars,
+        "het_covariates": predict_het[0] if predict_het else None,
     }
 
     config_flags = {
@@ -199,6 +197,8 @@ def dask_did_multiplegt_mp(
 
     n_workers = max(2, len(client.scheduler_info()["workers"]))
 
+    het_covariates = predict_het[0] if predict_het else None
+
     needed_cols = [yname, tname, idname, dname]
     if weightsname:
         needed_cols.append(weightsname)
@@ -208,6 +208,8 @@ def dask_did_multiplegt_mp(
         needed_cols.extend(covariate_names)
     if trends_nonparam:
         needed_cols.extend(trends_nonparam)
+    if het_covariates:
+        needed_cols.extend(het_covariates)
     needed_cols = list(dict.fromkeys(c for c in needed_cols if c in data.columns))
     ddf = data[needed_cols]
 
@@ -481,11 +483,18 @@ def _distributed_did_effects(
         else:
             coefficients = {}
 
-        gs_futures = [client.submit(partition_group_sums, pf, abs_h, trend_vars) for pf in part_futures]
-        global_group_sums = tree_reduce(client, gs_futures, reduce_group_sums)
-
-        sc_futures = [client.submit(partition_global_scalars, pf, abs_h) for pf in part_futures]
-        global_scalars = tree_reduce(client, sc_futures, reduce_global_scalars)
+        combined_gs_sc_futures = [
+            client.submit(partition_group_sums_and_scalars, pf, abs_h, trend_vars) for pf in part_futures
+        ]
+        combined_gs_sc = client.gather(combined_gs_sc_futures)
+        gs_list = [c[0] for c in combined_gs_sc]
+        sc_list = [c[1] for c in combined_gs_sc]
+        global_group_sums = functools.reduce(reduce_group_sums, gs_list) if gs_list else {}
+        global_scalars = (
+            functools.reduce(reduce_global_scalars, sc_list)
+            if sc_list
+            else {"n_switchers_weighted": 0, "switcher_gnames": set()}
+        )
 
         n_switchers_weighted = global_scalars["n_switchers_weighted"]
         n_switchers_unweighted = len(global_scalars["switcher_gnames"])
@@ -501,18 +510,29 @@ def _distributed_did_effects(
             client.submit(partition_apply_globals, pf, abs_h, global_group_sums, trend_vars) for pf in part_futures
         ]
 
-        if_futures = [
-            client.submit(partition_compute_influence, pf, abs_h, n_groups, n_switchers_weighted) for pf in part_futures
+        combined_inf_meta_futures = [
+            client.submit(
+                partition_influence_and_meta, pf, abs_h, n_groups, n_switchers_weighted, cluster_col, trend_vars
+            )
+            for pf in part_futures
         ]
+        combined_inf_meta = client.gather(combined_inf_meta_futures)
 
         inf_func_full = np.zeros(len(sorted_gnames))
         total_if_sum = 0.0
-        for fut in if_futures:
-            gname_if, partial_sum = fut.result()
+        switcher_gnames_with_weight = {}
+        total_obs = 0
+        dof_list = []
+        for inf_result, sw_map, obs_count, dof in combined_inf_meta:
+            gname_if, partial_sum = inf_result
             total_if_sum += partial_sum
             for gn, val in gname_if.items():
                 if gn in gname_to_idx:
                     inf_func_full[gname_to_idx[gn]] = val
+            switcher_gnames_with_weight.update(sw_map)
+            total_obs += obs_count
+            dof_list.append(dof)
+        global_dof = functools.reduce(reduce_dof_stats, dof_list) if dof_list else {}
 
         did_estimate = total_if_sum / n_groups
 
@@ -523,30 +543,58 @@ def _distributed_did_effects(
 
         delta_d = None
         if normalized or horizon_type == "effect":
-            switcher_gnames_with_weight = {}
-            for fut in part_futures:
-                part = fut.result()
-                dist_col = part.get(f"dist_{abs_h}")
-                if dist_col is None:
-                    continue
-                gname_arr = part["gname"]
-                weight_arr = part["weight_gt"]
-                valid = (~np.isnan(dist_col)) & (dist_col == 1.0)
-                for i in range(len(gname_arr)):
-                    if valid[i]:
-                        switcher_gnames_with_weight[gname_arr[i]] = weight_arr[i]
-
-            dd_futures = [
-                client.submit(partition_delta_d, pf, abs_h, horizon_type, switcher_gnames_with_weight)
+            combined_dd_var_futures = [
+                client.submit(
+                    partition_delta_and_variance,
+                    pf,
+                    abs_h,
+                    horizon_type,
+                    switcher_gnames_with_weight,
+                    n_groups,
+                    n_switchers_weighted,
+                    global_dof,
+                    cluster_col,
+                    less_conservative_se,
+                    trend_vars,
+                )
                 for pf in part_futures
             ]
+            combined_dd_var = client.gather(combined_dd_var_futures)
+
             total_dd = 0.0
             total_dd_weight = 0.0
-            for fut in dd_futures:
-                contrib, weight = fut.result()
+            inf_var_full = np.zeros(len(sorted_gnames))
+            for dd_result, var_result in combined_dd_var:
+                contrib, weight = dd_result
                 total_dd += contrib
                 total_dd_weight += weight
+                for gn, val in var_result.items():
+                    if gn in gname_to_idx:
+                        inf_var_full[gname_to_idx[gn]] = val
             delta_d = total_dd / total_dd_weight if total_dd_weight > 0 else None
+        else:
+            from moderndid.distributed._didinter_partition import partition_variance_influence
+
+            var_if_futures = [
+                client.submit(
+                    partition_variance_influence,
+                    pf,
+                    abs_h,
+                    n_groups,
+                    n_switchers_weighted,
+                    global_dof,
+                    cluster_col,
+                    less_conservative_se,
+                    trend_vars,
+                )
+                for pf in part_futures
+            ]
+            inf_var_full = np.zeros(len(sorted_gnames))
+            for fut in var_if_futures:
+                gname_var_if = fut.result()
+                for gn, val in gname_var_if.items():
+                    if gn in gname_to_idx:
+                        inf_var_full[gname_to_idx[gn]] = val
 
         if horizon_type == "effect":
             delta_d_arr[idx] = delta_d if delta_d is not None else 0.0
@@ -555,31 +603,6 @@ def _distributed_did_effects(
             did_estimate = did_estimate / delta_d
 
         estimates[idx] = did_estimate
-
-        dof_futures = [client.submit(partition_dof_stats, pf, abs_h, cluster_col, trend_vars) for pf in part_futures]
-        global_dof = tree_reduce(client, dof_futures, reduce_dof_stats)
-
-        var_if_futures = [
-            client.submit(
-                partition_variance_influence,
-                pf,
-                abs_h,
-                n_groups,
-                n_switchers_weighted,
-                global_dof,
-                cluster_col,
-                less_conservative_se,
-                trend_vars,
-            )
-            for pf in part_futures
-        ]
-
-        inf_var_full = np.zeros(len(sorted_gnames))
-        for fut in var_if_futures:
-            gname_var_if = fut.result()
-            for gn, val in gname_var_if.items():
-                if gn in gname_to_idx:
-                    inf_var_full[gname_to_idx[gn]] = val
 
         if covariate_names and coefficients:
             useful_coefficients = {d: c for d, c in coefficients.items() if c.get("useful", False)}
@@ -600,7 +623,6 @@ def _distributed_did_effects(
                 global_cis = tree_reduce(client, cis_futures, reduce_control_influence_sums)
 
                 global_M_total = global_cis.get("M_total", {})
-                global_in_sum = global_cis.get("in_sum", {})
 
                 part2_futures = [
                     client.submit(
@@ -610,9 +632,7 @@ def _distributed_did_effects(
                         covariate_names,
                         coefficients,
                         global_M_total,
-                        global_in_sum,
                         n_groups,
-                        trend_vars,
                     )
                     for pf in part_futures
                 ]
@@ -629,11 +649,11 @@ def _distributed_did_effects(
                 part = fut.result()
                 first_mask = part["first_obs_by_gp"] == 1.0
                 if "cluster" in part:
-                    for i in range(len(part["gname"])):
-                        if first_mask[i]:
-                            gn = part["gname"][i]
-                            if gn in gname_to_idx:
-                                cluster_ids[gname_to_idx[gn]] = part["cluster"][i]
+                    gn_arr = part["gname"][first_mask]
+                    cl_arr = part["cluster"][first_mask]
+                    for gn, cid in zip(gn_arr.tolist(), cl_arr.tolist(), strict=False):
+                        if gn in gname_to_idx:
+                            cluster_ids[gname_to_idx[gn]] = cid
             std_error = compute_clustered_variance(inf_var_full, cluster_ids, n_groups)
         else:
             std_error = np.sqrt(np.sum(inf_var_full**2)) / n_groups
@@ -647,10 +667,7 @@ def _distributed_did_effects(
         influence_funcs.append(inf_func)
         std_errors[idx] = std_error
         n_switchers_arr[idx] = n_switchers_unweighted
-
-        obs_futures = [client.submit(partition_count_obs, pf, abs_h) for pf in part_futures]
-        n_obs = sum(fut.result() for fut in obs_futures)
-        n_obs_arr[idx] = n_obs
+        n_obs_arr[idx] = total_obs
 
     if trends_lin and len(influence_funcs) == n_horizons and n_horizons > 0:
         cluster_ids_for_trends = None
@@ -660,11 +677,11 @@ def _distributed_did_effects(
                 part = fut.result()
                 first_mask = part["first_obs_by_gp"] == 1.0
                 if "cluster" in part:
-                    for i in range(len(part["gname"])):
-                        if first_mask[i]:
-                            gn = part["gname"][i]
-                            if gn in gname_to_idx:
-                                cluster_ids_for_trends[gname_to_idx[gn]] = part["cluster"][i]
+                    gn_arr = part["gname"][first_mask]
+                    cl_arr = part["cluster"][first_mask]
+                    for gn, cid in zip(gn_arr.tolist(), cl_arr.tolist(), strict=False):
+                        if gn in gname_to_idx:
+                            cluster_ids_for_trends[gname_to_idx[gn]] = cid
 
         estimates, std_errors, influence_funcs = apply_trends_lin_accumulation(
             estimates,
@@ -704,12 +721,21 @@ def _distributed_heterogeneity(client, part_futures, effects, predict_het, trend
     if not isinstance(covariates, list) or not isinstance(het_effects, list) or len(covariates) == 0:
         return None
 
+    varies_futures = [client.submit(partition_check_group_level_covariates, pf, covariates) for pf in part_futures]
+    all_varies = set()
+    for fut in varies_futures:
+        all_varies |= fut.result()
+
+    valid_covariates = [c for c in covariates if c not in all_varies]
+    if len(valid_covariates) == 0:
+        return None
+
     het_futures = [
         client.submit(
             partition_extract_het_data,
             pf,
             effects,
-            covariates,
+            valid_covariates,
             trends_nonparam,
             trends_lin,
         )
@@ -725,18 +751,6 @@ def _distributed_heterogeneity(client, part_futures, effects, predict_het, trend
         return None
 
     het_df = pl.DataFrame(all_rows)
-
-    valid_covariates = []
-    for cov in covariates:
-        if cov not in het_df.columns:
-            continue
-        n_unique = het_df.group_by("_gname").agg(pl.col(cov).n_unique().alias("n_uniq"))
-        if (n_unique["n_uniq"] > 1).any():
-            continue
-        valid_covariates.append(cov)
-
-    if len(valid_covariates) == 0:
-        return None
 
     all_horizons = (
         list(range(1, effects + 1)) if -1 in het_effects else [h_ for h_ in het_effects if 1 <= h_ <= effects]

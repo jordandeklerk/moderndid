@@ -71,6 +71,12 @@ def build_didinter_partition_arrays(pdf, col_config):
             if tnp in pdf.columns:
                 d[tnp] = pdf[tnp].values.astype(np.float64)
 
+    het_covariates = col_config.get("het_covariates")
+    if het_covariates:
+        for hc in het_covariates:
+            if hc not in d and hc in pdf.columns:
+                d[hc] = pdf[hc].values.astype(np.float64)
+
     return d
 
 
@@ -280,23 +286,22 @@ def partition_apply_globals(part, abs_h, global_group_sums, trend_vars=None):
     n_control = np.zeros(n)
     n_treated = np.zeros(n)
 
+    key_arrays = [tname, d_sq]
     if trend_vars:
-        tv_arrays = []
         for tv in trend_vars:
             tv_arr = part.get(tv)
             if tv_arr is not None:
-                tv_arrays.append(tv_arr)
-        for i in range(n):
-            key = (tname[i], d_sq[i], *(arr[i] for arr in tv_arrays))
-            if key in global_group_sums:
-                n_control[i] = global_group_sums[key]["n_control"]
-                n_treated[i] = global_group_sums[key]["n_treated"]
-    else:
-        for i in range(n):
-            key = (tname[i], d_sq[i])
-            if key in global_group_sums:
-                n_control[i] = global_group_sums[key]["n_control"]
-                n_treated[i] = global_group_sums[key]["n_treated"]
+                key_arrays.append(tv_arr)
+
+    stacked = np.column_stack(key_arrays)
+    unique_keys, inverse = np.unique(stacked, axis=0, return_inverse=True)
+
+    for j in range(len(unique_keys)):
+        k = tuple(unique_keys[j])
+        if k in global_group_sums:
+            mask = inverse == j
+            n_control[mask] = global_group_sums[k]["n_control"]
+            n_treated[mask] = global_group_sums[k]["n_treated"]
 
     part[f"n_control_{abs_h}"] = n_control
     part[f"n_treated_{abs_h}"] = n_treated
@@ -369,10 +374,8 @@ def partition_compute_influence(part, abs_h, n_groups, n_switchers_weighted):
     part[f"inf_temp_{abs_h}"] = inf_temp
     part[f"inf_col_{abs_h}"] = inf_col
 
-    gname_if = {}
-    for i in range(len(gname)):
-        if first_obs[i] == 1.0:
-            gname_if[gname[i]] = float(inf_col[i])
+    fo_mask = first_obs == 1.0
+    gname_if = dict(zip(gname[fo_mask].tolist(), inf_col[fo_mask].tolist(), strict=False))
 
     partial_sum = float(np.sum(inf_col))
 
@@ -447,13 +450,6 @@ def partition_dof_stats(part, abs_h, cluster_col=None, trend_vars=None):
     d_fg = part.get("d_fg", np.zeros(n))
     cluster = part.get("cluster") if cluster_col else None
 
-    tv_arrays = []
-    if trend_vars:
-        for tv in trend_vars:
-            tv_arr = part.get(tv)
-            if tv_arr is not None:
-                tv_arrays.append(tv_arr)
-
     is_switcher = np.zeros(n, dtype=bool)
     if dist_col is not None:
         is_switcher = np.nan_to_num(dist_col, nan=0.0).astype(int) == 1
@@ -465,43 +461,70 @@ def partition_dof_stats(part, abs_h, cluster_col=None, trend_vars=None):
     is_union = is_switcher | is_control
 
     switcher_stats = {}
-    for i in range(n):
-        if not is_switcher[i]:
-            continue
-        key = (d_sq[i], F_g[i], d_fg[i])
-        if key not in switcher_stats:
-            switcher_stats[key] = {"weight_sum": 0.0, "diff_sum": 0.0, "count": 0, "cluster_set": set()}
-        switcher_stats[key]["weight_sum"] += weight_gt[i]
-        switcher_stats[key]["diff_sum"] += weighted_diff[i]
-        switcher_stats[key]["count"] += 1
-        if cluster is not None:
-            switcher_stats[key]["cluster_set"].add(cluster[i])
+    s_idx = np.where(is_switcher)[0]
+    if len(s_idx) > 0:
+        s_stacked = np.column_stack([d_sq[s_idx], F_g[s_idx], d_fg[s_idx]])
+        s_unique, s_inv = np.unique(s_stacked, axis=0, return_inverse=True)
+        s_wt = weight_gt[s_idx]
+        s_wd = weighted_diff[s_idx]
+        s_cl = cluster[s_idx] if cluster is not None else None
+        for j in range(len(s_unique)):
+            mask = s_inv == j
+            key = tuple(s_unique[j])
+            switcher_stats[key] = {
+                "weight_sum": float(np.sum(s_wt[mask])),
+                "diff_sum": float(np.sum(s_wd[mask])),
+                "count": int(np.sum(mask)),
+                "cluster_set": set(s_cl[mask].tolist()) if s_cl is not None else set(),
+            }
 
     control_stats = {}
-    for i in range(n):
-        if not is_control[i]:
-            continue
-        key = (tname[i], d_sq[i], *(arr[i] for arr in tv_arrays))
-        if key not in control_stats:
-            control_stats[key] = {"weight_sum": 0.0, "diff_sum": 0.0, "count": 0, "cluster_set": set()}
-        control_stats[key]["weight_sum"] += weight_gt[i]
-        control_stats[key]["diff_sum"] += weighted_diff[i]
-        control_stats[key]["count"] += 1
-        if cluster is not None:
-            control_stats[key]["cluster_set"].add(cluster[i])
+    c_idx = np.where(is_control)[0]
+    if len(c_idx) > 0:
+        c_key_cols = [tname[c_idx], d_sq[c_idx]]
+        if trend_vars:
+            for tv in trend_vars:
+                tv_arr = part.get(tv)
+                if tv_arr is not None:
+                    c_key_cols.append(tv_arr[c_idx])
+        c_stacked = np.column_stack(c_key_cols)
+        c_unique, c_inv = np.unique(c_stacked, axis=0, return_inverse=True)
+        c_wt = weight_gt[c_idx]
+        c_wd = weighted_diff[c_idx]
+        c_cl = cluster[c_idx] if cluster is not None else None
+        for j in range(len(c_unique)):
+            mask = c_inv == j
+            key = tuple(c_unique[j])
+            control_stats[key] = {
+                "weight_sum": float(np.sum(c_wt[mask])),
+                "diff_sum": float(np.sum(c_wd[mask])),
+                "count": int(np.sum(mask)),
+                "cluster_set": set(c_cl[mask].tolist()) if c_cl is not None else set(),
+            }
 
     union_stats = {}
-    for i in range(n):
-        if not is_union[i]:
-            continue
-        key = (tname[i], d_sq[i], *(arr[i] for arr in tv_arrays))
-        if key not in union_stats:
-            union_stats[key] = {"weight_sum": 0.0, "diff_sum": 0.0, "count": 0, "cluster_set": set()}
-        union_stats[key]["weight_sum"] += weight_gt[i]
-        union_stats[key]["diff_sum"] += weighted_diff[i]
-        union_stats[key]["count"] += 1
-        if cluster is not None:
-            union_stats[key]["cluster_set"].add(cluster[i])
+    u_idx = np.where(is_union)[0]
+    if len(u_idx) > 0:
+        u_key_cols = [tname[u_idx], d_sq[u_idx]]
+        if trend_vars:
+            for tv in trend_vars:
+                tv_arr = part.get(tv)
+                if tv_arr is not None:
+                    u_key_cols.append(tv_arr[u_idx])
+        u_stacked = np.column_stack(u_key_cols)
+        u_unique, u_inv = np.unique(u_stacked, axis=0, return_inverse=True)
+        u_wt = weight_gt[u_idx]
+        u_wd = weighted_diff[u_idx]
+        u_cl = cluster[u_idx] if cluster is not None else None
+        for j in range(len(u_unique)):
+            mask = u_inv == j
+            key = tuple(u_unique[j])
+            union_stats[key] = {
+                "weight_sum": float(np.sum(u_wt[mask])),
+                "diff_sum": float(np.sum(u_wd[mask])),
+                "count": int(np.sum(mask)),
+                "cluster_set": set(u_cl[mask].tolist()) if u_cl is not None else set(),
+            }
 
     return {"switcher": switcher_stats, "control": control_stats, "union": union_stats}
 
@@ -605,47 +628,77 @@ def partition_variance_influence(
     control_dof = global_dof.get("control", {})
     union_dof = global_dof.get("union", {})
 
-    for i in range(n):
-        at_target = tname[i] == F_g[i] - 1 + abs_h
-        before_switch = tname[i] < F_g[i]
+    at_target = tname == F_g - 1 + abs_h
+    before_switch = tname < F_g
+    relevant = at_target | before_switch
 
-        if not (at_target or before_switch):
-            continue
+    if np.any(relevant):
+        s_stacked = np.column_stack([d_sq, F_g, d_fg])
+        s_unique, s_inv = np.unique(s_stacked, axis=0, return_inverse=True)
 
-        s_key = (d_sq[i], F_g[i], d_fg[i])
-        s_info = switcher_dof.get(s_key, {})
-        s_dof = len(s_info.get("cluster_set", set())) if cluster_col else s_info.get("count", 0)
-        s_ws = s_info.get("weight_sum", 1.0)
-        s_ds = s_info.get("diff_sum", 0.0)
-        s_mean = s_ds / s_ws if s_ws > 0 else 0.0
+        s_dof_arr = np.zeros(n)
+        s_mean_arr = np.zeros(n)
+        for j in range(len(s_unique)):
+            s_key = tuple(s_unique[j])
+            s_info = switcher_dof.get(s_key, {})
+            s_dof_val = len(s_info.get("cluster_set", set())) if cluster_col else s_info.get("count", 0)
+            s_ws = s_info.get("weight_sum", 1.0)
+            s_ds = s_info.get("diff_sum", 0.0)
+            s_mean_val = s_ds / s_ws if s_ws > 0 else 0.0
+            mask = s_inv == j
+            s_dof_arr[mask] = s_dof_val
+            s_mean_arr[mask] = s_mean_val
 
-        c_key = (tname[i], d_sq[i], *(arr[i] for arr in tv_arrays))
-        c_info = control_dof.get(c_key, {})
-        c_dof = len(c_info.get("cluster_set", set())) if cluster_col else c_info.get("count", 0)
-        c_ws = c_info.get("weight_sum", 1.0)
-        c_ds = c_info.get("diff_sum", 0.0)
-        c_mean = c_ds / c_ws if c_ws > 0 else 0.0
+        c_key_arrays = [tname, d_sq]
+        if tv_arrays:
+            c_key_arrays.extend(tv_arrays)
+        c_stacked = np.column_stack(c_key_arrays)
+        c_unique, c_inv = np.unique(c_stacked, axis=0, return_inverse=True)
 
-        u_info = union_dof.get(c_key, {})
-        u_dof = len(u_info.get("cluster_set", set())) if cluster_col else u_info.get("count", 0)
-        u_ws = u_info.get("weight_sum", 1.0)
-        u_ds = u_info.get("diff_sum", 0.0)
-        u_mean = u_ds / u_ws if u_ws > 0 else 0.0
+        c_dof_arr = np.zeros(n)
+        c_mean_arr = np.zeros(n)
+        u_dof_arr = np.zeros(n)
+        u_mean_arr = np.zeros(n)
+        for j in range(len(c_unique)):
+            c_key = tuple(c_unique[j])
+            c_info = control_dof.get(c_key, {})
+            c_dof_val = len(c_info.get("cluster_set", set())) if cluster_col else c_info.get("count", 0)
+            c_ws = c_info.get("weight_sum", 1.0)
+            c_ds = c_info.get("diff_sum", 0.0)
+            c_mean_val = c_ds / c_ws if c_ws > 0 else 0.0
+            u_info = union_dof.get(c_key, {})
+            u_dof_val = len(u_info.get("cluster_set", set())) if cluster_col else u_info.get("count", 0)
+            u_ws = u_info.get("weight_sum", 1.0)
+            u_ds = u_info.get("diff_sum", 0.0)
+            u_mean_val = u_ds / u_ws if u_ws > 0 else 0.0
+            mask = c_inv == j
+            c_dof_arr[mask] = c_dof_val
+            c_mean_arr[mask] = c_mean_val
+            u_dof_arr[mask] = u_dof_val
+            u_mean_arr[mask] = u_mean_val
 
-        if at_target and s_dof >= 2:
-            e_hat[i] = s_mean
-        elif before_switch and c_dof >= 2:
-            e_hat[i] = c_mean
-        elif u_dof >= 2 and ((at_target and s_dof == 1) or (before_switch and c_dof == 1)):
-            e_hat[i] = u_mean
+        cond1 = at_target & (s_dof_arr >= 2)
+        cond2 = before_switch & (c_dof_arr >= 2) & ~cond1
+        cond3_t = at_target & (s_dof_arr == 1) & (u_dof_arr >= 2) & ~cond1
+        cond3_b = before_switch & (c_dof_arr == 1) & (u_dof_arr >= 2) & ~cond1 & ~cond2
+        cond3 = cond3_t | cond3_b
+
+        e_hat = np.where(cond1, s_mean_arr, e_hat)
+        e_hat = np.where(cond2, c_mean_arr, e_hat)
+        e_hat = np.where(cond3, u_mean_arr, e_hat)
 
         if not less_conservative_se:
-            if at_target and s_dof > 1:
-                dof_scale[i] = np.sqrt(s_dof / (s_dof - 1))
-            elif before_switch and c_dof > 1:
-                dof_scale[i] = np.sqrt(c_dof / (c_dof - 1))
-            elif (at_target and s_dof == 1 and u_dof >= 2) or (before_switch and c_dof == 1 and u_dof >= 2):
-                dof_scale[i] = np.sqrt(u_dof / (u_dof - 1))
+            ds1 = at_target & (s_dof_arr > 1)
+            ds2 = before_switch & (c_dof_arr > 1) & ~ds1
+            ds3_t = at_target & (s_dof_arr == 1) & (u_dof_arr >= 2) & ~ds1
+            ds3_b = before_switch & (c_dof_arr == 1) & (u_dof_arr >= 2) & ~ds1 & ~ds2
+            ds3 = ds3_t | ds3_b
+            safe_s = np.where(s_dof_arr > 1, s_dof_arr, 2.0)
+            safe_c = np.where(c_dof_arr > 1, c_dof_arr, 2.0)
+            safe_u = np.where(u_dof_arr > 1, u_dof_arr, 2.0)
+            dof_scale = np.where(ds1, np.sqrt(safe_s / (safe_s - 1)), dof_scale)
+            dof_scale = np.where(ds2, np.sqrt(safe_c / (safe_c - 1)), dof_scale)
+            dof_scale = np.where(ds3, np.sqrt(safe_u / (safe_u - 1)), dof_scale)
 
     dummy_u_gg = (abs_h <= (T_g - 1)).astype(np.float64)
     time_constraint = ((tname >= abs_h + 1) & (tname <= T_g)).astype(np.float64)
@@ -664,10 +717,8 @@ def partition_variance_influence(
     group_sums = np.bincount(inverse, weights=inf_var_temp, minlength=len(unique_gnames))
     inf_var = group_sums[inverse] * first_obs
 
-    gname_var_if = {}
-    for i in range(n):
-        if first_obs[i] == 1.0:
-            gname_var_if[gname[i]] = float(inf_var[i])
+    fo_mask = first_obs == 1.0
+    gname_var_if = dict(zip(gname[fo_mask].tolist(), inf_var[fo_mask].tolist(), strict=False))
 
     return gname_var_if
 
@@ -981,7 +1032,8 @@ def partition_control_influence_sums(
     in_sum = {}
     M_total = {}
 
-    time_cond = (tname >= abs_h + 1) & (tname <= T_g)
+    t_max_by_group = part.get("t_max_by_group", T_g)
+    time_cond = (tname >= abs_h + 1) & (tname <= t_max_by_group)
 
     for ctrl_idx, ctrl in enumerate(covariate_names):
         diff_ctrl_col = part.get(f"diff_{ctrl}_{abs_h}")
@@ -1005,13 +1057,15 @@ def partition_control_influence_sums(
             group_m_sums = np.bincount(inverse, weights=m_vals, minlength=len(unique_gnames))
             m_by_unit = group_m_sums[inverse] * first_obs
 
-            for i in range(n):
-                if first_obs[i] == 1.0 and m_by_unit[i] != 0.0:
-                    gn = gname[i]
-                    key = (ctrl_idx, d_level)
-                    if key not in m_sum:
-                        m_sum[key] = {}
-                    m_sum[key][gn] = m_sum[key].get(gn, 0.0) + float(m_by_unit[i])
+            fo_nz = (first_obs == 1.0) & (m_by_unit != 0.0)
+            if np.any(fo_nz):
+                key = (ctrl_idx, d_level)
+                if key not in m_sum:
+                    m_sum[key] = {}
+                fo_gnames = gname[fo_nz].tolist()
+                fo_vals = m_by_unit[fo_nz].tolist()
+                for gn, val in zip(fo_gnames, fo_vals, strict=False):
+                    m_sum[key][gn] = m_sum[key].get(gn, 0.0) + val
 
             M_key = (ctrl_idx, d_level)
             M_total[M_key] = M_total.get(M_key, 0.0) + float(np.sum(m_by_unit))
@@ -1067,9 +1121,7 @@ def reduce_control_influence_sums(a, b):
     return {"m_sum": m_sum, "in_sum": in_sum, "M_total": M_total}
 
 
-def partition_compute_variance_part2(
-    part, _abs_h, covariate_names, coefficients, global_M_total, global_in_sum, n_groups, trend_vars=None
-):
+def partition_compute_variance_part2(part, _abs_h, covariate_names, coefficients, global_M_total, n_groups):
     """Compute per-unit part2 variance adjustment for covariate-adjusted estimator.
 
     Parameters
@@ -1084,12 +1136,8 @@ def partition_compute_variance_part2(
         Coefficient dict.
     global_M_total : dict
         Global M_total from reduced influence sums.
-    global_in_sum : dict
-        Global in_sum from reduced influence sums.
     n_groups : int
         Total groups.
-    trend_vars : list of str or None
-        Trend variable names for cell key lookup.
 
     Returns
     -------
@@ -1097,7 +1145,6 @@ def partition_compute_variance_part2(
         ``{gname: part2_value}`` for first_obs rows.
     """
     gname = part["gname"]
-    tname = part["tname"]
     d_sq = part["d_sq"]
     F_g = part["F_g"]
     first_obs = part["first_obs_by_gp"]
@@ -1115,41 +1162,24 @@ def partition_compute_variance_part2(
         if inv_denom is None:
             continue
 
+        is_level_not_never = (d_sq == d_level) & ~np.isinf(F_g)
+        level_idx = np.where(is_level_not_never)[0]
+
+        if len(level_idx) == 0:
+            continue
+
         n_ctrl = len(covariate_names)
+
         combined = np.zeros(n)
-
         for j in range(n_ctrl):
-            in_brackets = np.zeros(n)
-
-            for k in range(n_ctrl):
-                coef_jk = float(inv_denom[j, k])
-                if coef_jk == 0.0:
-                    continue
-
-                is_level_not_never = (d_sq == d_level) & ~np.isinf(F_g)
-
-                key_arrays = [tname, d_sq]
-                if trend_vars:
-                    for tv in trend_vars:
-                        tv_arr = part.get(tv)
-                        if tv_arr is not None:
-                            key_arrays.append(tv_arr)
-
-                for i in range(n):
-                    if not is_level_not_never[i]:
-                        continue
-                    cell_key = (k, d_level, *(arr[i] for arr in key_arrays))
-                    in_s = global_in_sum.get(cell_key, 0.0)
-                    in_brackets[i] += coef_jk * in_s
-
             theta_j = float(theta[j])
-            in_brackets = np.where((d_sq == d_level) & ~np.isinf(F_g), in_brackets - theta_j, in_brackets)
+            in_brackets_level = np.full(len(level_idx), -theta_j)
 
             M_key = (j, d_level)
             M_val = global_M_total.get(M_key, 0.0)
             M_scaled = M_val / n_groups if n_groups > 0 else 0.0
 
-            combined += M_scaled * in_brackets
+            combined[level_idx] += M_scaled * in_brackets_level
 
         part2 += combined
 
@@ -1157,12 +1187,45 @@ def partition_compute_variance_part2(
     group_sums = np.bincount(inverse, weights=part2, minlength=len(unique_gnames))
     part2_by_unit = group_sums[inverse] * first_obs
 
-    gname_part2 = {}
-    for i in range(n):
-        if first_obs[i] == 1.0 and part2_by_unit[i] != 0.0:
-            gname_part2[gname[i]] = float(part2_by_unit[i])
+    fo_mask = (first_obs == 1.0) & (part2_by_unit != 0.0)
+    gname_part2 = dict(zip(gname[fo_mask].tolist(), part2_by_unit[fo_mask].tolist(), strict=False))
 
     return gname_part2
+
+
+def partition_check_group_level_covariates(part, het_covariates):
+    """Check which covariates vary within units (not group-level).
+
+    The local code validates that heterogeneity covariates are constant
+    within each unit by checking ``n_unique > 1`` on the full panel.
+    This partition function replicates that check distributedly.
+
+    Parameters
+    ----------
+    part : dict
+        Partition dictionary.
+    het_covariates : list of str
+        Covariate names to check.
+
+    Returns
+    -------
+    set
+        Names of covariates that vary within at least one unit.
+    """
+    gname = part["gname"]
+    varies = set()
+    for cov in het_covariates:
+        cov_arr = part.get(cov)
+        if cov_arr is None:
+            varies.add(cov)
+            continue
+        unique_units = np.unique(gname)
+        for unit in unique_units:
+            mask = gname == unit
+            if len(np.unique(cov_arr[mask])) > 1:
+                varies.add(cov)
+                break
+    return varies
 
 
 def partition_extract_het_data(part, effects, het_covariates, trends_nonparam=None, trends_lin=False):
@@ -1285,7 +1348,9 @@ def prepare_het_sample(het_df, horizon, trends_lin):
 
     het_sample = het_df.filter(
         pl.col(y_col).is_not_null()
+        & ~pl.col(y_col).is_nan()
         & pl.col("_Y_baseline").is_not_null()
+        & ~pl.col("_Y_baseline").is_nan()
         & (pl.col("_F_g") - 1 + horizon <= pl.col("_t_max_by_group"))
     )
 
@@ -1296,7 +1361,7 @@ def prepare_het_sample(het_df, horizon, trends_lin):
     if trends_lin and "_Y_baseline_m2" in het_sample.columns:
         diff_expr = diff_expr - horizon * (pl.col("_Y_baseline") - pl.col("_Y_baseline_m2"))
 
-    return het_sample.with_columns(
+    het_sample = het_sample.with_columns(
         (pl.col("_S_g") * diff_expr).alias("_prod_het"),
     ).rename(
         {
@@ -1306,6 +1371,16 @@ def prepare_het_sample(het_df, horizon, trends_lin):
             "_weight_gt": "weight_gt",
         }
     )
+
+    het_sample = het_sample.filter(
+        pl.col("_prod_het").is_not_null()
+        & ~pl.col("_prod_het").is_nan()
+        & ~pl.col("_prod_het").is_infinite()
+        & pl.col("weight_gt").is_not_null()
+        & ~pl.col("weight_gt").is_nan()
+    )
+
+    return het_sample if len(het_sample) > 0 else None
 
 
 def apply_trends_lin_accumulation(estimates, std_errors, influence_funcs, n_groups, cluster_col=None, cluster_ids=None):
@@ -1358,3 +1433,56 @@ def apply_trends_lin_accumulation(estimates, std_errors, influence_funcs, n_grou
             std_errors[idx] = np.sqrt(np.sum(cumulative_inf**2)) / n_groups
 
     return estimates, std_errors, influence_funcs
+
+
+def partition_group_sums_and_scalars(part, abs_h, trend_vars=None):
+    """Compute group sums and global scalars in a single partition pass."""
+    gs = partition_group_sums(part, abs_h, trend_vars)
+    sc = partition_global_scalars(part, abs_h)
+    return (gs, sc)
+
+
+def partition_influence_and_meta(part, abs_h, n_groups, n_switchers_weighted, cluster_col=None, trend_vars=None):
+    """Compute influence, switcher weights, obs count, and DoF stats in one pass."""
+    inf_result = partition_compute_influence(part, abs_h, n_groups, n_switchers_weighted)
+
+    dist_col = part.get(f"dist_{abs_h}")
+    gname_arr = part["gname"]
+    weight_arr = part["weight_gt"]
+    if dist_col is not None:
+        valid = (~np.isnan(dist_col)) & (dist_col == 1.0)
+        sw_map = dict(zip(gname_arr[valid].tolist(), weight_arr[valid].tolist(), strict=False))
+    else:
+        sw_map = {}
+
+    obs_count = partition_count_obs(part, abs_h)
+    dof = partition_dof_stats(part, abs_h, cluster_col, trend_vars)
+
+    return (inf_result, sw_map, obs_count, dof)
+
+
+def partition_delta_and_variance(
+    part,
+    abs_h,
+    horizon_type,
+    switcher_gnames_with_weight,
+    n_groups,
+    n_switchers_weighted,
+    global_dof,
+    cluster_col=None,
+    less_conservative_se=False,
+    trend_vars=None,
+):
+    """Compute delta-D and variance influence in a single partition pass."""
+    dd = partition_delta_d(part, abs_h, horizon_type, switcher_gnames_with_weight)
+    var = partition_variance_influence(
+        part,
+        abs_h,
+        n_groups,
+        n_switchers_weighted,
+        global_dof,
+        cluster_col,
+        less_conservative_se,
+        trend_vars,
+    )
+    return (dd, var)

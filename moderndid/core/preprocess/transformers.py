@@ -539,6 +539,9 @@ class DIDInterColumnSelector(BaseTransformer):
         if config.trends_nonparam:
             cols_to_keep.extend(config.trends_nonparam)
 
+        if config.predict_het:
+            cols_to_keep.extend(config.predict_het[0])
+
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
         cols_to_keep = [col for col in cols_to_keep if col is not None and col in df.columns]
 

@@ -36,6 +36,9 @@ def partition_preprocess_local(pdf, col_config, config_flags):
     trends_nonparam = config_flags.get("trends_nonparam")
     if trends_nonparam:
         cols_to_keep.extend(trends_nonparam)
+    het_covariates = col_config.get("het_covariates")
+    if het_covariates:
+        cols_to_keep.extend(het_covariates)
     cols_to_keep = list(dict.fromkeys(c for c in cols_to_keep if c is not None and c in df.columns))
     df = df.select(cols_to_keep)
 

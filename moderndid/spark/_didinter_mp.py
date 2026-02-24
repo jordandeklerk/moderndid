@@ -26,19 +26,16 @@ from moderndid.distributed._didinter_partition import (
     build_didinter_partition_arrays,
     partition_apply_control_adjustment,
     partition_apply_globals,
-    partition_compute_influence,
+    partition_check_group_level_covariates,
     partition_compute_variance_part2,
     partition_control_gram,
     partition_control_influence_sums,
-    partition_count_obs,
-    partition_delta_d,
-    partition_dof_stats,
+    partition_delta_and_variance,
     partition_extract_het_data,
-    partition_global_scalars,
-    partition_group_sums,
+    partition_group_sums_and_scalars,
     partition_horizon_covariate_ops,
     partition_horizon_local_ops,
-    partition_variance_influence,
+    partition_influence_and_meta,
     prepare_het_sample,
     reduce_control_gram,
     reduce_control_influence_sums,
@@ -171,6 +168,8 @@ def spark_did_multiplegt_mp(
     covariate_names = get_covariate_names_from_formula(xformla)
     trend_vars = list(trends_nonparam) if trends_nonparam else None
 
+    het_covariates = predict_het[0] if predict_het else None
+
     col_config = {
         "gname": idname,
         "tname": tname,
@@ -179,6 +178,7 @@ def spark_did_multiplegt_mp(
         "cluster": cluster,
         "covariate_names": covariate_names if covariate_names else None,
         "trends_nonparam": trend_vars,
+        "het_covariates": het_covariates,
     }
 
     config_flags = {
@@ -219,6 +219,8 @@ def spark_did_multiplegt_mp(
         needed_cols.extend(covariate_names)
     if trends_nonparam:
         needed_cols.extend(trends_nonparam)
+    if het_covariates:
+        needed_cols.extend(het_covariates)
     needed_cols = list(dict.fromkeys(c for c in needed_cols if c in data.columns))
     sdf = data.select(*needed_cols)
     sdf = sdf.repartition(n_workers, F.col(idname))
@@ -519,10 +521,12 @@ def _distributed_did_effects(
         else:
             coefficients = {}
 
-        gs_list = parts_rdd.map(functools.partial(partition_group_sums, abs_h=abs_h, trend_vars=trend_vars)).collect()
+        combined_gs_sc = parts_rdd.map(
+            functools.partial(partition_group_sums_and_scalars, abs_h=abs_h, trend_vars=trend_vars)
+        ).collect()
+        gs_list = [c[0] for c in combined_gs_sc]
+        sc_list = [c[1] for c in combined_gs_sc]
         global_group_sums = functools.reduce(reduce_group_sums, gs_list) if gs_list else {}
-
-        sc_list = parts_rdd.map(functools.partial(partition_global_scalars, abs_h=abs_h)).collect()
         global_scalars = (
             functools.reduce(reduce_global_scalars, sc_list)
             if sc_list
@@ -551,19 +555,32 @@ def _distributed_did_effects(
         parts_rdd.count()
         old_rdd.unpersist()
 
-        if_results = parts_rdd.map(
+        combined_inf_meta = parts_rdd.map(
             functools.partial(
-                partition_compute_influence, abs_h=abs_h, n_groups=n_groups, n_switchers_weighted=n_switchers_weighted
+                partition_influence_and_meta,
+                abs_h=abs_h,
+                n_groups=n_groups,
+                n_switchers_weighted=n_switchers_weighted,
+                cluster_col=cluster_col,
+                trend_vars=trend_vars,
             )
         ).collect()
 
         inf_func_full = np.zeros(len(sorted_gnames))
         total_if_sum = 0.0
-        for gname_if, partial_sum in if_results:
+        switcher_gnames_with_weight = {}
+        total_obs = 0
+        dof_list = []
+        for inf_result, sw_map, obs_count, dof in combined_inf_meta:
+            gname_if, partial_sum = inf_result
             total_if_sum += partial_sum
             for gn, val in gname_if.items():
                 if gn in gname_to_idx:
                     inf_func_full[gname_to_idx[gn]] = val
+            switcher_gnames_with_weight.update(sw_map)
+            total_obs += obs_count
+            dof_list.append(dof)
+        global_dof = functools.reduce(reduce_dof_stats, dof_list) if dof_list else {}
 
         did_estimate = total_if_sum / n_groups
 
@@ -574,26 +591,54 @@ def _distributed_did_effects(
 
         delta_d = None
         if normalized or horizon_type == "effect":
-            sw_list = parts_rdd.map(functools.partial(_extract_switcher_weights, abs_h=abs_h)).collect()
-            switcher_gnames_with_weight = {}
-            for d in sw_list:
-                switcher_gnames_with_weight.update(d)
-
-            dd_results = parts_rdd.map(
+            bc_sw = sc.broadcast(switcher_gnames_with_weight)
+            combined_dd_var = parts_rdd.map(
                 functools.partial(
-                    partition_delta_d,
+                    partition_delta_and_variance,
                     abs_h=abs_h,
-                    _horizon_type=horizon_type,
-                    switcher_gnames_with_weight=switcher_gnames_with_weight,
+                    horizon_type=horizon_type,
+                    switcher_gnames_with_weight=bc_sw.value,
+                    n_groups=n_groups,
+                    n_switchers_weighted=n_switchers_weighted,
+                    global_dof=global_dof,
+                    cluster_col=cluster_col,
+                    less_conservative_se=less_conservative_se,
+                    trend_vars=trend_vars,
                 )
             ).collect()
+            bc_sw.destroy()
 
             total_dd = 0.0
             total_dd_weight = 0.0
-            for contrib, weight in dd_results:
+            inf_var_full = np.zeros(len(sorted_gnames))
+            for dd_result, var_result in combined_dd_var:
+                contrib, weight = dd_result
                 total_dd += contrib
                 total_dd_weight += weight
+                for gn, val in var_result.items():
+                    if gn in gname_to_idx:
+                        inf_var_full[gname_to_idx[gn]] = val
             delta_d = total_dd / total_dd_weight if total_dd_weight > 0 else None
+        else:
+            from moderndid.distributed._didinter_partition import partition_variance_influence
+
+            var_if_results = parts_rdd.map(
+                functools.partial(
+                    partition_variance_influence,
+                    abs_h=abs_h,
+                    n_groups=n_groups,
+                    n_switchers_weighted=n_switchers_weighted,
+                    global_dof=global_dof,
+                    cluster_col=cluster_col,
+                    less_conservative_se=less_conservative_se,
+                    trend_vars=trend_vars,
+                )
+            ).collect()
+            inf_var_full = np.zeros(len(sorted_gnames))
+            for gname_var_if in var_if_results:
+                for gn, val in gname_var_if.items():
+                    if gn in gname_to_idx:
+                        inf_var_full[gname_to_idx[gn]] = val
 
         if horizon_type == "effect":
             delta_d_arr[idx] = delta_d if delta_d is not None else 0.0
@@ -602,30 +647,6 @@ def _distributed_did_effects(
             did_estimate = did_estimate / delta_d
 
         estimates[idx] = did_estimate
-
-        dof_list = parts_rdd.map(
-            functools.partial(partition_dof_stats, abs_h=abs_h, cluster_col=cluster_col, trend_vars=trend_vars)
-        ).collect()
-        global_dof = functools.reduce(reduce_dof_stats, dof_list) if dof_list else {}
-
-        var_if_results = parts_rdd.map(
-            functools.partial(
-                partition_variance_influence,
-                abs_h=abs_h,
-                n_groups=n_groups,
-                n_switchers_weighted=n_switchers_weighted,
-                global_dof=global_dof,
-                cluster_col=cluster_col,
-                less_conservative_se=less_conservative_se,
-                trend_vars=trend_vars,
-            )
-        ).collect()
-
-        inf_var_full = np.zeros(len(sorted_gnames))
-        for gname_var_if in var_if_results:
-            for gn, val in gname_var_if.items():
-                if gn in gname_to_idx:
-                    inf_var_full[gname_to_idx[gn]] = val
 
         if covariate_names and coefficients:
             useful_coefficients = {d: c for d, c in coefficients.items() if c.get("useful", False)}
@@ -644,7 +665,6 @@ def _distributed_did_effects(
                 global_cis = functools.reduce(reduce_control_influence_sums, cis_list) if cis_list else {}
 
                 global_M_total = global_cis.get("M_total", {})
-                global_in_sum = global_cis.get("in_sum", {})
 
                 part2_results = parts_rdd.map(
                     functools.partial(
@@ -653,9 +673,7 @@ def _distributed_did_effects(
                         covariate_names=covariate_names,
                         coefficients=coefficients,
                         global_M_total=global_M_total,
-                        global_in_sum=global_in_sum,
                         n_groups=n_groups,
-                        trend_vars=trend_vars,
                     )
                 ).collect()
 
@@ -684,9 +702,7 @@ def _distributed_did_effects(
         influence_funcs.append(inf_func)
         std_errors[idx] = std_error
         n_switchers_arr[idx] = n_switchers_unweighted
-
-        obs_counts = parts_rdd.map(functools.partial(partition_count_obs, abs_h=abs_h)).collect()
-        n_obs_arr[idx] = sum(obs_counts)
+        n_obs_arr[idx] = total_obs
 
     parts_rdd.unpersist()
 
@@ -743,11 +759,22 @@ def _distributed_heterogeneity(parts_rdd, effects, predict_het, trends_nonparam,
     if not isinstance(covariates, list) or not isinstance(het_effects, list) or len(covariates) == 0:
         return None
 
+    varies_sets = parts_rdd.map(
+        functools.partial(partition_check_group_level_covariates, het_covariates=covariates)
+    ).collect()
+    all_varies = set()
+    for s in varies_sets:
+        all_varies |= s
+
+    valid_covariates = [c for c in covariates if c not in all_varies]
+    if len(valid_covariates) == 0:
+        return None
+
     het_rows_list = parts_rdd.map(
         functools.partial(
             partition_extract_het_data,
             effects=effects,
-            het_covariates=covariates,
+            het_covariates=valid_covariates,
             trends_nonparam=trends_nonparam,
             trends_lin=trends_lin,
         )
@@ -761,18 +788,6 @@ def _distributed_heterogeneity(parts_rdd, effects, predict_het, trends_nonparam,
         return None
 
     het_df = pl.DataFrame(all_rows)
-
-    valid_covariates = []
-    for cov in covariates:
-        if cov not in het_df.columns:
-            continue
-        n_unique = het_df.group_by("_gname").agg(pl.col(cov).n_unique().alias("n_uniq"))
-        if (n_unique["n_uniq"] > 1).any():
-            continue
-        valid_covariates.append(cov)
-
-    if len(valid_covariates) == 0:
-        return None
 
     all_horizons = (
         list(range(1, effects + 1)) if -1 in het_effects else [h_ for h_ in het_effects if 1 <= h_ <= effects]
@@ -818,27 +833,11 @@ def _apply_global_preprocess(pdf, metadata, col_config, config_flags):
     return build_didinter_partition_arrays(preprocessed, col_config)
 
 
-def _extract_switcher_weights(part, abs_h):
-    """Extract switcher unit-to-weight mapping from a partition."""
-    dist_col = part.get(f"dist_{abs_h}")
-    if dist_col is None:
-        return {}
-    gname_arr = part["gname"]
-    weight_arr = part["weight_gt"]
-    valid = (~np.isnan(dist_col)) & (dist_col == 1.0)
-    result = {}
-    for i in range(len(gname_arr)):
-        if valid[i]:
-            result[gname_arr[i]] = weight_arr[i]
-    return result
-
-
 def _extract_cluster_ids(part):
     """Extract unit-to-cluster-ID mapping from a partition."""
-    result = {}
     first_mask = part["first_obs_by_gp"] == 1.0
     if "cluster" in part:
-        for i in range(len(part["gname"])):
-            if first_mask[i]:
-                result[part["gname"][i]] = part["cluster"][i]
-    return result
+        gn = part["gname"][first_mask]
+        cl = part["cluster"][first_mask]
+        return dict(zip(gn.tolist(), cl.tolist(), strict=False))
+    return {}
