@@ -3,6 +3,19 @@
 import numpy as np
 import pytest
 
+distributed = pytest.importorskip("distributed")
+
+from distributed import Client, LocalCluster
+
+
+@pytest.fixture(scope="session")
+def dask_client():
+    cluster = LocalCluster(n_workers=2, threads_per_worker=1, memory_limit="512MB")
+    client = Client(cluster)
+    yield client
+    client.close()
+    cluster.close()
+
 
 @pytest.fixture
 def rng():

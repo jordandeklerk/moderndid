@@ -6,20 +6,10 @@ import pytest
 distributed = pytest.importorskip("distributed")
 
 import dask.dataframe as dd
-from distributed import Client, LocalCluster
 
 from moderndid import simulate_cont_did_data
 from moderndid.dask._didcont import dask_cont_did
 from moderndid.didcont.cont_did import cont_did
-
-
-@pytest.fixture(scope="module")
-def dask_client():
-    cluster = LocalCluster(n_workers=2, threads_per_worker=1, memory_limit="512MB")
-    client = Client(cluster)
-    yield client
-    client.close()
-    cluster.close()
 
 
 @pytest.fixture(scope="module")

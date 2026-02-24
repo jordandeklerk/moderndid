@@ -4,23 +4,12 @@ import pytest
 
 distributed = pytest.importorskip("distributed")
 
-from distributed import Client, LocalCluster
-
 from moderndid.core.data import gen_did_scalable
 from moderndid.dask._ddd import dask_ddd
 from moderndid.dask._did import dask_att_gt
 from moderndid.did.att_gt import att_gt
 from moderndid.didtriple.ddd import ddd
 from moderndid.didtriple.dgp import gen_dgp_mult_periods, gen_dgp_scalable
-
-
-@pytest.fixture(scope="module")
-def dask_client():
-    cluster = LocalCluster(n_workers=2, threads_per_worker=1, memory_limit="512MB")
-    client = Client(cluster)
-    yield client
-    client.close()
-    cluster.close()
 
 
 @pytest.fixture(scope="module")
