@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import warnings
 
+import dask.dataframe as dd
 import numpy as np
 import polars as pl
 from distributed import as_completed
 
+from moderndid.core.preprocessing import preprocess_cont_did
 from moderndid.didcont.cont_did import _estimate_cck
 from moderndid.didcont.estimation.container import PTEResult
 from moderndid.didcont.estimation.process_aggte import aggregate_att_gt
@@ -165,7 +167,6 @@ def dask_cont_did_mp(
 
     gname_provided = gname is not None
     if gname is None:
-        import dask.dataframe as dd
 
         def _infer_group_pandas(pdf, idname, tname, dname):
             return partition_infer_group(pl.from_pandas(pdf), idname, tname, dname).to_pandas()
@@ -322,8 +323,6 @@ def _cck_path(
     Constructs the ContDIDData needed by ``_estimate_cck`` from the
     collected preprocessed data.
     """
-    from moderndid.core.preprocessing import preprocess_cont_did
-
     cont_did_data = preprocess_cont_did(
         data=local_data,
         yname=yname,

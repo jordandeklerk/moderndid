@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import functools
 import pickle
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import polars as pl
+from pyspark.sql import functions as F
 from pyspark.sql.types import BinaryType, StructField, StructType
 from scipy import stats
 
@@ -38,6 +40,7 @@ from moderndid.distributed._didinter_partition import (
     partition_horizon_covariate_ops,
     partition_horizon_local_ops,
     partition_influence_and_meta,
+    partition_variance_influence,
     prepare_het_sample,
     reduce_control_gram,
     reduce_control_influence_sums,
@@ -209,8 +212,6 @@ def spark_did_multiplegt_mp(
 
     sc = spark.sparkContext
     n_workers = max(2, sc.defaultParallelism)
-
-    from pyspark.sql import functions as F
 
     needed_cols = [yname, tname, idname, dname]
     if weightsname:
@@ -638,8 +639,6 @@ def _distributed_did_effects(
                         inf_var_full[gname_to_idx[gn]] = val
             delta_d = total_dd / total_dd_weight if total_dd_weight > 0 else None
         else:
-            from moderndid.distributed._didinter_partition import partition_variance_influence
-
             var_if_results = parts_rdd.map(
                 functools.partial(
                     partition_variance_influence,
@@ -766,8 +765,6 @@ def _distributed_heterogeneity(parts_rdd, effects, predict_het, trends_nonparam,
     the driver, and runs the heterogeneity WLS regression locally on the
     small summary dataset (1 row per group).
     """
-    from types import SimpleNamespace
-
     covariates, het_effects = predict_het
 
     if not isinstance(covariates, list) or not isinstance(het_effects, list) or len(covariates) == 0:

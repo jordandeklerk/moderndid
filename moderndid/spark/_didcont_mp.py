@@ -4,7 +4,10 @@ import warnings
 
 import numpy as np
 import polars as pl
+from pyspark.sql import functions as F
+from pyspark.sql.window import Window
 
+from moderndid.core.preprocessing import preprocess_cont_did
 from moderndid.didcont.cont_did import _estimate_cck
 from moderndid.didcont.estimation.container import PTEResult
 from moderndid.didcont.estimation.process_aggte import aggregate_att_gt
@@ -135,8 +138,6 @@ def spark_cont_did_mp(
         Result container holding group-time ATT estimates, overall ATT,
         event-study aggregation, and the preprocessed parameters object.
     """
-    from pyspark.sql import functions as F
-
     if dname is None:
         raise ValueError("dname is required.")
     if xformla != "~1":
@@ -162,8 +163,6 @@ def spark_cont_did_mp(
 
     gname_provided = gname is not None
     if gname is None:
-        from pyspark.sql.window import Window
-
         w = Window.partitionBy(idname).orderBy(tname)
         sdf_with_treat = (
             sdf.withColumn("_is_treated", F.when(F.col(dname) > 0, F.lit(True)).otherwise(F.lit(False)))
@@ -319,8 +318,6 @@ def _cck_path(
     Constructs the ContDIDData needed by ``_estimate_cck`` from the
     collected preprocessed data.
     """
-    from moderndid.core.preprocessing import preprocess_cont_did
-
     cont_did_data = preprocess_cont_did(
         data=local_data,
         yname=yname,

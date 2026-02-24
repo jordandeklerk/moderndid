@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+from types import SimpleNamespace
 
 import distributed
 import numpy as np
@@ -37,6 +38,7 @@ from moderndid.distributed._didinter_partition import (
     partition_horizon_covariate_ops,
     partition_horizon_local_ops,
     partition_influence_and_meta,
+    partition_variance_influence,
     prepare_het_sample,
     reduce_control_gram,
     reduce_control_influence_sums,
@@ -584,8 +586,6 @@ def _distributed_did_effects(
                         inf_var_full[gname_to_idx[gn]] = val
             delta_d = total_dd / total_dd_weight if total_dd_weight > 0 else None
         else:
-            from moderndid.distributed._didinter_partition import partition_variance_influence
-
             var_if_futures = [
                 client.submit(
                     partition_variance_influence,
@@ -713,8 +713,6 @@ def _distributed_did_effects(
 
 def _distributed_heterogeneity(client, part_futures, effects, predict_het, trends_nonparam, trends_lin):
     """Collect group-level summaries and run WLS heterogeneity regressions."""
-    from types import SimpleNamespace
-
     covariates, het_effects = predict_het
 
     if not isinstance(covariates, list) or not isinstance(het_effects, list) or len(covariates) == 0:
