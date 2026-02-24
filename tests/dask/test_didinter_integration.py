@@ -4,6 +4,8 @@ import numpy as np
 import polars as pl
 import pytest
 
+pytestmark = pytest.mark.slow
+
 distributed = pytest.importorskip("distributed")
 
 import dask.dataframe as dd
