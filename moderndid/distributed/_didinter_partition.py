@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import polars as pl
 
 
 def build_didinter_partition_arrays(pdf, col_config):
@@ -17,7 +18,8 @@ def build_didinter_partition_arrays(pdf, col_config):
         outcome, treatment, and pre-computed auxiliary columns.
     col_config : dict
         Column name mapping with keys ``"gname"``, ``"tname"``,
-        ``"yname"``, ``"dname"``, and optionally ``"cluster"``.
+        ``"yname"``, ``"dname"``, and optionally ``"cluster"``,
+        ``"covariate_names"``, ``"trends_nonparam"``.
 
     Returns
     -------
@@ -52,6 +54,20 @@ def build_didinter_partition_arrays(pdf, col_config):
         d["cluster"] = pdf[col_config["cluster"]].values
     if "same_switcher_valid" in pdf.columns:
         d["same_switcher_valid"] = pdf["same_switcher_valid"].values.astype(np.float64)
+    if "t_max_by_group" in pdf.columns:
+        d["t_max_by_group"] = pdf["t_max_by_group"].values.astype(np.float64)
+
+    covariate_names = col_config.get("covariate_names")
+    if covariate_names:
+        for ctrl in covariate_names:
+            if ctrl in pdf.columns:
+                d[ctrl] = pdf[ctrl].values.astype(np.float64)
+
+    trends_nonparam = col_config.get("trends_nonparam")
+    if trends_nonparam:
+        for tnp in trends_nonparam:
+            if tnp in pdf.columns:
+                d[tnp] = pdf[tnp].values.astype(np.float64)
 
     return d
 
@@ -161,21 +177,29 @@ def partition_horizon_local_ops(part, abs_h, horizon_type, config_dict, t_max):
     return part
 
 
-def partition_group_sums(part, abs_h):
-    """Aggregate weighted control and treated counts by (time, dose) group."""
+def partition_group_sums(part, abs_h, trend_vars=None):
+    """Aggregate weighted control and treated counts by (time, dose, *trends) group."""
     tname = part["tname"]
     d_sq = part["d_sq"]
     never_w = part[f"never_change_w_{abs_h}"]
     dist_w = part[f"dist_w_{abs_h}"]
 
+    key_arrays = [tname, d_sq]
+    if trend_vars:
+        for tv in trend_vars:
+            tv_arr = part.get(tv)
+            if tv_arr is not None:
+                key_arrays.append(tv_arr)
+
+    stacked = np.column_stack(key_arrays)
     result = {}
-    unique_keys = np.unique(np.column_stack([tname, d_sq]), axis=0)
+    unique_keys = np.unique(stacked, axis=0)
     for key_row in unique_keys:
-        t_val, d_val = key_row[0], key_row[1]
-        mask = (tname == t_val) & (d_sq == d_val)
+        mask = np.all(stacked == key_row, axis=1)
         nc = float(np.nansum(never_w[mask]))
         nt = float(np.nansum(dist_w[mask]))
-        result[(t_val, d_val)] = {"n_control": nc, "n_treated": nt}
+        key = tuple(key_row)
+        result[key] = {"n_control": nc, "n_treated": nt}
 
     return result
 
@@ -221,7 +245,7 @@ def reduce_global_scalars(a, b):
     }
 
 
-def partition_apply_globals(part, abs_h, global_group_sums):
+def partition_apply_globals(part, abs_h, global_group_sums, trend_vars=None):
     """Broadcast global group sums back to each row and finalize indicators.
 
     Maps the globally reduced control and treated counts onto every row
@@ -236,8 +260,9 @@ def partition_apply_globals(part, abs_h, global_group_sums):
     abs_h : int
         Absolute value of the horizon.
     global_group_sums : dict
-        Fully reduced ``{(t, d_sq): {"n_control": ..., "n_treated": ...}}``
-        dictionary from :func:`reduce_group_sums`.
+        Fully reduced group sums dictionary from :func:`reduce_group_sums`.
+    trend_vars : list of str or None
+        Trend variable names for extended key lookup.
 
     Returns
     -------
@@ -253,11 +278,23 @@ def partition_apply_globals(part, abs_h, global_group_sums):
     n_control = np.zeros(n)
     n_treated = np.zeros(n)
 
-    for i in range(n):
-        key = (tname[i], d_sq[i])
-        if key in global_group_sums:
-            n_control[i] = global_group_sums[key]["n_control"]
-            n_treated[i] = global_group_sums[key]["n_treated"]
+    if trend_vars:
+        tv_arrays = []
+        for tv in trend_vars:
+            tv_arr = part.get(tv)
+            if tv_arr is not None:
+                tv_arrays.append(tv_arr)
+        for i in range(n):
+            key = (tname[i], d_sq[i], *(arr[i] for arr in tv_arrays))
+            if key in global_group_sums:
+                n_control[i] = global_group_sums[key]["n_control"]
+                n_treated[i] = global_group_sums[key]["n_treated"]
+    else:
+        for i in range(n):
+            key = (tname[i], d_sq[i])
+            if key in global_group_sums:
+                n_control[i] = global_group_sums[key]["n_control"]
+                n_treated[i] = global_group_sums[key]["n_treated"]
 
     part[f"n_control_{abs_h}"] = n_control
     part[f"n_treated_{abs_h}"] = n_treated
@@ -340,14 +377,44 @@ def partition_compute_influence(part, abs_h, n_groups, n_switchers_weighted):
     return gname_if, partial_sum
 
 
-def partition_dof_stats(part, abs_h, cluster_col=None):
-    """Collect degrees-of-freedom statistics for switcher, control, and union groups.
+def partition_delta_d(part, abs_h, _horizon_type, switcher_gnames_with_weight):
+    """Compute partition-level weighted treatment dose change for switchers."""
+    gname = part["gname"]
+    tname = part["tname"]
+    d = part["d"]
+    d_sq = part["d_sq"]
+    F_g = part["F_g"]
+    S_g = part["S_g"]
 
-    Iterates over the partition to accumulate weight sums, differenced-outcome
-    sums, observation counts, and cluster sets for each (dose, cohort, dose-at-
-    first-switch) or (time, dose) cell. These statistics are later reduced
-    across partitions and used to construct the small-sample DoF correction
-    in the variance estimator.
+    partial_contrib = 0.0
+    partial_weight = 0.0
+
+    unique_units = np.unique(gname)
+    for unit in unique_units:
+        if unit not in switcher_gnames_with_weight:
+            continue
+
+        w = switcher_gnames_with_weight[unit]
+        mask = gname == unit
+        unit_tname = tname[mask]
+        unit_d = d[mask]
+        unit_d_sq = d_sq[mask]
+        unit_F_g = F_g[mask][0]
+        unit_S_g = S_g[mask][0]
+
+        in_range = (unit_tname >= unit_F_g) & (unit_tname <= unit_F_g - 1 + abs_h)
+        treat_diff = np.sum(unit_d[in_range] - unit_d_sq[in_range])
+
+        s_ind = 1 if unit_S_g == 1 else 0
+        contrib = w * (s_ind * treat_diff + (1 - s_ind) * (-treat_diff))
+        partial_contrib += contrib
+        partial_weight += w
+
+    return partial_contrib, partial_weight
+
+
+def partition_dof_stats(part, abs_h, cluster_col=None, trend_vars=None):
+    """Collect degrees-of-freedom statistics for switcher, control, and union groups.
 
     Parameters
     ----------
@@ -356,16 +423,15 @@ def partition_dof_stats(part, abs_h, cluster_col=None):
     abs_h : int
         Absolute value of the horizon.
     cluster_col : str or None, optional
-        Name of the cluster column. When provided, unique cluster
-        identifiers are tracked for cluster-robust inference.
+        Name of the cluster column.
+    trend_vars : list of str or None, optional
+        Trend variable names for extended control/union keys.
 
     Returns
     -------
     dict
         Dictionary with keys ``"switcher"``, ``"control"``, and
-        ``"union"``, each mapping cell keys to sub-dictionaries
-        containing ``"weight_sum"``, ``"diff_sum"``, ``"count"``, and
-        ``"cluster_set"``.
+        ``"union"``, each mapping cell keys to sub-dictionaries.
     """
     tname = part["tname"]
     d_sq = part["d_sq"]
@@ -378,6 +444,13 @@ def partition_dof_stats(part, abs_h, cluster_col=None):
 
     d_fg = part.get("d_fg", np.zeros(n))
     cluster = part.get("cluster") if cluster_col else None
+
+    tv_arrays = []
+    if trend_vars:
+        for tv in trend_vars:
+            tv_arr = part.get(tv)
+            if tv_arr is not None:
+                tv_arrays.append(tv_arr)
 
     is_switcher = np.zeros(n, dtype=bool)
     if dist_col is not None:
@@ -406,7 +479,7 @@ def partition_dof_stats(part, abs_h, cluster_col=None):
     for i in range(n):
         if not is_control[i]:
             continue
-        key = (tname[i], d_sq[i])
+        key = (tname[i], d_sq[i], *(arr[i] for arr in tv_arrays))
         if key not in control_stats:
             control_stats[key] = {"weight_sum": 0.0, "diff_sum": 0.0, "count": 0, "cluster_set": set()}
         control_stats[key]["weight_sum"] += weight_gt[i]
@@ -419,7 +492,7 @@ def partition_dof_stats(part, abs_h, cluster_col=None):
     for i in range(n):
         if not is_union[i]:
             continue
-        key = (tname[i], d_sq[i])
+        key = (tname[i], d_sq[i], *(arr[i] for arr in tv_arrays))
         if key not in union_stats:
             union_stats[key] = {"weight_sum": 0.0, "diff_sum": 0.0, "count": 0, "cluster_set": set()}
         union_stats[key]["weight_sum"] += weight_gt[i]
@@ -461,13 +534,13 @@ def partition_variance_influence(
     global_dof,
     cluster_col=None,
     less_conservative_se=False,
+    trend_vars=None,
 ):
     """Compute per-unit variance influence function values.
 
     Uses globally reduced DoF statistics to construct group-mean residuals
     and small-sample DoF scale corrections, then computes the variance
-    influence function for each unit. The returned mapping is later
-    aggregated to form the asymptotic variance estimate.
+    influence function for each unit.
 
     Parameters
     ----------
@@ -480,12 +553,13 @@ def partition_variance_influence(
     n_switchers_weighted : float
         Global weighted count of switchers.
     global_dof : dict
-        Fully reduced DoF statistics from :func:`reduce_dof_stats`,
-        containing ``"switcher"``, ``"control"``, and ``"union"`` cells.
+        Fully reduced DoF statistics from :func:`reduce_dof_stats`.
     cluster_col : str or None, optional
         Cluster column name for cluster-robust inference.
     less_conservative_se : bool, optional
         When ``True``, skip the finite-sample DoF scale correction.
+    trend_vars : list of str or None, optional
+        Trend variable names for extended DOF key lookups.
 
     Returns
     -------
@@ -506,6 +580,13 @@ def partition_variance_influence(
     T_g = part["T_g"]
     d_sq = part["d_sq"]
     d_fg = part.get("d_fg", np.zeros(part["n_rows"]))
+
+    tv_arrays = []
+    if trend_vars:
+        for tv in trend_vars:
+            tv_arr = part.get(tv)
+            if tv_arr is not None:
+                tv_arrays.append(tv_arr)
 
     n = part["n_rows"]
     safe_n_sw = max(n_switchers_weighted, 1e-10)
@@ -536,7 +617,7 @@ def partition_variance_influence(
         s_ds = s_info.get("diff_sum", 0.0)
         s_mean = s_ds / s_ws if s_ws > 0 else 0.0
 
-        c_key = (tname[i], d_sq[i])
+        c_key = (tname[i], d_sq[i], *(arr[i] for arr in tv_arrays))
         c_info = control_dof.get(c_key, {})
         c_dof = len(c_info.get("cluster_set", set())) if cluster_col else c_info.get("count", 0)
         c_ws = c_info.get("weight_sum", 1.0)
@@ -589,42 +670,6 @@ def partition_variance_influence(
     return gname_var_if
 
 
-def partition_delta_d(part, abs_h, _horizon_type, switcher_gnames_with_weight):
-    """Compute partition-level weighted treatment dose change for switchers."""
-    gname = part["gname"]
-    tname = part["tname"]
-    d = part["d"]
-    d_sq = part["d_sq"]
-    F_g = part["F_g"]
-    S_g = part["S_g"]
-
-    partial_contrib = 0.0
-    partial_weight = 0.0
-
-    unique_units = np.unique(gname)
-    for unit in unique_units:
-        if unit not in switcher_gnames_with_weight:
-            continue
-
-        w = switcher_gnames_with_weight[unit]
-        mask = gname == unit
-        unit_tname = tname[mask]
-        unit_d = d[mask]
-        unit_d_sq = d_sq[mask]
-        unit_F_g = F_g[mask][0]
-        unit_S_g = S_g[mask][0]
-
-        in_range = (unit_tname >= unit_F_g) & (unit_tname <= unit_F_g - 1 + abs_h)
-        treat_diff = np.sum(unit_d[in_range] - unit_d_sq[in_range])
-
-        s_ind = 1 if unit_S_g == 1 else 0
-        contrib = w * (s_ind * treat_diff + (1 - s_ind) * (-treat_diff))
-        partial_contrib += contrib
-        partial_weight += w
-
-    return partial_contrib, partial_weight
-
-
 def partition_count_obs(part, abs_h):
     """Count observations that contribute a non-trivial influence value."""
     inf_temp = part.get(f"inf_temp_{abs_h}")
@@ -635,3 +680,679 @@ def partition_count_obs(part, abs_h):
 
     contributing = (~np.isnan(inf_temp) & (inf_temp != 0)) | ((inf_temp == 0) & (np.nan_to_num(diff_y, nan=1.0) == 0))
     return int(np.sum(contributing))
+
+
+def partition_horizon_covariate_ops(part, abs_h, covariate_names):
+    """Create lagged and differenced covariate columns for a given horizon.
+
+    Parameters
+    ----------
+    part : dict
+        Partition dictionary with covariate arrays.
+    abs_h : int
+        Absolute value of the horizon.
+    covariate_names : list of str
+        Names of covariate columns present in the partition.
+
+    Returns
+    -------
+    dict
+        The partition dictionary, updated in-place with lag and diff columns.
+    """
+    n = part["n_rows"]
+    gname = part["gname"]
+
+    for ctrl in covariate_names:
+        ctrl_vals = part.get(ctrl)
+        if ctrl_vals is None:
+            part[f"lag_{ctrl}_{abs_h}"] = np.full(n, np.nan)
+            part[f"diff_{ctrl}_{abs_h}"] = np.full(n, np.nan)
+            continue
+
+        lag = np.full(n, np.nan)
+        if n > abs_h:
+            same_unit = gname[abs_h:] == gname[:-abs_h]
+            lag[abs_h:] = np.where(same_unit, ctrl_vals[:-abs_h], np.nan)
+
+        part[f"lag_{ctrl}_{abs_h}"] = lag
+        part[f"diff_{ctrl}_{abs_h}"] = ctrl_vals - lag
+
+    return part
+
+
+def partition_control_gram(part, abs_h, covariate_names):
+    """Compute partial X'WX and X'Wy for never-switchers by d_sq level.
+
+    Parameters
+    ----------
+    part : dict
+        Partition dictionary with covariate diff columns.
+    abs_h : int
+        Absolute value of the horizon.
+    covariate_names : list of str
+        Covariate names.
+
+    Returns
+    -------
+    dict
+        ``{d_level: {"XtWX": array, "XtWy": array, "group_set": set, "weight_sum": float}}``.
+    """
+    F_g = part["F_g"]
+    d_sq = part["d_sq"]
+    diff_y = part[f"diff_y_{abs_h}"]
+    weight_gt = part["weight_gt"]
+    gname = part["gname"]
+
+    is_never = np.isinf(F_g)
+    has_diff = ~np.isnan(diff_y)
+    valid_base = is_never & has_diff
+
+    n_ctrl = len(covariate_names)
+    result = {}
+
+    unique_d = np.unique(d_sq[valid_base]) if np.any(valid_base) else np.array([])
+
+    for d_level in unique_d:
+        mask = valid_base & (d_sq == d_level)
+        if not np.any(mask):
+            continue
+
+        X_cols = []
+        for ctrl in covariate_names:
+            diff_col = part.get(f"diff_{ctrl}_{abs_h}")
+            if diff_col is None:
+                X_cols.append(np.zeros(int(np.sum(mask))))
+            else:
+                X_cols.append(diff_col[mask])
+
+        X = np.column_stack(X_cols) if n_ctrl > 0 else np.zeros((int(np.sum(mask)), 0))
+        y = diff_y[mask]
+        w = weight_gt[mask]
+
+        nan_mask = ~np.isnan(y) & ~np.any(np.isnan(X), axis=1)
+        X_v = X[nan_mask]
+        y_v = y[nan_mask]
+        w_v = w[nan_mask]
+
+        if len(y_v) == 0:
+            continue
+
+        W_diag = w_v
+        XtWX = (X_v * W_diag[:, None]).T @ X_v
+        XtWy = (X_v * W_diag[:, None]).T @ y_v
+
+        groups_in_mask = set(gname[mask][nan_mask].tolist())
+
+        result[d_level] = {
+            "XtWX": XtWX,
+            "XtWy": XtWy,
+            "group_set": groups_in_mask,
+            "weight_sum": float(np.sum(w_v)),
+        }
+
+    return result
+
+
+def reduce_control_gram(a, b):
+    """Sum partial Gram matrices across partitions."""
+    merged = {}
+    all_keys = set(a.keys()) | set(b.keys())
+    for k in all_keys:
+        a_val = a.get(k)
+        b_val = b.get(k)
+        if a_val is not None and b_val is not None:
+            merged[k] = {
+                "XtWX": a_val["XtWX"] + b_val["XtWX"],
+                "XtWy": a_val["XtWy"] + b_val["XtWy"],
+                "group_set": a_val["group_set"] | b_val["group_set"],
+                "weight_sum": a_val["weight_sum"] + b_val["weight_sum"],
+            }
+        elif a_val is not None:
+            merged[k] = {
+                "XtWX": a_val["XtWX"].copy(),
+                "XtWy": a_val["XtWy"].copy(),
+                "group_set": set(a_val["group_set"]),
+                "weight_sum": a_val["weight_sum"],
+            }
+        else:
+            merged[k] = {
+                "XtWX": b_val["XtWX"].copy(),
+                "XtWy": b_val["XtWy"].copy(),
+                "group_set": set(b_val["group_set"]),
+                "weight_sum": b_val["weight_sum"],
+            }
+    return merged
+
+
+def solve_control_coefficients(global_gram, n_controls, n_groups):
+    """Solve for covariate adjustment coefficients from aggregated Gram matrices.
+
+    Parameters
+    ----------
+    global_gram : dict
+        ``{d_level: {"XtWX": array, "XtWy": array, "group_set": set, "weight_sum": float}}``.
+    n_controls : int
+        Number of covariates.
+    n_groups : int
+        Total number of groups.
+
+    Returns
+    -------
+    dict
+        ``{d_level: {"theta": array, "inv_denom": matrix or None, "useful": bool}}``.
+    """
+    results = {}
+    for d_level, gram in global_gram.items():
+        XtWX = gram["XtWX"]
+        XtWy = gram["XtWy"]
+        n_unique_groups = len(gram["group_set"])
+        rsum = gram["weight_sum"]
+
+        if n_unique_groups <= 1 or XtWX.shape[0] < n_controls:
+            results[d_level] = {
+                "theta": np.zeros(n_controls),
+                "inv_denom": None,
+                "useful": False,
+            }
+            continue
+
+        try:
+            if abs(np.linalg.det(XtWX)) <= 1e-16:
+                theta = np.linalg.pinv(XtWX) @ XtWy
+                results[d_level] = {
+                    "theta": theta,
+                    "inv_denom": None,
+                    "useful": False,
+                }
+            else:
+                theta = np.linalg.solve(XtWX, XtWy)
+                inv_denom = np.linalg.pinv(XtWX) * rsum * n_groups
+                results[d_level] = {
+                    "theta": theta,
+                    "inv_denom": inv_denom,
+                    "useful": True,
+                }
+        except np.linalg.LinAlgError:
+            results[d_level] = {
+                "theta": np.zeros(n_controls),
+                "inv_denom": None,
+                "useful": False,
+            }
+
+    return results
+
+
+def partition_apply_control_adjustment(part, abs_h, covariate_names, coefficients):
+    """Subtract covariate adjustment from diff_y for each d_sq level.
+
+    Parameters
+    ----------
+    part : dict
+        Partition dictionary with diff covariate columns.
+    abs_h : int
+        Absolute value of the horizon.
+    covariate_names : list of str
+        Covariate names.
+    coefficients : dict
+        ``{d_level: {"theta": array, ...}}`` from :func:`solve_control_coefficients`.
+
+    Returns
+    -------
+    dict
+        Partition dictionary with adjusted ``diff_y_{abs_h}``.
+    """
+    diff_y = part[f"diff_y_{abs_h}"]
+    d_sq = part["d_sq"]
+    n = part["n_rows"]
+
+    for d_level, coef_dict in coefficients.items():
+        theta = coef_dict["theta"]
+        level_mask = d_sq == d_level
+
+        if not np.any(level_mask):
+            continue
+
+        adjustment = np.zeros(n)
+        for ctrl_idx, ctrl in enumerate(covariate_names):
+            diff_col = part.get(f"diff_{ctrl}_{abs_h}")
+            if diff_col is not None:
+                adjustment += theta[ctrl_idx] * np.nan_to_num(diff_col, nan=0.0)
+
+        diff_y = np.where(level_mask, diff_y - adjustment, diff_y)
+
+    part[f"diff_y_{abs_h}"] = diff_y
+    part[f"weighted_diff_{abs_h}"] = np.nan_to_num(diff_y, nan=0.0) * part["weight_gt"]
+
+    return part
+
+
+def partition_control_influence_sums(
+    part, abs_h, covariate_names, coefficients, n_groups, n_sw_weighted, trend_vars=None
+):
+    """Compute partial m_sum and in_sum for covariate variance adjustment.
+
+    Parameters
+    ----------
+    part : dict
+        Partition dictionary.
+    abs_h : int
+        Horizon.
+    covariate_names : list of str
+        Covariate names.
+    coefficients : dict
+        Coefficient dict from :func:`solve_control_coefficients`.
+    n_groups : int
+        Total groups.
+    n_sw_weighted : float
+        Weighted switcher count.
+    trend_vars : list of str or None
+        Trend variable names for extended grouping.
+
+    Returns
+    -------
+    dict
+        ``{"m_sum": ..., "in_sum": ..., "M_total": ...}``.
+    """
+    gname = part["gname"]
+    tname = part["tname"]
+    d_sq = part["d_sq"]
+    F_g = part["F_g"]
+    T_g = part["T_g"]
+    weight_gt = part["weight_gt"]
+    first_obs = part["first_obs_by_gp"]
+    dist_col = part.get(f"dist_{abs_h}")
+    never_col = part.get(f"never_change_{abs_h}")
+    n_control = part.get(f"n_control_{abs_h}")
+    n_treated = part.get(f"n_treated_{abs_h}")
+    n = part["n_rows"]
+
+    safe_n_sw = max(n_sw_weighted, 1e-10)
+    safe_nc = np.where((n_control == 0) | np.isnan(n_control), 1.0, n_control) if n_control is not None else np.ones(n)
+
+    dist_safe = np.nan_to_num(dist_col, nan=0.0) if dist_col is not None else np.zeros(n)
+    never_safe = np.nan_to_num(never_col, nan=0.0) if never_col is not None else np.zeros(n)
+    n_treated_arr = n_treated if n_treated is not None else np.zeros(n)
+
+    baseline_levels = [d for d, c in coefficients.items() if c.get("useful", False)]
+
+    m_sum = {}
+    in_sum = {}
+    M_total = {}
+
+    time_cond = (tname >= abs_h + 1) & (tname <= T_g)
+
+    for ctrl_idx, ctrl in enumerate(covariate_names):
+        diff_ctrl_col = part.get(f"diff_{ctrl}_{abs_h}")
+        if diff_ctrl_col is None:
+            continue
+
+        weighted_diff_ctrl = np.nan_to_num(diff_ctrl_col, nan=0.0) * weight_gt
+
+        for d_level in baseline_levels:
+            is_level = d_sq == d_level
+
+            m_vals = (
+                is_level.astype(np.float64)
+                * (n_groups / safe_n_sw)
+                * (dist_safe - (n_treated_arr / safe_nc) * never_safe)
+                * time_cond.astype(np.float64)
+                * weighted_diff_ctrl
+            )
+
+            unique_gnames, inverse = np.unique(gname, return_inverse=True)
+            group_m_sums = np.bincount(inverse, weights=m_vals, minlength=len(unique_gnames))
+            m_by_unit = group_m_sums[inverse] * first_obs
+
+            for i in range(n):
+                if first_obs[i] == 1.0 and m_by_unit[i] != 0.0:
+                    gn = gname[i]
+                    key = (ctrl_idx, d_level)
+                    if key not in m_sum:
+                        m_sum[key] = {}
+                    m_sum[key][gn] = m_sum[key].get(gn, 0.0) + float(m_by_unit[i])
+
+            M_key = (ctrl_idx, d_level)
+            M_total[M_key] = M_total.get(M_key, 0.0) + float(np.sum(m_by_unit))
+
+            is_control = np.isinf(F_g) & (d_sq == d_level)
+            ctrl_time_cond = (tname >= 2) & (tname < F_g)
+
+            ctrl_mask = is_control & ctrl_time_cond
+            if not np.any(ctrl_mask):
+                continue
+
+            key_arrays = [tname, d_sq]
+            if trend_vars:
+                for tv in trend_vars:
+                    tv_arr = part.get(tv)
+                    if tv_arr is not None:
+                        key_arrays.append(tv_arr)
+
+            key_stack = np.column_stack(key_arrays) if len(key_arrays) > 1 else tname.reshape(-1, 1)
+            ctrl_key_stack = key_stack[ctrl_mask]
+            ctrl_wdc = weighted_diff_ctrl[ctrl_mask]
+
+            unique_cell_keys = np.unique(ctrl_key_stack, axis=0)
+            for ck_row in unique_cell_keys:
+                cell_mask_local = np.all(ctrl_key_stack == ck_row, axis=1)
+                cell_sum = float(np.sum(ctrl_wdc[cell_mask_local]))
+                if cell_sum != 0.0:
+                    cell_key = (ctrl_idx, d_level, *ck_row)
+                    in_sum[cell_key] = in_sum.get(cell_key, 0.0) + cell_sum
+
+    return {"m_sum": m_sum, "in_sum": in_sum, "M_total": M_total}
+
+
+def reduce_control_influence_sums(a, b):
+    """Merge two partial control influence sum dictionaries."""
+    m_sum = {}
+    for key, gn_map in a.get("m_sum", {}).items():
+        m_sum[key] = dict(gn_map)
+    for key, gn_map in b.get("m_sum", {}).items():
+        if key not in m_sum:
+            m_sum[key] = {}
+        for gn, val in gn_map.items():
+            m_sum[key][gn] = m_sum[key].get(gn, 0.0) + val
+
+    in_sum = dict(a.get("in_sum", {}))
+    for key, val in b.get("in_sum", {}).items():
+        in_sum[key] = in_sum.get(key, 0.0) + val
+
+    M_total = dict(a.get("M_total", {}))
+    for key, val in b.get("M_total", {}).items():
+        M_total[key] = M_total.get(key, 0.0) + val
+
+    return {"m_sum": m_sum, "in_sum": in_sum, "M_total": M_total}
+
+
+def partition_compute_variance_part2(
+    part, _abs_h, covariate_names, coefficients, global_M_total, global_in_sum, n_groups, trend_vars=None
+):
+    """Compute per-unit part2 variance adjustment for covariate-adjusted estimator.
+
+    Parameters
+    ----------
+    part : dict
+        Partition dictionary.
+    _abs_h : int
+        Horizon (unused, kept for positional API consistency).
+    covariate_names : list of str
+        Covariate names.
+    coefficients : dict
+        Coefficient dict.
+    global_M_total : dict
+        Global M_total from reduced influence sums.
+    global_in_sum : dict
+        Global in_sum from reduced influence sums.
+    n_groups : int
+        Total groups.
+    trend_vars : list of str or None
+        Trend variable names for cell key lookup.
+
+    Returns
+    -------
+    dict
+        ``{gname: part2_value}`` for first_obs rows.
+    """
+    gname = part["gname"]
+    tname = part["tname"]
+    d_sq = part["d_sq"]
+    F_g = part["F_g"]
+    first_obs = part["first_obs_by_gp"]
+    n = part["n_rows"]
+
+    baseline_levels = [d for d, c in coefficients.items() if c.get("useful", False)]
+
+    part2 = np.zeros(n)
+
+    for d_level in baseline_levels:
+        coef_dict = coefficients[d_level]
+        inv_denom = coef_dict.get("inv_denom")
+        theta = coef_dict["theta"]
+
+        if inv_denom is None:
+            continue
+
+        n_ctrl = len(covariate_names)
+        combined = np.zeros(n)
+
+        for j in range(n_ctrl):
+            in_brackets = np.zeros(n)
+
+            for k in range(n_ctrl):
+                coef_jk = float(inv_denom[j, k])
+                if coef_jk == 0.0:
+                    continue
+
+                is_level_not_never = (d_sq == d_level) & ~np.isinf(F_g)
+
+                key_arrays = [tname, d_sq]
+                if trend_vars:
+                    for tv in trend_vars:
+                        tv_arr = part.get(tv)
+                        if tv_arr is not None:
+                            key_arrays.append(tv_arr)
+
+                for i in range(n):
+                    if not is_level_not_never[i]:
+                        continue
+                    cell_key = (k, d_level, *(arr[i] for arr in key_arrays))
+                    in_s = global_in_sum.get(cell_key, 0.0)
+                    in_brackets[i] += coef_jk * in_s
+
+            theta_j = float(theta[j])
+            in_brackets = np.where((d_sq == d_level) & ~np.isinf(F_g), in_brackets - theta_j, in_brackets)
+
+            M_key = (j, d_level)
+            M_val = global_M_total.get(M_key, 0.0)
+            M_scaled = M_val / n_groups if n_groups > 0 else 0.0
+
+            combined += M_scaled * in_brackets
+
+        part2 += combined
+
+    unique_gnames, inverse = np.unique(gname, return_inverse=True)
+    group_sums = np.bincount(inverse, weights=part2, minlength=len(unique_gnames))
+    part2_by_unit = group_sums[inverse] * first_obs
+
+    gname_part2 = {}
+    for i in range(n):
+        if first_obs[i] == 1.0 and part2_by_unit[i] != 0.0:
+            gname_part2[gname[i]] = float(part2_by_unit[i])
+
+    return gname_part2
+
+
+def partition_extract_het_data(part, effects, het_covariates, trends_nonparam=None, trends_lin=False):
+    """Extract one summary row per switcher group for heterogeneity analysis.
+
+    Parameters
+    ----------
+    part : dict
+        Partition dictionary.
+    effects : int
+        Number of effect horizons.
+    het_covariates : list of str
+        Covariate names for heterogeneity prediction.
+    trends_nonparam : list of str or None
+        Non-parametric trend variable names.
+    trends_lin : bool
+        Whether trends_lin is active.
+
+    Returns
+    -------
+    list of dict
+        One dict per switcher group with keys for Y values, covariates,
+        and group identifiers.
+    """
+    gname = part["gname"]
+    tname = part["tname"]
+    y = part["y"]
+    F_g = part["F_g"]
+    S_g = part["S_g"]
+    d_sq = part["d_sq"]
+    weight_gt = part["weight_gt"]
+    t_max_by_group = part.get("t_max_by_group")
+
+    unique_units = np.unique(gname)
+    rows = []
+
+    for unit in unique_units:
+        mask = gname == unit
+        unit_F_g = F_g[mask][0]
+        unit_S_g = S_g[mask][0]
+
+        if unit_S_g == 0 or np.isinf(unit_F_g):
+            continue
+
+        unit_tname = tname[mask]
+        unit_y = y[mask]
+        unit_d_sq = d_sq[mask]
+        unit_weight = weight_gt[mask]
+        unit_t_max = t_max_by_group[mask][0] if t_max_by_group is not None else np.max(unit_tname)
+
+        baseline_idx = np.where(unit_tname == unit_F_g - 1)[0]
+        if len(baseline_idx) == 0:
+            continue
+        Y_baseline = unit_y[baseline_idx[0]]
+
+        row = {
+            "_gname": unit,
+            "_F_g": unit_F_g,
+            "_S_g": unit_S_g,
+            "_d_sq": unit_d_sq[0],
+            "_Y_baseline": Y_baseline,
+            "_weight_gt": unit_weight[0],
+            "_t_max_by_group": unit_t_max,
+        }
+
+        if trends_lin:
+            baseline_m2_idx = np.where(unit_tname == unit_F_g - 2)[0]
+            row["_Y_baseline_m2"] = unit_y[baseline_m2_idx[0]] if len(baseline_m2_idx) > 0 else np.nan
+
+        for h in range(1, effects + 1):
+            target_t = unit_F_g - 1 + h
+            target_idx = np.where(unit_tname == target_t)[0]
+            row[f"_Y_h{h}"] = unit_y[target_idx[0]] if len(target_idx) > 0 else np.nan
+
+        for cov in het_covariates:
+            cov_arr = part.get(cov)
+            if cov_arr is not None:
+                row[cov] = cov_arr[mask][0]
+            else:
+                row[cov] = np.nan
+
+        if trends_nonparam:
+            for tnp in trends_nonparam:
+                tnp_arr = part.get(tnp)
+                if tnp_arr is not None:
+                    row[tnp] = tnp_arr[mask][0]
+
+        rows.append(row)
+
+    return rows
+
+
+def prepare_het_sample(het_df, horizon, trends_lin):
+    """Prepare a heterogeneity sample for a single horizon.
+
+    Computes the ``_prod_het`` column expected by
+    :func:`~moderndid.didinter.compute_did_multiplegt._run_het_regression`
+    and renames collected partition columns to match the local-path
+    naming convention.
+
+    Parameters
+    ----------
+    het_df : polars.DataFrame
+        Collected group-level summary data from
+        :func:`partition_extract_het_data`.
+    horizon : int
+        Effect horizon to prepare.
+    trends_lin : bool
+        Whether to apply the linear-trend adjustment.
+
+    Returns
+    -------
+    polars.DataFrame or None
+        Sample ready for ``_run_het_regression``, or ``None`` if the
+        horizon column is missing or no valid rows remain.
+    """
+    y_col = f"_Y_h{horizon}"
+    if y_col not in het_df.columns:
+        return None
+
+    het_sample = het_df.filter(
+        pl.col(y_col).is_not_null()
+        & pl.col("_Y_baseline").is_not_null()
+        & (pl.col("_F_g") - 1 + horizon <= pl.col("_t_max_by_group"))
+    )
+
+    if len(het_sample) == 0:
+        return None
+
+    diff_expr = pl.col(y_col) - pl.col("_Y_baseline")
+    if trends_lin and "_Y_baseline_m2" in het_sample.columns:
+        diff_expr = diff_expr - horizon * (pl.col("_Y_baseline") - pl.col("_Y_baseline_m2"))
+
+    return het_sample.with_columns(
+        (pl.col("_S_g") * diff_expr).alias("_prod_het"),
+    ).rename(
+        {
+            "_F_g": "F_g",
+            "_S_g": "S_g",
+            "_d_sq": "d_sq",
+            "_weight_gt": "weight_gt",
+        }
+    )
+
+
+def apply_trends_lin_accumulation(estimates, std_errors, influence_funcs, n_groups, cluster_col=None, cluster_ids=None):
+    """Apply linear trend adjustment by accumulating effects across horizons.
+
+    Parameters
+    ----------
+    estimates : numpy.ndarray
+        Per-horizon point estimates.
+    std_errors : numpy.ndarray
+        Per-horizon standard errors.
+    influence_funcs : list of numpy.ndarray
+        Per-horizon influence function arrays.
+    n_groups : int
+        Total number of groups.
+    cluster_col : str or None
+        Cluster column name.
+    cluster_ids : numpy.ndarray or None
+        Cluster IDs aligned with influence functions.
+
+    Returns
+    -------
+    tuple
+        ``(estimates, std_errors, influence_funcs)`` with cumulative sums applied.
+    """
+    from moderndid.didinter.variance import compute_clustered_variance
+
+    n_horizons = len(influence_funcs)
+    if n_horizons == 0:
+        return estimates, std_errors, influence_funcs
+
+    valid_funcs = [f for f in influence_funcs if len(f) > 0 and not np.all(np.isnan(f))]
+    if len(valid_funcs) == 0:
+        return estimates, std_errors, influence_funcs
+
+    cumulative_estimates = np.cumsum(estimates)
+
+    for idx in range(1, n_horizons):
+        estimates[idx] = cumulative_estimates[idx]
+
+        cumulative_inf = np.zeros_like(valid_funcs[0])
+        for j in range(idx + 1):
+            if j < len(valid_funcs):
+                cumulative_inf = cumulative_inf + valid_funcs[j]
+        influence_funcs[idx] = cumulative_inf
+
+        if cluster_col and cluster_ids is not None:
+            std_errors[idx] = compute_clustered_variance(cumulative_inf, cluster_ids, n_groups)
+        else:
+            std_errors[idx] = np.sqrt(np.sum(cumulative_inf**2)) / n_groups
+
+    return estimates, std_errors, influence_funcs

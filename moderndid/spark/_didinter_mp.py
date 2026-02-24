@@ -1,19 +1,19 @@
+"""Spark-distributed intertemporal DID estimation."""
+
 from __future__ import annotations
 
 import functools
 
 import numpy as np
+import pandas as pd
 import polars as pl
 from scipy import stats
 
-from moderndid.core.preprocess import PreprocessDataBuilder
-from moderndid.core.preprocess.config import DIDInterConfig
 from moderndid.core.preprocess.utils import get_covariate_names_from_formula
 from moderndid.didinter.compute_did_multiplegt import (
     _compute_ate,
+    _run_het_regression,
     _test_effects_equality,
-    compute_did_multiplegt,
-    compute_same_switchers_mask,
 )
 from moderndid.didinter.results import (
     DIDInterResult,
@@ -22,19 +22,38 @@ from moderndid.didinter.results import (
 )
 from moderndid.didinter.variance import compute_clustered_variance, compute_joint_test
 from moderndid.distributed._didinter_partition import (
+    apply_trends_lin_accumulation,
     build_didinter_partition_arrays,
+    partition_apply_control_adjustment,
     partition_apply_globals,
     partition_compute_influence,
+    partition_compute_variance_part2,
+    partition_control_gram,
+    partition_control_influence_sums,
     partition_count_obs,
     partition_delta_d,
     partition_dof_stats,
+    partition_extract_het_data,
     partition_global_scalars,
     partition_group_sums,
+    partition_horizon_covariate_ops,
     partition_horizon_local_ops,
     partition_variance_influence,
+    prepare_het_sample,
+    reduce_control_gram,
+    reduce_control_influence_sums,
     reduce_dof_stats,
     reduce_global_scalars,
     reduce_group_sums,
+    solve_control_coefficients,
+)
+from moderndid.distributed._didinter_preprocess import (
+    cap_effects_placebo,
+    partition_extract_metadata,
+    partition_preprocess_global,
+    partition_preprocess_local,
+    reduce_metadata,
+    validate_distributed,
 )
 
 
@@ -70,11 +89,10 @@ def spark_did_multiplegt_mp(
 ):
     """Spark-distributed multiperiod DID estimation for interactive treatment effects.
 
-    Collects the Spark DataFrame to the driver, preprocesses and validates
-    the panel data, then distributes the horizon-level estimation across
-    Spark workers via RDD operations. Falls back to a local single-node
-    path when covariates, linear trends, nonparametric trends, or
-    heterogeneity prediction are requested.
+    Preprocesses the panel data on Spark workers (no driver collection),
+    then distributes the horizon-level estimation across workers via RDD
+    operations. Covariates, linear trends, nonparametric trends, and
+    heterogeneity prediction are all handled distributedly.
 
     Parameters
     ----------
@@ -149,103 +167,152 @@ def spark_did_multiplegt_mp(
         placebo estimates, average treatment effect, standard errors,
         confidence intervals, and diagnostic tests.
     """
-    pdf = data.toPandas()
-    local_data = pl.from_pandas(pdf)
-
-    config = DIDInterConfig(
-        yname=yname,
-        tname=tname,
-        gname=idname,
-        dname=dname,
-        cluster=cluster,
-        weightsname=weightsname,
-        xformla=xformla,
-        trends_nonparam=trends_nonparam,
-        effects=effects,
-        placebo=placebo,
-        normalized=normalized,
-        effects_equal=effects_equal,
-        predict_het=predict_het,
-        switchers=switchers,
-        only_never_switchers=only_never_switchers,
-        same_switchers=same_switchers,
-        same_switchers_pl=same_switchers_pl,
-        trends_lin=trends_lin,
-        continuous=continuous,
-        ci_level=ci_level,
-        less_conservative_se=less_conservative_se,
-        keep_bidirectional_switchers=keep_bidirectional_switchers,
-        drop_missing_preswitch=drop_missing_preswitch,
-        boot=boot,
-        biters=biters,
-        random_state=random_state,
-    )
-
-    builder = PreprocessDataBuilder()
-    preprocessed = builder.with_data(local_data).with_config(config).validate().transform().build()
-
-    df = preprocessed.data
-    n_groups = df[config.gname].n_unique()
-    t_max = int(df[config.tname].max())
-
-    covariate_names = get_covariate_names_from_formula(config.xformla)
-    needs_local = bool(covariate_names or config.trends_lin or config.trends_nonparam or config.predict_het)
-
-    if needs_local:
-        return _run_local_path(preprocessed)
-
-    if config.same_switchers:
-        df = compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
-    if config.same_switchers_pl and config.placebo > 0:
-        df = compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
-
-    df_sorted = df.sort([config.gname, config.tname])
+    _ = (boot, biters, random_state)
+    covariate_names = get_covariate_names_from_formula(xformla)
+    trend_vars = list(trends_nonparam) if trends_nonparam else None
 
     col_config = {
-        "gname": config.gname,
-        "tname": config.tname,
-        "yname": config.yname,
-        "dname": config.dname,
-        "cluster": config.cluster,
+        "gname": idname,
+        "tname": tname,
+        "yname": yname,
+        "dname": dname,
+        "cluster": cluster,
+        "covariate_names": covariate_names if covariate_names else None,
+        "trends_nonparam": trend_vars,
     }
 
-    config_dict = {
-        "switchers": config.switchers,
-        "only_never_switchers": config.only_never_switchers,
-        "same_switchers": config.same_switchers,
-        "normalized": config.normalized,
-        "less_conservative_se": config.less_conservative_se,
+    config_flags = {
+        "gname": idname,
+        "tname": tname,
+        "yname": yname,
+        "dname": dname,
+        "weightsname": weightsname,
+        "xformla": xformla,
+        "trends_nonparam": trends_nonparam,
+        "switchers": switchers,
+        "keep_bidirectional_switchers": keep_bidirectional_switchers,
+        "drop_missing_preswitch": drop_missing_preswitch,
+        "continuous": continuous,
+        "trends_lin": trends_lin,
+        "same_switchers": same_switchers,
+        "same_switchers_pl": same_switchers_pl,
+        "effects": effects,
+        "placebo": placebo,
+        "only_never_switchers": only_never_switchers,
+        "normalized": normalized,
+        "less_conservative_se": less_conservative_se,
     }
+
+    validate_distributed(data.columns, col_config, config_flags)
 
     sc = spark.sparkContext
     n_workers = max(2, sc.defaultParallelism)
-    part_dfs = _partition_by_unit(df_sorted, config.gname, n_workers)
 
-    initial_partitions = [build_didinter_partition_arrays(part_df.to_pandas(), col_config) for part_df in part_dfs]
+    from pyspark.sql import functions as F
+
+    needed_cols = [yname, tname, idname, dname]
+    if weightsname:
+        needed_cols.append(weightsname)
+    if cluster:
+        needed_cols.append(cluster)
+    if covariate_names:
+        needed_cols.extend(covariate_names)
+    if trends_nonparam:
+        needed_cols.extend(trends_nonparam)
+    needed_cols = list(dict.fromkeys(c for c in needed_cols if c in data.columns))
+    sdf = data.select(*needed_cols)
+    sdf = sdf.repartition(n_workers, F.col(idname))
+
+    col_names = sdf.columns
+    rdd_a = sdf.rdd.mapPartitions(lambda rows: _preprocess_partition(rows, col_names, col_config, config_flags)).cache()
+    rdd_a.count()
+
+    meta_rdd = rdd_a.map(lambda pdf: partition_extract_metadata(pdf, config_flags))
+    meta_list = meta_rdd.collect()
+    global_metadata = functools.reduce(reduce_metadata, meta_list)
+
+    effects, placebo = cap_effects_placebo(config_flags, global_metadata)
+
+    n_groups = len(global_metadata["all_gnames_first_obs"])
+    t_max = int(global_metadata["t_max"])
+    n_switchers_total = global_metadata["n_switchers"]
+    n_never_switchers_total = global_metadata["n_never_switchers"]
+
+    bc_meta = sc.broadcast(global_metadata)
+    bc_col_config = sc.broadcast(col_config)
+    bc_config_flags = sc.broadcast(config_flags)
+
+    parts_rdd = (
+        rdd_a.map(lambda pdf: _apply_global_preprocess(pdf, bc_meta.value, bc_col_config.value, bc_config_flags.value))
+        .filter(lambda d: d is not None and d.get("n_rows", 0) > 0)
+        .cache()
+    )
+    parts_rdd.count()
+    rdd_a.unpersist()
+
+    config_dict = {
+        "switchers": switchers,
+        "only_never_switchers": only_never_switchers,
+        "same_switchers": same_switchers,
+        "normalized": normalized,
+        "less_conservative_se": less_conservative_se,
+    }
+
+    sorted_gnames = np.array(sorted(global_metadata["all_gnames_first_obs"]))
+    gname_to_idx = {g: i for i, g in enumerate(sorted_gnames)}
 
     effects_results = _distributed_did_effects(
         sc,
-        initial_partitions,
-        config,
+        parts_rdd,
         config_dict,
-        n_horizons=config.effects,
+        sorted_gnames,
+        gname_to_idx,
+        n_horizons=effects,
         n_groups=n_groups,
         t_max=t_max,
         horizon_type="effect",
+        normalized=normalized,
+        cluster_col=cluster,
+        less_conservative_se=less_conservative_se,
+        covariate_names=covariate_names if covariate_names else None,
+        trend_vars=trend_vars,
+        trends_lin=trends_lin,
     )
 
     placebos_results = None
-    if config.placebo > 0:
+    if placebo > 0:
         placebos_results = _distributed_did_effects(
             sc,
-            initial_partitions,
-            config,
+            parts_rdd,
             config_dict,
-            n_horizons=config.placebo,
+            sorted_gnames,
+            gname_to_idx,
+            n_horizons=placebo,
             n_groups=n_groups,
             t_max=t_max,
             horizon_type="placebo",
+            normalized=normalized,
+            cluster_col=cluster,
+            less_conservative_se=less_conservative_se,
+            covariate_names=covariate_names if covariate_names else None,
+            trend_vars=trend_vars,
+            trends_lin=trends_lin,
         )
+
+    heterogeneity = None
+    if predict_het and not normalized and effects_results:
+        heterogeneity = _distributed_heterogeneity(
+            parts_rdd,
+            effects,
+            predict_het,
+            trends_nonparam,
+            trends_lin,
+        )
+
+    parts_rdd.unpersist()
+    bc_meta.destroy()
+    bc_col_config.destroy()
+    bc_config_flags.destroy()
 
     alpha = 1 - ci_level / 100
     z_crit = stats.norm.ppf(1 - alpha / 2)
@@ -253,11 +320,11 @@ def spark_did_multiplegt_mp(
     ate = _compute_ate(effects_results, z_crit, n_groups) if effects_results else None
 
     effects_equal_test = None
-    if config.effects_equal and config.effects > 1 and effects_results:
+    if effects_equal and effects > 1 and effects_results:
         effects_equal_test = _test_effects_equality(effects_results)
 
     placebo_joint_test = None
-    if config.placebo > 1 and placebos_results is not None:
+    if placebo > 1 and placebos_results is not None:
         placebo_joint_test = compute_joint_test(
             placebos_results["estimates"],
             placebos_results["vcov"],
@@ -289,42 +356,49 @@ def spark_did_multiplegt_mp(
         effects=effects_obj,
         placebos=placebos_obj,
         ate=ate,
-        n_units=preprocessed.n_switchers + preprocessed.n_never_switchers,
-        n_switchers=preprocessed.n_switchers,
-        n_never_switchers=preprocessed.n_never_switchers,
+        n_units=n_switchers_total + n_never_switchers_total,
+        n_switchers=n_switchers_total,
+        n_never_switchers=n_never_switchers_total,
         ci_level=ci_level,
         effects_equal_test=effects_equal_test,
         placebo_joint_test=placebo_joint_test,
         influence_effects=effects_results.get("influence_func"),
         influence_placebos=placebos_results.get("influence_func") if placebos_results else None,
-        heterogeneity=None,
+        heterogeneity=heterogeneity,
         estimation_params={
-            "effects": config.effects,
-            "placebo": config.placebo,
-            "normalized": config.normalized,
-            "switchers": config.switchers,
-            "xformla": config.xformla,
-            "cluster": config.cluster,
-            "trends_lin": config.trends_lin,
-            "trends_nonparam": config.trends_nonparam,
-            "only_never_switchers": config.only_never_switchers,
-            "same_switchers": config.same_switchers,
-            "same_switchers_pl": config.same_switchers_pl,
-            "continuous": config.continuous,
-            "weightsname": config.weightsname,
+            "effects": effects,
+            "placebo": placebo,
+            "normalized": normalized,
+            "switchers": switchers,
+            "xformla": xformla,
+            "cluster": cluster,
+            "trends_lin": trends_lin,
+            "trends_nonparam": trends_nonparam,
+            "only_never_switchers": only_never_switchers,
+            "same_switchers": same_switchers,
+            "same_switchers_pl": same_switchers_pl,
+            "continuous": continuous,
+            "weightsname": weightsname,
         },
     )
 
 
 def _distributed_did_effects(
     sc,
-    initial_partitions,
-    config,
+    parts_rdd,
     config_dict,
+    sorted_gnames,
+    gname_to_idx,
     n_horizons,
     n_groups,
     t_max,
     horizon_type,
+    normalized,
+    cluster_col,
+    less_conservative_se,
+    covariate_names=None,
+    trend_vars=None,
+    trends_lin=False,
 ):
     """Distribute horizon-level DID estimation across Spark workers.
 
@@ -338,17 +412,14 @@ def _distributed_did_effects(
     ----------
     sc : pyspark.SparkContext
         Active Spark context for creating RDDs and broadcasts.
-    initial_partitions : list of dict
-        Pre-built partition arrays, one dict per data partition. Each
-        dict contains NumPy arrays keyed by column role (e.g.,
-        ``"gname"``, ``"tname"``, ``"yname"``).
-    config : DIDInterConfig
-        Full preprocessing configuration object carrying all estimation
-        settings.
+    parts_rdd : pyspark.RDD
+        RDD of NumPy partition dicts from distributed preprocessing.
     config_dict : dict
-        Lightweight dictionary of key estimation flags (``switchers``,
-        ``only_never_switchers``, ``same_switchers``, ``normalized``,
-        ``less_conservative_se``).
+        Lightweight dictionary of key estimation flags.
+    sorted_gnames : numpy.ndarray
+        Sorted array of all unique unit identifiers.
+    gname_to_idx : dict
+        Mapping from unit identifier to index in ``sorted_gnames``.
     n_horizons : int
         Number of horizons (effects or placebos) to estimate.
     n_groups : int
@@ -358,6 +429,18 @@ def _distributed_did_effects(
     horizon_type : {"effect", "placebo"}
         Whether to compute post-treatment effects or pre-treatment
         placebos.
+    normalized : bool
+        Whether to normalize estimates.
+    cluster_col : str or None
+        Cluster column name.
+    less_conservative_se : bool
+        Whether to use less conservative SE.
+    covariate_names : list of str or None
+        Covariate names for control regression.
+    trend_vars : list of str or None
+        Non-parametric trend variable names for extended grouping.
+    trends_lin : bool
+        Whether to apply linear trend accumulation after all horizons.
 
     Returns
     -------
@@ -380,14 +463,7 @@ def _distributed_did_effects(
     influence_funcs = []
     influence_funcs_unnorm = []
 
-    all_gnames = set()
-    for part in initial_partitions:
-        all_gnames.update(part["gname"][part["first_obs_by_gp"] == 1.0].tolist())
-    sorted_gnames = np.array(sorted(all_gnames))
-    gname_to_idx = {g: i for i, g in enumerate(sorted_gnames)}
-
-    n_slices = min(len(initial_partitions), sc.defaultParallelism) if initial_partitions else 1
-    parts_rdd = sc.parallelize(initial_partitions, numSlices=n_slices).cache()
+    n_controls = len(covariate_names) if covariate_names else 0
 
     for idx, h in enumerate(horizons):
         abs_h = abs(h)
@@ -405,7 +481,45 @@ def _distributed_did_effects(
         parts_rdd.count()
         old_rdd.unpersist()
 
-        gs_list = parts_rdd.map(functools.partial(partition_group_sums, abs_h=abs_h)).collect()
+        if covariate_names:
+            old_rdd = parts_rdd
+            parts_rdd = parts_rdd.map(
+                functools.partial(
+                    partition_horizon_covariate_ops,
+                    abs_h=abs_h,
+                    covariate_names=covariate_names,
+                )
+            ).cache()
+            parts_rdd.count()
+            old_rdd.unpersist()
+
+            gram_list = parts_rdd.map(
+                functools.partial(partition_control_gram, abs_h=abs_h, covariate_names=covariate_names)
+            ).collect()
+            global_gram = functools.reduce(reduce_control_gram, gram_list) if gram_list else {}
+
+            coefficients = solve_control_coefficients(global_gram, n_controls, n_groups)
+
+            if coefficients:
+                bc_coefficients = sc.broadcast(coefficients)
+                old_rdd = parts_rdd
+                parts_rdd = parts_rdd.map(
+                    functools.partial(
+                        partition_apply_control_adjustment,
+                        abs_h=abs_h,
+                        covariate_names=covariate_names,
+                        coefficients=bc_coefficients.value,
+                    )
+                ).cache()
+                parts_rdd.count()
+                old_rdd.unpersist()
+                bc_coefficients.destroy()
+            else:
+                coefficients = {}
+        else:
+            coefficients = {}
+
+        gs_list = parts_rdd.map(functools.partial(partition_group_sums, abs_h=abs_h, trend_vars=trend_vars)).collect()
         global_group_sums = functools.reduce(reduce_group_sums, gs_list) if gs_list else {}
 
         sc_list = parts_rdd.map(functools.partial(partition_global_scalars, abs_h=abs_h)).collect()
@@ -427,7 +541,12 @@ def _distributed_did_effects(
 
         old_rdd = parts_rdd
         parts_rdd = parts_rdd.map(
-            functools.partial(partition_apply_globals, abs_h=abs_h, global_group_sums=global_group_sums)
+            functools.partial(
+                partition_apply_globals,
+                abs_h=abs_h,
+                global_group_sums=global_group_sums,
+                trend_vars=trend_vars,
+            )
         ).cache()
         parts_rdd.count()
         old_rdd.unpersist()
@@ -454,7 +573,7 @@ def _distributed_did_effects(
         influence_funcs_unnorm.append(inf_func_full.copy())
 
         delta_d = None
-        if config.normalized or horizon_type == "effect":
+        if normalized or horizon_type == "effect":
             sw_list = parts_rdd.map(functools.partial(_extract_switcher_weights, abs_h=abs_h)).collect()
             switcher_gnames_with_weight = {}
             for d in sw_list:
@@ -479,13 +598,13 @@ def _distributed_did_effects(
         if horizon_type == "effect":
             delta_d_arr[idx] = delta_d if delta_d is not None else 0.0
 
-        if config.normalized and delta_d is not None and delta_d != 0:
+        if normalized and delta_d is not None and delta_d != 0:
             did_estimate = did_estimate / delta_d
 
         estimates[idx] = did_estimate
 
         dof_list = parts_rdd.map(
-            functools.partial(partition_dof_stats, abs_h=abs_h, cluster_col=config.cluster)
+            functools.partial(partition_dof_stats, abs_h=abs_h, cluster_col=cluster_col, trend_vars=trend_vars)
         ).collect()
         global_dof = functools.reduce(reduce_dof_stats, dof_list) if dof_list else {}
 
@@ -496,8 +615,9 @@ def _distributed_did_effects(
                 n_groups=n_groups,
                 n_switchers_weighted=n_switchers_weighted,
                 global_dof=global_dof,
-                cluster_col=config.cluster,
-                less_conservative_se=config.less_conservative_se,
+                cluster_col=cluster_col,
+                less_conservative_se=less_conservative_se,
+                trend_vars=trend_vars,
             )
         ).collect()
 
@@ -507,7 +627,44 @@ def _distributed_did_effects(
                 if gn in gname_to_idx:
                     inf_var_full[gname_to_idx[gn]] = val
 
-        if config.cluster:
+        if covariate_names and coefficients:
+            useful_coefficients = {d: c for d, c in coefficients.items() if c.get("useful", False)}
+            if useful_coefficients:
+                cis_list = parts_rdd.map(
+                    functools.partial(
+                        partition_control_influence_sums,
+                        abs_h=abs_h,
+                        covariate_names=covariate_names,
+                        coefficients=coefficients,
+                        n_groups=n_groups,
+                        n_sw_weighted=n_switchers_weighted,
+                        trend_vars=trend_vars,
+                    )
+                ).collect()
+                global_cis = functools.reduce(reduce_control_influence_sums, cis_list) if cis_list else {}
+
+                global_M_total = global_cis.get("M_total", {})
+                global_in_sum = global_cis.get("in_sum", {})
+
+                part2_results = parts_rdd.map(
+                    functools.partial(
+                        partition_compute_variance_part2,
+                        abs_h=abs_h,
+                        covariate_names=covariate_names,
+                        coefficients=coefficients,
+                        global_M_total=global_M_total,
+                        global_in_sum=global_in_sum,
+                        n_groups=n_groups,
+                        trend_vars=trend_vars,
+                    )
+                ).collect()
+
+                for gname_part2 in part2_results:
+                    for gn, val in gname_part2.items():
+                        if gn in gname_to_idx:
+                            inf_var_full[gname_to_idx[gn]] -= val
+
+        if cluster_col:
             cluster_maps = parts_rdd.map(_extract_cluster_ids).collect()
             cluster_ids = np.zeros(len(sorted_gnames), dtype=object)
             for cm in cluster_maps:
@@ -520,7 +677,7 @@ def _distributed_did_effects(
 
         inf_func = inf_var_full.copy()
 
-        if config.normalized and delta_d is not None and delta_d != 0:
+        if normalized and delta_d is not None and delta_d != 0:
             std_error = std_error / delta_d
             inf_func = inf_func / delta_d
 
@@ -532,6 +689,25 @@ def _distributed_did_effects(
         n_obs_arr[idx] = sum(obs_counts)
 
     parts_rdd.unpersist()
+
+    if trends_lin and len(influence_funcs) == n_horizons and n_horizons > 0:
+        cluster_ids_for_trends = None
+        if cluster_col:
+            cluster_ids_for_trends = np.zeros(len(sorted_gnames), dtype=object)
+            cluster_maps = parts_rdd.map(_extract_cluster_ids).collect()
+            for cm in cluster_maps:
+                for gn, cid in cm.items():
+                    if gn in gname_to_idx:
+                        cluster_ids_for_trends[gname_to_idx[gn]] = cid
+
+        estimates, std_errors, influence_funcs = apply_trends_lin_accumulation(
+            estimates,
+            std_errors,
+            influence_funcs,
+            n_groups,
+            cluster_col=cluster_col,
+            cluster_ids=cluster_ids_for_trends,
+        )
 
     vcov = None
     if len(influence_funcs) == n_horizons and all(len(f) > 0 for f in influence_funcs):
@@ -553,25 +729,93 @@ def _distributed_did_effects(
     }
 
 
-def _partition_by_unit(df, gname, n_partitions):
-    """Split a Polars DataFrame into roughly equal partitions by unique unit."""
-    unique_units = df[gname].unique().sort().to_numpy()
-    n_units = len(unique_units)
-    chunk_size = max(1, n_units // n_partitions)
+def _distributed_heterogeneity(parts_rdd, effects, predict_het, trends_nonparam, trends_lin):
+    """Collect group-level summaries and run WLS heterogeneity regressions.
 
-    partitions = []
-    for i in range(0, n_units, chunk_size):
-        chunk_units = unique_units[i : i + chunk_size]
-        part = df.filter(pl.col(gname).is_in(chunk_units.tolist()))
-        if len(part) > 0:
-            partitions.append(part)
+    Extracts one row per switcher group from each partition, collects to
+    the driver, and runs the heterogeneity WLS regression locally on the
+    small summary dataset (1 row per group).
+    """
+    from types import SimpleNamespace
 
-    return partitions
+    covariates, het_effects = predict_het
+
+    if not isinstance(covariates, list) or not isinstance(het_effects, list) or len(covariates) == 0:
+        return None
+
+    het_rows_list = parts_rdd.map(
+        functools.partial(
+            partition_extract_het_data,
+            effects=effects,
+            het_covariates=covariates,
+            trends_nonparam=trends_nonparam,
+            trends_lin=trends_lin,
+        )
+    ).collect()
+
+    all_rows = []
+    for row_list in het_rows_list:
+        all_rows.extend(row_list)
+
+    if len(all_rows) == 0:
+        return None
+
+    het_df = pl.DataFrame(all_rows)
+
+    valid_covariates = []
+    for cov in covariates:
+        if cov not in het_df.columns:
+            continue
+        n_unique = het_df.group_by("_gname").agg(pl.col(cov).n_unique().alias("n_uniq"))
+        if (n_unique["n_uniq"] > 1).any():
+            continue
+        valid_covariates.append(cov)
+
+    if len(valid_covariates) == 0:
+        return None
+
+    all_horizons = (
+        list(range(1, effects + 1)) if -1 in het_effects else [h_ for h_ in het_effects if 1 <= h_ <= effects]
+    )
+
+    if len(all_horizons) == 0:
+        return None
+
+    config = SimpleNamespace(trends_nonparam=trends_nonparam)
+
+    results = []
+    for horizon in all_horizons:
+        het_sample = prepare_het_sample(het_df, horizon, trends_lin)
+        if het_sample is None or len(het_sample) < len(valid_covariates) + 5:
+            continue
+
+        het_result = _run_het_regression(het_sample, valid_covariates, horizon, config)
+        if het_result is not None:
+            results.append(het_result)
+
+    return results if len(results) > 0 else None
 
 
-def _run_local_path(preprocessed):
-    """Fall back to single-node DID estimation on the driver."""
-    return compute_did_multiplegt(preprocessed)
+def _preprocess_partition(row_iterator, col_names, col_config, config_flags):
+    """Convert Spark Row iterator to pandas and run partition-local preprocessing."""
+    rows = list(row_iterator)
+    if not rows:
+        return iter([])
+    pdf = pd.DataFrame([r.asDict() for r in rows], columns=col_names)
+    result = partition_preprocess_local(pdf, col_config, config_flags)
+    if len(result) == 0:
+        return iter([])
+    return iter([result])
+
+
+def _apply_global_preprocess(pdf, metadata, col_config, config_flags):
+    """Apply global preprocessing with broadcast metadata and convert to NumPy partition dict."""
+    if not isinstance(pdf, pd.DataFrame) or len(pdf) == 0:
+        return None
+    preprocessed = partition_preprocess_global(pdf, metadata, col_config, config_flags)
+    if len(preprocessed) == 0:
+        return None
+    return build_didinter_partition_arrays(preprocessed, col_config)
 
 
 def _extract_switcher_weights(part, abs_h):
