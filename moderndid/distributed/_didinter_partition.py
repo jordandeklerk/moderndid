@@ -1,4 +1,4 @@
-"""Distributed Polars preprocessing for DIDInter partitions."""
+"""Partition-level array building and estimation operations for DIDInter."""
 
 from __future__ import annotations
 

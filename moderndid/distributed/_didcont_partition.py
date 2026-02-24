@@ -1,4 +1,4 @@
-"""Distributed Polars preprocessing for DIDCont partitions."""
+"""Partition-level cell subsetting and estimation operations for DIDCont."""
 
 from __future__ import annotations
 

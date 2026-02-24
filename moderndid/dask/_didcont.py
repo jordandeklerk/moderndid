@@ -49,10 +49,6 @@ def dask_cont_did(
     Each group-time cell's ATT and ACRT estimation is independent and can
     be parallelized across Dask workers.
 
-    Users do not need to call this function directly. Passing a Dask
-    DataFrame to :func:`~moderndid.cont_did` will automatically dispatch
-    here.
-
     Parameters
     ----------
     data : dask.dataframe.DataFrame
@@ -116,6 +112,8 @@ def dask_cont_did(
 
     .. [1] Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. (2024).
            "Difference-in-differences with a continuous treatment."
+           Journal of Econometrics, forthcoming.
+           https://arxiv.org/abs/2107.02637
     """
     client = get_or_create_client(client)
     logging.getLogger("distributed.shuffle").setLevel(logging.ERROR)

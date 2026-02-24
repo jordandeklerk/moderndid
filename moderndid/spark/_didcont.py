@@ -51,10 +51,6 @@ def spark_cont_did(
     Each group-time cell's ATT and ACRT estimation is independent and can
     be parallelized.
 
-    Users do not need to call this function directly. Passing a Spark
-    DataFrame to :func:`~moderndid.cont_did` will automatically dispatch
-    here.
-
     Parameters
     ----------
     data : pyspark.sql.DataFrame
@@ -118,6 +114,8 @@ def spark_cont_did(
 
     .. [1] Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. (2024).
            "Difference-in-differences with a continuous treatment."
+           Journal of Econometrics, forthcoming.
+           https://arxiv.org/abs/2107.02637
     """
     spark = get_or_create_spark(spark)
     logging.getLogger("py4j").setLevel(logging.ERROR)

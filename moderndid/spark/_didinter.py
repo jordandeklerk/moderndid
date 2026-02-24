@@ -47,13 +47,6 @@ def spark_did_multiplegt(
     Spark DataFrame, collects it to the driver, and runs the full estimation
     pipeline.
 
-    The underlying methodology is identical to
-    :func:`~moderndid.did_multiplegt`.
-
-    Users do not need to call this function directly. Passing a Spark
-    DataFrame to :func:`~moderndid.did_multiplegt` will automatically
-    dispatch here.
-
     Parameters
     ----------
     data : pyspark.sql.DataFrame
@@ -97,9 +90,10 @@ def spark_did_multiplegt(
     References
     ----------
 
-    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024).
-           "Difference-in-Differences Estimators of Intertemporal Treatment
-           Effects." *Review of Economics and Statistics*, 106(6), 1723-1736.
+    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
+           Differences Estimators of Intertemporal Treatment Effects.
+           *Review of Economics and Statistics*, 106(6), 1723-1736.
+           https://doi.org/10.1162/rest_a_01414
     """
     spark = get_or_create_spark(spark)
     logging.getLogger("py4j").setLevel(logging.ERROR)

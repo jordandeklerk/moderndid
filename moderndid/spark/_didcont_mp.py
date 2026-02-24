@@ -1,3 +1,5 @@
+"""Multi-period continuous treatment DiD estimation via Spark."""
+
 from __future__ import annotations
 
 import warnings

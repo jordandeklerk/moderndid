@@ -45,14 +45,6 @@ def dask_did_multiplegt(
     Dask DataFrame, collects it to the driver, and runs the full estimation
     pipeline.
 
-    The underlying methodology is identical to :func:`~moderndid.did_multiplegt`.
-    The didinter estimator computes horizon-level effects by comparing
-    switchers to non-switchers with matching baseline treatment.
-
-    Users do not need to call this function directly. Passing a Dask
-    DataFrame to :func:`~moderndid.did_multiplegt` will automatically
-    dispatch here.
-
     Parameters
     ----------
     data : dask.dataframe.DataFrame
@@ -96,9 +88,10 @@ def dask_did_multiplegt(
     References
     ----------
 
-    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024).
-           "Difference-in-Differences Estimators of Intertemporal Treatment
-           Effects." *Review of Economics and Statistics*, 106(6), 1723-1736.
+    .. [1] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
+           Differences Estimators of Intertemporal Treatment Effects.
+           *Review of Economics and Statistics*, 106(6), 1723-1736.
+           https://doi.org/10.1162/rest_a_01414
     """
     client = get_or_create_client(client)
     logging.getLogger("distributed.shuffle").setLevel(logging.ERROR)
