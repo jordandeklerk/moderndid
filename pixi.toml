@@ -25,8 +25,6 @@ pytest = ">=7.0.0"
 pytest-benchmark = ">=4.0.0"
 pytest-cov = ">=4.0.0"
 pytest-timeout = ">=2.0.0"
-pre-commit = ">=3.0.0"
-ruff = ">=0.11.7"
 
 [feature.dev.pypi-dependencies]
 pyfixest = ">=0.30.2"
@@ -36,7 +34,6 @@ tests-core = "pytest -m 'not slow' --ignore=tests/dask --ignore=tests/spark -vv"
 tests-full = "pytest --ignore=tests/dask --ignore=tests/spark -vv"
 tests-dask = "pytest tests/dask -m 'not slow' --timeout=120 -vv"
 tests-spark = "pytest tests/spark --timeout=120 -vv"
-lint = "pre-commit run --all-files"
 
 [feature.docs]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
@@ -75,6 +72,19 @@ distributed = ">=2024.1.0"
 [feature.spark.pypi-dependencies]
 pyspark = ">=3.4.0"
 
+[feature.lint.dependencies]
+pre-commit = ">=3.0.0"
+
+[feature.lint.tasks]
+pre-commit = "pre-commit run --all-files"
+
+[feature.build.dependencies]
+pip = "*"
+flit = ">=3.4,<4"
+
+[feature.build.tasks]
+build = "flit build"
+
 [feature.validation]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
 
@@ -87,6 +97,8 @@ r-drdid = "*"
 tests-validation = "pytest tests/validation/ -vv"
 
 [environments]
-dev = ["dev", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
-docs = ["docs", "didcont", "didhonest", "plots"]
-validation = ["dev", "validation", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
+dev = ["dev", "build", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
+docs = ["docs", "build", "didcont", "didhonest", "plots"]
+lint = ["lint"]
+build = ["build"]
+validation = ["dev", "build", "validation", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
