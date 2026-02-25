@@ -236,8 +236,10 @@ device context:
             idname="id", gname="group", backend="cupy",
         )
 
-For multi-GPU parallelism, use Dask with ``dask-cuda`` to pin one
-worker per GPU. See :ref:`Combining GPU and Dask <gpu-dask-workers>`.
+For multi-GPU parallelism, use a distributed backend to pin one worker
+or executor per GPU. See :ref:`Combining GPU and Dask <gpu-dask-workers>`
+(using ``dask-cuda``) or :ref:`Combining GPU and Spark <gpu-spark-workers>`
+(using Spark GPU resource scheduling).
 
 
 Benchmarking correctly
