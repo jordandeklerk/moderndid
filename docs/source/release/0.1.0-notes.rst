@@ -1,0 +1,602 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.1.0 Release Notes
+=============================
+
+ModernDiD 0.1.0 is the first major release of the package, graduating from the
+0.0.x pre-release series with a stable, feature-complete API for modern
+difference-in-differences estimation in Python. This release brings major new
+capabilities including intertemporal DiD estimation, GPU acceleration via CuPy,
+distributed computing with Dask and Spark backends, and a DataFrame-agnostic
+interface powered by narwhals. The highlights for this release are:
+
+- Intertemporal DiD estimation for non-binary, non-absorbing treatments.
+- GPU acceleration via CuPy for NVIDIA GPUs.
+- Distributed computing backends for Dask and Apache Spark.
+- DataFrame-agnostic API via narwhals and the Arrow PyCapsule Interface.
+- Thread-based parallelism for group-time estimations.
+- Comprehensive R validation test suite.
+- Benchmarks demonstrating significant speed advantages over R counterparts.
+- Major documentation overhaul with plotting guides and background sections.
+
+Python versions 3.11-3.13 are supported in this release.
+
+
+New Features
+============
+
+Intertemporal DiD Estimation
+----------------------------
+
+A new ``didinter`` module implements the `de Chaisemartin and D'Haultfoeuille
+(2024) <https://doi.org/10.1162/rest_a_01414>`__ estimator for
+difference-in-differences with non-binary, non-absorbing treatments via the
+``did_multiplegt()`` function. This estimator handles settings where treatment
+can change over time (not just turn on), supporting both increases and decreases
+in treatment intensity. Bootstrap inference and dedicated plotting functions are
+included.
+
+.. code-block:: python
+
+    import moderndid as did
+
+    result = did.did_multiplegt(
+        data=df,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=5,
+        cluster="state_n",
+    )
+
+    did.plot_multiplegt(result)
+
+(`#146 <https://github.com/jordandeklerk/moderndid/pull/146>`__,
+`#147 <https://github.com/jordandeklerk/moderndid/pull/147>`__)
+
+GPU Acceleration via CuPy
+--------------------------
+
+Optional GPU acceleration is now available for NVIDIA GPUs via CuPy. When a
+CUDA-capable GPU is available, users can offload regression, propensity score
+estimation, and bootstrap inference to the GPU. A backend manager provides
+``get_backend()``, ``set_backend()``, and ``use_backend()`` for controlling
+GPU usage.
+
+.. code-block:: python
+
+    import moderndid as did
+    from moderndid import use_backend
+
+    # Pass backend directly to any estimator
+    result = did.att_gt(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        backend="cupy",
+    )
+
+    # Or use a context manager for multiple calls
+    with use_backend("cupy"):
+        result1 = did.att_gt(...)
+        result2 = did.ddd(...)
+
+    # Or set globally
+    did.set_backend("cupy")
+    result = did.att_gt(...)
+    did.set_backend("numpy")  # revert
+
+Install with::
+
+    uv pip install moderndid[gpu]
+
+(`#175 <https://github.com/jordandeklerk/moderndid/pull/175>`__)
+
+Distributed Computing with Dask
+--------------------------------
+
+A full Dask distributed backend enables scaling ``att_gt()``, ``ddd()``,
+``cont_did()``, and ``did_multiplegt()`` across multiple workers and machines.
+Multi-GPU parallelism is supported when combined with CuPy. Results are
+numerically identical to local estimators. Simply pass a Dask DataFrame to any
+estimator and the distributed backend is used automatically.
+
+.. code-block:: python
+
+    import dask.dataframe as dd
+    import moderndid as did
+
+    ddf = dd.read_parquet("panel_data.parquet")
+
+    result = did.att_gt(
+        data=ddf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~ x1 + x2",
+        est_method="dr",
+    )
+
+    event_study = did.aggte(result, type="dynamic")
+    did.plot_event_study(event_study)
+
+Install with::
+
+    uv pip install moderndid[dask]
+
+(`#185 <https://github.com/jordandeklerk/moderndid/pull/185>`__,
+`#195 <https://github.com/jordandeklerk/moderndid/pull/195>`__)
+
+Distributed Computing with Apache Spark
+-----------------------------------------
+
+A PySpark distributed backend provides the same scaling capabilities as Dask
+for ``att_gt()``, ``ddd()``, ``cont_did()``, and ``did_multiplegt()``. Shared
+distributed logic is consolidated in the ``moderndid.distributed`` module.
+
+.. code-block:: python
+
+    from pyspark.sql import SparkSession
+    import moderndid as did
+
+    spark = SparkSession.builder.master("local[*]").getOrCreate()
+    sdf = spark.read.parquet("panel_data.parquet")
+
+    result = did.att_gt(
+        data=sdf,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        xformla="~ x1 + x2",
+        est_method="dr",
+    )
+
+    event_study = did.aggte(result, type="dynamic")
+    did.plot_event_study(event_study)
+
+Install with::
+
+    uv pip install moderndid[spark]
+
+(`#191 <https://github.com/jordandeklerk/moderndid/pull/191>`__,
+`#195 <https://github.com/jordandeklerk/moderndid/pull/195>`__)
+
+DataFrame-Agnostic Interface via Narwhals
+------------------------------------------
+
+All estimators now accept any Arrow-compatible DataFrame through narwhals and
+the Arrow PyCapsule Interface. Users can pass polars, pandas, PyArrow, DuckDB,
+or any other Arrow-compatible DataFrame directly to all estimators without
+conversion.
+
+.. code-block:: python
+
+    import moderndid as did
+
+    # Works with pandas
+    import pandas as pd
+    df_pandas = pd.read_csv("data.csv")
+    result = did.att_gt(data=df_pandas, ...)
+
+    # Works with polars
+    import polars as pl
+    df_polars = pl.read_csv("data.csv")
+    result = did.att_gt(data=df_polars, ...)
+
+    # Works with pyarrow
+    import pyarrow.parquet as pq
+    table = pq.read_table("data.parquet")
+    result = did.att_gt(data=table, ...)
+
+    # Works with duckdb
+    import duckdb
+    df_duck = duckdb.query("SELECT * FROM 'data.parquet'").arrow()
+    result = did.att_gt(data=df_duck, ...)
+
+(`#144 <https://github.com/jordandeklerk/moderndid/pull/144>`__)
+
+Panel Data Utilities
+--------------------
+
+New user-facing functions for common panel data operations provide utilities
+for data validation, gap filling, and deduplication.
+
+(`#182 <https://github.com/jordandeklerk/moderndid/pull/182>`__)
+
+Optional Dependency Groups
+--------------------------
+
+The package now supports granular installation of optional features via
+extras::
+
+    uv pip install moderndid[plots]      # plotnine visualizations
+    uv pip install moderndid[gpu]        # CuPy GPU acceleration
+    uv pip install moderndid[dask]       # Dask distributed backend
+    uv pip install moderndid[spark]      # Spark distributed backend
+    uv pip install moderndid[didcont]    # continuous treatment DiD
+    uv pip install moderndid[didhonest]  # sensitivity analysis
+    uv pip install moderndid[numba]      # Numba JIT acceleration
+    uv pip install moderndid[all]        # everything
+
+(`#159 <https://github.com/jordandeklerk/moderndid/pull/159>`__)
+
+
+Improvements
+============
+
+Thread-Based Parallelism for Group-Time Estimations
+----------------------------------------------------
+
+Group-time estimation computations now use thread-based parallelism,
+providing significant speedups for estimators with many group-time cells.
+
+(`#172 <https://github.com/jordandeklerk/moderndid/pull/172>`__)
+
+Faster HonestDiD Computations
+------------------------------
+
+The ``didhonest`` sensitivity analysis module implementing `Rambachan and
+Roth (2023) <https://doi.org/10.1093/restud/rdad018>`__ received significant
+performance improvements. The ``_construct_gamma`` function was rewritten to use
+direct NumPy matrix construction instead of SymPy RREF, yielding approximately
+420x faster execution.
+
+(`#178 <https://github.com/jordandeklerk/moderndid/pull/178>`__)
+
+PrettyTable Output for All Estimators
+--------------------------------------
+
+All estimator result objects now display formatted output using PrettyTable,
+providing clean, readable summary tables in the console.
+
+.. code-block:: python
+
+    import moderndid as did
+
+    data = did.load_mpdta()
+    result = did.att_gt(
+        data=data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+    )
+
+    event_study = did.aggte(result, type="dynamic")
+    print(event_study)
+
+(`#170 <https://github.com/jordandeklerk/moderndid/pull/170>`__)
+
+DDD Preprocessing Pipeline
+----------------------------
+
+Triple difference-in-differences preprocessing following `Ortiz-Villavicencio
+and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`__ has been integrated
+into the core preprocessing logic, improving consistency and enabling shared
+validation across all estimators.
+
+(`#169 <https://github.com/jordandeklerk/moderndid/pull/169>`__)
+
+Minimal Plotting Theme
+-----------------------
+
+The plotting subsystem has been updated to use a minimal theme, producing
+cleaner publication-quality visualizations by default.
+
+.. code-block:: python
+
+    import moderndid as did
+
+    # Event study plot with reference period marker
+    event_study = did.aggte(result, type="dynamic")
+    did.plot_event_study(event_study, ref_period=-1)
+
+    # Group-time plot in a multi-panel layout
+    did.plot_gt(result, ncol=3)
+
+    # Aggregation plots
+    group_agg = did.aggte(result, type="group")
+    did.plot_agg(group_agg)
+
+    # Dose-response plot (continuous treatment)
+    did.plot_dose_response(dose_result, effect_type="att")
+
+(`#161 <https://github.com/jordandeklerk/moderndid/pull/161>`__)
+
+Standardized Bootstrap Arguments
+----------------------------------
+
+Bootstrap-related arguments have been standardized across all estimators for
+a more consistent API. Linting has been consolidated on ruff with improved
+pre-commit hook coverage.
+
+(`#150 <https://github.com/jordandeklerk/moderndid/pull/150>`__)
+
+Refactored Numba Integration
+------------------------------
+
+The Numba JIT integration has been refactored along with improvements to how
+influence function aggregation is performed.
+
+(`#158 <https://github.com/jordandeklerk/moderndid/pull/158>`__)
+
+Comprehensive Parameter Validation
+------------------------------------
+
+Validation checks have been added across all estimators for parameters
+including data types, column existence, treatment timing, and group
+definitions, with informative error messages.
+
+(`#173 <https://github.com/jordandeklerk/moderndid/pull/173>`__,
+`#177 <https://github.com/jordandeklerk/moderndid/pull/177>`__)
+
+Propensity Score Trimming and Collinearity Checks for DDD
+-----------------------------------------------------------
+
+The DDD estimators now include propensity score trimming functionality and
+collinearity checks for covariates with informative diagnostics.
+
+(`#125 <https://github.com/jordandeklerk/moderndid/pull/125>`__)
+
+Random State for Reproducibility
+---------------------------------
+
+A ``random_state`` parameter has been added to ``cont_did()`` implementing
+`Callaway, Goodman-Bacon, and Sant'Anna (2024)
+<https://arxiv.org/abs/2107.02637>`__ for reproducible bootstrap inference.
+
+(`#126 <https://github.com/jordandeklerk/moderndid/pull/126>`__)
+
+
+Bug Fixes
+=========
+
+* Fix group aggregation bug in ``aggte()`` from the `Callaway and Sant'Anna
+  (2021) <https://doi.org/10.1016/j.jeconom.2020.12.001>`__ estimator.
+
+  (`#134 <https://github.com/jordandeklerk/moderndid/pull/134>`__)
+
+* Fix bugs in ``cont_did()`` continuous treatment estimator implementing
+  `Callaway, Goodman-Bacon, and Sant'Anna (2024)
+  <https://arxiv.org/abs/2107.02637>`__.
+
+  (`#132 <https://github.com/jordandeklerk/moderndid/pull/132>`__)
+
+* Fix computations in ``didhonest`` sensitivity analysis module implementing
+  `Rambachan and Roth (2023) <https://doi.org/10.1093/restud/rdad018>`__.
+
+  (`#135 <https://github.com/jordandeklerk/moderndid/pull/135>`__)
+
+* Fix bug in ``compute_conditional_cs_rmb()`` for HonestDiD sensitivity
+  analysis.
+
+  (`#194 <https://github.com/jordandeklerk/moderndid/pull/194>`__)
+
+* Fix base period parameter handling.
+
+  (`#130 <https://github.com/jordandeklerk/moderndid/pull/130>`__)
+
+* Fix Dask test suite for Python 3.11 asyncio event loop differences.
+
+  (`#187 <https://github.com/jordandeklerk/moderndid/pull/187>`__)
+
+
+Benchmarks
+==========
+
+Speed benchmarks have been added comparing ModernDiD estimators against their
+R counterparts. Results demonstrate significant speed advantages for the Python
+implementations, with the R ``DIDmultiplegtDYN`` package unable to handle
+observation sizes above 300k. Benchmarks were refreshed after the R package
+adopted Polars internally, providing a fairer comparison.
+
+(`#160 <https://github.com/jordandeklerk/moderndid/pull/160>`__,
+`#188 <https://github.com/jordandeklerk/moderndid/pull/188>`__)
+
+
+Testing
+=======
+
+R Validation Suite
+------------------
+
+The existing R validation tests have been significantly enhanced and
+consolidated into a dedicated ``tests/validation/`` directory. These tests
+verify numerical accuracy against the canonical R implementations to ensure
+that ModernDiD produces equivalent results.
+
+* Enhance R validation tests for ``att_gt()`` and ``aggte()`` against the R
+  ``did`` package.
+
+  (`#134 <https://github.com/jordandeklerk/moderndid/pull/134>`__)
+
+* Enhance R validation tests for DR-DiD estimators from `Sant'Anna and Zhao
+  (2020) <https://doi.org/10.1016/j.jeconom.2020.09.006>`__ against the R
+  ``DRDID`` package.
+
+  (`#133 <https://github.com/jordandeklerk/moderndid/pull/133>`__)
+
+* Enhance R validation tests for HonestDiD sensitivity analysis against the R
+  ``HonestDiD`` package.
+
+  (`#135 <https://github.com/jordandeklerk/moderndid/pull/135>`__)
+
+* Enhance R validation tests for ``cont_did()`` estimator.
+
+  (`#132 <https://github.com/jordandeklerk/moderndid/pull/132>`__)
+
+* Consolidate all R validation tests into ``tests/validation/`` and harden
+  tolerances.
+
+  (`#194 <https://github.com/jordandeklerk/moderndid/pull/194>`__)
+
+* Add DDD-specific tests for improved coverage.
+
+  (`#122 <https://github.com/jordandeklerk/moderndid/pull/122>`__)
+
+* Improve overall test coverage across the codebase.
+
+  (`#128 <https://github.com/jordandeklerk/moderndid/pull/128>`__,
+  `#197 <https://github.com/jordandeklerk/moderndid/pull/197>`__,
+  `#199 <https://github.com/jordandeklerk/moderndid/pull/199>`__)
+
+* Stop ignoring distributed tests in CI for accurate coverage reporting.
+
+  (`#200 <https://github.com/jordandeklerk/moderndid/pull/200>`__)
+
+* Add validation-specific tox testing environment.
+
+  (`#180 <https://github.com/jordandeklerk/moderndid/pull/180>`__)
+
+
+Documentation
+=============
+
+This release includes a major documentation overhaul following NumPy-style
+conventions, with new guides, background sections, and improved API reference.
+
+* Comprehensive documentation overhaul with NumPy-style release notes.
+
+  (`#140 <https://github.com/jordandeklerk/moderndid/pull/140>`__)
+
+* Add continuous DiD background section covering the `Callaway, Goodman-Bacon,
+  and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`__ methodology.
+
+  (`#162 <https://github.com/jordandeklerk/moderndid/pull/162>`__)
+
+* Add user guide examples and background sections for all estimators.
+
+  (`#167 <https://github.com/jordandeklerk/moderndid/pull/167>`__)
+
+* Add plotting guide documentation.
+
+  (`#196 <https://github.com/jordandeklerk/moderndid/pull/196>`__)
+
+* Add GPU usage instructions and hardware specifications.
+
+  (`#176 <https://github.com/jordandeklerk/moderndid/pull/176>`__,
+  `#181 <https://github.com/jordandeklerk/moderndid/pull/181>`__)
+
+* Refine NPIV documentation.
+
+  (`#179 <https://github.com/jordandeklerk/moderndid/pull/179>`__)
+
+* Update architecture docs with estimator development workflow.
+
+  (`#171 <https://github.com/jordandeklerk/moderndid/pull/171>`__)
+
+* Add implementation standards and introduction to DiD section.
+
+  (`#138 <https://github.com/jordandeklerk/moderndid/pull/138>`__)
+
+* Reorganize and extend development documentation.
+
+  (`#136 <https://github.com/jordandeklerk/moderndid/pull/136>`__,
+  `#137 <https://github.com/jordandeklerk/moderndid/pull/137>`__)
+
+* Rework main function docstrings and result output formatting.
+
+  (`#121 <https://github.com/jordandeklerk/moderndid/pull/121>`__)
+
+* Add repeated cross-section examples for ``ddd()``.
+
+  (`#129 <https://github.com/jordandeklerk/moderndid/pull/129>`__)
+
+* Clean up HonestDiD documentation.
+
+  (`#124 <https://github.com/jordandeklerk/moderndid/pull/124>`__)
+
+* Update ``agg_ddd()`` function documentation.
+
+  (`#120 <https://github.com/jordandeklerk/moderndid/pull/120>`__)
+
+* Fix math formatting in ``didhonest`` background docs and refactor READMEs.
+
+  (`#201 <https://github.com/jordandeklerk/moderndid/pull/201>`__)
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk
+
+
+Pull Requests Merged
+====================
+
+A total of 82 pull requests were merged for this release, of which 65 are
+feature or fix PRs (excluding automated dependency updates).
+
+* `#201 <https://github.com/jordandeklerk/moderndid/pull/201>`__: Refactor READMEs and fix math rendering
+* `#200 <https://github.com/jordandeklerk/moderndid/pull/200>`__: Stop ignoring distributed tests in CI
+* `#199 <https://github.com/jordandeklerk/moderndid/pull/199>`__: Add more tests for coverage
+* `#197 <https://github.com/jordandeklerk/moderndid/pull/197>`__: Improve test coverage
+* `#196 <https://github.com/jordandeklerk/moderndid/pull/196>`__: Add plotting guide
+* `#195 <https://github.com/jordandeklerk/moderndid/pull/195>`__: Add distributed ``did_multiplegt()`` and ``cont_did()``
+* `#194 <https://github.com/jordandeklerk/moderndid/pull/194>`__: Enhance R validation tests and fix bug in ``compute_conditional_cs_rmb()``
+* `#193 <https://github.com/jordandeklerk/moderndid/pull/193>`__: Update documentation images
+* `#191 <https://github.com/jordandeklerk/moderndid/pull/191>`__: Add Spark distributed backend
+* `#188 <https://github.com/jordandeklerk/moderndid/pull/188>`__: Refresh benchmarks against R packages
+* `#187 <https://github.com/jordandeklerk/moderndid/pull/187>`__: Fix Dask test suite and update CI
+* `#186 <https://github.com/jordandeklerk/moderndid/pull/186>`__: Fix README
+* `#185 <https://github.com/jordandeklerk/moderndid/pull/185>`__: Add distributed computing via Dask and multi-GPU support
+* `#182 <https://github.com/jordandeklerk/moderndid/pull/182>`__: Add panel data utilities
+* `#181 <https://github.com/jordandeklerk/moderndid/pull/181>`__: Update README with hardware specifications
+* `#180 <https://github.com/jordandeklerk/moderndid/pull/180>`__: Add validation tox testing environment
+* `#179 <https://github.com/jordandeklerk/moderndid/pull/179>`__: Refine NPIV documentation
+* `#178 <https://github.com/jordandeklerk/moderndid/pull/178>`__: Improve computations in ``didhonest`` module
+* `#177 <https://github.com/jordandeklerk/moderndid/pull/177>`__: Update validation logic and error handling
+* `#176 <https://github.com/jordandeklerk/moderndid/pull/176>`__: Update README for GPU instructions
+* `#175 <https://github.com/jordandeklerk/moderndid/pull/175>`__: Add CuPy GPU acceleration
+* `#173 <https://github.com/jordandeklerk/moderndid/pull/173>`__: Add validation checks for parameters
+* `#172 <https://github.com/jordandeklerk/moderndid/pull/172>`__: Add thread-based parallelism for group-time estimations
+* `#171 <https://github.com/jordandeklerk/moderndid/pull/171>`__: Update architecture documentation
+* `#170 <https://github.com/jordandeklerk/moderndid/pull/170>`__: Add PrettyTable output for all estimators
+* `#169 <https://github.com/jordandeklerk/moderndid/pull/169>`__: Implement DDD preprocessing pipeline
+* `#168 <https://github.com/jordandeklerk/moderndid/pull/168>`__: Refactor documentation
+* `#167 <https://github.com/jordandeklerk/moderndid/pull/167>`__: Add user guide examples and background sections
+* `#166 <https://github.com/jordandeklerk/moderndid/pull/166>`__: Disable dependency dashboard
+* `#165 <https://github.com/jordandeklerk/moderndid/pull/165>`__: Add benchmark commands
+* `#162 <https://github.com/jordandeklerk/moderndid/pull/162>`__: Add continuous DiD background section
+* `#161 <https://github.com/jordandeklerk/moderndid/pull/161>`__: Use minimal theme for plotting
+* `#160 <https://github.com/jordandeklerk/moderndid/pull/160>`__: Add benchmarks against R packages
+* `#159 <https://github.com/jordandeklerk/moderndid/pull/159>`__: Allow optional dependencies for installation
+* `#158 <https://github.com/jordandeklerk/moderndid/pull/158>`__: Refactor Numba integration and update influence function aggregation
+* `#150 <https://github.com/jordandeklerk/moderndid/pull/150>`__: Standardize bootstrap arguments and consolidate linting on ruff
+* `#148 <https://github.com/jordandeklerk/moderndid/pull/148>`__: Update main README
+* `#147 <https://github.com/jordandeklerk/moderndid/pull/147>`__: Add plotting and bootstrapping for intertemporal DiD
+* `#146 <https://github.com/jordandeklerk/moderndid/pull/146>`__: Add ``didinter`` module for intertemporal DiD estimation
+* `#145 <https://github.com/jordandeklerk/moderndid/pull/145>`__: Remove trailing commas from output
+* `#144 <https://github.com/jordandeklerk/moderndid/pull/144>`__: Add DataFrame-agnostic functionality via narwhals
+* `#143 <https://github.com/jordandeklerk/moderndid/pull/143>`__: Add version import to init
+* `#142 <https://github.com/jordandeklerk/moderndid/pull/142>`__: Remove redundant section in getting started
+* `#141 <https://github.com/jordandeklerk/moderndid/pull/141>`__: Fix linting imports
+* `#140 <https://github.com/jordandeklerk/moderndid/pull/140>`__: Overhaul documentation style and add release notes
+* `#139 <https://github.com/jordandeklerk/moderndid/pull/139>`__: Overhaul documentation styling and add release notes
+* `#138 <https://github.com/jordandeklerk/moderndid/pull/138>`__: Add implementation standards and intro to DiD section
+* `#137 <https://github.com/jordandeklerk/moderndid/pull/137>`__: Reorganize development documentation
+* `#136 <https://github.com/jordandeklerk/moderndid/pull/136>`__: Add more detail to development documentation
+* `#135 <https://github.com/jordandeklerk/moderndid/pull/135>`__: Fix computations in ``didhonest`` and add R validation
+* `#134 <https://github.com/jordandeklerk/moderndid/pull/134>`__: Fix group aggregation in ``aggte()`` and add R validation
+* `#133 <https://github.com/jordandeklerk/moderndid/pull/133>`__: Add R validation for ``drdid`` module
+* `#132 <https://github.com/jordandeklerk/moderndid/pull/132>`__: Fix bugs in ``cont_did()`` and add R validation
+* `#130 <https://github.com/jordandeklerk/moderndid/pull/130>`__: Update getting started docs and test suite
+* `#129 <https://github.com/jordandeklerk/moderndid/pull/129>`__: Add repeated cross-section examples for ``ddd()``
+* `#128 <https://github.com/jordandeklerk/moderndid/pull/128>`__: Improve test coverage
+* `#127 <https://github.com/jordandeklerk/moderndid/pull/127>`__: Update parameter names for ``drdid()``
+* `#126 <https://github.com/jordandeklerk/moderndid/pull/126>`__: Add random state for ``cont_did()``
+* `#125 <https://github.com/jordandeklerk/moderndid/pull/125>`__: Add propensity trimming and collinearity checks for DDD
+* `#124 <https://github.com/jordandeklerk/moderndid/pull/124>`__: Clean up HonestDiD documentation
+* `#123 <https://github.com/jordandeklerk/moderndid/pull/123>`__: Add DDD plotting functions
+* `#122 <https://github.com/jordandeklerk/moderndid/pull/122>`__: Add DDD tests for coverage
+* `#121 <https://github.com/jordandeklerk/moderndid/pull/121>`__: Rework main function docstrings
+* `#120 <https://github.com/jordandeklerk/moderndid/pull/120>`__: Update ``agg_ddd()`` documentation
+* `#119 <https://github.com/jordandeklerk/moderndid/pull/119>`__: Update changelog for v0.0.3
