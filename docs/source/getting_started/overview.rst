@@ -43,30 +43,33 @@ Install with:
 Key features
 ------------
 
-- **Consistent API across all estimators.** The same parameter names
-  (``yname``, ``tname``, ``idname``, ``gname``) work across all estimators.
-  Result objects share common structures and plotting functions accept
-  results from any module.
-- **Correctness first.** Every estimator is validated against reference R
-  packages. Test suites include numerical checks for point estimates, standard
-  errors, and confidence intervals.
-- **DataFrame agnostic.** ModernDiD accepts any
+- **DataFrame agnostic.** Pass any
   `Arrow-compatible <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_
-  DataFrame, including polars, pandas, pyarrow, duckdb, and more, with no manual
-  conversion.
-- **Scales to clusters.** For data that exceed single-machine memory, passing a
-  `Dask <https://www.dask.org/>`_ or `Spark <https://spark.apache.org/>`_ DataFrame to ``att_gt`` or ``ddd`` activates
-  the :doc:`distributed backend </user_guide/distributed>`. Computation runs
-  on workers using partition-level sufficient statistics, and supports
-  multi-node clusters (Databricks, YARN, Kubernetes).
-- **Fast.** Internally it uses Polars for grouping and reshaping,
-  `Numba <https://numba.pydata.org/>`_ JIT compilation for bootstrap paths,
-  and thread-based parallelism via ``n_jobs``. On NVIDIA hardware, the
-  :doc:`GPU backend </user_guide/gpu>` accelerates regression and propensity
-  score estimation via `CuPy <https://cupy.dev/>`_.
-- **Consistent visualization.** All modules provide plotting functions built on
-  `plotnine <https://plotnine.org/>`_ for event studies, dose-response curves,
-  and sensitivity plots, with full grammar-of-graphics customization.
+  DataFrame such as `polars <https://pola.rs/>`_,
+  `pandas <https://pandas.pydata.org/>`_,
+  `pyarrow <https://arrow.apache.org/docs/python/>`_,
+  `duckdb <https://duckdb.org/>`_, and more powered by
+  `narwhals <https://narwhals-dev.github.io/narwhals/>`_.
+- **Distributed computing.** Scale DiD estimators to billions of observations
+  across multi-node `Dask <https://www.dask.org/>`_ and
+  `Spark <https://spark.apache.org/>`_ clusters with automatic dispatch.
+  Simply pass a Dask or Spark DataFrame to supported estimators and the
+  :doc:`distributed backend </user_guide/distributed>` activates transparently.
+- **Fast computation.**
+  `Polars <https://pola.rs/>`_ for internal data wrangling,
+  `NumPy <https://numpy.org/>`_ vectorization,
+  `Numba <https://numba.pydata.org/>`_ JIT compilation, and threaded parallel
+  compute.
+- **GPU acceleration.** Optional
+  `CuPy <https://cupy.dev/>`_-accelerated regression and propensity score
+  estimation across all doubly robust and IPW estimators on NVIDIA GPUs, with
+  multi-GPU scaling in distributed environments. See the
+  :doc:`GPU guide </user_guide/gpu>` for details.
+- **Native plots.** Built-in visualizations powered by
+  `plotnine <https://plotnine.org/>`_, returning standard ``ggplot`` objects
+  you can customize with the full grammar of graphics.
+- **Robust inference.** Analytical standard errors, bootstrap (weighted and
+  multiplier), and simultaneous confidence bands.
 
 
 .. _whatis-methods:
