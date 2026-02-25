@@ -45,7 +45,6 @@ def att_gt(
     n_jobs=1,
     n_partitions=None,
     max_cohorts=None,
-    progress_bar=False,
     backend=None,
 ):
     r"""Compute group-time average treatment effects.
@@ -166,9 +165,6 @@ def att_gt(
     max_cohorts : int or None, default=None
         Maximum number of treatment cohorts to process in parallel. Only used
         when ``data`` is a Dask DataFrame; ignored for non-Dask inputs.
-    progress_bar : bool, default=False
-        Whether to display a tqdm progress bar during distributed computation.
-        Only used when ``data`` is a Dask DataFrame; ignored for non-Dask inputs.
     backend : {"numpy", "cupy"} or None, default=None
         Array backend to use for this call only. When set, the backend is
         activated for the duration of this call and reverted automatically
@@ -265,7 +261,6 @@ def att_gt(
                 n_jobs=n_jobs,
                 n_partitions=n_partitions,
                 max_cohorts=max_cohorts,
-                progress_bar=progress_bar,
                 backend=None,
             )
 
