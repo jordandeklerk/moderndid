@@ -364,8 +364,8 @@ This method constructs confidence intervals of the form
 
 where the half-length :math:`\chi` is fixed. The affine estimator :math:`a + \mathbf{v}' \hat{\boldsymbol{\beta}}` and the
 length :math:`\chi` are chosen to minimize the interval's length while maintaining valid coverage. The smallest valid half-
-length is the :math:`1-\alpha` quantile of :math:`|\mathcal{N}(\bar{b}, \mathbf{v}'\Sigma_n \mathbf{v})|`, where :math:`
-\bar{b}` is the affine estimator's worst-case bias,
+length is the :math:`1-\alpha` quantile of :math:`|\mathcal{N}(\bar{b}, \mathbf{v}'\Sigma_n \mathbf{v})|`, where :math:`\bar{b}`
+is the affine estimator's worst-case bias,
 
 .. math::
 

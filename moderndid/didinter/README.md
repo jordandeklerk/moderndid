@@ -27,23 +27,6 @@ result = md.did_multiplegt(
 md.plot_multiplegt(result)
 ```
 
-## Key Parameters
-
-**Treatment effects**
-- `effects`: Number of post-treatment horizons to estimate
-- `placebo`: Number of pre-treatment placebo tests
-- `normalized`: Divide effects by cumulative treatment change
-
-**Sample selection**
-- `switchers`: `"both"` (default), `"in"` (increases only), `"out"` (decreases only)
-- `same_switchers`: Use identical switchers across all horizons
-
-**Control groups**
-- `only_never_switchers`: Use only never-switchers as controls (default: `False`)
-
-**Testing**
-- `effects_equal`: Test equality of effects across horizons
-
 ## Documentation
 
 - For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/didinter.html).

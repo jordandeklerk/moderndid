@@ -30,27 +30,6 @@ event_study = did.agg_ddd(result, type="eventstudy")
 did.plot_event_study(event_study)
 ```
 
-## Key Parameters
-
-**Estimation methods** (`est_method`)
-- `"dr"` (default): Doubly robust
-- `"ipw"`: Inverse probability weighting
-- `"reg"`: Outcome regression
-
-**Control groups** (`control_group`)
-- `"nevertreated"` (default): Never-treated units only
-- `"notyettreated"`: Include not-yet-treated units
-
-**Aggregation types** (`agg_ddd(..., type=)`)
-- `"eventstudy"`: Event study
-- `"simple"`: Overall ATT
-- `"group"`: By treatment cohort
-- `"calendar"`: By calendar time
-
-**Data types**
-- Panel data (default)
-- Repeated cross-sections (`panel=False`)
-
 ## Documentation
 
 - For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/didtriple.html).
