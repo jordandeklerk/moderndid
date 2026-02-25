@@ -567,8 +567,8 @@ Next steps
 - `plotnine documentation <https://plotnine.org/>`_ for the full grammar of
   graphics API, including geoms, scales, facets, and coordinate systems.
 - :ref:`Staggered DiD <example_staggered_did>`,
-  :ref:`Triple DiD <example_triple_did>`, and
-  :ref:`Continuous Treatment <example_cont_did>`
-  :ref:`Intertemporal Treatment <example_inter_did>`
+  :ref:`Triple DiD <example_triple_did>`,
+  :ref:`Continuous Treatment <example_cont_did>`,
+  :ref:`Intertemporal Treatment <example_inter_did>`, and
   :ref:`Sensitivity Analysis <example_honest_did>` for worked examples
   with plotting integrated into the analysis workflow.

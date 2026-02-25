@@ -1,6 +1,18 @@
 """Test the datasets."""
 
-from moderndid.core.data import load_ehec, load_mpdta, load_nsw
+import numpy as np
+import pytest
+
+from moderndid.core.data import (
+    gen_did_scalable,
+    load_cai2016,
+    load_ehec,
+    load_engel,
+    load_favara_imbs,
+    load_mpdta,
+    load_nsw,
+    simulate_cont_did_data,
+)
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
@@ -194,3 +206,224 @@ def test_load_ehec_returns_copy():
     ehec_data1 = ehec_data1.with_columns(pl.lit(1).alias("test_column"))
 
     assert "test_column" not in ehec_data2.columns
+
+
+@pytest.mark.parametrize(
+    "loader, min_rows, min_cols, required_cols",
+    [
+        (
+            load_engel,
+            1,
+            10,
+            {"food", "catering", "alcohol", "fuel", "motor", "fares", "leisure", "logexp", "logwages", "nkids"},
+        ),
+        (load_favara_imbs, 1, 7, {"year", "county", "state_n", "Dl_vloans_b", "inter_bra"}),
+        (load_cai2016, 1, 10, {"hhno", "year", "treatment", "sector", "checksaving_ratio"}),
+    ],
+)
+def test_loader_shape_and_columns(loader, min_rows, min_cols, required_cols):
+    df = loader()
+    assert df.shape[0] >= min_rows
+    assert df.shape[1] >= min_cols
+    assert required_cols.issubset(set(df.columns))
+
+
+@pytest.mark.parametrize(
+    "col_name",
+    ["food", "logexp"],
+)
+def test_load_engel_no_nulls_in_key_columns(col_name):
+    df = load_engel()
+    assert df[col_name].null_count() == 0
+
+
+@pytest.mark.parametrize(
+    "loader, col, min_val, max_val",
+    [
+        (load_favara_imbs, "year", 1994, 2005),
+        (load_cai2016, "year", 2000, 2008),
+    ],
+)
+def test_loader_year_range(loader, col, min_val, max_val):
+    df = loader()
+    years = df[col].unique().sort().to_list()
+    assert min(years) >= min_val
+    assert max(years) <= max_val
+
+
+def test_load_cai2016_treatment_binary():
+    df = load_cai2016()
+    unique_vals = set(df["treatment"].unique().to_list())
+    assert unique_vals.issubset({0, 1})
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["data", "data_wide", "att_config", "cohort_values"],
+)
+def test_gen_did_scalable_panel_basic_keys(key):
+    result = gen_did_scalable(n=100, random_state=42)
+    assert key in result
+
+
+@pytest.mark.parametrize(
+    "attr, expected",
+    [
+        ("n_periods", 10),
+        ("n_covariates", 20),
+    ],
+)
+def test_gen_did_scalable_panel_basic_defaults(attr, expected):
+    result = gen_did_scalable(n=100, random_state=42)
+    assert result[attr] == expected
+
+
+@pytest.mark.parametrize(
+    "col",
+    ["id", "group", "time", "y", "cluster"],
+)
+def test_gen_did_scalable_panel_data_columns(col):
+    result = gen_did_scalable(n=50, n_periods=5, n_cohorts=3, random_state=42)
+    assert col in result["data"].columns
+
+
+def test_gen_did_scalable_panel_data_shape():
+    result = gen_did_scalable(n=50, n_periods=5, n_cohorts=3, random_state=42)
+    assert result["data"].shape[0] == 50 * 5
+
+
+def test_gen_did_scalable_panel_wide_data():
+    result = gen_did_scalable(n=50, n_periods=5, n_cohorts=3, random_state=42)
+    wide = result["data_wide"]
+    assert wide is not None
+    assert wide.shape[0] == 50
+    assert "y_t1" in wide.columns
+    assert "y_t5" in wide.columns
+
+
+def test_gen_did_scalable_panel_no_wide_when_many_periods():
+    result = gen_did_scalable(n=50, n_periods=25, n_cohorts=3, random_state=42)
+    assert result["data_wide"] is None
+
+
+def test_gen_did_scalable_cohort_values():
+    result = gen_did_scalable(n=50, n_periods=5, n_cohorts=3, random_state=42)
+    cohorts = result["cohort_values"]
+    assert 0 in cohorts
+    assert len(cohorts) == 4
+
+
+def test_gen_did_scalable_att_config():
+    result = gen_did_scalable(n=50, n_periods=5, n_cohorts=3, att_base=5.0, random_state=42)
+    att = result["att_config"]
+    for g, val in att.items():
+        assert val == 5.0 * g
+
+
+@pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
+def test_gen_did_scalable_all_dgp_types(dgp_type):
+    result = gen_did_scalable(n=50, dgp_type=dgp_type, n_periods=5, n_cohorts=3, random_state=42)
+    assert result["data"].shape[0] == 250
+
+
+def test_gen_did_scalable_repeated_cross_section():
+    result = gen_did_scalable(n=50, n_periods=5, n_cohorts=3, panel=False, random_state=42)
+    df = result["data"]
+    assert df.shape[0] == 50 * 5
+    assert result["data_wide"] is None
+    ids_per_period = df.group_by("time").agg(pl.col("id").n_unique())
+    assert (ids_per_period["id"] == 50).all()
+
+
+def test_gen_did_scalable_rc_unique_ids_across_periods():
+    result = gen_did_scalable(n=30, n_periods=3, n_cohorts=2, panel=False, random_state=42)
+    df = result["data"]
+    for t in range(1, 4):
+        period_ids = set(df.filter(pl.col("time") == t)["id"].to_list())
+        for t2 in range(t + 1, 4):
+            other_ids = set(df.filter(pl.col("time") == t2)["id"].to_list())
+            assert len(period_ids & other_ids) == 0
+
+
+def test_gen_did_scalable_custom_covariates():
+    result = gen_did_scalable(n=50, n_covariates=8, n_periods=5, n_cohorts=3, random_state=42)
+    df = result["data"]
+    cov_cols = [c for c in df.columns if c.startswith("cov")]
+    assert len(cov_cols) == 8
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"dgp_type": 5}, "dgp_type must be"),
+        ({"n_periods": 1}, "n_periods must be"),
+        ({"n_cohorts": 0}, "n_cohorts must be >= 1"),
+        ({"n_cohorts": 10, "n_periods": 5}, "n_cohorts must be < n_periods"),
+        ({"n_covariates": 2}, "n_covariates must be >= 4"),
+    ],
+)
+def test_gen_did_scalable_validation_errors(kwargs, match):
+    base = {"n": 50, "random_state": 42}
+    base.update(kwargs)
+    with pytest.raises(ValueError, match=match):
+        gen_did_scalable(**base)
+
+
+@pytest.mark.parametrize(
+    "col",
+    ["id", "time_period", "Y", "G", "D"],
+)
+def test_simulate_cont_did_data_default_columns(col):
+    df = simulate_cont_did_data()
+    assert isinstance(df, pl.DataFrame)
+    assert col in df.columns
+
+
+def test_simulate_cont_did_data_shape():
+    df = simulate_cont_did_data(n=100, num_time_periods=3)
+    assert df.shape[0] == 100 * 3
+
+
+def test_simulate_cont_did_data_sorted():
+    df = simulate_cont_did_data(n=50, seed=123)
+    ids = df["id"].to_list()
+    times = df["time_period"].to_list()
+    for i in range(len(ids) - 1):
+        assert (ids[i], times[i]) <= (ids[i + 1], times[i + 1])
+
+
+def test_simulate_cont_did_data_never_treated_zero_dose():
+    df = simulate_cont_did_data(n=200, seed=99)
+    never_treated = df.filter(pl.col("G") == 0)
+    assert (never_treated["D"] == 0.0).all()
+
+
+def test_simulate_cont_did_data_custom_params():
+    df = simulate_cont_did_data(
+        n=100,
+        num_time_periods=5,
+        num_groups=5,
+        dose_linear_effect=1.0,
+        dose_quadratic_effect=0.2,
+        seed=7,
+    )
+    assert df.shape[0] == 100 * 5
+    groups = set(df["G"].unique().to_list())
+    assert 0 in groups
+
+
+def test_simulate_cont_did_data_custom_probabilities():
+    df = simulate_cont_did_data(
+        n=300,
+        num_time_periods=3,
+        p_untreated=0.5,
+        p_group=[0.25, 0.25],
+        seed=10,
+    )
+    assert df.shape[0] == 300 * 3
+
+
+def test_simulate_cont_did_data_reproducible():
+    df1 = simulate_cont_did_data(n=50, seed=42)
+    df2 = simulate_cont_did_data(n=50, seed=42)
+    np.testing.assert_array_equal(df1["Y"].to_numpy(), df2["Y"].to_numpy())

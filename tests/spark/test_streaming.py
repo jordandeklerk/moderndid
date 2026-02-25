@@ -6,6 +6,7 @@ import pytest
 
 from moderndid.spark._ddd_streaming import (
     _build_partition_arrays,
+    _driver_reduce_stats,
     _filter_partition_for_ctrl,
     _partition_global_stats,
     _partition_or_gram,
@@ -211,3 +212,27 @@ def test_partition_global_stats_none():
         None, comp_sg=3, ps_beta=np.zeros(1), or_beta=np.zeros(1), est_method="reg", trim_level=0.995
     )
     assert result is None
+
+
+def test_driver_reduce_stats_empty():
+    assert _driver_reduce_stats([]) is None
+
+
+def test_driver_reduce_stats_all_none():
+    assert _driver_reduce_stats([None, None, None]) is None
+
+
+def test_driver_reduce_stats_single(rng):
+    stats = _make_stats_dict(rng)
+    result = _driver_reduce_stats([stats])
+    assert result is stats
+
+
+def test_driver_reduce_stats_mixed(rng):
+    a = _make_stats_dict(rng)
+    b = _make_stats_dict(rng)
+    result = _driver_reduce_stats([None, a, None, b])
+    assert result is not None
+    np.testing.assert_allclose(result["sum_w_treat"], a["sum_w_treat"] + b["sum_w_treat"])
+    np.testing.assert_allclose(result["or_xpx"], a["or_xpx"] + b["or_xpx"])
+    assert result["n_sub"] == a["n_sub"] + b["n_sub"]

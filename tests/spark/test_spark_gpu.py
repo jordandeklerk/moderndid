@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from moderndid.cupy.backend import HAS_CUPY, _array_module, _validate_backend_name, to_numpy
-from moderndid.spark._gpu import _maybe_to_gpu_dict, _to_gpu_partition
+from moderndid.spark._gpu import _get_gpu_device_id, _maybe_to_gpu_dict, _to_gpu_partition
 from moderndid.spark._gram import partition_gram
 from moderndid.spark._regression import _irls_local_stats_with_y
 
@@ -162,3 +162,21 @@ def test_validate_backend_cupy_with_gpu():
 def test_validate_backend_cupy_without_gpu():
     with pytest.raises((ImportError, RuntimeError)):
         _validate_backend_name("cupy")
+
+
+def test_get_gpu_device_id_default():
+    assert _get_gpu_device_id() == 0
+
+
+def test_get_gpu_device_id_runtime_error(monkeypatch):
+    import pyspark
+
+    def _raise():
+        raise RuntimeError("mocked")
+
+    monkeypatch.setattr(pyspark.TaskContext, "get", _raise)
+    assert _get_gpu_device_id() == 0
+
+
+def test_maybe_to_gpu_dict_none_input():
+    assert _maybe_to_gpu_dict(None, use_gpu=False) is None
