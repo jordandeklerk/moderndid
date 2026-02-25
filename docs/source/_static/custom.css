@@ -120,3 +120,8 @@ div.admonition-legacy>.admonition-title {
 .try_examples_outer_iframe {
   margin-top: 0.4em;
 }
+
+/* Add spacing below images so following text isn't flush against the plot */
+.bd-article-container img {
+  margin-bottom: 1em;
+}
