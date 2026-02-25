@@ -74,6 +74,9 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 
 ### Distributed Computing
 
+>[!IMPORTANT]
+> Distributed computing is currently only tested and available for the `att_gt()` and `ddd()` functions.
+
 For datasets that exceed single-machine memory, pass a Dask or Spark dataFrame to [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) or [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html#moderndid.ddd) and the distributed backend activates automatically. All computation happens on workers via partition-level sufficient statistics. Only small summary matrices return to the driver. Results are numerically identical to the local estimators.
 
 **Dask**
