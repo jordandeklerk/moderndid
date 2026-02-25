@@ -13,6 +13,7 @@ features; details are found in :ref:`api`.
 
    quickstart
    estimator_overview
+   plotting
    panel_utilities
 
 .. toctree::
