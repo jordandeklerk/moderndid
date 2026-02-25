@@ -40,7 +40,8 @@ get the core estimators plus whatever extras you specify.
 - **numba** - Base + faster bootstrap inference
 - **gpu** - Base + GPU-accelerated estimation (requires CUDA)
 - **dask** - Base + distributed estimation on Dask clusters
-- **all** - Everything (except ``gpu`` and ``dask``, which have hardware-specific requirements)
+- **spark** - Base + distributed estimation on Spark clusters
+- **all** - Everything (except ``gpu``, which requires specific infrastructure)
 
 .. code-block:: console
 
