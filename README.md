@@ -14,9 +14,6 @@
 
 __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Dask and Spark clusters.
 
-> [!WARNING]
-> This package is currently in active development with core estimators and some sensitivity analysis implemented. The API is subject to change.
-
 ## Features
 
 - **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest).
@@ -74,8 +71,8 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 
 ### Distributed Computing
 
->[!IMPORTANT]
-> Distributed computing is currently only tested and available for the `att_gt()` and `ddd()` functions.
+>[!CAUTION]
+> Distributed computing is a relatively new and experimental feature. It is currently only tested and available for the [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) and [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html#moderndid.ddd) functions. Support for other estimators such as [`did_multiplegt()`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html#moderndid.did_multiplegt) and [`cont_did()`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html#moderndid.cont_did) is in progress.
 
 For datasets that exceed single-machine memory, pass a Dask or Spark dataFrame to [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) or [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html#moderndid.ddd) and the distributed backend activates automatically. All computation happens on workers via partition-level sufficient statistics. Only small summary matrices return to the driver. Results are numerically identical to the local estimators.
 
