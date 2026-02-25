@@ -27,23 +27,6 @@ event_study = did.aggte(result, type="dynamic")
 did.plot_event_study(event_study)
 ```
 
-## Key Parameters
-
-**Estimation methods** (`est_method`)
-- `"dr"` (default): Doubly robust
-- `"ipw"`: Inverse probability weighting
-- `"reg"`: Outcome regression
-
-**Control groups** (`control_group`)
-- `"nevertreated"` (default): Never-treated units only
-- `"notyettreated"`: Include not-yet-treated units
-
-**Aggregation types** (`aggte(..., type=)`)
-- `"dynamic"`: Event study
-- `"simple"`: Overall ATT
-- `"group"`: By treatment cohort
-- `"calendar"`: By calendar time
-
 ## Documentation
 
 - For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/multiperiod.html).

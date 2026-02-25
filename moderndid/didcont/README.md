@@ -32,24 +32,6 @@ result = did.cont_did(
 did.plot_dose_response(result, effect_type="att")
 ```
 
-## Key Parameters
-
-**Target parameters** (`target_parameter`)
-- `"level"` (default): ATT at different dose levels
-- `"slope"`: ACRT, the derivative of the dose-response curve
-
-**Aggregation** (`aggregation`)
-- `"dose"`: Dose-response views (ATT(d) and ACRT(d))
-- `"eventstudy"`: Event-study views across time
-
-**Estimation method** (`dose_est_method`)
-- `"parametric"` (default): B-spline approximation
-- `"cck"`: Nonparametric (two-period settings only)
-
-**Control groups** (`control_group`)
-- `"notyettreated"` (default): Include not-yet-treated units
-- `"nevertreated"`: Never-treated units only
-
 ## Documentation
 
 - For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/didcont.html).
