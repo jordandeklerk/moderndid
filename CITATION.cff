@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use ModernDiD in your research, please cite it as below."
+title: "ModernDiD: Scalable, GPU-Accelerated Difference-in-Differences for Python"
+type: software
+authors:
+  - name: "The ModernDiD Authors"
+
+repository-code: 'https://github.com/jordandeklerk/moderndid'
+url: 'https://moderndid.readthedocs.io/'
+abstract: "A Python library that consolidates modern difference-in-differences estimators from leading econometric research into a single framework with a consistent API. Supports staggered, continuous, triple, and intertemporal DiD designs with optional GPU acceleration via CuPy and distributed computing via Dask and Spark."
+keywords:
+  - 'difference-in-differences'
+  - 'panel data'
+  - 'econometrics'
+  - 'causal inference'
+  - 'treatment effects'
+  - 'gpu'
+  - 'distributed computing'
+  - 'python'
+license: MIT

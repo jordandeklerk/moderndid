@@ -131,7 +131,7 @@ See the [Distributed Estimation guide](https://moderndid.readthedocs.io/en/lates
 
 ### GPU Acceleration
 
-On machines with NVIDIA GPUs, install the `gpu` extra and pass `backend="cupy"` to offload regression and propensity score estimation to the GPU. The backend activates only for that call and reverts automatically. See the [GPU troubleshooting section](#common-troubleshooting-for-gpu) below for guidance on common issues:
+On machines with NVIDIA GPUs, install the `gpu` extra and pass `backend="cupy"` to offload regression and propensity score estimation to the GPU. The backend activates only for that call and reverts automatically:
 
 ```python
 import moderndid as did
@@ -146,7 +146,7 @@ result = did.att_gt(data,
 
 You can also set the backend globally with `did.set_backend("cupy")` and revert with `did.set_backend("numpy")`. For multi-GPU scaling, combine with a Dask DataFrame as shown above.
 
-See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) for details and [GPU benchmark results](scripts/README.md) for performance comparisons across several NVIDIA GPUs.
+See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) for details and troubleshooting, and [GPU benchmark results](scripts/README.md) for performance comparisons across several NVIDIA GPUs.
 
 ### Consistent API
 
@@ -339,21 +339,6 @@ did.plot_event_study(event_study)
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="Event study plot">
 
-## Common Troubleshooting for GPU
-
-If `set_backend("cupy")` raises **`CuPy is not installed`**, the most common cause is installing the generic `cupy` package, which tries to compile from source. Instead, install a prebuilt wheel that matches your CUDA driver version:
-
-```bash
-uv pip install cupy-cuda12x   # CUDA 12.x
-uv pip install cupy-cuda11x   # CUDA 11.x
-```
-
-Run `nvidia-smi` to check which CUDA version your driver supports. After installing, restart your Python process (or notebook runtime) before importing ModernDiD (CuPy availability is checked once at import time).
-
-If you see **`cudaErrorInsufficientDriver`**, the installed CuPy wheel expects a newer CUDA version than your driver provides. Check `nvidia-smi` and switch to the matching wheel.
-
-If you see **`No CUDA GPU is available`**, make sure `nvidia-smi` shows a device. In cloud notebooks, verify that a GPU runtime is selected.
-
 ## Available Methods
 
 Each core module includes a dedicated walkthrough covering methodology background, API usage, and guidance on interpreting results.
@@ -382,3 +367,16 @@ Each core module includes a dedicated walkthrough covering methodology backgroun
 | `moderndid.did2s` | Two-stage DiD | [Gardner (2021)](https://jrgcmu.github.io/2sdd_current.pdf) |
 | `moderndid.etwfe` | Extended two-way fixed effects | [Wooldridge (2021)](https://ssrn.com/abstract=3906345), [Wooldridge (2023)](https://doi.org/10.1093/ectj/utad016) |
 | `moderndid.functional` | Specification tests | [Roth & Sant'Anna (2023)](https://arxiv.org/pdf/2010.04814) |
+
+## Citation
+
+If you use ModernDiD in your research, please cite it as:
+
+```bibtex
+@software{moderndid,
+  author       = {The ModernDiD Authors},
+  title        = {ModernDiD: Scalable, GPU-Accelerated Difference-in-Differences for Python},
+  year         = {2025},
+  url          = {https://github.com/jordandeklerk/moderndid},
+}
+```
