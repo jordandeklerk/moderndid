@@ -166,7 +166,7 @@ cython_debug/
 *.local.*
 .c*
 .m*
-uv.lock
+
 
 triplediff/
 py_did_mult*/
