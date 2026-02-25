@@ -51,3 +51,10 @@ def test_validate_spark_input_missing_raises(spark_session):
     sdf = spark_session.createDataFrame([(1,)], ["a"])
     with pytest.raises(ValueError, match="Columns not found"):
         validate_spark_input(sdf, ["a", "z"])
+
+
+def test_is_spark_dataframe_import_error_fallback(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "pyspark.sql", None)
+    assert is_spark_dataframe("not_a_df") is False
