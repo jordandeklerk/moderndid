@@ -7,8 +7,6 @@ import pytest
 distributed = pytest.importorskip("distributed")
 dd = pytest.importorskip("dask.dataframe")
 
-from distributed import Client, LocalCluster
-
 from moderndid.dask._bootstrap import distributed_mboot_ddd
 from moderndid.dask._gram import _sum_gram_pair, distributed_gram, tree_reduce
 from moderndid.dask._inf_func import compute_variance_distributed
@@ -21,15 +19,6 @@ from moderndid.dask._regression import (
     partition_gram,
 )
 from moderndid.dask._utils import get_default_partitions, get_or_create_client, prepare_cohort_wide_pivot
-
-
-@pytest.fixture(scope="module")
-def dask_client():
-    cluster = LocalCluster(n_workers=2, threads_per_worker=1, memory_limit="512MB")
-    client = Client(cluster)
-    yield client
-    client.close()
-    cluster.close()
 
 
 @pytest.fixture

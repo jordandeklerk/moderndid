@@ -54,7 +54,7 @@ did.plot_sensitivity(sensitivity)
 
 ## Documentation
 
-- For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/didhonest.html).
+- For full function signatures and parameters, see the [API Reference](https://moderndid.readthedocs.io/en/latest/api/honestdid.html).
 - For a complete worked example with output, see the [Honest DiD Example](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html).
 - For theoretical background, see the [Background section](https://moderndid.readthedocs.io/en/latest/background/didhonest.html).
 
