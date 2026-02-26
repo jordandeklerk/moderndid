@@ -18,7 +18,7 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 
 ## Features
 
-- **DiD Estimators** - [Staggered DiD](moderndid/did), [Doubly Robust DiD](moderndid/drdid), [Continuous DiD](moderndid/didcont), [Triple DiD](moderndid/didtriple), [Intertemporal DiD](moderndid/didinter), [Honest DiD](moderndid/didhonest).
+- **DiD Estimators** - [Staggered DiD](https://moderndid.readthedocs.io/en/latest/api/multiperiod.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/api/didcont.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/api/didtriple.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/api/didinter.html), [Honest DiD](https://moderndid.readthedocs.io/en/latest/api/honestdid.html).
 - **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/).
 - **Distributed computing** - Scale DiD estimators to billions of observations across multi-node [Dask](https://www.dask.org/) and [Spark](https://spark.apache.org/) clusters with automatic dispatch. Simply pass a Dask or Spark DataFrame to supported estimators and the distributed backend activates transparently.
 - **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and threaded parallel compute.
@@ -286,7 +286,7 @@ p = (p
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="ATT plot">
 
-While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The `aggte` function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
+While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The [`aggte`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.aggte.html) function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
 
 ```python
 event_study = did.aggte(attgt_result, type="dynamic")
@@ -346,7 +346,7 @@ print(event_study)
 
 Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero lean in support of the parallel trends assumption (but do not confirm it), while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
 
-The same data converters we used before make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates from above against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest), illustrating how heterogeneity-robust estimators differ from conventional two-way fixed effects.
+The [data converters](https://moderndid.readthedocs.io/en/latest/api/plotting.html#data-converters) also make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates from above against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest), illustrating how heterogeneity-robust estimators differ from conventional two-way fixed effects.
 
 See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for the full code and more examples.
 
