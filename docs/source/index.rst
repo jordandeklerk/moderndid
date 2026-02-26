@@ -26,10 +26,10 @@ ModernDiD documentation
 `Issue Tracker <https://github.com/jordandeklerk/moderndid/issues>`_ |
 `PyPI <https://pypi.org/project/moderndid/>`_
 
-ModernDiD is a unified Python implementation of modern difference-in-differences
-(DiD) methodologies built on leading econometric research. It brings together
-the fragmented landscape of DiD estimators into a single, coherent framework
-with a consistent and intuitive API.
+ModernDiD is a scalable, GPU-accelerated difference-in-differences library for
+Python. It consolidates modern DiD estimators from leading econometric research
+and various R and Stata packages into a single framework with a consistent API.
+Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
 
 .. grid:: 1 1 2 2
     :gutter: 2 3 4 4

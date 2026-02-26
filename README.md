@@ -14,15 +14,15 @@
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 <!-- [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active) -->
 
-__ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Dask and Spark clusters.
+__ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
 
 ## Features
 
 - **DiD Estimators** - [Staggered DiD](https://moderndid.readthedocs.io/en/latest/api/multiperiod.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/api/didcont.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/api/didtriple.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/api/didinter.html), [Honest DiD](https://moderndid.readthedocs.io/en/latest/api/honestdid.html).
 - **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/).
-- **Distributed computing** - Scale DiD estimators to billions of observations across multi-node [Dask](https://www.dask.org/) and [Spark](https://spark.apache.org/) clusters with automatic dispatch. Simply pass a Dask or Spark DataFrame to supported estimators and the distributed backend activates transparently.
+- **Distributed computing** - Scale to billions of observations across [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) clusters. Pass a distributed DataFrame and the backend activates transparently.
 - **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and threaded parallel compute.
-- **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated regression and propensity score estimation across all doubly robust and IPW estimators on NVIDIA GPUs, with multi-GPU scaling in distributed environments.
+- **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated estimation on NVIDIA GPUs, with multi-GPU scaling in distributed environments.
 - **Native plots** - Built-in visualizations powered by [plotnine](https://plotnine.org/), returning standard `ggplot` objects you can customize with the full grammar of graphics.
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands.
 
@@ -30,179 +30,39 @@ For detailed documentation, including user guides and API reference, see [modern
 
 ## Installation
 
-The base installation includes core DiD estimators that share the same dependencies (`did`, `drdid`, `didinter`, `didtriple`):
+```bash
+uv pip install moderndid        # Core estimators (did, drdid, didinter, didtriple)
+uv pip install moderndid[all]   # All estimators, plots, numba, spark, dask (excludes gpu)
+```
+
+Optional extras are additive — combine as needed:
+
+| Extra | Adds |
+|---|---|
+| `didcont` | Continuous treatment DiD (`cont_did`) |
+| `didhonest` | Sensitivity analysis (`honest_did`) |
+| `plots` | Visualization (`plot_gt`, `plot_event_study`, ...) |
+| `numba` | Faster bootstrap inference |
+| `spark` | Distributed estimation via PySpark |
+| `dask` | Distributed estimation via Dask |
+| `gpu` | GPU-accelerated estimation (requires CUDA) |
 
 ```bash
-uv pip install moderndid
-```
-
-For full functionality including all estimators, plotting, and performance optimizations:
-
-```bash
-uv pip install moderndid[all]
-```
-
-### Optional Extras
-
-Extras are additive. They add functionality to the base install, so you always get the core estimators plus whatever extras you specify.
-
-- **`didcont`** - Base + continuous treatment DiD (`cont_did`)
-- **`didhonest`** - Base + sensitivity analysis (`honest_did`)
-- **`plots`** - Base + visualization (`plot_gt`, `plot_event_study`, ...)
-- **`numba`** - Base + faster bootstrap inference
-- **`dask`** - Base + distributed estimation via Dask
-- **`spark`** - Base + distributed estimation via PySpark
-- **`gpu`** - Base + GPU-accelerated estimation (requires CUDA)
-- **`all`** - Everything (except `gpu`, which requires specific infrastructure)
-
-```bash
-uv pip install moderndid[didcont]     # Base estimators + cont_did
-uv pip install moderndid[didhonest]   # Base estimators + sensitivity analysis
-uv pip install moderndid[numba]       # Base estimators with faster computations
-uv pip install moderndid[dask]        # Base estimators with Dask distributed
-uv pip install moderndid[spark]       # Base estimators with Spark distributed
-uv pip install moderndid[gpu]         # Base estimators with GPU acceleration
-uv pip install moderndid[gpu,dask]    # Combine multiple extras
-```
-
-Or install from source:
-
-```bash
-uv pip install git+https://github.com/jordandeklerk/moderndid.git
-```
-
-### Distributed Computing
-
->[!WARNING]
-> Distributed computing is a relatively new and experimental feature. It is currently only tested and available for the [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) and [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html#moderndid.ddd) functions. Support for other estimators such as [`did_multiplegt()`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html#moderndid.did_multiplegt) and [`cont_did()`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html#moderndid.cont_did) is in progress.
-
-For datasets that exceed single-machine memory, pass a Dask or Spark dataFrame to [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) or [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html#moderndid.ddd) and the distributed backend activates automatically. All computation happens on workers via partition-level sufficient statistics. Only small summary matrices return to the driver. Results are numerically identical to the local estimators.
-
-**Dask**
-
-```python
-import dask.dataframe as dd
-from dask.distributed import Client
-import moderndid as did
-
-ddf = dd.read_parquet("panel_data.parquet")
-client = Client()
-
-result = did.att_gt(
-    data=ddf,
-    yname="y",
-    tname="time",
-    idname="id",
-    gname="group",
-    est_method="dr",
-    n_partitions=64,         # partitions per cell (default: total cluster threads)
-    max_cohorts=4,           # cohorts to process in parallel
-    backend="cupy",          # run worker linear algebra on GPUs (optional)
-)
-
-event_study = did.aggte(result, type="dynamic")
-```
-
-Add `backend="cupy"` to run worker-side linear algebra on GPUs. For multi-GPU machines, use `dask-cuda` with a `LocalCUDACluster` to pin one worker per GPU.
-
-**Spark**
-
-```python
-from pyspark.sql import SparkSession
-import moderndid as did
-
-spark = SparkSession.builder.master("local[*]").getOrCreate()
-sdf = spark.read.parquet("panel_data.parquet")
-
-result = did.att_gt(
-    data=sdf,
-    yname="y",
-    tname="time",
-    idname="id",
-    gname="group",
-    est_method="dr",
-    n_partitions=64,         # partitions per cell (default: Spark parallelism)
-    max_cohorts=4,           # cohorts to process in parallel
-    backend="cupy",          # run partition linear algebra on GPUs (optional)
-)
-
-event_study = did.aggte(result, type="dynamic")
-```
-
-See the [Distributed Estimation guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html) for usage and the [Distributed Backend Architecture](https://moderndid.readthedocs.io/en/latest/dev/distributed_architecture.html) for details on the design.
-
-### GPU Acceleration
-
-On machines with NVIDIA GPUs, install the `gpu` extra and pass `backend="cupy"` to offload regression and propensity score estimation to the GPU. The backend activates only for that call and reverts automatically:
-
-```python
-import moderndid as did
-
-result = did.att_gt(data,
-                    yname="lemp",
-                    tname="year",
-                    idname="countyreal",
-                    gname="first.treat",
-                    backend="cupy")
-```
-
-You can also set the backend globally with `did.set_backend("cupy")` and revert with `did.set_backend("numpy")`. For multi-GPU scaling, combine with a Dask DataFrame as shown above.
-
-See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) for details and troubleshooting, and [GPU benchmark results](scripts/README.md) for performance comparisons across several NVIDIA GPUs.
-
-### Consistent API
-
-All estimators share a unified interface for core parameters, making it easy to switch between methods:
-
-```python
-# Staggered DiD
-result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
-# Triple DiD
-result = did.ddd(data, yname="y", tname="t", idname="id", gname="g", pname="p", ...)
-# Continuous DiD
-result = did.cont_did(data, yname="y", tname="t", idname="id", gname="g", dname="dose", ...)
-# Doubly robust 2-period DiD
-result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", ...)
-# Intertemporal DiD
-result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
-```
-
-### Example Datasets
-
-Several classic datasets from the DiD literature are included for experimentation:
-
-```python
-did.load_mpdta()       # County teen employment
-did.load_nsw()         # NSW job training program
-did.load_ehec()        # Medicaid expansion
-did.load_engel()       # Household expenditure
-did.load_favara_imbs() # Bank lending
-did.load_cai2016()     # Crop insurance
-```
-
-Synthetic data generators are also available for simulations and benchmarking:
-
-```python
-did.gen_did_scalable()           # Staggered DiD panel
-did.simulate_cont_did_data()     # Continuous treatment DiD
-did.gen_dgp_2periods()           # Two-period triple DiD
-did.gen_dgp_mult_periods()       # Staggered triple DiD
-did.gen_dgp_scalable()           # Large-scale triple DiD
+uv pip install moderndid[didcont,plots]   # Combine multiple extras
+uv pip install moderndid[gpu,spark]       # GPU + distributed
 ```
 
 ## Quick Start
 
 This example uses county-level teen employment data to estimate the effect of minimum wage increases. States adopted higher minimum wages at different times (2004, 2006, or 2007), making this a staggered adoption design.
 
-The [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) function is a core __ModernDiD__ estimator that estimates the average treatment effect for each group *g* (defined by when units were first treated) at each time period *t* in multi-period, staggered adoption designs. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
+The [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) function estimates the average treatment effect for each group *g* (defined by when units were first treated) at each time period *t*. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
 
 ```python
 import moderndid as did
 
-# County teen employment data
 data = did.load_mpdta()
 
-# Estimate group-time average treatment effects
 attgt_result = did.att_gt(
     data=data,
     yname="lemp",
@@ -260,8 +120,6 @@ print(attgt_result)
 ==============================================================================
  Reference: Callaway and Sant'Anna (2021)
 ```
-
-The output shows treatment effects for each group-time pair, along with pointwise confidence bands that account for multiple testing. Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
 
 __ModernDiD__ provides "batteries-included" plotting functions ([`plot_event_study`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_event_study.html), [`plot_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_gt.html), [`plot_agg`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_agg.html), and more) as well as data converters for building custom figures with [plotnine](https://plotnine.org/). Since all plot functions return `ggplot` objects, you can restyle them with the full grammar of graphics:
 
@@ -344,13 +202,62 @@ print(event_study)
  Reference: Callaway and Sant'Anna (2021)
 ```
 
-Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero lean in support of the parallel trends assumption (but do not confirm it), while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
+Event time 0 is the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero support the parallel trends assumption, while post-treatment effects show how the impact evolves over time.
 
-[Data converters](https://moderndid.readthedocs.io/en/latest/api/plotting.html#data-converters) also make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates from above against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest), illustrating how heterogeneity-robust estimators differ from conventional two-way fixed effects.
-
-See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html#building-custom-plots) for the full code and more examples.
+[Data converters](https://moderndid.readthedocs.io/en/latest/api/plotting.html#data-converters) make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest). See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for the full code and more examples.
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
+
+### Consistent API
+
+All estimators share a unified interface:
+
+```python
+result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
+result = did.ddd(data, yname="y", tname="t", idname="id", gname="g", pname="p", ...)
+result = did.cont_did(data, yname="y", tname="t", idname="id", gname="g", dname="dose", ...)
+result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", ...)
+result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
+```
+
+### Scaling Up
+
+**Distributed** — Pass a Spark or Dask DataFrame and the distributed backend activates automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
+
+**GPU** — Pass `backend="cupy"` to offload estimation to NVIDIA GPUs. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
+
+```python
+result = did.att_gt(data, yname="lemp", tname="year", idname="countyreal",
+                    gname="first.treat", backend="cupy")
+```
+
+```python
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.master("local[*]").getOrCreate()
+result = did.att_gt(data=spark.read.parquet("panel.parquet"),
+                    yname="y", tname="t", idname="id", gname="g")
+```
+
+### Example Datasets
+
+```python
+did.load_mpdta()       # County teen employment
+did.load_nsw()         # NSW job training program
+did.load_ehec()        # Medicaid expansion
+did.load_engel()       # Household expenditure
+did.load_favara_imbs() # Bank lending
+did.load_cai2016()     # Crop insurance
+```
+
+Synthetic data generators are also available for simulations and benchmarking:
+
+```python
+did.gen_did_scalable()           # Staggered DiD panel
+did.simulate_cont_did_data()     # Continuous treatment DiD
+did.gen_dgp_2periods()           # Two-period triple DiD
+did.gen_dgp_mult_periods()       # Staggered triple DiD
+did.gen_dgp_scalable()           # Large-scale triple DiD
+```
 
 ## Planned Development
 

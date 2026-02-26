@@ -111,6 +111,25 @@ You can learn more about ``contdid``
 ModernDiD is benchmarked and validated against ``contdid`` via R scripts to
 ensure numerical equivalence.
 
+npiv (R)
+--------
+
+The `npiv <https://github.com/JeffreyRacine/npiv>`_ R package by
+`Jeffrey S. Racine <https://experts.mcmaster.ca/people/racinej>`_ and
+`Timothy M. Christensen <https://tmchristensen.com/>`_ implements
+nonparametric instrumental variables estimation and uniform confidence band
+construction using sieve-based methods. ModernDiD uses the methodology from
+`Chen and Christensen (2018) <https://doi.org/10.3982/QE722>`_ and
+`Chen, Christensen, and Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_
+for the nonparametric dose-response estimation in the continuous DiD estimator
+`cont_did() <api/generated/didcont/moderndid.cont_did.html>`_.
+
+You can learn more about ``npiv``
+`on GitHub <https://github.com/JeffreyRacine/npiv>`_ or by reading the
+associated papers by
+`Chen and Christensen (2018) <https://doi.org/10.3982/QE722>`_ and
+`Chen, Christensen, and Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_.
+
 triplediff (R)
 --------------
 
@@ -220,6 +239,10 @@ The following papers describe the core methodologies implemented in ModernDiD:
 - Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. C. (2024).
   "Difference-in-Differences with a Continuous Treatment."
   `arXiv:2107.02637 <https://arxiv.org/abs/2107.02637>`_.
+- Chen, X., & Christensen, T. M. (2018). "Optimal Sup-norm Rates and Uniform
+  Inference on Nonlinear Functionals of Nonparametric IV." *Quantitative
+  Economics*, 9(1), 39-84.
+  `DOI:10.3982/QE722 <https://doi.org/10.3982/QE722>`_.
 - Chen, X., Christensen, T. M., & Kankanala, S. (2024). "Adaptive Estimation
   and Uniform Confidence Bands for Nonparametric Structural Functions and
   Elasticities."
