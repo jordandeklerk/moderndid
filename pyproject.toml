@@ -11,7 +11,7 @@ authors = [
     {name = "Jordan DeKlerk", email = "jordan.deklerk@gmail.com"}
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Education",

@@ -168,10 +168,6 @@ cython_debug/
 .c*
 .m*
 
-
-triplediff/
-py_did_mult*/
-
 # Large test data files
 tests/didcont/r_simulated_data.csv
 
@@ -180,5 +176,3 @@ benchmark/output/*.csv
 benchmark/output/*.json
 !benchmark/output/.gitkeep
 plot_gpu_benchmark.py
-xgboost/
-cupy/

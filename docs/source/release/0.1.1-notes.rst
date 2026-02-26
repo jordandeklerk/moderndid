@@ -1,0 +1,88 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.1.1 Release Notes
+=============================
+
+ModernDiD 0.1.1 is a maintenance release with dependency updates, minor
+refactoring, and documentation improvements.
+
+Python versions 3.11-3.13 are supported in this release.
+
+
+Improvements
+============
+
+Dependency and Import Cleanup
+-----------------------------
+
+* Update scipy dependency range and add GPU feature support in ``pixi.toml``.
+
+  (`#207 <https://github.com/jordandeklerk/moderndid/pull/207>`__)
+
+* Handle intercept and covariates formula more carefully in estimators.
+
+  (`#207 <https://github.com/jordandeklerk/moderndid/pull/207>`__)
+
+* Update Dask and Spark backend imports and remove unused exports.
+
+  (`#207 <https://github.com/jordandeklerk/moderndid/pull/207>`__)
+
+* Reorganize package dependencies.
+
+  (`#207 <https://github.com/jordandeklerk/moderndid/pull/207>`__)
+
+* Remove unused parameter from API surface.
+
+  (`#204 <https://github.com/jordandeklerk/moderndid/pull/204>`__)
+
+
+Documentation
+=============
+
+* Update usage documentation with improved examples and clarity.
+
+  (`#212 <https://github.com/jordandeklerk/moderndid/pull/212>`__)
+
+* Add acknowledgements section and enhance contributing guidelines.
+
+  (`#211 <https://github.com/jordandeklerk/moderndid/pull/211>`__)
+
+* Simplify plotting examples and update image URLs in README.
+
+  (`#208 <https://github.com/jordandeklerk/moderndid/pull/208>`__)
+
+* Enhance GPU troubleshooting section and clarify dependency documentation.
+
+  (`#205 <https://github.com/jordandeklerk/moderndid/pull/205>`__)
+
+* Update installation and overview documentation.
+
+  (`#205 <https://github.com/jordandeklerk/moderndid/pull/205>`__)
+
+* Add pixi setup instructions to README.
+
+  (`#209 <https://github.com/jordandeklerk/moderndid/pull/209>`__)
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk
+
+
+Pull Requests Merged
+====================
+
+A total of 8 pull requests were merged for this release.
+
+* `#212 <https://github.com/jordandeklerk/moderndid/pull/212>`__: Update usage docs
+* `#211 <https://github.com/jordandeklerk/moderndid/pull/211>`__: Enhance documentation
+* `#210 <https://github.com/jordandeklerk/moderndid/pull/210>`__: Fix prose and links in README
+* `#209 <https://github.com/jordandeklerk/moderndid/pull/209>`__: Simplify plotting examples
+* `#208 <https://github.com/jordandeklerk/moderndid/pull/208>`__: Introduce pixi dev tools
+* `#207 <https://github.com/jordandeklerk/moderndid/pull/207>`__: Remove unused imports and exports from Dask and Spark backends
+* `#205 <https://github.com/jordandeklerk/moderndid/pull/205>`__: Update installation and overview docs
+* `#204 <https://github.com/jordandeklerk/moderndid/pull/204>`__: Remove unused parameter
