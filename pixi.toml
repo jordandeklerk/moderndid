@@ -51,7 +51,7 @@ myst-parser = { version = ">=2.0.0", extras = ["linkify"] }
 myst-nb = ">=1.0.0"
 
 [feature.docs.tasks]
-docs-build = "sphinx-build -d docs/_doctree docs/source docs/_build --color -v -bhtml"
+docs = "sphinx-build -d docs/_doctree docs/source docs/_build --color -v -bhtml"
 
 [feature.didcont.pypi-dependencies]
 formulaic = ">=1.1.0"
@@ -86,14 +86,17 @@ ruff = ">=0.11.7"
 mypy = ">=1.0.0"
 
 [feature.lint.tasks]
-pre-commit = "pre-commit run --all-files"
+lint = "pre-commit run --all-files"
 
 [feature.build.dependencies]
 pip = "*"
 flit = ">=3.4,<4"
 
+[feature.build.pypi-dependencies]
+moderndid = { path = ".", editable = true }
+
 [feature.build.tasks]
-build = "flit build"
+package = "flit build"
 
 [feature.validation]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
@@ -108,8 +111,8 @@ tests-validation = "pytest tests/validation/ -vv"
 
 [environments]
 dev = ["dev", "build", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
-docs = ["docs", "build", "didcont", "didhonest", "plots"]
-lint = ["lint"]
+docs = ["docs", "build", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
+check = ["lint"]
 build = ["build"]
 gpu = ["gpu"]
 validation = ["dev", "build", "validation", "didcont", "didhonest", "plots", "numba", "dask", "spark"]

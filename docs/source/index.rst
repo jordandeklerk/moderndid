@@ -14,6 +14,7 @@ ModernDiD documentation
    Development <dev/index>
    Background <background/index>
    Release Notes <release/index>
+   Acknowledgements <acknowledgements>
 
 
 **Version**: |version|
