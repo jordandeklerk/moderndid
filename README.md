@@ -263,38 +263,13 @@ print(attgt_result)
 
 The output shows treatment effects for each group-time pair, along with pointwise confidence bands that account for multiple testing. Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
 
-__ModernDiD__ provides "batteries-included" plotting functions ([`plot_event_study`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_event_study.html), [`plot_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_gt.html), [`plot_agg`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_agg.html), and more) as well as data converters for building custom figures with [plotnine](https://plotnine.org/). Since all plot functions return `ggplot` objects, you can restyle them with the full grammar of graphics. Here we extract the underlying data with [`mpresult_to_polars`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.mpresult_to_polars.html) and build a clean figure:
+__ModernDiD__ provides "batteries-included" plotting functions ([`plot_event_study`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_event_study.html), [`plot_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_gt.html), [`plot_agg`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_agg.html), and more) as well as data converters for building custom figures with [plotnine](https://plotnine.org/). Since all plot functions return `ggplot` objects, you can restyle them with the full grammar of graphics:
 
 ```python
-from moderndid.plots import mpresult_to_polars, COLORS
-from plotnine import (
-    aes, element_text, facet_wrap, geom_errorbar, geom_hline,
-    geom_point, ggplot, labs, scale_color_manual,
-    scale_x_continuous, theme, theme_gray,
-)
+from plotnine import element_text, labs, theme, theme_gray
 
-df = mpresult_to_polars(attgt_result)
-df = df.with_columns([df["group"].cast(int).cast(str).alias("group_label")])
-x_breaks = sorted(df["time"].unique().to_list())
-
-p = (
-    ggplot(df, aes(x="time", y="att", color="treatment_status"))
-    + geom_hline(yintercept=0, linetype="dashed", color="black", size=0.4)
-    + geom_errorbar(
-        aes(ymin="ci_lower", ymax="ci_upper"),
-        width=0.15, size=0.6, alpha=0.7,
-    )
-    + geom_point(size=3, alpha=0.8)
-    + scale_color_manual(
-        values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
-        limits=["Pre", "Post"],
-        name="",
-    )
-    + scale_x_continuous(breaks=x_breaks)
-    + facet_wrap(
-        "~group_label", ncol=3,
-        labeller=lambda x: f"Group {x}", scales="free_x",
-    )
+p = did.plot_gt(attgt_result, ncol=3)
+p = (p
     + labs(
         x="Year",
         y="ATT (Log Employment)",
