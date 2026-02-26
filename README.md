@@ -208,7 +208,7 @@ Event time 0 is the on-impact effect, negative event times are pre-treatment per
 
 ### Consistent API
 
-All estimators share a unified interface:
+All estimators share a unified interface. Pass any [Arrow PyCapsule](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)-compatible DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and others) and estimation works the same way:
 
 ```python
 result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
@@ -220,9 +220,9 @@ result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="trea
 
 ### Scaling Up
 
-**Distributed** — Pass a Spark or Dask DataFrame and the distributed backend activates automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
+**Distributed.** Pass a Spark or Dask DataFrame and the distributed backend activates automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
 
-**GPU** — Pass `backend="cupy"` to offload estimation to NVIDIA GPUs. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
+**GPU.** Pass `backend="cupy"` to offload estimation to NVIDIA GPUs. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
 
 ```python
 from pyspark.sql import SparkSession
