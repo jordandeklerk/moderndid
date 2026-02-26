@@ -37,13 +37,15 @@ uv pip install moderndid[all]   # All estimators, plots, numba, spark, dask (exc
 
 Extras are additive and build on the base install, so you always get the core estimators ([`att_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
 
-- **`didcont`** - Continuous treatment DiD ([`cont_did`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html))
-- **`didhonest`** - Sensitivity analysis ([`honest_did`](https://moderndid.readthedocs.io/en/latest/api/generated/honestdid/moderndid.honest_did.html))
-- **`plots`** - Visualization
-- **`numba`** - Faster bootstrap inference
-- **`spark`** - Distributed estimation via PySpark
-- **`dask`** - Distributed estimation via Dask
-- **`gpu`** - GPU-accelerated estimation (requires CUDA)
+| Extra | Adds |
+|---|---|
+| `didcont` | Continuous treatment DiD ([`cont_did`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html)) |
+| `didhonest` | Sensitivity analysis ([`honest_did`](https://moderndid.readthedocs.io/en/latest/api/generated/honestdid/moderndid.honest_did.html)) |
+| `plots` | Batteries-included plots |
+| `numba` | Faster bootstrap inference |
+| `spark` | Distributed estimation via PySpark |
+| `dask` | Distributed estimation via Dask |
+| `gpu` | GPU-accelerated estimation (requires CUDA) |
 
 ```bash
 uv pip install moderndid[didcont,plots]   # Combine multiple extras
