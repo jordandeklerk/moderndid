@@ -1,5 +1,26 @@
+<a id="v0.1.1"></a>
+# [v0.1.1](https://github.com/jordandeklerk/moderndid/releases/tag/v0.1.1) - 2026-02-26
+
+## What's Changed
+* Update changelog for v0.1.0 by [@github-actions](https://github.com/github-actions)[bot] in [#203](https://github.com/jordandeklerk/moderndid/pull/203)
+* REF: remove unused parameter by [@jordandeklerk](https://github.com/jordandeklerk) in [#204](https://github.com/jordandeklerk/moderndid/pull/204)
+* DOC: update installation and overview docs by [@jordandeklerk](https://github.com/jordandeklerk) in [#205](https://github.com/jordandeklerk/moderndid/pull/205)
+* BUG: remove imports and exports from Dask and Spark backends by [@jordandeklerk](https://github.com/jordandeklerk) in [#207](https://github.com/jordandeklerk/moderndid/pull/207)
+* DEV: introduce pixi dev tools by [@jordandeklerk](https://github.com/jordandeklerk) in [#208](https://github.com/jordandeklerk/moderndid/pull/208)
+* DOC: simplify plotting examples by [@jordandeklerk](https://github.com/jordandeklerk) in [#209](https://github.com/jordandeklerk/moderndid/pull/209)
+* DOC: fix prose and links in README by [@jordandeklerk](https://github.com/jordandeklerk) in [#210](https://github.com/jordandeklerk/moderndid/pull/210)
+* DOC: enhance documentation by [@jordandeklerk](https://github.com/jordandeklerk) in [#211](https://github.com/jordandeklerk/moderndid/pull/211)
+* DOC: update usage docs by [@jordandeklerk](https://github.com/jordandeklerk) in [#212](https://github.com/jordandeklerk/moderndid/pull/212)
+* REL: bump version to 0.1.1 and update release notes by [@jordandeklerk](https://github.com/jordandeklerk) in [#213](https://github.com/jordandeklerk/moderndid/pull/213)
+
+
+**Full Changelog**: https://github.com/jordandeklerk/moderndid/compare/v0.1.0...v0.1.1
+
+[Changes][v0.1.1]
+
+
 <a id="v0.1.0"></a>
-# [v0.0.1 (v0.1.0)](https://github.com/jordandeklerk/moderndid/releases/tag/v0.1.0) - 2026-02-25
+# [v0.1.0](https://github.com/jordandeklerk/moderndid/releases/tag/v0.1.0) - 2026-02-25
 
 ## What's Changed
 * Overhaul documentation style and add release notes by [@jordandeklerk](https://github.com/jordandeklerk) in [#140](https://github.com/jordandeklerk/moderndid/pull/140)
@@ -204,6 +225,7 @@
 [Changes][v0.0.1]
 
 
+[v0.1.1]: https://github.com/jordandeklerk/moderndid/compare/v0.1.0...v0.1.1
 [v0.1.0]: https://github.com/jordandeklerk/moderndid/compare/v0.0.3...v0.1.0
 [v0.0.3]: https://github.com/jordandeklerk/moderndid/compare/v0.0.2...v0.0.3
 [v0.0.2]: https://github.com/jordandeklerk/moderndid/compare/v0.0.1...v0.0.2
