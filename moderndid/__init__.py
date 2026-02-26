@@ -473,15 +473,15 @@ _optional_imports = {
     "validate_conformable": ("moderndid.didhonest", "didhonest"),
     "validate_symmetric_psd": ("moderndid.didhonest", "didhonest"),
     # dask (requires dask + distributed)
-    "dask_att_gt": ("moderndid.dask", "dask"),
-    "dask_cont_did": ("moderndid.dask", "dask"),
-    "dask_ddd": ("moderndid.dask", "dask"),
-    "dask_did_multiplegt": ("moderndid.dask", "dask"),
+    "dask_att_gt": ("moderndid.dask._did", "dask"),
+    "dask_cont_did": ("moderndid.dask._didcont", "dask"),
+    "dask_ddd": ("moderndid.dask._ddd", "dask"),
+    "dask_did_multiplegt": ("moderndid.dask._didinter", "dask"),
     # spark (requires pyspark)
-    "spark_att_gt": ("moderndid.spark", "spark"),
-    "spark_cont_did": ("moderndid.spark", "spark"),
-    "spark_ddd": ("moderndid.spark", "spark"),
-    "spark_did_multiplegt": ("moderndid.spark", "spark"),
+    "spark_att_gt": ("moderndid.spark._did", "spark"),
+    "spark_cont_did": ("moderndid.spark._didcont", "spark"),
+    "spark_ddd": ("moderndid.spark._ddd", "spark"),
+    "spark_did_multiplegt": ("moderndid.spark._didinter", "spark"),
     # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),
     "plot_dose_response": ("moderndid.plots", "plots"),
