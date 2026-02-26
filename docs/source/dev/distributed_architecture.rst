@@ -13,8 +13,7 @@ algorithmic decomposition; only the communication primitives differ. The
 sections below use Dask code examples for concreteness.
 :ref:`Spark-specific mechanics <spark-mechanics>` are covered at the end.
 
-For usage documentation, see the :ref:`Dask guide <distributed>` and the
-:ref:`Spark guide <spark>`.
+For usage documentation, see the :ref:`Distributed guide <distributed>`.
 
 
 Scope and design rule
