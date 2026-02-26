@@ -56,3 +56,23 @@ Functions for visualizing HonestDiD sensitivity analysis results.
    :nosignatures:
 
    plot_sensitivity
+
+Data Converters
+---------------
+
+Functions that convert result objects into polars DataFrames for custom plotting.
+Each converter returns a tidy DataFrame with columns for point estimates, standard
+errors, confidence bounds, and treatment status labels.
+
+.. autosummary::
+   :toctree: generated/plotting/
+   :nosignatures:
+
+   aggteresult_to_polars
+   mpresult_to_polars
+   dddaggresult_to_polars
+   dddmpresult_to_polars
+   doseresult_to_polars
+   pteresult_to_polars
+   honestdid_to_polars
+   didinterresult_to_polars

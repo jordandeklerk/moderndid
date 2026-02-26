@@ -371,7 +371,9 @@ print(event_study)
 
 Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero lean in support of the parallel trends assumption (but do not confirm it), while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
 
-The same data converters we used before make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna (2021) estimates from above against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest), illustrating how heterogeneity-robust estimators differ from conventional two-way fixed effects. See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for the full code and more examples.
+The same data converters we used before make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates from above against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest), illustrating how heterogeneity-robust estimators differ from conventional two-way fixed effects.
+
+See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for the full code and more examples.
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/readme/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
 
