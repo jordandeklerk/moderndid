@@ -348,7 +348,7 @@ Event time 0 is the period of first treatment, e.g., the on-impact effect, negat
 
 The [data converters](https://moderndid.readthedocs.io/en/latest/api/plotting.html#data-converters) also make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates from above against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest), illustrating how heterogeneity-robust estimators differ from conventional two-way fixed effects.
 
-See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for the full code and more examples.
+See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html#building-custom-plots) for the full code and more examples.
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
 
