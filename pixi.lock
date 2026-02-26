@@ -10742,8 +10742,8 @@ packages:
   requires_python: '>=3.10'
 - pypi: ./
   name: moderndid
-  version: 0.1.0
-  sha256: bc872b90172405a50bc0aa04eea404feb8206050b47612e21913cab87f5aa45b
+  version: 0.1.1
+  sha256: e45a1b991e086ad72f00fd18f783974667647c36626d436e334ce490433ba000
   requires_dist:
   - numpy>=1.22.0
   - scipy>=1.17
