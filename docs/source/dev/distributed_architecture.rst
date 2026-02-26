@@ -6,12 +6,12 @@
 Distributed Computing
 ======================
 
-This document describes the internal design of ModernDiD's distributed
-backends for `Dask <https://www.dask.org/>`_ and
+ModernDiD ships distributed backends for
+`Dask <https://www.dask.org/>`_ and
 `Apache Spark <https://spark.apache.org/>`_. Both backends share the same
 algorithmic decomposition; only the communication primitives differ. The
 sections below use Dask code examples for concreteness.
-:ref:`Spark-specific mechanics <spark-mechanics>` are described at the end.
+:ref:`Spark-specific mechanics <spark-mechanics>` are covered at the end.
 
 For usage documentation, see the :ref:`Dask guide <distributed>` and the
 :ref:`Spark guide <spark>`.

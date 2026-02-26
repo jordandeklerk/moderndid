@@ -5,36 +5,48 @@ Testing ModernDiD
 How to run the test suite
 =========================
 
-The recommended way to run the test suite is via ``tox``, which manages isolated
-test environments and ensures consistent results across different machines. Tox
-handles environment variables and dependencies automatically, allowing you to test
-the library with different combinations of optional dependencies from the same
-development environment.
+The recommended way to run the test suite is via ``pixi``, which manages isolated
+environments and ensures consistent results across different machines. Pixi
+handles dependencies automatically, allowing you to test the library with
+different combinations of optional dependencies from the same development
+environment.
 
 To run the fast test suite (recommended for development):
 
 .. code-block:: bash
 
-   tox -e core
+   pixi run -e dev tests-core
 
 To run the full test suite (all tests including slow ones):
 
 .. code-block:: bash
 
-   tox -e full
+   pixi run -e dev tests-full
 
-To run tests with coverage reporting:
+To run the Dask distributed tests:
 
 .. code-block:: bash
 
-   tox -e core-coverage
-   tox -e full-coverage
+   pixi run -e dev tests-dask
+
+To run the Spark distributed tests:
+
+.. code-block:: bash
+
+   pixi run -e dev tests-spark
+
+To run the R validation tests (requires R with ``did``, ``DRDID``, and related
+packages installed via the ``validation`` environment):
+
+.. code-block:: bash
+
+   pixi run -e validation tests-validation
 
 To run style checks:
 
 .. code-block:: bash
 
-   tox -e check
+   pixi run -e check lint
 
 How to write tests
 ==================
