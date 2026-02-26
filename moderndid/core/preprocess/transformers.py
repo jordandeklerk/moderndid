@@ -434,10 +434,14 @@ class PrePostCovariateProcessor(BaseTransformer):
         if not isinstance(config, TwoPeriodDIDConfig):
             return to_polars(data)
 
+        df = to_polars(data)
+
+        if not config.xformla or config.xformla == "~1":
+            return df.with_columns(pl.lit(1.0).alias("Intercept"))
+
         import formulaic as fml
 
-        df = to_polars(data)
-        covariates_formula = config.xformla if config.xformla else "~1"
+        covariates_formula = config.xformla
 
         try:
             model_matrix_result = fml.model_matrix(covariates_formula, df)
