@@ -1,21 +1,20 @@
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png#gh-light-mode-only" width="250" align="left" alt="moderndid logo"></img>
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png#gh-dark-mode-only" width="250" align="left" alt="moderndid logo"></img>
 
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit)
+[![PyPI -Version](https://img.shields.io/pypi/v/moderndid.svg)](https://pypi.org/project/moderndid/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Pixi Badge](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prefix-dev/pixi/main/assets/badge/v0.json)](https://pixi.sh)
 [![prek](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/j178/prek/master/docs/assets/badge-v0.json)](https://github.com/j178/prek)
-[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
-[![Build Status](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml)
 [![Code Coverage](https://codecov.io/gh/jordandeklerk/moderndid/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/moderndid)
+[![Build Status](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml)
 [![Documentation](https://readthedocs.org/projects/moderndid/badge/?version=latest)](https://moderndid.readthedocs.io/en/latest/)
 [![Last commit](https://img.shields.io/github/last-commit/jordandeklerk/moderndid)](https://github.com/jordandeklerk/moderndid/graphs/commit-activity)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/moderndid)](https://github.com/jordandeklerk/moderndid/graphs/commit-activity)
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
-
+<!-- [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active) -->
 
 __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Dask and Spark clusters.
-
-> [!WARNING]
-> This package is currently in active development with core estimators and some sensitivity analysis implemented. The API is subject to change.
 
 ## Features
 
@@ -74,6 +73,9 @@ uv pip install git+https://github.com/jordandeklerk/moderndid.git
 
 ### Distributed Computing
 
+>[!WARNING]
+> Distributed computing is a relatively new and experimental feature. It is currently only tested and available for the [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) and [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html#moderndid.ddd) functions. Support for other estimators such as [`did_multiplegt()`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html#moderndid.did_multiplegt) and [`cont_did()`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html#moderndid.cont_did) is in progress.
+
 For datasets that exceed single-machine memory, pass a Dask or Spark dataFrame to [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) or [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html#moderndid.ddd) and the distributed backend activates automatically. All computation happens on workers via partition-level sufficient statistics. Only small summary matrices return to the driver. Results are numerically identical to the local estimators.
 
 **Dask**
@@ -131,7 +133,7 @@ See the [Distributed Estimation guide](https://moderndid.readthedocs.io/en/lates
 
 ### GPU Acceleration
 
-On machines with NVIDIA GPUs, install the `gpu` extra and pass `backend="cupy"` to offload regression and propensity score estimation to the GPU. The backend activates only for that call and reverts automatically. See the [GPU troubleshooting section](#common-troubleshooting-for-gpu) below for guidance on common issues:
+On machines with NVIDIA GPUs, install the `gpu` extra and pass `backend="cupy"` to offload regression and propensity score estimation to the GPU. The backend activates only for that call and reverts automatically:
 
 ```python
 import moderndid as did
@@ -146,7 +148,7 @@ result = did.att_gt(data,
 
 You can also set the backend globally with `did.set_backend("cupy")` and revert with `did.set_backend("numpy")`. For multi-GPU scaling, combine with a Dask DataFrame as shown above.
 
-See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) for details and [GPU benchmark results](scripts/README.md) for performance comparisons across several NVIDIA GPUs.
+See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) for details and troubleshooting, and [GPU benchmark results](scripts/README.md) for performance comparisons across several NVIDIA GPUs.
 
 ### Consistent API
 
@@ -192,7 +194,7 @@ did.gen_dgp_scalable()           # Large-scale triple DiD
 
 This example uses county-level teen employment data to estimate the effect of minimum wage increases. States adopted higher minimum wages at different times (2004, 2006, or 2007), making this a staggered adoption design.
 
-The [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) function is a core __ModernDiD__ estimator that estimates the average treatment effect for each group $g$ (defined by when units were first treated) at each time period $t$ in multi-period, staggered adoption designs. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
+The [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) function is a core __ModernDiD__ estimator that estimates the average treatment effect for each group *g* (defined by when units were first treated) at each time period *t* in multi-period, staggered adoption designs. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
 
 ```python
 import moderndid as did
@@ -211,8 +213,6 @@ attgt_result = did.att_gt(
 )
 print(attgt_result)
 ```
-
-The output shows treatment effects for each group-time pair, along with pointwise confidence bands that account for multiple testing:
 
 ```
 ==============================================================================
@@ -261,12 +261,52 @@ The output shows treatment effects for each group-time pair, along with pointwis
  Reference: Callaway and Sant'Anna (2021)
 ```
 
-Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
+The output shows treatment effects for each group-time pair, along with pointwise confidence bands that account for multiple testing. Rows where the confidence band excludes zero are marked with `*`. The pre-test p-value tests whether pre-treatment effects are jointly zero, providing a diagnostic for the parallel trends assumption.
 
-We can plot these results using the `plot_gt()` functionality:
+__ModernDiD__ provides "batteries-included" plotting functions ([`plot_event_study`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_event_study.html), [`plot_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_gt.html), [`plot_agg`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_agg.html), and more) as well as data converters for building custom figures with [plotnine](https://plotnine.org/). Since all plot functions return `ggplot` objects, you can restyle them with the full grammar of graphics. Here we extract the underlying data with [`mpresult_to_polars`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.mpresult_to_polars.html) and build a clean figure:
 
 ```python
-did.plot_gt(attgt_result)
+from moderndid.plots import mpresult_to_polars, COLORS
+from plotnine import (
+    aes, element_text, facet_wrap, geom_errorbar, geom_hline,
+    geom_point, ggplot, labs, scale_color_manual,
+    scale_x_continuous, theme, theme_gray,
+)
+
+df = mpresult_to_polars(attgt_result)
+df = df.with_columns([df["group"].cast(int).cast(str).alias("group_label")])
+x_breaks = sorted(df["time"].unique().to_list())
+
+p = (
+    ggplot(df, aes(x="time", y="att", color="treatment_status"))
+    + geom_hline(yintercept=0, linetype="dashed", color="black", size=0.4)
+    + geom_errorbar(
+        aes(ymin="ci_lower", ymax="ci_upper"),
+        width=0.15, size=0.6, alpha=0.7,
+    )
+    + geom_point(size=3, alpha=0.8)
+    + scale_color_manual(
+        values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
+        limits=["Pre", "Post"],
+        name="",
+    )
+    + scale_x_continuous(breaks=x_breaks)
+    + facet_wrap(
+        "~group_label", ncol=3,
+        labeller=lambda x: f"Group {x}", scales="free_x",
+    )
+    + labs(
+        x="Year",
+        y="ATT (Log Employment)",
+        title="Minimum Wage Effects on Teen Employment",
+        subtitle="Group-time average treatment effects by treatment cohort",
+    )
+    + theme_gray()
+    + theme(
+        legend_position="bottom",
+        strip_text=element_text(size=11, weight="bold"),
+    )
+)
 ```
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="ATT plot">
@@ -331,54 +371,37 @@ print(event_study)
 
 Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero lean in support of the parallel trends assumption (but do not confirm it), while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
 
-We can also use built-in plotting functionality to plot the event study results with `plot_event_study()`:
+The same data converters we used before make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates from above against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest), illustrating how heterogeneity-robust estimators differ from conventional two-way fixed effects.
 
-```python
-did.plot_event_study(event_study)
+See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for the full code and more examples.
+
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
+
+## Planned Development
+
+- `moderndid.didml` — Machine learning approaches to DiD ([Hatamyar et al., 2023](https://arxiv.org/pdf/2310.11962))
+- `moderndid.drdidweak` — Robust to weak overlap ([Ma et al., 2023](https://arxiv.org/pdf/2304.08974))
+- `moderndid.didcomp` — Compositional changes in repeated cross-sections ([Sant'Anna & Xu, 2025](https://arxiv.org/pdf/2304.13925))
+- `moderndid.didimpute` — Imputation-based estimators ([Borusyak, Jaravel, & Spiess, 2024](https://arxiv.org/pdf/2108.12419))
+- `moderndid.didbacon` — Goodman-Bacon decomposition ([Goodman-Bacon, 2019](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf))
+- `moderndid.didlocal` — Local projections DiD ([Dube et al., 2025](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf))
+- `moderndid.did2s` — Two-stage DiD ([Gardner, 2021](https://jrgcmu.github.io/2sdd_current.pdf))
+- `moderndid.etwfe` — Extended two-way fixed effects ([Wooldridge, 2021](https://ssrn.com/abstract=3906345); [Wooldridge, 2023](https://doi.org/10.1093/ectj/utad016))
+- `moderndid.functional` — Specification tests ([Roth & Sant'Anna, 2023](https://arxiv.org/pdf/2010.04814))
+
+## Acknowledgements
+
+ModernDiD would not be possible without the researchers who developed the underlying econometric methods and implemented them in various R and Stata packages. See our [Acknowledgements](https://moderndid.readthedocs.io/en/latest/acknowledgements.html) page for a full list of the software, packages, and papers that have influenced this project.
+
+## Citation
+
+If you use ModernDiD in your research, please cite it as:
+
+```bibtex
+@software{moderndid,
+  author  = {{The ModernDiD Authors}},
+  title   = {{ModernDiD: Scalable, GPU-Accelerated Difference-in-Differences for Python}},
+  year    = {2025},
+  url     = {https://github.com/jordandeklerk/moderndid}
+}
 ```
-
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="Event study plot">
-
-## Common Troubleshooting for GPU
-
-If `set_backend("cupy")` raises **`CuPy is not installed`**, the most common cause is installing the generic `cupy` package, which tries to compile from source. Instead, install a prebuilt wheel that matches your CUDA driver version:
-
-```bash
-uv pip install cupy-cuda12x   # CUDA 12.x
-uv pip install cupy-cuda11x   # CUDA 11.x
-```
-
-Run `nvidia-smi` to check which CUDA version your driver supports. After installing, restart your Python process (or notebook runtime) before importing ModernDiD (CuPy availability is checked once at import time).
-
-If you see **`cudaErrorInsufficientDriver`**, the installed CuPy wheel expects a newer CUDA version than your driver provides. Check `nvidia-smi` and switch to the matching wheel.
-
-If you see **`No CUDA GPU is available`**, make sure `nvidia-smi` shows a device. In cloud notebooks, verify that a GPU runtime is selected.
-
-## Available Methods
-
-Each core module includes a dedicated walkthrough covering methodology background, API usage, and guidance on interpreting results.
-
-### Core Implementations
-
-| Module | Description | Reference |
-|--------|-------------|-----------|
-| [`moderndid.did`](moderndid/did) | Staggered DiD with group-time effects | [Callaway & Sant'Anna (2021)](https://arxiv.org/pdf/1803.09015) |
-| [`moderndid.drdid`](moderndid/drdid) | Doubly robust 2-period estimators | [Sant'Anna & Zhao (2020)](https://arxiv.org/pdf/1812.01723) |
-| [`moderndid.didhonest`](moderndid/didhonest) | Sensitivity analysis for parallel trends | [Rambachan & Roth (2023)](https://asheshrambachan.github.io/assets/files/hpt-draft.pdf) |
-| [`moderndid.didcont`](moderndid/didcont) | Continuous/multi-valued treatments | [Callaway et al. (2024)](https://arxiv.org/pdf/2107.02637) |
-| [`moderndid.didtriple`](moderndid/didtriple) | Triple difference-in-differences | [Ortiz-Villavicencio & Sant'Anna (2025)](https://arxiv.org/pdf/2505.09942) |
-| [`moderndid.didinter`](moderndid/didinter) | Intertemporal DiD with non-absorbing treatment | [Chaisemartin & D'Haultfœuille (2024)](https://arxiv.org/pdf/2007.04267) |
-
-### Planned Development
-
-| Module | Description | Reference |
-|--------|-------------|-----------|
-| `moderndid.didml` | Machine learning approaches to DiD | [Hatamyar et al. (2023)](https://arxiv.org/pdf/2310.11962) |
-| `moderndid.drdidweak` | Robust to weak overlap | [Ma et al. (2023)](https://arxiv.org/pdf/2304.08974) |
-| `moderndid.didcomp` | Compositional changes in repeated cross-sections | [Sant'Anna & Xu (2025)](https://arxiv.org/pdf/2304.13925) |
-| `moderndid.didimpute` | Imputation-based estimators | [Borusyak, Jaravel, & Spiess (2024)](https://arxiv.org/pdf/2108.12419) |
-| `moderndid.didbacon` | Goodman-Bacon decomposition | [Goodman-Bacon (2019)](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf) |
-| `moderndid.didlocal` | Local projections DiD | [Dube et al. (2025)](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf) |
-| `moderndid.did2s` | Two-stage DiD | [Gardner (2021)](https://jrgcmu.github.io/2sdd_current.pdf) |
-| `moderndid.etwfe` | Extended two-way fixed effects | [Wooldridge (2021)](https://ssrn.com/abstract=3906345), [Wooldridge (2023)](https://doi.org/10.1093/ectj/utad016) |
-| `moderndid.functional` | Specification tests | [Roth & Sant'Anna (2023)](https://arxiv.org/pdf/2010.04814) |

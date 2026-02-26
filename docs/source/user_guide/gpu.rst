@@ -441,6 +441,38 @@ propagate to Spark executor processes. Always use the ``backend`` parameter
 on the estimator call instead.
 
 
+.. _gpu-troubleshooting:
+
+Troubleshooting
+---------------
+
+**"CuPy is not installed"** when calling ``set_backend("cupy")``
+
+The most common cause is installing the generic ``cupy`` package, which
+tries to compile from source. Instead, install a prebuilt wheel that
+matches your CUDA driver version:
+
+.. code-block:: bash
+
+    uv pip install cupy-cuda12x   # CUDA 12.x
+    uv pip install cupy-cuda11x   # CUDA 11.x
+
+Run ``nvidia-smi`` to check which CUDA version your driver supports.
+After installing, restart your Python process (or notebook runtime)
+before importing ModernDiD (CuPy availability is checked once at import
+time).
+
+**"cudaErrorInsufficientDriver"**
+
+The installed CuPy wheel expects a newer CUDA version than your driver
+provides. Check ``nvidia-smi`` and switch to the matching wheel.
+
+**"No CUDA GPU is available"**
+
+Make sure ``nvidia-smi`` shows a device. In cloud notebooks, verify that
+a GPU runtime is selected.
+
+
 Next steps
 ----------
 

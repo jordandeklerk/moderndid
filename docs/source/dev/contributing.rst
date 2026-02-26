@@ -18,14 +18,12 @@ Here's a summary of the contribution workflow:
 
 1. **Set up your environment**
 
-   * Set up a Python development environment using
-     `venv <https://docs.python.org/3/library/venv.html>`__,
-     `virtualenv <https://virtualenv.pypa.io/>`__, or
-     `miniconda <https://docs.conda.io/en/latest/miniconda.html>`__
+   We use `pixi <https://pixi.sh/>`__ to manage development environments. Pixi
+   handles Python, conda, and PyPI dependencies in a single lockfile so every
+   contributor gets an identical setup.
 
-   * Install tox for managing test environments::
-
-      uv pip install tox
+   * `Install pixi <https://pixi.sh/latest/#installation>`__ if you don't have
+     it already
 
    * Fork the repository on GitHub, then clone your fork::
 
@@ -36,9 +34,16 @@ Here's a summary of the contribution workflow:
 
       git remote add upstream https://github.com/jordandeklerk/moderndid.git
 
-   * Install the package in development mode::
+   * Install the dev environment (this creates an isolated environment with all
+     dependencies)::
 
-      uv pip install -e .
+      pixi install -e dev
+
+   **Alternative: pip-based setup.** If you prefer not to use pixi, you can set
+   up a virtual environment manually::
+
+      python -m venv .venv && source .venv/bin/activate
+      uv pip install -e ".[all,test,dev]"
 
 2. **Develop your contribution**
 
@@ -55,15 +60,15 @@ Here's a summary of the contribution workflow:
 
    * Run the test suite to make sure your changes don't break anything::
 
-      tox -e core
+      pixi run -e dev tests-core
 
-   * Check that your code follows the project's style guidelines::
+   * Run the pre-commit hooks to check style::
 
-      tox -e check
+      pixi run lint
 
    * If you've modified documentation, build and review it::
 
-      tox -e docs
+      pixi run docs
 
 4. **Submit your contribution**
 
@@ -108,7 +113,7 @@ Stylistic guidelines
 ====================
 
 We follow `PEP 8 <https://www.python.org/dev/peps/pep-0008/>`__ style conventions.
-Run ``tox -e check`` to verify your code before submitting a pull request.
+Run ``pixi run lint`` to verify your code before submitting a pull request.
 
 For imports, use the standard conventions of ``import numpy as np`` and
 ``import polars as pl``. Keep imports organized with standard library imports
@@ -167,13 +172,13 @@ across the codebase.
 
 Run the test suite locally before pushing::
 
-   tox -e core      # Fast test suite (recommended during development)
-   tox -e full      # Full test suite including slow tests
+   pixi run -e dev tests-core      # Fast test suite (recommended during development)
+   pixi run -e dev tests-full      # Full test suite including slow tests
 
-To run tests with coverage reporting::
+To run distributed test suites::
 
-   tox -e core-coverage
-   tox -e full-coverage
+   pixi run -e dev tests-dask      # Dask distributed tests
+   pixi run -e dev tests-spark     # Spark distributed tests
 
 Building documentation
 ======================
@@ -184,7 +189,7 @@ and example notebooks.
 
 To build and preview the documentation locally::
 
-   tox -e docs
+   pixi run docs
 
-The built documentation will be available in ``.tox/docs/docs_out/``. Open
+The built documentation will be available in ``docs/_build/``. Open
 ``index.html`` in a browser to review your changes before submitting.

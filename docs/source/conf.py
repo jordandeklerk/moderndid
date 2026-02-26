@@ -112,12 +112,13 @@ html_logo = "_static/logo.svg"
 html_favicon = "_static/favicon.ico"
 
 html_sidebars = {
-    "index": [],  # Hide sidebar on index page
+    "index": [],
+    "acknowledgements": [],
     "**": ["sidebar-nav-bs"],
 }
 
 html_theme_options = {
-    "header_links_before_dropdown": 6,
+    "header_links_before_dropdown": 7,
     "icon_links": [
         {
             "name": "GitHub",

@@ -92,6 +92,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+docs/_doctree/
 docs/build
 docs/jupyter_execute
 docs/source/api/generated
@@ -166,7 +167,7 @@ cython_debug/
 *.local.*
 .c*
 .m*
-uv.lock
+
 
 triplediff/
 py_did_mult*/
