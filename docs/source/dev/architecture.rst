@@ -206,7 +206,7 @@ Inference Parameters
 Result Object Design
 ====================
 
-All estimators return immutable NamedTuple result objects. Immutability ensures
+All estimators return immutable `NamedTuple` result objects. Immutability ensures
 results cannot be accidentally modified during interactive analysis. The explicit
 attribute definitions with type hints create a clear interface that documents
 exactly what each estimator returns. Because NamedTuples are also tuples, results
