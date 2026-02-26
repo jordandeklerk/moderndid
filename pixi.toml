@@ -4,7 +4,7 @@ description = "Scalable, GPU-accelerated difference-in-differences for Python."
 channels = ["conda-forge"]
 name = "moderndid"
 platforms = ["linux-64", "osx-arm64", "osx-64"]
-version = "0.1.0"
+version = "0.1.1"
 
 [tasks]
 
