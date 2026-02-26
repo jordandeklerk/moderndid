@@ -37,8 +37,9 @@ def load_nsw() -> pl.DataFrame:
     It has been widely used in the causal inference literature, particularly
     for demonstrating difference-in-differences methods.
 
-    The dataset is in long format with observations for 1975 (pre-treatment)
-    and 1978 (post-treatment) periods.
+    The dataset is a balanced panel in long format with 16,417 individuals
+    observed in 1975 (pre-treatment) and 1978 (post-treatment), for a total
+    of 32,834 observations.
 
     Returns
     -------
@@ -56,12 +57,6 @@ def load_nsw() -> pl.DataFrame:
         - *nodegree*: Indicator for no high school degree
         - *hisp*: Indicator for Hispanic ethnicity
         - *re74*: Real earnings in 1974
-
-    Notes
-    -----
-    This dataset was used in Lalonde (1986) and has been extensively analyzed
-    in the treatment effects literature. The version included here is formatted
-    for panel data difference-in-differences analysis.
 
     References
     ----------
@@ -90,6 +85,9 @@ def load_mpdta() -> pl.DataFrame:
     This dataset contains county-level teen employment rates from 2003-2007
     with staggered treatment timing (minimum wage increases). States were first
     treated in 2004, 2006, or 2007.
+
+    The dataset is a balanced panel of 500 counties observed across 5 years,
+    for a total of 2,500 observations.
 
     Returns
     -------
@@ -132,9 +130,10 @@ def load_ehec() -> pl.DataFrame:
     among low-income childless adults from 2008-2019, used to study the effects
     of Medicaid expansion under the Affordable Care Act.
 
-    The dataset tracks states that expanded Medicaid at different times
+    The dataset tracks 46 states that expanded Medicaid at different times
     (2014, 2015, 2016, 2017, or 2019) as well as states that never expanded
-    during the sample period.
+    during the sample period, observed across 12 years for a total of 552
+    observations.
 
     Returns
     -------
@@ -146,15 +145,6 @@ def load_ehec() -> pl.DataFrame:
         - *dins*: Share of low-income childless adults with health insurance (outcome variable)
         - *yexp2*: Year that state expanded Medicaid (2014, 2015, 2016, 2017, 2019, or NaN for never-expanded)
         - *W*: State population weights
-
-    Notes
-    -----
-    This dataset is commonly used in staggered adoption difference-in-differences
-    settings and for demonstrating methods that account for treatment effect
-    heterogeneity across time and cohorts.
-
-    The data comes from the Mixtape Sessions Advanced DID workshop and is used
-    in examples demonstrating the HonestDiD method for sensitivity analysis.
 
     References
     ----------
@@ -184,6 +174,8 @@ def load_engel() -> pl.DataFrame:
     The data includes expenditure shares on various categories and household
     characteristics.
 
+    The dataset is a cross-section of 1,655 households.
+
     Returns
     -------
     pl.DataFrame
@@ -199,12 +191,6 @@ def load_engel() -> pl.DataFrame:
         - *logexp*: Log of total expenditure
         - *logwages*: Log of wages
         - *nkids*: Number of children
-
-    Notes
-    -----
-    This dataset is commonly used for demonstrating nonparametric methods,
-    particularly for estimating Engel curves and testing for monotonicity
-    or shape restrictions in consumer demand.
 
     References
     ----------
@@ -235,6 +221,9 @@ def load_favara_imbs() -> pl.DataFrame:
     is non-binary and potentially non-absorbing, making it suitable for
     intertemporal treatment effects estimation.
 
+    The dataset contains 1,048 counties observed across 12 years, for a
+    total of 12,538 observations.
+
     Returns
     -------
     pl.DataFrame
@@ -247,12 +236,6 @@ def load_favara_imbs() -> pl.DataFrame:
         - *inter_bra*: Interstate branching indicator (treatment variable)
         - *w1*: Sampling weight
         - *Dl_hpi*: Change in log house price index
-
-    Notes
-    -----
-    This dataset is commonly used for demonstrating difference-in-differences
-    methods with time-varying treatments, particularly the de Chaisemartin and
-    D'Haultfoeuille (2024) estimator for intertemporal treatment effects.
 
     References
     ----------

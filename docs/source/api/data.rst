@@ -20,6 +20,7 @@ Built-in Datasets
    load_ehec
    load_engel
    load_favara_imbs
+   load_cai2016
 
 Simulation Functions
 --------------------
