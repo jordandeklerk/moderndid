@@ -35,7 +35,7 @@ uv pip install moderndid        # Core estimators (did, drdid, didinter, didtrip
 uv pip install moderndid[all]   # All estimators, plots, numba, spark, dask (excludes gpu)
 ```
 
-Extras are additive and build on the base install, so you always get the core estimators ([`att_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
+Some estimators and features require additional dependencies that are not installed by default. Extras are additive and build on the base install, so you always get the core estimators ([`att_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
 
 - **`didcont`** - Continuous treatment DiD ([`cont_did`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html))
 - **`didhonest`** - Sensitivity analysis ([`honest_did`](https://moderndid.readthedocs.io/en/latest/api/generated/honestdid/moderndid.honest_did.html))
@@ -202,7 +202,7 @@ print(event_study)
 
 Event time 0 is the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero support the parallel trends assumption, while post-treatment effects show how the impact evolves over time.
 
-[Data converters](https://moderndid.readthedocs.io/en/latest/api/plotting.html#data-converters) make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest). See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for the full code and more examples.
+[Data converters](https://moderndid.readthedocs.io/en/latest/api/plotting.html#data-converters) make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest). See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html#advanced-customization) for the full code and more examples.
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
 
