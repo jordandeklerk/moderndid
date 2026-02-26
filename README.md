@@ -194,7 +194,7 @@ did.gen_dgp_scalable()           # Large-scale triple DiD
 
 This example uses county-level teen employment data to estimate the effect of minimum wage increases. States adopted higher minimum wages at different times (2004, 2006, or 2007), making this a staggered adoption design.
 
-The [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) function is a core __ModernDiD__ estimator that estimates the average treatment effect for each group $g$ (defined by when units were first treated) at each time period $t$ in multi-period, staggered adoption designs. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
+The [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) function is a core __ModernDiD__ estimator that estimates the average treatment effect for each group *g* (defined by when units were first treated) at each time period *t* in multi-period, staggered adoption designs. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
 
 ```python
 import moderndid as did
