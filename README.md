@@ -1,5 +1,5 @@
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/readme/docs/source/_static/moderndid-light.png#gh-light-mode-only" width="250" align="left" alt="moderndid logo"></img>
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/readme/docs/source/_static/moderndid-dark.png#gh-dark-mode-only" width="250" align="left" alt="moderndid logo"></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png#gh-light-mode-only" width="250" align="left" alt="moderndid logo"></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png#gh-dark-mode-only" width="250" align="left" alt="moderndid logo"></img>
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit)
 [![PyPI -Version](https://img.shields.io/pypi/v/moderndid.svg)](https://pypi.org/project/moderndid/)
@@ -309,7 +309,7 @@ p = (
 )
 ```
 
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/readme/docs/source/_static/att.png" alt="ATT plot">
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="ATT plot">
 
 While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The `aggte` function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
 
@@ -375,7 +375,7 @@ The same data converters we used before make it easy to overlay estimates from d
 
 See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for the full code and more examples.
 
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/readme/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
 
 ## Planned Development
 
