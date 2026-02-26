@@ -37,15 +37,13 @@ uv pip install moderndid[all]   # All estimators, plots, numba, spark, dask (exc
 
 Optional extras are additive — combine as needed:
 
-| Extra | Adds |
-|---|---|
-| `didcont` | Continuous treatment DiD (`cont_did`) |
-| `didhonest` | Sensitivity analysis (`honest_did`) |
-| `plots` | Visualization (`plot_gt`, `plot_event_study`, ...) |
-| `numba` | Faster bootstrap inference |
-| `spark` | Distributed estimation via PySpark |
-| `dask` | Distributed estimation via Dask |
-| `gpu` | GPU-accelerated estimation (requires CUDA) |
+- **`didcont`** - Continuous treatment DiD (`cont_did`)
+- **`didhonest`** - Sensitivity analysis (`honest_did`)
+- **`plots`** - Visualization (`plot_gt`, `plot_event_study`, ...)
+- **`numba`** - Faster bootstrap inference
+- **`spark`** - Distributed estimation via PySpark
+- **`dask`** - Distributed estimation via Dask
+- **`gpu`** - GPU-accelerated estimation (requires CUDA)
 
 ```bash
 uv pip install moderndid[didcont,plots]   # Combine multiple extras
@@ -121,7 +119,7 @@ print(attgt_result)
  Reference: Callaway and Sant'Anna (2021)
 ```
 
-__ModernDiD__ provides "batteries-included" plotting functions ([`plot_event_study`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_event_study.html), [`plot_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_gt.html), [`plot_agg`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_agg.html), and more) as well as data converters for building custom figures with [plotnine](https://plotnine.org/). Since all plot functions return `ggplot` objects, you can restyle them with the full grammar of graphics:
+__ModernDiD__ provides "batteries-included" plotting functions ([`plot_event_study`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_event_study.html), [`plot_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_gt.html), [`plot_agg`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_agg.html), and [more](https://moderndid.readthedocs.io/en/latest/api/plotting.html)) as well as data converters for building custom figures with [plotnine](https://plotnine.org/). Since all plot functions return `ggplot` objects, you can restyle them with the full grammar of graphics:
 
 ```python
 from plotnine import element_text, labs, theme, theme_gray
