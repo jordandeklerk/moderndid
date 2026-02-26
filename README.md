@@ -35,7 +35,7 @@ uv pip install moderndid        # Core estimators (did, drdid, didinter, didtrip
 uv pip install moderndid[all]   # All estimators, plots, numba, spark, dask (excludes gpu)
 ```
 
-Optional extras are additive — combine as needed:
+Extras are additive and build on the base install, so you always get the core estimators ([`att_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
 
 - **`didcont`** - Continuous treatment DiD (`cont_did`)
 - **`didhonest`** - Sensitivity analysis (`honest_did`)
