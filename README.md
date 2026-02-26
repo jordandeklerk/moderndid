@@ -1,5 +1,5 @@
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png#gh-light-mode-only" width="250" align="left" alt="moderndid logo"></img>
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png#gh-dark-mode-only" width="250" align="left" alt="moderndid logo"></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/readme/docs/source/_static/moderndid-light.png#gh-light-mode-only" width="250" align="left" alt="moderndid logo"></img>
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/readme/docs/source/_static/moderndid-dark.png#gh-dark-mode-only" width="250" align="left" alt="moderndid logo"></img>
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit)
 [![PyPI -Version](https://img.shields.io/pypi/v/moderndid.svg)](https://pypi.org/project/moderndid/)
@@ -271,7 +271,7 @@ We can plot these results using the `plot_gt()` functionality:
 did.plot_gt(attgt_result)
 ```
 
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="ATT plot">
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/readme/docs/source/_static/att.png" alt="ATT plot">
 
 While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The `aggte` function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
 
@@ -333,13 +333,9 @@ print(event_study)
 
 Event time 0 is the period of first treatment, e.g., the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero lean in support of the parallel trends assumption (but do not confirm it), while post-treatment effects reveal how the treatment impact evolves over time. The overall ATT at the top provides a single summary measure across all post-treatment periods.
 
-We can also use built-in plotting functionality to plot the event study results with `plot_event_study()`:
+ModernDiD includes built-in plot functions ([`plot_event_study`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_event_study.html), [`plot_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_gt.html), [`plot_agg`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_agg.html), and more) as well as data converters that make it easy to build custom figures with [plotnine](https://plotnine.org/). The figure below overlays the Callaway and Sant'Anna (2021) estimates from above against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest), illustrating how heterogeneity-robust estimators differ from conventional two-way fixed effects. See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for the full code and more examples.
 
-```python
-did.plot_event_study(event_study)
-```
-
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="Event study plot">
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/readme/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
 
 ## Planned Development
 
