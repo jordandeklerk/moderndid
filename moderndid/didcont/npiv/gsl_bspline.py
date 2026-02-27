@@ -6,6 +6,16 @@ from typing import NamedTuple
 import numpy as np
 from scipy.interpolate import BSpline
 
+from ...cupy.backend import get_backend, to_device, to_numpy
+
+try:
+    from cupyx.scipy.interpolate import BSpline as CupyBSpline
+
+    _HAS_CUPY_SPLINE = True
+except ImportError:
+    _HAS_CUPY_SPLINE = False
+    CupyBSpline = None
+
 
 class BSplineBasis(NamedTuple):
     """Result from B-spline basis construction."""
@@ -74,7 +84,7 @@ def gsl_bs(
     .. [1] de Boor, C. (1978). A Practical Guide to Splines.
         Springer-Verlag.
     """
-    x = np.asarray(x).ravel()
+    x = to_numpy(x).ravel()
     n = len(x)
 
     if degree <= 0:
@@ -129,7 +139,7 @@ def gsl_bs(
         B = B[:, 1:] if B.shape[1] > 1 else B
 
     return BSplineBasis(
-        basis=B,
+        basis=to_device(B),
         degree=degree,
         nbreak=nbreak,
         deriv=deriv,
@@ -200,22 +210,37 @@ def _compute_bspline_basis(
         ]
     )
 
+    xp = get_backend()
+    _use_cupy_spline = xp is not np and _HAS_CUPY_SPLINE
+
     B = np.zeros((n, n_basis))
 
     inside = ~outside
     if np.any(inside):
         x_inside = x[inside]
 
-        for i in range(n_basis):
-            c = np.zeros(len(t) - degree - 1)
-            c[i] = 1.0
-
-            spl = BSpline(t, c, degree, extrapolate=False)
-
+        if _use_cupy_spline:
+            t_dev = xp.asarray(t)
+            x_dev = xp.asarray(x_inside)
             if deriv == 0:
-                B[inside, i] = spl(x_inside)
+                design = CupyBSpline.design_matrix(x_dev, t_dev, degree, extrapolate=False)
+                B[inside, :] = to_numpy(design.toarray())
             else:
-                B[inside, i] = spl.derivative(deriv)(x_inside)
+                for i in range(n_basis):
+                    c = xp.zeros(len(t) - degree - 1)
+                    c[i] = 1.0
+                    spl = CupyBSpline(t_dev, c, degree, extrapolate=False)
+                    B[inside, i] = to_numpy(spl.derivative(deriv)(x_dev))
+        else:
+            if deriv == 0:
+                design = BSpline.design_matrix(x_inside, t, degree, extrapolate=False)
+                B[inside, :] = design.toarray()
+            else:
+                for i in range(n_basis):
+                    c = np.zeros(len(t) - degree - 1)
+                    c[i] = 1.0
+                    spl = BSpline(t, c, degree, extrapolate=False)
+                    B[inside, i] = spl.derivative(deriv)(x_inside)
 
     if np.any(outside):
         ord_ = degree + 1

@@ -4,9 +4,10 @@ import warnings
 
 import numpy as np
 
+from ...cupy.backend import get_backend, to_device
 from ..utils import _quantile_basis, avoid_zero_division
 from .cck_ucb import compute_cck_ucb
-from .estimators import npiv_est
+from .estimators import _LinAlgError, npiv_est
 from .results import NPIVResult
 
 
@@ -180,6 +181,7 @@ def compute_ucb(
             selection_result=selection_result,
         )
 
+    xp = get_backend()
     rng = np.random.default_rng(seed)
 
     tmp = main_result.args["tmp"]
@@ -188,19 +190,19 @@ def compute_ucb(
 
     for b in range(boot_num):
         try:
-            boot_draws = rng.normal(0, 1, n)
+            boot_draws = to_device(rng.normal(0, 1, n))
 
             if ucb_h:
                 boot_h_diff = psi_x_eval @ (tmp @ (main_result.residuals * boot_draws))
-                studentized_h = np.abs(boot_h_diff) / avoid_zero_division(main_result.asy_se)
-                boot_h_stats[b] = np.max(studentized_h)
+                studentized_h = xp.abs(boot_h_diff) / avoid_zero_division(main_result.asy_se)
+                boot_h_stats[b] = float(xp.max(studentized_h))
 
             if ucb_deriv:
                 boot_deriv_diff = psi_x_deriv_eval @ (tmp @ (main_result.residuals * boot_draws))
-                studentized_deriv = np.abs(boot_deriv_diff) / avoid_zero_division(main_result.deriv_asy_se)
-                boot_deriv_stats[b] = np.max(studentized_deriv)
+                studentized_deriv = xp.abs(boot_deriv_diff) / avoid_zero_division(main_result.deriv_asy_se)
+                boot_deriv_stats[b] = float(xp.max(studentized_deriv))
 
-        except (ValueError, np.linalg.LinAlgError) as e:
+        except (ValueError, *_LinAlgError) as e:
             warnings.warn(f"Bootstrap replication {b + 1} failed: {e}", UserWarning)
             if ucb_h:
                 boot_h_stats[b] = np.nan

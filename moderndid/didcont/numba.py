@@ -4,6 +4,16 @@ from itertools import combinations, product
 
 import numpy as np
 
+from moderndid.cupy.backend import get_backend
+
+try:
+    import cupy as cp
+
+    _HAS_CUPY = True
+except ImportError:
+    _HAS_CUPY = False
+    cp = None
+
 try:
     import numba as nb
     from numba.typed import List
@@ -27,11 +37,27 @@ __all__ = [
 ]
 
 
+def _get_xp():
+    """Return the active array module, falling back to numpy."""
+    try:
+        return get_backend()
+    except Exception:  # noqa: BLE001
+        return np
+
+
+def _is_cupy_array(x):
+    """Return True if *x* is a CuPy ndarray."""
+    if not _HAS_CUPY:
+        return False
+    return isinstance(x, cp.ndarray)
+
+
 def _check_full_rank_crossprod_impl(x, tol=None):
     """Check if :math:`X'X` has full rank using eigenvalue decomposition."""
+    xp = _get_xp() if _is_cupy_array(x) else np
     xtx = x.T @ x
 
-    eigenvalues = np.linalg.eigvalsh(xtx)
+    eigenvalues = xp.linalg.eigvalsh(xtx)
 
     n, p = x.shape
     max_dim = max(n, p)
@@ -40,13 +66,13 @@ def _check_full_rank_crossprod_impl(x, tol=None):
     max_eig = eigenvalues[-1]
 
     if tol is None:
-        max_sqrt_eig = np.sqrt(np.max(np.abs(eigenvalues)))
+        max_sqrt_eig = float(xp.sqrt(xp.max(xp.abs(eigenvalues))))
         tol = max_dim * max_sqrt_eig * np.finfo(float).eps
 
-    is_full_rank = max_eig > 0 and np.abs(min_eig / max_eig) > tol
-    condition_number = np.abs(max_eig / min_eig) if min_eig != 0 else np.inf
+    is_full_rank = bool(max_eig > 0) and bool(xp.abs(min_eig / max_eig) > tol)
+    condition_number = float(xp.abs(max_eig / min_eig)) if float(min_eig) != 0 else np.inf
 
-    return is_full_rank, condition_number, min_eig, max_eig
+    return is_full_rank, condition_number, float(min_eig), float(max_eig)
 
 
 def _compute_rsquared_impl(y, y_pred):
@@ -66,10 +92,11 @@ def _compute_rsquared_impl(y, y_pred):
 
 def _matrix_sqrt_eigendecomp_impl(x):
     """Compute matrix square root using eigendecomposition."""
-    eigenvalues, eigenvectors = np.linalg.eigh(x)
-    sqrt_eigenvalues = np.sqrt(np.maximum(eigenvalues, 0))
+    xp = _get_xp() if _is_cupy_array(x) else np
+    eigenvalues, eigenvectors = xp.linalg.eigh(x)
+    sqrt_eigenvalues = xp.sqrt(xp.maximum(eigenvalues, 0))
 
-    return eigenvectors @ np.diag(sqrt_eigenvalues) @ eigenvectors.T
+    return eigenvectors @ xp.diag(sqrt_eigenvalues) @ eigenvectors.T
 
 
 def _create_nonzero_divisor_impl(a, eps):
@@ -439,6 +466,8 @@ if HAS_NUMBA:
 
 def check_full_rank_crossprod(x, tol=None):
     """Check if :math:`X'X` has full rank using eigenvalue decomposition."""
+    if _is_cupy_array(x):
+        return _check_full_rank_crossprod_impl(x, tol)
     x = np.asarray(x, dtype=np.float64)
     return _check_full_rank_crossprod_impl(x, tol)
 
@@ -452,6 +481,8 @@ def compute_rsquared(y, y_pred):
 
 def matrix_sqrt_eigendecomp(x):
     """Compute matrix square root using eigendecomposition."""
+    if _is_cupy_array(x):
+        return _matrix_sqrt_eigendecomp_impl(x)
     x = np.asarray(x, dtype=np.float64)
     return _matrix_sqrt_eigendecomp_impl(x)
 

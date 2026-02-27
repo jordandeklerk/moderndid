@@ -2,8 +2,9 @@
 
 import numpy as np
 
+from ...cupy.backend import get_backend, to_device, to_numpy
 from ..utils import _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
-from .estimators import _ginv, npiv_est
+from .estimators import _ginv, _LinAlgError, npiv_est
 from .prodspline import prodspline
 
 
@@ -115,9 +116,10 @@ def npiv_j(
         Adaptive Estimation and Uniform Confidence Bands for Nonparametric
         Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
     """
-    y = np.asarray(y).ravel()
-    x = np.atleast_2d(x)
-    w = np.atleast_2d(w)
+    xp = get_backend()
+    y = xp.asarray(y).ravel()
+    x = xp.atleast_2d(xp.asarray(x))
+    w = xp.atleast_2d(xp.asarray(w))
 
     n = len(y)
     p_x = x.shape[1]
@@ -129,9 +131,11 @@ def npiv_j(
         k_w_segments_set = np.array([2, 4, 8, 16, 32, 64])
 
     if x_grid is None:
+        x_np = to_numpy(x)
         x_grid = np.zeros((grid_num, p_x))
         for j in range(p_x):
-            x_grid[:, j] = np.linspace(x[:, j].min(), x[:, j].max(), grid_num)
+            x_grid[:, j] = np.linspace(x_np[:, j].min(), x_np[:, j].max(), grid_num)
+        x_grid = to_device(x_grid)
 
     j1_j2_pairs = []
     for i, j1 in enumerate(j_x_segments_set):
@@ -143,7 +147,8 @@ def npiv_j(
     z_sup_boot = np.zeros((boot_num, n_pairs))
 
     rng = np.random.default_rng(seed)
-    boot_draws_all = rng.normal(0, 1, (boot_num, n))
+    boot_draws_all_np = rng.normal(0, 1, (boot_num, n))
+    boot_draws_all = to_device(boot_draws_all_np)
 
     for pair_idx, (i, j, j1, j2) in enumerate(j1_j2_pairs):
         k1 = k_w_segments_set[i]
@@ -207,7 +212,7 @@ def npiv_j(
                 psi_x_j1_eval, psi_x_j2_eval, tmp_j1, tmp_j2, u_j1, u_j2, asy_se, boot_draws_all, boot_num
             )
 
-        except (ValueError, np.linalg.LinAlgError):
+        except (ValueError, *_LinAlgError):
             z_sup[pair_idx] = np.inf
             z_sup_boot[:, pair_idx] = np.inf
 
@@ -396,6 +401,7 @@ def _compute_sieve_measure(
     x, w, j_x_segments, k_w_segments, j_x_degree, k_w_degree, p_x, p_w, knots, basis, x_min, x_max, w_min, w_max, n
 ):
     """Compute sieve measure of ill-posedness."""
+    xp = get_backend()
     try:
         K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_x_segments - 1)])
         K_w = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k_w_segments - 1)])
@@ -421,9 +427,10 @@ def _compute_sieve_measure(
         b_w_gram_sqrt = matrix_sqrt(_ginv(b_w.T @ b_w))
 
         svd_matrix = psi_x_gram_sqrt @ (psi_x.T @ b_w) @ b_w_gram_sqrt
-        s_hat_j = np.min(np.linalg.svd(svd_matrix, compute_uv=False))
+        s_val = float(xp.min(xp.linalg.svd(svd_matrix, compute_uv=False)))
+        s_hat_j = s_val if s_val > 0 else max(1, (0.1 * np.log(n)) ** 4)
 
-    except (ValueError, np.linalg.LinAlgError):
+    except (ValueError, *_LinAlgError):
         s_hat_j = max(1, (0.1 * np.log(n)) ** 4)
 
     return s_hat_j
@@ -475,30 +482,32 @@ def _compute_basis_and_influence(
 
 def _compute_test_statistic(result_j1, result_j2, psi_x_eval_j1, psi_x_eval_j2, tmp_j1, tmp_j2, u_j1, u_j2):
     """Compute sup-t test statistic for comparing two estimators."""
+    xp = get_backend()
     # variance components
-    D_j1_inv_rho = tmp_j1.T * u_j1[:, np.newaxis]
+    D_j1_inv_rho = tmp_j1.T * u_j1[:, None]
     D_j1_var = D_j1_inv_rho.T @ D_j1_inv_rho
-    var_j1 = np.diag(psi_x_eval_j1 @ D_j1_var @ psi_x_eval_j1.T)
+    var_j1 = xp.diag(psi_x_eval_j1 @ D_j1_var @ psi_x_eval_j1.T)
 
-    D_j2_inv_rho = tmp_j2.T * u_j2[:, np.newaxis]
+    D_j2_inv_rho = tmp_j2.T * u_j2[:, None]
     D_j2_var = D_j2_inv_rho.T @ D_j2_inv_rho
-    var_j2 = np.diag(psi_x_eval_j2 @ D_j2_var @ psi_x_eval_j2.T)
+    var_j2 = xp.diag(psi_x_eval_j2 @ D_j2_var @ psi_x_eval_j2.T)
 
     # cross-covariance
-    cov_j1_j2 = np.diag(psi_x_eval_j1 @ (D_j1_inv_rho.T @ D_j2_inv_rho) @ psi_x_eval_j2.T)
+    cov_j1_j2 = xp.diag(psi_x_eval_j1 @ (D_j1_inv_rho.T @ D_j2_inv_rho) @ psi_x_eval_j2.T)
 
     asy_var_diff = var_j1 + var_j2 - 2 * cov_j1_j2
-    asy_se = np.sqrt(np.maximum(asy_var_diff, 0))
+    asy_se = xp.sqrt(xp.maximum(asy_var_diff, 0))
 
     # sup t-statistic
     diff = result_j1.h - result_j2.h
-    z_sup = np.max(np.abs(diff) / avoid_zero_division(asy_se))
+    z_sup = float(xp.max(xp.abs(diff) / avoid_zero_division(asy_se)))
 
     return z_sup, asy_se, (tmp_j1, tmp_j2, u_j1, u_j2)
 
 
 def _bootstrap_comparison(psi_x_eval_j1, psi_x_eval_j2, tmp_j1, tmp_j2, u_j1, u_j2, asy_se, boot_draws_all, boot_num):
     """Perform bootstrap test for dimension pair comparison."""
+    xp = get_backend()
     z_boot = np.zeros(boot_num)
 
     for b in range(boot_num):
@@ -507,7 +516,7 @@ def _bootstrap_comparison(psi_x_eval_j1, psi_x_eval_j2, tmp_j1, tmp_j2, u_j1, u_
         boot_diff_j2 = psi_x_eval_j2 @ (tmp_j2 @ (u_j2 * boot_draws))
         boot_diff = boot_diff_j1 - boot_diff_j2
 
-        z_boot[b] = np.max(np.abs(boot_diff) / avoid_zero_division(asy_se))
+        z_boot[b] = float(xp.max(xp.abs(boot_diff) / avoid_zero_division(asy_se)))
 
     return z_boot
 

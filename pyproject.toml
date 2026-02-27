@@ -64,6 +64,7 @@ spark = [
 ]
 gpu = [
     "cupy-cuda12x>=13.0",
+    "rmm-cu12>=24.04",
 ]
 all = [
     "moderndid[didcont,didhonest,plots,numba,dask,spark]",

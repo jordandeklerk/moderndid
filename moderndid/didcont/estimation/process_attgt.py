@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 import scipy.stats
 
+from ...cupy.backend import get_backend, to_numpy
 from .container import GroupTimeATTResult
 
 
@@ -61,16 +62,17 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
     if len(pre_indices) == 0:
         if len(attgt_list) > 0:
             warnings.warn("No pre-treatment periods to test", UserWarning)
-    elif np.any(np.isnan(pre_vcov)):
+    elif np.any(np.isnan(to_numpy(pre_vcov))):
         warnings.warn("Not returning pre-test Wald statistic due to NA pre-treatment values", UserWarning)
-    elif np.linalg.matrix_rank(pre_vcov) < pre_vcov.shape[0]:
+    elif np.linalg.matrix_rank(to_numpy(pre_vcov)) < pre_vcov.shape[0]:
         warnings.warn("Not returning pre-test Wald statistic due to singular covariance matrix", UserWarning)
     else:
         try:
-            wald_stat = n_units * pre_att.T @ np.linalg.solve(pre_vcov, pre_att)
+            xp = get_backend()
+            wald_stat = float(n_units * pre_att.T @ xp.linalg.solve(pre_vcov, pre_att))
             n_restrictions = len(pre_indices)
             wald_pvalue = 1 - scipy.stats.chi2.cdf(wald_stat, n_restrictions)
-        except np.linalg.LinAlgError:
+        except (np.linalg.LinAlgError, Exception):  # noqa: BLE001
             warnings.warn("Could not compute Wald statistic due to numerical issues", UserWarning)
 
     if hasattr(pte_params, "data") and hasattr(pte_params, "tname"):
