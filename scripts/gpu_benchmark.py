@@ -17,12 +17,14 @@ import cupy as cp
 from benchmark.did.dgp import StaggeredDIDDGP
 from moderndid import (
     att_gt,
+    cont_did,
     ddd_mp,
     ddd_panel,
     drdid_panel,
     gen_dgp_mult_periods,
     load_mpdta,
     set_backend,
+    simulate_cont_did_data,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -328,7 +330,132 @@ def _verify_ddd_mp():
     log.info("PASS")
 
 
+def _make_cont_did_parametric_runner(data, *, biters=1000):
+    def _run():
+        return cont_did(
+            data=data,
+            yname="Y",
+            tname="time_period",
+            idname="id",
+            gname="G",
+            dname="D",
+            target_parameter="level",
+            aggregation="dose",
+            dose_est_method="parametric",
+            degree=3,
+            biters=biters,
+        )
+
+    return _run
+
+
+def _make_cont_did_cck_runner(data, *, biters=1000):
+    def _run():
+        return cont_did(
+            data=data,
+            yname="Y",
+            tname="time_period",
+            idname="id",
+            gname="G",
+            dname="D",
+            dose_est_method="cck",
+            target_parameter="level",
+            aggregation="dose",
+            biters=biters,
+        )
+
+    return _run
+
+
+def _verify_cont_did_parametric():
+    log.info("")
+    log.info("--- cont_did parametric (multi-period continuous DiD) ---")
+
+    data = simulate_cont_did_data(
+        n=500, num_time_periods=10, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=1234
+    )
+
+    kwargs = dict(
+        data=data,
+        yname="Y",
+        tname="time_period",
+        idname="id",
+        gname="G",
+        dname="D",
+        target_parameter="level",
+        aggregation="dose",
+        dose_est_method="parametric",
+        degree=3,
+        biters=100,
+        random_state=42,
+    )
+
+    set_backend("numpy")
+    cpu = cont_did(**kwargs)
+
+    set_backend("cupy")
+    gpu = cont_did(**kwargs)
+    set_backend("numpy")
+
+    att_diff = abs(cpu.overall_att - gpu.overall_att)
+    se_diff = abs(cpu.overall_att_se - gpu.overall_att_se)
+
+    log.info("CPU: ATT=%.6f  SE=%.6f", cpu.overall_att, cpu.overall_att_se)
+    log.info("GPU: ATT=%.6f  SE=%.6f", gpu.overall_att, gpu.overall_att_se)
+
+    atol = 1e-4
+    log.info("|ATT diff| = %.2e  |SE diff| = %.2e  (tol %s)", att_diff, se_diff, atol)
+    if att_diff < atol and se_diff < atol:
+        log.info("PASS")
+    else:
+        log.info("WARN: Differences exceed tolerance (may be due to bootstrap variance)")
+
+
+def _verify_cont_did_cck():
+    log.info("")
+    log.info("--- cont_did CCK (2-period non-parametric) ---")
+
+    data = simulate_cont_did_data(
+        n=500, num_time_periods=2, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=1234
+    )
+
+    kwargs = dict(
+        data=data,
+        yname="Y",
+        tname="time_period",
+        idname="id",
+        gname="G",
+        dname="D",
+        dose_est_method="cck",
+        target_parameter="level",
+        aggregation="dose",
+        biters=100,
+        random_state=42,
+    )
+
+    set_backend("numpy")
+    cpu = cont_did(**kwargs)
+
+    set_backend("cupy")
+    gpu = cont_did(**kwargs)
+    set_backend("numpy")
+
+    att_diff = abs(cpu.overall_att - gpu.overall_att)
+
+    log.info("CPU: ATT=%.6f  SE=%.6f", cpu.overall_att, cpu.overall_att_se)
+    log.info("GPU: ATT=%.6f  SE=%.6f", gpu.overall_att, gpu.overall_att_se)
+
+    atol = 1e-4
+    log.info("|ATT diff| = %.2e  (tol %s)", att_diff, atol)
+    if att_diff < atol:
+        log.info("PASS")
+    else:
+        log.info("WARN: Differences exceed tolerance (may be due to bootstrap variance)")
+
+
 SCALING_SIZES = [10_000, 50_000, 100_000, 500_000, 1_000_000]
+CONT_DID_PARAM_SIZES = [1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000]
+CONT_DID_CCK_SIZES = [10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000]
 
 
 def _main():
@@ -360,6 +487,8 @@ def _main():
     _verify_drdid_panel()
     _verify_ddd_panel()
     _verify_ddd_mp()
+    _verify_cont_did_parametric()
+    _verify_cont_did_cck()
 
     log.info("")
     log.info("=" * 60)
@@ -469,6 +598,34 @@ def _main():
         return _make_ddd_mp_runner(data, boot=True, biters=500)
 
     rows = _bench_loop(_ddd_mp_data, _ddd_mp_boot_runner, SCALING_SIZES)
+    log.info("")
+    _log_table(rows)
+
+    log.info("")
+    log.info("=" * 60)
+    log.info("Benchmark: cont_did parametric (biters=1000)")
+    log.info("=" * 60)
+
+    def _cont_did_param_data(n):
+        return simulate_cont_did_data(
+            n=n, num_time_periods=10, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=1234
+        )
+
+    rows = _bench_loop(_cont_did_param_data, _make_cont_did_parametric_runner, CONT_DID_PARAM_SIZES)
+    log.info("")
+    _log_table(rows)
+
+    log.info("")
+    log.info("=" * 60)
+    log.info("Benchmark: cont_did CCK (biters=1000)")
+    log.info("=" * 60)
+
+    def _cont_did_cck_data(n):
+        return simulate_cont_did_data(
+            n=n, num_time_periods=2, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=1234
+        )
+
+    rows = _bench_loop(_cont_did_cck_data, _make_cont_did_cck_runner, CONT_DID_CCK_SIZES)
     log.info("")
     _log_table(rows)
 

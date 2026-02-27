@@ -631,10 +631,10 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     acrt_d = x_deriv @ coef[1:]
 
     x_overall = x_treated
-    att_overall = float(np.mean(x_overall @ coef) - control_mean)
+    att_overall = np.mean(x_overall @ coef) - control_mean
 
     x_deriv_overall = to_numpy(bspline_treated.derivative(derivs=1, complete_basis=False))
-    acrt_overall = float(np.mean(x_deriv_overall @ coef[1:]))
+    acrt_overall = np.mean(x_deriv_overall @ coef[1:])
 
     inf_func1 = x_deriv_overall @ coef[1:] - acrt_overall
 

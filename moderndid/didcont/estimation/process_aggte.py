@@ -131,7 +131,7 @@ def aggregate_att_gt(
             mb_result = mboot(
                 inf_by_group[:, valid_cols], n_units=inf_func.shape[0], biters=bootstrap_iterations, alp=alpha
             )
-            crit_val = check_critical_value(float(mb_result["crit_val"]), alpha)
+            crit_val = check_critical_value(mb_result["crit_val"], alpha)
 
         pg_groups_valid = pg_groups
         valid_groups = ~np.isnan(att_by_group)
@@ -256,7 +256,7 @@ def aggregate_att_gt(
 
         if confidence_band and np.any(valid_dyn):
             mb_result = mboot(inf_dyn[:, valid_dyn], n_units=inf_func.shape[0], biters=bootstrap_iterations, alp=alpha)
-            crit_val = check_critical_value(float(mb_result["crit_val"]), alpha)
+            crit_val = check_critical_value(mb_result["crit_val"], alpha)
 
         non_neg = eseq >= 0
 
@@ -328,7 +328,7 @@ def aggregate_att_gt(
 
     if confidence_band:
         mb_result = mboot(inf_overall.reshape(-1, 1), n_units=inf_func.shape[0], biters=bootstrap_iterations, alp=alpha)
-        crit_val = check_critical_value(float(mb_result["crit_val"]), alpha)
+        crit_val = check_critical_value(mb_result["crit_val"], alpha)
 
     return PTEAggteResult(
         overall_att=overall_att,
