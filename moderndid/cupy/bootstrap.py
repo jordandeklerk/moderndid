@@ -22,6 +22,8 @@ def _multiplier_bootstrap_cupy(inf_func, biters, random_state=None):
     batch_size = max(1, max_batch_bytes // (16 * n))
     batch_size = min(batch_size, biters)
 
+    if isinstance(random_state, np.random.Generator):
+        random_state = int(random_state.integers(0, 2**31))
     rng = xp.random.default_rng(random_state)
     bres = np.empty((biters, k), dtype=np.float64)
 
