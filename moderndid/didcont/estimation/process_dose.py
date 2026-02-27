@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 import scipy.stats as st
 
+from ...cupy.backend import to_numpy
 from ..spline import BSpline
 from .container import DoseResult
 from .process_aggte import (
@@ -133,11 +134,11 @@ def process_dose_gt(
     else:
         bspline = BSpline(x=dose_values, degree=degree)
 
-    basis_matrix = bspline.basis(complete_basis=False)
+    basis_matrix = to_numpy(bspline.basis(complete_basis=False))
     basis_matrix = np.column_stack([np.ones(len(dose_values)), basis_matrix])
 
     if degree > 0:
-        derivative_matrix = bspline.derivative(derivs=1, complete_basis=False)
+        derivative_matrix = to_numpy(bspline.derivative(derivs=1, complete_basis=False))
         derivative_matrix = np.column_stack([np.zeros(len(dose_values)), derivative_matrix])
     else:
         derivative_matrix = np.zeros((len(dose_values), basis_matrix.shape[1]))
