@@ -18,7 +18,7 @@ from moderndid.core.preprocess import (
     make_balanced_panel as _make_balanced_panel,
 )
 from moderndid.core.preprocessing import preprocess_cont_did
-from moderndid.cupy.backend import get_backend, to_numpy, use_backend
+from moderndid.cupy.backend import get_backend, to_device, to_numpy, use_backend
 
 from .estimation import (
     AttgtResult,
@@ -610,9 +610,14 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
 
     xp = get_backend()
 
+    dose_dev = to_device(dose)
+    dy_dev = to_device(dy)
+    treated_dev = to_device(treated_mask)
+    control_mean = xp.mean(dy_dev[dose_dev == 0])
+
     bspline_treated = BSpline(x=dose[treated_mask], degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_treated = bspline_treated.basis(complete_basis=False)
-    y_treated = dy[treated_mask]
+    x_treated = to_device(bspline_treated.basis(complete_basis=False))
+    y_treated = dy_dev[treated_dev]
 
     x_treated = xp.column_stack([xp.ones(x_treated.shape[0]), x_treated])
 
@@ -623,17 +628,17 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
         return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
     bspline_grid = BSpline(x=dvals, degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_grid = bspline_grid.basis(complete_basis=False)
+    x_grid = to_device(bspline_grid.basis(complete_basis=False))
     x_grid = xp.column_stack([xp.ones(x_grid.shape[0]), x_grid])
-    att_d = x_grid @ coef - xp.mean(dy[dose == 0])
+    att_d = x_grid @ coef - control_mean
 
-    x_deriv = bspline_grid.derivative(derivs=1, complete_basis=False)
+    x_deriv = to_device(bspline_grid.derivative(derivs=1, complete_basis=False))
     acrt_d = x_deriv @ coef[1:]
 
     x_overall = x_treated
-    att_overall = float(xp.mean(x_overall @ coef) - xp.mean(dy[dose == 0]))
+    att_overall = float(xp.mean(x_overall @ coef) - control_mean)
 
-    x_deriv_overall = bspline_treated.derivative(derivs=1, complete_basis=False)
+    x_deriv_overall = to_device(bspline_treated.derivative(derivs=1, complete_basis=False))
     acrt_overall = float(xp.mean(x_deriv_overall @ coef[1:]))
 
     inf_func1 = x_deriv_overall @ coef[1:] - acrt_overall
@@ -647,7 +652,7 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     inf_func2 = score @ bread @ xp.concatenate([xp.zeros(1), avg_deriv])
 
     inf_func = xp.zeros(len(post_data))
-    inf_func[treated_mask] = inf_func1 + inf_func2
+    inf_func[treated_dev] = inf_func1 + inf_func2
 
     extra_gt_returns = {
         "att_d": to_numpy(att_d),
@@ -812,21 +817,25 @@ def _estimate_cck(cont_did_data, original_data, random_state=None, **kwargs):
 
     xp = get_backend()
 
-    beta_array = cck_res.beta.flatten() if cck_res.beta.ndim > 1 else cck_res.beta
+    spline_dosage = to_device(spline_dosage)
+    y_treated_dev = to_device(y_treated)
+    beta_array = to_device(cck_res.beta.flatten() if cck_res.beta.ndim > 1 else cck_res.beta)
 
     h_hat_w_treated = spline_dosage @ beta_array
-    infl_reg = (y_treated - h_hat_w_treated.flatten())[:, None] * (
+    infl_reg = (y_treated_dev - h_hat_w_treated.flatten())[:, None] * (
         spline_dosage @ xp.linalg.pinv(spline_dosage.T @ spline_dosage / n_treated_val)
     )
 
-    deriv_spline_basis_w = gsl_bs(
-        w_treated,
-        degree=cck_res.j_x_degree,
-        knots=knots,
-        nbreak=n_breaks,
-        deriv=1,
-        intercept=True,
-    ).basis
+    deriv_spline_basis_w = to_device(
+        gsl_bs(
+            w_treated,
+            degree=cck_res.j_x_degree,
+            knots=knots,
+            nbreak=n_breaks,
+            deriv=1,
+            intercept=True,
+        ).basis
+    )
 
     average_spline_deriv = xp.mean(deriv_spline_basis_w, axis=0)
     deriv_at_w = (deriv_spline_basis_w @ beta_array).flatten()
