@@ -22,10 +22,11 @@ For theoretical details on each estimator, see the :ref:`Background <background>
 Dataframe Agnostic
 ------------------
 
-ModernDiD accepts any DataFrame that implements the
-`Arrow PyCapsule Interface <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_.
-This includes polars, pandas, pyarrow Table, duckdb, cudf, and other Arrow-compatible DataFrames.
-You can pass your data directly without manual conversion.
+All causal inference studies begin with data, and in most cases ModernDiD can
+work with yours directly. Any DataFrame that implements the
+`Arrow PyCapsule Interface <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_
+can be passed directly to any estimator without manual conversion. This includes
+polars, pandas, pyarrow Table, duckdb, cudf, and other Arrow-compatible DataFrames.
 
 .. code-block:: python
 
