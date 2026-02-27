@@ -27,7 +27,6 @@ from .estimation import (
     _summary_dose_result,
     aggregate_att_gt,
     did_attgt,
-    multiplier_bootstrap,
     overall_weights,
     process_att_gt,
     process_dose_gt,
@@ -82,7 +81,6 @@ __all__ = [
     # Utility functions
     "is_full_rank",
     "matrix_sqrt",
-    "multiplier_bootstrap",
     # Main NPIV estimation functions
     "npiv",
     # Dimension selection functions

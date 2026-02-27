@@ -7,9 +7,9 @@ import polars as pl
 import scipy.stats as st
 
 from moderndid.core.preprocess import map_to_idx as _map_to_idx
+from moderndid.did.mboot import mboot
 
 from .container import PTEAggteResult
-from .process_attgt import multiplier_bootstrap
 
 
 def aggregate_att_gt(
@@ -128,8 +128,10 @@ def aggregate_att_gt(
         valid_cols = ~np.isnan(att_by_group)
 
         if confidence_band and np.any(valid_cols):
-            mb_result = multiplier_bootstrap(inf_by_group[:, valid_cols], biters=bootstrap_iterations, alpha=alpha)
-            crit_val = check_critical_value(float(mb_result["critical_value"]), alpha)
+            mb_result = mboot(
+                inf_by_group[:, valid_cols], n_units=inf_func.shape[0], biters=bootstrap_iterations, alp=alpha
+            )
+            crit_val = check_critical_value(float(mb_result["crit_val"]), alpha)
 
         pg_groups_valid = pg_groups
         valid_groups = ~np.isnan(att_by_group)
@@ -253,8 +255,8 @@ def aggregate_att_gt(
         valid_dyn = ~np.isnan(dyn_att)
 
         if confidence_band and np.any(valid_dyn):
-            mb_result = multiplier_bootstrap(inf_dyn[:, valid_dyn], biters=bootstrap_iterations, alpha=alpha)
-            crit_val = check_critical_value(float(mb_result["critical_value"]), alpha)
+            mb_result = mboot(inf_dyn[:, valid_dyn], n_units=inf_func.shape[0], biters=bootstrap_iterations, alp=alpha)
+            crit_val = check_critical_value(float(mb_result["crit_val"]), alpha)
 
         non_neg = eseq >= 0
 
@@ -325,8 +327,8 @@ def aggregate_att_gt(
     crit_val = pointwise_z
 
     if confidence_band:
-        mb_result = multiplier_bootstrap(inf_overall.reshape(-1, 1), biters=bootstrap_iterations, alpha=alpha)
-        crit_val = check_critical_value(float(mb_result["critical_value"]), alpha)
+        mb_result = mboot(inf_overall.reshape(-1, 1), n_units=inf_func.shape[0], biters=bootstrap_iterations, alp=alpha)
+        crit_val = check_critical_value(float(mb_result["crit_val"]), alpha)
 
     return PTEAggteResult(
         overall_att=overall_att,
@@ -456,9 +458,7 @@ def get_se(influence_function, bootstrap=True, bootstrap_iterations=100, alpha=0
     n = influence_function.shape[0]
 
     if bootstrap:
-        boot_result = multiplier_bootstrap(influence_function, biters=bootstrap_iterations, alpha=alpha, rng=rng)
-        if "boot_se" in boot_result:
-            return float(np.asarray(boot_result["boot_se"]).reshape(-1)[0])
+        boot_result = mboot(influence_function, n_units=n, biters=bootstrap_iterations, alp=alpha, random_state=rng)
         return float(np.asarray(boot_result["se"]).reshape(-1)[0])
 
     vec = np.asarray(influence_function).reshape(n, -1)[:, 0]

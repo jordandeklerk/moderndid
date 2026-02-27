@@ -34,7 +34,6 @@ from .process_aggte import (
     overall_weights,
 )
 from .process_attgt import (
-    multiplier_bootstrap,
     process_att_gt,
 )
 from .process_dose import (
@@ -67,7 +66,6 @@ __all__ = [
     "_summary_dose_result",
     "aggregate_att_gt",
     "did_attgt",
-    "multiplier_bootstrap",
     "overall_weights",
     "process_att_gt",
     "process_dose_gt",

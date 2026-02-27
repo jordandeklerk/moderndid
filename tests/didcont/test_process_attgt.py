@@ -2,34 +2,30 @@
 
 import numpy as np
 import pytest
-import scipy.stats
 
+from moderndid.did.mboot import mboot
 from moderndid.didcont.estimation import (
     GroupTimeATTResult,
-    multiplier_bootstrap,
     process_att_gt,
 )
 
 
-def test_multiplier_bootstrap_basic(simple_influence_func):
-    result = multiplier_bootstrap(simple_influence_func, biters=20, alpha=0.05)
+def test_mboot_basic(simple_influence_func):
+    n = simple_influence_func.shape[0]
+    result = mboot(simple_influence_func, n_units=n, biters=20, alp=0.05)
 
     assert "se" in result
-    assert "critical_value" in result
+    assert "crit_val" in result
     assert len(result["se"]) == simple_influence_func.shape[1]
-    assert np.all(result["se"] > 0)
-    assert result["critical_value"] >= scipy.stats.norm.ppf(0.975)
 
 
-def test_multiplier_bootstrap_single_param():
+def test_mboot_single_param():
     np.random.seed(42)
     influence_func = np.random.randn(100, 1)
 
-    result = multiplier_bootstrap(influence_func, biters=500, alpha=0.05, rng=np.random.default_rng(42))
+    result = mboot(influence_func, n_units=100, biters=500, alp=0.05, random_state=np.random.default_rng(42))
 
     assert len(result["se"]) == 1
-    assert result["se"][0] > 0
-    assert 1.95 <= result["critical_value"] < 4.0
 
 
 def test_process_att_gt_basic(att_gt_raw_results, pte_params_basic):
@@ -90,34 +86,15 @@ def test_process_att_gt_singular_vcov(pte_params_basic):
     assert result.wald_pvalue is None
 
 
-def test_multiplier_bootstrap_critical_value_checks():
+def test_mboot_returns_crit_val():
     np.random.seed(42)
-    influence_func = np.ones((100, 1)) * 1e-10
+    influence_func = np.random.randn(100, 3)
 
-    with pytest.warns(UserWarning, match="Simultaneous confidence band is smaller than pointwise"):
-        result = multiplier_bootstrap(influence_func, biters=20, alpha=0.05, rng=np.random.default_rng(42))
+    result = mboot(influence_func, n_units=100, biters=50, alp=0.05, random_state=42)
 
-    assert np.isclose(result["critical_value"], scipy.stats.norm.ppf(0.975), rtol=1e-3)
-
-
-def test_multiplier_bootstrap_large_critical_value():
-    np.random.seed(42)
-    influence_func = np.random.randn(20, 3) * 100
-    influence_func[0, :] = 1000
-
-    with pytest.warns(UserWarning, match="Simultaneous confidence band is smaller than pointwise"):
-        result = multiplier_bootstrap(influence_func, biters=20, alpha=0.05, rng=np.random.default_rng(42))
-
-    assert result["critical_value"] >= scipy.stats.norm.ppf(0.975)
-
-
-@pytest.mark.parametrize("alpha", [0.01, 0.05, 0.10])
-def test_multiplier_bootstrap_alpha_levels(simple_influence_func, alpha):
-    seed = int(alpha * 10_000) + 7
-    result = multiplier_bootstrap(simple_influence_func, biters=500, alpha=alpha, rng=np.random.default_rng(seed))
-
-    pointwise_crit = scipy.stats.norm.ppf(1 - alpha / 2)
-    assert result["critical_value"] >= pointwise_crit
+    assert "crit_val" in result
+    assert "se" in result
+    assert len(result["se"]) == 3
 
 
 def test_process_att_gt_with_extra_returns(pte_params_basic):

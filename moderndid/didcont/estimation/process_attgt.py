@@ -5,6 +5,8 @@ import warnings
 import numpy as np
 import scipy.stats
 
+from moderndid.did.mboot import mboot
+
 from ...cupy.backend import get_backend, to_numpy
 from .container import GroupTimeATTResult
 
@@ -46,10 +48,16 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
     alpha = pte_params.alp
 
     critical_value = scipy.stats.norm.ppf(1 - alpha / 2)
-    boot_results = multiplier_bootstrap(influence_func, alpha=alpha, rng=rng)
+    boot_results = mboot(
+        influence_func,
+        n_units=n_units,
+        biters=int(pte_params.biters) if pte_params.biters else 1000,
+        alp=alpha,
+        random_state=rng,
+    )
 
     if cband:
-        critical_value = boot_results["critical_value"]
+        critical_value = boot_results["crit_val"]
 
     se = boot_results["se"]
     pre_indices = np.where(groups > times)[0]
@@ -107,86 +115,3 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
         pte_params=pte_params,
         extra_gt_returns=extra_gt_returns,
     )
-
-
-def multiplier_bootstrap(influence_func, biters=1000, alpha=0.05, rng=None):
-    """Multiplier bootstrap for inference.
-
-    Parameters
-    ----------
-    influence_func : ndarray
-        Influence function matrix of shape (n, k) where n is the number of
-        observations and k is the number of parameters.
-    biters : int, default=1000
-        Number of bootstrap iterations.
-    alpha : float, default=0.05
-        Significance level for confidence intervals.
-    rng : numpy.random.Generator, optional
-        Generator used for resampling. If omitted, a fresh generator from
-        ``np.random.default_rng`` is created.
-
-    Returns
-    -------
-    dict
-        Dictionary containing:
-
-        - **se**: Bootstrap standard errors
-        - **critical_value**: Critical value for uniform confidence bands
-    """
-    n_obs = influence_func.shape[0]
-
-    if rng is None:
-        rng = np.random.default_rng()
-
-    bootstrap_results = []
-
-    for _ in range(biters):
-        weights = rng.choice([-1, 1], size=n_obs, replace=True)
-        bootstrap_draw = np.sqrt(n_obs) * np.mean(weights[:, np.newaxis] * influence_func, axis=0)
-        bootstrap_results.append(bootstrap_draw)
-
-    bootstrap_results = np.array(bootstrap_results)
-
-    def compute_se(bootstrap_column):
-        q75 = np.percentile(bootstrap_column, 75, method="lower")
-        q25 = np.percentile(bootstrap_column, 25, method="lower")
-        iqr_se = (q75 - q25) / (scipy.stats.norm.ppf(0.75) - scipy.stats.norm.ppf(0.25))
-        return iqr_se
-
-    se = np.array([compute_se(bootstrap_results[:, j]) for j in range(bootstrap_results.shape[1])])
-    se = se / np.sqrt(n_obs)
-
-    t_stats = []
-    for b_result in bootstrap_results:
-        se_safe = np.where(se > 1e-8, se, 1.0)
-        t_stat = np.max(np.abs(b_result / se_safe) / np.sqrt(n_obs))
-        t_stats.append(t_stat)
-
-    t_stats = np.array(t_stats)
-
-    critical_value = np.percentile(t_stats, (1 - alpha) * 100, method="lower")
-    pointwise_crit = scipy.stats.norm.ppf(1 - alpha / 2)
-
-    if np.isnan(critical_value) or np.isinf(critical_value):
-        warnings.warn(
-            "Simultaneous critical value is NA or infinite. This can happen if standard errors are zero. "
-            "Reporting pointwise confidence intervals instead.",
-            UserWarning,
-        )
-        critical_value = pointwise_crit
-    elif critical_value < pointwise_crit:
-        warnings.warn(
-            "Simultaneous confidence band is smaller than pointwise one. "
-            "Reporting pointwise confidence intervals instead.",
-            UserWarning,
-        )
-        critical_value = pointwise_crit
-    elif critical_value >= 7:
-        warnings.warn(
-            "Simultaneous critical value is arguably 'too large' to be reliable. "
-            "This usually happens when the number of observations per group is small "
-            "or there is not much variation in outcomes.",
-            UserWarning,
-        )
-
-    return {"se": se, "critical_value": critical_value}

@@ -5,6 +5,8 @@ import warnings
 import numpy as np
 import scipy.stats as st
 
+from moderndid.did.mboot import mboot
+
 from ...cupy.backend import to_numpy
 from ..spline import BSpline
 from .container import DoseResult
@@ -165,7 +167,7 @@ def process_dose_gt(
     )
 
     if att_d_inf_func is not None:
-        boot_res = _multiplier_bootstrap_dose(att_d_inf_func, biters=bootstrap_iterations, alpha=alpha, rng=rng)
+        boot_res = mboot(att_d_inf_func, n_units=n_obs, biters=bootstrap_iterations, alp=alpha, random_state=rng)
         att_d_se = boot_res["se"]
         att_d_crit_val = boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
         att_d_crit_val = check_critical_value(att_d_crit_val, alpha)
@@ -174,7 +176,7 @@ def process_dose_gt(
         att_d_crit_val = st.norm.ppf(1 - alpha / 2)
 
     if acrt_d_inf_func is not None:
-        acrt_boot_res = _multiplier_bootstrap_dose(acrt_d_inf_func, biters=bootstrap_iterations, alpha=alpha, rng=rng)
+        acrt_boot_res = mboot(acrt_d_inf_func, n_units=n_obs, biters=bootstrap_iterations, alp=alpha, random_state=rng)
         acrt_d_se = acrt_boot_res["se"]
         acrt_d_crit_val = acrt_boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
         acrt_d_crit_val = check_critical_value(acrt_d_crit_val, alpha)
@@ -284,52 +286,6 @@ def _compute_dose_influence_functions(
                 )
 
     return att_d_influence, acrt_d_influence
-
-
-def _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.05, rng=None):
-    """Multiplier bootstrap for dose-specific inference.
-
-    Parameters
-    ----------
-    influence_function : ndarray
-        Influence function matrix of shape (n_obs, n_doses).
-    biters : int, default=1000
-        Number of bootstrap iterations.
-    alpha : float, default=0.05
-        Significance level for confidence intervals.
-    rng : numpy.random.Generator, optional
-        Random number generator. If None, a new generator is created.
-
-    Returns
-    -------
-    dict
-        Dictionary with keys:
-        - 'se': Standard errors for each dose
-        - 'crit_val': Critical value for uniform confidence bands
-    """
-    n_obs, _ = influence_function.shape
-
-    if rng is None:
-        rng = np.random.default_rng()
-    bootstrap_results = []
-
-    for _ in range(biters):
-        weights = rng.choice([-1, 1], size=n_obs, replace=True)
-        bootstrap_draw = np.sqrt(n_obs) * np.mean(weights[:, np.newaxis] * influence_function, axis=0)
-        bootstrap_results.append(bootstrap_draw)
-
-    bootstrap_results = np.array(bootstrap_results)
-    standard_errors = np.std(bootstrap_results, axis=0) / np.sqrt(n_obs)
-
-    t_statistics = []
-    for bootstrap_result in bootstrap_results:
-        se_safe = np.where(standard_errors > 1e-8, standard_errors, 1.0)
-        t_stat = np.max(np.abs(bootstrap_result / se_safe) / np.sqrt(n_obs))
-        t_statistics.append(t_stat)
-
-    critical_value = np.percentile(t_statistics, (1 - alpha) * 100)
-
-    return {"se": standard_errors, "crit_val": critical_value}
 
 
 def _weighted_combine_arrays(array_list, weights):

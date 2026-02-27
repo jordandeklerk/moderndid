@@ -608,65 +608,60 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     if len(np.unique(boundary_knots)) < 2:
         boundary_knots = None
 
-    xp = get_backend()
-
-    dose_dev = to_device(dose)
-    dy_dev = to_device(dy)
-    treated_dev = to_device(treated_mask)
-    control_mean = xp.mean(dy_dev[dose_dev == 0])
+    control_mean = np.mean(dy[dose == 0])
 
     bspline_treated = BSpline(x=dose[treated_mask], degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_treated = to_device(bspline_treated.basis(complete_basis=False))
-    y_treated = dy_dev[treated_dev]
+    x_treated = np.asarray(bspline_treated.basis(complete_basis=False))
+    y_treated = dy[treated_mask]
 
-    x_treated = xp.column_stack([xp.ones(x_treated.shape[0]), x_treated])
+    x_treated = np.column_stack([np.ones(x_treated.shape[0]), x_treated])
 
     try:
-        coef = xp.linalg.lstsq(x_treated, y_treated, rcond=None)[0]
+        coef = np.linalg.lstsq(x_treated, y_treated, rcond=None)[0]
         resid = y_treated - x_treated @ coef
     except (np.linalg.LinAlgError, ValueError):
         return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
     bspline_grid = BSpline(x=dvals, degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_grid = to_device(bspline_grid.basis(complete_basis=False))
-    x_grid = xp.column_stack([xp.ones(x_grid.shape[0]), x_grid])
+    x_grid = np.asarray(bspline_grid.basis(complete_basis=False))
+    x_grid = np.column_stack([np.ones(x_grid.shape[0]), x_grid])
     att_d = x_grid @ coef - control_mean
 
-    x_deriv = to_device(bspline_grid.derivative(derivs=1, complete_basis=False))
+    x_deriv = np.asarray(bspline_grid.derivative(derivs=1, complete_basis=False))
     acrt_d = x_deriv @ coef[1:]
 
     x_overall = x_treated
-    att_overall = float(xp.mean(x_overall @ coef) - control_mean)
+    att_overall = float(np.mean(x_overall @ coef) - control_mean)
 
-    x_deriv_overall = to_device(bspline_treated.derivative(derivs=1, complete_basis=False))
-    acrt_overall = float(xp.mean(x_deriv_overall @ coef[1:]))
+    x_deriv_overall = np.asarray(bspline_treated.derivative(derivs=1, complete_basis=False))
+    acrt_overall = float(np.mean(x_deriv_overall @ coef[1:]))
 
     inf_func1 = x_deriv_overall @ coef[1:] - acrt_overall
 
     score = resid[:, None] * x_treated
     n_treated = len(x_treated)
-    bread = xp.linalg.inv(x_treated.T @ x_treated / n_treated)
+    bread = np.linalg.inv(x_treated.T @ x_treated / n_treated)
 
     x_expanded = score
-    avg_deriv = xp.mean(x_deriv_overall, axis=0)
-    inf_func2 = score @ bread @ xp.concatenate([xp.zeros(1), avg_deriv])
+    avg_deriv = np.mean(x_deriv_overall, axis=0)
+    inf_func2 = score @ bread @ np.concatenate([np.zeros(1), avg_deriv])
 
-    inf_func = xp.zeros(len(post_data))
-    inf_func[treated_dev] = inf_func1 + inf_func2
+    inf_func = np.zeros(len(post_data))
+    inf_func[treated_mask] = inf_func1 + inf_func2
 
     extra_gt_returns = {
-        "att_d": to_numpy(att_d),
-        "acrt_d": to_numpy(acrt_d),
+        "att_d": att_d,
+        "acrt_d": acrt_d,
         "att_overall": att_overall,
         "acrt_overall": acrt_overall,
-        "dvals": to_numpy(dvals) if hasattr(dvals, "__array__") else dvals,
-        "coef": to_numpy(coef),
-        "bread": to_numpy(bread),
-        "x_expanded": to_numpy(x_expanded),
-        "score": to_numpy(score),
+        "dvals": np.asarray(dvals) if hasattr(dvals, "__array__") else dvals,
+        "coef": coef,
+        "bread": bread,
+        "x_expanded": x_expanded,
+        "score": score,
     }
 
-    return AttgtResult(attgt=acrt_overall, inf_func=to_numpy(inf_func), extra_gt_returns=extra_gt_returns)
+    return AttgtResult(attgt=acrt_overall, inf_func=inf_func, extra_gt_returns=extra_gt_returns)
 
 
 def cont_two_by_two_subset(
