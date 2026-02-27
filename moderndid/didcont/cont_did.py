@@ -611,7 +611,7 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     control_mean = np.mean(dy[dose == 0])
 
     bspline_treated = BSpline(x=dose[treated_mask], degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_treated = np.asarray(bspline_treated.basis(complete_basis=False))
+    x_treated = to_numpy(bspline_treated.basis(complete_basis=False))
     y_treated = dy[treated_mask]
 
     x_treated = np.column_stack([np.ones(x_treated.shape[0]), x_treated])
@@ -623,17 +623,17 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
         return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
     bspline_grid = BSpline(x=dvals, degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_grid = np.asarray(bspline_grid.basis(complete_basis=False))
+    x_grid = to_numpy(bspline_grid.basis(complete_basis=False))
     x_grid = np.column_stack([np.ones(x_grid.shape[0]), x_grid])
     att_d = x_grid @ coef - control_mean
 
-    x_deriv = np.asarray(bspline_grid.derivative(derivs=1, complete_basis=False))
+    x_deriv = to_numpy(bspline_grid.derivative(derivs=1, complete_basis=False))
     acrt_d = x_deriv @ coef[1:]
 
     x_overall = x_treated
     att_overall = float(np.mean(x_overall @ coef) - control_mean)
 
-    x_deriv_overall = np.asarray(bspline_treated.derivative(derivs=1, complete_basis=False))
+    x_deriv_overall = to_numpy(bspline_treated.derivative(derivs=1, complete_basis=False))
     acrt_overall = float(np.mean(x_deriv_overall @ coef[1:]))
 
     inf_func1 = x_deriv_overall @ coef[1:] - acrt_overall
