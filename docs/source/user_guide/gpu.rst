@@ -7,9 +7,10 @@ GPU Acceleration with CuPy
 ModernDiD can offload numerical operations to NVIDIA GPUs via
 `CuPy <https://cupy.dev/>`_. When the GPU backend is active, matrix
 operations in the two-period doubly robust estimators (weighted least
-squares, logistic IRLS, influence function computation) run on the GPU
-using cuBLAS and cuSOLVER, which can substantially reduce runtime for
-large datasets on powerful GPUs.
+squares, logistic IRLS, influence function computation) and in the
+continuous treatment estimator (CCK/NPIV path and multiplier bootstrap)
+run on the GPU using cuBLAS and cuSOLVER, which can substantially
+reduce runtime for large datasets on powerful GPUs.
 
 
 Requirements
@@ -46,9 +47,10 @@ Enabling the backend
 --------------------
 
 The GPU backend is opt-in. Pass ``backend="cupy"`` to
-:func:`~moderndid.att_gt` or :func:`~moderndid.ddd` to run a single
-call on the GPU. The backend activates only for that call and reverts
-automatically when it returns:
+:func:`~moderndid.att_gt`, :func:`~moderndid.ddd`, or
+:func:`~moderndid.cont_did` to run a single call on the GPU. The
+backend activates only for that call and reverts automatically when it
+returns:
 
 .. code-block:: python
 
@@ -106,7 +108,9 @@ What gets accelerated
 The GPU backend accelerates the low-level numerical operations inside
 the two-period estimators that :func:`~moderndid.att_gt` and
 :func:`~moderndid.ddd` call for each group-time cell, for both panel
-and repeated cross-section data with any ``est_method``.
+and repeated cross-section data with any ``est_method``. It also
+accelerates the continuous treatment estimator
+:func:`~moderndid.cont_did`.
 
 - **Weighted least squares** (``reg``, ``dr``) — Design matrix
   multiplication, normal equation solve via cuSOLVER, and fitted value
@@ -134,13 +138,24 @@ multiplication, triangular solves) that maps well to GPU hardware.
 The group-time loop, cell scheduling, and aggregation logic remain
 on the CPU.
 
-The continuous treatment estimator (:func:`~moderndid.cont_did`),
-the intertemporal estimator (:func:`~moderndid.did_multiplegt`), and
+- **Continuous treatment CCK/NPIV estimation**
+  (:func:`~moderndid.cont_did` with ``dose_est_method="cck"``) — Spline
+  basis construction, regression solves, and derivative computation run
+  on the GPU via cuBLAS.
+
+- **Continuous treatment bootstrap** — The multiplier bootstrap for both
+  the parametric and CCK paths of :func:`~moderndid.cont_did` uses
+  GPU-accelerated batched matrix multiplication when ``backend="cupy"``
+  is active. The parametric path's estimation (B-spline least squares)
+  remains on the CPU since the per-group matrices are too small to
+  benefit from GPU transfer overhead.
+
+The intertemporal estimator (:func:`~moderndid.did_multiplegt`) and
 the sensitivity analysis module (:func:`~moderndid.honest_did`) do
 not use the GPU backend. These estimators operate on small matrices
-(spline bases, per-group comparisons, and LP constraints respectively)
-where GPU kernel launch and data transfer overhead would exceed any
-computation benefit.
+(per-group comparisons and LP constraints respectively) where GPU
+kernel launch and data transfer overhead would exceed any computation
+benefit.
 
 
 When it helps

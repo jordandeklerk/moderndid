@@ -10743,7 +10743,7 @@ packages:
 - pypi: ./
   name: moderndid
   version: 0.1.1
-  sha256: e45a1b991e086ad72f00fd18f783974667647c36626d436e334ce490433ba000
+  sha256: bac210dfee609c488799fa9851e261f5c1e886717afce0221e298925e0365c7b
   requires_dist:
   - numpy>=1.22.0
   - scipy>=1.17
@@ -10769,6 +10769,7 @@ packages:
   - sphinx-design ; extra == 'doc'
   - jupyter-sphinx ; extra == 'doc'
   - cupy-cuda12x>=13.0 ; extra == 'gpu'
+  - rmm-cu12>=24.4 ; extra == 'gpu'
   - numba>=0.57.0 ; extra == 'numba'
   - plotnine>=0.14.0 ; extra == 'plots'
   - pyspark>=3.4.0 ; extra == 'spark'
