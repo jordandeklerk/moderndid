@@ -105,9 +105,18 @@ platforms = ["linux-64", "osx-arm64", "osx-64"]
 r-base = "*"
 r-did = "*"
 r-drdid = "*"
+r-jsonlite = "*"
+glpk = "*"
 
 [feature.validation.tasks]
-tests-validation = "pytest tests/validation/ -vv"
+setup-r = "bash scripts/setup.sh"
+all = "pytest tests/validation/ -vv"
+did = "pytest tests/validation/test_r_did.py -vv"
+didcont = "pytest tests/validation/test_r_didcont.py -vv"
+drdid = "pytest tests/validation/test_r_drdid.py -vv"
+didinter = "pytest tests/validation/test_r_didinter.py -vv"
+didtriple = "pytest tests/validation/test_r_didtriple.py -vv"
+didhonest = "pytest tests/validation/test_r_didhonest.py -vv"
 
 [environments]
 dev = ["dev", "build", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
