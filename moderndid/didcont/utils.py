@@ -4,6 +4,8 @@ from typing import NamedTuple
 
 import numpy as np
 
+from moderndid.cupy.backend import to_numpy
+
 from .numba import (
     check_full_rank_crossprod,
     create_nonzero_divisor,
@@ -113,7 +115,7 @@ def avoid_zero_division(a, eps=None):
     if eps is None:
         eps = np.finfo(float).eps
 
-    a = np.asarray(a)
+    a = to_numpy(a)
     return create_nonzero_divisor(a, eps)
 
 
