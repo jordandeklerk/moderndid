@@ -4,7 +4,7 @@ from typing import NamedTuple
 
 import numpy as np
 
-from moderndid.cupy.backend import to_numpy
+from moderndid.cupy.backend import to_device, to_numpy
 
 from .numba import (
     check_full_rank_crossprod,
@@ -116,7 +116,7 @@ def avoid_zero_division(a, eps=None):
         eps = np.finfo(float).eps
 
     a = to_numpy(a)
-    return create_nonzero_divisor(a, eps)
+    return to_device(create_nonzero_divisor(a, eps))
 
 
 def basis_dimension(basis="additive", degree=None, segments=None):
