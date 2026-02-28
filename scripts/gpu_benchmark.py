@@ -454,8 +454,8 @@ def _verify_cont_did_cck():
 
 
 SCALING_SIZES = [10_000, 50_000, 100_000, 500_000, 1_000_000]
-CONT_DID_PARAM_SIZES = [1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000]
-CONT_DID_CCK_SIZES = [10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000]
+CONT_DID_PARAM_SIZES = [1_000, 5_000, 10_000, 50_000, 100_000]
+CONT_DID_CCK_SIZES = [5_000, 25_000, 50_000, 250_000, 500_000]
 
 ALL_BENCHMARKS = {"drdid", "ddd_panel", "att_gt", "ddd_mp", "cont_did_param", "cont_did_cck"}
 
