@@ -171,7 +171,7 @@ def predict_gsl_bs(
     if newx is None:
         return basis_obj.basis
 
-    newx = np.asarray(newx).ravel()
+    newx = to_numpy(newx).ravel()
 
     new_basis = gsl_bs(
         x=newx,
