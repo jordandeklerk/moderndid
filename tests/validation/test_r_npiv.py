@@ -112,10 +112,7 @@ output$K_w_segments <- result$K.w.segments
 
 write_json(output, "{result_path}", auto_unbox = TRUE, digits = 16)
 """
-        try:
-            return _run_r_script(r_script, result_path, timeout=timeout)
-        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
-            return None
+        return _run_r_script(r_script, result_path, timeout=timeout)
 
 
 def _python_npiv(
@@ -156,9 +153,8 @@ def test_npiv_iv_h_matches(engel_data):
     py = _python_npiv(engel_data)
     r = _r_npiv()
 
-    if r is None:
-        pytest.fail("R npiv estimation failed")
-
+    assert len(py.h) == 100
+    assert len(r["h"]) == 100
     np.testing.assert_allclose(
         py.h, np.array(r["h"]), rtol=1e-8, atol=1e-8, err_msg="IV function estimates (h) don't match R"
     )
@@ -169,9 +165,8 @@ def test_npiv_iv_deriv_matches(engel_data):
     py = _python_npiv(engel_data)
     r = _r_npiv()
 
-    if r is None:
-        pytest.fail("R npiv estimation failed")
-
+    assert len(py.deriv) == 100
+    assert len(r["deriv"]) == 100
     np.testing.assert_allclose(
         py.deriv, np.array(r["deriv"]), rtol=1e-8, atol=1e-8, err_msg="IV derivative estimates don't match R"
     )
@@ -182,11 +177,10 @@ def test_npiv_iv_confidence_bands_match(engel_data):
     py = _python_npiv(engel_data)
     r = _r_npiv()
 
-    if r is None:
-        pytest.fail("R npiv estimation failed")
-
     assert py.h_lower is not None
     assert py.h_upper is not None
+    assert len(py.h_lower) == 100
+    assert len(r["h_lower"]) == 100
 
     np.testing.assert_allclose(py.h_lower, np.array(r["h_lower"]), atol=0.02, err_msg="IV h_lower don't match R")
     np.testing.assert_allclose(py.h_upper, np.array(r["h_upper"]), atol=0.02, err_msg="IV h_upper don't match R")
@@ -195,22 +189,23 @@ def test_npiv_iv_confidence_bands_match(engel_data):
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R npiv package not available")
-def test_npiv_iv_deriv_confidence_bands_structure(engel_data):
+def test_npiv_iv_deriv_confidence_bands_match(engel_data):
     py = _python_npiv(engel_data)
     r = _r_npiv()
 
-    if r is None:
-        pytest.fail("R npiv estimation failed")
-
     assert py.h_lower_deriv is not None
     assert py.h_upper_deriv is not None
-    assert py.h_lower_deriv.shape == (100,)
-    assert py.h_upper_deriv.shape == (100,)
+    assert len(py.h_lower_deriv) == 100
+    assert len(r["h_lower_deriv"]) == 100
+
+    np.testing.assert_allclose(
+        py.h_lower_deriv, np.array(r["h_lower_deriv"]), atol=0.03, err_msg="IV h_lower_deriv don't match R"
+    )
+    np.testing.assert_allclose(
+        py.h_upper_deriv, np.array(r["h_upper_deriv"]), atol=0.03, err_msg="IV h_upper_deriv don't match R"
+    )
     assert np.all(py.h_lower_deriv <= py.deriv), "Lower deriv <= estimate"
     assert np.all(py.deriv <= py.h_upper_deriv), "Estimate <= upper deriv"
-
-    assert py.h_lower_deriv.shape == np.array(r["h_lower_deriv"]).shape
-    assert py.h_upper_deriv.shape == np.array(r["h_upper_deriv"]).shape
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R npiv package not available")
@@ -218,9 +213,8 @@ def test_npiv_regression_h_matches(engel_data):
     py = _python_npiv(engel_data, w_key="logexp", j_x_segments=64, k_w_degree=3, k_w_segments=64)
     r = _r_npiv(w_var="logexp", j_x_segments=64, k_w_degree=3, k_w_segments=64)
 
-    if r is None:
-        pytest.fail("R npiv regression estimation failed")
-
+    assert len(py.h) == 100
+    assert len(r["h"]) == 100
     np.testing.assert_allclose(py.h, np.array(r["h"]), rtol=1e-8, atol=1e-8, err_msg="Regression h don't match R")
 
 
@@ -229,9 +223,8 @@ def test_npiv_regression_deriv_matches(engel_data):
     py = _python_npiv(engel_data, w_key="logexp", j_x_segments=64, k_w_degree=3, k_w_segments=64)
     r = _r_npiv(w_var="logexp", j_x_segments=64, k_w_degree=3, k_w_segments=64)
 
-    if r is None:
-        pytest.fail("R npiv regression estimation failed")
-
+    assert len(py.deriv) == 100
+    assert len(r["deriv"]) == 100
     np.testing.assert_allclose(
         py.deriv, np.array(r["deriv"]), rtol=1e-8, atol=1e-8, err_msg="Regression deriv don't match R"
     )
@@ -242,21 +235,19 @@ def test_npiv_regression_confidence_bands_match(engel_data):
     py = _python_npiv(engel_data, w_key="logexp", j_x_segments=64, k_w_degree=3, k_w_segments=64)
     r = _r_npiv(w_var="logexp", j_x_segments=64, k_w_degree=3, k_w_segments=64)
 
-    if r is None:
-        pytest.fail("R npiv regression estimation failed")
+    assert py.h_lower is not None
+    assert py.h_upper is not None
+    assert py.h_lower_deriv is not None
+    assert py.h_upper_deriv is not None
+    assert len(py.h_lower) == 100
+    assert len(r["h_lower"]) == 100
 
-    if py.h_lower is not None:
-        assert np.median(np.abs(py.h_lower - np.array(r["h_lower"]))) < 0.01
-    if py.h_upper is not None:
-        assert np.median(np.abs(py.h_upper - np.array(r["h_upper"]))) < 0.01
-
-    if py.h_lower is not None and py.h_upper is not None:
-        assert np.all(py.h_lower <= py.h)
-        assert np.all(py.h <= py.h_upper)
-
-    if py.h_lower_deriv is not None and py.h_upper_deriv is not None:
-        assert np.all(py.h_lower_deriv <= py.deriv)
-        assert np.all(py.deriv <= py.h_upper_deriv)
+    assert np.median(np.abs(py.h_lower - np.array(r["h_lower"]))) < 0.01
+    assert np.median(np.abs(py.h_upper - np.array(r["h_upper"]))) < 0.01
+    assert np.all(py.h_lower <= py.h)
+    assert np.all(py.h <= py.h_upper)
+    assert np.all(py.h_lower_deriv <= py.deriv)
+    assert np.all(py.deriv <= py.h_upper_deriv)
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R npiv package not available")
@@ -264,9 +255,8 @@ def test_npiv_data_driven_iv_h_matches(engel_data):
     py = _python_npiv(engel_data, j_x_segments=None, k_w_segments=None)
     r = _r_npiv(j_x_segments=None, k_w_segments=None, timeout=600)
 
-    if r is None:
-        pytest.fail("R npiv data-driven estimation failed")
-
+    assert len(py.h) == 100
+    assert len(r["h"]) == 100
     np.testing.assert_allclose(py.h, np.array(r["h"]), rtol=1e-8, atol=1e-8, err_msg="Data-driven IV h don't match R")
 
 
@@ -275,9 +265,8 @@ def test_npiv_data_driven_iv_deriv_matches(engel_data):
     py = _python_npiv(engel_data, j_x_segments=None, k_w_segments=None)
     r = _r_npiv(j_x_segments=None, k_w_segments=None, timeout=600)
 
-    if r is None:
-        pytest.fail("R npiv data-driven estimation failed")
-
+    assert len(py.deriv) == 100
+    assert len(r["deriv"]) == 100
     np.testing.assert_allclose(
         py.deriv, np.array(r["deriv"]), rtol=1e-8, atol=1e-8, err_msg="Data-driven IV deriv don't match R"
     )
@@ -288,13 +277,10 @@ def test_npiv_data_driven_iv_confidence_bands(engel_data):
     py = _python_npiv(engel_data, j_x_segments=None, k_w_segments=None)
     r = _r_npiv(j_x_segments=None, k_w_segments=None, timeout=600)
 
-    if r is None:
-        pytest.fail("R npiv data-driven estimation failed")
-
     assert py.h_lower is not None
     assert py.h_upper is not None
-    assert np.all(py.h_lower <= py.h)
-    assert np.all(py.h <= py.h_upper)
+    assert len(py.h_lower) == 100
+    assert len(r["h_lower"]) == 100
 
     np.testing.assert_allclose(
         py.h_lower, np.array(r["h_lower"]), atol=0.04, err_msg="Data-driven h_lower don't match R"
@@ -302,6 +288,8 @@ def test_npiv_data_driven_iv_confidence_bands(engel_data):
     np.testing.assert_allclose(
         py.h_upper, np.array(r["h_upper"]), atol=0.04, err_msg="Data-driven h_upper don't match R"
     )
+    assert np.all(py.h_lower <= py.h)
+    assert np.all(py.h <= py.h_upper)
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R npiv package not available")
@@ -309,9 +297,8 @@ def test_npiv_data_driven_regression_h_matches(engel_data):
     py = _python_npiv(engel_data, w_key="logexp", j_x_segments=None, k_w_degree=3, k_w_segments=None)
     r = _r_npiv(w_var="logexp", j_x_segments=None, k_w_degree=3, k_w_segments=None, timeout=600)
 
-    if r is None:
-        pytest.fail("R npiv data-driven regression failed")
-
+    assert len(py.h) == 100
+    assert len(r["h"]) == 100
     np.testing.assert_allclose(
         py.h, np.array(r["h"]), rtol=1e-8, atol=1e-8, err_msg="Data-driven regression h don't match R"
     )
@@ -322,9 +309,8 @@ def test_npiv_quantile_knots_h_matches(engel_data):
     py = _python_npiv(engel_data, knots="quantiles", j_x_segments=2, k_w_segments=4)
     r = _r_npiv(knots="quantiles", j_x_segments=2, k_w_segments=4)
 
-    if r is None:
-        pytest.fail("R npiv quantile knots estimation failed")
-
+    assert len(py.h) == 100
+    assert len(r["h"]) == 100
     np.testing.assert_allclose(py.h, np.array(r["h"]), rtol=1e-8, atol=1e-8, err_msg="Quantile knots h don't match R")
 
 
@@ -333,9 +319,8 @@ def test_npiv_quantile_knots_deriv_matches(engel_data):
     py = _python_npiv(engel_data, knots="quantiles", j_x_segments=2, k_w_segments=4)
     r = _r_npiv(knots="quantiles", j_x_segments=2, k_w_segments=4)
 
-    if r is None:
-        pytest.fail("R npiv quantile knots estimation failed")
-
+    assert len(py.deriv) == 100
+    assert len(r["deriv"]) == 100
     np.testing.assert_allclose(
         py.deriv, np.array(r["deriv"]), rtol=1e-8, atol=1e-8, err_msg="Quantile knots deriv don't match R"
     )
@@ -346,9 +331,8 @@ def test_npiv_quantile_knots_regression_h_matches(engel_data):
     py = _python_npiv(engel_data, w_key="logexp", knots="quantiles", j_x_segments=4, k_w_degree=3, k_w_segments=4)
     r = _r_npiv(w_var="logexp", knots="quantiles", j_x_segments=4, k_w_degree=3, k_w_segments=4)
 
-    if r is None:
-        pytest.fail("R npiv quantile knots regression failed")
-
+    assert len(py.h) == 100
+    assert len(r["h"]) == 100
     np.testing.assert_allclose(
         py.h, np.array(r["h"]), rtol=1e-8, atol=1e-8, err_msg="Quantile knots regression h don't match R"
     )
@@ -359,9 +343,8 @@ def test_npiv_no_ucb_h_matches(engel_data):
     py = _python_npiv(engel_data, ucb_h=False, ucb_deriv=False, boot_num=1)
     r = _r_npiv(ucb_h=False, ucb_deriv=False, boot_num=1)
 
-    if r is None:
-        pytest.fail("R npiv no-UCB estimation failed")
-
+    assert len(py.h) == 100
+    assert len(r["h"]) == 100
     np.testing.assert_allclose(py.h, np.array(r["h"]), rtol=1e-8, atol=1e-8, err_msg="No-UCB h don't match R")
     np.testing.assert_allclose(
         py.deriv, np.array(r["deriv"]), rtol=1e-8, atol=1e-8, err_msg="No-UCB deriv don't match R"
@@ -381,9 +364,8 @@ def test_npiv_iv_degree_segment_combos(engel_data, j_deg, j_seg, k_deg, k_seg):
     py = _python_npiv(engel_data, j_x_degree=j_deg, j_x_segments=j_seg, k_w_degree=k_deg, k_w_segments=k_seg)
     r = _r_npiv(j_x_degree=j_deg, j_x_segments=j_seg, k_w_degree=k_deg, k_w_segments=k_seg)
 
-    if r is None:
-        pytest.fail(f"R npiv failed for deg=({j_deg},{k_deg}) seg=({j_seg},{k_seg})")
-
+    assert len(py.h) == 100
+    assert len(r["h"]) == 100
     np.testing.assert_allclose(
         py.h, np.array(r["h"]), rtol=1e-8, atol=1e-8, err_msg=f"h mismatch for deg=({j_deg},{k_deg})"
     )
