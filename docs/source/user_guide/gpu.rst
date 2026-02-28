@@ -146,9 +146,15 @@ on the CPU.
 - **Continuous treatment bootstrap** — The multiplier bootstrap for both
   the parametric and CCK paths of :func:`~moderndid.cont_did` uses
   GPU-accelerated batched matrix multiplication when ``backend="cupy"``
-  is active. The parametric path's estimation (B-spline least squares)
-  remains on the CPU since the per-group matrices are too small to
-  benefit from GPU transfer overhead.
+  is active. The parametric path uses CuPy B-spline basis construction
+  on the GPU but converts the results back to NumPy for the per-group
+  least squares solves, since the per-group matrices are too small to
+  benefit from keeping the full solve on the GPU.
+
+.. note::
+
+   :func:`~moderndid.cont_did` supports GPU acceleration but scaling benchmarks have
+   not been collected yet.
 
 The intertemporal estimator (:func:`~moderndid.did_multiplegt`) and
 the sensitivity analysis module (:func:`~moderndid.honest_did`) do
