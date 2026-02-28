@@ -4,7 +4,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from moderndid import ddd_mp
+from moderndid import ddd_mp, load_engel
 from moderndid.didtriple.dgp import gen_dgp_2periods
 
 
@@ -140,3 +140,16 @@ def mp_rcs_data():
             )
 
     return pl.DataFrame(records)
+
+
+@pytest.fixture
+def engel_data():
+    """Load Engel dataset for NPIV validation tests."""
+    engel_df = load_engel()
+    engel_df = engel_df.sort("logexp")
+
+    return {
+        "food": engel_df["food"].to_numpy(),
+        "logexp": engel_df["logexp"].to_numpy().reshape(-1, 1),
+        "logwages": engel_df["logwages"].to_numpy().reshape(-1, 1),
+    }

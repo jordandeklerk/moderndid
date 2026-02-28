@@ -96,7 +96,7 @@ else
   echo ">>> Rglpk already installed"
 fi
 
-CRAN_PKGS="contdid triplediff HonestDiD DIDmultiplegtDYN"
+CRAN_PKGS="contdid triplediff HonestDiD DIDmultiplegtDYN npiv"
 MISSING=""
 for pkg in $CRAN_PKGS; do
   if ! is_installed "$pkg"; then
@@ -114,7 +114,7 @@ fi
 
 echo ""
 echo "=== R package status ==="
-ALL_PKGS="polars contdid triplediff HonestDiD DIDmultiplegtDYN Rglpk"
+ALL_PKGS="polars contdid triplediff HonestDiD DIDmultiplegtDYN Rglpk npiv"
 for pkg in $ALL_PKGS; do
   if is_installed "$pkg"; then
     echo "  $pkg: OK"

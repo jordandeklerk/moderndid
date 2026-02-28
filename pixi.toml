@@ -117,6 +117,7 @@ drdid = "pytest tests/validation/test_r_drdid.py -vv"
 didinter = "pytest tests/validation/test_r_didinter.py -vv"
 didtriple = "pytest tests/validation/test_r_didtriple.py -vv"
 didhonest = "pytest tests/validation/test_r_didhonest.py -vv"
+npiv = "pytest tests/validation/test_r_npiv.py -vv"
 
 [environments]
 dev = ["dev", "build", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
