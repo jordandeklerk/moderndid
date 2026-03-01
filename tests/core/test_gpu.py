@@ -463,7 +463,7 @@ def test_att_gt_cupy_vs_numpy():
     )
 
     np.testing.assert_allclose(result_gpu.att_gt, result_cpu.att_gt, rtol=1e-8)
-    np.testing.assert_allclose(result_gpu.se, result_cpu.se, rtol=1e-6)
+    np.testing.assert_allclose(result_gpu.se_gt, result_cpu.se_gt, rtol=1e-6)
 
 
 @requires_gpu
@@ -484,8 +484,7 @@ def test_ddd_cupy_end_to_end():
 
     assert get_backend() is np
     assert result is not None
-    assert len(result.att) > 0
-    assert np.all(np.isfinite(result.att))
+    assert np.isfinite(result.att)
 
 
 @requires_gpu
