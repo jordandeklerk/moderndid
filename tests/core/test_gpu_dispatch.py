@@ -129,6 +129,19 @@ _PROPENSITY_ESTIMATORS = [
     pytest.param("moderndid.drdid.estimators.drdid_trad_rc", "drdid_trad_rc", "rc", id="drdid_trad_rc"),
 ]
 
+_DR_ESTIMATORS = [
+    pytest.param("moderndid.drdid.estimators.drdid_panel", "drdid_panel", "panel", id="drdid_panel"),
+    pytest.param("moderndid.drdid.estimators.drdid_rc", "drdid_rc", "rc", id="drdid_rc"),
+    pytest.param("moderndid.drdid.estimators.drdid_imp_panel", "drdid_imp_panel", "panel", id="drdid_imp_panel"),
+    pytest.param("moderndid.drdid.estimators.drdid_imp_rc", "drdid_imp_rc", "rc", id="drdid_imp_rc"),
+    pytest.param(
+        "moderndid.drdid.estimators.drdid_imp_local_rc",
+        "drdid_imp_local_rc",
+        "rc",
+        id="drdid_imp_local_rc",
+    ),
+]
+
 _OUTCOME_ESTIMATORS = [
     pytest.param("moderndid.drdid.estimators.reg_did_rc", "reg_did_rc", "rc", id="reg_did_rc"),
     pytest.param("moderndid.drdid.estimators.reg_did_panel", "reg_did_panel", "panel", id="reg_did_panel"),
@@ -164,6 +177,11 @@ def _run_estimator_dispatch_test(module_path, fn_name, data_type, rtol_att, rtol
 
 @pytest.mark.parametrize("module_path,fn_name,data_type", _PROPENSITY_ESTIMATORS)
 def test_propensity_dispatch(module_path, fn_name, data_type):
+    _run_estimator_dispatch_test(module_path, fn_name, data_type, rtol_att=1e-8, rtol_inf=1e-7)
+
+
+@pytest.mark.parametrize("module_path,fn_name,data_type", _DR_ESTIMATORS)
+def test_dr_dispatch(module_path, fn_name, data_type):
     _run_estimator_dispatch_test(module_path, fn_name, data_type, rtol_att=1e-8, rtol_inf=1e-7)
 
 

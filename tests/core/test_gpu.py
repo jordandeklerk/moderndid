@@ -412,3 +412,186 @@ def test_cont_did_cupy_runs():
     assert result.att_d is not None
     assert np.all(np.isfinite(result.att_d))
     set_backend("numpy")
+
+
+@requires_gpu
+def test_att_gt_cupy_end_to_end():
+    df = moderndid.load_mpdta()
+    assert get_backend() is np
+
+    result = moderndid.att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        est_method="dr",
+        boot=False,
+        backend="cupy",
+    )
+
+    assert get_backend() is np
+    assert result is not None
+    assert len(result.att_gt) > 0
+    assert np.all(np.isfinite(result.att_gt))
+
+
+@requires_gpu
+def test_att_gt_cupy_vs_numpy():
+    df = moderndid.load_mpdta()
+
+    result_cpu = moderndid.att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        est_method="dr",
+        boot=False,
+        backend="numpy",
+    )
+
+    result_gpu = moderndid.att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        est_method="dr",
+        boot=False,
+        backend="cupy",
+    )
+
+    np.testing.assert_allclose(result_gpu.att_gt, result_cpu.att_gt, rtol=1e-8)
+    np.testing.assert_allclose(result_gpu.se, result_cpu.se, rtol=1e-6)
+
+
+@requires_gpu
+def test_ddd_cupy_end_to_end():
+    dgp = moderndid.gen_dgp_2periods(n=500, dgp_type=1, random_state=42)
+
+    result = moderndid.ddd(
+        data=dgp["data"],
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+        xformla="~ cov1 + cov2 + cov3 + cov4",
+        est_method="dr",
+        backend="cupy",
+    )
+
+    assert get_backend() is np
+    assert result is not None
+    assert len(result.att) > 0
+    assert np.all(np.isfinite(result.att))
+
+
+@requires_gpu
+def test_ddd_cupy_vs_numpy():
+    dgp = moderndid.gen_dgp_2periods(n=500, dgp_type=1, random_state=42)
+
+    result_cpu = moderndid.ddd(
+        data=dgp["data"],
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+        xformla="~ cov1 + cov2 + cov3 + cov4",
+        est_method="dr",
+        backend="numpy",
+    )
+
+    result_gpu = moderndid.ddd(
+        data=dgp["data"],
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+        xformla="~ cov1 + cov2 + cov3 + cov4",
+        est_method="dr",
+        backend="cupy",
+    )
+
+    np.testing.assert_allclose(result_gpu.att, result_cpu.att, rtol=1e-8)
+    np.testing.assert_allclose(result_gpu.se, result_cpu.se, rtol=1e-6)
+
+
+def test_set_backend_cupy_import_error():
+    from unittest.mock import patch
+
+    with patch.object(_backend_mod, "HAS_CUPY", False), pytest.raises(ImportError, match="CuPy is not installed"):
+        _backend_mod._validate_backend_name("cupy")
+
+
+def test_set_backend_cupy_no_gpu_runtime_error():
+    from unittest.mock import patch
+
+    if not _backend_mod.HAS_CUPY:
+        pytest.skip("CuPy not installed")
+
+    with (
+        patch.object(_backend_mod, "HAS_CUPY", True),
+        patch.object(_backend_mod.cp, "is_available", return_value=False),
+        pytest.raises(RuntimeError, match="no CUDA GPU is available"),
+    ):
+        _backend_mod._validate_backend_name("cupy")
+
+
+@requires_gpu
+def test_wls_oom_raises_memory_error():
+    from unittest.mock import patch
+
+    set_backend("cupy")
+
+    class FakeOOM(Exception):
+        pass
+
+    FakeOOM.__name__ = "OutOfMemoryError"
+
+    with patch("moderndid.cupy.regression.get_backend") as mock_be:
+        mock_xp = type("FakeXP", (), {"float64": np.float64})()
+        mock_xp.asarray = lambda *a, **kw: (_ for _ in ()).throw(FakeOOM("fake OOM"))
+        mock_be.return_value = mock_xp
+
+        with pytest.raises(MemoryError, match="GPU out of memory during WLS"):
+            cupy_wls(np.zeros(10), np.zeros((10, 2)), np.ones(10))
+
+    set_backend("numpy")
+
+
+@requires_gpu
+def test_logistic_irls_oom_raises_memory_error():
+    from unittest.mock import patch
+
+    set_backend("cupy")
+
+    class FakeOOM(Exception):
+        pass
+
+    FakeOOM.__name__ = "OutOfMemoryError"
+
+    with patch("moderndid.cupy.regression.get_backend") as mock_be:
+        mock_xp = type("FakeXP", (), {"float64": np.float64})()
+        mock_xp.zeros = lambda *a, **kw: (_ for _ in ()).throw(FakeOOM("fake OOM"))
+        mock_be.return_value = mock_xp
+
+        with pytest.raises(MemoryError, match="GPU out of memory during logistic IRLS"):
+            cupy_logistic_irls(np.zeros(10), np.zeros((10, 2)), np.ones(10))
+
+    set_backend("numpy")
+
+
+def test_rmm_fallback_when_not_installed():
+    from unittest.mock import patch
+
+    _backend_mod._rmm_initialized = False
+
+    with patch.dict("sys.modules", {"rmm": None, "rmm.allocators": None, "rmm.allocators.cupy": None}):
+        _init_rmm_pool()
+
+    assert _backend_mod._rmm_initialized is False
+    _init_rmm_pool()  # restore real state
