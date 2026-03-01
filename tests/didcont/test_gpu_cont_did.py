@@ -6,6 +6,8 @@ import pytest
 import moderndid
 from moderndid.cupy.backend import set_backend, to_numpy
 from moderndid.didcont.npiv.estimators import _ginv, npiv_est
+from moderndid.didcont.npiv.gsl_bspline import gsl_bs
+from moderndid.didcont.spline import BSpline
 from tests.helpers import importorskip
 
 cp = importorskip("cupy")
@@ -211,3 +213,64 @@ def test_eventstudy_cupy_vs_numpy():
     )
 
     np.testing.assert_allclose(result_gpu.overall_att.overall_att, result_cpu.overall_att.overall_att, atol=1e-4)
+
+
+@requires_gpu
+def test_bspline_basis_cupy_vs_scipy():
+    rng = np.random.default_rng(42)
+    x = np.sort(rng.uniform(0, 1, 100))
+
+    set_backend("numpy")
+    bs_cpu = BSpline(x=x, degree=3, df=7)
+    basis_cpu = bs_cpu.basis(complete_basis=True)
+    deriv_cpu = bs_cpu.derivative(derivs=1, complete_basis=True)
+
+    set_backend("cupy")
+    bs_gpu = BSpline(x=x, degree=3, df=7)
+    basis_gpu = to_numpy(bs_gpu.basis(complete_basis=True))
+    deriv_gpu = to_numpy(bs_gpu.derivative(derivs=1, complete_basis=True))
+
+    np.testing.assert_allclose(basis_gpu, basis_cpu, atol=1e-10)
+    np.testing.assert_allclose(deriv_gpu, deriv_cpu, atol=1e-10)
+    set_backend("numpy")
+
+
+@requires_gpu
+def test_bspline_basis_with_knots_cupy_vs_scipy():
+    rng = np.random.default_rng(99)
+    x = np.sort(rng.uniform(0, 10, 200))
+    internal_knots = np.array([2.5, 5.0, 7.5])
+
+    set_backend("numpy")
+    bs_cpu = BSpline(x=x, degree=3, internal_knots=internal_knots)
+    basis_cpu = bs_cpu.basis(complete_basis=False)
+    deriv_cpu = bs_cpu.derivative(derivs=1, complete_basis=False)
+
+    set_backend("cupy")
+    bs_gpu = BSpline(x=x, degree=3, internal_knots=internal_knots)
+    basis_gpu = to_numpy(bs_gpu.basis(complete_basis=False))
+    deriv_gpu = to_numpy(bs_gpu.derivative(derivs=1, complete_basis=False))
+
+    np.testing.assert_allclose(basis_gpu, basis_cpu, atol=1e-10)
+    np.testing.assert_allclose(deriv_gpu, deriv_cpu, atol=1e-10)
+    set_backend("numpy")
+
+
+@requires_gpu
+def test_gsl_bs_cupy_vs_scipy():
+    rng = np.random.default_rng(42)
+    x = np.sort(rng.uniform(0, 1, 150))
+
+    set_backend("numpy")
+    result_cpu = gsl_bs(x, degree=3, nbreak=6)
+    basis_cpu = result_cpu.basis
+    deriv_cpu = gsl_bs(x, degree=3, nbreak=6, deriv=1).basis
+
+    set_backend("cupy")
+    result_gpu = gsl_bs(x, degree=3, nbreak=6)
+    basis_gpu = to_numpy(result_gpu.basis)
+    deriv_gpu = to_numpy(gsl_bs(x, degree=3, nbreak=6, deriv=1).basis)
+
+    np.testing.assert_allclose(basis_gpu, basis_cpu, atol=1e-10)
+    np.testing.assert_allclose(deriv_gpu, deriv_cpu, atol=1e-10)
+    set_backend("numpy")
