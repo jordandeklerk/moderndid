@@ -4,8 +4,9 @@ import numpy as np
 import pytest
 
 import moderndid
+import moderndid.cupy.backend as _backend_mod
 from moderndid.core.numba_utils import aggregate_by_cluster, compute_column_std, multiplier_bootstrap
-from moderndid.cupy.backend import _rmm_initialized, get_backend, set_backend, to_device, to_numpy
+from moderndid.cupy.backend import _init_rmm_pool, get_backend, set_backend, to_device, to_numpy, use_backend
 from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
 from moderndid.did.mboot import mboot
 from tests.helpers import importorskip
@@ -348,10 +349,47 @@ def test_rmm_initialized_after_set_backend():
     try:
         import rmm  # noqa: F401
 
-        assert _rmm_initialized is True
+        assert _backend_mod._rmm_initialized is True
     except ImportError:
         pass
     set_backend("numpy")
+
+
+@requires_gpu
+def test_rmm_initialized_after_use_backend():
+    _backend_mod._rmm_initialized = False
+    try:
+        import rmm  # noqa: F401
+
+        with use_backend("cupy"):
+            assert _backend_mod._rmm_initialized is True
+    except ImportError:
+        pass
+    finally:
+        _init_rmm_pool()
+        set_backend("numpy")
+
+
+@requires_gpu
+def test_rmm_skips_reinitialize_when_already_active():
+    try:
+        from unittest.mock import patch
+
+        import rmm
+        from rmm.allocators.cupy import rmm_cupy_allocator
+
+        cp.cuda.set_allocator(rmm_cupy_allocator)
+        _backend_mod._rmm_initialized = False
+
+        with patch.object(rmm, "reinitialize") as mock_reinit:
+            _init_rmm_pool()
+            mock_reinit.assert_not_called()
+
+        assert _backend_mod._rmm_initialized is True
+    except ImportError:
+        pytest.skip("rmm not installed")
+    finally:
+        set_backend("numpy")
 
 
 @requires_gpu

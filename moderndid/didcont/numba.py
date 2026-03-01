@@ -38,7 +38,7 @@ __all__ = [
 
 
 def _get_xp():
-    """Return the active array module, falling back to numpy."""
+    """Return the active array module."""
     try:
         return get_backend()
     except Exception:  # noqa: BLE001
@@ -46,7 +46,7 @@ def _get_xp():
 
 
 def _is_cupy_array(x):
-    """Return True if *x* is a CuPy ndarray."""
+    """Return True if a CuPy ndarray."""
     if not _HAS_CUPY:
         return False
     return isinstance(x, cp.ndarray)

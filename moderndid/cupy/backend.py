@@ -73,6 +73,8 @@ def use_backend(name):
         Backend to activate for the duration of the block.
     """
     name = _validate_backend_name(name)
+    if name == "cupy":
+        _init_rmm_pool()
     token = _active_backend.set(name)
     try:
         yield
@@ -243,13 +245,22 @@ def _init_rmm_pool():
     ``cudaMalloc`` calls with a pool allocator that grows on demand, which
     eliminates the ~1 ms overhead per allocation that otherwise dominates
     bootstrap loops.  If ``rmm`` is not installed, this is a silent no-op.
+
+    If CuPy is already using the RMM allocator (for example, because the
+    user configured RMM manually before importing ModernDiD), this function
+    is a no-op and the existing configuration is preserved.
     """
     global _rmm_initialized
     if _rmm_initialized:
         return
     try:
-        import rmm
         from rmm.allocators.cupy import rmm_cupy_allocator
+
+        if cp.cuda.get_allocator() == rmm_cupy_allocator:
+            _rmm_initialized = True
+            return
+
+        import rmm
 
         rmm.reinitialize(pool_allocator=True, initial_pool_size=0)
         cp.cuda.set_allocator(rmm_cupy_allocator)
