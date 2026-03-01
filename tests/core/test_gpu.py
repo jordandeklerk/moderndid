@@ -437,7 +437,8 @@ def test_att_gt_cupy_end_to_end():
 
 
 @requires_gpu
-def test_att_gt_cupy_vs_numpy():
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_att_gt_cupy_vs_numpy(est_method):
     df = moderndid.load_mpdta()
 
     result_cpu = moderndid.att_gt(
@@ -446,7 +447,7 @@ def test_att_gt_cupy_vs_numpy():
         tname="year",
         idname="countyreal",
         gname="first.treat",
-        est_method="dr",
+        est_method=est_method,
         boot=False,
         backend="numpy",
     )
@@ -457,7 +458,7 @@ def test_att_gt_cupy_vs_numpy():
         tname="year",
         idname="countyreal",
         gname="first.treat",
-        est_method="dr",
+        est_method=est_method,
         boot=False,
         backend="cupy",
     )
@@ -488,7 +489,8 @@ def test_ddd_cupy_end_to_end():
 
 
 @requires_gpu
-def test_ddd_cupy_vs_numpy():
+@pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
+def test_ddd_cupy_vs_numpy(est_method):
     dgp = moderndid.gen_dgp_2periods(n=500, dgp_type=1, random_state=42)
 
     result_cpu = moderndid.ddd(
@@ -499,7 +501,7 @@ def test_ddd_cupy_vs_numpy():
         gname="state",
         pname="partition",
         xformla="~ cov1 + cov2 + cov3 + cov4",
-        est_method="dr",
+        est_method=est_method,
         backend="numpy",
     )
 
@@ -511,7 +513,7 @@ def test_ddd_cupy_vs_numpy():
         gname="state",
         pname="partition",
         xformla="~ cov1 + cov2 + cov3 + cov4",
-        est_method="dr",
+        est_method=est_method,
         backend="cupy",
     )
 
