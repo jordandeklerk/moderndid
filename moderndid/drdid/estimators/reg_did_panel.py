@@ -110,17 +110,20 @@ def reg_did_panel(
     .. [2] Sant'Anna, P. H. C. and Zhao, J. (2020), "Doubly Robust Difference-in-Differences Estimators."
            Journal of Econometrics, Vol. 219 (1), pp. 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
     """
-    y1, y0, d, int_cov, i_weights, n_units, delta_y = _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights)
+    xp = get_backend()
+    y1, y0, d, int_cov, i_weights, n_units, delta_y = _validate_and_preprocess_inputs(
+        xp, y1, y0, d, covariates, i_weights
+    )
 
-    out_delta = _fit_outcome_regression(delta_y, d, int_cov, i_weights)
+    out_delta = _fit_outcome_regression(xp, delta_y, d, int_cov, i_weights)
 
     weights = _compute_weights(d, i_weights)
 
     reg_att_treat = weights["w_treat"] * delta_y
     reg_att_cont = weights["w_cont"] * out_delta
 
-    mean_w_treat = np.mean(weights["w_treat"])
-    mean_w_cont = np.mean(weights["w_cont"])
+    mean_w_treat = xp.mean(weights["w_treat"])
+    mean_w_cont = xp.mean(weights["w_cont"])
 
     if mean_w_treat == 0:
         return RegDIDPanelResult(
@@ -140,16 +143,16 @@ def reg_did_panel(
         )
 
     if mean_w_cont == 0:
-        eta_treat = np.nanmean(reg_att_treat) / mean_w_treat
+        eta_treat = xp.mean(reg_att_treat) / mean_w_treat
         eta_cont = np.nan
         reg_att = np.nan
     else:
-        eta_treat = np.nanmean(reg_att_treat) / mean_w_treat
-        eta_cont = np.nanmean(reg_att_cont) / mean_w_cont
+        eta_treat = xp.mean(reg_att_treat) / mean_w_treat
+        eta_cont = xp.mean(reg_att_cont) / mean_w_cont
         reg_att = eta_treat - eta_cont
 
     # Check if reg_att is NaN (happens when all units are treated)
-    if np.isnan(reg_att):
+    if np.isnan(float(reg_att)):
         reg_att_inf_func = np.full(n_units, np.nan)
         se_reg_att = np.nan
         uci = np.nan
@@ -169,7 +172,7 @@ def reg_did_panel(
         }
 
         return RegDIDPanelResult(
-            att=reg_att,
+            att=float(reg_att),
             se=se_reg_att,
             uci=uci,
             lci=lci,
@@ -178,9 +181,10 @@ def reg_did_panel(
             args=args,
         )
 
-    influence_quantities = _get_influence_quantities(delta_y, d, int_cov, out_delta, i_weights, n_units)
+    influence_quantities = _get_influence_quantities(xp, delta_y, d, int_cov, out_delta, i_weights, n_units)
 
     reg_att_inf_func = _compute_influence_function(
+        xp,
         reg_att_treat,
         reg_att_cont,
         eta_treat,
@@ -191,6 +195,9 @@ def reg_did_panel(
         mean_w_cont,
         influence_quantities,
     )
+
+    reg_att_inf_func = to_numpy(reg_att_inf_func)
+    reg_att = float(reg_att)
 
     # Inference
     if not boot:
@@ -244,47 +251,46 @@ def reg_did_panel(
     )
 
 
-def _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights):
+def _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights):
     """Validate and preprocess input arrays."""
-    d = np.asarray(d).flatten()
+    d = xp.asarray(d).flatten()
     n_units = len(d)
-    delta_y = np.asarray(y1).flatten() - np.asarray(y0).flatten()
+    delta_y = xp.asarray(y1).flatten() - xp.asarray(y0).flatten()
 
     if covariates is None:
-        int_cov = np.ones((n_units, 1))
+        int_cov = xp.ones((n_units, 1))
     else:
-        int_cov = np.asarray(covariates)
+        int_cov = xp.asarray(covariates)
         if int_cov.ndim == 1:
             int_cov = int_cov.reshape(-1, 1)
 
     if i_weights is None:
-        i_weights = np.ones(n_units)
+        i_weights = xp.ones(n_units)
     else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
+        i_weights = xp.asarray(i_weights).flatten()
+        if xp.any(i_weights < 0):
             raise ValueError("i_weights must be non-negative.")
-    i_weights = i_weights / np.mean(i_weights)
+    i_weights = i_weights / xp.mean(i_weights)
 
     return y1, y0, d, int_cov, i_weights, n_units, delta_y
 
 
-def _fit_outcome_regression(delta_y, d, int_cov, i_weights):
+def _fit_outcome_regression(xp, delta_y, d, int_cov, i_weights):
     """Fit outcome regression model on control units."""
     control_filter = d == 0
 
-    valid_mask = ~np.isnan(delta_y)
+    valid_mask = ~xp.isnan(delta_y)
     control_filter = control_filter & valid_mask
 
-    n_control = np.sum(control_filter)
+    n_control = int(xp.sum(control_filter))
 
     if n_control == 0:
         warnings.warn("All units are treated. Returning NaN.", UserWarning)
-        return np.full_like(delta_y, np.nan)
+        return xp.full(len(delta_y), np.nan)
 
     if n_control < int_cov.shape[1]:
         raise ValueError("Insufficient control units for regression.")
 
-    xp = get_backend()
     if xp is not np:
         try:
             beta, _ = cupy_wls(
@@ -314,7 +320,7 @@ def _fit_outcome_regression(delta_y, d, int_cov, i_weights):
             "Multicollinearity (or lack of variation) of covariates is probably the reason for it."
         )
 
-    out_delta = int_cov @ reg_coeff
+    out_delta = int_cov @ xp.asarray(reg_coeff)
 
     return out_delta
 
@@ -330,18 +336,18 @@ def _compute_weights(d, i_weights):
     }
 
 
-def _get_influence_quantities(delta_y, d, int_cov, out_delta, i_weights, n_units):
+def _get_influence_quantities(xp, delta_y, d, int_cov, out_delta, i_weights, n_units):
     """Compute quantities needed for influence function."""
     # Asymptotic linear representation of OLS parameters
     weights_ols = i_weights * (1 - d)
-    weighted_x = weights_ols[:, np.newaxis] * int_cov
-    weighted_resid_x = weights_ols[:, np.newaxis] * (delta_y - out_delta)[:, np.newaxis] * int_cov
+    weighted_x = weights_ols[:, xp.newaxis] * int_cov
+    weighted_resid_x = weights_ols[:, xp.newaxis] * (delta_y - out_delta)[:, xp.newaxis] * int_cov
     gram_matrix = weighted_x.T @ int_cov / n_units
 
-    if np.linalg.cond(gram_matrix) > 1e15:
+    if xp.linalg.cond(gram_matrix) > 1e15:
         raise ValueError("The regression design matrix is singular. Consider removing some covariates.")
 
-    gram_inv = np.linalg.inv(gram_matrix)
+    gram_inv = xp.linalg.inv(gram_matrix)
     asy_lin_rep_ols = weighted_resid_x @ gram_inv
 
     return {
@@ -350,7 +356,16 @@ def _get_influence_quantities(delta_y, d, int_cov, out_delta, i_weights, n_units
 
 
 def _compute_influence_function(
-    reg_att_treat, reg_att_cont, eta_treat, eta_cont, weights, int_cov, mean_w_treat, mean_w_cont, influence_quantities
+    xp,
+    reg_att_treat,
+    reg_att_cont,
+    eta_treat,
+    eta_cont,
+    weights,
+    int_cov,
+    mean_w_treat,
+    mean_w_cont,
+    influence_quantities,
 ):
     """Compute the influence function for outcome regression estimator."""
     w_treat = weights["w_treat"]
@@ -366,7 +381,7 @@ def _compute_influence_function(
     inf_cont_1 = reg_att_cont - w_cont * eta_cont
     # Estimation effect from beta hat (OLS using only controls)
     # Derivative matrix (k x 1 vector)
-    control_ols_derivative = np.mean(w_cont[:, np.newaxis] * int_cov, axis=0)
+    control_ols_derivative = xp.mean(w_cont[:, xp.newaxis] * int_cov, axis=0)
     # Now get the influence function related to the estimation effect related to beta's
     inf_cont_2 = asy_lin_rep_ols @ control_ols_derivative
     # Influence function for the control component
