@@ -216,7 +216,7 @@ R packages::
 This runs ``scripts/setup.sh``, which installs ``contdid``,
 ``triplediff``, ``HonestDiD``, ``DIDmultiplegtDYN``, ``Rglpk``, and
 ``polars`` from CRAN and r-universe. The first run compiles everything from
-source and takes 10-15 minutes (most of that is the Rust build for
+source and can take a few minutes (most of that is the Rust build for
 ``polars``). Subsequent runs finish in seconds because the script only
 installs packages that are missing.
 

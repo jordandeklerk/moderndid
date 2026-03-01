@@ -7,7 +7,7 @@ import numpy as np
 from ...cupy.backend import get_backend, to_device
 from ..utils import _quantile_basis, avoid_zero_division
 from .cck_ucb import compute_cck_ucb
-from .estimators import _LinAlgError, npiv_est
+from .estimators import npiv_est
 from .results import NPIVResult
 
 
@@ -195,14 +195,14 @@ def compute_ucb(
             if ucb_h:
                 boot_h_diff = psi_x_eval @ (tmp @ (main_result.residuals * boot_draws))
                 studentized_h = xp.abs(boot_h_diff) / avoid_zero_division(main_result.asy_se)
-                boot_h_stats[b] = float(xp.max(studentized_h))
+                boot_h_stats[b] = xp.max(studentized_h)
 
             if ucb_deriv:
                 boot_deriv_diff = psi_x_deriv_eval @ (tmp @ (main_result.residuals * boot_draws))
                 studentized_deriv = xp.abs(boot_deriv_diff) / avoid_zero_division(main_result.deriv_asy_se)
-                boot_deriv_stats[b] = float(xp.max(studentized_deriv))
+                boot_deriv_stats[b] = xp.max(studentized_deriv)
 
-        except (ValueError, *_LinAlgError) as e:
+        except (ValueError, np.linalg.LinAlgError) as e:
             warnings.warn(f"Bootstrap replication {b + 1} failed: {e}", UserWarning)
             if ucb_h:
                 boot_h_stats[b] = np.nan

@@ -4,7 +4,7 @@ import numpy as np
 
 from ...cupy.backend import get_backend, to_device, to_numpy
 from ..utils import _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
-from .estimators import _ginv, _LinAlgError, npiv_est
+from .estimators import _ginv, npiv_est
 from .prodspline import prodspline
 
 
@@ -212,7 +212,7 @@ def npiv_j(
                 psi_x_j1_eval, psi_x_j2_eval, tmp_j1, tmp_j2, u_j1, u_j2, asy_se, boot_draws_all, boot_num
             )
 
-        except (ValueError, *_LinAlgError):
+        except (ValueError, np.linalg.LinAlgError):
             z_sup[pair_idx] = np.inf
             z_sup_boot[:, pair_idx] = np.inf
 
@@ -430,7 +430,7 @@ def _compute_sieve_measure(
         s_val = float(xp.min(xp.linalg.svd(svd_matrix, compute_uv=False)))
         s_hat_j = s_val if s_val > 0 else max(1, (0.1 * np.log(n)) ** 4)
 
-    except (ValueError, *_LinAlgError):
+    except (ValueError, np.linalg.LinAlgError):
         s_hat_j = max(1, (0.1 * np.log(n)) ** 4)
 
     return s_hat_j

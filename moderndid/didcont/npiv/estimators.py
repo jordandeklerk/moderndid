@@ -9,14 +9,6 @@ from ..utils import is_full_rank
 from .prodspline import prodspline
 from .results import NPIVResult
 
-_LinAlgError = (np.linalg.LinAlgError,)
-try:
-    import cupy as _cp
-
-    _LinAlgError = (np.linalg.LinAlgError, _cp.linalg.LinAlgError)
-except Exception:  # noqa: BLE001
-    pass
-
 
 def npiv_est(
     y,
@@ -146,10 +138,10 @@ def npiv_est(
         psi_x_eval = basis_matrices["psi_x_eval"]
         psi_x_deriv_eval = basis_matrices["psi_x_deriv_eval"]
         b_w = basis_matrices["b_w"]
+    except np.linalg.LinAlgError as e:
+        raise RuntimeError(f"Numerical error constructing B-spline bases: {e}") from e
     except ValueError as e:
         raise ValueError(f"Invalid parameters for B-spline construction: {e}") from e
-    except _LinAlgError as e:
-        raise RuntimeError(f"Numerical error constructing B-spline bases: {e}") from e
 
     if check_is_fullrank:
         rank_check_psi = is_full_rank(psi_x)
@@ -170,7 +162,7 @@ def npiv_est(
     # NPIV estimation
     try:
         beta, gram_inv, design_matrix = _perform_tsls_estimation(psi_x, b_w, y)
-    except _LinAlgError as e:
+    except np.linalg.LinAlgError as e:
         raise RuntimeError(f"Numerical error in NPIV estimation: {e}") from e
 
     h_estimates = psi_x_eval @ beta
@@ -190,7 +182,7 @@ def npiv_est(
         "knots_type": knots,
         "psi_x_dim": psi_x.shape[1],
         "b_w_dim": b_w.shape[1],
-        "residual_mse": float(xp.mean(residuals**2)),
+        "residual_mse": xp.mean(residuals**2),
         "train_is_eval": train_is_eval,
         "tmp": tmp,
         "psi_x_eval": psi_x_eval,
@@ -371,7 +363,7 @@ def _compute_asymptotic_standard_errors(psi_x_eval, psi_x_deriv_eval, gram_inv, 
 
         return asy_se, deriv_asy_se, tmp
 
-    except (*_LinAlgError, ValueError) as e:
+    except (np.linalg.LinAlgError, ValueError) as e:
         warnings.warn(f"Error computing asymptotic standard errors: {e}", UserWarning)
         return xp.full(n_eval, np.nan), xp.full(n_eval, np.nan), None
 
