@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 
+from ...cupy.backend import get_backend, to_numpy
 from ..utils import is_full_rank
 from .prodspline import prodspline
 from .results import NPIVResult
@@ -78,9 +79,10 @@ def npiv_est(
     --------
     npiv : Public API with data-driven selection and confidence bands.
     """
-    y = np.asarray(y).ravel()
-    x = np.atleast_2d(x)
-    w = np.atleast_2d(w)
+    xp = get_backend()
+    y = xp.asarray(y).ravel()
+    x = xp.atleast_2d(xp.asarray(x))
+    w = xp.atleast_2d(xp.asarray(w))
 
     n = len(y)
     if x.shape[0] != n or w.shape[0] != n:
@@ -94,15 +96,15 @@ def npiv_est(
         x_eval = x.copy()
         train_is_eval = True
     else:
-        x_eval = np.atleast_2d(x_eval)
+        x_eval = xp.atleast_2d(xp.asarray(x_eval))
         if x_eval.shape[1] != p_x:
             raise ValueError("x_eval must have same number of columns as x")
-        if np.array_equal(x, x_eval):
+        if np.array_equal(to_numpy(x), to_numpy(x_eval)):
             train_is_eval = True
 
     n_eval = x_eval.shape[0]
 
-    is_regression_case = np.array_equal(x, w)
+    is_regression_case = np.array_equal(to_numpy(x), to_numpy(w))
 
     j_x_segments, k_w_segments, k_w_degree = _determine_segments(
         j_x_segments, k_w_segments, j_x_degree, k_w_degree, n, p_x, p_w, is_regression_case, data_driven
@@ -136,10 +138,10 @@ def npiv_est(
         psi_x_eval = basis_matrices["psi_x_eval"]
         psi_x_deriv_eval = basis_matrices["psi_x_deriv_eval"]
         b_w = basis_matrices["b_w"]
-    except ValueError as e:
-        raise ValueError(f"Invalid parameters for B-spline construction: {e}") from e
     except np.linalg.LinAlgError as e:
         raise RuntimeError(f"Numerical error constructing B-spline bases: {e}") from e
+    except ValueError as e:
+        raise ValueError(f"Invalid parameters for B-spline construction: {e}") from e
 
     if check_is_fullrank:
         rank_check_psi = is_full_rank(psi_x)
@@ -180,7 +182,7 @@ def npiv_est(
         "knots_type": knots,
         "psi_x_dim": psi_x.shape[1],
         "b_w_dim": b_w.shape[1],
-        "residual_mse": np.mean(residuals**2),
+        "residual_mse": xp.mean(residuals**2),
         "train_is_eval": train_is_eval,
         "tmp": tmp,
         "psi_x_eval": psi_x_eval,
@@ -308,12 +310,13 @@ def _construct_basis_matrices(
     b_w_deriv = b_w_deriv_result.basis
 
     if basis in ("additive", "glp"):
-        psi_x = np.c_[np.ones(n), psi_x]
-        psi_x_eval = np.c_[np.ones(n_eval), psi_x_eval]
-        psi_x_deriv = np.c_[np.zeros(n), psi_x_deriv]
-        psi_x_deriv_eval = np.c_[np.zeros(n_eval), psi_x_deriv_eval]
-        b_w = np.c_[np.ones(n), b_w]
-        b_w_deriv = np.c_[np.zeros(n), b_w_deriv]
+        xp = get_backend()
+        psi_x = xp.concatenate([xp.ones((n, 1)), psi_x], axis=1)
+        psi_x_eval = xp.concatenate([xp.ones((n_eval, 1)), psi_x_eval], axis=1)
+        psi_x_deriv = xp.concatenate([xp.zeros((n, 1)), psi_x_deriv], axis=1)
+        psi_x_deriv_eval = xp.concatenate([xp.zeros((n_eval, 1)), psi_x_deriv_eval], axis=1)
+        b_w = xp.concatenate([xp.ones((n, 1)), b_w], axis=1)
+        b_w_deriv = xp.concatenate([xp.zeros((n, 1)), b_w_deriv], axis=1)
 
     return {
         "psi_x": psi_x,
@@ -345,23 +348,24 @@ def _perform_tsls_estimation(psi_x, b_w, y):
 
 def _compute_asymptotic_standard_errors(psi_x_eval, psi_x_deriv_eval, gram_inv, design_matrix, residuals, n_eval):
     """Compute asymptotic standard errors for estimates and derivatives."""
+    xp = get_backend()
     try:
         tmp = gram_inv @ design_matrix
 
-        weighted_tmp = tmp.T * residuals[:, np.newaxis]
+        weighted_tmp = tmp.T * residuals[:, None]
         D_inv_rho_D_inv = weighted_tmp.T @ weighted_tmp
 
         var_matrix = psi_x_eval @ D_inv_rho_D_inv @ psi_x_eval.T
-        asy_se = np.sqrt(np.abs(np.diag(var_matrix)))
+        asy_se = xp.sqrt(xp.abs(xp.diag(var_matrix)))
 
         var_matrix_deriv = psi_x_deriv_eval @ D_inv_rho_D_inv @ psi_x_deriv_eval.T
-        deriv_asy_se = np.sqrt(np.abs(np.diag(var_matrix_deriv)))
+        deriv_asy_se = xp.sqrt(xp.abs(xp.diag(var_matrix_deriv)))
 
         return asy_se, deriv_asy_se, tmp
 
     except (np.linalg.LinAlgError, ValueError) as e:
         warnings.warn(f"Error computing asymptotic standard errors: {e}", UserWarning)
-        return np.full(n_eval, np.nan), np.full(n_eval, np.nan), None
+        return xp.full(n_eval, np.nan), xp.full(n_eval, np.nan), None
 
 
 def _determine_segments(
@@ -387,16 +391,17 @@ def _determine_segments(
 
 def _ginv(X, tol=None):
     """Generalized matrix inverse."""
+    xp = get_backend()
     if tol is None:
-        tol = np.sqrt(np.finfo(float).eps)
+        tol = float(np.sqrt(np.finfo(float).eps))
 
-    U, s, Vt = np.linalg.svd(X, full_matrices=False)
+    U, s, Vt = xp.linalg.svd(X, full_matrices=False)
     V = Vt.T
 
-    positive = s > max(tol * s[0] if len(s) > 0 else 0, 0)
+    positive = s > max(float(tol * s[0]) if len(s) > 0 else 0, 0)
 
-    if np.all(positive):
-        return V @ np.diag(1 / s) @ U.T
-    if not np.any(positive):
-        return np.zeros((X.shape[1], X.shape[0]))
-    return V[:, positive] @ np.diag(1 / s[positive]) @ U[:, positive].T
+    if xp.all(positive):
+        return V @ xp.diag(1 / s) @ U.T
+    if not xp.any(positive):
+        return xp.zeros((X.shape[1], X.shape[0]))
+    return V[:, positive] @ xp.diag(1 / s[positive]) @ U[:, positive].T

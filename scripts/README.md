@@ -25,6 +25,11 @@ that ATT and SE estimates match within 1e-6 tolerance:
 **Scaling** — times each estimator at 10k, 50k, 100k, 500k, and 1M
 units with both analytical and bootstrap inference.
 
+`cont_did` supports GPU acceleration (both parametric and CCK paths)
+but is not yet included in the scaling benchmarks. The combinatorial
+(g,t) loop with bootstrap makes a full sweep prohibitively slow to
+benchmark at scale.
+
 ## Hardware
 
 CPU baseline for all GPU runs is the host vCPU of each cloud instance.
@@ -53,6 +58,11 @@ All benchmarks use CuPy 13.6.0 with CUDA 12.9.
 | `att_gt` | Bootstrap | 7.20x | 22.50x | 30.56x |
 | `ddd_mp` | Analytical | 2.39x | 2.28x | 2.39x |
 | `ddd_mp` | Bootstrap | 6.36x | 5.50x | 5.61x |
+| `cont_did` | — | — | — | — |
+
+`cont_did` GPU support is implemented but scaling benchmarks have not
+been collected yet. Pass `backend="cupy"` to enable GPU acceleration
+for the CCK/NPIV path and the multiplier bootstrap.
 
 ![CPU vs GPU Performance](output/gpu_benchmark.png)
 

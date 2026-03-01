@@ -7,6 +7,7 @@ import polars as pl
 import statsmodels.api as sm
 from formulaic import model_matrix
 
+from ...cupy.backend import to_numpy
 from ...drdid.estimators.drdid_panel import drdid_panel
 from ...drdid.estimators.reg_did_panel import reg_did_panel
 from .container import AttgtResult
@@ -148,9 +149,11 @@ def pte_attgt(
 
     if est_method == "dr" and n_control > 0 and np.sum(d) > 0:
         try:
-            ps_model = sm.Logit(d, covariates)
+            d_np = to_numpy(d)
+            covariates_np = to_numpy(covariates)
+            ps_model = sm.Logit(d_np, covariates_np)
             ps_results = ps_model.fit(disp=0)
-            ps_scores = ps_results.predict(covariates)
+            ps_scores = ps_results.predict(covariates_np)
 
             if np.max(ps_scores) > 0.99:
                 est_method = "reg"

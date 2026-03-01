@@ -37,9 +37,3 @@ methodology are found in :ref:`background`.
    bootstrap
    plotting
    data
-
-.. toctree::
-   :caption: Distributed
-   :maxdepth: 2
-
-   distributed

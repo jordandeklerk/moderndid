@@ -7,9 +7,10 @@ GPU Acceleration with CuPy
 ModernDiD can offload numerical operations to NVIDIA GPUs via
 `CuPy <https://cupy.dev/>`_. When the GPU backend is active, matrix
 operations in the two-period doubly robust estimators (weighted least
-squares, logistic IRLS, influence function computation) run on the GPU
-using cuBLAS and cuSOLVER, which can substantially reduce runtime for
-large datasets on powerful GPUs.
+squares, logistic IRLS, influence function computation) and in the
+continuous treatment estimator (CCK/NPIV path and multiplier bootstrap)
+run on the GPU using cuBLAS and cuSOLVER, which can substantially
+reduce runtime for large datasets on powerful GPUs.
 
 
 Requirements
@@ -46,9 +47,10 @@ Enabling the backend
 --------------------
 
 The GPU backend is opt-in. Pass ``backend="cupy"`` to
-:func:`~moderndid.att_gt` or :func:`~moderndid.ddd` to run a single
-call on the GPU. The backend activates only for that call and reverts
-automatically when it returns:
+:func:`~moderndid.att_gt`, :func:`~moderndid.ddd`, or
+:func:`~moderndid.cont_did` to run a single call on the GPU. The
+backend activates only for that call and reverts automatically when it
+returns:
 
 .. code-block:: python
 
@@ -106,7 +108,9 @@ What gets accelerated
 The GPU backend accelerates the low-level numerical operations inside
 the two-period estimators that :func:`~moderndid.att_gt` and
 :func:`~moderndid.ddd` call for each group-time cell, for both panel
-and repeated cross-section data with any ``est_method``.
+and repeated cross-section data with any ``est_method``. It also
+accelerates the continuous treatment estimator
+:func:`~moderndid.cont_did`.
 
 - **Weighted least squares** (``reg``, ``dr``) — Design matrix
   multiplication, normal equation solve via cuSOLVER, and fitted value
@@ -129,18 +133,35 @@ and repeated cross-section data with any ``est_method``.
 - **Cluster aggregation** — Scatter-add operations to aggregate
   influence functions at the cluster level use GPU kernels.
 
+- **Continuous treatment CCK/NPIV estimation**
+  (:func:`~moderndid.cont_did` with ``dose_est_method="cck"``) — Spline
+  basis construction, regression solves, and derivative computation run
+  on the GPU via cuBLAS.
+
+- **Continuous treatment bootstrap** — The multiplier bootstrap for both
+  the parametric and CCK paths of :func:`~moderndid.cont_did` uses
+  GPU-accelerated batched matrix multiplication when ``backend="cupy"``
+  is active. The parametric path uses CuPy B-spline basis construction
+  on the GPU but converts the results back to NumPy for the per-group
+  least squares solves, since the per-group matrices are too small to
+  benefit from keeping the full solve on the GPU.
+
 These operations are dominated by dense linear algebra (matrix
 multiplication, triangular solves) that maps well to GPU hardware.
 The group-time loop, cell scheduling, and aggregation logic remain
 on the CPU.
 
-The continuous treatment estimator (:func:`~moderndid.cont_did`),
-the intertemporal estimator (:func:`~moderndid.did_multiplegt`), and
+.. note::
+
+   :func:`~moderndid.cont_did` supports GPU acceleration but scaling benchmarks have
+   not been collected yet.
+
+The intertemporal estimator (:func:`~moderndid.did_multiplegt`) and
 the sensitivity analysis module (:func:`~moderndid.honest_did`) do
 not use the GPU backend. These estimators operate on small matrices
-(spline bases, per-group comparisons, and LP constraints respectively)
-where GPU kernel launch and data transfer overhead would exceed any
-computation benefit.
+(per-group comparisons and LP constraints respectively) where GPU
+kernel launch and data transfer overhead would exceed any computation
+benefit.
 
 
 When it helps
@@ -186,31 +207,71 @@ CPU-GPU communication overhead is small relative to the computation.
 Memory management
 -----------------
 
-CuPy uses a memory pool by default. Allocated GPU memory is cached
-for reuse rather than returned to the OS after each operation. This
-means ``nvidia-smi`` may show high memory usage even when arrays have
-been freed. This is expected behavior and does not indicate a memory
-leak.
+ModernDiD ships with `RAPIDS Memory Manager (RMM)
+<https://docs.rapids.ai/api/rmm/stable/>`_ as part of the ``[gpu]``
+extra. When ``backend="cupy"`` is activated, ModernDiD automatically
+configures CuPy to use RMM's pool allocator instead of the default
+per-allocation ``cudaMalloc`` calls. This eliminates the ~1 ms
+overhead per GPU allocation that otherwise dominates tight loops such
+as the multiplier bootstrap inner loop.
 
-If you run ModernDiD alongside other GPU workloads, you can limit
-the memory pool size with the ``CUPY_GPU_MEMORY_LIMIT`` environment
-variable:
+The pool starts empty (``initial_pool_size=0``) and grows on demand.
+Allocations are reused across calls within the same process, so
+repeated estimator calls do not pay repeated allocation costs. No user
+configuration is required. The pool is initialized the first time
+``set_backend("cupy")`` or ``backend="cupy"`` is used and remains
+active for the rest of the process.
 
-.. code-block:: bash
+If RMM is not installed (for example, when CuPy is installed manually
+without the ``[gpu]`` extra), ModernDiD falls back to CuPy's built-in
+memory pool silently.
 
-    export CUPY_GPU_MEMORY_LIMIT="4G"      # absolute limit
-    export CUPY_GPU_MEMORY_LIMIT="50%"     # percentage of total GPU memory
-
-You can also free cached blocks explicitly between runs:
+**Advanced pool configuration.** If you need to control pool sizing
+(for example, to share GPU memory with other frameworks), you can
+initialize RMM yourself before calling any ModernDiD estimator.
+ModernDiD will detect that RMM is already initialized and skip its own
+setup:
 
 .. code-block:: python
 
+    import rmm
+    from rmm.allocators.cupy import rmm_cupy_allocator
     import cupy as cp
 
-    mempool = cp.get_default_memory_pool()
-    mempool.free_all_blocks()
+    pool = rmm.mr.PoolMemoryResource(
+        rmm.mr.CudaMemoryResource(),
+        initial_pool_size="2GiB",
+        maximum_pool_size="8GiB",
+    )
+    rmm.mr.set_current_device_resource(pool)
+    cp.cuda.set_allocator(rmm_cupy_allocator)
 
-If an estimator call exhausts GPU memory, ModernDiD raises a
+    import moderndid as did
+
+    result = did.att_gt(..., backend="cupy")
+
+**Visible memory usage.** RMM's pool (or CuPy's built-in pool, when
+RMM is not installed) caches allocated GPU memory for reuse rather
+than returning it to the OS after each operation. This means
+``nvidia-smi`` may show high memory usage even when arrays have been
+freed. This is expected behavior and does not indicate a memory leak.
+
+**Profiling GPU memory.** RMM provides built-in memory statistics and
+profiling that can help diagnose allocation issues:
+
+.. code-block:: python
+
+    import rmm
+    import rmm.statistics
+
+    rmm.statistics.enable_statistics()
+
+    result = did.att_gt(..., backend="cupy")
+
+    print(rmm.statistics.get_statistics())
+
+
+If a regression or IRLS solve exhausts GPU memory, ModernDiD raises a
 ``MemoryError`` with a message suggesting you reduce the problem size
 or switch back to ``backend='numpy'``. The bootstrap implementation
 batches draws to stay within a 1 GB GPU allocation per batch, but very

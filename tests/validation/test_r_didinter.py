@@ -39,6 +39,7 @@ def check_r_available():
             input=(
                 "options(rgl.useNULL=TRUE); "
                 "suppressPackageStartupMessages(library(DIDmultiplegtDYN)); "
+                "library(polars); "
                 'library(jsonlite); cat("OK")'
             ),
             capture_output=True,
@@ -95,6 +96,7 @@ def r_did_multiplegt(
     r_script = f"""
 options(rgl.useNULL = TRUE)
 suppressPackageStartupMessages(library(DIDmultiplegtDYN))
+library(polars)
 library(jsonlite)
 
 data <- read.csv("{data_path}")

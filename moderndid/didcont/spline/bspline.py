@@ -3,8 +3,17 @@
 import numpy as np
 from scipy.interpolate import BSpline as ScipyBSpline
 
+from ...cupy.backend import get_backend, to_device, to_numpy
 from .base import SplineBase
 from .utils import drop_first_column
+
+try:
+    from cupyx.scipy.interpolate import BSpline as CupyBSpline
+
+    _HAS_CUPY_SPLINE = True
+except ImportError:
+    _HAS_CUPY_SPLINE = False
+    CupyBSpline = None
 
 
 class BSpline(SplineBase):
@@ -66,7 +75,8 @@ class BSpline(SplineBase):
     @staticmethod
     def _get_design_matrix(x, knot_seq, degree):
         """Get the design matrix."""
-        design_sparse = ScipyBSpline.design_matrix(x, knot_seq, degree, extrapolate=True)
+        BSpl, convert, _ = _spline_dispatch()
+        design_sparse = BSpl.design_matrix(convert(x), convert(knot_seq), degree, extrapolate=True)
         return design_sparse.toarray()
 
     def basis(self, complete_basis=True):
@@ -121,29 +131,32 @@ class BSpline(SplineBase):
         self._update_spline_df()
         self._update_knot_sequence()
 
+        BSpl, convert, xp = _spline_dispatch()
+
         if self.degree < derivs:
             n_cols = self._spline_df
             if not complete_basis:
                 if n_cols <= 1:
                     raise ValueError("No column left in the matrix.")
                 n_cols -= 1
-            return np.zeros((len(self.x), n_cols))
+            return xp.zeros((len(self.x), n_cols))
 
-        n_basis = len(self.knot_sequence) - self.degree - 1
-        deriv_mat = np.zeros((len(self.x), n_basis))
+        x_arr = convert(self.x)
+        knot_arr = convert(self.knot_sequence)
+        n_basis = len(to_numpy(self.knot_sequence)) - self.degree - 1
+        deriv_mat = xp.zeros((len(x_arr), n_basis))
 
         for i in range(n_basis):
-            c = np.zeros(n_basis)
+            c = xp.zeros(n_basis)
             c[i] = 1.0
-
-            spl = ScipyBSpline(self.knot_sequence, c, self.degree, extrapolate=True)
-
+            spl = BSpl(knot_arr, c, self.degree, extrapolate=True)
             deriv_spl = spl.derivative(nu=derivs)
-            deriv_mat[:, i] = deriv_spl(self.x)
+            deriv_mat[:, i] = deriv_spl(x_arr)
 
         if self._is_extended_knot_sequence:
             deriv_mat = deriv_mat[:, self.degree : deriv_mat.shape[1] - self.degree]
 
+        deriv_mat = to_device(deriv_mat)
         if complete_basis:
             return deriv_mat
         return drop_first_column(deriv_mat)
@@ -167,21 +180,36 @@ class BSpline(SplineBase):
 
         self._update_knot_sequence()
 
-        n_basis = len(self.knot_sequence) - self.degree - 1
-        integral_mat = np.zeros((len(self.x), n_basis))
+        BSpl, convert, xp = _spline_dispatch()
+        x_arr = convert(self.x)
+        knot_arr = convert(self.knot_sequence)
+        n_basis = len(to_numpy(self.knot_sequence)) - self.degree - 1
+        integral_mat = xp.zeros((len(x_arr), n_basis))
 
         for i in range(n_basis):
-            c = np.zeros(n_basis)
+            c = xp.zeros(n_basis)
             c[i] = 1.0
-
-            spl = ScipyBSpline(self.knot_sequence, c, self.degree, extrapolate=True)
-
+            spl = BSpl(knot_arr, c, self.degree, extrapolate=True)
             integral_spl = spl.antiderivative(nu=1)
-            integral_mat[:, i] = integral_spl(self.x)
+            integral_mat[:, i] = integral_spl(x_arr)
 
         if self._is_extended_knot_sequence:
             integral_mat = integral_mat[:, self.degree : integral_mat.shape[1] - self.degree]
 
+        integral_mat = to_device(integral_mat)
         if complete_basis:
             return integral_mat
         return drop_first_column(integral_mat)
+
+
+def _spline_dispatch():
+    """Return (BSplineClass, array_converter, array_module) for current backend.
+
+    When CuPy is the active backend and ``cupyx.scipy.interpolate.BSpline`` is
+    available, all spline operations run on the GPU.  Otherwise falls back to
+    SciPy on the CPU.
+    """
+    xp = get_backend()
+    if xp is not np and _HAS_CUPY_SPLINE:
+        return CupyBSpline, to_device, xp
+    return ScipyBSpline, to_numpy, np

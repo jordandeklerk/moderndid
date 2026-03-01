@@ -4,9 +4,10 @@ from typing import NamedTuple
 
 import numpy as np
 
+from moderndid.cupy.backend import get_backend
+
 from .numba import (
     check_full_rank_crossprod,
-    create_nonzero_divisor,
     matrix_sqrt_eigendecomp,
 )
 
@@ -110,11 +111,12 @@ def avoid_zero_division(a, eps=None):
     ndarray or float
         Values bounded away from zero with preserved sign.
     """
+    xp = get_backend()
     if eps is None:
-        eps = np.finfo(float).eps
+        eps = float(np.finfo(float).eps)
 
-    a = np.asarray(a)
-    return create_nonzero_divisor(a, eps)
+    a = xp.asarray(a)
+    return xp.where(a < 0, xp.minimum(a, -eps), xp.maximum(a, eps))
 
 
 def basis_dimension(basis="additive", degree=None, segments=None):

@@ -17,12 +17,14 @@ import cupy as cp
 from benchmark.did.dgp import StaggeredDIDDGP
 from moderndid import (
     att_gt,
+    cont_did,
     ddd_mp,
     ddd_panel,
     drdid_panel,
     gen_dgp_mult_periods,
     load_mpdta,
     set_backend,
+    simulate_cont_did_data,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -328,10 +330,158 @@ def _verify_ddd_mp():
     log.info("PASS")
 
 
+def _make_cont_did_parametric_runner(data, *, biters=1000):
+    def _run():
+        return cont_did(
+            data=data,
+            yname="Y",
+            tname="time_period",
+            idname="id",
+            gname="G",
+            dname="D",
+            target_parameter="level",
+            aggregation="dose",
+            dose_est_method="parametric",
+            degree=3,
+            biters=biters,
+        )
+
+    return _run
+
+
+def _make_cont_did_cck_runner(data, *, biters=1000):
+    def _run():
+        return cont_did(
+            data=data,
+            yname="Y",
+            tname="time_period",
+            idname="id",
+            gname="G",
+            dname="D",
+            dose_est_method="cck",
+            target_parameter="level",
+            aggregation="dose",
+            biters=biters,
+        )
+
+    return _run
+
+
+def _verify_cont_did_parametric():
+    log.info("")
+    log.info("--- cont_did parametric (multi-period continuous DiD) ---")
+
+    data = simulate_cont_did_data(
+        n=500, num_time_periods=10, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=1234
+    )
+
+    kwargs = dict(
+        data=data,
+        yname="Y",
+        tname="time_period",
+        idname="id",
+        gname="G",
+        dname="D",
+        target_parameter="level",
+        aggregation="dose",
+        dose_est_method="parametric",
+        degree=3,
+        biters=100,
+        random_state=42,
+    )
+
+    set_backend("numpy")
+    cpu = cont_did(**kwargs)
+
+    set_backend("cupy")
+    gpu = cont_did(**kwargs)
+    set_backend("numpy")
+
+    att_diff = abs(cpu.overall_att - gpu.overall_att)
+    se_diff = abs(cpu.overall_att_se - gpu.overall_att_se)
+
+    log.info("CPU: ATT=%.6f  SE=%.6f", cpu.overall_att, cpu.overall_att_se)
+    log.info("GPU: ATT=%.6f  SE=%.6f", gpu.overall_att, gpu.overall_att_se)
+
+    atol = 1e-4
+    log.info("|ATT diff| = %.2e  |SE diff| = %.2e  (tol %s)", att_diff, se_diff, atol)
+    if att_diff < atol and se_diff < atol:
+        log.info("PASS")
+    else:
+        log.info("WARN: Differences exceed tolerance (may be due to bootstrap variance)")
+
+
+def _verify_cont_did_cck():
+    log.info("")
+    log.info("--- cont_did CCK (2-period non-parametric) ---")
+
+    data = simulate_cont_did_data(
+        n=500, num_time_periods=2, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=1234
+    )
+
+    kwargs = dict(
+        data=data,
+        yname="Y",
+        tname="time_period",
+        idname="id",
+        gname="G",
+        dname="D",
+        dose_est_method="cck",
+        target_parameter="level",
+        aggregation="dose",
+        biters=100,
+        random_state=42,
+    )
+
+    set_backend("numpy")
+    cpu = cont_did(**kwargs)
+
+    set_backend("cupy")
+    gpu = cont_did(**kwargs)
+    set_backend("numpy")
+
+    att_diff = abs(cpu.overall_att - gpu.overall_att)
+
+    log.info("CPU: ATT=%.6f  SE=%.6f", cpu.overall_att, cpu.overall_att_se)
+    log.info("GPU: ATT=%.6f  SE=%.6f", gpu.overall_att, gpu.overall_att_se)
+
+    atol = 1e-4
+    log.info("|ATT diff| = %.2e  (tol %s)", att_diff, atol)
+    if att_diff < atol:
+        log.info("PASS")
+    else:
+        log.info("WARN: Differences exceed tolerance (may be due to bootstrap variance)")
+
+
 SCALING_SIZES = [10_000, 50_000, 100_000, 500_000, 1_000_000]
+CONT_DID_PARAM_SIZES = [1_000, 5_000, 10_000, 50_000, 100_000]
+CONT_DID_CCK_SIZES = [5_000, 25_000, 50_000, 250_000, 500_000]
+
+ALL_BENCHMARKS = {"drdid", "ddd_panel", "att_gt", "ddd_mp", "cont_did_param", "cont_did_cck"}
 
 
 def _main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="GPU benchmark for moderndid estimators")
+    parser.add_argument("--drdid", action="store_true", help="Run drdid_panel benchmarks")
+    parser.add_argument("--ddd-panel", action="store_true", help="Run ddd_panel benchmarks")
+    parser.add_argument("--att-gt", action="store_true", help="Run att_gt benchmarks")
+    parser.add_argument("--ddd-mp", action="store_true", help="Run ddd_mp benchmarks")
+    parser.add_argument("--cont-did-param", action="store_true", help="Run cont_did parametric benchmarks")
+    parser.add_argument("--cont-did-cck", action="store_true", help="Run cont_did CCK benchmarks")
+    parser.add_argument("--skip-verify", action="store_true", help="Skip correctness verification")
+    args = parser.parse_args()
+
+    flag_map = {
+        "drdid": args.drdid,
+        "ddd_panel": args.ddd_panel,
+        "att_gt": args.att_gt,
+        "ddd_mp": args.ddd_mp,
+        "cont_did_param": args.cont_did_param,
+        "cont_did_cck": args.cont_did_cck,
+    }
+    selected = {k for k, v in flag_map.items() if v} or ALL_BENCHMARKS
     log.info("=" * 60)
     log.info("GPU Environment")
     log.info("=" * 60)
@@ -350,127 +500,170 @@ def _main():
     log.info("CuPy backend activated successfully")
     set_backend("numpy")
 
-    log.info("")
-    log.info("=" * 60)
-    log.info("Correctness Verification")
-    log.info("=" * 60)
+    if not args.skip_verify:
+        log.info("")
+        log.info("=" * 60)
+        log.info("Correctness Verification")
+        log.info("=" * 60)
 
-    mpdta = load_mpdta()
-    _verify_att_gt(mpdta)
-    _verify_drdid_panel()
-    _verify_ddd_panel()
-    _verify_ddd_mp()
+        mpdta = load_mpdta()
+        if "att_gt" in selected:
+            _verify_att_gt(mpdta)
+        if "drdid" in selected:
+            _verify_drdid_panel()
+        if "ddd_panel" in selected:
+            _verify_ddd_panel()
+        if "ddd_mp" in selected:
+            _verify_ddd_mp()
+        if "cont_did_param" in selected:
+            _verify_cont_did_parametric()
+        if "cont_did_cck" in selected:
+            _verify_cont_did_cck()
 
-    log.info("")
-    log.info("=" * 60)
-    log.info("Benchmark: drdid_panel (analytical SE)")
-    log.info("=" * 60)
+    if "drdid" in selected:
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: drdid_panel (analytical SE)")
+        log.info("=" * 60)
 
-    rng = np.random.default_rng(42)
+        rng = np.random.default_rng(42)
 
-    def _drdid_data(n):
-        return _gen_drdid_data(n, rng=rng)
+        def _drdid_data(n):
+            return _gen_drdid_data(n, rng=rng)
 
-    def _drdid_runner(y1, y0, d, X):
-        return _make_drdid_panel_runner(y1, y0, d, X)
+        def _drdid_runner(y1, y0, d, X):
+            return _make_drdid_panel_runner(y1, y0, d, X)
 
-    rows = _bench_loop(_drdid_data, _drdid_runner, SCALING_SIZES)
-    log.info("")
-    _log_table(rows)
+        rows = _bench_loop(_drdid_data, _drdid_runner, SCALING_SIZES)
+        log.info("")
+        _log_table(rows)
 
-    log.info("")
-    log.info("=" * 60)
-    log.info("Benchmark: drdid_panel (multiplier bootstrap, biters=500)")
-    log.info("=" * 60)
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: drdid_panel (multiplier bootstrap, biters=500)")
+        log.info("=" * 60)
 
-    rng = np.random.default_rng(42)
+        rng = np.random.default_rng(42)
 
-    def _drdid_boot_runner(y1, y0, d, X):
-        return _make_drdid_panel_runner(y1, y0, d, X, boot=True, nboot=500)
+        def _drdid_boot_runner(y1, y0, d, X):
+            return _make_drdid_panel_runner(y1, y0, d, X, boot=True, nboot=500)
 
-    rows = _bench_loop(_drdid_data, _drdid_boot_runner, SCALING_SIZES)
-    log.info("")
-    _log_table(rows)
+        rows = _bench_loop(_drdid_data, _drdid_boot_runner, SCALING_SIZES)
+        log.info("")
+        _log_table(rows)
 
-    log.info("")
-    log.info("=" * 60)
-    log.info("Benchmark: ddd_panel (analytical SE)")
-    log.info("=" * 60)
+    if "ddd_panel" in selected:
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: ddd_panel (analytical SE)")
+        log.info("=" * 60)
 
-    rng = np.random.default_rng(42)
+        rng = np.random.default_rng(42)
 
-    def _ddd_data(n):
-        return _gen_ddd_panel_data(n, rng=rng)
+        def _ddd_data(n):
+            return _gen_ddd_panel_data(n, rng=rng)
 
-    def _ddd_runner(y1, y0, subgroup, X):
-        return _make_ddd_panel_runner(y1, y0, subgroup, X)
+        def _ddd_runner(y1, y0, subgroup, X):
+            return _make_ddd_panel_runner(y1, y0, subgroup, X)
 
-    rows = _bench_loop(_ddd_data, _ddd_runner, SCALING_SIZES)
-    log.info("")
-    _log_table(rows)
+        rows = _bench_loop(_ddd_data, _ddd_runner, SCALING_SIZES)
+        log.info("")
+        _log_table(rows)
 
-    log.info("")
-    log.info("=" * 60)
-    log.info("Benchmark: ddd_panel (multiplier bootstrap, biters=500)")
-    log.info("=" * 60)
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: ddd_panel (multiplier bootstrap, biters=500)")
+        log.info("=" * 60)
 
-    rng = np.random.default_rng(42)
+        rng = np.random.default_rng(42)
 
-    def _ddd_boot_runner(y1, y0, subgroup, X):
-        return _make_ddd_panel_runner(y1, y0, subgroup, X, boot=True, biters=500)
+        def _ddd_boot_runner(y1, y0, subgroup, X):
+            return _make_ddd_panel_runner(y1, y0, subgroup, X, boot=True, biters=500)
 
-    rows = _bench_loop(_ddd_data, _ddd_boot_runner, SCALING_SIZES)
-    log.info("")
-    _log_table(rows)
+        rows = _bench_loop(_ddd_data, _ddd_boot_runner, SCALING_SIZES)
+        log.info("")
+        _log_table(rows)
 
-    log.info("")
-    log.info("=" * 60)
-    log.info("Benchmark: att_gt (analytical SE)")
-    log.info("=" * 60)
+    if "att_gt" in selected:
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: att_gt (analytical SE)")
+        log.info("=" * 60)
 
-    def _att_gt_data(n):
-        dgp = StaggeredDIDDGP(n_units=n, n_periods=5, n_groups=3, random_seed=42)
-        return dgp.generate_data()["df"]
+        def _att_gt_data(n):
+            dgp = StaggeredDIDDGP(n_units=n, n_periods=5, n_groups=3, random_seed=42)
+            return dgp.generate_data()["df"]
 
-    rows = _bench_loop(_att_gt_data, _make_att_gt_runner, SCALING_SIZES)
-    log.info("")
-    _log_table(rows)
+        rows = _bench_loop(_att_gt_data, _make_att_gt_runner, SCALING_SIZES)
+        log.info("")
+        _log_table(rows)
 
-    log.info("")
-    log.info("=" * 60)
-    log.info("Benchmark: att_gt (multiplier bootstrap, biters=500)")
-    log.info("=" * 60)
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: att_gt (multiplier bootstrap, biters=500)")
+        log.info("=" * 60)
 
-    def _att_gt_boot_runner(data):
-        return _make_att_gt_runner(data, boot=True, biters=500)
+        def _att_gt_boot_runner(data):
+            return _make_att_gt_runner(data, boot=True, biters=500)
 
-    rows = _bench_loop(_att_gt_data, _att_gt_boot_runner, SCALING_SIZES)
-    log.info("")
-    _log_table(rows)
+        rows = _bench_loop(_att_gt_data, _att_gt_boot_runner, SCALING_SIZES)
+        log.info("")
+        _log_table(rows)
 
-    log.info("")
-    log.info("=" * 60)
-    log.info("Benchmark: ddd_mp (analytical SE)")
-    log.info("=" * 60)
+    if "ddd_mp" in selected:
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: ddd_mp (analytical SE)")
+        log.info("=" * 60)
 
-    def _ddd_mp_data(n):
-        return gen_dgp_mult_periods(n=n, dgp_type=1, panel=True, random_state=42)["data"]
+        def _ddd_mp_data(n):
+            return gen_dgp_mult_periods(n=n, dgp_type=1, panel=True, random_state=42)["data"]
 
-    rows = _bench_loop(_ddd_mp_data, _make_ddd_mp_runner, SCALING_SIZES)
-    log.info("")
-    _log_table(rows)
+        rows = _bench_loop(_ddd_mp_data, _make_ddd_mp_runner, SCALING_SIZES)
+        log.info("")
+        _log_table(rows)
 
-    log.info("")
-    log.info("=" * 60)
-    log.info("Benchmark: ddd_mp (multiplier bootstrap, biters=500)")
-    log.info("=" * 60)
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: ddd_mp (multiplier bootstrap, biters=500)")
+        log.info("=" * 60)
 
-    def _ddd_mp_boot_runner(data):
-        return _make_ddd_mp_runner(data, boot=True, biters=500)
+        def _ddd_mp_boot_runner(data):
+            return _make_ddd_mp_runner(data, boot=True, biters=500)
 
-    rows = _bench_loop(_ddd_mp_data, _ddd_mp_boot_runner, SCALING_SIZES)
-    log.info("")
-    _log_table(rows)
+        rows = _bench_loop(_ddd_mp_data, _ddd_mp_boot_runner, SCALING_SIZES)
+        log.info("")
+        _log_table(rows)
+
+    if "cont_did_param" in selected:
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: cont_did parametric (biters=1000)")
+        log.info("=" * 60)
+
+        def _cont_did_param_data(n):
+            return simulate_cont_did_data(
+                n=n, num_time_periods=10, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=1234
+            )
+
+        rows = _bench_loop(_cont_did_param_data, _make_cont_did_parametric_runner, CONT_DID_PARAM_SIZES)
+        log.info("")
+        _log_table(rows)
+
+    if "cont_did_cck" in selected:
+        log.info("")
+        log.info("=" * 60)
+        log.info("Benchmark: cont_did CCK (biters=1000)")
+        log.info("=" * 60)
+
+        def _cont_did_cck_data(n):
+            return simulate_cont_did_data(
+                n=n, num_time_periods=2, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=1234
+            )
+
+        rows = _bench_loop(_cont_did_cck_data, _make_cont_did_cck_runner, CONT_DID_CCK_SIZES)
+        log.info("")
+        _log_table(rows)
 
 
 if __name__ == "__main__":

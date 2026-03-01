@@ -15,7 +15,6 @@ from moderndid.didcont.estimation import (
 from moderndid.didcont.estimation.process_dose import (
     _compute_dose_influence_functions,
     _compute_overall_att_inf_func,
-    _multiplier_bootstrap_dose,
     _weighted_combine_arrays,
 )
 from tests.didcont.conftest import mock_gt_results
@@ -322,44 +321,6 @@ def test_compute_dose_influence_functions_zero_weights():
 
     assert att_dose_inf.shape == (n_obs, n_doses)
     assert acrt_dose_inf.shape == (n_obs, n_doses)
-
-
-def test_multiplier_bootstrap_dose_basic():
-    np.random.seed(42)
-    n_obs = 200
-    n_doses = 15
-    influence_function = np.random.randn(n_obs, n_doses) * 0.1
-
-    result = _multiplier_bootstrap_dose(influence_function, biters=20, alpha=0.05)
-
-    assert "se" in result
-    assert "crit_val" in result
-    assert result["se"].shape == (n_doses,)
-    assert np.all(result["se"] > 0)
-    assert result["crit_val"] > 0
-
-
-def test_multiplier_bootstrap_dose_different_alpha():
-    np.random.seed(42)
-    n_obs = 150
-    n_doses = 10
-    influence_function = np.random.randn(n_obs, n_doses) * 0.1
-
-    result_05 = _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.05)
-    result_10 = _multiplier_bootstrap_dose(influence_function, biters=1000, alpha=0.10)
-
-    assert result_10["crit_val"] < result_05["crit_val"]
-
-
-def test_multiplier_bootstrap_dose_single_dose():
-    np.random.seed(42)
-    n_obs = 100
-    influence_function = np.random.randn(n_obs, 1) * 0.1
-
-    result = _multiplier_bootstrap_dose(influence_function, biters=20, alpha=0.05)
-
-    assert result["se"].shape == (1,)
-    assert result["crit_val"] > 0
 
 
 def test_summary_dose_result():

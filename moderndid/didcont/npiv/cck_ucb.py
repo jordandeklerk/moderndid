@@ -2,6 +2,7 @@
 
 import numpy as np
 
+from ...cupy.backend import get_backend, to_device
 from ..utils import _quantile_basis, avoid_zero_division
 from .estimators import _ginv, npiv_est
 from .prodspline import prodspline
@@ -122,15 +123,16 @@ def compute_cck_ucb(
         Adaptive Estimation and Uniform Confidence Bands for Nonparametric
         Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
     """
-    y = np.asarray(y).ravel()
-    x = np.atleast_2d(x)
-    w = np.atleast_2d(w)
+    xp = get_backend()
+    y = xp.asarray(y).ravel()
+    x = xp.atleast_2d(xp.asarray(x))
+    w = xp.atleast_2d(xp.asarray(w))
 
     n = len(y)
     p_x = x.shape[1]
     p_w = w.shape[1]
 
-    x_eval = x.copy() if x_eval is None else np.atleast_2d(x_eval)
+    x_eval = x.copy() if x_eval is None else xp.atleast_2d(xp.asarray(x_eval))
 
     j_x_segments = selection_result["j_x_seg"]
     k_w_segments = selection_result["k_w_seg"]
@@ -172,7 +174,7 @@ def compute_cck_ucb(
             z_sup_boot_deriv = np.zeros((boot_num, n_j_boot))
 
         rng = np.random.default_rng(seed)
-        boot_draws_all = rng.normal(0, 1, (boot_num, n))
+        boot_draws_all = to_device(rng.normal(0, 1, (boot_num, n)))
 
         for j_idx, j_seg in enumerate(j_segments_boot):
             k_seg = k_w_segments_set[np.where(j_x_segments_set == j_seg)[0][0]]
@@ -221,11 +223,11 @@ def compute_cck_ucb(
                 ).basis
 
             if basis in ("additive", "glp"):
-                psi_x = np.c_[np.ones(n), psi_x]
-                psi_x_eval = np.c_[np.ones(x_eval.shape[0]), psi_x_eval]
+                psi_x = xp.concatenate([xp.ones((n, 1)), psi_x], axis=1)
+                psi_x_eval = xp.concatenate([xp.ones((x_eval.shape[0], 1)), psi_x_eval], axis=1)
                 if ucb_deriv:
-                    psi_x_deriv_eval = np.c_[np.zeros(x_eval.shape[0]), psi_x_deriv_eval]
-                b_w = np.c_[np.ones(n), b_w]
+                    psi_x_deriv_eval = xp.concatenate([xp.zeros((x_eval.shape[0], 1)), psi_x_deriv_eval], axis=1)
+                b_w = xp.concatenate([xp.ones((n, 1)), b_w], axis=1)
 
             btb_inv = _ginv(b_w.T @ b_w)
             design_matrix = psi_x.T @ b_w @ btb_inv @ b_w.T
@@ -235,27 +237,27 @@ def compute_cck_ucb(
             beta = tmp @ y
             residuals = y - psi_x @ beta
 
-            weighted_tmp = tmp.T * residuals[:, np.newaxis]
+            weighted_tmp = tmp.T * residuals[:, None]
             D_inv_rho_D_inv = weighted_tmp.T @ weighted_tmp
 
             if ucb_h:
-                var_h = np.diag(psi_x_eval @ D_inv_rho_D_inv @ psi_x_eval.T)
-                asy_se_h = np.sqrt(np.maximum(var_h, 0))
+                var_h = xp.diag(psi_x_eval @ D_inv_rho_D_inv @ psi_x_eval.T)
+                asy_se_h = xp.sqrt(xp.maximum(var_h, 0))
 
             if ucb_deriv:
-                var_deriv = np.diag(psi_x_deriv_eval @ D_inv_rho_D_inv @ psi_x_deriv_eval.T)
-                asy_se_deriv = np.sqrt(np.maximum(var_deriv, 0))
+                var_deriv = xp.diag(psi_x_deriv_eval @ D_inv_rho_D_inv @ psi_x_deriv_eval.T)
+                asy_se_deriv = xp.sqrt(xp.maximum(var_deriv, 0))
 
             for b in range(boot_num):
                 boot_draws = boot_draws_all[b]
 
                 if ucb_h:
                     boot_h = psi_x_eval @ (tmp @ (residuals * boot_draws))
-                    z_sup_boot_h[b, j_idx] = np.max(np.abs(boot_h) / avoid_zero_division(asy_se_h))
+                    z_sup_boot_h[b, j_idx] = float(xp.max(xp.abs(boot_h) / avoid_zero_division(asy_se_h)))
 
                 if ucb_deriv:
                     boot_deriv = psi_x_deriv_eval @ (tmp @ (residuals * boot_draws))
-                    z_sup_boot_deriv[b, j_idx] = np.max(np.abs(boot_deriv) / avoid_zero_division(asy_se_deriv))
+                    z_sup_boot_deriv[b, j_idx] = float(xp.max(xp.abs(boot_deriv) / avoid_zero_division(asy_se_deriv)))
 
         cv_h = None
         cv_deriv = None

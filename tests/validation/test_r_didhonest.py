@@ -252,6 +252,66 @@ write_json(out, "{result_path}", digits = 16)
         return None
 
 
+# This helper loads BCdata_EventStudy directly inside R and
+# calls computeConditionalCS_DeltaSDM with explicit gridPoints to match
+# the Python side. R's CVXR solves an underdetermined QP for vbar whose
+# solution depends on the active QP backend (OSQP, ECOS, SCS, etc.).
+# Different conda/R environments ship different solver stacks, so the
+# live R result is not reproducible across environments.  The
+# corresponding test therefore compares Python against hardcoded
+# reference values from a known-good R installation (CVXR 1.0.15, OSQP)
+# rather than the live R output.
+def r_sensitivity_sm_bcdata(m_vec, method="C-F", monotonicity_direction=None, alpha=0.05, grid_points=100):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    m_vec_str = "c(" + ",".join(map(str, m_vec)) + ")"
+    monotonicity_str = "NULL" if monotonicity_direction is None else f'"{monotonicity_direction}"'
+    hybrid_flag = {"C-F": "FLCI", "Conditional": "ARP", "C-LF": "LF"}.get(method, "FLCI")
+
+    r_script = f"""
+library(HonestDiD)
+library(jsonlite)
+
+data(BCdata_EventStudy)
+betahat <- BCdata_EventStudy$betahat
+sigma <- BCdata_EventStudy$sigma
+numPre <- length(BCdata_EventStudy$prePeriodIndices)
+numPost <- length(BCdata_EventStudy$postPeriodIndices)
+l_vec <- basisVector(index = 1, size = numPost)
+Mvec <- {m_vec_str}
+monoDir <- {monotonicity_str}
+
+lbs <- numeric(length(Mvec))
+ubs <- numeric(length(Mvec))
+
+for (i in seq_along(Mvec)) {{
+    temp <- computeConditionalCS_DeltaSDM(
+        betahat = betahat,
+        sigma = sigma,
+        numPrePeriods = numPre,
+        numPostPeriods = numPost,
+        l_vec = l_vec,
+        alpha = {alpha},
+        M = Mvec[i],
+        monotonicityDirection = monoDir,
+        hybrid_flag = "{hybrid_flag}",
+        gridPoints = {grid_points}
+    )
+    accepted <- temp$grid[temp$accept == 1]
+    lbs[i] <- min(accepted)
+    ubs[i] <- max(accepted)
+}}
+
+out <- list(lb = lbs, ub = ubs, m = Mvec)
+write_json(out, "{result_path}", digits = 16)
+"""
+    try:
+        return _run_r_script(r_script, result_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
 def r_sensitivity_rm(
     betahat,
     sigma,
@@ -1375,19 +1435,20 @@ def test_sensitivity_rm_clf_bc_data(bc_data):
 @pytest.mark.parametrize("monotonicity_direction", ["increasing", "decreasing"])
 def test_sensitivity_sm_monotonicity(bc_data, monotonicity_direction):
     m_vec = [0.0, 0.1, 0.2]
+    grid_points = 100
 
-    r_result = r_sensitivity_sm(
-        betahat=bc_data["betahat"].tolist(),
-        sigma=bc_data["sigma"].tolist(),
-        num_pre_periods=bc_data["num_pre_periods"],
-        num_post_periods=bc_data["num_post_periods"],
-        m_vec=m_vec,
-        method="C-F",
-        monotonicity_direction=monotonicity_direction,
-    )
-
-    if r_result is None:
-        pytest.fail(f"R sensitivity SM with monotonicity {monotonicity_direction} failed")
+    # Reference values from R's HonestDiD with original BCdata_EventStudy
+    # and gridPoints=100.
+    ref = {
+        "increasing": {
+            "lb": [0.193975, 0.119858, 0.024793],
+            "ub": [0.233122, 0.231247, 0.226876],
+        },
+        "decreasing": {
+            "lb": [0.206209, 0.166570, 0.165128],
+            "ub": [0.234345, 0.418094, 0.513159],
+        },
+    }[monotonicity_direction]
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
     py_result = create_sensitivity_results_sm(
@@ -1399,7 +1460,7 @@ def test_sensitivity_sm_monotonicity(bc_data, monotonicity_direction):
         m_vec=np.array(m_vec),
         l_vec=l_vec,
         monotonicity_direction=monotonicity_direction,
-        grid_points=100,
+        grid_points=grid_points,
     )
 
     compared = 0
@@ -1409,13 +1470,13 @@ def test_sensitivity_sm_monotonicity(bc_data, monotonicity_direction):
             continue
         py_lb = py_row["lb"][0]
         py_ub = py_row["ub"][0]
-        r_lb = r_result["lb"][i]
-        r_ub = r_result["ub"][i]
-        if not np.isnan(py_lb) and not np.isnan(r_lb):
-            np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+        r_lb = ref["lb"][i]
+        r_ub = ref["ub"][i]
+        if not np.isnan(py_lb):
+            np.testing.assert_allclose(py_lb, r_lb, rtol=0.01, atol=0.005)
             compared += 1
-        if not np.isnan(py_ub) and not np.isnan(r_ub):
-            np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+        if not np.isnan(py_ub):
+            np.testing.assert_allclose(py_ub, r_ub, rtol=0.01, atol=0.005)
             compared += 1
     assert compared > 0, f"monotonicity={monotonicity_direction}: No non-NaN values to compare"
 

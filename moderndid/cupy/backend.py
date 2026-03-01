@@ -28,6 +28,99 @@ __all__ = [
 ]
 
 _active_backend: ContextVar[str] = ContextVar("moderndid_backend", default="numpy")
+_rmm_initialized = False
+
+
+def set_backend(name):
+    """Set the active array backend.
+
+    Parameters
+    ----------
+    name : {"numpy", "cupy"}
+        Backend to activate. Setting "cupy" requires CuPy to be installed.
+    """
+    name = _validate_backend_name(name)
+    if name == "cupy":
+        _init_rmm_pool()
+    _active_backend.set(name)
+
+
+def get_backend():
+    """Return the active array module (``numpy`` or ``cupy``).
+
+    Returns
+    -------
+    module
+        ``numpy`` when the backend is "numpy", ``cupy`` when "cupy".
+    """
+    if _active_backend.get() == "cupy":
+        return cp
+    return np
+
+
+@contextlib.contextmanager
+def use_backend(name):
+    """Context manager that temporarily activates a backend.
+
+    The previous backend is restored when the context exits, even if an
+    exception is raised.  Each ``copy_context()`` snapshot inherits the
+    value set here, so ``use_backend`` composes correctly with
+    :func:`~moderndid.core.parallel.parallel_map`.
+
+    Parameters
+    ----------
+    name : {"numpy", "cupy"}
+        Backend to activate for the duration of the block.
+    """
+    name = _validate_backend_name(name)
+    if name == "cupy":
+        _init_rmm_pool()
+    token = _active_backend.set(name)
+    try:
+        yield
+    finally:
+        _active_backend.reset(token)
+
+
+def to_device(arr):
+    """Move an array to the active device.
+
+    Parameters
+    ----------
+    arr : array_like
+        Input array (NumPy or CuPy).
+
+    Returns
+    -------
+    ndarray
+        Array on the active device.
+    """
+    xp = get_backend()
+    if xp is cp:
+        if isinstance(arr, np.ndarray):
+            return cp.asarray(arr)
+        return arr
+    if HAS_CUPY and hasattr(cp, "ndarray") and isinstance(arr, cp.ndarray):
+        return cp.asnumpy(arr)
+    return np.asarray(arr)
+
+
+def to_numpy(arr):
+    """Ensure the array is a CPU NumPy array.
+
+    Parameters
+    ----------
+    arr : array_like
+        Input array (NumPy or CuPy).
+
+    Returns
+    -------
+    numpy.ndarray
+        CPU NumPy array.
+    """
+    if HAS_CUPY and hasattr(cp, "ndarray") and isinstance(arr, cp.ndarray):
+        return cp.asnumpy(arr)
+    return np.asarray(arr)
 
 
 def _array_module(*arrays):
@@ -145,90 +238,32 @@ def _validate_backend_name(name):
     return name
 
 
-def set_backend(name):
-    """Set the active array backend.
+def _init_rmm_pool():
+    """Activate the RMM memory-pool allocator for CuPy.
 
-    Parameters
-    ----------
-    name : {"numpy", "cupy"}
-        Backend to activate. Setting "cupy" requires CuPy to be installed.
+    When ``rmm`` is installed, this replaces CuPy's default per-allocation
+    ``cudaMalloc`` calls with a pool allocator that grows on demand, which
+    eliminates the ~1 ms overhead per allocation that otherwise dominates
+    bootstrap loops.  If ``rmm`` is not installed, this is a silent no-op.
+
+    If CuPy is already using the RMM allocator (for example, because the
+    user configured RMM manually before importing ModernDiD), this function
+    is a no-op and the existing configuration is preserved.
     """
-    name = _validate_backend_name(name)
-    _active_backend.set(name)
-
-
-def get_backend():
-    """Return the active array module (``numpy`` or ``cupy``).
-
-    Returns
-    -------
-    module
-        ``numpy`` when the backend is "numpy", ``cupy`` when "cupy".
-    """
-    if _active_backend.get() == "cupy":
-        return cp
-    return np
-
-
-@contextlib.contextmanager
-def use_backend(name):
-    """Context manager that temporarily activates a backend.
-
-    The previous backend is restored when the context exits, even if an
-    exception is raised.  Each ``copy_context()`` snapshot inherits the
-    value set here, so ``use_backend`` composes correctly with
-    :func:`~moderndid.core.parallel.parallel_map`.
-
-    Parameters
-    ----------
-    name : {"numpy", "cupy"}
-        Backend to activate for the duration of the block.
-    """
-    name = _validate_backend_name(name)
-    token = _active_backend.set(name)
+    global _rmm_initialized
+    if _rmm_initialized:
+        return
     try:
-        yield
-    finally:
-        _active_backend.reset(token)
+        from rmm.allocators.cupy import rmm_cupy_allocator
 
+        if cp.cuda.get_allocator() == rmm_cupy_allocator:
+            _rmm_initialized = True
+            return
 
-def to_device(arr):
-    """Move an array to the active device.
+        import rmm
 
-    Parameters
-    ----------
-    arr : array_like
-        Input array (NumPy or CuPy).
-
-    Returns
-    -------
-    ndarray
-        Array on the active device.
-    """
-    xp = get_backend()
-    if xp is cp:
-        if isinstance(arr, np.ndarray):
-            return cp.asarray(arr)
-        return arr
-    # numpy backend — ensure we have a NumPy array
-    if HAS_CUPY and hasattr(cp, "ndarray") and isinstance(arr, cp.ndarray):
-        return cp.asnumpy(arr)
-    return np.asarray(arr)
-
-
-def to_numpy(arr):
-    """Ensure the array is a CPU NumPy array.
-
-    Parameters
-    ----------
-    arr : array_like
-        Input array (NumPy or CuPy).
-
-    Returns
-    -------
-    numpy.ndarray
-        CPU NumPy array.
-    """
-    if HAS_CUPY and hasattr(cp, "ndarray") and isinstance(arr, cp.ndarray):
-        return cp.asnumpy(arr)
-    return np.asarray(arr)
+        rmm.reinitialize(pool_allocator=True, initial_pool_size=0)
+        cp.cuda.set_allocator(rmm_cupy_allocator)
+        _rmm_initialized = True
+    except Exception:  # noqa: BLE001
+        pass

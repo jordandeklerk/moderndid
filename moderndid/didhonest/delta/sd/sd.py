@@ -169,8 +169,6 @@ def compute_conditional_cs_sd(
         hybrid_list["flci_l"] = flci_result.optimal_vec
         hybrid_list["flci_halflength"] = flci_result.optimal_half_length
 
-        # Compute vbar using quadratic programming
-        # vbar = argmin ||flci_l - A'v||^2
         try:
             vbar, _, _, _ = np.linalg.lstsq(A_sd.T, flci_result.optimal_vec, rcond=None)
             hybrid_list["vbar"] = vbar

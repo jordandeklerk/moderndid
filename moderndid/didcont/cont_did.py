@@ -5,7 +5,6 @@ from functools import partial
 
 import numpy as np
 import polars as pl
-import statsmodels.api as sm
 from scipy import stats
 
 from moderndid.core.dataframe import to_polars
@@ -19,6 +18,7 @@ from moderndid.core.preprocess import (
     make_balanced_panel as _make_balanced_panel,
 )
 from moderndid.core.preprocessing import preprocess_cont_did
+from moderndid.cupy.backend import get_backend, to_device, to_numpy, use_backend
 
 from .estimation import (
     AttgtResult,
@@ -60,6 +60,7 @@ def cont_did(
     base_period="varying",
     random_state=None,
     n_partitions=None,
+    backend=None,
     **kwargs,
 ):
     r"""Compute difference-in-differences with a continuous treatment.
@@ -199,6 +200,12 @@ def cont_did(
         Number of partitions for distributed computation when ``data`` is a
         Dask or Spark DataFrame. If ``None``, defaults to the framework's
         default parallelism.
+    backend : {"numpy", "cupy"} or None, default=None
+        Array backend to use for this call only. When set, the backend is
+        activated before estimation and the previous backend is restored
+        when the call returns. ``None`` (the default) uses whatever backend
+        is currently active (see :func:`~moderndid.set_backend`). Ignored
+        when ``data`` is a Dask or Spark DataFrame.
     **kwargs
         Additional keyword arguments passed to internal functions.
 
@@ -282,6 +289,40 @@ def cont_did(
            Structural Functions and Elasticities."
            https://arxiv.org/abs/2107.11869
     """
+    if backend is not None:
+        with use_backend(backend):
+            return cont_did(
+                data=data,
+                yname=yname,
+                tname=tname,
+                idname=idname,
+                gname=gname,
+                dname=dname,
+                xformla=xformla,
+                target_parameter=target_parameter,
+                aggregation=aggregation,
+                treatment_type=treatment_type,
+                dose_est_method=dose_est_method,
+                dvals=dvals,
+                degree=degree,
+                num_knots=num_knots,
+                allow_unbalanced_panel=allow_unbalanced_panel,
+                control_group=control_group,
+                anticipation=anticipation,
+                weightsname=weightsname,
+                alp=alp,
+                cband=cband,
+                boot=boot,
+                boot_type=boot_type,
+                biters=biters,
+                clustervars=clustervars,
+                base_period=base_period,
+                random_state=random_state,
+                n_partitions=n_partitions,
+                backend=None,
+                **kwargs,
+            )
+
     if dname is None:
         raise ValueError("dname is required. Please specify the dose/treatment column.")
 
@@ -567,45 +608,43 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     if len(np.unique(boundary_knots)) < 2:
         boundary_knots = None
 
+    control_mean = np.mean(dy[dose == 0])
+
     bspline_treated = BSpline(x=dose[treated_mask], degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_treated = bspline_treated.basis(complete_basis=False)
+    x_treated = to_numpy(bspline_treated.basis(complete_basis=False))
     y_treated = dy[treated_mask]
 
     x_treated = np.column_stack([np.ones(x_treated.shape[0]), x_treated])
 
     try:
-        model = sm.OLS(y_treated, x_treated)
-        results = model.fit()
-        coef = results.params
+        coef = np.linalg.lstsq(x_treated, y_treated, rcond=None)[0]
+        resid = y_treated - x_treated @ coef
     except (np.linalg.LinAlgError, ValueError):
         return AttgtResult(attgt=0.0, inf_func=np.zeros(len(post_data)), extra_gt_returns=None)
 
     bspline_grid = BSpline(x=dvals, degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
-    x_grid = bspline_grid.basis(complete_basis=False)
+    x_grid = to_numpy(bspline_grid.basis(complete_basis=False))
     x_grid = np.column_stack([np.ones(x_grid.shape[0]), x_grid])
-    att_d = x_grid @ coef - np.mean(dy[dose == 0])
+    att_d = x_grid @ coef - control_mean
 
-    x_deriv = bspline_grid.derivative(derivs=1, complete_basis=False)
+    x_deriv = to_numpy(bspline_grid.derivative(derivs=1, complete_basis=False))
     acrt_d = x_deriv @ coef[1:]
 
     x_overall = x_treated
-    att_overall = np.mean(x_overall @ coef) - np.mean(dy[dose == 0])
+    att_overall = np.mean(x_overall @ coef) - control_mean
 
-    x_deriv_overall = bspline_treated.derivative(derivs=1, complete_basis=False)
+    x_deriv_overall = to_numpy(bspline_treated.derivative(derivs=1, complete_basis=False))
     acrt_overall = np.mean(x_deriv_overall @ coef[1:])
 
     inf_func1 = x_deriv_overall @ coef[1:] - acrt_overall
 
-    score = results.resid[:, np.newaxis] * x_treated
-    # IF_i(beta) ≈ bread @ (x_i epsilon_i), where bread ≈ (X'X / n)^(-1).
-    # We pass per-observation 'score' so downstream code can apply bread and
-    # aggregate with group/time weights appropriately.
+    score = resid[:, None] * x_treated
     n_treated = len(x_treated)
     bread = np.linalg.inv(x_treated.T @ x_treated / n_treated)
 
     x_expanded = score
     avg_deriv = np.mean(x_deriv_overall, axis=0)
-    inf_func2 = score @ bread @ np.concatenate([[0], avg_deriv])
+    inf_func2 = score @ bread @ np.concatenate([np.zeros(1), avg_deriv])
 
     inf_func = np.zeros(len(post_data))
     inf_func[treated_mask] = inf_func1 + inf_func2
@@ -615,7 +654,7 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
         "acrt_d": acrt_d,
         "att_overall": att_overall,
         "acrt_overall": acrt_overall,
-        "dvals": dvals,
+        "dvals": np.asarray(dvals) if hasattr(dvals, "__array__") else dvals,
         "coef": coef,
         "bread": bread,
         "x_expanded": x_expanded,
@@ -771,47 +810,53 @@ def _estimate_cck(cont_did_data, original_data, random_state=None, **kwargs):
     y_treated = dy_centered[dose > 0]
     n_treated_val = len(y_treated)
 
-    beta_array = cck_res.beta.flatten() if cck_res.beta.ndim > 1 else cck_res.beta
+    xp = get_backend()
+
+    spline_dosage = to_device(spline_dosage)
+    y_treated_dev = to_device(y_treated)
+    beta_array = to_device(cck_res.beta.flatten() if cck_res.beta.ndim > 1 else cck_res.beta)
 
     h_hat_w_treated = spline_dosage @ beta_array
-    infl_reg = (y_treated - h_hat_w_treated.flatten())[:, np.newaxis] * (
-        spline_dosage @ np.linalg.pinv(spline_dosage.T @ spline_dosage / n_treated_val)
+    infl_reg = (y_treated_dev - h_hat_w_treated.flatten())[:, None] * (
+        spline_dosage @ xp.linalg.pinv(spline_dosage.T @ spline_dosage / n_treated_val)
     )
 
-    deriv_spline_basis_w = gsl_bs(
-        w_treated,
-        degree=cck_res.j_x_degree,
-        knots=knots,
-        nbreak=n_breaks,
-        deriv=1,
-        intercept=True,
-    ).basis
+    deriv_spline_basis_w = to_device(
+        gsl_bs(
+            w_treated,
+            degree=cck_res.j_x_degree,
+            knots=knots,
+            nbreak=n_breaks,
+            deriv=1,
+            intercept=True,
+        ).basis
+    )
 
-    average_spline_deriv = deriv_spline_basis_w.mean(axis=0)
+    average_spline_deriv = xp.mean(deriv_spline_basis_w, axis=0)
     deriv_at_w = (deriv_spline_basis_w @ beta_array).flatten()
 
-    average_acr = np.mean(deriv_at_w)
+    average_acr = float(xp.mean(deriv_at_w))
     infl_avg_acr = (deriv_at_w - average_acr) + infl_reg @ average_spline_deriv
-    se_avg_acr = np.std(infl_avg_acr) / np.sqrt(n_treated_val)
+    se_avg_acr = float(xp.std(infl_avg_acr) / xp.sqrt(xp.asarray(n_treated_val, dtype=float)))
 
     overall_att = overall_att_res.overall_att.overall_att
     overall_att_se = overall_att_res.overall_att.overall_se
     overall_att_inf_func = overall_att_res.overall_att.influence_func
 
     result = DoseResult(
-        dose=dvals.flatten() if dvals.ndim > 1 else dvals,
+        dose=to_numpy(dvals.flatten() if dvals.ndim > 1 else dvals),
         overall_att=overall_att,
         overall_att_se=overall_att_se,
         overall_att_inf_func=overall_att_inf_func,
         overall_acrt=average_acr,
         overall_acrt_se=se_avg_acr,
-        overall_acrt_inf_func=infl_avg_acr,
-        att_d=att_d,
-        att_d_se=att_d_se,
+        overall_acrt_inf_func=to_numpy(infl_avg_acr),
+        att_d=to_numpy(att_d),
+        att_d_se=to_numpy(att_d_se),
         att_d_crit_val=att_d_crit_val,
         att_d_inf_func=None,
-        acrt_d=acrt_d,
-        acrt_d_se=acrt_d_se,
+        acrt_d=to_numpy(acrt_d),
+        acrt_d_se=to_numpy(acrt_d_se),
         acrt_d_crit_val=acrt_d_crit_val,
         acrt_d_inf_func=None,
         pte_params=ptep,

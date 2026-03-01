@@ -8,7 +8,12 @@ ModernDiD provides several estimators for different research designs. All
 estimators share a common API pattern, so once you learn one the others
 follow naturally. This page provides an overview of each estimator, its key
 arguments, and important caveats. For detailed usage with real data, see the
-individual example pages.
+individual example pages:
+:ref:`Staggered DiD <example_staggered_did>`,
+:ref:`Continuous DiD <example_cont_did>`,
+:ref:`Triple DiD <example_triple_did>`,
+:ref:`Intertemporal DiD <example_inter_did>`, and
+:ref:`Sensitivity Analysis <example_honest_did>`.
 
 
 Choosing the right estimator

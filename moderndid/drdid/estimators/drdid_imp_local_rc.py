@@ -6,9 +6,10 @@ from typing import NamedTuple
 import numpy as np
 from scipy import stats
 
+from moderndid.cupy.backend import get_backend, to_numpy
+
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc2
-from ..propensity.aipw_estimators import aipw_did_rc_imp2
 from ..propensity.pscore_ipt import calculate_pscore_ipt
 from .wols import wols_rc
 
@@ -134,12 +135,13 @@ def drdid_imp_local_rc(
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
-    y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
+    xp = get_backend()
+    y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights)
 
     ps_fit = calculate_pscore_ipt(D=d, X=covariates, iw=i_weights)
-    ps_fit = np.clip(ps_fit, 1e-6, 1 - 1e-6)
+    ps_fit = xp.clip(xp.asarray(ps_fit), 1e-6, 1 - 1e-6)
 
-    trim_ps = np.ones(n_units, dtype=bool)
+    trim_ps = xp.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
     out_y_cont_pre_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=True, treat=False)
@@ -155,17 +157,16 @@ def drdid_imp_local_rc(
     out_y_treat_post_res = wols_rc(y, post, d, covariates, ps_fit, i_weights, pre=False, treat=True)
     out_y_treat_post = out_y_treat_post_res.out_reg
 
-    dr_att = aipw_did_rc_imp2(
-        y, post, d, ps_fit, out_y_treat_post, out_y_treat_pre, out_y_cont_post, out_y_cont_pre, i_weights, trim_ps
-    )
-
-    weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
+    weights = _compute_weights(xp, d, post, ps_fit, i_weights, trim_ps)
 
     influence_components = _get_influence_quantities(
-        y, out_y_cont, out_y_treat_pre, out_y_treat_post, out_y_cont_pre, out_y_cont_post, weights
+        xp, y, out_y_cont, out_y_treat_pre, out_y_treat_post, out_y_cont_pre, out_y_cont_post, weights
     )
 
-    att_inf_func = _compute_influence_function(influence_components, weights)
+    dr_att, att_inf_func = _compute_influence_function(xp, influence_components, weights)
+
+    att_inf_func = to_numpy(att_inf_func)
+    dr_att = float(dr_att)
 
     # Inference
     dr_boot = None
@@ -230,6 +231,7 @@ def drdid_imp_local_rc(
 
 
 def _validate_and_preprocess_inputs(
+    xp,
     y,
     post,
     d,
@@ -237,25 +239,26 @@ def _validate_and_preprocess_inputs(
     i_weights,
 ):
     """Validate and preprocess input arrays."""
-    d = np.asarray(d).flatten()
+    d = xp.asarray(d).flatten()
     n_units = len(d)
-    y = np.asarray(y).flatten()
-    post = np.asarray(post).flatten()
+    y = xp.asarray(y).flatten()
+    post = xp.asarray(post).flatten()
 
-    covariates = np.ones((n_units, 1)) if covariates is None else np.asarray(covariates)
+    covariates = xp.ones((n_units, 1)) if covariates is None else xp.asarray(covariates)
 
     if i_weights is None:
-        i_weights = np.ones(n_units)
+        i_weights = xp.ones(n_units)
     else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
+        i_weights = xp.asarray(i_weights).flatten()
+        if xp.any(i_weights < 0):
             raise ValueError("i_weights must be non-negative.")
-    i_weights = i_weights / np.mean(i_weights)
+    i_weights = i_weights / xp.mean(i_weights)
 
     return y, post, d, covariates, i_weights, n_units
 
 
 def _compute_weights(
+    xp,
     d,
     post,
     ps_fit,
@@ -266,12 +269,11 @@ def _compute_weights(
     w_treat_pre = i_weights * d * (1 - post)
     w_treat_post = i_weights * d * post
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
-        w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+    w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
+    w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
 
-    w_cont_pre = np.nan_to_num(w_cont_pre, nan=0.0, posinf=0.0, neginf=0.0)
-    w_cont_post = np.nan_to_num(w_cont_post, nan=0.0, posinf=0.0, neginf=0.0)
+    w_cont_pre = xp.nan_to_num(w_cont_pre, nan=0.0, posinf=0.0, neginf=0.0)
+    w_cont_post = xp.nan_to_num(w_cont_post, nan=0.0, posinf=0.0, neginf=0.0)
 
     # Additional weights for locally efficient estimator
     w_d = i_weights * d
@@ -290,6 +292,7 @@ def _compute_weights(
 
 
 def _get_influence_quantities(
+    xp,
     y,
     out_y_cont,
     out_y_treat_pre,
@@ -308,16 +311,16 @@ def _get_influence_quantities(
     w_dt0 = weights["w_dt0"]
 
     # eta components (influence function summands)
-    eta_treat_pre = w_treat_pre * (y - out_y_cont) / np.mean(w_treat_pre)
-    eta_treat_post = w_treat_post * (y - out_y_cont) / np.mean(w_treat_post)
-    eta_cont_pre = w_cont_pre * (y - out_y_cont) / np.mean(w_cont_pre)
-    eta_cont_post = w_cont_post * (y - out_y_cont) / np.mean(w_cont_post)
+    eta_treat_pre = w_treat_pre * (y - out_y_cont) / xp.mean(w_treat_pre)
+    eta_treat_post = w_treat_post * (y - out_y_cont) / xp.mean(w_treat_post)
+    eta_cont_pre = w_cont_pre * (y - out_y_cont) / xp.mean(w_cont_pre)
+    eta_cont_post = w_cont_post * (y - out_y_cont) / xp.mean(w_cont_post)
 
     # Extra components for locally efficient estimator (see Sant'Anna and Zhao (2020))
-    eta_d_post = w_d * (out_y_treat_post - out_y_cont_post) / np.mean(w_d)
-    eta_dt1_post = w_dt1 * (out_y_treat_post - out_y_cont_post) / np.mean(w_dt1)
-    eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / np.mean(w_d)
-    eta_dt0_pre = w_dt0 * (out_y_treat_pre - out_y_cont_pre) / np.mean(w_dt0)
+    eta_d_post = w_d * (out_y_treat_post - out_y_cont_post) / xp.mean(w_d)
+    eta_dt1_post = w_dt1 * (out_y_treat_post - out_y_cont_post) / xp.mean(w_dt1)
+    eta_d_pre = w_d * (out_y_treat_pre - out_y_cont_pre) / xp.mean(w_d)
+    eta_dt0_pre = w_dt0 * (out_y_treat_pre - out_y_cont_pre) / xp.mean(w_dt0)
 
     return {
         "eta_treat_pre": eta_treat_pre,
@@ -332,6 +335,7 @@ def _get_influence_quantities(
 
 
 def _compute_influence_function(
+    xp,
     components,
     weights,
 ):
@@ -355,36 +359,43 @@ def _compute_influence_function(
     w_dt0 = weights["w_dt0"]
 
     # Compute ATT
-    att_treat_pre = np.mean(eta_treat_pre)
-    att_treat_post = np.mean(eta_treat_post)
-    att_cont_pre = np.mean(eta_cont_pre)
-    att_cont_post = np.mean(eta_cont_post)
-    att_d_post = np.mean(eta_d_post)
-    att_dt1_post = np.mean(eta_dt1_post)
-    att_d_pre = np.mean(eta_d_pre)
-    att_dt0_pre = np.mean(eta_dt0_pre)
+    att_treat_pre = xp.mean(eta_treat_pre)
+    att_treat_post = xp.mean(eta_treat_post)
+    att_cont_pre = xp.mean(eta_cont_pre)
+    att_cont_post = xp.mean(eta_cont_post)
+    att_d_post = xp.mean(eta_d_post)
+    att_dt1_post = xp.mean(eta_dt1_post)
+    att_d_pre = xp.mean(eta_d_pre)
+    att_dt0_pre = xp.mean(eta_dt0_pre)
+
+    dr_att = (
+        (att_treat_post - att_treat_pre)
+        - (att_cont_post - att_cont_pre)
+        + (att_d_post - att_dt1_post)
+        - (att_d_pre - att_dt0_pre)
+    )
 
     # Influence functions for treatment component
-    inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / np.mean(w_treat_pre)
-    inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / np.mean(w_treat_post)
+    inf_treat_pre = eta_treat_pre - w_treat_pre * att_treat_pre / xp.mean(w_treat_pre)
+    inf_treat_post = eta_treat_post - w_treat_post * att_treat_post / xp.mean(w_treat_post)
     inf_treat = inf_treat_post - inf_treat_pre
 
     # Influence functions for control component
-    inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / np.mean(w_cont_pre)
-    inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / np.mean(w_cont_post)
+    inf_cont_pre = eta_cont_pre - w_cont_pre * att_cont_pre / xp.mean(w_cont_pre)
+    inf_cont_post = eta_cont_post - w_cont_post * att_cont_post / xp.mean(w_cont_post)
     inf_cont = inf_cont_post - inf_cont_pre
 
     # Base DR influence function
     dr_att_inf_func1 = inf_treat - inf_cont
 
     # Adjustment terms for local efficiency
-    inf_eff1 = eta_d_post - w_d * att_d_post / np.mean(w_d)
-    inf_eff2 = eta_dt1_post - w_dt1 * att_dt1_post / np.mean(w_dt1)
-    inf_eff3 = eta_d_pre - w_d * att_d_pre / np.mean(w_d)
-    inf_eff4 = eta_dt0_pre - w_dt0 * att_dt0_pre / np.mean(w_dt0)
+    inf_eff1 = eta_d_post - w_d * att_d_post / xp.mean(w_d)
+    inf_eff2 = eta_dt1_post - w_dt1 * att_dt1_post / xp.mean(w_dt1)
+    inf_eff3 = eta_d_pre - w_d * att_d_pre / xp.mean(w_d)
+    inf_eff4 = eta_dt0_pre - w_dt0 * att_dt0_pre / xp.mean(w_dt0)
     inf_eff = (inf_eff1 - inf_eff2) - (inf_eff3 - inf_eff4)
 
     # Final locally efficient influence function
     att_inf_func = dr_att_inf_func1 + inf_eff
 
-    return att_inf_func
+    return dr_att, att_inf_func

@@ -180,6 +180,68 @@ To run distributed test suites::
    pixi run -e dev tests-dask      # Dask distributed tests
    pixi run -e dev tests-spark     # Spark distributed tests
 
+R validation tests
+==================
+
+ModernDiD includes a validation suite that compares Python estimates against
+the original R packages (``did``, ``DRDID``, ``contdid``, ``triplediff``,
+``HonestDiD``, ``DIDmultiplegtDYN``). These tests live in
+``tests/validation/`` and run inside the ``validation`` pixi environment,
+which is supported on **Linux and macOS** only (``linux-64``, ``osx-arm64``,
+``osx-64``). Windows is not supported because several R dependencies
+(``r-base``, ``r-did``, ``r-drdid``) lack reliable conda-forge Windows
+builds.
+
+Prerequisites
+^^^^^^^^^^^^^
+
+The validation environment requires a **Rust toolchain** (``cargo``,
+``rustc``) to compile the R ``polars`` package from source. Install Rust
+via `rustup <https://rustup.rs/>`__ if you don't have it already::
+
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+R itself and the R packages that are on conda-forge (``did``, ``DRDID``,
+``jsonlite``) are installed automatically by pixi when you first use the
+validation environment.
+
+One-time setup
+^^^^^^^^^^^^^^
+
+Before running validation tests for the first time, install the CRAN-only
+R packages::
+
+   pixi run -e validation setup-r
+
+This runs ``scripts/setup.sh``, which installs ``contdid``,
+``triplediff``, ``HonestDiD``, ``DIDmultiplegtDYN``, ``Rglpk``, and
+``polars`` from CRAN and r-universe. The first run compiles everything from
+source and can take a few minutes (most of that is the Rust build for
+``polars``). Subsequent runs finish in seconds because the script only
+installs packages that are missing.
+
+Running tests
+^^^^^^^^^^^^^
+
+Run validation tests for individual estimators::
+
+   pixi run -e validation did          # Staggered DiD
+   pixi run -e validation drdid        # Doubly robust DiD
+   pixi run -e validation didcont      # Continuous treatment
+   pixi run -e validation didtriple    # Triple differences
+   pixi run -e validation didinter     # Intertemporal treatment
+   pixi run -e validation didhonest    # Sensitivity analysis
+
+Or run the full validation suite::
+
+   pixi run -e validation all
+
+Each test file calls the corresponding R package via ``subprocess``, runs
+the same estimation on the same data in both R and Python, and asserts that
+the results match within numerical tolerance. Tests that depend on an R
+package that failed to install are automatically skipped.
+
+
 Building documentation
 ======================
 

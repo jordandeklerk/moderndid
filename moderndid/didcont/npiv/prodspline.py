@@ -6,6 +6,7 @@ from typing import NamedTuple
 
 import numpy as np
 
+from ...cupy.backend import get_backend, to_numpy
 from .gsl_bspline import gsl_bs, predict_gsl_bs
 
 
@@ -91,13 +92,15 @@ def prodspline(
     .. [1] Wood, S. N. (2017). Generalized Additive Models: An Introduction
         with R. Chapman and Hall/CRC.
     """
+    xp = get_backend()
+
     if x is None or K is None:
         raise ValueError("Must provide x and K.")
 
     if not isinstance(K, np.ndarray) or K.ndim != 2 or K.shape[1] != 2:
         raise ValueError("K must be a two-column matrix.")
 
-    x = np.atleast_2d(x)
+    x = xp.atleast_2d(xp.asarray(x))
     K = np.round(K).astype(int)
 
     num_x = x.shape[1]
@@ -127,14 +130,14 @@ def prodspline(
     if xeval is None:
         xeval = x.copy()
     else:
-        xeval = np.atleast_2d(xeval)
+        xeval = xp.atleast_2d(xp.asarray(xeval))
         if xeval.shape[1] != num_x:
             raise ValueError("xeval must be of the same dimension as x.")
 
     if z is not None and zeval is None:
         zeval = z.copy()
     elif z is not None:
-        zeval = np.atleast_2d(zeval)
+        zeval = xp.atleast_2d(xp.asarray(zeval))
 
     gsl_intercept = basis not in ("additive", "glp")
 
@@ -147,10 +150,11 @@ def prodspline(
                     knots_vec = None
                 else:
                     probs = np.linspace(0, 1, K[i, 1] + 2)
-                    knots_vec = np.quantile(x[:, i], probs)
+                    x_col_np = to_numpy(x[:, i])
+                    knots_vec = np.quantile(x_col_np, probs)
                     knots_vec = knots_vec + np.linspace(
                         0,
-                        1e-10 * (np.max(x[:, i]) - np.min(x[:, i])),
+                        1e-10 * (np.max(x_col_np) - np.min(x_col_np)),
                         len(knots_vec),
                     )
 
@@ -193,7 +197,7 @@ def prodspline(
                             tp.append(dummies)
 
         if len(tp) > 1:
-            P = np.hstack(tp)
+            P = xp.hstack(tp)
             dim_P_no_tensor = P.shape[1]
 
             if basis == "tensor":
@@ -230,7 +234,7 @@ def prodspline(
 
     else:
         dim_P_no_tensor = 0
-        P = np.ones((xeval.shape[0], 1))
+        P = xp.ones((xeval.shape[0], 1))
 
     return MultivariateBasis(
         basis=P,
@@ -266,12 +270,13 @@ def tensor_prod_model_matrix(bases):
     .. [1] Wood, S. N. (2006). Low-rank scale-invariant tensor product smooths
         for generalized additive mixed models. Biometrics, 62(4), 1025-1036.
     """
+    xp = get_backend()
     if not bases:
         raise ValueError("bases cannot be empty")
 
     for i, basis in enumerate(bases):
-        if not isinstance(basis, np.ndarray):
-            raise TypeError(f"bases[{i}] must be a NumPy array")
+        if not hasattr(basis, "ndim"):
+            raise TypeError(f"bases[{i}] must be an array, got {type(basis)}")
         if basis.ndim != 2:
             raise ValueError(f"bases[{i}] must be 2-dimensional")
 
@@ -284,14 +289,14 @@ def tensor_prod_model_matrix(bases):
 
     dims = [basis.shape[1] for basis in bases]
     total_cols = int(np.prod(dims))
-    result = np.empty((n_obs, total_cols), dtype=np.float64)
+    result = xp.empty((n_obs, total_cols), dtype=np.float64)
 
     for row in range(n_obs):
         row_vectors = [basis[row, :] for basis in bases]
 
         tensor_row = row_vectors[0].copy()
         for vec in row_vectors[1:]:
-            tensor_row = np.kron(tensor_row, vec)
+            tensor_row = xp.kron(tensor_row, vec)
 
         result[row, :] = tensor_row
 
@@ -324,12 +329,13 @@ def glp_model_matrix(bases):
     .. [1] Hall, P., & Racine, J. S. (2015). Infinite order cross-validated
         local polynomial regression. Journal of Econometrics, 185(2), 510-525.
     """
+    xp = get_backend()
     if not bases:
         raise ValueError("bases cannot be empty")
 
     for i, basis in enumerate(bases):
-        if not isinstance(basis, np.ndarray):
-            raise TypeError(f"bases[{i}] must be a NumPy array")
+        if not hasattr(basis, "ndim"):
+            raise TypeError(f"bases[{i}] must be an array, got {type(basis)}")
         if basis.ndim != 2:
             raise ValueError(f"bases[{i}] must be 2-dimensional")
 
@@ -342,7 +348,7 @@ def glp_model_matrix(bases):
             )
 
     if n_obs == 0:
-        return np.empty((0, 0))
+        return xp.empty((0, 0))
 
     num_bases = len(bases)
     result_matrices = []
@@ -361,8 +367,8 @@ def glp_model_matrix(bases):
             result_matrices.append(interaction)
 
     if result_matrices:
-        return np.hstack(result_matrices)
-    return np.ones((n_obs, 1))
+        return xp.hstack(result_matrices)
+    return xp.ones((n_obs, 1))
 
 
 def _compute_basis_interaction(bases):
@@ -378,6 +384,7 @@ def _compute_basis_interaction(bases):
     ndarray
         Matrix of interaction terms.
     """
+    xp = get_backend()
     if len(bases) == 1:
         return bases[0]
 
@@ -386,10 +393,10 @@ def _compute_basis_interaction(bases):
     dims = [basis.shape[1] for basis in bases]
     total_interactions = int(np.prod(dims))
 
-    result = np.empty((n_obs, total_interactions))
+    result = xp.empty((n_obs, total_interactions))
 
     for col_idx, indices in enumerate(product(*[range(dim) for dim in dims])):
-        interaction_col = np.ones(n_obs)
+        interaction_col = xp.ones(n_obs)
         for basis_idx, func_idx in enumerate(indices):
             interaction_col *= bases[basis_idx][:, func_idx]
 

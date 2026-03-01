@@ -4,7 +4,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from moderndid import att_gt, load_engel, load_mpdta
+from moderndid import att_gt, load_mpdta
 from moderndid.didcont.estimation import PTEParams, process_att_gt
 
 
@@ -163,18 +163,6 @@ def basis_matrices():
         np.random.randn(n_obs, 2),
     ]
     return bases
-
-
-@pytest.fixture
-def engel_data():
-    engel_df = load_engel()
-    engel_df = engel_df.sort("logexp")
-
-    return {
-        "food": engel_df["food"].to_numpy(),
-        "logexp": engel_df["logexp"].to_numpy().reshape(-1, 1),
-        "logwages": engel_df["logwages"].to_numpy().reshape(-1, 1),
-    }
 
 
 @pytest.fixture

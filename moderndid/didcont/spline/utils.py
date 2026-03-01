@@ -4,6 +4,8 @@ import warnings
 
 import numpy as np
 
+from ...cupy.backend import _array_module
+
 
 def is_close(a, b, rtol=1e-9, atol=0.0):
     """Check if two values are approximately equal."""
@@ -95,7 +97,8 @@ def to_2d(x, axis=0):
 
 def drop_first_column(x):
     """Remove the first column from a matrix."""
-    x = np.asarray(x)
+    xp = _array_module(x)
+    x = xp.asarray(x)
     if x.ndim != 2:
         raise ValueError("Input must be a 2-dimensional array")
     if x.shape[1] == 0:
