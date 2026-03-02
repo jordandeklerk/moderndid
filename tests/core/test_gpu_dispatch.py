@@ -202,10 +202,10 @@ def test_ddd_compute_pscore_rc_dispatch():
     subgroup = np.where(rng.random(n) < prob, 4, 3).astype(float)
     post = np.concatenate([np.zeros(n // 2), np.ones(n // 2)])
 
-    cpu = _compute_pscore_rc(subgroup, post, covariates, weights, comparison_subgroup=3)
+    cpu = _compute_pscore_rc(np, subgroup, post, covariates, weights, comparison_subgroup=3)
 
     with _patch_backend("moderndid.didtriple.nuisance_rc", _REGRESSION_MOD):
-        gpu = _compute_pscore_rc(subgroup, post, covariates, weights, comparison_subgroup=3)
+        gpu = _compute_pscore_rc(np, subgroup, post, covariates, weights, comparison_subgroup=3)
 
     np.testing.assert_allclose(gpu.propensity_scores, cpu.propensity_scores, rtol=1e-8)
     np.testing.assert_array_equal(gpu.keep_ps, cpu.keep_ps)
@@ -224,6 +224,7 @@ def test_ddd_fit_ols_cell_dispatch():
     y = 1.0 + 0.5 * x1 + rng.standard_normal(n) * 0.3
 
     cpu = _fit_ols_cell(
+        np,
         y=y,
         post=post,
         d=d,
@@ -237,6 +238,7 @@ def test_ddd_fit_ols_cell_dispatch():
 
     with _patch_backend("moderndid.didtriple.nuisance_rc", _REGRESSION_MOD):
         gpu = _fit_ols_cell(
+            np,
             y=y,
             post=post,
             d=d,

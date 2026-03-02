@@ -106,10 +106,10 @@ def drdid_panel(
     """
     xp = get_backend()
     y1, y0, d, covariates, i_weights, n_units, delta_y = _validate_and_preprocess_inputs(
-        y1, y0, d, covariates, i_weights
+        xp, y1, y0, d, covariates, i_weights
     )
 
-    ps_fit, W = _compute_propensity_score(d, covariates, i_weights)
+    ps_fit, W = _compute_propensity_score(xp, d, covariates, i_weights)
     trim_ps = xp.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
@@ -134,9 +134,12 @@ def drdid_panel(
 
     dr_att = eta_treat - eta_cont
 
-    influence_quantities = _get_influence_quantities(delta_y, d, covariates, ps_fit, out_delta, i_weights, W, n_units)
+    influence_quantities = _get_influence_quantities(
+        xp, delta_y, d, covariates, ps_fit, out_delta, i_weights, W, n_units
+    )
 
     att_inf_func = _compute_influence_function(
+        xp,
         dr_att_treat,
         dr_att_cont,
         eta_treat,
@@ -206,9 +209,8 @@ def drdid_panel(
     )
 
 
-def _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights):
+def _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights):
     """Validate and preprocess input arrays."""
-    xp = get_backend()
     d = xp.asarray(d).flatten()
     n_units = len(d)
 
@@ -234,9 +236,8 @@ def _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights):
     return y1, y0, d, covariates, i_weights, n_units, delta_y
 
 
-def _compute_propensity_score(d, covariates, i_weights):
+def _compute_propensity_score(xp, d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
-    xp = get_backend()
     if xp is not np:
         try:
             beta, ps_fit = cupy_logistic_irls(
@@ -287,10 +288,8 @@ def _compute_weights(d, ps_fit, i_weights, trim_ps):
     }
 
 
-def _get_influence_quantities(delta_y, d, covariates, ps_fit, out_delta, i_weights, W, n_units):
+def _get_influence_quantities(xp, delta_y, d, covariates, ps_fit, out_delta, i_weights, W, n_units):
     """Compute quantities needed for influence function."""
-    xp = get_backend()
-
     # Influence function of the nuisance functions
     weights_ols = i_weights * (1 - d)
     wols_x = weights_ols[:, xp.newaxis] * covariates
@@ -317,10 +316,18 @@ def _get_influence_quantities(delta_y, d, covariates, ps_fit, out_delta, i_weigh
 
 
 def _compute_influence_function(
-    dr_att_treat, dr_att_cont, eta_treat, eta_cont, weights, covariates, mean_w_treat, mean_w_cont, influence_quantities
+    xp,
+    dr_att_treat,
+    dr_att_cont,
+    eta_treat,
+    eta_cont,
+    weights,
+    covariates,
+    mean_w_treat,
+    mean_w_cont,
+    influence_quantities,
 ):
     """Compute the influence function for DR estimator."""
-    xp = get_backend()
     w_treat = weights["w_treat"]
     w_cont = weights["w_cont"]
     asy_lin_rep_wols = influence_quantities["asy_lin_rep_wols"]

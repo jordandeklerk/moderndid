@@ -180,7 +180,7 @@ def test_ddd_panel_reproducibility(ddd_data_with_covariates):
 )
 def test_validate_inputs_errors(y1, y0, subgroup, covariates, weights, match):
     with pytest.raises(ValueError, match=match):
-        _validate_inputs(y1, y0, subgroup, covariates, weights)
+        _validate_inputs(np, y1, y0, subgroup, covariates, weights)
 
 
 def test_validate_inputs_missing_subgroup_warns():
@@ -189,7 +189,7 @@ def test_validate_inputs_missing_subgroup_warns():
     subgroup = np.array([1, 2, 4, 4])
 
     with pytest.warns(UserWarning, match="subgroup 3"):
-        _validate_inputs(y1, y0, subgroup, None, None)
+        _validate_inputs(np, y1, y0, subgroup, None, None)
 
 
 def test_validate_inputs_1d_covariates():
@@ -198,7 +198,7 @@ def test_validate_inputs_1d_covariates():
     subgroup = np.array([1, 2, 3, 4])
     covariates = np.ones(4)
 
-    result = _validate_inputs(y1, y0, subgroup, covariates, None)
+    result = _validate_inputs(np, y1, y0, subgroup, covariates, None)
     assert result[3].ndim == 2
     assert result[3].shape == (4, 1)
 
@@ -209,5 +209,5 @@ def test_validate_inputs_weight_normalization():
     subgroup = np.array([1, 2, 3, 4])
     weights = np.array([2.0, 2.0, 2.0, 2.0])
 
-    _, _, _, _, normalized_weights, _ = _validate_inputs(y1, y0, subgroup, None, weights)
+    _, _, _, _, normalized_weights, _ = _validate_inputs(np, y1, y0, subgroup, None, weights)
     np.testing.assert_allclose(np.mean(normalized_weights), 1.0)

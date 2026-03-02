@@ -527,7 +527,7 @@ def test_pscore_result_has_keep_ps(ddd_data_with_covariates):
 
 def test_pscore_null_keep_ps_all_true():
     subgroup = np.array([4, 4, 4, 3, 3, 3, 3])
-    result = _compute_pscore_null(subgroup, comparison_subgroup=3)
+    result = _compute_pscore_null(np, subgroup, comparison_subgroup=3)
     assert np.all(result.keep_ps)
 
 
@@ -569,7 +569,7 @@ def test_compute_pscore_trimming():
     covariates = np.column_stack([np.ones(n), x1, x2])
     weights = np.ones(n)
 
-    result = _compute_pscore(subgroup, covariates, weights, comparison_subgroup=3, trim_level=0.995)
+    result = _compute_pscore(np, subgroup, covariates, weights, comparison_subgroup=3, trim_level=0.995)
 
     assert isinstance(result, PScoreResult)
     assert len(result.propensity_scores) == n

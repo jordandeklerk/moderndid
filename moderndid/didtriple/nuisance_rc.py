@@ -122,21 +122,22 @@ def compute_all_nuisances_rc(
     if est_method not in ["dr", "reg", "ipw"]:
         raise ValueError(f"est_method must be 'dr', 'reg', or 'ipw', got {est_method}")
 
+    xp = get_backend()
     pscores = []
     or_results = []
 
     for comp_subgroup in [3, 2, 1]:
         if est_method == "reg":
-            ps_result = _compute_pscore_null_rc(subgroup, comp_subgroup)
+            ps_result = _compute_pscore_null_rc(xp, subgroup, comp_subgroup)
         else:
-            ps_result = _compute_pscore_rc(subgroup, post, covariates, weights, comp_subgroup, trim_level)
+            ps_result = _compute_pscore_rc(xp, subgroup, post, covariates, weights, comp_subgroup, trim_level)
         pscores.append(ps_result)
 
         if est_method == "ipw":
-            or_result = _compute_outcome_regression_null_rc(y, post, subgroup, comp_subgroup)
+            or_result = _compute_outcome_regression_null_rc(xp, y, post, subgroup, comp_subgroup)
         else:
             or_result = _compute_outcome_regression_rc(
-                y, post, subgroup, covariates, weights, comp_subgroup, est_method
+                xp, y, post, subgroup, covariates, weights, comp_subgroup, est_method
             )
         or_results.append(or_result)
 
@@ -193,9 +194,11 @@ def compute_all_did_rc(
     --------
     compute_all_nuisances_rc : Compute all nuisance parameters for DDD estimation.
     """
+    xp = get_backend()
     did_results = []
     for i, comp_subgroup in enumerate([3, 2, 1]):
         did_result = _compute_did_rc(
+            xp,
             _y=y,
             post=post,
             subgroup=subgroup,
@@ -209,7 +212,6 @@ def compute_all_did_rc(
         )
         did_results.append(did_result)
 
-    xp = get_backend()
     dr_att_3, inf_func_3 = did_results[0].dr_att, did_results[0].inf_func
     dr_att_2, inf_func_2 = did_results[1].dr_att, did_results[1].inf_func
     dr_att_1, inf_func_1 = did_results[2].dr_att, did_results[2].inf_func
@@ -231,6 +233,7 @@ def compute_all_did_rc(
 
 
 def _compute_did_rc(
+    xp,
     _y,
     post,
     subgroup,
@@ -243,7 +246,6 @@ def _compute_did_rc(
     n_total,
 ):
     """Compute doubly robust DiD for one subgroup comparison with RCS."""
-    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     sub_subgroup = subgroup[mask]
     sub_post = post[mask]
@@ -367,6 +369,7 @@ def _compute_did_rc(
         reg_att_control = None
 
     inf_func_sub = _compute_inf_func_rc(
+        xp,
         sub_y=sub_y,
         sub_post=sub_post,
         sub_covariates=sub_covariates,
@@ -417,6 +420,7 @@ def _compute_did_rc(
 
 
 def _compute_inf_func_rc(
+    xp,
     sub_y,
     sub_post,
     sub_covariates,
@@ -459,7 +463,6 @@ def _compute_inf_func_rc(
     reg_att_control=None,
 ):
     """Compute influence function for the DiD comparison with RCS."""
-    xp = get_backend()
     n_sub = len(sub_weights)
 
     mean_w_treat_pre = xp.mean(w_treat_pre)
@@ -623,7 +626,7 @@ def _compute_inf_func_rc(
     return inf_func
 
 
-def _compute_pscore_rc(subgroup, _post, covariates, weights, comparison_subgroup, trim_level=0.995):
+def _compute_pscore_rc(xp, subgroup, _post, covariates, weights, comparison_subgroup, trim_level=0.995):
     """Compute propensity scores for a subgroup comparison with RCS."""
     if comparison_subgroup not in [1, 2, 3]:
         raise ValueError(f"comparison_subgroup must be 1, 2, or 3, got {comparison_subgroup}")
@@ -635,7 +638,6 @@ def _compute_pscore_rc(subgroup, _post, covariates, weights, comparison_subgroup
 
     pa4 = (sub_subgroup == 4).astype(float)
 
-    xp = get_backend()
     if xp is not np:
         try:
             beta, ps_fit = cupy_logistic_irls(
@@ -708,9 +710,8 @@ def _compute_pscore_rc(subgroup, _post, covariates, weights, comparison_subgroup
     return PScoreRCResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
 
 
-def _compute_pscore_null_rc(subgroup, comparison_subgroup):
+def _compute_pscore_null_rc(xp, subgroup, comparison_subgroup):
     """Compute null propensity scores for REG method with RCS."""
-    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     n_sub = int(xp.sum(mask))
 
@@ -721,7 +722,7 @@ def _compute_pscore_null_rc(subgroup, comparison_subgroup):
     )
 
 
-def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, comparison_subgroup, _est_method):
+def _compute_outcome_regression_rc(xp, y, post, subgroup, covariates, weights, comparison_subgroup, _est_method):
     """Compute outcome regression for a subgroup comparison with RCS."""
     if comparison_subgroup not in [1, 2, 3]:
         raise ValueError(f"comparison_subgroup must be 1, 2, or 3, got {comparison_subgroup}")
@@ -736,6 +737,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
     n_features = sub_covariates.shape[1]
 
     out_y_cont_pre = _fit_ols_cell(
+        xp,
         y=sub_y,
         post=sub_post,
         d=(sub_subgroup == 4).astype(int),
@@ -748,6 +750,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
     )
 
     out_y_cont_post = _fit_ols_cell(
+        xp,
         y=sub_y,
         post=sub_post,
         d=(sub_subgroup == 4).astype(int),
@@ -760,6 +763,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
     )
 
     out_y_treat_pre = _fit_ols_cell(
+        xp,
         y=sub_y,
         post=sub_post,
         d=(sub_subgroup == 4).astype(int),
@@ -772,6 +776,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
     )
 
     out_y_treat_post = _fit_ols_cell(
+        xp,
         y=sub_y,
         post=sub_post,
         d=(sub_subgroup == 4).astype(int),
@@ -795,7 +800,7 @@ def _compute_outcome_regression_rc(y, post, subgroup, covariates, weights, compa
     )
 
 
-def _fit_ols_cell(y, post, d, covariates, weights, pre, treat, n_features, comparison_subgroup):
+def _fit_ols_cell(xp, y, post, d, covariates, weights, pre, treat, n_features, comparison_subgroup):
     """Fit OLS for a specific (D, T) cell."""
     if pre and treat:
         subs = (d == 1) & (post == 0)
@@ -806,7 +811,6 @@ def _fit_ols_cell(y, post, d, covariates, weights, pre, treat, n_features, compa
     else:
         subs = (d == 0) & (post == 1)
 
-    xp = get_backend()
     n_subs = int(xp.sum(subs))
 
     if n_subs == 0 or n_subs < n_features:
@@ -851,9 +855,8 @@ def _fit_ols_cell(y, post, d, covariates, weights, pre, treat, n_features, compa
         return xp.full(len(y), float("nan"))
 
 
-def _compute_outcome_regression_null_rc(y, _post, subgroup, comparison_subgroup):
+def _compute_outcome_regression_null_rc(xp, y, _post, subgroup, comparison_subgroup):
     """Compute null outcome regression for IPW method with RCS."""
-    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     sub_y = y[mask]
     n_sub = len(sub_y)
