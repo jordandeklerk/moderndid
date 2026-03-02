@@ -31,7 +31,7 @@ For detailed documentation, including user guides and API reference, see [modern
 ## Installation
 
 ```bash
-uv pip install moderndid        # Core estimators (did, drdid, didinter, didtriple)
+uv pip install moderndid          # Core estimators (did, drdid, didinter, didtriple)
 uv pip install "moderndid[all]"   # All estimators, plots, numba, spark, dask (excludes gpu)
 ```
 
