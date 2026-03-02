@@ -32,7 +32,13 @@ For detailed documentation, including user guides and API reference, see [modern
 
 ```bash
 uv pip install moderndid        # Core estimators (did, drdid, didinter, didtriple)
-uv pip install moderndid[all]   # All estimators, plots, numba, spark, dask (excludes gpu)
+uv pip install "moderndid[all]"   # All estimators, plots, numba, spark, dask (excludes gpu)
+```
+
+To install the latest development version directly from GitHub:
+
+```bash
+uv pip install "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
 ```
 
 Some estimators and features require additional dependencies that are not installed by default. Extras are additive and build on the base install, so you always get the core estimators ([`att_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
@@ -46,8 +52,8 @@ Some estimators and features require additional dependencies that are not instal
 - **`gpu`** - GPU-accelerated estimation (requires CUDA)
 
 ```bash
-uv pip install moderndid[didcont,plots]   # Combine multiple extras
-uv pip install moderndid[gpu,spark]       # GPU + distributed
+uv pip install "moderndid[didcont,plots]"   # Combine multiple extras
+uv pip install "moderndid[gpu,spark]"       # GPU + distributed
 ```
 
 > [!TIP]
@@ -247,7 +253,7 @@ result = did.att_gt(data, yname="lemp", tname="year", idname="countyreal",
 
 ### Example Datasets
 
-Built-in datasets from published studies are included for testing and reproducing results. All loaders return Arrow-compatible DataFrames that work directly with any estimator.
+Built-in datasets from published studies are included for testing and reproducing results. All loaders return Arrow-compatible DataFrames that work directly with any estimator:
 
 ```python
 did.load_mpdta()       # County teen employment
