@@ -8,7 +8,7 @@ from moderndid.core.preprocess.models import DDDData
 from moderndid.core.preprocess.utils import check_partition_collinearity
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 from moderndid.didtriple.ddd import ddd
-from moderndid.didtriple.dgp import gen_dgp_2periods
+from moderndid.didtriple.dgp import gen_ddd_2periods
 from tests.helpers import importorskip
 
 np = importorskip("numpy")
@@ -16,7 +16,7 @@ pl = importorskip("polars")
 
 
 def test_preprocess_ddd_basic():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -39,7 +39,7 @@ def test_preprocess_ddd_basic():
 
 
 def test_preprocess_ddd_with_covariates():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -58,7 +58,7 @@ def test_preprocess_ddd_with_covariates():
 
 
 def test_preprocess_ddd_no_covariates():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -75,7 +75,7 @@ def test_preprocess_ddd_no_covariates():
 
 
 def test_preprocess_ddd_subgroup_assignment():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -103,7 +103,7 @@ def test_preprocess_ddd_subgroup_assignment():
 
 
 def test_preprocess_ddd_subgroup_counts():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -121,7 +121,7 @@ def test_preprocess_ddd_subgroup_counts():
 
 
 def test_preprocess_ddd_weight_normalization():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -137,7 +137,7 @@ def test_preprocess_ddd_weight_normalization():
 
 
 def test_preprocess_ddd_config_stored():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -160,7 +160,7 @@ def test_preprocess_ddd_config_stored():
 
 
 def test_preprocess_ddd_missing_column():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     with pytest.raises(ValueError, match="yname='missing' not found"):
@@ -175,7 +175,7 @@ def test_preprocess_ddd_missing_column():
 
 
 def test_preprocess_ddd_invalid_est_method():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     with pytest.raises(ValueError, match="est_method must be"):
@@ -191,7 +191,7 @@ def test_preprocess_ddd_invalid_est_method():
 
 
 def test_preprocess_ddd_more_than_two_periods():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     extra = data.filter(pl.col("time") == 1).with_columns(pl.lit(3).cast(pl.Int64).alias("time"))
@@ -315,7 +315,7 @@ def test_preprocess_ddd_small_subgroup():
 
 @pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 def test_preprocess_ddd_with_cluster():
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -335,7 +335,7 @@ def test_preprocess_ddd_with_cluster():
 
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
 def test_preprocess_ddd_est_methods(est_method):
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -415,14 +415,14 @@ def test_partition_collinearity_warning_in_preprocess():
     ],
 )
 def test_ddd_missing_required_params(kwargs, match):
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     with pytest.raises(ValueError, match=match):
         ddd(data=result["data"], **kwargs)
 
 
 @pytest.mark.parametrize("est_method", ["ols", "lasso", ""])
 def test_ddd_invalid_est_method(est_method):
-    result = gen_dgp_2periods(n=200, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     with pytest.raises(ValueError, match=f"est_method='{est_method}' is not valid"):
         ddd(
             data=result["data"],

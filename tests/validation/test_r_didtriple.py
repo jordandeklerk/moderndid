@@ -21,8 +21,8 @@ from moderndid import (
     ddd_mp_rc,
     ddd_panel,
     ddd_rc,
-    gen_dgp_2periods,
-    gen_dgp_mult_periods,
+    gen_ddd_2periods,
+    gen_ddd_mult_periods,
 )
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 
@@ -421,7 +421,7 @@ def test_2period_confidence_intervals_match(two_period_dgp_result):
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_2period_dgp_types_match(dgp_type):
-    result = gen_dgp_2periods(n=1000, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_2periods(n=1000, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     py_result = python_estimate_2period(data, "dr")
@@ -1069,7 +1069,7 @@ def test_agg_se_egt_matches(mp_ddd_data, agg_type):
 
 
 def test_dgp_produces_valid_structure():
-    py_result = gen_dgp_2periods(n=5000, dgp_type=1, random_state=42)
+    py_result = gen_ddd_2periods(n=5000, dgp_type=1, random_state=42)
     py_data = py_result["data"]
 
     required_cols = ["id", "time", "y", "state", "partition", "cov1", "cov2", "cov3", "cov4"]
@@ -1080,7 +1080,7 @@ def test_dgp_produces_valid_structure():
 
 
 def test_dgp_subgroup_proportions_reasonable():
-    py_result = gen_dgp_2periods(n=5000, dgp_type=1, random_state=42)
+    py_result = gen_ddd_2periods(n=5000, dgp_type=1, random_state=42)
     py_data = py_result["data"]
 
     units = py_data.unique(subset=["id"])
@@ -1092,7 +1092,7 @@ def test_dgp_subgroup_proportions_reasonable():
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_dgp_types_work(dgp_type):
-    result = gen_dgp_2periods(n=1000, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_2periods(n=1000, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     assert len(data) == 2000, f"Expected 2000 rows, got {len(data)}"
@@ -1101,7 +1101,7 @@ def test_dgp_types_work(dgp_type):
 
 
 def test_mp_dgp_produces_valid_structure():
-    result = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
     data = result["data"]
 
     required_cols = ["id", "time", "y", "group", "partition"]
@@ -1115,7 +1115,7 @@ def test_mp_dgp_produces_valid_structure():
 
 
 def test_mp_dgp_group_structure():
-    result = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
     data = result["data"]
 
     groups = data["group"].unique()
@@ -1124,7 +1124,7 @@ def test_mp_dgp_group_structure():
 
 
 def test_mp_dgp_partition_binary():
-    result = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
     data = result["data"]
 
     assert set(data["partition"].unique()) == {0, 1}, "Partition should be binary {0, 1}"
@@ -1132,7 +1132,7 @@ def test_mp_dgp_partition_binary():
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_mp_dgp_types_work(dgp_type):
-    result = gen_dgp_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     assert len(data) > 0, f"DGP type {dgp_type} produced empty data"
@@ -1140,7 +1140,7 @@ def test_mp_dgp_types_work(dgp_type):
 
 
 def test_mp_dgp_wide_format():
-    result = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
     data_wide = result["data_wide"]
 
     assert "id" in data_wide.columns, "Missing id in wide format"
@@ -1152,8 +1152,8 @@ def test_mp_dgp_wide_format():
 
 
 def test_mp_dgp_reproducibility():
-    result1 = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
-    result2 = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    result1 = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
+    result2 = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
 
     assert_frame_equal(result1["data"], result2["data"])
 

@@ -9,12 +9,12 @@ from moderndid.dask._ddd import dask_ddd
 from moderndid.dask._did import dask_att_gt
 from moderndid.did.att_gt import att_gt
 from moderndid.didtriple.ddd import ddd
-from moderndid.didtriple.dgp import gen_dgp_mult_periods, gen_dgp_scalable
+from moderndid.didtriple.dgp import gen_ddd_mult_periods, gen_ddd_scalable
 
 
 @pytest.fixture(scope="module")
 def mp_dgp_data():
-    return gen_dgp_mult_periods(n=300, dgp_type=1, random_state=42)
+    return gen_ddd_mult_periods(n=300, dgp_type=1, random_state=42)
 
 
 @pytest.fixture(scope="module")
@@ -24,7 +24,7 @@ def did_2period_panel_data():
 
 @pytest.fixture(scope="module")
 def ddd_2period_panel_data():
-    return gen_dgp_scalable(n=200, dgp_type=1, n_periods=2, n_cohorts=1, panel=True, random_state=42)
+    return gen_ddd_scalable(n=200, dgp_type=1, n_periods=2, n_cohorts=1, panel=True, random_state=42)
 
 
 def test_ddd_mp_point_estimates_close_to_local(dask_client, mp_dgp_data):

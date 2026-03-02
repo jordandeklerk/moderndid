@@ -9,7 +9,7 @@ The computational methods here are inspired by the corresponding R package [cont
 ```python
 import moderndid as did
 
-data = did.simulate_cont_did_data(
+data = did.gen_cont_did_data(
     n=2000,
     num_time_periods=4,
     dose_linear_effect=0.5,

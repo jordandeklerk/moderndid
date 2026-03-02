@@ -13,36 +13,14 @@ class BaseDGP(abc.ABC):
     """Base abstract class for all data generating processes."""
 
     def __init__(self, random_seed=42):
-        """Initialize the data generating process.
-
-        Parameters
-        ----------
-        random_seed : int, default=42
-            Random seed for reproducibility.
-        """
         self.random_seed = random_seed
         self.set_seed()
 
     @abc.abstractmethod
     def generate_data(self, *args, **kwargs):
-        """Generate synthetic data from the DGP.
-
-        Returns
-        -------
-        dict
-            Dictionary containing:
-            - 'df': pandas DataFrame with the generated data
-            - Additional elements specific to the DGP
-        """
+        """Generate synthetic data from the DGP."""
 
     def set_seed(self, seed=None):
-        """Set the random seed.
-
-        Parameters
-        ----------
-        seed : int, optional
-            If provided, sets a new seed. Otherwise, uses the one from initialization.
-        """
         if seed is not None:
             self.random_seed = seed
         np.random.seed(self.random_seed)
@@ -58,19 +36,6 @@ class SantAnnaZhaoDRDiD(BaseDGP):
         common_support_strength: float = 0.75,
         random_seed: int = 1234,
     ):
-        """Initialize the Sant'Anna and Zhao drdid data generating process.
-
-        Parameters
-        ----------
-        n_units : int, default=1000
-            Total number of units (sample size)
-        treatment_fraction : float, default=0.5
-            Proportion of units in the post-treatment period
-        common_support_strength : float, default=0.75
-            Propensity score index (strength of common support)
-        random_seed : int, default=1234
-            Random seed for reproducibility.
-        """
         super().__init__(random_seed=random_seed)
         self.n_units = n_units
         self.treatment_fraction = treatment_fraction
@@ -85,22 +50,6 @@ class SantAnnaZhaoDRDiD(BaseDGP):
         self.sd_z4 = 56.63891
 
     def generate_data(self, *args, att: float = 0.0, **kwargs):
-        """Generate synthetic data following Sant'Anna and Zhao (2020)'s DGP 1.
-
-        Parameters
-        ----------
-        att : float, default=0.0
-            Average treatment effect on the treated.
-            In the original paper this is set to 0 for simulation purposes.
-
-        Returns
-        -------
-        dict
-            Dictionary containing:
-            - 'df': pandas DataFrame with the generated data in long format
-            - 'true_att': True average treatment effect on the treated
-            - Additional elements specific to the DGP
-        """
         if args:
             raise ValueError(f"Unexpected positional arguments: {args}")
         if kwargs:

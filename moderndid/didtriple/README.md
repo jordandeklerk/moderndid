@@ -9,7 +9,7 @@ The computational methods here are inspired by the corresponding R package [trip
 ```python
 import moderndid as did
 
-dgp = did.gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+dgp = did.gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
 data = dgp["data"]
 
 # Estimate group-time treatment effects

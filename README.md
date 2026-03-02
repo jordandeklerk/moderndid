@@ -275,10 +275,10 @@ Synthetic data generators are also available for simulations and benchmarking.
 
 ```python
 did.gen_did_scalable()           # Staggered DiD panel
-did.simulate_cont_did_data()     # Continuous treatment DiD
-did.gen_dgp_2periods()           # Two-period triple DiD
-did.gen_dgp_mult_periods()       # Staggered triple DiD
-did.gen_dgp_scalable()           # Large-scale triple DiD
+did.gen_cont_did_data()          # Continuous treatment DiD
+did.gen_ddd_2periods()           # Two-period triple DiD
+did.gen_ddd_mult_periods()       # Staggered triple DiD
+did.gen_ddd_scalable()           # Large-scale triple DiD
 ```
 
 ## Planned Development

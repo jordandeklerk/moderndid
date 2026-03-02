@@ -21,7 +21,7 @@ from moderndid import (
     ddd_mp,
     ddd_panel,
     drdid_panel,
-    gen_dgp_mult_periods,
+    gen_ddd_mult_periods,
     load_mpdta,
     set_backend,
     simulate_cont_did_data,
@@ -284,7 +284,7 @@ def _verify_ddd_mp():
     log.info("")
     log.info("--- ddd_mp (multi-period DDD) ---")
 
-    dgp_result = gen_dgp_mult_periods(n=500, dgp_type=1, panel=True, random_state=42)
+    dgp_result = gen_ddd_mult_periods(n=500, dgp_type=1, panel=True, random_state=42)
     data = dgp_result["data"]
 
     kwargs = dict(
@@ -617,7 +617,7 @@ def _main():
         log.info("=" * 60)
 
         def _ddd_mp_data(n):
-            return gen_dgp_mult_periods(n=n, dgp_type=1, panel=True, random_state=42)["data"]
+            return gen_ddd_mult_periods(n=n, dgp_type=1, panel=True, random_state=42)["data"]
 
         rows = _bench_loop(_ddd_mp_data, _make_ddd_mp_runner, SCALING_SIZES)
         log.info("")

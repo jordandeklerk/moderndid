@@ -1,4 +1,4 @@
-"""Shared fixtures for the top-level test directory."""
+"""Shared fixtures for core tests."""
 
 import polars as pl
 import pytest

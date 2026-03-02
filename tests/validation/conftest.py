@@ -5,13 +5,13 @@ import polars as pl
 import pytest
 
 from moderndid import ddd_mp, load_engel
-from moderndid.didtriple.dgp import gen_dgp_2periods
+from moderndid.didtriple.dgp import gen_ddd_2periods
 
 
 @pytest.fixture
 def two_period_dgp_result():
     """Full 2-period DGP result including true ATT and oracle ATT."""
-    result = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=1000, dgp_type=1, random_state=42)
     return result["data"], result["true_att"], result["oracle_att"]
 
 

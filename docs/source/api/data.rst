@@ -32,9 +32,9 @@ effects, useful for Monte Carlo experiments and testing.
    :toctree: generated/data/
    :nosignatures:
 
-   simulate_cont_did_data
+   gen_cont_did_data
    gen_did_scalable
-   gen_dgp_2periods
-   gen_dgp_mult_periods
-   gen_dgp_scalable
-   generate_simple_ddd_data
+   gen_ddd_2periods
+   gen_ddd_mult_periods
+   gen_ddd_scalable
+   gen_simple_ddd_data

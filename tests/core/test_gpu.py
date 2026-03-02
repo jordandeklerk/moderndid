@@ -394,7 +394,7 @@ def test_rmm_skips_reinitialize_when_already_active():
 
 @requires_gpu
 def test_cont_did_cupy_runs():
-    data = moderndid.simulate_cont_did_data(n=200, seed=42)
+    data = moderndid.gen_cont_did_data(n=200, seed=42)
     result = moderndid.cont_did(
         data=data,
         yname="Y",
@@ -469,7 +469,7 @@ def test_att_gt_cupy_vs_numpy(est_method):
 
 @requires_gpu
 def test_ddd_cupy_end_to_end():
-    dgp = moderndid.gen_dgp_2periods(n=500, dgp_type=1, random_state=42)
+    dgp = moderndid.gen_ddd_2periods(n=500, dgp_type=1, random_state=42)
 
     result = moderndid.ddd(
         data=dgp["data"],
@@ -491,7 +491,7 @@ def test_ddd_cupy_end_to_end():
 @requires_gpu
 @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
 def test_ddd_cupy_vs_numpy(est_method):
-    dgp = moderndid.gen_dgp_2periods(n=500, dgp_type=1, random_state=42)
+    dgp = moderndid.gen_ddd_2periods(n=500, dgp_type=1, random_state=42)
 
     result_cpu = moderndid.ddd(
         data=dgp["data"],

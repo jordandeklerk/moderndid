@@ -10,7 +10,7 @@ from benchmark.common.storage import ResultStorage
 from benchmark.didtriple.config import DDD_BENCHMARK_SUITES, DDDBenchmarkConfig
 from benchmark.didtriple.runners import R_TRIPLEDIFF_AVAILABLE, DDDPythonRunner, DDDRRunner
 from benchmark.didtriple.storage import DDDBenchmarkResult
-from moderndid import gen_dgp_2periods, gen_dgp_mult_periods
+from moderndid import gen_ddd_2periods, gen_ddd_mult_periods
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def run_single_benchmark(
             config.dgp_type,
             config.panel,
         )
-        dgp_result = gen_dgp_mult_periods(
+        dgp_result = gen_ddd_mult_periods(
             n=config.n_units,
             dgp_type=config.dgp_type,
             panel=config.panel,
@@ -41,7 +41,7 @@ def run_single_benchmark(
             config.dgp_type,
             config.panel,
         )
-        dgp_result = gen_dgp_2periods(
+        dgp_result = gen_ddd_2periods(
             n=config.n_units,
             dgp_type=config.dgp_type,
             panel=config.panel,

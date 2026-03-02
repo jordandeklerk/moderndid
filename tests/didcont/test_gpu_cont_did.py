@@ -102,7 +102,7 @@ def test_npiv_est_cupy_vs_numpy():
 
 @requires_gpu
 def test_parametric_dose_cupy_vs_numpy():
-    data = moderndid.simulate_cont_did_data(n=300, seed=42)
+    data = moderndid.gen_cont_did_data(n=300, seed=42)
 
     result_cpu = moderndid.cont_did(
         data=data,
@@ -142,7 +142,7 @@ def test_parametric_dose_cupy_vs_numpy():
 
 @requires_gpu
 def test_cck_dose_cupy_vs_numpy():
-    data = moderndid.simulate_cont_did_data(n=300, num_time_periods=2, seed=42)
+    data = moderndid.gen_cont_did_data(n=300, num_time_periods=2, seed=42)
 
     result_cpu = moderndid.cont_did(
         data=data,
@@ -180,7 +180,7 @@ def test_cck_dose_cupy_vs_numpy():
 
 @requires_gpu
 def test_eventstudy_cupy_vs_numpy():
-    data = moderndid.simulate_cont_did_data(n=300, seed=42)
+    data = moderndid.gen_cont_did_data(n=300, seed=42)
 
     result_cpu = moderndid.cont_did(
         data=data,

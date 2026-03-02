@@ -134,9 +134,9 @@ class TestDddBackendParam:
         set_backend("numpy")
 
     def test_backend_numpy_no_mutation(self):
-        from moderndid import ddd, gen_dgp_2periods
+        from moderndid import ddd, gen_ddd_2periods
 
-        dgp = gen_dgp_2periods(n=500, dgp_type=1, random_state=42)
+        dgp = gen_ddd_2periods(n=500, dgp_type=1, random_state=42)
         assert get_backend() is np
 
         result = ddd(
@@ -155,9 +155,9 @@ class TestDddBackendParam:
         assert result is not None
 
     def test_backend_none_uses_current(self):
-        from moderndid import ddd, gen_dgp_2periods
+        from moderndid import ddd, gen_ddd_2periods
 
-        dgp = gen_dgp_2periods(n=500, dgp_type=1, random_state=42)
+        dgp = gen_ddd_2periods(n=500, dgp_type=1, random_state=42)
         set_backend("numpy")
 
         result = ddd(
