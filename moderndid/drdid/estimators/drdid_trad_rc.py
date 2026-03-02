@@ -100,11 +100,12 @@ def drdid_trad_rc(
         Journal of Econometrics, 219(1), 101-122. https://doi.org/10.1016/j.jeconom.2020.06.003
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
-    y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y, post, d, covariates, i_weights)
+    xp = get_backend()
+    y, post, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights)
 
-    ps_fit, ps_weights = _compute_propensity_score(d, covariates, i_weights)
+    ps_fit, ps_weights = _compute_propensity_score(xp, d, covariates, i_weights)
 
-    trim_ps = np.ones(n_units, dtype=bool)
+    trim_ps = xp.ones(n_units, dtype=bool)
     trim_ps[d == 0] = ps_fit[d == 0] < trim_level
 
     out_reg_pre_result = ols_rc(y, post, d, covariates, i_weights, pre=True, treat=False)
@@ -188,38 +189,37 @@ def drdid_trad_rc(
     )
 
 
-def _validate_and_preprocess_inputs(y, post, d, covariates, i_weights):
+def _validate_and_preprocess_inputs(xp, y, post, d, covariates, i_weights):
     """Validate and preprocess input arrays."""
-    d = np.asarray(d).flatten()
+    d = xp.asarray(d).flatten()
     n_units = len(d)
-    y = np.asarray(y).flatten()
-    post = np.asarray(post).flatten()
+    y = xp.asarray(y).flatten()
+    post = xp.asarray(post).flatten()
 
-    covariates = np.ones((n_units, 1)) if covariates is None else np.asarray(covariates)
+    covariates = xp.ones((n_units, 1)) if covariates is None else xp.asarray(covariates)
 
     if i_weights is None:
-        i_weights = np.ones(n_units)
+        i_weights = xp.ones(n_units)
     else:
-        i_weights = np.asarray(i_weights).flatten()
-        if np.any(i_weights < 0):
+        i_weights = xp.asarray(i_weights).flatten()
+        if xp.any(i_weights < 0):
             raise ValueError("i_weights must be non-negative.")
-    i_weights = i_weights / np.mean(i_weights)
+    i_weights = i_weights / xp.mean(i_weights)
 
-    if not np.any(d == 1):
+    if not xp.any(d == 1):
         raise ValueError("No treated units found. Cannot estimate treatment effect.")
-    if not np.any(d == 0):
+    if not xp.any(d == 0):
         raise ValueError("No control units found. Cannot estimate treatment effect.")
-    if not np.any(post == 1):
+    if not xp.any(post == 1):
         raise ValueError("No post-treatment observations found.")
-    if not np.any(post == 0):
+    if not xp.any(post == 0):
         raise ValueError("No pre-treatment observations found.")
 
     return y, post, d, covariates, i_weights, n_units
 
 
-def _compute_propensity_score(d, covariates, i_weights):
+def _compute_propensity_score(xp, d, covariates, i_weights):
     """Compute propensity score using logistic regression."""
-    xp = get_backend()
     if xp is not np:
         try:
             beta, ps_fit = cupy_logistic_irls(

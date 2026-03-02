@@ -117,20 +117,21 @@ def compute_all_nuisances(
     if est_method not in ["dr", "reg", "ipw"]:
         raise ValueError(f"est_method must be 'dr', 'reg', or 'ipw', got {est_method}")
 
+    xp = get_backend()
     pscores = []
     or_results = []
 
     for comp_subgroup in [3, 2, 1]:
         if est_method == "reg":
-            ps_result = _compute_pscore_null(subgroup, comp_subgroup)
+            ps_result = _compute_pscore_null(xp, subgroup, comp_subgroup)
         else:
-            ps_result = _compute_pscore(subgroup, covariates, weights, comp_subgroup, trim_level)
+            ps_result = _compute_pscore(xp, subgroup, covariates, weights, comp_subgroup, trim_level)
         pscores.append(ps_result)
 
         if est_method == "ipw":
-            or_result = _compute_outcome_regression_null(y1, y0, subgroup, comp_subgroup)
+            or_result = _compute_outcome_regression_null(xp, y1, y0, subgroup, comp_subgroup)
         else:
-            or_result = _compute_outcome_regression(y1, y0, subgroup, covariates, weights, comp_subgroup)
+            or_result = _compute_outcome_regression(xp, y1, y0, subgroup, covariates, weights, comp_subgroup)
         or_results.append(or_result)
 
     return pscores, or_results
@@ -180,9 +181,11 @@ def compute_all_did(
     --------
     compute_all_nuisances : Compute all nuisance parameters for DDD estimation.
     """
+    xp = get_backend()
     did_results = []
     for i, comp_subgroup in enumerate([3, 2, 1]):
         did_result = _compute_did(
+            xp,
             subgroup=subgroup,
             covariates=covariates,
             weights=weights,
@@ -194,7 +197,6 @@ def compute_all_did(
         )
         did_results.append(did_result)
 
-    xp = get_backend()
     dr_att_3, inf_func_3 = did_results[0].dr_att, did_results[0].inf_func
     dr_att_2, inf_func_2 = did_results[1].dr_att, did_results[1].inf_func
     dr_att_1, inf_func_1 = did_results[2].dr_att, did_results[2].inf_func
@@ -216,6 +218,7 @@ def compute_all_did(
 
 
 def _compute_did(
+    xp,
     subgroup,
     covariates,
     weights,
@@ -252,7 +255,6 @@ def _compute_did(
         NamedTuple with dr_att (ATT estimate) and inf_func (influence function
         for all units, with zeros for units not in the comparison).
     """
-    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     sub_subgroup = subgroup[mask]
     sub_covariates = covariates[mask]
@@ -292,6 +294,7 @@ def _compute_did(
     dr_att = att_treat - att_control
 
     inf_func_sub = _compute_inf_func(
+        xp,
         sub_covariates=sub_covariates,
         sub_weights=sub_weights,
         pa4=pa4,
@@ -319,6 +322,7 @@ def _compute_did(
 
 
 def _compute_inf_func(
+    xp,
     sub_covariates,
     sub_weights,
     pa4,
@@ -381,7 +385,6 @@ def _compute_inf_func(
     ndarray
         Influence function for units in the comparison.
     """
-    xp = get_backend()
     n_sub = len(sub_weights)
 
     if est_method == "reg":
@@ -433,7 +436,7 @@ def _compute_inf_func(
     return inf_func
 
 
-def _compute_pscore(subgroup, covariates, weights, comparison_subgroup, trim_level=0.995):
+def _compute_pscore(xp, subgroup, covariates, weights, comparison_subgroup, trim_level=0.995):
     """Compute propensity scores for a subgroup comparison.
 
     Parameters
@@ -465,7 +468,6 @@ def _compute_pscore(subgroup, covariates, weights, comparison_subgroup, trim_lev
 
     pa4 = (sub_subgroup == 4).astype(float)
 
-    xp = get_backend()
     if xp is not np:
         try:
             beta, ps_fit = cupy_logistic_irls(
@@ -539,11 +541,13 @@ def _compute_pscore(subgroup, covariates, weights, comparison_subgroup, trim_lev
     return PScoreResult(propensity_scores=ps_fit, hessian_matrix=hessian_matrix, keep_ps=keep_ps)
 
 
-def _compute_pscore_null(subgroup, comparison_subgroup):
+def _compute_pscore_null(xp, subgroup, comparison_subgroup):
     """Compute null propensity scores for REG method.
 
     Parameters
     ----------
+    xp : module
+        Array backend (numpy or cupy).
     subgroup : ndarray
         A 1D array of subgroup indicators (1, 2, 3, or 4) for each unit.
     comparison_subgroup : int
@@ -555,7 +559,6 @@ def _compute_pscore_null(subgroup, comparison_subgroup):
         NamedTuple with propensity_scores all equal to 1, hessian_matrix=None,
         and keep_ps all True (no trimming for REG method).
     """
-    xp = get_backend()
     mask = (subgroup == 4) | (subgroup == comparison_subgroup)
     n_sub = int(xp.sum(mask))
 
@@ -566,7 +569,7 @@ def _compute_pscore_null(subgroup, comparison_subgroup):
     )
 
 
-def _compute_outcome_regression(y1, y0, subgroup, covariates, weights, comparison_subgroup):
+def _compute_outcome_regression(xp, y1, y0, subgroup, covariates, weights, comparison_subgroup):
     """Compute outcome regression for a subgroup comparison.
 
     Parameters
@@ -608,7 +611,6 @@ def _compute_outcome_regression(y1, y0, subgroup, covariates, weights, compariso
     control_covariates = covariates[control_mask]
     control_weights = weights[control_mask]
 
-    xp = get_backend()
     if xp is not np:
         try:
             reg_coeff, _ = cupy_wls(
@@ -654,11 +656,13 @@ def _compute_outcome_regression(y1, y0, subgroup, covariates, weights, compariso
     return OutcomeRegResult(delta_y=delta_y, or_delta=or_delta, reg_coeff=reg_coeff)
 
 
-def _compute_outcome_regression_null(y1, y0, subgroup, comparison_subgroup):
+def _compute_outcome_regression_null(xp, y1, y0, subgroup, comparison_subgroup):
     """Compute null outcome regression for IPW method.
 
     Parameters
     ----------
+    xp : module
+        Array backend (numpy or cupy).
     y1 : ndarray
         A 1D array of post-treatment outcomes.
     y0 : ndarray
@@ -677,7 +681,6 @@ def _compute_outcome_regression_null(y1, y0, subgroup, comparison_subgroup):
     sub_y1 = y1[mask]
     sub_y0 = y0[mask]
 
-    xp = get_backend()
     delta_y = sub_y1 - sub_y0
     or_delta = xp.zeros(len(delta_y))
 

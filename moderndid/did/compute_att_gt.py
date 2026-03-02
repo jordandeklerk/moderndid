@@ -76,7 +76,6 @@ def compute_att_gt(data: DIDData, n_jobs=1):
     time_periods = data.config.time_periods
 
     n_time_periods = len(time_periods) - 1 if data.config.base_period != "universal" else len(time_periods)
-
     group_time_pairs = [(g, t) for g in range(data.config.treated_groups_count) for t in range(n_time_periods)]
 
     args_list = [(g_idx, t_idx, data) for g_idx, t_idx in group_time_pairs]

@@ -254,7 +254,7 @@ def test_ddd_rc_weighted_bootstrap(two_period_rcs_data):
 )
 def test_validate_inputs_rc_errors(y, post, subgroup, covariates, weights, match):
     with pytest.raises(ValueError, match=match):
-        _validate_inputs_rc(y, post, subgroup, covariates, weights)
+        _validate_inputs_rc(np, y, post, subgroup, covariates, weights)
 
 
 def test_validate_inputs_rc_missing_subgroup_warns():
@@ -264,7 +264,7 @@ def test_validate_inputs_rc_missing_subgroup_warns():
     covariates = np.ones((4, 1))
 
     with pytest.warns(UserWarning, match="subgroup 3"):
-        _validate_inputs_rc(y, post, subgroup, covariates, None)
+        _validate_inputs_rc(np, y, post, subgroup, covariates, None)
 
 
 @pytest.mark.parametrize("xformla", ["~ cov1 + cov2", "~1"])
@@ -336,5 +336,5 @@ def test_validate_inputs_rc_weight_normalization():
     subgroup = np.array([1, 2, 3, 4, 1, 2, 3, 4])
     weights = np.array([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0])
 
-    _, _, _, _, normalized_weights, _ = _validate_inputs_rc(y, post, subgroup, None, weights)
+    _, _, _, _, normalized_weights, _ = _validate_inputs_rc(np, y, post, subgroup, None, weights)
     np.testing.assert_allclose(np.mean(normalized_weights), 1.0)

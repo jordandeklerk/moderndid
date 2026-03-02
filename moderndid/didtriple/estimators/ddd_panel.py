@@ -187,9 +187,9 @@ def ddd_panel(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
-    y1, y0, subgroup, covariates, i_weights, n_units = _validate_inputs(y1, y0, subgroup, covariates, i_weights)
-
     xp = get_backend()
+    y1, y0, subgroup, covariates, i_weights, n_units = _validate_inputs(xp, y1, y0, subgroup, covariates, i_weights)
+
     subgroup_counts = {
         "subgroup_1": int(xp.sum(subgroup == 1)),
         "subgroup_2": int(xp.sum(subgroup == 2)),
@@ -289,9 +289,8 @@ def ddd_panel(
     )
 
 
-def _validate_inputs(y1, y0, subgroup, covariates, i_weights):
+def _validate_inputs(xp, y1, y0, subgroup, covariates, i_weights):
     """Validate and preprocess input arrays."""
-    xp = get_backend()
     y1 = xp.asarray(y1).flatten()
     y0 = xp.asarray(y0).flatten()
     subgroup = xp.asarray(subgroup).flatten()

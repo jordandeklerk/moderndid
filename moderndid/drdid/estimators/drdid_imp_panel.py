@@ -118,7 +118,7 @@ def drdid_imp_panel(
         arXiv preprint: https://arxiv.org/abs/1812.01723
     """
     xp = get_backend()
-    y1, y0, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(y1, y0, d, covariates, i_weights)
+    y1, y0, d, covariates, i_weights, n_units = _validate_and_preprocess_inputs(xp, y1, y0, d, covariates, i_weights)
 
     delta_y = y1 - y0
 
@@ -196,6 +196,7 @@ def drdid_imp_panel(
 
 
 def _validate_and_preprocess_inputs(
+    xp,
     y1,
     y0,
     d,
@@ -203,7 +204,6 @@ def _validate_and_preprocess_inputs(
     i_weights,
 ):
     """Validate and preprocess input arrays."""
-    xp = get_backend()
     d = xp.asarray(d).flatten()
     n_units = len(d)
 

@@ -180,9 +180,9 @@ def ddd_rc(
         Journal of Econometrics, 219(1), 101-122.
         https://doi.org/10.1016/j.jeconom.2020.06.003
     """
-    y, post, subgroup, covariates, i_weights, n_obs = _validate_inputs_rc(y, post, subgroup, covariates, i_weights)
-
     xp = get_backend()
+    y, post, subgroup, covariates, i_weights, n_obs = _validate_inputs_rc(xp, y, post, subgroup, covariates, i_weights)
+
     subgroup_counts = {
         "subgroup_1": int(xp.sum(subgroup == 1)),
         "subgroup_2": int(xp.sum(subgroup == 2)),
@@ -480,9 +480,8 @@ def _wboot_ddd_rc(
     return boot_estimates
 
 
-def _validate_inputs_rc(y, post, subgroup, covariates, i_weights):
+def _validate_inputs_rc(xp, y, post, subgroup, covariates, i_weights):
     """Validate and preprocess input arrays for RCS."""
-    xp = get_backend()
     y = xp.asarray(y).flatten()
     post = xp.asarray(post).flatten()
     subgroup = xp.asarray(subgroup).flatten()
