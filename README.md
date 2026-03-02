@@ -260,7 +260,7 @@ result = did.att_gt(data,
 
 ### Example Datasets
 
-Built-in datasets from published studies are included for testing and reproducing results. All loaders return Arrow-compatible DataFrames that work directly with any estimator:
+Built-in datasets from published studies are included for testing and reproducing results. All loaders return Arrow-compatible DataFrames that work directly with any estimator.
 
 ```python
 did.load_mpdta()       # County teen employment
@@ -271,7 +271,7 @@ did.load_favara_imbs() # Bank lending
 did.load_cai2016()     # Crop insurance
 ```
 
-Synthetic data generators are also available for simulations and benchmarking:
+Synthetic data generators are also available for simulations and benchmarking.
 
 ```python
 did.gen_did_scalable()           # Staggered DiD panel
