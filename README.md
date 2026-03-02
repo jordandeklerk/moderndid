@@ -53,7 +53,7 @@ uv pip install moderndid[gpu,spark]       # GPU + distributed
 > [!TIP]
 > When a package manager like `uv` or `pip` cannot resolve a dependency required by an extra, it may silently fall back to an older version of __ModernDiD__ where that extra does not exist, rather than raising an error.
 >
-> The `gpu` extra is the most likely to trigger this, since it depends on `cupy-cuda12x` (Linux and Windows only) and `rmm-cu12` (Linux only), both of which require NVIDIA CUDA. To use the `gpu` extra, install on a Linux machine with NVIDIA CUDA drivers, or pin the version to get a clear error instead of a silent downgrade:
+> The `gpu` extra is the most likely to trigger this, since it depends on `cupy-cuda12x` (Linux and Windows only) and `rmm-cu12` (Linux only), both of which require NVIDIA CUDA. If you see a warning like `The package moderndid==0.0.3 does not have an extra named 'gpu'`, this is what happened. To use the `gpu` extra, install on a machine with NVIDIA CUDA drivers, or pin the version to get a clear error instead of a silent downgrade.
 >
 > ```bash
 > uv pip install "moderndid[gpu]>=0.1.0"
@@ -246,6 +246,8 @@ result = did.att_gt(data, yname="lemp", tname="year", idname="countyreal",
 ```
 
 ### Example Datasets
+
+Built-in datasets from published studies are included for testing and reproducing results. All loaders return Arrow-compatible DataFrames that work directly with any estimator.
 
 ```python
 did.load_mpdta()       # County teen employment
