@@ -17,13 +17,6 @@ features; details are found in :ref:`api`.
    panel_utilities
 
 .. toctree::
-   :caption: Scaling
-   :maxdepth: 2
-
-   distributed
-   gpu
-
-.. toctree::
    :caption: Examples
    :maxdepth: 2
 
@@ -32,3 +25,10 @@ features; details are found in :ref:`api`.
    example_inter_did
    example_cont_did
    example_honest_did
+
+.. toctree::
+   :caption: Scaling
+   :maxdepth: 2
+
+   distributed
+   gpu

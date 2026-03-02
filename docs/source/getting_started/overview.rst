@@ -104,7 +104,7 @@ key arguments, and guidance on when to use each one.
    * - **Staggered adoption** (:func:`~moderndid.att_gt`)
      - Binary treatment turns on permanently at different times
      - `Callaway & Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_
-   * - **Two-period DR DiD** (``drdid``)
+   * - **Two-period DR DiD** (:func:`~moderndid.drdid`)
      - Classic two-period, two-group setting
      - `Sant'Anna & Zhao (2020) <https://arxiv.org/abs/1812.01723>`_
    * - **Continuous treatment** (:func:`~moderndid.cont_did`)
