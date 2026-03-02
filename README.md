@@ -223,7 +223,7 @@ Event time 0 is the on-impact effect, negative event times are pre-treatment per
 
 ### Consistent API
 
-All estimators share a unified interface. Pass any [Arrow PyCapsule](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)-compatible DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and others) and estimation works the same way:
+All estimators share a unified interface for core arguments. Pass any [Arrow PyCapsule](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)-compatible DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and others) and estimation works the same way:
 
 ```python
 result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)

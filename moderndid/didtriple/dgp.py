@@ -27,7 +27,9 @@ _MOVED_NAMES = {
 
 def __getattr__(name):
     if name in _MOVED_NAMES:
-        return locals()[name]
+        import moderndid.core.data as _data
+
+        return getattr(_data, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

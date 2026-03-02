@@ -44,13 +44,7 @@ _DGP_NAMES = {
 
 def __getattr__(name):
     if name in _DGP_NAMES:
-        from moderndid.core.data import (
-            gen_ddd_2periods,
-            gen_ddd_mult_periods,
-            gen_ddd_scalable,
-            gen_simple_ddd_data,
-            generate_simple_ddd_data,
-        )
+        import moderndid.core.data as _data
 
-        return locals()[name]
+        return getattr(_data, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
