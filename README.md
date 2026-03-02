@@ -235,20 +235,31 @@ result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="trea
 
 ### Scaling Up
 
-**Distributed.** Pass a Spark or Dask DataFrame and the distributed backend activates automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
+#### Distributed
 
-**GPU.** Pass `backend="cupy"` to offload estimation to NVIDIA GPUs. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
+Pass a Spark or Dask DataFrame and the distributed backend activates automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
 
 ```python
 from pyspark.sql import SparkSession
 spark = SparkSession.builder.master("local[*]").getOrCreate()
 result = did.att_gt(data=spark.read.parquet("panel.parquet"),
-                    yname="y", tname="t", idname="id", gname="g")
+                    yname="y",
+                    tname="t",
+                    idname="id",
+                    gname="g")
 ```
 
+#### GPU
+
+Pass `backend="cupy"` to offload estimation to NVIDIA GPUs. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
+
 ```python
-result = did.att_gt(data, yname="lemp", tname="year", idname="countyreal",
-                    gname="first.treat", backend="cupy")
+result = did.att_gt(data,
+                    yname="lemp",
+                    tname="year",
+                    idname="countyreal",
+                    gname="first.treat",
+                    backend="cupy")
 ```
 
 ### Example Datasets
