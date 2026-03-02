@@ -196,16 +196,16 @@ def ddd(
 
     Examples
     --------
-    We can generate synthetic data for a 2-period DDD setup using the ``gen_dgp_2periods``
+    We can generate synthetic data for a 2-period DDD setup using the ``gen_ddd_2periods``
     function. The data contains treatment status (``state``), eligibility within treatment
     groups  (``partition``), and covariates.
 
     .. ipython::
 
         In [1]: import numpy as np
-           ...: from moderndid import ddd, gen_dgp_2periods
+           ...: from moderndid import ddd, gen_ddd_2periods
            ...:
-           ...: dgp = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+           ...: dgp = gen_ddd_2periods(n=1000, dgp_type=1, random_state=42)
            ...: df = dgp["data"]
            ...: df.head()
 
@@ -235,9 +235,9 @@ def ddd(
     .. ipython::
         :okwarning:
 
-        In [3]: from moderndid import gen_dgp_mult_periods
+        In [3]: from moderndid import gen_ddd_mult_periods
            ...:
-           ...: dgp_mp = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+           ...: dgp_mp = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
            ...: result_mp = ddd(
            ...:     data=dgp_mp["data"],
            ...:     yname="y",
@@ -257,7 +257,7 @@ def ddd(
     .. ipython::
         :okwarning:
 
-        In [4]: dgp_rcs = gen_dgp_2periods(n=2000, dgp_type=1, panel=False, random_state=42)
+        In [4]: dgp_rcs = gen_ddd_2periods(n=2000, dgp_type=1, panel=False, random_state=42)
            ...: result_rcs = ddd(
            ...:     data=dgp_rcs["data"],
            ...:     yname="y",
@@ -276,7 +276,7 @@ def ddd(
     .. ipython::
         :okwarning:
 
-        In [5]: dgp_mp_rcs = gen_dgp_mult_periods(n=500, dgp_type=1, panel=False, random_state=42)
+        In [5]: dgp_mp_rcs = gen_ddd_mult_periods(n=500, dgp_type=1, panel=False, random_state=42)
            ...: result_mp_rcs = ddd(
            ...:     data=dgp_mp_rcs["data"],
            ...:     yname="y",

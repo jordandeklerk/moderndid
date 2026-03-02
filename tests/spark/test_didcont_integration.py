@@ -5,14 +5,14 @@ import pytest
 
 pyspark = pytest.importorskip("pyspark")
 
-from moderndid import simulate_cont_did_data
+from moderndid import gen_cont_did_data
 from moderndid.didcont.cont_did import cont_did
 from moderndid.spark._didcont import spark_cont_did
 
 
 @pytest.fixture(scope="module")
 def cont_did_data():
-    return simulate_cont_did_data(n=500, seed=42)
+    return gen_cont_did_data(n=500, seed=42)
 
 
 def test_spark_cont_did_dose_matches_local(spark_session, cont_did_data):

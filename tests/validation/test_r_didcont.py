@@ -14,7 +14,7 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 np = importorskip("numpy")
 
-from moderndid import cont_did, simulate_cont_did_data
+from moderndid import cont_did, gen_cont_did_data
 
 
 def _run_r_script(r_script, result_path, timeout=120):
@@ -271,7 +271,7 @@ def r_test_data_cck():
 
 @pytest.fixture
 def cont_did_data():
-    return simulate_cont_did_data(
+    return gen_cont_did_data(
         n=500,
         num_time_periods=4,
         dose_linear_effect=0.5,
@@ -282,7 +282,7 @@ def cont_did_data():
 
 @pytest.fixture
 def cont_did_data_cck():
-    return simulate_cont_did_data(
+    return gen_cont_did_data(
         n=500,
         num_time_periods=2,
         dose_linear_effect=0.5,
@@ -676,7 +676,7 @@ def test_cont_did_eventstudy_structure(cont_did_data):
 
 
 def test_cont_did_cck_requires_two_periods():
-    data = simulate_cont_did_data(n=200, num_time_periods=4, seed=42)
+    data = gen_cont_did_data(n=200, num_time_periods=4, seed=42)
 
     with pytest.raises(ValueError, match="2 groups and 2 time periods"):
         cont_did(
@@ -691,7 +691,7 @@ def test_cont_did_cck_requires_two_periods():
 
 
 def test_cont_did_missing_dname_raises():
-    data = simulate_cont_did_data(n=100, seed=42)
+    data = gen_cont_did_data(n=100, seed=42)
 
     with pytest.raises(ValueError, match="dname is required"):
         cont_did(
@@ -767,7 +767,7 @@ def test_cont_did_reproducible_with_seed(cont_did_data):
 
 
 def test_simulate_cont_did_produces_valid_structure():
-    data = simulate_cont_did_data(n=100, num_time_periods=4, seed=42)
+    data = gen_cont_did_data(n=100, num_time_periods=4, seed=42)
 
     required_cols = ["id", "time_period", "Y", "G", "D"]
     for col in required_cols:
@@ -777,7 +777,7 @@ def test_simulate_cont_did_produces_valid_structure():
 def test_simulate_cont_did_balanced_panel():
     n = 100
     num_periods = 4
-    data = simulate_cont_did_data(n=n, num_time_periods=num_periods, seed=42)
+    data = gen_cont_did_data(n=n, num_time_periods=num_periods, seed=42)
 
     expected_rows = n * num_periods
     assert len(data) == expected_rows, f"Expected {expected_rows} rows, got {len(data)}"
@@ -787,7 +787,7 @@ def test_simulate_cont_did_balanced_panel():
 
 
 def test_simulate_cont_did_group_structure():
-    data = simulate_cont_did_data(n=500, num_time_periods=4, seed=42)
+    data = gen_cont_did_data(n=500, num_time_periods=4, seed=42)
 
     groups = data["G"].unique().to_numpy()
 
@@ -796,29 +796,29 @@ def test_simulate_cont_did_group_structure():
 
 
 def test_simulate_cont_did_dose_structure():
-    data = simulate_cont_did_data(n=500, num_time_periods=4, seed=42)
+    data = gen_cont_did_data(n=500, num_time_periods=4, seed=42)
 
     never_treated = data.filter(pl.col("G") == 0)
     assert (never_treated["D"] == 0).all(), "Never-treated units should have D=0"
 
 
 def test_simulate_cont_did_reproducibility():
-    data1 = simulate_cont_did_data(n=100, seed=42)
-    data2 = simulate_cont_did_data(n=100, seed=42)
+    data1 = gen_cont_did_data(n=100, seed=42)
+    data2 = gen_cont_did_data(n=100, seed=42)
 
     assert data1.equals(data2), "Data should be identical with same seed"
 
 
 @pytest.mark.parametrize("num_time_periods", [2, 4, 6])
 def test_simulate_cont_did_different_periods(num_time_periods):
-    data = simulate_cont_did_data(n=100, num_time_periods=num_time_periods, seed=42)
+    data = gen_cont_did_data(n=100, num_time_periods=num_time_periods, seed=42)
 
     actual_periods = data["time_period"].n_unique()
     assert actual_periods == num_time_periods, f"Expected {num_time_periods} periods, got {actual_periods}"
 
 
 def test_cont_did_small_sample():
-    data = simulate_cont_did_data(n=50, num_time_periods=3, seed=42)
+    data = gen_cont_did_data(n=50, num_time_periods=3, seed=42)
 
     result = cont_did(
         data=data,
@@ -841,7 +841,7 @@ def test_cont_did_handles_zero_doses(cont_did_data):
 
 @pytest.mark.parametrize("degree", [1, 2, 3])
 def test_cont_did_different_degree_options(degree):
-    data = simulate_cont_did_data(n=200, num_time_periods=3, seed=42)
+    data = gen_cont_did_data(n=200, num_time_periods=3, seed=42)
 
     result = cont_did(
         data=data,
@@ -859,7 +859,7 @@ def test_cont_did_different_degree_options(degree):
 
 @pytest.mark.parametrize("num_knots", [0, 1, 2])
 def test_cont_did_different_knot_options(num_knots):
-    data = simulate_cont_did_data(n=200, num_time_periods=3, seed=42)
+    data = gen_cont_did_data(n=200, num_time_periods=3, seed=42)
 
     result = cont_did(
         data=data,
@@ -885,7 +885,7 @@ def test_cont_did_different_knot_options(num_knots):
     ],
 )
 def test_cont_did_invalid_params(param, value):
-    data = simulate_cont_did_data(n=100, seed=42)
+    data = gen_cont_did_data(n=100, seed=42)
     with pytest.raises(ValueError, match=f"{param}='invalid' is not valid"):
         cont_did(
             data=data,

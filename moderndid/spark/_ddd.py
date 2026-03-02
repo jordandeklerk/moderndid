@@ -150,10 +150,10 @@ def spark_ddd(
     .. code-block:: python
 
         from pyspark.sql import SparkSession
-        from moderndid import ddd, gen_dgp_mult_periods
+        from moderndid import ddd, gen_ddd_mult_periods
 
         spark = SparkSession.builder.master("local[*]").getOrCreate()
-        dgp = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+        dgp = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
         sdf = spark.createDataFrame(dgp["data"].to_pandas())
 
         result = ddd(

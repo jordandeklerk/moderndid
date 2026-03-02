@@ -3,7 +3,7 @@
 import pytest
 
 from moderndid.core.preprocessing import preprocess_ddd_2periods
-from moderndid.didtriple.dgp import gen_dgp_2periods
+from moderndid.didtriple.dgp import gen_ddd_2periods
 from moderndid.didtriple.nuisance import (
     DIDResult,
     OutcomeRegResult,
@@ -287,7 +287,7 @@ class TestEstimationMethods:
 
 class TestReproducibility:
     def test_deterministic(self):
-        result = gen_dgp_2periods(n=500, dgp_type=1, random_state=123)
+        result = gen_ddd_2periods(n=500, dgp_type=1, random_state=123)
         data = result["data"]
 
         ddd_data = preprocess_ddd_2periods(

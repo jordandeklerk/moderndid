@@ -145,9 +145,9 @@ def dask_ddd(
     .. code-block:: python
 
         import dask.dataframe as dd
-        from moderndid import ddd, gen_dgp_mult_periods
+        from moderndid import ddd, gen_ddd_mult_periods
 
-        dgp = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+        dgp = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
         ddf = dd.from_pandas(dgp["data"].to_pandas(), npartitions=4)
 
         result = ddd(

@@ -232,7 +232,7 @@ def cont_did(
         :okwarning:
 
         In [1]: import moderndid
-           ...: data = moderndid.simulate_cont_did_data(n=500, seed=42)
+           ...: data = moderndid.gen_cont_did_data(n=500, seed=42)
            ...: data.head()
 
     Estimate ATT as a function of dose using the parametric (B-spline) estimator:
@@ -259,7 +259,7 @@ def cont_did(
     .. ipython::
         :okwarning:
 
-        In [3]: data_cck = moderndid.simulate_cont_did_data(
+        In [3]: data_cck = moderndid.gen_cont_did_data(
            ...:     n=500, num_time_periods=2, seed=42
            ...: )
            ...: cck_result = moderndid.cont_did(

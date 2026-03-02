@@ -27,7 +27,7 @@ varies continuously and adoption is staggered across time periods.
 
     import moderndid as did
 
-    data = did.simulate_cont_did_data(
+    data = did.gen_cont_did_data(
         n=2000,
         num_time_periods=4,
         dose_linear_effect=0.5,
@@ -484,7 +484,7 @@ averaging pre-treatment and post-treatment outcomes.
 .. code-block:: python
 
     # Simulate two-period data for CCK
-    data_cck = did.simulate_cont_did_data(
+    data_cck = did.gen_cont_did_data(
         n=2000,
         num_time_periods=2,
         dose_linear_effect=0,

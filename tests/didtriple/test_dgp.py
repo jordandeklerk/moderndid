@@ -2,7 +2,7 @@
 
 import pytest
 
-from moderndid import gen_dgp_2periods, gen_dgp_mult_periods, generate_simple_ddd_data
+from moderndid import gen_ddd_2periods, gen_ddd_mult_periods, gen_simple_ddd_data
 from tests.helpers import importorskip
 
 np = importorskip("numpy")
@@ -12,7 +12,7 @@ pl_testing = importorskip("polars.testing")
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_2period_returns_expected_keys(dgp_type):
-    result = gen_dgp_2periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_2periods(n=500, dgp_type=dgp_type, random_state=42)
 
     assert "data" in result
     assert "true_att" in result
@@ -22,7 +22,7 @@ def test_2period_returns_expected_keys(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_2period_data_structure(dgp_type):
-    result = gen_dgp_2periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_2periods(n=500, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     assert isinstance(data, pl.DataFrame)
@@ -33,7 +33,7 @@ def test_2period_data_structure(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_2period_time_periods(dgp_type):
-    result = gen_dgp_2periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_2periods(n=500, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     assert set(data["time"].unique().to_list()) == {1, 2}
@@ -43,7 +43,7 @@ def test_2period_time_periods(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_2period_binary_variables(dgp_type):
-    result = gen_dgp_2periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_2periods(n=500, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     assert set(data["state"].unique().to_list()).issubset({0, 1})
@@ -52,21 +52,21 @@ def test_2period_binary_variables(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_2period_true_att_is_zero(dgp_type):
-    result = gen_dgp_2periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_2periods(n=500, dgp_type=dgp_type, random_state=42)
 
     assert result["true_att"] == 0.0
 
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_2period_oracle_att_near_zero(dgp_type):
-    result = gen_dgp_2periods(n=5000, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_2periods(n=5000, dgp_type=dgp_type, random_state=42)
 
     assert np.abs(result["oracle_att"]) < 1.0
 
 
 def test_2period_reproducibility():
-    result1 = gen_dgp_2periods(n=500, dgp_type=1, random_state=42)
-    result2 = gen_dgp_2periods(n=500, dgp_type=1, random_state=42)
+    result1 = gen_ddd_2periods(n=500, dgp_type=1, random_state=42)
+    result2 = gen_ddd_2periods(n=500, dgp_type=1, random_state=42)
 
     pl_testing.assert_frame_equal(result1["data"], result2["data"])
     assert result1["oracle_att"] == result2["oracle_att"]
@@ -74,19 +74,19 @@ def test_2period_reproducibility():
 
 def test_2period_invalid_dgp_type():
     with pytest.raises(ValueError, match="dgp_type must be 1, 2, 3, or 4"):
-        gen_dgp_2periods(n=500, dgp_type=5, random_state=42)
+        gen_ddd_2periods(n=500, dgp_type=5, random_state=42)
 
 
 @pytest.mark.parametrize("dgp_type,expected_bound", [(1, 32.82), (2, 32.52), (3, 32.82), (4, 32.52)])
 def test_2period_efficiency_bounds(dgp_type, expected_bound):
-    result = gen_dgp_2periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_2periods(n=500, dgp_type=dgp_type, random_state=42)
 
     assert result["efficiency_bound"] == expected_bound
 
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_multiperiod_returns_expected_keys(dgp_type):
-    result = gen_dgp_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
 
     assert "data" in result
     assert "data_wide" in result
@@ -97,7 +97,7 @@ def test_multiperiod_returns_expected_keys(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_multiperiod_long_data_structure(dgp_type):
-    result = gen_dgp_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     assert isinstance(data, pl.DataFrame)
@@ -108,7 +108,7 @@ def test_multiperiod_long_data_structure(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_multiperiod_wide_data_structure(dgp_type):
-    result = gen_dgp_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
     data_wide = result["data_wide"]
 
     assert isinstance(data_wide, pl.DataFrame)
@@ -119,7 +119,7 @@ def test_multiperiod_wide_data_structure(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_multiperiod_time_periods(dgp_type):
-    result = gen_dgp_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     assert set(data["time"].unique().to_list()) == {1, 2, 3}
@@ -129,7 +129,7 @@ def test_multiperiod_time_periods(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_multiperiod_cohort_values(dgp_type):
-    result = gen_dgp_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     assert set(data["group"].unique().to_list()).issubset({0, 2, 3})
@@ -137,7 +137,7 @@ def test_multiperiod_cohort_values(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_multiperiod_partition_binary(dgp_type):
-    result = gen_dgp_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
     data = result["data"]
 
     assert set(data["partition"].unique().to_list()).issubset({0, 1})
@@ -145,7 +145,7 @@ def test_multiperiod_partition_binary(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_multiperiod_probabilities_valid(dgp_type):
-    result = gen_dgp_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=dgp_type, random_state=42)
 
     assert 0 < result["prob_g2_p1"] < 1
     assert 0 < result["prob_g3_p1"] < 1
@@ -154,15 +154,15 @@ def test_multiperiod_probabilities_valid(dgp_type):
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_multiperiod_oracle_es_finite(dgp_type):
-    result = gen_dgp_mult_periods(n=1000, dgp_type=dgp_type, random_state=42)
+    result = gen_ddd_mult_periods(n=1000, dgp_type=dgp_type, random_state=42)
 
     assert np.isfinite(result["es_0_oracle"])
     assert result["es_0_oracle"] > 0
 
 
 def test_multiperiod_reproducibility():
-    result1 = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
-    result2 = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    result1 = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
+    result2 = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
 
     pl_testing.assert_frame_equal(result1["data"], result2["data"])
     pl_testing.assert_frame_equal(result1["data_wide"], result2["data_wide"])
@@ -171,11 +171,11 @@ def test_multiperiod_reproducibility():
 
 def test_multiperiod_invalid_dgp_type():
     with pytest.raises(ValueError, match="dgp_type must be 1, 2, 3, or 4"):
-        gen_dgp_mult_periods(n=500, dgp_type=5, random_state=42)
+        gen_ddd_mult_periods(n=500, dgp_type=5, random_state=42)
 
 
 def test_multiperiod_long_wide_consistency():
-    result = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    result = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
     data = result["data"]
     data_wide = result["data_wide"]
 
@@ -190,41 +190,41 @@ def test_multiperiod_long_wide_consistency():
 
 @pytest.mark.parametrize("n", [100, 500, 1000])
 def test_simple_ddd_data_size(n):
-    data = generate_simple_ddd_data(n=n, att=5.0, random_state=42)
+    data = gen_simple_ddd_data(n=n, att=5.0, random_state=42)
 
     assert len(data) == 2 * n
 
 
 def test_simple_ddd_data_structure():
-    data = generate_simple_ddd_data(n=500, att=5.0, random_state=42)
+    data = gen_simple_ddd_data(n=500, att=5.0, random_state=42)
 
     expected_cols = ["id", "state", "partition", "time", "y", "x1", "x2"]
     assert data.columns == expected_cols
 
 
 def test_simple_ddd_time_periods():
-    data = generate_simple_ddd_data(n=500, att=5.0, random_state=42)
+    data = gen_simple_ddd_data(n=500, att=5.0, random_state=42)
 
     assert set(data["time"].unique().to_list()) == {1, 2}
 
 
 def test_simple_ddd_binary_variables():
-    data = generate_simple_ddd_data(n=500, att=5.0, random_state=42)
+    data = gen_simple_ddd_data(n=500, att=5.0, random_state=42)
 
     assert set(data["state"].unique().to_list()).issubset({0, 1})
     assert set(data["partition"].unique().to_list()).issubset({0, 1})
 
 
 def test_simple_ddd_reproducibility():
-    data1 = generate_simple_ddd_data(n=500, att=5.0, random_state=42)
-    data2 = generate_simple_ddd_data(n=500, att=5.0, random_state=42)
+    data1 = gen_simple_ddd_data(n=500, att=5.0, random_state=42)
+    data2 = gen_simple_ddd_data(n=500, att=5.0, random_state=42)
 
     pl_testing.assert_frame_equal(data1, data2)
 
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_2period_rcs_data_structure(dgp_type):
-    result = gen_dgp_2periods(n=500, dgp_type=dgp_type, panel=False, random_state=42)
+    result = gen_ddd_2periods(n=500, dgp_type=dgp_type, panel=False, random_state=42)
     data = result["data"]
 
     assert isinstance(data, pl.DataFrame)
@@ -234,7 +234,7 @@ def test_2period_rcs_data_structure(dgp_type):
 
 
 def test_2period_rcs_unique_ids_per_period():
-    result = gen_dgp_2periods(n=500, dgp_type=1, panel=False, random_state=42)
+    result = gen_ddd_2periods(n=500, dgp_type=1, panel=False, random_state=42)
     data = result["data"]
 
     ids_t1 = set(data.filter(pl.col("time") == 1)["id"].to_list())
@@ -247,15 +247,15 @@ def test_2period_rcs_unique_ids_per_period():
 
 
 def test_2period_rcs_reproducibility():
-    result1 = gen_dgp_2periods(n=500, dgp_type=1, panel=False, random_state=42)
-    result2 = gen_dgp_2periods(n=500, dgp_type=1, panel=False, random_state=42)
+    result1 = gen_ddd_2periods(n=500, dgp_type=1, panel=False, random_state=42)
+    result2 = gen_ddd_2periods(n=500, dgp_type=1, panel=False, random_state=42)
 
     pl_testing.assert_frame_equal(result1["data"], result2["data"])
 
 
 def test_2period_panel_vs_rcs_difference():
-    result_panel = gen_dgp_2periods(n=500, dgp_type=1, panel=True, random_state=42)
-    result_rcs = gen_dgp_2periods(n=500, dgp_type=1, panel=False, random_state=42)
+    result_panel = gen_ddd_2periods(n=500, dgp_type=1, panel=True, random_state=42)
+    result_rcs = gen_ddd_2periods(n=500, dgp_type=1, panel=False, random_state=42)
 
     assert result_panel["data"]["id"].n_unique() == 500
     assert result_rcs["data"]["id"].n_unique() == 1000
@@ -263,7 +263,7 @@ def test_2period_panel_vs_rcs_difference():
 
 @pytest.mark.parametrize("dgp_type", [1, 2, 3, 4])
 def test_multiperiod_rcs_data_structure(dgp_type):
-    result = gen_dgp_mult_periods(n=300, dgp_type=dgp_type, panel=False, random_state=42)
+    result = gen_ddd_mult_periods(n=300, dgp_type=dgp_type, panel=False, random_state=42)
     data = result["data"]
 
     assert isinstance(data, pl.DataFrame)
@@ -273,7 +273,7 @@ def test_multiperiod_rcs_data_structure(dgp_type):
 
 
 def test_multiperiod_rcs_unique_ids_per_period():
-    result = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+    result = gen_ddd_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
     data = result["data"]
 
     ids_t1 = set(data.filter(pl.col("time") == 1)["id"].to_list())
@@ -290,21 +290,21 @@ def test_multiperiod_rcs_unique_ids_per_period():
 
 
 def test_multiperiod_rcs_no_data_wide():
-    result = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+    result = gen_ddd_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
 
     assert result["data_wide"] is None
 
 
 def test_multiperiod_rcs_reproducibility():
-    result1 = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
-    result2 = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+    result1 = gen_ddd_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+    result2 = gen_ddd_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
 
     pl_testing.assert_frame_equal(result1["data"], result2["data"])
 
 
 def test_multiperiod_panel_vs_rcs_difference():
-    result_panel = gen_dgp_mult_periods(n=300, dgp_type=1, panel=True, random_state=42)
-    result_rcs = gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+    result_panel = gen_ddd_mult_periods(n=300, dgp_type=1, panel=True, random_state=42)
+    result_rcs = gen_ddd_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
 
     assert result_panel["data"]["id"].n_unique() == 300
     assert result_rcs["data"]["id"].n_unique() == 900

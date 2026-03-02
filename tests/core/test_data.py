@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from moderndid.core.data import (
+    gen_cont_did_data,
     gen_did_scalable,
     load_cai2016,
     load_ehec,
@@ -11,7 +12,6 @@ from moderndid.core.data import (
     load_favara_imbs,
     load_mpdta,
     load_nsw,
-    simulate_cont_did_data,
 )
 from tests.helpers import importorskip
 
@@ -373,33 +373,33 @@ def test_gen_did_scalable_validation_errors(kwargs, match):
     "col",
     ["id", "time_period", "Y", "G", "D"],
 )
-def test_simulate_cont_did_data_default_columns(col):
-    df = simulate_cont_did_data()
+def test_gen_cont_did_data_default_columns(col):
+    df = gen_cont_did_data()
     assert isinstance(df, pl.DataFrame)
     assert col in df.columns
 
 
-def test_simulate_cont_did_data_shape():
-    df = simulate_cont_did_data(n=100, num_time_periods=3)
+def test_gen_cont_did_data_shape():
+    df = gen_cont_did_data(n=100, num_time_periods=3)
     assert df.shape[0] == 100 * 3
 
 
-def test_simulate_cont_did_data_sorted():
-    df = simulate_cont_did_data(n=50, seed=123)
+def test_gen_cont_did_data_sorted():
+    df = gen_cont_did_data(n=50, seed=123)
     ids = df["id"].to_list()
     times = df["time_period"].to_list()
     for i in range(len(ids) - 1):
         assert (ids[i], times[i]) <= (ids[i + 1], times[i + 1])
 
 
-def test_simulate_cont_did_data_never_treated_zero_dose():
-    df = simulate_cont_did_data(n=200, seed=99)
+def test_gen_cont_did_data_never_treated_zero_dose():
+    df = gen_cont_did_data(n=200, seed=99)
     never_treated = df.filter(pl.col("G") == 0)
     assert (never_treated["D"] == 0.0).all()
 
 
-def test_simulate_cont_did_data_custom_params():
-    df = simulate_cont_did_data(
+def test_gen_cont_did_data_custom_params():
+    df = gen_cont_did_data(
         n=100,
         num_time_periods=5,
         num_groups=5,
@@ -412,8 +412,8 @@ def test_simulate_cont_did_data_custom_params():
     assert 0 in groups
 
 
-def test_simulate_cont_did_data_custom_probabilities():
-    df = simulate_cont_did_data(
+def test_gen_cont_did_data_custom_probabilities():
+    df = gen_cont_did_data(
         n=300,
         num_time_periods=3,
         p_untreated=0.5,
@@ -423,7 +423,7 @@ def test_simulate_cont_did_data_custom_probabilities():
     assert df.shape[0] == 300 * 3
 
 
-def test_simulate_cont_did_data_reproducible():
-    df1 = simulate_cont_did_data(n=50, seed=42)
-    df2 = simulate_cont_did_data(n=50, seed=42)
+def test_gen_cont_did_data_reproducible():
+    df1 = gen_cont_did_data(n=50, seed=42)
+    df2 = gen_cont_did_data(n=50, seed=42)
     np.testing.assert_array_equal(df1["Y"].to_numpy(), df2["Y"].to_numpy())

@@ -9,14 +9,14 @@ distributed = pytest.importorskip("distributed")
 
 import dask.dataframe as dd
 
-from moderndid import simulate_cont_did_data
+from moderndid import gen_cont_did_data
 from moderndid.dask._didcont import dask_cont_did
 from moderndid.didcont.cont_did import cont_did
 
 
 @pytest.fixture(scope="module")
 def cont_did_data():
-    return simulate_cont_did_data(n=500, seed=42)
+    return gen_cont_did_data(n=500, seed=42)
 
 
 def test_dask_cont_did_dose_matches_local(dask_client, cont_did_data):

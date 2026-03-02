@@ -223,7 +223,7 @@ Event time 0 is the on-impact effect, negative event times are pre-treatment per
 
 ### Consistent API
 
-All estimators share a unified interface. Pass any [Arrow PyCapsule](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)-compatible DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and others) and estimation works the same way:
+All estimators share a unified interface for core arguments. Pass any [Arrow PyCapsule](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)-compatible DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and others) and estimation works the same way:
 
 ```python
 result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
@@ -275,10 +275,10 @@ Synthetic data generators are also available for simulations and benchmarking.
 
 ```python
 did.gen_did_scalable()           # Staggered DiD panel
-did.simulate_cont_did_data()     # Continuous treatment DiD
-did.gen_dgp_2periods()           # Two-period triple DiD
-did.gen_dgp_mult_periods()       # Staggered triple DiD
-did.gen_dgp_scalable()           # Large-scale triple DiD
+did.gen_cont_did_data()          # Continuous treatment DiD
+did.gen_ddd_2periods()           # Two-period triple DiD
+did.gen_ddd_mult_periods()       # Staggered triple DiD
+did.gen_ddd_scalable()           # Large-scale triple DiD
 ```
 
 ## Planned Development

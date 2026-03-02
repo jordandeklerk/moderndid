@@ -9,7 +9,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import simulate_cont_did_data
+from moderndid import gen_cont_did_data
 from moderndid.didcont.estimation import (
     PTEParams,
     _choose_knots_quantile,
@@ -25,7 +25,7 @@ from moderndid.didcont.estimation import (
 
 @pytest.fixture
 def contdid_data():
-    data = simulate_cont_did_data(n=1000, seed=12345)
+    data = gen_cont_did_data(n=1000, seed=12345)
     return data.rename({"time_period": "period"})
 
 

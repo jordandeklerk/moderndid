@@ -7,7 +7,7 @@ import pytest
 from moderndid import ddd_mp
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 from moderndid.didtriple.agg_ddd_obj import DDDAggResult
-from moderndid.didtriple.dgp import gen_dgp_2periods, gen_dgp_mult_periods
+from moderndid.didtriple.dgp import gen_ddd_2periods, gen_ddd_mult_periods
 from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
 from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
 from moderndid.didtriple.estimators.ddd_panel import DDDPanelResult
@@ -17,7 +17,7 @@ from moderndid.didtriple.estimators.ddd_rc import DDDRCResult
 @pytest.fixture
 def ddd_data_with_covariates():
     """Generate DDD data with covariates."""
-    result = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=1000, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -38,7 +38,7 @@ def ddd_data_with_covariates():
 @pytest.fixture
 def ddd_data_no_covariates():
     """Generate DDD data without covariates."""
-    result = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=1000, dgp_type=1, random_state=42)
     data = result["data"]
 
     ddd_data = preprocess_ddd_2periods(
@@ -101,21 +101,21 @@ def mp_ddd_result(mp_ddd_data):
 @pytest.fixture
 def two_period_df():
     """Raw 2-period DataFrame for ddd() wrapper tests."""
-    dgp = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+    dgp = gen_ddd_2periods(n=1000, dgp_type=1, random_state=42)
     return dgp["data"]
 
 
 @pytest.fixture
 def multi_period_df():
     """Raw multi-period DataFrame for ddd() wrapper tests."""
-    dgp = gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    dgp = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
     return dgp["data"]
 
 
 @pytest.fixture
 def two_period_dgp_result():
     """Full 2-period DGP result including true ATT and oracle ATT."""
-    result = gen_dgp_2periods(n=1000, dgp_type=1, random_state=42)
+    result = gen_ddd_2periods(n=1000, dgp_type=1, random_state=42)
     return result["data"], result["true_att"], result["oracle_att"]
 
 

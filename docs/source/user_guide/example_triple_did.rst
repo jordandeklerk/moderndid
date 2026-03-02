@@ -377,7 +377,7 @@ ineligible.
 
     import moderndid as did
 
-    dgp = did.gen_dgp_2periods(n=5000, dgp_type=1, random_state=42)
+    dgp = did.gen_ddd_2periods(n=5000, dgp_type=1, random_state=42)
     data = dgp["data"]
     print(data.head(6))
 
@@ -489,7 +489,7 @@ effects for each combination of treatment cohort and time period.
 
 .. code-block:: python
 
-    dgp_mp = did.gen_dgp_mult_periods(n=500, dgp_type=1, random_state=42)
+    dgp_mp = did.gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
     data_mp = dgp_mp["data"]
     print(data_mp.head(6))
 
@@ -860,7 +860,7 @@ each period, that works too. Just set ``panel=False``.
 
 .. code-block:: python
 
-    dgp_rcs = did.gen_dgp_2periods(n=5000, dgp_type=1, panel=False, random_state=42)
+    dgp_rcs = did.gen_ddd_2periods(n=5000, dgp_type=1, panel=False, random_state=42)
     data_rcs = dgp_rcs["data"]
 
     result_rcs = did.ddd(

@@ -6,7 +6,7 @@ pyspark = pytest.importorskip("pyspark")
 from moderndid.core.data import gen_did_scalable
 from moderndid.did.att_gt import att_gt
 from moderndid.didtriple.ddd import ddd
-from moderndid.didtriple.dgp import gen_dgp_mult_periods, gen_dgp_scalable
+from moderndid.didtriple.dgp import gen_ddd_mult_periods, gen_ddd_scalable
 from moderndid.spark._ddd import spark_ddd
 from moderndid.spark._did import spark_att_gt
 
@@ -26,7 +26,7 @@ def did_rc_data():
 
 @pytest.fixture(scope="module")
 def ddd_rc_data():
-    return gen_dgp_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
+    return gen_ddd_mult_periods(n=300, dgp_type=1, panel=False, random_state=42)
 
 
 @pytest.fixture(scope="module")
@@ -36,7 +36,7 @@ def did_2period_rc_data():
 
 @pytest.fixture(scope="module")
 def ddd_2period_rc_data():
-    return gen_dgp_scalable(n=200, dgp_type=1, n_periods=2, n_cohorts=1, panel=False, random_state=42)
+    return gen_ddd_scalable(n=200, dgp_type=1, n_periods=2, n_cohorts=1, panel=False, random_state=42)
 
 
 @pytest.mark.parametrize("est_method", ["reg", "dr"])
