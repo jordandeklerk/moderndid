@@ -31,8 +31,7 @@ For detailed documentation, including user guides and API reference, see [modern
 ## Installation
 
 ```bash
-uv pip install moderndid        # Core estimators (did, drdid, didinter, didtriple)
-uv pip install moderndid[all]   # All estimators, plots, numba, spark, dask (excludes gpu)
+uv pip install moderndid   # Core estimators (did, drdid, didinter, didtriple)
 ```
 
 Some estimators and features require additional dependencies that are not installed by default. Extras are additive and build on the base install, so you always get the core estimators ([`att_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
@@ -46,9 +45,25 @@ Some estimators and features require additional dependencies that are not instal
 - **`gpu`** - GPU-accelerated estimation (requires CUDA)
 
 ```bash
-uv pip install moderndid[didcont,plots]   # Combine multiple extras
-uv pip install moderndid[gpu,spark]       # GPU + distributed
+uv pip install "moderndid[all]"             # All extras except gpu
+uv pip install "moderndid[didcont,plots]"   # Combine specific extras
+uv pip install "moderndid[gpu,spark]"       # GPU + distributed
 ```
+
+To install the latest development version directly from GitHub:
+
+```bash
+uv pip install "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
+```
+
+> [!TIP]
+> When a package manager like `uv` or `pip` cannot resolve a dependency required by an extra, it may silently fall back to an older version of __ModernDiD__ where that extra does not exist, rather than raising an error.
+>
+> The `gpu` extra is the most likely to trigger this, since it depends on `cupy-cuda12x` (Linux and Windows only) and `rmm-cu12` (Linux only), both of which require NVIDIA CUDA. If you see a warning like `The package moderndid==0.0.3 does not have an extra named 'gpu'`, this is what happened. To use the `gpu` extra, install on a machine with NVIDIA CUDA drivers, or pin the version to get a clear error instead of a silent downgrade.
+>
+> ```bash
+> uv pip install "moderndid[gpu]>=0.1.0"
+> ```
 
 ## Quick Start
 
@@ -220,23 +235,32 @@ result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="trea
 
 ### Scaling Up
 
-**Distributed.** Pass a Spark or Dask DataFrame and the distributed backend activates automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
-
-**GPU.** Pass `backend="cupy"` to offload estimation to NVIDIA GPUs. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
+**Distributed Computing.** Pass a Spark or Dask DataFrame and the distributed backend activates automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
 
 ```python
 from pyspark.sql import SparkSession
 spark = SparkSession.builder.master("local[*]").getOrCreate()
-result = did.att_gt(data=spark.read.parquet("panel.parquet"),
-                    yname="y", tname="t", idname="id", gname="g")
+result = did.att_gt(data=spark.read.parquet("panel.parquet"), # Spark dataframe
+                    yname="y",
+                    tname="t",
+                    idname="id",
+                    gname="g")
 ```
 
+**GPU Acceleration.** Pass `backend="cupy"` to offload estimation to NVIDIA GPUs. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
+
 ```python
-result = did.att_gt(data, yname="lemp", tname="year", idname="countyreal",
-                    gname="first.treat", backend="cupy")
+result = did.att_gt(data,
+                    yname="lemp",
+                    tname="year",
+                    idname="countyreal",
+                    gname="first.treat",
+                    backend="cupy") # GPU backend
 ```
 
 ### Example Datasets
+
+Built-in datasets from published studies are included for testing and reproducing results. All loaders return Arrow-compatible DataFrames that work directly with any estimator.
 
 ```python
 did.load_mpdta()       # County teen employment
@@ -247,7 +271,7 @@ did.load_favara_imbs() # Bank lending
 did.load_cai2016()     # Crop insurance
 ```
 
-Synthetic data generators are also available for simulations and benchmarking:
+Synthetic data generators are also available for simulations and benchmarking.
 
 ```python
 did.gen_did_scalable()           # Staggered DiD panel
