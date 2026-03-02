@@ -50,6 +50,15 @@ uv pip install moderndid[didcont,plots]   # Combine multiple extras
 uv pip install moderndid[gpu,spark]       # GPU + distributed
 ```
 
+> [!TIP]
+> When a package manager like `uv` or `pip` cannot resolve a dependency required by an extra, it may silently fall back to an older version of __ModernDiD__ where that extra does not exist, rather than raising an error.
+>
+> The `gpu` extra is the most likely to trigger this, since it depends on `cupy-cuda12x` (Linux and Windows only) and `rmm-cu12` (Linux only), both of which require NVIDIA CUDA. To use the `gpu` extra, install on a Linux machine with NVIDIA CUDA drivers, or pin the version to get a clear error instead of a silent downgrade:
+>
+> ```bash
+> uv pip install "moderndid[gpu]>=0.1.0"
+> ```
+
 ## Quick Start
 
 This example uses county-level teen employment data to estimate the effect of minimum wage increases. States adopted higher minimum wages at different times (2004, 2006, or 2007), making this a staggered adoption design.
