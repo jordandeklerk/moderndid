@@ -276,9 +276,9 @@ The placebo effects at horizons -1, -2, and -3 are all statistically
 insignificant, with confidence intervals that include zero. The joint test
 p-value of 0.17 indicates we cannot reject the null that all pre-treatment
 effects are jointly zero at conventional levels. This is consistent with the
-parallel trends assumption, suggesting that counties that had not yet deregulated
-interstate branching were evolving similarly to those that had already
-switched, in the periods before the switch occurred. The point estimates
+parallel trends assumption, suggesting that counties that eventually
+deregulated were evolving similarly to those that had not yet deregulated
+(or never did), in the periods before deregulation occurred. The point estimates
 at placebos -2 and -3 are negative and somewhat large in absolute value,
 though imprecise. With more data, it would be worth investigating whether
 this reflects noise or a pre-existing divergence.
@@ -516,8 +516,8 @@ analyze. Use ``[-1]`` to analyze all estimated horizons.
     │ 3       ┆ state_n   ┆ 0.000174  ┆ 0.001323  ┆ 0.131911  ┆ -0.002421 ┆ 0.00277  ┆ 904 ┆ 0.895084  │
     └─────────┴───────────┴───────────┴───────────┴───────────┴───────────┴──────────┴─────┴───────────┘
 
-Under the hood, ``predict_het`` runs WLS regressions of the estimated
-treatment effect on the specified covariates at each horizon. The F p-value column tests whether the
+Under the hood, ``predict_het`` regresses each switcher's signed outcome
+change on the specified covariates and cohort fixed effects at each horizon. The F p-value column tests whether the
 covariate has any predictive power for treatment effect heterogeneity. Here
 the p-values at all three horizons are large (0.20, 0.25, and 0.90),
 indicating no evidence that the effect of deregulation on lending varies

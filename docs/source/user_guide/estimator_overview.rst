@@ -229,8 +229,9 @@ placebo estimates for testing parallel trends.
     )
 
 By default, units that experience both treatment increases and decreases
-(bidirectional switchers) are dropped because they can violate the
-no-sign-reversal property required for causal identification. Set
+(bidirectional switchers) are dropped because their treatment effects can
+be written as a linear combination with negative weights, making the
+estimates difficult to interpret causally. Set
 ``keep_bidirectional_switchers=True`` to override this, but interpret
 results with caution.
 
