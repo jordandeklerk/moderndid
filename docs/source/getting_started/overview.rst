@@ -125,9 +125,9 @@ Next steps
 ----------
 
 - :doc:`installation` for detailed install options and optional extras.
-- :ref:`Quickstart <quickstart>` to learn the API with working examples.
 - :ref:`Introduction to DiD <causal_inference>` for background on the
   difference-in-differences framework.
+- :ref:`Quickstart <quickstart>` to learn the API with working examples.
 
 
 .. toctree::

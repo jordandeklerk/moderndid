@@ -486,6 +486,8 @@ analyze. Use ``[-1]`` to analyze all estimated horizons.
 
 .. code-block:: python
 
+    import polars as pl
+
     result_het = md.did_multiplegt(
         data=df,
         yname="Dl_vloans_b",
@@ -496,8 +498,6 @@ analyze. Use ``[-1]`` to analyze all estimated horizons.
         cluster="state_n",
         predict_het=(["state_n"], [-1]),
     )
-
-    import polars as pl
 
     frames = [h.to_dataframe() for h in result_het.heterogeneity]
     print(pl.concat(frames))
