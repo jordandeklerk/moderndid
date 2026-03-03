@@ -236,7 +236,11 @@ results with caution.
 
 The result includes an average total effect (ATE) per unit of treatment
 that accounts for both contemporaneous and lagged effects. The ATE is not
-computed when ``trends_lin=True``.
+computed when ``trends_lin=True``. The estimator can also restrict to
+one direction of treatment change with ``switchers="in"`` or
+``switchers="out"``, and test for effect heterogeneity across
+time-invariant covariates with ``predict_het``. See the
+:ref:`user guide <example_inter_did>` for worked examples of these features.
 
 .. important::
 
