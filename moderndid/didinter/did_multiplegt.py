@@ -44,7 +44,7 @@ def did_multiplegt(
 
     Implements difference-in-differences estimation for settings where treatment
     may be non-binary, non-absorbing (time-varying), and where lagged treatments
-    may affect the outcome, following [1]_. Unlike standard DID which assumes
+    may affect the outcome, following [3]_. Unlike standard DID which assumes
     binary absorbing treatment, this estimator handles complex treatment patterns
     where units can experience treatment increases, decreases, or multiple changes
     over time.
@@ -279,11 +279,15 @@ def did_multiplegt(
     References
     ----------
 
-    .. [1] Callaway, B., & Sant'Anna, P. H. (2021). Difference-in-Differences
+    .. [1] Bell, R., & McCaffrey, D. (2002). Bias Reduction in Standard
+           Errors for Linear Regression with Multi-Stage Samples.
+           *Survey Methodology*, 28(2), 169-181.
+
+    .. [2] Callaway, B., & Sant'Anna, P. H. (2021). Difference-in-Differences
            with Multiple Time Periods. *Journal of Econometrics*, 225(2),
            200-230. https://doi.org/10.1016/j.jeconom.2020.12.001
 
-    .. [2] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
+    .. [3] de Chaisemartin, C., & D'Haultfoeuille, X. (2024). Difference-in-
            Differences Estimators of Intertemporal Treatment Effects.
            *Review of Economics and Statistics*, 106(6), 1723-1736.
            https://doi.org/10.1162/rest_a_01414
