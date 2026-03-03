@@ -493,7 +493,8 @@ def compute_joint_test(estimates, vcov):
     Returns
     -------
     dict or None
-        Dictionary with chi2_stat, df, and p_value, or None if computation fails.
+        Dictionary with chi2_stat, df, p_value, and warnings list,
+        or None if computation fails.
 
     References
     ----------
@@ -512,10 +513,39 @@ def compute_joint_test(estimates, vcov):
     valid_estimates = estimates[valid_mask]
     valid_vcov = vcov[np.ix_(valid_mask, valid_mask)]
 
+    warnings_list = []
+
+    eigenvalues = np.linalg.eigvalsh(valid_vcov)
+    positive_eigenvalues = eigenvalues[eigenvalues > 1e-10]
+
+    if len(positive_eigenvalues) < len(valid_estimates):
+        warnings_list.append(
+            "The variance-covariance matrix of the effects tested is not invertible. The test cannot be computed."
+        )
+        return {
+            "chi2_stat": np.nan,
+            "df": len(valid_estimates),
+            "p_value": np.nan,
+            "warnings": warnings_list,
+        }
+
+    condition_ratio = positive_eigenvalues.max() / positive_eigenvalues.min()
+    if condition_ratio >= 1000:
+        warnings_list.append(
+            "The variance-covariance matrix of the effects tested is close "
+            f"to singular (condition ratio: {condition_ratio:.1f}). The chi-squared test "
+            "may be unreliable."
+        )
+
     try:
-        chi2_stat = float(valid_estimates @ np.linalg.solve(valid_vcov, valid_estimates))
+        chi2_stat = float(valid_estimates @ np.linalg.pinv(valid_vcov) @ valid_estimates)
         df = len(valid_estimates)
         p_value = 1 - stats.chi2.cdf(chi2_stat, df)
-        return {"chi2_stat": chi2_stat, "df": df, "p_value": p_value}
+        return {
+            "chi2_stat": chi2_stat,
+            "df": df,
+            "p_value": p_value,
+            "warnings": warnings_list,
+        }
     except np.linalg.LinAlgError:
         return None

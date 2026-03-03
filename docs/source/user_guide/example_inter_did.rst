@@ -128,7 +128,7 @@ treatment changes) to "non-switchers" with the same baseline treatment. The
     ┌────────┬────────────┬────────────────────────┬───────┬───────────┐
     │    ATE │ Std. Error │ [95% Conf. Interval]   │     N │ Switchers │
     ├────────┼────────────┼────────────────────────┼───────┼───────────┤
-    │ 0.0346 │     0.0131 │ [  0.0090,   0.0603] * │ 12947 │      4525 │
+    │ 0.0346 │     0.0131 │ [  0.0090,   0.0602] * │ 12947 │      4525 │
     └────────┴────────────┴────────────────────────┴───────┴───────────┘
 
 
@@ -219,7 +219,7 @@ effects would suggest a violation of parallel trends.
     ┌────────┬────────────┬────────────────────────┬───────┬───────────┐
     │    ATE │ Std. Error │ [95% Conf. Interval]   │     N │ Switchers │
     ├────────┼────────────┼────────────────────────┼───────┼───────────┤
-    │ 0.0346 │     0.0131 │ [  0.0090,   0.0603] * │ 12947 │      4525 │
+    │ 0.0346 │     0.0131 │ [  0.0090,   0.0602] * │ 12947 │      4525 │
     └────────┴────────────┴────────────────────────┴───────┴───────────┘
 
 
@@ -276,9 +276,9 @@ The placebo effects at horizons -1, -2, and -3 are all statistically
 insignificant, with confidence intervals that include zero. The joint test
 p-value of 0.17 indicates we cannot reject the null that all pre-treatment
 effects are jointly zero at conventional levels. This is consistent with the
-parallel trends assumption, suggesting that counties that had not yet deregulated
-interstate branching were evolving similarly to those that had already
-switched, in the periods before the switch occurred. The point estimates
+parallel trends assumption, suggesting that counties that eventually
+deregulated were evolving similarly to those that had not yet deregulated
+(or never did), in the periods before deregulation occurred. The point estimates
 at placebos -2 and -3 are negative and somewhat large in absolute value,
 though imprecise. With more data, it would be worth investigating whether
 this reflects noise or a pre-existing divergence.
@@ -319,7 +319,7 @@ change, giving you a per-unit-of-treatment interpretation.
     ┌────────┬────────────┬────────────────────────┬───────┬───────────┐
     │    ATE │ Std. Error │ [95% Conf. Interval]   │     N │ Switchers │
     ├────────┼────────────┼────────────────────────┼───────┼───────────┤
-    │ 0.0346 │     0.0131 │ [  0.0090,   0.0603] * │ 12947 │      4525 │
+    │ 0.0346 │     0.0131 │ [  0.0090,   0.0602] * │ 12947 │      4525 │
     └────────┴────────────┴────────────────────────┴───────┴───────────┘
 
 
@@ -419,11 +419,167 @@ horizons show treatment effects that are positive and relatively stable over
 time after normalization.
 
 
+Restricting the comparison
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+By default, :func:`~moderndid.did_multiplegt` pools all units whose treatment changed,
+regardless of the direction of the change. Setting ``switchers="in"``
+restricts estimation to units whose treatment increased, while
+``switchers="out"`` restricts to units whose treatment decreased. This is
+useful for checking whether effects are driven by one direction of change or
+for settings where treatment increases and decreases have qualitatively
+different implications.
+
+.. code-block:: python
+
+    result_in = md.did_multiplegt(
+        data=df,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=5,
+        cluster="state_n",
+        switchers="in",
+    )
+
+In this dataset, deregulation is one-directional (states lifted restrictions
+but did not reimpose them), so ``switchers="in"`` produces the same results
+as the default. In other applications where treatment can increase or
+decrease, filtering by direction can reveal asymmetries in the treatment
+response.
+
+You can also choose which units form the control group. By default, the
+comparison uses not-yet-switchers, which maximizes sample
+size but may introduce bias if treatment timing is anticipated. Setting
+``only_never_switchers=True`` restricts the control group to units that
+never change treatment, giving a cleaner comparison at the cost of fewer
+controls.
+
+.. code-block:: python
+
+    result_never = md.did_multiplegt(
+        data=df,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=5,
+        cluster="state_n",
+        only_never_switchers=True,
+    )
+
+With only 129 never-switchers in this dataset, the sample sizes at each
+horizon drop substantially (from roughly 3,800 to 1,600 at horizon 1) and
+standard errors increase. The point estimates remain positive and, if
+anything, are larger than the baseline, suggesting that the main results are
+not driven by contamination from not-yet-switchers in the control group.
+
+
+Heterogeneous effects
+^^^^^^^^^^^^^^^^^^^^^
+
+The ``predict_het`` parameter tests whether treatment effects vary across
+subgroups defined by time-invariant covariates. It takes a tuple of
+(covariate_list, horizon_list) where the horizons specify which effects to
+analyze. Use ``[-1]`` to analyze all estimated horizons.
+
+.. code-block:: python
+
+    import polars as pl
+
+    result_het = md.did_multiplegt(
+        data=df,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=3,
+        cluster="state_n",
+        predict_het=(["state_n"], [-1]),
+    )
+
+    frames = [h.to_dataframe() for h in result_het.heterogeneity]
+    print(pl.concat(frames))
+
+.. code-block:: text
+
+    shape: (3, 9)
+    ┌─────────┬───────────┬───────────┬───────────┬───────────┬───────────┬──────────┬─────┬───────────┐
+    │ Horizon ┆ Covariate ┆ Estimate  ┆ Std.      ┆ t-stat    ┆ CI Lower  ┆ CI Upper ┆ N   ┆ F p-value │
+    │ ---     ┆ ---       ┆ ---       ┆ Error     ┆ ---       ┆ ---       ┆ ---      ┆ --- ┆ ---       │
+    │ i64     ┆ str       ┆ f64       ┆ ---       ┆ f64       ┆ f64       ┆ f64      ┆ i64 ┆ f64       │
+    │         ┆           ┆           ┆ f64       ┆           ┆           ┆          ┆     ┆           │
+    ╞═════════╪═══════════╪═══════════╪═══════════╪═══════════╪═══════════╪══════════╪═════╪═══════════╡
+    │ 1       ┆ state_n   ┆ -0.001856 ┆ 0.001439  ┆ -1.289654 ┆ -0.00468  ┆ 0.000968 ┆ 904 ┆ 0.197503  │
+    │ 2       ┆ state_n   ┆ -0.001427 ┆ 0.001249  ┆ -1.142576 ┆ -0.003877 ┆ 0.001024 ┆ 904 ┆ 0.25352   │
+    │ 3       ┆ state_n   ┆ 0.000174  ┆ 0.001323  ┆ 0.131911  ┆ -0.002421 ┆ 0.00277  ┆ 904 ┆ 0.895084  │
+    └─────────┴───────────┴───────────┴───────────┴───────────┴───────────┴──────────┴─────┴───────────┘
+
+Under the hood, ``predict_het`` regresses each switcher's signed outcome
+change on the specified covariates and cohort fixed effects at each horizon. The F p-value column tests whether the
+covariate has any predictive power for treatment effect heterogeneity. Here
+the p-values at all three horizons are large (0.20, 0.25, and 0.90),
+indicating no evidence that the effect of deregulation on lending varies
+systematically across states. For small-sample settings, set
+``predict_het_hc2bm=True`` to use Bell-McCaffrey degrees-of-freedom adjusted
+standard errors.
+
+
+Inference options
+^^^^^^^^^^^^^^^^^
+
+By default :func:`~moderndid.did_multiplegt` computes analytical standard errors using the
+influence function. The ``less_conservative_se`` and ``boot`` parameters
+provide two alternatives.
+
+Setting ``less_conservative_se=True`` adjusts variance estimation using the
+number of distinct (cohort, control-group) cells rather than the total number
+of clusters. This typically produces smaller standard errors and is
+appropriate when the number of distinct comparison groups is large relative to
+the number of clusters.
+
+.. code-block:: python
+
+    result_lc = md.did_multiplegt(
+        data=df,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=5,
+        cluster="state_n",
+        less_conservative_se=True,
+    )
+
+Setting ``boot=True`` uses the multiplier bootstrap for inference instead of
+the asymptotic influence function. This is recommended when ``continuous > 0``
+(since asymptotic normality is not proven for continuous treatments) and as a
+robustness check in small samples. Set ``biters`` for the number of
+replications and ``random_state`` for reproducibility.
+
+.. code-block:: python
+
+    result_boot = md.did_multiplegt(
+        data=df,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=3,
+        cluster="state_n",
+        boot=True,
+        biters=999,
+        random_state=42,
+    )
+
+
 Next steps
 ----------
 
-For details on additional options such as effect equality tests, heterogeneous
-effects by covariates, and control variables, see the
+For the complete parameter reference including covariates (``controls``),
+non-parametric trends (``trends_nonparam``), and confidence level
+(``ci_level``), see the
 :ref:`Intertemporal DiD API reference <api-didinter>`.
 
 For theoretical background on the de Chaisemartin and D'Haultfoeuille estimator,

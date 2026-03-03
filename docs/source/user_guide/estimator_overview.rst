@@ -229,14 +229,19 @@ placebo estimates for testing parallel trends.
     )
 
 By default, units that experience both treatment increases and decreases
-(bidirectional switchers) are dropped because they can violate the
-no-sign-reversal property required for causal identification. Set
+(bidirectional switchers) are dropped because their treatment effects can
+be written as a linear combination with negative weights, making the
+estimates difficult to interpret causally. Set
 ``keep_bidirectional_switchers=True`` to override this, but interpret
 results with caution.
 
 The result includes an average total effect (ATE) per unit of treatment
 that accounts for both contemporaneous and lagged effects. The ATE is not
-computed when ``trends_lin=True``.
+computed when ``trends_lin=True``. The estimator can also restrict to
+one direction of treatment change with ``switchers="in"`` or
+``switchers="out"``, and test for effect heterogeneity across
+time-invariant covariates with ``predict_het``. See the
+:ref:`user guide <example_inter_did>` for worked examples of these features.
 
 .. important::
 

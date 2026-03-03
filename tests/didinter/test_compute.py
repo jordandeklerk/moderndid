@@ -11,9 +11,9 @@ from moderndid.core.preprocess.config import DIDInterConfig
 from moderndid.didinter.compute_did_multiplegt import (
     _compute_ate,
     _compute_delta_d,
+    _compute_same_switchers_mask,
+    _get_group_vars,
     _test_effects_equality,
-    compute_same_switchers_mask,
-    get_group_vars,
 )
 
 
@@ -26,7 +26,7 @@ from moderndid.didinter.compute_did_multiplegt import (
         (["region", "industry"], 4, ["time", "d_sq", "region", "industry"]),
     ],
 )
-def test_get_group_vars(trends_nonparam, expected_len, expected_vars):
+def test__get_group_vars(trends_nonparam, expected_len, expected_vars):
     config = DIDInterConfig(
         yname="y",
         tname="time",
@@ -35,7 +35,7 @@ def test_get_group_vars(trends_nonparam, expected_len, expected_vars):
         trends_nonparam=trends_nonparam,
     )
 
-    group_vars = get_group_vars(config)
+    group_vars = _get_group_vars(config)
 
     assert len(group_vars) == expected_len
     for var in expected_vars:
@@ -75,7 +75,7 @@ def test_compute_same_switchers_mask_basic(horizon_type, n_horizons, has_l_g):
             }
         )
 
-    result = compute_same_switchers_mask(df, config, n_horizons=n_horizons, _t_max=3, horizon_type=horizon_type)
+    result = _compute_same_switchers_mask(df, config, n_horizons=n_horizons, _t_max=3, horizon_type=horizon_type)
 
     assert "same_switcher_valid" in result.columns
 
@@ -96,7 +96,7 @@ def test_compute_same_switchers_mask_effect_validation():
         }
     )
 
-    result = compute_same_switchers_mask(df, config, n_horizons=2, _t_max=2, horizon_type="effect")
+    result = _compute_same_switchers_mask(df, config, n_horizons=2, _t_max=2, horizon_type="effect")
     result_sorted = result.sort(["id", "time"])
     valid_values = result_sorted["same_switcher_valid"].to_list()
 
@@ -120,7 +120,7 @@ def test_compute_same_switchers_mask_no_l_g():
         }
     )
 
-    result = compute_same_switchers_mask(df, config, n_horizons=2, _t_max=2, horizon_type="effect")
+    result = _compute_same_switchers_mask(df, config, n_horizons=2, _t_max=2, horizon_type="effect")
 
     assert "same_switcher_valid" in result.columns
     assert result["same_switcher_valid"].all()
@@ -142,7 +142,7 @@ def test_compute_same_switchers_mask_large_n_horizons():
         }
     )
 
-    result = compute_same_switchers_mask(df, config, n_horizons=3, _t_max=4, horizon_type="effect")
+    result = _compute_same_switchers_mask(df, config, n_horizons=3, _t_max=4, horizon_type="effect")
 
     assert "same_switcher_valid" in result.columns
 
@@ -262,7 +262,7 @@ def test_compute_ate_weighting_by_switchers(n_switchers, expected_weight_ratio):
         "std_errors": np.array([0.1, 0.1]),
         "n_switchers": n_switchers,
         "n_switchers_weighted": n_switchers,
-        "delta_d_arr": np.array([1.0, 1.0]),
+        "delta_d_arr": np.array([1.0, 2.0]),
         "n_observations": np.array([500.0, 500.0]),
         "vcov": np.diag([0.01, 0.01]),
     }

@@ -1,5 +1,7 @@
 """Shared fixtures for didinter tests."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -8,6 +10,7 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 
 from moderndid import load_favara_imbs
+from moderndid.didinter.results import EffectsResult
 
 
 @pytest.fixture(scope="module")
@@ -97,6 +100,24 @@ def clustered_panel_data(simple_panel_data):
     df = simple_panel_data.clone()
     cluster = (df["id"] // 10).cast(pl.Int64)
     return df.with_columns(cluster.alias("cluster"))
+
+
+@pytest.fixture
+def large_clustered_panel_data(rng):
+    """Panel data with 100 units and 10 clusters for HC2BM tests."""
+    n_units, n_periods = 100, 6
+    units = np.repeat(np.arange(n_units), n_periods)
+    periods = np.tile(np.arange(1, n_periods + 1), n_units)
+    treatment = np.zeros(len(units))
+    for unit in range(n_units):
+        mask = units == unit
+        if unit < 40:
+            treatment[mask & (periods >= 3)] = 1
+        elif unit < 60:
+            treatment[mask & (periods >= 4)] = 1
+    y = rng.standard_normal(len(units)) + 2.0 * treatment
+    df = pl.DataFrame({"id": units, "time": periods, "y": y, "d": treatment})
+    return df.with_columns((pl.col("id") // 10).cast(pl.Int64).alias("cluster"))
 
 
 @pytest.fixture
@@ -199,7 +220,65 @@ def effects_results_basic():
         "std_errors": np.array([0.1, 0.12, 0.15]),
         "n_switchers": np.array([100.0, 90.0, 80.0]),
         "n_switchers_weighted": np.array([100.0, 90.0, 80.0]),
-        "delta_d_arr": np.array([1.0, 1.0, 1.0]),
+        "delta_d_arr": np.array([1.0, 2.0, 3.0]),
         "n_observations": np.array([500.0, 450.0, 400.0]),
         "vcov": np.diag([0.01, 0.0144, 0.0225]),
     }
+
+
+@pytest.fixture
+def effects_results_5():
+    """Effects results dict with 5 horizons for range testing."""
+    estimates = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
+    vcov = np.eye(5) * 0.01 + 0.002
+    return {"estimates": estimates, "vcov": vcov}
+
+
+@pytest.fixture
+def het_sample():
+    """Small heterogeneity sample for regression tests."""
+    rng = np.random.default_rng(42)
+    n = 60
+    return pl.DataFrame(
+        {
+            "_prod_het": rng.standard_normal(n),
+            "weight_gt": rng.uniform(0.5, 2.0, n),
+            "x1": rng.standard_normal(n),
+            "x2": rng.standard_normal(n),
+            "F_g": np.repeat([3.0, 4.0, 5.0], n // 3),
+            "d_sq": np.repeat([0.0, 1.0, 0.0], n // 3),
+            "S_g": np.repeat([1.0, 1.0, -1.0], n // 3),
+            "cluster_id": np.repeat(np.arange(n // 5), 5),
+        }
+    )
+
+
+@pytest.fixture
+def minimal_effects():
+    """Minimal EffectsResult for result container tests."""
+    return EffectsResult(
+        horizons=np.array([1.0, 2.0]),
+        estimates=np.array([0.5, 0.6]),
+        std_errors=np.array([0.1, 0.12]),
+        ci_lower=np.array([0.304, 0.365]),
+        ci_upper=np.array([0.696, 0.835]),
+        n_switchers=np.array([100.0, 90.0]),
+        n_observations=np.array([500.0, 450.0]),
+    )
+
+
+@pytest.fixture
+def hc2_config():
+    """Config namespace for HC2 regression tests."""
+    return SimpleNamespace(trends_nonparam=None, predict_het_hc2bm=False)
+
+
+@pytest.fixture
+def hc2bm_config():
+    """Config namespace for HC2-BM clustered regression tests."""
+    return SimpleNamespace(
+        trends_nonparam=None,
+        predict_het_hc2bm=True,
+        cluster="cluster_id",
+        gname="cluster_id",
+    )

@@ -182,6 +182,11 @@ class DIDInterConfig(ConfigMixin):
     drop_missing_preswitch: bool = False
 
     predict_het: tuple[list[str], list[int]] | None = None
+    predict_het_hc2bm: bool = False
+    more_granular_demeaning: bool = False
+
+    effects_equal_lb: int | None = None
+    effects_equal_ub: int | None = None
 
     boot: bool = False
     biters: int = 1000
