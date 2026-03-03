@@ -103,6 +103,24 @@ def clustered_panel_data(simple_panel_data):
 
 
 @pytest.fixture
+def large_clustered_panel_data(rng):
+    """Panel data with 100 units and 10 clusters for HC2BM tests."""
+    n_units, n_periods = 100, 6
+    units = np.repeat(np.arange(n_units), n_periods)
+    periods = np.tile(np.arange(1, n_periods + 1), n_units)
+    treatment = np.zeros(len(units))
+    for unit in range(n_units):
+        mask = units == unit
+        if unit < 40:
+            treatment[mask & (periods >= 3)] = 1
+        elif unit < 60:
+            treatment[mask & (periods >= 4)] = 1
+    y = rng.standard_normal(len(units)) + 2.0 * treatment
+    df = pl.DataFrame({"id": units, "time": periods, "y": y, "d": treatment})
+    return df.with_columns((pl.col("id") // 10).cast(pl.Int64).alias("cluster"))
+
+
+@pytest.fixture
 def panel_with_controls(simple_panel_data, rng):
     """Panel data with control variables."""
     n = len(simple_panel_data)

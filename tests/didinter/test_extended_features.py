@@ -415,3 +415,198 @@ def test_more_granular_demeaning_integration(simple_panel_data):
     )
     assert isinstance(result, DIDInterResult)
     assert len(result.effects.estimates) == 2
+
+
+def test_predict_het_integration(clustered_panel_data):
+    result = md.did_multiplegt(
+        clustered_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=3,
+        cluster="cluster",
+        predict_het=(["cluster"], [-1]),
+    )
+    assert len(result.heterogeneity) == 3
+    for h in result.heterogeneity:
+        assert h.covariates == ["cluster"]
+        assert all(np.isfinite(h.estimates))
+        assert all(se > 0 for se in h.std_errors)
+        assert 0 <= h.f_pvalue <= 1
+        assert h.n_obs > 0
+    horizons = sorted(h.horizon for h in result.heterogeneity)
+    assert horizons == [1, 2, 3]
+
+
+def test_predict_het_specific_horizons(clustered_panel_data):
+    result = md.did_multiplegt(
+        clustered_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=3,
+        cluster="cluster",
+        predict_het=(["cluster"], [1, 3]),
+    )
+    assert len(result.heterogeneity) == 2
+    horizons = sorted(h.horizon for h in result.heterogeneity)
+    assert horizons == [1, 3]
+
+
+def test_predict_het_hc2bm_differs_from_hc2(large_clustered_panel_data):
+    shared = dict(
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        cluster="cluster",
+        predict_het=(["cluster"], [-1]),
+    )
+    result_hc2 = md.did_multiplegt(large_clustered_panel_data, **shared)
+    result_hc2bm = md.did_multiplegt(
+        large_clustered_panel_data,
+        **shared,
+        predict_het_hc2bm=True,
+    )
+    for i in range(len(result_hc2.heterogeneity)):
+        h_hc2 = result_hc2.heterogeneity[i]
+        h_bm = result_hc2bm.heterogeneity[i]
+        np.testing.assert_array_equal(h_hc2.estimates, h_bm.estimates)
+        assert not np.allclose(h_hc2.std_errors, h_bm.std_errors)
+        assert all(se > 0 for se in h_hc2.std_errors)
+        assert all(se > 0 for se in h_bm.std_errors)
+
+
+def test_predict_het_weights_change_estimates(weighted_panel_data):
+    df = weighted_panel_data.with_columns((pl.col("id") // 10).cast(pl.Int64).alias("cluster"))
+    shared = dict(
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        predict_het=(["cluster"], [-1]),
+    )
+    r_unweighted = md.did_multiplegt(df, **shared)
+    r_weighted = md.did_multiplegt(df, **shared, weightsname="w")
+    for i in range(len(r_unweighted.heterogeneity)):
+        assert not np.allclose(
+            r_unweighted.heterogeneity[i].estimates,
+            r_weighted.heterogeneity[i].estimates,
+        )
+
+
+def test_switchers_out_produces_negative_estimates(rng):
+    n_units, n_periods = 40, 6
+    units = np.repeat(np.arange(n_units), n_periods)
+    periods = np.tile(np.arange(1, n_periods + 1), n_units)
+    treatment = np.ones(len(units))
+    for unit in range(n_units):
+        mask = units == unit
+        if unit < 15:
+            treatment[mask & (periods >= 3)] = 0
+    y = rng.standard_normal(len(units)) + 1.5 * treatment
+    df = pl.DataFrame({"id": units, "time": periods, "y": y, "d": treatment})
+    result = md.did_multiplegt(
+        df,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        switchers="out",
+    )
+    assert all(est < 0 for est in result.effects.estimates)
+    assert all(nsw == 15 for nsw in result.effects.n_switchers)
+
+
+def test_same_switchers_pl_preserves_placebo_validity(simple_panel_data):
+    result = md.did_multiplegt(
+        simple_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        placebo=2,
+        same_switchers_pl=True,
+    )
+    assert len(result.placebos.estimates) == 2
+    assert all(np.isfinite(result.placebos.estimates))
+    assert all(nsw > 0 for nsw in result.placebos.n_switchers)
+    for est in result.placebos.estimates:
+        assert abs(est) < abs(result.effects.estimates[0])
+
+
+def test_only_never_switchers_reduces_control_group(simple_panel_data):
+    r_default = md.did_multiplegt(
+        simple_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+    )
+    r_never = md.did_multiplegt(
+        simple_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        only_never_switchers=True,
+    )
+    assert r_never.effects.n_observations[0] < r_default.effects.n_observations[0]
+    assert all(np.isfinite(r_never.effects.estimates))
+    assert all(est > 0 for est in r_never.effects.estimates)
+
+
+@pytest.mark.parametrize(
+    "params,expected_substr",
+    [
+        ({"only_never_switchers": True}, "Never-switchers only"),
+        ({"same_switchers": True}, "Same switchers across horizons"),
+        ({"trends_lin": True}, "Linear trends"),
+        ({"trends_nonparam": ["region", "sector"]}, "Non-parametric trends: region, sector"),
+    ],
+    ids=["never-switchers", "same-switchers", "trends-lin", "trends-nonparam"],
+)
+def test_format_estimation_detail_lines(minimal_effects, params, expected_substr):
+    base_params = {"effects": 2, "placebo": 0}
+    base_params.update(params)
+    result = DIDInterResult(
+        effects=minimal_effects,
+        estimation_params=base_params,
+    )
+    formatted = format_didinter_result(result)
+    assert expected_substr in formatted
+
+
+@pytest.mark.parametrize(
+    "param,value,match",
+    [
+        ("continuous", -1, "continuous=-1 is not valid"),
+        ("continuous", 1.5, "continuous=1.5 is not valid"),
+        ("biters", 0, "biters=0 is not valid"),
+        ("biters", -10, "biters=-10 is not valid"),
+        ("predict_het", "bad", "predict_het must be a tuple"),
+        ("predict_het", (["x"],), "predict_het must be a tuple"),
+        ("predict_het", ([1], [1]), "predict_het.*must be a list of covariate name"),
+        ("predict_het", (["x"], "bad"), "predict_het.*must be a list of integer"),
+        ("trends_nonparam", "bad", "trends_nonparam must be a list"),
+        ("trends_nonparam", [1, 2], "trends_nonparam must be a list"),
+    ],
+)
+def test_new_param_validation(simple_panel_data, param, value, match):
+    with pytest.raises(ValueError, match=match):
+        md.did_multiplegt(
+            simple_panel_data,
+            yname="y",
+            idname="id",
+            tname="time",
+            dname="d",
+            **{param: value},
+        )
