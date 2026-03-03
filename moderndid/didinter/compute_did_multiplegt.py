@@ -53,10 +53,10 @@ def compute_did_multiplegt(preprocessed):
     t_max = int(df[config.tname].max())
 
     if config.same_switchers:
-        df = compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
+        df = _compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
 
     if config.same_switchers_pl and config.placebo > 0:
-        df = compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
+        df = _compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
 
     effects_results = _compute_did_effects(
         df=df,
@@ -207,10 +207,10 @@ def _compute_bootstrap_estimates(df, config):
         return result
 
     if config.same_switchers:
-        df = compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
+        df = _compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
 
     if config.same_switchers_pl and config.placebo > 0:
-        df = compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
+        df = _compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
 
     effects_results = _compute_did_effects(
         df=df,
@@ -312,7 +312,7 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         never_w_col = f"never_change_w_{abs_h}"
         df = df.with_columns((pl.col(never_col) * pl.col("weight_gt")).alias(never_w_col))
 
-        group_vars = get_group_vars(config)
+        group_vars = _get_group_vars(config)
         n_control_col = f"n_control_{abs_h}"
         df = df.with_columns(pl.col(never_w_col).sum().over(group_vars).alias(n_control_col))
 
@@ -520,6 +520,185 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         "vcov": vcov,
         "df": df,
     }
+
+
+def _run_het_regression(het_sample, covariates, horizon, config):
+    """Run WLS regression for heterogeneity analysis at a given horizon.
+
+    Uses HC2 standard errors by default. When ``predict_het_hc2bm`` is True on
+    ``config``, uses HC2 clustered (Bell-McCaffrey) standard errors clustered
+    by the ``cluster`` variable (or ``gname`` if no cluster is specified).
+    """
+    y = het_sample["_prod_het"].to_numpy()
+
+    # Use uniform weights when the user has not specified a weight variable.
+    # The preprocessed weight_gt column zeros out rows with missing Y/D at the
+    # observation level, but the het regression uses a group-level dependent
+    # variable (_prod_het) that can be valid even when the raw outcome is null
+    # at _gr_id=0.  Inheriting those zeros would incorrectly drop valid
+    # switchers from the het regression.
+    has_user_weights = getattr(config, "weightsname", None) is not None
+    if has_user_weights and "weight_gt" in het_sample.columns:
+        weights = het_sample["weight_gt"].to_numpy()
+    else:
+        weights = np.ones(len(y))
+
+    X_cov_raw = het_sample.select(covariates).to_numpy()
+    valid_mask = ~np.isnan(y) & np.all(np.isfinite(X_cov_raw), axis=1)
+    if valid_mask.sum() < len(covariates) + 5:
+        return None
+
+    y = y[valid_mask]
+    weights = weights[valid_mask]
+
+    X_cov = X_cov_raw[valid_mask]
+
+    interaction_cols = ["F_g", "d_sq", "S_g"]
+    if config.trends_nonparam:
+        interaction_cols.extend(c for c in config.trends_nonparam if c in het_sample.columns)
+
+    fe_arrays = []
+    for col in interaction_cols:
+        if col in het_sample.columns:
+            fe_arrays.append(het_sample[col].to_numpy()[valid_mask])
+
+    X_parts = [np.ones((len(y), 1)), X_cov]
+    if fe_arrays:
+        stacked = np.column_stack(fe_arrays)
+        _, inverse = np.unique(stacked, axis=0, return_inverse=True)
+        n_groups = inverse.max() + 1
+        if n_groups > 1:
+            dummies = np.zeros((len(y), n_groups - 1))
+            for i in range(1, n_groups):
+                dummies[:, i - 1] = (inverse == i).astype(float)
+            keep = dummies.std(axis=0) > 0
+            dummies = dummies[:, keep]
+            if dummies.shape[1] > 0:
+                X_base = np.column_stack([np.ones((len(y), 1)), X_cov, dummies])
+                _, R = np.linalg.qr(X_base, mode="reduced")
+                n_base = 1 + X_cov.shape[1]
+                tol = 1e-10 * np.abs(np.diag(R[:n_base, :n_base])).max()
+                indep = np.abs(np.diag(R)[n_base:]) > tol
+                dummies = dummies[:, indep]
+            if dummies.shape[1] > 0:
+                X_parts.append(dummies)
+
+    X = np.column_stack(X_parts)
+
+    use_hc2bm = getattr(config, "predict_het_hc2bm", False)
+
+    if use_hc2bm:
+        cluster_col = getattr(config, "cluster", None)
+        if cluster_col and cluster_col in het_sample.columns:
+            cluster_ids = het_sample[cluster_col].to_numpy()[valid_mask]
+        else:
+            cluster_col = None
+            cluster_ids = None
+
+        # Block BM only helps when clusters have >1 observation; otherwise
+        # it degenerates to standard HC2.
+        has_multi_obs_clusters = cluster_ids is not None and np.any(
+            np.bincount(cluster_ids.astype(int) - cluster_ids.astype(int).min()) > 1
+        )
+
+        if not has_multi_obs_clusters:
+            if cluster_col is None:
+                warnings.warn(
+                    "predict_het_hc2bm has no effect without an explicit "
+                    "cluster variable. The heterogeneity sample has one row "
+                    "per group, so Bell-McCaffrey clustering reduces to "
+                    "standard HC2. Specify 'cluster' for multi-observation "
+                    "clusters.",
+                    UserWarning,
+                    stacklevel=4,
+                )
+            else:
+                warnings.warn(
+                    f"predict_het_hc2bm has no effect because all clusters "
+                    f"in '{cluster_col}' have a single observation in the "
+                    "heterogeneity sample, so Bell-McCaffrey reduces to "
+                    "standard HC2.",
+                    UserWarning,
+                    stacklevel=4,
+                )
+            use_hc2bm = False
+
+    if use_hc2bm:
+        model_fit = sm.WLS(y, X, weights=weights).fit()
+
+        try:
+            XtWX_inv = np.linalg.inv((X * weights[:, None]).T @ X)
+        except np.linalg.LinAlgError:
+            XtWX_inv = np.linalg.pinv((X * weights[:, None]).T @ X)
+
+        resid_wt = weights * model_fit.resid
+
+        unique_clusters = np.unique(cluster_ids)
+        k = X.shape[1]
+
+        # Bell-McCaffrey block HC2
+        M = np.zeros((k, k))
+        for c in unique_clusters:
+            ij = cluster_ids == c
+            X_c = X[ij]
+            w_c = weights[ij]
+            res_c = resid_wt[ij]
+            m_c = ij.sum()
+
+            H_cc = X_c @ XtWX_inv @ X_c.T @ np.diag(w_c)
+            eigvals, eigvecs = np.linalg.eigh(np.eye(m_c) - H_cc)
+            eigvals = np.maximum(eigvals, 1e-10)
+            A_inv_sqrt = eigvecs @ np.diag(eigvals ** (-0.5)) @ eigvecs.T
+
+            res_adj = A_inv_sqrt @ res_c
+            s_c = (res_adj[:, None] * X_c).sum(axis=0)
+            M += np.outer(s_c, s_c)
+
+        vcov_hc2bm = XtWX_inv @ M @ XtWX_inv
+
+        model_fit._results.cov_params_default = vcov_hc2bm
+        model = model_fit
+    else:
+        model = sm.WLS(y, X, weights=weights).fit(cov_type="HC2")
+
+    n_cov = len(covariates)
+    coef_indices = list(range(1, n_cov + 1))
+
+    coefs = model.params[coef_indices]
+    ses = np.sqrt(np.diag(model.cov_params()))[coef_indices] if use_hc2bm else model.bse[coef_indices]
+    t_stats = coefs / ses
+
+    t_crit = stats.t.ppf(0.975, model.df_resid)
+    ci_lower = coefs - t_crit * ses
+    ci_upper = coefs + t_crit * ses
+
+    r_matrix = np.zeros((n_cov, len(model.params)))
+    for i, idx in enumerate(coef_indices):
+        r_matrix[i, idx] = 1
+
+    if use_hc2bm:
+        beta_r = r_matrix @ model.params
+        v_r = r_matrix @ model.cov_params() @ r_matrix.T
+        try:
+            f_stat = float(beta_r @ np.linalg.solve(v_r, beta_r)) / n_cov
+        except np.linalg.LinAlgError:
+            f_stat = float(beta_r @ np.linalg.pinv(v_r) @ beta_r) / n_cov
+        f_pvalue = 1 - stats.f.cdf(f_stat, n_cov, model.df_resid)
+    else:
+        f_test = model.f_test(r_matrix)
+        f_pvalue = float(f_test.pvalue)
+
+    return HeterogeneityResult(
+        horizon=horizon,
+        covariates=covariates,
+        estimates=np.array(coefs),
+        std_errors=np.array(ses),
+        t_stats=np.array(t_stats),
+        ci_lower=np.array(ci_lower),
+        ci_upper=np.array(ci_upper),
+        n_obs=int(model.nobs),
+        f_pvalue=f_pvalue,
+    )
 
 
 def _compute_delta_d(df, config, horizon, horizon_type, dist_col=None):
@@ -853,186 +1032,7 @@ def _compute_het_horizon(df, covariates, horizon, config):
     return _run_het_regression(het_sample, covariates, horizon, config)
 
 
-def _run_het_regression(het_sample, covariates, horizon, config):
-    """Run WLS regression for heterogeneity analysis at a given horizon.
-
-    Uses HC2 standard errors by default. When ``predict_het_hc2bm`` is True on
-    ``config``, uses HC2 clustered (Bell-McCaffrey) standard errors clustered
-    by the ``cluster`` variable (or ``gname`` if no cluster is specified).
-    """
-    y = het_sample["_prod_het"].to_numpy()
-
-    # Use uniform weights when the user has not specified a weight variable.
-    # The preprocessed weight_gt column zeros out rows with missing Y/D at the
-    # observation level, but the het regression uses a group-level dependent
-    # variable (_prod_het) that can be valid even when the raw outcome is null
-    # at _gr_id=0.  Inheriting those zeros would incorrectly drop valid
-    # switchers from the het regression.
-    has_user_weights = getattr(config, "weightsname", None) is not None
-    if has_user_weights and "weight_gt" in het_sample.columns:
-        weights = het_sample["weight_gt"].to_numpy()
-    else:
-        weights = np.ones(len(y))
-
-    X_cov_raw = het_sample.select(covariates).to_numpy()
-    valid_mask = ~np.isnan(y) & np.all(np.isfinite(X_cov_raw), axis=1)
-    if valid_mask.sum() < len(covariates) + 5:
-        return None
-
-    y = y[valid_mask]
-    weights = weights[valid_mask]
-
-    X_cov = X_cov_raw[valid_mask]
-
-    interaction_cols = ["F_g", "d_sq", "S_g"]
-    if config.trends_nonparam:
-        interaction_cols.extend(c for c in config.trends_nonparam if c in het_sample.columns)
-
-    fe_arrays = []
-    for col in interaction_cols:
-        if col in het_sample.columns:
-            fe_arrays.append(het_sample[col].to_numpy()[valid_mask])
-
-    X_parts = [np.ones((len(y), 1)), X_cov]
-    if fe_arrays:
-        stacked = np.column_stack(fe_arrays)
-        _, inverse = np.unique(stacked, axis=0, return_inverse=True)
-        n_groups = inverse.max() + 1
-        if n_groups > 1:
-            dummies = np.zeros((len(y), n_groups - 1))
-            for i in range(1, n_groups):
-                dummies[:, i - 1] = (inverse == i).astype(float)
-            keep = dummies.std(axis=0) > 0
-            dummies = dummies[:, keep]
-            if dummies.shape[1] > 0:
-                X_base = np.column_stack([np.ones((len(y), 1)), X_cov, dummies])
-                _, R = np.linalg.qr(X_base, mode="reduced")
-                n_base = 1 + X_cov.shape[1]
-                tol = 1e-10 * np.abs(np.diag(R[:n_base, :n_base])).max()
-                indep = np.abs(np.diag(R)[n_base:]) > tol
-                dummies = dummies[:, indep]
-            if dummies.shape[1] > 0:
-                X_parts.append(dummies)
-
-    X = np.column_stack(X_parts)
-
-    use_hc2bm = getattr(config, "predict_het_hc2bm", False)
-
-    if use_hc2bm:
-        cluster_col = getattr(config, "cluster", None)
-        if cluster_col and cluster_col in het_sample.columns:
-            cluster_ids = het_sample[cluster_col].to_numpy()[valid_mask]
-        else:
-            cluster_col = None
-            cluster_ids = None
-
-        # Block BM only helps when clusters have >1 observation; otherwise
-        # it degenerates to standard HC2.
-        has_multi_obs_clusters = cluster_ids is not None and np.any(
-            np.bincount(cluster_ids.astype(int) - cluster_ids.astype(int).min()) > 1
-        )
-
-        if not has_multi_obs_clusters:
-            if cluster_col is None:
-                warnings.warn(
-                    "predict_het_hc2bm has no effect without an explicit "
-                    "cluster variable. The heterogeneity sample has one row "
-                    "per group, so Bell-McCaffrey clustering reduces to "
-                    "standard HC2. Specify 'cluster' for multi-observation "
-                    "clusters.",
-                    UserWarning,
-                    stacklevel=4,
-                )
-            else:
-                warnings.warn(
-                    f"predict_het_hc2bm has no effect because all clusters "
-                    f"in '{cluster_col}' have a single observation in the "
-                    "heterogeneity sample, so Bell-McCaffrey reduces to "
-                    "standard HC2.",
-                    UserWarning,
-                    stacklevel=4,
-                )
-            use_hc2bm = False
-
-    if use_hc2bm:
-        model_fit = sm.WLS(y, X, weights=weights).fit()
-
-        try:
-            XtWX_inv = np.linalg.inv((X * weights[:, None]).T @ X)
-        except np.linalg.LinAlgError:
-            XtWX_inv = np.linalg.pinv((X * weights[:, None]).T @ X)
-
-        resid_wt = weights * model_fit.resid
-
-        unique_clusters = np.unique(cluster_ids)
-        k = X.shape[1]
-
-        # Bell-McCaffrey block HC2
-        M = np.zeros((k, k))
-        for c in unique_clusters:
-            ij = cluster_ids == c
-            X_c = X[ij]
-            w_c = weights[ij]
-            res_c = resid_wt[ij]
-            m_c = ij.sum()
-
-            H_cc = X_c @ XtWX_inv @ X_c.T @ np.diag(w_c)
-            eigvals, eigvecs = np.linalg.eigh(np.eye(m_c) - H_cc)
-            eigvals = np.maximum(eigvals, 1e-10)
-            A_inv_sqrt = eigvecs @ np.diag(eigvals ** (-0.5)) @ eigvecs.T
-
-            res_adj = A_inv_sqrt @ res_c
-            s_c = (res_adj[:, None] * X_c).sum(axis=0)
-            M += np.outer(s_c, s_c)
-
-        vcov_hc2bm = XtWX_inv @ M @ XtWX_inv
-
-        model_fit._results.cov_params_default = vcov_hc2bm
-        model = model_fit
-    else:
-        model = sm.WLS(y, X, weights=weights).fit(cov_type="HC2")
-
-    n_cov = len(covariates)
-    coef_indices = list(range(1, n_cov + 1))
-
-    coefs = model.params[coef_indices]
-    ses = np.sqrt(np.diag(model.cov_params()))[coef_indices] if use_hc2bm else model.bse[coef_indices]
-    t_stats = coefs / ses
-
-    t_crit = stats.t.ppf(0.975, model.df_resid)
-    ci_lower = coefs - t_crit * ses
-    ci_upper = coefs + t_crit * ses
-
-    r_matrix = np.zeros((n_cov, len(model.params)))
-    for i, idx in enumerate(coef_indices):
-        r_matrix[i, idx] = 1
-
-    if use_hc2bm:
-        beta_r = r_matrix @ model.params
-        v_r = r_matrix @ model.cov_params() @ r_matrix.T
-        try:
-            f_stat = float(beta_r @ np.linalg.solve(v_r, beta_r)) / n_cov
-        except np.linalg.LinAlgError:
-            f_stat = float(beta_r @ np.linalg.pinv(v_r) @ beta_r) / n_cov
-        f_pvalue = 1 - stats.f.cdf(f_stat, n_cov, model.df_resid)
-    else:
-        f_test = model.f_test(r_matrix)
-        f_pvalue = float(f_test.pvalue)
-
-    return HeterogeneityResult(
-        horizon=horizon,
-        covariates=covariates,
-        estimates=np.array(coefs),
-        std_errors=np.array(ses),
-        t_stats=np.array(t_stats),
-        ci_lower=np.array(ci_lower),
-        ci_upper=np.array(ci_upper),
-        n_obs=int(model.nobs),
-        f_pvalue=f_pvalue,
-    )
-
-
-def compute_same_switchers_mask(df, config, n_horizons, _t_max, horizon_type="effect"):
+def _compute_same_switchers_mask(df, config, n_horizons, _t_max, horizon_type="effect"):
     """Compute mask for switchers valid at all horizons."""
     if "L_g" in df.columns:
         if horizon_type == "effect":
@@ -1046,7 +1046,7 @@ def compute_same_switchers_mask(df, config, n_horizons, _t_max, horizon_type="ef
     return df
 
 
-def get_group_vars(config):
+def _get_group_vars(config):
     """Get grouping variables for control matching."""
     group_vars = [config.tname, "d_sq"]
 
