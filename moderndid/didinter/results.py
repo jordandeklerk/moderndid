@@ -219,3 +219,4 @@ class DIDInterResult(NamedTuple):
     influence_placebos: np.ndarray | None = None
     heterogeneity: list | None = None
     estimation_params: dict = {}
+    vcov_warnings: list = []

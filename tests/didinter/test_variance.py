@@ -72,12 +72,22 @@ def test_compute_clustered_variance_cluster_effect(rng):
     [
         (np.array([0.1, 0.2]), None, None),
         (np.array([np.nan, np.nan]), np.eye(2), None),
-        (np.array([0.1, 0.2]), np.array([[1.0, 1.0], [1.0, 1.0]]), None),
     ],
 )
 def test_compute_joint_test_returns_none(estimates, vcov, expected_result):
     result = compute_joint_test(estimates, vcov)
     assert result is expected_result
+
+
+def test_compute_joint_test_singular_vcov():
+    estimates = np.array([0.1, 0.2])
+    vcov = np.array([[1.0, 1.0], [1.0, 1.0]])
+    result = compute_joint_test(estimates, vcov)
+    assert result is not None
+    assert np.isnan(result["chi2_stat"])
+    assert np.isnan(result["p_value"])
+    assert len(result["warnings"]) == 1
+    assert "not invertible" in result["warnings"][0]
 
 
 def test_compute_joint_test_basic():

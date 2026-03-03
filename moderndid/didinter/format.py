@@ -121,6 +121,11 @@ def format_didinter_result(result: DIDInterResult) -> str:
     else:
         lines.append(" Standard errors: Analytical")
 
+    if result.vcov_warnings:
+        lines.extend(format_section_header("Warnings"))
+        for w in result.vcov_warnings:
+            lines.append(f" {w}")
+
     lines.extend(format_footer("See de Chaisemartin and D'Haultfoeuille (2024) for details."))
 
     lines = adjust_separators(lines)

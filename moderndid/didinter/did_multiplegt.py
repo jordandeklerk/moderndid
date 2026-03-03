@@ -22,6 +22,7 @@ def did_multiplegt(
     normalized=False,
     effects_equal=False,
     predict_het=None,
+    predict_het_hc2bm=False,
     switchers="",
     only_never_switchers=False,
     same_switchers=False,
@@ -31,6 +32,7 @@ def did_multiplegt(
     continuous=0,
     ci_level=95.0,
     less_conservative_se=False,
+    more_granular_demeaning=False,
     keep_bidirectional_switchers=False,
     drop_missing_preswitch=False,
     boot=False,
@@ -119,15 +121,24 @@ def did_multiplegt(
         by the average cumulative treatment change. The normalized effect is
         a weighted average of the effects of the current treatment and its
         lags, useful when treatment magnitudes vary across units.
-    effects_equal : bool, default=False
-        If True, perform a joint test of whether all treatment effects
-        :math:`\delta_1 = \delta_2 = \cdots = \delta_L` are equal. Returns
-        a chi-squared test statistic and p-value.
+    effects_equal : bool or str or tuple, default=False
+        Test whether treatment effects are equal across horizons.
+
+        - ``True`` or ``"all"``: test all effects
+        - ``"lb, ub"`` string: test effects in the range [lb, ub]
+        - ``(lb, ub)`` tuple: test effects in the range [lb, ub]
+
+        Returns a chi-squared test statistic and p-value.
     predict_het : tuple[list[str], list[int]], optional
         Analyze heterogeneous effects by covariates. A tuple of (covariates, horizons)
         where covariates is a list of time-invariant covariate names and horizons
         is a list of effect horizons to analyze (use [-1] for all horizons).
         Runs WLS regressions to test whether effects vary by covariates.
+    predict_het_hc2bm : bool, default=False
+        If True, use HC2 Bell-McCaffrey degrees-of-freedom adjusted standard
+        errors for the ``predict_het`` regressions, which are more robust in
+        small samples. Requires ``predict_het`` to be specified. Clusters on
+        ``cluster`` if set, otherwise ``idname``.
     switchers : {"", "in", "out"}, default=""
         Which switchers to include in estimation:
 
@@ -155,6 +166,9 @@ def did_multiplegt(
         If True, use less conservative standard error estimation with
         degrees-of-freedom adjustment based on the number of clusters or
         switchers.
+    more_granular_demeaning : bool, default=False
+        If True, enable path-based variance demeaning. This is a semantic
+        alias that automatically sets ``less_conservative_se=True``.
     keep_bidirectional_switchers : bool, default=False
         If True, keep units that experience both treatment increases AND
         decreases over time. By default, these units are dropped because
@@ -315,6 +329,37 @@ def did_multiplegt(
             raise ValueError("predict_het[0] must be a list of covariate name strings.")
         if not isinstance(horizons, list) or not all(isinstance(h, int) for h in horizons):
             raise ValueError("predict_het[1] must be a list of integer horizons.")
+    if predict_het_hc2bm and predict_het is None:
+        raise ValueError("predict_het_hc2bm=True requires predict_het to be specified.")
+    if more_granular_demeaning:
+        less_conservative_se = True
+
+    effects_equal_lb = None
+    effects_equal_ub = None
+    if isinstance(effects_equal, str) and effects_equal != "all":
+        parts = [p.strip() for p in effects_equal.split(",")]
+        if len(parts) != 2:
+            raise ValueError(
+                f"effects_equal='{effects_equal}' is not valid. Use True, 'all', 'lb,ub', or a (lb, ub) tuple."
+            )
+        effects_equal_lb, effects_equal_ub = int(parts[0]), int(parts[1])
+        effects_equal = True
+    elif isinstance(effects_equal, tuple):
+        if len(effects_equal) != 2:
+            raise ValueError("effects_equal tuple must have exactly 2 elements (lb, ub).")
+        effects_equal_lb, effects_equal_ub = int(effects_equal[0]), int(effects_equal[1])
+        effects_equal = True
+    elif effects_equal == "all":
+        effects_equal = True
+
+    if effects_equal_lb is not None and effects_equal_ub is not None:
+        if effects_equal_lb < 1:
+            raise ValueError(f"effects_equal lower bound must be >= 1, got {effects_equal_lb}.")
+        if effects_equal_ub <= effects_equal_lb:
+            raise ValueError(
+                f"effects_equal upper bound ({effects_equal_ub}) must be greater than lower bound ({effects_equal_lb})."
+            )
+
     if trends_nonparam is not None and (
         not isinstance(trends_nonparam, list) or not all(isinstance(v, str) for v in trends_nonparam)
     ):
@@ -339,6 +384,7 @@ def did_multiplegt(
             normalized=normalized,
             effects_equal=effects_equal,
             predict_het=predict_het,
+            predict_het_hc2bm=predict_het_hc2bm,
             switchers=switchers,
             only_never_switchers=only_never_switchers,
             same_switchers=same_switchers,
@@ -348,6 +394,7 @@ def did_multiplegt(
             continuous=continuous,
             ci_level=ci_level,
             less_conservative_se=less_conservative_se,
+            more_granular_demeaning=more_granular_demeaning,
             keep_bidirectional_switchers=keep_bidirectional_switchers,
             drop_missing_preswitch=drop_missing_preswitch,
             boot=boot,
@@ -375,6 +422,7 @@ def did_multiplegt(
             normalized=normalized,
             effects_equal=effects_equal,
             predict_het=predict_het,
+            predict_het_hc2bm=predict_het_hc2bm,
             switchers=switchers,
             only_never_switchers=only_never_switchers,
             same_switchers=same_switchers,
@@ -384,6 +432,7 @@ def did_multiplegt(
             continuous=continuous,
             ci_level=ci_level,
             less_conservative_se=less_conservative_se,
+            more_granular_demeaning=more_granular_demeaning,
             keep_bidirectional_switchers=keep_bidirectional_switchers,
             drop_missing_preswitch=drop_missing_preswitch,
             boot=boot,
@@ -406,6 +455,10 @@ def did_multiplegt(
         normalized=normalized,
         effects_equal=effects_equal,
         predict_het=predict_het,
+        predict_het_hc2bm=predict_het_hc2bm,
+        more_granular_demeaning=more_granular_demeaning,
+        effects_equal_lb=effects_equal_lb,
+        effects_equal_ub=effects_equal_ub,
         switchers=switchers,
         only_never_switchers=only_never_switchers,
         same_switchers=same_switchers,

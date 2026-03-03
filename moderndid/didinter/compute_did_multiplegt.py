@@ -100,9 +100,13 @@ def compute_did_multiplegt(preprocessed):
 
     ate = _compute_ate(effects_results, z_crit, n_groups) if effects_results else None
 
+    vcov_warnings = []
+
     effects_equal_test = None
     if config.effects_equal and config.effects > 1 and effects_results:
-        effects_equal_test = _test_effects_equality(effects_results)
+        effects_equal_test = _test_effects_equality(effects_results, config=config)
+        if effects_equal_test and effects_equal_test.get("warnings"):
+            vcov_warnings.extend(effects_equal_test["warnings"])
 
     placebo_joint_test = None
     if config.placebo > 1 and placebos_results is not None:
@@ -110,6 +114,8 @@ def compute_did_multiplegt(preprocessed):
             placebos_results["estimates"],
             placebos_results["vcov"],
         )
+        if placebo_joint_test and placebo_joint_test.get("warnings"):
+            vcov_warnings.extend(placebo_joint_test["warnings"])
 
     effects = EffectsResult(
         horizons=effects_results["horizons"],
@@ -163,6 +169,7 @@ def compute_did_multiplegt(preprocessed):
             "continuous": config.continuous,
             "weightsname": config.weightsname,
         },
+        vcov_warnings=vcov_warnings,
     )
 
 
@@ -586,8 +593,13 @@ def _compute_ate(effects_results, z_crit, n_groups):
     weights = n_sw[valid_mask] / total_n_sw if total_n_sw > 0 else np.ones(np.sum(valid_mask)) / np.sum(valid_mask)
 
     weighted_mean_effect = np.sum(weights * estimates[valid_mask])
-    delta_d_1 = delta_d_arr[0] if len(delta_d_arr) > 0 and delta_d_arr[0] != 0 else 1.0
-    ate_estimate = weighted_mean_effect / delta_d_1
+
+    per_period_delta = np.diff(delta_d_arr, prepend=0.0)
+    valid_delta = per_period_delta[valid_mask]
+    ate_denom = np.sum(weights * valid_delta)
+    if ate_denom == 0:
+        ate_denom = delta_d_arr[0] if len(delta_d_arr) > 0 and delta_d_arr[0] != 0 else 1.0
+    ate_estimate = weighted_mean_effect / ate_denom
 
     inf_func_unnorm = effects_results.get("influence_func_unnorm")
     if inf_func_unnorm is not None and inf_func_unnorm.shape[1] == len(estimates):
@@ -598,7 +610,7 @@ def _compute_ate(effects_results, z_crit, n_groups):
             if is_valid:
                 weighted_inf += wi * inf_func_unnorm[:, i]
 
-        ate_inf = weighted_inf / delta_d_1
+        ate_inf = weighted_inf / ate_denom
         ate_se = np.sqrt(np.sum(ate_inf**2)) / n_groups
     elif effects_results.get("vcov") is not None:
         vcov = effects_results["vcov"]
@@ -610,14 +622,14 @@ def _compute_ate(effects_results, z_crit, n_groups):
             ate_weights[valid_mask] = weights
             ate_var = ate_weights @ vcov @ ate_weights
 
-        ate_var = ate_var / (delta_d_1**2)
+        ate_var = ate_var / (ate_denom**2)
 
         ate_se = np.sqrt(ate_var) if ate_var > 0 else np.nan
     else:
         std_errors = effects_results["std_errors"]
         valid_se = std_errors[valid_mask]
         ate_se = np.sqrt(np.mean(valid_se**2)) if len(valid_se) > 0 else np.nan
-        ate_se = ate_se / abs(delta_d_1)
+        ate_se = ate_se / abs(ate_denom)
 
     n_observations = effects_results.get("n_observations", np.zeros(len(estimates)))
     total_n_obs = np.sum(n_observations[valid_mask])
@@ -633,32 +645,85 @@ def _compute_ate(effects_results, z_crit, n_groups):
     )
 
 
-def _test_effects_equality(effects_results):
-    """Test whether all effects are equal."""
+def _test_effects_equality(effects_results, config=None):
+    """Test whether effects are equal, optionally over a range of horizons.
+
+    Parameters
+    ----------
+    effects_results : dict
+        Dictionary with 'estimates' and 'vcov' keys.
+    config : DIDInterConfig, optional
+        Configuration object. When ``effects_equal_lb`` and ``effects_equal_ub``
+        are set, only effects in that range are tested.
+
+    Returns
+    -------
+    dict or None
+        Dictionary with chi2_stat, df, p_value, and warnings list.
+    """
     estimates = effects_results["estimates"]
     vcov = effects_results.get("vcov")
 
+    if vcov is None or len(estimates) < 2:
+        return None
+
+    lb = getattr(config, "effects_equal_lb", None) if config else None
+    ub = getattr(config, "effects_equal_ub", None) if config else None
+
+    if lb is not None and ub is not None:
+        idx_start = lb - 1
+        idx_end = ub
+        estimates = estimates[idx_start:idx_end]
+        vcov = vcov[idx_start:idx_end, idx_start:idx_end]
+
     valid_mask = ~np.isnan(estimates)
-    if vcov is None or np.sum(valid_mask) < 2:
+    if np.sum(valid_mask) < 2:
         return None
 
     valid_estimates = estimates[valid_mask]
     valid_vcov = vcov[np.ix_(valid_mask, valid_mask)]
 
-    n_valid = len(valid_estimates)
-    contrast_matrix = np.zeros((n_valid - 1, n_valid))
-    for i in range(n_valid - 1):
-        contrast_matrix[i, i] = 1
-        contrast_matrix[i, i + 1] = -1
+    k = len(valid_estimates)
+    D = np.eye(k - 1, k) - np.ones((k - 1, k)) / k
+    contrast_diff = D @ valid_estimates
+    contrast_vcov = D @ valid_vcov @ D.T
+    contrast_vcov = (contrast_vcov + contrast_vcov.T) / 2
 
-    contrast_diff = contrast_matrix @ valid_estimates
-    contrast_vcov = contrast_matrix @ valid_vcov @ contrast_matrix.T
+    warnings_list = []
+
+    eigenvalues = np.linalg.eigvalsh(contrast_vcov)
+    positive_eigenvalues = eigenvalues[eigenvalues > 1e-10]
+
+    if len(positive_eigenvalues) < k - 1:
+        warnings_list.append(
+            "The variance-covariance matrix of the effects tested is not "
+            "invertible. The equality test cannot be computed."
+        )
+        return {
+            "chi2_stat": np.nan,
+            "df": k - 1,
+            "p_value": np.nan,
+            "warnings": warnings_list,
+        }
+
+    condition_ratio = positive_eigenvalues.max() / positive_eigenvalues.min()
+    if condition_ratio >= 1000:
+        warnings_list.append(
+            "The variance-covariance matrix of the effects tested is close "
+            f"to singular (condition ratio: {condition_ratio:.1f}). The equality test "
+            "may be unreliable."
+        )
 
     try:
-        chi2_stat = float(contrast_diff @ np.linalg.solve(contrast_vcov, contrast_diff))
-        df = n_valid - 1
+        chi2_stat = float(contrast_diff @ np.linalg.pinv(contrast_vcov) @ contrast_diff)
+        df = k - 1
         p_value = 1 - stats.chi2.cdf(chi2_stat, df)
-        return {"chi2_stat": chi2_stat, "df": df, "p_value": p_value}
+        return {
+            "chi2_stat": chi2_stat,
+            "df": df,
+            "p_value": p_value,
+            "warnings": warnings_list,
+        }
     except np.linalg.LinAlgError:
         return None
 
@@ -711,7 +776,7 @@ def _compute_heterogeneity(df, config):
     for cov in covariates:
         if cov not in df.columns:
             continue
-        n_unique = df.group_by(gname).agg(pl.col(cov).n_unique().alias("n_uniq"))
+        n_unique = df.group_by(gname).agg(pl.col(cov).drop_nulls().n_unique().alias("n_uniq"))
         if (n_unique["n_uniq"] > 1).any():
             continue
         valid_covariates.append(cov)
@@ -789,52 +854,150 @@ def _compute_het_horizon(df, covariates, horizon, config):
 
 
 def _run_het_regression(het_sample, covariates, horizon, config):
-    """Run WLS regression for heterogeneity analysis at a given horizon."""
-    y = het_sample["_prod_het"].to_numpy()
-    weights = het_sample["weight_gt"].to_numpy() if "weight_gt" in het_sample.columns else np.ones(len(y))
+    """Run WLS regression for heterogeneity analysis at a given horizon.
 
-    valid_mask = ~np.isnan(y)
+    Uses HC2 standard errors by default. When ``predict_het_hc2bm`` is True on
+    ``config``, uses HC2 clustered (Bell-McCaffrey) standard errors clustered
+    by the ``cluster`` variable (or ``gname`` if no cluster is specified).
+    """
+    y = het_sample["_prod_het"].to_numpy()
+
+    # Use uniform weights when the user has not specified a weight variable.
+    # The preprocessed weight_gt column zeros out rows with missing Y/D at the
+    # observation level, but the het regression uses a group-level dependent
+    # variable (_prod_het) that can be valid even when the raw outcome is null
+    # at _gr_id=0.  Inheriting those zeros would incorrectly drop valid
+    # switchers from the het regression.
+    has_user_weights = getattr(config, "weightsname", None) is not None
+    if has_user_weights and "weight_gt" in het_sample.columns:
+        weights = het_sample["weight_gt"].to_numpy()
+    else:
+        weights = np.ones(len(y))
+
+    X_cov_raw = het_sample.select(covariates).to_numpy()
+    valid_mask = ~np.isnan(y) & np.all(np.isfinite(X_cov_raw), axis=1)
     if valid_mask.sum() < len(covariates) + 5:
         return None
 
     y = y[valid_mask]
     weights = weights[valid_mask]
 
-    X_cov = het_sample.select(covariates).to_numpy()[valid_mask]
+    X_cov = X_cov_raw[valid_mask]
 
-    fe_cols = []
-    for fe_var in ["F_g", "d_sq", "S_g"]:
-        if fe_var in het_sample.columns:
-            col_vals = het_sample[fe_var].to_numpy()[valid_mask]
-            unique_vals = np.unique(col_vals[~np.isnan(col_vals)])
-            if len(unique_vals) > 1:
-                fe_cols.append((fe_var, col_vals, unique_vals))
-
+    interaction_cols = ["F_g", "d_sq", "S_g"]
     if config.trends_nonparam:
-        for tnp in config.trends_nonparam:
-            if tnp in het_sample.columns:
-                col_vals = het_sample[tnp].to_numpy()[valid_mask]
-                unique_vals = np.unique(col_vals[~np.isnan(col_vals)])
-                if len(unique_vals) > 1:
-                    fe_cols.append((tnp, col_vals, unique_vals))
+        interaction_cols.extend(c for c in config.trends_nonparam if c in het_sample.columns)
+
+    fe_arrays = []
+    for col in interaction_cols:
+        if col in het_sample.columns:
+            fe_arrays.append(het_sample[col].to_numpy()[valid_mask])
 
     X_parts = [np.ones((len(y), 1)), X_cov]
-    for _, col_vals, unique_vals in fe_cols:
-        dummies = np.zeros((len(col_vals), len(unique_vals) - 1))
-        for i, val in enumerate(unique_vals[1:]):
-            dummies[:, i] = (col_vals == val).astype(float)
-        X_parts.append(dummies)
+    if fe_arrays:
+        stacked = np.column_stack(fe_arrays)
+        _, inverse = np.unique(stacked, axis=0, return_inverse=True)
+        n_groups = inverse.max() + 1
+        if n_groups > 1:
+            dummies = np.zeros((len(y), n_groups - 1))
+            for i in range(1, n_groups):
+                dummies[:, i - 1] = (inverse == i).astype(float)
+            keep = dummies.std(axis=0) > 0
+            dummies = dummies[:, keep]
+            if dummies.shape[1] > 0:
+                X_base = np.column_stack([np.ones((len(y), 1)), X_cov, dummies])
+                _, R = np.linalg.qr(X_base, mode="reduced")
+                n_base = 1 + X_cov.shape[1]
+                tol = 1e-10 * np.abs(np.diag(R[:n_base, :n_base])).max()
+                indep = np.abs(np.diag(R)[n_base:]) > tol
+                dummies = dummies[:, indep]
+            if dummies.shape[1] > 0:
+                X_parts.append(dummies)
 
     X = np.column_stack(X_parts)
 
-    model = sm.WLS(y, X, weights=weights).fit(cov_type="HC1")
+    use_hc2bm = getattr(config, "predict_het_hc2bm", False)
+
+    if use_hc2bm:
+        cluster_col = getattr(config, "cluster", None)
+        if cluster_col and cluster_col in het_sample.columns:
+            cluster_ids = het_sample[cluster_col].to_numpy()[valid_mask]
+        else:
+            cluster_col = None
+            cluster_ids = None
+
+        # Block BM only helps when clusters have >1 observation; otherwise
+        # it degenerates to standard HC2.
+        has_multi_obs_clusters = cluster_ids is not None and np.any(
+            np.bincount(cluster_ids.astype(int) - cluster_ids.astype(int).min()) > 1
+        )
+
+        if not has_multi_obs_clusters:
+            if cluster_col is None:
+                warnings.warn(
+                    "predict_het_hc2bm has no effect without an explicit "
+                    "cluster variable. The heterogeneity sample has one row "
+                    "per group, so Bell-McCaffrey clustering reduces to "
+                    "standard HC2. Specify 'cluster' for multi-observation "
+                    "clusters.",
+                    UserWarning,
+                    stacklevel=4,
+                )
+            else:
+                warnings.warn(
+                    f"predict_het_hc2bm has no effect because all clusters "
+                    f"in '{cluster_col}' have a single observation in the "
+                    "heterogeneity sample, so Bell-McCaffrey reduces to "
+                    "standard HC2.",
+                    UserWarning,
+                    stacklevel=4,
+                )
+            use_hc2bm = False
+
+    if use_hc2bm:
+        model_fit = sm.WLS(y, X, weights=weights).fit()
+
+        try:
+            XtWX_inv = np.linalg.inv((X * weights[:, None]).T @ X)
+        except np.linalg.LinAlgError:
+            XtWX_inv = np.linalg.pinv((X * weights[:, None]).T @ X)
+
+        resid_wt = weights * model_fit.resid
+
+        unique_clusters = np.unique(cluster_ids)
+        k = X.shape[1]
+
+        # Bell-McCaffrey block HC2
+        M = np.zeros((k, k))
+        for c in unique_clusters:
+            ij = cluster_ids == c
+            X_c = X[ij]
+            w_c = weights[ij]
+            res_c = resid_wt[ij]
+            m_c = ij.sum()
+
+            H_cc = X_c @ XtWX_inv @ X_c.T @ np.diag(w_c)
+            eigvals, eigvecs = np.linalg.eigh(np.eye(m_c) - H_cc)
+            eigvals = np.maximum(eigvals, 1e-10)
+            A_inv_sqrt = eigvecs @ np.diag(eigvals ** (-0.5)) @ eigvecs.T
+
+            res_adj = A_inv_sqrt @ res_c
+            s_c = (res_adj[:, None] * X_c).sum(axis=0)
+            M += np.outer(s_c, s_c)
+
+        vcov_hc2bm = XtWX_inv @ M @ XtWX_inv
+
+        model_fit._results.cov_params_default = vcov_hc2bm
+        model = model_fit
+    else:
+        model = sm.WLS(y, X, weights=weights).fit(cov_type="HC2")
 
     n_cov = len(covariates)
     coef_indices = list(range(1, n_cov + 1))
 
     coefs = model.params[coef_indices]
-    ses = model.bse[coef_indices]
-    t_stats = model.tvalues[coef_indices]
+    ses = np.sqrt(np.diag(model.cov_params()))[coef_indices] if use_hc2bm else model.bse[coef_indices]
+    t_stats = coefs / ses
 
     t_crit = stats.t.ppf(0.975, model.df_resid)
     ci_lower = coefs - t_crit * ses
@@ -843,8 +1006,18 @@ def _run_het_regression(het_sample, covariates, horizon, config):
     r_matrix = np.zeros((n_cov, len(model.params)))
     for i, idx in enumerate(coef_indices):
         r_matrix[i, idx] = 1
-    f_test = model.f_test(r_matrix)
-    f_pvalue = float(f_test.pvalue)
+
+    if use_hc2bm:
+        beta_r = r_matrix @ model.params
+        v_r = r_matrix @ model.cov_params() @ r_matrix.T
+        try:
+            f_stat = float(beta_r @ np.linalg.solve(v_r, beta_r)) / n_cov
+        except np.linalg.LinAlgError:
+            f_stat = float(beta_r @ np.linalg.pinv(v_r) @ beta_r) / n_cov
+        f_pvalue = 1 - stats.f.cdf(f_stat, n_cov, model.df_resid)
+    else:
+        f_test = model.f_test(r_matrix)
+        f_pvalue = float(f_test.pvalue)
 
     return HeterogeneityResult(
         horizon=horizon,

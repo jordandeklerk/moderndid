@@ -262,7 +262,7 @@ def test_compute_ate_weighting_by_switchers(n_switchers, expected_weight_ratio):
         "std_errors": np.array([0.1, 0.1]),
         "n_switchers": n_switchers,
         "n_switchers_weighted": n_switchers,
-        "delta_d_arr": np.array([1.0, 1.0]),
+        "delta_d_arr": np.array([1.0, 2.0]),
         "n_observations": np.array([500.0, 500.0]),
         "vcov": np.diag([0.01, 0.01]),
     }
