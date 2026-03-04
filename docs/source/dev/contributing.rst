@@ -306,6 +306,23 @@ The ``post-release.yml`` workflow runs when a GitHub Release is published. It
 regenerates ``CHANGELOG.md`` from all releases using
 ``changelog-from-release`` and opens a PR with the updated file.
 
+Nightly upstream testing
+-------------------------
+
+The ``nightly.yml`` workflow runs every Sunday at 03:00 UTC (one hour after the
+full suite) and can be triggered manually. It installs nightly wheels of numpy,
+scipy, polars, pyarrow, and statsmodels from the
+`scientific-python-nightly-wheels <https://anaconda.org/scientific-python-nightly-wheels>`__
+index and runs the core test suite against them.
+
+Failures here are expected and informational. They flag upcoming breaking
+changes in upstream packages before those changes are released. This workflow
+does not block PRs.
+
+To run the same check locally::
+
+   tox -e nightly
+
 Security scanning
 ------------------
 
