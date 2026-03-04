@@ -181,7 +181,7 @@ When interpreting results, keep the following in mind.
 Benchmark structure
 ===================
 
-The benchmark code lives in `benchmark/ <https://github.com/jordandeklerk/moderndid/tree/main/benchmark>`__ and mirrors the package's module
+The benchmark code lives in `benchmark <https://github.com/jordandeklerk/moderndid/tree/main/benchmark>`__ and mirrors the package's module
 structure::
 
    benchmark/
