@@ -94,8 +94,9 @@ Guidelines
 ==========
 
 All code changes should include tests that verify the new behavior. See
-:doc:`testing` for details on how to write tests that follow our conventions,
-including guidance on fixtures, parameterization, and numerical tolerances.
+:ref:`how to write tests <testing-how-to-write>` for details on conventions
+including fixtures, parameterization, and
+:ref:`numerical tolerances <testing-numerical-tolerances>`.
 
 Public functions and classes should be documented with docstrings following the
 NumPy docstring standard. This ensures consistency across the codebase and
@@ -186,7 +187,7 @@ R validation tests
 ModernDiD includes a validation suite that compares Python estimates against
 the original R packages (``did``, ``DRDID``, ``contdid``, ``triplediff``,
 ``HonestDiD``, ``DIDmultiplegtDYN``). These tests live in
-``tests/validation/`` and run inside the ``validation`` pixi environment,
+`tests/validation/ <https://github.com/jordandeklerk/moderndid/tree/main/tests/validation>`__ and run inside the ``validation`` pixi environment,
 which is supported on **Linux and macOS** only (``linux-64``, ``osx-arm64``,
 ``osx-64``). Windows is not supported because several R dependencies
 (``r-base``, ``r-did``, ``r-drdid``) lack reliable conda-forge Windows
@@ -213,7 +214,7 @@ R packages::
 
    pixi run -e validation setup-r
 
-This runs ``scripts/setup.sh``, which installs ``contdid``,
+This runs `scripts/setup.sh <https://github.com/jordandeklerk/moderndid/tree/main/scripts/setup.sh>`__, which installs ``contdid``,
 ``triplediff``, ``HonestDiD``, ``DIDmultiplegtDYN``, ``Rglpk``, and
 ``polars`` from CRAN and r-universe. The first run compiles everything from
 source and can take a few minutes (most of that is the Rust build for
@@ -245,7 +246,7 @@ package that failed to install are automatically skipped.
 Building documentation
 ======================
 
-Documentation is built using Sphinx and lives in the ``docs/`` directory. The
+Documentation is built using Sphinx and lives in the `docs/ <https://github.com/jordandeklerk/moderndid/tree/main/docs>`__ directory. The
 documentation includes API references generated from docstrings, user guides,
 and example notebooks.
 
@@ -255,3 +256,155 @@ To build and preview the documentation locally::
 
 The built documentation will be available in ``docs/_build/``. Open
 ``index.html`` in a browser to review your changes before submitting.
+
+Continuous integration
+======================
+
+Every pull request and push to ``main`` triggers automated checks via GitHub
+Actions. Understanding what each workflow does helps you diagnose failures
+quickly.
+
+Primary test suite
+-------------------
+
+The ``test.yml`` workflow runs on every pull request and on pushes to ``main``
+(excluding changes under ``docs/``). It has four jobs.
+
+- The ``test`` job runs the core test suite (excluding slow and distributed
+  tests) across Python 3.11, 3.12, and 3.13. This is the most common job to
+  check when your PR fails.
+- The ``dask`` job runs the Dask distributed tests on Python 3.12 and 3.13
+  with a 120-second timeout per test.
+- The ``spark`` job runs the Spark distributed tests on Python 3.12 and 3.13.
+  It also provisions Java 17, which Spark requires.
+- The ``coverage`` job runs the full test suite (including slow tests) on
+  ``main`` only. It does not run on PRs.
+
+All jobs upload coverage reports to Codecov.
+
+Weekly full test suite
+-----------------------
+
+The ``test-full.yml`` workflow runs every Sunday at 02:00 UTC and can be
+triggered manually. It exercises the full test suite including slow tests that
+are skipped in normal CI. Check this workflow if a release candidate fails
+tests that passed in regular CI.
+
+Package publishing
+-------------------
+
+The ``publish.yml`` workflow triggers when a ``v*`` tag is pushed. It builds
+the wheel and source distribution with build provenance attestation, then
+publishes to PyPI via Trusted Publishing (OIDC). The publish step requires
+maintainer approval through the ``publish`` GitHub environment. See
+:doc:`releasing` for the full release process.
+
+Post-release changelog
+-----------------------
+
+The ``post-release.yml`` workflow runs when a GitHub Release is published. It
+regenerates ``CHANGELOG.md`` from all releases using
+``changelog-from-release`` and opens a PR with the updated file.
+
+Security scanning
+------------------
+
+The ``codeql.yml`` workflow runs CodeQL static analysis for Python on pushes
+to ``main``, pull requests against ``main``, and weekly on Monday at midnight
+UTC.
+
+Diagnosing CI failures
+-----------------------
+
+When CI fails on your PR, start by clicking through to the failing job in the
+GitHub Actions tab. The most common causes are
+
+- Test failures in the ``test`` job. The output shows which test failed and
+  why. Run the same test locally with ``pixi run -e dev tests-core`` to
+  reproduce.
+- Lint failures from ruff or mypy. Run ``pixi run lint`` locally to see the
+  same errors.
+- Timeout failures in Dask or Spark jobs (120-second limit). These usually
+  indicate a test that hangs or does excessive computation on the driver.
+- Platform differences. CI runs on Ubuntu while you may develop on macOS.
+  Floating-point behavior can differ slightly between platforms. See
+  :doc:`debugging` for guidance on numerical tolerances.
+
+Registering new public API
+==========================
+
+ModernDiD uses a lazy-loading import system in `moderndid/__init__.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/__init__.py>`__ so
+that ``import moderndid`` is fast even though the package has many optional
+dependencies. When you add a new public function, class, or module, you need
+to register it in this system.
+
+The lazy loader resolves names through three dictionaries checked in order.
+
+``_lazy_imports``
+   Maps names to their source module for functions and classes that are always
+   available (no optional dependencies). For example,
+   ``"att_gt": "moderndid.did.att_gt"`` means that ``moderndid.att_gt`` will
+   import ``att_gt`` from ``moderndid.did.att_gt`` on first access.
+
+``_optional_imports``
+   Maps names to a ``(module_path, extra_name)`` tuple for items that require
+   an optional dependency. If the dependency is not installed, accessing the
+   name raises an ``ImportError`` with a helpful message telling the user
+   which extra to install. For example,
+   ``"cont_did": ("moderndid.didcont.cont_did", "didcont")`` means the user
+   sees ``uv pip install 'moderndid[didcont]'`` in the error.
+
+``_submodules``
+   A set of submodule names that can be accessed as ``moderndid.<submodule>``.
+   When accessed, the full submodule is imported.
+
+To register a new always-available function, add an entry to ``_lazy_imports``
+and add the name to ``__all__``. For a new optional function, add it to
+``_optional_imports`` with the correct extra name and add it to ``__all__``.
+
+.. note::
+
+   If a function name shadows a submodule name (as ``drdid`` the function
+   shadows ``drdid`` the submodule), the function must be imported eagerly
+   at the top of ``__init__.py`` rather than through the lazy loader. See
+   the existing ``from moderndid.drdid.drdid import drdid`` line for this
+   pattern.
+
+Dependency management
+=====================
+
+Version constraints
+-------------------
+
+Core dependencies are pinned with minimum versions in ``pyproject.toml``
+(e.g., ``numpy>=1.22.0``, ``polars>=1.0.0``). These minimums represent the
+oldest versions we test against and support. When bumping a minimum version,
+ensure the full CI matrix still passes since all Python versions in the matrix
+use the same dependency floor.
+
+Optional dependencies are grouped under extras in ``pyproject.toml`` and
+mirrored as pixi features in ``pixi.toml``. The ``all`` extra includes
+everything except GPU support.
+
+Adding a new dependency
+------------------------
+
+Before adding a dependency, consider whether it is truly necessary. Each new
+dependency increases installation complexity and potential for version
+conflicts.
+
+If the dependency is needed for only one estimator or feature, make it an
+optional extra rather than a core dependency. Follow the existing pattern
+in ``pyproject.toml`` to define a new optional group, then register the
+affected functions in ``_optional_imports`` in ``moderndid/__init__.py`` so
+users get a clear error message when the dependency is missing. Add the
+dependency to the appropriate pixi feature in ``pixi.toml`` and the
+corresponding tox testenv in ``tox.ini``.
+
+Python version support
+-----------------------
+
+ModernDiD supports Python 3.11 and above (``requires-python = ">=3.11"``).
+CI tests against 3.11, 3.12, and 3.13. Do not use language features that
+require a Python version above 3.11 (e.g., ``type`` statement from 3.12)
+without gating them behind a version check.

@@ -4,15 +4,19 @@
 Development
 ###########
 
-This section covers how to contribute to ModernDiD and understand its
-internals; for usage documentation see the :ref:`User Guide <user-guide>`.
+Everything you need to contribute to ModernDiD and understand its internals.
+For usage documentation see the :ref:`User Guide <user-guide>`.
 
 .. toctree::
    :caption: Contributing
    :maxdepth: 2
 
    contributing
+   workflow
    testing
+   reviewing
+   debugging
+   benchmarking
 
 .. toctree::
    :caption: Internals
@@ -20,3 +24,9 @@ internals; for usage documentation see the :ref:`User Guide <user-guide>`.
 
    architecture
    distributed_architecture
+
+.. toctree::
+   :caption: Maintenance
+   :maxdepth: 2
+
+   releasing
