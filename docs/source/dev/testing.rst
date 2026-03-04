@@ -62,7 +62,7 @@ Imports and optional dependencies
 
 ModernDiD supports several optional dependencies, and tests need to handle cases
 where these dependencies may not be installed. Use the ``importorskip`` helper
-function from `tests/helpers.py <https://github.com/jordandeklerk/moderndid/tree/main/tests/helpers.py>`__ for any import outside of the Python standard
+function from `helpers.py <https://github.com/jordandeklerk/moderndid/tree/main/tests/helpers.py>`__ for any import outside of the Python standard
 library plus NumPy:
 
 .. code-block:: python
@@ -118,7 +118,7 @@ All pytest fixtures should be defined in ``conftest.py`` files, never in test
 files themselves. This keeps test files focused on test logic and makes fixtures
 discoverable and reusable. Each submodule has its own
 ``tests/<submodule>/conftest.py`` for fixtures specific to that module (e.g.,
-`tests/did/conftest.py <https://github.com/jordandeklerk/moderndid/tree/main/tests/did/conftest.py>`__):
+`conftest.py <https://github.com/jordandeklerk/moderndid/tree/main/tests/did/conftest.py>`__):
 
 .. code-block:: python
 

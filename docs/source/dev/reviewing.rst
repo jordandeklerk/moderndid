@@ -74,7 +74,7 @@ at hand.
 - Are numerical tolerances appropriate for the type of computation?
   (See :ref:`numerical tolerances <testing-numerical-tolerances>`.)
 - For new estimators, is there a validation test against the corresponding
-  R package in `tests/validation/ <https://github.com/jordandeklerk/moderndid/tree/main/tests/validation>`__?
+  R package in `validation <https://github.com/jordandeklerk/moderndid/tree/main/tests/validation>`__?
 
 **Performance**
 

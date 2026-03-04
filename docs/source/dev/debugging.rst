@@ -85,9 +85,9 @@ Debugging Numba-compiled code
 =============================
 
 ModernDiD uses Numba for JIT compilation of performance-critical loops in
-`moderndid/core/numba_utils.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/core/numba_utils.py>`__,
-`moderndid/didcont/numba.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcont/numba.py>`__, and
-`moderndid/didhonest/numba.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didhonest/numba.py>`__. These functions use ``@nb.njit`` with
+`numba_utils.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/core/numba_utils.py>`__,
+`didcont numba.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcont/numba.py>`__, and
+`didhonest numba.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didhonest/numba.py>`__. These functions use ``@nb.njit`` with
 ``cache=True`` and often ``parallel=True``.
 
 Disabling JIT for debugging
@@ -142,7 +142,7 @@ Compare them with what you intended.
 Debugging CuPy and GPU code
 ============================
 
-GPU-accelerated code lives in `moderndid/cupy/ <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/cupy>`__ and uses a backend
+GPU-accelerated code lives in `cupy <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/cupy>`__ and uses a backend
 dispatch pattern. The active backend is controlled via context variable::
 
    from moderndid.cupy.backend import use_backend

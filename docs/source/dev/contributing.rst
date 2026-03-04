@@ -187,7 +187,7 @@ R validation tests
 ModernDiD includes a validation suite that compares Python estimates against
 the original R packages (``did``, ``DRDID``, ``contdid``, ``triplediff``,
 ``HonestDiD``, ``DIDmultiplegtDYN``). These tests live in
-`tests/validation/ <https://github.com/jordandeklerk/moderndid/tree/main/tests/validation>`__ and run inside the ``validation`` pixi environment,
+`validation <https://github.com/jordandeklerk/moderndid/tree/main/tests/validation>`__ and run inside the ``validation`` pixi environment,
 which is supported on **Linux and macOS** only (``linux-64``, ``osx-arm64``,
 ``osx-64``). Windows is not supported because several R dependencies
 (``r-base``, ``r-did``, ``r-drdid``) lack reliable conda-forge Windows
@@ -214,7 +214,7 @@ R packages::
 
    pixi run -e validation setup-r
 
-This runs `scripts/setup.sh <https://github.com/jordandeklerk/moderndid/tree/main/scripts/setup.sh>`__, which installs ``contdid``,
+This runs `setup.sh <https://github.com/jordandeklerk/moderndid/tree/main/scripts/setup.sh>`__, which installs ``contdid``,
 ``triplediff``, ``HonestDiD``, ``DIDmultiplegtDYN``, ``Rglpk``, and
 ``polars`` from CRAN and r-universe. The first run compiles everything from
 source and can take a few minutes (most of that is the Rust build for
@@ -246,7 +246,7 @@ package that failed to install are automatically skipped.
 Building documentation
 ======================
 
-Documentation is built using Sphinx and lives in the `docs/ <https://github.com/jordandeklerk/moderndid/tree/main/docs>`__ directory. The
+Documentation is built using Sphinx and lives in the `docs <https://github.com/jordandeklerk/moderndid/tree/main/docs>`__ directory. The
 documentation includes API references generated from docstrings, user guides,
 and example notebooks.
 
@@ -350,7 +350,7 @@ GitHub Actions tab. The most common causes are
 Registering new public API
 ==========================
 
-ModernDiD uses a lazy-loading import system in `moderndid/__init__.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/__init__.py>`__ so
+ModernDiD uses a lazy-loading import system in `__init__.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/__init__.py>`__ so
 that ``import moderndid`` is fast even though the package has many optional
 dependencies. When you add a new public function, class, or module, you need
 to register it in this system.

@@ -245,7 +245,7 @@ To add benchmarks for a new estimator, follow the steps below.
    estimator and time it. The R runner should export data to CSV, call R via
    ``subprocess``, and parse the timing output.
 
-5. **Register the subcommand** in `benchmark/run_benchmark.py <https://github.com/jordandeklerk/moderndid/tree/main/benchmark/run_benchmark.py>`__ by adding a
+5. **Register the subcommand** in `run_benchmark.py <https://github.com/jordandeklerk/moderndid/tree/main/benchmark/run_benchmark.py>`__ by adding a
    new subparser and wiring it to your module's ``main()`` function.
 
 6. **Add a ``quick`` suite** at minimum so others can verify the benchmark

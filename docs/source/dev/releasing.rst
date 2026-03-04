@@ -15,7 +15,7 @@ version ``MAJOR.MINOR.PATCH``, increment **MAJOR** for incompatible API
 changes, **MINOR** for new backwards-compatible functionality, and **PATCH**
 for backwards-compatible bug fixes.
 
-The current version is defined dynamically in `moderndid/__init__.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/__init__.py>`__ and
+The current version is defined dynamically in `__init__.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/__init__.py>`__ and
 referenced by the build system through ``pyproject.toml``.
 
 Pre-release checklist
@@ -59,7 +59,7 @@ Commit the version bump::
 Step 2: Update release notes
 -----------------------------
 
-Add a section to `docs/source/release/ <https://github.com/jordandeklerk/moderndid/tree/main/docs/source/release>`__ for the new version if you maintain
+Add a section to `release <https://github.com/jordandeklerk/moderndid/tree/main/docs/source/release>`__ for the new version if you maintain
 per-version release note files. At minimum, verify that the ``CHANGELOG.md``
 will be auto-generated correctly (the changelog is generated from GitHub
 releases by the ``post-release.yml`` workflow).
