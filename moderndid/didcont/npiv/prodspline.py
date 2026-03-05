@@ -11,12 +11,17 @@ from .gsl_bspline import gsl_bs, predict_gsl_bs
 
 
 class MultivariateBasis(NamedTuple):
-    """Result from multivariate spline basis construction."""
+    """Container for multivariate spline basis construction results."""
 
+    #: Spline basis matrix.
     basis: np.ndarray
+    #: Dimension of the basis without tensor product.
     dim_no_tensor: int
+    #: Matrix of degrees for each variable.
     degree_matrix: np.ndarray
+    #: Number of segments for each variable.
     n_segments: np.ndarray
+    #: Type of basis construction used.
     basis_type: str
 
 

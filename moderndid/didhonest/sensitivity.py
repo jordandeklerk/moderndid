@@ -3,9 +3,10 @@
 import warnings
 from typing import NamedTuple
 
-import numpy as np
 import polars as pl
 from scipy import stats
+
+import numpy as np
 
 from .bounds import compute_delta_sd_upperbound_m
 from .delta.rm.rm import compute_identified_set_rm
@@ -15,7 +16,7 @@ from .wrappers import DeltaMethodSelector
 
 
 class SensitivityResult(NamedTuple):
-    """Result from sensitivity analysis.
+    """Container for a single sensitivity analysis result.
 
     Attributes
     ----------
@@ -32,15 +33,20 @@ class SensitivityResult(NamedTuple):
         Value of the smoothness or relative magnitude bound parameter.
     """
 
+    #: Lower bound of the robust confidence interval.
     lb: float
+    #: Upper bound of the robust confidence interval.
     ub: float
+    #: Confidence interval method used.
     method: str
+    #: Type of restriction set used.
     delta: str
+    #: Smoothness or relative magnitude bound parameter value.
     m: float
 
 
 class OriginalCSResult(NamedTuple):
-    """Result from original confidence set construction.
+    """Container for original confidence set assuming exact parallel trends.
 
     Attributes
     ----------
@@ -56,9 +62,13 @@ class OriginalCSResult(NamedTuple):
         Restriction type, defaults to None for the original estimate.
     """
 
+    #: Lower bound of the original confidence interval.
     lb: float
+    #: Upper bound of the original confidence interval.
     ub: float
+    #: Confidence interval method.
     method: str = "Original"
+    #: Restriction type.
     delta: str | None = None
 
 

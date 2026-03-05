@@ -3,8 +3,9 @@
 import warnings
 from typing import NamedTuple
 
-import numpy as np
 from scipy.interpolate import BSpline
+
+import numpy as np
 
 from ...cupy.backend import get_backend, to_device, to_numpy
 
@@ -18,15 +19,23 @@ except ImportError:
 
 
 class BSplineBasis(NamedTuple):
-    """Result from B-spline basis construction."""
+    """Container for B-spline basis construction results."""
 
+    #: B-spline basis matrix.
     basis: np.ndarray
+    #: Degree of the B-spline.
     degree: int
+    #: Number of breakpoints.
     nbreak: int
+    #: Derivative order.
     deriv: int
+    #: Minimum x value.
     x_min: float
+    #: Maximum x value.
     x_max: float
+    #: Knot positions.
     knots: np.ndarray | None
+    #: Whether an intercept column is included.
     intercept: bool
 
 

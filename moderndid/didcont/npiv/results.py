@@ -6,7 +6,7 @@ import numpy as np
 
 
 class NPIVResult(NamedTuple):
-    r"""Result from nonparametric instrumental variables estimation.
+    r"""Container for nonparametric instrumental variables estimation results.
 
     Attributes
     ----------
@@ -51,20 +51,37 @@ class NPIVResult(NamedTuple):
         selection diagnostics from the Lepski procedure.
     """
 
+    #: Estimated structural function at evaluation points.
     h: np.ndarray
+    #: Lower uniform confidence band for the structural function.
     h_lower: np.ndarray | None
+    #: Upper uniform confidence band for the structural function.
     h_upper: np.ndarray | None
+    #: Estimated derivative at evaluation points.
     deriv: np.ndarray
+    #: Lower uniform confidence band for the derivative.
     h_lower_deriv: np.ndarray | None
+    #: Upper uniform confidence band for the derivative.
     h_upper_deriv: np.ndarray | None
+    #: Sieve coefficient vector.
     beta: np.ndarray
+    #: Pointwise asymptotic standard errors for the structural function.
     asy_se: np.ndarray
+    #: Pointwise asymptotic standard errors for derivatives.
     deriv_asy_se: np.ndarray
+    #: Bootstrap critical value for function uniform confidence bands.
     cv: float | None
+    #: Bootstrap critical value for derivative uniform confidence bands.
     cv_deriv: float | None
+    #: TSLS residuals.
     residuals: np.ndarray
+    #: Degree of B-spline basis for X.
     j_x_degree: int
+    #: Number of segments for X basis.
     j_x_segments: int
+    #: Degree of B-spline basis for W.
     k_w_degree: int
+    #: Number of segments for W basis.
     k_w_segments: int
+    #: Diagnostic information and selection diagnostics.
     args: dict

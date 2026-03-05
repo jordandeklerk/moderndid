@@ -2,8 +2,9 @@
 
 from typing import NamedTuple
 
-import numpy as np
 import scipy.optimize as opt
+
+import numpy as np
 
 from ...arp_no_nuisance import compute_arp_ci
 from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
@@ -13,7 +14,7 @@ from ...utils import basis_vector
 
 
 class DeltaSDResult(NamedTuple):
-    """Result from second differences identified set computation.
+    """Container for second differences identified set computation results.
 
     Attributes
     ----------
@@ -23,7 +24,9 @@ class DeltaSDResult(NamedTuple):
         Upper bound of the identified set.
     """
 
+    #: Lower bound of the identified set.
     id_lb: float
+    #: Upper bound of the identified set.
     id_ub: float
 
 

@@ -48,20 +48,35 @@ class MPResult(NamedTuple):
         - weights_ind: unit-level sampling weights
     """
 
+    #: Which group (defined by period first treated) each group-time ATT is for.
     groups: np.ndarray
+    #: Which time period each group-time ATT is for.
     times: np.ndarray
+    #: Group-time average treatment effects.
     att_gt: np.ndarray
+    #: Analytical estimator for the asymptotic variance-covariance matrix.
     vcov_analytical: np.ndarray
+    #: Standard errors for group-time ATTs.
     se_gt: np.ndarray
+    #: Critical value for confidence intervals.
     critical_value: float
+    #: Influence function for estimating group-time average treatment effects.
     influence_func: np.ndarray
+    #: Number of unique cross-sectional units.
     n_units: int | None = None
+    #: Wald statistic for pre-testing common trends.
     wald_stat: float | None = None
+    #: P-value of the Wald statistic for pre-testing common trends.
     wald_pvalue: float | None = None
+    #: Aggregate treatment effects object.
     aggregate_effects: object | None = None
+    #: Significance level.
     alpha: float = 0.05
+    #: DID estimation parameters.
     estimation_params: dict = {}
+    #: Unit-level group assignments.
     G: np.ndarray | None = None
+    #: Unit-level sampling weights.
     weights_ind: np.ndarray | None = None
 
 
@@ -184,15 +199,25 @@ class MPPretestResult(NamedTuple):
         Formula for the X variables used in the test.
     """
 
+    #: Cramer von Mises test statistic.
     cvm_stat: float
+    #: Bootstrapped Cramer von Mises test statistics.
     cvm_boots: np.ndarray | None
+    #: Cramer von Mises critical value.
     cvm_critval: float
+    #: P-value for Cramer von Mises test.
     cvm_pval: float
+    #: Kolmogorov-Smirnov test statistic.
     ks_stat: float
+    #: Bootstrapped Kolmogorov-Smirnov test statistics.
     ks_boots: np.ndarray | None
+    #: Kolmogorov-Smirnov critical value.
     ks_critval: float
+    #: P-value for Kolmogorov-Smirnov test.
     ks_pval: float
+    #: Variables that were clustered on for the test.
     cluster_vars: list[str] | None = None
+    #: Formula for the X variables used in the test.
     x_formula: str | None = None
 
 

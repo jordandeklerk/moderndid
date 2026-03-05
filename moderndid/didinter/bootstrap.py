@@ -8,7 +8,7 @@ from .numba import compute_column_std, gather_bootstrap_indices
 
 
 class BootstrapResult(NamedTuple):
-    """Result from the cluster bootstrap.
+    """Container for cluster bootstrap results.
 
     Attributes
     ----------
@@ -20,8 +20,11 @@ class BootstrapResult(NamedTuple):
         Standard error for ATE estimate.
     """
 
+    #: Standard errors for effect estimates.
     effects_se: np.ndarray
+    #: Standard errors for placebo estimates.
     placebos_se: np.ndarray | None
+    #: Standard error for ATE estimate.
     ate_se: float | None
 
 

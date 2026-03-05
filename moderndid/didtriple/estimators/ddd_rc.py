@@ -5,10 +5,10 @@ from __future__ import annotations
 import warnings
 from typing import NamedTuple
 
-import numpy as np
 import polars as pl
 from scipy import stats
 
+import numpy as np
 from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess.utils import parse_formula
 from moderndid.cupy.backend import get_backend, to_numpy
@@ -18,7 +18,7 @@ from ..nuisance_rc import compute_all_did_rc, compute_all_nuisances_rc
 
 
 class DDDRCResult(NamedTuple):
-    """Result from the DDD repeated cross-section estimator.
+    """Container for DDD repeated cross-section estimation results.
 
     Attributes
     ----------
@@ -42,14 +42,23 @@ class DDDRCResult(NamedTuple):
         Arguments used for estimation.
     """
 
+    #: DDD point estimate for the ATT.
     att: float
+    #: Standard error of the ATT estimate.
     se: float
+    #: Upper bound of the 95% confidence interval.
     uci: float
+    #: Lower bound of the 95% confidence interval.
     lci: float
+    #: Bootstrap draws if bootstrap inference was used.
     boots: np.ndarray | None
+    #: Influence function if requested.
     att_inf_func: np.ndarray | None
+    #: Individual DiD ATT estimates for each comparison.
     did_atts: dict
+    #: Number of observations in each subgroup.
     subgroup_counts: dict
+    #: Arguments used for estimation.
     args: dict
 
 

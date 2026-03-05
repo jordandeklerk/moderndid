@@ -4,7 +4,7 @@ from typing import NamedTuple, Protocol
 
 
 class DeltaResult(NamedTuple):
-    """Base result from delta method computation.
+    """Container for delta method computation results.
 
     Attributes
     ----------
@@ -14,12 +14,14 @@ class DeltaResult(NamedTuple):
         Upper bound of the identified set.
     """
 
+    #: Lower bound of the identified set.
     id_lb: float
+    #: Upper bound of the identified set.
     id_ub: float
 
 
 class ConditionalCSResult(NamedTuple):
-    """Result from conditional confidence set computation.
+    """Container for conditional confidence set computation results.
 
     Attributes
     ----------
@@ -29,7 +31,9 @@ class ConditionalCSResult(NamedTuple):
         Boolean array indicating acceptance at each grid point.
     """
 
+    #: Grid of parameter values tested.
     grid: any
+    #: Boolean array indicating acceptance at each grid point.
     accept: any
 
 

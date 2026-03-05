@@ -32,13 +32,23 @@ class DDDAggResult(NamedTuple):
         Arguments used for aggregation.
     """
 
+    #: Estimated overall average treatment effect on the treated.
     overall_att: float
+    #: Standard error for overall ATT.
     overall_se: float
+    #: Type of aggregation performed.
     aggregation_type: Literal["simple", "eventstudy", "group", "calendar"]
+    #: Event times, groups, or calendar times depending on aggregation type.
     egt: np.ndarray | None = None
+    #: ATT estimates for each element in egt.
     att_egt: np.ndarray | None = None
+    #: Standard errors for each element in egt.
     se_egt: np.ndarray | None = None
+    #: Critical value for confidence intervals.
     crit_val: float = 1.96
+    #: Influence function matrix for disaggregated effects.
     inf_func: np.ndarray | None = None
+    #: Influence function for the overall ATT.
     inf_func_overall: np.ndarray | None = None
+    #: Arguments used for aggregation.
     args: dict = {}

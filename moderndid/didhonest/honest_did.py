@@ -2,8 +2,9 @@
 
 from typing import NamedTuple, Protocol, runtime_checkable
 
-import numpy as np
 import polars as pl
+
+import numpy as np
 
 from .sensitivity import (
     OriginalCSResult,
@@ -15,7 +16,7 @@ from .utils import basis_vector
 
 
 class HonestDiDResult(NamedTuple):
-    """Result from honest_did analysis.
+    """Container for honest_did sensitivity analysis results.
 
     Attributes
     ----------
@@ -31,8 +32,11 @@ class HonestDiDResult(NamedTuple):
         'relative_magnitude').
     """
 
+    #: Robust confidence intervals under violations of parallel trends.
     robust_ci: pl.DataFrame
+    #: Original confidence set assuming exact parallel trends.
     original_ci: OriginalCSResult
+    #: Type of sensitivity analysis ('smoothness' or 'relative_magnitude').
     sensitivity_type: str
 
 
