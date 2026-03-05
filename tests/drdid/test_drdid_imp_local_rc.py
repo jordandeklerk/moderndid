@@ -1,8 +1,8 @@
 """Tests for the improved and locally efficient DR-DiD estimator for repeated cross-section data."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from moderndid import drdid_imp_local_rc
 
 
@@ -82,6 +82,7 @@ def test_drdid_imp_local_rc_bootstrap(boot_type):
     assert result.lci < result.uci
 
 
+@pytest.mark.filterwarnings("ignore:Treatment indicator D contains values:UserWarning")
 def test_drdid_imp_local_rc_no_treated_in_post():
     n_units = 100
     rng = np.random.default_rng(42)
@@ -95,6 +96,9 @@ def test_drdid_imp_local_rc_no_treated_in_post():
         drdid_imp_local_rc(y=y, post=post, d=d, covariates=x)
 
 
+@pytest.mark.filterwarnings("ignore:Treatment indicator D contains values:UserWarning")
+@pytest.mark.filterwarnings("ignore:trust-constr optimization failed:UserWarning")
+@pytest.mark.filterwarnings("ignore:IPT optimization failed:UserWarning")
 def test_drdid_imp_local_rc_all_treated():
     n_units = 100
     rng = np.random.default_rng(42)

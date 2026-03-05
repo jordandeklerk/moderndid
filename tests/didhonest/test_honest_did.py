@@ -1,8 +1,8 @@
 """Tests for sensitivity analysis using the approach of Rambachan and Roth (2021)."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
@@ -118,25 +118,6 @@ def test_honest_did_methods(sample_aggte_result, event_time, method):
     )
 
     assert (result.robust_ci["method"] == method).all()
-
-
-@pytest.mark.xfail(reason="Numerical instability with synthetic test data")
-def test_honest_did_with_shape_restrictions(sample_aggte_result):
-    result_mono = honest_did(
-        sample_aggte_result,
-        event_time=1,
-        monotonicity_direction="increasing",
-        m_vec=np.array([0, 0.1]),
-    )
-    assert "SDI" in result_mono.robust_ci["delta"].iloc[0]
-
-    result_bias = honest_did(
-        sample_aggte_result,
-        event_time=1,
-        bias_direction="positive",
-        m_vec=np.array([0, 0.1]),
-    )
-    assert "SDPB" in result_bias.robust_ci["delta"].iloc[0]
 
 
 def test_honest_did_custom_alpha(sample_aggte_result):

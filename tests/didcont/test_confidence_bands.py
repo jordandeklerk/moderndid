@@ -1,8 +1,8 @@
 """Tests for uniform confidence band construction."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from moderndid.didcont.npiv.confidence_bands import compute_ucb
 from moderndid.didcont.npiv.results import NPIVResult
 
@@ -186,6 +186,7 @@ def test_with_fixed_dimensions(simple_data):
     assert result.k_w_segments == 4
 
 
+@pytest.mark.filterwarnings("ignore:Some 'x' values beyond boundary knots:UserWarning")
 def test_with_range_constraints(simple_data):
     y, x, w = simple_data
 

@@ -1,11 +1,13 @@
 """Tests for APR CI with no nuisance parameters."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from moderndid.didhonest import arp_no_nuisance
 from moderndid.didhonest.arp_no_nuisance import APRCIResult, compute_arp_ci
 from moderndid.didhonest.bounds import create_second_difference_matrix
+
+pytestmark = pytest.mark.filterwarnings("ignore:CI is open at one of the endpoints:UserWarning")
 
 GRID_POINTS_DEFAULT = 32
 GRID_POINTS_COMPACT = 20

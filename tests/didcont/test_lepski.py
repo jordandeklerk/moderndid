@@ -1,8 +1,8 @@
 """Tests for Lepski method for optimal dimension selection."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from moderndid.didcont.npiv.lepski import npiv_j, npiv_jhat_max
 
 
@@ -133,6 +133,7 @@ def test_with_custom_grid(simple_data):
     assert result["j_tilde"] > 0
 
 
+@pytest.mark.filterwarnings("ignore:Some 'x' values beyond boundary knots:UserWarning")
 def test_with_range_constraints(simple_data):
     y, x, w = simple_data
 

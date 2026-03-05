@@ -1,8 +1,8 @@
 """Tests for computing ATT-GT."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
@@ -98,6 +98,7 @@ def test_get_did_cohort_index_panel(mpdta_data, control_group):
     assert np.sum(cohort_index == 0) > 0
 
 
+@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
 def test_get_did_cohort_index_cross_section(mpdta_data):
     data = preprocess_did(
         mpdta_data,
@@ -189,6 +190,7 @@ def test_run_drdid_all_missing(panel_data):
     assert np.all(result["inf_func"] == 0)
 
 
+@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
 @pytest.mark.parametrize("panel", [True, False])
 def test_run_drdid_panel_vs_cross_section(mpdta_data, panel):
     data = preprocess_did(
@@ -250,6 +252,7 @@ def test_run_att_gt_estimation_base_periods(mpdta_data, base_period):
         assert isinstance(result["inf_func"], np.ndarray)
 
 
+@pytest.mark.filterwarnings("ignore:No never-treated group:UserWarning")
 def test_run_att_gt_estimation_no_control_units(mpdta_data):
     df_all_treated = mpdta_data.with_columns(pl.lit(2004).alias("first.treat"))
 
@@ -357,6 +360,7 @@ def test_compute_att_gt_control_groups(mpdta_data, control_group):
     assert len(result.attgt_list) > 0
 
 
+@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
 def test_compute_att_gt_cross_section(mpdta_data):
     data = preprocess_did(
         mpdta_data,
@@ -375,6 +379,7 @@ def test_compute_att_gt_cross_section(mpdta_data):
     assert len(result.attgt_list) > 0
 
 
+@pytest.mark.filterwarnings("ignore:Dropped.*units that were already treated:UserWarning")
 def test_compute_att_gt_with_anticipation(mpdta_data):
     data = preprocess_did(
         mpdta_data,
@@ -457,6 +462,7 @@ def test_compute_att_gt_sparse_efficiency(mpdta_data):
     assert density < 1.0
 
 
+@pytest.mark.filterwarnings("ignore:Dropped.*units that were already treated:UserWarning")
 @pytest.mark.parametrize("anticipation", [0, 1, 2])
 def test_compute_att_gt_anticipation_levels(mpdta_data, anticipation):
     data = preprocess_did(
@@ -495,6 +501,7 @@ def test_compute_att_gt_no_covariates(mpdta_data):
     assert len(result.attgt_list) > 0
 
 
+@pytest.mark.filterwarnings("ignore:No never-treated group:UserWarning")
 def test_compute_att_gt_edge_cases(mpdta_data):
     df_small = mpdta_data.head(100)
 
@@ -541,6 +548,7 @@ def test_cohort_index_edge_cases(mpdta_data):
     assert isinstance(cohort_index, np.ndarray)
 
 
+@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
 def test_influence_function_aggregation(mpdta_data):
     data = preprocess_did(
         mpdta_data,
@@ -646,6 +654,7 @@ def test_benchmark_compute_att_gt_parallel(benchmark, _preprocessed_panel):
     _check_att_gt_result(result, _preprocessed_panel.config.id_count)
 
 
+@pytest.mark.filterwarnings("ignore:No never-treated group:UserWarning")
 def test_no_variation_in_treatment_timing():
     n = 100
     n_periods = 4

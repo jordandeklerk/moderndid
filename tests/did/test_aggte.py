@@ -1,13 +1,15 @@
 """Tests for aggregate treatment effects."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
 from moderndid import aggte, att_gt, load_mpdta
+
+pytestmark = pytest.mark.filterwarnings("ignore:Used bootstrap procedure:UserWarning")
 
 
 @pytest.fixture
@@ -259,6 +261,7 @@ def test_aggte_non_sequential_time_periods():
 
 @pytest.mark.filterwarnings("ignore:Setting an item of incompatible dtype:FutureWarning")
 @pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
+@pytest.mark.filterwarnings("ignore:No pre-treatment periods to test:UserWarning")
 def test_aggte_all_treated_same_time():
     df = load_mpdta()
     df = df.with_columns(pl.when(pl.col("first.treat") != 0).then(2004).otherwise(np.inf).alias("first.treat"))

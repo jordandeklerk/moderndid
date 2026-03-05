@@ -1,8 +1,8 @@
 """Tests for continuous treatment difference-in-differences estimation."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
@@ -232,7 +232,7 @@ def test_cont_did_confidence_bands(contdid_data, cband):
         gname="G",
         dname="D",
         cband=cband,
-        biters=10,
+        biters=100,
     )
 
     assert isinstance(result, DoseResult | PTEResult)
@@ -545,6 +545,9 @@ def test_cont_two_by_two_subset_universal_base(contdid_data):
     assert set(gt_data["name"].unique().to_list()) == {"pre", "post"}
 
 
+@pytest.mark.filterwarnings("ignore:Using x_grid as x_eval:UserWarning")
+@pytest.mark.filterwarnings("ignore:No pre-treatment periods to test:UserWarning")
+@pytest.mark.filterwarnings("ignore:Simultaneous band smaller than pointwise:UserWarning")
 def test_cck_estimator_basic(cck_test_data):
     result = cont_did(
         data=cck_test_data,
@@ -570,6 +573,9 @@ def test_cck_estimator_basic(cck_test_data):
     assert result.overall_acrt_se > 0
 
 
+@pytest.mark.filterwarnings("ignore:Using x_grid as x_eval:UserWarning")
+@pytest.mark.filterwarnings("ignore:No pre-treatment periods to test:UserWarning")
+@pytest.mark.filterwarnings("ignore:Simultaneous band smaller than pointwise:UserWarning")
 def test_cck_estimator_custom_dvals(cck_test_data):
     custom_dvals = np.linspace(0.1, 1.9, 20)
 
@@ -651,6 +657,7 @@ def test_cck_estimator_invalid_times():
 
 
 @pytest.mark.filterwarnings("ignore:Dropped .* post-treatment observations:UserWarning")
+@pytest.mark.filterwarnings("ignore:Dropped 2 units while converting to balanced panel:UserWarning")
 def test_cck_estimator_no_treated():
     data = pl.DataFrame(
         {
@@ -677,6 +684,9 @@ def test_cck_estimator_no_treated():
         )
 
 
+@pytest.mark.filterwarnings("ignore:Using x_grid as x_eval:UserWarning")
+@pytest.mark.filterwarnings("ignore:No pre-treatment periods to test:UserWarning")
+@pytest.mark.filterwarnings("ignore:Simultaneous band smaller than pointwise:UserWarning")
 def test_cont_did_cck_method(cck_test_data):
     result = cont_did(
         data=cck_test_data,

@@ -1,8 +1,8 @@
 """Tests for outcome regression DiD."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from moderndid.core.data import load_nsw
 from moderndid.drdid.ordid import ordid
 from tests.helpers import importorskip
@@ -376,6 +376,7 @@ def test_ordid_missing_values_handled():
     assert np.isfinite(result.att) or np.isnan(result.att)
 
 
+@pytest.mark.filterwarnings("ignore:Panel data is unbalanced:UserWarning")
 def test_ordid_unbalanced_panel_error():
     rng = np.random.default_rng(42)
     df = pl.DataFrame(

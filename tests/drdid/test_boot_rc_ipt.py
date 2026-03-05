@@ -1,8 +1,8 @@
 """Tests for IPT repeated cross-section bootstrap inference functions."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from moderndid import (
     wboot_drdid_ipt_rc1,
     wboot_drdid_ipt_rc2,
@@ -88,6 +88,7 @@ def test_wboot_drdid_ipt_rc1_reproducibility():
     np.testing.assert_array_equal(wboot_estimates1, wboot_estimates2)
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_wboot_drdid_ipt_rc1_with_weights():
     rng = np.random.default_rng(42)
     n = 200
@@ -197,6 +198,7 @@ def test_wboot_drdid_ipt_rc2_reproducibility():
     np.testing.assert_array_equal(wboot_estimates1, wboot_estimates2)
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_wboot_drdid_ipt_rc2_with_weights():
     rng = np.random.default_rng(42)
     n = 200

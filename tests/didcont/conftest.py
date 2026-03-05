@@ -1,9 +1,9 @@
 """Shared fixtures for tests."""
 
-import numpy as np
 import polars as pl
 import pytest
 
+import numpy as np
 from moderndid import att_gt, load_mpdta
 from moderndid.didcont.estimation import PTEParams, process_att_gt
 
@@ -410,7 +410,7 @@ def att_gt_raw_results():
             att_value = np.random.normal(0.1, 0.05) if g > t else np.random.normal(0, 0.02)
             attgt_list.append({"att": att_value, "group": g, "time_period": t})
 
-    n_units = 50
+    n_units = 200
     influence_func = np.random.randn(n_units, n_gt) * 0.1
 
     return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": []}
@@ -418,12 +418,13 @@ def att_gt_raw_results():
 
 @pytest.fixture
 def pte_params_basic():
+    n_units = 200
     data = pl.DataFrame(
         {
-            "id": np.repeat(np.arange(1, 51), 4),
-            "time": np.tile([2003, 2004, 2005, 2006], 50),
-            "y": np.random.randn(200),
-            "G": np.repeat(np.random.choice([0, 2004, 2006, 2007], 50), 4),
+            "id": np.repeat(np.arange(1, n_units + 1), 4),
+            "time": np.tile([2003, 2004, 2005, 2006], n_units),
+            "y": np.random.randn(n_units * 4),
+            "G": np.repeat(np.random.choice([0, 2004, 2006, 2007], n_units), 4),
         }
     )
     time_vals = data["time"].unique().to_list()
@@ -450,7 +451,7 @@ def pte_params_basic():
         control_group="nevertreated",
         gt_type="att",
         ret_quantile=0.5,
-        biters=20,
+        biters=100,
         dname=None,
         degree=None,
         num_knots=None,

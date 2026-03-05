@@ -1,8 +1,8 @@
 """Tests for ARP nuisance CI."""
 
-import numpy as np
 import pytest
 
+import numpy as np
 from moderndid.didhonest.arp_nuisance import (
     ARPNuisanceCIResult,
     _check_if_solution,
@@ -279,6 +279,7 @@ def test_compute_arp_nuisance_ci_basic(panel_data):
     assert isinstance(result.length, float)
 
 
+@pytest.mark.filterwarnings("ignore:CI is open at one of the endpoints:UserWarning")
 def test_compute_arp_nuisance_ci_with_rows_subset(rng):
     num_pre = 4
     num_post = 3
@@ -528,6 +529,7 @@ def test_flci_bounds_computation():
     assert np.isinf(result_inf["vlo"]) or np.isinf(result_inf["vup"])
 
 
+@pytest.mark.filterwarnings("ignore:CI is open at one of the endpoints:UserWarning")
 @pytest.mark.parametrize(
     "method,needs_hybrid_list",
     [
@@ -559,6 +561,7 @@ def test_hybrid_method_transitions(panel_data, hybrid_list, method, needs_hybrid
     assert result.ci_lb <= result.ci_ub
 
 
+@pytest.mark.filterwarnings("ignore:CI is open at one of the endpoints:UserWarning")
 def test_ci_monotonicity_in_alpha():
     num_pre, num_post = 3, 2
     betahat = np.concatenate([np.zeros(num_pre), [0.5, 0.3]])
