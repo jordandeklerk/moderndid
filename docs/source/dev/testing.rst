@@ -2,6 +2,11 @@
 Testing ModernDiD
 ==================
 
+Econometric estimators must produce numerically correct results across a wide
+range of data configurations, sample sizes, and edge cases. A thorough test
+suite is what gives users confidence that ModernDiD's estimates match the
+established R implementations and remain stable as the codebase evolves.
+
 How to run the test suite
 =========================
 

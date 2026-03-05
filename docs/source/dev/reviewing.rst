@@ -12,9 +12,10 @@ For reviewers
 =============
 
 Anyone can review a pull request. You don't need to be a maintainer or an
-expert in every part of the codebase. Domain expertise in econometrics,
-numerical computing, or distributed systems is especially valuable. If you
-see a PR in an area you know well, your review is welcome.
+expert in every part of the codebase. Reviews of documentation, CI configuration,
+and general code quality are always welcome. Reviews of estimator implementations,
+however, should come from contributors with experience in econometrics or
+statistics, since correctness depends on understanding the underlying methodology.
 
 Communication
 -------------

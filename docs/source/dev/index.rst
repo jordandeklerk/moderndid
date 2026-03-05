@@ -11,11 +11,11 @@ For usage documentation see the :ref:`User Guide <user-guide>`.
    :maxdepth: 2
 
    contributing
+   architecture
    workflow
    testing
    reviewing
    debugging
    benchmarking
-   architecture
    distributed_architecture
    releasing
