@@ -3,9 +3,8 @@
 from dataclasses import dataclass
 from typing import Literal, NamedTuple
 
-import polars as pl
-
 import numpy as np
+import polars as pl
 
 
 class PTEParams(NamedTuple):

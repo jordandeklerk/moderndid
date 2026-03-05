@@ -3,9 +3,8 @@
 import warnings
 from typing import NamedTuple
 
-from scipy.interpolate import BSpline
-
 import numpy as np
+from scipy.interpolate import BSpline
 
 from ...cupy.backend import get_backend, to_device, to_numpy
 

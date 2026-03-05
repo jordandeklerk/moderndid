@@ -3,10 +3,9 @@
 from typing import NamedTuple
 
 import cvxpy as cp
+import numpy as np
 from scipy import stats
 from scipy.optimize import brentq
-
-import numpy as np
 
 from .utils import basis_vector, validate_conformable
 

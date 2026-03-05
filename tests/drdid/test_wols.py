@@ -2,9 +2,9 @@
 
 import warnings
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid import ols_panel, wols_panel, wols_rc
 
 

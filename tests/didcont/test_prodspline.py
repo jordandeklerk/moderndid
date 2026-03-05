@@ -1,8 +1,8 @@
 """Test the spline module."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid.didcont.npiv.prodspline import (
     glp_model_matrix,
     prodspline,

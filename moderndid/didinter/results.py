@@ -2,9 +2,8 @@
 
 from typing import NamedTuple
 
-import polars as pl
-
 import numpy as np
+import polars as pl
 
 
 class EffectsResult(NamedTuple):

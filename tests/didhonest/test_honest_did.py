@@ -1,8 +1,8 @@
 """Tests for sensitivity analysis using the approach of Rambachan and Roth (2021)."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from tests.helpers import importorskip
 
 pl = importorskip("polars")

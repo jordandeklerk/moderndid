@@ -1,8 +1,8 @@
 """Tests for uniform confidence band construction."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid.didcont.npiv.confidence_bands import compute_ucb
 from moderndid.didcont.npiv.results import NPIVResult
 

@@ -1,8 +1,8 @@
 """Tests for IPT repeated cross-section bootstrap inference functions."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid import (
     wboot_drdid_ipt_rc1,
     wboot_drdid_ipt_rc2,

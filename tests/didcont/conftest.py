@@ -1,9 +1,9 @@
 """Shared fixtures for tests."""
 
+import numpy as np
 import polars as pl
 import pytest
 
-import numpy as np
 from moderndid import att_gt, load_mpdta
 from moderndid.didcont.estimation import PTEParams, process_att_gt
 

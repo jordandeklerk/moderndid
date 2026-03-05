@@ -1,8 +1,8 @@
 """Tests for data-driven dimension selection."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid.didcont.npiv.selection import npiv_choose_j
 
 

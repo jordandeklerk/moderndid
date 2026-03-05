@@ -1,8 +1,8 @@
 """Tests for doubly robust DiD."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid.core.data import load_nsw
 from moderndid.drdid.drdid import drdid
 from tests.helpers import importorskip

@@ -5,9 +5,9 @@ from __future__ import annotations
 import warnings
 from typing import NamedTuple
 
+import numpy as np
 from scipy import stats
 
-import numpy as np
 from moderndid.cupy.backend import get_backend, to_numpy
 
 from ..bootstrap.mboot_ddd import mboot_ddd, wboot_ddd

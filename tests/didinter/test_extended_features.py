@@ -2,9 +2,9 @@
 
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
-import numpy as np
 from tests.helpers import importorskip
 
 pl = importorskip("polars")

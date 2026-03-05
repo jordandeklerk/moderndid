@@ -1,9 +1,9 @@
 """Tests for processing aggregate treatment effects."""
 
+import numpy as np
 import pytest
 import scipy.stats
 
-import numpy as np
 from moderndid.didcont.estimation import (
     PTEAggteResult,
     aggregate_att_gt,

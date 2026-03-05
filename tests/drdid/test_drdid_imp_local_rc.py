@@ -1,8 +1,8 @@
 """Tests for the improved and locally efficient DR-DiD estimator for repeated cross-section data."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid import drdid_imp_local_rc
 
 

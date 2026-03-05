@@ -1,8 +1,8 @@
 """Tests for nonparametric instrumental variables estimation."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid.didcont.npiv.npiv import npiv
 from moderndid.didcont.npiv.results import NPIVResult
 

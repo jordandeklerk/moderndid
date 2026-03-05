@@ -1,8 +1,8 @@
 """Tests for ARP nuisance CI."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid.didhonest.arp_nuisance import (
     ARPNuisanceCIResult,
     _check_if_solution,

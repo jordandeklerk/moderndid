@@ -5,9 +5,9 @@ from __future__ import annotations
 import warnings
 from typing import NamedTuple
 
+import numpy as np
 import scipy.sparse as sp
 
-import numpy as np
 from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess import ControlGroup, DIDData, EstimationMethod
 from moderndid.cupy.backend import get_backend

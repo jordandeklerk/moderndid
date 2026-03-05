@@ -3,10 +3,9 @@
 import warnings
 from typing import NamedTuple
 
+import numpy as np
 import polars as pl
 from scipy import stats
-
-import numpy as np
 
 from .bounds import compute_delta_sd_upperbound_m
 from .delta.rm.rm import compute_identified_set_rm

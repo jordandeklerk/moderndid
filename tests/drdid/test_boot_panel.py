@@ -1,8 +1,8 @@
 """Tests for panel data bootstrap inference functions."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid import (
     wboot_dr_tr_panel,
     wboot_drdid_imp_panel,

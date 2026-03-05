@@ -2,9 +2,8 @@
 
 from typing import NamedTuple
 
-import scipy.optimize as opt
-
 import numpy as np
+import scipy.optimize as opt
 
 from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix

@@ -2,9 +2,8 @@
 
 from typing import NamedTuple, Protocol, runtime_checkable
 
-import polars as pl
-
 import numpy as np
+import polars as pl
 
 from .sensitivity import (
     OriginalCSResult,

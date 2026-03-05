@@ -4,10 +4,9 @@ import warnings
 from functools import partial
 from typing import NamedTuple
 
+import numpy as np
 import scipy.optimize as opt
 from scipy import stats
-
-import numpy as np
 
 from .conditional import _norminvp_generalized
 from .numba import compute_hybrid_dbar, prepare_theta_grid_y_values

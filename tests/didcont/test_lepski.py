@@ -1,8 +1,8 @@
 """Tests for Lepski method for optimal dimension selection."""
 
+import numpy as np
 import pytest
 
-import numpy as np
 from moderndid.didcont.npiv.lepski import npiv_j, npiv_jhat_max
 
 

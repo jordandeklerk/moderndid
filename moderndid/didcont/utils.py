@@ -3,6 +3,7 @@
 from typing import NamedTuple
 
 import numpy as np
+
 from moderndid.cupy.backend import get_backend
 
 from .numba import (

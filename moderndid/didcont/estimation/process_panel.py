@@ -3,9 +3,9 @@
 import warnings
 from typing import NamedTuple
 
+import numpy as np
 import polars as pl
 
-import numpy as np
 from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess import (
     choose_knots_quantile as _choose_knots_quantile,

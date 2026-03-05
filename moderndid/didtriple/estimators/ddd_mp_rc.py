@@ -5,10 +5,10 @@ from __future__ import annotations
 import warnings
 from typing import NamedTuple
 
+import numpy as np
 import polars as pl
 from scipy import stats
 
-import numpy as np
 from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
 

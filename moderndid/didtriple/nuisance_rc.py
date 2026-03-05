@@ -5,9 +5,9 @@ from __future__ import annotations
 import warnings
 from typing import NamedTuple
 
+import numpy as np
 import statsmodels.api as sm
 
-import numpy as np
 from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
 
