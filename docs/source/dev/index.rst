@@ -12,8 +12,8 @@ For usage documentation see the :ref:`User Guide <user-guide>`.
 
    contributing
    architecture
-   workflow
    testing
+   workflow
    reviewing
    debugging
    benchmarking
