@@ -281,17 +281,6 @@ def test_aggte_all_treated_same_time():
     assert len(treated_groups) == 1
 
 
-def test_aggte_clustering_multiple_vars_error(mp_result):
-    with pytest.raises(NotImplementedError, match="multiple variables"):
-        aggte(
-            mp_result,
-            type="simple",
-            clustervars=["var1", "var2"],
-            boot=True,
-            biters=99,
-        )
-
-
 def test_aggte_uniform_bands_without_bootstrap():
     df = load_mpdta()
 

@@ -96,8 +96,7 @@ def synthetic_mp_result():
     vcov = np.cov(inf_func.T)
     se_gt = np.sqrt(np.diag(vcov) / n_units)
 
-    rng = np.random.default_rng(42)
-    G = rng.choice([2004, 2006, 2007, 0], size=n_units)
+    G = np.tile([2004, 2006, 2007, 0], n_units // 4)
     weights_ind = np.ones(n_units)
 
     return mp(
