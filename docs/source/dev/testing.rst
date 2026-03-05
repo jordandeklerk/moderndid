@@ -2,6 +2,11 @@
 Testing ModernDiD
 ==================
 
+Econometric estimators must produce numerically correct results across a wide
+range of data configurations, sample sizes, and edge cases. A thorough test
+suite is what gives users confidence that ModernDiD's estimates match the
+established R implementations and remain stable as the codebase evolves.
+
 How to run the test suite
 =========================
 
@@ -48,6 +53,8 @@ To run style checks:
 
    pixi run -e check lint
 
+.. _testing-how-to-write:
+
 How to write tests
 ==================
 
@@ -60,7 +67,7 @@ Imports and optional dependencies
 
 ModernDiD supports several optional dependencies, and tests need to handle cases
 where these dependencies may not be installed. Use the ``importorskip`` helper
-function from ``tests/helpers.py`` for any import outside of the Python standard
+function from `helpers.py <https://github.com/jordandeklerk/moderndid/tree/main/tests/helpers.py>`__ for any import outside of the Python standard
 library plus NumPy:
 
 .. code-block:: python
@@ -114,13 +121,13 @@ Fixtures belong in conftest.py
 
 All pytest fixtures should be defined in ``conftest.py`` files, never in test
 files themselves. This keeps test files focused on test logic and makes fixtures
-discoverable and reusable. Place fixtures in ``tests/conftest.py`` for fixtures
-shared across all modules, or in ``tests/<submodule>/conftest.py`` for fixtures
-specific to that module:
+discoverable and reusable. Each submodule has its own
+``tests/<submodule>/conftest.py`` for fixtures specific to that module (e.g.,
+`conftest.py <https://github.com/jordandeklerk/moderndid/tree/main/tests/did/conftest.py>`__):
 
 .. code-block:: python
 
-   # tests/conftest.py
+   # tests/did/conftest.py
 
    @pytest.fixture(scope="module")
    def mpdta_data():
@@ -226,13 +233,64 @@ to assert that the expected warning appears:
        with pytest.warns(UserWarning, match="Matrix sigma not exactly symmetric"):
            validate_symmetric_psd(asymmetric_matrix)
 
+Skipping and expected failures
+------------------------------
+
+When a test cannot run under certain conditions (missing dependency, wrong
+platform, known bug), use pytest markers to handle it gracefully rather than
+letting it fail with a confusing error.
+
+To skip a test conditionally based on the environment:
+
+.. code-block:: python
+
+   import sys
+
+   @pytest.mark.skipif(sys.platform == "win32", reason="R validation not supported on Windows")
+   def test_r_validation():
+       ...
+
+To mark a test as a known failure that you expect to be fixed later:
+
+.. code-block:: python
+
+   @pytest.mark.xfail(reason="known precision issue with small sample sizes, see #42")
+   def test_small_sample_bootstrap():
+       ...
+
+An ``xfail`` test that unexpectedly passes will be reported as ``XPASS``,
+alerting you that the underlying issue may have been resolved and the marker
+can be removed.
+
+Running specific tests
+-----------------------
+
+During development you rarely need to run the full suite. Pytest provides
+several ways to narrow down what runs.
+
+.. code-block:: bash
+
+   # Run a single test file
+   pytest tests/did/test_att_gt.py -vv
+
+   # Run a single test function
+   pytest tests/did/test_att_gt.py::test_basic_panel -vv
+
+   # Run tests matching a keyword expression
+   pytest tests/did/ -k "bootstrap and not slow" -vv
+
+   # Run tests for a specific estimator module
+   pytest tests/didcont/ -vv
+
+.. _testing-numerical-tolerances:
+
 Numerical tolerances
 --------------------
 
 Floating-point arithmetic means that numerical results rarely match exactly.
 When comparing results, choose tolerances appropriate to what you're testing.
 Deterministic calculations should match to high precision, while stochastic
-methods like bootstrap naturally have more variation:
+methods like bootstrap naturally have more variation.
 
 .. code-block:: python
 
@@ -244,3 +302,32 @@ methods like bootstrap naturally have more variation:
 
    # Even more lenient for bootstrap/Monte Carlo results
    assert 0.7 < se_ratio < 1.3
+
+When using ``np.testing.assert_allclose``, prefer passing both ``rtol`` and
+``atol`` explicitly rather than relying on defaults. The defaults
+(``rtol=1e-7``, ``atol=0``) are often too strict for econometric
+computations.
+
+Testing with different backends
+-------------------------------
+
+Some tests need to verify behavior across multiple backends (NumPy vs CuPy,
+local vs Dask). Use ``importorskip`` to gate backend-specific tests so they
+are skipped gracefully when the backend is not available.
+
+.. code-block:: python
+
+   from tests.helpers import importorskip
+
+   cp = importorskip("cupy")
+
+   def test_gpu_att_gt():
+       from moderndid.cupy.backend import use_backend
+
+       with use_backend("cupy"):
+           result = att_gt(data=df, boot=False)
+       assert result.att_gt is not None
+
+Organize backend-specific tests in separate files (e.g., ``test_att_gt_gpu.py``)
+so that a missing optional dependency skips the entire file rather than
+producing scattered skips throughout the main test file.

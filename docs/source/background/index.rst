@@ -9,7 +9,6 @@ methodologies implemented in ModernDiD; for practical usage see the
 :ref:`User Guide <user-guide>`.
 
 .. toctree::
-   :caption: Methodology
    :maxdepth: 2
 
    did

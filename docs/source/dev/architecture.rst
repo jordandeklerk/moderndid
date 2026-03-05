@@ -159,6 +159,8 @@ to the proper type.
        UNIVERSAL = "universal"
        VARYING = "varying"
 
+.. _consistent-argument-naming:
+
 Consistent Argument Naming
 ==========================
 
@@ -970,7 +972,8 @@ the sensitivity analysis tools.
 Step 8: Write Tests
 -------------------
 
-See :doc:`testing` for detailed guidance on testing conventions. Test basic
+See :ref:`how to write tests <testing-how-to-write>` for detailed guidance on
+testing conventions. Test basic
 functionality with simple synthetic data where you know the correct answer.
 Test edge cases like no treated units, all units treated, or singular covariate
 matrices. When an R implementation exists, validate against it. Use parameterization
