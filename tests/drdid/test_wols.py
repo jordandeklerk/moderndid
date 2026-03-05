@@ -102,6 +102,7 @@ def test_wols_panel_few_control_units():
     assert hasattr(result, "coefficients")
 
 
+@pytest.mark.filterwarnings("ignore:Only.*control units available:UserWarning")
 def test_wols_panel_ps_one_for_control():
     n_units = 5
     n_features = 2
@@ -305,6 +306,7 @@ def test_wols_rc_few_units_in_subset():
     assert np.all(np.isnan(result.coefficients))
 
 
+@pytest.mark.filterwarnings("ignore:Only.*units available:UserWarning")
 def test_wols_rc_ps_one_in_subset():
     n_units = 6
     n_features = 2
@@ -320,6 +322,7 @@ def test_wols_rc_ps_one_in_subset():
         wols_rc(y, post, d, x, ps, i_weights, pre=True, treat=False)
 
 
+@pytest.mark.filterwarnings("ignore:Only.*units available:UserWarning")
 def test_wols_rc_extreme_weights():
     n_units = 8
     n_features = 2

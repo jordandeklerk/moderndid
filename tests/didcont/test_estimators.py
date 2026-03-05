@@ -111,6 +111,7 @@ def test_different_knot_types(simple_data, knots):
     assert result.args["knots_type"] == knots
 
 
+@pytest.mark.filterwarnings("ignore:Some 'x' values beyond boundary knots:UserWarning")
 def test_with_range_constraints(simple_data):
     y, x, w = simple_data
 

@@ -600,6 +600,7 @@ def test_format_estimation_detail_lines(minimal_effects, params, expected_substr
         ("trends_nonparam", [1, 2], "trends_nonparam must be a list"),
     ],
 )
+@pytest.mark.filterwarnings("ignore:When continuous > 0:UserWarning")
 def test_new_param_validation(simple_panel_data, param, value, match):
     with pytest.raises(ValueError, match=match):
         md.did_multiplegt(

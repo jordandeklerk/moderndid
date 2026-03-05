@@ -390,6 +390,7 @@ def test_extract_ddd_covariates_with_vars():
     assert len(names) >= 1
 
 
+@pytest.mark.filterwarnings("ignore:Missing values in covariates:UserWarning")
 def test_extract_ddd_covariates_with_nan_raises():
     df = pl.DataFrame(
         {

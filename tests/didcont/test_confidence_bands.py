@@ -186,6 +186,7 @@ def test_with_fixed_dimensions(simple_data):
     assert result.k_w_segments == 4
 
 
+@pytest.mark.filterwarnings("ignore:Some 'x' values beyond boundary knots:UserWarning")
 def test_with_range_constraints(simple_data):
     y, x, w = simple_data
 

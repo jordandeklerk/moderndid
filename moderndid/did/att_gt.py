@@ -506,6 +506,7 @@ def att_gt(
         "base_period": base_period,
         "panel": panel,
         "clustervars": clustervars,
+        "cluster": dp.cluster,
         "biters": biters,
         "random_state": random_state,
     }

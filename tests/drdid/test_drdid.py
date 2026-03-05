@@ -56,6 +56,7 @@ def test_drdid_panel_with_covariates(nsw_data):
     assert result.call_params["xformla"] == "~ age + educ + black + married + nodegree + hisp"
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_drdid_panel_with_weights(nsw_data):
     rng = np.random.default_rng(42)
     unique_ids = nsw_data["id"].unique().to_list()
@@ -98,6 +99,7 @@ def test_drdid_panel_with_influence_func(nsw_data):
     assert np.isclose(np.mean(result.att_inf_func), 0, atol=1e-10)
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 @pytest.mark.parametrize(
     "boot_type,est_method",
     [
@@ -148,6 +150,7 @@ def test_drdid_repeated_cross_section(nsw_data, est_method):
     assert result.args["estMethod"] == est_method
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_drdid_rc_with_bootstrap(nsw_data):
     result = drdid(
         data=nsw_data,
@@ -249,6 +252,7 @@ def test_drdid_formula_variations(nsw_data, formula):
     assert result.se > 0
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_drdid_call_params_stored(nsw_data):
     result = drdid(
         data=nsw_data,
@@ -279,6 +283,7 @@ def test_drdid_call_params_stored(nsw_data):
     assert "data_shape" in result.call_params
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_drdid_args_output(nsw_data):
     result = drdid(
         data=nsw_data,

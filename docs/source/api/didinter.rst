@@ -34,13 +34,13 @@ Inference
 Result Objects
 --------------
 
-.. currentmodule:: moderndid
+.. currentmodule:: moderndid.didinter.results
 
 .. autosummary::
    :toctree: generated/didinter/
    :nosignatures:
 
    DIDInterResult
-   DIDInterEffectsResult
-   DIDInterPlacebosResult
-   DIDInterATEResult
+   EffectsResult
+   PlacebosResult
+   ATEResult

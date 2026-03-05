@@ -13,7 +13,7 @@ from ...utils import basis_vector
 
 
 class DeltaRMMResult(NamedTuple):
-    """Result from relative magnitudes with monotonicity restriction identified set computation.
+    """Container for relative magnitudes with monotonicity restriction identified set results.
 
     Attributes
     ----------
@@ -23,7 +23,9 @@ class DeltaRMMResult(NamedTuple):
         Upper bound of the identified set.
     """
 
+    #: Lower bound of the identified set.
     id_lb: float
+    #: Upper bound of the identified set.
     id_ub: float
 
 

@@ -63,6 +63,7 @@ def test_att_gt_notyettreated_control(mpdta_data):
     assert result.estimation_params["control_group"] == "notyettreated"
 
 
+@pytest.mark.filterwarnings("ignore:Dropped.*units that were already treated:UserWarning")
 def test_att_gt_with_anticipation(mpdta_data):
     result = att_gt(
         data=mpdta_data,

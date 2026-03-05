@@ -376,6 +376,7 @@ def test_ordid_missing_values_handled():
     assert np.isfinite(result.att) or np.isnan(result.att)
 
 
+@pytest.mark.filterwarnings("ignore:Panel data is unbalanced:UserWarning")
 def test_ordid_unbalanced_panel_error():
     rng = np.random.default_rng(42)
     df = pl.DataFrame(

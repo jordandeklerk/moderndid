@@ -91,6 +91,7 @@ def test_wboot_drdid_imp_panel_reproducibility():
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_wboot_drdid_imp_panel_with_weights():
     rng = np.random.default_rng(42)
     n = 200
@@ -109,6 +110,7 @@ def test_wboot_drdid_imp_panel_with_weights():
     assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_wboot_drdid_imp_panel_compare_variance():
     rng = np.random.default_rng(42)
     n = 300
@@ -322,6 +324,7 @@ def test_wboot_dr_tr_panel_reproducibility():
     np.testing.assert_array_equal(boot_estimates1, boot_estimates2)
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_wboot_dr_tr_panel_with_weights():
     rng = np.random.default_rng(42)
     n = 200
@@ -338,6 +341,7 @@ def test_wboot_dr_tr_panel_with_weights():
     assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_wboot_dr_tr_panel_compare_with_improved():
     rng = np.random.default_rng(42)
     n = 300
@@ -454,6 +458,7 @@ def test_wboot_ipw_panel_with_weights():
     assert np.sum(np.isnan(boot_estimates)) < boot_estimates.size
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_wboot_ipw_panel_compare_with_dr():
     rng = np.random.default_rng(42)
     n = 300
@@ -636,6 +641,7 @@ def test_wboot_reg_panel_no_treated_units():
     assert np.all(np.isnan(boot_estimates))
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_wboot_reg_panel_compare_with_dr():
     rng = np.random.default_rng(42)
     n = 300

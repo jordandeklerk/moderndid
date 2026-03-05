@@ -13,11 +13,15 @@ from .numba import (
 
 
 class FullRankCheckResult(NamedTuple):
-    """Result from full rank check."""
+    """Container for full rank check results."""
 
+    #: Whether the matrix has full rank.
     is_full_rank: bool
+    #: Condition number of the matrix.
     condition_number: float
+    #: Minimum eigenvalue.
     min_eigenvalue: float
+    #: Maximum eigenvalue.
     max_eigenvalue: float
 
 

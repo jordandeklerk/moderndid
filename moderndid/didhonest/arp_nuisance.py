@@ -14,7 +14,7 @@ from .utils import basis_vector
 
 
 class ARPNuisanceCIResult(NamedTuple):
-    """Result from ARP confidence interval computation with nuisance parameters.
+    """Container for ARP confidence interval results with nuisance parameters.
 
     Attributes
     ----------
@@ -28,9 +28,13 @@ class ARPNuisanceCIResult(NamedTuple):
         Length of the confidence interval.
     """
 
+    #: Lower bound of confidence interval.
     ci_lb: float
+    #: Upper bound of confidence interval.
     ci_ub: float
+    #: Grid of values tested and acceptance indicators.
     accept_grid: np.ndarray
+    #: Length of the confidence interval.
     length: float
 
 

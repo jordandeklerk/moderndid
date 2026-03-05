@@ -28,6 +28,7 @@ def test_with_discrete_variables(continuous_data, discrete_data, degree_matrix, 
     assert result.basis.shape[1] > degree_matrix.shape[0] * 5
 
 
+@pytest.mark.filterwarnings("ignore:Some 'x' values beyond boundary knots:UserWarning")
 def test_evaluation_data(degree_matrix, indicator_vector):
     np.random.seed(42)
     x = np.random.normal(0, 1, (100, 3))
@@ -79,6 +80,7 @@ def test_knot_types(knots_type):
     assert result.basis.shape[1] == 12
 
 
+@pytest.mark.filterwarnings("ignore:Some 'x' values beyond boundary knots:UserWarning")
 def test_min_max_bounds():
     x = np.random.uniform(-2, 2, (100, 2))
     K = np.array([[3, 3], [2, 4]])
@@ -142,6 +144,7 @@ def test_input_validation(simple_setup, error_case, error_match):
         prodspline(**base_args)
 
 
+@pytest.mark.filterwarnings("ignore:deriv order too large:UserWarning")
 def test_derivative_warning(simple_setup):
     x, _ = simple_setup
     K = np.array([[2, 3], [3, 4]])

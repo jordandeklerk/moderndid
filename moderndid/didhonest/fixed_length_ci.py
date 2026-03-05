@@ -11,7 +11,7 @@ from .utils import basis_vector, validate_conformable
 
 
 class FLCIResult(NamedTuple):
-    """Result from fixed-length confidence interval computation.
+    """Container for fixed-length confidence interval results.
 
     Attributes
     ----------
@@ -30,11 +30,17 @@ class FLCIResult(NamedTuple):
         Optimization status from the solver.
     """
 
+    #: Fixed-length confidence interval as (lower, upper).
     flci: tuple[float, float]
+    #: Optimal weight vector over all periods.
     optimal_vec: np.ndarray
+    #: Optimal weight vector restricted to pre-treatment periods.
     optimal_pre_period_vec: np.ndarray
+    #: Half-length of the confidence interval.
     optimal_half_length: float
+    #: Smoothness bound M used in the computation.
     smoothness_bound: float
+    #: Optimization status from the solver.
     status: str
 
 

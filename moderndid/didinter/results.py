@@ -27,12 +27,19 @@ class EffectsResult(NamedTuple):
         Number of observations at each horizon.
     """
 
+    #: Event horizons (1, 2, ..., effects).
     horizons: np.ndarray
+    #: Point estimates at each horizon.
     estimates: np.ndarray
+    #: Standard errors at each horizon.
     std_errors: np.ndarray
+    #: Lower confidence interval bounds.
     ci_lower: np.ndarray
+    #: Upper confidence interval bounds.
     ci_upper: np.ndarray
+    #: Number of switchers at each horizon.
     n_switchers: np.ndarray
+    #: Number of observations at each horizon.
     n_observations: np.ndarray
 
     def to_dataframe(self) -> pl.DataFrame:
@@ -71,12 +78,19 @@ class PlacebosResult(NamedTuple):
         Number of observations at each horizon.
     """
 
+    #: Pre-treatment horizons (-1, -2, ..., -placebo).
     horizons: np.ndarray
+    #: Point estimates at each horizon.
     estimates: np.ndarray
+    #: Standard errors at each horizon.
     std_errors: np.ndarray
+    #: Lower confidence interval bounds.
     ci_lower: np.ndarray
+    #: Upper confidence interval bounds.
     ci_upper: np.ndarray
+    #: Number of switchers at each horizon.
     n_switchers: np.ndarray
+    #: Number of observations at each horizon.
     n_observations: np.ndarray
 
     def to_dataframe(self) -> pl.DataFrame:
@@ -113,11 +127,17 @@ class ATEResult(NamedTuple):
         Total switchers contributing to the ATE.
     """
 
+    #: Point estimate of the average total effect.
     estimate: float
+    #: Standard error of the estimate.
     std_error: float
+    #: Lower confidence interval bound.
     ci_lower: float
+    #: Upper confidence interval bound.
     ci_upper: float
+    #: Total observations contributing to the ATE.
     n_observations: float = 0.0
+    #: Total switchers contributing to the ATE.
     n_switchers: float = 0.0
 
 
@@ -146,14 +166,23 @@ class HeterogeneityResult(NamedTuple):
         P-value from joint F-test that all covariate coefficients are zero.
     """
 
+    #: Effect horizon analyzed.
     horizon: int
+    #: Covariate names.
     covariates: list[str]
+    #: Coefficient estimates for each covariate.
     estimates: np.ndarray
+    #: Standard errors for each coefficient.
     std_errors: np.ndarray
+    #: T-statistics for each coefficient.
     t_stats: np.ndarray
+    #: Lower confidence interval bounds.
     ci_lower: np.ndarray
+    #: Upper confidence interval bounds.
     ci_upper: np.ndarray
+    #: Number of observations in the regression.
     n_obs: int
+    #: P-value from joint F-test that all covariate coefficients are zero.
     f_pvalue: float
 
     def to_dataframe(self) -> pl.DataFrame:
@@ -204,19 +233,35 @@ class DIDInterResult(NamedTuple):
         Heterogeneous effects analysis results for each horizon.
     estimation_params : dict
         Parameters used for estimation.
+    vcov_warnings : list
+        Variance-covariance warnings.
     """
 
+    #: Treatment effects for each post-treatment horizon.
     effects: EffectsResult
+    #: Placebo effects for each pre-treatment horizon.
     placebos: PlacebosResult | None = None
+    #: Average total effect across all horizons.
     ate: ATEResult | None = None
+    #: Total number of units in the sample.
     n_units: int = 0
+    #: Number of switchers in the sample.
     n_switchers: int = 0
+    #: Number of never-switchers in the sample.
     n_never_switchers: int = 0
+    #: Confidence level used for intervals.
     ci_level: float = 95.0
+    #: Test for equality of effects across horizons.
     effects_equal_test: dict | None = None
+    #: Joint test that all placebo effects are zero.
     placebo_joint_test: dict | None = None
+    #: Influence function for effects.
     influence_effects: np.ndarray | None = None
+    #: Influence function for placebos.
     influence_placebos: np.ndarray | None = None
+    #: Heterogeneous effects analysis results.
     heterogeneity: list | None = None
+    #: Parameters used for estimation.
     estimation_params: dict = {}
+    #: Variance-covariance warnings.
     vcov_warnings: list = []

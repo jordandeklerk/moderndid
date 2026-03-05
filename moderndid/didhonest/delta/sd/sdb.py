@@ -15,7 +15,7 @@ from ...utils import basis_vector
 
 
 class DeltaSDBResult(NamedTuple):
-    """Result from second differences with bias restriction identified set computation.
+    """Container for second differences with bias restriction identified set results.
 
     Attributes
     ----------
@@ -25,7 +25,9 @@ class DeltaSDBResult(NamedTuple):
         Upper bound of the identified set.
     """
 
+    #: Lower bound of the identified set.
     id_lb: float
+    #: Upper bound of the identified set.
     id_ub: float
 
 

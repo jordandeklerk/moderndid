@@ -29,13 +29,16 @@ class PScoreResult(NamedTuple):
         Control units with propensity score >= trim_level are excluded.
     """
 
+    #: Estimated propensity scores.
     propensity_scores: np.ndarray
+    #: Hessian matrix from logistic regression.
     hessian_matrix: np.ndarray | None
+    #: Boolean array indicating which units to keep after trimming.
     keep_ps: np.ndarray
 
 
 class OutcomeRegResult(NamedTuple):
-    """Result from outcome regression estimation.
+    """Container for outcome regression estimation results.
 
     Attributes
     ----------
@@ -47,13 +50,16 @@ class OutcomeRegResult(NamedTuple):
         Regression coefficients. None when using IPW method.
     """
 
+    #: Outcome changes (y1 - y0).
     delta_y: np.ndarray
+    #: Outcome regression predictions.
     or_delta: np.ndarray
+    #: Regression coefficients.
     reg_coeff: np.ndarray | None
 
 
 class DIDResult(NamedTuple):
-    """Result from DiD estimation for one subgroup comparison.
+    """Container for DiD estimation results for one subgroup comparison.
 
     Attributes
     ----------
@@ -63,7 +69,9 @@ class DIDResult(NamedTuple):
         Influence function for all units (zeros for units not in comparison).
     """
 
+    #: Doubly robust ATT estimate.
     dr_att: float
+    #: Influence function for all units.
     inf_func: np.ndarray
 
 

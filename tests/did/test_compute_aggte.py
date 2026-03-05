@@ -40,6 +40,10 @@ def mpdta_mp_result():
     vcov = np.cov(inf_func.T)
     se_gt = np.sqrt(np.diag(vcov) / n_units)
 
+    gname = data.config.gname
+    G = data.time_invariant_data[gname].to_numpy()
+    weights_ind = np.ones(n_units)
+
     mp_result = mp(
         groups=groups,
         times=times,
@@ -59,6 +63,8 @@ def mpdta_mp_result():
             "data": data,
             "panel": True,
         },
+        G=G,
+        weights_ind=weights_ind,
     )
 
     return mp_result
@@ -90,6 +96,9 @@ def synthetic_mp_result():
     vcov = np.cov(inf_func.T)
     se_gt = np.sqrt(np.diag(vcov) / n_units)
 
+    G = np.tile([2004, 2006, 2007, 0], n_units // 4)
+    weights_ind = np.ones(n_units)
+
     return mp(
         groups=groups,
         times=times,
@@ -107,6 +116,8 @@ def synthetic_mp_result():
             "anticipation_periods": 0,
             "estimation_method": "dr",
         },
+        G=G,
+        weights_ind=weights_ind,
     )
 
 
@@ -349,20 +360,20 @@ def test_clustered_standard_errors(mpdta_mp_result):
         mpdta_mp_result,
         aggregation_type="group",
         bootstrap=True,
-        bootstrap_iterations=20,
+        bootstrap_iterations=50,
+        random_state=42,
     )
 
     result_with_cluster = compute_aggte(
         mpdta_mp_result,
         aggregation_type="group",
         bootstrap=True,
-        bootstrap_iterations=20,
+        bootstrap_iterations=50,
         clustervars=["cluster"],
+        random_state=42,
     )
 
     assert np.allclose(result_no_cluster.overall_att, result_with_cluster.overall_att)
-
-    assert result_no_cluster.overall_se != result_with_cluster.overall_se
-
     assert result_with_cluster.overall_se > 0
     assert not np.isnan(result_with_cluster.overall_se)
+    assert result_no_cluster.overall_se != result_with_cluster.overall_se

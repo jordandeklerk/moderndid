@@ -12,7 +12,8 @@ Overview
 ========
 
 ModernDiD is organized around a shared core and specialized estimator modules.
-The ``core`` module provides infrastructure that all estimators rely on,
+The `core <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/core>`__
+module provides infrastructure that all estimators rely on,
 including a preprocessing pipeline for validating and transforming input data,
 configuration dataclasses that define estimator parameters, shared formatting
 utilities for structured table output, and base utilities for result objects.
@@ -208,11 +209,25 @@ Inference Parameters
 Result Object Design
 ====================
 
-All estimators return immutable `NamedTuple` result objects. Immutability ensures
+All estimators return immutable ``NamedTuple`` result objects. Immutability ensures
 results cannot be accidentally modified during interactive analysis. The explicit
 attribute definitions with type hints create a clear interface that documents
 exactly what each estimator returns. Because NamedTuples are also tuples, results
 can be unpacked for quick access when only a few values are needed.
+
+Docstring and Field Documentation
+---------------------------------
+
+Result class docstrings should begin with ``"Container for ..."``. Each field
+must have a ``#:`` doc comment immediately above it. Sphinx autodoc uses these
+comments for the autosummary tables and individual attribute pages in the API
+docs. Without them, the generated pages show Python's default
+``"Alias for field number N"`` instead of a meaningful description.
+
+The class docstring should also include a numpydoc ``Attributes`` section with
+full descriptions. The ``#:`` comments drive the short summaries shown in the
+API reference tables, while the ``Attributes`` section provides the detailed
+descriptions rendered on the class page itself.
 
 Core Result Attributes
 ----------------------
@@ -224,22 +239,38 @@ All result objects include these core attributes:
    from typing import NamedTuple
 
    class MPResult(NamedTuple):
-       # Point estimates
-       groups: np.ndarray          # Treatment groups
-       times: np.ndarray           # Time periods
-       att_gt: np.ndarray          # Group-time ATT estimates
+       """Container for group-time average treatment effect results.
 
-       # Inference
-       se_gt: np.ndarray           # Standard errors
-       critical_value: float       # Critical value for CI
-       vcov_analytical: np.ndarray | None  # Variance-covariance matrix
+       Attributes
+       ----------
+       groups : ndarray
+           Which group (defined by period first treated) each ATT is for.
+       times : ndarray
+           Which time period each group-time ATT is for.
+       ...
+       """
 
-       # For downstream analysis
-       influence_func: np.ndarray | None  # Influence functions
+       #: Which group (defined by period first treated) each ATT is for.
+       groups: np.ndarray
+       #: Which time period each group-time ATT is for.
+       times: np.ndarray
+       #: Group-time average treatment effects.
+       att_gt: np.ndarray
 
-       # Metadata
-       estimation_params: dict     # All estimation parameters
-       n_units: int               # Number of units
+       #: Standard errors for group-time ATTs.
+       se_gt: np.ndarray
+       #: Critical value for confidence intervals.
+       critical_value: float
+       #: Analytical variance-covariance matrix.
+       vcov_analytical: np.ndarray | None
+
+       #: Influence function for estimating group-time ATTs.
+       influence_func: np.ndarray | None
+
+       #: DID estimation parameters.
+       estimation_params: dict
+       #: Number of unique cross-sectional units.
+       n_units: int
 
 Influence Functions
 -------------------
@@ -686,7 +717,9 @@ Step 2: Define the Result Object
 
 Create a ``NamedTuple`` for your results. Include the standard attributes that
 downstream tools expect, e.g., point estimates, standard errors, influence functions,
-and the estimation parameters dictionary.
+and the estimation parameters dictionary. Use a ``"Container for ..."`` docstring
+with a numpydoc ``Attributes`` section, and add ``#:`` doc comments before each
+field so that the API docs render meaningful descriptions.
 
 .. code-block:: python
 
@@ -695,9 +728,27 @@ and the estimation parameters dictionary.
    import numpy as np
 
    class MyEstimatorResult(NamedTuple):
+       """Container for my estimator results.
+
+       Attributes
+       ----------
+       att : ndarray
+           Point estimates.
+       se : ndarray
+           Standard errors.
+       influence_func : ndarray or None
+           Influence function matrix.
+       estimation_params : dict
+           Parameters used for estimation.
+       """
+
+       #: Point estimates.
        att: np.ndarray
+       #: Standard errors.
        se: np.ndarray
+       #: Influence function matrix.
        influence_func: np.ndarray | None
+       #: Parameters used for estimation.
        estimation_params: dict
 
 Step 3: Implement the Estimator

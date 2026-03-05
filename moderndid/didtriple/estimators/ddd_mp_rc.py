@@ -18,16 +18,20 @@ from .ddd_rc import ddd_rc
 
 
 class ATTgtRCResult(NamedTuple):
-    """Result for a single (g,t) cell from the multi-period DDD RCS estimator."""
+    """Container for a single (g,t) cell from the multi-period DDD RCS estimator."""
 
+    #: DDD point estimate for this (g,t) cell.
     att: float
+    #: Group identifier (first treatment period).
     group: int
+    #: Time period.
     time: int
+    #: Whether this is a post-treatment period (1) or not (0).
     post: int
 
 
 class DDDMultiPeriodRCResult(NamedTuple):
-    """Result from the multi-period DDD estimator for repeated cross-section data.
+    """Container for multi-period DDD repeated cross-section estimation results.
 
     Attributes
     ----------
@@ -57,17 +61,29 @@ class DDDMultiPeriodRCResult(NamedTuple):
         Array of treatment group for each observation (length n).
     """
 
+    #: Array of ATT(g,t) point estimates.
     att: np.ndarray
+    #: Array of standard errors for each ATT(g,t).
     se: np.ndarray
+    #: Array of upper confidence interval bounds.
     uci: np.ndarray
+    #: Array of lower confidence interval bounds.
     lci: np.ndarray
+    #: Array of treatment cohort identifiers for each estimate.
     groups: np.ndarray
+    #: Array of time period identifiers for each estimate.
     times: np.ndarray
+    #: Unique treatment cohorts.
     glist: np.ndarray
+    #: Unique time periods.
     tlist: np.ndarray
+    #: Matrix of influence functions (n_obs x n_estimates).
     inf_func_mat: np.ndarray
+    #: Number of observations.
     n: int
+    #: Arguments used for estimation.
     args: dict
+    #: Array of treatment group for each observation.
     unit_groups: np.ndarray
 
 

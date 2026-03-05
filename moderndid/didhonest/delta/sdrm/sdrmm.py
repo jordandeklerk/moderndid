@@ -15,7 +15,7 @@ from ...utils import basis_vector
 
 
 class DeltaSDRMMResult(NamedTuple):
-    """Result from second differences with relative magnitudes and monotonicity identified set computation.
+    """Container for second differences with relative magnitudes and monotonicity results.
 
     Attributes
     ----------
@@ -25,7 +25,9 @@ class DeltaSDRMMResult(NamedTuple):
         Upper bound of the identified set.
     """
 
+    #: Lower bound of the identified set.
     id_lb: float
+    #: Upper bound of the identified set.
     id_ub: float
 
 

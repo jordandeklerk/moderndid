@@ -8,7 +8,7 @@ import polars as pl
 
 
 class PTEParams(NamedTuple):
-    """Parameters for panel treatment effects.
+    """Container for panel treatment effect parameters.
 
     Attributes
     ----------
@@ -68,49 +68,83 @@ class PTEParams(NamedTuple):
         Method for estimating dose-specific effects ('parametric' or 'cck').
     """
 
+    #: Name of the outcome variable.
     yname: str
+    #: Name of the group variable (first treatment period).
     gname: str
+    #: Name of the time period variable.
     tname: str
+    #: Name of the id variable.
     idname: str
+    #: Panel data as a Polars DataFrame.
     data: pl.DataFrame
+    #: Array of unique group identifiers.
     g_list: np.ndarray
+    #: Array of unique time period identifiers.
     t_list: np.ndarray
+    #: Whether to compute a uniform confidence band.
     cband: bool
+    #: Significance level for confidence intervals.
     alp: float
+    #: Method for bootstrapping.
     boot_type: str
+    #: Number of periods of anticipation.
     anticipation: int
+    #: Base period for computing ATT(g,t).
     base_period: str
+    #: Name of the weights variable.
     weightsname: str
+    #: Which units to use as the control group.
     control_group: str
+    #: Type of group-time average treatment effect.
     gt_type: str
+    #: Quantile to return for conditional distribution.
     ret_quantile: float
+    #: Number of bootstrap iterations.
     biters: int
+    #: Name of the continuous treatment variable.
     dname: str
+    #: Degree of the spline for continuous treatment.
     degree: int
+    #: Number of knots for the spline.
     num_knots: int
+    #: Array of knot locations for the spline.
     knots: np.ndarray
+    #: Values of the dose to evaluate the dose-response function.
     dvals: np.ndarray
+    #: The target parameter of interest.
     target_parameter: str
+    #: Type of aggregation for results.
     aggregation: str
+    #: Type of treatment.
     treatment_type: str
+    #: Formula for covariates.
     xformula: str
+    #: Method for estimating dose-specific effects.
     dose_est_method: str = "parametric"
 
 
 class AttgtResult(NamedTuple):
     """Container for a single ATT(g,t) result with influence function."""
 
+    #: ATT estimate for this (g,t) cell.
     attgt: float
+    #: Influence function for this estimate.
     inf_func: np.ndarray | None
+    #: Extra returns from group-time calculations.
     extra_gt_returns: dict | None
 
 
 class PTEResult(NamedTuple):
     """Container for panel treatment effects results."""
 
+    #: Group-time ATT results.
     att_gt: object
+    #: Overall ATT estimate.
     overall_att: object | None
+    #: Event study results.
     event_study: object | None
+    #: Panel treatment effect parameters.
     ptep: PTEParams
 
 
@@ -151,17 +185,29 @@ class PTEAggteResult(NamedTuple):
         Original group-time ATT result object.
     """
 
+    #: Estimated overall average treatment effect on the treated.
     overall_att: float
+    #: Standard error for overall ATT.
     overall_se: float
+    #: Type of aggregation performed.
     aggregation_type: Literal["overall", "dynamic", "group"]
+    #: Event/group values depending on aggregation type.
     event_times: np.ndarray | None = None
+    #: ATT estimates specific to each event time value.
     att_by_event: np.ndarray | None = None
+    #: Standard errors specific to each event time value.
     se_by_event: np.ndarray | None = None
+    #: Critical value for uniform confidence bands.
     critical_value: float | None = None
+    #: Influence functions for overall and event-specific ATTs.
     influence_func: dict | None = None
+    #: Minimum event time.
     min_event_time: int | None = None
+    #: Maximum event time.
     max_event_time: int | None = None
+    #: Balanced event time threshold.
     balance_event: int | None = None
+    #: Original group-time ATT result object.
     att_gt_result: object | None = None
 
 
@@ -202,19 +248,33 @@ class GroupTimeATTResult:
         List of extra returns from gt-specific calculations.
     """
 
+    #: Which group (defined by period first treated) each group-time ATT is for.
     groups: np.ndarray
+    #: Which time period each group-time ATT is for.
     times: np.ndarray
+    #: Group-time average treatment effects.
     att: np.ndarray
+    #: Analytical estimator for the asymptotic variance-covariance matrix.
     vcov_analytical: np.ndarray
+    #: Standard errors for group-time ATTs.
     se: np.ndarray
+    #: Critical value for confidence intervals.
     critical_value: float
+    #: Influence function for estimating group-time average treatment effects.
     influence_func: np.ndarray
+    #: Number of unique cross-sectional units.
     n_units: int
+    #: Wald statistic for pre-testing common trends.
     wald_stat: float | None = None
+    #: P-value of the Wald statistic for pre-testing common trends.
     wald_pvalue: float | None = None
+    #: Whether uniform confidence band was computed.
     cband: bool = True
+    #: Significance level.
     alpha: float = 0.05
+    #: PTE parameters object containing estimation settings.
     pte_params: object | None = None
+    #: Extra returns from group-time calculations.
     extra_gt_returns: list | None = None
 
     @property
@@ -260,10 +320,15 @@ class PteEmpBootResult(NamedTuple):
         Extra returns from group-time calculations.
     """
 
+    #: ATT(g,t) estimates with standard errors.
     attgt_results: pl.DataFrame
+    #: Overall ATT estimate and standard error.
     overall_results: dict
+    #: Group-specific ATT estimates and standard errors.
     group_results: pl.DataFrame | None = None
+    #: Dynamic (event-time) ATT estimates and standard errors.
     dyn_results: pl.DataFrame | None = None
+    #: Extra returns from group-time calculations.
     extra_gt_returns: list | None = None
 
 
@@ -306,19 +371,35 @@ class DoseResult(NamedTuple):
         A PTEParams object containing other parameters passed to the function.
     """
 
+    #: Values of the dose used in estimation.
     dose: np.ndarray
+    #: Estimate of the overall ATT.
     overall_att: float | None = None
+    #: Standard error of the overall ATT estimate.
     overall_att_se: float | None = None
+    #: Influence function for estimating overall ATT.
     overall_att_inf_func: np.ndarray | None = None
+    #: Estimate of the overall ACRT.
     overall_acrt: float | None = None
+    #: Standard error of the overall ACRT estimate.
     overall_acrt_se: float | None = None
+    #: Influence function for estimating overall ACRT.
     overall_acrt_inf_func: np.ndarray | None = None
+    #: Estimates of ATT(d) for each value of dose.
     att_d: np.ndarray | None = None
+    #: Standard errors of ATT(d) for each value of dose.
     att_d_se: np.ndarray | None = None
+    #: Critical value for ATT(d) confidence intervals.
     att_d_crit_val: float | None = None
+    #: Influence function matrix for ATT(d).
     att_d_inf_func: np.ndarray | None = None
+    #: Estimates of ACRT(d) for each value of dose.
     acrt_d: np.ndarray | None = None
+    #: Standard errors of ACRT(d) for each value of dose.
     acrt_d_se: np.ndarray | None = None
+    #: Critical value for ACRT(d) confidence intervals.
     acrt_d_crit_val: float | None = None
+    #: Influence function matrix for ACRT(d).
     acrt_d_inf_func: np.ndarray | None = None
+    #: PTEParams object containing estimation settings.
     pte_params: object | None = None

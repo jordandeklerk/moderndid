@@ -428,6 +428,7 @@ def test_real_data_normalized(favara_imbs_data):
     assert len(result.effects.estimates) == 3
 
 
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
 @pytest.mark.parametrize("placebo", [0, 1])
 def test_bootstrap_standard_errors(simple_panel_data, placebo):
     result = did_multiplegt(
@@ -449,6 +450,7 @@ def test_bootstrap_standard_errors(simple_panel_data, placebo):
         assert all(se > 0 or np.isnan(se) for se in result.placebos.std_errors)
 
 
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
 def test_bootstrap_with_cluster(favara_imbs_data):
     result = did_multiplegt(
         favara_imbs_data,
@@ -467,6 +469,7 @@ def test_bootstrap_with_cluster(favara_imbs_data):
     assert all(se > 0 for se in result.effects.std_errors)
 
 
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
 def test_bootstrap_reproducibility(simple_panel_data):
     kwargs = {
         "yname": "y",

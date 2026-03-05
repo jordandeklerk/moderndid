@@ -11,7 +11,7 @@ from .utils import basis_vector
 
 
 class APRCIResult(NamedTuple):
-    """Result from APR confidence interval computation.
+    """Container for APR confidence interval results.
 
     Attributes
     ----------
@@ -29,11 +29,17 @@ class APRCIResult(NamedTuple):
         Optimization status.
     """
 
+    #: Lower bound of confidence interval.
     ci_lower: float
+    #: Upper bound of confidence interval.
     ci_upper: float
+    #: Length of confidence interval.
     ci_length: float
+    #: Grid of theta values tested.
     theta_grid: np.ndarray
+    #: Boolean array indicating which theta values are in the identified set.
     accept_grid: np.ndarray
+    #: Optimization status.
     status: str
 
 

@@ -417,6 +417,7 @@ class TestPreprocessDid:
         assert result.outcomes_tensor is None
         assert result.covariates_matrix is not None
 
+    @pytest.mark.filterwarnings("ignore:No never-treated group is available:UserWarning")
     def test_no_never_treated(self):
         df = create_test_panel_data(n_periods=6, treat_period=3)
         df = df.with_columns(
@@ -439,6 +440,8 @@ class TestPreprocessDid:
         assert (result.data["g"] == NEVER_TREATED_VALUE).any()
         assert len(result.config.treated_groups) > 0
 
+    @pytest.mark.filterwarnings("ignore:.*units were already treated:UserWarning")
+    @pytest.mark.filterwarnings("ignore:Dropped.*units:UserWarning")
     def test_empty_groups_error(self):
         df = create_test_panel_data()
         df = df.with_columns(pl.lit(1).alias("g"))
@@ -609,6 +612,8 @@ class TestDataIntegrity:
                 gname="g",
             )
 
+    @pytest.mark.filterwarnings("ignore:.*units were already treated:UserWarning")
+    @pytest.mark.filterwarnings("ignore:Dropped.*units:UserWarning")
     def test_early_treatment_handling(self):
         df = create_test_panel_data(n_periods=5)
         early_treated_units = df["id"].unique().to_list()[:10]
@@ -727,6 +732,7 @@ class TestWeightHandling:
 
 class TestUnbalancedPanelHandling:
     @pytest.mark.filterwarnings("ignore:.*units have unbalanced observations:UserWarning")
+    @pytest.mark.filterwarnings("ignore:Dropped.*units while converting:UserWarning")
     def test_unbalanced_to_balanced_conversion(self):
         df = create_unbalanced_panel_data(missing_fraction=0.3)
 

@@ -12,7 +12,7 @@ from ...utils import basis_vector
 
 
 class DeltaRMResult(NamedTuple):
-    """Result from relative magnitudes identified set computation.
+    """Container for relative magnitudes identified set computation results.
 
     Attributes
     ----------
@@ -22,7 +22,9 @@ class DeltaRMResult(NamedTuple):
         Upper bound of the identified set.
     """
 
+    #: Lower bound of the identified set.
     id_lb: float
+    #: Upper bound of the identified set.
     id_ub: float
 
 

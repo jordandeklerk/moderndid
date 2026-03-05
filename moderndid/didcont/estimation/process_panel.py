@@ -24,10 +24,13 @@ from .process_dose import process_dose_gt
 
 
 class OverallResult(NamedTuple):
-    """Overall result."""
+    """Container for overall ATT results."""
 
+    #: Overall average treatment effect on the treated.
     overall_att: float
+    #: Standard error for overall ATT.
     overall_se: float
+    #: Influence function for overall ATT.
     influence_func: np.ndarray
 
 

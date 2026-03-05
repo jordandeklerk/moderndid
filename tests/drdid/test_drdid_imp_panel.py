@@ -1,6 +1,7 @@
 """Tests for the improved doubly robust DiD estimator for panel data."""
 
 import numpy as np
+import pytest
 
 from moderndid import drdid_imp_panel
 
@@ -51,6 +52,7 @@ def test_analytical_inference():
     assert result.boots is None
 
 
+@pytest.mark.filterwarnings("ignore:Extreme weight ratios detected:UserWarning")
 def test_weighted_bootstrap():
     setup = get_test_data()
     result = drdid_imp_panel(

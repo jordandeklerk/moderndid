@@ -15,7 +15,7 @@ from ..nuisance import compute_all_did, compute_all_nuisances
 
 
 class DDDPanelResult(NamedTuple):
-    """Result from the DDD panel estimator.
+    """Container for DDD panel estimation results.
 
     Attributes
     ----------
@@ -39,14 +39,23 @@ class DDDPanelResult(NamedTuple):
         Arguments used for estimation.
     """
 
+    #: DDD point estimate for the ATT.
     att: float
+    #: Standard error of the ATT estimate.
     se: float
+    #: Upper bound of the 95% confidence interval.
     uci: float
+    #: Lower bound of the 95% confidence interval.
     lci: float
+    #: Bootstrap draws if bootstrap inference was used.
     boots: np.ndarray | None
+    #: Influence function if requested.
     att_inf_func: np.ndarray | None
+    #: Individual DiD ATT estimates for each comparison.
     did_atts: dict
+    #: Number of units in each subgroup.
     subgroup_counts: dict
+    #: Arguments used for estimation.
     args: dict
 
 

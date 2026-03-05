@@ -24,8 +24,11 @@ class MbootResult(NamedTuple):
         Critical value for uniform confidence bands.
     """
 
+    #: Bootstrap results matrix.
     bres: np.ndarray
+    #: Standard errors for each parameter.
     se: np.ndarray
+    #: Critical value for uniform confidence bands.
     crit_val: float
 
 

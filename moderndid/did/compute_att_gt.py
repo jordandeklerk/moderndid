@@ -20,7 +20,7 @@ from moderndid.drdid.estimators.std_ipw_did_rc import std_ipw_did_rc
 
 
 class ATTgtResult(NamedTuple):
-    """Result from group-time ATT estimation.
+    """Container for a single group-time ATT estimate.
 
     Attributes
     ----------
@@ -35,14 +35,18 @@ class ATTgtResult(NamedTuple):
         pre-treatment period (0).
     """
 
+    #: Estimated ATT for this group-time cell.
     att: float
+    #: Treatment group identifier (first treatment period).
     group: float
+    #: Time period for this estimate.
     year: float
+    #: Indicator for post-treatment (1) or pre-treatment (0).
     post: int
 
 
 class ComputeATTgtResult(NamedTuple):
-    """Result from compute_att_gt function.
+    """Container for compute_att_gt results.
 
     Attributes
     ----------
@@ -53,7 +57,9 @@ class ComputeATTgtResult(NamedTuple):
         (n_units, n_group_time_cells).
     """
 
+    #: List of group-time ATT results, one per (group, time) cell.
     attgt_list: list[ATTgtResult]
+    #: Sparse matrix of influence functions.
     influence_functions: sp.csr_matrix
 
 

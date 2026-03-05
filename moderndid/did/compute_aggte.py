@@ -866,19 +866,14 @@ def _compute_se(
         Standard error estimate.
     """
     if estimation_params.get("bootstrap", False):
-        # Use multiplier bootstrap
-        clustervars = estimation_params.get("clustervars")
         cluster = None
+        clustervars = estimation_params.get("clustervars")
         if clustervars:
-            if len(clustervars) > 1:
-                raise NotImplementedError("Clustering on multiple variables is not supported yet.")
-
-            cluster_var_name = clustervars[0]
-
-            warnings.warn(
-                f"Clustering requested on '{cluster_var_name}' but data not available. "
-                "Using standard bootstrap without clustering."
-            )
+            cluster = estimation_params.get("cluster")
+            if cluster is None:
+                data_obj = estimation_params.get("data")
+                if data_obj is not None and hasattr(data_obj, "cluster") and data_obj.cluster is not None:
+                    cluster = data_obj.cluster
 
         mboot_result = mboot(
             inf_func=influence_function.reshape(-1, 1),
@@ -943,6 +938,15 @@ def _batched_se(inf_func_mat, att_vec, n_units, estimation_params, biters, alpha
     use_uniform = estimation_params.get("uniform_bands", False)
     bres = None
 
+    cluster = None
+    clustervars = estimation_params.get("clustervars")
+    if clustervars:
+        cluster = estimation_params.get("cluster")
+        if cluster is None:
+            data_obj = estimation_params.get("data")
+            if data_obj is not None and hasattr(data_obj, "cluster") and data_obj.cluster is not None:
+                cluster = data_obj.cluster
+
     if not use_bootstrap:
         se_valid = np.sqrt(np.mean(valid_inf**2, axis=0) / n_units)
         se_valid = np.where(se_valid <= eps_thresh, np.nan, se_valid)
@@ -953,6 +957,7 @@ def _batched_se(inf_func_mat, att_vec, n_units, estimation_params, biters, alpha
             n_units=n_units,
             biters=biters,
             alp=alpha,
+            cluster=cluster,
             random_state=random_state,
         )
         se_valid = mboot_result["se"]
@@ -973,6 +978,7 @@ def _batched_se(inf_func_mat, att_vec, n_units, estimation_params, biters, alpha
                 n_units=n_units,
                 biters=biters,
                 alp=alpha,
+                cluster=cluster,
                 random_state=random_state,
             )
             cv = band_result["crit_val"]

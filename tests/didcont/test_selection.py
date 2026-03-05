@@ -87,6 +87,7 @@ def test_with_custom_grid(simple_data):
     assert result["j_tilde"] > 0
 
 
+@pytest.mark.filterwarnings("ignore:Some 'x' values beyond boundary knots:UserWarning")
 def test_with_range_constraints(simple_data):
     y, x, w = simple_data
 

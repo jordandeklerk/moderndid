@@ -1,6 +1,7 @@
 """Tests for processing panel data."""
 
 import numpy as np
+import pytest
 
 from tests.helpers import importorskip
 
@@ -186,6 +187,12 @@ def test_compute_pte_universal_base_period():
     assert boundary_result["att"] == 0
 
 
+@pytest.mark.filterwarnings("ignore:No pre-treatment periods to test:UserWarning")
+@pytest.mark.filterwarnings("ignore:Simultaneous band smaller than pointwise:UserWarning")
+@pytest.mark.filterwarnings("ignore:No unit-level data available:UserWarning")
+@pytest.mark.filterwarnings("ignore:Simultaneous critical value is NA/Inf:UserWarning")
+@pytest.mark.filterwarnings("ignore:dropping some event times due to small groups:UserWarning")
+@pytest.mark.filterwarnings("ignore:dropping some groups due to small groups:UserWarning")
 def test_bootstrap_logic():
     data = pl.DataFrame(
         {

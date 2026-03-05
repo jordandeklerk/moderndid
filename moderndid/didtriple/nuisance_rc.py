@@ -29,13 +29,16 @@ class PScoreRCResult(NamedTuple):
         Control observations with propensity score >= trim_level are excluded.
     """
 
+    #: Estimated propensity scores.
     propensity_scores: np.ndarray
+    #: Hessian matrix from logistic regression.
     hessian_matrix: np.ndarray | None
+    #: Boolean array indicating which observations to keep after trimming.
     keep_ps: np.ndarray
 
 
 class OutcomeRegRCResult(NamedTuple):
-    """Result from outcome regression estimation for RCS.
+    """Container for outcome regression estimation results for RCS.
 
     Attributes
     ----------
@@ -53,16 +56,22 @@ class OutcomeRegRCResult(NamedTuple):
         Outcome regression predictions for treated group, post-period.
     """
 
+    #: Outcomes for observations.
     y: np.ndarray
+    #: Outcome regression predictions combining pre and post periods.
     out_y_cont: np.ndarray
+    #: Outcome regression predictions for control group, pre-period.
     out_y_cont_pre: np.ndarray
+    #: Outcome regression predictions for control group, post-period.
     out_y_cont_post: np.ndarray
+    #: Outcome regression predictions for treated group, pre-period.
     out_y_treat_pre: np.ndarray
+    #: Outcome regression predictions for treated group, post-period.
     out_y_treat_post: np.ndarray
 
 
 class DIDRCResult(NamedTuple):
-    """Result from DiD estimation for one subgroup comparison with RCS.
+    """Container for DiD estimation results for one subgroup comparison with RCS.
 
     Attributes
     ----------
@@ -72,7 +81,9 @@ class DIDRCResult(NamedTuple):
         Influence function for all observations (zeros for observations not in comparison).
     """
 
+    #: Doubly robust ATT estimate.
     dr_att: float
+    #: Influence function for all observations.
     inf_func: np.ndarray
 
 

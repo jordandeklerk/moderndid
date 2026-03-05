@@ -56,19 +56,33 @@ class AGGTEResult(NamedTuple):
         Information about the function call that created this object.
     """
 
+    #: Estimated overall average treatment effect on the treated.
     overall_att: float
+    #: Standard error for overall ATT.
     overall_se: float
+    #: Type of aggregation performed.
     aggregation_type: Literal["simple", "dynamic", "group", "calendar"]
+    #: Event/group/time values depending on aggregation type.
     event_times: np.ndarray | None = None
+    #: ATT estimates specific to each event time value.
     att_by_event: np.ndarray | None = None
+    #: Standard errors specific to each event time value.
     se_by_event: np.ndarray | None = None
+    #: Critical values for uniform confidence bands.
     critical_values: np.ndarray | None = None
+    #: Influence function of the aggregated parameters.
     influence_func: np.ndarray | None = None
+    #: Influence function for the overall ATT.
     influence_func_overall: np.ndarray | None = None
+    #: Minimum event time.
     min_event_time: int | None = None
+    #: Maximum event time.
     max_event_time: int | None = None
+    #: Balanced event time threshold.
     balanced_event_threshold: int | None = None
+    #: DID estimation parameters.
     estimation_params: dict = {}
+    #: Information about the function call that created this object.
     call_info: dict = {}
 
 

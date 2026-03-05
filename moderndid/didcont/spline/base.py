@@ -247,12 +247,25 @@ class SplineBase(ABC):
         return self._x_index
 
     def set_x(self, x):
-        """Set x values."""
+        """Set x values.
+
+        Parameters
+        ----------
+        x : array_like
+            The values at which to evaluate the basis functions.
+        """
         self._x = np.asarray(x).ravel()
         self._is_x_index_latest = False
 
     def set_internal_knots(self, knots):
-        """Set internal knots and update the spline state."""
+        """Set internal knots and update the spline state.
+
+        Parameters
+        ----------
+        knots : array_like or None
+            The internal knots of the spline. Must be strictly inside the
+            boundary knots.
+        """
         new_knots = np.asarray(knots).ravel() if knots is not None else np.array([])
         if not np.array_equal(self._internal_knots, new_knots):
             self._simplify_knots(internal_knots=new_knots, boundary_knots=self._boundary_knots)
@@ -261,7 +274,13 @@ class SplineBase(ABC):
             self._is_x_index_latest = False
 
     def set_boundary_knots(self, knots):
-        """Set boundary knots and update the spline state."""
+        """Set boundary knots and update the spline state.
+
+        Parameters
+        ----------
+        knots : array_like or None
+            Two distinct boundary knots defining the domain of the spline.
+        """
         new_knots = np.asarray(knots).ravel() if knots is not None else None
         if not np.array_equal(self._boundary_knots, new_knots):
             self._simplify_knots(internal_knots=self._internal_knots, boundary_knots=new_knots)
@@ -269,7 +288,14 @@ class SplineBase(ABC):
             self._is_x_index_latest = False
 
     def set_knot_sequence(self, seq):
-        """Set knot sequence and update dependent properties."""
+        """Set knot sequence and update dependent properties.
+
+        Parameters
+        ----------
+        seq : array_like or None
+            A full knot sequence. When provided, boundary knots, internal
+            knots, and degrees of freedom are inferred from it.
+        """
         if seq is None:
             self._knot_sequence = None
             self._is_knot_sequence_latest = False
@@ -284,7 +310,13 @@ class SplineBase(ABC):
         self._is_x_index_latest = False
 
     def set_degree(self, degree):
-        """Set polynomial degree."""
+        """Set polynomial degree.
+
+        Parameters
+        ----------
+        degree : int
+            The degree of the spline polynomial. Must be non-negative.
+        """
         if self._degree == degree:
             return
         if degree < 0:
@@ -302,7 +334,13 @@ class SplineBase(ABC):
         self._is_x_index_latest = False
 
     def set_order(self, order):
-        """Set spline order."""
+        """Set spline order.
+
+        Parameters
+        ----------
+        order : int
+            The order of the spline (``degree + 1``). Must be positive.
+        """
         if order < 1:
             raise ValueError("order must be positive")
         self.set_degree(order - 1)

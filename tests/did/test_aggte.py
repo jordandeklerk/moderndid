@@ -9,6 +9,8 @@ pl = importorskip("polars")
 
 from moderndid import aggte, att_gt, load_mpdta
 
+pytestmark = pytest.mark.filterwarnings("ignore:Used bootstrap procedure:UserWarning")
+
 
 @pytest.fixture
 def mp_result():
@@ -259,6 +261,7 @@ def test_aggte_non_sequential_time_periods():
 
 @pytest.mark.filterwarnings("ignore:Setting an item of incompatible dtype:FutureWarning")
 @pytest.mark.filterwarnings("ignore:Not returning pre-test Wald statistic:UserWarning")
+@pytest.mark.filterwarnings("ignore:No pre-treatment periods to test:UserWarning")
 def test_aggte_all_treated_same_time():
     df = load_mpdta()
     df = df.with_columns(pl.when(pl.col("first.treat") != 0).then(2004).otherwise(np.inf).alias("first.treat"))
@@ -276,17 +279,6 @@ def test_aggte_all_treated_same_time():
     agg_result = aggte(result, type="group")
     treated_groups = [g for g in agg_result.event_times if np.isfinite(g)]
     assert len(treated_groups) == 1
-
-
-def test_aggte_clustering_multiple_vars_error(mp_result):
-    with pytest.raises(NotImplementedError, match="multiple variables"):
-        aggte(
-            mp_result,
-            type="simple",
-            clustervars=["var1", "var2"],
-            boot=True,
-            biters=99,
-        )
 
 
 def test_aggte_uniform_bands_without_bootstrap():
