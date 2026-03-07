@@ -4,7 +4,7 @@
 ModernDiD User Guide
 ####################
 
-This guide provides an overview of ModernDiD and explains the important
+This guide provides an overview of **ModernDiD** and explains the important
 features; details are found in :ref:`api`.
 
 .. toctree::
@@ -14,6 +14,7 @@ features; details are found in :ref:`api`.
    quickstart
    estimator_overview
    plotting
+   publication_tables
    panel_utilities
 
 .. toctree::
