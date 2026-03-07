@@ -94,7 +94,8 @@ class MPResult(NamedTuple):
     def __maketables_coef_table__(self):
         """Return canonical coefficient table for maketables."""
         names = make_group_time_names(self.groups, self.times, prefix="ATT")
-        return build_coef_table_with_ci(names, self.att_gt, self.se_gt, alpha=float(self.alpha))
+        crit = self.critical_value if self.critical_value is not None else None
+        return build_coef_table_with_ci(names, self.att_gt, self.se_gt, alpha=float(self.alpha), critical_values=crit)
 
     def __maketables_stat__(self, key: str) -> int | float | str | None:
         """Return model-level statistics for maketables."""

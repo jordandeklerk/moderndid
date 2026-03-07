@@ -98,9 +98,24 @@ def build_coef_table_with_ci(
     *,
     alpha: float = 0.05,
     include_ci90: bool = True,
+    critical_values: float | Sequence[float] | np.ndarray | None = None,
 ) -> pd.DataFrame:
-    """Build a canonical coefficient table with pointwise normal CIs."""
-    ci95l, ci95u = ci_from_se(estimate, se, alpha=alpha)
+    """Build a canonical coefficient table with CIs.
+
+    When `critical_values` is provided, the CI columns use
+    ``estimate ± crit * se`` so they match the estimator's own
+    inference (e.g. simultaneous confidence bands from a bootstrap).
+    The ``t`` and ``p`` columns always use the pointwise normal
+    approximation.
+    """
+    if critical_values is not None:
+        crit_arr = _to_1d_float(critical_values)
+        est_arr = _to_1d_float(estimate)
+        se_arr = _to_1d_float(se)
+        ci95l = est_arr - crit_arr * se_arr
+        ci95u = est_arr + crit_arr * se_arr
+    else:
+        ci95l, ci95u = ci_from_se(estimate, se, alpha=alpha)
     ci90l = ci90u = None
     if include_ci90:
         ci90l, ci90u = ci_from_se(estimate, se, alpha=0.10)

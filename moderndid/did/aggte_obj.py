@@ -3,6 +3,7 @@
 from typing import Literal, NamedTuple
 
 import numpy as np
+from scipy import stats
 
 from moderndid.core.maketables import (
     build_coef_table_with_ci,
@@ -101,17 +102,29 @@ class AGGTEResult(NamedTuple):
     @property
     def __maketables_coef_table__(self):
         """Return canonical coefficient table for maketables."""
+        alpha = float(self.estimation_params.get("alpha", 0.05))
         names = ["Overall ATT"]
         estimates = [self.overall_att]
         se = [self.overall_se]
 
+        # Overall ATT always uses the normal critical value (same as the formatter).
+        # Event-time rows use the estimator's critical values when available
+        # (e.g. simultaneous confidence bands from the bootstrap).
+        crit = None
         if self.event_times is not None and self.att_by_event is not None and self.se_by_event is not None:
+            z_crit = stats.norm.ppf(1 - alpha / 2)
             prefix = {"dynamic": "Event", "group": "Group", "calendar": "Time"}.get(self.aggregation_type, "Effect")
             names.extend(make_effect_names(self.event_times, prefix=prefix))
             estimates.extend(np.asarray(self.att_by_event, dtype=float).tolist())
             se.extend(np.asarray(self.se_by_event, dtype=float).tolist())
 
-        return build_coef_table_with_ci(names, estimates, se, alpha=float(self.estimation_params.get("alpha", 0.05)))
+            if self.critical_values is not None:
+                event_crit = np.asarray(self.critical_values, dtype=float)
+            else:
+                event_crit = np.full(len(self.event_times), z_crit)
+            crit = np.concatenate([[z_crit], event_crit])
+
+        return build_coef_table_with_ci(names, estimates, se, alpha=alpha, critical_values=crit)
 
     def __maketables_stat__(self, key: str) -> int | float | str | None:
         """Return model-level statistics for maketables."""

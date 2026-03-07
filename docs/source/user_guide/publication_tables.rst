@@ -359,10 +359,9 @@ staggered DiD results.
 Panel summary with MTable
 =========================
 
-The example below recreates the multi-panel summary in Table 3 of
-`Callaway and Sant'Anna (2021) <https://doi.org/10.1016/j.jeconom.2020.12.001>`_.
-Each panel compares unconditional and conditional parallel trends across
-all four aggregation types (simple, group, dynamic, calendar).
+The example below shows ATT estimates under unconditional and conditional
+parallel trends across all four aggregation types (simple, group, dynamic,
+calendar).
 
 .. code-block:: python
 

@@ -3,6 +3,7 @@
 from typing import Literal, NamedTuple
 
 import numpy as np
+from scipy import stats
 
 from moderndid.core.maketables import (
     build_coef_table_with_ci,
@@ -68,11 +69,14 @@ class DDDAggResult(NamedTuple):
     @property
     def __maketables_coef_table__(self):
         """Return canonical coefficient table for maketables."""
+        alpha = float(self.args.get("alpha", 0.05))
         names = ["Overall ATT"]
         estimates = [self.overall_att]
         se = [self.overall_se]
 
+        crit = None
         if self.egt is not None and self.att_egt is not None and self.se_egt is not None:
+            z_crit = stats.norm.ppf(1 - alpha / 2)
             prefix = {"eventstudy": "Event", "group": "Group", "calendar": "Time"}.get(
                 self.aggregation_type,
                 "Effect",
@@ -81,7 +85,10 @@ class DDDAggResult(NamedTuple):
             estimates.extend(np.asarray(self.att_egt, dtype=float).tolist())
             se.extend(np.asarray(self.se_egt, dtype=float).tolist())
 
-        return build_coef_table_with_ci(names, estimates, se, alpha=float(self.args.get("alpha", 0.05)))
+            event_crit = np.full(len(self.egt), self.crit_val)
+            crit = np.concatenate([[z_crit], event_crit])
+
+        return build_coef_table_with_ci(names, estimates, se, alpha=alpha, critical_values=crit)
 
     def __maketables_stat__(self, key: str) -> int | float | str | None:
         """Return model-level statistics for maketables."""

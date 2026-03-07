@@ -11,7 +11,8 @@ from scipy import stats
 
 from moderndid.core.dataframe import to_polars
 from moderndid.core.maketables import (
-    build_coef_table_with_ci,
+    build_coef_table,
+    ci_from_se,
     control_group_label,
     make_group_time_names,
     se_type_label,
@@ -100,7 +101,8 @@ class DDDMultiPeriodRCResult(NamedTuple):
     def __maketables_coef_table__(self):
         """Return canonical coefficient table for maketables."""
         names = make_group_time_names(self.groups, self.times, prefix="ATT")
-        return build_coef_table_with_ci(names, self.att, self.se, alpha=float(self.args.get("alpha", 0.05)))
+        ci90l, ci90u = ci_from_se(self.att, self.se, alpha=0.10)
+        return build_coef_table(names, self.att, self.se, ci95l=self.lci, ci95u=self.uci, ci90l=ci90l, ci90u=ci90u)
 
     def __maketables_stat__(self, key: str) -> int | float | str | None:
         """Return model-level statistics for maketables."""

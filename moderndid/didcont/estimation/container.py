@@ -7,6 +7,7 @@ from typing import Literal, NamedTuple
 
 import numpy as np
 import polars as pl
+from scipy import stats
 
 from moderndid.core.maketables import (
     build_coef_table_with_ci,
@@ -299,7 +300,13 @@ class PTEAggteResult(NamedTuple):
             estimates.extend(np.asarray(self.att_by_event, dtype=float).tolist())
             se.extend(np.asarray(self.se_by_event, dtype=float).tolist())
 
-        return build_coef_table_with_ci(names, estimates, se, alpha=float(getattr(pte_params, "alp", 0.05)))
+        alpha = float(getattr(pte_params, "alp", 0.05))
+        crit = self.critical_value if self.critical_value is not None else None
+        if self.event_times is not None and crit is not None:
+            z_crit = stats.norm.ppf(1 - alpha / 2)
+            event_crit = np.full(len(self.event_times), crit)
+            crit = np.concatenate([[z_crit], event_crit])
+        return build_coef_table_with_ci(names, estimates, se, alpha=alpha, critical_values=crit)
 
     def __maketables_stat__(self, key: str) -> int | float | str | None:
         """Return model-level statistics for maketables."""
@@ -454,7 +461,8 @@ class GroupTimeATTResult:
             f"ATT(g={format_effect_value(g)}, t={format_effect_value(t)})"
             for g, t in zip(self.groups, self.times, strict=False)
         ]
-        return build_coef_table_with_ci(names, self.att, self.se, alpha=float(self.alpha))
+        crit = self.critical_value if self.critical_value is not None else None
+        return build_coef_table_with_ci(names, self.att, self.se, alpha=float(self.alpha), critical_values=crit)
 
     def __maketables_stat__(self, key: str) -> int | float | str | None:
         """Return model-level statistics for maketables."""
@@ -600,33 +608,43 @@ class DoseResult(NamedTuple):
     @property
     def __maketables_coef_table__(self):
         """Return canonical coefficient table for maketables."""
+        alpha = float(getattr(self.pte_params, "alp", 0.05))
+        z_crit = stats.norm.ppf(1 - alpha / 2)
+
         names: list[str] = []
         estimates: list[float] = []
         se: list[float] = []
+        crit_vals: list[float] = []
 
         if self.overall_att is not None and self.overall_att_se is not None:
             names.append("Overall ATT")
             estimates.append(float(self.overall_att))
             se.append(float(self.overall_att_se))
+            crit_vals.append(z_crit)
 
         if self.overall_acrt is not None and self.overall_acrt_se is not None:
             names.append("Overall ACRT")
             estimates.append(float(self.overall_acrt))
             se.append(float(self.overall_acrt_se))
+            crit_vals.append(z_crit)
 
+        att_d_cv = self.att_d_crit_val if self.att_d_crit_val is not None else z_crit
         if self.att_d is not None and self.att_d_se is not None and self.dose is not None:
             for dose, effect, std_error in zip(self.dose, self.att_d, self.att_d_se, strict=False):
                 names.append(f"ATT(d={format_effect_value(dose)})")
                 estimates.append(float(effect))
                 se.append(float(std_error))
+                crit_vals.append(att_d_cv)
 
+        acrt_d_cv = self.acrt_d_crit_val if self.acrt_d_crit_val is not None else z_crit
         if self.acrt_d is not None and self.acrt_d_se is not None and self.dose is not None:
             for dose, effect, std_error in zip(self.dose, self.acrt_d, self.acrt_d_se, strict=False):
                 names.append(f"ACRT(d={format_effect_value(dose)})")
                 estimates.append(float(effect))
                 se.append(float(std_error))
+                crit_vals.append(acrt_d_cv)
 
-        return build_coef_table_with_ci(names, estimates, se, alpha=float(getattr(self.pte_params, "alp", 0.05)))
+        return build_coef_table_with_ci(names, estimates, se, alpha=alpha, critical_values=crit_vals)
 
     def __maketables_stat__(self, key: str) -> int | float | str | None:
         """Return model-level statistics for maketables."""

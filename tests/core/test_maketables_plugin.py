@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from moderndid.did.aggte_obj import AGGTEResult
 from moderndid.did.multiperiod_obj import MPResult
@@ -191,6 +192,113 @@ def test_dose_result_exposes_maketables_plugin():
     assert {"ci95l", "ci95u", "ci90l", "ci90u"}.issubset(set(coef_table.columns))
     assert result.__maketables_stat__("N") == 4
     assert result.__maketables_stat__("dose_est_method") == "parametric"
+
+
+@pytest.mark.parametrize(
+    "row_name, att, se, crit",
+    [
+        ("Overall ATT", 0.3, 0.1, 1.96),
+        ("Event -1", 0.0, 0.1, 2.5),
+        ("Event 0", 0.2, 0.12, 2.5),
+        ("Event 1", 0.4, 0.15, 2.5),
+    ],
+)
+def test_aggte_ci_matches_critical_values(row_name, att, se, crit):
+    result = AGGTEResult(
+        overall_att=0.3,
+        overall_se=0.1,
+        aggregation_type="dynamic",
+        event_times=np.array([-1, 0, 1]),
+        att_by_event=np.array([0.0, 0.2, 0.4]),
+        se_by_event=np.array([0.1, 0.12, 0.15]),
+        critical_values=np.array([2.5, 2.5, 2.5]),
+        estimation_params={"alpha": 0.05},
+    )
+    row = result.__maketables_coef_table__.loc[row_name]
+    np.testing.assert_allclose(row["b"], att)
+    np.testing.assert_allclose(row["se"], se)
+    np.testing.assert_allclose(row["ci95l"], att - crit * se, atol=1e-4)
+    np.testing.assert_allclose(row["ci95u"], att + crit * se, atol=1e-4)
+
+
+@pytest.mark.parametrize("idx", [0, 1])
+def test_mp_ci_matches_critical_value(idx):
+    result = MPResult(
+        groups=np.array([2000, 2001]),
+        times=np.array([2001, 2002]),
+        att_gt=np.array([0.2, 0.4]),
+        vcov_analytical=np.eye(2),
+        se_gt=np.array([0.1, 0.15]),
+        critical_value=2.66,
+        influence_func=np.zeros((10, 2)),
+    )
+    row = result.__maketables_coef_table__.iloc[idx]
+    att, se = result.att_gt[idx], result.se_gt[idx]
+    np.testing.assert_allclose(row["ci95l"], att - 2.66 * se)
+    np.testing.assert_allclose(row["ci95u"], att + 2.66 * se)
+
+
+@pytest.mark.parametrize(
+    "row_name, att, se, crit",
+    [
+        ("Overall ATT", 0.4, 0.15, 1.96),
+        ("Event -1", 0.0, 0.1, 2.8),
+        ("Event 0", 0.3, 0.1, 2.8),
+        ("Event 1", 0.5, 0.2, 2.8),
+    ],
+)
+def test_ddd_agg_ci_matches_crit_val(row_name, att, se, crit):
+    result = DDDAggResult(
+        overall_att=0.4,
+        overall_se=0.15,
+        aggregation_type="eventstudy",
+        egt=np.array([-1, 0, 1]),
+        att_egt=np.array([0.0, 0.3, 0.5]),
+        se_egt=np.array([0.1, 0.1, 0.2]),
+        crit_val=2.8,
+        args={"alpha": 0.05},
+    )
+    row = result.__maketables_coef_table__.loc[row_name]
+    np.testing.assert_allclose(row["ci95l"], att - crit * se, atol=1e-4)
+    np.testing.assert_allclose(row["ci95u"], att + crit * se, atol=1e-4)
+
+
+def test_ddd_mp_ci_matches_precomputed():
+    lci = np.array([-0.05, -0.02])
+    uci = np.array([0.25, 0.42])
+    result = DDDMultiPeriodResult(
+        att=np.array([0.1, 0.2]),
+        se=np.array([0.05, 0.08]),
+        uci=uci,
+        lci=lci,
+        groups=np.array([2, 3]),
+        times=np.array([2, 3]),
+        glist=np.array([2, 3]),
+        tlist=np.array([1, 2, 3]),
+        inf_func_mat=np.zeros((12, 2)),
+        n=12,
+        args={},
+        unit_groups=np.array([0, 0, 2, 2, 3, 3]),
+    )
+    coef_table = result.__maketables_coef_table__
+    np.testing.assert_allclose(coef_table["ci95l"].values, lci)
+    np.testing.assert_allclose(coef_table["ci95u"].values, uci)
+
+
+def test_drdid_ci_matches_precomputed():
+    result = DRDIDResult(
+        att=1.2,
+        se=0.3,
+        uci=1.85,
+        lci=0.55,
+        boots=None,
+        att_inf_func=None,
+        call_params={},
+        args={},
+    )
+    coef_table = result.__maketables_coef_table__
+    np.testing.assert_allclose(coef_table.loc["ATT", "ci95l"], 0.55)
+    np.testing.assert_allclose(coef_table.loc["ATT", "ci95u"], 1.85)
 
 
 def test_pte_result_delegates_maketables_plugin():
