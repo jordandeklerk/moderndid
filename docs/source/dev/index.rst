@@ -4,7 +4,7 @@
 Development
 ###########
 
-Everything you need to contribute to ModernDiD and understand its internals.
+Everything you need to contribute to **ModernDiD** and understand its internals.
 For usage documentation see the :ref:`User Guide <user-guide>`.
 
 .. toctree::
@@ -12,6 +12,7 @@ For usage documentation see the :ref:`User Guide <user-guide>`.
 
    contributing
    architecture
+   new_estimator
    testing
    workflow
    reviewing
