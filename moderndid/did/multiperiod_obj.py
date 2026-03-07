@@ -4,9 +4,20 @@ from typing import NamedTuple
 
 import numpy as np
 
+from moderndid.core.maketables import (
+    build_coef_table_with_ci,
+    control_group_label,
+    make_group_time_names,
+    se_type_label,
+    vcov_info_from_bootstrap,
+)
+
 
 class MPResult(NamedTuple):
     """Container for group-time average treatment effect results.
+
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
 
     Attributes
     ----------
@@ -78,6 +89,58 @@ class MPResult(NamedTuple):
     G: np.ndarray | None = None
     #: Unit-level sampling weights.
     weights_ind: np.ndarray | None = None
+
+    @property
+    def __maketables_coef_table__(self):
+        """Return canonical coefficient table for maketables."""
+        names = make_group_time_names(self.groups, self.times, prefix="ATT")
+        return build_coef_table_with_ci(names, self.att_gt, self.se_gt, alpha=float(self.alpha))
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        if key == "N":
+            return int(self.n_units) if self.n_units is not None else None
+        if key == "wald_pvalue":
+            return self.wald_pvalue
+        if key == "se_type":
+            return se_type_label(bool(self.estimation_params.get("bootstrap", False)))
+        if key == "control_group":
+            return control_group_label(self.estimation_params.get("control_group"))
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        return str(self.estimation_params.get("yname", "ATT(g,t)"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """Group-time ATT results do not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        cluster = self.estimation_params.get("cluster")
+        if cluster is None:
+            cluster = self.estimation_params.get("clustervars")
+        return vcov_info_from_bootstrap(
+            is_bootstrap=bool(self.estimation_params.get("bootstrap", False)),
+            cluster=cluster,
+        )
+
+    @property
+    def __maketables_stat_labels__(self) -> dict[str, str]:
+        """Return custom labels for model-level statistics."""
+        return {"wald_pvalue": "Pre-trends p-value", "control_group": "Control Group"}
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        keys = ["N", "se_type", "control_group"]
+        if self.wald_pvalue is not None:
+            keys.insert(1, "wald_pvalue")
+        return keys
 
 
 def mp(

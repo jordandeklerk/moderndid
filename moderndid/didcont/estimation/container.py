@@ -1,10 +1,21 @@
 """Containers for panel treatment effects."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Literal, NamedTuple
 
 import numpy as np
 import polars as pl
+
+from moderndid.core.maketables import (
+    build_coef_table_with_ci,
+    build_single_coef_table,
+    format_effect_value,
+    make_effect_names,
+    se_type_label,
+    vcov_info_from_bootstrap,
+)
 
 
 class PTEParams(NamedTuple):
@@ -136,7 +147,11 @@ class AttgtResult(NamedTuple):
 
 
 class PTEResult(NamedTuple):
-    """Container for panel treatment effects results."""
+    """Container for panel treatment effects results.
+
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
+    """
 
     #: Group-time ATT results.
     att_gt: object
@@ -147,9 +162,66 @@ class PTEResult(NamedTuple):
     #: Panel treatment effect parameters.
     ptep: PTEParams
 
+    @property
+    def __maketables_coef_table__(self):
+        """Delegate coefficient extraction to the most informative nested result."""
+        if self.event_study is not None and hasattr(self.event_study, "__maketables_coef_table__"):
+            return self.event_study.__maketables_coef_table__
+
+        if self.overall_att is not None:
+            att = getattr(self.overall_att, "overall_att", None)
+            se = getattr(self.overall_att, "overall_se", None)
+            if att is not None and se is not None:
+                return build_single_coef_table("Overall ATT", float(att), float(se))
+            if isinstance(self.overall_att, dict):
+                att = self.overall_att.get("overall_att") or self.overall_att.get("att")
+                se = self.overall_att.get("overall_se") or self.overall_att.get("se")
+                if att is not None and se is not None:
+                    return build_single_coef_table("Overall ATT", float(att), float(se))
+
+        if self.att_gt is not None and hasattr(self.att_gt, "__maketables_coef_table__"):
+            return self.att_gt.__maketables_coef_table__
+
+        raise ValueError("PTEResult does not contain a maketables-compatible estimate table.")
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        if self.event_study is not None and hasattr(self.event_study, "__maketables_stat__"):
+            return self.event_study.__maketables_stat__(key)
+        if key == "N":
+            return _n_obs_from_pte_params(self.ptep)
+        if key == "se_type":
+            return se_type_label(True)
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        return str(getattr(self.ptep, "yname", "Outcome"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """Continuous DiD result wrappers do not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        return vcov_info_from_bootstrap(is_bootstrap=True)
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        if self.event_study is not None and hasattr(self.event_study, "__maketables_default_stat_keys__"):
+            return self.event_study.__maketables_default_stat_keys__
+        return ["N", "se_type"]
+
 
 class PTEAggteResult(NamedTuple):
     """Container for aggregated panel treatment effect parameters.
+
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
 
     Attributes
     ----------
@@ -210,10 +282,83 @@ class PTEAggteResult(NamedTuple):
     #: Original group-time ATT result object.
     att_gt_result: object | None = None
 
+    @property
+    def __maketables_coef_table__(self):
+        """Return canonical coefficient table for maketables."""
+        pte_params = getattr(self.att_gt_result, "pte_params", None)
+        target = getattr(pte_params, "target_parameter", "level")
+        overall_label = "Overall ACRT" if target == "slope" else "Overall ATT"
+
+        names = [overall_label]
+        estimates = [self.overall_att]
+        se = [self.overall_se]
+
+        if self.event_times is not None and self.att_by_event is not None and self.se_by_event is not None:
+            prefix = "Event" if self.aggregation_type == "dynamic" else "Group"
+            names.extend(make_effect_names(self.event_times, prefix=prefix))
+            estimates.extend(np.asarray(self.att_by_event, dtype=float).tolist())
+            se.extend(np.asarray(self.se_by_event, dtype=float).tolist())
+
+        return build_coef_table_with_ci(names, estimates, se, alpha=float(getattr(pte_params, "alp", 0.05)))
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        pte_params = getattr(self.att_gt_result, "pte_params", None)
+
+        if key == "N":
+            if isinstance(self.influence_func, dict) and self.influence_func.get("overall") is not None:
+                return int(np.asarray(self.influence_func["overall"]).shape[0])
+            return _n_obs_from_pte_params(pte_params)
+        if key == "aggregation":
+            return self.aggregation_type
+        if key == "se_type":
+            return se_type_label(True)
+        if key == "control_group":
+            return getattr(pte_params, "control_group", None)
+        if key == "est_method":
+            return getattr(pte_params, "gt_type", None)
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        pte_params = getattr(self.att_gt_result, "pte_params", None)
+        return str(getattr(pte_params, "yname", "Continuous-Treatment ATT"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """Continuous DiD output does not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        return vcov_info_from_bootstrap(is_bootstrap=True)
+
+    @property
+    def __maketables_stat_labels__(self) -> dict[str, str]:
+        """Return custom labels for model-level statistics."""
+        return {
+            "aggregation": "Aggregation",
+            "control_group": "Control Group",
+            "est_method": "Estimation Method",
+        }
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        keys = ["aggregation", "se_type", "control_group", "est_method"]
+        if self.__maketables_stat__("N") is not None:
+            keys.insert(0, "N")
+        return keys
+
 
 @dataclass
 class GroupTimeATTResult:
     """Container for group-time average treatment effect results.
+
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
 
     Attributes
     ----------
@@ -302,6 +447,51 @@ class GroupTimeATTResult:
         """Unit-level group assignments (not tracked in continuous DiD)."""
         return None
 
+    @property
+    def __maketables_coef_table__(self):
+        """Return canonical coefficient table for maketables."""
+        names = [
+            f"ATT(g={format_effect_value(g)}, t={format_effect_value(t)})"
+            for g, t in zip(self.groups, self.times, strict=False)
+        ]
+        return build_coef_table_with_ci(names, self.att, self.se, alpha=float(self.alpha))
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        pte_params = self.pte_params
+        if key == "N":
+            return int(self.n_units)
+        if key == "se_type":
+            return se_type_label(True)
+        if key == "control_group":
+            return getattr(pte_params, "control_group", None)
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        return str(getattr(self.pte_params, "yname", "ATT(g,t)"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """Continuous DiD group-time output does not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        return vcov_info_from_bootstrap(is_bootstrap=True)
+
+    @property
+    def __maketables_stat_labels__(self) -> dict[str, str]:
+        """Return custom labels for model-level statistics."""
+        return {"control_group": "Control Group"}
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        return ["N", "se_type", "control_group"]
+
 
 class PteEmpBootResult(NamedTuple):
     """Container for empirical bootstrap results.
@@ -334,6 +524,9 @@ class PteEmpBootResult(NamedTuple):
 
 class DoseResult(NamedTuple):
     """Container for continuous treatment dose-response results.
+
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
 
     Attributes
     ----------
@@ -403,3 +596,90 @@ class DoseResult(NamedTuple):
     acrt_d_inf_func: np.ndarray | None = None
     #: PTEParams object containing estimation settings.
     pte_params: object | None = None
+
+    @property
+    def __maketables_coef_table__(self):
+        """Return canonical coefficient table for maketables."""
+        names: list[str] = []
+        estimates: list[float] = []
+        se: list[float] = []
+
+        if self.overall_att is not None and self.overall_att_se is not None:
+            names.append("Overall ATT")
+            estimates.append(float(self.overall_att))
+            se.append(float(self.overall_att_se))
+
+        if self.overall_acrt is not None and self.overall_acrt_se is not None:
+            names.append("Overall ACRT")
+            estimates.append(float(self.overall_acrt))
+            se.append(float(self.overall_acrt_se))
+
+        if self.att_d is not None and self.att_d_se is not None and self.dose is not None:
+            for dose, effect, std_error in zip(self.dose, self.att_d, self.att_d_se, strict=False):
+                names.append(f"ATT(d={format_effect_value(dose)})")
+                estimates.append(float(effect))
+                se.append(float(std_error))
+
+        if self.acrt_d is not None and self.acrt_d_se is not None and self.dose is not None:
+            for dose, effect, std_error in zip(self.dose, self.acrt_d, self.acrt_d_se, strict=False):
+                names.append(f"ACRT(d={format_effect_value(dose)})")
+                estimates.append(float(effect))
+                se.append(float(std_error))
+
+        return build_coef_table_with_ci(names, estimates, se, alpha=float(getattr(self.pte_params, "alp", 0.05)))
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        if key == "N":
+            return _n_obs_from_pte_params(self.pte_params)
+        if key == "se_type":
+            return se_type_label(True)
+        if key == "control_group":
+            return getattr(self.pte_params, "control_group", None)
+        if key == "dose_est_method":
+            return getattr(self.pte_params, "dose_est_method", None)
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        return str(getattr(self.pte_params, "yname", "Dose Response"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """Continuous dose-response output does not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        return vcov_info_from_bootstrap(is_bootstrap=True)
+
+    @property
+    def __maketables_stat_labels__(self) -> dict[str, str]:
+        """Return custom labels for model-level statistics."""
+        return {"control_group": "Control Group", "dose_est_method": "Dose Estimation"}
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        keys = ["se_type", "control_group", "dose_est_method"]
+        if self.__maketables_stat__("N") is not None:
+            keys.insert(0, "N")
+        return keys
+
+
+def _n_obs_from_pte_params(params: PTEParams | None) -> int | None:
+    """Extract a sensible observation count from PTE parameters when available."""
+    if params is None:
+        return None
+    data = getattr(params, "data", None)
+    idname = getattr(params, "idname", None)
+    if data is None:
+        return None
+    if idname is not None and isinstance(data, pl.DataFrame) and idname in data.columns:
+        return int(data[idname].n_unique())
+    try:
+        return len(data)
+    except TypeError:
+        return None

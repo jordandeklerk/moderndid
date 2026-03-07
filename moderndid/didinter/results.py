@@ -5,6 +5,8 @@ from typing import NamedTuple
 import numpy as np
 import polars as pl
 
+from moderndid.core.maketables import build_coef_table, se_type_label, vcov_info_from_bootstrap
+
 
 class EffectsResult(NamedTuple):
     """Container for treatment effects at each horizon.
@@ -205,6 +207,9 @@ class HeterogeneityResult(NamedTuple):
 class DIDInterResult(NamedTuple):
     """Container for DIDInter estimation results.
 
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
+
     Attributes
     ----------
     effects : EffectsResult
@@ -265,3 +270,119 @@ class DIDInterResult(NamedTuple):
     estimation_params: dict = {}
     #: Variance-covariance warnings.
     vcov_warnings: list = []
+
+    @property
+    def __maketables_coef_table__(self):
+        """Return canonical coefficient table for maketables."""
+        names: list[str] = []
+        estimates: list[float] = []
+        se: list[float] = []
+        ci95l: list[float] = []
+        ci95u: list[float] = []
+
+        if self.ate is not None:
+            names.append("ATE")
+            estimates.append(float(self.ate.estimate))
+            se.append(float(self.ate.std_error))
+            ci95l.append(float(self.ate.ci_lower))
+            ci95u.append(float(self.ate.ci_upper))
+
+        for horizon, estimate, std_error, lower, upper in zip(
+            self.effects.horizons,
+            self.effects.estimates,
+            self.effects.std_errors,
+            self.effects.ci_lower,
+            self.effects.ci_upper,
+            strict=False,
+        ):
+            names.append(f"Effect h={int(horizon)}")
+            estimates.append(float(estimate))
+            se.append(float(std_error))
+            ci95l.append(float(lower))
+            ci95u.append(float(upper))
+
+        if self.placebos is not None:
+            for horizon, estimate, std_error, lower, upper in zip(
+                self.placebos.horizons,
+                self.placebos.estimates,
+                self.placebos.std_errors,
+                self.placebos.ci_lower,
+                self.placebos.ci_upper,
+                strict=False,
+            ):
+                names.append(f"Placebo h={int(horizon)}")
+                estimates.append(float(estimate))
+                se.append(float(std_error))
+                ci95l.append(float(lower))
+                ci95u.append(float(upper))
+
+        return build_coef_table(names, estimates, se, ci95l=ci95l, ci95u=ci95u)
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        if key == "N":
+            if self.n_units > 0:
+                return int(self.n_units)
+            if len(self.effects.n_observations) > 0:
+                return int(np.nanmax(self.effects.n_observations))
+            return None
+        if key == "n_switchers":
+            if self.n_switchers > 0:
+                return int(self.n_switchers)
+            if len(self.effects.n_switchers) > 0:
+                return int(np.nanmax(self.effects.n_switchers))
+            return None
+        if key == "n_never_switchers":
+            return int(self.n_never_switchers) if self.n_never_switchers > 0 else None
+        if key == "se_type":
+            cluster = self.estimation_params.get("cluster")
+            return "Clustered" if cluster else se_type_label(False)
+        if key == "placebo_joint_pvalue":
+            if self.placebo_joint_test is None:
+                return None
+            return self.placebo_joint_test.get("p_value")
+        if key == "effects_equal_pvalue":
+            if self.effects_equal_test is None:
+                return None
+            return self.effects_equal_test.get("p_value")
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        return str(self.estimation_params.get("yname", "Intertemporal ATT"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """Intertemporal DiD output does not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        cluster = self.estimation_params.get("cluster")
+        return vcov_info_from_bootstrap(
+            is_bootstrap=False,
+            cluster=cluster,
+            clustered_label="clustered",
+        )
+
+    @property
+    def __maketables_stat_labels__(self) -> dict[str, str]:
+        """Return custom labels for model-level statistics."""
+        return {
+            "n_switchers": "Switchers",
+            "n_never_switchers": "Never-switchers",
+            "placebo_joint_pvalue": "Joint placebo p-value",
+            "effects_equal_pvalue": "Equal effects p-value",
+        }
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        keys = ["N", "n_switchers", "n_never_switchers", "se_type"]
+        if self.placebo_joint_test is not None:
+            keys.append("placebo_joint_pvalue")
+        if self.effects_equal_test is not None:
+            keys.append("effects_equal_pvalue")
+        return keys

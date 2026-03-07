@@ -8,6 +8,7 @@ from typing import NamedTuple
 import numpy as np
 from scipy import stats
 
+from moderndid.core.maketables import build_single_coef_table, se_type_label, vcov_info_from_bootstrap
 from moderndid.cupy.backend import get_backend, to_numpy
 
 from ..bootstrap.mboot_ddd import mboot_ddd, wboot_ddd
@@ -16,6 +17,9 @@ from ..nuisance import compute_all_did, compute_all_nuisances
 
 class DDDPanelResult(NamedTuple):
     """Container for DDD panel estimation results.
+
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
 
     Attributes
     ----------
@@ -57,6 +61,46 @@ class DDDPanelResult(NamedTuple):
     subgroup_counts: dict
     #: Arguments used for estimation.
     args: dict
+
+    @property
+    def __maketables_coef_table__(self):
+        """Return canonical coefficient table for maketables."""
+        return build_single_coef_table("ATT", self.att, self.se, ci95l=self.lci, ci95u=self.uci)
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        if key == "N":
+            return int(sum(self.subgroup_counts.values()))
+        if key == "se_type":
+            return se_type_label(bool(self.args.get("boot", False)))
+        if key == "est_method":
+            return self.args.get("est_method")
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        return str(self.args.get("yname", "DDD ATT"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """DDD results do not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        return vcov_info_from_bootstrap(is_bootstrap=bool(self.args.get("boot", False)))
+
+    @property
+    def __maketables_stat_labels__(self) -> dict[str, str]:
+        """Return custom labels for model-level statistics."""
+        return {"est_method": "Estimation Method"}
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        return ["N", "se_type", "est_method"]
 
 
 def ddd_panel(
