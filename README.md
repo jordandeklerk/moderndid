@@ -221,6 +221,16 @@ Event time 0 is the on-impact effect, negative event times are pre-treatment per
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
 
+### Publication Tables
+
+__ModernDiD__ result objects implement the [maketables](https://py-econometrics.github.io/maketables/) plug-in interface, so you can pass them directly to `maketables.ETable` for publication-ready LaTeX, HTML, Word, or Typst tables with no custom extractors. You will need to install maketables separately (`uv pip install maketables`).
+
+The custom `MTable` below shows ATT estimates under unconditional and conditional parallel trends across all four aggregation types (simple, group, dynamic, calendar).
+
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/maketables_readme_panel_summary.png" alt="Multi-panel summary table recreating Callaway and Sant'Anna (2021) Table 3">
+
+See the [Publication Tables guide](https://moderndid.readthedocs.io/en/latest/user_guide/publication_tables.html) for full examples, `ETable` customization, custom `MTable` layouts, and output format options.
+
 ### Consistent API
 
 All estimators share a unified interface for core arguments. Pass any [Arrow PyCapsule](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)-compatible DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and others) and estimation works the same way:

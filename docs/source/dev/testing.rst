@@ -4,7 +4,7 @@ Testing ModernDiD
 
 Econometric estimators must produce numerically correct results across a wide
 range of data configurations, sample sizes, and edge cases. A thorough test
-suite is what gives users confidence that ModernDiD's estimates match the
+suite is what gives users confidence that **ModernDiD**'s estimates match the
 established R implementations and remain stable as the codebase evolves.
 
 How to run the test suite
@@ -65,7 +65,7 @@ patterns here have evolved from practical experience with the test suite.
 Imports and optional dependencies
 ---------------------------------
 
-ModernDiD supports several optional dependencies, and tests need to handle cases
+**ModernDiD** supports several optional dependencies, and tests need to handle cases
 where these dependencies may not be installed. Use the ``importorskip`` helper
 function from `helpers.py <https://github.com/jordandeklerk/moderndid/tree/main/tests/helpers.py>`__ for any import outside of the Python standard
 library plus NumPy:

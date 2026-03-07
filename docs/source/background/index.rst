@@ -5,7 +5,7 @@ Background
 ##########
 
 This section provides theoretical background on the difference-in-differences
-methodologies implemented in ModernDiD; for practical usage see the
+methodologies implemented in **ModernDiD**; for practical usage see the
 :ref:`User Guide <user-guide>`.
 
 .. toctree::

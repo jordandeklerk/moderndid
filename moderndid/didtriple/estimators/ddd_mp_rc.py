@@ -10,6 +10,14 @@ import polars as pl
 from scipy import stats
 
 from moderndid.core.dataframe import to_polars
+from moderndid.core.maketables import (
+    build_coef_table,
+    ci_from_se,
+    control_group_label,
+    make_group_time_names,
+    se_type_label,
+    vcov_info_from_bootstrap,
+)
 from moderndid.core.parallel import parallel_map
 
 from ..bootstrap.mboot_ddd import mboot_ddd
@@ -32,6 +40,9 @@ class ATTgtRCResult(NamedTuple):
 
 class DDDMultiPeriodRCResult(NamedTuple):
     """Container for multi-period DDD repeated cross-section estimation results.
+
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
 
     Attributes
     ----------
@@ -85,6 +96,65 @@ class DDDMultiPeriodRCResult(NamedTuple):
     args: dict
     #: Array of treatment group for each observation.
     unit_groups: np.ndarray
+
+    @property
+    def __maketables_coef_table__(self):
+        """Return canonical coefficient table for maketables."""
+        names = make_group_time_names(self.groups, self.times, prefix="ATT")
+        ci90l, ci90u = ci_from_se(self.att, self.se, alpha=0.10)
+        return build_coef_table(names, self.att, self.se, ci95l=self.lci, ci95u=self.uci, ci90l=ci90l, ci90u=ci90u)
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        if key == "N":
+            return int(self.n)
+        if key == "n_cohorts":
+            return len(self.glist)
+        if key == "n_periods":
+            return len(self.tlist)
+        if key == "se_type":
+            return se_type_label(bool(self.args.get("boot", False)))
+        if key == "control_group":
+            return control_group_label(self.args.get("control_group"))
+        if key == "base_period":
+            return self.args.get("base_period")
+        if key == "est_method":
+            return self.args.get("est_method")
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        return str(self.args.get("yname", "DDD ATT(g,t)"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """DDD group-time outputs do not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        return vcov_info_from_bootstrap(
+            is_bootstrap=bool(self.args.get("boot", False)),
+            cluster=self.args.get("cluster"),
+        )
+
+    @property
+    def __maketables_stat_labels__(self) -> dict[str, str]:
+        """Return custom labels for model-level statistics."""
+        return {
+            "n_cohorts": "Treatment Cohorts",
+            "n_periods": "Time Periods",
+            "control_group": "Control Group",
+            "base_period": "Base Period",
+            "est_method": "Estimation Method",
+        }
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        return ["N", "n_cohorts", "n_periods", "se_type", "control_group", "base_period", "est_method"]
 
 
 def ddd_mp_rc(

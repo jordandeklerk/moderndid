@@ -487,6 +487,53 @@ toml = [
 ]
 
 [[package]]
+name = "cuda-bindings"
+version = "12.9.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cuda-pathfinder" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/6c/a90efb9e83c3830f10236c51b56b436e0b78efba79364659037dc93cdbbc/cuda_bindings-12.9.5-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:14dcc3a4b7bc50a7bec0e98a815b7cc36a0cfeafa20152e484c3a05068209da5", size = 15619944, upload-time = "2025-12-18T16:30:56.452Z" },
+    { url = "https://files.pythonhosted.org/packages/34/4a/f323d52849e4a85ea7ebbff0625c9c6297e35f0e91ce5e2d1cff4731bd1b/cuda_bindings-12.9.5-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:819f38fe6f3f8ea28f772e61c2583dd10152ee81051a970a291b7f916973729e", size = 16149366, upload-time = "2025-12-18T16:30:58.942Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/07/41122c3073267645b5481f03b98d3de47848798967f64b51f25428e9d564/cuda_bindings-12.9.5-cp311-cp311-win_amd64.whl", hash = "sha256:6427fd9fef4c8cc171fbf9eb74763faeddc1fa3899882c269ff7f9b12e03b965", size = 15376641, upload-time = "2025-12-18T16:31:00.983Z" },
+    { url = "https://files.pythonhosted.org/packages/07/83/1720946a56090a004f375617fb2df61185a413daa779e8bb4bda313be9e3/cuda_bindings-12.9.5-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:92f21accf6fcdea7998b2ee1bbed71e2a156737624c46dc9bc3b51a1c55bda88", size = 15400554, upload-time = "2025-12-18T16:31:03.599Z" },
+    { url = "https://files.pythonhosted.org/packages/10/5c/dd3cac662aad06e5b8661749b403cb6dc8359506a79e387ffc497cd25902/cuda_bindings-12.9.5-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5218388042d3415fba74030600fa25d59e3ec4183c344f227d43df52ca53f408", size = 15918529, upload-time = "2025-12-18T16:31:06.25Z" },
+    { url = "https://files.pythonhosted.org/packages/33/88/b9fb610955af5a79108744dd75cd921484b43da6b151988d889180a5ad16/cuda_bindings-12.9.5-cp312-cp312-win_amd64.whl", hash = "sha256:ee42798f639920d30292a1649b24388526067463f73a8469feeba1570121ce2d", size = 15399440, upload-time = "2025-12-18T16:31:08.894Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/7a/fb65f880eb30ebf1bc648933ba4d4d37adbaf502bbede724d442a9512aca/cuda_bindings-12.9.5-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e06d272b25149e1a83b446ff3dbefcf6f82f66865c49e8d9db75683bbcff0b5f", size = 15269227, upload-time = "2025-12-18T16:31:10.952Z" },
+    { url = "https://files.pythonhosted.org/packages/68/b7/19ff68738d7397bdd58b5feb8385d5fbe14903ce9b60b3e772a5f25ea0ec/cuda_bindings-12.9.5-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:da37458f8c5074d59040deddbd005460c0cf70d1ef90dd7d2c816e4686038e87", size = 15752484, upload-time = "2025-12-18T16:31:13.251Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/7c/ee0e24167501e37fddb09a386f7ba7a7f377bf5adb3399277ff20185f26c/cuda_bindings-12.9.5-cp313-cp313-win_amd64.whl", hash = "sha256:5b9401e3bcd5d3a3c90cbb759e2cf6b8a446789b8dd6e452de9530e50b93683f", size = 15363723, upload-time = "2025-12-18T16:31:15.305Z" },
+    { url = "https://files.pythonhosted.org/packages/e2/ca/c4551ae51a133ca1e44fe3fedc6b2607d50fa8690f096cfd6c254bcf40c5/cuda_bindings-12.9.5-cp313-cp313t-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:c3fb96c3d99f58ee5b3072bf1b40c215f4207481cc8b5f15b1a6c628eeb40cae", size = 15228703, upload-time = "2025-12-18T16:31:17.492Z" },
+    { url = "https://files.pythonhosted.org/packages/4f/17/5c5063639de93a27ba67fd9c12f7663014010b1fb50990399c923cafa8d3/cuda_bindings-12.9.5-cp313-cp313t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5f5ee48922d723c626549b5644f69adcbf7537499a42963cc39d328319ff44ed", size = 15709656, upload-time = "2025-12-18T16:31:20.056Z" },
+    { url = "https://files.pythonhosted.org/packages/91/3d/72ae9c90aac0071e92bcbcb976b8fc3531dd74c4799dbbdc739a8b671b74/cuda_bindings-12.9.5-cp313-cp313t-win_amd64.whl", hash = "sha256:dbe330129380cc01a1a8f23894ae39c52e9fedc4b7db8ed69ac5f8ac48d55084", size = 15759852, upload-time = "2025-12-18T16:31:22.454Z" },
+    { url = "https://files.pythonhosted.org/packages/27/cb/eed7d79086adbb5f1ea96445170544f80ab1bd0d5b5e8f62823cfa054c90/cuda_bindings-12.9.5-cp314-cp314-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:3b3a89fccd6cc1ec535a940b43243761537ae573d977c3cd18e38f841e1f8a86", size = 15352988, upload-time = "2025-12-18T16:31:24.924Z" },
+    { url = "https://files.pythonhosted.org/packages/94/4c/6d2e59c2321efe9f219ba5eb5063a61facfe527655fe3ad7bdaafda1da1a/cuda_bindings-12.9.5-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:40dc79c8cbf663e24d2607b2a979787e0d6840b624a4da48cd5303acb8482ad2", size = 15789364, upload-time = "2025-12-18T16:31:27.1Z" },
+    { url = "https://files.pythonhosted.org/packages/25/b0/21d9247995c9d34d7cb2c23bc50aa3ee6f4fbf92eb3a0d09be9223e221a0/cuda_bindings-12.9.5-cp314-cp314-win_amd64.whl", hash = "sha256:5faab6be8fc097076eabe591e084c7c743d6d4222ef15f42008122cdd5ca31e1", size = 15534026, upload-time = "2025-12-18T16:31:29.176Z" },
+    { url = "https://files.pythonhosted.org/packages/13/10/0d4980c6b9b7caffaa0e553378ce363f03e8e4b933c505c5117b26f8c067/cuda_bindings-12.9.5-cp314-cp314t-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9a82dd5c30d9ef0956ddc9ae84e27ea027576633161de8646b00e7189d4f0a39", size = 15262883, upload-time = "2025-12-18T16:31:31.58Z" },
+    { url = "https://files.pythonhosted.org/packages/ed/9f/582ee268a5ebb96a643c29c69354b0c2d9634cd98deda1c5bd4abe4f61c8/cuda_bindings-12.9.5-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:77964179bc62504dc6bdba745bd594652233ec7796af8adce10edc0dfaf1ed95", size = 15740980, upload-time = "2025-12-18T16:31:33.972Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/44/aab452c0a531a2c26e546745e0bba3047a7a30185620beeb68ed89a78f6d/cuda_bindings-12.9.5-cp314-cp314t-win_amd64.whl", hash = "sha256:ec376bfd8b07931f72bebed5e558c9bdae3a85473a6a1d5783ef3483a22fe86c", size = 16195220, upload-time = "2025-12-18T16:31:36.087Z" },
+]
+
+[[package]]
+name = "cuda-pathfinder"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ff/60/d8f1dbfb7f06b94c662e98c95189e6f39b817da638bc8fcea0d003f89e5d/cuda_pathfinder-1.4.0-py3-none-any.whl", hash = "sha256:437079ca59e7b61ae439ecc501d69ed87b3accc34d58153ef1e54815e2c2e118", size = 38406, upload-time = "2026-02-25T22:13:00.807Z" },
+]
+
+[[package]]
+name = "cuda-python"
+version = "12.9.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cuda-bindings" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0a/02/ce79a804a2d6ee7dc2d1637b75b7c3f01eb90a796915d4d3a1ac42e2d6e6/cuda_python-12.9.5-py3-none-any.whl", hash = "sha256:6fbbb3be2ab617d8269ad83e5fe9d748b1da4c5e0f79257a3296408a70766b39", size = 7596, upload-time = "2025-12-18T16:45:15.973Z" },
+]
+
+[[package]]
 name = "cupy-cuda12x"
 version = "13.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1227,6 +1274,18 @@ wheels = [
 ]
 
 [[package]]
+name = "librmm-cu12"
+version = "26.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "rapids-logger" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/b0/0c8e9845b6a5795116b6a03ad216e1bcdd22f9c729be8b7c5f60db1b148f/librmm_cu12-26.2.0-py3-none-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d0cdd82ad292b7772bf6fa8661c2f7444056de8904ce802586e11c6781c53e31", size = 3938889, upload-time = "2026-02-07T00:22:27.147Z" },
+    { url = "https://files.pythonhosted.org/packages/86/88/861542357455e5f96e69f4f6a70f88a6372db56b43d7d4b3db0c6c01e092/librmm_cu12-26.2.0-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d4ed1aa3554e90562ad7cf276c61d56fa99be486a7fc158beea332750d20a0e7", size = 3933947, upload-time = "2026-02-07T00:25:56.926Z" },
+]
+
+[[package]]
 name = "linkify-it-py"
 version = "2.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1527,6 +1586,7 @@ doc = [
 ]
 gpu = [
     { name = "cupy-cuda12x" },
+    { name = "rmm-cu12" },
 ]
 numba = [
     { name = "numba" },
@@ -1572,8 +1632,9 @@ requires-dist = [
     { name = "pytest-benchmark", marker = "extra == 'test'" },
     { name = "pytest-cov", marker = "extra == 'test'" },
     { name = "pytest-timeout", marker = "extra == 'test'" },
+    { name = "rmm-cu12", marker = "extra == 'gpu'", specifier = ">=24.4" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.11.7" },
-    { name = "scipy", specifier = ">=1.17,<1.18" },
+    { name = "scipy", specifier = ">=1.17" },
     { name = "sphinx", marker = "extra == 'doc'" },
     { name = "sphinx-book-theme", marker = "extra == 'doc'" },
     { name = "sphinx-copybutton", marker = "extra == 'doc'" },
@@ -2691,6 +2752,15 @@ wheels = [
 ]
 
 [[package]]
+name = "rapids-logger"
+version = "0.2.3"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/80/ed/ba6a37af075e6c65addaaa5b9cd9668d818f738ae30493d63965713ab54a/rapids_logger-0.2.3-py3-none-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:119a0391a6965b773dc0e48c35e3872585e69418aedbc8b618ac2bf63ae12e28", size = 191718, upload-time = "2025-12-12T14:41:13.059Z" },
+    { url = "https://files.pythonhosted.org/packages/69/b6/139d9df6d0f7bd289a9a6286cecfff999e41c36865515d7fdb56b7b32a14/rapids_logger-0.2.3-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7fe67ef4049c5d8ba6154746325dcf7cc0f327f0efa8f2611fc8f64e67510f60", size = 202028, upload-time = "2025-12-12T14:41:14.171Z" },
+]
+
+[[package]]
 name = "referencing"
 version = "0.37.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2717,6 +2787,24 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c9/74/b3ff8e6c8446842c3f5c837e9c3dfcfe2018ea6ecef224c710c85ef728f4/requests-2.32.5.tar.gz", hash = "sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf", size = 134517, upload-time = "2025-08-18T20:46:02.573Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/db/4254e3eabe8020b458f1a747140d32277ec7a271daf1d235b70dc0b4e6e3/requests-2.32.5-py3-none-any.whl", hash = "sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6", size = 64738, upload-time = "2025-08-18T20:46:00.542Z" },
+]
+
+[[package]]
+name = "rmm-cu12"
+version = "26.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cuda-python" },
+    { name = "librmm-cu12" },
+    { name = "numpy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/77/24/8f97599e4df64e9832dd47786bcb9c9d9c389dc7ad318842faf3e0fd864d/rmm_cu12-26.2.0-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9f016db706c24d55e04206633ee89af8ade86fceafe9155b5bff8d4d92cee04b", size = 1243916, upload-time = "2026-02-07T04:25:03.55Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/ef/2541894211373f0dc6a936497db83218810942170ba976b1129aff6e47cd/rmm_cu12-26.2.0-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:25df389b1911040157febdd4282dbd76f55c6afc6f60beacce2e817ae57360b6", size = 1253317, upload-time = "2026-02-07T04:22:13.077Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/4d/2a90b1138ecc8eaeaa875661e3af02f3d3820e5b68cdef6e799f73bbfe5a/rmm_cu12-26.2.0-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:8a2e143803e63bfa1f0eb85392542ac77b888f569fd4e70de2164a81875d6db9", size = 1236367, upload-time = "2026-02-07T04:26:37.975Z" },
+    { url = "https://files.pythonhosted.org/packages/da/ad/5a4a717690bf0a590e2a377ea0e5098407242732fa01bd3adfa50fa35cd0/rmm_cu12-26.2.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:067cabd6d2b3be3f84c2bfa9ae5d843ebb491198ffbb871ceb70944421b1251c", size = 1247715, upload-time = "2026-02-07T04:22:35.885Z" },
+    { url = "https://files.pythonhosted.org/packages/10/2d/ec24aaed731da7005149cfbc60666dcae07158c480aac2208e44dccacc6e/rmm_cu12-26.2.0-cp313-cp313-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ba3cbb16e0c87d7aeaf7f40a2f34dc18e674832960a9e8506230ca16b05b3bd6", size = 1230956, upload-time = "2026-02-07T04:25:50.251Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/43/ca69eda73a599bee6f83cbf34b26b47ef4e4d236c034ba83f36cef1dffa2/rmm_cu12-26.2.0-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8b726a2d4e2875d06fe8d776487bcced4ce8fc7d9f2c3cd44a6c91e9c744f92c", size = 1243039, upload-time = "2026-02-07T04:23:21.443Z" },
 ]
 
 [[package]]

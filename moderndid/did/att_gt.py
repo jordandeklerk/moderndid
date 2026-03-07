@@ -498,6 +498,7 @@ def att_gt(
             )
 
     estimation_params = {
+        "yname": yname,
         "control_group": control_group,
         "anticipation_periods": anticipation,
         "estimation_method": est_method if isinstance(est_method, str) else "custom",
@@ -509,6 +510,8 @@ def att_gt(
         "cluster": dp.cluster,
         "biters": biters,
         "random_state": random_state,
+        "n_units": n_units,
+        "n_obs": len(dp.data),
     }
 
     group_assignments = None

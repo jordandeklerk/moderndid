@@ -3,10 +3,24 @@
 from typing import Literal, NamedTuple
 
 import numpy as np
+from scipy import stats
+
+from moderndid.core.maketables import (
+    build_coef_table_with_ci,
+    control_group_label,
+    est_method_label,
+    make_effect_names,
+    n_from_first_dim,
+    se_type_label,
+    vcov_info_from_bootstrap,
+)
 
 
 class AGGTEResult(NamedTuple):
     """Container for aggregated treatment effect parameters.
+
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
 
     Attributes
     ----------
@@ -84,6 +98,102 @@ class AGGTEResult(NamedTuple):
     estimation_params: dict = {}
     #: Information about the function call that created this object.
     call_info: dict = {}
+
+    @property
+    def __maketables_coef_table__(self):
+        """Return canonical coefficient table for maketables."""
+        alpha = float(self.estimation_params.get("alpha", 0.05))
+        names = ["Overall ATT"]
+        estimates = [self.overall_att]
+        se = [self.overall_se]
+
+        # Overall ATT always uses the normal critical value (same as the formatter).
+        # Event-time rows use the estimator's critical values when available
+        # (e.g. simultaneous confidence bands from the bootstrap).
+        crit = None
+        if self.event_times is not None and self.att_by_event is not None and self.se_by_event is not None:
+            z_crit = stats.norm.ppf(1 - alpha / 2)
+            prefix = {"dynamic": "Event", "group": "Group", "calendar": "Time"}.get(self.aggregation_type, "Effect")
+            names.extend(make_effect_names(self.event_times, prefix=prefix))
+            estimates.extend(np.asarray(self.att_by_event, dtype=float).tolist())
+            se.extend(np.asarray(self.se_by_event, dtype=float).tolist())
+
+            if self.critical_values is not None:
+                event_crit = np.asarray(self.critical_values, dtype=float)
+            else:
+                event_crit = np.full(len(self.event_times), z_crit)
+            crit = np.concatenate([[z_crit], event_crit])
+
+        return build_coef_table_with_ci(names, estimates, se, alpha=alpha, critical_values=crit)
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        if key == "N":
+            n_obs = self.estimation_params.get("n_obs")
+            if n_obs is not None:
+                return int(n_obs)
+            n = n_from_first_dim(self.influence_func_overall)
+            if n is not None:
+                return n
+            return n_from_first_dim(self.influence_func)
+        if key == "n_units":
+            n_units = self.estimation_params.get("n_units")
+            if n_units is not None:
+                return int(n_units)
+            return n_from_first_dim(self.influence_func_overall) or n_from_first_dim(self.influence_func)
+        if key == "aggregation":
+            return self.aggregation_type
+        if key == "se_type":
+            return se_type_label(bool(self.estimation_params.get("bootstrap", False)))
+        if key == "control_group":
+            return control_group_label(self.estimation_params.get("control_group"))
+        if key == "estimation_method":
+            return est_method_label(self.estimation_params.get("estimation_method"))
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        return str(self.estimation_params.get("yname", "Aggregated ATT"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """AGGTE output does not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        cluster = self.estimation_params.get("cluster")
+        if cluster is None:
+            cluster = self.estimation_params.get("clustervars")
+        return vcov_info_from_bootstrap(
+            is_bootstrap=bool(self.estimation_params.get("bootstrap", False)),
+            cluster=cluster,
+        )
+
+    @property
+    def __maketables_stat_labels__(self) -> dict[str, str]:
+        """Return custom labels for model-level statistics."""
+        return {
+            "n_units": "Units",
+            "aggregation": "Aggregation",
+            "control_group": "Control Group",
+            "estimation_method": "Estimation Method",
+        }
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        keys = ["aggregation", "se_type", "control_group"]
+        if self.__maketables_stat__("N") is not None:
+            keys.insert(0, "N")
+        if self.__maketables_stat__("n_units") is not None:
+            idx = keys.index("N") + 1 if "N" in keys else 0
+            keys.insert(idx, "n_units")
+        if self.estimation_params.get("estimation_method") is not None:
+            keys.append("estimation_method")
+        return keys
 
 
 def aggte(

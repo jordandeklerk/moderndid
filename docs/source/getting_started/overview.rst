@@ -9,7 +9,7 @@ causal inference from observational data. The modern DiD literature has
 produced many estimators, but implementations are scattered across separate
 R and Stata packages with incompatible APIs and output formats.
 
-ModernDiD brings them together into a single Python library with a
+**ModernDiD** brings them together into a single Python library with a
 consistent API. Every estimator follows the same three-step workflow of
 **estimate, aggregate, visualize**. Switching between designs means
 changing one function call, not learning a new package.
@@ -89,7 +89,7 @@ Key features
 Estimators
 ----------
 
-ModernDiD covers the main DiD designs used in applied work. Each estimator
+**ModernDiD** covers the main DiD designs used in applied work. Each estimator
 targets a different treatment structure. See the
 :ref:`estimator overview <estimator-overview>` for detailed descriptions,
 key arguments, and guidance on when to use each one.

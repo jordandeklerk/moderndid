@@ -155,6 +155,7 @@ def compute_did_multiplegt(preprocessed):
         influence_placebos=placebos_results.get("influence_func") if placebos_results else None,
         heterogeneity=heterogeneity,
         estimation_params={
+            "yname": config.yname,
             "effects": config.effects,
             "placebo": config.placebo,
             "normalized": config.normalized,

@@ -4,7 +4,7 @@
 Plotting and Visualization
 ***************************
 
-Every ModernDiD estimator produces a result object that can be passed directly
+Every **ModernDiD** estimator produces a result object that can be passed directly
 to a built-in plot function. The visualization layer is built on
 `plotnine <https://plotnine.org/>`_, a Python implementation of R's ggplot2.
 If you have used ggplot2 in R, the syntax will feel familiar. If you are new
@@ -49,7 +49,7 @@ provides the input.
 Built-in plot functions
 =======================
 
-ModernDiD provides six plot functions, each designed for a specific type of
+**ModernDiD** provides six plot functions, each designed for a specific type of
 treatment effect estimate. All share a common interface with parameters for
 confidence intervals, reference lines, axis labels, and titles.
 
@@ -261,7 +261,7 @@ frequently adjusted visual elements.
 Themes
 ======
 
-ModernDiD ships three built-in themes that control the overall appearance of
+**ModernDiD** ships three built-in themes that control the overall appearance of
 plots. All are applied by adding them to a plot object with the ``+``
 operator.
 
@@ -468,7 +468,7 @@ level to match the level of treatment assignment.
         vcov={"CRV1": "countyreal"},
     )
 
-To build the comparison figure, we extract the ModernDiD event study
+To build the comparison figure, we extract the **ModernDiD** event study
 estimates with ``aggteresult_to_polars`` and the TWFE coefficients from
 pyfixest, then combine them into a single DataFrame with an ``estimator``
 column.
@@ -479,7 +479,7 @@ column.
     import pandas as pd
     from moderndid.plots import aggteresult_to_polars
 
-    # ModernDiD estimates
+    # **ModernDiD** estimates
     es_df = aggteresult_to_polars(event_study)
     mdid_pd = es_df.select([
         pl.col("event_time").cast(pl.Int64),

@@ -3,10 +3,23 @@
 from typing import Literal, NamedTuple
 
 import numpy as np
+from scipy import stats
+
+from moderndid.core.maketables import (
+    build_coef_table_with_ci,
+    control_group_label,
+    make_effect_names,
+    n_from_first_dim,
+    se_type_label,
+    vcov_info_from_bootstrap,
+)
 
 
 class DDDAggResult(NamedTuple):
     """Container for aggregated DDD treatment effect parameters.
+
+    This class implements the ``maketables`` plug-in interface for
+    publication-quality tables. See :ref:`publication_tables`.
 
     Attributes
     ----------
@@ -52,3 +65,81 @@ class DDDAggResult(NamedTuple):
     inf_func_overall: np.ndarray | None = None
     #: Arguments used for aggregation.
     args: dict = {}
+
+    @property
+    def __maketables_coef_table__(self):
+        """Return canonical coefficient table for maketables."""
+        alpha = float(self.args.get("alpha", 0.05))
+        names = ["Overall ATT"]
+        estimates = [self.overall_att]
+        se = [self.overall_se]
+
+        crit = None
+        if self.egt is not None and self.att_egt is not None and self.se_egt is not None:
+            z_crit = stats.norm.ppf(1 - alpha / 2)
+            prefix = {"eventstudy": "Event", "group": "Group", "calendar": "Time"}.get(
+                self.aggregation_type,
+                "Effect",
+            )
+            names.extend(make_effect_names(self.egt, prefix=prefix))
+            estimates.extend(np.asarray(self.att_egt, dtype=float).tolist())
+            se.extend(np.asarray(self.se_egt, dtype=float).tolist())
+
+            event_crit = np.full(len(self.egt), self.crit_val)
+            crit = np.concatenate([[z_crit], event_crit])
+
+        return build_coef_table_with_ci(names, estimates, se, alpha=alpha, critical_values=crit)
+
+    def __maketables_stat__(self, key: str) -> int | float | str | None:
+        """Return model-level statistics for maketables."""
+        if key == "N":
+            n_obs = n_from_first_dim(self.inf_func_overall)
+            if n_obs is not None:
+                return n_obs
+            return n_from_first_dim(self.inf_func)
+        if key == "aggregation":
+            return self.aggregation_type
+        if key == "se_type":
+            return se_type_label(bool(self.args.get("boot", False)))
+        if key == "control_group":
+            return control_group_label(self.args.get("control_group"))
+        if key == "est_method":
+            return self.args.get("est_method")
+        return None
+
+    @property
+    def __maketables_depvar__(self) -> str:
+        """Return dependent variable label for maketables."""
+        return str(self.args.get("yname", "Aggregated DDD ATT"))
+
+    @property
+    def __maketables_fixef_string__(self) -> str | None:
+        """DDD aggregation output does not report fixed-effects formulas."""
+        return None
+
+    @property
+    def __maketables_vcov_info__(self) -> dict[str, str | None]:
+        """Return variance-covariance metadata."""
+        return vcov_info_from_bootstrap(
+            is_bootstrap=bool(self.args.get("boot", False)),
+            cluster=self.args.get("cluster"),
+        )
+
+    @property
+    def __maketables_stat_labels__(self) -> dict[str, str]:
+        """Return custom labels for model-level statistics."""
+        return {
+            "aggregation": "Aggregation",
+            "control_group": "Control Group",
+            "est_method": "Estimation Method",
+        }
+
+    @property
+    def __maketables_default_stat_keys__(self) -> list[str]:
+        """Default model-level stats to display in ETable."""
+        keys = ["aggregation", "se_type", "control_group"]
+        if self.__maketables_stat__("N") is not None:
+            keys.insert(0, "N")
+        if self.args.get("est_method") is not None:
+            keys.append("est_method")
+        return keys

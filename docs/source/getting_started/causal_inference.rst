@@ -190,7 +190,7 @@ These methods produce confidence intervals that remain valid even under
 specified degrees of departure from parallel trends. If conclusions are
 robust to plausible violations, researchers can be more confident in their
 findings. If conclusions are sensitive to small violations, this reveals
-fragility in the research design that warrants caution. ModernDiD implements
+fragility in the research design that warrants caution. **ModernDiD** implements
 these sensitivity analysis methods in the ``didhonest`` module.
 
 
@@ -540,6 +540,6 @@ recommended parameter.
 What's Next
 ===========
 
-ModernDiD implements these staggered treatment timing methods along with extensions
+**ModernDiD** implements these staggered treatment timing methods along with extensions
 for continuous treatments, intertemporal effects, triple differences, and sensitivity analysis.
 To see these ideas in practice, continue to the :doc:`/user_guide/index`.

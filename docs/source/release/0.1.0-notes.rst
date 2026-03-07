@@ -4,7 +4,7 @@
 ModernDiD 0.1.0 Release Notes
 =============================
 
-ModernDiD 0.1.0 is the first major release of the package, graduating from the
+**ModernDiD** 0.1.0 is the first major release of the package, graduating from the
 0.0.x pre-release series with a stable, feature-complete API for modern
 difference-in-differences estimation in Python. This release brings major new
 capabilities including intertemporal DiD estimation, GPU acceleration via CuPy,
@@ -390,7 +390,7 @@ Bug Fixes
 Benchmarks
 ==========
 
-Speed benchmarks have been added comparing ModernDiD estimators against their
+Speed benchmarks have been added comparing **ModernDiD** estimators against their
 R counterparts. Results demonstrate significant speed advantages for the Python
 implementations, with the R ``DIDmultiplegtDYN`` package unable to handle
 observation sizes above 300k. Benchmarks were refreshed after the R package
@@ -409,7 +409,7 @@ R Validation Suite
 The existing R validation tests have been significantly enhanced and
 consolidated into a dedicated ``tests/validation/`` directory. These tests
 verify numerical accuracy against the canonical R implementations to ensure
-that ModernDiD produces equivalent results.
+that **ModernDiD** produces equivalent results.
 
 * Enhance R validation tests for ``att_gt()`` and ``aggte()`` against the R
   ``did`` package.

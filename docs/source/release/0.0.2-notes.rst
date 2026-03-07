@@ -4,7 +4,7 @@
 ModernDiD 0.0.2 Release Notes
 =============================
 
-ModernDiD 0.0.2 is a major feature release that adds triple difference-in-differences
+**ModernDiD** 0.0.2 is a major feature release that adds triple difference-in-differences
 estimation, continuous treatment DiD, migrates from pandas to polars for improved
 performance, and integrates plotnine for publication-quality visualizations.
 

@@ -81,7 +81,7 @@ using the doubly robust DDD estimator with household-level covariates.
 Loading the data
 ^^^^^^^^^^^^^^^^
 
-The dataset is included with ModernDiD and contains 3,659 households observed
+The dataset is included with **ModernDiD** and contains 3,659 households observed
 from 2000 to 2008. The panel is unbalanced, with most households appearing in all 9
 years, but some have fewer observations.
 

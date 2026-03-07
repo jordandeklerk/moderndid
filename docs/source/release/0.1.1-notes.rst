@@ -4,7 +4,7 @@
 ModernDiD 0.1.1 Release Notes
 =============================
 
-ModernDiD 0.1.1 is a maintenance release with dependency updates, minor
+**ModernDiD** 0.1.1 is a maintenance release with dependency updates, minor
 refactoring, and documentation improvements.
 
 Python versions 3.11-3.13 are supported in this release.

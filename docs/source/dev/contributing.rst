@@ -4,7 +4,7 @@
 Contributing to ModernDiD
 ########################
 
-Welcome to ModernDiD! We appreciate your interest in contributing to the project.
+Welcome to **ModernDiD**! We appreciate your interest in contributing to the project.
 Whether you're fixing a bug, adding a new feature, improving documentation, or
 helping with code review, your contributions are valuable.
 
@@ -104,7 +104,7 @@ enables automatic API documentation generation.
 
 If you're adding a new estimator, follow the established architecture patterns
 described in :doc:`architecture`. That document covers the preprocessing pipeline,
-result object design, and the consistent API conventions that make ModernDiD
+result object design, and the consistent API conventions that make **ModernDiD**
 predictable for users.
 
 All changes require review and approval before merging. If you don't receive
@@ -184,7 +184,7 @@ To run distributed test suites::
 R validation tests
 ==================
 
-ModernDiD includes a validation suite that compares Python estimates against
+**ModernDiD** includes a validation suite that compares Python estimates against
 the original R packages (``did``, ``DRDID``, ``contdid``, ``triplediff``,
 ``HonestDiD``, ``DIDmultiplegtDYN``). These tests live in
 `validation <https://github.com/jordandeklerk/moderndid/tree/main/tests/validation>`__ and run inside the ``validation`` pixi environment,
@@ -350,7 +350,7 @@ GitHub Actions tab. The most common causes are
 Registering new public API
 ==========================
 
-ModernDiD uses a lazy-loading import system in `__init__.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/__init__.py>`__ so
+**ModernDiD** uses a lazy-loading import system in `__init__.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/__init__.py>`__ so
 that ``import moderndid`` is fast even though the package has many optional
 dependencies. When you add a new public function, class, or module, you need
 to register it in this system.
@@ -421,7 +421,7 @@ corresponding tox testenv in ``tox.ini``.
 Python version support
 -----------------------
 
-ModernDiD supports Python 3.11 and above (``requires-python = ">=3.11"``).
+**ModernDiD** supports Python 3.11 and above (``requires-python = ">=3.11"``).
 CI tests against 3.11, 3.12, and 3.13. Do not use language features that
 require a Python version above 3.11 (e.g., ``type`` statement from 3.12)
 without gating them behind a version check.

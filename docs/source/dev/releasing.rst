@@ -10,7 +10,7 @@ manual steps are required to initiate a release.
 Overview
 ========
 
-ModernDiD follows `semantic versioning <https://semver.org/>`__. Given a
+**ModernDiD** follows `semantic versioning <https://semver.org/>`__. Given a
 version ``MAJOR.MINOR.PATCH``, increment **MAJOR** for incompatible API
 changes, **MINOR** for new backwards-compatible functionality, and **PATCH**
 for backwards-compatible bug fixes.
@@ -142,7 +142,7 @@ If a critical bug is found in a released version, create a branch from
 bump only the patch version (e.g., ``0.2.0`` to ``0.2.1``), and follow the
 standard tagging and release process above.
 
-Since ModernDiD does not maintain separate release branches, hotfixes go
+Since **ModernDiD** does not maintain separate release branches, hotfixes go
 through ``main`` like any other change.
 
 Troubleshooting
