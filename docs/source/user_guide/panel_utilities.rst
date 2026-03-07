@@ -4,7 +4,7 @@
 Panel Data Utilities
 ====================
 
-ModernDiD's :mod:`~moderndid.core.panel` module provides tools for inspecting and
+**ModernDiD**'s :mod:`~moderndid.core.panel` module provides tools for inspecting and
 cleaning panel data before estimation. Every estimator has a robust
 preprocessing pipeline that automatically handles most panel irregularities,
 so these utilities are optional. They are useful when you want to understand
@@ -137,7 +137,7 @@ last occurrence by default, or can average numeric columns with
 Building the Group-Timing Variable
 -----------------------------------
 
-Most ModernDiD estimators take ``gname`` as an argument, a column indicating the first
+Most **ModernDiD** estimators take ``gname`` as an argument, a column indicating the first
 period each unit was treated (0 for never-treated). Many datasets
 instead store a raw binary treatment indicator that flips from 0 to 1
 when treatment begins. :func:`~moderndid.core.panel.get_group` converts

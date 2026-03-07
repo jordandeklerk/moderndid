@@ -26,7 +26,7 @@ ModernDiD documentation
 `Issue Tracker <https://github.com/jordandeklerk/moderndid/issues>`_ |
 `PyPI <https://pypi.org/project/moderndid/>`_
 
-ModernDiD is a scalable, GPU-accelerated difference-in-differences library for
+**ModernDiD** is a scalable, GPU-accelerated difference-in-differences library for
 Python. It consolidates modern DiD estimators from leading econometric research
 and various R and Stata packages into a single framework with a consistent API.
 Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
@@ -41,7 +41,7 @@ Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
         Getting started
         ^^^
 
-        New to ModernDiD? Check out the Getting Started guide for installation
+        New to **ModernDiD**? Check out the Getting Started guide for installation
         instructions and an introduction to difference-in-differences methodology.
 
         +++
@@ -79,7 +79,7 @@ Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
         API reference
         ^^^
 
-        The API reference contains detailed documentation on all of ModernDiD's
+        The API reference contains detailed documentation on all of **ModernDiD**'s
         estimators, methods, and classes including function signatures and parameters.
 
         +++
@@ -98,7 +98,7 @@ Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
         Development
         ^^^
 
-        Want to contribute to ModernDiD? The development guide covers setup,
+        Want to contribute to **ModernDiD**? The development guide covers setup,
         coding standards, testing, and submission guidelines.
 
         +++

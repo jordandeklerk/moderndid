@@ -4,7 +4,7 @@
 ModernDiD 0.0.1 Release Notes
 =============================
 
-ModernDiD 0.0.1 is the initial release of the package, providing a unified
+**ModernDiD** 0.0.1 is the initial release of the package, providing a unified
 Python implementation of modern difference-in-differences methodologies.
 
 Highlights

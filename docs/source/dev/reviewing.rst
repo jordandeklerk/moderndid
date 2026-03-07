@@ -63,7 +63,7 @@ at hand.
 - Is the public API consistent with existing estimators? Check parameter
   names against the :ref:`consistent argument naming <consistent-argument-naming>`
   conventions.
-- Are new dependencies justified? ModernDiD keeps optional dependencies
+- Are new dependencies justified? **ModernDiD** keeps optional dependencies
   truly optional, and core functionality should work with only the base
   dependencies.
 
@@ -152,7 +152,7 @@ in the commit message.
 Backporting
 -----------
 
-ModernDiD does not currently maintain multiple release branches. All
+**ModernDiD** does not currently maintain multiple release branches. All
 development targets ``main``, and releases are cut from ``main`` via tags.
 If a multi-branch strategy becomes necessary in the future, this section
 will be updated with backporting procedures.

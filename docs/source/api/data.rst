@@ -3,7 +3,7 @@
 Datasets and Simulation
 ========================
 
-ModernDiD includes built-in datasets for examples and benchmarking, as well as
+**ModernDiD** includes built-in datasets for examples and benchmarking, as well as
 data generation functions for simulation studies and scalability testing.
 
 Built-in Datasets

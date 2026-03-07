@@ -6,7 +6,7 @@
 Distributed Computing
 ======================
 
-ModernDiD ships distributed backends for
+**ModernDiD** ships distributed backends for
 `Dask <https://www.dask.org/>`_ and
 `Apache Spark <https://spark.apache.org/>`_. Both backends share the same
 algorithmic decomposition; only the communication primitives differ. The
@@ -93,7 +93,7 @@ The nuisance models are the most expensive part of each cell. Both models are
 fit without collecting raw observations on the driver.
 
 **Propensity score via distributed IRLS.** The propensity score is a
-logistic regression of treatment status on covariates. ModernDiD fits it
+logistic regression of treatment status on covariates. **ModernDiD** fits it
 using iteratively reweighted least squares (IRLS), a Newton-Raphson
 algorithm where each iteration reduces to a weighted least squares
 problem.
@@ -163,7 +163,7 @@ the normal equations. The default partition count equals total worker threads
 partition-level matrices. Naive reduction does 63 sequential pairwise adds
 on the driver, which serializes the critical path and limits throughput.
 
-ModernDiD uses a tree-reduce pattern with configurable fan-in
+**ModernDiD** uses a tree-reduce pattern with configurable fan-in
 (``split_every=8`` by default). Futures are reduced in batches on workers,
 then recursively combined. With 64 partitions and fan-in 8, this produces
 9 reduction tasks instead of 63 pairwise additions. The pattern is used for

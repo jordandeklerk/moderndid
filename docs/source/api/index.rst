@@ -9,7 +9,7 @@ API Reference
 :Release: |version|
 :Date: |today|
 
-This is the API reference for ModernDiD; details on the underlying
+This is the API reference for **ModernDiD**; details on the underlying
 methodology are found in :ref:`background`.
 
 .. toctree::

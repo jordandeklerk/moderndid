@@ -4,7 +4,7 @@
 GPU Acceleration with CuPy
 ===========================
 
-ModernDiD can offload numerical operations to NVIDIA GPUs via
+**ModernDiD** can offload numerical operations to NVIDIA GPUs via
 `CuPy <https://cupy.dev/>`_. When the GPU backend is active, matrix
 operations in the two-period doubly robust estimators (weighted least
 squares, logistic IRLS, influence function computation) and in the
@@ -27,7 +27,7 @@ Install the GPU extra:
 
 This installs ``cupy-cuda12x``. If your system uses a different CUDA
 version, install the appropriate CuPy wheel directly and then install
-ModernDiD without the extra:
+**ModernDiD** without the extra:
 
 .. code-block:: bash
 
@@ -188,7 +188,7 @@ advantage larger when ``boot=True`` with many iterations.
 How data moves between CPU and GPU
 -----------------------------------
 
-ModernDiD handles data transfer automatically. You do not need to create
+**ModernDiD** handles data transfer automatically. You do not need to create
 CuPy arrays yourself.
 
 1. Input data (Polars or pandas DataFrames) is preprocessed on the CPU
@@ -207,9 +207,9 @@ CPU-GPU communication overhead is small relative to the computation.
 Memory management
 -----------------
 
-ModernDiD ships with `RAPIDS Memory Manager (RMM)
+**ModernDiD** ships with `RAPIDS Memory Manager (RMM)
 <https://docs.rapids.ai/api/rmm/stable/>`_ as part of the ``[gpu]``
-extra. When ``backend="cupy"`` is activated, ModernDiD automatically
+extra. When ``backend="cupy"`` is activated, **ModernDiD** automatically
 configures CuPy to use RMM's pool allocator instead of the default
 per-allocation ``cudaMalloc`` calls. This eliminates the ~1 ms
 overhead per GPU allocation that otherwise dominates tight loops such
@@ -223,13 +223,13 @@ configuration is required. The pool is initialized the first time
 active for the rest of the process.
 
 If RMM is not installed (for example, when CuPy is installed manually
-without the ``[gpu]`` extra), ModernDiD falls back to CuPy's built-in
+without the ``[gpu]`` extra), **ModernDiD** falls back to CuPy's built-in
 memory pool silently.
 
 **Advanced pool configuration.** If you need to control pool sizing
 (for example, to share GPU memory with other frameworks), you can
-initialize RMM yourself before calling any ModernDiD estimator.
-ModernDiD will detect that RMM is already initialized and skip its own
+initialize RMM yourself before calling any **ModernDiD** estimator.
+**ModernDiD** will detect that RMM is already initialized and skip its own
 setup:
 
 .. code-block:: python
@@ -271,7 +271,7 @@ profiling that can help diagnose allocation issues:
     print(rmm.statistics.get_statistics())
 
 
-If a regression or IRLS solve exhausts GPU memory, ModernDiD raises a
+If a regression or IRLS solve exhausts GPU memory, **ModernDiD** raises a
 ``MemoryError`` with a message suggesting you reduce the problem size
 or switch back to ``backend='numpy'``. The bootstrap implementation
 batches draws to stay within a 1 GB GPU allocation per batch, but very
@@ -282,7 +282,7 @@ GPU device selection
 --------------------
 
 If your machine has multiple GPUs, CuPy uses device 0 by default.
-All computation runs on a single GPU; ModernDiD does not split work
+All computation runs on a single GPU; **ModernDiD** does not split work
 across devices. To select a different GPU, wrap the call in a CuPy
 device context:
 
@@ -520,7 +520,7 @@ matches your CUDA driver version:
 
 Run ``nvidia-smi`` to check which CUDA version your driver supports.
 After installing, restart your Python process (or notebook runtime)
-before importing ModernDiD (CuPy availability is checked once at import
+before importing **ModernDiD** (CuPy availability is checked once at import
 time).
 
 **"cudaErrorInsufficientDriver"**

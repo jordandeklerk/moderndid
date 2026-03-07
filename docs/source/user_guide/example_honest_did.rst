@@ -482,7 +482,7 @@ here is what the authors recommend.
 Using external event study estimates
 ------------------------------------
 
-The examples above use ModernDiD's ``att_gt`` and ``aggte`` functions to
+The examples above use **ModernDiD**'s ``att_gt`` and ``aggte`` functions to
 compute event study estimates. If you already have event study coefficients
 from another estimator (such as pyfixest, statsmodels, or another package),
 you can plug them directly into the sensitivity analysis.

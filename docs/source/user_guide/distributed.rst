@@ -4,7 +4,7 @@
 Distributed Estimation
 ======================
 
-ModernDiD includes distributed backends for :func:`~moderndid.att_gt` and
+**ModernDiD** includes distributed backends for :func:`~moderndid.att_gt` and
 :func:`~moderndid.ddd` on top of `Dask <https://www.dask.org/>`_ and
 `Apache Spark <https://spark.apache.org/>`_. Both backends scale from one
 machine to a full cluster and return the same result object types as local
@@ -38,10 +38,10 @@ Install the extra for the backend you plan to use.
     uv pip install moderndid[spark]    # Spark backend
 
 The ``all`` extra includes both, so ``uv pip install moderndid[all]``
-also works. ModernDiD cannot set up your cluster environment for you.
+also works. **ModernDiD** cannot set up your cluster environment for you.
 Creating clusters, managing workers/executors, and building distributed
 DataFrames is the responsibility of the user. Once you have a Dask or Spark
-DataFrame, ModernDiD handles the rest.
+DataFrame, **ModernDiD** handles the rest.
 
 If you are new to either framework:
 
@@ -153,7 +153,7 @@ in :mod:`moderndid.dask` accept a ``client`` argument directly.
 
 **Spark**
 
-High-level wrappers do not expose a ``spark`` argument. ModernDiD uses the
+High-level wrappers do not expose a ``spark`` argument. **ModernDiD** uses the
 active session or creates a local one automatically. The low-level functions
 ``spark_att_gt`` and ``spark_ddd`` in :mod:`moderndid.spark` accept a
 ``spark`` argument directly.
@@ -349,7 +349,7 @@ changes.
 Connecting to a cluster
 -----------------------
 
-**Dask.** If no client exists, ModernDiD creates a local client
+**Dask.** If no client exists, **ModernDiD** creates a local client
 automatically. For multi-node runs, create a ``Client`` pointing at your
 scheduler. Creating the client registers it as the global default.
 
@@ -384,7 +384,7 @@ explicitly to set worker count and memory limits.
 
     result = did.att_gt(data=ddf, yname="y", tname="time", idname="id", gname="group")
 
-**Spark.** If no active session exists, ModernDiD creates a local Spark
+**Spark.** If no active session exists, **ModernDiD** creates a local Spark
 session automatically. For cluster runs, create a ``SparkSession`` pointing
 at your cluster manager.
 
@@ -443,12 +443,12 @@ small set of controls.
 
 ``client`` **(Dask only)**
     A ``distributed.Client`` for low-level calls (``dask_att_gt``,
-    ``dask_ddd``). If omitted, ModernDiD first tries ``Client.current()`` and
+    ``dask_ddd``). If omitted, **ModernDiD** first tries ``Client.current()`` and
     creates a local client when none is active.
 
 ``spark`` **(Spark only)**
     A ``pyspark.sql.SparkSession`` for low-level calls (``spark_att_gt``,
-    ``spark_ddd``). If omitted, ModernDiD first tries
+    ``spark_ddd``). If omitted, **ModernDiD** first tries
     ``SparkSession.getActiveSession()`` and creates a local session when none
     is active.
 

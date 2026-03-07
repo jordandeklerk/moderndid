@@ -4,7 +4,7 @@
 Estimator Overview
 ==================
 
-ModernDiD provides several estimators for different research designs. All
+**ModernDiD** provides several estimators for different research designs. All
 estimators share a common API pattern, so once you learn one the others
 follow naturally. This page provides an overview of each estimator, its key
 arguments, and important caveats. For detailed usage with real data, see the

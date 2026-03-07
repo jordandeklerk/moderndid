@@ -4,7 +4,7 @@
 Benchmarking
 =============
 
-ModernDiD includes a benchmark suite that measures the computational
+**ModernDiD** includes a benchmark suite that measures the computational
 performance of Python estimators against their canonical R implementations.
 You can run predefined suites out of the box, write custom configurations,
 and add benchmarks for new estimators.
@@ -41,7 +41,7 @@ The benchmark CLI has four subcommands, one per estimator.
    :widths: 20 40 40
 
    * - Subcommand
-     - ModernDiD function
+     - **ModernDiD** function
      - R package comparison
    * - ``attgt``
      - ``att_gt``

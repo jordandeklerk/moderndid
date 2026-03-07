@@ -4,7 +4,7 @@
 Release Notes
 =============
 
-This page contains release notes for ModernDiD releases.
+This page contains release notes for **ModernDiD** releases.
 
 .. toctree::
    :maxdepth: 2

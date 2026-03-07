@@ -4,7 +4,7 @@
 ModernDiD Quickstart
 ====================
 
-ModernDiD estimates causal effects using difference-in-differences methods.
+**ModernDiD** estimates causal effects using difference-in-differences methods.
 The :func:`~moderndid.did.att_gt` function computes group-time average treatment
 effects for staggered adoption designs. Other estimators handle continuous
 treatments (:func:`~moderndid.didcont.cont_did`), triple differences
@@ -22,7 +22,7 @@ For theoretical details on each estimator, see the :ref:`Background <background>
 Dataframe Agnostic
 ------------------
 
-All causal inference studies begin with data, and in most cases ModernDiD can
+All causal inference studies begin with data, and in most cases **ModernDiD** can
 work with yours directly. Any DataFrame that implements the
 `Arrow PyCapsule Interface <https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html>`_
 can be passed directly to any estimator without manual conversion. This includes
@@ -88,7 +88,7 @@ all estimators. Once you learn one, the others follow the same patterns.
 Basic Usage
 -----------
 
-Estimation in ModernDiD is typically a two-step process. First, compute group-time
+Estimation in **ModernDiD** is typically a two-step process. First, compute group-time
 effects, then aggregate them into the summary you need. We will focus on the :func:`~moderndid.did.att_gt` function
 for now, but the same pattern generally applies to all estimators.
 
@@ -351,7 +351,7 @@ If your data has sampling weights, specify them using ``weightsname``.
 Visualization
 -------------
 
-ModernDiD provides built-in plotting functions that return
+**ModernDiD** provides built-in plotting functions that return
 `plotnine <https://plotnine.org/>`_ ``ggplot`` objects.
 
 .. code-block:: python
@@ -380,7 +380,7 @@ it with any plotnine layer using the ``+`` operator.
         + theme(plot_title=element_text(size=14, weight="bold"))
     )
 
-ModernDiD also ships with ready-made themes for common use cases.
+**ModernDiD** also ships with ready-made themes for common use cases.
 
 .. code-block:: python
 

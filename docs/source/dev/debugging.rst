@@ -4,7 +4,7 @@
 Debugging Guide
 =================
 
-ModernDiD combines several technologies (Polars DataFrames, Numba JIT
+**ModernDiD** combines several technologies (Polars DataFrames, Numba JIT
 compilation, CuPy GPU arrays, and Dask/Spark distributed computing) that
 each have their own debugging characteristics and common failure modes.
 
@@ -84,7 +84,7 @@ until it passes. Instead, understand *why* the results differ.
 Debugging Numba-compiled code
 =============================
 
-ModernDiD uses Numba for JIT compilation of performance-critical loops in
+**ModernDiD** uses Numba for JIT compilation of performance-critical loops in
 `numba_utils.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/core/numba_utils.py>`__,
 `didcont numba.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcont/numba.py>`__, and
 `didhonest numba.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didhonest/numba.py>`__. These functions use ``@nb.njit`` with
@@ -103,7 +103,7 @@ With JIT disabled, you can use ``pdb``, ``breakpoint()``, or your IDE's
 debugger to step through the code. Performance will be much slower, so use
 a small dataset.
 
-ModernDiD's Numba functions are written with pure-Python fallback paths.
+**ModernDiD**'s Numba functions are written with pure-Python fallback paths.
 The dispatch pattern in ``moderndid/core/numba_utils.py`` checks
 ``HAS_NUMBA`` and falls back to plain NumPy implementations when Numba is
 unavailable. This means
