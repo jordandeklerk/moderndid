@@ -5,7 +5,9 @@
   <img alt="moderndid logo" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png" width="350">
 </picture>
 
-<em>A scalable, GPU-accelerated difference-in-differences library for Python.</em>
+<p>
+  <em>A scalable, GPU-accelerated difference-in-differences library for Python.</em>
+</p>
 
 <p>
   <a href="https://moderndid.readthedocs.io/en/latest/" target="_blank"><strong>Docs</strong></a> ·
