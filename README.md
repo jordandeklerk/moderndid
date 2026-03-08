@@ -24,6 +24,7 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 - **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and threaded parallel compute.
 - **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated estimation on NVIDIA GPUs, with multi-GPU scaling in distributed environments.
 - **Native plots** - Built-in visualizations powered by [plotnine](https://plotnine.org/), returning standard `ggplot` objects you can customize with the full grammar of graphics.
+- **Publication tables** - All result objects implement the [maketables](https://py-econometrics.github.io/maketables/) plug-in interface for publication-ready LaTeX, HTML, Word, and Typst tables.
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands.
 
 For detailed documentation, including user guides and API reference, see [moderndid.readthedocs.io](https://moderndid.readthedocs.io/en/latest/).
@@ -225,7 +226,7 @@ Event time 0 is the on-impact effect, negative event times are pre-treatment per
 
 __ModernDiD__ result objects implement the [maketables](https://py-econometrics.github.io/maketables/) plug-in interface, so you can pass them directly to `maketables.ETable` for publication-ready LaTeX, HTML, Word, or Typst tables with no custom extractors. You will need to install maketables separately (`uv pip install maketables`).
 
-The custom `MTable` below shows ATT estimates under unconditional and conditional parallel trends across all four aggregation types (simple, group, dynamic, calendar).
+The custom `MTable` below was built from `att_gt` and `aggte` results and shows ATT estimates under unconditional and conditional parallel trends across all four aggregation types (simple, group, dynamic, calendar).
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/maketables_readme_panel_summary.png" alt="Multi-panel summary table recreating Callaway and Sant'Anna (2021) Table 3">
 
