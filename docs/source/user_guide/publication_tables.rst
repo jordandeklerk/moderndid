@@ -1,8 +1,8 @@
 .. _publication_tables:
 
-**************************************
-Publication Tables with `maketables`
-**************************************
+********************************************
+Publication Tables with ``maketables``
+********************************************
 
 Empirical papers need tables that present treatment effect estimates alongside
 standard errors, confidence intervals, and model metadata in a format that

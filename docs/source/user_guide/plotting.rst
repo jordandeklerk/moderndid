@@ -1,8 +1,8 @@
 .. _plotting:
 
-*******************************************
-Plotting and Visualization with `plotnine`
-*******************************************
+*********************************************
+Plotting and Visualization with ``plotnine``
+*********************************************
 
 Every **ModernDiD** estimator produces a result object that can be passed directly
 to a built-in plot function. The visualization layer is built on
