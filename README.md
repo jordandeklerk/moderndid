@@ -1,5 +1,20 @@
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png#gh-light-mode-only" width="250" align="left" alt="moderndid logo"></img>
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png#gh-dark-mode-only" width="250" align="left" alt="moderndid logo"></img>
+<div style="text-align: center;" align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png">
+  <img alt="moderndid logo" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png" width="350">
+</picture>
+
+<p>
+  <em>A scalable, GPU-accelerated difference-in-differences library for Python.</em>
+</p>
+
+<p>
+  <a href="https://moderndid.readthedocs.io/en/latest/" target="_blank"><strong>Docs</strong></a> ·
+  <a href="https://moderndid.readthedocs.io/en/latest/api/index.html" target="_blank"><strong>API Reference</strong></a> ·
+  <a href="https://moderndid.readthedocs.io/en/latest/user_guide/index.html" target="_blank"><strong>Tutorials</strong></a> ·
+  <a href="https://github.com/jordandeklerk/moderndid/blob/main/CHANGELOG.md" target="_blank"><strong>Changelog</strong></a>
+</p>
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit)
 [![PyPI -Version](https://img.shields.io/pypi/v/moderndid.svg)](https://pypi.org/project/moderndid/)
@@ -11,8 +26,12 @@
 [![Documentation](https://readthedocs.org/projects/moderndid/badge/?version=latest)](https://moderndid.readthedocs.io/en/latest/)
 [![Last commit](https://img.shields.io/github/last-commit/jordandeklerk/moderndid)](https://github.com/jordandeklerk/moderndid/graphs/commit-activity)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/moderndid)](https://github.com/jordandeklerk/moderndid/graphs/commit-activity)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/moderndid?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/moderndid)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/moderndid?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads/month)](https://pepy.tech/projects/moderndid)
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Citation](https://img.shields.io/badge/Cite%20as-ModernDiD-blue)](#citation)
 <!-- [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active) -->
+</div>
 
 __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
 
@@ -27,7 +46,7 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 - **Publication tables** - Pass any estimator output directly to [maketables](https://py-econometrics.github.io/maketables/) for publication-ready LaTeX, HTML, Word, and Typst tables with no custom extractors.
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands.
 
-For detailed documentation, including user guides and API reference, see [moderndid.readthedocs.io](https://moderndid.readthedocs.io/en/latest/).
+For detailed documentation, including user guides and API reference, see [ModernDiD Documentation](https://moderndid.readthedocs.io/en/latest/).
 
 ## Installation
 
@@ -57,180 +76,38 @@ To install the latest development version directly from GitHub:
 uv pip install "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
 ```
 
-> [!TIP]
-> When a package manager like `uv` or `pip` cannot resolve a dependency required by an extra, it may silently fall back to an older version of __ModernDiD__ where that extra does not exist, rather than raising an error.
->
-> The `gpu` extra is the most likely to trigger this, since it depends on `cupy-cuda12x` (Linux and Windows only) and `rmm-cu12` (Linux only), both of which require NVIDIA CUDA. If you see a warning like `The package moderndid==0.0.3 does not have an extra named 'gpu'`, this is what happened. To use the `gpu` extra, install on a machine with NVIDIA CUDA drivers, or pin the version to get a clear error instead of a silent downgrade.
->
-> ```bash
-> uv pip install "moderndid[gpu]>=0.1.0"
-> ```
+See the [Installation guide](https://moderndid.readthedocs.io/en/latest/user_guide/installation.html) for troubleshooting and GPU-specific setup.
 
 ## Quick Start
 
-This example uses county-level teen employment data to estimate the effect of minimum wage increases. States adopted higher minimum wages at different times (2004, 2006, or 2007), making this a staggered adoption design.
-
-The [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) function estimates the average treatment effect for each group *g* (defined by when units were first treated) at each time period *t*. We use the doubly robust estimator, which combines outcome regression and propensity score weighting to provide consistent estimates if either model is correctly specified.
+We can estimate the effect of minimum wage increases on teen employment using county-level panel data with staggered adoption and the doubly robust estimator of [Callaway and Sant'Anna (2021)](https://doi.org/10.1016/j.jeconom.2020.12.001).
 
 ```python
 import moderndid as did
 
 data = did.load_mpdta()
 
-attgt_result = did.att_gt(
+# Group-time ATTs
+result = did.att_gt(
     data=data,
     yname="lemp",
     tname="year",
     idname="countyreal",
     gname="first.treat",
+    xformla="~lpop",
     est_method="dr",
 )
-print(attgt_result)
+
+# Aggregate into an event study
+agg = did.aggte(result, type="dynamic")
+
+# Built-in plots return ggplot objects you can customize
+did.plot_gt(result, ncol=3)
 ```
 
-```
-==============================================================================
- Group-Time Average Treatment Effects
-==============================================================================
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="Group-time ATT estimates">
 
-┌───────┬──────┬──────────┬────────────┬────────────────────────────┐
-│ Group │ Time │ ATT(g,t) │ Std. Error │ [95% Pointwise Conf. Band] │
-├───────┼──────┼──────────┼────────────┼────────────────────────────┤
-│  2004 │ 2004 │  -0.0105 │     0.0233 │ [-0.0561,  0.0351]         │
-│  2004 │ 2005 │  -0.0704 │     0.0310 │ [-0.1312, -0.0097] *       │
-│  2004 │ 2006 │  -0.1373 │     0.0364 │ [-0.2087, -0.0658] *       │
-│  2004 │ 2007 │  -0.1008 │     0.0344 │ [-0.1682, -0.0335] *       │
-│  2006 │ 2004 │   0.0065 │     0.0233 │ [-0.0392,  0.0522]         │
-│  2006 │ 2005 │  -0.0028 │     0.0196 │ [-0.0411,  0.0356]         │
-│  2006 │ 2006 │  -0.0046 │     0.0178 │ [-0.0394,  0.0302]         │
-│  2006 │ 2007 │  -0.0412 │     0.0202 │ [-0.0809, -0.0016] *       │
-│  2007 │ 2004 │   0.0305 │     0.0150 │ [ 0.0010,  0.0600] *       │
-│  2007 │ 2005 │  -0.0027 │     0.0164 │ [-0.0349,  0.0294]         │
-│  2007 │ 2006 │  -0.0311 │     0.0179 │ [-0.0661,  0.0040]         │
-│  2007 │ 2007 │  -0.0261 │     0.0167 │ [-0.0587,  0.0066]         │
-└───────┴──────┴──────────┴────────────┴────────────────────────────┘
-
-------------------------------------------------------------------------------
- Signif. codes: '*' confidence band does not cover 0
-
- P-value for pre-test of parallel trends assumption:  0.1681
-
-------------------------------------------------------------------------------
- Data Info
-------------------------------------------------------------------------------
- Control Group:  Never Treated
- Anticipation Periods:  0
-
-------------------------------------------------------------------------------
- Estimation Details
-------------------------------------------------------------------------------
- Estimation Method:  Doubly Robust
-
-------------------------------------------------------------------------------
- Inference
-------------------------------------------------------------------------------
- Significance level: 0.05
- Analytical standard errors
-==============================================================================
- Reference: Callaway and Sant'Anna (2021)
-```
-
-__ModernDiD__ provides "batteries-included" plotting functions ([`plot_event_study`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_event_study.html), [`plot_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_gt.html), [`plot_agg`](https://moderndid.readthedocs.io/en/latest/api/generated/plotting/moderndid.plots.plot_agg.html), and [more](https://moderndid.readthedocs.io/en/latest/api/plotting.html)) as well as data converters for building custom figures with [plotnine](https://plotnine.org/). Since all plot functions return `ggplot` objects, you can restyle them with the full grammar of graphics:
-
-```python
-from plotnine import element_text, labs, theme, theme_gray
-
-p = did.plot_gt(attgt_result, ncol=3)
-p = (p
-    + labs(
-        x="Year",
-        y="ATT (Log Employment)",
-        title="Minimum Wage Effects on Teen Employment",
-        subtitle="Group-time average treatment effects by treatment cohort",
-    )
-    + theme_gray()
-    + theme(
-        legend_position="bottom",
-        strip_text=element_text(size=11, weight="bold"),
-    )
-)
-```
-
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="ATT plot">
-
-While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The [`aggte()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.aggte.html) function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
-
-```python
-event_study = did.aggte(attgt_result, type="dynamic")
-print(event_study)
-```
-
-```
-==============================================================================
- Aggregate Treatment Effects (Event Study)
-==============================================================================
-
- Overall summary of ATT's based on event-study/dynamic aggregation:
-
-┌─────────┬────────────┬────────────────────────┐
-│     ATT │ Std. Error │ [95% Conf. Interval]   │
-├─────────┼────────────┼────────────────────────┤
-│ -0.0772 │     0.0200 │ [ -0.1164,  -0.0381] * │
-└─────────┴────────────┴────────────────────────┘
-
-
- Dynamic Effects:
-
-┌────────────┬──────────┬────────────┬────────────────────────────┐
-│ Event time │ Estimate │ Std. Error │ [95% Pointwise Conf. Band] │
-├────────────┼──────────┼────────────┼────────────────────────────┤
-│         -3 │   0.0305 │     0.0150 │ [-0.0078,  0.0688]         │
-│         -2 │  -0.0006 │     0.0133 │ [-0.0344,  0.0333]         │
-│         -1 │  -0.0245 │     0.0142 │ [-0.0607,  0.0118]         │
-│          0 │  -0.0199 │     0.0118 │ [-0.0501,  0.0102]         │
-│          1 │  -0.0510 │     0.0169 │ [-0.0940, -0.0079] *       │
-│          2 │  -0.1373 │     0.0364 │ [-0.2301, -0.0444] *       │
-│          3 │  -0.1008 │     0.0344 │ [-0.1883, -0.0133] *       │
-└────────────┴──────────┴────────────┴────────────────────────────┘
-
-------------------------------------------------------------------------------
- Signif. codes: '*' confidence band does not cover 0
-
-------------------------------------------------------------------------------
- Data Info
-------------------------------------------------------------------------------
- Control Group: Never Treated
- Anticipation Periods: 0
-
-------------------------------------------------------------------------------
- Estimation Details
-------------------------------------------------------------------------------
- Estimation Method: Doubly Robust
-
-------------------------------------------------------------------------------
- Inference
-------------------------------------------------------------------------------
- Significance level: 0.05
- Analytical standard errors
-==============================================================================
- Reference: Callaway and Sant'Anna (2021)
-```
-
-Event time 0 is the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero support the parallel trends assumption, while post-treatment effects show how the impact evolves over time.
-
-__ModernDiD__ provides [Data converters](https://moderndid.readthedocs.io/en/latest/api/plotting.html#data-converters) tht make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest). See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html#advanced-customization) for the full code and more examples.
-
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
-
-### Publication Tables
-
-__ModernDiD__ result objects implement the [maketables](https://py-econometrics.github.io/maketables/) plug-in interface, so you can pass them directly to `maketables.ETable` for publication-ready LaTeX, HTML, Word, or Typst tables with no custom extractors. You will need to install maketables separately (`uv pip install maketables`).
-
-For more complex layouts, `MTable` gives full control over row grouping, column spanners, and cell formatting. The table below was built from [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) and [`aggte()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.aggte.html) results, showing ATT estimates under unconditional and conditional parallel trends across all four aggregation types.
-
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/maketables_readme_panel_summary.png" alt="Multi-panel summary table recreating Callaway and Sant'Anna (2021) Table 3">
-
-See the [Publication Tables guide](https://moderndid.readthedocs.io/en/latest/user_guide/publication_tables.html) for full examples, `ETable` customization, custom `MTable` layouts, and output format options.
+See the [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html) for complete tutorials covering all estimators.
 
 ### Consistent API
 
@@ -243,6 +120,22 @@ result = did.cont_did(data, yname="y", tname="t", idname="id", gname="g", dname=
 result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", ...)
 result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
 ```
+
+### Plotting
+
+Batteries-included [plotting functions](https://moderndid.readthedocs.io/en/latest/api/plotting.html) return `ggplot` objects you can customize with the full [plotnine](https://plotnine.org/) grammar of graphics, and built-in data converters make it easy to build custom figures from any result object.
+
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
+
+See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for event studies, custom overlays, and more examples.
+
+### Publication Tables
+
+Result objects implement the [maketables](https://py-econometrics.github.io/maketables/) plug-in interface for publication-ready LaTeX, HTML, Word, and Typst tables. For advanced layouts, `MTable` gives full control over row grouping, column spanners, and cell formatting.
+
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/maketables_readme_panel_summary.png" alt="Multi-panel summary table recreating Callaway and Sant'Anna (2021) Table 3">
+
+See the [Publication Tables guide](https://moderndid.readthedocs.io/en/latest/user_guide/publication_tables.html) for full examples, `ETable` customization, custom `MTable` layouts, and output format options.
 
 ### Scaling Up
 

@@ -17,165 +17,43 @@ useful default plot immediately, but you can also add layers, swap themes,
 and modify any visual element using the full plotnine API.
 
 
-A first plot
-============
-
-Every plot function takes a result object and returns a ``ggplot`` that you
-can customize with the full plotnine API. Pass the result, then layer on
-labels, themes, and layout tweaks with the ``+`` operator.
-
-.. code-block:: python
-
-    from plotnine import labs, theme, theme_gray
-
-    p = did.plot_event_study(event_study, ref_period=-1)
-    p = (p
-        + labs(
-            x="Years Relative to Treatment",
-            y="ATT (Log Employment)",
-            title="Minimum Wage Effects on Teen Employment",
-            subtitle="Dynamic treatment effects from Callaway and Sant'Anna (2021)",
-        )
-        + theme_gray()
-        + theme(legend_position="bottom")
-    )
-
-The ``event_study`` object above comes from :func:`~moderndid.aggte` with
-``type="dynamic"``. For the full estimation pipeline and rendered output,
-see the :ref:`Staggered DiD walkthrough <example_staggered_did>`.
-
 Built-in plot functions
 =======================
 
-**ModernDiD** provides six plot functions, each designed for a specific type of
-treatment effect estimate. All share a common interface with parameters for
-confidence intervals, reference lines, axis labels, and titles.
+**ModernDiD** ships six plot functions. Pass a result object, get back a
+``ggplot`` you can customize with the ``+`` operator.
 
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 40
 
-Event studies
--------------
+   * - Function
+     - Description
+     - Accepts results from
+   * - :func:`~moderndid.plots.plot_event_study`
+     - Treatment effects relative to adoption period
+     - :func:`~moderndid.aggte` (``type="dynamic"``),
+       :func:`~moderndid.agg_ddd` (``type="eventstudy"``),
+       :func:`~moderndid.cont_did` (via ``event_study`` attribute)
+   * - :func:`~moderndid.plots.plot_gt`
+     - Faceted group-time estimates with one panel per cohort
+     - :func:`~moderndid.att_gt`, :func:`~moderndid.ddd`
+   * - :func:`~moderndid.plots.plot_agg`
+     - Aggregated effects by group or calendar time
+     - :func:`~moderndid.aggte` (``type="group"`` or ``type="calendar"``)
+   * - :func:`~moderndid.plots.plot_dose_response`
+     - Dose-response curve (ATT or ACRT vs. treatment intensity)
+     - :func:`~moderndid.cont_did`
+   * - :func:`~moderndid.plots.plot_multiplegt`
+     - Placebo and effect horizons for intertemporal effects
+     - :func:`~moderndid.did_multiplegt`
+   * - :func:`~moderndid.plots.plot_sensitivity`
+     - Confidence intervals across a sensitivity parameter grid
+     - :func:`~moderndid.honest_did`
 
-Event study plots are the most common visualization in applied DiD work.
-They show treatment effects aligned relative to the period of treatment
-adoption, making it easy to assess pre-trends and the dynamic path of
-effects after treatment.
-
-The ``ref_period`` parameter adds a vertical dotted line marking the
-reference period (typically the last pre-treatment period). When
-``ref_period`` is specified, the connecting line between estimates is
-suppressed so each point stands on its own. In the example above,
-``ref_period=-1`` marks the last pre-treatment period.
-
-:func:`~moderndid.plots.plot_event_study` accepts results from :func:`~moderndid.aggte` (with
-``type="dynamic"``), :func:`~moderndid.agg_ddd` (with
-``type="eventstudy"``), and continuous treatment event studies. See the
-:ref:`Staggered DiD <example_staggered_did>`,
-:ref:`Triple DiD <example_triple_did>`, and
-:ref:`Continuous Treatment <example_cont_did>` walkthroughs for worked
-examples with each estimator.
-
-
-Group-time estimates
---------------------
-
-When you want to see every group-time ATT before aggregation,
-:func:`~moderndid.plots.plot_gt` creates a faceted plot with one panel per treatment cohort.
-Each panel shows point estimates and confidence intervals across time
-periods, with color distinguishing pre-treatment from post-treatment
-estimates. This function also accepts triple DiD results from
-:func:`~moderndid.ddd`.
-
-.. code-block:: python
-
-    did.plot_gt(result, ncol=3)
-
-The ``ncol`` parameter controls the number of columns in the facet grid.
-Setting ``ncol=3`` arranges the three cohort panels side by side, while the
-default ``ncol=1`` stacks them vertically. The ``title`` parameter controls
-the prefix in each panel label (default ``"Group"``).
-
-Since :func:`~moderndid.plots.plot_gt` returns a plotnine ``ggplot`` object, you
-can restyle it with the full grammar of graphics. See the
-:ref:`Staggered DiD <example_staggered_did>` and
-:ref:`Triple DiD <example_triple_did>` walkthroughs for styled examples
-with rendered output.
-
-
-Group and calendar aggregations
--------------------------------
-
-The :func:`~moderndid.plots.plot_agg` function visualizes treatment effects aggregated by
-treatment cohort or by calendar time. Group aggregation averages
-post-treatment effects within each cohort, revealing heterogeneity across
-early and late adopters. Calendar aggregation averages across all cohorts
-treated at each calendar time, showing how the overall effect evolves in
-absolute time.
-
-.. code-block:: python
-
-    group_agg = did.aggte(result, type="group")
-    did.plot_agg(group_agg)
-
-    calendar_agg = did.aggte(result, type="calendar")
-    did.plot_agg(calendar_agg)
-
-Both produce a point-and-interval plot with one marker per group or time
-period. As with all plot functions, you can add plotnine layers to
-customize the appearance.
-
-
-Dose-response curves
---------------------
-
-For settings with continuous treatment intensity, :func:`~moderndid.plots.plot_dose_response`
-displays the estimated treatment effect as a function of the dose level.
-A shaded ribbon shows the confidence band. The ``effect_type`` parameter
-switches between the average treatment effect on treated (``"att"``) and
-the average causal response on treated (``"acrt"``), which captures the
-marginal effect at each dose.
-
-.. code-block:: python
-
-    did.plot_dose_response(dose_result, effect_type="att")
-
-Set ``effect_type="acrt"`` to plot the marginal effect instead. See the
-:ref:`Continuous Treatment walkthrough <example_cont_did>` for a complete
-example with both ATT and ACRT dose-response plots.
-
-
-Sensitivity analysis
---------------------
-
-:func:`~moderndid.plots.plot_sensitivity` displays confidence intervals from
-`Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_
-across a grid of sensitivity parameter values. Each method appears in a
-different color, allowing direct comparison of how robust the original
-finding is to violations of parallel trends.
-
-.. code-block:: python
-
-    did.plot_sensitivity(honest_result)
-
-See the :ref:`Sensitivity Analysis walkthrough <example_honest_did>` for
-complete examples with both relative magnitudes and smoothness
-restrictions.
-
-
-Intertemporal effects
----------------------
-
-:func:`~moderndid.plots.plot_multiplegt` visualizes treatment effects from the
-`de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
-estimator, which handles non-binary and non-absorbing treatments. The plot
-shows placebo horizons (pre-treatment) and effect horizons (post-treatment)
-around a vertical reference line at horizon zero.
-
-.. code-block:: python
-
-    did.plot_multiplegt(inter_result)
-
-See the :ref:`Intertemporal Treatment walkthrough <example_inter_did>` for
-a complete example using the Favara and Imbs banking deregulation data.
+Every estimator tutorial includes plotting code with rendered output.
+See the :ref:`tutorial list <plotting_tutorials>` at the bottom of this page
+for direct links.
 
 
 Common parameters
@@ -198,7 +76,8 @@ frequently adjusted visual elements.
 ``ref_period``
     Available only in :func:`~moderndid.plots.plot_event_study`. Adds a vertical dotted line at
     the specified event time, typically set to ``-1`` to mark the last
-    pre-treatment period.
+    pre-treatment period. When specified, the connecting line between
+    estimates is suppressed so each point stands on its own.
 
 ``xlab``, ``ylab``, ``title``
     Custom axis labels and plot title. Each function supplies sensible
@@ -316,10 +195,6 @@ Here we restyle :func:`~moderndid.plots.plot_event_study` with an orange-and-bla
         + theme(legend_position="bottom")
     )
 
-.. image:: /_static/images/plot_guide_grayscale.png
-   :alt: Event study with custom color palette
-   :width: 100%
-
 This is useful when you want to match an existing color scheme or
 distinguish estimator phases more clearly.
 
@@ -367,15 +242,15 @@ another plotting library.
 Extracting plot data
 --------------------
 
-Each result type has its own converter function that returns a polars
-DataFrame ready for plotting. Here we use
-:func:`~moderndid.plots.aggteresult_to_polars` on a staggered DiD event study.
+The :func:`~moderndid.to_df` function converts any result object to a polars
+DataFrame. It auto-detects the result type, so there is one function to
+remember regardless of which estimator produced the result.
 
 .. code-block:: python
 
-    from moderndid.plots import aggteresult_to_polars
+    import moderndid as did
 
-    df = aggteresult_to_polars(event_study)
+    df = did.to_df(event_study)
     print(df)
 
 .. code-block:: text
@@ -400,16 +275,12 @@ x-axis value, point estimate, standard error, confidence bounds, and a
 treatment status label used for coloring. Reference period rows (where the
 standard error is ``NaN``) are automatically filtered out.
 
-The available converters are:
+For dose-response results, pass ``effect_type`` to select ATT or ACRT:
 
-- :func:`~moderndid.plots.aggteresult_to_polars` for staggered DiD event studies
-- :func:`~moderndid.plots.mpresult_to_polars` for staggered DiD group-time estimates
-- :func:`~moderndid.plots.dddaggresult_to_polars` for triple DiD event studies
-- :func:`~moderndid.plots.dddmpresult_to_polars` for triple DiD group-time estimates
-- :func:`~moderndid.plots.doseresult_to_polars` for continuous treatment dose-response
-- :func:`~moderndid.plots.pteresult_to_polars` for continuous treatment event studies
-- :func:`~moderndid.plots.honestdid_to_polars` for sensitivity analysis
-- :func:`~moderndid.plots.didinterresult_to_polars` for intertemporal effects
+.. code-block:: python
+
+    df_att  = did.to_df(dose_result, effect_type="att")
+    df_acrt = did.to_df(dose_result, effect_type="acrt")
 
 
 Advanced customization
@@ -445,7 +316,7 @@ level to match the level of treatment assignment.
     )
 
 To build the comparison figure, we extract the **ModernDiD** event study
-estimates with :func:`~moderndid.plots.aggteresult_to_polars` and the TWFE
+estimates with :func:`~moderndid.to_df` and the TWFE
 coefficients from pyfixest, then combine them into a single DataFrame with
 an ``estimator`` column.
 
@@ -453,10 +324,10 @@ an ``estimator`` column.
 
     import polars as pl
     import pandas as pd
-    from moderndid.plots import aggteresult_to_polars
+    import moderndid as did
 
     # **ModernDiD** estimates
-    es_df = aggteresult_to_polars(event_study)
+    es_df = did.to_df(event_study)
     mdid_pd = es_df.select([
         pl.col("event_time").cast(pl.Int64),
         "att", "ci_lower", "ci_upper",
@@ -560,14 +431,26 @@ methodological context and a multiline caption with estimation details.
    :alt: Comparison of CS (2021) and TWFE event study estimates
    :width: 100%
 
-Next steps
-==========
 
-- `plotnine documentation <https://plotnine.org/>`_ for the full grammar of
-  graphics API, including geoms, scales, facets, and coordinate systems.
-- :ref:`Staggered DiD <example_staggered_did>`,
-  :ref:`Triple DiD <example_triple_did>`,
-  :ref:`Continuous Treatment <example_cont_did>`,
-  :ref:`Intertemporal Treatment <example_inter_did>`, and
-  :ref:`Sensitivity Analysis <example_honest_did>` for worked examples
-  with plotting integrated into the analysis workflow.
+.. _plotting_tutorials:
+
+Tutorials with plotting
+=======================
+
+Each estimator tutorial includes detailed plotting code with rendered
+output. These are the best place to see the built-in plot functions in
+action on real data.
+
+- :ref:`Staggered DiD <example_staggered_did>` —
+  ``plot_gt``, ``plot_event_study``, ``plot_agg``
+- :ref:`Triple DiD <example_triple_did>` —
+  ``plot_gt``, ``plot_event_study``, custom comparison figures
+- :ref:`Continuous Treatment <example_cont_did>` —
+  ``plot_dose_response``, ``plot_event_study``
+- :ref:`Intertemporal Treatment <example_inter_did>` —
+  ``plot_multiplegt``
+- :ref:`Sensitivity Analysis <example_honest_did>` —
+  ``plot_event_study``, ``plot_sensitivity``
+
+For the full plotnine API, including geoms, scales, facets, and coordinate
+systems, see the `plotnine documentation <https://plotnine.org/>`_.

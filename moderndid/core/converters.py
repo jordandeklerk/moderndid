@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
@@ -460,3 +460,71 @@ def didinterresult_to_polars(result: DIDInterResult) -> pl.DataFrame:
             "treatment_status": treatment_status,
         }
     )
+
+
+_DISPATCH: dict[str, Any] = {
+    "MPResult": mpresult_to_polars,
+    "AGGTEResult": aggteresult_to_polars,
+    "DoseResult": doseresult_to_polars,
+    "PTEResult": pteresult_to_polars,
+    "HonestDiDResult": honestdid_to_polars,
+    "DDDMultiPeriodResult": dddmpresult_to_polars,
+    "DDDMultiPeriodRCResult": dddmpresult_to_polars,
+    "DDDAggResult": dddaggresult_to_polars,
+    "DIDInterResult": didinterresult_to_polars,
+}
+
+
+def to_df(result: Any, **kwargs: Any) -> pl.DataFrame:
+    """Convert any ModernDiD result object to a polars DataFrame.
+
+    Parameters
+    ----------
+    result : Any
+        A ModernDiD result object (e.g., AGGTEResult, MPResult,
+        DoseResult, PTEResult, HonestDiDResult, DDDAggResult,
+        DDDMultiPeriodResult, DDDMultiPeriodRCResult, DIDInterResult).
+    **kwargs
+        Additional arguments passed to the underlying converter.
+        For example, ``effect_type="acrt"`` for DoseResult.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns appropriate to the result type.
+
+    Examples
+    --------
+    Convert group-time ATT results from :func:`~moderndid.att_gt` into a tidy DataFrame
+    with one row per (group, time) cell:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: from moderndid import att_gt, aggte, load_mpdta, to_df
+           ...:
+           ...: df = load_mpdta()
+           ...: result = att_gt(
+           ...:     data=df,
+           ...:     yname="lemp",
+           ...:     tname="year",
+           ...:     gname="first.treat",
+           ...:     idname="countyreal",
+           ...:     est_method="dr",
+           ...:     boot=False,
+           ...: )
+           ...: print(to_df(result).head())
+
+    Aggregated event-study results work the same way:
+
+    .. ipython::
+        :okwarning:
+
+        In [2]: agg = aggte(result, type="dynamic")
+           ...: print(to_df(agg))
+    """
+    type_name = type(result).__name__
+    converter = _DISPATCH.get(type_name)
+    if converter is None:
+        raise TypeError(f"No converter for {type_name!r}. Supported types: {', '.join(sorted(_DISPATCH))}")
+    return converter(result, **kwargs)

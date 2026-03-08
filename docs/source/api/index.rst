@@ -36,4 +36,5 @@ methodology are found in :ref:`background`.
    propensity
    bootstrap
    plotting
+   results
    data
