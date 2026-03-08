@@ -13,6 +13,7 @@ from moderndid import (
     did_multiplegt,
     gen_cont_did_data,
     gen_ddd_mult_periods,
+    honest_did,
     load_favara_imbs,
     load_mpdta,
 )
@@ -196,3 +197,39 @@ def staggered_panel():
             "treat": [0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0],
         }
     )
+
+
+@pytest.fixture(scope="session")
+def aggte_dynamic(att_gt_analytical):
+    return aggte(att_gt_analytical, type="dynamic")
+
+
+@pytest.fixture(scope="session")
+def aggte_group(att_gt_analytical):
+    return aggte(att_gt_analytical, type="group")
+
+
+@pytest.fixture(scope="session")
+def aggte_calendar(att_gt_analytical):
+    return aggte(att_gt_analytical, type="calendar")
+
+
+@pytest.fixture(scope="session")
+def cont_did_event():
+    data = gen_cont_did_data(n=100, num_time_periods=4, seed=42)
+    return cont_did(
+        data=data,
+        yname="Y",
+        tname="time_period",
+        idname="id",
+        gname="G",
+        dname="D",
+        target_parameter="level",
+        aggregation="eventstudy",
+        boot=False,
+    )
+
+
+@pytest.fixture(scope="session")
+def honest_did_result(aggte_dynamic):
+    return honest_did(aggte_dynamic, event_time=0, sensitivity_type="relative_magnitude")

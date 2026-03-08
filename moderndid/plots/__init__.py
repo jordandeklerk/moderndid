@@ -7,7 +7,7 @@ except ImportError as e:
         "The 'plots' module requires additional dependencies. Install them with: uv pip install 'moderndid[plots]'"
     ) from e
 
-from moderndid.plots.converters import (
+from moderndid.core.converters import (
     aggteresult_to_polars,
     dddaggresult_to_polars,
     dddmpresult_to_polars,
@@ -16,6 +16,7 @@ from moderndid.plots.converters import (
     honestdid_to_polars,
     mpresult_to_polars,
     pteresult_to_polars,
+    to_df,
 )
 from moderndid.plots.plots import (
     plot_agg,
@@ -40,18 +41,16 @@ __all__ = [
     "didinterresult_to_polars",
     "doseresult_to_polars",
     "honestdid_to_polars",
-    # Converters
     "mpresult_to_polars",
     "plot_agg",
     "plot_dose_response",
     "plot_event_study",
-    # Plot functions
     "plot_gt",
     "plot_multiplegt",
     "plot_sensitivity",
     "pteresult_to_polars",
     "theme_minimal",
-    # Themes
     "theme_moderndid",
     "theme_publication",
+    "to_df",
 ]

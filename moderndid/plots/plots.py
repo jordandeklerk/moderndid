@@ -23,13 +23,7 @@ from plotnine import (
     theme_gray,
 )
 
-from moderndid.did.aggte_obj import AGGTEResult
-from moderndid.did.multiperiod_obj import MPResult
-from moderndid.didinter.results import DIDInterResult
-from moderndid.didtriple.agg_ddd_obj import DDDAggResult
-from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
-from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
-from moderndid.plots.converters import (
+from moderndid.core.converters import (
     aggteresult_to_polars,
     dddaggresult_to_polars,
     dddmpresult_to_polars,
@@ -39,6 +33,12 @@ from moderndid.plots.converters import (
     mpresult_to_polars,
     pteresult_to_polars,
 )
+from moderndid.did.aggte_obj import AGGTEResult
+from moderndid.did.multiperiod_obj import MPResult
+from moderndid.didinter.results import DIDInterResult
+from moderndid.didtriple.agg_ddd_obj import DDDAggResult
+from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
+from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
 from moderndid.plots.themes import COLORS
 
 if TYPE_CHECKING:
