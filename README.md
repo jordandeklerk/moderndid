@@ -7,7 +7,6 @@
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png">
   <img alt="moderndid logo" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png" width="300">
 </picture>
-<div style="text-align: center;" align="center">
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit)
 [![PyPI -Version](https://img.shields.io/pypi/v/moderndid.svg)](https://pypi.org/project/moderndid/)
@@ -21,6 +20,7 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/moderndid)](https://github.com/jordandeklerk/moderndid/graphs/commit-activity)
 [![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
 <!-- [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active) -->
+</div>
 
 __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
 
