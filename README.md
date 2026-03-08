@@ -226,7 +226,7 @@ __ModernDiD__ provides [Data converters](https://moderndid.readthedocs.io/en/lat
 
 __ModernDiD__ result objects implement the [maketables](https://py-econometrics.github.io/maketables/) plug-in interface, so you can pass them directly to `maketables.ETable` for publication-ready LaTeX, HTML, Word, or Typst tables with no custom extractors. You will need to install maketables separately (`uv pip install maketables`).
 
-For more complex layouts, `MTable` gives full control over row grouping, column spanners, and cell formatting. The table below was built from `att_gt()` and `aggte()` results, showing ATT estimates under unconditional and conditional parallel trends across all four aggregation types.
+For more complex layouts, `MTable` gives full control over row grouping, column spanners, and cell formatting. The table below was built from [`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html#moderndid.att_gt) and [`aggte()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.aggte.html) results, showing ATT estimates under unconditional and conditional parallel trends across all four aggregation types.
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/maketables_readme_panel_summary.png" alt="Multi-panel summary table recreating Callaway and Sant'Anna (2021) Table 3">
 

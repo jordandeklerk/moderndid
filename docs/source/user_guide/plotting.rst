@@ -66,7 +66,7 @@ reference period (typically the last pre-treatment period). When
 suppressed so each point stands on its own. In the example above,
 ``ref_period=-1`` marks the last pre-treatment period.
 
-:func:`~moderndid.plot_event_study` accepts results from :func:`~moderndid.aggte` (with
+:func:`~moderndid.plots.plot_event_study` accepts results from :func:`~moderndid.aggte` (with
 ``type="dynamic"``), :func:`~moderndid.agg_ddd` (with
 ``type="eventstudy"``), and continuous treatment event studies. See the
 :ref:`Staggered DiD <example_staggered_did>`,
@@ -79,7 +79,7 @@ Group-time estimates
 --------------------
 
 When you want to see every group-time ATT before aggregation,
-:func:`~moderndid.plot_gt` creates a faceted plot with one panel per treatment cohort.
+:func:`~moderndid.plots.plot_gt` creates a faceted plot with one panel per treatment cohort.
 Each panel shows point estimates and confidence intervals across time
 periods, with color distinguishing pre-treatment from post-treatment
 estimates. This function also accepts triple DiD results from
@@ -94,7 +94,7 @@ Setting ``ncol=3`` arranges the three cohort panels side by side, while the
 default ``ncol=1`` stacks them vertically. The ``title`` parameter controls
 the prefix in each panel label (default ``"Group"``).
 
-Since :func:`~moderndid.plot_gt` returns a plotnine ``ggplot`` object, you
+Since :func:`~moderndid.plots.plot_gt` returns a plotnine ``ggplot`` object, you
 can restyle it with the full grammar of graphics. See the
 :ref:`Staggered DiD <example_staggered_did>` and
 :ref:`Triple DiD <example_triple_did>` walkthroughs for styled examples
@@ -104,7 +104,7 @@ with rendered output.
 Group and calendar aggregations
 -------------------------------
 
-The :func:`~moderndid.plot_agg` function visualizes treatment effects aggregated by
+The :func:`~moderndid.plots.plot_agg` function visualizes treatment effects aggregated by
 treatment cohort or by calendar time. Group aggregation averages
 post-treatment effects within each cohort, revealing heterogeneity across
 early and late adopters. Calendar aggregation averages across all cohorts
@@ -127,7 +127,7 @@ customize the appearance.
 Dose-response curves
 --------------------
 
-For settings with continuous treatment intensity, :func:`~moderndid.plot_dose_response`
+For settings with continuous treatment intensity, :func:`~moderndid.plots.plot_dose_response`
 displays the estimated treatment effect as a function of the dose level.
 A shaded ribbon shows the confidence band. The ``effect_type`` parameter
 switches between the average treatment effect on treated (``"att"``) and
@@ -146,7 +146,7 @@ example with both ATT and ACRT dose-response plots.
 Sensitivity analysis
 --------------------
 
-:func:`~moderndid.plot_sensitivity` displays confidence intervals from
+:func:`~moderndid.plots.plot_sensitivity` displays confidence intervals from
 `Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_
 across a grid of sensitivity parameter values. Each method appears in a
 different color, allowing direct comparison of how robust the original
@@ -164,7 +164,7 @@ restrictions.
 Intertemporal effects
 ---------------------
 
-:func:`~moderndid.plot_multiplegt` visualizes treatment effects from the
+:func:`~moderndid.plots.plot_multiplegt` visualizes treatment effects from the
 `de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
 estimator, which handles non-binary and non-absorbing treatments. The plot
 shows placebo horizons (pre-treatment) and effect horizons (post-treatment)
@@ -196,7 +196,7 @@ frequently adjusted visual elements.
     remove it entirely.
 
 ``ref_period``
-    Available only in :func:`~moderndid.plot_event_study`. Adds a vertical dotted line at
+    Available only in :func:`~moderndid.plots.plot_event_study`. Adds a vertical dotted line at
     the specified event time, typically set to ``-1`` to mark the last
     pre-treatment period.
 
@@ -293,7 +293,7 @@ estimates use red (``#c0392b``). Dose-response curves use a dark slate
 line (``#2c3e50``) with a gray ribbon (``#95a5a6``).
 
 To override colors on a specific plot, use plotnine's ``scale_color_manual``.
-Here we restyle :func:`~moderndid.plot_event_study` with an orange-and-black palette.
+Here we restyle :func:`~moderndid.plots.plot_event_study` with an orange-and-black palette.
 
 .. code-block:: python
 
@@ -329,7 +329,7 @@ Saving plots
 
 The ``save`` method on any ``ggplot`` object writes the figure to disk.
 The format is inferred from the file extension. Here we use
-:func:`~moderndid.plot_event_study` as an example.
+:func:`~moderndid.plots.plot_event_study` as an example.
 
 .. code-block:: python
 
