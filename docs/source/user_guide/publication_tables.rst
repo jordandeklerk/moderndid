@@ -1,8 +1,8 @@
 .. _publication_tables:
 
-*************************************
-Publication Tables with `maketables`
-*************************************
+********************************************
+Publication Tables with ``maketables``
+********************************************
 
 Empirical papers need tables that present treatment effect estimates alongside
 standard errors, confidence intervals, and model metadata in a format that
@@ -18,6 +18,15 @@ plug-in interface, so every result object returned by **ModernDiD** estimators
 can be passed directly to
 `maketables.ETable <https://py-econometrics.github.io/maketables/docs/ETable.html>`_
 without writing custom extractors.
+
+The plug-in interface handles all the extraction for you. Point estimates,
+standard errors, confidence intervals, sample sizes, control group labels,
+and SE types are pulled from the result object automatically. ``ETable``
+produces a complete, ready-to-submit table from a single call. For more
+involved layouts, ``MTable`` gives full control over panels and column
+spanners. And even if you prefer to fine-tune the raw output yourself,
+``tab.make()`` gives you a well-structured starting point in LaTeX, HTML,
+Word, or Typst so you never have to build a table from scratch.
 
 
 Installation

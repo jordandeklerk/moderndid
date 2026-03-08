@@ -28,11 +28,6 @@ def theme_moderndid() -> theme:
     -------
     theme
         A plotnine theme object.
-
-    Examples
-    --------
-    >>> from moderndid.plots import plot_event_study, theme_moderndid
-    >>> plot = plot_event_study(es_result) + theme_moderndid()
     """
     return theme(
         panel_background=element_rect(fill="white"),
@@ -60,12 +55,6 @@ def theme_publication() -> theme:
     -------
     theme
         A plotnine theme object.
-
-    Examples
-    --------
-    >>> from moderndid.plots import plot_event_study, theme_publication
-    >>> plot = plot_event_study(es_result) + theme_publication()
-    >>> plot.save("figure.pdf", width=6, height=4, dpi=300)
     """
     return theme(
         panel_background=element_rect(fill="white"),
@@ -97,11 +86,6 @@ def theme_minimal() -> theme:
     -------
     theme
         A plotnine theme object.
-
-    Examples
-    --------
-    >>> from moderndid.plots import plot_event_study, theme_minimal
-    >>> plot = plot_event_study(es_result) + theme_minimal()
     """
     return theme(
         panel_background=element_rect(fill="white"),

@@ -407,7 +407,19 @@ evolve over time.
 
 .. code-block:: python
 
-    md.plot_multiplegt(result)
+    from plotnine import labs, theme, theme_gray
+
+    p = md.plot_multiplegt(result)
+    p = (p
+        + labs(
+            x="Horizon",
+            y="Effect on Bank Lending",
+            title="Interstate Branching Deregulation Effects",
+            subtitle="Intertemporal treatment effects on bank lending",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_inter_event_study.png
    :alt: Intertemporal treatment effects event study plot

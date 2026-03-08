@@ -186,7 +186,19 @@ these conclusions really are.
 
 .. code-block:: python
 
-    did.plot_event_study(event_study)
+    from plotnine import labs, theme, theme_gray
+
+    p = did.plot_event_study(event_study, ref_period=-1)
+    p = (p
+        + labs(
+            x="Years Relative to Medicaid Expansion",
+            y="ATT (Insurance Coverage)",
+            title="Medicaid Expansion Effects on Insurance Coverage",
+            subtitle="ACA Medicaid expansion across U.S. states",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_event_study_ehec.png
    :alt: Event study plot for Medicaid expansion
@@ -265,7 +277,15 @@ with the smoothness bound.
 
 .. code-block:: python
 
-    did.plot_sensitivity(sensitivity_sm)
+    p = did.plot_sensitivity(sensitivity_sm)
+    p = (p
+        + labs(
+            title="Sensitivity Analysis with Smoothness Restrictions",
+            subtitle="Robust confidence intervals across smoothness bounds",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_sensitivity_smoothness.png
    :alt: Sensitivity analysis with smoothness restrictions
@@ -324,7 +344,15 @@ details on why different methods are used.
 
 .. code-block:: python
 
-    did.plot_sensitivity(sensitivity_rm)
+    p = did.plot_sensitivity(sensitivity_rm)
+    p = (p
+        + labs(
+            title="Sensitivity Analysis with Relative Magnitudes",
+            subtitle="Robust confidence intervals across relative magnitude bounds",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_sensitivity_rm.png
    :alt: Sensitivity analysis with relative magnitudes restrictions

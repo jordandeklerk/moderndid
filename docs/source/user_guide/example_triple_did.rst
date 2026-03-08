@@ -294,11 +294,17 @@ both ``event_study`` and ``fit`` into a combined pandas DataFrame
 .. code-block:: python
 
     from plotnine import (
-        aes, annotate, element_blank, element_line, element_text,
-        geom_errorbar, geom_hline, geom_point, geom_vline, ggplot,
-        labs, position_dodge, scale_color_manual, scale_shape_manual,
-        scale_x_continuous, theme, theme_minimal,
+        aes, annotate, element_text, geom_errorbar, geom_hline,
+        geom_point, geom_vline, ggplot, labs, position_dodge,
+        scale_color_manual, scale_shape_manual, scale_x_continuous,
+        theme, theme_gray,
     )
+
+    caption = """\
+    3WFE estimates Cai (2016, Eq. 6.1) with household, county-by-year,
+    and sector-by-year fixed effects. DR-DDD uses the doubly robust
+    estimator of Ortiz-Villavicencio and Sant'Anna (2025).\
+    """
 
     dodge = position_dodge(width=0.25)
 
@@ -315,7 +321,7 @@ both ``event_study`` and ``fit`` into a combined pandas DataFrame
         + scale_color_manual(values={"3WFE": "#1a3a5c", "DR-DDD": "#c0392b"})
         + scale_shape_manual(values={"3WFE": "o", "DR-DDD": "^"})
         + scale_x_continuous(
-            breaks=sorted(plot_df["event_time"].unique()),
+            breaks=sorted(set(plot_df["event_time"].unique()) | {-1}),
         )
         + annotate(
             "text", x=-0.5, y=plot_df["ci_upper"].max() * 0.95,
@@ -324,20 +330,22 @@ both ``event_study`` and ``fit`` into a combined pandas DataFrame
             ha="left", va="top", size=9,
         )
         + labs(
-            x="Event time",
-            y="Treatment Effect",
-            title="Insurance Provision on Saving Rate",
-            color="Estimator",
-            shape="Estimator",
+            x="Event Time",
+            y="Treatment Effect (Saving Rate)",
+            title="Insurance Provision on Flexible-Term Saving Rate",
+            subtitle="Comparing DR-DDD and 3WFE event study estimates"
+                     " for Cai (2016) crop insurance data",
+            caption=caption,
+            color="", shape="",
         )
-        + theme_minimal()
+        + theme_gray()
         + theme(
-            panel_grid=element_blank(),
-            axis_line_x=element_line(color="black", size=0.4),
-            axis_line_y=element_line(color="black", size=0.4),
             legend_position="right",
-            legend_title=element_blank(),
-            plot_title=element_text(size=12),
+            plot_caption=element_text(
+                ha="left",
+                margin={"t": 1, "units": "lines"},
+                linespacing=1.25,
+            ),
         )
     )
     p.save("plot_ddd_cai_event_study.png", dpi=200, width=8, height=4.5)
@@ -797,7 +805,22 @@ group-time plot showing all underlying estimates organized by cohort.
 
 .. code-block:: python
 
-    did.plot_gt(result_mp)
+    from plotnine import element_text, labs, theme, theme_gray
+
+    p = did.plot_gt(result_mp, ncol=2)
+    p = (p
+        + labs(
+            x="Time Period",
+            y="ATT",
+            title="Triple Difference Group-Time Effects",
+            subtitle="DDD treatment effects by treatment cohort",
+        )
+        + theme_gray()
+        + theme(
+            legend_position="bottom",
+            strip_text=element_text(size=11, weight="bold"),
+        )
+    )
 
 .. image:: /_static/images/plot_ddd_gt.png
    :alt: Group-time DDD treatment effects plot
@@ -808,7 +831,17 @@ confidence bands. The vertical dotted line marks the reference period.
 
 .. code-block:: python
 
-    did.plot_event_study(event_study, ref_period=-1)
+    p = did.plot_event_study(event_study, ref_period=-1)
+    p = (p
+        + labs(
+            x="Years Relative to Treatment",
+            y="ATT",
+            title="Triple Difference Event Study",
+            subtitle="Aggregated event study from staggered DDD estimation",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_ddd_event_study.png
    :alt: DDD event study plot

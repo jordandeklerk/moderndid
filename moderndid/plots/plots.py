@@ -20,6 +20,7 @@ from plotnine import (
     scale_color_manual,
     scale_x_continuous,
     theme,
+    theme_gray,
 )
 
 from moderndid.did.aggte_obj import AGGTEResult
@@ -38,7 +39,7 @@ from moderndid.plots.converters import (
     mpresult_to_polars,
     pteresult_to_polars,
 )
-from moderndid.plots.themes import COLORS, theme_minimal
+from moderndid.plots.themes import COLORS
 
 if TYPE_CHECKING:
     from moderndid.didcont.estimation.container import DoseResult, PTEResult
@@ -109,7 +110,7 @@ def plot_gt(
             y=ylab or "ATT",
             title=plot_title,
         )
-        + theme_minimal()
+        + theme_gray()
         + theme(
             strip_text=element_text(size=11, weight="bold"),
             plot_title=element_text(margin={"b": 25}),
@@ -134,7 +135,7 @@ def plot_event_study(
     result: AGGTEResult | PTEResult | DDDAggResult,
     show_ci: bool = True,
     ref_line: float | None = 0,
-    ref_period: float | None = None,
+    ref_period: float | None = -1,
     xlab: str | None = None,
     ylab: str | None = None,
     title: str | None = None,
@@ -196,11 +197,13 @@ def plot_event_study(
         plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
 
     if ref_period is not None:
-        plot = plot + geom_vline(xintercept=ref_period, linetype="dotted", color="#7f8c8d", alpha=0.7)
+        plot = plot + geom_vline(xintercept=ref_period, linetype="dashed", color="gray", size=0.4)
     else:
         plot = plot + geom_line(color=COLORS["line"], size=0.8, alpha=0.6, linetype="dotted")
 
     x_breaks = sorted(df["event_time"].unique().to_list())
+    if ref_period is not None and ref_period not in x_breaks:
+        x_breaks = sorted([*x_breaks, ref_period])
 
     plot = (
         plot
@@ -216,7 +219,7 @@ def plot_event_study(
             y=ylab or "ATT",
             title=title or default_title,
         )
-        + theme_minimal()
+        + theme_gray()
         + theme(legend_position="bottom")
     )
 
@@ -305,7 +308,7 @@ def plot_agg(
             y=ylab or "ATT",
             title=title or default_title,
         )
-        + theme_minimal()
+        + theme_gray()
     )
 
     return plot
@@ -376,7 +379,7 @@ def plot_dose_response(
             y=ylab or default_ylabel,
             title=title or default_title,
         )
-        + theme_minimal()
+        + theme_gray()
     )
 
     return plot
@@ -445,7 +448,7 @@ def plot_sensitivity(
             y=ylab or "Confidence Interval",
             title=title or default_title,
         )
-        + theme_minimal()
+        + theme_gray()
         + theme(legend_position="bottom")
     )
 
@@ -488,6 +491,8 @@ def plot_multiplegt(
     """
     df = didinterresult_to_polars(result)
     x_breaks = sorted(df["horizon"].unique().to_list())
+    if 0 not in x_breaks:
+        x_breaks = sorted([*x_breaks, 0])
 
     plot = ggplot(df, aes(x="horizon", y="att"))
 
@@ -501,11 +506,10 @@ def plot_multiplegt(
     if ref_line is not None:
         plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
 
-    plot = plot + geom_vline(xintercept=0, linetype="dotted", color="#7f8c8d", alpha=0.7)
+    plot = plot + geom_vline(xintercept=0, linetype="dashed", color="gray", size=0.4)
 
     plot = (
         plot
-        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6, linetype="dotted")
         + geom_point(aes(color="treatment_status"), size=3.5)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
@@ -518,7 +522,7 @@ def plot_multiplegt(
             y=ylab or "Effect",
             title=title or "Intertemporal Treatment Effects",
         )
-        + theme_minimal()
+        + theme_gray()
         + theme(legend_position="bottom")
     )
 
