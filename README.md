@@ -1,12 +1,18 @@
-<!-- <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png#gh-light-mode-only" width="250" align="left" alt="moderndid logo"></img>
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png#gh-dark-mode-only" width="250" align="left" alt="moderndid logo"></img> -->
-
 <div style="text-align: center;" align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png">
-  <img alt="moderndid logo" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png" width="400">
+  <img alt="moderndid logo" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png" width="350">
 </picture>
+
+<em>A scalable, GPU-accelerated difference-in-differences library for Python.</em>
+
+<p>
+  <a href="https://moderndid.readthedocs.io/en/latest/" target="_blank"><strong>Docs</strong></a> ·
+  <a href="https://moderndid.readthedocs.io/en/latest/api/index.html" target="_blank"><strong>API Reference</strong></a> ·
+  <a href="https://moderndid.readthedocs.io/en/latest/user_guide/index.html" target="_blank"><strong>Tutorials</strong></a> ·
+  <a href="https://github.com/jordandeklerk/moderndid/blob/main/CHANGELOG.md" target="_blank"><strong>Changelog</strong></a>
+</p>
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit)
 [![PyPI -Version](https://img.shields.io/pypi/v/moderndid.svg)](https://pypi.org/project/moderndid/)
