@@ -23,33 +23,33 @@ Built-in plot functions
 **ModernDiD** ships six plot functions. Pass a result object, get back a
 ``ggplot`` you can customize with the ``+`` operator.
 
-:func:`~moderndid.plots.plot_event_study`
-    Treatment effects relative to adoption period. Accepts results from
-    :func:`~moderndid.aggte` (``type="dynamic"``),
-    :func:`~moderndid.agg_ddd` (``type="eventstudy"``), and
-    :func:`~moderndid.cont_did` (via its ``event_study`` attribute).
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 40
 
-:func:`~moderndid.plots.plot_gt`
-    Faceted group-time estimates with one panel per treatment cohort.
-    Accepts results from :func:`~moderndid.att_gt` and
-    :func:`~moderndid.ddd`.
-
-:func:`~moderndid.plots.plot_agg`
-    Aggregated effects by group or calendar time. Accepts results from
-    :func:`~moderndid.aggte` with ``type="group"`` or
-    ``type="calendar"``.
-
-:func:`~moderndid.plots.plot_dose_response`
-    Dose-response curve showing ATT or ACRT as a function of treatment
-    intensity. Accepts results from :func:`~moderndid.cont_did`.
-
-:func:`~moderndid.plots.plot_multiplegt`
-    Placebo and effect horizons for intertemporal treatment effects.
-    Accepts results from :func:`~moderndid.did_multiplegt`.
-
-:func:`~moderndid.plots.plot_sensitivity`
-    Confidence intervals across a sensitivity parameter grid. Accepts
-    results from :func:`~moderndid.honest_did`.
+   * - Function
+     - Description
+     - Accepts results from
+   * - :func:`~moderndid.plots.plot_event_study`
+     - Treatment effects relative to adoption period
+     - :func:`~moderndid.aggte` (``type="dynamic"``),
+       :func:`~moderndid.agg_ddd` (``type="eventstudy"``),
+       :func:`~moderndid.cont_did` (via ``event_study`` attribute)
+   * - :func:`~moderndid.plots.plot_gt`
+     - Faceted group-time estimates with one panel per cohort
+     - :func:`~moderndid.att_gt`, :func:`~moderndid.ddd`
+   * - :func:`~moderndid.plots.plot_agg`
+     - Aggregated effects by group or calendar time
+     - :func:`~moderndid.aggte` (``type="group"`` or ``type="calendar"``)
+   * - :func:`~moderndid.plots.plot_dose_response`
+     - Dose-response curve (ATT or ACRT vs. treatment intensity)
+     - :func:`~moderndid.cont_did`
+   * - :func:`~moderndid.plots.plot_multiplegt`
+     - Placebo and effect horizons for intertemporal effects
+     - :func:`~moderndid.did_multiplegt`
+   * - :func:`~moderndid.plots.plot_sensitivity`
+     - Confidence intervals across a sensitivity parameter grid
+     - :func:`~moderndid.honest_did`
 
 Every estimator tutorial includes plotting code with rendered output.
 See the :ref:`tutorial list <plotting_tutorials>` at the bottom of this page
