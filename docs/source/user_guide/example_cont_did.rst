@@ -412,7 +412,19 @@ regardless of this setting.
 
 .. code-block:: python
 
-    did.plot_event_study(event_study_slope)
+    from plotnine import labs, theme, theme_gray
+
+    p = did.plot_event_study(event_study_slope, ref_period=-1)
+    p = (p
+        + labs(
+            x="Years Relative to Treatment",
+            y="ACRT",
+            title="Continuous Treatment Event Study (ACRT)",
+            subtitle="Average causal response on treated over time",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_cont_event_study_slope.png
    :alt: Event study plot for ACRT
@@ -427,7 +439,17 @@ of the treatment effect function.
 
 .. code-block:: python
 
-    did.plot_dose_response(result, effect_type="att")
+    p = did.plot_dose_response(result, effect_type="att")
+    p = (p
+        + labs(
+            x="Treatment Dose",
+            y="ATT(d)",
+            title="Dose-Response Function",
+            subtitle="Average treatment effect on treated by dose level",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_cont_dose_att.png
    :alt: Dose-response curve for ATT
@@ -442,7 +464,17 @@ uncertainty where fewer observations are available.
 
 .. code-block:: python
 
-    did.plot_dose_response(result, effect_type="acrt")
+    p = did.plot_dose_response(result, effect_type="acrt")
+    p = (p
+        + labs(
+            x="Treatment Dose",
+            y="ACRT(d)",
+            title="Marginal Dose-Response Function",
+            subtitle="Average causal response on treated by dose level",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_cont_dose_acrt.png
    :alt: Dose-response curve for ACRT
@@ -456,7 +488,17 @@ For the event study aggregation, use the standard event study plot.
 
 .. code-block:: python
 
-    did.plot_event_study(event_study)
+    p = did.plot_event_study(event_study, ref_period=-1)
+    p = (p
+        + labs(
+            x="Years Relative to Treatment",
+            y="ATT",
+            title="Continuous Treatment Event Study (ATT)",
+            subtitle="Average treatment effect on treated over time",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_cont_event_study.png
    :alt: Event study plot for continuous treatment
@@ -558,7 +600,17 @@ rather than imposing a parametric form.
 
 .. code-block:: python
 
-    did.plot_dose_response(result_cck, effect_type="att")
+    p = did.plot_dose_response(result_cck, effect_type="att")
+    p = (p
+        + labs(
+            x="Treatment Dose",
+            y="ATT(d)",
+            title="Nonparametric Dose-Response Function",
+            subtitle="CCK estimator with purely quadratic treatment effect",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_cont_cck.png
    :alt: Nonparametric dose-response curve

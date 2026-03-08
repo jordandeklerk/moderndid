@@ -24,7 +24,7 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 - **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and threaded parallel compute.
 - **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated estimation on NVIDIA GPUs, with multi-GPU scaling in distributed environments.
 - **Native plots** - Built-in visualizations powered by [plotnine](https://plotnine.org/), returning standard `ggplot` objects you can customize with the full grammar of graphics.
-- **Publication tables** - All result objects implement the [maketables](https://py-econometrics.github.io/maketables/) plug-in interface for publication-ready LaTeX, HTML, Word, and Typst tables.
+- **Publication tables** - Pass any estimator output directly to [maketables](https://py-econometrics.github.io/maketables/) for publication-ready LaTeX, HTML, Word, and Typst tables with no custom extractors.
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands.
 
 For detailed documentation, including user guides and API reference, see [moderndid.readthedocs.io](https://moderndid.readthedocs.io/en/latest/).
@@ -35,10 +35,10 @@ For detailed documentation, including user guides and API reference, see [modern
 uv pip install moderndid   # Core estimators (did, drdid, didinter, didtriple)
 ```
 
-Some estimators and features require additional dependencies that are not installed by default. Extras are additive and build on the base install, so you always get the core estimators ([`att_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
+Some estimators and features require additional dependencies that are not installed by default. Extras are additive and build on the base install, so you always get the core estimators ([`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid()`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt()`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
 
-- **`didcont`** - Continuous treatment DiD ([`cont_did`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html))
-- **`didhonest`** - Sensitivity analysis ([`honest_did`](https://moderndid.readthedocs.io/en/latest/api/generated/honestdid/moderndid.honest_did.html))
+- **`didcont`** - Continuous treatment DiD ([`cont_did()`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html))
+- **`didhonest`** - Sensitivity analysis ([`honest_did()`](https://moderndid.readthedocs.io/en/latest/api/generated/honestdid/moderndid.honest_did.html))
 - **`plots`** - Batteries-included plots
 - **`numba`** - Faster bootstrap inference
 - **`spark`** - Distributed estimation via PySpark
@@ -158,7 +158,7 @@ p = (p
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="ATT plot">
 
-While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The [`aggte`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.aggte.html) function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
+While group-time effects are useful, they can be difficult to summarize when there are many groups and time periods. The [`aggte()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.aggte.html) function aggregates these into more interpretable summaries. Setting `type="dynamic"` produces an event study that shows how effects evolve relative to treatment timing:
 
 ```python
 event_study = did.aggte(attgt_result, type="dynamic")
@@ -218,7 +218,7 @@ print(event_study)
 
 Event time 0 is the on-impact effect, negative event times are pre-treatment periods, and positive event times are post-treatment periods. Pre-treatment effects near zero support the parallel trends assumption, while post-treatment effects show how the impact evolves over time.
 
-[Data converters](https://moderndid.readthedocs.io/en/latest/api/plotting.html#data-converters) make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest). See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html#advanced-customization) for the full code and more examples.
+__ModernDiD__ provides [Data converters](https://moderndid.readthedocs.io/en/latest/api/plotting.html#data-converters) tht make it easy to overlay estimates from different estimators. The figure below compares the Callaway and Sant'Anna estimates against a standard TWFE event study estimated with [pyfixest](https://github.com/py-econometrics/pyfixest). See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html#advanced-customization) for the full code and more examples.
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
 
@@ -226,7 +226,7 @@ Event time 0 is the on-impact effect, negative event times are pre-treatment per
 
 __ModernDiD__ result objects implement the [maketables](https://py-econometrics.github.io/maketables/) plug-in interface, so you can pass them directly to `maketables.ETable` for publication-ready LaTeX, HTML, Word, or Typst tables with no custom extractors. You will need to install maketables separately (`uv pip install maketables`).
 
-The custom `MTable` below was built from `att_gt` and `aggte` results and shows ATT estimates under unconditional and conditional parallel trends across all four aggregation types (simple, group, dynamic, calendar).
+For more complex layouts, `MTable` gives full control over row grouping, column spanners, and cell formatting. The table below was built from `att_gt()` and `aggte()` results, showing ATT estimates under unconditional and conditional parallel trends across all four aggregation types.
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/maketables_readme_panel_summary.png" alt="Multi-panel summary table recreating Callaway and Sant'Anna (2021) Table 3">
 

@@ -1,8 +1,8 @@
 .. _plotting:
 
-***************************
-Plotting and Visualization
-***************************
+*******************************************
+Plotting and Visualization with `plotnine`
+*******************************************
 
 Every **ModernDiD** estimator produces a result object that can be passed directly
 to a built-in plot function. The visualization layer is built on
@@ -20,31 +20,29 @@ and modify any visual element using the full plotnine API.
 A first plot
 ============
 
-The quickest path from data to visualization is three function calls. Load
-data, estimate, and plot. Here the minimum wage dataset from
-`Callaway and Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_
-provides the input.
+Every plot function takes a result object and returns a ``ggplot`` that you
+can customize with the full plotnine API. Pass the result, then layer on
+labels, themes, and layout tweaks with the ``+`` operator.
 
 .. code-block:: python
 
-    import moderndid as did
+    from plotnine import labs, theme, theme_gray
 
-    data = did.load_mpdta()
-
-    result = did.att_gt(
-        data=data,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
+    p = did.plot_event_study(event_study, ref_period=-1)
+    p = (p
+        + labs(
+            x="Years Relative to Treatment",
+            y="ATT (Log Employment)",
+            title="Minimum Wage Effects on Teen Employment",
+            subtitle="Dynamic treatment effects from Callaway and Sant'Anna (2021)",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
     )
 
-    event_study = did.aggte(result, type="dynamic")
-    did.plot_event_study(event_study)
-
-.. image:: /_static/images/plot_guide_event_study.png
-   :alt: Basic event study plot
-   :width: 100%
+The ``event_study`` object above comes from :func:`~moderndid.aggte` with
+``type="dynamic"``. For the full estimation pipeline and rendered output,
+see the :ref:`Staggered DiD walkthrough <example_staggered_did>`.
 
 Built-in plot functions
 =======================
@@ -65,17 +63,10 @@ effects after treatment.
 The ``ref_period`` parameter adds a vertical dotted line marking the
 reference period (typically the last pre-treatment period). When
 ``ref_period`` is specified, the connecting line between estimates is
-suppressed so each point stands on its own.
+suppressed so each point stands on its own. In the example above,
+``ref_period=-1`` marks the last pre-treatment period.
 
-.. code-block:: python
-
-    did.plot_event_study(event_study, ref_period=-1)
-
-.. image:: /_static/images/plot_guide_event_study_ref.png
-   :alt: Event study with reference period line
-   :width: 100%
-
-``plot_event_study`` accepts results from :func:`~moderndid.aggte` (with
+:func:`~moderndid.plot_event_study` accepts results from :func:`~moderndid.aggte` (with
 ``type="dynamic"``), :func:`~moderndid.agg_ddd` (with
 ``type="eventstudy"``), and continuous treatment event studies. See the
 :ref:`Staggered DiD <example_staggered_did>`,
@@ -88,7 +79,7 @@ Group-time estimates
 --------------------
 
 When you want to see every group-time ATT before aggregation,
-``plot_gt`` creates a faceted plot with one panel per treatment cohort.
+:func:`~moderndid.plot_gt` creates a faceted plot with one panel per treatment cohort.
 Each panel shows point estimates and confidence intervals across time
 periods, with color distinguishing pre-treatment from post-treatment
 estimates. This function also accepts triple DiD results from
@@ -103,69 +94,40 @@ Setting ``ncol=3`` arranges the three cohort panels side by side, while the
 default ``ncol=1`` stacks them vertically. The ``title`` parameter controls
 the prefix in each panel label (default ``"Group"``).
 
-Since ``plot_gt`` returns a plotnine ``ggplot`` object, you can restyle it
-with the full grammar of graphics. The version below applies
-``theme_gray``, adds a title and subtitle, and relabels the axes.
-
-.. code-block:: python
-
-    from plotnine import element_text, labs, theme, theme_gray
-
-    p = did.plot_gt(result, ncol=3)
-    p = (p
-        + labs(
-            x="Year",
-            y="ATT (Log Employment)",
-            title="Minimum Wage Effects on Teen Employment",
-            subtitle="Group-time average treatment effects by treatment cohort",
-        )
-        + theme_gray()
-        + theme(
-            legend_position="bottom",
-            strip_text=element_text(size=11, weight="bold"),
-        )
-    )
-
-.. image:: /_static/images/plot_guide_gt.png
-   :alt: Group-time treatment effects
-   :width: 100%
+Since :func:`~moderndid.plot_gt` returns a plotnine ``ggplot`` object, you
+can restyle it with the full grammar of graphics. See the
+:ref:`Staggered DiD <example_staggered_did>` and
+:ref:`Triple DiD <example_triple_did>` walkthroughs for styled examples
+with rendered output.
 
 
 Group and calendar aggregations
 -------------------------------
 
-The ``plot_agg`` function visualizes treatment effects aggregated by
-treatment cohort or by calendar time. These aggregations provide different
-perspectives on the same underlying group-time estimates.
+The :func:`~moderndid.plot_agg` function visualizes treatment effects aggregated by
+treatment cohort or by calendar time. Group aggregation averages
+post-treatment effects within each cohort, revealing heterogeneity across
+early and late adopters. Calendar aggregation averages across all cohorts
+treated at each calendar time, showing how the overall effect evolves in
+absolute time.
 
 .. code-block:: python
 
     group_agg = did.aggte(result, type="group")
     did.plot_agg(group_agg)
 
-.. image:: /_static/images/plot_guide_group_agg.png
-   :alt: Treatment effects by group
-   :width: 100%
-
-Group aggregation averages post-treatment effects within each cohort,
-revealing heterogeneity across early and late adopters. Calendar
-aggregation averages across all cohorts that are treated at each calendar
-time, showing how the overall effect evolves in absolute time.
-
-.. code-block:: python
-
     calendar_agg = did.aggte(result, type="calendar")
     did.plot_agg(calendar_agg)
 
-.. image:: /_static/images/plot_guide_calendar_agg.png
-   :alt: Treatment effects by calendar time
-   :width: 100%
+Both produce a point-and-interval plot with one marker per group or time
+period. As with all plot functions, you can add plotnine layers to
+customize the appearance.
 
 
 Dose-response curves
 --------------------
 
-For settings with continuous treatment intensity, ``plot_dose_response``
+For settings with continuous treatment intensity, :func:`~moderndid.plot_dose_response`
 displays the estimated treatment effect as a function of the dose level.
 A shaded ribbon shows the confidence band. The ``effect_type`` parameter
 switches between the average treatment effect on treated (``"att"``) and
@@ -175,16 +137,16 @@ marginal effect at each dose.
 .. code-block:: python
 
     did.plot_dose_response(dose_result, effect_type="att")
-    did.plot_dose_response(dose_result, effect_type="acrt")
 
-See the :ref:`Continuous Treatment walkthrough <example_cont_did>` for a
-complete example with simulated data.
+Set ``effect_type="acrt"`` to plot the marginal effect instead. See the
+:ref:`Continuous Treatment walkthrough <example_cont_did>` for a complete
+example with both ATT and ACRT dose-response plots.
 
 
 Sensitivity analysis
 --------------------
 
-``plot_sensitivity`` displays confidence intervals from
+:func:`~moderndid.plot_sensitivity` displays confidence intervals from
 `Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_
 across a grid of sensitivity parameter values. Each method appears in a
 different color, allowing direct comparison of how robust the original
@@ -202,7 +164,7 @@ restrictions.
 Intertemporal effects
 ---------------------
 
-``plot_multiplegt`` visualizes treatment effects from the
+:func:`~moderndid.plot_multiplegt` visualizes treatment effects from the
 `de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
 estimator, which handles non-binary and non-absorbing treatments. The plot
 shows placebo horizons (pre-treatment) and effect horizons (post-treatment)
@@ -234,7 +196,7 @@ frequently adjusted visual elements.
     remove it entirely.
 
 ``ref_period``
-    Available only in ``plot_event_study``. Adds a vertical dotted line at
+    Available only in :func:`~moderndid.plot_event_study`. Adds a vertical dotted line at
     the specified event time, typically set to ``-1`` to mark the last
     pre-treatment period.
 
@@ -253,26 +215,23 @@ frequently adjusted visual elements.
         title="Dynamic Treatment Effects",
     )
 
-.. image:: /_static/images/plot_guide_labels.png
-   :alt: Event study with custom labels
-   :width: 100%
-
 
 Themes
 ======
 
-**ModernDiD** ships three built-in themes that control the overall appearance of
-plots. All are applied by adding them to a plot object with the ``+``
-operator.
+All plot functions default to plotnine's ``theme_gray``, the classic
+ggplot2 look with a light gray background and white gridlines. You can swap
+it for any `plotnine theme <https://plotnine.org/guide/themes-basics.html>`_
+or one of the three built-in **ModernDiD** themes
+by adding it to the plot object with the ``+`` operator.
 
 ``theme_moderndid``
-    The default theme. White background, visible axis lines, no grid.
-    Suitable for exploratory work and presentations.
+    White background, visible axis lines, no grid. Suitable for exploratory
+    work and presentations.
 
 ``theme_publication``
-    Designed for academic papers. Smaller font sizes, panel border instead
-    of axis lines, legend at the bottom, and a default figure size of 6 by
-    4 inches at 300 DPI.
+    Smaller font sizes, panel border instead of axis lines, legend at the bottom,
+    and a default figure size of 6 by 4 inches at 300 DPI.
 
 ``theme_minimal``
     Reduced visual elements with lighter axis lines and no legend or strip
@@ -280,24 +239,28 @@ operator.
 
 .. code-block:: python
 
-    from moderndid.plots import theme_publication
+    from plotnine import labs, theme, theme_gray
 
     p = did.plot_event_study(event_study, ref_period=-1)
-    p + theme_publication()
+    p = (p
+        + labs(
+            x="Years Relative to Treatment",
+            y="ATT (Log Employment)",
+            title="Minimum Wage Effects on Teen Employment",
+        )
+        + theme_minimal()
+        + theme(legend_position="bottom")
+    )
 
-.. image:: /_static/images/plot_guide_publication.png
-   :alt: Event study with publication theme
-   :width: 100%
-
-Since themes are composable, you can start from any built-in theme and
-override individual elements. For example, to use the publication theme
-but move the legend to the right.
+Since themes are composable, you can start from any theme and override
+individual elements. For example, to use ``theme_gray`` but place the
+legend on the right instead of the bottom.
 
 .. code-block:: python
 
     from plotnine import theme
 
-    p + theme_publication() + theme(legend_position="right")
+    p + theme_gray() + theme(legend_position="right")
 
 
 Color palette
@@ -330,20 +293,31 @@ estimates use red (``#c0392b``). Dose-response curves use a dark slate
 line (``#2c3e50``) with a gray ribbon (``#95a5a6``).
 
 To override colors on a specific plot, use plotnine's ``scale_color_manual``.
+Here we restyle :func:`~moderndid.plot_event_study` with an orange-and-black palette.
 
 .. code-block:: python
 
-    from plotnine import scale_color_manual
+    from plotnine import labs, scale_color_manual, theme, theme_gray
 
     p = did.plot_event_study(event_study, ref_period=-1)
-    p + scale_color_manual(
-        values={"Pre": "#e67e22", "Post": "#252525"},
-        limits=["Pre", "Post"],
-        name="Period",
+    p = (p
+        + scale_color_manual(
+            values={"Pre": "#e67e22", "Post": "#252525"},
+            limits=["Pre", "Post"],
+            name="Treatment Status",
+        )
+        + labs(
+            x="Years Relative to Treatment",
+            y="ATT (Log Employment)",
+            title="Minimum Wage Effects on Teen Employment",
+            subtitle="Dynamic treatment effects from Callaway and Sant'Anna (2021)",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
     )
 
 .. image:: /_static/images/plot_guide_grayscale.png
-   :alt: Event study with grayscale colors
+   :alt: Event study with custom color palette
    :width: 100%
 
 This is useful when you want to match an existing color scheme or
@@ -354,7 +328,8 @@ Saving plots
 ============
 
 The ``save`` method on any ``ggplot`` object writes the figure to disk.
-The format is inferred from the file extension.
+The format is inferred from the file extension. Here we use
+:func:`~moderndid.plot_event_study` as an example.
 
 .. code-block:: python
 
@@ -374,9 +349,9 @@ theme with specific export settings to match whatever format you need.
 
 .. code-block:: python
 
-    from moderndid.plots import theme_publication
+    from plotnine import theme_gray
 
-    p = did.plot_event_study(event_study, ref_period=-1) + theme_publication()
+    p = did.plot_event_study(event_study, ref_period=-1) + theme_gray()
     p.save("figure1.pdf", width=6, height=4, dpi=300)
 
 
@@ -393,7 +368,8 @@ Extracting plot data
 --------------------
 
 Each result type has its own converter function that returns a polars
-DataFrame ready for plotting.
+DataFrame ready for plotting. Here we use
+:func:`~moderndid.plots.aggteresult_to_polars` on a staggered DiD event study.
 
 .. code-block:: python
 
@@ -469,9 +445,9 @@ level to match the level of treatment assignment.
     )
 
 To build the comparison figure, we extract the **ModernDiD** event study
-estimates with ``aggteresult_to_polars`` and the TWFE coefficients from
-pyfixest, then combine them into a single DataFrame with an ``estimator``
-column.
+estimates with :func:`~moderndid.plots.aggteresult_to_polars` and the TWFE
+coefficients from pyfixest, then combine them into a single DataFrame with
+an ``estimator`` column.
 
 .. code-block:: python
 

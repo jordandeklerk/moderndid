@@ -394,7 +394,22 @@ can plot the group-time estimates organized by cohort.
 
 .. code-block:: python
 
-    did.plot_gt(result)
+    from plotnine import element_text, labs, theme, theme_gray
+
+    p = did.plot_gt(result, ncol=3)
+    p = (p
+        + labs(
+            x="Year",
+            y="ATT (Log Employment)",
+            title="Minimum Wage Effects on Teen Employment",
+            subtitle="Group-time average treatment effects by treatment cohort",
+        )
+        + theme_gray()
+        + theme(
+            legend_position="bottom",
+            strip_text=element_text(size=11, weight="bold"),
+        )
+    )
 
 .. image:: /_static/images/plot_gt.png
    :alt: Group-time average treatment effects plot
@@ -406,7 +421,17 @@ post-treatment dynamics.
 
 .. code-block:: python
 
-    did.plot_event_study(event_study)
+    p = did.plot_event_study(event_study, ref_period=-1)
+    p = (p
+        + labs(
+            x="Years Relative to Treatment",
+            y="ATT (Log Employment)",
+            title="Minimum Wage Effects on Teen Employment",
+            subtitle="Dynamic treatment effects from Callaway and Sant'Anna (2021)",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
 
 .. image:: /_static/images/plot_event_study.png
    :alt: Event study plot
