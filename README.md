@@ -94,8 +94,9 @@ result = did.att_gt(
     tname="year",
     idname="countyreal",
     gname="first.treat",
-    xformla="~lpop",
+    xformla="~1",
     est_method="dr",
+    boot=True,
 )
 
 # Use grammar of graphics to customize plots
