@@ -101,7 +101,7 @@ result = did.att_gt(
 # Aggregate into an event study
 agg = did.aggte(result, type="dynamic")
 
-# Plot functions return plotnine ggplot objects you can customize
+# Use grammar of graphics to customize plots
 p = did.plot_gt(result, ncol=3)
 p = (p
     + labs(
