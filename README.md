@@ -38,7 +38,7 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 
 - [Staggered DiD](https://moderndid.readthedocs.io/en/latest/api/multiperiod.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/api/didcont.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/api/didtriple.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/api/didinter.html), and [Honest DiD](https://moderndid.readthedocs.io/en/latest/api/honestdid.html).
 - Works with any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more) via [narwhals](https://narwhals-dev.github.io/narwhals/).
-- [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) backends. Pass a distributed DataFrame and the backend activates automatically.
+- Distributed computing with [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) backends.
 - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT computations, and threaded parallel compute.
 - Optional [CuPy](https://cupy.dev/) GPU acceleration with multi-GPU support in distributed mode.
 - [plotnine](https://plotnine.org/)-based plots that return `ggplot` objects you can customize.
