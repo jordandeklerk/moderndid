@@ -98,9 +98,6 @@ result = did.att_gt(
     est_method="dr",
 )
 
-# Aggregate into an event study
-agg = did.aggte(result, type="dynamic")
-
 # Use grammar of graphics to customize plots
 p = did.plot_gt(result, ncol=3)
 p = (p
@@ -141,6 +138,7 @@ Result objects plug into [maketables](https://py-econometrics.github.io/maketabl
 ```python
 import maketables as mt
 
+# Aggregate results from earlier into an event study
 event_study = did.aggte(result, type="dynamic")
 
 tab = mt.ETable(
