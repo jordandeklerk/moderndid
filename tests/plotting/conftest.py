@@ -4,14 +4,12 @@ import numpy as np
 import polars as pl
 import pytest
 
-from moderndid.did.aggte_obj import AGGTEResult
-from moderndid.did.multiperiod_obj import MPResult
-from moderndid.didcont.estimation.container import DoseResult
+from moderndid.did.container import AGGTEResult, MPResult
+from moderndid.didcont.container import DoseResult
 from moderndid.didhonest.honest_did import HonestDiDResult
 from moderndid.didhonest.sensitivity import OriginalCSResult
-from moderndid.didinter.results import DIDInterResult, EffectsResult, PlacebosResult
-from moderndid.didtriple.agg_ddd_obj import DDDAggResult
-from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
+from moderndid.didinter.container import DIDInterResult, EffectsResult, PlacebosResult
+from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodResult
 
 
 @pytest.fixture
@@ -125,7 +123,7 @@ def honest_result():
 
 @pytest.fixture
 def pte_result_with_event_study():
-    from moderndid.didcont.estimation.container import PTEAggteResult, PTEResult
+    from moderndid.didcont.container import PTEAggteResult, PTEResult
 
     event_study = PTEAggteResult(
         overall_att=0.5,

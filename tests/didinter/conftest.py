@@ -10,7 +10,7 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 
 from moderndid import load_favara_imbs
-from moderndid.didinter.results import EffectsResult
+from moderndid.didinter.container import EffectsResult
 
 
 @pytest.fixture(scope="module")

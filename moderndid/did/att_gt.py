@@ -18,8 +18,8 @@ from moderndid.core.preprocess import (
 from moderndid.cupy.backend import to_numpy
 
 from .compute_att_gt import compute_att_gt
+from .container import mp
 from .mboot import mboot
-from .multiperiod_obj import mp
 
 
 def att_gt(

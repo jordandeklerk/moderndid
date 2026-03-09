@@ -17,7 +17,7 @@ from moderndid.didinter.compute_did_multiplegt import (
     _run_het_regression,
     _test_effects_equality,
 )
-from moderndid.didinter.results import (
+from moderndid.didinter.container import (
     DIDInterResult,
     EffectsResult,
     PlacebosResult,

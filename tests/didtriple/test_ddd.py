@@ -8,8 +8,7 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 
 from moderndid import ddd
-from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
-from moderndid.didtriple.estimators.ddd_panel import DDDPanelResult
+from moderndid.didtriple.container import DDDMultiPeriodResult, DDDPanelResult
 
 
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])

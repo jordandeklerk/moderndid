@@ -6,12 +6,14 @@ import pytest
 
 from moderndid import ddd_mp
 from moderndid.core.preprocessing import preprocess_ddd_2periods
-from moderndid.didtriple.agg_ddd_obj import DDDAggResult
+from moderndid.didtriple.container import (
+    DDDAggResult,
+    DDDMultiPeriodRCResult,
+    DDDMultiPeriodResult,
+    DDDPanelResult,
+    DDDRCResult,
+)
 from moderndid.didtriple.dgp import gen_ddd_2periods, gen_ddd_mult_periods
-from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
-from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
-from moderndid.didtriple.estimators.ddd_panel import DDDPanelResult
-from moderndid.didtriple.estimators.ddd_rc import DDDRCResult
 
 
 @pytest.fixture

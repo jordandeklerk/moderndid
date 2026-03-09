@@ -9,6 +9,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
+from moderndid.didcont.container import PteEmpBootResult
 from moderndid.didcont.estimation.bootstrap import (
     _combine_ecdfs,
     _convert_to_original_time,
@@ -19,7 +20,6 @@ from moderndid.didcont.estimation.bootstrap import (
     qott_pte_aggregations,
     qtt_pte_aggregations,
 )
-from moderndid.didcont.estimation.container import PteEmpBootResult
 
 
 def test_block_boot_sample_balanced(balanced_panel_data_bootstrap):

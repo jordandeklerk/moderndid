@@ -13,7 +13,7 @@ from moderndid.core.format import (
     format_title,
 )
 
-from .results import DIDInterResult
+from .container import DIDInterResult
 
 
 def format_didinter_result(result: DIDInterResult) -> str:

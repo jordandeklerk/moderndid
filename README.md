@@ -2,7 +2,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png">
-  <img alt="moderndid logo" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png" width="350">
+  <img alt="moderndid logo" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png" width="250">
 </picture>
 
 <p>
@@ -42,8 +42,8 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 - **Distributed computing** - Scale to billions of observations across [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) clusters. Pass a distributed DataFrame and the backend activates transparently.
 - **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and threaded parallel compute.
 - **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated estimation on NVIDIA GPUs, with multi-GPU scaling in distributed environments.
-- **Native plots** - Built-in visualizations powered by [plotnine](https://plotnine.org/), returning standard `ggplot` objects you can customize with the full grammar of graphics.
-- **Publication tables** - Pass any estimator output directly to [maketables](https://py-econometrics.github.io/maketables/) for publication-ready LaTeX, HTML, Word, and Typst tables with no custom extractors.
+- **Native plots** - Batteries-included visualizations powered by [plotnine](https://plotnine.org/), returning standard `ggplot` objects you can customize with the full grammar of graphics.
+- **Publication tables** - Pass any __ModernDiD__ estimator output directly to [maketables](https://py-econometrics.github.io/maketables/) for publication-ready LaTeX, HTML, Word, and Typst tables with no custom extractors.
 - **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands.
 
 For detailed documentation, including user guides and API reference, see [ModernDiD Documentation](https://moderndid.readthedocs.io/en/latest/).

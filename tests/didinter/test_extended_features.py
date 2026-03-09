@@ -12,8 +12,8 @@ pl = importorskip("polars")
 import moderndid as md
 from moderndid.core.preprocess.config import DIDInterConfig
 from moderndid.didinter.compute_did_multiplegt import _run_het_regression, _test_effects_equality
+from moderndid.didinter.container import DIDInterResult
 from moderndid.didinter.format import format_didinter_result
-from moderndid.didinter.results import DIDInterResult
 from moderndid.didinter.variance import compute_joint_test
 
 

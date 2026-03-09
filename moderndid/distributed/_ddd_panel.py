@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 from scipy import stats
 
-from moderndid.didtriple.estimators.ddd_panel import DDDPanelResult
+from moderndid.didtriple.container import DDDPanelResult
 
 from ._inf_func import compute_did_distributed
 from ._validate import _validate_inputs

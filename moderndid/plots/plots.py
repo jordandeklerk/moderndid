@@ -33,16 +33,13 @@ from moderndid.core.converters import (
     mpresult_to_polars,
     pteresult_to_polars,
 )
-from moderndid.did.aggte_obj import AGGTEResult
-from moderndid.did.multiperiod_obj import MPResult
-from moderndid.didinter.results import DIDInterResult
-from moderndid.didtriple.agg_ddd_obj import DDDAggResult
-from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
-from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
+from moderndid.did.container import AGGTEResult, MPResult
+from moderndid.didinter.container import DIDInterResult
+from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult
 from moderndid.plots.themes import COLORS
 
 if TYPE_CHECKING:
-    from moderndid.didcont.estimation.container import DoseResult, PTEResult
+    from moderndid.didcont.container import DoseResult, PTEResult
     from moderndid.didhonest.honest_did import HonestDiDResult
 
 

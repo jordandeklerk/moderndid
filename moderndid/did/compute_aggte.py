@@ -6,7 +6,7 @@ import warnings
 
 import numpy as np
 
-from .aggte_obj import AGGTEResult
+from .container import AGGTEResult
 from .mboot import mboot
 
 

@@ -17,7 +17,7 @@ import scipy.stats
 from pyspark.sql import functions as F
 
 from moderndid.core.dataframe import to_polars
-from moderndid.did.multiperiod_obj import mp
+from moderndid.did.container import mp
 from moderndid.didtriple.estimators.ddd_mp import _gmm_aggregate
 from moderndid.distributed._did_partition import _partition_did_pscore_gram
 

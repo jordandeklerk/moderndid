@@ -14,8 +14,7 @@ from moderndid.core.format import (
     format_title,
 )
 
-from .aggte_obj import AGGTEResult
-from .multiperiod_obj import MPPretestResult, MPResult
+from .container import AGGTEResult, MPPretestResult, MPResult
 
 
 def format_aggte_result(result):

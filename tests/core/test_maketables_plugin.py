@@ -5,16 +5,14 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from moderndid.did.aggte_obj import AGGTEResult
-from moderndid.did.multiperiod_obj import MPResult
-from moderndid.didinter.results import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
-from moderndid.didtriple.agg_ddd_obj import DDDAggResult
-from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
-from moderndid.drdid.drdid import DRDIDResult
+from moderndid.did.container import AGGTEResult, MPResult
+from moderndid.didinter.container import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
+from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodResult
+from moderndid.drdid.container import DRDIDResult
 from tests.helpers import importorskip
 
 importorskip("formulaic")
-from moderndid.didcont.estimation.container import DoseResult, PTEAggteResult, PTEResult
+from moderndid.didcont.container import DoseResult, PTEAggteResult, PTEResult
 
 
 def test_drdid_result_exposes_maketables_plugin():

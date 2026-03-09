@@ -14,11 +14,7 @@ from moderndid.core.format import (
     format_title,
 )
 
-from .agg_ddd_obj import DDDAggResult
-from .estimators.ddd_mp import DDDMultiPeriodResult
-from .estimators.ddd_mp_rc import DDDMultiPeriodRCResult
-from .estimators.ddd_panel import DDDPanelResult
-from .estimators.ddd_rc import DDDRCResult
+from .container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult, DDDPanelResult, DDDRCResult
 
 _DDD_REFERENCE = "See Ortiz-Villavicencio and Sant'Anna (2025) for details."
 

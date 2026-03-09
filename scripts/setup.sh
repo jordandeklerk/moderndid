@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Install R packages needed for validation tests that are not available on
 # conda-forge.  Supported on Linux and macOS (see pixi.toml platforms).
 #

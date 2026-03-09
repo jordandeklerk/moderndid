@@ -10,13 +10,13 @@ from scipy import stats
 from moderndid.core.preprocess.utils import get_covariate_names_from_formula
 
 from .bootstrap import cluster_bootstrap
+from .container import ATEResult, DIDInterResult, EffectsResult, HeterogeneityResult, PlacebosResult
 from .controls import (
     apply_control_adjustment,
     compute_control_coefficients,
     compute_control_influence,
     compute_variance_adjustment,
 )
-from .results import ATEResult, DIDInterResult, EffectsResult, HeterogeneityResult, PlacebosResult
 from .variance import (
     build_treatment_paths,
     compute_clustered_variance,
