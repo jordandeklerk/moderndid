@@ -36,16 +36,16 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 
 ## Features
 
-- **DiD Estimators** - [Staggered DiD](https://moderndid.readthedocs.io/en/latest/api/multiperiod.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/api/didcont.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/api/didtriple.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/api/didinter.html), [Honest DiD](https://moderndid.readthedocs.io/en/latest/api/honestdid.html).
-- **Dataframe agnostic** - Pass any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame such as [polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more powered by [narwhals](https://narwhals-dev.github.io/narwhals/).
-- **Distributed computing** - Scale to billions of observations across [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) clusters. Pass a distributed DataFrame and the backend activates transparently.
-- **Fast computation** - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT compilation, and threaded parallel compute.
-- **GPU acceleration** - Optional [CuPy](https://cupy.dev/)-accelerated estimation on NVIDIA GPUs, with multi-GPU scaling in distributed environments.
-- **Native plots** - Batteries-included visualizations powered by [plotnine](https://plotnine.org/), returning standard `ggplot` objects you can customize with the full grammar of graphics.
-- **Publication tables** - Pass any __ModernDiD__ estimator output directly to [maketables](https://py-econometrics.github.io/maketables/) for publication-ready LaTeX, HTML, Word, and Typst tables with no custom extractors.
-- **Robust inference** - Analytical standard errors, bootstrap (weighted and multiplier), and simultaneous confidence bands.
+- [Staggered DiD](https://moderndid.readthedocs.io/en/latest/api/multiperiod.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/api/didcont.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/api/didtriple.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/api/didinter.html), and [Honest DiD](https://moderndid.readthedocs.io/en/latest/api/honestdid.html).
+- Works with any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more) via [narwhals](https://narwhals-dev.github.io/narwhals/).
+- Distributed computing with [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) backends.
+- [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT computations, and threaded parallel compute.
+- Optional [CuPy](https://cupy.dev/) GPU acceleration with multi-GPU support in distributed mode.
+- [plotnine](https://plotnine.org/)-based plots that return `ggplot` objects you can customize.
+- Result objects plug directly into [maketables](https://py-econometrics.github.io/maketables/) for LaTeX, HTML, Word, and Typst tables.
+- Analytical SEs, weighted and multiplier bootstrap, simultaneous confidence bands.
 
-For detailed documentation, including user guides and API reference, see [ModernDiD Documentation](https://moderndid.readthedocs.io/en/latest/).
+For detailed documentation, see [ModernDiD Documentation](https://moderndid.readthedocs.io/en/latest/).
 
 ## Installation
 
@@ -79,10 +79,11 @@ See the [Installation guide](https://moderndid.readthedocs.io/en/latest/user_gui
 
 ## Quick Start
 
-We can estimate the effect of minimum wage increases on teen employment using county-level panel data with staggered adoption and the doubly robust estimator of [Callaway and Sant'Anna (2021)](https://doi.org/10.1016/j.jeconom.2020.12.001).
+Using county-level panel data from [Callaway and Sant'Anna (2021)](https://doi.org/10.1016/j.jeconom.2020.12.001) to estimate the effect of minimum wage increases on teen employment:
 
 ```python
 import moderndid as did
+from plotnine import element_text, labs, theme, theme_gray
 
 data = did.load_mpdta()
 
@@ -97,20 +98,30 @@ result = did.att_gt(
     est_method="dr",
 )
 
-# Aggregate into an event study
-agg = did.aggte(result, type="dynamic")
-
-# Built-in plots return ggplot objects you can customize
-did.plot_gt(result, ncol=3)
+# Use grammar of graphics to customize plots
+p = did.plot_gt(result, ncol=3)
+p = (p
+    + labs(
+        x="Year",
+        y="ATT (Log Employment)",
+        title="Minimum Wage Effects on Teen Employment",
+        subtitle="Group-time average treatment effects by treatment cohort",
+    )
+    + theme_gray()
+    + theme(
+        legend_position="bottom",
+        strip_text=element_text(size=11, weight="bold"),
+    )
+)
 ```
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="Group-time ATT estimates">
 
-See the [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html) for complete tutorials covering all estimators.
+The [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html) has tutorials for every estimator. See also the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html).
 
 ### Consistent API
 
-All estimators share a unified interface for core arguments. Pass any [Arrow PyCapsule](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)-compatible DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and others) and estimation works the same way:
+All estimators use the same naming conventions for core arguments:
 
 ```python
 result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
@@ -120,37 +131,43 @@ result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", .
 result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
 ```
 
-### Plotting
-
-Batteries-included [plotting functions](https://moderndid.readthedocs.io/en/latest/api/plotting.html) return `ggplot` objects you can customize with the full [plotnine](https://plotnine.org/) grammar of graphics, and built-in data converters make it easy to build custom figures from any result object.
-
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/event_study.png" alt="CS (2021) vs TWFE event study comparison">
-
-See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for event studies, custom overlays, and more examples.
-
 ### Publication Tables
 
-Result objects implement the [maketables](https://py-econometrics.github.io/maketables/) plug-in interface for publication-ready LaTeX, HTML, Word, and Typst tables. For advanced layouts, `MTable` gives full control over row grouping, column spanners, and cell formatting.
+Result objects plug into [maketables](https://py-econometrics.github.io/maketables/). Pass them to `ETable` and estimates, SEs, CIs, and metadata are extracted automatically:
 
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/maketables_readme_panel_summary.png" alt="Multi-panel summary table recreating Callaway and Sant'Anna (2021) Table 3">
+```python
+import maketables as mt
 
-See the [Publication Tables guide](https://moderndid.readthedocs.io/en/latest/user_guide/publication_tables.html) for full examples, `ETable` customization, custom `MTable` layouts, and output format options.
+# Aggregate results from earlier into an event study
+event_study = did.aggte(result, type="dynamic")
+
+tab = mt.ETable(
+    [event_study],
+    coef_fmt="b:.3f* \\n (se:.3f)",
+    keep=[r"^Event "],
+    model_stats=["N", "se_type"],
+    caption="Dynamic Treatment Effects",
+)
+tab.make("tex")  # or "html", "docx", "typst"
+```
+
+See the [Publication Tables guide](https://moderndid.readthedocs.io/en/latest/user_guide/publication_tables.html) for `MTable` layouts and more examples.
 
 ### Scaling Up
 
-**Distributed Computing.** Pass a Spark or Dask DataFrame and the distributed backend activates automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
+Pass a Spark or Dask DataFrame and estimation distributes automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
 
 ```python
 from pyspark.sql import SparkSession
 spark = SparkSession.builder.master("local[*]").getOrCreate()
-result = did.att_gt(data=spark.read.parquet("panel.parquet"), # Spark dataframe
+result = did.att_gt(data=spark.read.parquet("panel.parquet"),
                     yname="y",
                     tname="t",
                     idname="id",
                     gname="g")
 ```
 
-**GPU Acceleration.** Pass `backend="cupy"` to offload estimation to NVIDIA GPUs. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
+For GPUs, pass `backend="cupy"`. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
 
 ```python
 result = did.att_gt(data,
@@ -158,30 +175,26 @@ result = did.att_gt(data,
                     tname="year",
                     idname="countyreal",
                     gname="first.treat",
-                    backend="cupy") # GPU backend
+                    backend="cupy")
 ```
 
 ### Example Datasets
 
-Built-in datasets from published studies are included for testing and reproducing results. All loaders return Arrow-compatible DataFrames that work directly with any estimator.
+Datasets from published studies and synthetic data generators for simulations:
 
 ```python
-did.load_mpdta()       # County teen employment
-did.load_nsw()         # NSW job training program
-did.load_ehec()        # Medicaid expansion
-did.load_engel()       # Household expenditure
-did.load_favara_imbs() # Bank lending
-did.load_cai2016()     # Crop insurance
-```
+did.load_mpdta()           # County teen employment
+did.load_nsw()             # NSW job training program
+did.load_ehec()            # Medicaid expansion
+did.load_engel()           # Household expenditure
+did.load_favara_imbs()     # Bank lending
+did.load_cai2016()         # Crop insurance
 
-Synthetic data generators are also available for simulations and benchmarking.
-
-```python
-did.gen_did_scalable()           # Staggered DiD panel
-did.gen_cont_did_data()          # Continuous treatment DiD
-did.gen_ddd_2periods()           # Two-period triple DiD
-did.gen_ddd_mult_periods()       # Staggered triple DiD
-did.gen_ddd_scalable()           # Large-scale triple DiD
+did.gen_did_scalable()     # Staggered DiD panel
+did.gen_cont_did_data()    # Continuous treatment DiD
+did.gen_ddd_2periods()     # Two-period triple DiD
+did.gen_ddd_mult_periods() # Staggered triple DiD
+did.gen_ddd_scalable()     # Large-scale triple DiD
 ```
 
 ## Planned Development

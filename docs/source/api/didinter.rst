@@ -34,7 +34,7 @@ Inference
 Result Objects
 --------------
 
-.. currentmodule:: moderndid.didinter.results
+.. currentmodule:: moderndid.didinter.container
 
 .. autosummary::
    :toctree: generated/didinter/
