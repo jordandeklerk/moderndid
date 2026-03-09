@@ -109,7 +109,7 @@ The [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.htm
 
 ### Consistent API
 
-All estimators use the same naming conventions:
+All estimators use the same naming conventions for core arguments:
 
 ```python
 result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
