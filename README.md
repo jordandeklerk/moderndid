@@ -1,15 +1,8 @@
-<!-- <div style="text-align: center;" align="center">
+<div style="text-align: center;" align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png">
   <img alt="moderndid logo" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png" width="250">
-</picture> -->
-
-<div style="text-align: center;" align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/source/_static/logo.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/source/_static/logo.svg">
-  <img alt="moderndid logo" src="docs/source/_static/logo.svg" width="250">
 </picture>
 
 <p>
