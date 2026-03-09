@@ -76,6 +76,7 @@ Result Objects
    :nosignatures:
 
    NPIVResult
+   PTEResult
    PTEAggteResult
    GroupTimeATTResult
    DoseResult

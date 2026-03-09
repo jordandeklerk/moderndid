@@ -199,6 +199,7 @@ these conclusions really are.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_event_study_ehec.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_event_study_ehec.png
    :alt: Event study plot for Medicaid expansion
@@ -286,6 +287,7 @@ with the smoothness bound.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_sensitivity_smoothness.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_sensitivity_smoothness.png
    :alt: Sensitivity analysis with smoothness restrictions
@@ -353,6 +355,7 @@ details on why different methods are used.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_sensitivity_rm.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_sensitivity_rm.png
    :alt: Sensitivity analysis with relative magnitudes restrictions

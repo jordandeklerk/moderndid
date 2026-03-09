@@ -286,10 +286,38 @@ households. We estimate this using `pyfixest <https://github.com/py-econometrics
 Both estimators yield similar point estimates, but the DR-DDD produces
 tighter confidence intervals at later event times. We overlay the two sets of
 estimates following the presentation in `Ortiz-Villavicencio and Sant'Anna
-(2025, Figure 5 Panel C) <https://arxiv.org/abs/2505.09942>`_. After extracting the event-time coefficients from
-both ``event_study`` and ``fit`` into a combined pandas DataFrame
-(``plot_df``) with columns ``event_time``, ``att``, ``ci_lower``,
-``ci_upper``, and ``estimator``.
+(2025, Figure 5 Panel C) <https://arxiv.org/abs/2505.09942>`_.
+
+.. code-block:: python
+
+    import pandas as pd
+
+    # DR-DDD estimates (to_df() drops the reference period automatically)
+    drddd_df = did.to_df(event_study).to_pandas()
+    drddd_df["estimator"] = "DR-DDD"
+
+    # 3WFE estimates from pyfixest
+    tidy = fit.tidy()
+    rel_coefs = tidy[tidy.index.str.contains("rel_time") & ~tidy.index.str.contains("-99")]
+    event_times = rel_coefs.index.to_series().str.extract(r"T\.(-?\d+)")[0].astype(int)
+    twfe_df = pd.DataFrame({
+        "event_time": event_times.values,
+        "att": rel_coefs["Estimate"].values,
+        "ci_lower": rel_coefs["2.5%"].values,
+        "ci_upper": rel_coefs["97.5%"].values,
+        "estimator": "3WFE",
+    })
+
+    # Combine and restrict to event times >= -2 (Figure 5 window)
+    plot_df = pd.concat([drddd_df, twfe_df], ignore_index=True)
+    plot_df = plot_df[plot_df["event_time"] >= -2]
+
+    # DR-DDD overall effect for annotation
+    es_avg = event_study.overall_att
+    es_lci = es_avg - event_study.crit_val * event_study.overall_se
+    es_uci = es_avg + event_study.crit_val * event_study.overall_se
+
+Now we can plot.
 
 .. code-block:: python
 
@@ -821,6 +849,7 @@ group-time plot showing all underlying estimates organized by cohort.
             strip_text=element_text(size=11, weight="bold"),
         )
     )
+    p.save("plot_ddd_gt.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_ddd_gt.png
    :alt: Group-time DDD treatment effects plot
@@ -842,6 +871,7 @@ confidence bands. The vertical dotted line marks the reference period.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_ddd_event_study.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_ddd_event_study.png
    :alt: DDD event study plot

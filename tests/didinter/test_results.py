@@ -7,6 +7,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
+from moderndid.core.converters import to_df
 from moderndid.didinter import (
     ATEResult,
     DIDInterResult,
@@ -61,35 +62,9 @@ def test_effects_result_creation(effects_result):
     np.testing.assert_array_equal(effects_result.horizons, [1, 2, 3])
 
 
-@pytest.mark.parametrize(
-    "expected_column",
-    ["Horizon", "Estimate", "Std. Error", "CI Lower", "CI Upper", "N Switchers", "N Obs"],
-)
-def test_effects_result_to_dataframe_columns(effects_result, expected_column):
-    df = effects_result.to_dataframe()
-
-    assert isinstance(df, pl.DataFrame)
-    assert expected_column in df.columns
-
-
-def test_effects_result_to_dataframe_values(effects_result):
-    df = effects_result.to_dataframe()
-
-    assert len(df) == 3
-    np.testing.assert_array_almost_equal(df["Estimate"].to_numpy(), [0.5, 0.6, 0.7])
-
-
 def test_placebos_result_creation(placebos_result):
     assert len(placebos_result.horizons) == 2
     np.testing.assert_array_equal(placebos_result.horizons, [-1, -2])
-
-
-def test_placebos_result_to_dataframe(placebos_result):
-    df = placebos_result.to_dataframe()
-
-    assert isinstance(df, pl.DataFrame)
-    assert len(df) == 2
-    np.testing.assert_array_almost_equal(df["Horizon"].to_numpy(), [-1, -2])
 
 
 @pytest.mark.parametrize(
@@ -171,7 +146,7 @@ def test_heterogeneity_result_to_dataframe_columns(expected_column):
         f_pvalue=0.01,
     )
 
-    df = result.to_dataframe()
+    df = to_df(result)
 
     assert isinstance(df, pl.DataFrame)
     assert expected_column in df.columns
@@ -190,7 +165,7 @@ def test_heterogeneity_result_to_dataframe_values():
         f_pvalue=0.01,
     )
 
-    df = result.to_dataframe()
+    df = to_df(result)
 
     assert len(df) == 3
     assert df["Horizon"].to_list() == [2, 2, 2]

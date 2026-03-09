@@ -420,6 +420,7 @@ evolve over time.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_inter_event_study.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_inter_event_study.png
    :alt: Intertemporal treatment effects event study plot
@@ -511,7 +512,7 @@ analyze. Use ``[-1]`` to analyze all estimated horizons.
         predict_het=(["state_n"], [-1]),
     )
 
-    frames = [h.to_dataframe() for h in result_het.heterogeneity]
+    frames = [md.to_df(h) for h in result_het.heterogeneity]
     print(pl.concat(frames))
 
 .. code-block:: text

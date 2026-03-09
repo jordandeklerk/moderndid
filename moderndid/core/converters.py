@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from moderndid.did.container import AGGTEResult, MPResult
     from moderndid.didcont.container import DoseResult, PTEResult
     from moderndid.didhonest.honest_did import HonestDiDResult
-    from moderndid.didinter.container import DIDInterResult
+    from moderndid.didinter.container import DIDInterResult, HeterogeneityResult
     from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult
 
 
@@ -459,6 +459,44 @@ def didinterresult_to_polars(result: DIDInterResult) -> pl.DataFrame:
     )
 
 
+def heterogeneityresult_to_polars(result: HeterogeneityResult) -> pl.DataFrame:
+    """Convert HeterogeneityResult to polars DataFrame.
+
+    Parameters
+    ----------
+    result : HeterogeneityResult
+        Heterogeneous effects analysis result for a single horizon.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns:
+
+        - Horizon: effect horizon analyzed
+        - Covariate: covariate name
+        - Estimate: coefficient estimate
+        - Std. Error: standard error
+        - t-stat: t-statistic
+        - CI Lower: lower confidence interval bound
+        - CI Upper: upper confidence interval bound
+        - N: number of observations
+        - F p-value: joint F-test p-value
+    """
+    return pl.DataFrame(
+        {
+            "Horizon": [result.horizon] * len(result.covariates),
+            "Covariate": result.covariates,
+            "Estimate": result.estimates,
+            "Std. Error": result.std_errors,
+            "t-stat": result.t_stats,
+            "CI Lower": result.ci_lower,
+            "CI Upper": result.ci_upper,
+            "N": [result.n_obs] * len(result.covariates),
+            "F p-value": [result.f_pvalue] * len(result.covariates),
+        }
+    )
+
+
 _DISPATCH: dict[str, Any] = {
     "MPResult": mpresult_to_polars,
     "AGGTEResult": aggteresult_to_polars,
@@ -469,6 +507,7 @@ _DISPATCH: dict[str, Any] = {
     "DDDMultiPeriodRCResult": dddmpresult_to_polars,
     "DDDAggResult": dddaggresult_to_polars,
     "DIDInterResult": didinterresult_to_polars,
+    "HeterogeneityResult": heterogeneityresult_to_polars,
 }
 
 
@@ -478,9 +517,18 @@ def to_df(result: Any, **kwargs: Any) -> pl.DataFrame:
     Parameters
     ----------
     result : Any
-        A ModernDiD result object (e.g., AGGTEResult, MPResult,
-        DoseResult, PTEResult, HonestDiDResult, DDDAggResult,
-        DDDMultiPeriodResult, DDDMultiPeriodRCResult, DIDInterResult).
+        A ModernDiD result object. Supported types:
+
+        - :class:`~moderndid.did.container.AGGTEResult`
+        - :class:`~moderndid.did.container.MPResult`
+        - :class:`~moderndid.didcont.container.DoseResult`
+        - :class:`~moderndid.didcont.container.PTEResult`
+        - :class:`~moderndid.didhonest.honest_did.HonestDiDResult`
+        - :class:`~moderndid.didtriple.container.DDDAggResult`
+        - :class:`~moderndid.didtriple.container.DDDMultiPeriodResult`
+        - :class:`~moderndid.didtriple.container.DDDMultiPeriodRCResult`
+        - :class:`~moderndid.didinter.container.DIDInterResult`
+        - :class:`~moderndid.didinter.container.HeterogeneityResult`
     **kwargs
         Additional arguments passed to the underlying converter.
         For example, ``effect_type="acrt"`` for DoseResult.

@@ -36,7 +36,7 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 
 ## Features
 
-- [Staggered DiD](https://moderndid.readthedocs.io/en/latest/api/multiperiod.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/api/didcont.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/api/didtriple.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/api/didinter.html), and [Honest DiD](https://moderndid.readthedocs.io/en/latest/api/honestdid.html).
+- [Staggered DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_triple_did.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html), and [Honest DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html).
 - Works with any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more) via [narwhals](https://narwhals-dev.github.io/narwhals/).
 - Distributed computing with [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) backends.
 - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT computations, and threaded parallel compute.
@@ -113,6 +113,7 @@ p = (p
         strip_text=element_text(size=11, weight="bold"),
     )
 )
+p.save("att.png", dpi=200, width=8, height=5)
 ```
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="Group-time ATT estimates">

@@ -425,6 +425,7 @@ regardless of this setting.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_cont_event_study_slope.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_cont_event_study_slope.png
    :alt: Event study plot for ACRT
@@ -450,6 +451,7 @@ of the treatment effect function.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_cont_dose_att.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_cont_dose_att.png
    :alt: Dose-response curve for ATT
@@ -475,6 +477,7 @@ uncertainty where fewer observations are available.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_cont_dose_acrt.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_cont_dose_acrt.png
    :alt: Dose-response curve for ACRT
@@ -499,6 +502,7 @@ For the event study aggregation, use the standard event study plot.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_cont_event_study.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_cont_event_study.png
    :alt: Event study plot for continuous treatment
@@ -611,6 +615,7 @@ rather than imposing a parametric form.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_cont_cck.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_cont_cck.png
    :alt: Nonparametric dose-response curve
