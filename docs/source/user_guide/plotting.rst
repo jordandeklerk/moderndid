@@ -426,6 +426,7 @@ methodological context and a multiline caption with estimation details.
             ),
         )
     )
+    p.save("plot_twfe_comparison.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_guide_twfe_comparison.png
    :alt: Comparison of CS (2021) and TWFE event study estimates

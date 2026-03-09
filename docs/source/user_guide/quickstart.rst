@@ -379,6 +379,7 @@ it with any plotnine layer using the ``+`` operator.
         )
         + theme(plot_title=element_text(size=14, weight="bold"))
     )
+    plot.save("event_study.png", dpi=200, width=8, height=5)
 
 **ModernDiD** also ships with ready-made themes for common use cases.
 

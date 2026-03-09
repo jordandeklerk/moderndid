@@ -410,6 +410,7 @@ can plot the group-time estimates organized by cohort.
             strip_text=element_text(size=11, weight="bold"),
         )
     )
+    p.save("plot_gt.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_gt.png
    :alt: Group-time average treatment effects plot
@@ -432,6 +433,7 @@ post-treatment dynamics.
         + theme_gray()
         + theme(legend_position="bottom")
     )
+    p.save("plot_event_study.png", dpi=200, width=8, height=5)
 
 .. image:: /_static/images/plot_event_study.png
    :alt: Event study plot

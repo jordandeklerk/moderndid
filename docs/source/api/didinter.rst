@@ -44,3 +44,4 @@ Result Objects
    EffectsResult
    PlacebosResult
    ATEResult
+   HeterogeneityResult

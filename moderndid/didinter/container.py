@@ -3,7 +3,6 @@
 from typing import NamedTuple
 
 import numpy as np
-import polars as pl
 
 from moderndid.core.maketables import build_coef_table, se_type_label, vcov_info_from_bootstrap
 
@@ -44,20 +43,6 @@ class EffectsResult(NamedTuple):
     #: Number of observations at each horizon.
     n_observations: np.ndarray
 
-    def to_dataframe(self) -> pl.DataFrame:
-        """Convert to Polars DataFrame."""
-        return pl.DataFrame(
-            {
-                "Horizon": self.horizons,
-                "Estimate": self.estimates,
-                "Std. Error": self.std_errors,
-                "CI Lower": self.ci_lower,
-                "CI Upper": self.ci_upper,
-                "N Switchers": self.n_switchers,
-                "N Obs": self.n_observations,
-            }
-        )
-
 
 class PlacebosResult(NamedTuple):
     """Container for placebo effects at each pre-treatment horizon.
@@ -94,20 +79,6 @@ class PlacebosResult(NamedTuple):
     n_switchers: np.ndarray
     #: Number of observations at each horizon.
     n_observations: np.ndarray
-
-    def to_dataframe(self) -> pl.DataFrame:
-        """Convert to Polars DataFrame."""
-        return pl.DataFrame(
-            {
-                "Horizon": self.horizons,
-                "Estimate": self.estimates,
-                "Std. Error": self.std_errors,
-                "CI Lower": self.ci_lower,
-                "CI Upper": self.ci_upper,
-                "N Switchers": self.n_switchers,
-                "N Obs": self.n_observations,
-            }
-        )
 
 
 class ATEResult(NamedTuple):
@@ -186,22 +157,6 @@ class HeterogeneityResult(NamedTuple):
     n_obs: int
     #: P-value from joint F-test that all covariate coefficients are zero.
     f_pvalue: float
-
-    def to_dataframe(self) -> pl.DataFrame:
-        """Convert to Polars DataFrame."""
-        return pl.DataFrame(
-            {
-                "Horizon": [self.horizon] * len(self.covariates),
-                "Covariate": self.covariates,
-                "Estimate": self.estimates,
-                "Std. Error": self.std_errors,
-                "t-stat": self.t_stats,
-                "CI Lower": self.ci_lower,
-                "CI Upper": self.ci_upper,
-                "N": [self.n_obs] * len(self.covariates),
-                "F p-value": [self.f_pvalue] * len(self.covariates),
-            }
-        )
 
 
 class DIDInterResult(NamedTuple):

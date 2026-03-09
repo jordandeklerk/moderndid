@@ -24,6 +24,7 @@ from .estimation import (
     GroupTimeATTResult,
     PTEAggteResult,
     PTEParams,
+    PTEResult,
     _summary_dose_result,
     aggregate_att_gt,
     did_attgt,
@@ -66,6 +67,7 @@ __all__ = [
     "PTEAggteResult",
     # Panel treatment effects setup
     "PTEParams",
+    "PTEResult",
     "_get_first_difference",
     "_get_group",
     "_make_balanced_panel",
