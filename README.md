@@ -75,7 +75,7 @@ To install the latest development version directly from GitHub:
 uv pip install "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
 ```
 
-See the [Installation guide](https://moderndid.readthedocs.io/en/latest/user_guide/installation.html) for troubleshooting and GPU-specific setup.
+See the [Installation guide](https://moderndid.readthedocs.io/en/latest/getting_started/installation.html) for troubleshooting and GPU-specific setup.
 
 ## Quick Start
 
