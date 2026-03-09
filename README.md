@@ -83,6 +83,7 @@ Using county-level panel data from [Callaway and Sant'Anna (2021)](https://doi.o
 
 ```python
 import moderndid as did
+from plotnine import element_text, labs, theme, theme_gray
 
 data = did.load_mpdta()
 
@@ -100,32 +101,7 @@ result = did.att_gt(
 # Aggregate into an event study
 agg = did.aggte(result, type="dynamic")
 
-did.plot_gt(result, ncol=3)
-```
-
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="Group-time ATT estimates">
-
-The [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html) has tutorials for every estimator.
-
-### Consistent API
-
-All estimators use the same naming conventions for core arguments:
-
-```python
-result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
-result = did.ddd(data, yname="y", tname="t", idname="id", gname="g", pname="p", ...)
-result = did.cont_did(data, yname="y", tname="t", idname="id", gname="g", dname="dose", ...)
-result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", ...)
-result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
-```
-
-### Plotting
-
-Plot functions return [plotnine](https://plotnine.org/) `ggplot` objects that you can customize:
-
-```python
-from plotnine import element_text, labs, theme, theme_gray
-
+# Plot functions return plotnine ggplot objects you can customize
 p = did.plot_gt(result, ncol=3)
 p = (p
     + labs(
@@ -144,7 +120,19 @@ p = (p
 
 <img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="Group-time ATT estimates">
 
-See the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html) for more examples.
+The [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html) has tutorials for every estimator. See also the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html).
+
+### Consistent API
+
+All estimators use the same naming conventions for core arguments:
+
+```python
+result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
+result = did.ddd(data, yname="y", tname="t", idname="id", gname="g", pname="p", ...)
+result = did.cont_did(data, yname="y", tname="t", idname="id", gname="g", dname="dose", ...)
+result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", ...)
+result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
+```
 
 ### Publication Tables
 
