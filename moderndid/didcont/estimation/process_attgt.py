@@ -8,7 +8,7 @@ import scipy.stats
 from moderndid.did.mboot import mboot
 
 from ...cupy.backend import get_backend, to_numpy
-from .container import GroupTimeATTResult
+from ..container import GroupTimeATTResult
 
 
 def process_att_gt(att_gt_results, pte_params, rng=None):

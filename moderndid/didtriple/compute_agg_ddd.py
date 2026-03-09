@@ -7,8 +7,8 @@ import warnings
 import numpy as np
 from scipy import stats
 
-from .agg_ddd_obj import DDDAggResult
 from .bootstrap.mboot_ddd import mboot_ddd
+from .container import DDDAggResult
 
 
 def compute_agg_ddd(

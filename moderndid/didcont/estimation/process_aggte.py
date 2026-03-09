@@ -9,7 +9,7 @@ import scipy.stats as st
 from moderndid.core.preprocess import map_to_idx as _map_to_idx
 from moderndid.did.mboot import mboot
 
-from .container import PTEAggteResult
+from ..container import PTEAggteResult
 
 
 def aggregate_att_gt(

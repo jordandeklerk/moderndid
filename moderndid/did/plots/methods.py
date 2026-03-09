@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from plotnine import ggplot
 
-    from moderndid.did.aggte_obj import AGGTEResult
-    from moderndid.did.multiperiod_obj import MPResult
+    from moderndid.did.container import AGGTEResult, MPResult
 
 
 def _mp_plot(self: MPResult, **kwargs: Any) -> ggplot:
@@ -49,8 +48,7 @@ def _aggte_plot(self: AGGTEResult, **kwargs: Any) -> ggplot:
 
 def add_plot_methods() -> None:
     """Add plot methods to result objects."""
-    from moderndid.did.aggte_obj import AGGTEResult
-    from moderndid.did.multiperiod_obj import MPResult
+    from moderndid.did.container import AGGTEResult, MPResult
 
     MPResult.plot = _mp_plot
     AGGTEResult.plot = _aggte_plot

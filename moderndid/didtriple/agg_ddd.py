@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from .agg_ddd_obj import DDDAggResult
 from .compute_agg_ddd import compute_agg_ddd
+from .container import DDDAggResult
 
 
 def agg_ddd(

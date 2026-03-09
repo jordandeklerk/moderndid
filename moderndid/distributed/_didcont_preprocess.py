@@ -9,7 +9,7 @@ import polars as pl
 
 from moderndid.core.preprocess.constants import WEIGHTS_COLUMN
 from moderndid.core.preprocess.utils import choose_knots_quantile
-from moderndid.didcont.estimation.container import PTEParams
+from moderndid.didcont.container import PTEParams
 
 NEVER_TREATED = float("inf")
 

@@ -8,8 +8,8 @@ import scipy.stats as st
 from moderndid.did.mboot import mboot
 
 from ...cupy.backend import to_numpy
+from ..container import DoseResult
 from ..spline import BSpline
-from .container import DoseResult
 from .process_aggte import (
     check_critical_value,
     get_se,

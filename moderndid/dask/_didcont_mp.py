@@ -11,7 +11,7 @@ from distributed import as_completed
 
 from moderndid.core.preprocessing import preprocess_cont_did
 from moderndid.didcont.cont_did import _estimate_cck
-from moderndid.didcont.estimation.container import PTEResult
+from moderndid.didcont.container import PTEResult
 from moderndid.didcont.estimation.process_aggte import aggregate_att_gt
 from moderndid.didcont.estimation.process_attgt import process_att_gt
 from moderndid.didcont.estimation.process_dose import process_dose_gt

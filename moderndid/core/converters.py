@@ -8,14 +8,11 @@ import numpy as np
 import polars as pl
 
 if TYPE_CHECKING:
-    from moderndid.did.aggte_obj import AGGTEResult
-    from moderndid.did.multiperiod_obj import MPResult
-    from moderndid.didcont.estimation.container import DoseResult, PTEResult
+    from moderndid.did.container import AGGTEResult, MPResult
+    from moderndid.didcont.container import DoseResult, PTEResult
     from moderndid.didhonest.honest_did import HonestDiDResult
-    from moderndid.didinter.results import DIDInterResult
-    from moderndid.didtriple.agg_ddd_obj import DDDAggResult
-    from moderndid.didtriple.estimators.ddd_mp import DDDMultiPeriodResult
-    from moderndid.didtriple.estimators.ddd_mp_rc import DDDMultiPeriodRCResult
+    from moderndid.didinter.container import DIDInterResult
+    from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult
 
 
 def mpresult_to_polars(result: MPResult) -> pl.DataFrame:

@@ -7,7 +7,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid.didcont.estimation.container import (
+from moderndid.didcont.container import (
     AttgtResult,
     DoseResult,
     PTEParams,

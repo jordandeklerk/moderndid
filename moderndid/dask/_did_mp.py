@@ -17,7 +17,7 @@ import scipy.stats
 from distributed import wait
 
 from moderndid.core.dataframe import to_polars
-from moderndid.did.multiperiod_obj import mp
+from moderndid.did.container import mp
 from moderndid.distributed._did_partition import _partition_did_pscore_gram
 
 from ._bootstrap import distributed_mboot_ddd

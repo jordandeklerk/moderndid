@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from moderndid.didtriple.agg_ddd_obj import DDDAggResult
 from moderndid.didtriple.compute_agg_ddd import compute_agg_ddd
+from moderndid.didtriple.container import DDDAggResult
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])

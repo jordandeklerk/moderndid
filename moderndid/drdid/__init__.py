@@ -17,6 +17,7 @@ from .bootstrap.boot_rc_ipt import wboot_drdid_ipt_rc1, wboot_drdid_ipt_rc2
 from .bootstrap.boot_reg_rc import wboot_reg_rc
 from .bootstrap.boot_std_ipw_rc import wboot_std_ipw_rc
 from .bootstrap.boot_twfe_rc import wboot_twfe_rc
+from .container import DRDIDResult, IPWDIDResult, ORDIDResult
 from .drdid import drdid
 from .estimators.drdid_imp_local_rc import drdid_imp_local_rc
 from .estimators.drdid_imp_panel import drdid_imp_panel

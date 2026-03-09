@@ -6,8 +6,8 @@ import numpy as np
 import polars as pl
 
 from ...core.dataframe import to_polars
+from ..container import PteEmpBootResult
 from ..utils import _quantile_basis
-from .container import PteEmpBootResult
 
 
 def panel_empirical_bootstrap(

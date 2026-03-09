@@ -15,8 +15,8 @@ from moderndid.core.preprocess import (
 )
 from moderndid.core.preprocess.models import ContDIDData
 
+from ..container import PTEParams, PTEResult
 from .bootstrap import panel_empirical_bootstrap
-from .container import PTEParams, PTEResult
 from .estimators import pte_attgt
 from .process_aggte import aggregate_att_gt
 from .process_attgt import process_att_gt

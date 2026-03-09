@@ -16,7 +16,7 @@ from moderndid.core.preprocess import (
     map_to_idx as _map_to_idx,
 )
 
-from .container import (
+from ..container import (
     AttgtResult,
     DoseResult,
     GroupTimeATTResult,

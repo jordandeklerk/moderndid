@@ -1,9 +1,17 @@
 """Core DDD estimators."""
 
-from moderndid.didtriple.estimators.ddd_mp import ATTgtResult, DDDMultiPeriodResult, ddd_mp
-from moderndid.didtriple.estimators.ddd_mp_rc import ATTgtRCResult, DDDMultiPeriodRCResult, ddd_mp_rc
-from moderndid.didtriple.estimators.ddd_panel import DDDPanelResult, ddd_panel
-from moderndid.didtriple.estimators.ddd_rc import DDDRCResult, ddd_rc
+from moderndid.didtriple.container import (
+    ATTgtRCResult,
+    ATTgtResult,
+    DDDMultiPeriodRCResult,
+    DDDMultiPeriodResult,
+    DDDPanelResult,
+    DDDRCResult,
+)
+from moderndid.didtriple.estimators.ddd_mp import ddd_mp
+from moderndid.didtriple.estimators.ddd_mp_rc import ddd_mp_rc
+from moderndid.didtriple.estimators.ddd_panel import ddd_panel
+from moderndid.didtriple.estimators.ddd_rc import ddd_rc
 
 __all__ = [
     "ATTgtRCResult",

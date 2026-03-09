@@ -9,7 +9,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid.didcont.estimation.container import AttgtResult
+from moderndid.didcont.container import AttgtResult
 from moderndid.didcont.estimation.estimators import did_attgt, pte_attgt
 
 
