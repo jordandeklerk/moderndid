@@ -5,10 +5,17 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from moderndid.core.result import extract_n_obs, extract_vcov_info
 from moderndid.did.container import AGGTEResult, MPResult
 from moderndid.didinter.container import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
-from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodResult
-from moderndid.drdid.container import DRDIDResult
+from moderndid.didtriple.container import (
+    DDDAggResult,
+    DDDMultiPeriodRCResult,
+    DDDMultiPeriodResult,
+    DDDPanelResult,
+    DDDRCResult,
+)
+from moderndid.drdid.container import DRDIDResult, IPWDIDResult, ORDIDResult
 from tests.helpers import importorskip
 
 importorskip("formulaic")
@@ -316,3 +323,217 @@ def test_pte_result_delegates_maketables_plugin():
     assert coef_table.index.tolist() == ["Overall ATT", "Event 0", "Event 1"]
     assert {"ci95l", "ci95u", "ci90l", "ci90u"}.issubset(set(coef_table.columns))
     assert result.__maketables_depvar__ == "y"
+
+
+@pytest.mark.parametrize(
+    "params, bootstrap_key, result_key, expected",
+    [
+        ({"bootstrap": True}, "bootstrap", "vcov_type", "bootstrap"),
+        ({"bootstrap": False}, "bootstrap", "vcov_type", "analytical"),
+        ({"bootstrap": False, "cluster": "county"}, "bootstrap", "clustervar", "county"),
+        ({"bootstrap": False, "clustervars": "state"}, "bootstrap", "clustervar", "state"),
+        ({"boot": True}, "boot", "vcov_type", "bootstrap"),
+    ],
+)
+def test_extract_vcov_info(params, bootstrap_key, result_key, expected):
+    info = extract_vcov_info(params, bootstrap_key=bootstrap_key)
+    assert expected in str(info[result_key])
+
+
+@pytest.mark.parametrize(
+    "influence, params, expected",
+    [
+        (None, {"n_obs": 500}, 500),
+        (None, {"n_units": 200}, 200),
+        (np.zeros((100, 5)), None, 100),
+        (None, {}, None),
+        (np.zeros((100, 5)), {"n_obs": 50}, 50),
+    ],
+)
+def test_extract_n_obs(influence, params, expected):
+    args = (influence,) if influence is not None else ()
+    assert extract_n_obs(*args, params=params) == expected
+
+
+@pytest.mark.parametrize(
+    "cls, call_params, args, expected_n, expected_se_type, expected_depvar, expected_vcov",
+    [
+        (
+            IPWDIDResult,
+            {"yname": "wage", "data_shape": (200, 4)},
+            {"boot": True},
+            200,
+            "Bootstrap",
+            "wage",
+            "bootstrap",
+        ),
+        (
+            ORDIDResult,
+            {"yname": "income", "data_shape": (300, 5)},
+            {"boot": False},
+            300,
+            "Analytical",
+            "income",
+            "analytical",
+        ),
+    ],
+)
+def test_drdid_variants_expose_maketables_plugin(
+    cls, call_params, args, expected_n, expected_se_type, expected_depvar, expected_vcov
+):
+    result = cls(att=1.0, se=0.3, uci=1.6, lci=0.4, boots=None, att_inf_func=None, call_params=call_params, args=args)
+
+    coef_table = result.__maketables_coef_table__
+    assert coef_table.index.tolist() == ["ATT"]
+    assert {"ci95l", "ci95u", "ci90l", "ci90u"}.issubset(set(coef_table.columns))
+    assert result.__maketables_stat__("N") == expected_n
+    assert result.__maketables_stat__("se_type") == expected_se_type
+    assert result.__maketables_depvar__ == expected_depvar
+    assert result.__maketables_fixef_string__ is None
+    assert result.__maketables_vcov_info__["vcov_type"] == expected_vcov
+    assert result.__maketables_default_stat_keys__ == ["N", "se_type"]
+    np.testing.assert_allclose(coef_table.loc["ATT", "ci95l"], 0.4)
+    np.testing.assert_allclose(coef_table.loc["ATT", "ci95u"], 1.6)
+
+
+@pytest.mark.parametrize(
+    "cls, subgroup_counts, args, expected_n, expected_se_type, expected_vcov",
+    [
+        (
+            DDDPanelResult,
+            {"treated_target": 50, "treated_other": 40, "control_target": 60, "control_other": 55},
+            {"yname": "y", "boot": False, "est_method": "dr"},
+            205,
+            "Analytical",
+            "analytical",
+        ),
+        (
+            DDDRCResult,
+            {"treated_target": 100, "control_target": 120},
+            {"yname": "y", "boot": True, "est_method": "ipw"},
+            220,
+            "Bootstrap",
+            "bootstrap",
+        ),
+    ],
+)
+def test_ddd_two_period_results_expose_maketables_plugin(
+    cls, subgroup_counts, args, expected_n, expected_se_type, expected_vcov
+):
+    result = cls(
+        att=0.5,
+        se=0.1,
+        uci=0.7,
+        lci=0.3,
+        boots=None,
+        att_inf_func=None,
+        did_atts={"a": 0.2, "b": 0.8},
+        subgroup_counts=subgroup_counts,
+        args=args,
+    )
+
+    coef_table = result.__maketables_coef_table__
+    assert coef_table.index.tolist() == ["ATT"]
+    assert {"ci95l", "ci95u", "ci90l", "ci90u"}.issubset(set(coef_table.columns))
+    assert result.__maketables_stat__("N") == expected_n
+    assert result.__maketables_stat__("se_type") == expected_se_type
+    assert result.__maketables_stat__("est_method") == args["est_method"]
+    assert result.__maketables_stat__("unknown_key") is None
+    assert result.__maketables_depvar__ == "y"
+    assert result.__maketables_fixef_string__ is None
+    assert result.__maketables_vcov_info__["vcov_type"] == expected_vcov
+    assert result.__maketables_stat_labels__ == {"est_method": "Estimation Method"}
+    assert result.__maketables_default_stat_keys__ == ["N", "se_type", "est_method"]
+
+
+def test_ddd_mp_rc_result_exposes_maketables_plugin():
+    result = DDDMultiPeriodRCResult(
+        att=np.array([0.1, 0.2]),
+        se=np.array([0.05, 0.08]),
+        uci=np.array([0.2, 0.35]),
+        lci=np.array([0.0, 0.05]),
+        groups=np.array([2, 3]),
+        times=np.array([2, 3]),
+        glist=np.array([2, 3]),
+        tlist=np.array([1, 2, 3]),
+        inf_func_mat=np.zeros((50, 2)),
+        n=50,
+        args={"yname": "y", "control_group": "nevertreated", "base_period": "varying", "est_method": "dr"},
+        unit_groups=np.zeros(50),
+    )
+
+    coef_table = result.__maketables_coef_table__
+    assert coef_table.index.tolist() == ["ATT(g=2, t=2)", "ATT(g=3, t=3)"]
+    assert {"ci95l", "ci95u", "ci90l", "ci90u"}.issubset(set(coef_table.columns))
+    assert result.__maketables_stat__("N") == 50
+    assert result.__maketables_stat__("n_cohorts") == 2
+    assert result.__maketables_stat__("n_periods") == 3
+    assert result.__maketables_stat__("se_type") == "Analytical"
+    assert result.__maketables_stat__("control_group") == "Never Treated"
+    assert result.__maketables_stat__("base_period") == "varying"
+    assert result.__maketables_stat__("est_method") == "dr"
+    assert result.__maketables_stat__("unknown_key") is None
+    assert result.__maketables_depvar__ == "y"
+    assert result.__maketables_fixef_string__ is None
+    assert "n_cohorts" in result.__maketables_stat_labels__
+    assert "N" in result.__maketables_default_stat_keys__
+
+
+def test_mp_result_n_units_none():
+    result = MPResult(
+        groups=np.array([2000]),
+        times=np.array([2001]),
+        att_gt=np.array([0.2]),
+        vcov_analytical=np.eye(1),
+        se_gt=np.array([0.1]),
+        critical_value=1.96,
+        influence_func=np.zeros((10, 1)),
+    )
+
+    assert result.__maketables_stat__("N") is None
+
+
+def test_aggte_result_no_critical_values():
+    result = AGGTEResult(
+        overall_att=0.3,
+        overall_se=0.1,
+        aggregation_type="dynamic",
+        event_times=np.array([-1, 0, 1]),
+        att_by_event=np.array([0.0, 0.2, 0.4]),
+        se_by_event=np.array([0.1, 0.12, 0.15]),
+        estimation_params={"alpha": 0.05},
+    )
+
+    coef_table = result.__maketables_coef_table__
+    assert len(coef_table) == 4
+    assert {"ci95l", "ci95u"}.issubset(set(coef_table.columns))
+
+
+def test_aggte_result_with_estimation_method():
+    result = AGGTEResult(
+        overall_att=0.3,
+        overall_se=0.1,
+        aggregation_type="simple",
+        estimation_params={"estimation_method": "dr", "n_obs": 500, "n_units": 100},
+    )
+
+    assert result.__maketables_stat__("N") == 500
+    assert result.__maketables_stat__("n_units") == 100
+    keys = result.__maketables_default_stat_keys__
+    assert "N" in keys
+    assert "n_units" in keys
+    assert "estimation_method" in keys
+
+
+def test_ddd_agg_default_stat_keys_with_n():
+    result = DDDAggResult(
+        overall_att=0.4,
+        overall_se=0.15,
+        aggregation_type="simple",
+        inf_func_overall=np.zeros((30,)),
+        args={"est_method": "dr"},
+    )
+
+    keys = result.__maketables_default_stat_keys__
+    assert "N" in keys
+    assert "est_method" in keys
