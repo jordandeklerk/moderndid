@@ -16,6 +16,13 @@ effects vary with treatment intensity. It handles both continuous doses and
 staggered adoption, allowing researchers to trace out the full relationship
 between treatment intensity and outcomes.
 
+.. seealso::
+
+   :ref:`Introduction to DiD <causal_inference>` for background on the
+   parallel trends assumption and potential outcomes framework, and
+   :ref:`DiD with Continuous Treatments <background-didcont>` for the
+   theoretical foundations behind this estimator.
+
 
 Simulating data
 ---------------

@@ -17,6 +17,13 @@ reports confidence intervals that remain valid under those bounds.
 This example demonstrates sensitivity analysis using state-level data on health
 insurance coverage following Medicaid expansion under the Affordable Care Act.
 
+.. seealso::
+
+   :ref:`Introduction to DiD <causal_inference>` for background on the
+   parallel trends assumption and potential outcomes framework, and
+   :ref:`Honest DiD Sensitivity Analysis <background-didhonest>` for the
+   theoretical foundations behind this estimator.
+
 
 Why sensitivity analysis matters
 --------------------------------

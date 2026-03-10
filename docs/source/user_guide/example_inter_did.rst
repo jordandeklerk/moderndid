@@ -23,6 +23,13 @@ to those with the same baseline treatment that have not yet changed. This
 allows for valid causal inference even when treatment intensity varies and
 past treatments affect current outcomes.
 
+.. seealso::
+
+   :ref:`Introduction to DiD <causal_inference>` for background on the
+   parallel trends assumption and potential outcomes framework, and
+   :ref:`DiD with Intertemporal Treatment Effects <background-didinter>` for the
+   theoretical foundations behind this estimator.
+
 
 Empirical application
 ---------------------
