@@ -14,6 +14,18 @@ consistent API. Every estimator follows the same three-step workflow of
 **estimate, aggregate, visualize**. Switching between designs means
 changing one function call, not learning a new package.
 
+Who is this for?
+^^^^^^^^^^^^^^^^
+
+**ModernDiD** is built for applied researchers, economists, and data scientists
+doing causal inference with difference-in-differences. If you already use
+R packages for DiD, **ModernDiD** gives you the same estimators in Python
+with a unified interface. If you are new to DiD, the
+:ref:`introduction <causal_inference>` covers the key ideas.
+
+A typical analysis estimates group-time effects, aggregates them, and plots
+the result.
+
 .. code-block:: python
 
     import moderndid as did
@@ -36,14 +48,8 @@ changing one function call, not learning a new package.
     # Visualize
     did.plot_event_study(event_study)
 
-The same pattern applies across every estimator: :func:`~moderndid.cont_did`
-for continuous treatments, :func:`~moderndid.ddd` for triple differences,
-:func:`~moderndid.did_multiplegt` for intertemporal designs, and
-:func:`~moderndid.honest_did` for sensitivity analysis. See the
-:ref:`estimator overview <estimator-overview>` for guidance on choosing the
-right one.
-
-See :doc:`installation` for install options and optional extras.
+Switching between estimators means changing one function call. The
+aggregation and plotting interface stays the same.
 
 
 .. _whatis-design:
@@ -80,6 +86,14 @@ Key features
 - **Native plots.** Built-in
   `plotnine <https://plotnine.org/>`_ visualizations returning standard
   ``ggplot`` objects you can customize with the full grammar of graphics.
+- **Publication tables.** Result objects implement the
+  `maketables <https://py-econometrics.github.io/maketables/>`_ plug-in
+  interface, so you can build publication-quality regression tables directly
+  from estimation output. See the
+  :doc:`publication tables guide </user_guide/publication_tables>`.
+- **Panel utilities.** Diagnose, reshape, and clean panel data with built-in
+  tools for gap detection, balancing, first-differencing, and wide/long
+  conversion. See the :doc:`panel utilities guide </user_guide/panel_utilities>`.
 - **Robust inference.** Analytical standard errors, bootstrap (weighted and
   multiplier), and simultaneous confidence bands.
 

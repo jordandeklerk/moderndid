@@ -16,6 +16,13 @@ estimator addresses this by computing separate treatment effects for each
 cohort at each time period, then aggregating them into interpretable summaries
 like event studies.
 
+.. seealso::
+
+   :ref:`Introduction to DiD <causal_inference>` for background on the
+   parallel trends assumption and potential outcomes framework, and
+   :ref:`DiD with Multiple Time Periods <background-did>` for the
+   theoretical foundations behind this estimator.
+
 
 Empirical application
 ---------------------

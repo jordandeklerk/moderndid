@@ -371,51 +371,9 @@ A typical implementation on a result class looks like this.
 Adding Maketables Support to a New Estimator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To make a new result class work with maketables, implement the plug-in
-attributes using the shared helpers.
-
-.. code-block:: python
-
-   from moderndid.core.maketables import (
-       build_coef_table_with_ci,
-       control_group_label,
-       est_method_label,
-       se_type_label,
-       vcov_info_from_bootstrap,
-   )
-
-   class MyResult(NamedTuple):
-       att: float
-       se: float
-       estimation_params: dict
-
-       @property
-       def __maketables_coef_table__(self):
-           return build_coef_table_with_ci(["ATT"], [self.att], [self.se])
-
-       def __maketables_stat__(self, key):
-           if key == "N":
-               return self.estimation_params.get("n_obs")
-           if key == "se_type":
-               return se_type_label(bool(self.estimation_params.get("bootstrap")))
-           return None
-
-       @property
-       def __maketables_depvar__(self):
-           return str(self.estimation_params.get("yname", "Y"))
-
-       @property
-       def __maketables_fixef_string__(self):
-           return None
-
-       @property
-       def __maketables_vcov_info__(self):
-           return vcov_info_from_bootstrap(
-               is_bootstrap=bool(self.estimation_params.get("bootstrap")),
-           )
-
-Once these attributes are in place, the result can be passed directly to
-``maketables.ETable``.
+See :ref:`Step 9: Add Maketables Support <new-estimator-maketables>` in the
+new estimator guide for a full implementation walkthrough covering all seven
+interface components, the shared helpers, and label mapping conventions.
 
 Implementation Standards
 ========================

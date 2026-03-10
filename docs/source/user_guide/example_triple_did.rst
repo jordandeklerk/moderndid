@@ -19,6 +19,13 @@ The `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>
 estimator provides doubly robust inference for DDD designs, supporting both
 two-period and staggered adoption settings.
 
+.. seealso::
+
+   :ref:`Introduction to DiD <causal_inference>` for background on the
+   parallel trends assumption and potential outcomes framework, and
+   :ref:`Triple Difference-in-Differences <background-tripledid>` for the
+   theoretical foundations behind this estimator.
+
 
 Three dimensions of variation
 ------------------------------
