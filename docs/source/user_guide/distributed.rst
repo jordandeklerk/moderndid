@@ -37,8 +37,8 @@ Install the extra for the backend you plan to use.
     uv pip install moderndid[dask]     # Dask backend
     uv pip install moderndid[spark]    # Spark backend
 
-The ``all`` extra includes both, so ``uv pip install moderndid[all]``
-also works. **ModernDiD** cannot set up your cluster environment for you.
+The ``all`` extra includes Dask but not Spark (which requires a JVM),
+so Spark users should install ``moderndid[spark]`` explicitly. **ModernDiD** cannot set up your cluster environment for you.
 Creating clusters, managing workers/executors, and building distributed
 DataFrames is the responsibility of the user. Once you have a Dask or Spark
 DataFrame, **ModernDiD** handles the rest.

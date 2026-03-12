@@ -64,7 +64,7 @@ Some estimators and features require additional dependencies that are not instal
 - **`gpu`** - GPU-accelerated estimation (requires CUDA)
 
 ```bash
-uv pip install "moderndid[all]"             # All extras except gpu
+uv pip install "moderndid[all]"             # All extras except gpu and spark
 uv pip install "moderndid[didcont,plots]"   # Combine specific extras
 uv pip install "moderndid[gpu,spark]"       # GPU + distributed
 ```
