@@ -45,11 +45,11 @@ you always get the core estimators plus whatever extras you specify.
 - **gpu** -- GPU-accelerated estimation (requires CUDA)
 - **dask** -- Distributed estimation on Dask clusters
 - **spark** -- Distributed estimation on Spark clusters
-- **all** -- Everything except ``gpu``, which requires specific infrastructure
+- **all** -- Everything except ``gpu`` and ``spark``, which require specific infrastructure
 
 .. code-block:: console
 
-    uv pip install "moderndid[all]"             # All extras except gpu
+    uv pip install "moderndid[all]"             # All extras except gpu and spark
     uv pip install "moderndid[didcont,plots]"   # Combine specific extras
     uv pip install "moderndid[gpu,spark]"       # GPU + distributed
 

@@ -427,8 +427,8 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
         time_constraint_col = f"time_constraint_{abs_h}"
 
         df = df.with_columns(
-            (pl.lit(abs_h) <= (pl.col("T_g") - 1)).cast(pl.Int64).alias(dummy_u_gg_col),
-            ((pl.col(tname) >= pl.lit(abs_h + 1)) & (pl.col(tname) <= pl.col("T_g")))
+            ((pl.col("T_g") - 1) >= abs_h).cast(pl.Int64).alias(dummy_u_gg_col),
+            ((pl.col(tname) >= (abs_h + 1)) & (pl.col(tname) <= pl.col("T_g")))
             .cast(pl.Int64)
             .alias(time_constraint_col),
         )

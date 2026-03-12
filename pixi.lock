@@ -10791,7 +10791,7 @@ packages:
 - pypi: ./
   name: moderndid
   version: 0.1.1
-  sha256: 82bf6f39f0c07e0b3e6e3f5820e0a2d35f7254ab2d104a8d43255db323366afe
+  sha256: aa2e23b6980964cd0952d0a836610cfb730efebd9814ae7aeb54f8b553b5a648
   requires_dist:
   - numpy>=1.22.0
   - scipy>=1.17
@@ -10800,7 +10800,7 @@ packages:
   - narwhals>=1.13.3
   - statsmodels>=0.14.4
   - prettytable>=3.10.0
-  - moderndid[didcont,didhonest,plots,numba,dask,spark] ; extra == 'all'
+  - moderndid[didcont,didhonest,plots,numba,dask] ; extra == 'all'
   - dask[dataframe]>=2024.1.0 ; extra == 'dask'
   - distributed>=2024.1.0 ; extra == 'dask'
   - pre-commit ; extra == 'dev'
