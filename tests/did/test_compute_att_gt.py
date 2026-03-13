@@ -187,7 +187,7 @@ def test_run_drdid_all_missing(panel_data):
     assert "att" in result
     assert "inf_func" in result
     assert np.isnan(result["att"])
-    assert np.all(result["inf_func"] == 0)
+    assert np.all(np.isnan(result["inf_func"]))
 
 
 @pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")

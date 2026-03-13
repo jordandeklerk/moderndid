@@ -198,6 +198,53 @@ def run_att_gt_estimation(
             cohort_data["rowid"] = data.data[".rowid"].to_numpy()
         covariates = data.covariates_matrix
 
+    if not callable(data.config.est_method):
+        valid_obs = ~np.isnan(cohort_index)
+        d_valid = cohort_index[valid_obs]
+        g_val = data.config.treated_groups[group_idx]
+        t_val = data.config.time_periods[time_idx + time_factor]
+
+        if not data.config.panel:
+            post = cohort_data["post"][valid_obs]
+            G = d_valid == 1
+            C = d_valid == 0
+            skip = False
+            if np.sum(G & (post == 1)) == 0:
+                warnings.warn(f"No treated units in group {g_val} in time period {t_val}", UserWarning)
+                skip = True
+            if np.sum(G & (post == 0)) == 0:
+                warnings.warn(f"No treated units in group {g_val} in pre-treatment period", UserWarning)
+                skip = True
+            if np.sum(C & (post == 1)) == 0:
+                warnings.warn(f"No control units for group {g_val} in time period {t_val}", UserWarning)
+                skip = True
+            if np.sum(C & (post == 0)) == 0:
+                warnings.warn(f"No control units for group {g_val} in pre-treatment period", UserWarning)
+                skip = True
+            if skip:
+                return None
+
+        if data.config.est_method in (EstimationMethod.DOUBLY_ROBUST, EstimationMethod.REGRESSION):
+            cov_valid = covariates[valid_obs] if covariates.ndim > 1 else np.ones((valid_obs.sum(), 1))
+            control_covs = cov_valid[d_valid == 0]
+            if control_covs.shape[0] > 0:
+                gram = control_covs.T @ control_covs
+                try:
+                    cond = np.linalg.cond(gram)
+                    if cond > 1.0 / np.finfo(float).eps:
+                        warnings.warn(
+                            f"Not enough control units for group {g_val} in time period {t_val} "
+                            "to run specified regression",
+                            UserWarning,
+                        )
+                        return None
+                except np.linalg.LinAlgError:
+                    warnings.warn(
+                        f"Singular covariate matrix for group {g_val} in time period {t_val}",
+                        UserWarning,
+                    )
+                    return None
+
     try:
         return run_drdid(cohort_data, covariates, data)
     except (ValueError, RuntimeError, np.linalg.LinAlgError) as e:
@@ -334,7 +381,7 @@ def run_drdid(
     valid_obs = ~np.isnan(cohort_data["D"])
 
     if valid_obs.sum() == 0:
-        return {"att": np.nan, "inf_func": np.zeros(n)}
+        return {"att": np.nan, "inf_func": np.full(n, np.nan)}
 
     if data.config.panel:
         y1 = cohort_data["y1"][valid_obs]
@@ -405,6 +452,9 @@ def run_drdid(
             influence_func = np.zeros(n)
             influence_func[valid_obs] = (n / valid_obs.sum()) * result.att_inf_func
 
+    if np.isnan(result.att):
+        return {"att": np.nan, "inf_func": np.full(n, np.nan)}
+
     return {"att": result.att, "inf_func": influence_func}
 
 
@@ -424,14 +474,23 @@ def _process_gt_cell_did(group_idx, time_idx, data):
 
     if estimation_result is None or estimation_result["att"] is None:
         if data.config.base_period == "universal":
+            pre_periods = np.where(
+                data.config.time_periods < (data.config.treated_groups[group_idx] - data.config.anticipation)
+            )[0]
+            is_reference = (
+                len(pre_periods) > 0
+                and data.config.time_periods[pre_periods[-1]] == data.config.time_periods[time_idx + time_factor]
+            )
+            att_val = 0.0 if is_reference else np.nan
+            inf_func = np.zeros(n_units) if is_reference else np.full(n_units, np.nan)
             return (
                 ATTgtResult(
-                    att=0.0,
+                    att=att_val,
                     group=data.config.treated_groups[group_idx],
                     year=data.config.time_periods[time_idx + time_factor],
                     post=is_post_treatment,
                 ),
-                np.zeros(n_units),
+                inf_func,
             )
         return (None, None)
 
@@ -439,8 +498,7 @@ def _process_gt_cell_did(group_idx, time_idx, data):
     influence_func = estimation_result["inf_func"]
 
     if np.isnan(att_estimate):
-        att_estimate = 0.0
-        influence_func = np.zeros(n_units)
+        influence_func = np.full(n_units, np.nan)
 
     return (
         ATTgtResult(

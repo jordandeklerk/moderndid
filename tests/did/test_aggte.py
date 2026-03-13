@@ -181,9 +181,8 @@ def test_aggte_all_nan_values():
 
     result.att_gt[:] = np.nan
 
-    agg_result = aggte(result, type="simple", na_rm=True)
-    assert agg_result.overall_att == 0.0
-    assert np.isnan(agg_result.overall_se)
+    with pytest.raises(ValueError, match="All att_gt estimates are NA"):
+        aggte(result, type="simple", na_rm=True)
 
 
 def test_aggte_empty_keepers_after_filtering():

@@ -115,6 +115,12 @@ def compute_aggte(
 
     if dropna:
         notna = ~np.isnan(att)
+        if not notna.any():
+            raise ValueError(
+                "All att_gt estimates are NA. Cannot compute aggregated treatment effects. "
+                "Check your att_gt results for estimation problems (e.g., too few observations, "
+                "singular matrices, or overlap violations)."
+            )
         groups = groups[notna]
         times = times[notna]
         att = att[notna]
@@ -395,6 +401,7 @@ def _compute_group_att(
 
     group_influence_functions = np.column_stack(group_influence_functions)
     group_att_clean = np.where(np.isnan(group_att), 0, group_att)
+    valid_group_mask = ~np.isnan(group_att)
 
     group_se, critical_value, _ = _batched_se(
         group_influence_functions,
@@ -406,28 +413,33 @@ def _compute_group_att(
         random_state,
     )
 
-    # Overall ATT: weighted average across groups
-    overall_att = np.sum(group_att_clean * group_probabilities) / np.sum(group_probabilities)
+    if valid_group_mask.any():
+        valid_probs = group_probabilities[valid_group_mask]
+        overall_att = np.sum(group_att_clean[valid_group_mask] * valid_probs) / np.sum(valid_probs)
 
-    if unit_level_groups is not None and unit_level_weights is not None:
-        weight_influence_function = _compute_weight_inf_func(
-            keepers=np.arange(len(unique_groups_recoded)),
-            group_probabilities=group_probabilities,
-            unit_level_weights=unit_level_weights,
-            unit_level_groups=unit_level_groups,
-            groups=unique_groups_recoded,
-            unique_groups_recoded=unique_groups_recoded,
+        valid_indices = np.where(valid_group_mask)[0]
+        if unit_level_groups is not None and unit_level_weights is not None:
+            weight_influence_function = _compute_weight_inf_func(
+                keepers=valid_indices,
+                group_probabilities=group_probabilities,
+                unit_level_weights=unit_level_weights,
+                unit_level_groups=unit_level_groups,
+                groups=unique_groups_recoded,
+                unique_groups_recoded=unique_groups_recoded,
+            )
+        else:
+            weight_influence_function = None
+
+        overall_influence_function = _get_agg_inf_func(
+            att=group_att_clean,
+            influence_function=group_influence_functions,
+            keepers=valid_group_mask,
+            weights=valid_probs / valid_probs.sum(),
+            weight_influence_function=weight_influence_function,
         )
     else:
-        weight_influence_function = None
-
-    overall_influence_function = _get_agg_inf_func(
-        att=group_att_clean,
-        influence_function=group_influence_functions,
-        keepers=np.ones(len(unique_groups_recoded), dtype=bool),
-        weights=group_probabilities / group_probabilities.sum(),
-        weight_influence_function=weight_influence_function,
-    )
+        overall_att = np.nan
+        overall_influence_function = np.zeros(n_units)
 
     overall_se = _compute_se(
         influence_function=overall_influence_function,
