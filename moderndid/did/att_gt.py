@@ -230,6 +230,7 @@ def att_gt(
 
     References
     ----------
+
     .. [1] Callaway, B., & Sant'Anna, P. H. (2021). "Difference-in-differences
            with multiple time periods." Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001
@@ -348,6 +349,13 @@ def att_gt(
     if clustervars is not None and isinstance(clustervars, str):
         raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
 
+    if anticipation > 0:
+        warnings.warn(
+            f"anticipation = {anticipation}. Never-treated units (with group status 0 or inf) "
+            "are assumed to never anticipate treatment. Anticipation only applies to eventually-treated units.",
+            UserWarning,
+        )
+
     control_group_enum = ControlGroup(control_group)
     est_method_enum = EstimationMethod(est_method) if isinstance(est_method, str) else est_method
     base_period_enum = BasePeriod(base_period)
@@ -393,7 +401,9 @@ def att_gt(
     standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
-    # If clustering along another dimension we require using the bootstrap
+    if clustervars is not None and idname in clustervars:
+        clustervars = [v for v in clustervars if v != idname]
+
     if (clustervars is not None and len(clustervars) > 0) and not boot:
         warnings.warn(
             "Clustering the standard errors requires using the bootstrap, "
@@ -442,48 +452,70 @@ def att_gt(
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
     # Wald pre-test
-    pre_treatment_indices = np.where(groups > times)[0]
-
-    if len(zero_na_sd_indices) > 0:
-        pre_treatment_indices = pre_treatment_indices[~np.isin(pre_treatment_indices, zero_na_sd_indices)]
-
-    # Pseudo-atts in pre-treatment periods
-    pre_treatment_att = att_values[pre_treatment_indices]
-    pre_treatment_variance = variance_matrix[np.ix_(pre_treatment_indices, pre_treatment_indices)]
-
-    if len(pre_treatment_indices) == 0:
-        warnings.warn("No pre-treatment periods to test", UserWarning)
-        wald_statistic = None
-        wald_pvalue = None
-    if np.any(np.isnan(pre_treatment_variance)):
+    extra_clustervars = [v for v in (clustervars or []) if v not in (idname, "")]
+    if len(extra_clustervars) > 0:
         warnings.warn(
-            "Not returning pre-test Wald statistic due to NA pre-treatment values",
-            UserWarning,
-        )
-        wald_statistic = None
-        wald_pvalue = None
-    if (
-        la.norm(pre_treatment_variance) == 0
-        or np.linalg.matrix_rank(pre_treatment_variance) < pre_treatment_variance.shape[0]
-    ):
-        warnings.warn(
-            "Not returning pre-test Wald statistic due to singular covariance matrix",
+            f"The Wald pre-test is not reported when clustering beyond the unit level "
+            f"(clustervars = {extra_clustervars!r}) because the analytical variance matrix "
+            f"does not account for between-cluster correlation. Use the bootstrap confidence "
+            f"intervals to assess pre-trends.",
             UserWarning,
         )
         wald_statistic = None
         wald_pvalue = None
     else:
-        try:
-            wald_statistic = n_units * pre_treatment_att.T @ np.linalg.solve(pre_treatment_variance, pre_treatment_att)
-            q = len(pre_treatment_indices)
-            wald_pvalue = round(1 - scipy.stats.chi2.cdf(wald_statistic, q), 5)
-        except np.linalg.LinAlgError:
+        pre_treatment_indices = np.where(groups > times)[0]
+
+        if len(zero_na_sd_indices) > 0:
+            pre_treatment_indices = pre_treatment_indices[~np.isin(pre_treatment_indices, zero_na_sd_indices)]
+
+        pre_treatment_att = att_values[pre_treatment_indices]
+        pre_treatment_variance = variance_matrix[np.ix_(pre_treatment_indices, pre_treatment_indices)]
+
+        if len(pre_treatment_indices) == 0:
+            msg = (
+                "No pre-treatment periods available for the Wald pre-test of parallel trends. "
+                "This can happen when all groups are first treated early in the panel "
+                "(e.g., in the second time period) so that no pre-treatment ATT(g,t) estimates exist."
+            )
+            if anticipation > 0:
+                msg += (
+                    f" Note: anticipation={anticipation} further reduces the number of available pre-treatment periods."
+                )
+            warnings.warn(msg, UserWarning)
+            wald_statistic = None
+            wald_pvalue = None
+        elif np.any(np.isnan(pre_treatment_variance)):
             warnings.warn(
-                "Not returning pre-test Wald statistic due to numerical issues",
+                "Not returning pre-test Wald statistic due to NA pre-treatment values",
                 UserWarning,
             )
             wald_statistic = None
             wald_pvalue = None
+        elif (
+            la.norm(pre_treatment_variance) == 0
+            or np.linalg.matrix_rank(pre_treatment_variance) < pre_treatment_variance.shape[0]
+        ):
+            warnings.warn(
+                "Not returning pre-test Wald statistic due to singular covariance matrix",
+                UserWarning,
+            )
+            wald_statistic = None
+            wald_pvalue = None
+        else:
+            try:
+                wald_statistic = (
+                    n_units * pre_treatment_att.T @ np.linalg.solve(pre_treatment_variance, pre_treatment_att)
+                )
+                q = len(pre_treatment_indices)
+                wald_pvalue = round(1 - scipy.stats.chi2.cdf(wald_statistic, q), 5)
+            except np.linalg.LinAlgError:
+                warnings.warn(
+                    "Not returning pre-test Wald statistic due to numerical issues",
+                    UserWarning,
+                )
+                wald_statistic = None
+                wald_pvalue = None
 
     critical_value = scipy.stats.norm.ppf(1 - alp / 2)
 

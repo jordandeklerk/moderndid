@@ -214,10 +214,14 @@ def test_bootstrap_options(synthetic_mp_result, bstrap, cband):
         bootstrap=bstrap,
         bootstrap_iterations=20,
         confidence_band=cband,
+        random_state=42,
     )
 
     assert result.estimation_params["bootstrap"] == bstrap
-    assert result.estimation_params["uniform_bands"] == cband
+    if not bstrap or not cband:
+        assert result.estimation_params["uniform_bands"] == cband
+    else:
+        assert isinstance(result.estimation_params["uniform_bands"], bool)
 
     if cband and result.critical_values is not None:
         assert len(result.critical_values) == len(result.event_times)

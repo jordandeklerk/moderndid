@@ -996,15 +996,28 @@ def _batched_se(inf_func_mat, att_vec, n_units, estimation_params, biters, alpha
             cv = band_result["crit_val"]
             bres = band_result["bres"]
 
-        if np.isfinite(cv):
-            critical_value = cv
-        else:
+        if not np.isfinite(cv):
             warnings.warn(
-                "Simultaneous critical value is NA. This probably happened because "
-                "we cannot compute t-statistic (std errors are NA). "
-                "We then report pointwise conf. intervals."
+                "Simultaneous critical value is NA, likely because the standard errors "
+                "could not be computed. Falling back to pointwise confidence intervals."
             )
             estimation_params["uniform_bands"] = False
+        elif cv < critical_value:
+            warnings.warn(
+                "The simultaneous confidence band is narrower than the pointwise "
+                "confidence interval, which is unexpected. Falling back to pointwise "
+                "confidence intervals."
+            )
+            estimation_params["uniform_bands"] = False
+        else:
+            critical_value = cv
+            if cv >= 7:
+                warnings.warn(
+                    "Simultaneous critical value is very large, suggesting it may be "
+                    "unreliable. This typically happens when the number of observations "
+                    "per group is small and/or there is not much variation in outcomes. "
+                    "Consider using pointwise confidence intervals instead (set cband=False)."
+                )
 
     return se, critical_value, bres
 

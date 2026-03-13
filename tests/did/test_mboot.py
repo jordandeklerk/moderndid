@@ -362,3 +362,30 @@ def test_dimensions_handling(n_obs, n_params):
     assert result["se"].shape == (n_params,)
     assert result["V"].shape[0] <= n_params
     assert result["V"].shape[1] <= n_params
+
+
+def test_quantile_uses_inverted_cdf():
+    rng = np.random.default_rng(123)
+    n = 200
+    inf_func = rng.normal(0, 1, n)
+    result = mboot(inf_func, n_units=n, biters=999, random_state=42)
+
+    bres = result["bres"]
+    col_sums_sq = np.sum(bres**2, axis=0)
+    ndg_dim = (~np.isnan(col_sums_sq)) & (col_sums_sq > np.sqrt(np.finfo(float).eps) * 10)
+    bres_clean = bres[:, ndg_dim]
+
+    q75_step = np.percentile(bres_clean, 75, axis=0, method="inverted_cdf")
+    q25_step = np.percentile(bres_clean, 25, axis=0, method="inverted_cdf")
+    se_step = (q75_step - q25_step) / 1.3489795
+
+    q75_linear = np.percentile(bres_clean, 75, axis=0)
+    q25_linear = np.percentile(bres_clean, 25, axis=0)
+    se_linear = (q75_linear - q25_linear) / 1.3489795
+
+    assert not np.allclose(se_step, se_linear), (
+        "Step-function and linear quantiles should differ for discrete bootstrap samples"
+    )
+
+    expected_se = se_step / np.sqrt(n)
+    np.testing.assert_allclose(result["se"][ndg_dim], expected_se, rtol=1e-10)
