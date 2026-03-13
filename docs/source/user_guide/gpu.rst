@@ -25,13 +25,14 @@ Install the GPU extra:
 
     uv pip install 'moderndid[gpu]'
 
-This installs ``cupy-cuda12x``. If your system uses a different CUDA
-version, install the appropriate CuPy wheel directly and then install
-**ModernDiD** without the extra:
+This installs a CuPy wheel that matches the CUDA version specified in
+the package metadata.  If you need a different CuPy wheel for your CUDA
+runtime, install it directly and then install **ModernDiD** without the
+extra:
 
 .. code-block:: bash
 
-    uv pip install cupy-cuda11x
+    uv pip install cupy-cuda11x   # example for CUDA 11
     uv pip install moderndid
 
 Verify the installation:
@@ -536,7 +537,7 @@ libraries.  See the platform-specific notes below.
 
 **Windows**
 
-``cupy-cuda12x`` does not bundle all required CUDA runtime libraries on
+The CuPy wheel does not bundle all required CUDA runtime libraries on
 Windows.  CuPy relies on ``cuda-pathfinder`` to locate DLLs at runtime.
 Missing libraries surface as errors such as
 ``No such file: nvrtc*.dll``,
@@ -566,13 +567,13 @@ remote environment where CuPy has access to an NVIDIA GPU.
 
 **Corrupted installs**
 
-If ``did.HAS_CUPY`` is ``False`` even though ``cupy-cuda12x`` appears
-installed, pip may have recorded the package while the actual library
-files are missing.  Force reinstall to fix this.
+If ``did.HAS_CUPY`` is ``False`` even though CuPy appears installed, pip
+may have recorded the package while the actual library files are missing.
+Force reinstall to fix this.
 
 .. code-block:: bash
 
-    uv pip install --force-reinstall cupy-cuda12x
+    uv pip install --force-reinstall cupy-cuda12x  # match your CUDA version
 
 
 Verifying GPU usage
@@ -619,14 +620,7 @@ Troubleshooting
 
 The most common cause is installing the generic ``cupy`` package, which
 tries to compile from source.  Install a prebuilt wheel that matches
-your CUDA driver version instead.
-
-.. code-block:: bash
-
-    uv pip install cupy-cuda13x   # CUDA 13.x
-    uv pip install cupy-cuda12x   # CUDA 12.x
-    uv pip install cupy-cuda11x   # CUDA 11.x
-
+your CUDA driver version instead (e.g. ``uv pip install cupy-cuda12x``).
 Run ``nvidia-smi`` to check which CUDA version your driver supports.
 After installing, restart your Python process (or notebook runtime)
 before importing **ModernDiD**.  CuPy availability is checked once at
