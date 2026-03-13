@@ -102,8 +102,8 @@ def mboot(
 
     se_full = np.full(n_params, np.nan)
     if bres_clean.shape[1] > 0:
-        q75 = np.percentile(bres_clean, 75, axis=0)
-        q25 = np.percentile(bres_clean, 25, axis=0)
+        q75 = np.percentile(bres_clean, 75, axis=0, method="inverted_cdf")
+        q25 = np.percentile(bres_clean, 25, axis=0, method="inverted_cdf")
         se_bootstrap = (q75 - q25) / (1.3489795)
         se_full[ndg_dim] = se_bootstrap / np.sqrt(n_clusters)
 
@@ -115,7 +115,7 @@ def mboot(
 
         bT_finite = bT[np.isfinite(bT)]
         if len(bT_finite) > 0:
-            crit_val = np.percentile(bT_finite, 100 * (1 - alp))
+            crit_val = np.percentile(bT_finite, 100 * (1 - alp), method="inverted_cdf")
 
     return {
         "bres": bres,

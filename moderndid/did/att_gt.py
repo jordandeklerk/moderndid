@@ -442,48 +442,61 @@ def att_gt(
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
     # Wald pre-test
-    pre_treatment_indices = np.where(groups > times)[0]
-
-    if len(zero_na_sd_indices) > 0:
-        pre_treatment_indices = pre_treatment_indices[~np.isin(pre_treatment_indices, zero_na_sd_indices)]
-
-    # Pseudo-atts in pre-treatment periods
-    pre_treatment_att = att_values[pre_treatment_indices]
-    pre_treatment_variance = variance_matrix[np.ix_(pre_treatment_indices, pre_treatment_indices)]
-
-    if len(pre_treatment_indices) == 0:
-        warnings.warn("No pre-treatment periods to test", UserWarning)
-        wald_statistic = None
-        wald_pvalue = None
-    if np.any(np.isnan(pre_treatment_variance)):
+    extra_clustervars = [v for v in (clustervars or []) if v not in (idname, "")]
+    if len(extra_clustervars) > 0:
         warnings.warn(
-            "Not returning pre-test Wald statistic due to NA pre-treatment values",
-            UserWarning,
-        )
-        wald_statistic = None
-        wald_pvalue = None
-    if (
-        la.norm(pre_treatment_variance) == 0
-        or np.linalg.matrix_rank(pre_treatment_variance) < pre_treatment_variance.shape[0]
-    ):
-        warnings.warn(
-            "Not returning pre-test Wald statistic due to singular covariance matrix",
+            f"The Wald pre-test is not reported when clustering beyond the unit level "
+            f"(clustervars = {extra_clustervars!r}) because the analytical variance matrix "
+            f"does not account for between-cluster correlation. Use the bootstrap confidence "
+            f"intervals to assess pre-trends.",
             UserWarning,
         )
         wald_statistic = None
         wald_pvalue = None
     else:
-        try:
-            wald_statistic = n_units * pre_treatment_att.T @ np.linalg.solve(pre_treatment_variance, pre_treatment_att)
-            q = len(pre_treatment_indices)
-            wald_pvalue = round(1 - scipy.stats.chi2.cdf(wald_statistic, q), 5)
-        except np.linalg.LinAlgError:
+        pre_treatment_indices = np.where(groups > times)[0]
+
+        if len(zero_na_sd_indices) > 0:
+            pre_treatment_indices = pre_treatment_indices[~np.isin(pre_treatment_indices, zero_na_sd_indices)]
+
+        pre_treatment_att = att_values[pre_treatment_indices]
+        pre_treatment_variance = variance_matrix[np.ix_(pre_treatment_indices, pre_treatment_indices)]
+
+        if len(pre_treatment_indices) == 0:
+            warnings.warn("No pre-treatment periods to test", UserWarning)
+            wald_statistic = None
+            wald_pvalue = None
+        elif np.any(np.isnan(pre_treatment_variance)):
             warnings.warn(
-                "Not returning pre-test Wald statistic due to numerical issues",
+                "Not returning pre-test Wald statistic due to NA pre-treatment values",
                 UserWarning,
             )
             wald_statistic = None
             wald_pvalue = None
+        elif (
+            la.norm(pre_treatment_variance) == 0
+            or np.linalg.matrix_rank(pre_treatment_variance) < pre_treatment_variance.shape[0]
+        ):
+            warnings.warn(
+                "Not returning pre-test Wald statistic due to singular covariance matrix",
+                UserWarning,
+            )
+            wald_statistic = None
+            wald_pvalue = None
+        else:
+            try:
+                wald_statistic = (
+                    n_units * pre_treatment_att.T @ np.linalg.solve(pre_treatment_variance, pre_treatment_att)
+                )
+                q = len(pre_treatment_indices)
+                wald_pvalue = round(1 - scipy.stats.chi2.cdf(wald_statistic, q), 5)
+            except np.linalg.LinAlgError:
+                warnings.warn(
+                    "Not returning pre-test Wald statistic due to numerical issues",
+                    UserWarning,
+                )
+                wald_statistic = None
+                wald_pvalue = None
 
     critical_value = scipy.stats.norm.ppf(1 - alp / 2)
 

@@ -362,6 +362,68 @@ def test_att_gt_bootstrap_reproducibility(mpdta_data):
     assert result1.estimation_params.get("random_state") == 42
 
 
+def test_wald_pretest_skipped_with_extra_clustervars(mpdta_data):
+    unique_counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
+    mpdta_data = mpdta_data.filter(pl.col("countyreal").is_in(unique_counties))
+    mpdta_data = mpdta_data.with_columns((pl.col("countyreal") // 10).alias("cluster"))
+
+    with pytest.warns(
+        UserWarning,
+        match="Wald pre-test is not reported when clustering beyond the unit level",
+    ):
+        result = att_gt(
+            data=mpdta_data,
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            clustervars=["cluster"],
+            boot=True,
+            biters=10,
+        )
+
+    assert result.wald_stat is None
+    assert result.wald_pvalue is None
+
+
+def test_wald_pretest_returns_valid_stat(mpdta_data):
+    result = att_gt(
+        data=mpdta_data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        boot=False,
+    )
+
+    pre_indices = np.where(result.groups > result.times)[0]
+    assert len(pre_indices) > 0, "Need pre-treatment periods"
+
+    assert result.wald_stat is not None
+    assert result.wald_pvalue is not None
+    assert result.wald_stat > 0
+    assert 0 <= result.wald_pvalue <= 1
+
+
+def test_wald_pretest_not_skipped_when_clustering_on_idname(mpdta_data):
+    unique_counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
+    mpdta_data = mpdta_data.filter(pl.col("countyreal").is_in(unique_counties))
+
+    result = att_gt(
+        data=mpdta_data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        clustervars=["countyreal"],
+        boot=True,
+        biters=10,
+    )
+
+    assert result.wald_stat is not None
+    assert result.wald_pvalue is not None
+
+
 @pytest.mark.parametrize("mpdta_converted", ["pandas", "pyarrow", "duckdb"], indirect=True)
 def test_att_gt_dataframe_interoperability(mpdta_converted, att_gt_baseline_result):
     result = att_gt(

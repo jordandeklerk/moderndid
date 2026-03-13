@@ -1,5 +1,7 @@
 """Tests for aggregate treatment effects."""
 
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
@@ -8,6 +10,7 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 
 from moderndid import aggte, att_gt, load_mpdta
+from moderndid.did.mboot import mboot as real_mboot
 
 pytestmark = pytest.mark.filterwarnings("ignore:Used bootstrap procedure:UserWarning")
 
@@ -422,6 +425,59 @@ def test_aggte_very_large_bootstrap_iterations():
 
     assert agg_result.aggregation_type == "simple"
     assert agg_result.estimation_params.get("biters") == 10
+
+
+def test_aggte_cband_narrower_than_pointwise_fallback():
+    df = load_mpdta()
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    def mock_mboot(*args, **kwargs):
+        real_result = real_mboot(*args, **kwargs)
+        real_result["crit_val"] = 1.0
+        return real_result
+
+    with (
+        patch("moderndid.did.compute_aggte.mboot", side_effect=mock_mboot),
+        pytest.warns(UserWarning, match="simultaneous confidence band is narrower than the pointwise"),
+    ):
+        agg_result = aggte(result, type="group", cband=True, boot=True, biters=99)
+
+    assert not agg_result.estimation_params.get("uniform_bands", True)
+
+
+def test_aggte_cband_very_large_cv_warning():
+    df = load_mpdta()
+    result = att_gt(
+        data=df,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        xformla="~ 1",
+        est_method="reg",
+    )
+
+    def mock_mboot(*args, **kwargs):
+        real_result = real_mboot(*args, **kwargs)
+        real_result["crit_val"] = 8.0
+        return real_result
+
+    with (
+        patch("moderndid.did.compute_aggte.mboot", side_effect=mock_mboot),
+        pytest.warns(UserWarning, match="Simultaneous critical value is very large"),
+    ):
+        agg_result = aggte(result, type="group", cband=True, boot=True, biters=99)
+
+    assert agg_result.estimation_params.get("uniform_bands", False)
+    assert np.all(agg_result.critical_values == 8.0)
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])

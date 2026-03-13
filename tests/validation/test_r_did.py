@@ -1079,6 +1079,62 @@ write_json(out, "{result_path}", digits = 16)
         return None
 
 
+def r_att_gt_wald(data_path, est_method="dr", clustervars="NULL"):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    if clustervars == "NULL":
+        clustervars_str = "NULL"
+    else:
+        clustervars_str = f'"{clustervars}"'
+
+    bstrap_str = "TRUE" if clustervars != "NULL" else "FALSE"
+
+    r_script = f"""
+library(did)
+library(jsonlite)
+
+data <- read.csv("{data_path}")
+
+result <- att_gt(
+  yname = "lemp",
+  tname = "year",
+  idname = "countyreal",
+  gname = "first.treat",
+  xformla = ~1,
+  data = data,
+  est_method = "{est_method}",
+  control_group = "nevertreated",
+  bstrap = {bstrap_str},
+  biters = 100,
+  clustervars = {clustervars_str}
+)
+
+wald_stat <- result$Wpval
+if (is.null(result$W)) {{
+    W <- NA
+}} else {{
+    W <- as.numeric(result$W)
+}}
+if (is.null(result$Wpval)) {{
+    Wpval <- NA
+}} else {{
+    Wpval <- as.numeric(result$Wpval)
+}}
+
+out <- list(
+  wald_stat = W,
+  wald_pvalue = Wpval
+)
+
+write_json(out, "{result_path}", digits = 16)
+"""
+    try:
+        return _run_r_script(r_script, result_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
 @pytest.fixture(scope="module")
 def mpdta_clustered(mpdta_data):
     return mpdta_data.with_columns((pl.col("countyreal") % 10).alias("cluster"))
@@ -1281,3 +1337,95 @@ def test_clustering_changes_se(mpdta_small_clustered, mpdta_small_clustered_csv_
     assert not np.allclose(py_unclustered.se_gt[valid_py], py_clustered.se_gt[valid_py], rtol=0.01), (
         "Python: Clustering did not change SEs"
     )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.parametrize("est_method", ["dr", "reg"])
+def test_wald_pretest_matches_r(mpdta_data, mpdta_csv_path, est_method):
+    r_result = r_att_gt_wald(mpdta_csv_path, est_method=est_method)
+
+    if r_result is None:
+        pytest.fail("R Wald estimation failed")
+
+    py_result = att_gt(
+        data=mpdta_data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~1",
+        est_method=est_method,
+        control_group="nevertreated",
+        boot=False,
+    )
+
+    r_wald = r_result["wald_stat"]
+    r_pval = r_result["wald_pvalue"]
+
+    r_wald_is_na = r_wald is None or (isinstance(r_wald, float) and np.isnan(r_wald))
+    py_wald_is_na = py_result.wald_stat is None
+
+    assert r_wald_is_na == py_wald_is_na, (
+        f"{est_method}: Wald availability mismatch (R NA={r_wald_is_na}, Python None={py_wald_is_na})"
+    )
+
+    if not r_wald_is_na and not py_wald_is_na:
+        np.testing.assert_allclose(
+            py_result.wald_stat,
+            r_wald,
+            rtol=1e-4,
+            atol=1e-5,
+            err_msg=f"{est_method}: Wald statistic mismatch",
+        )
+        np.testing.assert_allclose(
+            py_result.wald_pvalue,
+            r_pval,
+            rtol=1e-4,
+            atol=1e-5,
+            err_msg=f"{est_method}: Wald p-value mismatch",
+        )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.parametrize("agg_type", ["dynamic", "group", "calendar"])
+def test_aggte_bootstrap_critical_value(mpdta_small, mpdta_small_csv_path, agg_type):
+    r_result = r_aggte_bootstrap(mpdta_small_csv_path, agg_type=agg_type, biters=100, cband=True)
+
+    if r_result is None:
+        pytest.fail("R bootstrap aggregation failed")
+
+    py_mp_result = att_gt(
+        data=mpdta_small,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~1",
+        est_method="dr",
+        control_group="nevertreated",
+        boot=True,
+        biters=100,
+        cband=True,
+        random_state=42,
+    )
+
+    py_agg_result = aggte(
+        py_mp_result,
+        type=agg_type,
+        boot=True,
+        biters=100,
+        cband=True,
+        random_state=42,
+    )
+
+    r_cv_raw = r_result.get("critical_value")
+    r_cv = float(np.asarray(r_cv_raw).flat[0]) if r_cv_raw is not None else np.nan
+    if np.isfinite(r_cv) and r_cv > 0:
+        py_cv_arr = py_agg_result.critical_values
+        assert py_cv_arr is not None, f"{agg_type}: Python critical values should not be None"
+        py_cv = float(py_cv_arr[0])
+        assert py_cv > 0, f"{agg_type}: Python critical value should be positive"
+        cv_ratio = py_cv / r_cv
+        assert 0.5 < cv_ratio < 2.0, (
+            f"{agg_type}: Bootstrap critical value ratio outside reasonable range: {cv_ratio:.2f}"
+        )
