@@ -42,6 +42,13 @@ Verify the installation:
 
     print(did.HAS_CUPY)  # True if CuPy is available
 
+.. note::
+
+   ``HAS_CUPY`` only checks whether CuPy can be imported. It does not
+   verify that a CUDA GPU is present. GPU availability is validated when
+   you first call ``set_backend("cupy")`` or pass ``backend="cupy"`` to
+   an estimator.
+
 
 Enabling the backend
 --------------------
@@ -502,6 +509,107 @@ propagate to Spark executor processes. Always use the ``backend`` parameter
 on the estimator call instead.
 
 
+Local GPU setup
+---------------
+
+Cloud GPU environments (Colab, SageMaker, Databricks) generally ship
+with CUDA drivers and runtime libraries pre-installed.  On a local
+machine you may need a few extra steps after installing the ``[gpu]``
+extra.
+
+**Verify that CuPy can compile and execute GPU kernels**
+
+.. code-block:: python
+
+    import cupy as cp
+
+    print(f"CuPy version: {cp.__version__}")
+    print(f"GPU: {cp.cuda.runtime.getDeviceProperties(0)['name'].decode()}")
+    print(f"Devices: {cp.cuda.runtime.getDeviceCount()}")
+
+    # Triggers kernel compilation; fails if NVRTC or headers are missing
+    a = cp.array([1, 2, 3])
+    print(f"Test compute: {cp.sum(a)}")  # Should print 6
+
+If this snippet fails, the most common cause is missing CUDA runtime
+libraries.  See the platform-specific notes below.
+
+**Windows**
+
+``cupy-cuda12x`` does not bundle all required CUDA runtime libraries on
+Windows.  CuPy relies on ``cuda-pathfinder`` to locate DLLs at runtime.
+Missing libraries surface as errors such as
+``No such file: nvrtc*.dll``,
+``cannot open source file "cuda_fp16.h"``, or
+``No such file: cublasLt*.dll``.  Install the full set via pip.
+
+.. code-block:: bash
+
+    uv pip install nvidia-cuda-nvrtc nvidia-cuda-cccl nvidia-cuda-runtime
+    uv pip install nvidia-cublas nvidia-cusparse nvidia-cusolver nvidia-cufft nvidia-curand nvidia-nvjitlink
+
+**Linux**
+
+These libraries are typically included with a full CUDA Toolkit
+installation (``apt install nvidia-cuda-toolkit`` or the NVIDIA runfile
+installer).  If you installed CUDA through the system package manager,
+no additional pip packages are needed.
+
+**macOS**
+
+macOS does not have local NVIDIA GPU support.  Apple dropped CUDA after
+macOS 10.13 (High Sierra), and Apple Silicon uses Metal instead of CUDA.
+``backend="cupy"`` still works from macOS when connected to a remote GPU
+such as a cloud notebook, an SSH session to a GPU server, or a
+Dask/Spark cluster with GPU workers.  Install the ``[gpu]`` extra on the
+remote environment where CuPy has access to an NVIDIA GPU.
+
+**Corrupted installs**
+
+If ``did.HAS_CUPY`` is ``False`` even though ``cupy-cuda12x`` appears
+installed, pip may have recorded the package while the actual library
+files are missing.  Force reinstall to fix this.
+
+.. code-block:: bash
+
+    uv pip install --force-reinstall cupy-cuda12x
+
+
+Verifying GPU usage
+-------------------
+
+After running an estimator with ``backend="cupy"`` you can confirm the
+GPU was used.
+
+**From Python**
+
+.. code-block:: python
+
+    import cupy as cp
+
+    cp.get_default_memory_pool().free_all_blocks()
+    mem_before = cp.cuda.runtime.memGetInfo()[0]
+
+    result = did.att_gt(
+        data=data, yname="y", tname="time",
+        idname="id", gname="group", backend="cupy",
+    )
+
+    mem_after = cp.cuda.runtime.memGetInfo()[0]
+    print(f"GPU memory consumed: {(mem_before - mem_after) / 1024**2:.1f} MB")
+
+A value greater than 0 MB confirms GPU execution.
+
+**From a separate terminal**
+
+.. code-block:: bash
+
+    nvidia-smi --query-gpu=utilization.gpu,utilization.memory,memory.used --format=csv -l 1
+
+This prints GPU utilization every second so you can watch it spike
+during computation.
+
+
 .. _gpu-troubleshooting:
 
 Troubleshooting
@@ -510,28 +618,29 @@ Troubleshooting
 **"CuPy is not installed"** when calling ``set_backend("cupy")``
 
 The most common cause is installing the generic ``cupy`` package, which
-tries to compile from source. Instead, install a prebuilt wheel that
-matches your CUDA driver version:
+tries to compile from source.  Install a prebuilt wheel that matches
+your CUDA driver version instead.
 
 .. code-block:: bash
 
+    uv pip install cupy-cuda13x   # CUDA 13.x
     uv pip install cupy-cuda12x   # CUDA 12.x
     uv pip install cupy-cuda11x   # CUDA 11.x
 
 Run ``nvidia-smi`` to check which CUDA version your driver supports.
 After installing, restart your Python process (or notebook runtime)
-before importing **ModernDiD** (CuPy availability is checked once at import
-time).
+before importing **ModernDiD**.  CuPy availability is checked once at
+import time.
 
 **"cudaErrorInsufficientDriver"**
 
 The installed CuPy wheel expects a newer CUDA version than your driver
-provides. Check ``nvidia-smi`` and switch to the matching wheel.
+provides.  Check ``nvidia-smi`` and switch to the matching wheel.
 
 **"No CUDA GPU is available"**
 
-Make sure ``nvidia-smi`` shows a device. In cloud notebooks, verify that
-a GPU runtime is selected.
+Make sure ``nvidia-smi`` shows a device.  In cloud notebooks, verify
+that a GPU runtime is selected.
 
 
 Next steps
