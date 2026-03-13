@@ -7,6 +7,8 @@ from typing import NamedTuple
 
 import numpy as np
 import scipy.sparse as sp
+import statsmodels.api as sm
+from statsmodels.tools.sm_exceptions import PerfectSeparationError
 
 from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess import ControlGroup, DIDData, EstimationMethod
@@ -224,6 +226,25 @@ def run_att_gt_estimation(
             if skip:
                 return None
 
+        overlap_violated = False
+        reg_ill_conditioned = False
+
+        if data.config.est_method in (EstimationMethod.DOUBLY_ROBUST, EstimationMethod.IPW):
+            cov_valid = covariates[valid_obs] if covariates.ndim > 1 else np.ones((valid_obs.sum(), 1))
+            G_valid = (d_valid == 1).astype(float)
+            try:
+                logit_model = sm.GLM(G_valid, cov_valid, family=sm.families.Binomial())
+                logit_result = logit_model.fit(maxiter=100, disp=False)
+                pscores = logit_result.fittedvalues
+                if np.max(pscores) >= 0.999:
+                    overlap_violated = True
+                    warnings.warn(
+                        f"Overlap condition violated for {g_val} in time period {t_val}",
+                        UserWarning,
+                    )
+            except (np.linalg.LinAlgError, PerfectSeparationError):
+                pass
+
         if data.config.est_method in (EstimationMethod.DOUBLY_ROBUST, EstimationMethod.REGRESSION):
             cov_valid = covariates[valid_obs] if covariates.ndim > 1 else np.ones((valid_obs.sum(), 1))
             control_covs = cov_valid[d_valid == 0]
@@ -232,18 +253,21 @@ def run_att_gt_estimation(
                 try:
                     cond = np.linalg.cond(gram)
                     if cond > 1.0 / np.finfo(float).eps:
+                        reg_ill_conditioned = True
                         warnings.warn(
                             f"Not enough control units for group {g_val} in time period {t_val} "
                             "to run specified regression",
                             UserWarning,
                         )
-                        return None
                 except np.linalg.LinAlgError:
+                    reg_ill_conditioned = True
                     warnings.warn(
                         f"Singular covariate matrix for group {g_val} in time period {t_val}",
                         UserWarning,
                     )
-                    return None
+
+        if overlap_violated or reg_ill_conditioned:
+            return None
 
     try:
         return run_drdid(cohort_data, covariates, data)

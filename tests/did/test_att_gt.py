@@ -405,6 +405,30 @@ def test_wald_pretest_returns_valid_stat(mpdta_data):
     assert 0 <= result.wald_pvalue <= 1
 
 
+def test_clustervars_strips_idname(mpdta_data):
+    unique_counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
+    mpdta_data = mpdta_data.filter(pl.col("countyreal").is_in(unique_counties))
+    mpdta_data = mpdta_data.with_columns((pl.col("countyreal") // 10).alias("cluster"))
+
+    with pytest.warns(
+        UserWarning,
+        match="Wald pre-test is not reported when clustering beyond the unit level",
+    ):
+        result = att_gt(
+            data=mpdta_data,
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            clustervars=["countyreal", "cluster"],
+            boot=True,
+            biters=10,
+        )
+
+    assert result.estimation_params["clustervars"] == ["cluster"]
+    assert result.wald_stat is None
+
+
 def test_wald_pretest_not_skipped_when_clustering_on_idname(mpdta_data):
     unique_counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
     mpdta_data = mpdta_data.filter(pl.col("countyreal").is_in(unique_counties))

@@ -348,6 +348,13 @@ def att_gt(
     if clustervars is not None and isinstance(clustervars, str):
         raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
 
+    if anticipation > 0:
+        warnings.warn(
+            f"anticipation = {anticipation}. Never-treated units (with group status 0 or inf) "
+            "are assumed to never anticipate treatment. Anticipation only applies to eventually-treated units.",
+            UserWarning,
+        )
+
     control_group_enum = ControlGroup(control_group)
     est_method_enum = EstimationMethod(est_method) if isinstance(est_method, str) else est_method
     base_period_enum = BasePeriod(base_period)
@@ -393,7 +400,9 @@ def att_gt(
     standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
     standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
-    # If clustering along another dimension we require using the bootstrap
+    if clustervars is not None and idname in clustervars:
+        clustervars = [v for v in clustervars if v != idname]
+
     if (clustervars is not None and len(clustervars) > 0) and not boot:
         warnings.warn(
             "Clustering the standard errors requires using the bootstrap, "
@@ -463,7 +472,16 @@ def att_gt(
         pre_treatment_variance = variance_matrix[np.ix_(pre_treatment_indices, pre_treatment_indices)]
 
         if len(pre_treatment_indices) == 0:
-            warnings.warn("No pre-treatment periods to test", UserWarning)
+            msg = (
+                "No pre-treatment periods available for the Wald pre-test of parallel trends. "
+                "This can happen when all groups are first treated early in the panel "
+                "(e.g., in the second time period) so that no pre-treatment ATT(g,t) estimates exist."
+            )
+            if anticipation > 0:
+                msg += (
+                    f" Note: anticipation={anticipation} further reduces the number of available pre-treatment periods."
+                )
+            warnings.warn(msg, UserWarning)
             wald_statistic = None
             wald_pvalue = None
         elif np.any(np.isnan(pre_treatment_variance)):
