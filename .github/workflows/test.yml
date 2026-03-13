@@ -8,9 +8,11 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.11", "3.12", "3.13"]
       fail-fast: false
     steps:
@@ -24,21 +26,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install tox tox-gh-actions
       - name: Run core test suite
-        run: SKIP=no-commit-to-branch tox
+        run: tox
         env:
+          SKIP: no-commit-to-branch
           TEST_SUITE: core
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          name: Python ${{ matrix.python-version }}
+          name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
           fail_ci_if_error: false
 
   dask:
-    name: Dask tests (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} / Dask (Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.12", "3.13"]
       fail-fast: false
     steps:
@@ -57,7 +61,7 @@ jobs:
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          name: Dask Python ${{ matrix.python-version }}
+          name: ${{ matrix.os }} / Dask Python ${{ matrix.python-version }}
           fail_ci_if_error: false
 
   spark:
