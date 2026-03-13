@@ -230,6 +230,7 @@ def att_gt(
 
     References
     ----------
+
     .. [1] Callaway, B., & Sant'Anna, P. H. (2021). "Difference-in-differences
            with multiple time periods." Journal of Econometrics, 225(2), 200-230.
            https://doi.org/10.1016/j.jeconom.2020.12.001

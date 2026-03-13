@@ -1,13 +1,17 @@
 """Tests for group-time average treatment effects."""
 
+from unittest.mock import patch
+
 import numpy as np
 import pytest
+import scipy.sparse as sp
 
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
 from moderndid import MPResult, att_gt
+from moderndid.did.compute_att_gt import ATTgtResult, ComputeATTgtResult
 
 
 def test_att_gt_basic_functionality(mpdta_data):
@@ -446,6 +450,103 @@ def test_wald_pretest_not_skipped_when_clustering_on_idname(mpdta_data):
 
     assert result.wald_stat is not None
     assert result.wald_pvalue is not None
+
+
+def _make_mock_result(mpdta_data, modify_inf_func=None):
+    real_result = att_gt(
+        data=mpdta_data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        boot=False,
+    )
+    n_gt = len(real_result.groups)
+    attgt_list = [
+        ATTgtResult(att=real_result.att_gt[i], group=real_result.groups[i], year=real_result.times[i], post=0)
+        for i in range(n_gt)
+    ]
+    inf_func = real_result.influence_func.copy()
+    if modify_inf_func is not None:
+        inf_func = modify_inf_func(inf_func, real_result)
+    return ComputeATTgtResult(attgt_list=attgt_list, influence_functions=sp.csr_matrix(inf_func))
+
+
+def test_wald_singular_variance_skips(mpdta_data):
+    def make_collinear(inf_func, result):
+        pre_indices = np.where(result.groups > result.times)[0]
+        if len(pre_indices) >= 2:
+            inf_func[:, pre_indices[1]] = inf_func[:, pre_indices[0]]
+        return inf_func
+
+    mock_result = _make_mock_result(mpdta_data, modify_inf_func=make_collinear)
+
+    with (
+        patch("moderndid.did.att_gt.compute_att_gt", return_value=mock_result),
+        pytest.warns(UserWarning, match="singular covariance matrix"),
+    ):
+        result = att_gt(
+            data=mpdta_data,
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            boot=False,
+        )
+
+    assert result.wald_stat is None
+    assert result.wald_pvalue is None
+
+
+def test_wald_linalg_error_skips(mpdta_data):
+    mock_result = _make_mock_result(mpdta_data)
+
+    with (
+        patch("moderndid.did.att_gt.compute_att_gt", return_value=mock_result),
+        patch("numpy.linalg.solve", side_effect=np.linalg.LinAlgError("mock")),
+        pytest.warns(UserWarning, match="numerical issues"),
+    ):
+        result = att_gt(
+            data=mpdta_data,
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            boot=False,
+        )
+
+    assert result.wald_stat is None
+    assert result.wald_pvalue is None
+
+
+def test_overlap_violation_returns_na():
+    rng = np.random.default_rng(42)
+    n_treated = 80
+    n_control = 20
+    n_units = n_treated + n_control
+    times = [1, 2, 3, 4]
+    rows = []
+    for uid in range(1, n_units + 1):
+        is_treated = uid <= n_treated
+        g = float(2) if is_treated else float("inf")
+        x = 10.0 + rng.normal(0, 0.01) if is_treated else -10.0 + rng.normal(0, 0.01)
+        for t in times:
+            rows.append({"id": uid, "time": t, "group": g, "y": rng.normal(), "x": x})
+    data = pl.DataFrame(rows)
+
+    with pytest.warns(UserWarning, match="Overlap condition violated"):
+        result = att_gt(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            xformla="~ x",
+            est_method="ipw",
+            boot=False,
+        )
+
+    assert isinstance(result, MPResult)
 
 
 @pytest.mark.parametrize("mpdta_converted", ["pandas", "pyarrow", "duckdb"], indirect=True)
