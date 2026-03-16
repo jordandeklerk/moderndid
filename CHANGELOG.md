@@ -1,7 +1,40 @@
 <a id="v0.2.0"></a>
 # [v0.2.0](https://github.com/jordandeklerk/moderndid/releases/tag/v0.2.0) - 2026-03-16
 
+## What's Changed
+* Update changelog for v0.1.1 by [@github-actions](https://github.com/github-actions)[bot] in [#214](https://github.com/jordandeklerk/moderndid/pull/214)
+* DOC: add better descriptions for dataset functions by [@jordandeklerk](https://github.com/jordandeklerk) in [#215](https://github.com/jordandeklerk/moderndid/pull/215)
+* FEAT: add GPU acceleration for `cont_did()` by [@jordandeklerk](https://github.com/jordandeklerk) in [#216](https://github.com/jordandeklerk/moderndid/pull/216)
+* REF: update installation guide and add `dev` directory by [@jordandeklerk](https://github.com/jordandeklerk) in [#217](https://github.com/jordandeklerk/moderndid/pull/217)
+* REF: unify synthetic data function names by [@jordandeklerk](https://github.com/jordandeklerk) in [#218](https://github.com/jordandeklerk/moderndid/pull/218)
+* Update actions/download-artifact action to v8 by [@renovate](https://github.com/renovate)[bot] in [#220](https://github.com/jordandeklerk/moderndid/pull/220)
+* Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.4 by [@renovate](https://github.com/renovate)[bot] in [#219](https://github.com/jordandeklerk/moderndid/pull/219)
+* MAINT: reorganize backend CuPY functionality by [@jordandeklerk](https://github.com/jordandeklerk) in [#221](https://github.com/jordandeklerk/moderndid/pull/221)
+* FEAT: add more treatment effects and Bell-McCaffrey small-sample inference for `did_multiplegt()` by [@jordandeklerk](https://github.com/jordandeklerk) in [#222](https://github.com/jordandeklerk/moderndid/pull/222)
+* DEV: enhance development documentation and CI by [@jordandeklerk](https://github.com/jordandeklerk) in [#223](https://github.com/jordandeklerk/moderndid/pull/223)
+* BUG: fix clustered standard errors not propagating through `att_gt()` by [@jordandeklerk](https://github.com/jordandeklerk) in [#224](https://github.com/jordandeklerk/moderndid/pull/224)
+* FEAT: add maketables plug-in interface for publication-quality tables by [@jordandeklerk](https://github.com/jordandeklerk) in [#225](https://github.com/jordandeklerk/moderndid/pull/225)
+* DOC: update README to include publication tables feature by [@jordandeklerk](https://github.com/jordandeklerk) in [#226](https://github.com/jordandeklerk/moderndid/pull/226)
+* DOC: reorganize plotting guide by [@jordandeklerk](https://github.com/jordandeklerk) in [#227](https://github.com/jordandeklerk/moderndid/pull/227)
+* FEAT: expose result extraction for estimators by [@jordandeklerk](https://github.com/jordandeklerk) in [#228](https://github.com/jordandeklerk/moderndid/pull/228)
+* REF: update result objects for core estimators by [@jordandeklerk](https://github.com/jordandeklerk) in [#229](https://github.com/jordandeklerk/moderndid/pull/229)
+* BUG: fix docs failing by [@jordandeklerk](https://github.com/jordandeklerk) in [#230](https://github.com/jordandeklerk/moderndid/pull/230)
+* DOC: update user guide and README by [@jordandeklerk](https://github.com/jordandeklerk) in [#231](https://github.com/jordandeklerk/moderndid/pull/231)
+* DOC: update README example to match Callaway Sant'Anna example by [@jordandeklerk](https://github.com/jordandeklerk) in [#232](https://github.com/jordandeklerk/moderndid/pull/232)
+* Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.5 by [@renovate](https://github.com/renovate)[bot] in [#234](https://github.com/jordandeklerk/moderndid/pull/234)
+* Update github/codeql-action action to v4.32.6 by [@renovate](https://github.com/renovate)[bot] in [#233](https://github.com/jordandeklerk/moderndid/pull/233)
+* DOC: update installation guide link by [@jordandeklerk](https://github.com/jordandeklerk) in [#235](https://github.com/jordandeklerk/moderndid/pull/235)
+* DOC: enhance new estimator guide and architecture docs by [@jordandeklerk](https://github.com/jordandeklerk) in [#236](https://github.com/jordandeklerk/moderndid/pull/236)
+* MAINT: update installation to not include spark by default by [@jordandeklerk](https://github.com/jordandeklerk) in [#237](https://github.com/jordandeklerk/moderndid/pull/237)
+* DOC: update GPU guide by [@jordandeklerk](https://github.com/jordandeklerk) in [#238](https://github.com/jordandeklerk/moderndid/pull/238)
+* CI: update test workflows to support multiple OS environments by [@jordandeklerk](https://github.com/jordandeklerk) in [#239](https://github.com/jordandeklerk/moderndid/pull/239)
+* ENH: Add error handling for NA values by [@jordandeklerk](https://github.com/jordandeklerk) in [#240](https://github.com/jordandeklerk/moderndid/pull/240)
+* ENH: align Wald pre-test, confidence bands, and bootstrap quantiles by [@jordandeklerk](https://github.com/jordandeklerk) in [#241](https://github.com/jordandeklerk/moderndid/pull/241)
+* CI: conditionally ignore validation tests on Windows by [@jordandeklerk](https://github.com/jordandeklerk) in [#242](https://github.com/jordandeklerk/moderndid/pull/242)
+* REL: prepare release v0.2.0 by [@jordandeklerk](https://github.com/jordandeklerk) in [#243](https://github.com/jordandeklerk/moderndid/pull/243)
 
+
+**Full Changelog**: https://github.com/jordandeklerk/moderndid/compare/v0.1.1...v0.2.0
 
 [Changes][v0.2.0]
 
