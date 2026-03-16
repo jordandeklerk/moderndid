@@ -1,0 +1,173 @@
+.. currentmodule:: moderndid
+
+=============================
+ModernDiD 0.2.0 Release Notes
+=============================
+
+**ModernDiD** 0.2.0 introduces new features including publication-quality table
+generation, result extraction for estimators, GPU acceleration for continuous
+DiD, heterogeneous treatment effects with Bell-McCaffrey inference, and
+important bug fixes.
+
+Python versions 3.11-3.13 are supported in this release.
+
+
+New Features
+============
+
+Publication Tables via ``maketables``
+-------------------------------------
+
+* Add ``maketables`` plug-in interface to all estimator result objects for
+  generating publication-quality LaTeX and text tables directly from results.
+
+  (`#225 <https://github.com/jordandeklerk/moderndid/pull/225>`__)
+
+Result Extraction
+-----------------
+
+* Expose result extraction for all estimators, providing programmatic access
+  to estimation outputs.
+
+  (`#228 <https://github.com/jordandeklerk/moderndid/pull/228>`__)
+
+GPU Acceleration for ``cont_did()``
+------------------------------------
+
+* Add CuPy GPU acceleration for continuous treatment DiD estimators, including
+  device array handling, B-spline GPU tests, NPIV validation tests, and
+  benchmarks.
+
+  (`#216 <https://github.com/jordandeklerk/moderndid/pull/216>`__)
+
+Heterogeneous Treatment Effects
+-------------------------------
+
+* Add new parameters for heterogeneous treatment effects and Bell-McCaffrey
+  small-sample inference for ``did_multiplegt()``.
+
+  (`#222 <https://github.com/jordandeklerk/moderndid/pull/222>`__)
+
+
+Enhancements
+============
+
+* Align Wald pre-test, confidence bands, and bootstrap quantiles for
+  consistent inference across estimators.
+
+  (`#241 <https://github.com/jordandeklerk/moderndid/pull/241>`__)
+
+* Add error handling for NA values in input data.
+
+  (`#240 <https://github.com/jordandeklerk/moderndid/pull/240>`__)
+
+
+Bug Fixes
+=========
+
+* Fix clustered standard errors not propagating through ``att_gt()``.
+
+  (`#224 <https://github.com/jordandeklerk/moderndid/pull/224>`__)
+
+* Fix docs build failure.
+
+  (`#230 <https://github.com/jordandeklerk/moderndid/pull/230>`__)
+
+
+Refactoring
+===========
+
+* Update result objects for core estimators with a unified interface.
+
+  (`#229 <https://github.com/jordandeklerk/moderndid/pull/229>`__)
+
+* Unify synthetic data function names with ``gen_`` prefix and add deprecated
+  wrappers for old names.
+
+  (`#218 <https://github.com/jordandeklerk/moderndid/pull/218>`__)
+
+* Reorganize backend CuPy functionality.
+
+  (`#221 <https://github.com/jordandeklerk/moderndid/pull/221>`__)
+
+
+Infrastructure
+==============
+
+* Update test workflows to support multiple OS environments (Ubuntu, macOS,
+  Windows).
+
+  (`#239 <https://github.com/jordandeklerk/moderndid/pull/239>`__)
+
+* Update installation to not include Spark by default.
+
+  (`#237 <https://github.com/jordandeklerk/moderndid/pull/237>`__)
+
+* Conditionally ignore validation tests on Windows.
+
+  (`#242 <https://github.com/jordandeklerk/moderndid/pull/242>`__)
+
+
+Documentation
+=============
+
+* Update GPU guide, installation guide, README examples, user guide, and
+  plotting guide.
+
+  (`#238 <https://github.com/jordandeklerk/moderndid/pull/238>`__,
+  `#236 <https://github.com/jordandeklerk/moderndid/pull/236>`__,
+  `#235 <https://github.com/jordandeklerk/moderndid/pull/235>`__,
+  `#232 <https://github.com/jordandeklerk/moderndid/pull/232>`__,
+  `#231 <https://github.com/jordandeklerk/moderndid/pull/231>`__,
+  `#227 <https://github.com/jordandeklerk/moderndid/pull/227>`__,
+  `#226 <https://github.com/jordandeklerk/moderndid/pull/226>`__)
+
+* Enhance new estimator guide and architecture documentation.
+
+  (`#236 <https://github.com/jordandeklerk/moderndid/pull/236>`__)
+
+* Enhance development documentation and CI setup.
+
+  (`#223 <https://github.com/jordandeklerk/moderndid/pull/223>`__)
+
+
+Contributors
+============
+
+A total of 1 person contributed to this release.
+
+* Jordan Deklerk
+
+
+Pull Requests Merged
+====================
+
+A total of 27 pull requests were merged for this release.
+
+* `#242 <https://github.com/jordandeklerk/moderndid/pull/242>`__: CI: conditionally ignore validation tests on Windows
+* `#241 <https://github.com/jordandeklerk/moderndid/pull/241>`__: ENH: align Wald pre-test, confidence bands, and bootstrap quantiles
+* `#240 <https://github.com/jordandeklerk/moderndid/pull/240>`__: ENH: Add error handling for NA values
+* `#239 <https://github.com/jordandeklerk/moderndid/pull/239>`__: CI: update test workflows to support multiple OS environments
+* `#238 <https://github.com/jordandeklerk/moderndid/pull/238>`__: DOC: update GPU guide
+* `#237 <https://github.com/jordandeklerk/moderndid/pull/237>`__: MAINT: update installation to not include spark by default
+* `#236 <https://github.com/jordandeklerk/moderndid/pull/236>`__: DOC: enhance new estimator guide and architecture docs
+* `#235 <https://github.com/jordandeklerk/moderndid/pull/235>`__: DOC: update installation guide link
+* `#234 <https://github.com/jordandeklerk/moderndid/pull/234>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.5
+* `#233 <https://github.com/jordandeklerk/moderndid/pull/233>`__: Update github/codeql-action action to v4.32.6
+* `#232 <https://github.com/jordandeklerk/moderndid/pull/232>`__: DOC: update README example to match Callaway Sant'Anna example
+* `#231 <https://github.com/jordandeklerk/moderndid/pull/231>`__: DOC: update user guide and README
+* `#230 <https://github.com/jordandeklerk/moderndid/pull/230>`__: BUG: fix docs failing
+* `#229 <https://github.com/jordandeklerk/moderndid/pull/229>`__: REF: update result objects for core estimators
+* `#228 <https://github.com/jordandeklerk/moderndid/pull/228>`__: FEAT: expose result extraction for estimators
+* `#227 <https://github.com/jordandeklerk/moderndid/pull/227>`__: DOC: reorganize plotting guide
+* `#226 <https://github.com/jordandeklerk/moderndid/pull/226>`__: DOC: update README to include publication tables feature
+* `#225 <https://github.com/jordandeklerk/moderndid/pull/225>`__: FEAT: add maketables plug-in interface for publication-quality tables
+* `#224 <https://github.com/jordandeklerk/moderndid/pull/224>`__: BUG: fix clustered standard errors not propagating through att_gt()
+* `#223 <https://github.com/jordandeklerk/moderndid/pull/223>`__: DEV: enhance development documentation and CI
+* `#222 <https://github.com/jordandeklerk/moderndid/pull/222>`__: FEAT: add more treatment effects and Bell-McCaffrey inference for did_multiplegt()
+* `#221 <https://github.com/jordandeklerk/moderndid/pull/221>`__: MAINT: reorganize backend CuPY functionality
+* `#220 <https://github.com/jordandeklerk/moderndid/pull/220>`__: Update actions/download-artifact action to v8
+* `#219 <https://github.com/jordandeklerk/moderndid/pull/219>`__: Update pre-commit hook astral-sh/ruff-pre-commit to v0.15.4
+* `#218 <https://github.com/jordandeklerk/moderndid/pull/218>`__: REF: unify synthetic data function names
+* `#217 <https://github.com/jordandeklerk/moderndid/pull/217>`__: REF: update installation guide and add dev directory
+* `#216 <https://github.com/jordandeklerk/moderndid/pull/216>`__: FEAT: add GPU acceleration for cont_did()
