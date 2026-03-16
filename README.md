@@ -209,6 +209,7 @@ did.gen_ddd_scalable()     # Large-scale triple DiD
 - `moderndid.didlocal` — Local projections DiD ([Dube et al., 2025](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf))
 - `moderndid.did2s` — Two-stage DiD ([Gardner, 2021](https://jrgcmu.github.io/2sdd_current.pdf))
 - `moderndid.etwfe` — Extended two-way fixed effects ([Wooldridge, 2021](https://ssrn.com/abstract=3906345); [Wooldridge, 2023](https://doi.org/10.1093/ectj/utad016))
+- `moderndid.diddynamic` — Dynamic covariate balancing for time-varying treatments ([Viviano & Bradic, 2026](https://doi.org/10.1093/biomet/asag016))
 - `moderndid.functional` — Specification tests ([Roth & Sant'Anna, 2023](https://arxiv.org/pdf/2010.04814))
 
 ## Acknowledgements
