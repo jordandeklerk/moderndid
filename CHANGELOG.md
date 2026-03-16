@@ -1,3 +1,11 @@
+<a id="v0.2.0"></a>
+# [v0.2.0](https://github.com/jordandeklerk/moderndid/releases/tag/v0.2.0) - 2026-03-16
+
+
+
+[Changes][v0.2.0]
+
+
 <a id="v0.1.1"></a>
 # [v0.1.1](https://github.com/jordandeklerk/moderndid/releases/tag/v0.1.1) - 2026-02-26
 
@@ -225,6 +233,7 @@
 [Changes][v0.0.1]
 
 
+[v0.2.0]: https://github.com/jordandeklerk/moderndid/compare/v0.1.1...v0.2.0
 [v0.1.1]: https://github.com/jordandeklerk/moderndid/compare/v0.1.0...v0.1.1
 [v0.1.0]: https://github.com/jordandeklerk/moderndid/compare/v0.0.3...v0.1.0
 [v0.0.3]: https://github.com/jordandeklerk/moderndid/compare/v0.0.2...v0.0.3
