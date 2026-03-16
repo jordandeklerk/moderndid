@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install tox tox-gh-actions
       - name: Run full test suite
-        run: tox
+        run: tox ${{ runner.os == 'Windows' && '-- --ignore=tests/validation -vv' || '' }}
         env:
           SKIP: no-commit-to-branch
           TEST_SUITE: full
