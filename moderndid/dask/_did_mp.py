@@ -301,6 +301,9 @@ def dask_att_gt_mp(
 
         se_overrides = se_array[non_skip_counters[:n_valid]]
 
+        if clustervars is not None and id_col in clustervars:
+            clustervars = [v for v in clustervars if v != id_col]
+
         # Cluster-level bootstrap aggregation
         cluster = None
         n_bootstrap_units = n_units
@@ -366,13 +369,27 @@ def dask_att_gt_mp(
             se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
             cv = crit_val_boot if cband and np.isfinite(crit_val_boot) else scipy.stats.norm.ppf(1 - alp / 2)
+            if cband and not np.isnan(cv) and cv >= 7:
+                warnings.warn(
+                    "Simultaneous critical value is arguably 'too large' to be reliable. "
+                    "This usually happens when number of observations per group is small "
+                    "and/or there is not much variation in outcomes.",
+                    UserWarning,
+                )
         else:
             se_computed = np.sqrt(np.diag(vcov_analytical) / n_units)
             se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
             cv = scipy.stats.norm.ppf(1 - alp / 2)
 
         wald_statistic, wald_pvalue = _compute_wald_pretest(
-            att_array, groups_array, times_array, vcov_analytical, se_computed, n_units
+            att_array,
+            groups_array,
+            times_array,
+            vcov_analytical,
+            se_computed,
+            n_units,
+            clustervars=clustervars,
+            id_col=id_col,
         )
 
         if panel:
@@ -403,6 +420,7 @@ def dask_att_gt_mp(
             Path(memmap_path).unlink(missing_ok=True)
 
     estimation_params = {
+        "yname": y_col,
         "control_group": control_group,
         "anticipation_periods": anticipation,
         "estimation_method": est_method,
@@ -412,8 +430,11 @@ def dask_att_gt_mp(
         "panel": panel,
         "allow_unbalanced_panel": allow_unbalanced_panel,
         "clustervars": clustervars,
+        "cluster": cluster,
         "biters": biters,
         "random_state": random_state,
+        "n_units": n_units,
+        "n_obs": n_units * n_periods if panel else n_units,
     }
 
     return mp(
@@ -799,8 +820,21 @@ def _compute_did_cell_streaming(
     return ATTgtResult(att=att, group=int(g), time=int(t), post=post_treat)
 
 
-def _compute_wald_pretest(att_array, groups_array, times_array, vcov_analytical, se_computed, n_units):
+def _compute_wald_pretest(
+    att_array, groups_array, times_array, vcov_analytical, se_computed, n_units, clustervars=None, id_col=None
+):
     """Compute Wald pre-test for parallel trends."""
+    extra_clustervars = [v for v in (clustervars or []) if v not in (id_col or "", "")]
+    if len(extra_clustervars) > 0:
+        warnings.warn(
+            f"The Wald pre-test is not reported when clustering beyond the unit level "
+            f"(clustervars = {extra_clustervars!r}) because the analytical variance matrix "
+            f"does not account for between-cluster correlation. Use the bootstrap confidence "
+            f"intervals to assess pre-trends.",
+            UserWarning,
+        )
+        return None, None
+
     pre_treatment_indices = np.where(groups_array > times_array)[0]
 
     zero_na_sd_indices = np.unique(np.where(np.isnan(se_computed))[0])
