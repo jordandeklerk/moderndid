@@ -4,11 +4,11 @@ import warnings
 
 import numpy as np
 
-from ...cupy.backend import get_backend, to_device
-from ..utils import _quantile_basis, avoid_zero_division
+from ..cupy.backend import get_backend, to_device
 from .cck_ucb import compute_cck_ucb
 from .estimators import npiv_est
 from .results import NPIVResult
+from .utils import _quantile_basis, avoid_zero_division
 
 
 def compute_ucb(
@@ -114,6 +114,29 @@ def compute_ucb(
     -------
     NPIVResult
         NPIV results with uniform confidence bands included.
+
+    Examples
+    --------
+    Compute 95% uniform confidence bands for the Engel curve using the
+    under-smoothing approach with a fixed sieve dimension:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import numpy as np
+           ...: from moderndid import load_engel
+           ...: from moderndid.npiv import compute_ucb
+           ...:
+           ...: df = load_engel()
+           ...: y = df["food"].to_numpy()
+           ...: x = df["logexp"].to_numpy().reshape(-1, 1)
+           ...: w = df["logwages"].to_numpy().reshape(-1, 1)
+           ...: result = compute_ucb(
+           ...:     y=y, x=x, w=w, j_x_segments=5, boot_num=50, seed=42,
+           ...: )
+           ...: print(f"Function UCB critical value: {result.cv:.3f}")
+           ...: print(f"Derivative UCB critical value: {result.cv_deriv:.3f}")
+           ...: print(f"Bands at {len(result.h)} evaluation points")
 
     See Also
     --------

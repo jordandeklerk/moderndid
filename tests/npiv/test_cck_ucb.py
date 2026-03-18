@@ -5,8 +5,8 @@ import pytest
 
 pytestmark = pytest.mark.slow
 
-from moderndid.didcont.npiv.cck_ucb import compute_cck_ucb
-from moderndid.didcont.npiv.results import NPIVResult
+from moderndid.npiv.cck_ucb import compute_cck_ucb
+from moderndid.npiv.results import NPIVResult
 
 
 def test_basic_cck_ucb(simple_data, selection_result):

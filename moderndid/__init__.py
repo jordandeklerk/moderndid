@@ -252,7 +252,7 @@ __all__ = [
 # Submodules that can be loaded lazily
 # Note: drdid is excluded because we want `from moderndid import drdid` to get
 # the drdid() function, not the drdid submodule. Access submodule via moderndid.drdid.
-_submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "plots"]
+_submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "npiv", "plots"]
 
 # Map attribute names to their module paths (for base/always-available imports)
 _lazy_imports = {
@@ -384,6 +384,17 @@ _lazy_imports = {
     "generate_simple_ddd_data": "moderndid.core.data",
     "mboot_ddd": "moderndid.didtriple.bootstrap",
     "wboot_ddd": "moderndid.didtriple.bootstrap",
+    # npiv (standalone, no extra deps)
+    "MultivariateBasis": "moderndid.npiv",
+    "NPIVResult": "moderndid.npiv",
+    "compute_cck_ucb": "moderndid.npiv",
+    "compute_ucb": "moderndid.npiv",
+    "npiv": "moderndid.npiv.npiv",
+    "npiv_choose_j": "moderndid.npiv",
+    "npiv_est": "moderndid.npiv",
+    "npiv_j": "moderndid.npiv",
+    "npiv_jhat_max": "moderndid.npiv",
+    "prodspline": "moderndid.npiv",
 }
 
 # Optional imports that require extra dependencies
@@ -402,16 +413,6 @@ _optional_imports = {
     "setup_pte": ("moderndid.didcont", "didcont"),
     "setup_pte_basic": ("moderndid.didcont", "didcont"),
     "setup_pte_cont": ("moderndid.didcont", "didcont"),
-    "MultivariateBasis": ("moderndid.didcont.npiv", "didcont"),
-    "NPIVResult": ("moderndid.didcont.npiv", "didcont"),
-    "compute_cck_ucb": ("moderndid.didcont.npiv", "didcont"),
-    "compute_ucb": ("moderndid.didcont.npiv", "didcont"),
-    "npiv": ("moderndid.didcont.npiv", "didcont"),
-    "npiv_choose_j": ("moderndid.didcont.npiv", "didcont"),
-    "npiv_est": ("moderndid.didcont.npiv", "didcont"),
-    "npiv_j": ("moderndid.didcont.npiv", "didcont"),
-    "npiv_jhat_max": ("moderndid.didcont.npiv", "didcont"),
-    "prodspline": ("moderndid.didcont.npiv", "didcont"),
     "BSpline": ("moderndid.didcont.spline", "didcont"),
     "SplineBase": ("moderndid.didcont.spline", "didcont"),
     # didhonest (requires cvxpy)
@@ -542,6 +543,7 @@ def __getattr__(name: str) -> Any:
 # Eagerly import names that shadow subpackages
 # This is needed because `from X import Y` bypasses __getattr__ when Y is a subpackage
 from moderndid.drdid.drdid import drdid
+from moderndid.npiv.npiv import npiv
 
 
 def __dir__() -> list[str]:

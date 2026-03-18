@@ -98,6 +98,29 @@ def npiv_choose_j(
         - **j_hat_max**: Maximum feasible dimension
         - Additional diagnostic information
 
+    Examples
+    --------
+    Select the sieve dimension adaptively for the Engel curve IV problem.
+    The procedure determines the maximum feasible dimension and then applies
+    the Lepski test to choose the optimal number of B-spline segments:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import numpy as np
+           ...: from moderndid import load_engel
+           ...: from moderndid.npiv import npiv_choose_j
+           ...:
+           ...: df = load_engel()
+           ...: y = df["food"].to_numpy()
+           ...: x = df["logexp"].to_numpy().reshape(-1, 1)
+           ...: w = df["logwages"].to_numpy().reshape(-1, 1)
+           ...: sel = npiv_choose_j(y=y, x=x, w=w, boot_num=50, seed=42)
+           ...: print(f"Selected segments: {sel['j_x_seg']}")
+           ...: print(f"Selected dimension (J_tilde): {sel['j_tilde']}")
+           ...: print(f"Max feasible dimension: {sel['j_hat_max']}")
+           ...: print(f"Bootstrap critical value: {sel['theta_star']:.3f}")
+
     See Also
     --------
     npiv_jhat_max : Compute maximum feasible dimension

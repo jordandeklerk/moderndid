@@ -13,7 +13,7 @@ from tests.helpers import importorskip
 
 np = importorskip("numpy")
 
-from moderndid.didcont.npiv import npiv
+from moderndid.npiv import npiv
 
 
 def _run_r_script(r_script, result_path, timeout=300):

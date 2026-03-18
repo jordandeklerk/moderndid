@@ -1,0 +1,269 @@
+"""Utility functions for nonparametric instrumental variables estimation."""
+
+from typing import NamedTuple
+
+import numpy as np
+
+from moderndid.cupy.backend import get_backend
+
+
+class FullRankCheckResult(NamedTuple):
+    """Container for full rank check results."""
+
+    #: Whether the matrix has full rank.
+    is_full_rank: bool
+    #: Condition number of the matrix.
+    condition_number: float
+    #: Minimum eigenvalue.
+    min_eigenvalue: float
+    #: Maximum eigenvalue.
+    max_eigenvalue: float
+
+
+def is_full_rank(x, tol=None):
+    """Check if a matrix has full rank using eigenvalue decomposition.
+
+    Tests whether a matrix has full rank by computing the condition number
+    based on the ratio of maximum to minimum eigenvalues of :math:`X'X`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Input matrix to check for full rank. Can be 1D or 2D.
+    tol : float, optional
+        Tolerance for the condition number check.
+
+    Returns
+    -------
+    FullRankCheckResult
+        NamedTuple containing:
+
+        - is_full_rank: Whether the matrix has full rank
+        - condition_number: The condition number (max_eigenvalue/min_eigenvalue)
+        - min_eigenvalue: Minimum eigenvalue of :math:`X'X`
+        - max_eigenvalue: Maximum eigenvalue of :math:`X'X`
+    """
+    x = np.atleast_2d(x)
+
+    if x.shape[1] == 1:
+        is_nonzero = np.any(x != 0)
+        abs_vals = np.abs(x)
+        max_val = np.max(abs_vals) if is_nonzero else 0.0
+        min_val = np.min(abs_vals[abs_vals > 0]) if is_nonzero else 0.0
+
+        return FullRankCheckResult(
+            is_full_rank=bool(is_nonzero),
+            condition_number=max_val / min_val if is_nonzero and min_val > 0 else np.inf,
+            min_eigenvalue=min_val**2,
+            max_eigenvalue=max_val**2,
+        )
+
+    is_full, cond_num, min_eig, max_eig = _check_full_rank_crossprod(x, tol)
+
+    return FullRankCheckResult(
+        is_full_rank=bool(is_full), condition_number=cond_num, min_eigenvalue=min_eig, max_eigenvalue=max_eig
+    )
+
+
+def _check_full_rank_crossprod(x, tol=None):
+    """Check if :math:`X'X` has full rank using eigenvalue decomposition."""
+    xp = get_backend()
+    xtx = x.T @ x
+
+    eigenvalues = xp.linalg.eigvalsh(xtx)
+
+    n, p = x.shape
+    max_dim = max(n, p)
+
+    min_eig = eigenvalues[0]
+    max_eig = eigenvalues[-1]
+
+    if tol is None:
+        max_sqrt_eig = float(xp.sqrt(xp.max(xp.abs(eigenvalues))))
+        tol = max_dim * max_sqrt_eig * np.finfo(float).eps
+
+    is_full_rank = bool(max_eig > 0) and bool(xp.abs(min_eig / max_eig) > tol)
+    condition_number = float(xp.abs(max_eig / min_eig)) if float(min_eig) != 0 else np.inf
+
+    return is_full_rank, condition_number, float(min_eig), float(max_eig)
+
+
+def matrix_sqrt(x):
+    """Compute matrix square root using eigen-decomposition.
+
+    Computes the square root of a positive semi-definite matrix using
+    eigenvalue decomposition. Negative eigenvalues are set to zero to
+    ensure numerical stability.
+
+    Uses the formula: :math:`sqrt(X) = V @ diag(sqrt(eigenvalues)) @ V.T`
+    where :math:`V` contains the eigenvectors of :math:`X`.
+
+    Parameters
+    ----------
+    x : ndarray
+        Square positive semi-definite matrix.
+
+    Returns
+    -------
+    ndarray
+        Matrix square root such that :math:`result @ result.T ≈ x`.
+    """
+    x = np.asarray(x)
+
+    if x.ndim != 2:
+        raise ValueError("Input must be a 2D array")
+    if x.shape[0] != x.shape[1]:
+        raise ValueError("Input must be a square matrix")
+
+    xp = get_backend()
+    eigenvalues, eigenvectors = xp.linalg.eigh(x)
+    sqrt_eigenvalues = xp.sqrt(xp.maximum(eigenvalues, 0))
+
+    return eigenvectors @ xp.diag(sqrt_eigenvalues) @ eigenvectors.T
+
+
+def avoid_zero_division(a, eps=None):
+    """Ensure values are bounded away from zero for safe division.
+
+    Parameters
+    ----------
+    a : ndarray or float
+        Input values to bound away from zero.
+    eps : float, optional
+        Minimum absolute value. If None, uses machine epsilon.
+
+    Returns
+    -------
+    ndarray or float
+        Values bounded away from zero with preserved sign.
+    """
+    xp = get_backend()
+    if eps is None:
+        eps = float(np.finfo(float).eps)
+
+    a = xp.asarray(a)
+    return xp.where(a < 0, xp.minimum(a, -eps), xp.maximum(a, eps))
+
+
+def _quantile_basis(x, q):
+    """Compute quantiles for uniform confidence bands."""
+    x = np.asarray(x)
+    if x.size == 0:
+        return 0
+
+    return np.quantile(x, q, method="lower")
+
+
+def basis_dimension(basis="additive", degree=None, segments=None):
+    """Compute dimension of multivariate basis without constructing it.
+
+    Efficiently computes the dimension of additive, tensor product, or
+    generalized linear product (GLP) bases without the memory overhead
+    of constructing the full basis matrix.
+
+    Parameters
+    ----------
+    basis : {"additive", "tensor", "glp"}, default="additive"
+        Type of basis to use:
+
+        - "additive": Sum of univariate bases
+        - "tensor": Full tensor product
+        - "glp": Generalized linear product
+    degree : ndarray, optional
+        Polynomial degrees for each variable. Must be provided with segments.
+    segments : ndarray, optional
+        Number of segments for each variable. Must be provided with degree.
+
+    Returns
+    -------
+    int
+        Dimension of the specified basis.
+    """
+    if basis not in ("additive", "tensor", "glp"):
+        raise ValueError("basis must be one of: 'additive', 'tensor', 'glp'")
+
+    if degree is None or segments is None:
+        raise ValueError("Both degree and segments must be provided")
+
+    degree = np.asarray(degree)
+    segments = np.asarray(segments)
+
+    if degree.shape != segments.shape:
+        raise ValueError("degree and segments must have the same shape")
+
+    K = np.column_stack([degree, segments])
+
+    K_filtered = K[K[:, 0] > 0]
+
+    if K_filtered.shape[0] == 0:
+        return 0
+
+    if basis == "additive":
+        return int(np.sum(np.sum(K_filtered, axis=1) - 1))
+
+    if basis == "tensor":
+        return int(np.prod(np.sum(K_filtered, axis=1)))
+
+    if basis == "glp":
+        dimen = np.sum(K_filtered, axis=1) - 1
+        dimen = dimen[dimen > 0]
+        dimen = np.sort(dimen)[::-1]
+        k = len(dimen)
+
+        if k == 0:
+            return 0
+
+        nd1 = np.ones(dimen[0], dtype=int)
+        nd1[dimen[0] - 1] = 0
+
+        ncol_bs = dimen[0]
+
+        if k > 1:
+            for i in range(1, k):
+                dim_rt = _compute_glp_dimension_step(dimen[0], dimen[i], nd1, ncol_bs)
+                nd1 = dim_rt["nd1"]
+                ncol_bs = dim_rt["d12"]
+            ncol_bs += k - 1
+
+        return int(ncol_bs)
+
+    return 0
+
+
+def _compute_glp_dimension_step(d1, d2, nd1, pd12):
+    """Compute a step in the GLP dimension calculation."""
+    if d2 == 1:
+        return {"d12": pd12, "nd1": nd1}
+
+    d12 = d2
+    if d1 - d2 > 0:
+        for i in range(1, d1 - d2 + 1):
+            d12 += d2 * nd1[i - 1]
+
+    if d2 > 1:
+        for i in range(2, d2 + 1):
+            d12 += i * nd1[d1 - i]
+
+    d12 += nd1[d1 - 1]
+
+    nd2 = nd1.copy()
+    if d1 > 1:
+        for j_idx in range(d1 - 1):
+            j = j_idx + 1
+            nd2[j_idx] = 0
+            start_i = j
+            end_i = max(0, j - d2 + 1)
+            for i in range(start_i, end_i - 1, -1):
+                if i > 0:
+                    nd2[j_idx] += nd1[i - 1]
+                else:
+                    nd2[j_idx] += 1
+
+    if d2 > 1:
+        nd2[d1 - 1] = nd1[d1 - 1]
+        for i in range(d1 - d2 + 1, d1):
+            nd2[d1 - 1] += nd1[i - 1]
+    else:
+        nd2[d1 - 1] = nd1[d1 - 1]
+
+    return {"d12": d12, "nd1": nd2}

@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from moderndid.didcont.npiv.confidence_bands import compute_ucb
-from moderndid.didcont.npiv.results import NPIVResult
+from moderndid.npiv.confidence_bands import compute_ucb
+from moderndid.npiv.results import NPIVResult
 
 
 def test_basic_confidence_bands(simple_data):

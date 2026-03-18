@@ -29,6 +29,12 @@ methodology are found in :ref:`background`.
    honestdid
 
 .. toctree::
+   :caption: Nonparametric IV
+   :maxdepth: 2
+
+   npiv
+
+.. toctree::
    :caption: Utilities
    :maxdepth: 2
 

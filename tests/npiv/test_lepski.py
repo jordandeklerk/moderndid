@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from moderndid.didcont.npiv.lepski import npiv_j, npiv_jhat_max
+from moderndid.npiv.lepski import npiv_j, npiv_jhat_max
 
 
 def test_basic_lepski_selection(simple_data):

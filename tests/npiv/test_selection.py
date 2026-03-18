@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from moderndid.didcont.npiv.selection import npiv_choose_j
+from moderndid.npiv.selection import npiv_choose_j
 
 
 def test_basic_dimension_selection(simple_data):

@@ -1,4 +1,4 @@
-"""Non-parametric Instrumental Variables Estimation for Continuous Treatment DiD."""
+"""Nonparametric Instrumental Variables Estimation."""
 
 from .cck_ucb import compute_cck_ucb
 from .confidence_bands import compute_ucb
@@ -11,23 +11,16 @@ from .results import NPIVResult
 from .selection import npiv_choose_j
 
 __all__ = [
-    # B-spline utilities
     "BSplineBasis",
-    # Spline basis construction
     "MultivariateBasis",
-    # Result types
     "NPIVResult",
-    # Confidence bands
     "compute_cck_ucb",
-    "compute_ucb",
     "compute_ucb",
     "glp_model_matrix",
     "gsl_bs",
-    # Main estimation functions
     "npiv",
     "npiv_choose_j",
     "npiv_est",
-    # Complexity selection
     "npiv_j",
     "npiv_jhat_max",
     "predict_gsl_bs",

@@ -36,7 +36,7 @@ from .estimation import (
     setup_pte_basic,
     setup_pte_cont,
 )
-from .npiv import (
+from moderndid.npiv import (
     BSplineBasis,
     MultivariateBasis,
     NPIVResult,

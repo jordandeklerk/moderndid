@@ -19,6 +19,7 @@ from moderndid.core.preprocess import (
 )
 from moderndid.core.preprocessing import preprocess_cont_did
 from moderndid.cupy.backend import get_backend, to_device, to_numpy, use_backend
+from moderndid.npiv import gsl_bs, npiv
 
 from .estimation import (
     AttgtResult,
@@ -28,7 +29,6 @@ from .estimation import (
 )
 from .estimation.estimators import pte_attgt
 from .estimation.process_dose import DoseResult
-from .npiv import gsl_bs, npiv
 from .spline import BSpline
 
 

@@ -1,10 +1,11 @@
 """Tests for nonparametric instrumental variables estimation."""
 
 import numpy as np
+import polars as pl
 import pytest
 
-from moderndid.didcont.npiv.npiv import npiv
-from moderndid.didcont.npiv.results import NPIVResult
+from moderndid.npiv.npiv import npiv
+from moderndid.npiv.results import NPIVResult
 
 
 def test_basic_npiv(simple_data):
@@ -275,3 +276,73 @@ def test_multidimensional_y():
     result = npiv(y=y, x=x, w=w, j_x_segments=3, k_w_segments=4)
 
     assert result.h is not None
+
+
+# --- DataFrame API tests ---
+
+
+def test_npiv_dataframe_polars():
+    np.random.seed(42)
+    n = 100
+    df = pl.DataFrame(
+        {
+            "y": np.random.randn(n),
+            "x": np.random.randn(n),
+            "w": np.random.randn(n),
+        }
+    )
+    result = npiv(data=df, yname="y", xname="x", wname="w", j_x_segments=3)
+    assert isinstance(result, NPIVResult)
+    assert len(result.h) == n
+
+
+def test_npiv_dataframe_pandas():
+    pd = pytest.importorskip("pandas")
+    np.random.seed(42)
+    n = 100
+    df = pd.DataFrame(
+        {
+            "y": np.random.randn(n),
+            "x": np.random.randn(n),
+            "w": np.random.randn(n),
+        }
+    )
+    result = npiv(data=df, yname="y", xname="x", wname="w", j_x_segments=3)
+    assert isinstance(result, NPIVResult)
+    assert len(result.h) == n
+
+
+def test_npiv_dataframe_error_both_data_and_arrays():
+    n = 50
+    df = pl.DataFrame({"y": np.random.randn(n), "x": np.random.randn(n), "w": np.random.randn(n)})
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        npiv(data=df, yname="y", xname="x", wname="w", y=np.random.randn(n))
+
+
+def test_npiv_dataframe_error_missing_column_names():
+    n = 50
+    df = pl.DataFrame({"y": np.random.randn(n), "x": np.random.randn(n), "w": np.random.randn(n)})
+    with pytest.raises(ValueError, match="'yname', 'xname', and 'wname' are required"):
+        npiv(data=df, yname="y", xname="x")
+
+
+def test_npiv_dataframe_multivariate_columns():
+    np.random.seed(42)
+    n = 150
+    df = pl.DataFrame(
+        {
+            "y": np.random.randn(n),
+            "x1": np.random.randn(n),
+            "x2": np.random.randn(n),
+            "w1": np.random.randn(n),
+            "w2": np.random.randn(n),
+        }
+    )
+    result = npiv(data=df, yname="y", xname=["x1", "x2"], wname=["w1", "w2"], j_x_segments=3, boot_num=30)
+    assert isinstance(result, NPIVResult)
+    assert len(result.h) == n
+
+
+def test_npiv_dataframe_no_data_no_arrays():
+    with pytest.raises(ValueError, match="Must provide either"):
+        npiv()

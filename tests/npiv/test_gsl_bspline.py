@@ -5,7 +5,7 @@ import pytest
 
 pytestmark = pytest.mark.slow
 
-from moderndid.didcont.npiv.gsl_bspline import gsl_bs, predict_gsl_bs
+from moderndid.npiv.gsl_bspline import gsl_bs, predict_gsl_bs
 
 
 def test_basic_bspline_construction(bspline_simple_data):

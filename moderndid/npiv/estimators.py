@@ -4,10 +4,10 @@ import warnings
 
 import numpy as np
 
-from ...cupy.backend import get_backend, to_numpy
-from ..utils import is_full_rank
+from ..cupy.backend import get_backend, to_numpy
 from .prodspline import prodspline
 from .results import NPIVResult
+from .utils import is_full_rank
 
 
 def npiv_est(
@@ -74,6 +74,38 @@ def npiv_est(
     -------
     NPIVResult
         Named tuple containing estimation results.
+
+    Examples
+    --------
+    Estimate the Engel curve without confidence bands using the core TSLS
+    estimator. This is the computational backend that :func:`npiv` calls
+    internally:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import numpy as np
+           ...: from moderndid import load_engel
+           ...: from moderndid.npiv import npiv_est
+           ...:
+           ...: df = load_engel()
+           ...: y = df["food"].to_numpy()
+           ...: x = df["logexp"].to_numpy().reshape(-1, 1)
+           ...: w = df["logwages"].to_numpy().reshape(-1, 1)
+           ...: result = npiv_est(y=y, x=x, w=w, j_x_segments=5)
+           ...: print(f"Estimates at {len(result.h)} points")
+           ...: print(f"h[:5] = {result.h[:5]}")
+           ...: print(f"Pointwise SE[:5] = {result.asy_se[:5]}")
+
+    Evaluate the estimate on a uniform grid of 50 points:
+
+    .. ipython::
+        :okwarning:
+
+        In [2]: x_grid = np.linspace(x.min(), x.max(), 50).reshape(-1, 1)
+           ...: result = npiv_est(y=y, x=x, w=w, x_eval=x_grid, j_x_segments=5)
+           ...: print(f"Grid estimates: {len(result.h)} points")
+           ...: print(f"h[:5] = {result.h[:5]}")
 
     See Also
     --------

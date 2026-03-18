@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from moderndid.didcont.npiv.estimators import npiv_est
-from moderndid.didcont.npiv.results import NPIVResult
+from moderndid.npiv.estimators import npiv_est
+from moderndid.npiv.results import NPIVResult
 
 
 def test_basic_npiv_estimation(simple_data):

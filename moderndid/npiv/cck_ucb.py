@@ -2,11 +2,11 @@
 
 import numpy as np
 
-from ...cupy.backend import get_backend, to_device
-from ..utils import _quantile_basis, avoid_zero_division
+from ..cupy.backend import get_backend, to_device
 from .estimators import _ginv, npiv_est
 from .prodspline import prodspline
 from .results import NPIVResult
+from .utils import _quantile_basis, avoid_zero_division
 
 
 def compute_cck_ucb(
@@ -111,6 +111,31 @@ def compute_cck_ucb(
     -------
     NPIVResult
         NPIV results with CCK uniform confidence bands.
+
+    Examples
+    --------
+    Compute honest adaptive UCBs for the Engel curve using data-driven
+    dimension selection. This is typically called through :func:`npiv` with
+    ``j_x_segments=None`` (the default); this example shows the lower-level
+    two-step interface:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import numpy as np
+           ...: from moderndid import load_engel
+           ...: from moderndid.npiv import npiv_choose_j, compute_cck_ucb
+           ...:
+           ...: df = load_engel()
+           ...: y = df["food"].to_numpy()
+           ...: x = df["logexp"].to_numpy().reshape(-1, 1)
+           ...: w = df["logwages"].to_numpy().reshape(-1, 1)
+           ...: sel = npiv_choose_j(y=y, x=x, w=w, boot_num=50, seed=42)
+           ...: result = compute_cck_ucb(
+           ...:     y=y, x=x, w=w, boot_num=50, seed=42, selection_result=sel,
+           ...: )
+           ...: print(f"Adaptive CV: {result.cv:.3f}")
+           ...: print(f"Selected dimension: {result.args['j_tilde']}")
 
     See Also
     --------

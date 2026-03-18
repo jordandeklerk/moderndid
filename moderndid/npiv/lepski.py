@@ -2,10 +2,10 @@
 
 import numpy as np
 
-from ...cupy.backend import get_backend, to_device, to_numpy
-from ..utils import _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
+from ..cupy.backend import get_backend, to_device, to_numpy
 from .estimators import _ginv, npiv_est
 from .prodspline import prodspline
+from .utils import _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
 
 
 def npiv_j(
