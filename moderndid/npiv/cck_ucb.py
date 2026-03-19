@@ -132,7 +132,7 @@ def compute_cck_ucb(
            ...: w = df["logwages"].to_numpy().reshape(-1, 1)
            ...: sel = npiv_choose_j(y=y, x=x, w=w, boot_num=50, seed=42)
            ...: result = compute_cck_ucb(
-           ...:     y=y, x=x, w=w, boot_num=50, seed=42, selection_result=sel,
+           ...:     y=y, x=x, w=w, boot_num=500, seed=42, selection_result=sel,
            ...: )
            ...: print(f"Adaptive CV: {result.cv:.3f}")
            ...: print(f"Selected dimension: {result.args['j_tilde']}")

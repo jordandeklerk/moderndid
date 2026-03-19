@@ -211,7 +211,7 @@ def npiv(
            ...:     xname="logexp",
            ...:     wname="logwages",
            ...:     j_x_segments=5,
-           ...:     boot_num=50,
+           ...:     boot_num=500,
            ...:     seed=42,
            ...: )
            ...: print(f"Estimates at {len(result.h)} points")
@@ -232,12 +232,12 @@ def npiv(
     .. ipython::
         :okwarning:
 
-        In [4]: np.random.seed(0)
+        In [4]: rng = np.random.default_rng(0)
            ...: n = 200
-           ...: w = np.random.uniform(0, 1, (n, 1))
-           ...: x = w + 0.2 * np.random.normal(0, 1, (n, 1))
-           ...: y = np.sin(2 * np.pi * x).ravel() + 0.1 * np.random.normal(0, 1, n)
-           ...: result = npiv(y=y, x=x, w=w, j_x_segments=4, boot_num=50, seed=0)
+           ...: w = rng.uniform(0, 1, (n, 1))
+           ...: x = w + 0.2 * rng.normal(0, 1, (n, 1))
+           ...: y = np.sin(2 * np.pi * x).ravel() + 0.1 * rng.normal(0, 1, n)
+           ...: result = npiv(y=y, x=x, w=w, j_x_segments=4, boot_num=500, seed=0)
            ...: result.h.shape
 
     See Also

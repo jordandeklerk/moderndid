@@ -132,7 +132,7 @@ def compute_ucb(
            ...: x = df["logexp"].to_numpy().reshape(-1, 1)
            ...: w = df["logwages"].to_numpy().reshape(-1, 1)
            ...: result = compute_ucb(
-           ...:     y=y, x=x, w=w, j_x_segments=5, boot_num=50, seed=42,
+           ...:     y=y, x=x, w=w, j_x_segments=5, boot_num=500, seed=42,
            ...: )
            ...: print(f"Function UCB critical value: {result.cv:.3f}")
            ...: print(f"Derivative UCB critical value: {result.cv_deriv:.3f}")
