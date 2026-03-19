@@ -5,7 +5,7 @@ import pytest
 
 pytestmark = pytest.mark.slow
 
-from moderndid.didcont.npiv.prodspline import glp_model_matrix, tensor_prod_model_matrix
+from moderndid.npiv.prodspline import glp_model_matrix, tensor_prod_model_matrix
 
 
 def test_tensor_prod_basic_functionality(simple_bases):

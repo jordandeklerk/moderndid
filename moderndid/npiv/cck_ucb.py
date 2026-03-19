@@ -2,11 +2,11 @@
 
 import numpy as np
 
-from ...cupy.backend import get_backend, to_device
-from ..utils import _quantile_basis, avoid_zero_division
+from ..cupy.backend import get_backend, to_device
 from .estimators import _ginv, npiv_est
 from .prodspline import prodspline
 from .results import NPIVResult
+from .utils import _quantile_basis, avoid_zero_division
 
 
 def compute_cck_ucb(
@@ -15,7 +15,7 @@ def compute_cck_ucb(
     w,
     x_eval=None,
     alpha=0.05,
-    boot_num=99,
+    biters=99,
     basis="tensor",
     j_x_degree=3,
     k_w_degree=4,
@@ -76,7 +76,7 @@ def compute_cck_ucb(
         Evaluation points for X. If None, uses x.
     alpha : float, default=0.05
         Significance level (1-alpha confidence level).
-    boot_num : int, default=99
+    biters : int, default=99
         Number of bootstrap replications.
     basis : {"tensor", "additive", "glp"}, default="tensor"
         Type of basis for multivariate X.
@@ -111,6 +111,31 @@ def compute_cck_ucb(
     -------
     NPIVResult
         NPIV results with CCK uniform confidence bands.
+
+    Examples
+    --------
+    Compute honest adaptive UCBs for the Engel curve using data-driven
+    dimension selection. This is typically called through :func:`npiv` with
+    ``j_x_segments=None`` (the default); this example shows the lower-level
+    two-step interface:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import numpy as np
+           ...: from moderndid import load_engel
+           ...: from moderndid.npiv import npiv_choose_j, compute_cck_ucb
+           ...:
+           ...: df = load_engel()
+           ...: y = df["food"].to_numpy()
+           ...: x = df["logexp"].to_numpy().reshape(-1, 1)
+           ...: w = df["logwages"].to_numpy().reshape(-1, 1)
+           ...: sel = npiv_choose_j(y=y, x=x, w=w, biters=50, seed=42)
+           ...: result = compute_cck_ucb(
+           ...:     y=y, x=x, w=w, biters=500, seed=42, selection_result=sel,
+           ...: )
+           ...: print(f"Adaptive CV: {result.cv:.3f}")
+           ...: print(f"Selected dimension: {result.args['j_tilde']}")
 
     See Also
     --------
@@ -169,12 +194,12 @@ def compute_cck_ucb(
 
         n_j_boot = len(j_segments_boot)
         if ucb_h:
-            z_sup_boot_h = np.zeros((boot_num, n_j_boot))
+            z_sup_boot_h = np.zeros((biters, n_j_boot))
         if ucb_deriv:
-            z_sup_boot_deriv = np.zeros((boot_num, n_j_boot))
+            z_sup_boot_deriv = np.zeros((biters, n_j_boot))
 
         rng = np.random.default_rng(seed)
-        boot_draws_all = to_device(rng.normal(0, 1, (boot_num, n)))
+        boot_draws_all = to_device(rng.normal(0, 1, (biters, n)))
 
         for j_idx, j_seg in enumerate(j_segments_boot):
             k_seg = k_w_segments_set[np.where(j_x_segments_set == j_seg)[0][0]]
@@ -248,7 +273,7 @@ def compute_cck_ucb(
                 var_deriv = xp.diag(psi_x_deriv_eval @ D_inv_rho_D_inv @ psi_x_deriv_eval.T)
                 asy_se_deriv = xp.sqrt(xp.maximum(var_deriv, 0))
 
-            for b in range(boot_num):
+            for b in range(biters):
                 boot_draws = boot_draws_all[b]
 
                 if ucb_h:

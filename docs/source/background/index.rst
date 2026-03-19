@@ -17,6 +17,7 @@ methodologies implemented in **ModernDiD**; for practical usage see the
    didcont
    didinter
    didhonest
+   npiv
 
 Acknowledgements
 ================

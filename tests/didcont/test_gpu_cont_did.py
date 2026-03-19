@@ -5,9 +5,9 @@ import pytest
 
 import moderndid
 from moderndid.cupy.backend import set_backend, to_numpy
-from moderndid.didcont.npiv.estimators import _ginv, npiv_est
-from moderndid.didcont.npiv.gsl_bspline import gsl_bs
 from moderndid.didcont.spline import BSpline
+from moderndid.npiv.estimators import _ginv, npiv_est
+from moderndid.npiv.gsl_bspline import gsl_bs
 from tests.helpers import importorskip
 
 cp = importorskip("cupy")

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from moderndid.didcont.npiv.selection import npiv_choose_j
+from moderndid.npiv.selection import npiv_choose_j
 
 
 def test_basic_dimension_selection(simple_data):
@@ -13,7 +13,7 @@ def test_basic_dimension_selection(simple_data):
         y=y,
         x=x,
         w=w,
-        boot_num=20,
+        biters=20,
     )
 
     assert isinstance(result, dict)
@@ -38,7 +38,7 @@ def test_different_basis_types(simple_data, basis):
         x=x,
         w=w,
         basis=basis,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -51,7 +51,7 @@ def test_multivariate_case(multivariate_data):
         y=y,
         x=x,
         w=w,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -64,7 +64,7 @@ def test_regression_case(regression_data):
         y=y,
         x=x,
         w=w,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -81,7 +81,7 @@ def test_with_custom_grid(simple_data):
         w=w,
         x_grid=x_grid,
         grid_num=30,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -99,7 +99,7 @@ def test_with_range_constraints(simple_data):
         x_max=0.9,
         w_min=0.1,
         w_max=0.9,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -112,7 +112,7 @@ def test_reproducibility_with_seed(simple_data):
         y=y,
         x=x,
         w=w,
-        boot_num=20,
+        biters=20,
         seed=123,
     )
 
@@ -120,7 +120,7 @@ def test_reproducibility_with_seed(simple_data):
         y=y,
         x=x,
         w=w,
-        boot_num=20,
+        biters=20,
         seed=123,
     )
 
@@ -138,7 +138,7 @@ def test_different_knot_types(simple_data, knots):
         x=x,
         w=w,
         knots=knots,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -152,7 +152,7 @@ def test_with_fullrank_check(simple_data):
         x=x,
         w=w,
         check_is_fullrank=True,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -168,7 +168,7 @@ def test_different_spline_degrees(simple_data, j_x_degree, k_w_degree):
         w=w,
         j_x_degree=j_x_degree,
         k_w_degree=k_w_degree,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -185,7 +185,7 @@ def test_small_sample():
         y=y,
         x=x,
         w=w,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -199,7 +199,7 @@ def test_consistency_between_components(simple_data):
         y=y,
         x=x,
         w=w,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] <= result["j_hat"]

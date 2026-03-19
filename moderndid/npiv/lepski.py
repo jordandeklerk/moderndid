@@ -2,10 +2,10 @@
 
 import numpy as np
 
-from ...cupy.backend import get_backend, to_device, to_numpy
-from ..utils import _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
+from ..cupy.backend import get_backend, to_device, to_numpy
 from .estimators import _ginv, npiv_est
 from .prodspline import prodspline
+from .utils import _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
 
 
 def npiv_j(
@@ -24,7 +24,7 @@ def npiv_j(
     w_min=None,
     w_max=None,
     grid_num=50,
-    boot_num=99,
+    biters=99,
     alpha=0.5,
     check_is_fullrank=False,
     seed=None,
@@ -83,7 +83,7 @@ def npiv_j(
         Range limits for basis construction.
     grid_num : int, default=50
         Number of grid points for evaluation.
-    boot_num : int, default=99
+    biters : int, default=99
         Number of bootstrap replications.
     alpha : float, default=0.5
         Significance level for test.
@@ -144,10 +144,10 @@ def npiv_j(
 
     n_pairs = len(j1_j2_pairs)
     z_sup = np.zeros(n_pairs)
-    z_sup_boot = np.zeros((boot_num, n_pairs))
+    z_sup_boot = np.zeros((biters, n_pairs))
 
     rng = np.random.default_rng(seed)
-    boot_draws_all_np = rng.normal(0, 1, (boot_num, n))
+    boot_draws_all_np = rng.normal(0, 1, (biters, n))
     boot_draws_all = to_device(boot_draws_all_np)
 
     for pair_idx, (i, j, j1, j2) in enumerate(j1_j2_pairs):
@@ -209,7 +209,7 @@ def npiv_j(
             )
 
             z_sup_boot[:, pair_idx] = _bootstrap_comparison(
-                psi_x_j1_eval, psi_x_j2_eval, tmp_j1, tmp_j2, u_j1, u_j2, asy_se, boot_draws_all, boot_num
+                psi_x_j1_eval, psi_x_j2_eval, tmp_j1, tmp_j2, u_j1, u_j2, asy_se, boot_draws_all, biters
             )
 
         except (ValueError, np.linalg.LinAlgError):
@@ -505,12 +505,12 @@ def _compute_test_statistic(result_j1, result_j2, psi_x_eval_j1, psi_x_eval_j2, 
     return z_sup, asy_se, (tmp_j1, tmp_j2, u_j1, u_j2)
 
 
-def _bootstrap_comparison(psi_x_eval_j1, psi_x_eval_j2, tmp_j1, tmp_j2, u_j1, u_j2, asy_se, boot_draws_all, boot_num):
+def _bootstrap_comparison(psi_x_eval_j1, psi_x_eval_j2, tmp_j1, tmp_j2, u_j1, u_j2, asy_se, boot_draws_all, biters):
     """Perform bootstrap test for dimension pair comparison."""
     xp = get_backend()
-    z_boot = np.zeros(boot_num)
+    z_boot = np.zeros(biters)
 
-    for b in range(boot_num):
+    for b in range(biters):
         boot_draws = boot_draws_all[b]
         boot_diff_j1 = psi_x_eval_j1 @ (tmp_j1 @ (u_j1 * boot_draws))
         boot_diff_j2 = psi_x_eval_j2 @ (tmp_j2 @ (u_j2 * boot_draws))

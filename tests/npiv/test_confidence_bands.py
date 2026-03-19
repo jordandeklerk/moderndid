@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from moderndid.didcont.npiv.confidence_bands import compute_ucb
-from moderndid.didcont.npiv.results import NPIVResult
+from moderndid.npiv.confidence_bands import compute_ucb
+from moderndid.npiv.results import NPIVResult
 
 
 def test_basic_confidence_bands(simple_data):
@@ -15,7 +15,7 @@ def test_basic_confidence_bands(simple_data):
         x=x,
         w=w,
         alpha=0.05,
-        boot_num=50,
+        biters=50,
     )
 
     assert isinstance(result, NPIVResult)
@@ -36,7 +36,7 @@ def test_confidence_bands_with_evaluation_points(simple_data):
         x=x,
         w=w,
         x_eval=x_eval,
-        boot_num=50,
+        biters=50,
     )
 
     assert len(result.h) == len(x_eval)
@@ -53,7 +53,7 @@ def test_different_basis_types(simple_data, basis):
         x=x,
         w=w,
         basis=basis,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.h is not None
@@ -71,7 +71,7 @@ def test_derivative_confidence_bands(simple_data):
         ucb_deriv=True,
         deriv_index=1,
         deriv_order=1,
-        boot_num=50,
+        biters=50,
     )
 
     assert result.deriv is not None
@@ -89,7 +89,7 @@ def test_multivariate_case(multivariate_data):
         y=y,
         x=x,
         w=w,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.h is not None
@@ -105,7 +105,7 @@ def test_different_confidence_levels(simple_data, alpha):
         x=x,
         w=w,
         alpha=alpha,
-        boot_num=50,
+        biters=50,
         seed=123,
     )
 
@@ -143,7 +143,7 @@ def test_function_bands_only(simple_data):
         w=w,
         ucb_h=True,
         ucb_deriv=False,
-        boot_num=50,
+        biters=50,
     )
 
     assert result.h_lower is not None
@@ -161,7 +161,7 @@ def test_derivative_bands_only(simple_data):
         w=w,
         ucb_h=False,
         ucb_deriv=True,
-        boot_num=50,
+        biters=50,
     )
 
     assert result.h_lower is None
@@ -179,7 +179,7 @@ def test_with_fixed_dimensions(simple_data):
         w=w,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=50,
+        biters=50,
     )
 
     assert result.j_x_segments == 3
@@ -198,7 +198,7 @@ def test_with_range_constraints(simple_data):
         x_max=0.9,
         w_min=0.1,
         w_max=0.9,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.h is not None
@@ -211,7 +211,7 @@ def test_reproducibility_with_seed(simple_data):
         y=y,
         x=x,
         w=w,
-        boot_num=30,
+        biters=30,
         seed=123,
     )
 
@@ -219,7 +219,7 @@ def test_reproducibility_with_seed(simple_data):
         y=y,
         x=x,
         w=w,
-        boot_num=30,
+        biters=30,
         seed=123,
     )
 
@@ -236,7 +236,7 @@ def test_different_knot_types(simple_data, knots):
         x=x,
         w=w,
         knots=knots,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.h is not None
@@ -260,7 +260,7 @@ def test_with_selection_result(simple_data):
         w=w,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=50,
+        biters=50,
         selection_result=selection_result,
     )
 
@@ -275,7 +275,7 @@ def test_bootstrap_statistics_tracking(simple_data):
         y=y,
         x=x,
         w=w,
-        boot_num=100,
+        biters=100,
     )
 
     assert "boot_success_rate_h" in result.args
@@ -293,7 +293,7 @@ def test_different_spline_degrees(simple_data, j_x_degree, k_w_degree):
         w=w,
         j_x_degree=j_x_degree,
         k_w_degree=k_w_degree,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.j_x_degree == j_x_degree
@@ -309,7 +309,7 @@ def test_higher_order_derivatives(simple_data):
         w=w,
         ucb_deriv=True,
         deriv_order=2,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.deriv is not None

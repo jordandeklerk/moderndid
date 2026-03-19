@@ -1,10 +1,11 @@
 """Tests for nonparametric instrumental variables estimation."""
 
 import numpy as np
+import polars as pl
 import pytest
 
-from moderndid.didcont.npiv.npiv import npiv
-from moderndid.didcont.npiv.results import NPIVResult
+from moderndid.npiv.npiv import npiv
+from moderndid.npiv.results import NPIVResult
 
 
 def test_basic_npiv(simple_data):
@@ -69,7 +70,7 @@ def test_different_basis_types(simple_data, basis):
         basis=basis,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.h is not None
@@ -87,7 +88,7 @@ def test_derivative_estimation(simple_data):
         deriv_order=1,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.deriv is not None
@@ -104,7 +105,7 @@ def test_multivariate_case(multivariate_data):
         w=w,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.h is not None
@@ -139,7 +140,7 @@ def test_different_confidence_levels(simple_data, alpha):
         alpha=alpha,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.cv > 0
@@ -159,7 +160,7 @@ def test_with_range_constraints(simple_data):
         w_max=0.9,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.h is not None
@@ -174,7 +175,7 @@ def test_reproducibility_with_seed(simple_data):
         w=w,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=30,
+        biters=30,
         seed=123,
     )
 
@@ -184,7 +185,7 @@ def test_reproducibility_with_seed(simple_data):
         w=w,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=30,
+        biters=30,
         seed=123,
     )
 
@@ -203,7 +204,7 @@ def test_different_knot_types(simple_data, knots):
         knots=knots,
         j_x_segments=3,
         k_w_segments=4,
-        boot_num=30,
+        biters=30,
     )
 
     assert result.h is not None
@@ -256,14 +257,14 @@ def test_small_sample_warning():
         npiv(y=y, x=x, w=w, j_x_segments=2, k_w_segments=3)
 
 
-def test_invalid_boot_num():
+def test_invalid_biters():
     n = 100
     y = np.random.normal(0, 1, n)
     x = np.random.normal(0, 1, (n, 1))
     w = np.random.normal(0, 1, (n, 1))
 
-    with pytest.raises(ValueError, match="boot_num must be positive"):
-        npiv(y=y, x=x, w=w, boot_num=0)
+    with pytest.raises(ValueError, match="biters must be positive"):
+        npiv(y=y, x=x, w=w, biters=0)
 
 
 def test_multidimensional_y():
@@ -275,3 +276,73 @@ def test_multidimensional_y():
     result = npiv(y=y, x=x, w=w, j_x_segments=3, k_w_segments=4)
 
     assert result.h is not None
+
+
+# --- DataFrame API tests ---
+
+
+def test_npiv_dataframe_polars():
+    np.random.seed(42)
+    n = 100
+    df = pl.DataFrame(
+        {
+            "y": np.random.randn(n),
+            "x": np.random.randn(n),
+            "w": np.random.randn(n),
+        }
+    )
+    result = npiv(data=df, yname="y", xname="x", wname="w", j_x_segments=3)
+    assert isinstance(result, NPIVResult)
+    assert len(result.h) == n
+
+
+def test_npiv_dataframe_pandas():
+    pd = pytest.importorskip("pandas")
+    np.random.seed(42)
+    n = 100
+    df = pd.DataFrame(
+        {
+            "y": np.random.randn(n),
+            "x": np.random.randn(n),
+            "w": np.random.randn(n),
+        }
+    )
+    result = npiv(data=df, yname="y", xname="x", wname="w", j_x_segments=3)
+    assert isinstance(result, NPIVResult)
+    assert len(result.h) == n
+
+
+def test_npiv_dataframe_error_both_data_and_arrays():
+    n = 50
+    df = pl.DataFrame({"y": np.random.randn(n), "x": np.random.randn(n), "w": np.random.randn(n)})
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        npiv(data=df, yname="y", xname="x", wname="w", y=np.random.randn(n))
+
+
+def test_npiv_dataframe_error_missing_column_names():
+    n = 50
+    df = pl.DataFrame({"y": np.random.randn(n), "x": np.random.randn(n), "w": np.random.randn(n)})
+    with pytest.raises(ValueError, match="'yname', 'xname', and 'wname' are required"):
+        npiv(data=df, yname="y", xname="x")
+
+
+def test_npiv_dataframe_multivariate_columns():
+    np.random.seed(42)
+    n = 150
+    df = pl.DataFrame(
+        {
+            "y": np.random.randn(n),
+            "x1": np.random.randn(n),
+            "x2": np.random.randn(n),
+            "w1": np.random.randn(n),
+            "w2": np.random.randn(n),
+        }
+    )
+    result = npiv(data=df, yname="y", xname=["x1", "x2"], wname=["w1", "w2"], j_x_segments=3, biters=30)
+    assert isinstance(result, NPIVResult)
+    assert len(result.h) == n
+
+
+def test_npiv_dataframe_no_data_no_arrays():
+    with pytest.raises(ValueError, match="Must provide either"):
+        npiv()

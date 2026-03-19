@@ -1,4 +1,4 @@
-"""Multivariate spline construction for continuous treatment DiD estimation."""
+"""Multivariate spline construction for nonparametric estimation."""
 
 import warnings
 from itertools import combinations, product
@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 import numpy as np
 
-from ...cupy.backend import get_backend, to_numpy
+from ..cupy.backend import get_backend, to_numpy
 from .gsl_bspline import gsl_bs, predict_gsl_bs
 
 

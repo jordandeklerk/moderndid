@@ -26,6 +26,7 @@ features; details are found in :ref:`api`.
    example_inter_did
    example_cont_did
    example_honest_did
+   example_npiv
 
 .. toctree::
    :caption: Scaling

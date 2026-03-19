@@ -133,6 +133,9 @@ key arguments, and guidance on when to use each one.
    * - **Sensitivity analysis** (:func:`~moderndid.honest_did`)
      - Assess robustness to parallel trends violations
      - `Rambachan & Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_
+   * - **Nonparametric IV** (:func:`~moderndid.npiv`)
+     - Estimate structural functions and derivatives with uniform confidence bands
+     - `Chen, Christensen & Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_
 
 
 Next steps

@@ -5,8 +5,8 @@ import pytest
 
 pytestmark = pytest.mark.slow
 
-from moderndid.didcont.npiv.cck_ucb import compute_cck_ucb
-from moderndid.didcont.npiv.results import NPIVResult
+from moderndid.npiv.cck_ucb import compute_cck_ucb
+from moderndid.npiv.results import NPIVResult
 
 
 def test_basic_cck_ucb(simple_data, selection_result):
@@ -17,7 +17,7 @@ def test_basic_cck_ucb(simple_data, selection_result):
         x=x,
         w=w,
         alpha=0.05,
-        boot_num=50,
+        biters=50,
         selection_result=selection_result,
     )
 
@@ -39,7 +39,7 @@ def test_cck_ucb_with_evaluation_points(simple_data, selection_result):
         x=x,
         w=w,
         x_eval=x_eval,
-        boot_num=50,
+        biters=50,
         selection_result=selection_result,
     )
 
@@ -57,7 +57,7 @@ def test_different_basis_types(simple_data, selection_result, basis):
         x=x,
         w=w,
         basis=basis,
-        boot_num=30,
+        biters=30,
         selection_result=selection_result,
     )
 
@@ -75,7 +75,7 @@ def test_derivative_confidence_bands(simple_data, selection_result):
         ucb_deriv=True,
         deriv_index=1,
         deriv_order=1,
-        boot_num=50,
+        biters=50,
         selection_result=selection_result,
     )
 
@@ -93,7 +93,7 @@ def test_multivariate_case(multivariate_data, selection_result):
         y=y,
         x=x,
         w=w,
-        boot_num=30,
+        biters=30,
         selection_result=selection_result,
     )
 
@@ -112,7 +112,7 @@ def test_different_confidence_levels(simple_data, selection_result, alpha):
         x=x,
         w=w,
         alpha=alpha,
-        boot_num=200,
+        biters=200,
         selection_result=selection_result,
     )
 
@@ -121,7 +121,7 @@ def test_different_confidence_levels(simple_data, selection_result, alpha):
 
     if alpha == 0.01:
         np.random.seed(42)
-        result_10 = compute_cck_ucb(y=y, x=x, w=w, alpha=0.10, boot_num=200, selection_result=selection_result)
+        result_10 = compute_cck_ucb(y=y, x=x, w=w, alpha=0.10, biters=200, selection_result=selection_result)
         coverage_10 = np.mean(result_10.h_upper - result_10.h_lower)
         assert coverage >= coverage_10 * 0.95
 
@@ -156,7 +156,7 @@ def test_with_range_constraints(simple_data, selection_result):
         x_max=0.9,
         w_min=0.1,
         w_max=0.9,
-        boot_num=30,
+        biters=30,
         selection_result=selection_result,
     )
 
@@ -170,7 +170,7 @@ def test_reproducibility_with_seed(simple_data, selection_result):
         y=y,
         x=x,
         w=w,
-        boot_num=30,
+        biters=30,
         seed=123,
         selection_result=selection_result,
     )
@@ -179,7 +179,7 @@ def test_reproducibility_with_seed(simple_data, selection_result):
         y=y,
         x=x,
         w=w,
-        boot_num=30,
+        biters=30,
         seed=123,
         selection_result=selection_result,
     )
@@ -197,7 +197,7 @@ def test_different_knot_types(simple_data, selection_result, knots):
         x=x,
         w=w,
         knots=knots,
-        boot_num=30,
+        biters=30,
         selection_result=selection_result,
     )
 
@@ -220,7 +220,7 @@ def test_small_j_segments_set(simple_data):
         y=y,
         x=x,
         w=w,
-        boot_num=30,
+        biters=30,
         selection_result=small_selection_result,
     )
 
@@ -237,7 +237,7 @@ def test_higher_order_derivatives(simple_data, selection_result):
         w=w,
         ucb_deriv=True,
         deriv_order=2,
-        boot_num=30,
+        biters=30,
         selection_result=selection_result,
     )
 

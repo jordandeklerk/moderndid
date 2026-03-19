@@ -10,14 +10,18 @@ from .selection import npiv_choose_j
 
 
 def npiv(
-    y,
-    x,
-    w,
+    data=None,
+    yname=None,
+    xname=None,
+    wname=None,
+    y=None,
+    x=None,
+    w=None,
     x_eval=None,
     x_grid=None,
     alpha=0.05,
     basis="tensor",
-    boot_num=99,
+    biters=99,
     j_x_degree=3,
     j_x_segments=None,
     k_w_degree=4,
@@ -72,12 +76,24 @@ def npiv(
 
     Parameters
     ----------
-    y : ndarray of shape (n,)
-        Outcome variable.
-    x : ndarray of shape (n,) or (n, p_x)
+    data : DataFrame, optional
+        Input data. Accepts any object implementing the Arrow PyCapsule Interface
+        (``__arrow_c_stream__``), including polars, pandas, pyarrow Table, and cudf
+        DataFrames. When provided, ``yname``, ``xname``, and ``wname`` are required.
+    yname : str, optional
+        Name of the outcome column in ``data``.
+    xname : str or list of str, optional
+        Name(s) of the endogenous regressor column(s) in ``data``.
+    wname : str or list of str, optional
+        Name(s) of the instrumental variable column(s) in ``data``.
+    y : ndarray of shape (n,), optional
+        Outcome variable. Required when ``data`` is not provided.
+    x : ndarray of shape (n,) or (n, p_x), optional
         Endogenous regressors. Automatically promoted to 2-d if needed.
-    w : ndarray of shape (n,) or (n, p_w)
+        Required when ``data`` is not provided.
+    w : ndarray of shape (n,) or (n, p_w), optional
         Instrumental variables. Requires :math:`K \geq J`.
+        Required when ``data`` is not provided.
     x_eval : ndarray of shape (m, p_x), optional
         Points at which to evaluate :math:`\hat{h}` and its derivatives. If
         None, evaluates at the sample points ``x``.
@@ -91,7 +107,7 @@ def npiv(
         - ``"tensor"``: Full tensor product of univariate B-splines.
         - ``"additive"``: Sum of univariate B-splines (additive model).
         - ``"glp"``: Generalized linear product (hierarchical interactions).
-    boot_num : int, default=99
+    biters : int, default=99
         Number of multiplier bootstrap draws for critical value computation.
         Each draw generates i.i.d. :math:`N(0,1)` weights
         :math:`(\varpi_i)_{i=1}^n` to form bootstrap sup-:math:`t` statistics.
@@ -166,6 +182,64 @@ def npiv(
           used, includes ``j_x_seg``, ``k_w_seg``, ``j_hat_max``,
           ``theta_star``, and other selection diagnostics.
 
+    Examples
+    --------
+    The Engel dataset contains household expenditure shares and income measures
+    for 1655 households. We estimate a nonparametric Engel curve relating food
+    share (``food``) to log-expenditure (``logexp``), using log-wages
+    (``logwages``) as an instrument for potentially endogenous expenditure:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: import numpy as np
+           ...: from moderndid import npiv, load_engel
+           ...:
+           ...: df = load_engel()
+           ...: df.head()
+
+    Estimate the structural function with 5 B-spline segments and 95% uniform
+    confidence bands. The output is an ``NPIVResult`` containing the estimated
+    function, confidence bands, derivatives, and diagnostics:
+
+    .. ipython::
+        :okwarning:
+
+        In [2]: result = npiv(
+           ...:     data=df,
+           ...:     yname="food",
+           ...:     xname="logexp",
+           ...:     wname="logwages",
+           ...:     j_x_segments=5,
+           ...:     biters=500,
+           ...:     seed=42,
+           ...: )
+           ...: print(f"Estimates at {len(result.h)} points")
+           ...: print(f"h[:5] = {result.h[:5]}")
+           ...: print(f"95% UCB critical value: {result.cv:.3f}")
+           ...: print(f"Basis: degree={result.j_x_degree}, segments={result.j_x_segments}")
+
+    The derivative of the Engel curve (the marginal propensity to spend on food)
+    is estimated simultaneously:
+
+    .. ipython::
+
+        In [3]: print(f"deriv[:5] = {result.deriv[:5]}")
+           ...: print(f"Derivative UCB critical value: {result.cv_deriv:.3f}")
+
+    You can also pass numpy arrays directly instead of a DataFrame:
+
+    .. ipython::
+        :okwarning:
+
+        In [4]: rng = np.random.default_rng(0)
+           ...: n = 200
+           ...: w = rng.uniform(0, 1, (n, 1))
+           ...: x = w + 0.2 * rng.normal(0, 1, (n, 1))
+           ...: y = np.sin(2 * np.pi * x).ravel() + 0.1 * rng.normal(0, 1, n)
+           ...: result = npiv(y=y, x=x, w=w, j_x_segments=4, biters=500, seed=0)
+           ...: result.h.shape
+
     See Also
     --------
     npiv_est : Core sieve TSLS estimation (no confidence bands).
@@ -187,6 +261,24 @@ def npiv(
     .. [3] Newey, W. K., & Powell, J. L. (2003). Instrumental variable
         estimation of nonparametric models. *Econometrica*, 71(5), 1565-1578.
     """
+    if data is not None:
+        if y is not None or x is not None or w is not None:
+            raise ValueError("Cannot specify both 'data' and array arguments (y, x, w)")
+        if yname is None or xname is None or wname is None:
+            raise ValueError("When 'data' is provided, 'yname', 'xname', and 'wname' are required")
+        from moderndid.core.dataframe import to_polars
+
+        df = to_polars(data)
+        y = df[yname].to_numpy()
+        if isinstance(xname, str):
+            xname = [xname]
+        x = df.select(xname).to_numpy()
+        if isinstance(wname, str):
+            wname = [wname]
+        w = df.select(wname).to_numpy()
+    elif y is None or x is None or w is None:
+        raise ValueError("Must provide either 'data' with column names, or array arguments (y, x, w)")
+
     y = np.asarray(y)
     x = np.asarray(x)
     w = np.asarray(w)
@@ -217,8 +309,8 @@ def npiv(
     if alpha <= 0 or alpha >= 1:
         raise ValueError("alpha must be between 0 and 1")
 
-    if boot_num < 1:
-        raise ValueError("boot_num must be positive")
+    if biters < 1:
+        raise ValueError("biters must be positive")
 
     if j_x_degree < 0:
         raise ValueError("j_x_degree must be non-negative")
@@ -266,7 +358,7 @@ def npiv(
                 w_min=w_min,
                 w_max=w_max,
                 grid_num=50,
-                boot_num=boot_num if boot_num > 0 else 99,
+                biters=biters if biters > 0 else 99,
                 check_is_fullrank=check_is_fullrank,
                 seed=seed,
             )
@@ -292,7 +384,7 @@ def npiv(
             w=w,
             x_eval=x_eval,
             alpha=alpha,
-            boot_num=boot_num,
+            biters=biters,
             basis=basis,
             j_x_degree=j_x_degree,
             j_x_segments=j_x_segments,
