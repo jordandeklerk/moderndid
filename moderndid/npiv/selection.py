@@ -18,7 +18,7 @@ def npiv_choose_j(
     w_min=None,
     w_max=None,
     grid_num=50,
-    boot_num=99,
+    biters=99,
     check_is_fullrank=False,
     seed=None,
 ):
@@ -79,7 +79,7 @@ def npiv_choose_j(
         Range limits for basis construction.
     grid_num : int, default=50
         Number of grid points for evaluation.
-    boot_num : int, default=99
+    biters : int, default=99
         Number of bootstrap replications for confidence bands.
     check_is_fullrank : bool, default=False
         Whether to check if basis matrices have full rank.
@@ -115,7 +115,7 @@ def npiv_choose_j(
            ...: y = df["food"].to_numpy()
            ...: x = df["logexp"].to_numpy().reshape(-1, 1)
            ...: w = df["logwages"].to_numpy().reshape(-1, 1)
-           ...: sel = npiv_choose_j(y=y, x=x, w=w, boot_num=50, seed=42)
+           ...: sel = npiv_choose_j(y=y, x=x, w=w, biters=50, seed=42)
            ...: print(f"Selected segments: {sel['j_x_seg']}")
            ...: print(f"Selected dimension (J_tilde): {sel['j_tilde']}")
            ...: print(f"Max feasible dimension: {sel['j_hat_max']}")
@@ -169,7 +169,7 @@ def npiv_choose_j(
         w_min=w_min,
         w_max=w_max,
         grid_num=grid_num,
-        boot_num=boot_num,
+        biters=biters,
         alpha=alpha_hat,
         check_is_fullrank=check_is_fullrank,
         seed=seed,

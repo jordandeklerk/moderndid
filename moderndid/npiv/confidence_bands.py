@@ -17,7 +17,7 @@ def compute_ucb(
     w,
     x_eval=None,
     alpha=0.05,
-    boot_num=99,
+    biters=99,
     basis="tensor",
     j_x_degree=3,
     j_x_segments=None,
@@ -75,7 +75,7 @@ def compute_ucb(
         Evaluation points for :math:`X`. If None, uses :math:`x`.
     alpha : float, default=0.05
         Significance level (1-alpha confidence level).
-    boot_num : int, default=99
+    biters : int, default=99
         Number of bootstrap replications.
     basis : {"tensor", "additive", "glp"}, default="tensor"
         Type of basis for multivariate X.
@@ -132,7 +132,7 @@ def compute_ucb(
            ...: x = df["logexp"].to_numpy().reshape(-1, 1)
            ...: w = df["logwages"].to_numpy().reshape(-1, 1)
            ...: result = compute_ucb(
-           ...:     y=y, x=x, w=w, j_x_segments=5, boot_num=500, seed=42,
+           ...:     y=y, x=x, w=w, j_x_segments=5, biters=500, seed=42,
            ...: )
            ...: print(f"Function UCB critical value: {result.cv:.3f}")
            ...: print(f"Derivative UCB critical value: {result.cv_deriv:.3f}")
@@ -176,9 +176,9 @@ def compute_ucb(
     n = len(y)
     n_eval = len(main_result.h)
 
-    boot_h_stats = np.zeros(boot_num) if ucb_h else None
+    boot_h_stats = np.zeros(biters) if ucb_h else None
 
-    boot_deriv_stats = np.zeros(boot_num) if ucb_deriv else None
+    boot_deriv_stats = np.zeros(biters) if ucb_deriv else None
 
     if selection_result is not None:
         return compute_cck_ucb(
@@ -187,7 +187,7 @@ def compute_ucb(
             w=w,
             x_eval=x_eval,
             alpha=alpha,
-            boot_num=boot_num,
+            biters=biters,
             basis=basis,
             j_x_degree=main_result.j_x_degree,
             k_w_degree=main_result.k_w_degree,
@@ -211,7 +211,7 @@ def compute_ucb(
     psi_x_eval = main_result.args["psi_x_eval"]
     psi_x_deriv_eval = main_result.args["psi_x_deriv_eval"]
 
-    for b in range(boot_num):
+    for b in range(biters):
         try:
             boot_draws = to_device(rng.normal(0, 1, n))
 
@@ -277,7 +277,7 @@ def compute_ucb(
     updated_args = main_result.args.copy()
     updated_args.update(
         {
-            "boot_num": boot_num,
+            "biters": biters,
             "alpha": alpha,
             "ucb_h": ucb_h,
             "ucb_deriv": ucb_deriv,

@@ -95,7 +95,7 @@ which makes for cleaner plots.
         wname="logwages",
         x_eval=logexp_eval,
         j_x_segments=5,
-        boot_num=200,
+        biters=200,
         seed=42,
     )
     print(f"Estimates at {len(result.h)} grid points")
@@ -236,7 +236,7 @@ dimension selection.
     result_sim = did.npiv(
         y=Y, x=X.reshape(-1, 1), w=X.reshape(-1, 1),
         x_eval=X_eval,
-        boot_num=200, seed=42,
+        biters=200, seed=42,
     )
     print(f"Selected segments: {result_sim.j_x_segments}")
 
@@ -372,7 +372,7 @@ requiring the researcher to tune any parameters.
         yname="food",
         xname="logexp",
         wname="logwages",
-        boot_num=200,
+        biters=200,
         seed=42,
     )
     print(f"Selected segments: {result_dd.j_x_segments}")
@@ -430,7 +430,7 @@ Instead of a DataFrame, you can also pass numpy arrays directly.
     x = df["logexp"].to_numpy().reshape(-1, 1)
     w = df["logwages"].to_numpy().reshape(-1, 1)
 
-    result_arr = did.npiv(y=y, x=x, w=w, j_x_segments=5, boot_num=200, seed=42)
+    result_arr = did.npiv(y=y, x=x, w=w, j_x_segments=5, biters=200, seed=42)
 
 The DataFrame and array interfaces produce identical results. The DataFrame
 interface additionally accepts any object implementing the Arrow PyCapsule

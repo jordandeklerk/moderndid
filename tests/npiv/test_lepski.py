@@ -15,7 +15,7 @@ def test_basic_lepski_selection(simple_data):
         w=w,
         j_x_segments_set=np.array([2, 4]),
         k_w_segments_set=np.array([3, 5]),
-        boot_num=20,
+        biters=20,
         alpha=0.5,
     )
 
@@ -43,7 +43,7 @@ def test_lepski_with_custom_segments(simple_data):
         w=w,
         j_x_segments_set=j_x_segments_set,
         k_w_segments_set=k_w_segments_set,
-        boot_num=30,
+        biters=30,
     )
 
     assert result["j_x_seg"] in j_x_segments_set
@@ -61,7 +61,7 @@ def test_different_basis_types(simple_data, basis):
         j_x_segments_set=np.array([2, 4]),
         k_w_segments_set=np.array([3, 5]),
         basis=basis,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -76,7 +76,7 @@ def test_multivariate_case(multivariate_data):
         w=w,
         j_x_segments_set=np.array([2, 4]),
         k_w_segments_set=np.array([3, 5]),
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -91,7 +91,7 @@ def test_regression_case(regression_data):
         w=w,
         j_x_segments_set=np.array([2, 4]),
         k_w_segments_set=np.array([3, 5]),
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -108,7 +108,7 @@ def test_different_alpha_levels(simple_data, alpha):
         j_x_segments_set=np.array([2, 4]),
         k_w_segments_set=np.array([3, 5]),
         alpha=alpha,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["theta_star"] > 0
@@ -127,7 +127,7 @@ def test_with_custom_grid(simple_data):
         k_w_segments_set=np.array([3, 5]),
         x_grid=x_grid,
         grid_num=30,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -147,7 +147,7 @@ def test_with_range_constraints(simple_data):
         x_max=0.9,
         w_min=0.1,
         w_max=0.9,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -162,7 +162,7 @@ def test_reproducibility_with_seed(simple_data):
         w=w,
         j_x_segments_set=np.array([2, 4]),
         k_w_segments_set=np.array([3, 5]),
-        boot_num=20,
+        biters=20,
         seed=123,
     )
 
@@ -172,7 +172,7 @@ def test_reproducibility_with_seed(simple_data):
         w=w,
         j_x_segments_set=np.array([2, 4]),
         k_w_segments_set=np.array([3, 5]),
-        boot_num=20,
+        biters=20,
         seed=123,
     )
 
@@ -191,7 +191,7 @@ def test_different_knot_types(simple_data, knots):
         j_x_segments_set=np.array([2, 4]),
         k_w_segments_set=np.array([3, 5]),
         knots=knots,
-        boot_num=20,
+        biters=20,
     )
 
     assert result["j_tilde"] > 0
@@ -206,7 +206,7 @@ def test_test_matrix_structure(simple_data):
         w=w,
         j_x_segments_set=np.array([2, 4]),
         k_w_segments_set=np.array([3, 5]),
-        boot_num=20,
+        biters=20,
     )
 
     assert "test_matrix" in result
@@ -280,7 +280,7 @@ def test_integrated_lepski_workflow(simple_data):
         j_x_segments_set=jhat_result["j_x_segments_set"][:2],
         k_w_segments_set=jhat_result["k_w_segments_set"][:2],
         alpha=jhat_result["alpha_hat"],
-        boot_num=20,
+        biters=20,
     )
 
     assert lepski_result["j_tilde"] > 0

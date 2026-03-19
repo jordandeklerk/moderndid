@@ -59,7 +59,7 @@ def _r_npiv(
     knots="uniform",
     ucb_h=True,
     ucb_deriv=True,
-    boot_num=99,
+    biters=99,
     timeout=300,
 ):
     """Run R npiv on the Engel95 dataset and return JSON results."""
@@ -95,7 +95,7 @@ result <- npiv(
     deriv.order = 1,
     ucb.h = {ucb_h_r},
     ucb.deriv = {ucb_d_r},
-    boot.num = {boot_num},
+    boot.num = {biters},
     progress = FALSE
 )
 
@@ -125,7 +125,7 @@ def _python_npiv(
     knots="uniform",
     ucb_h=True,
     ucb_deriv=True,
-    boot_num=99,
+    biters=99,
 ):
     """Run Python npiv on the Engel dataset."""
     x_eval = np.linspace(4.5, 6.5, 100)
@@ -143,7 +143,7 @@ def _python_npiv(
         deriv_order=1,
         ucb_h=ucb_h,
         ucb_deriv=ucb_deriv,
-        boot_num=boot_num,
+        biters=biters,
         seed=42,
     )
 
@@ -340,8 +340,8 @@ def test_npiv_quantile_knots_regression_h_matches(engel_data):
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R npiv package not available")
 def test_npiv_no_ucb_h_matches(engel_data):
-    py = _python_npiv(engel_data, ucb_h=False, ucb_deriv=False, boot_num=1)
-    r = _r_npiv(ucb_h=False, ucb_deriv=False, boot_num=1)
+    py = _python_npiv(engel_data, ucb_h=False, ucb_deriv=False, biters=1)
+    r = _r_npiv(ucb_h=False, ucb_deriv=False, biters=1)
 
     assert len(py.h) == 100
     assert len(r["h"]) == 100

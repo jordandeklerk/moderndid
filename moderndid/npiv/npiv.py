@@ -21,7 +21,7 @@ def npiv(
     x_grid=None,
     alpha=0.05,
     basis="tensor",
-    boot_num=99,
+    biters=99,
     j_x_degree=3,
     j_x_segments=None,
     k_w_degree=4,
@@ -107,7 +107,7 @@ def npiv(
         - ``"tensor"``: Full tensor product of univariate B-splines.
         - ``"additive"``: Sum of univariate B-splines (additive model).
         - ``"glp"``: Generalized linear product (hierarchical interactions).
-    boot_num : int, default=99
+    biters : int, default=99
         Number of multiplier bootstrap draws for critical value computation.
         Each draw generates i.i.d. :math:`N(0,1)` weights
         :math:`(\varpi_i)_{i=1}^n` to form bootstrap sup-:math:`t` statistics.
@@ -211,7 +211,7 @@ def npiv(
            ...:     xname="logexp",
            ...:     wname="logwages",
            ...:     j_x_segments=5,
-           ...:     boot_num=500,
+           ...:     biters=500,
            ...:     seed=42,
            ...: )
            ...: print(f"Estimates at {len(result.h)} points")
@@ -237,7 +237,7 @@ def npiv(
            ...: w = rng.uniform(0, 1, (n, 1))
            ...: x = w + 0.2 * rng.normal(0, 1, (n, 1))
            ...: y = np.sin(2 * np.pi * x).ravel() + 0.1 * rng.normal(0, 1, n)
-           ...: result = npiv(y=y, x=x, w=w, j_x_segments=4, boot_num=500, seed=0)
+           ...: result = npiv(y=y, x=x, w=w, j_x_segments=4, biters=500, seed=0)
            ...: result.h.shape
 
     See Also
@@ -309,8 +309,8 @@ def npiv(
     if alpha <= 0 or alpha >= 1:
         raise ValueError("alpha must be between 0 and 1")
 
-    if boot_num < 1:
-        raise ValueError("boot_num must be positive")
+    if biters < 1:
+        raise ValueError("biters must be positive")
 
     if j_x_degree < 0:
         raise ValueError("j_x_degree must be non-negative")
@@ -358,7 +358,7 @@ def npiv(
                 w_min=w_min,
                 w_max=w_max,
                 grid_num=50,
-                boot_num=boot_num if boot_num > 0 else 99,
+                biters=biters if biters > 0 else 99,
                 check_is_fullrank=check_is_fullrank,
                 seed=seed,
             )
@@ -384,7 +384,7 @@ def npiv(
             w=w,
             x_eval=x_eval,
             alpha=alpha,
-            boot_num=boot_num,
+            biters=biters,
             basis=basis,
             j_x_degree=j_x_degree,
             j_x_segments=j_x_segments,
