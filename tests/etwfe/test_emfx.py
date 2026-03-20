@@ -192,3 +192,17 @@ def test_emfx_never_post_only_false_window(etwfe_never):
     result = emfx(etwfe_never, type="event", post_only=False, window=(-2, 1))
     assert result.event_times[0] >= -2.0
     assert result.event_times[-1] <= 1.0
+
+
+def test_emfx_never_group_aggregation(etwfe_never):
+    result = emfx(etwfe_never, type="group")
+    np.testing.assert_array_equal(result.event_times, [2004.0, 2006.0, 2007.0])
+    expected = np.array([-0.079749, -0.02291, -0.026054])
+    np.testing.assert_allclose(result.att_by_event, expected, atol=1e-3)
+
+
+@pytest.mark.parametrize("agg_type", ["group", "calendar"])
+def test_emfx_never_non_event_aggregation(etwfe_never, agg_type):
+    result = emfx(etwfe_never, type=agg_type)
+    assert result.event_times is not None
+    assert np.all(result.se_by_event > 0)

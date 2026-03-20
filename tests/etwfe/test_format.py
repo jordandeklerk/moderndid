@@ -219,3 +219,27 @@ def test_format_etwfe_fe_none_no_fe_line(mpdta_data):
     mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", fe="none")
     output = format_etwfe_result(mod)
     assert "Fixed Effects:" not in output
+
+
+def test_format_emfx_poisson_family(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+    result = emfx(mod, type="event")
+    output = format_emfx_result(result)
+    assert "Extended TWFE (poisson)" in output
+
+
+@pytest.mark.parametrize(
+    "key,expected",
+    [
+        ("N", 2500),
+        ("se_type", "hetero"),
+    ],
+)
+def test_emfx_maketables_stat_n_and_se_type(etwfe_baseline, key, expected):
+    result = emfx(etwfe_baseline, type="event")
+    assert result.__maketables_stat__(key) == expected
+
+
+def test_etwfe_maketables_stat_r2_adj(etwfe_baseline):
+    val = etwfe_baseline.__maketables_stat__("R2_adj")
+    assert val is None or isinstance(val, float)

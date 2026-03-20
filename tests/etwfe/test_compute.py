@@ -56,6 +56,15 @@ def test_set_references_no_control_group_raises(base_config):
         set_references(base_config, df)
 
 
+def test_set_references_notyet_fallback_to_max_group(base_config):
+    df = pl.DataFrame({"g": [2, 3, 4], "t": [1, 2, 3], "y": [1.0, 2.0, 3.0]})
+    base_config.gname = "g"
+    base_config.tname = "t"
+    base_config.cgroup = "notyet"
+    config = set_references(base_config, df)
+    assert config.gref == 4
+
+
 def test_prepare_notyet_treatment_indicator(mpdta_data, base_config):
     config = set_references(base_config, mpdta_data)
     df = prepare_etwfe_data(mpdta_data, config)

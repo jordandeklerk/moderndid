@@ -307,6 +307,15 @@ def test_etwfe_poisson_emfx_group(mpdta_data):
     np.testing.assert_allclose(g.att_by_event, expected, atol=1e-3)
 
 
+def test_etwfe_xvar_categorical(mpdta_data):
+    data = mpdta_data.with_columns(
+        pl.when(pl.col("lpop") > 10.5).then(pl.lit("high")).otherwise(pl.lit("low")).alias("pop_cat")
+    )
+    mod = etwfe(data=data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", xvar="pop_cat")
+    assert isinstance(mod, EtwfeResult)
+    assert len(mod.coefficients) > 7
+
+
 @pytest.mark.parametrize("mpdta_converted", ["pandas", "pyarrow", "duckdb"], indirect=True)
 def test_etwfe_dataframe_interoperability(mpdta_converted, etwfe_baseline):
     result = etwfe(
