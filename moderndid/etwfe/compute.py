@@ -59,9 +59,7 @@ def prepare_etwfe_data(data: pl.DataFrame, config: EtwfeConfig) -> pl.DataFrame:
     """Prepare data for ETWFE estimation.
 
     Creates the treatment indicator, demeans controls, and applies
-    reference-level filtering. All wrangling is done in polars; the
-    result is converted to pandas with ordered categoricals only at
-    the pyfixest boundary in ``run_etwfe_regression``.
+    reference-level filtering.
 
     Parameters
     ----------
@@ -76,7 +74,7 @@ def prepare_etwfe_data(data: pl.DataFrame, config: EtwfeConfig) -> pl.DataFrame:
         Prepared data with ``_Dtreat``, ``_g``, ``_t``, and demeaned columns.
     """
     gname, tname = config.gname, config.tname
-    gref = float(config.gref)
+    gref = config.gref
 
     df = data.with_columns(
         [
@@ -121,14 +119,10 @@ def prepare_etwfe_data(data: pl.DataFrame, config: EtwfeConfig) -> pl.DataFrame:
         all_times = sorted(df[tname].drop_nulls().unique().to_list())
         for dm_col in xvar_dm_cols:
             for t in all_times:
-                if int(t) == int(config.tref):
+                if t == config.tref:
                     continue
                 name = f"_t{int(t)}_{dm_col}"
-                df = df.with_columns(
-                    (pl.when(pl.col(tname).cast(pl.Float64) == float(t)).then(pl.col(dm_col)).otherwise(0.0)).alias(
-                        name
-                    )
-                )
+                df = df.with_columns((pl.when(pl.col(tname) == t).then(pl.col(dm_col)).otherwise(0.0)).alias(name))
                 xvar_time_dummies.append(name)
 
     config._ctrls = ctrls
@@ -139,17 +133,17 @@ def prepare_etwfe_data(data: pl.DataFrame, config: EtwfeConfig) -> pl.DataFrame:
 
 
 def build_etwfe_formula(config: EtwfeConfig) -> str:
-    """Build the pyfixest regression formula for ETWFE.
+    """Build the regression formula for ETWFE.
 
     Parameters
     ----------
     config : EtwfeConfig
-        ETWFE configuration (must have _ctrls, _xvar_dm_cols, etc. set).
+        ETWFE configuration (must have ``_ctrls``, ``_xvar_dm_cols``, etc. set).
 
     Returns
     -------
     str
-        Complete pyfixest formula string.
+        Complete formula string.
     """
     gcat = "__etwfe_gcat"
     tcat = "__etwfe_tcat"
@@ -192,27 +186,25 @@ def run_etwfe_regression(
     """Run the ETWFE regression via pyfixest.
 
     Dispatches to ``feols``, ``fepois``, or ``feglm`` based on
-    ``config.family``. Converts the polars DataFrame to pandas with
-    ordered categoricals at the pyfixest boundary.
+    ``config.family``.
 
     Parameters
     ----------
     formula : str
-        The pyfixest formula string.
+        Regression formula string.
     data : pl.DataFrame
-        Prepared polars DataFrame.
+        Prepared data.
     config : EtwfeConfig
         ETWFE configuration.
     vcov : str or dict or None
-        Variance-covariance specification for pyfixest.
+        Variance-covariance specification.
     backend : str or None
-        Demeaner backend passed to pyfixest. ``"cupy"`` for GPU
-        acceleration, ``"jax"`` for JAX, or ``None`` for the default.
+        Demeaner backend.
 
     Returns
     -------
     dict
-        Dictionary with keys: model, formula, fit_data.
+        Dictionary with keys ``model``, ``formula``, ``fit_data``.
     """
     df_clean = data.filter(pl.col("_Dtreat").is_not_null() & pl.col(config.yname).is_not_null())
 
@@ -256,21 +248,20 @@ def compute_emfx(
 ) -> dict[str, Any]:
     """Compute marginal effects from the fitted ETWFE model.
 
-    For linear models (family=None/"gaussian"), uses direct coefficient
-    extraction. For nonlinear models, constructs counterfactual design
-    matrices (Dtreat=1 vs Dtreat=0) and applies the inverse link
-    function to obtain marginal effects on the response scale.
+    For linear models, uses direct coefficient extraction. For nonlinear
+    models, constructs counterfactual predictions (Dtreat=1 vs Dtreat=0)
+    and applies the inverse link function.
 
     Parameters
     ----------
-    model : pyfixest Feols/Fepois/Feglm
-        Fitted pyfixest model.
+    model : Feols, Fepois, or Feglm
+        Fitted model object.
     fit_data : pl.DataFrame
-        Data used for fitting (with _Dtreat, _g, _t columns).
+        Data used for fitting.
     config : EtwfeConfig
         ETWFE configuration.
     agg_type : str
-        Aggregation type: "simple", "group", "calendar", "event".
+        Aggregation type: ``"simple"``, ``"group"``, ``"calendar"``, ``"event"``.
     post_only : bool
         Only include post-treatment observations.
     window : tuple or None
@@ -279,12 +270,13 @@ def compute_emfx(
     Returns
     -------
     dict
-        Keys: overall_att, overall_se, event_times, att_by_event, se_by_event.
+        Keys: ``overall_att``, ``overall_se``, ``event_times``,
+        ``att_by_event``, ``se_by_event``.
     """
     df = fit_data
 
     if config.cgroup == "never":
-        df = df.filter(pl.col("_g") != float(config.gref))
+        df = df.filter(pl.col("_g") != config.gref)
         if agg_type != "event":
             df = df.filter((pl.col("_Dtreat") == 1.0) & (pl.col("_t") >= pl.col("_g")))
         elif not post_only:
@@ -320,9 +312,9 @@ def compute_emfx(
     if agg_type == "event":
         group_vals = df["event"].to_numpy()
     elif agg_type == "group":
-        group_vals = df[config.gname].cast(pl.Float64).to_numpy()
+        group_vals = df[config.gname].to_numpy()
     else:
-        group_vals = df[config.tname].cast(pl.Float64).to_numpy()
+        group_vals = df[config.tname].to_numpy()
 
     unique_vals = np.sort(np.unique(group_vals))
     att_list, se_list = [], []
@@ -389,7 +381,7 @@ def _compute_linear_slopes(
     jacobians = np.zeros((n, len(beta)))
 
     for i in range(n):
-        key = (float(g_arr[i]), float(t_arr[i]))
+        key = (g_arr[i], t_arr[i])
         if key in gt_map:
             idx = gt_map[key]
             slopes[i] = beta[idx]
@@ -405,11 +397,7 @@ def _compute_nonlinear_slopes(
     coef_names: list[str],
     beta: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Compute slopes via counterfactual predictions (nonlinear models).
-
-    Constructs design matrices with Dtreat=1 and Dtreat=0, applies the
-    inverse link function, and computes Jacobians for the delta method.
-    """
+    """Compute slopes via counterfactual predictions (nonlinear models)."""
     pdf = _to_pandas_with_categoricals(df, config)
 
     rhs_formula = config._formula.split("|")[0].strip()
@@ -480,9 +468,9 @@ def _build_gt_coefficient_map(coef_names: list[str]) -> dict[tuple[float, float]
 def _build_xvar_dm_columns(df: pl.DataFrame, config: EtwfeConfig) -> tuple[pl.DataFrame, list[str]]:
     """Build cohort-demeaned xvar columns for heterogeneous treatment effects."""
     gname = config.gname
-    gref = float(config.gref)
+    gref = config.gref
 
-    w = (pl.col(gname).is_not_null() & (pl.col(gname).cast(pl.Float64) != gref)).cast(pl.Float64)
+    w = (pl.col(gname).is_not_null() & (pl.col(gname) != gref)).cast(pl.Float64)
 
     x_col = config.xvar
     dm_cols: list[str] = []
@@ -515,7 +503,7 @@ def _build_xvar_dm_columns(df: pl.DataFrame, config: EtwfeConfig) -> tuple[pl.Da
 
 
 def _to_pandas_with_categoricals(df: pl.DataFrame, config: EtwfeConfig) -> pd.DataFrame:
-    """Convert polars DataFrame to pandas with ordered categoricals for pyfixest."""
+    """Convert to pandas with ordered categoricals for the regression backend."""
     gref = int(config.gref)
     tref = int(config.tref)
 

@@ -285,8 +285,8 @@ def etwfe(
     se = np.asarray(model._se, dtype=float)
     vcov_mat = np.asarray(model._vcov, dtype=float)
     n_obs = int(model._N)
-    r2 = float(model._r2) if model._r2 is not None else None
-    r2_adj = float(model._r2_adj) if hasattr(model, "_r2_adj") and model._r2_adj is not None else None
+    r2 = model._r2
+    r2_adj = model._r2_adj if hasattr(model, "_r2_adj") else None
 
     gt_pairs = _extract_gt_pairs(coef_names)
 

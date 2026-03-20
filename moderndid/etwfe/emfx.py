@@ -122,7 +122,7 @@ def emfx(
         raise ValueError(f"type must be one of {valid_types}, got '{type}'")
 
     config = result.config
-    alpha = float(result.estimation_params.get("alpha", 0.05))
+    alpha = result.estimation_params.get("alpha", 0.05)
     z_crit = stats.norm.ppf(1 - alpha / 2)
 
     reg = run_etwfe_regression(
