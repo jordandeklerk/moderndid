@@ -659,8 +659,8 @@ that produces structured table output when users call ``print()`` on a result.
 This is implemented through a formatting layer in ``moderndid/core/format.py``
 and per-module ``format.py`` files.
 
-The ``attach_format`` Function
-------------------------------
+Format Registration
+-------------------
 
 The core mechanism is ``attach_format``, which monkey-patches ``__repr__`` and
 ``__str__`` onto a result class so that printing it produces formatted output

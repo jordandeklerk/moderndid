@@ -363,15 +363,16 @@ def plot_dose_response(
     default_title = f"Dose-Response: {default_ylabel}"
 
     line_color = "#2c3e50"
-    fill_color = "#95a5a6"
+    fill_color = "#5b7ea4"
 
     plot = ggplot(df, aes(x="dose", y="effect"))
 
     if show_ci:
-        plot = plot + geom_ribbon(
-            aes(ymin="ci_lower", ymax="ci_upper"),
-            fill=fill_color,
-            alpha=0.25,
+        plot = (
+            plot
+            + geom_ribbon(aes(ymin="ci_lower", ymax="ci_upper"), fill=fill_color, alpha=0.2)
+            + geom_line(aes(y="ci_upper"), linetype="dashed", color=line_color, size=0.5)
+            + geom_line(aes(y="ci_lower"), linetype="dashed", color=line_color, size=0.5)
         )
 
     if ref_line is not None:
@@ -379,8 +380,7 @@ def plot_dose_response(
 
     plot = (
         plot
-        + geom_line(color=line_color, size=1.2)
-        + geom_point(color=line_color, size=2.5)
+        + geom_line(color=line_color, size=1)
         + labs(
             x=xlab or "Dose",
             y=ylab or default_ylabel,

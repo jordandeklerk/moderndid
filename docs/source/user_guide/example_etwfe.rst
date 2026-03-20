@@ -587,6 +587,49 @@ scale instead.
 
     print(did.emfx(mod_pois, type="simple"))
 
+.. code-block:: text
+
+    ==============================================================================
+     Aggregate Treatment Effects (Simple Average)
+    ==============================================================================
+
+     Overall ATT:
+
+    ┌─────────┬────────────┬────────────────────────┐
+    │     ATT │ Std. Error │ [95% Conf. Interval]   │
+    ├─────────┼────────────┼────────────────────────┤
+    │ -0.0492 │     0.1503 │ [ -0.3439,   0.2455]   │
+    └─────────┴────────────┴────────────────────────┘
+
+    ------------------------------------------------------------------------------
+     Signif. codes: '*' confidence band does not cover 0
+
+    ------------------------------------------------------------------------------
+     Data Info
+    ------------------------------------------------------------------------------
+     Control Group:  Not Yet Treated
+     Observations:  2500
+     Units:  2500
+
+    ------------------------------------------------------------------------------
+     Estimation Details
+    ------------------------------------------------------------------------------
+     Estimation Method:  Extended TWFE (poisson)
+
+    ------------------------------------------------------------------------------
+     Inference
+    ------------------------------------------------------------------------------
+     Significance level: 0.05
+     Delta method standard errors
+    ==============================================================================
+     Reference: Wooldridge (2021, 2023)
+
+The Poisson overall ATT of -0.049 is on the response scale, obtained by
+differencing counterfactual predictions through the exponential inverse link
+function. The effect is smaller in magnitude and not statistically significant,
+reflecting the different identifying assumption (parallel trends in growth
+rates rather than in levels).
+
 Poisson QMLE with an exponential mean function assumes parallel trends in
 growth rates rather than in levels. This is often more plausible for
 nonnegative outcomes. ``"logit"`` and ``"probit"`` are also available for

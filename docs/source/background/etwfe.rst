@@ -134,11 +134,13 @@ never-treated state across all time periods
 
 .. math::
 
+   \begin{aligned}
    E[y_t(\infty) \mid \mathbf{d}, \mathbf{x}]
-   = \alpha + \sum_g \beta_g d_g + \mathbf{x}\boldsymbol{\kappa}
-   + \sum_g (d_g \cdot \mathbf{x})\boldsymbol{\xi}_g
-   + \sum_{s=2}^{T} \gamma_s f_{s,t}
-   + \sum_{s=2}^{T} (f_{s,t} \cdot \mathbf{x})\boldsymbol{\pi}_s.
+   &= \alpha + \sum_g \beta_g d_g + \mathbf{x}\boldsymbol{\kappa}
+      + \sum_g (d_g \cdot \mathbf{x})\boldsymbol{\xi}_g \\
+   &\quad + \sum_{s=2}^{T} \gamma_s f_{s,t}
+      + \sum_{s=2}^{T} (f_{s,t} \cdot \mathbf{x})\boldsymbol{\pi}_s.
+   \end{aligned}
 
 This equation allows for selection into treatment through nonzero :math:`\beta_g` and
 :math:`\boldsymbol{\xi}_g`, and for heterogeneous trends in the never-treated state through
@@ -154,10 +156,14 @@ identifies all parameters in the conditional expectation above. The ATTs are the
 
 .. math::
 
+   \begin{aligned}
    \tau_{g,t}
-   = E(y_t \mid d_g = 1)
-   - \bigl[(\alpha + \beta_g + \gamma_t) + E(\mathbf{x} \mid d_g = 1)
-   \cdot (\boldsymbol{\kappa} + \boldsymbol{\xi}_g + \boldsymbol{\pi}_t)\bigr],
+   &= E(y_t \mid d_g = 1)
+      - \bigl[(\alpha + \beta_g + \gamma_t) \\
+   &\quad + E(\mathbf{x} \mid d_g = 1)
+      \cdot (\boldsymbol{\kappa} + \boldsymbol{\xi}_g
+      + \boldsymbol{\pi}_t)\bigr],
+   \end{aligned}
 
 where Assumption NBC ensures that :math:`E(\mathbf{x} \mid d_g = 1)` can be estimated from the
 observed covariate means for cohort :math:`g`.
@@ -171,18 +177,24 @@ Using only the control observations (:math:`w_{it} = 0`), run an OLS regression
 
 .. math::
 
-   y_{it} \text{ on } 1, \; d_{q,i}, \ldots, d_{T,i}, \;
-   \mathbf{x}_i, \; d_{q,i} \cdot \mathbf{x}_i, \ldots, d_{T,i} \cdot \mathbf{x}_i, \;
-   f_{2,t}, \ldots, f_{T,t}, \; f_{2,t} \cdot \mathbf{x}_i, \ldots, f_{T,t} \cdot \mathbf{x}_i
+   \begin{aligned}
+   y_{it} \text{ on } &\; 1, \; d_{q,i}, \ldots, d_{T,i}, \;
+      \mathbf{x}_i, \; d_{q,i} \cdot \mathbf{x}_i, \ldots, d_{T,i} \cdot \mathbf{x}_i, \\
+   &\; f_{2,t}, \ldots, f_{T,t}, \;
+      f_{2,t} \cdot \mathbf{x}_i, \ldots, f_{T,t} \cdot \mathbf{x}_i
+   \end{aligned}
 
 to obtain the parameter estimates
 
 .. math::
 
-   (\tilde{\alpha}, \; \tilde{\beta}_q, \ldots, \tilde{\beta}_T, \;
-   \tilde{\boldsymbol{\kappa}}, \; \tilde{\boldsymbol{\xi}}_q, \ldots, \tilde{\boldsymbol{\xi}}_T, \;
-   \tilde{\gamma}_2, \ldots, \tilde{\gamma}_T, \;
-   \tilde{\boldsymbol{\pi}}_2, \ldots, \tilde{\boldsymbol{\pi}}_T).
+   \begin{aligned}
+   \bigl(&\tilde{\alpha}, \; \tilde{\beta}_q, \ldots, \tilde{\beta}_T, \;
+      \tilde{\boldsymbol{\kappa}}, \; \tilde{\boldsymbol{\xi}}_q, \ldots,
+      \tilde{\boldsymbol{\xi}}_T, \\
+   &\tilde{\gamma}_2, \ldots, \tilde{\gamma}_T, \;
+      \tilde{\boldsymbol{\pi}}_2, \ldots, \tilde{\boldsymbol{\pi}}_T\bigr).
+   \end{aligned}
 
 Step 2: Impute the counterfactual outcomes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -192,12 +204,14 @@ treated ones):
 
 .. math::
 
+   \begin{aligned}
    \tilde{y}_{it}(\infty)
-   = \tilde{\alpha} + \sum_{g=q}^{T} \tilde{\beta}_g d_{g,i}
-   + \mathbf{x}_i \tilde{\boldsymbol{\kappa}}
-   + \sum_{g=q}^{T} (d_{g,i} \cdot \mathbf{x}_i) \tilde{\boldsymbol{\xi}}_g
-   + \sum_{s=2}^{T} \tilde{\gamma}_s f_{s,t}
-   + \sum_{s=2}^{T} (f_{s,t} \cdot \mathbf{x}_i) \tilde{\boldsymbol{\pi}}_s.
+   &= \tilde{\alpha} + \sum_{g=q}^{T} \tilde{\beta}_g d_{g,i}
+      + \mathbf{x}_i \tilde{\boldsymbol{\kappa}}
+      + \sum_{g=q}^{T} (d_{g,i} \cdot \mathbf{x}_i) \tilde{\boldsymbol{\xi}}_g \\
+   &\quad + \sum_{s=2}^{T} \tilde{\gamma}_s f_{s,t}
+      + \sum_{s=2}^{T} (f_{s,t} \cdot \mathbf{x}_i) \tilde{\boldsymbol{\pi}}_s.
+   \end{aligned}
 
 The unit-specific treatment effects are then
 
@@ -213,13 +227,15 @@ unit-specific treatment effects over cohort :math:`g`:
 
 .. math::
 
+   \begin{aligned}
    \tilde{\tau}_{g,t}
-   = N_g^{-1} \sum_{i=1}^{N} d_{g,i} \, \widetilde{te}_{it}
-   = \bar{y}_{g,t}
-   - \bigl[(\tilde{\alpha} + \tilde{\beta}_g + \tilde{\gamma}_t)
-   + \bar{\mathbf{x}}_g
-   \cdot (\tilde{\boldsymbol{\kappa}} + \tilde{\boldsymbol{\xi}}_g
-   + \tilde{\boldsymbol{\pi}}_t)\bigr],
+   &= N_g^{-1} \sum_{i=1}^{N} d_{g,i} \, \widetilde{te}_{it} \\
+   &= \bar{y}_{g,t}
+      - \bigl[(\tilde{\alpha} + \tilde{\beta}_g + \tilde{\gamma}_t)
+      + \bar{\mathbf{x}}_g
+      \cdot (\tilde{\boldsymbol{\kappa}} + \tilde{\boldsymbol{\xi}}_g
+      + \tilde{\boldsymbol{\pi}}_t)\bigr],
+   \end{aligned}
 
 where
 
@@ -241,12 +257,18 @@ regression over all observations
 
 .. math::
 
+   \begin{aligned}
    E(y_{it} \mid \mathbf{d}_i, \mathbf{x}_i)
-   = \alpha + \sum_g \beta_g d_{g,i} + \mathbf{x}_i\boldsymbol{\kappa}
-   + \sum_g (d_{g,i} \cdot \mathbf{x}_i)\boldsymbol{\xi}_g
-   + \sum_s \gamma_s f_{s,t} + \sum_s (f_{s,t} \cdot \mathbf{x}_i)\boldsymbol{\pi}_s
-   + \sum_g \sum_{s \geq g} \tau_{gs} (w_{it} \cdot d_{g,i} \cdot f_{s,t})
-   + \sum_g \sum_{s \geq g} (w_{it} \cdot d_{g,i} \cdot f_{s,t} \cdot \dot{\mathbf{x}}_{ig})\boldsymbol{\delta}_{gs},
+   &= \alpha + \sum_g \beta_g d_{g,i} + \mathbf{x}_i\boldsymbol{\kappa}
+      + \sum_g (d_{g,i} \cdot \mathbf{x}_i)\boldsymbol{\xi}_g \\
+   &\quad + \sum_s \gamma_s f_{s,t}
+      + \sum_s (f_{s,t} \cdot \mathbf{x}_i)\boldsymbol{\pi}_s \\
+   &\quad + \sum_g \sum_{s \geq g} \tau_{gs}
+      (w_{it} \cdot d_{g,i} \cdot f_{s,t}) \\
+   &\quad + \sum_g \sum_{s \geq g}
+      (w_{it} \cdot d_{g,i} \cdot f_{s,t}
+      \cdot \dot{\mathbf{x}}_{ig})\boldsymbol{\delta}_{gs},
+   \end{aligned}
 
 where :math:`\dot{\mathbf{x}}_{ig} = \mathbf{x}_i - \bar{\mathbf{x}}_g` are covariates demeaned
 about their cohort means. The coefficients :math:`\tau_{gs}` on the treatment interaction terms
@@ -375,15 +397,18 @@ Using the imputation approach, the estimated ATT for cohort :math:`g` in period 
 
 .. math::
 
+   \begin{aligned}
    \hat{\tau}_{g,r}
-   = \bar{Y}_{g,r}
-   - N_g^{-1} \sum_{i} d_{g,i} \, G\bigl(
-   \hat{\alpha} + \hat{\beta}_g
-   + \mathbf{x}_i\hat{\boldsymbol{\kappa}}
-   + \mathbf{x}_i\hat{\boldsymbol{\eta}}_g
-   + \hat{\gamma}_r
-   + \mathbf{x}_i\hat{\boldsymbol{\pi}}_r
-   \bigr),
+   &= \bar{Y}_{g,r}
+      - N_g^{-1} \sum_{i} d_{g,i} \, G\bigl(
+      \hat{\alpha} + \hat{\beta}_g
+      + \mathbf{x}_i\hat{\boldsymbol{\kappa}} \\
+   &\qquad\qquad\qquad\qquad
+      + \mathbf{x}_i\hat{\boldsymbol{\eta}}_g
+      + \hat{\gamma}_r
+      + \mathbf{x}_i\hat{\boldsymbol{\pi}}_r
+      \bigr),
+   \end{aligned}
 
 where the argument of :math:`G(\cdot)` is the estimated never-treated linear predictor for unit
 :math:`i` in period :math:`r`. This subtracts the imputed counterfactual from the observed

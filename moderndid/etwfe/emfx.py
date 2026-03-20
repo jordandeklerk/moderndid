@@ -115,7 +115,7 @@ def emfx(
         In [4]: print(emfx(mod, type="group"))
     """
     if not isinstance(result, EtwfeResult):
-        raise TypeError(f"Expected EtwfeResult, got {type(result).__name__}")
+        raise TypeError(f"Expected EtwfeResult, got {result.__class__.__name__}")
 
     valid_types = ("simple", "group", "calendar", "event")
     if type not in valid_types:
