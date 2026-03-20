@@ -49,6 +49,10 @@ jupyter-sphinx = "*"
 [feature.docs.pypi-dependencies]
 myst-parser = { version = ">=2.0.0", extras = ["linkify"] }
 myst-nb = ">=1.0.0"
+pyfixest = ">=0.30.2"
+tqdm = ">=4.0.0"
+seaborn = ">=0.13.0"
+great-tables = ">=0.15.0"
 
 [feature.docs.tasks]
 docs = "sphinx-build -d docs/_doctree docs/source docs/_build --color -v -bhtml"

@@ -40,6 +40,7 @@ you always get the core estimators plus whatever extras you specify.
 
 - **didcont** -- Continuous treatment DiD (:func:`~moderndid.cont_did`)
 - **didhonest** -- Sensitivity analysis (:func:`~moderndid.honest_did`)
+- **etwfe** -- Extended TWFE (:func:`~moderndid.etwfe`)
 - **plots** -- Visualization (``plot_gt``, ``plot_event_study``, ...)
 - **numba** -- Faster bootstrap inference
 - **gpu** -- GPU-accelerated estimation (requires CUDA)

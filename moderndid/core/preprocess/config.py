@@ -202,3 +202,38 @@ class DIDInterConfig(ConfigMixin):
     max_effects_available: int = 0
     max_placebo_available: int = 0
     data_format: DataFormat = DataFormat.PANEL
+
+
+@dataclass
+class EtwfeConfig(ConfigMixin):
+    """Extended Two-Way Fixed Effects config."""
+
+    yname: str = ""
+    tname: str = ""
+    gname: str = ""
+    idname: str | None = None
+    xformla: str = "~1"
+    xvar: str | None = None
+    tref: int | float | None = None
+    gref: int | float | None = None
+    cgroup: str = "notyet"
+    fe: str = "vs"
+    family: str | None = None
+    weightsname: str | None = None
+    cluster: str | None = None
+    alp: float = DEFAULT_ALPHA
+    panel: bool = True
+
+    time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
+    time_periods_count: int = 0
+    treated_groups: np.ndarray = field(default_factory=lambda: np.array([]))
+    treated_groups_count: int = 0
+    n_units: int = 0
+    n_obs: int = 0
+
+    # Internal state set during prepare_etwfe_data / build_etwfe_formula
+    _gref_min_flag: bool = False
+    _ctrls: list = field(default_factory=list)
+    _xvar_dm_cols: list = field(default_factory=list)
+    _xvar_time_dummies: list = field(default_factory=list)
+    _formula: str = ""

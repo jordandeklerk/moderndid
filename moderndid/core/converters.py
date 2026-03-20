@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from moderndid.didhonest.honest_did import HonestDiDResult
     from moderndid.didinter.container import DIDInterResult, HeterogeneityResult
     from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult
+    from moderndid.etwfe.container import EmfxResult
 
 
 def mpresult_to_polars(result: MPResult) -> pl.DataFrame:
@@ -497,6 +498,63 @@ def heterogeneityresult_to_polars(result: HeterogeneityResult) -> pl.DataFrame:
     )
 
 
+def emfxresult_to_polars(result: EmfxResult) -> pl.DataFrame:
+    """Convert EmfxResult to polars DataFrame for plotting.
+
+    Parameters
+    ----------
+    result : EmfxResult
+        Aggregated ETWFE marginal effects result (event, group, or calendar).
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns:
+
+        - event_time: event time (for event), group (for group), or time (for calendar)
+        - att: ATT estimate
+        - se: standard error
+        - ci_lower: lower confidence interval
+        - ci_upper: upper confidence interval
+        - treatment_status: "Pre" or "Post" (for event aggregation)
+
+    Raises
+    ------
+    ValueError
+        If result is simple aggregation or missing required data.
+    """
+    if result.aggregation_type == "simple":
+        raise ValueError("Simple aggregation does not produce event-level data for plotting.")
+
+    if result.event_times is None or result.att_by_event is None or result.se_by_event is None:
+        raise ValueError(
+            f"EmfxResult with aggregation_type='{result.aggregation_type}' "
+            "must have event_times, att_by_event, and se_by_event"
+        )
+
+    event_times = result.event_times
+    att = result.att_by_event
+    se = result.se_by_event
+    crit_val = result.critical_value
+
+    ci_lower = att - crit_val * se
+    ci_upper = att + crit_val * se
+
+    data = {
+        "event_time": event_times,
+        "att": att,
+        "se": se,
+        "ci_lower": ci_lower,
+        "ci_upper": ci_upper,
+    }
+
+    if result.aggregation_type == "event":
+        data["treatment_status"] = np.array(["Pre" if e < 0 else "Post" for e in event_times])
+
+    df = pl.DataFrame(data)
+    return df.filter(~pl.col("se").is_nan())
+
+
 _DISPATCH: dict[str, Any] = {
     "MPResult": mpresult_to_polars,
     "AGGTEResult": aggteresult_to_polars,
@@ -508,6 +566,7 @@ _DISPATCH: dict[str, Any] = {
     "DDDAggResult": dddaggresult_to_polars,
     "DIDInterResult": didinterresult_to_polars,
     "HeterogeneityResult": heterogeneityresult_to_polars,
+    "EmfxResult": emfxresult_to_polars,
 }
 
 

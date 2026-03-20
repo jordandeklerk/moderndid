@@ -661,6 +661,13 @@ class CompositeValidator(BaseValidator):
                 WeightValidator(),
             ]
 
+        if config_type == "etwfe":
+            return [
+                ColumnValidator(),
+                WeightValidator(),
+                PanelStructureValidator(),
+            ]
+
         if config_type == "ddd":
             return [
                 DDDColumnValidator(),
