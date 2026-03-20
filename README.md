@@ -38,9 +38,9 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 
 - [Staggered DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_triple_did.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html), [Honest DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html), [Extended TWFE](https://moderndid.readthedocs.io/en/latest/api/etwfe.html), and [Nonparametric IV](https://moderndid.readthedocs.io/en/latest/user_guide/example_npiv.html).
 - Works with any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more) via [narwhals](https://narwhals-dev.github.io/narwhals/).
-- Distributed computing with [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) backends.
 - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT computations, and threaded parallel compute.
 - Optional [CuPy](https://cupy.dev/) GPU acceleration with multi-GPU support in distributed mode.
+- Distributed computing with [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) backends for staggered and triple DiD.
 - [plotnine](https://plotnine.org/)-based plots that return `ggplot` objects you can customize.
 - Result objects plug directly into [maketables](https://py-econometrics.github.io/maketables/) for LaTeX, HTML, Word, and Typst tables.
 - Analytical SEs, weighted and multiplier bootstrap, simultaneous confidence bands.

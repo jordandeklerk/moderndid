@@ -9,6 +9,8 @@ from tests.helpers import importorskip
 importorskip("pyfixest")
 
 from moderndid.etwfe.compute import (
+    _invlink_and_deriv,
+    _weighted_agg,
     build_etwfe_formula,
     prepare_etwfe_data,
     set_references,
@@ -188,3 +190,77 @@ def test_formula_vs_no_explicit_control_interactions(mpdta_data, base_config):
     rhs_terms = [t.strip() for t in rhs_terms]
     assert not any(t == "C(__etwfe_gcat):lpop" for t in rhs_terms)
     assert not any(t == "C(__etwfe_tcat):lpop" for t in rhs_terms)
+
+
+def test_prepare_xvar_creates_dm_columns(mpdta_data, base_config):
+    base_config.xvar = "lpop"
+    config = set_references(base_config, mpdta_data)
+    df = prepare_etwfe_data(mpdta_data, config)
+    assert "lpop_dm" in df.columns
+    assert len(config._xvar_dm_cols) > 0
+
+
+def test_prepare_xvar_creates_time_dummies(mpdta_data, base_config):
+    base_config.xvar = "lpop"
+    config = set_references(base_config, mpdta_data)
+    df = prepare_etwfe_data(mpdta_data, config)
+    assert len(config._xvar_time_dummies) > 0
+    for col in config._xvar_time_dummies:
+        assert col in df.columns
+
+
+def test_formula_with_xvar(mpdta_data, base_config):
+    base_config.xvar = "lpop"
+    config = set_references(base_config, mpdta_data)
+    prepare_etwfe_data(mpdta_data, config)
+    formula = build_etwfe_formula(config)
+    assert "lpop_dm" in formula
+    for td in config._xvar_time_dummies:
+        assert td in formula
+
+
+@pytest.mark.parametrize(
+    "family,eta,expected_mu",
+    [
+        ("gaussian", np.array([0.0, 1.0]), np.array([0.0, 1.0])),
+        ("poisson", np.array([0.0, 1.0]), np.exp([0.0, 1.0])),
+        ("logit", np.array([0.0]), np.array([0.5])),
+        ("probit", np.array([0.0]), np.array([0.5])),
+    ],
+)
+def test_invlink_and_deriv_mu(family, eta, expected_mu):
+    mu, _ = _invlink_and_deriv(eta, family)
+    np.testing.assert_allclose(mu, expected_mu, atol=1e-6)
+
+
+@pytest.mark.parametrize("family", ["gaussian", "poisson", "logit", "probit"])
+def test_invlink_and_deriv_positive_derivative(family):
+    eta = np.array([-1.0, 0.0, 1.0])
+    _, deriv = _invlink_and_deriv(eta, family)
+    assert np.all(deriv > 0)
+
+
+def test_invlink_and_deriv_poisson_mu_equals_deriv():
+    mu, deriv = _invlink_and_deriv(np.array([0.0, 1.0, -1.0]), "poisson")
+    np.testing.assert_array_equal(mu, deriv)
+
+
+def test_invlink_and_deriv_unsupported_family():
+    with pytest.raises(ValueError, match="Unsupported family"):
+        _invlink_and_deriv(np.array([0.0]), "invalid")
+
+
+def test_weighted_agg_zero_weights():
+    slopes = np.array([1.0, 2.0])
+    jac = np.eye(2)
+    att, se = _weighted_agg(slopes, jac, np.array([0.0, 0.0]), np.eye(2))
+    assert att == 0.0
+    assert np.isnan(se)
+
+
+def test_weighted_agg_none_vcov():
+    slopes = np.array([1.0, 2.0])
+    jac = np.eye(2)
+    att, se = _weighted_agg(slopes, jac, np.ones(2), None)
+    np.testing.assert_allclose(att, 1.5)
+    assert np.isnan(se)

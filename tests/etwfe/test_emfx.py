@@ -174,3 +174,21 @@ def test_emfx_estimation_params_propagated(etwfe_baseline):
     assert "yname" in result.estimation_params
     assert "alpha" in result.estimation_params
     assert result.estimation_params["yname"] == "lemp"
+
+
+def test_emfx_event_window_single_point(etwfe_baseline):
+    result = emfx(etwfe_baseline, type="event", window=(0, 0))
+    np.testing.assert_array_equal(result.event_times, [0.0])
+    np.testing.assert_allclose(result.att_by_event, [-0.031067], atol=1e-4)
+
+
+def test_emfx_window_ignored_for_non_event(etwfe_baseline):
+    with_window = emfx(etwfe_baseline, type="group", window=(0, 1))
+    without_window = emfx(etwfe_baseline, type="group")
+    np.testing.assert_array_equal(with_window.event_times, without_window.event_times)
+
+
+def test_emfx_never_post_only_false_window(etwfe_never):
+    result = emfx(etwfe_never, type="event", post_only=False, window=(-2, 1))
+    assert result.event_times[0] >= -2.0
+    assert result.event_times[-1] <= 1.0

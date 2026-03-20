@@ -176,3 +176,46 @@ def test_emfx_maketables_vcov_info(etwfe_baseline):
     result = emfx(etwfe_baseline, type="simple")
     info = result.__maketables_vcov_info__
     assert info["vcov_type"] == "Delta method"
+
+
+def test_etwfe_maketables_stat_labels(etwfe_baseline):
+    labels = etwfe_baseline.__maketables_stat_labels__
+    assert "n_units" in labels
+    assert "R2" in labels
+
+
+def test_etwfe_maketables_default_stat_keys(etwfe_baseline):
+    keys = etwfe_baseline.__maketables_default_stat_keys__
+    assert "N" in keys
+    assert "n_units" in keys
+    assert "se_type" in keys
+
+
+def test_etwfe_maketables_default_stat_keys_includes_r2(etwfe_baseline):
+    keys = etwfe_baseline.__maketables_default_stat_keys__
+    assert "R2" in keys
+
+
+def test_emfx_maketables_stat_labels(etwfe_baseline):
+    result = emfx(etwfe_baseline, type="simple")
+    labels = result.__maketables_stat_labels__
+    assert "aggregation" in labels
+
+
+def test_emfx_maketables_default_stat_keys(etwfe_baseline):
+    result = emfx(etwfe_baseline, type="simple")
+    keys = result.__maketables_default_stat_keys__
+    assert "N" in keys
+    assert "aggregation" in keys
+
+
+def test_emfx_maketables_coef_table_simple(etwfe_baseline):
+    result = emfx(etwfe_baseline, type="simple")
+    table = result.__maketables_coef_table__
+    assert len(table) == 1
+
+
+def test_format_etwfe_fe_none_no_fe_line(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", fe="none")
+    output = format_etwfe_result(mod)
+    assert "Fixed Effects:" not in output

@@ -274,6 +274,39 @@ def test_etwfe_missing_column(mpdta_data, kwargs, match):
         etwfe(data=mpdta_data, **kwargs)
 
 
+def test_etwfe_xvar_heterogeneous_effects(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", xvar="lpop")
+    assert isinstance(mod, EtwfeResult)
+    assert len(mod.coefficients) > 7
+    assert len(mod.gt_pairs) > 7
+    s = emfx(mod, type="simple")
+    np.testing.assert_allclose(s.overall_att, -0.02268, atol=1e-3)
+
+
+def test_etwfe_poisson_emfx_simple(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+    s = emfx(mod, type="simple")
+    np.testing.assert_allclose(s.overall_att, -0.049194, atol=1e-3)
+    assert s.overall_se > 0
+
+
+def test_etwfe_poisson_emfx_event(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+    e = emfx(mod, type="event")
+    np.testing.assert_array_equal(e.event_times, [0.0, 1.0, 2.0, 3.0])
+    expected = np.array([-0.032106, -0.055866, -0.135119, -0.106439])
+    np.testing.assert_allclose(e.att_by_event, expected, atol=1e-3)
+    assert np.all(e.se_by_event > 0)
+
+
+def test_etwfe_poisson_emfx_group(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
+    g = emfx(mod, type="group")
+    np.testing.assert_array_equal(g.event_times, [2004.0, 2006.0, 2007.0])
+    expected = np.array([-0.08317, -0.022918, -0.044491])
+    np.testing.assert_allclose(g.att_by_event, expected, atol=1e-3)
+
+
 @pytest.mark.parametrize("mpdta_converted", ["pandas", "pyarrow", "duckdb"], indirect=True)
 def test_etwfe_dataframe_interoperability(mpdta_converted, etwfe_baseline):
     result = etwfe(
