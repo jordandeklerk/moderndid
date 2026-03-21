@@ -68,6 +68,7 @@ source_suffix = {
 }
 
 autosummary_generate = True
+autodoc_mock_imports = ["pyfixest"]
 autodoc_typehints = "signature"
 autodoc_default_options = {
     "members": False,
@@ -76,7 +77,7 @@ autodoc_default_options = {
 }
 
 numpydoc_show_class_members = False
-numpydoc_validation_checks = {"all"} - {"GL08"}
+numpydoc_validation_checks = {"all"} - {"GL08", "ES01", "SA01", "EX01"}
 numpydoc_xref_param_type = True
 numpydoc_xref_ignore = {"of", "or", "optional", "scalar", "default"}
 singulars = ("int", "list", "dict", "float")

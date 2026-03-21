@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import re
-import warnings
 from typing import Any
 
 import formulaic
 import numpy as np
 import pandas as pd
 import polars as pl
-import pyfixest as pf
 from scipy import stats
 
 from moderndid.core.preprocess.config import EtwfeConfig
@@ -219,17 +217,18 @@ def run_etwfe_regression(
     if backend is not None:
         fit_kwargs["demeaner_backend"] = backend
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore")
+    from pyfixest.estimation.estimation import feglm as _feglm
+    from pyfixest.estimation.estimation import feols as _feols
+    from pyfixest.estimation.estimation import fepois as _fepois
 
-        if family is None or family == "gaussian":
-            model = pf.feols(**fit_kwargs)
-        elif family == "poisson":
-            model = pf.fepois(**fit_kwargs)
-        elif family in ("logit", "probit"):
-            model = pf.feglm(**fit_kwargs, family=family)
-        else:
-            raise ValueError(f"Unsupported family: {family}")
+    if family is None or family == "gaussian":
+        model = _feols(**fit_kwargs)
+    elif family == "poisson":
+        model = _fepois(**fit_kwargs)
+    elif family in ("logit", "probit"):
+        model = _feglm(**fit_kwargs, family=family)
+    else:
+        raise ValueError(f"Unsupported family: {family}")
 
     return {
         "model": model,
