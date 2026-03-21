@@ -26,9 +26,6 @@ pytest-benchmark = ">=4.0.0"
 pytest-cov = ">=4.0.0"
 pytest-timeout = ">=2.0.0"
 
-[feature.dev.pypi-dependencies]
-pyfixest = ">=0.30.2"
-
 [feature.dev.tasks]
 tests-core = "pytest -m 'not slow' --ignore=tests/dask --ignore=tests/spark -vv"
 tests-full = "pytest --ignore=tests/dask --ignore=tests/spark -vv"
@@ -39,6 +36,7 @@ tests-spark = "pytest tests/spark --timeout=120 -vv"
 platforms = ["linux-64", "osx-arm64", "osx-64"]
 
 [feature.docs.dependencies]
+numpy = ">=1.22.0,<2.4"
 sphinx = "*"
 sphinx-book-theme = "*"
 sphinx-copybutton = "*"
@@ -49,13 +47,15 @@ jupyter-sphinx = "*"
 [feature.docs.pypi-dependencies]
 myst-parser = { version = ">=2.0.0", extras = ["linkify"] }
 myst-nb = ">=1.0.0"
-pyfixest = ">=0.30.2"
 tqdm = ">=4.0.0"
 seaborn = ">=0.13.0"
 great-tables = ">=0.15.0"
 
 [feature.docs.tasks]
 docs = "sphinx-build -d docs/_doctree docs/source docs/_build --color -v -bhtml"
+
+[feature.etwfe.pypi-dependencies]
+pyfixest = ">=0.30.2"
 
 [feature.didcont.pypi-dependencies]
 formulaic = ">=1.1.0"
@@ -124,9 +124,9 @@ didhonest = "pytest tests/validation/test_r_didhonest.py -vv"
 npiv = "pytest tests/validation/test_r_npiv.py -vv"
 
 [environments]
-dev = ["dev", "build", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
-docs = ["docs", "build", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
+dev = ["dev", "build", "etwfe", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
+docs = ["docs", "build", "etwfe", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
 check = ["lint"]
 build = ["build"]
 gpu = ["gpu"]
-validation = ["dev", "build", "validation", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
+validation = ["dev", "build", "etwfe", "validation", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
