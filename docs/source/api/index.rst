@@ -27,6 +27,7 @@ methodology are found in :ref:`background`.
    didcont
    didinter
    honestdid
+   etwfe
 
 .. toctree::
    :caption: Nonparametric IV

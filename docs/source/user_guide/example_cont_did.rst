@@ -422,6 +422,9 @@ regardless of this setting.
     from plotnine import labs, theme, theme_gray
 
     p = did.plot_event_study(event_study_slope, ref_period=-1)
+
+.. code-block:: python
+
     p = (p
         + labs(
             x="Years Relative to Treatment",
@@ -448,6 +451,11 @@ of the treatment effect function.
 .. code-block:: python
 
     p = did.plot_dose_response(result, effect_type="att")
+
+.. code-block:: python
+
+    from plotnine import element_text
+
     p = (p
         + labs(
             x="Treatment Dose",
@@ -456,7 +464,10 @@ of the treatment effect function.
             subtitle="Average treatment effect on treated by dose level",
         )
         + theme_gray()
-        + theme(legend_position="bottom")
+        + theme(
+            plot_title=element_text(size=13, weight="bold"),
+            plot_subtitle=element_text(size=10),
+        )
     )
     p.save("plot_cont_dose_att.png", dpi=200, width=8, height=5)
 
@@ -464,16 +475,21 @@ of the treatment effect function.
    :alt: Dose-response curve for ATT
    :width: 100%
 
-The dose-response plot shows the :math:`ATT(d)` estimate as a function of dose, with pointwise
-confidence bands. Each point on this curve is identified under standard
-parallel trends, but interpreting the *shape* of the curve (comparing effects
-across different doses) requires the stronger parallel trends assumption
-discussed above. The widening bands at higher doses reflect increased
-uncertainty where fewer observations are available.
+The dose-response plot shows the :math:`ATT(d)` estimate as a function of dose, with
+uniform confidence bands. The solid line is the estimated dose-response
+function and the dashed lines are the confidence band boundaries. Each point
+on this curve is identified under standard parallel trends, but interpreting
+the *shape* of the curve (comparing effects across different doses) requires
+the stronger parallel trends assumption discussed above. The widening bands
+at higher doses reflect increased uncertainty where fewer observations are
+available.
 
 .. code-block:: python
 
     p = did.plot_dose_response(result, effect_type="acrt")
+
+.. code-block:: python
+
     p = (p
         + labs(
             x="Treatment Dose",
@@ -482,7 +498,10 @@ uncertainty where fewer observations are available.
             subtitle="Average causal response on treated by dose level",
         )
         + theme_gray()
-        + theme(legend_position="bottom")
+        + theme(
+            plot_title=element_text(size=13, weight="bold"),
+            plot_subtitle=element_text(size=10),
+        )
     )
     p.save("plot_cont_dose_acrt.png", dpi=200, width=8, height=5)
 
@@ -499,6 +518,9 @@ For the event study aggregation, use the standard event study plot.
 .. code-block:: python
 
     p = did.plot_event_study(event_study, ref_period=-1)
+
+.. code-block:: python
+
     p = (p
         + labs(
             x="Years Relative to Treatment",
@@ -612,6 +634,9 @@ rather than imposing a parametric form.
 .. code-block:: python
 
     p = did.plot_dose_response(result_cck, effect_type="att")
+
+.. code-block:: python
+
     p = (p
         + labs(
             x="Treatment Dose",
@@ -620,7 +645,10 @@ rather than imposing a parametric form.
             subtitle="CCK estimator with purely quadratic treatment effect",
         )
         + theme_gray()
-        + theme(legend_position="bottom")
+        + theme(
+            plot_title=element_text(size=13, weight="bold"),
+            plot_subtitle=element_text(size=10),
+        )
     )
     p.save("plot_cont_cck.png", dpi=200, width=8, height=5)
 

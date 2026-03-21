@@ -7,9 +7,17 @@ import numpy as np
 import polars as pl
 
 from ..dataframe import DataFrame, to_polars
-from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
+from .config import (
+    BasePreprocessConfig,
+    ContDIDConfig,
+    DDDConfig,
+    DIDConfig,
+    DIDInterConfig,
+    EtwfeConfig,
+    TwoPeriodDIDConfig,
+)
 from .constants import WEIGHTS_COLUMN
-from .models import ContDIDData, DDDData, DIDData, DIDInterData, TwoPeriodDIDData
+from .models import ContDIDData, DDDData, DIDData, DIDInterData, EtwfeData, TwoPeriodDIDData
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
 from .utils import extract_ddd_covariates, extract_vars_from_formula
@@ -67,6 +75,9 @@ class PreprocessDataBuilder:
         elif isinstance(config, DDDConfig):
             self._validator = CompositeValidator(config_type="ddd")
             self._transformer = DataTransformerPipeline.get_ddd_pipeline()
+        elif isinstance(config, EtwfeConfig):
+            self._validator = CompositeValidator(config_type="etwfe")
+            self._transformer = DataTransformerPipeline.get_etwfe_pipeline()
         elif isinstance(config, DIDConfig):
             self._validator = CompositeValidator(config_type="did")
             self._transformer = DataTransformerPipeline.get_did_pipeline()
@@ -171,6 +182,9 @@ class PreprocessDataBuilder:
         if isinstance(self._config, DIDInterConfig):
             return
 
+        if isinstance(self._config, EtwfeConfig):
+            return
+
         glist = self._config.treated_groups
         if len(glist) == 0:
             raise ValueError(
@@ -227,6 +241,8 @@ class PreprocessDataBuilder:
             return self._build_ddd_data()
         if isinstance(self._config, DIDInterConfig):
             return self._build_didinter_data()
+        if isinstance(self._config, EtwfeConfig):
+            return self._build_etwfe_data()
         if isinstance(self._config, DIDConfig):
             return self._build_did_data()
         if isinstance(self._config, ContDIDConfig):
@@ -472,6 +488,24 @@ class PreprocessDataBuilder:
             "period_counts": period_counts,
             "crosstable_counts": crosstable_counts,
         }
+
+    def _build_etwfe_data(self) -> EtwfeData:
+        """Build EtwfeData object."""
+        if not isinstance(self._config, EtwfeConfig):
+            raise ValueError("Config must be EtwfeConfig")
+
+        weights = self._data[WEIGHTS_COLUMN].to_numpy()
+
+        cluster = None
+        if self._config.cluster and self._config.cluster in self._data.columns:
+            cluster = self._data[self._config.cluster].to_numpy()
+
+        return EtwfeData(
+            data=self._data,
+            weights=weights,
+            cluster=cluster,
+            config=self._config,
+        )
 
     def _create_time_invariant_data(self) -> pl.DataFrame:
         """Extract time-invariant data."""

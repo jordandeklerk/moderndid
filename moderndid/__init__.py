@@ -46,6 +46,8 @@ __all__ = [
     "DeltaSDRMMResult",
     "DeltaSDRMResult",
     "DeltaSDResult",
+    "EmfxResult",
+    "EtwfeResult",
     "FLCIResult",
     "HonestDiDResult",
     "MPPretestResult",
@@ -140,11 +142,15 @@ __all__ = [
     "drdid_panel",
     "drdid_rc",
     "drdid_trad_rc",
+    "emfx",
     "estimate_lowerbound_m_conditional_test",
+    "etwfe",
     "extract_vars_from_formula",
     "fill_panel_gaps",
     "folded_normal_quantile",
     "format_aggte_result",
+    "format_emfx_result",
+    "format_etwfe_result",
     "format_mp_pretest_result",
     "format_mp_result",
     "gen_cont_did_data",
@@ -482,6 +488,13 @@ _optional_imports = {
     "test_in_identified_set_max": ("moderndid.didhonest", "didhonest"),
     "validate_conformable": ("moderndid.didhonest", "didhonest"),
     "validate_symmetric_psd": ("moderndid.didhonest", "didhonest"),
+    # etwfe (requires pyfixest)
+    "EtwfeResult": ("moderndid.etwfe", "etwfe"),
+    "EmfxResult": ("moderndid.etwfe", "etwfe"),
+    "etwfe": ("moderndid.etwfe", "etwfe"),
+    "emfx": ("moderndid.etwfe", "etwfe"),
+    "format_etwfe_result": ("moderndid.etwfe", "etwfe"),
+    "format_emfx_result": ("moderndid.etwfe", "etwfe"),
     # dask (requires dask + distributed)
     "dask_att_gt": ("moderndid.dask._did", "dask"),
     "dask_cont_did": ("moderndid.dask._didcont", "dask"),
@@ -544,6 +557,12 @@ def __getattr__(name: str) -> Any:
 # This is needed because `from X import Y` bypasses __getattr__ when Y is a subpackage
 from moderndid.drdid.drdid import drdid
 from moderndid.npiv.npiv import npiv
+
+try:
+    from moderndid.etwfe.etwfe import etwfe
+    from moderndid.etwfe.emfx import emfx
+except ImportError:
+    pass
 
 
 def __dir__() -> list[str]:

@@ -11,6 +11,7 @@ from .config import (
     DDDConfig,
     DIDConfig,
     DIDInterConfig,
+    EtwfeConfig,
     TwoPeriodDIDConfig,
 )
 from .constants import DataFormat
@@ -186,6 +187,16 @@ class DIDInterData(PreprocessedData):
     def has_controls(self) -> bool:
         """Check if data has control variables."""
         return self.config.controls is not None and len(self.config.controls) > 0
+
+
+@dataclass
+class EtwfeData:
+    """ETWFE preprocessed data."""
+
+    data: pl.DataFrame
+    weights: np.ndarray
+    cluster: np.ndarray | None = None
+    config: EtwfeConfig = field(default_factory=EtwfeConfig)
 
 
 @dataclass

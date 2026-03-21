@@ -133,6 +133,9 @@ key arguments, and guidance on when to use each one.
    * - **Sensitivity analysis** (:func:`~moderndid.honest_did`)
      - Assess robustness to parallel trends violations
      - `Rambachan & Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_
+   * - **Extended TWFE** (:func:`~moderndid.etwfe`)
+     - Saturated TWFE with cohort-time interactions; supports OLS and GLM
+     - `Wooldridge (2023) <https://doi.org/10.1093/ectj/utad016>`_ and `Wooldridge (2025) <https://doi.org/10.1007/s00181-025-02807-z>`_
    * - **Nonparametric IV** (:func:`~moderndid.npiv`)
      - Estimate structural functions and derivatives with uniform confidence bands
      - `Chen, Christensen & Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_

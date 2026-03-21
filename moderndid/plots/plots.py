@@ -29,6 +29,7 @@ from moderndid.core.converters import (
     dddmpresult_to_polars,
     didinterresult_to_polars,
     doseresult_to_polars,
+    emfxresult_to_polars,
     honestdid_to_polars,
     mpresult_to_polars,
     pteresult_to_polars,
@@ -36,6 +37,7 @@ from moderndid.core.converters import (
 from moderndid.did.container import AGGTEResult, MPResult
 from moderndid.didinter.container import DIDInterResult
 from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult
+from moderndid.etwfe.container import EmfxResult
 from moderndid.plots.themes import COLORS
 
 if TYPE_CHECKING:
@@ -129,7 +131,7 @@ def plot_gt(
 
 
 def plot_event_study(
-    result: AGGTEResult | PTEResult | DDDAggResult,
+    result: AGGTEResult | PTEResult | DDDAggResult | EmfxResult,
     show_ci: bool = True,
     ref_line: float | None = 0,
     ref_period: float | None = -1,
@@ -163,7 +165,12 @@ def plot_event_study(
     ggplot
         A plotnine ggplot object that can be further customized.
     """
-    if hasattr(result, "event_study") and not isinstance(result, (AGGTEResult, DDDAggResult)):
+    if isinstance(result, EmfxResult):
+        if result.aggregation_type != "event":
+            raise ValueError(f"Event study plot requires event aggregation, got {result.aggregation_type}")
+        df = emfxresult_to_polars(result)
+        default_title = "ETWFE Event Study"
+    elif hasattr(result, "event_study") and not isinstance(result, (AGGTEResult, DDDAggResult)):
         df = pteresult_to_polars(result)
         default_title = "Event Study"
     elif isinstance(result, DDDAggResult):
@@ -202,12 +209,15 @@ def plot_event_study(
     if ref_period is not None and ref_period not in x_breaks:
         x_breaks = sorted([*x_breaks, ref_period])
 
+    present = df["treatment_status"].unique().to_list() if "treatment_status" in df.columns else []
+    legend_limits = [s for s in ["Pre", "Post"] if s in present]
+
     plot = (
         plot
         + geom_point(aes(color="treatment_status"), size=3.5)
         + scale_color_manual(
             values={"Pre": COLORS["pre_treatment"], "Post": COLORS["post_treatment"]},
-            limits=["Pre", "Post"],
+            limits=legend_limits,
             name="Treatment Status",
         )
         + scale_x_continuous(breaks=x_breaks)
@@ -353,15 +363,16 @@ def plot_dose_response(
     default_title = f"Dose-Response: {default_ylabel}"
 
     line_color = "#2c3e50"
-    fill_color = "#95a5a6"
+    fill_color = "#5b7ea4"
 
     plot = ggplot(df, aes(x="dose", y="effect"))
 
     if show_ci:
-        plot = plot + geom_ribbon(
-            aes(ymin="ci_lower", ymax="ci_upper"),
-            fill=fill_color,
-            alpha=0.25,
+        plot = (
+            plot
+            + geom_ribbon(aes(ymin="ci_lower", ymax="ci_upper"), fill=fill_color, alpha=0.2)
+            + geom_line(aes(y="ci_upper"), linetype="dashed", color=line_color, size=0.5)
+            + geom_line(aes(y="ci_lower"), linetype="dashed", color=line_color, size=0.5)
         )
 
     if ref_line is not None:
@@ -369,8 +380,7 @@ def plot_dose_response(
 
     plot = (
         plot
-        + geom_line(color=line_color, size=1.2)
-        + geom_point(color=line_color, size=2.5)
+        + geom_line(color=line_color, size=1)
         + labs(
             x=xlab or "Dose",
             y=ylab or default_ylabel,

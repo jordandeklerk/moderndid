@@ -8,7 +8,15 @@ import polars as pl
 
 from ..dataframe import DataFrame, to_polars
 from .base import BaseTransformer
-from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDConfig, DIDInterConfig, TwoPeriodDIDConfig
+from .config import (
+    BasePreprocessConfig,
+    ContDIDConfig,
+    DDDConfig,
+    DIDConfig,
+    DIDInterConfig,
+    EtwfeConfig,
+    TwoPeriodDIDConfig,
+)
 from .constants import (
     NEVER_TREATED_VALUE,
     ROW_ID_COLUMN,
@@ -1111,6 +1119,29 @@ class DDDConfigUpdater:
         config.n_units = n_units
 
 
+class EtwfeConfigUpdater:
+    """ETWFE config updater."""
+
+    @staticmethod
+    def update(data: DataFrame, config: EtwfeConfig) -> None:
+        """Update ETWFE config with computed values."""
+        df = to_polars(data)
+
+        tlist = np.sort(df[config.tname].unique().to_numpy())
+        glist = np.sort(df[config.gname].unique().to_numpy())
+
+        config.time_periods = tlist
+        config.time_periods_count = len(tlist)
+        config.treated_groups = glist
+        config.treated_groups_count = len(glist)
+
+        if config.idname:
+            config.n_units = df[config.idname].n_unique()
+        else:
+            config.n_units = len(df)
+        config.n_obs = len(df)
+
+
 class DataTransformerPipeline:
     """Data transformer pipeline."""
 
@@ -1201,6 +1232,19 @@ class DataTransformerPipeline:
             ]
         )
 
+    @staticmethod
+    def get_etwfe_pipeline() -> "DataTransformerPipeline":
+        """Get ETWFE pipeline."""
+        return DataTransformerPipeline(
+            [
+                ColumnSelector(),
+                MissingDataHandler(),
+                WeightNormalizer(),
+                PanelBalancer(),
+                DataSorter(),
+            ]
+        )
+
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         df = to_polars(data)
@@ -1211,6 +1255,8 @@ class DataTransformerPipeline:
             DDDConfigUpdater.update(df, config)
         elif isinstance(config, DIDInterConfig):
             DIDInterConfigUpdater.update(df, config)
+        elif isinstance(config, EtwfeConfig):
+            EtwfeConfigUpdater.update(df, config)
         else:
             ConfigUpdater.update(df, config)
 
