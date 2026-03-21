@@ -70,7 +70,7 @@ gpu = [
     "rmm-cu12>=24.04",
 ]
 all = [
-    "moderndid[didcont,didhonest,plots,numba,dask]",
+    "moderndid[didcont,didhonest,etwfe,plots,numba,dask]",
 ]
 test = [
     "pytest",
