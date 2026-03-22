@@ -4,26 +4,14 @@
 Nonparametric Instrumental Variables Estimation
 ===============================================
 
-The relationship between household spending on food and income has been
-studied since Ernst Engel first observed in 1857 that poorer households
-devote a larger share of their budget to food. Estimating this "Engel curve"
-flexibly is tricky, though, because total expenditure is likely endogenous.
-Households that enjoy food more tend to both spend more in total and allocate
-a larger share to food, biasing a naive regression.
-
-Instrumental variables solve this by using a variable that shifts total
-expenditure but does not directly affect food preferences. Wages are a natural
-candidate. The challenge is that we do not want to assume a particular
-functional form for the relationship. The :func:`~moderndid.npiv` function
-handles this by estimating a fully nonparametric IV model using B-spline
-sieves and two-stage least squares, with uniform confidence bands that convey
-sampling uncertainty about the entire estimated curve.
-
-This estimator implements the methodology of `Chen, Christensen, and Kankanala
-(2024) <https://arxiv.org/abs/2107.11869>`_. Within **ModernDiD**, it also
-serves as the estimation engine behind the nonparametric (CCK) dose-response
-estimator in :func:`~moderndid.cont_did` (see
-:ref:`Continuous DiD <example_cont_did>`).
+The :func:`~moderndid.npiv` function estimates a fully nonparametric
+instrumental variables model using B-spline sieves and two-stage least
+squares, with uniform confidence bands that convey sampling uncertainty
+about the entire estimated curve. It implements the methodology of
+`Chen, Christensen, and Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_.
+Within **ModernDiD**, it also serves as the estimation engine behind the
+nonparametric (CCK) dose-response estimator in :func:`~moderndid.cont_did`
+(see :ref:`Continuous DiD <example_cont_did>`).
 
 .. seealso::
 
@@ -32,13 +20,36 @@ estimator in :func:`~moderndid.cont_did` (see
    using NPIV within a difference-in-differences design.
 
 
-Loading the data
-----------------
+Empirical application
+---------------------
 
-We use the Engel dataset from the 1995 British Family Expenditure Survey,
-which contains expenditure shares and income measures for 1,655 households
-(married or cohabiting couples with an employed head of household aged 25-55
-with at most two children).
+The relationship between household spending on food and total income has
+been studied since Ernst Engel first observed in 1857 that poorer households
+devote a larger share of their budget to food. This negative relationship,
+known as Engel's law, is one of the best-established empirical regularities
+in economics.
+
+Estimating the Engel curve flexibly is complicated by the endogeneity of
+total expenditure. Households that enjoy food more tend to both spend more
+in total and allocate a larger share to food, biasing a naive regression.
+Instrumental variables solve this by using a variable that shifts total
+expenditure but does not directly affect food preferences. Wages are a
+natural candidate, since they determine purchasing power but are plausibly
+excluded from the food share equation once we condition on total spending.
+
+We use the 1995 British Family Expenditure Survey, which contains
+expenditure shares and income measures for 1,655 households (married or
+cohabiting couples with an employed head of household aged 25 to 55 with
+at most two children). The challenge is that we do not want to assume a
+particular functional form for the relationship. NPIV lets us estimate
+the curve flexibly while correcting for the endogeneity of expenditure.
+
+
+Loading the data
+^^^^^^^^^^^^^^^^
+
+The Engel dataset from the 1995 British Family Expenditure Survey contains
+the three variables we need.
 
 .. code-block:: python
 
@@ -77,7 +88,7 @@ share equation once we condition on total spending.
 
 
 Estimating the Engel curve
---------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 We estimate the nonparametric Engel curve by instrumenting food share on
 log-expenditure with log-wages. To visualize the curve, we evaluate the
@@ -115,7 +126,7 @@ bootstrap critical values ``cv`` and ``cv_deriv``.
 
 
 Plotting the estimated curve
-----------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The estimated Engel curve shows how food share varies with total expenditure.
 The solid line is the IV estimate, the dashed lines are the 95% uniform
@@ -163,7 +174,7 @@ the interior where the estimate is more precise.
 
 
 Derivative estimation
----------------------
+^^^^^^^^^^^^^^^^^^^^^
 
 The derivative of the Engel curve is the marginal propensity to spend on food
 as total expenditure changes. In a nonparametric model, this is the slope of

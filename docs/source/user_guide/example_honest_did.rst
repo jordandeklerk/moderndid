@@ -48,8 +48,32 @@ If results are sensitive, that tells you something important about the
 fragility of the research design.
 
 
+Empirical application
+---------------------
+
+The Affordable Care Act gave states the option to expand Medicaid eligibility
+beginning in 2014. Some states expanded immediately, others followed in later
+years, and some have not expanded at all. This staggered rollout provides a
+natural setting for difference-in-differences analysis of the effect of
+Medicaid expansion on health insurance coverage.
+
+The dataset contains state-level observations from 2008 to 2019 drawn from
+the American Community Survey. The outcome ``dins`` is the share of adults
+with health insurance. States that expanded Medicaid form treatment cohorts
+defined by the year of expansion (2014, 2015, 2016, 2017, or 2019), while
+states that never expanded during this period serve as the control group.
+
+Treatment timing is likely not random. States that expanded early tended to
+have different political environments, demographic compositions, and
+pre-existing insurance coverage trends than late or never-expanding states.
+This is precisely the setting where sensitivity analysis is valuable.
+Even if pre-trends look flat, the identifying assumption that trends would
+have remained parallel is untestable, and treatment timing may correlate
+with unobserved factors that also influence outcomes.
+
+
 Loading data
-------------
+^^^^^^^^^^^^
 
 .. code-block:: python
 
@@ -74,21 +98,13 @@ Loading data
     │ 1      ┆ 2012 ┆ 0.670811 ┆ null  ┆ 613156.0 │
     └────────┴──────┴──────────┴───────┴──────────┘
 
-The dataset contains state-level observations from 2008 to 2019. The outcome
-``dins`` is the share of adults with health insurance. The ``yexp2`` variable
-indicates when each state expanded Medicaid, with null values for states that
-never expanded during this period. Some states expanded in 2014 when the ACA
-provision took effect, while others expanded later in 2015, 2016, 2017, or 2019.
-
-This staggered adoption pattern is typical of policy evaluations. Different
-states adopted at different times based on their own political and economic
-circumstances, which may also affect outcome trends. This is precisely why
-sensitivity analysis is valuable. Treatment timing may correlate with
-unobserved factors that also influence outcomes.
+The ``yexp2`` variable indicates when each state expanded Medicaid, with null
+values for states that never expanded. The ``W`` column contains population
+weights.
 
 
 Computing the event study
--------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Sensitivity analysis requires an event study as input. We start by estimating
 group-time average treatment effects, then aggregate them into an event study
