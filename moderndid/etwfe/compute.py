@@ -152,9 +152,8 @@ def build_etwfe_formula(config: EtwfeConfig) -> str:
     if config._ctrls:
         for ctrl in config._ctrls:
             parts.append(f"_Dtreat:{main_int}:{ctrl}_dm")
-        if config.fe != "vs":
-            for ctrl in config._ctrls:
-                parts.extend([ctrl, f"C({gcat}):{ctrl}", f"C({tcat}):{ctrl}"])
+        for ctrl in config._ctrls:
+            parts.extend([ctrl, f"C({gcat}):{ctrl}", f"C({tcat}):{ctrl}"])
 
     if config.xvar:
         for dm_col in config._xvar_dm_cols:
@@ -371,6 +370,7 @@ def _compute_linear_slopes(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute slopes via direct coefficient lookup (linear models only)."""
     gt_map = _build_gt_coefficient_map(coef_names)
+    gt_interaction_map = _build_gt_interaction_map(coef_names)
 
     g_arr = df["_g"].to_numpy()
     t_arr = df["_t"].to_numpy()
@@ -385,6 +385,12 @@ def _compute_linear_slopes(
             idx = gt_map[key]
             slopes[i] = beta[idx]
             jacobians[i, idx] = 1.0
+        if key in gt_interaction_map:
+            for col_name, coef_idx in gt_interaction_map[key]:
+                if col_name in df.columns:
+                    val = df[col_name][i]
+                    slopes[i] += beta[coef_idx] * val
+                    jacobians[i, coef_idx] = val
 
     return slopes, jacobians
 
@@ -462,6 +468,32 @@ def _build_gt_coefficient_map(coef_names: list[str]) -> dict[tuple[float, float]
                 continue
 
     return gt_map
+
+
+def _build_gt_interaction_map(coef_names: list[str]) -> dict[tuple[float, float], list[tuple[str, int]]]:
+    """Map (group, time) pairs to interaction coefficient indices and column names."""
+    pattern = re.compile(
+        r"_Dtreat:C\(__etwfe_gcat\)\[([^\]]+)\]"
+        r":C\(__etwfe_tcat\)\[([^\]]+)\]"
+        r":(.+)$"
+    )
+
+    gt_int_map: dict[tuple[float, float], list[tuple[str, int]]] = {}
+    for i, name in enumerate(coef_names):
+        m = pattern.search(name)
+        if m:
+            try:
+                g = float(m.group(1))
+                t = float(m.group(2))
+                col_name = m.group(3)
+                key = (g, t)
+                if key not in gt_int_map:
+                    gt_int_map[key] = []
+                gt_int_map[key].append((col_name, i))
+            except ValueError:
+                continue
+
+    return gt_int_map
 
 
 def _build_xvar_dm_columns(df: pl.DataFrame, config: EtwfeConfig) -> tuple[pl.DataFrame, list[str]]:

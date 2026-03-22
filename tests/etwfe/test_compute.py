@@ -189,16 +189,14 @@ def test_formula_feo_with_controls_explicit(mpdta_data, base_config):
     assert "C(__etwfe_tcat):lpop" in formula
 
 
-def test_formula_vs_no_explicit_control_interactions(mpdta_data, base_config):
+def test_formula_vs_includes_control_interactions(mpdta_data, base_config):
     base_config.xformla = "~ lpop"
     base_config.fe = "vs"
     config = set_references(base_config, mpdta_data)
     prepare_etwfe_data(mpdta_data, config)
     formula = build_etwfe_formula(config)
-    rhs_terms = formula.split("|")[0].split("+")
-    rhs_terms = [t.strip() for t in rhs_terms]
-    assert not any(t == "C(__etwfe_gcat):lpop" for t in rhs_terms)
-    assert not any(t == "C(__etwfe_tcat):lpop" for t in rhs_terms)
+    assert "C(__etwfe_gcat):lpop" in formula
+    assert "C(__etwfe_tcat):lpop" in formula
 
 
 def test_prepare_xvar_creates_dm_columns(mpdta_data, base_config):
