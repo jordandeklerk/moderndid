@@ -11159,7 +11159,7 @@ packages:
 - pypi: ./
   name: moderndid
   version: 0.2.0
-  sha256: 46f595333fec9ef9b2355b647e5a35c7497b7121e90f0166e8aeecd2bd90afde
+  sha256: 34b6a8f70bda98f3e858739c566882382c3e0b8628dbd0ceff191b142fbb0034
   requires_dist:
   - numpy>=1.22.0
   - scipy>=1.17
@@ -11184,6 +11184,19 @@ packages:
   - sphinx ; extra == 'doc'
   - sphinx-design ; extra == 'doc'
   - jupyter-sphinx ; extra == 'doc'
+  - tqdm>=4.0.0 ; extra == 'doc'
+  - seaborn>=0.13.0 ; extra == 'doc'
+  - great-tables>=0.15.0 ; extra == 'doc'
+  - colorama ; extra == 'doc'
+  - commonmark ; extra == 'doc'
+  - faicons ; extra == 'doc'
+  - filelock ; extra == 'doc'
+  - htmltools ; extra == 'doc'
+  - jax ; extra == 'doc'
+  - jaxlib ; extra == 'doc'
+  - ml-dtypes ; extra == 'doc'
+  - numexpr ; extra == 'doc'
+  - opt-einsum ; extra == 'doc'
   - pyfixest>=0.30.2 ; extra == 'etwfe'
   - cupy-cuda12x>=13.0 ; extra == 'gpu'
   - rmm-cu12>=24.4 ; extra == 'gpu'

@@ -12,10 +12,6 @@ treatment effect coefficient. The resulting estimates are free of the negative
 weighting problem and are numerically identical to a cohort imputation
 procedure.
 
-We use the same minimum wage dataset from the
-:ref:`Staggered DiD example <example_staggered_did>` so that the two
-estimators can be compared directly on the same data.
-
 .. seealso::
 
    :ref:`Extended TWFE background <background-etwfe>` for the theoretical
@@ -23,8 +19,35 @@ estimators can be compared directly on the same data.
    Callaway and Sant'Anna estimator applied to the same data.
 
 
+Empirical application
+---------------------
+
+This example studies the effect of minimum wage increases on teen employment,
+using the same
+`Quarterly Workforce Indicators <https://www.census.gov/data/developers/data-sets/qwi.html>`_
+data as the :ref:`Staggered DiD example <example_staggered_did>`.
+
+From 2001 to 2007, the US federal minimum wage was flat at $5.15 per hour.
+Some states raised their minimum wage above the federal level during this
+period while others did not. The variation in timing creates a staggered
+adoption design with treatment cohorts in 2004, 2006, and 2007. States
+that kept the federal minimum serve as a never-treated control group.
+
+The outcome is log county-level teen employment. The dataset contains 500
+counties observed annually from 2003 to 2007. The hypothesis is that
+minimum wage increases reduce teen employment, since teenagers are
+disproportionately represented among minimum wage workers.
+
+ETWFE is well-suited to this setting because it handles the staggered
+rollout through a single regression with cohort-by-time interactions,
+rather than the semiparametric approach of Callaway and Sant'Anna. It also
+extends naturally to nonlinear models (Poisson, logit), which is useful
+when the parallel trends assumption is more plausible on a transformed
+scale.
+
+
 Loading the data
-----------------
+^^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
@@ -57,7 +80,7 @@ never raised their minimum wage. The outcome ``lemp`` is log teen employment.
 
 
 Estimation
-----------
+^^^^^^^^^^
 
 :func:`~moderndid.etwfe` estimates a saturated regression with cohort-by-time
 interactions and absorbed unit and time fixed effects. The interface mirrors
@@ -129,7 +152,7 @@ The 2007 cohort has a single post-treatment period with an effect of -0.04.
 
 
 Aggregating treatment effects
------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 With seven cohort-time estimates there is a lot to take in.
 :func:`~moderndid.emfx` aggregates them into simpler summaries, playing the
@@ -137,7 +160,7 @@ same role that :func:`~moderndid.aggte` plays for the Callaway and Sant'Anna
 estimator.
 
 Overall effect
-^^^^^^^^^^^^^^
+""""""""""""""
 
 .. code-block:: python
 
@@ -191,7 +214,7 @@ never-treated) and from differences in how the two methods handle weighting.
 
 
 Event study
-^^^^^^^^^^^
+"""""""""""
 
 To get both pre-treatment and post-treatment event times, we re-estimate with
 ``cgroup="never"``. With a never-treated control group, the treatment
@@ -280,7 +303,7 @@ actual pre-treatment estimates for diagnostics.
 
 
 Group effects
-^^^^^^^^^^^^^
+"""""""""""""
 
 .. code-block:: python
 
@@ -342,7 +365,7 @@ of -0.08, -0.02, and -0.03 for the same cohorts.
 
 
 Plotting the event study
-^^^^^^^^^^^^^^^^^^^^^^^^
+""""""""""""""""""""""""
 
 .. code-block:: python
 

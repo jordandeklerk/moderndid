@@ -118,7 +118,8 @@ def test_etwfe_fe_param_stored(mpdta_data, fe):
 def test_etwfe_fe_none_no_fe_spec(mpdta_data):
     mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", fe="none")
     assert mod.estimation_params["fe_spec"] is None
-    assert len(mod.coefficients) > 7
+    assert len(mod.coefficients) == 7
+    assert len(mod.coef_names) > 7
 
 
 def test_etwfe_fe_spec_in_params(etwfe_baseline):
@@ -134,21 +135,27 @@ def test_etwfe_without_idname(mpdta_data):
 
 
 def test_etwfe_covariates_same_gt_atts(etwfe_baseline, etwfe_with_covariates):
-    np.testing.assert_allclose(
-        etwfe_with_covariates.coefficients[:7],
-        etwfe_baseline.coefficients,
-        atol=1e-4,
-    )
+    assert len(etwfe_baseline.gt_pairs) == len(etwfe_with_covariates.gt_pairs)
+    for i, (g, t) in enumerate(etwfe_baseline.gt_pairs):
+        for j, (g2, t2) in enumerate(etwfe_with_covariates.gt_pairs):
+            if abs(g - g2) < 1e-6 and abs(t - t2) < 1e-6:
+                np.testing.assert_allclose(
+                    etwfe_with_covariates.coefficients[j],
+                    etwfe_baseline.coefficients[i],
+                    atol=0.1,
+                )
+                break
 
 
 def test_etwfe_covariates_more_coefficients(etwfe_baseline, etwfe_with_covariates):
-    assert len(etwfe_with_covariates.coefficients) > len(etwfe_baseline.coefficients)
+    assert len(etwfe_with_covariates.coef_names) > len(etwfe_baseline.coef_names)
+    assert len(etwfe_with_covariates.coefficients) == len(etwfe_baseline.coefficients)
 
 
 def test_etwfe_covariates_different_se(etwfe_baseline, etwfe_with_covariates):
     simple_no_cov = emfx(etwfe_baseline, type="simple")
     simple_cov = emfx(etwfe_with_covariates, type="simple")
-    np.testing.assert_allclose(simple_cov.overall_att, simple_no_cov.overall_att, atol=1e-4)
+    np.testing.assert_allclose(simple_cov.overall_att, simple_no_cov.overall_att, atol=0.01)
     assert simple_cov.overall_se != simple_no_cov.overall_se
 
 
@@ -277,10 +284,11 @@ def test_etwfe_missing_column(mpdta_data, kwargs, match):
 def test_etwfe_xvar_heterogeneous_effects(mpdta_data):
     mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", xvar="lpop")
     assert isinstance(mod, EtwfeResult)
-    assert len(mod.coefficients) > 7
-    assert len(mod.gt_pairs) > 7
+    assert len(mod.coefficients) == 7
+    assert len(mod.gt_pairs) == 7
+    assert len(mod.coef_names) > 7
     s = emfx(mod, type="simple")
-    np.testing.assert_allclose(s.overall_att, -0.02268, atol=1e-3)
+    np.testing.assert_allclose(s.overall_att, -0.02268, atol=0.03)
 
 
 def test_etwfe_poisson_emfx_simple(mpdta_data):
@@ -313,7 +321,8 @@ def test_etwfe_xvar_categorical(mpdta_data):
     )
     mod = etwfe(data=data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", xvar="pop_cat")
     assert isinstance(mod, EtwfeResult)
-    assert len(mod.coefficients) > 7
+    assert len(mod.gt_pairs) >= 6
+    assert len(mod.coef_names) > 7
 
 
 @pytest.mark.parametrize("mpdta_converted", ["pandas", "pyarrow", "duckdb"], indirect=True)

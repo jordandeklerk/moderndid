@@ -13,7 +13,13 @@ import numpy as np
 from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess.config import EtwfeConfig
 
-from .compute import build_etwfe_formula, prepare_etwfe_data, run_etwfe_regression, set_references
+from .compute import (
+    _build_gt_coefficient_map,
+    build_etwfe_formula,
+    prepare_etwfe_data,
+    run_etwfe_regression,
+    set_references,
+)
 from .container import EtwfeResult
 
 
@@ -290,6 +296,11 @@ def etwfe(
 
     gt_pairs = _extract_gt_pairs(coef_names)
 
+    gt_map = _build_gt_coefficient_map(coef_names)
+    treat_indices = np.array([gt_map[gt] for gt in gt_pairs if gt in gt_map])
+    treat_beta = beta[treat_indices] if len(treat_indices) > 0 else beta
+    treat_se = se[treat_indices] if len(treat_indices) > 0 else se
+
     n_units = df[idname].n_unique() if idname else n_obs
     config.n_units = n_units
     config.n_obs = n_obs
@@ -297,8 +308,8 @@ def etwfe(
     vcov_label = _vcov_type_label(vcov if vcov else "hetero")
 
     return EtwfeResult(
-        coefficients=beta,
-        std_errors=se,
+        coefficients=treat_beta,
+        std_errors=treat_se,
         vcov=vcov_mat,
         coef_names=coef_names,
         gt_pairs=gt_pairs,
@@ -319,6 +330,7 @@ def etwfe(
             "formula": formula,
             "fe_spec": f"{idname or gname} + {tname}" if fe != "none" else None,
             "vcov_type": vcov_label,
+            "vcov_spec": vcov if vcov else "hetero",
             "clustervar": next(iter(vcov.values())) if isinstance(vcov, dict) else None,
             "backend": backend,
             "n_units": n_units,
@@ -332,7 +344,7 @@ def _extract_gt_pairs(coef_names: list[str]) -> list[tuple[float, float]]:
     """Extract (group, time) pairs from pyfixest coefficient names."""
     pattern = re.compile(
         r"_Dtreat:C\(__etwfe_gcat\)\[([^\]]+)\]"
-        r":C\(__etwfe_tcat\)\[([^\]]+)\]"
+        r":C\(__etwfe_tcat\)\[([^\]]+)\]$"
     )
 
     gt_pairs = []

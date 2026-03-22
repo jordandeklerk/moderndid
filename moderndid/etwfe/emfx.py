@@ -129,7 +129,7 @@ def emfx(
         config._formula,
         result.data,
         config,
-        vcov=result.estimation_params.get("vcov_type", "hetero"),
+        vcov=result.estimation_params.get("vcov_spec", result.estimation_params.get("vcov_type", "hetero")),
         backend=result.estimation_params.get("backend"),
     )
     model = reg["model"]
