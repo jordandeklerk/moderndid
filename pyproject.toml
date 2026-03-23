@@ -51,6 +51,7 @@ didhonest = [
 ]
 etwfe = [
     "pyfixest>=0.30.2",
+    "formulaic>=1.0.0",
 ]
 plots = [
     "plotnine>=0.14.0",
