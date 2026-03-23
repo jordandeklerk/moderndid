@@ -173,6 +173,50 @@ reading the `associated paper <https://doi.org/10.1162/rest_a_01414>`_.
 **ModernDiD** is validated against ``did_multiplegt_dyn`` via R scripts to ensure
 numerical equivalence.
 
+etwfe (R)
+---------
+
+The `etwfe <https://github.com/grantmcdermott/etwfe>`_ R package by
+`Grant McDermott <https://grantmcdermott.com/>`_ is the basis for
+**ModernDiD**'s Extended Two-Way Fixed Effects estimator. The
+`etwfe() <api/generated/etwfe/moderndid.etwfe.html>`_ and
+`emfx() <api/generated/etwfe/moderndid.emfx.html>`_ functions implement the
+methodology in
+`Wooldridge (2025) <https://doi.org/10.1007/s00181-025-02807-z>`_, which shows
+that a fully saturated TWFE regression with cohort-by-time interactions
+recovers heterogeneous treatment effects without the negative weighting problem
+of conventional TWFE.
+
+More concretely, we have borrowed the following API conventions and ideas
+directly from ``etwfe``:
+
+- **Core API** --
+  `etwfe() <api/generated/etwfe/moderndid.etwfe.html>`_ function and argument
+  structure (outcome formula, ``tvar``/``gvar`` naming, ``cgroup`` control
+  group options, ``fe`` fixed effects specification)
+- **Aggregation** --
+  `emfx() <api/generated/etwfe/moderndid.emfx.html>`_ function with
+  aggregation types (``simple``, ``event``, ``group``, ``calendar``) and
+  ``post_only``/``window`` options
+- **Nonlinear models** -- Support for Poisson, logit, and probit families via
+  the ``family`` parameter, following the approach in
+  `Wooldridge (2023) <https://doi.org/10.1093/ectj/utad016>`_
+- **Covariate handling** -- Mundlak device for within-cohort demeaning of
+  control variables
+- **Heterogeneous effects** -- ``xvar`` parameter for treatment effect
+  heterogeneity by a categorical covariate
+
+You can learn more about ``etwfe``
+`on GitHub <https://github.com/grantmcdermott/etwfe>`_ or by reading the
+associated papers by
+`Wooldridge (2025) <https://doi.org/10.1007/s00181-025-02807-z>`_ and
+`Wooldridge (2023) <https://doi.org/10.1093/ectj/utad016>`_.
+
+**ModernDiD** is benchmarked and validated against ``etwfe`` via R scripts to
+ensure numerical equivalence for coefficients, standard errors, and aggregated
+treatment effects across all aggregation types, control group strategies,
+fixed effects specifications, and nonlinear model families.
+
 HonestDiD (R)
 -------------
 
@@ -195,10 +239,12 @@ PyFixest (Python)
 
 `PyFixest <https://github.com/py-econometrics/pyfixest>`_ by
 `Alexander Fischer <https://s3alfisc.github.io/blog/>`_ is a fast and user-friendly
-fixed effects regression package for Python. **ModernDiD** uses ``pyfixest`` in its
-test suite as a reference implementation for validating regression-based DiD
-estimators. ``PyFixest``'s approach to building an ergonomic Python econometrics
-library has also influenced **ModernDiD**'s API design philosophy.
+fixed effects regression package for Python. **ModernDiD** uses ``pyfixest`` as the
+regression backend for the ETWFE estimator
+(`etwfe() <api/generated/etwfe/moderndid.etwfe.html>`_), where it handles the
+saturated interaction regression with high-dimensional fixed effects absorption.
+``PyFixest``'s approach to building an ergonomic Python econometrics library has
+also influenced **ModernDiD**'s API design philosophy.
 
 You can learn more about ``PyFixest``
 `on GitHub <https://github.com/py-econometrics/pyfixest>`_ or via its
@@ -265,3 +311,10 @@ The following papers describe the core methodologies implemented in **ModernDiD*
   Difference-in-Differences Estimators." *Journal of Econometrics*, 219(1),
   101-122.
   `DOI:10.1016/j.jeconom.2020.06.003 <https://doi.org/10.1016/j.jeconom.2020.06.003>`_.
+- Wooldridge, J. M. (2023). "Simple Approaches to Nonlinear
+  Difference-in-Differences with Panel Data." *The Econometrics Journal*,
+  26(3), C31-C66.
+  `DOI:10.1093/ectj/utad016 <https://doi.org/10.1093/ectj/utad016>`_.
+- Wooldridge, J. M. (2025). "Two-Way Fixed Effects, the Two-Way Mundlak
+  Regression, and Difference-in-Differences Estimators." *Empirical Economics*.
+  `DOI:10.1007/s00181-025-02807-z <https://doi.org/10.1007/s00181-025-02807-z>`_.

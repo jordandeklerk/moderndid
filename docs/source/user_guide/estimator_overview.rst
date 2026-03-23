@@ -25,6 +25,10 @@ and research question.
 - Many applied settings involve a binary treatment that turns on permanently
   at staggered times across groups. :func:`~moderndid.att_gt` handles this
   staggered adoption case and is a good starting point for most analyses.
+- :func:`~moderndid.etwfe` provides an alternative regression-based approach
+  to the same staggered adoption setting. It saturates a TWFE regression with
+  cohort-by-time interactions and extends naturally to nonlinear models
+  (Poisson, logit, probit) where the semiparametric methods are unavailable.
 - When treatment intensity varies continuously across units,
   :func:`~moderndid.cont_did` extends the framework to recover
   dose-response functions showing how effects scale with dosage.
@@ -40,6 +44,10 @@ and research question.
 - After running any estimator, :func:`~moderndid.honest_did` assesses how
   large violations of the parallel trends assumption would need to be to
   overturn your conclusions.
+- :func:`~moderndid.npiv` estimates nonparametric structural functions using
+  instrumental variables and B-spline sieves. It serves as a standalone tool
+  for Engel curve estimation and similar problems, and also powers the
+  nonparametric dose-response estimator in :func:`~moderndid.cont_did`.
 
 
 Staggered Difference-in-Differences
@@ -93,6 +101,57 @@ for clustering. At most two clustering variables are supported.
 When a Dask or Spark DataFrame is passed as ``data``, the estimator
 automatically routes to a distributed implementation. See :doc:`distributed`
 for configuration details.
+
+
+Extended Two-Way Fixed Effects (ETWFE)
+--------------------------------------
+
+The :func:`~moderndid.etwfe` function provides a regression-based
+alternative to :func:`~moderndid.att_gt` for the same staggered adoption
+setting. It saturates the model with cohort-by-time interaction terms so that
+each (cohort, period) cell gets its own treatment effect, avoiding the
+negative weighting problem of conventional TWFE. This implements the
+`Wooldridge (2025) <https://doi.org/10.1007/s00181-025-02807-z>`_ framework.
+
+.. code-block:: python
+
+    mod = did.etwfe(
+        data=data,
+        yname="outcome",
+        tname="year",
+        gname="first_treated",
+        idname="unit_id",
+        xformla="~ covariate",
+    )
+
+The cell-level estimates are then aggregated using :func:`~moderndid.emfx`,
+which plays the same role as :func:`~moderndid.aggte` for the Callaway and
+Sant'Anna estimator.
+
+.. code-block:: python
+
+    simple = did.emfx(mod, type="simple")
+    event  = did.emfx(mod, type="event")
+    group  = did.emfx(mod, type="group")
+    cal    = did.emfx(mod, type="calendar")
+
+A key advantage of ETWFE over the semiparametric approach is native support
+for nonlinear models. Setting ``family="poisson"`` imposes parallel trends on
+the log scale, which is often more plausible for count or nonnegative
+outcomes. ``"logit"`` and ``"probit"`` are also available. Heterogeneous
+treatment effects by a categorical covariate can be estimated with the
+``xvar`` parameter.
+
+.. code-block:: python
+
+    mod_pois = did.etwfe(
+        data=data,
+        yname="count_outcome",
+        tname="year",
+        gname="first_treated",
+        family="poisson",
+    )
+    did.emfx(mod_pois, type="event")
 
 
 Triple Difference-in-Differences
@@ -272,6 +331,40 @@ time-invariant covariates with ``predict_het``. See the
    use :func:`~moderndid.did_multiplegt`.
 
 
+Nonparametric Instrumental Variables
+------------------------------------
+
+The :func:`~moderndid.npiv` function estimates nonparametric structural
+functions using B-spline sieves and two-stage least squares, with uniform
+confidence bands from the weighted bootstrap. This implements the
+`Chen, Christensen, and Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_
+methodology.
+
+.. code-block:: python
+
+    result = did.npiv(
+        data=data,
+        yname="food_share",
+        xname="log_expenditure",
+        wname="log_wages",
+        j_x_segments=5,
+        biters=200,
+        seed=42,
+    )
+
+The result contains the estimated function ``h``, derivative ``deriv``, and
+95% uniform confidence bands. When ``j_x_segments`` is omitted, the sieve
+dimension is selected automatically using the Lepski method, yielding
+adaptive confidence bands that are honest over a class of data-generating
+processes.
+
+NPIV also serves as the estimation engine behind the nonparametric (CCK)
+dose-response estimator in :func:`~moderndid.cont_did`. As a standalone
+tool, it is useful for Engel curve estimation, structural demand analysis,
+and other settings where the regressor is endogenous and the functional
+form is unknown.
+
+
 Sensitivity Analysis for Parallel Trends Violations
 ---------------------------------------------------
 
@@ -315,10 +408,12 @@ Each estimator has a dedicated example page that walks through a full
 analysis with real or simulated data.
 
 - :doc:`example_staggered_did` for staggered adoption with :func:`~moderndid.att_gt`
+- :doc:`example_etwfe` for extended TWFE with :func:`~moderndid.etwfe`
 - :doc:`example_cont_did` for dose-response with :func:`~moderndid.cont_did`
 - :doc:`example_triple_did` for triple differences with :func:`~moderndid.ddd`
 - :doc:`example_inter_did` for time-varying treatments with :func:`~moderndid.did_multiplegt`
 - :doc:`example_honest_did` for sensitivity analysis with :func:`~moderndid.honest_did`
+- :doc:`example_npiv` for nonparametric IV with :func:`~moderndid.npiv`
 
 For scaling any of these estimators to large datasets, see
 :doc:`distributed`.
