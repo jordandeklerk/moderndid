@@ -2,10 +2,10 @@
 Installation
 ============
 
-Installing moderndid
---------------------
+Installing **ModernDiD**
+-----------------------
 
-The only prerequisite for installing moderndid is Python 3.11 or later.
+The only prerequisite for installing **ModernDiD** is Python 3.11 or later.
 
 From PyPI
 ^^^^^^^^^
@@ -62,24 +62,6 @@ you always get the core estimators plus whatever extras you specify.
     plotting out of the box. Install minimal extras only if you have specific
     dependency constraints.
 
-.. warning::
-
-    When a package manager like ``uv`` or ``pip`` cannot resolve a dependency
-    required by an extra, it may silently fall back to an older version of
-    moderndid where that extra does not exist, rather than raising an error.
-
-    The ``gpu`` extra is the most likely to trigger this, since it depends on
-    ``cupy-cuda12x`` (Linux and Windows only) and ``rmm-cu12`` (Linux only),
-    both of which require NVIDIA CUDA. If you see a warning like
-    ``The package moderndid==0.0.3 does not have an extra named 'gpu'``, this
-    is what happened. To use the ``gpu`` extra, install on a machine with
-    NVIDIA CUDA drivers, or pin the version to get a clear error instead of a
-    silent downgrade:
-
-    .. code-block:: console
-
-        uv pip install "moderndid[gpu]>=0.1.0"
-
 From source
 ^^^^^^^^^^^
 
@@ -98,7 +80,7 @@ Or with pip.
 Verifying the installation
 --------------------------
 
-To verify that moderndid is installed correctly, run the following.
+To verify that **ModernDiD** is installed correctly, run the following.
 
 .. code-block:: console
 
@@ -107,7 +89,7 @@ To verify that moderndid is installed correctly, run the following.
 Development
 -----------
 
-To install moderndid for development, clone the repository and install in
+To install **ModernDiD** for development, clone the repository and install in
 editable mode.
 
 .. code-block:: console
@@ -116,5 +98,130 @@ editable mode.
     cd moderndid
     uv pip install -e ".[all,dev,test]"
 
-This installs moderndid in editable mode along with all optional
+This installs **ModernDiD** in editable mode along with all optional
 dependencies, development tools, and test dependencies.
+
+Troubleshooting
+---------------
+
+Checking which extras are available
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+After installing, verify that the extras you need are actually available.
+
+.. code-block:: python
+
+    from moderndid.core.numba_utils import HAS_NUMBA
+    from moderndid.cupy.backend import HAS_CUPY
+
+    print("numba:", HAS_NUMBA)
+    print("cupy:", HAS_CUPY)
+
+If an extra is missing, **ModernDiD** raises an ``ImportError`` with the
+install command when you first call a function that needs it.
+
+.. code-block:: python
+
+    >>> moderndid.cont_did(...)
+    ImportError: 'cont_did' requires extra dependencies: uv pip install 'moderndid[didcont]'
+
+Silent version downgrades
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When a package manager cannot resolve a dependency required by an extra, it
+may silently install an older version of **ModernDiD** where that extra does not
+exist. The ``gpu`` extra is the most common trigger, but this can also happen
+with ``etwfe`` or ``didhonest`` if their dependencies conflict with your
+environment.
+
+Check your installed version against what you expected.
+
+.. code-block:: console
+
+    python -c "import moderndid; print(moderndid.__version__)"
+
+If the version is older than expected, pin a version floor to get a clear
+error instead of a silent downgrade.
+
+.. code-block:: console
+
+    uv pip install "moderndid[gpu]>=0.1.0"
+
+GPU extra
+^^^^^^^^^^
+
+The ``gpu`` extra depends on ``cupy-cuda12x`` and ``rmm-cu12``, both of which
+require NVIDIA hardware and drivers.
+
+- ``cupy-cuda12x`` has no macOS wheels. ``rmm-cu12`` is Linux-only.
+- Installing on a machine without CUDA drivers will silently fall back to an
+  older **ModernDiD** version (see above).
+- Having multiple CuPy packages installed (``cupy``, ``cupy-cuda11x``,
+  ``cupy-cuda12x``) causes import conflicts. Only one should be present.
+
+Verify your CUDA setup and check for conflicting CuPy packages.
+
+.. code-block:: console
+
+    nvidia-smi                  # confirm CUDA driver version
+    pip list | grep -i cupy     # check for conflicting packages
+
+If you have multiple CuPy packages, remove the extras before installing.
+
+.. code-block:: console
+
+    pip uninstall cupy cupy-cuda11x cupy-cuda12x -y
+    uv pip install "moderndid[gpu]"
+
+Spark extra
+^^^^^^^^^^^^
+
+``pip install "moderndid[spark]"`` succeeds without Java installed, but
+PySpark fails at runtime. This is because pip installs the Python package
+while Java is a system-level dependency that pip cannot manage.
+
+Verify that Java is installed and ``JAVA_HOME`` is set.
+
+.. code-block:: console
+
+    java -version
+    echo $JAVA_HOME
+
+PySpark 3.4 requires Java 11 or later. On macOS, install with Homebrew.
+
+.. code-block:: console
+
+    brew install openjdk@17
+    export JAVA_HOME="$(brew --prefix openjdk@17)"
+
+On Ubuntu/Debian.
+
+.. code-block:: console
+
+    sudo apt install openjdk-17-jdk
+    export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+Add the ``export`` line to your shell profile to make it permanent.
+
+Sensitivity analysis extra
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``didhonest`` extra depends on ``cvxpy[ECOS]``, which compiles C
+extensions during installation. If a C compiler is not available, the
+install fails with a long build error.
+
+On macOS, install the Xcode command-line tools.
+
+.. code-block:: console
+
+    xcode-select --install
+
+On Windows, install the
+`Visual Studio Build Tools <https://visualstudio.microsoft.com/visual-cpp-build-tools/>`_
+and select "Desktop development with C++" during setup.
+
+On Ubuntu/Debian.
+
+.. code-block:: console
+
+    sudo apt install build-essential
