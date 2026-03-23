@@ -11159,7 +11159,7 @@ packages:
 - pypi: ./
   name: moderndid
   version: 0.2.0
-  sha256: 3e70bfbd415fd5db67ef2822cde66727366601cc567bce4a0aeb8f8a890a8434
+  sha256: 51449a79d59b30164fdcde9db37ed703ee389d68d8b992bc75d4656ec2c73fe0
   requires_dist:
   - numpy>=1.22.0
   - scipy>=1.17
@@ -11197,7 +11197,7 @@ packages:
   - ml-dtypes ; extra == 'doc'
   - numexpr ; extra == 'doc'
   - opt-einsum ; extra == 'doc'
-  - pyfixest>=0.30.2 ; extra == 'etwfe'
+  - pyfixest>=0.30.2,<0.50.0 ; extra == 'etwfe'
   - formulaic>=1.0.0 ; extra == 'etwfe'
   - numba>=0.59.0 ; extra == 'etwfe'
   - tabulate>=0.9.0 ; extra == 'etwfe'
@@ -11215,7 +11215,7 @@ packages:
   - pytest-benchmark ; extra == 'test'
   - pytest-cov ; extra == 'test'
   - pytest-timeout ; extra == 'test'
-  - pyfixest>=0.30.2 ; extra == 'test'
+  - pyfixest>=0.30.2,<0.50.0 ; extra == 'test'
   requires_python: '>=3.11'
 - conda: https://conda.anaconda.org/conda-forge/osx-64/mpc-1.3.1-h9d8efa1_1.conda
   sha256: dcf91571da6c2f0db96d43a1b639047def05a0e1b6436d42c9129ab14af47b10
