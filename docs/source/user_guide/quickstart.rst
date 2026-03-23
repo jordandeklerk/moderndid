@@ -6,11 +6,13 @@ ModernDiD Quickstart
 
 **ModernDiD** estimates causal effects using difference-in-differences methods.
 The :func:`~moderndid.did.att_gt` function computes group-time average treatment
-effects for staggered adoption designs. Other estimators handle continuous
-treatments (:func:`~moderndid.didcont.cont_did`), triple differences
+effects for staggered adoption designs. Other estimators handle extended TWFE
+(:func:`~moderndid.etwfe.etwfe`), continuous treatments
+(:func:`~moderndid.didcont.cont_did`), triple differences
 (:func:`~moderndid.didtriple.ddd`), intertemporal treatments
-(:func:`~moderndid.didinter.did_multiplegt`), and sensitivity analysis
-(:mod:`~moderndid.didhonest`). Most estimators support both panel data and
+(:func:`~moderndid.didinter.did_multiplegt`), sensitivity analysis
+(:mod:`~moderndid.didhonest`), and nonparametric instrumental variables
+(:func:`~moderndid.npiv.npiv`). Most estimators support both panel data and
 repeated cross-sections.
 
 All estimators share a consistent API built around core parameters that

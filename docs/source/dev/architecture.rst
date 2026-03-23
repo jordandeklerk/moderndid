@@ -306,50 +306,59 @@ Maketables Functionality
 
 **ModernDiD** result objects expose the
 `maketables <https://py-econometrics.github.io/maketables/>`_ plug-in
-extractor interface so ``maketables.ETable`` can consume them without any
-coupling between packages. This is implemented by adding standard
-attributes/methods directly on result classes.
+extractor interface so that ``maketables.ETable`` can consume them directly,
+with no coupling between packages.
 
 The Plug-In Interface
 ^^^^^^^^^^^^^^^^^^^^^
 
-When ``maketables.ETable`` receives a model, it looks for these attributes to
-extract data. Every **ModernDiD** result class implements them.
+``maketables.ETable`` discovers result data through a set of standard
+attributes. Every **ModernDiD** result class implements them.
 
-- ``__maketables_coef_table__`` (property): returns a pandas ``DataFrame``
-  indexed by coefficient names with columns ``b`` (estimate), ``se``
-  (standard error), ``t`` (t-statistic), ``p`` (p-value), and optionally
-  ``ci95l``, ``ci95u``, ``ci90l``, ``ci90u`` (confidence interval bounds).
-- ``__maketables_stat__(key)`` (method): returns model-level statistics by
-  key. Common keys are ``"N"`` (observations), ``"se_type"`` (analytical or
-  bootstrap), ``"control_group"``, ``"aggregation"``, and
-  ``"estimation_method"``.
-- ``__maketables_depvar__`` (property): the dependent variable label used in
-  column headers.
-- ``__maketables_fixef_string__`` (property): fixed-effects specification
-  string, or ``None`` for estimators that do not report fixed effects.
-- ``__maketables_vcov_info__`` (property): dict with ``"vcov_type"`` and
-  ``"clustervar"`` keys describing the variance estimation.
-- ``__maketables_stat_labels__`` (property, optional): dict mapping stat keys
-  to display labels (e.g., ``{"aggregation": "Aggregation"}``).
-- ``__maketables_default_stat_keys__`` (property, optional): list of stat
-  keys to show by default when the user does not specify ``model_stats``.
+.. list-table::
+   :widths: 35 65
+   :header-rows: 1
+
+   * - Attribute
+     - Description
+   * - ``__maketables_coef_table__``
+     - Property. Pandas ``DataFrame`` indexed by coefficient name with columns
+       ``b``, ``se``, ``t``, ``p``, and optionally ``ci95l``/``ci95u`` and
+       ``ci90l``/``ci90u``.
+   * - ``__maketables_stat__(key)``
+     - Method. Returns a model-level statistic by key (``"N"``,
+       ``"se_type"``, ``"control_group"``, ``"aggregation"``, etc.).
+   * - ``__maketables_depvar__``
+     - Property. Dependent variable label for column headers.
+   * - ``__maketables_fixef_string__``
+     - Property. Fixed-effects specification string, or ``None``.
+   * - ``__maketables_vcov_info__``
+     - Property. Dict with ``"vcov_type"`` and ``"clustervar"`` keys.
+   * - ``__maketables_stat_labels__``
+     - Property (optional). Maps stat keys to display labels.
+   * - ``__maketables_default_stat_keys__``
+     - Property (optional). Stat keys shown when the user does not specify
+       ``model_stats``.
 
 Shared Helpers
 ^^^^^^^^^^^^^^
 
-To avoid duplicating table logic across modules, ``moderndid.core.maketables``
-provides shared helpers that all result classes use to implement the plug-in
-interface:
+``moderndid.core.maketables`` provides helpers that all result classes share
+so that table-building logic is not duplicated across modules.
 
-- **Coefficient tables** — ``build_coef_table_with_ci`` and
-  ``build_single_coef_table`` build the canonical DataFrame with t-statistics,
-  p-values, and confidence intervals.
-- **Row labels** — ``make_effect_names`` and ``make_group_time_names`` generate
-  standardized coefficient names (e.g., ``"Event -1"``, ``"ATT(g=2004, t=2006)"``).
-- **Stat labels** — ``se_type_label``, ``control_group_label``,
-  ``est_method_label``, and ``vcov_info_from_bootstrap`` map raw keys to
-  human-readable strings.
+.. list-table::
+   :widths: 30 70
+   :header-rows: 1
+
+   * - Category
+     - Functions
+   * - Coefficient tables
+     - ``build_coef_table_with_ci``, ``build_single_coef_table``
+   * - Row labels
+     - ``make_effect_names``, ``make_group_time_names``
+   * - Stat labels
+     - ``se_type_label``, ``control_group_label``, ``est_method_label``,
+       ``vcov_info_from_bootstrap``
 
 A typical implementation on a result class looks like this.
 
