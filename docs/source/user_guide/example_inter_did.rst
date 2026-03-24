@@ -4,31 +4,24 @@
 DiD with Intertemporal Treatment Effects
 ==============================================
 
-Many treatments in applied work are neither binary nor permanent. A state
-might gradually phase in banking deregulation. A firm might adjust its
-training intensity over time. A country might strengthen or relax
-environmental regulations in response to political changes.
+Standard DiD assumes treatment switches on and stays on. When treatment
+intensity changes over time and past doses still affect current outcomes,
+TWFE and local projection regressions break down. Their coefficients lump
+together effects from different exposure durations with weights that can be
+negative or sum to less than one. At longer horizons the weights can go
+negative in total, making a persistent effect look like it fades.
 
-Standard difference-in-differences methods were not designed for these
-settings because they assume treatment is either on or off and stays on
-forever. Two-way fixed effects and local projection regressions can produce
-misleading results with time-varying treatments. Their coefficients are
-weighted sums of many different treatment effects, and the weights can be
-negative or can sum to less than one. At longer horizons the weights can
-even sum to a negative number, making effects appear to fade or reverse
-sign when the true effects are actually persistent.
-
-The `de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_ estimator avoids these problems by comparing units whose treatment changed
-to those with the same baseline treatment that have not yet changed. This
-allows for valid causal inference even when treatment intensity varies and
-past treatments affect current outcomes.
+The `de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
+estimator handles these designs by comparing units whose treatment changed
+to those with the same baseline treatment that have not yet changed. Past
+treatments are allowed to affect current outcomes and treatment intensity
+can move in either direction.
 
 .. seealso::
 
-   :ref:`Introduction to DiD <causal_inference>` for background on the
-   parallel trends assumption and potential outcomes framework, and
-   :ref:`DiD with Intertemporal Treatment Effects <background-didinter>` for the
-   theoretical foundations behind this estimator.
+   :ref:`DiD with Intertemporal Treatment Effects <background-didinter>` for
+   the same-baseline parallel trends assumption, normalized effects
+   interpretation, and the TWFE/local-projection decompositions.
 
 
 Empirical application
@@ -40,13 +33,14 @@ which revisits `Favara and Imbs (2015) <https://doi.org/10.1257/aer.20121416>`_.
 
 In 1994, the Interstate Banking and Branching Efficiency Act (IBBEA) allowed
 US banks to operate across state borders without formal authorization from
-state authorities. However, states could still impose up to four restrictions
-on interstate branching. These included requiring explicit state approval for
-de novo branching, setting minimum age requirements for merger targets,
-prohibiting the acquisition of individual branches, and capping the statewide
-deposits controlled by a single bank. States lifted these restrictions at
-different times and in different combinations between 1994 and 2005, creating
-a non-binary, time-varying treatment.
+state authorities. States could still impose up to four restrictions on
+interstate branching, including minimum age requirements for merger targets,
+prohibitions on branch acquisition, and caps on statewide deposit
+concentration.
+
+States lifted these restrictions at different times and in different
+combinations between 1994 and 2005, creating a non-binary, time-varying
+treatment.
 
 The outcome of interest is the change in log volume of bank loans
 (``Dl_vloans_b``), measuring the growth rate of mortgage lending at the
@@ -281,14 +275,12 @@ effects would suggest a violation of parallel trends.
 
 The placebo effects at horizons -1, -2, and -3 are all statistically
 insignificant, with confidence intervals that include zero. The joint test
-p-value of 0.17 indicates we cannot reject the null that all pre-treatment
-effects are jointly zero at conventional levels. This is consistent with the
-parallel trends assumption, suggesting that counties that eventually
-deregulated were evolving similarly to those that had not yet deregulated
-(or never did), in the periods before deregulation occurred. The point estimates
-at placebos -2 and -3 are negative and somewhat large in absolute value,
-though imprecise. With more data, it would be worth investigating whether
-this reflects noise or a pre-existing divergence.
+p-value of 0.17 means we cannot reject the null that all pre-treatment
+effects are jointly zero.
+
+The point estimates at placebos -2 and -3 are negative and somewhat large in
+absolute value, though imprecise. With more data, it would be worth
+investigating whether this reflects noise or a pre-existing divergence.
 
 
 Normalized effects

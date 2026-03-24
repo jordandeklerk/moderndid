@@ -85,8 +85,8 @@ Parameters of Interest
 ----------------------
 
 With continuous treatments, two fundamentally different types of causal effects can be
-defined. Understanding the distinction between these parameters is crucial for proper
-interpretation of continuous DiD results.
+defined. The distinction between these parameters matters for proper interpretation of
+continuous DiD results.
 
 Level Treatment Effects
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -287,7 +287,7 @@ is identified for all :math:`d \in \mathcal{D}_{+}`, and it is given by
 
    ATT(d | d) = \mathbb{E}[\Delta Y | D = d] - \mathbb{E}[\Delta Y | D = 0].
 
-Furthermore, :math:`ATT^o = \mathbb{E}[\Delta Y | D > 0] - \mathbb{E}[\Delta Y | D =
+The summary :math:`ATT^o = \mathbb{E}[\Delta Y | D > 0] - \mathbb{E}[\Delta Y | D =
 0]`.
 
 The identification argument proceeds as follows. By definition,
@@ -416,7 +416,11 @@ vanishes since :math:`ATT(l | h) = ATT(l | l) = ATE(l)` for all :math:`h, l`.
 Under Assumptions 1 to 3 and 5, the summary parameters have the following
 identification results.
 
-(a) :math:`ATE^o = \mathbb{E}[\Delta Y | D > 0] - \mathbb{E}[\Delta Y | D = 0]`.
+(a)
+
+.. math::
+
+   ATE^o = \mathbb{E}[\Delta Y | D > 0] - \mathbb{E}[\Delta Y | D = 0].
 
 (b) For continuous treatments,
 
@@ -462,6 +466,63 @@ Under strong parallel trends,
 
 which has a clean causal interpretation without selection bias.
 
+What Does TWFE Estimate with a Continuous Treatment?
+-----------------------------------------------------
+
+The negative weighting problems of TWFE in binary staggered settings are well documented (see
+:ref:`background-did`). With a continuous treatment, TWFE has additional problems that are
+specific to the dose variation. The coefficient :math:`\hat{\beta}^{TWFE}` from regressing
+:math:`\Delta Y` on :math:`D` admits several different decompositions, none of which cleanly
+recovers a single well-defined causal parameter.
+
+**Causal response decomposition.** Under parallel trends, :math:`\hat{\beta}^{TWFE}`
+estimates a weighted average of :math:`ACRT(d \mid d)` across doses, with positive weights
+that integrate to one. However, it also includes a selection bias term. Even if the weights
+are well-behaved, the estimand conflates causal responses with differential selection into
+dose groups. Under strong parallel trends the selection bias vanishes, but the weights still
+do not match the dose distribution among treated units. The TWFE-implied weights are
+concentrated around the mean dose and underweight the tails.
+
+**Level effects decomposition.** Under parallel trends, :math:`\hat{\beta}^{TWFE}` can also
+be written as a weighted average of :math:`ATT(d \mid d)` values, but with weights that
+integrate to *zero* rather than one and that can be negative. TWFE implicitly treats
+above-average doses as "treated" and below-average doses as part of the "comparison group,"
+which produces a Wald-type estimand that divides the difference in outcome changes by the
+difference in doses. This means TWFE does not estimate any recognizable average of level
+treatment effects.
+
+**Implications.** Even when outcome changes are linear in dose (which eliminates the
+weighting issues), selection bias persists under parallel trends. And even under strong
+parallel trends (which eliminates selection bias), TWFE's implicit weighting scheme does
+not match the dose distribution. The same TWFE coefficient has multiple interpretations
+depending on which decomposition one adopts, none of which corresponds to a parameter a
+researcher would deliberately target. This motivates using the explicitly-targeted
+estimators described below for :math:`ATT^o` and :math:`ACR^o`.
+
+Relaxing Strong Parallel Trends
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Strong parallel trends is a demanding assumption. Three intermediate approaches between
+standard PT and full SPT are available.
+
+1. **Directional selection.** Assume that higher-dose groups experience weakly larger
+   treatment effects at any given dose. Under this monotone selection assumption combined
+   with parallel trends, :math:`ACRT(d \mid d)` can be bounded (from above or below)
+   without requiring SPT. This is useful when the researcher believes selection into
+   higher doses is positively correlated with treatment effects but is unwilling to assume
+   it away entirely.
+
+2. **Local SPT.** Assume that SPT holds over a subset :math:`[d_a, d_b]` of the dose
+   range rather than globally. This identifies :math:`ATE(d)` and :math:`ACR(d)` only
+   over that subset but avoids imposing SPT at dose levels where it is implausible.
+
+3. **Conditional SPT on covariates.** Assume SPT holds conditional on pre-treatment
+   covariates :math:`X`, so that :math:`\mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0) \mid X]
+   = \mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0) \mid D = d, X]`. This allows selection into
+   dose groups based on observables while maintaining the no-selection-on-gains
+   restriction within covariate cells. Identification proceeds by averaging conditional
+   ATEs over the covariate distribution.
+
 Estimation Methods
 ------------------
 
@@ -471,7 +532,7 @@ that target well-defined causal parameters.
 Discrete Treatments
 ~~~~~~~~~~~~~~~~~~~
 
-When the treatment is multi-valued discrete, estimation is straightforward. Regressing
+When the treatment is multi-valued discrete, estimation is simple. Regressing
 outcome changes on a saturated set of dose indicators with untreated units as the
 omitted category,
 
@@ -524,7 +585,13 @@ The estimators for the dose-response function and its derivative are
    \widehat{ATE}_K(d) = (\psi^K(d))' \widehat{\beta}_K, \quad \widehat{ACR}_K(d) =
    (\partial \psi^K(d))' \widehat{\beta}_K,
 
-where :math:`\partial \psi^K(d) = (d\psi_{K1}(d)/dd, \ldots, d\psi_{KK}(d)/dd)'`
+where
+
+.. math::
+
+   \partial \psi^K(d) = \left(\frac{d\psi_{K1}(d)}{dd}, \ldots,
+   \frac{d\psi_{KK}(d)}{dd}\right)'
+
 contains the derivatives of the basis functions.
 
 The user controls the spline degree and number of interior knots, allowing flexible
@@ -730,9 +797,16 @@ where :math:`e = t - g` is the time since treatment. These highlight how treatme
 effects and causal responses evolve with length of exposure.
 
 Pre-treatment event-study estimates (:math:`e < 0`) can be used to assess the
-plausibility of parallel trends assumptions. However, such tests cannot distinguish
-between standard parallel trends and strong parallel trends, since pre-treatment
-periods only involve untreated potential outcomes.
+plausibility of the identifying assumptions. Plotting :math:`ATT^{es}(e)` for :math:`e < 0`
+tests whether untreated outcome paths are parallel across dose groups (standard PT).
+
+.. tip::
+
+   To assess strong parallel trends specifically, examine :math:`ACR^{es}(e)` for
+   :math:`e < 0`, which tests whether the dose-response relationship is stable in the
+   pre-treatment period. Violations of pre-treatment :math:`ACR^{es}` provide evidence
+   against SPT that :math:`ATT^{es}` pre-trends cannot detect, since the additional content
+   of SPT involves treated potential outcomes :math:`Y_t(d)` for :math:`d > 0`.
 
 .. note::
 

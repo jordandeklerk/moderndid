@@ -4,24 +4,19 @@
 Continuous Difference-in-Differences
 =======================================
 
-Treatment intensity often varies continuously. A state might expand Medicaid
-to 138% of the federal poverty level while another expands to 200%. A job
-training program might provide 20 hours of instruction to some participants
-and 100 hours to others. Binary treatment comparisons throw away this rich
-variation in dosage.
-
-The `Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_
-estimator recovers dose-response functions showing how average treatment
-effects vary with treatment intensity. It handles both continuous doses and
-staggered adoption, allowing researchers to trace out the full relationship
-between treatment intensity and outcomes.
+Collapsing a continuous treatment into a binary indicator throws away the
+variation that lets you trace out a dose-response curve. The
+`Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_
+estimator keeps that variation and separates two questions that binary DiD
+conflates: how large is the effect of receiving dose *d* compared to
+nothing (level effects), and what happens at the margin if the dose
+increases slightly (causal responses). It supports staggered adoption.
 
 .. seealso::
 
-   :ref:`Introduction to DiD <causal_inference>` for background on the
-   parallel trends assumption and potential outcomes framework, and
    :ref:`DiD with Continuous Treatments <background-didcont>` for the
-   theoretical foundations behind this estimator.
+   distinction between level effects and causal responses, the TWFE
+   decomposition, and strong parallel trends identification.
 
 
 Simulating data
@@ -219,14 +214,15 @@ receiving dose d versus no treatment.
 
 **ACRT(d) and strong parallel trends**
 
-This is a typically stronger assumption than standard parallel trends (the
-two are technically non-nested, but in practice strong parallel trends is the
-more demanding condition). Standard parallel trends alone is not enough
-because comparing outcomes across dose groups mixes together the true causal
-response with a selection bias term. Even if untreated potential outcomes
-evolve identically, the observed outcome paths of different dose groups can
-diverge because units who chose different doses may experience different
-treatment effects from the same dose.
+This is typically a stronger assumption than standard parallel trends (the
+two are technically non-nested, but in practice strong parallel trends is
+more demanding). Standard parallel trends alone is not enough because
+comparing outcomes across dose groups mixes the true causal response with
+selection bias.
+
+Even if untreated potential outcomes evolve identically, the observed paths
+of different dose groups can diverge because units who chose different doses
+may experience different treatment effects from the same dose.
 
 Strong parallel trends eliminates this selection bias by ruling out
 systematic treatment effect heterogeneity across dose groups.
@@ -475,14 +471,12 @@ of the treatment effect function.
    :alt: Dose-response curve for ATT
    :width: 100%
 
-The dose-response plot shows the :math:`ATT(d)` estimate as a function of dose, with
-uniform confidence bands. The solid line is the estimated dose-response
-function and the dashed lines are the confidence band boundaries. Each point
-on this curve is identified under standard parallel trends, but interpreting
-the *shape* of the curve (comparing effects across different doses) requires
-the stronger parallel trends assumption discussed above. The widening bands
-at higher doses reflect increased uncertainty where fewer observations are
-available.
+The dose-response plot shows :math:`ATT(d)` as a function of dose, with uniform confidence
+bands. Each point on this curve is identified under standard parallel trends, but interpreting
+the *shape* (comparing effects across different doses) requires the stronger assumption.
+
+The widening bands at higher doses reflect increased uncertainty where fewer observations
+are available.
 
 .. code-block:: python
 

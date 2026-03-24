@@ -3,19 +3,29 @@
 Honest DiD Sensitivity Analysis
 ===============================
 
-The ``didhonest`` module provides tools for conducting sensitivity analysis in difference-in-differences (DiD) models based on the
-work of `Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_. These methods allow
-researchers to assess how violations of the parallel trends assumption might affect their conclusions. This approach addresses
-the shortcomings of traditional pre-trends tests, which can suffer from low power against meaningful violations of parallel
-trends and can introduce statistical distortions from pre-testing.
+The ``didhonest`` module provides tools for conducting sensitivity analysis in
+difference-in-differences (DiD) models based on the work of
+`Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_.
+Rather than testing whether parallel trends holds, this approach asks how large violations
+would need to be before the conclusions change.
+
+.. warning::
+
+   Traditional pre-trends tests have two problems beyond low power. First, conditioning on
+   not rejecting a pre-test biases subsequent point estimates and confidence intervals. Under
+   correct parallel trends, post-treatment estimates are biased toward zero and confidence
+   intervals are too short. Under violated parallel trends, post-treatment estimates can be
+   biased *away* from zero, inflating apparent significance. These distortions arise from
+   selecting on a noisy signal and cannot be fixed by adjusting the pre-test significance
+   level.
 
 Model Setup and Causal Decomposition
 ------------------------------------
 
-The sensitivity analysis framework begins by recognizing that what we estimate in a typical event-study regression reflects
-two components. The first is the causal treatment effect we care about. The second is the difference in trends between
-treated and comparison groups that would have existed even without treatment. Understanding this decomposition is essential
-because it shows exactly what role the parallel trends assumption plays and what happens when that assumption fails.
+What we estimate in a typical event-study regression reflects two components. The first is
+the causal treatment effect. The second is the difference in trends between treated and
+comparison groups that would have existed without treatment. This decomposition makes explicit what parallel trends
+buys you and what goes wrong when it fails.
 
 The functionality of this module is based on a vector of "event-study coefficients"
 
@@ -47,13 +57,12 @@ The conventional parallel trends assumption imposes the strong restriction that 
 Partial Identification and the Restriction Set
 ----------------------------------------------
 
-When we relax the assumption that post-treatment violations of parallel trends are exactly zero, we can no longer point
-identify the treatment effect. Instead, we obtain a set of treatment effect values that are consistent with the data and our
-maintained assumptions about the magnitude of possible violations. This set is called the *identified set*. The approach is to
-specify a restriction on how large violations can be, and then compute all treatment effect values that could have generated
-the observed data under some violation within that restriction.
+Relaxing the assumption :math:`\boldsymbol{\delta}_{post} = \mathbf{0}` means the treatment
+effect is no longer point identified. Instead, for any restriction on how large
+:math:`\boldsymbol{\delta}` can be, there is a set of treatment effect values consistent with
+the data and the restriction. This *identified set* is the central object.
 
-The goal is to conduct inference on a scalar parameter of interest, typically a linear combination of post-treatment effects,
+The goal is inference on a scalar parameter,
 :math:`\theta = \mathbf{\ell}' \boldsymbol{\tau}_{post}`. Without assuming :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`,
 the parameter :math:`\theta` is only partially identified. Identification is achieved by assuming that the true trend
 violation, :math:`\boldsymbol{\delta}`, lies within a researcher-specified set :math:`\Delta`. The identified set for
@@ -92,14 +101,18 @@ This characterization follows from observing that the identified set can be equi
 Restriction Classes
 -------------------
 
-The choice of restriction set :math:`\Delta` determines how we extrapolate from the observed pre-trends to bound possible
-post-treatment violations. Different restrictions encode different beliefs about the nature of confounding. For instance,
-if a researcher believes that any confounding factors affecting post-treatment outcomes are similar in magnitude to those
-observed pre-treatment, a relative magnitudes restriction is appropriate. If instead the researcher believes differential
-trends evolve smoothly over time, a smoothness restriction is more suitable.
+The restriction set :math:`\Delta` encodes what the researcher believes about the nature of
+possible confounding, and the choice should be guided by economic reasoning about the threats
+to identification.
 
-The choice of :math:`\Delta` is critical and must be guided by economic context. The paper proposes several classes of
-restrictions that can be specified as polyhedra (sets defined by linear inequalities) or finite unions of polyhedra.
+.. tip::
+
+   If the main concerns are differential economic shocks that hit treated and control groups
+   at different times, bounding post-treatment violations relative to pre-treatment violations
+   (relative magnitudes) is natural. If the concerns are instead about smooth secular trends,
+   bounding the curvature of the trend (smoothness) is more appropriate.
+
+All restriction classes below can be written as polyhedra or finite unions of polyhedra.
 
 .. admonition:: Relative Magnitudes Restriction (RM)
 
@@ -123,9 +136,9 @@ treatment are similar in size to those before treatment, the relative magnitude 
 
       \Delta^{SD}(M) = \bigg\{\boldsymbol{\delta}: |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \le M, \forall t \bigg\}.
 
-This is a relaxation of controlling for a linear time trend (which corresponds to :math:`M=0`). When you expect the
-differences in trends between the treatment and control group to evolve smoothly over time without sharp changes, the
-smoothness restriction approach is appropriate.
+Setting :math:`M=0` recovers the linear time trend assumption. Positive :math:`M` relaxes this
+by allowing the slope of the trend difference to change by up to :math:`M` between consecutive
+periods.
 
 .. admonition:: Smoothness and Relative Magnitudes (SDRM)
 
@@ -146,8 +159,9 @@ This allows the magnitude of possible non-linearity to explicitly depend on the 
    researcher believes the bias :math:`\boldsymbol{\delta}_{post}` is non-negative or monotonically increasing, these
    constraints can be added to :math:`\Delta` to tighten the identified set.
 
-If you believe that trends change smoothly over time, but are unsure about the exact level of smoothness, you can combine the
-smoothness and relative magnitude bounds approaches to set reasonable limits on trend changes.
+Combining smoothness with relative magnitudes is useful when the researcher expects smooth
+trends but wants the bound on curvature to scale with the observed pre-treatment
+non-linearity.
 
 Polyhedral Representation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -177,20 +191,17 @@ This allows confidence sets to be constructed by taking the union of confidence 
 Inference Methods
 -----------------
 
-Once we have specified the restriction set :math:`\Delta`, we need statistical methods to conduct inference on the partially
-identified parameter. The challenge is that standard confidence interval procedures are designed for point-identified
-parameters. For partially identified parameters, we need methods that provide valid coverage for the entire identified set,
-not just a single point.
+Standard confidence intervals assume point identification. With partial identification,
+coverage must hold for every value in the identified set, not just a single point. The
+module provides two methods for constructing uniformly valid confidence sets for
+:math:`\theta` under the restriction :math:`\boldsymbol{\delta} \in \Delta`.
 
-The module provides two primary methods for constructing uniformly valid confidence sets for :math:`\theta` under the
-chosen restriction :math:`\boldsymbol{\delta} \in \Delta`.
+1. **Moment inequality-based inference** uses conditional and hybrid tests from the Andrews,
+   Roth, and Pakes (ARP) framework. Uniformly consistent and can achieve optimal local
+   asymptotic power under regularity conditions.
 
-1. **Moment inequality-based inference** uses conditional and hybrid tests from the Andrews, Roth, and Pakes (ARP)
-framework. This approach is broadly applicable, uniformly consistent, and can achieve optimal local asymptotic power under
-regularity conditions.
-
-2. **Fixed-length confidence intervals (FLCIs)** construct intervals with a pre-specified length that accounts for worst-
-case bias. This approach is simpler but can be inconsistent for some restriction classes.
+2. **Fixed-length confidence intervals (FLCIs)** have a pre-specified length that accounts
+   for worst-case bias. Simpler but can be inconsistent for some restriction classes.
 
 Moment Inequality-Based Inference
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -231,7 +242,7 @@ where
    \mu_{n,0} &= \frac{1}{\sqrt{n}}\sum_i E_{P_{D|Z}}[Y_i(\beta_0)|Z_i], \quad & \Sigma_0 &= E_P[\text{Var}_{P_{D|Z}}(Y_i(\beta_0)|Z_i)].
    \end{aligned}
 
-Crucially, the variance :math:`\Sigma_0` does not depend on :math:`\delta`, which substantially simplifies inference.
+Because :math:`\Sigma_0` does not depend on :math:`\delta`, inference simplifies considerably.
 
 The test statistic is the profiled max statistic
 
@@ -314,7 +325,7 @@ critical value uses a modified upper truncation point
 
 The recommended approach in ARP is to set :math:`\kappa = \alpha/10`.
 
-This approach is computationally tractable even with many post-treatment periods and has strong theoretical guarantees.
+This approach is computationally tractable even with many post-treatment periods.
 
 **Uniform Consistency**
 
@@ -326,8 +337,7 @@ outside the identified set converges uniformly to 1. Formally, for any :math:`x 
    \lim_{n \to \infty} \inf_{P \in \mathcal{P}} \mathbb{P}_{P}\big(\theta_P^{ub} + x \notin \mathcal{C}_{\alpha,n}^{Hyb}\big) = 1,
 
 where :math:`\theta_P^{ub} = \sup \mathcal{S}(\boldsymbol{\beta}_P, \Delta)` is the upper bound of the identified set. An
-analogous result holds for the lower bound. This consistency property ensures that the confidence sets shrink appropriately as
-the sample size increases.
+analogous result holds for the lower bound. The confidence sets shrink to the identified set as the sample grows.
 
 **Optimal Local Asymptotic Power**
 
@@ -375,7 +385,7 @@ is the affine estimator's worst-case bias,
 **Finite-Sample Near-Optimality**
 
 For certain choices of :math:`\Delta`, the optimal FLCI has near-optimal expected length in the finite-sample normal model.
-The following conditions ensure this property:
+Two conditions are sufficient.
 
 1. :math:`\Delta` is convex and centrosymmetric (i.e., :math:`\tilde{\boldsymbol{\delta}} \in \Delta` implies :math:`-
    \tilde{\boldsymbol{\delta}} \in \Delta`)
@@ -404,16 +414,52 @@ for all :math:`\boldsymbol{\delta} \in \Delta`.
 since :math:`|\delta_1|` can be arbitrarily large when :math:`|\delta_{-1}|` is sufficiently large. Thus, the only valid
 FLCI is the entire real line, which is clearly inconsistent.
 
-For :math:`\Delta^{SD}(M)`, the identified set always has the same length (:math:`2M` in the three-period case), so FLCIs
-are consistent. This explains why FLCIs are particularly well-suited for the smoothness restriction but not for relative
-magnitudes. In contrast, the conditional and hybrid confidence sets can "adapt" their length based on
-:math:`\hat{\boldsymbol{\beta}}_{pre}`, enabling them to remain consistent for restriction classes where FLCIs fail.
+For :math:`\Delta^{SD}(M)`, the identified set always has the same length (:math:`2M` in the
+three-period case), so FLCIs are consistent. This is why FLCIs are well-suited for smoothness
+restrictions but not for relative magnitudes. The conditional and hybrid confidence sets can
+"adapt" their length based on :math:`\hat{\boldsymbol{\beta}}_{pre}`, which is what allows
+them to remain consistent where FLCIs fail.
+
+Sensitivity Analysis and Breakdown Values
+------------------------------------------
+
+Given a baseline restriction class (say :math:`\Delta^{RM}(\bar{M})` or
+:math:`\Delta^{SD}(M)`), the recommended practice is to report confidence sets for a range of
+values of the tuning parameter (:math:`\bar{M} \geq 0` or :math:`M \geq 0`). This produces a
+sensitivity analysis plot showing how the conclusions change as the allowed violations grow.
+
+A particularly useful summary is the *breakdown value*, the smallest :math:`\bar{M}` or
+:math:`M` at which a hypothesis of interest (typically a null effect) can no longer be
+rejected. If the breakdown value is large, the finding is robust to substantial violations
+of parallel trends. If the breakdown value is small, the finding is fragile.
+
+Interpreting the magnitude of the breakdown value requires domain knowledge. One approach is
+to calibrate :math:`M` against a concrete confounder. For instance, if the outcome is adult
+employment and the concern is confounding from differences in school quality, one can use
+estimates of the employment effect of a one-standard-deviation change in teacher value-added
+to translate :math:`M` into units of a specific confounder. This makes the sensitivity
+analysis more informative than an abstract bound.
+
+Conditional Sensitivity Analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When pre-treatment covariates :math:`X` are available, the sensitivity analysis can be
+sharpened. If violations of parallel trends and treatment effects both vary with :math:`X`,
+then conducting the analysis conditional on :math:`X` produces tighter identified sets than
+the unconditional version, because the conditional restrictions eliminate variation in
+:math:`\boldsymbol{\delta}` that is explained by :math:`X`. The identified sets are then
+averaged over the covariate distribution to recover marginal bounds.
+
+Recommended Practice
+~~~~~~~~~~~~~~~~~~~~
+
+For general forms of :math:`\Delta`, the hybrid moment inequality approach should be
+preferred because it is uniformly consistent and has strong power properties. FLCIs should be
+used only for restriction classes like :math:`\Delta^{SD}(M)` where the consistency and
+finite-sample near-optimality conditions are met. In either case, results should be reported
+as sensitivity analysis plots over a range of :math:`\bar{M}` or :math:`M` values rather than
+at a single point, and the breakdown value should be highlighted.
 
 .. note::
-   The recommended practice is to use the hybrid moment inequality approach for general forms of :math:`\Delta`, as it is
-   broadly valid and has strong asymptotic properties. The FLCI approach should be preferred only in special cases (like
-   for :math:`\Delta^{SD}`) where the conditions for consistency and finite-sample near-optimality are met.
-
-.. note::
-   For the full theoretical details, including proofs and regularity conditions, please refer to the original paper by
+   For the full theoretical details, including proofs and regularity conditions, refer to
    `Rambachan and Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_.

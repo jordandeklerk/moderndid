@@ -53,6 +53,30 @@ recognizing that parallel trends may only hold after controlling for observable 
 comparison groups. The following assumptions formalize the conditions under which the ATT can be recovered from the
 observed data.
 
+Beyond the negative weighting problems of TWFE in staggered settings (see
+:ref:`background-did`), there is an additional issue in the two-period case with covariates.
+Running a two-way fixed effects regression
+
+.. math::
+
+   Y_{it} = \alpha_1 + \alpha_2 T_i + \alpha_3 D_i
+   + \tau^{fe}(T_i \cdot D_i) + \theta' X_i + \varepsilon_{it}
+
+and interpreting :math:`\hat{\tau}^{fe}` as the ATT implicitly imposes two restrictions beyond
+the identifying assumptions. First, treatment effects must be homogeneous in :math:`X`,
+
+.. math::
+
+   E[Y_1(1) - Y_1(0) \mid X, D=1] = \tau^{fe} \quad \text{a.s.}
+
+Second, there can be no covariate-specific trends,
+
+.. math::
+
+   E[Y_1 - Y_0 \mid X, D=d] = E[Y_1 - Y_0 \mid D=d] \quad \text{a.s.}
+When either restriction fails, :math:`\tau^{fe}` generally differs from the ATT. The doubly
+robust estimators below do not require these restrictions.
+
 The key identifying assumptions are as follows.
 
 .. admonition:: Assumption 1 (Data Structure)
@@ -83,18 +107,39 @@ The key identifying assumptions are as follows.
 
       \mathbb{P}(D=1|X) < 1-\varepsilon \text{ for some } \varepsilon > 0.
 
+Individual OR and IPW Approaches
+---------------------------------
+
+Under Assumptions 1-3, there are two standard approaches for estimating the ATT with
+covariates, each relying on correctly specifying a different nuisance function.
+
+The outcome regression (OR) approach models the counterfactual outcome evolution of the
+comparison group, :math:`m_{0,t}(X) = \mathbb{E}[Y_t \mid D=0, X]`, and estimates the ATT as
+the difference between the treated group's observed outcome change and the predicted
+counterfactual change, averaged over treated units. Consistency requires the outcome model to
+be correctly specified.
+
+The inverse probability weighting (IPW) approach avoids modeling outcomes and instead reweights
+the comparison group's outcome change to match the covariate distribution of the treated group,
+using the propensity score :math:`p(X) = \mathbb{P}(D=1 \mid X)`. When panel data are available,
+the IPW estimand is
+
+.. math::
+
+   \tau = \frac{1}{\mathbb{E}[D]} \mathbb{E}\left[\frac{D - p(X)}{1 - p(X)}
+   (Y_1 - Y_0)\right].
+
+Consistency requires the propensity score model to be correctly specified.
+
+These two approaches depend on different, non-nested conditions. In practice, it is hard to
+know which nuisance model is correctly specified, making it difficult to choose between them.
+
 Doubly Robust Estimands
 -----------------------
 
-Given the identifying assumptions above, there are multiple ways to construct estimators for the ATT. Inverse
-probability weighting (IPW) estimators reweight the comparison group to match the covariate distribution of the
-treated group. Outcome regression (OR) estimators model the counterfactual outcome evolution directly. Each approach
-relies on correctly specifying a different nuisance function. Doubly robust estimators combine both approaches in a
-way that provides consistency as long as at least one of the nuisance models is correct.
-
-The doubly robust estimators combine the strengths of the outcome regression (OR) and inverse probability weighting
-(IPW) approaches. The resulting estimator for the ATT is consistent if either the outcome regression model or the
-propensity score model is correctly specified, but not necessarily both.
+The doubly robust (DR) approach combines both the OR and IPW methods so that the resulting
+estimand identifies the ATT if either (but not necessarily both) the propensity score or the
+outcome regression is correctly specified.
 
 Let :math:`p(X) = \mathbb{P}(D=1|X)` be the propensity score and :math:`\pi(X)` be a working model for the propensity
 score.
@@ -236,24 +281,67 @@ practice. Thus, estimators based on :math:`\tau_2^{dr,rc}` should generally be p
 Improved Doubly Robust Estimators
 ---------------------------------
 
-Standard doubly robust estimators are consistent under misspecification of one nuisance model, but their asymptotic
-variance can depend on which model is correct. This complicates inference because the researcher does not know which
-variance formula to use. The improved estimators address this limitation by ensuring that the asymptotic variance is
-the same regardless of which nuisance model is correctly specified, leading to simpler and more reliable inference.
+Standard doubly robust estimators are consistent under misspecification of one nuisance model,
+but their asymptotic variance can depend on which model is correct. In practice, the researcher
+does not know which model is correct, making it unclear which variance formula to use for
+inference. The improved estimators resolve this problem by achieving double robustness not only
+for consistency but also for inference, meaning the exact form of the asymptotic variance does
+not depend on which working models are correctly specified.
 
-The paper introduces "improved" DR DID estimators that are not only doubly robust for consistency but also doubly
-robust for inference. This means their asymptotic variance does not depend on which working models are correctly
-specified, leading to simpler and more stable inference procedures.
+What makes this work is that for the first-stage estimation to have no effect on the limiting
+distribution of the DR DID estimator, the first-order conditions of the nuisance parameter
+estimators must satisfy specific moment conditions. When a logistic propensity score model
+:math:`\pi(X;\gamma) = \Lambda(X'\gamma)` and linear outcome regression models
+:math:`\mu_{d,t}(X;\beta) = X'\beta` are adopted, these moment conditions are automatically
+satisfied by two specific estimation methods.
 
-When using a logistic propensity score model :math:`\pi(X;\gamma) = \Lambda(X'\gamma)` and linear outcome
-regression models :math:`\mu_{d,t}(X;\beta) = X'\beta`, the improved estimators use
+- **Inverse Probability Tilting (IPT)** for the propensity score (Graham et al., 2012). The
+  IPT estimator solves
 
-- **Inverse Probability Tilting (IPT)** for propensity score estimation, following Graham et al. (2012)
-- **Weighted Least Squares** for outcome regression estimation, with weights derived from the propensity score
+  .. math::
 
-These estimation choices ensure that the first-stage estimation does not affect the asymptotic distribution of the DR
-DID estimator, regardless of which models are correctly specified. When both models are correct, the improved
-estimators attain the semiparametric efficiency bounds.
+     \max_\gamma \mathbb{E}_n[D X'\gamma - (1-D)\exp(X'\gamma)],
+
+  and its first-order conditions ensure the propensity-score-related estimation effect
+  vanishes regardless of whether the propensity score model is correct.
+
+- **Weighted Least Squares (WLS)** for the outcome regression of the comparison group, using
+  propensity-score-derived weights
+
+  .. math::
+
+     \hat{w} = \frac{\Lambda(X'\hat{\gamma}^{ipt})}{1 - \Lambda(X'\hat{\gamma}^{ipt})}.
+
+  The WLS first-order conditions ensure the outcome-regression-related estimation effect
+  vanishes regardless of whether the outcome model is correct.
+
+Because the first-stage estimation has no effect on the asymptotic distribution, the summands
+of the DR DID estimator can be treated as if they were i.i.d., and the asymptotic variance
+can be consistently estimated by the sample variance of the influence function evaluations.
+This makes inference simple and avoids the need to account for estimation effects from the
+first stage. When both working models are correctly specified, the improved estimators attain
+the semiparametric efficiency bounds.
+
+Practical Guidance
+~~~~~~~~~~~~~~~~~~
+
+.. tip::
+
+   For repeated cross-sections, prefer :math:`\tau_2^{dr,rc}` over :math:`\tau_1^{dr,rc}`.
+   Both are doubly robust for consistency and inference, but :math:`\tau_2^{dr,rc}` is locally
+   semiparametrically efficient while :math:`\tau_1^{dr,rc}` is not. The efficiency loss is
+   strictly positive whenever the conditional ATT varies with covariates, which is the typical
+   case.
+
+The outcome regressions for the treated group that :math:`\tau_2^{dr,rc}` requires can be
+estimated by ordinary least squares (not weighted), since the pseudo-true parameters for the
+treated group do not generate any estimation effect.
+
+When designing a repeated cross-section study, the efficiency loss from not having panel data is
+convex in :math:`\lambda = \mathbb{P}(T=1)`, the fraction of the sample observed in the
+post-treatment period. When the conditional variances are equal across time periods,
+:math:`\lambda = 0.5` minimizes the efficiency loss, making equal-sized pre- and post-treatment
+samples a reasonable default.
 
 .. note::
    For the full theoretical details, including proofs and regularity conditions, please refer to the original paper by
