@@ -14,20 +14,10 @@ terms.
 Why Conventional TWFE Fails
 ---------------------------
 
-A conventional TWFE regression for staggered interventions estimates
-
-.. math::
-
-   y_{it} = \tau \cdot w_{it} + \sum_{s=2}^{T} \gamma_s f_{s,t} + c_i + u_{it},
-
-where :math:`w_{it}` is the time-varying treatment indicator, :math:`f_{s,t}` are time dummies, and
-:math:`c_i` are unit fixed effects. This specification imposes a constant treatment effect
-:math:`\tau` regardless of when a unit entered treatment and how long it has been exposed.
-As shown by de Chaisemartin and D'Haultfoeuille (2020), Goodman-Bacon (2021), and others, the
-resulting TWFE estimate depends on :math:`2 \times 2` difference-in-differences comparisons,
-several of which use already-treated units as controls. These "forbidden comparisons" can
-produce negative weights on some group-time ATTs, causing the estimated effect to have the
-wrong sign even when all underlying effects are positive.
+A conventional TWFE regression with a single treatment indicator imposes a constant treatment
+effect :math:`\tau` regardless of when a unit entered treatment and how long it has been
+exposed. As detailed in the :ref:`staggered DiD background <background-did>`, this leads to
+negative weights on some cohort-time ATTs and can distort the overall estimate.
 
 The ETWFE approach resolves this by saturating the model with the full set of cohort-time
 interaction dummies, allowing separate treatment effects for every (cohort, time period) cell.
@@ -65,7 +55,10 @@ estimation but useful for computing aggregated effects and their standard errors
 Identifying Assumptions
 -----------------------
 
-Identification of the ATTs relies on five assumptions.
+The ATT parameters are identified under five assumptions. The first three (SUTVA, NBC, NA) are
+standard in the staggered DiD literature. The fourth (CPT) is the core parallel trends
+restriction. The fifth (LIN) imposes linearity in the conditional expectations, which is
+without loss of generality when covariates are discrete.
 
 .. admonition:: Assumption SUTVA (Stable Unit Treatment Value)
 
@@ -74,8 +67,8 @@ Identification of the ATTs relies on five assumptions.
 .. admonition:: Assumption NBC (No Bad Controls)
 
    Letting :math:`\mathbf{x}(g)` be the covariates when the treatment cohort is :math:`g`, assume
-   :math:`\mathbf{x}(g) = \mathbf{x}(\infty)` for :math:`g = q, \ldots, T`. This ensures that
-   the covariates are not affected by the treatment, so we can estimate
+   :math:`\mathbf{x}(g) = \mathbf{x}(\infty)` for :math:`g = q, \ldots, T`. The covariates are
+   then unaffected by the treatment, so we can estimate
    :math:`E[\mathbf{x}(\infty) \mid d_g = 1]` from the observed data.
 
 .. admonition:: Assumption NA (No Anticipation)
@@ -152,7 +145,12 @@ Identification and Imputation
 
 By the no-anticipation assumption, the observed outcome for control observations
 (:math:`w_{it} = 0`) equals the never-treated potential outcome. OLS on the control observations
-identifies all parameters in the conditional expectation above. The ATTs are then identified as
+identifies all parameters in the conditional expectation above. Using all control observations
+for estimation is typically more efficient than approaches that restrict attention to a subset of
+valid time periods and control units, such as using only the period just prior to intervention or
+only the never-treated group as controls.
+
+The ATTs are then identified as
 
 .. math::
 
@@ -199,8 +197,8 @@ to obtain the parameter estimates
 Step 2: Impute the counterfactual outcomes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Impute the missing outcomes in the never-treated state for all observations (including
-treated ones):
+Impute the missing outcomes in the never-treated state for all observations, including
+treated ones.
 
 .. math::
 
@@ -223,7 +221,7 @@ Step 3: Average over cohorts
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Obtain the estimated ATT for cohort :math:`g` in period :math:`t` by averaging the
-unit-specific treatment effects over cohort :math:`g`:
+unit-specific treatment effects over cohort :math:`g`.
 
 .. math::
 
@@ -275,9 +273,12 @@ about their cohort means. The coefficients :math:`\tau_{gs}` on the treatment in
 are the cohort-time ATTs. The coefficients :math:`\boldsymbol{\delta}_{gs}` on the demeaned
 covariate interactions capture how the ATTs vary with the covariates (moderating effects).
 
-The covariate demeaning is essential: without centering, the main-effect coefficients would
-estimate ATTs at :math:`\mathbf{x} = \mathbf{0}`, which is unlikely to be meaningful. With
-centering, :math:`\tau_{gs}` estimates the ATT evaluated at the cohort-average covariate values.
+.. tip::
+
+   Covariate demeaning is not optional. Without centering, the main-effect coefficients would
+   estimate ATTs at :math:`\mathbf{x} = \mathbf{0}`, which is rarely meaningful. With
+   centering, :math:`\tau_{gs}` estimates the ATT evaluated at the cohort-average covariate
+   values.
 
 A key result (Proposition 5.2 in Wooldridge, 2025) is that the pooled OLS estimates of
 :math:`\tau_{g,t}` from this saturated regression are numerically identical to the cohort
@@ -290,19 +291,24 @@ TWFE-POLS Equivalence
 When the pooled regression includes unit dummies :math:`c_{1,i}, \ldots, c_{N,i}` in place of
 the cohort dummies :math:`d_{g,i}` and their interactions, the resulting two-way fixed effects
 estimator produces identical coefficients on the treatment interaction terms. This follows from
-the Two-Way Mundlak (TWM) theorem (Theorem 3.1 in Wooldridge, 2025): including unit-specific
-time averages :math:`\bar{\mathbf{x}}_{i \cdot}` and period-specific cross-sectional averages
-:math:`\bar{\mathbf{x}}_{\cdot t}` in a pooled OLS regression reproduces the TWFE estimates.
-Since all the necessary Mundlak terms are already present in the saturated regression, the POLS
-and TWFE estimates of :math:`\tau_{g,t}` coincide. The same holds for random effects (RE)
-estimation.
+the Two-Way Mundlak (TWM) theorem (Theorem 3.1 in Wooldridge, 2025). The TWM theorem
+shows that adding unit-specific time averages :math:`\bar{\mathbf{x}}_{i \cdot}` and
+period-specific cross-sectional averages :math:`\bar{\mathbf{x}}_{\cdot t}` to a pooled OLS
+regression reproduces the TWFE estimates of any time-varying coefficients.
 
-The full equivalence chain is: cohort imputation = POLS on cohort dummies = TWFE = RE.
-Additionally, the Borusyak, Jaravel and Spiess (2024) imputation estimator (which uses unit
+In the saturated ETWFE regression, all the necessary Mundlak terms are already present. The
+cohort dummies and their covariate interactions span the unit-level means, while the time
+dummies and their covariate interactions span the period-level means. The POLS and TWFE
+estimates of :math:`\tau_{g,t}` therefore coincide. The same holds for random effects (RE)
+estimation, since the Mundlak device decomposes :math:`c_i` into a predictable component from
+the included regressors and an uncorrelated remainder.
+
+The full equivalence chain is then cohort imputation = POLS on cohort dummies = TWFE = RE.
+The `Borusyak, Jaravel, and Spiess (2024) <https://doi.org/10.1093/restud/rdae007>`_ imputation estimator (which uses unit
 dummies rather than cohort dummies in the first step) produces different unit-level residuals but
 the same cohort-time ATT estimates.
 
-This equivalence has a practical implication: controlling for cohort dummies rather than unit
+This equivalence has a practical implication. Controlling for cohort dummies rather than unit
 dummies yields the same ATT estimates with far fewer parameters. With :math:`N = 1000` units,
 five treatment cohorts, and ten controls, the cohort-based regression includes roughly 60
 time-constant controls versus 1000 unit dummies.
@@ -327,7 +333,7 @@ last-treated cohort act as the never-treated group.
 Event Study and Pre-Treatment Testing
 -------------------------------------
 
-The framework extends naturally to event-study ("leads and lags") estimation by including
+The framework extends to event-study ("leads and lags") estimation by including
 pre-treatment cohort-time interactions alongside the post-treatment ones. For each cohort
 :math:`g`, a reference period :math:`g - 1` is excluded, producing pre-treatment coefficients
 :math:`\theta_{g,s}` for :math:`s \leq g - 2` and post-treatment coefficients
@@ -344,9 +350,24 @@ which equals zero under parallel trends. Testing whether the pre-treatment coeff
 jointly zero provides a placebo test for the identifying assumptions. All equivalences
 (POLS = TWFE = imputation) continue to hold for the leads-and-lags specification.
 
-The event-study estimator with flexible covariates is equivalent to the Sun and Abraham (2021)
-interaction-weighted estimator and to the Callaway and Sant'Anna (2021) regression-based
-:math:`2 \times 2` DiD estimators applied to long differences.
+An important property is that pre-trends tests based on the pooled regression over all data are
+algebraically identical to tests that use only the control observations (:math:`w_{it} = 0`).
+In other words, including treated observations does not "contaminate" the pre-trends test,
+provided the treatment effects are allowed to be fully flexible as in the saturated
+specification. This means the tests will not spuriously reject due to misspecification of
+treatment effect heterogeneity.
+
+There is an efficiency trade-off in including the leads. Under correct parallel trends, using
+all pre-treatment periods as controls (without leads) is more efficient. However, when serial
+correlation is strong, including the leads can improve efficiency by allowing the estimator to
+exploit the additional structure. In practice, the leads are primarily useful for the
+diagnostic pre-trends test rather than for improving the ATT estimates themselves.
+
+The event-study estimator with flexible covariates is equivalent to the
+`Sun and Abraham (2021) <https://doi.org/10.1016/j.jeconom.2020.09.006>`_
+interaction-weighted estimator and to the
+`Callaway and Sant'Anna (2021) <https://doi.org/10.1016/j.jeconom.2020.12.001>`_
+regression-based :math:`2 \times 2` DiD estimators applied to long differences.
 
 Heterogeneous Cohort Trends
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -354,25 +375,55 @@ Heterogeneous Cohort Trends
 When the unconditional parallel trends assumption is suspect, the model can be extended by
 adding cohort-specific linear trends :math:`\eta_g (d_{g,i} \cdot t)` to the conditional
 expectation. This requires at least two pre-treatment periods per cohort. All equivalences
-continue to hold with the additional trend terms. Higher-order polynomial trends in :math:`t`
-are possible with more pre-treatment periods.
+continue to hold with the additional trend terms.
+
+Unlike the event-study approach, which adds pre-treatment dummies :math:`d_{g,i} \cdot f_{s,t}`
+and is generally inappropriate as a *correction* for pre-trends (it would require the violation
+to disappear exactly at the treatment date), the cohort-specific linear trend is a reasonable,
+albeit not fully general, model of heterogeneous trends. With :math:`T = 3` and a single
+post-treatment period, including :math:`d_i \cdot t` produces a difference-in-difference-in-
+differences (DDD) estimator of the ATT.
+
+Including heterogeneous trends can be costly in terms of precision. Because the treatment
+dummies :math:`w_{it} \cdot d_{g,i} \cdot f_{s,t}` turn on in later periods, they are correlated
+(though not perfectly collinear given at least two pre-treatment periods) with the
+cohort-specific trends :math:`d_{g,i} \cdot t`. This multicollinearity does not cause
+inconsistency but can result in a substantial loss of precision. Higher-order polynomial trends
+in :math:`t` are possible with more pre-treatment periods, though in practice a linear trend
+usually suffices to detect important departures from parallel trends.
 
 Nonlinear Extensions
 --------------------
 
-Wooldridge (2023) extends the framework to nonlinear models by replacing the identity link with
-a known, strictly increasing function :math:`G(\cdot)`. The index version of parallel trends
-requires
+When the outcome variable is limited in range, the linear parallel trends assumption can be
+unrealistic. For a binary :math:`y_t(\infty)`, if the response probability is near zero or one,
+a constant additive shift in the conditional mean can push it outside :math:`[0, 1]`. For
+nonnegative outcomes like counts or corner solutions, linear PT can produce negative predicted
+means. These problems motivate an index version of the parallel trends assumption.
+
+Index Parallel Trends
+~~~~~~~~~~~~~~~~~~~~~
+
+`Wooldridge (2023) <https://doi.org/10.1093/ectj/utad016>`_ replaces the identity link with a known, strictly increasing function
+:math:`G(\cdot)` and requires parallel trends to hold on the linear index inside
+:math:`G(\cdot)` rather than on the mean directly
 
 .. math::
 
    G^{-1}\bigl(E[y_t(\infty) \mid \mathbf{d}, \mathbf{x}]\bigr)
    - G^{-1}\bigl(E[y_1(\infty) \mid \mathbf{d}, \mathbf{x}]\bigr)
-   = \gamma_t + \mathbf{x}\boldsymbol{\pi}_t,
+   = \gamma_t + \mathbf{x}\boldsymbol{\pi}_t.
 
-so that parallel trends holds for the linear index inside :math:`G(\cdot)` rather than for the
-mean directly. When :math:`G(\cdot) = \exp(\cdot)`, the assumption becomes parallel trends in
-growth rates,
+To see why this is natural, consider a binary outcome generated by a latent variable
+:math:`y_t^*(\infty) = \alpha + \beta D + \gamma_t + U_t`, where :math:`U_t` is
+independent of :math:`D` with CDF :math:`F(\cdot)`. Then
+:math:`E[y_t(\infty) \mid D] = 1 - F[-(\alpha + \beta D + \gamma_t)] \equiv G(\alpha +
+\beta D + \gamma_t)`. Standard linear parallel trends holds for the latent variable
+:math:`y_t^*(\infty)`, but generally fails for the observed mean
+:math:`E[y_t(\infty) \mid D]`. The index version captures the right notion of parallel
+trends for this data-generating process.
+
+When :math:`G(\cdot) = \exp(\cdot)`, the assumption becomes parallel trends in growth rates
 
 .. math::
 
@@ -382,15 +433,31 @@ which is arguably more natural for nonnegative outcomes. When :math:`G(\cdot)` i
 function, the assumption holds on the log-odds scale, which is more plausible for binary or
 fractional outcomes than linear PT.
 
+Estimation and the Canonical Link
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Estimation proceeds by pooled quasi-maximum likelihood in the linear exponential family (LEF).
-The leading cases are:
+The QMLE is consistent for the conditional mean parameters regardless of the true distribution,
+requiring only correct specification of the conditional mean function.
 
-- **Logistic/Bernoulli**: for binary and fractional outcomes
-- **Exponential/Poisson**: for nonnegative outcomes (counts, corner solutions)
-- **Linear/Normal**: the standard OLS case
+A key simplification occurs when :math:`G^{-1}(\cdot)` is the canonical link function for the
+chosen LEF density. In that case, the imputation estimator and the pooled QMLE across all
+observations produce numerically identical ATT estimates (Proposition 3.1 in Wooldridge, 2023).
+The leading canonical-link pairings are
 
-The resulting QMLE is consistent for the conditional mean parameters regardless of the true
-distribution, requiring only correct specification of the conditional mean function.
+- **Linear mean / Normal density** (the standard OLS case, any response type)
+- **Logistic mean / Bernoulli density** (binary and fractional outcomes)
+- **Exponential mean / Poisson density** (nonnegative outcomes with no natural upper bound)
+
+For binary outcomes with a known upper bound :math:`B_{it}` that varies across units and time,
+the logistic mean is multiplied by :math:`B_{it}` and the binomial QLLF with a logit link is
+used.
+
+Restricting to canonical-link pairings serves a practical purpose beyond the algebraic
+equivalence. It limits the set of nonlinear models an empirical researcher needs to consider,
+reducing the degrees of freedom for data mining. As a check on robustness, one can compare ATT
+estimates from a linear model with those from a sensible nonlinear alternative dictated by the
+outcome type.
 
 In the nonlinear case, the ATT is no longer simply the coefficient on the interaction term.
 Using the imputation approach, the estimated ATT for cohort :math:`g` in period :math:`r` is
@@ -479,11 +546,79 @@ macroeconomic conditions or concurrent policies.
 Inference
 ~~~~~~~~~
 
-Because the ATT estimates come from a single pooled regression, inference is straightforward.
+Because the ATT estimates come from a single pooled regression, inference is simple.
 Standard cluster-robust variance estimators at the unit level account for arbitrary serial
 correlation and heteroskedasticity. Aggregated effects and their standard errors are computed
 from the estimated coefficients and variance-covariance matrix using the delta method, with
 proper accounting for sampling variation in the cohort-mean covariates and cohort shares.
+
+
+Additional Considerations
+-------------------------
+
+The development above assumes balanced panels with time-constant covariates, which is the
+cleanest setting for the POLS-TWFE equivalence. Several practical complications can break or
+modify this equivalence.
+
+Time-Varying Covariates
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The development above focuses on time-constant covariates, which guarantees they are not
+affected by the treatment (the NBC assumption). Time-varying covariates :math:`\mathbf{x}_{it}`
+can be included provided they are not influenced by the policy intervention. The NBC assumption
+generalizes to :math:`\mathbf{x}_t(g) = \mathbf{x}_t(\infty)` for all :math:`g` and :math:`t`,
+meaning the covariate path would be the same regardless of treatment cohort.
+
+With time-varying covariates, :math:`\mathbf{x}_i` is replaced by :math:`\mathbf{x}_{it}`
+throughout the conditional expectation, and the cohort-specific demeaning uses time-specific
+cohort means :math:`\bar{\mathbf{x}}_{g,s}` for each (cohort, period) pair. The imputation
+procedure goes through unchanged.
+
+.. warning::
+
+   POLS and TWFE are no longer guaranteed to coincide when covariates vary over time, because
+   the Mundlak decomposition of :math:`c_i` depends on the full time path of
+   :math:`\mathbf{x}_{it}`. TWFE is more robust here because unit dummies absorb
+   time-constant unobservables that may correlate with the covariate paths.
+
+Unbalanced Panels
+~~~~~~~~~~~~~~~~~
+
+When the panel is unbalanced (some units are not observed in all periods), the equivalences
+between POLS and TWFE can break down. TWFE with unit dummies is more robust because the
+unit fixed effects allow :math:`c_i` to depend on the pattern of missingness. POLS requires
+an adjustment to handle selection into the sample.
+
+One practical fix (Wooldridge, 2019) is to add time-period selection averages
+:math:`\bar{f}_{r,i}` to the POLS regression, where :math:`\bar{f}_{r,i}` is the fraction of
+observed periods for unit :math:`i` in which :math:`f_{r,t} = 1`. These terms play the role of
+the Mundlak averages in an unbalanced setting, accounting for selection that is tied to
+additive unobserved heterogeneity. With this correction, the POLS estimator recovers the same
+treatment effect estimates as TWFE even with missing data.
+
+Treatment Exit
+~~~~~~~~~~~~~~
+
+The framework extends to settings where treatment can turn off for some units, possibly in a
+staggered fashion. The idea is to expand the cohort notation to be indexed by both the first
+and last treatment dates. Define indicators :math:`d_{g,h}` where :math:`g` is the first period
+of treatment and :math:`h` is the last, with the treatment in force over the entire interval
+:math:`[g, h]`. The case :math:`h = \infty` represents treatment through the end of the sample.
+
+The ATTs become :math:`\tau_{g,h,r} = E[y_r(g,h) - y_r(\infty) \mid d_{g,h} = 1]` for
+:math:`r = g, \ldots, T`, and are defined even for :math:`r > h` (after the intervention has
+been removed), making it possible to assess whether an intervention has lasting effects beyond
+its active period.
+
+In the pooled regression, the treatment interactions :math:`d_{g,i} \cdot f_{s,t}` are replaced
+by :math:`d_{g,h,i} \cdot f_{s,t}` for :math:`g \leq h` and :math:`s = g, \ldots, T`. Even
+with a modest number of treated periods, this can produce many ATT parameters, so aggregation
+or parameter restrictions become important.
+
+This approach allows endogeneity of exit only through its correlation with time-constant
+observables and unobservables. It does not allow a shock to :math:`y_t(\infty)` at time
+:math:`t` to trigger exit in a future period, which amounts to a strict exogeneity assumption
+on the time-varying treatment indicator once unobserved heterogeneity has been accounted for.
 
 .. note::
 

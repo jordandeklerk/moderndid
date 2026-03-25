@@ -4,24 +4,24 @@
 Staggered Difference-in-Differences
 =======================================
 
-In practice, policies often roll out gradually over time. One state raises its minimum wage in 2004,
-another in 2006, and a third in 2007. This staggered adoption creates a rich
-panel structure for causal inference, but it also creates problems for
-conventional regression approaches.
+With staggered adoption, a single regression coefficient hides whether
+early adopters respond differently from late adopters, and whether effects
+grow or fade with exposure.
 
-Two-way fixed effects regression is the go-to method for many applied
-researchers, but it can produce misleading results when treatment effects vary
-across cohorts or over time. The `Callaway and Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_
-estimator addresses this by computing separate treatment effects for each
-cohort at each time period, then aggregating them into interpretable summaries
-like event studies.
+The `Callaway and Sant'Anna (2021) <https://arxiv.org/abs/1803.09015>`_
+estimator avoids this by computing a separate treatment effect for each
+cohort at each time period. You then aggregate these group-time effects into
+whatever summary fits the question: event studies, group-specific effects,
+calendar-time effects, or a single overall number. Estimation can be doubly
+robust, covariates are handled flexibly, and simultaneous confidence bands
+keep multiple-testing problems in check.
 
 .. seealso::
 
-   :ref:`Introduction to DiD <causal_inference>` for background on the
-   parallel trends assumption and potential outcomes framework, and
-   :ref:`DiD with Multiple Time Periods <background-did>` for the
-   theoretical foundations behind this estimator.
+   :ref:`DiD with Multiple Time Periods <background-did>` for
+   identification results and aggregation formulas, and
+   :ref:`Doubly Robust DiD <background-drdid>` for the two-period
+   building block underlying the DR estimators.
 
 
 Empirical application

@@ -4,25 +4,26 @@
 Sensitivity Analysis for Parallel Trends
 ==========================================
 
-Flat pre-trends are a good sign in any difference-in-differences analysis,
-but they do not guarantee that parallel trends would have continued after
-treatment. The identifying assumption is fundamentally untestable.
+Passing a pre-trends test does not mean parallel trends holds. The test
+may simply lack the power to detect a violation that matters for your
+post-treatment estimates.
 
 The `Rambachan and Roth (2023) <https://academic.oup.com/restud/article/90/5/2555/7039335>`_
-sensitivity analysis reframes the problem. Rather than asking whether parallel
-trends holds, it asks how large violations would need to be to overturn the
-conclusions. This approach bounds the magnitude of possible violations and
-reports confidence intervals that remain valid under those bounds.
+sensitivity analysis skips the binary pass/fail question and instead asks
+how large a violation of parallel trends would need to be before the
+conclusions change. You describe what "plausible" violations look like
+(smooth deviations from trend, or deviations bounded relative to the
+pre-treatment coefficients), and the method returns confidence intervals
+that remain valid across that entire class.
 
-This example demonstrates sensitivity analysis using state-level data on health
-insurance coverage following Medicaid expansion under the Affordable Care Act.
+Below, we walk through this using state-level data on health insurance
+coverage following Medicaid expansion under the Affordable Care Act.
 
 .. seealso::
 
-   :ref:`Introduction to DiD <causal_inference>` for background on the
-   parallel trends assumption and potential outcomes framework, and
    :ref:`Honest DiD Sensitivity Analysis <background-didhonest>` for the
-   theoretical foundations behind this estimator.
+   smoothness and relative magnitudes restriction sets, and the partial
+   identification framework underlying the confidence intervals.
 
 
 Why sensitivity analysis matters
@@ -65,11 +66,12 @@ states that never expanded during this period serve as the control group.
 
 Treatment timing is likely not random. States that expanded early tended to
 have different political environments, demographic compositions, and
-pre-existing insurance coverage trends than late or never-expanding states.
-This is precisely the setting where sensitivity analysis is valuable.
-Even if pre-trends look flat, the identifying assumption that trends would
-have remained parallel is untestable, and treatment timing may correlate
-with unobserved factors that also influence outcomes.
+pre-existing coverage trends than late or never-expanding states.
+
+Even if pre-trends look flat, the assumption that trends would have remained
+parallel is untestable, and treatment timing may correlate with unobserved
+factors that also influence outcomes. This makes it a good setting for
+sensitivity analysis.
 
 
 Loading data

@@ -57,7 +57,7 @@ Treatment is an absorbing state, so once treated, units remain treated. Let :mat
 period in which unit :math:`i` is treated. For qualified units, :math:`G_i = S_i`. For non-qualified
 units, :math:`G_i = \infty` since they are never treated regardless of their group's enabling status.
 
-Using the potential outcomes framework, let :math:`Y_{i,t}(g)` denote the potential outcome for unit
+Let :math:`Y_{i,t}(g)` denote the potential outcome for unit
 :math:`i` at time :math:`t` if first treated in period :math:`g`, and :math:`Y_{i,t}(\infty)` denote
 the never-treated potential outcome. The observed outcome combines these based on treatment status.
 
@@ -151,8 +151,9 @@ the difference-in-trends is stable.
 Why Standard Approaches Fail
 ----------------------------
 
-Several common empirical strategies for DDD analysis can lead to biased or misleading results.
-Understanding these pitfalls helps motivate the more careful estimation approaches described below.
+The negative weighting problems of standard TWFE in binary staggered designs
+(:ref:`background-did`) extend to the DDD setting and interact with additional complications
+from the eligibility dimension.
 
 Three-Way Fixed Effects Regressions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -400,6 +401,10 @@ never-treated comparison group. This is particularly valuable when the never-tre
 Asymptotic Properties and Inference
 -----------------------------------
 
+The DR DDD estimators have influence function representations that support standard
+asymptotic inference. This section covers the asymptotic distribution and the multiplier
+bootstrap for simultaneous confidence bands.
+
 Asymptotic Normality
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -485,8 +490,8 @@ Under the identification assumptions, pre-treatment coefficients should be stati
 indistinguishable from zero, while post-treatment coefficients reveal the dynamic treatment effects.
 
 When pre-treatment coefficients suggest potential violations, researchers can apply sensitivity analysis
-methods following Rambachan and Roth (2023) to assess robustness of conclusions to departures from parallel
-trends.
+methods following `Rambachan and Roth (2023) <https://doi.org/10.1093/restud/rdad018>`_ to assess robustness
+of conclusions to departures from parallel trends.
 
 .. note::
 

@@ -4,27 +4,23 @@
 Triple Difference-in-Differences
 =======================================
 
-Some policies create a natural within-group comparison. A parental leave
-mandate affects women but not men. A minimum wage increase hits hourly workers
-but not salaried employees. An education reform applies to public schools but
-not private ones.
-
-Triple difference-in-differences (DDD) exploits this structure. Beyond comparing
-treated and control groups before and after policy change, it adds a third
-comparison between eligible and ineligible subgroups within each group. This
-additional dimension of variation strengthens causal identification when
-parallel trends across groups alone might not hold.
+When a policy only affects part of the population within each group, the
+unaffected subgroup serves as a built-in control that standard DiD ignores.
+Triple difference-in-differences (DDD) uses this within-group contrast on
+top of the usual before-after and treated-control comparisons. Parallel
+trends between treated and control groups may be hard to defend on its own,
+but requiring the *gap* between eligible and ineligible subgroups to trend
+similarly across groups is often a much milder assumption.
 
 The `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
-estimator provides doubly robust inference for DDD designs, supporting both
-two-period and staggered adoption settings.
+estimator brings doubly robust estimation to DDD, covering both two-period
+and staggered settings with flexible covariate adjustment.
 
 .. seealso::
 
-   :ref:`Introduction to DiD <causal_inference>` for background on the
-   parallel trends assumption and potential outcomes framework, and
    :ref:`Triple Difference-in-Differences <background-tripledid>` for the
-   theoretical foundations behind this estimator.
+   DDD conditional parallel trends assumption, the multiply robust
+   estimands, and staggered adoption extensions.
 
 
 Three dimensions of variation

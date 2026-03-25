@@ -4,20 +4,25 @@
 Nonparametric Instrumental Variables Estimation
 ===============================================
 
-The :func:`~moderndid.npiv` function estimates a fully nonparametric
-instrumental variables model using B-spline sieves and two-stage least
-squares, with uniform confidence bands that convey sampling uncertainty
-about the entire estimated curve. It implements the methodology of
-`Chen, Christensen, and Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_.
-Within **ModernDiD**, it also serves as the estimation engine behind the
+Parametric IV commits to a functional form before seeing the data. If the
+true relationship is nonlinear in a way the specification misses, the
+estimates will be wrong across the entire support, not just at the
+extremes. The
+`Chen, Christensen, and Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_
+estimator lets the data determine the shape by approximating the unknown
+function with B-spline sieves whose complexity is chosen adaptively. The
+output is a curve with uniform confidence bands rather than a table of
+pointwise intervals.
+
+Within **ModernDiD**, this estimator also serves as the engine behind the
 nonparametric (CCK) dose-response estimator in :func:`~moderndid.cont_did`
 (see :ref:`Continuous DiD <example_cont_did>`).
 
 .. seealso::
 
    :ref:`Nonparametric Instrumental Variables <background-npiv>` for the
-   theoretical foundations, and :ref:`Continuous DiD <example_cont_did>` for
-   using NPIV within a difference-in-differences design.
+   sieve TSLS framework, data-driven dimension selection, and minimax rate
+   results.
 
 
 Empirical application

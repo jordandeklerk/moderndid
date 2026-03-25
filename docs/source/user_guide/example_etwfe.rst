@@ -4,19 +4,20 @@
 Extended Two-Way Fixed Effects (ETWFE)
 ===========================================
 
-Conventional TWFE regression with a single treatment indicator can produce
-misleading estimates when treatment effects vary across cohorts or over time.
-The Extended TWFE approach resolves this by saturating the model with
-cohort-by-time interactions so that each (cohort, period) cell gets its own
-treatment effect coefficient. The resulting estimates are free of the negative
-weighting problem and are numerically identical to a cohort imputation
-procedure.
+There is nothing wrong with TWFE for staggered DiD as long as the model
+is flexible enough. The Extended TWFE approach adds cohort-by-time
+interaction dummies so that each (cohort, period) cell gets its own
+treatment effect coefficient. The estimates are numerically identical to a
+cohort imputation procedure and to random effects. The issue with
+conventional TWFE was never the estimator; it was the constant-effect
+specification that forced all those heterogeneous effects into one number.
 
 .. seealso::
 
-   :ref:`Extended TWFE background <background-etwfe>` for the theoretical
-   foundations, and :ref:`Staggered DiD <example_staggered_did>` for the
-   Callaway and Sant'Anna estimator applied to the same data.
+   :ref:`Extended TWFE background <background-etwfe>` for the equivalence
+   proofs and nonlinear extensions, and :ref:`Staggered DiD
+   <example_staggered_did>` for the Callaway and Sant'Anna estimator
+   applied to the same data.
 
 
 Empirical application

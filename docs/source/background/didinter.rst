@@ -60,7 +60,10 @@ comparison groups for those whose treatment has changed.
 Design Requirements
 -------------------
 
-The DID estimators apply to any design satisfying a minimal requirement on treatment variation.
+Not every panel with a time-varying treatment fits this framework. Two restrictions on the
+treatment process are needed, both mild in practice. The first ensures that valid comparison
+groups exist; the second rules out treatment paths that cross in a way that would invalidate
+the comparisons.
 
 .. admonition:: Design Restriction 1 (Common Baseline Treatment)
 
@@ -73,11 +76,22 @@ first change treatment. The restriction rules out designs where treatment is ext
 (all groups change in period 2) or where there is a universal treatment change affecting all groups
 simultaneously.
 
-Several common designs automatically satisfy this requirement. Binary staggered designs where all groups
-start untreated and some eventually receive treatment satisfy the restriction. Designs with group-specific
-treatment intensities where all groups start at zero also satisfy it. More complex designs with non-zero
-baseline treatments and bidirectional treatment changes can also satisfy the requirement as long as some
-groups share the same initial treatment level.
+Several common designs automatically satisfy this requirement.
+
+- **Binary staggered** (:math:`D_{g,t} = \mathbf{1}\{t \geq F_g\}`) where all groups start
+  untreated and some eventually receive treatment.
+- **Binary with exit** (:math:`D_{g,t} = \mathbf{1}\{E_g \geq t \geq F_g\}`) where groups can
+  join and then leave treatment. A special case is one-shot treatment where groups are treated
+  for a single period.
+- **Staggered with group-specific intensities** (:math:`D_{g,t} = I_g \mathbf{1}\{t \geq F_g\}`)
+  where all groups start at zero but treatment doses vary.
+- **Zero baseline** (:math:`D_{g,1} = 0` for all :math:`g`) which nests the previous three as
+  special cases.
+- **Discrete baseline** (:math:`D_{g,1} \in \{0, 1, \ldots, K\}`) with unrestricted treatment
+  paths. This allows non-zero initial treatment levels.
+
+The estimators are inapplicable only when treatment is extremely non-persistent (all groups
+change in period 2) or when there is a universal treatment change affecting all groups at once.
 
 A second design restriction rules out cases where groups cross their baseline treatment in both
 directions.
@@ -132,11 +146,18 @@ have been observed if the group had maintained its period-one treatment througho
 requires that this counterfactual outcome evolves in parallel across groups with the same baseline
 treatment.
 
-This assumption is weaker than requiring parallel trends across all groups regardless of their baseline
-treatment. Comparing groups with different baseline treatments would require ruling out both dynamic
-effects and time-varying treatment effects, which is typically implausible. By restricting comparisons to
-groups with the same baseline treatment, this identification strategy accommodates both dynamic effects
-and heterogeneous effects across groups.
+This assumption is weaker than requiring parallel trends across all groups regardless of their
+baseline treatment. To see why, consider groups with a binary treatment where some are initially
+treated (:math:`D_{g,1} = 1`) and some are initially untreated (:math:`D_{g,1} = 0`).
+Requiring parallel trends for the status-quo outcome across both types would imply that in
+initially-treated groups, the effect of being treated for :math:`t` periods equals the effect
+of being treated for :math:`t-1` periods. This rules out both dynamic and time-varying effects,
+which is rarely plausible.
+
+By restricting comparisons to groups with the same baseline treatment, the identification
+strategy only requires that the *incremental* effect of one additional treatment period does
+not vary across groups with the same baseline. This is compatible with dynamic and
+time-varying effects.
 
 Parameters of Interest
 ----------------------
@@ -148,8 +169,10 @@ treatment.
 Actual-Versus-Status-Quo Effects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For a group :math:`g` whose treatment first changes at period :math:`F_g`, the AVSQ effect at
-:math:`\ell` periods after :math:`F_g - 1` is
+The basic building block is the effect of a group's actual treatment path relative to the
+counterfactual where treatment had stayed at its period-one level. For a group :math:`g`
+whose treatment first changes at period :math:`F_g`, the AVSQ effect at :math:`\ell` periods
+after :math:`F_g - 1` is
 
 .. math::
 
@@ -160,10 +183,21 @@ This parameter captures the expected difference between the group's actual outco
 outcome at period :math:`F_g - 1 + \ell`. When :math:`\ell = 1`, this is the effect one period after
 the first treatment change. When :math:`\ell = 2`, it is the effect two periods after, and so on.
 
-The AVSQ effect captures the combined impact of all treatment changes from period :math:`F_g` through
-period :math:`F_g - 1 + \ell`. In simple designs where treatment changes only once, interpretation is
-straightforward. In more complex designs where treatment continues to change, the AVSQ effect captures
-the cumulative impact of the entire treatment trajectory relative to the status quo.
+The AVSQ effect captures the combined impact of all treatment changes from period :math:`F_g`
+through period :math:`F_g - 1 + \ell`. In binary staggered designs, :math:`\delta_{g,\ell}`
+is simply the effect of having been treated rather than untreated for :math:`\ell` periods.
+
+In more complex designs where treatment continues to change, :math:`\delta_{g,\ell}` is harder
+to interpret because the magnitude and timing of increments may vary across groups. If one
+group receives treatment dose 4 at :math:`F_g` and then returns to 0, while another receives
+dose 2 and then 3, their :math:`\delta_{g,2}` values reflect very different trajectories. Still, under Design Restriction 2,
+:math:`\delta_{g,\ell}` is always the effect of having been exposed to a weakly higher (or
+weakly lower) treatment for :math:`\ell` periods.
+
+When the number of distinct treatment trajectories is small relative to the number of groups,
+one can estimate trajectory-specific versions of the effects, yielding estimates for the
+average effect of each specific treatment path. This may produce more interpretable results
+than aggregating across all trajectories.
 
 Event-Study Effects
 ~~~~~~~~~~~~~~~~~~~
@@ -212,7 +246,9 @@ causal effect :math:`\delta_{g,\ell}`.
 Event-Study Estimator
 ~~~~~~~~~~~~~~~~~~~~~
 
-Aggregating across groups yields the event-study estimator
+Individual group effects are often too numerous to interpret directly. Averaging the
+group-specific :math:`\text{DID}_{g,\ell}` across all groups observed at horizon
+:math:`\ell` gives the event-study estimator
 
 .. math::
 
@@ -221,6 +257,20 @@ Aggregating across groups yields the event-study estimator
 Under assumptions 1 and 2, this estimator is unbiased for the event-study effect :math:`\delta_\ell`.
 The estimator can be computed for any :math:`\ell` from 1 up to the maximum horizon where valid
 comparison groups exist.
+
+Connection to Callaway and Sant'Anna (2021)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When all groups have the same period-one treatment (Design 4, including all of Designs 1-3),
+:math:`\text{DID}_\ell` is numerically equivalent to binarizing the treatment (defining it as an
+indicator for whether the group's treatment has ever changed) and then computing the
+`Callaway and Sant'Anna (2021) <https://doi.org/10.1016/j.jeconom.2020.12.001>`_ event-study
+estimator with this binarized treatment. When groups have different period-one treatments, the
+two estimators differ because Callaway and Sant'Anna compare switchers and non-switchers
+regardless of their baseline treatment, while
+:math:`\text{DID}_\ell` restricts comparisons to groups with the same baseline. This
+restriction is what allows :math:`\text{DID}_\ell` to remain valid when lagged treatments
+affect outcomes.
 
 Normalized Effects
 ------------------
@@ -251,7 +301,12 @@ The normalized event-study effect is a weighted average across groups
 
    \delta_\ell^n = \frac{\delta_\ell}{\delta_\ell^D},
 
-where :math:`\delta_\ell^D = \frac{1}{N_\ell} \sum_{g: F_g - 1 + \ell \leq T_g} |\delta_{g,\ell}^D|`.
+where
+
+.. math::
+
+   \delta_\ell^D = \frac{1}{N_\ell} \sum_{g: F_g - 1 + \ell \leq T_g}
+   |\delta_{g,\ell}^D|.
 
 Interpretation as Average of Lag Effects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -302,10 +357,14 @@ This parameter represents the average benefit per unit of treatment administered
 quo. If the treatment cost per unit is :math:`c`, then the treatment changes were beneficial in monetary
 terms if :math:`\delta > c`.
 
-The parameter :math:`\delta` has an interpretation as an average total effect per unit of treatment. The
-numerator sums all the outcome gains (or losses) from treatment changes across all groups and time
-periods. The denominator sums all the incremental treatment doses administered. The ratio gives the
-average return per unit of treatment, accounting for both immediate and delayed effects.
+The parameter :math:`\delta` has an interpretation as an average total effect per unit of
+treatment. Each treatment increment at period :math:`F_g + k` produces effects not only at
+that period but also at all subsequent periods up to :math:`T_g`. The numerator of
+:math:`\delta` sums these total effects across all increments and all groups. The denominator
+sums all the incremental treatment doses administered. The ratio gives the average total
+return per unit of treatment, accounting for both immediate and delayed effects. One can
+divide :math:`\delta` by the average number of periods over which each dose's effect is
+cumulated to obtain an average per-period, per-dose effect.
 
 The cost-benefit parameter connects to the event-study effects through the relation
 
@@ -340,16 +399,17 @@ unbiased.
 Why Standard Approaches Fail
 ----------------------------
 
-The :math:`\text{DID}_\ell` and :math:`\text{DID}_\ell^n` estimators provide valid inference where
-several commonly-used approaches can produce misleading results.
+Beyond the well-known negative weighting problems of TWFE in binary staggered designs (see
+:ref:`background-did`), additional issues arise when treatment varies in intensity and past
+treatments affect current outcomes.
 
 Two-Way Fixed Effects with Treatment Intensity
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In designs without variation in treatment timing, researchers often estimate TWFE regressions with
-treatment intensity interacted with period fixed effects. While intuitive, these regressions can assign
-negative weights to some treatment effects. The coefficient :math:`\hat{\beta}_{fe,\ell}` from such
-regressions identifies
+treatment intensity interacted with period fixed effects. While intuitive, these regressions produce weights on individual group effects that depend on
+each group's deviation from the mean intensity. The coefficient
+:math:`\hat{\beta}_{fe,\ell}` from such regressions identifies
 
 .. math::
 
@@ -357,36 +417,45 @@ regressions identifies
    \frac{\delta_{g,\ell}}{I_g},
 
 where :math:`I_g` is group :math:`g`'s treatment intensity and the weights :math:`w_g^{fe}` can be
-negative for groups with intensity below the mean. When weights are negative, the estimator can have the
-wrong sign even when all underlying effects are positive.
+negative for groups with intensity below the mean. Groups below the mean intensity are
+effectively used as comparisons, and their effects enter with the opposite sign.
 
 Local-Projection Panel Regressions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Local-projection regressions of :math:`Y_{g,t-1+\ell}` on :math:`D_{g,t}` with group and period fixed
-effects suffer from multiple problems. First, the coefficient :math:`\hat{\beta}_{lp,\ell}` is
-contaminated by effects of other exposure lengths. Effects supposed to measure :math:`\ell` periods of
-exposure are actually mixtures of effects from different exposure durations.
+Local-projection regressions of :math:`Y_{g,t-1+\ell}` on :math:`D_{g,t}` with group and period
+fixed effects suffer from three distinct problems. First, :math:`\hat{\beta}_{lp,\ell}` is
+contaminated by effects of other exposure lengths. What is supposed to measure the effect of
+:math:`\ell` periods of exposure is actually a mixture of effects from different durations,
+because some groups with :math:`D_{g,t} = 1` started treatment before period :math:`t` (so
+the regression captures more than :math:`\ell` periods of exposure for them), while some groups
+with :math:`D_{g,t} = 0` start treatment between :math:`t+1` and :math:`t-1+\ell` (so the
+regression captures less than :math:`\ell` periods for those "controls").
 
-Second, some weights in the decomposition of :math:`\hat{\beta}_{lp,\ell}` are always negative for
-:math:`\ell \geq 2` in binary staggered designs. Third, and perhaps most strikingly, the weights can sum
-to less than one or even to a negative number. This means that even with perfectly constant treatment
-effects, local-projection coefficients can be biased toward zero or even have the wrong sign. The
-regression is fundamentally misspecified because it treats groups with :math:`D_{g,t} = 0` as untreated
-controls when some of them may become treated before period :math:`t - 1 + \ell`.
+Second, for :math:`\ell \geq 2` in binary staggered designs, some weights are always negative.
+
+Third, the weights can sum to less than one or even to a negative number. In the banking
+deregulation application of `Favara and Imbs (2015) <https://doi.org/10.1257/aer.20121416>`_, the weights on
+:math:`\hat{\beta}_{lp,4}` sum to :math:`-0.018`, meaning that even with perfectly constant
+treatment effects, the coefficient would have the wrong sign. This is a fundamental
+misspecification, not a finite-sample issue.
 
 Distributed-Lag Regressions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Distributed-lag regressions of :math:`Y_{g,t}` on the current treatment and its first :math:`K` lags with
 group and period fixed effects also face problems. The coefficient on the :math:`l`-th lag estimates a
-weighted sum where weights may be negative. Additionally, even under the strong assumption that the
-functional form is correctly specified (only the first :math:`K` lags matter and they enter additively),
-each coefficient is contaminated by effects of other lags whenever treatment effects are heterogeneous
-across groups or time periods.
+weighted sum where weights may be negative. Even under the strong assumption that the
+functional form is correctly specified (only the first :math:`K` lags matter and they enter
+additively), each coefficient is contaminated by effects of other lags whenever treatment
+effects are heterogeneous across groups or time periods.
 
 Asymptotic Properties and Inference
 -----------------------------------
+
+The DID estimators have well-behaved large-sample properties that support standard inference
+tools. This section covers the asymptotic distribution, variance estimation, and confidence
+interval construction.
 
 Asymptotic Normality
 ~~~~~~~~~~~~~~~~~~~~
@@ -421,9 +490,14 @@ Extensions
 
 Several extensions to the basic framework are available.
 
-**Covariates.** The DID estimators accommodate time-varying covariates by replacing the standard
-parallel trends assumption with a version that allows differential trends fully explained by covariate
-changes. The estimators adjust outcomes for covariate effects before computing the comparisons.
+**Covariates.** The DID estimators accommodate time-varying covariates :math:`X_{g,t}` by replacing
+the equality in Assumption 2 with a version requiring that the status-quo outcome evolution, after
+removing the component explained by covariate changes :math:`(X_{g,t} - X_{g,t-1})'\theta_{D_{g,1}}`,
+be parallel across groups with the same baseline treatment. The coefficient :math:`\theta_d` is
+estimated from the subsample of groups with baseline treatment :math:`d` that have not yet changed
+treatment, and outcomes are adjusted before computing the DID comparisons. Time-invariant covariates
+:math:`X_g` can be handled by defining :math:`X_{g,t} = X_g \times t`, which reduces the
+assumption to a conditional parallel trends with a linear functional form.
 
 **Group-Specific Trends.** When units may have different underlying trends, the DID estimators can be
 extended to allow for group-specific linear trends, estimated from the pre-treatment period.
