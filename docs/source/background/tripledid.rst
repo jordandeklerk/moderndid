@@ -401,6 +401,10 @@ never-treated comparison group. This is particularly valuable when the never-tre
 Asymptotic Properties and Inference
 -----------------------------------
 
+The DR DDD estimators have influence function representations that support standard
+asymptotic inference. This section covers the asymptotic distribution and the multiplier
+bootstrap for simultaneous confidence bands.
+
 Asymptotic Normality
 ~~~~~~~~~~~~~~~~~~~~
 

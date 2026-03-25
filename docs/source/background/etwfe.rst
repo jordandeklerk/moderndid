@@ -55,7 +55,10 @@ estimation but useful for computing aggregated effects and their standard errors
 Identifying Assumptions
 -----------------------
 
-Identification of the ATTs relies on five assumptions.
+The ATT parameters are identified under five assumptions. The first three (SUTVA, NBC, NA) are
+standard in the staggered DiD literature. The fourth (CPT) is the core parallel trends
+restriction. The fifth (LIN) imposes linearity in the conditional expectations, which is
+without loss of generality when covariates are discrete.
 
 .. admonition:: Assumption SUTVA (Stable Unit Treatment Value)
 
@@ -552,6 +555,10 @@ proper accounting for sampling variation in the cohort-mean covariates and cohor
 
 Additional Considerations
 -------------------------
+
+The development above assumes balanced panels with time-constant covariates, which is the
+cleanest setting for the POLS-TWFE equivalence. Several practical complications can break or
+modify this equivalence.
 
 Time-Varying Covariates
 ~~~~~~~~~~~~~~~~~~~~~~~

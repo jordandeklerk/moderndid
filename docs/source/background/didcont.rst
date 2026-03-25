@@ -276,6 +276,10 @@ treatment effects of dose :math:`d` for the entire population.
 Identification Results
 ----------------------
 
+Which parameters can be recovered from the data depends on the strength of the parallel
+trends assumption. Standard PT identifies level effects but not causal responses. The stronger
+SPT assumption identifies both.
+
 Identification Under Parallel Trends
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -701,6 +705,9 @@ values to account for potential bias.
 
 Summary Parameter Estimation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The full dose-response curve is informative but can be hard to summarize. Two scalar summary
+parameters distill the curve into single numbers that are easy to report and compare.
 
 Binarized DiD for :math:`ATT^o`
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

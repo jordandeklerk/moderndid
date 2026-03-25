@@ -27,8 +27,9 @@ and adaptive (contract at the minimax rate).
 The NPIV Model
 --------------
 
-The structural function :math:`h_0` is identified by the conditional moment
-restriction
+The starting point is a conditional moment restriction that links the outcome, the
+endogenous regressors, and the instruments without specifying a functional form for the
+structural relationship. The structural function :math:`h_0` satisfies
 
 .. math::
 
@@ -60,7 +61,9 @@ least squares applied directly to :math:`X` would be inconsistent for
 Sieve TSLS Estimation
 ---------------------
 
-The function :math:`h_0` is approximated by a linear combination of :math:`J`
+Given the conditional moment restriction, :math:`h_0` is estimated by projecting onto a
+finite-dimensional sieve space and applying two-stage least squares with basis functions of
+the instruments. The function :math:`h_0` is approximated by a linear combination of :math:`J`
 B-spline basis functions
 
 .. math::
@@ -110,7 +113,8 @@ B-spline Basis Choice
 Of the many sieve bases available (polynomial splines, wavelets, Fourier
 series, various polynomials), only B-splines and Cohen-Daubechies-Vial (CDV)
 wavelets have been shown to achieve the optimal minimax sup-norm convergence
-rates under a suitable choice of :math:`J` (Chen and Christensen, 2018). Both
+rates under a suitable choice of :math:`J`
+(`Chen and Christensen, 2018 <https://doi.org/10.3982/ECTA12560>`_). Both
 bases share a bounded Lebesgue constant, meaning the
 :math:`L^\infty` norm of the :math:`L^2` projection onto the sieve space
 remains bounded as :math:`J` grows. Bases without this property, such as
@@ -185,6 +189,11 @@ researcher to know which regime applies.
 Data-Driven Sieve Dimension Selection
 -------------------------------------
 
+The estimator's performance hinges on the sieve dimension :math:`J`. Too small and the
+approximation bias dominates; too large and the estimate is noisy. This section describes
+a Lepski-type procedure that selects :math:`J` from the data, adapting to the unknown
+smoothness of :math:`h_0` and the degree of ill-posedness.
+
 Why Cross Validation Fails with Endogeneity
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -224,7 +233,9 @@ endogeneity.
 Step 1: Maximum Feasible Dimension
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The search grid is determined by
+The first step determines how many basis functions the data can support before the estimator
+becomes too noisy. This upper bound depends on the sample size and the empirical
+ill-posedness. The search grid is determined by
 
 .. math::
 
@@ -344,8 +355,8 @@ fine grid of evaluation points, since the functions involved are continuous in
 other values, as long as :math:`\hat{\mathcal{J}}` contains several candidate
 dimensions to search over. The constant 1.1 in the Lepski test can be replaced
 by any constant larger than 1. The value 1.1 performs well in simulations and
-is consistent with other implementations of Lepski's method (Chernozhukov,
-Chetverikov, and Kato, 2014).
+is consistent with other implementations of Lepski's method
+(Chernozhukov, Chetverikov, and Kato, 2014).
 
 .. tip::
 
@@ -402,6 +413,13 @@ and in the severely ill-posed regime it is
 
 Uniform Confidence Bands
 ------------------------
+
+Point estimates of :math:`h_0` are useful only if accompanied by a measure of uncertainty.
+Pointwise confidence intervals (one at each evaluation point) understate uncertainty because
+they do not account for the multiplicity of simultaneous statements. Uniform confidence bands
+cover the entire function with prescribed probability, giving a more honest picture. Two
+approaches are available, depending on whether the sieve dimension was chosen by the
+data-driven procedure or fixed in advance.
 
 Variance Estimation and the Multiplier Bootstrap
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -651,7 +669,7 @@ When :math:`h_0` is assumed to take the additive form
 
 where :math:`c_0` is an intercept and the component functions :math:`h_{i0}`
 are suitably normalized for identifiability, the curse of dimensionality can be
-circumvented. `Stone (1985) <https://doi.org/10.1214/aos/1176349548>`_ showed that imposing additivity in nonparametric
+circumvented. Stone (1985) showed that imposing additivity in nonparametric
 regression yields estimators that achieve the same optimal rate for general
 :math:`d` as for :math:`d = 1`.
 
@@ -689,7 +707,7 @@ Chen, 2003)
 where :math:`x = (x_1', x_2')'`, :math:`h_{10}` is an unknown function of the
 :math:`d_1`-dimensional subvector :math:`x_1`, and :math:`\beta_0` is an
 unknown finite-dimensional parameter vector. When :math:`X` is exogenous, this
-reduces to the partially linear regression model of `Robinson (1988) <https://doi.org/10.2307/1912705>`_.
+reduces to the partially linear regression model of Robinson (1988).
 
 The basis vector takes the form
 :math:`\psi^J(x) = (\psi_1^J(x_1)', x_2')'`, and the TSLS estimator jointly

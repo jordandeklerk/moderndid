@@ -390,6 +390,11 @@ specified non-negative weights that directly reflect the policy questions of int
 Inference and Pre-Treatment Testing
 -----------------------------------
 
+With group-time ATTs and their aggregations in hand, the remaining question is how to
+quantify uncertainty. The DR estimators admit influence function representations that support
+both pointwise and simultaneous inference, and the pre-treatment estimates provide a built-in
+diagnostic for the identifying assumptions.
+
 Asymptotic Properties
 ~~~~~~~~~~~~~~~~~~~~~
 

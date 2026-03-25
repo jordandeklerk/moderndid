@@ -60,7 +60,10 @@ comparison groups for those whose treatment has changed.
 Design Requirements
 -------------------
 
-The DID estimators apply to any design satisfying a minimal requirement on treatment variation.
+Not every panel with a time-varying treatment fits this framework. Two restrictions on the
+treatment process are needed, both mild in practice. The first ensures that valid comparison
+groups exist; the second rules out treatment paths that cross in a way that would invalidate
+the comparisons.
 
 .. admonition:: Design Restriction 1 (Common Baseline Treatment)
 
@@ -166,8 +169,10 @@ treatment.
 Actual-Versus-Status-Quo Effects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For a group :math:`g` whose treatment first changes at period :math:`F_g`, the AVSQ effect at
-:math:`\ell` periods after :math:`F_g - 1` is
+The basic building block is the effect of a group's actual treatment path relative to the
+counterfactual where treatment had stayed at its period-one level. For a group :math:`g`
+whose treatment first changes at period :math:`F_g`, the AVSQ effect at :math:`\ell` periods
+after :math:`F_g - 1` is
 
 .. math::
 
@@ -241,7 +246,9 @@ causal effect :math:`\delta_{g,\ell}`.
 Event-Study Estimator
 ~~~~~~~~~~~~~~~~~~~~~
 
-Aggregating across groups yields the event-study estimator
+Individual group effects are often too numerous to interpret directly. Averaging the
+group-specific :math:`\text{DID}_{g,\ell}` across all groups observed at horizon
+:math:`\ell` gives the event-study estimator
 
 .. math::
 
@@ -445,6 +452,10 @@ effects are heterogeneous across groups or time periods.
 
 Asymptotic Properties and Inference
 -----------------------------------
+
+The DID estimators have well-behaved large-sample properties that support standard inference
+tools. This section covers the asymptotic distribution, variance estimation, and confidence
+interval construction.
 
 Asymptotic Normality
 ~~~~~~~~~~~~~~~~~~~~

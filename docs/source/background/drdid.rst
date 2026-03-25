@@ -203,14 +203,10 @@ for the treated group can be "harmless" in terms of identification when incorpor
 Semiparametric Efficiency Bounds
 --------------------------------
 
-Beyond consistency, an important question is how precisely we can estimate the ATT given a fixed sample size.
-Semiparametric efficiency theory provides a lower bound on the variance that any regular estimator can achieve.
-Estimators that attain this bound are said to be efficient, meaning they make optimal use of the available information.
-The efficiency bound depends on the data structure (panel versus repeated cross-sections) and provides guidance on
-which estimators to prefer.
-
-The paper derives the semiparametric efficiency bounds for the ATT under the DID framework. These bounds provide a
-benchmark against which any regular semiparametric DID estimator can be compared.
+The semiparametric efficiency bound is the lowest variance any regular estimator can achieve.
+Estimators that hit this bound make optimal use of the available information. The bound
+differs between panel and repeated cross-section designs, which has practical consequences for
+choosing between them.
 
 Panel Data Efficiency Bound
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
