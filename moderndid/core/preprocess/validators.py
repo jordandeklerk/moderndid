@@ -7,7 +7,14 @@ import polars as pl
 
 from ..dataframe import DataFrame, to_polars
 from .base import BaseValidator
-from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDInterConfig, TwoPeriodDIDConfig
+from .config import (
+    BasePreprocessConfig,
+    ContDIDConfig,
+    DDDConfig,
+    DIDInterConfig,
+    DynBalancingConfig,
+    TwoPeriodDIDConfig,
+)
 from .models import ValidationResult
 from .utils import extract_vars_from_formula
 
@@ -630,6 +637,55 @@ class DDDPanelStructureValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
+class DynBalancingColumnValidator(BaseValidator):
+    """Dynamic balancing column validator."""
+
+    def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
+        """Validate data."""
+        if not isinstance(config, DynBalancingConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        df = to_polars(data)
+        errors = []
+        warnings = []
+        data_columns = df.columns
+
+        required_cols = {
+            "yname": config.yname,
+            "tname": config.tname,
+            "idname": config.idname,
+            "treatment_name": config.treatment_name,
+        }
+
+        for col_type, col_name in required_cols.items():
+            if col_name not in data_columns:
+                errors.append(f"{col_type}='{col_name}' not found in data.")
+
+        if config.clustervars:
+            for cv in config.clustervars:
+                if cv not in data_columns:
+                    errors.append(f"clustervars contains '{cv}' which is not in the dataset.")
+
+        if config.fixed_effects:
+            for fe in config.fixed_effects:
+                if fe not in data_columns:
+                    errors.append(f"fixed_effects contains '{fe}' which is not in the dataset.")
+
+        if config.xformla and config.xformla != "~1":
+            covariate_vars = extract_vars_from_formula(config.xformla)
+            for var in covariate_vars:
+                if var not in data_columns:
+                    errors.append(f"xformla contains '{var}' which is not in the dataset.")
+
+        if not errors:
+            for col_type in ["yname", "tname", "idname"]:
+                col_name = getattr(config, col_type)
+                if col_name in data_columns and not _is_numeric_dtype(df[col_name]):
+                    errors.append(f"{col_type}='{col_name}' is not numeric. Please convert it.")
+
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+
+
 class CompositeValidator(BaseValidator):
     """Composite validator."""
 
@@ -676,6 +732,11 @@ class CompositeValidator(BaseValidator):
                 DDDInvarianceValidator(),
                 DDDDataValidator(),
                 WeightValidator(),
+            ]
+
+        if config_type == "dyn_balancing":
+            return [
+                DynBalancingColumnValidator(),
             ]
 
         common_validators = [

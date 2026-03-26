@@ -13,11 +13,12 @@ from .config import (
     DDDConfig,
     DIDConfig,
     DIDInterConfig,
+    DynBalancingConfig,
     EtwfeConfig,
     TwoPeriodDIDConfig,
 )
 from .constants import WEIGHTS_COLUMN
-from .models import ContDIDData, DDDData, DIDData, DIDInterData, EtwfeData, TwoPeriodDIDData
+from .models import ContDIDData, DDDData, DIDData, DIDInterData, DynBalancingData, EtwfeData, TwoPeriodDIDData
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
 from .utils import extract_ddd_covariates, extract_vars_from_formula
@@ -72,6 +73,9 @@ class PreprocessDataBuilder:
         elif isinstance(config, DIDInterConfig):
             self._validator = CompositeValidator(config_type="didinter")
             self._transformer = DataTransformerPipeline.get_didinter_pipeline()
+        elif isinstance(config, DynBalancingConfig):
+            self._validator = CompositeValidator(config_type="dyn_balancing")
+            self._transformer = DataTransformerPipeline.get_dyn_balancing_pipeline()
         elif isinstance(config, DDDConfig):
             self._validator = CompositeValidator(config_type="ddd")
             self._transformer = DataTransformerPipeline.get_ddd_pipeline()
@@ -176,6 +180,9 @@ class PreprocessDataBuilder:
         if isinstance(self._config, TwoPeriodDIDConfig):
             return
 
+        if isinstance(self._config, DynBalancingConfig):
+            return
+
         if isinstance(self._config, DDDConfig):
             return
 
@@ -219,7 +226,7 @@ class PreprocessDataBuilder:
                 if NEVER_TREATED_VALUE in small_group_values and self._config.control_group.value == "nevertreated":
                     raise ValueError("Never treated group is too small, try setting control_group='notyettreated'")
 
-    def build(self) -> DIDData | ContDIDData | TwoPeriodDIDData | DIDInterData | DDDData:
+    def build(self) -> DIDData | ContDIDData | TwoPeriodDIDData | DIDInterData | DDDData | DynBalancingData:
         """Build the final preprocessed data object.
 
         Returns
@@ -237,6 +244,8 @@ class PreprocessDataBuilder:
 
         if isinstance(self._config, TwoPeriodDIDConfig):
             return self._build_two_period_did_data()
+        if isinstance(self._config, DynBalancingConfig):
+            return self._build_dyn_balancing_data()
         if isinstance(self._config, DDDConfig):
             return self._build_ddd_data()
         if isinstance(self._config, DIDInterConfig):
@@ -505,6 +514,60 @@ class PreprocessDataBuilder:
             weights=weights,
             cluster=cluster,
             config=self._config,
+        )
+
+    def _build_dyn_balancing_data(self) -> DynBalancingData:
+        """Build DynBalancingData object."""
+        if not isinstance(self._config, DynBalancingConfig):
+            raise ValueError("Config must be DynBalancingConfig")
+
+        df = self._data
+        cfg = self._config
+        time_periods = sorted(df[cfg.tname].unique().to_list())
+
+        pivoted = df.pivot(on=cfg.tname, index=cfg.idname, values=cfg.treatment_name).sort(cfg.idname)
+        time_cols = [str(t) for t in time_periods]
+        treatment_matrix = pivoted.select(time_cols).to_numpy().astype(float)
+
+        final_period = cfg.final_period if cfg.final_period is not None else int(time_periods[-1])
+        final_df = df.filter(pl.col(cfg.tname) == final_period).sort(cfg.idname)
+        outcome_vector = final_df[cfg.yname].to_numpy().astype(float)
+
+        all_cov_names = list(cfg.covariate_names)
+        dim_fe = 0
+        if cfg.fixed_effects:
+            for fe_col in cfg.fixed_effects:
+                fe_dummies = [c for c in df.columns if c.startswith(f"{fe_col}_")]
+                all_cov_names.extend(fe_dummies)
+                dim_fe += len(fe_dummies)
+
+        covariate_dict: dict[int, np.ndarray] = {}
+        if all_cov_names:
+            for period in time_periods:
+                period_df = df.filter(pl.col(cfg.tname) == period).sort(cfg.idname)
+                cols = all_cov_names[:-dim_fe] if dim_fe > 0 and period != final_period else all_cov_names
+                covariate_dict[period] = (
+                    period_df.select(cols).to_numpy().astype(float) if cols else np.empty((period_df.height, 0))
+                )
+
+        cluster = None
+        if cfg.clustervars:
+            cluster_col = cfg.clustervars[0]
+            cluster_vals = final_df[cluster_col].to_numpy()
+            _, cluster = np.unique(cluster_vals, return_inverse=True)
+
+        n_units = df[cfg.idname].n_unique()
+
+        return DynBalancingData(
+            panel=df,
+            outcome_vector=outcome_vector,
+            treatment_matrix=treatment_matrix,
+            covariate_dict=covariate_dict,
+            cluster=cluster,
+            n_units=n_units,
+            covariate_names=cfg.covariate_names,
+            config=cfg,
+            dim_fe=dim_fe,
         )
 
     def _create_time_invariant_data(self) -> pl.DataFrame:

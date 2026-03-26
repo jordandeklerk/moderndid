@@ -14,6 +14,7 @@ from .config import (
     DDDConfig,
     DIDConfig,
     DIDInterConfig,
+    DynBalancingConfig,
     EtwfeConfig,
     TwoPeriodDIDConfig,
 )
@@ -1142,6 +1143,128 @@ class EtwfeConfigUpdater:
         config.n_obs = len(df)
 
 
+class DynBalancingColumnSelector(BaseTransformer):
+    """Dynamic balancing column selector."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DynBalancingConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        cols_to_keep = [config.yname, config.tname, config.idname, config.treatment_name]
+
+        if config.xformla and config.xformla != "~1":
+            formula_vars = extract_vars_from_formula(config.xformla)
+            formula_vars = [v for v in formula_vars if v != config.yname]
+            cols_to_keep.extend(formula_vars)
+
+        if config.fixed_effects:
+            cols_to_keep.extend(config.fixed_effects)
+
+        if config.clustervars:
+            cols_to_keep.extend(config.clustervars)
+
+        cols_to_keep = list(dict.fromkeys(cols_to_keep))
+        cols_to_keep = [col for col in cols_to_keep if col is not None and col in df.columns]
+
+        return df.select(cols_to_keep)
+
+
+class DynBalancingPanelBalancer(BaseTransformer):
+    """Dynamic balancing panel balancer."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DynBalancingConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        df = df.drop_nulls(subset=[config.yname, config.treatment_name])
+
+        n_periods = df[config.tname].n_unique()
+        counts = df.group_by(config.idname).len()
+        complete_ids = counts.filter(pl.col("len") == n_periods)[config.idname].to_list()
+
+        n_dropped = df[config.idname].n_unique() - len(complete_ids)
+        if n_dropped > 0:
+            warnings.warn(f"Dropped {n_dropped} units that are not observed in all periods.", stacklevel=2)
+
+        df = df.filter(pl.col(config.idname).is_in(complete_ids))
+
+        if len(df) == 0:
+            raise ValueError("No observations remain after creating balanced panel.")
+
+        return df
+
+
+class DynBalancingFixedEffectDummifier(BaseTransformer):
+    """Dynamic balancing fixed effect dummifier."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DynBalancingConfig):
+            return to_polars(data)
+
+        if not config.fixed_effects:
+            return to_polars(data)
+
+        df = to_polars(data)
+
+        for fe_col in config.fixed_effects:
+            unique_vals = sorted(df[fe_col].unique().to_list())
+            for val in unique_vals[1:]:
+                col_name = f"{fe_col}_{val}"
+                df = df.with_columns((pl.col(fe_col) == val).cast(pl.Int32).alias(col_name))
+
+        return df
+
+
+class DynBalancingPeriodFilter(BaseTransformer):
+    """Dynamic balancing period filter."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DynBalancingConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        time_periods = np.sort(df[config.tname].unique().to_numpy())
+
+        if config.initial_period is not None:
+            df = df.filter(pl.col(config.tname) >= config.initial_period)
+        if config.final_period is not None:
+            df = df.filter(pl.col(config.tname) <= config.final_period)
+
+        time_periods = np.sort(df[config.tname].unique().to_numpy())
+        if config.final_period is None:
+            config.final_period = int(time_periods[-1])
+        if config.initial_period is None:
+            config.initial_period = int(time_periods[0])
+
+        return df
+
+
+class DynBalancingConfigUpdater:
+    """Dynamic balancing config updater."""
+
+    @staticmethod
+    def update(data: DataFrame, config: DynBalancingConfig) -> None:
+        """Update config with computed values."""
+        df = to_polars(data)
+
+        time_periods = np.sort(df[config.tname].unique().to_numpy())
+        config.time_periods = time_periods
+        config.n_periods = len(time_periods)
+        config.n_units = df[config.idname].n_unique()
+
+        cov_names: list[str] = []
+        if config.xformla and config.xformla != "~1":
+            formula_vars = extract_vars_from_formula(config.xformla)
+            cov_names = [v for v in formula_vars if v != config.yname]
+        config.covariate_names = cov_names
+
+
 class DataTransformerPipeline:
     """Data transformer pipeline."""
 
@@ -1245,13 +1368,27 @@ class DataTransformerPipeline:
             ]
         )
 
+    @staticmethod
+    def get_dyn_balancing_pipeline() -> "DataTransformerPipeline":
+        """Get dynamic balancing pipeline."""
+        return DataTransformerPipeline(
+            [
+                DynBalancingColumnSelector(),
+                DynBalancingPanelBalancer(),
+                DynBalancingFixedEffectDummifier(),
+                DynBalancingPeriodFilter(),
+            ]
+        )
+
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         df = to_polars(data)
         for transformer in self.transformers:
             df = transformer.transform(df, config)
 
-        if isinstance(config, DDDConfig):
+        if isinstance(config, DynBalancingConfig):
+            DynBalancingConfigUpdater.update(df, config)
+        elif isinstance(config, DDDConfig):
             DDDConfigUpdater.update(df, config)
         elif isinstance(config, DIDInterConfig):
             DIDInterConfigUpdater.update(df, config)
