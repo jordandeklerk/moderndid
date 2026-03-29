@@ -87,6 +87,9 @@ def compute_ipw_estimator(
     IPWResult
         Estimated potential outcome and variance.
 
+        - **mu_hat**: Estimated potential outcome under the target treatment history
+        - **variance**: Estimated variance of the estimator
+
     References
     ----------
 

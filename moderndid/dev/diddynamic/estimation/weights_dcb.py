@@ -129,8 +129,14 @@ def compute_dcb_estimator(
     Returns
     -------
     DCBResult
-        Estimated potential outcome, weight matrix, predictions,
-        valid-row indices, coefficients, and bias correction.
+        Estimated potential outcome under the target treatment history.
+
+        - **mu_hat**: Estimated potential outcome
+        - **gammas**: Weight matrix of shape ``(n, T)`` with per-period balancing weights
+        - **predictions**: Prediction matrix of shape ``(n, T)`` from the coefficient stage
+        - **not_nas**: Valid row indices per period
+        - **coef_t**: Coefficient vectors per period
+        - **bias**: Debiasing correction (``nan`` if debiasing was not requested)
 
     References
     ----------

@@ -1231,16 +1231,20 @@ class DynBalancingPeriodFilter(BaseTransformer):
         df = to_polars(data)
         time_periods = np.sort(df[config.tname].unique().to_numpy())
 
-        if config.initial_period is not None:
-            df = df.filter(pl.col(config.tname) >= config.initial_period)
-        if config.final_period is not None:
-            df = df.filter(pl.col(config.tname) <= config.final_period)
-
-        time_periods = np.sort(df[config.tname].unique().to_numpy())
         if config.final_period is None:
             config.final_period = int(time_periods[-1])
         if config.initial_period is None:
-            config.initial_period = int(time_periods[0])
+            config.initial_period = config.final_period - len(config.ds1) + 1
+
+        if config.final_period not in time_periods:
+            raise ValueError(f"final_period={config.final_period} is not in the data time periods.")
+        if config.initial_period not in time_periods:
+            raise ValueError(
+                f"initial_period={config.initial_period} is not in the data. "
+                "The treatment history may be too long for the available periods."
+            )
+
+        df = df.filter((pl.col(config.tname) >= config.initial_period) & (pl.col(config.tname) <= config.final_period))
 
         return df
 

@@ -94,8 +94,15 @@ def compute_coefficients(
     Returns
     -------
     CoefficientResult
-        Per-period coefficients, predictions, clean covariates, and
-        valid-row indices.
+        Per-period coefficient estimates and predictions.
+
+        - **coef_t**: Coefficient vectors per period, each with shape
+          ``(1 + p,)`` where the first element is the intercept
+        - **pred_t**: Prediction vectors per period on the clean covariate matrix
+        - **covariates_nonna**: Covariate matrices per period with NaN rows removed
+        - **not_nas**: Integer arrays of valid row indices per period
+        - **model_effect**: Last treatment coefficient per period (empty for
+          ``lasso_subsample``)
 
     References
     ----------

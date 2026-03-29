@@ -5,6 +5,7 @@ import polars as pl
 import pytest
 
 from moderndid.core.preprocess import DynBalancingConfig, PreprocessDataBuilder
+from moderndid.dev.diddynamic.container import DynBalancingResult
 
 
 def build_dyn_balancing(data, **config_kwargs):
@@ -16,6 +17,12 @@ def build_dyn_balancing(data, **config_kwargs):
 @pytest.fixture
 def rng():
     return np.random.default_rng(42)
+
+
+@pytest.fixture
+def base_config():
+    """Base config kwargs for preprocessing tests."""
+    return dict(yname="y", tname="time", idname="id", treatment_name="D", ds1=[0, 0, 1, 1], ds2=[0, 0, 0, 0])
 
 
 @pytest.fixture
@@ -85,3 +92,88 @@ def simple_qp_data(rng):
     d_col = np.array([1.0] * 10 + [0.0] * 10)
     coef = np.zeros(p + 1)
     return x_all, d_col, coef
+
+
+@pytest.fixture
+def estimator_panel():
+    """Panel with 60 units and 3 periods suitable for end-to-end estimation."""
+    rng = np.random.default_rng(99)
+    n_units = 60
+    n_periods = 3
+    ids = np.repeat(np.arange(n_units), n_periods)
+    times = np.tile(np.arange(1, n_periods + 1), n_units)
+    treatment = np.zeros(n_units * n_periods)
+    for i in range(n_units // 2):
+        treatment[i * n_periods + 1 : (i + 1) * n_periods] = 1.0
+    y = rng.standard_normal(n_units * n_periods) + 2.0 * treatment
+    x1 = rng.standard_normal(n_units * n_periods)
+    x2 = rng.standard_normal(n_units * n_periods)
+    cluster = np.repeat(np.arange(n_units) % 5, n_periods)
+
+    return pl.DataFrame(
+        {
+            "id": ids,
+            "time": times,
+            "y": y,
+            "D": treatment,
+            "X1": x1,
+            "X2": x2,
+            "cluster_var": cluster,
+        }
+    )
+
+
+@pytest.fixture
+def sample_result():
+    """DynBalancingResult for container and format tests."""
+    return DynBalancingResult(
+        att=2.345,
+        var_att=0.015129,
+        mu1=5.678,
+        mu2=3.333,
+        var_mu1=0.007921,
+        var_mu2=0.007569,
+        robust_quantile=3.84,
+        gaussian_quantile=1.96,
+        gammas={"ds1": np.ones(10) / 10, "ds2": np.ones(10) / 10},
+        coefficients={"ds1": np.array([0.1, 0.2]), "ds2": np.array([0.3, 0.4])},
+        imbalances={"ds1": 0.01, "ds2": 0.02},
+        estimation_params={
+            "n_obs": 500,
+            "n_units": 250,
+            "yname": "outcome",
+            "balancing": "dcb",
+            "method": "lasso_plain",
+            "ds1": [1, 1],
+            "ds2": [0, 0],
+            "alpha": 0.05,
+            "robust_quantile": True,
+        },
+    )
+
+
+@pytest.fixture
+def single_period_data(rng):
+    """Gammas, predictions, not_nas, and outcome for a single-period setup."""
+    n = 20
+    gammas = np.zeros((n, 1))
+    gammas[:10, 0] = 1.0 / 10
+    predictions = rng.standard_normal((n, 1))
+    not_nas = [np.arange(n)]
+    y_t = predictions[:, 0] + rng.standard_normal(n) * 0.1
+    return gammas, predictions, not_nas, y_t
+
+
+@pytest.fixture
+def multi_period_data(rng):
+    """Gammas, predictions, not_nas, and outcome for a three-period setup."""
+    n = 30
+    n_periods = 3
+    gammas = np.zeros((n, n_periods))
+    gammas[:15, 0] = 1.0 / 15
+    gammas[:15, 1] = 1.0 / 15
+    gammas[:15, 2] = 1.0 / 15
+    predictions = rng.standard_normal((n, n_periods))
+    not_nas = [np.arange(n)] * n_periods
+    y_t = predictions[:, -1] + rng.standard_normal(n) * 0.5
+    return gammas, predictions, not_nas, y_t
