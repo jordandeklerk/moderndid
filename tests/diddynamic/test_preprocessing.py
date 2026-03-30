@@ -189,6 +189,13 @@ def test_without_cluster_flag(simple_panel, base_config):
 
 def test_with_fixed_effects(simple_panel, base_config):
     result = build_dyn_balancing(simple_panel, **base_config, fixed_effects=["cluster_var"])
+    final_mat = result.covariate_dict[result.config.final_period]
+    assert final_mat.shape[1] > 0
+    assert result.dim_fe == 0
+
+
+def test_demeaned_fe_sets_dim_fe(simple_panel, base_config):
+    result = build_dyn_balancing(simple_panel, **base_config, fixed_effects=["cluster_var"], demeaned_fe=True)
     assert result.dim_fe > 0
 
 
@@ -196,6 +203,12 @@ def test_fe_dummies_in_covariate_dict(simple_panel, base_config):
     result = build_dyn_balancing(simple_panel, **base_config, fixed_effects=["cluster_var"])
     final_mat = result.covariate_dict[result.config.final_period]
     assert final_mat.shape[1] > 0
+
+
+def test_fe_dummies_in_all_periods(simple_panel, base_config):
+    result = build_dyn_balancing(simple_panel, **base_config, fixed_effects=["cluster_var"])
+    widths = {p: mat.shape[1] for p, mat in result.covariate_dict.items()}
+    assert len(set(widths.values())) == 1
 
 
 def test_auto_final_period(simple_panel, base_config):
@@ -331,7 +344,8 @@ def test_covariates_with_fe_and_cluster(simple_panel):
     )
     assert result.has_covariates
     assert result.has_cluster
-    assert result.dim_fe > 0
+    final_mat = result.covariate_dict[result.config.final_period]
+    assert final_mat.shape[1] > 2
 
 
 def test_constant_outcome_preserved():

@@ -1213,7 +1213,7 @@ class DynBalancingFixedEffectDummifier(BaseTransformer):
 
         for fe_col in config.fixed_effects:
             unique_vals = sorted(df[fe_col].unique().to_list())
-            for val in unique_vals[1:]:
+            for val in unique_vals:
                 col_name = f"{fe_col}_{val}"
                 df = df.with_columns((pl.col(fe_col) == val).cast(pl.Int32).alias(col_name))
 

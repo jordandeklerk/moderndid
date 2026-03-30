@@ -536,10 +536,13 @@ class PreprocessDataBuilder:
         all_cov_names = list(cfg.covariate_names)
         dim_fe = 0
         if cfg.fixed_effects:
+            n_fe_cols = 0
             for fe_col in cfg.fixed_effects:
                 fe_dummies = [c for c in df.columns if c.startswith(f"{fe_col}_")]
                 all_cov_names.extend(fe_dummies)
-                dim_fe += len(fe_dummies)
+                n_fe_cols += len(fe_dummies)
+            if cfg.demeaned_fe:
+                dim_fe = n_fe_cols
 
         covariate_dict: dict[int, np.ndarray] = {}
         if all_cov_names:
