@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from typing import NamedTuple
 
+import polars as pl
+
 from moderndid.core.maketables import build_single_coef_table
 from moderndid.core.result import extract_vcov_info
 
@@ -140,3 +142,24 @@ class DynBalancingResult(NamedTuple):
     def __maketables_default_stat_keys__(self) -> list[str]:
         """Default model-level stats to display in ETable."""
         return ["N", "se_type", "balancing"]
+
+
+class DynBalancingHistoryResult(NamedTuple):
+    r"""Container for treatment effects estimated over varying history lengths.
+
+    Stores a summary table of ATEs, variances, and critical values for
+    each treatment history length, plus the individual
+    :class:`DynBalancingResult` objects for per-lag diagnostics.
+
+    Attributes
+    ----------
+    summary : polars.DataFrame
+        One row per history length with columns ``period_length``,
+        ``att``, ``var_att``, ``mu1``, ``var_mu1``, ``mu2``,
+        ``var_mu2``, ``robust_quantile``, ``gaussian_quantile``.
+    results : list[DynBalancingResult]
+        Individual estimation results, ordered by ascending history length.
+    """
+
+    summary: pl.DataFrame
+    results: list

@@ -177,3 +177,25 @@ def multi_period_data(rng):
     not_nas = [np.arange(n)] * n_periods
     y_t = predictions[:, -1] + rng.standard_normal(n) * 0.5
     return gammas, predictions, not_nas, y_t
+
+
+@pytest.fixture
+def history_result(estimator_panel):
+    """History result with lag lengths 1, 2, 3 for estimation tests."""
+    from moderndid.dev.diddynamic.dyn_balancing import dyn_balancing_history
+
+    return dyn_balancing_history(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        histories_length=[1, 2, 3],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )

@@ -5,11 +5,12 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
+import polars as pl
 
 from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess import DynBalancingConfig, PreprocessDataBuilder
 
-from .container import DynBalancingResult
+from .container import DynBalancingHistoryResult, DynBalancingResult
 from .estimation.inference import compute_quantiles, compute_variance, compute_variance_clustered
 from .estimation.weights_dcb import compute_dcb_estimator
 from .estimation.weights_ipw import compute_ipw_estimator
@@ -88,7 +89,7 @@ def dyn_balancing(
         Length must equal the number of time periods.
     ds2 : list[int]
         Target treatment history for the second potential outcome.
-        Must have the same length as *ds1*.
+        Must have the same length as ``ds1``.
     xformla : str or None, default=None
         A formula for the covariates to include in the model. It should be of
         the form ``"~ X1 + X2"``.
@@ -148,10 +149,10 @@ def dyn_balancing(
 
         - **att**: The ATE point estimate (:math:`\mu_1 - \mu_2`)
         - **var_att**: Variance of the ATE
-        - **mu1**: Potential outcome estimate under *ds1*
-        - **mu2**: Potential outcome estimate under *ds2*
-        - **var_mu1**: Variance of *mu1*
-        - **var_mu2**: Variance of *mu2*
+        - **mu1**: Potential outcome estimate under ``ds1``
+        - **mu2**: Potential outcome estimate under ``ds2``
+        - **var_mu1**: Variance of ``mu1``
+        - **var_mu2**: Variance of ``mu2``
         - **robust_quantile**: Chi-squared critical value for inference
         - **gaussian_quantile**: Gaussian critical value for inference
         - **gammas**: Balancing weights per treatment history
@@ -390,6 +391,236 @@ def dyn_balancing(
         imbalances=imbalances_out,
         estimation_params=estimation_params,
     )
+
+
+def dyn_balancing_history(
+    data,
+    yname: str,
+    tname: str,
+    idname: str,
+    treatment_name: str,
+    ds1: list[int],
+    ds2: list[int],
+    histories_length: list[int],
+    xformla: str | None = None,
+    fixed_effects: list[str] | None = None,
+    pooled: bool = False,
+    clustervars: list[str] | None = None,
+    balancing: str = "dcb",
+    method: str = "lasso_plain",
+    alp: float = 0.05,
+    final_period: int | None = None,
+    initial_period: int | None = None,
+    adaptive_balancing: bool = True,
+    debias: bool = False,
+    continuous_treatment: bool = False,
+    lb: float = 0.0005,
+    ub: float = 2.0,
+    regularization: bool = True,
+    fast_adaptive: bool = False,
+    grid_length: int = 1000,
+    n_beta_nonsparse: float = 1e-4,
+    ratio_coefficients: float = 1 / 3,
+    nfolds: int = 10,
+    lags: int | None = None,
+    robust_quantile: bool = True,
+    demeaned_fe: bool = False,
+) -> DynBalancingHistoryResult:
+    r"""Estimate treatment effects that vary in the exposure length.
+
+    Computes the ATE for each requested treatment history length by
+    repeatedly calling :func:`dyn_balancing` with the last ``k`` elements
+    of ``ds1`` and ``ds2`` for every ``k`` in ``histories_length``.  This traces
+    out how the treatment effect evolves as units are exposed to a given
+    regime for progressively more periods.
+
+    For a treatment history of length :math:`k`, the estimand is
+
+    .. math::
+
+        \text{ATE}(d_{T-k+1:T},\, d'_{T-k+1:T})
+        = \mu_T(d_{T-k+1:T}) - \mu_T(d'_{T-k+1:T}),
+
+    where :math:`\mu_T(d_{T-k+1:T}) = \mathbb{E}[Y_T(d_{T-k+1:T})]` is
+    the potential outcome at the final period under the last ``k`` entries
+    of the treatment history.  See [1]_ for identification and inference details.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Panel data in long format. Accepts any object implementing the Arrow
+        PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
+        pyarrow Table, and cudf DataFrames.
+    yname : str
+        The name of the outcome variable.
+    tname : str
+        The name of the column containing the time periods.
+    idname : str
+        The individual (cross-sectional unit) id name.
+    treatment_name : str
+        The name of the binary treatment column.
+    ds1 : list[int]
+        Full treatment history for the first potential outcome.
+    ds2 : list[int]
+        Full treatment history for the second potential outcome.
+        Must have the same length as ``ds1``.
+    histories_length : list[int]
+        Lag lengths to evaluate. Each entry ``k`` must satisfy
+        ``1 <= k <= len(ds1)``. For each ``k``, the function estimates
+        ``ATE(ds1[-k:], ds2[-k:])``.
+    xformla : str or None, default=None
+        A formula for the covariates to include in the model. It should be of
+        the form ``"~ X1 + X2"``.
+    fixed_effects : list[str] or None, default=None
+        Column names to include as fixed-effect dummies.
+    pooled : bool, default=False
+        If True, pool observations across periods for coefficient estimation.
+    clustervars : list[str] or None, default=None
+        Column names on which to cluster standard errors.
+    balancing : {'dcb', 'aipw', 'ipw', 'ipw_msm'}, default='dcb'
+        Weighting strategy (see :func:`dyn_balancing`).
+    method : {'lasso_plain', 'lasso_subsample'}, default='lasso_plain'
+        LASSO estimation strategy for the coefficient stage.
+    alp : float, default=0.05
+        Significance level for confidence intervals.
+    final_period : int or None, default=None
+        Last time period to include. Defaults to the maximum in the data.
+    initial_period : int or None, default=None
+        First time period to include. Defaults to the minimum in the data.
+    adaptive_balancing : bool, default=True
+        If True, use tighter balance constraints on covariates with large
+        estimated coefficients.
+    debias : bool, default=False
+        If True, apply bootstrap debiasing with 20 replicates.
+    continuous_treatment : bool, default=False
+        If True, treat the treatment variable as continuous.
+    lb : float, default=0.0005
+        Lower bound for tuning constant grid search.
+    ub : float, default=2.0
+        Upper bound for tuning constant grid search.
+    regularization : bool, default=True
+        If True use cross-validated LASSO, otherwise ridge.
+    fast_adaptive : bool, default=False
+        If True, use flat grid search instead of three-segment nested search.
+    grid_length : int, default=1000
+        Number of grid points for tuning constant search.
+    n_beta_nonsparse : float, default=1e-4
+        Threshold below which a rescaled coefficient is treated as zero.
+    ratio_coefficients : float, default=1/3
+        Fraction of largest coefficients to prioritise when sparsity is low.
+    nfolds : int, default=10
+        Cross-validation folds for LASSO.
+    lags : int or None, default=None
+        Treatment lags for the coefficient stage.
+    robust_quantile : bool, default=True
+        If True, use chi-squared critical values for inference.
+    demeaned_fe : bool, default=False
+        If True, demean fixed effects before estimation.
+
+    Returns
+    -------
+    DynBalancingHistoryResult
+        Object containing aggregated treatment effect estimates.
+
+        - **summary**: Polars DataFrame with one row per history length and
+          columns ``period_length``, ``att``, ``var_att``, ``mu1``,
+          ``var_mu1``, ``mu2``, ``var_mu2``, ``robust_quantile``,
+          ``gaussian_quantile``.
+        - **results**: List of :class:`DynBalancingResult` objects, one per
+          history length, ordered by ascending ``period_length``.
+
+    Examples
+    --------
+    Estimate how the effect of democracy on GDP per capita evolves over
+    1 to 5 consecutive periods of treatment:
+
+    .. code-block:: python
+
+        from moderndid.core.data import load_acemoglu
+        from moderndid.dev.diddynamic import dyn_balancing_history
+
+        df = load_acemoglu()
+        result = dyn_balancing_history(
+            data=df,
+            yname="Y",
+            tname="Time",
+            idname="Unit",
+            treatment_name="D",
+            ds1=[1, 1, 1, 1, 1],
+            ds2=[0, 0, 0, 0, 0],
+            histories_length=[1, 2, 3, 4, 5],
+            xformla="~ V1 + V2 + V3 + V4 + V5",
+            fixed_effects=["region"],
+        )
+        print(result.summary)
+
+    References
+    ----------
+
+    .. [1] Viviano, D. and Bradic, J. (2026). "Dynamic covariate balancing:
+       estimating treatment effects over time with potential local projections."
+       *Biometrika*, asag016. https://doi.org/10.1093/biomet/asag016
+    """
+    if not histories_length:
+        raise ValueError("histories_length must be a non-empty list.")
+    t_all = len(ds1)
+    for h in histories_length:
+        if h < 1 or h > t_all:
+            raise ValueError(f"All entries in histories_length must be between 1 and {t_all} (len(ds1)), got {h}.")
+
+    common_kwargs = dict(
+        data=data,
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        treatment_name=treatment_name,
+        xformla=xformla,
+        fixed_effects=fixed_effects,
+        pooled=pooled,
+        clustervars=clustervars,
+        balancing=balancing,
+        method=method,
+        alp=alp,
+        final_period=final_period,
+        initial_period=initial_period,
+        adaptive_balancing=adaptive_balancing,
+        debias=debias,
+        continuous_treatment=continuous_treatment,
+        lb=lb,
+        ub=ub,
+        regularization=regularization,
+        fast_adaptive=fast_adaptive,
+        grid_length=grid_length,
+        n_beta_nonsparse=n_beta_nonsparse,
+        ratio_coefficients=ratio_coefficients,
+        nfolds=nfolds,
+        lags=lags,
+        robust_quantile=robust_quantile,
+        demeaned_fe=demeaned_fe,
+    )
+
+    results: list[DynBalancingResult] = []
+    for h in sorted(histories_length):
+        dd1 = ds1[-h:]
+        dd2 = ds2[-h:]
+        res = dyn_balancing(ds1=dd1, ds2=dd2, **common_kwargs)
+        results.append(res)
+
+    summary = pl.DataFrame(
+        {
+            "period_length": sorted(histories_length),
+            "att": [r.att for r in results],
+            "var_att": [r.var_att for r in results],
+            "mu1": [r.mu1 for r in results],
+            "var_mu1": [r.var_mu1 for r in results],
+            "mu2": [r.mu2 for r in results],
+            "var_mu2": [r.var_mu2 for r in results],
+            "robust_quantile": [r.robust_quantile for r in results],
+            "gaussian_quantile": [r.gaussian_quantile for r in results],
+        }
+    )
+
+    return DynBalancingHistoryResult(summary=summary, results=results)
 
 
 def _reindex_covariates(covariate_dict: dict[int, np.ndarray], time_periods: np.ndarray) -> dict[int, np.ndarray]:

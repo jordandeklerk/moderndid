@@ -1198,6 +1198,90 @@ class DynBalancingPanelBalancer(BaseTransformer):
         return df
 
 
+class DynBalancingPooler(BaseTransformer):
+    """Dynamic balancing pooled regression reshaper."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DynBalancingConfig):
+            return to_polars(data)
+
+        if not config.pooled:
+            return to_polars(data)
+
+        df = to_polars(data)
+        tname = config.tname
+        idname = config.idname
+        length_treatment = len(config.ds1)
+
+        time_periods = sorted(df[tname].unique().to_list())
+        final_period = config.final_period if config.final_period is not None else max(time_periods)
+        initial_period = (
+            config.initial_period if config.initial_period is not None else final_period - length_treatment + 1
+        )
+        num_periods = final_period - initial_period
+
+        if num_periods <= 0:
+            warnings.warn(
+                "pooled=True has no effect when the treatment history spans the "
+                "entire panel (num_periods=0). Falling back to non-pooled estimation.",
+                stacklevel=2,
+            )
+            df = df.with_columns(
+                pl.col(tname).alias("new_Time"),
+                pl.col(idname).cast(pl.Utf8).alias("new_name"),
+            )
+            config.idname = "new_name"
+            if config.fixed_effects and tname in config.fixed_effects:
+                config.fixed_effects = ["new_Time" if fe == tname else fe for fe in config.fixed_effects]
+            return df
+
+        pseudo_frames: list[pl.DataFrame] = []
+        individuals = sorted(df[idname].unique().to_list())
+
+        for i in individuals:
+            unit_df = df.filter(pl.col(idname) == i)
+            unit_times = set(unit_df[tname].to_list())
+
+            for j in range(1, num_periods + 1):
+                keep_final = final_period - j
+                keep_init = final_period - j - length_treatment + 1
+                needed = list(range(keep_init, keep_final + 1))
+
+                if not all(t in unit_times for t in needed):
+                    continue
+
+                window = unit_df.filter(pl.col(tname).is_in(needed)).sort(tname)
+
+                shifted_times = [t + j for t in needed]
+                window = window.with_columns(
+                    pl.col(tname).alias("new_Time"),
+                    pl.lit(f"{i}l{j}unit").alias("new_name"),
+                )
+                window = window.with_columns(pl.Series(name=tname, values=shifted_times))
+                pseudo_frames.append(window)
+
+        original = df.with_columns(
+            pl.col(tname).alias("new_Time"),
+            pl.col(idname).cast(pl.Utf8).alias("new_name"),
+        )
+
+        if pseudo_frames:
+            pooled_df = pl.concat([original, *pseudo_frames], how="align")
+        else:
+            warnings.warn(
+                "pooled=True produced no pseudo-observations. Check that the "
+                "panel has enough periods relative to the treatment history length.",
+                stacklevel=2,
+            )
+            pooled_df = original
+
+        config.idname = "new_name"
+        if config.fixed_effects and tname in config.fixed_effects:
+            config.fixed_effects = ["new_Time" if fe == tname else fe for fe in config.fixed_effects]
+        return pooled_df
+
+
 class DynBalancingFixedEffectDummifier(BaseTransformer):
     """Dynamic balancing fixed effect dummifier."""
 
@@ -1379,6 +1463,7 @@ class DataTransformerPipeline:
             [
                 DynBalancingColumnSelector(),
                 DynBalancingPanelBalancer(),
+                DynBalancingPooler(),
                 DynBalancingFixedEffectDummifier(),
                 DynBalancingPeriodFilter(),
             ]

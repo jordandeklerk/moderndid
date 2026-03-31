@@ -415,3 +415,142 @@ def test_non_numeric_treatment_column():
         ds2=[0],
     )
     assert result.treatment_matrix.dtype == np.float64 or np.issubdtype(result.treatment_matrix.dtype, np.number)
+
+
+def test_pooled_expands_panel(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+    )
+    assert result.n_units > 10
+
+
+def test_pooled_false_unchanged(simple_panel, base_config):
+    result_no_pool = build_dyn_balancing(simple_panel, **base_config, pooled=False)
+    assert result_no_pool.n_units == 10
+
+
+def test_pooled_has_new_name_column(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+    )
+    assert "new_name" in result.panel.columns
+
+
+def test_pooled_has_new_time_column(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+    )
+    assert "new_Time" in result.panel.columns
+
+
+def test_pooled_preserves_original_rows(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+    )
+    original_ids = set(str(i) for i in range(10))
+    panel_ids = set(result.panel["new_name"].unique().to_list())
+    assert original_ids.issubset(panel_ids)
+
+
+def test_pooled_pseudo_units_have_complete_history(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+    )
+    counts = result.panel.group_by("new_name").len()
+    assert (counts["len"] >= 2).all()
+
+
+def test_pooled_time_fe_uses_new_time(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+        fixed_effects=["cluster_var", "time"],
+    )
+    fe_cols = [c for c in result.panel.columns if c.startswith("new_Time_")]
+    assert len(fe_cols) > 0
+
+
+def test_pooled_without_time_fe_no_rename(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+        fixed_effects=["cluster_var"],
+    )
+    fe_cols = [c for c in result.panel.columns if c.startswith("new_Time_")]
+    assert len(fe_cols) == 0
+
+
+def test_pooled_treatment_matrix_expanded(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+    )
+    assert result.treatment_matrix.shape[0] == result.n_units
+    assert result.treatment_matrix.shape[1] >= 2
+
+
+def test_pooled_outcome_vector_length(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+    )
+    assert len(result.outcome_vector) == result.n_units

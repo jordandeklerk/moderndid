@@ -13,7 +13,7 @@ from moderndid.core.format import (
     format_value,
 )
 
-from .container import DynBalancingResult
+from .container import DynBalancingHistoryResult, DynBalancingResult
 
 
 def format_dyn_balancing_result(result):
@@ -93,3 +93,33 @@ def format_dyn_balancing_result(result):
 
 
 attach_format(DynBalancingResult, format_dyn_balancing_result)
+
+
+def format_dyn_balancing_history_result(result):
+    """Format a dynamic covariate balancing history result for display."""
+    lines = []
+
+    lines.extend(format_title("Dynamic Covariate Balancing History"))
+    lines.append("")
+
+    header = f" {'Length':>6}  {'ATE':>10}  {'SE':>10}  {'mu(ds1)':>10}  {'mu(ds2)':>10}"
+    lines.append(header)
+    lines.append(" " + "-" * (len(header) - 1))
+
+    for row in result.summary.iter_rows(named=True):
+        se = np.sqrt(row["var_att"]) if row["var_att"] > 0 else 0.0
+        lines.append(
+            f" {row['period_length']:>6}  "
+            f"{format_value(row['att']):>10}  "
+            f"{format_value(se):>10}  "
+            f"{format_value(row['mu1']):>10}  "
+            f"{format_value(row['mu2']):>10}"
+        )
+
+    lines.append("")
+    lines.extend(format_footer("Viviano and Bradic (2026)"))
+
+    return "\n".join(lines)
+
+
+attach_format(DynBalancingHistoryResult, format_dyn_balancing_history_result)

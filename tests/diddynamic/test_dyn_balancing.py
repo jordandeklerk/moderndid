@@ -6,7 +6,7 @@ import pytest
 
 import moderndid.dev.diddynamic.format  # noqa: F401
 from moderndid.dev.diddynamic.container import DynBalancingResult
-from moderndid.dev.diddynamic.dyn_balancing import dyn_balancing
+from moderndid.dev.diddynamic.dyn_balancing import dyn_balancing, dyn_balancing_history
 
 
 def test_returns_result(estimator_panel):
@@ -484,3 +484,94 @@ def test_zero_effect_with_no_treatment():
         adaptive_balancing=False,
     )
     assert result.att == pytest.approx(0.0, abs=2.0)
+
+
+def test_history_summary_matches_individual_results(history_result):
+    for i, row in enumerate(history_result.summary.iter_rows(named=True)):
+        r = history_result.results[i]
+        assert row["att"] == r.att
+        assert row["var_att"] == r.var_att
+        assert row["mu1"] == r.mu1
+        assert row["mu2"] == r.mu2
+        assert row["var_mu1"] == r.var_mu1
+        assert row["var_mu2"] == r.var_mu2
+        assert row["robust_quantile"] == r.robust_quantile
+        assert row["gaussian_quantile"] == r.gaussian_quantile
+
+
+def test_history_period_lengths_sorted(history_result):
+    assert history_result.summary["period_length"].to_list() == [1, 2, 3]
+
+
+def test_history_att_equals_mu1_minus_mu2(history_result):
+    for row in history_result.summary.iter_rows(named=True):
+        assert row["att"] == pytest.approx(row["mu1"] - row["mu2"], abs=1e-10)
+
+
+def test_history_var_att_equals_var_sum(history_result):
+    for row in history_result.summary.iter_rows(named=True):
+        assert row["var_att"] == pytest.approx(row["var_mu1"] + row["var_mu2"], abs=1e-10)
+
+
+def test_history_slices_ds_correctly(estimator_panel):
+    ds1 = [0, 1, 1]
+    ds2 = [0, 0, 0]
+    hist = dyn_balancing_history(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=ds1,
+        ds2=ds2,
+        histories_length=[1, 3],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    single = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1],
+        ds2=[0],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert hist.results[0].att == pytest.approx(single.att, abs=1e-10)
+
+
+@pytest.mark.parametrize(
+    "histories_length, match",
+    [
+        ([], "non-empty"),
+        ([0, 2], "between 1 and"),
+        ([4], "between 1 and"),
+    ],
+)
+def test_history_invalid_lengths_raise(estimator_panel, histories_length, match):
+    with pytest.raises(ValueError, match=match):
+        dyn_balancing_history(
+            data=estimator_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            histories_length=histories_length,
+            xformla="~ X1",
+        )
+
+
+def test_history_repr_contains_table(history_result):
+    text = str(history_result)
+    assert "ATE" in text
+    assert "Length" in text
