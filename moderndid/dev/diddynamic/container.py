@@ -163,3 +163,24 @@ class DynBalancingHistoryResult(NamedTuple):
 
     summary: pl.DataFrame
     results: list
+
+
+class DynBalancingHetResult(NamedTuple):
+    r"""Container for treatment effects estimated across different final periods.
+
+    Stores a summary table of ATEs, variances, and critical values for
+    each final period, plus the individual :class:`DynBalancingResult`
+    objects for per-period diagnostics.
+
+    Attributes
+    ----------
+    summary : polars.DataFrame
+        One row per final period with columns ``final_period``,
+        ``att``, ``var_att``, ``mu1``, ``var_mu1``, ``mu2``,
+        ``var_mu2``, ``robust_quantile``, ``gaussian_quantile``.
+    results : list[DynBalancingResult]
+        Individual estimation results, ordered by ascending final period.
+    """
+
+    summary: pl.DataFrame
+    results: list

@@ -6,6 +6,7 @@ import pytest
 
 from moderndid.core.preprocess import DynBalancingConfig, PreprocessDataBuilder
 from moderndid.dev.diddynamic.container import DynBalancingResult
+from moderndid.dev.diddynamic.dyn_balancing import dyn_balancing
 
 
 def build_dyn_balancing(data, **config_kwargs):
@@ -182,9 +183,7 @@ def multi_period_data(rng):
 @pytest.fixture
 def history_result(estimator_panel):
     """History result with lag lengths 1, 2, 3 for estimation tests."""
-    from moderndid.dev.diddynamic.dyn_balancing import dyn_balancing_history
-
-    return dyn_balancing_history(
+    return dyn_balancing(
         data=estimator_panel,
         yname="y",
         tname="time",
@@ -193,6 +192,26 @@ def history_result(estimator_panel):
         ds1=[0, 1, 1],
         ds2=[0, 0, 0],
         histories_length=[1, 2, 3],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+
+
+@pytest.fixture
+def het_result(estimator_panel):
+    """Het result with final_periods=[2, 3] for estimation tests."""
+    return dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1],
+        ds2=[0],
+        final_periods=[2, 3],
         xformla="~ X1",
         ub=20.0,
         grid_length=50,

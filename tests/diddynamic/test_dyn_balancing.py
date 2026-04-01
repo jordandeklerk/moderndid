@@ -6,7 +6,7 @@ import pytest
 
 import moderndid.dev.diddynamic.format  # noqa: F401
 from moderndid.dev.diddynamic.container import DynBalancingResult
-from moderndid.dev.diddynamic.dyn_balancing import dyn_balancing, dyn_balancing_history
+from moderndid.dev.diddynamic.dyn_balancing import dyn_balancing
 
 
 def test_returns_result(estimator_panel):
@@ -516,7 +516,7 @@ def test_history_var_att_equals_var_sum(history_result):
 def test_history_slices_ds_correctly(estimator_panel):
     ds1 = [0, 1, 1]
     ds2 = [0, 0, 0]
-    hist = dyn_balancing_history(
+    hist = dyn_balancing(
         data=estimator_panel,
         yname="y",
         tname="time",
@@ -558,7 +558,7 @@ def test_history_slices_ds_correctly(estimator_panel):
 )
 def test_history_invalid_lengths_raise(estimator_panel, histories_length, match):
     with pytest.raises(ValueError, match=match):
-        dyn_balancing_history(
+        dyn_balancing(
             data=estimator_panel,
             yname="y",
             tname="time",
@@ -575,3 +575,91 @@ def test_history_repr_contains_table(history_result):
     text = str(history_result)
     assert "ATE" in text
     assert "Length" in text
+
+
+def test_het_summary_matches_individual_results(het_result):
+    for i, row in enumerate(het_result.summary.iter_rows(named=True)):
+        r = het_result.results[i]
+        assert row["att"] == r.att
+        assert row["var_att"] == r.var_att
+        assert row["mu1"] == r.mu1
+        assert row["mu2"] == r.mu2
+        assert row["var_mu1"] == r.var_mu1
+        assert row["var_mu2"] == r.var_mu2
+        assert row["robust_quantile"] == r.robust_quantile
+        assert row["gaussian_quantile"] == r.gaussian_quantile
+
+
+def test_het_final_periods_sorted(het_result):
+    assert het_result.summary["final_period"].to_list() == [2, 3]
+
+
+def test_het_att_equals_mu1_minus_mu2(het_result):
+    for row in het_result.summary.iter_rows(named=True):
+        assert row["att"] == pytest.approx(row["mu1"] - row["mu2"], abs=1e-10)
+
+
+def test_het_var_att_equals_var_sum(het_result):
+    for row in het_result.summary.iter_rows(named=True):
+        assert row["var_att"] == pytest.approx(row["var_mu1"] + row["var_mu2"], abs=1e-10)
+
+
+def test_het_matches_single_call(estimator_panel):
+    het = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1],
+        ds2=[0],
+        final_periods=[3],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    single = dyn_balancing(
+        data=estimator_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1],
+        ds2=[0],
+        final_period=3,
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert het.results[0].att == pytest.approx(single.att, abs=1e-10)
+
+
+@pytest.mark.parametrize(
+    "final_periods, match",
+    [
+        ([], "non-empty"),
+    ],
+)
+def test_het_invalid_periods_raise(estimator_panel, final_periods, match):
+    with pytest.raises(ValueError, match=match):
+        dyn_balancing(
+            data=estimator_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[1],
+            ds2=[0],
+            final_periods=final_periods,
+            xformla="~ X1",
+        )
+
+
+def test_het_repr_contains_table(het_result):
+    text = str(het_result)
+    assert "ATE" in text
+    assert "Period" in text

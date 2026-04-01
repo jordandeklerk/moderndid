@@ -2,12 +2,12 @@
 
 import moderndid.dev.diddynamic.format as _format
 
-from .container import DynBalancingHistoryResult, DynBalancingResult
-from .dyn_balancing import dyn_balancing, dyn_balancing_history
+from .container import DynBalancingHetResult, DynBalancingHistoryResult, DynBalancingResult
+from .dyn_balancing import dyn_balancing
 
 __all__ = [
+    "DynBalancingHetResult",
     "DynBalancingHistoryResult",
     "DynBalancingResult",
     "dyn_balancing",
-    "dyn_balancing_history",
 ]
