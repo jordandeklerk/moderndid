@@ -50,6 +50,7 @@ def dyn_balancing(
     demeaned_fe: bool = False,
     histories_length: list[int] | None = None,
     final_periods: list[int] | None = None,
+    impulse_response: bool = False,
     n_jobs: int = 1,
 ) -> DynBalancingResult | DynBalancingHistoryResult | DynBalancingHetResult:
     r"""Estimate treatment effects under dynamic treatment regimes.
@@ -155,6 +156,12 @@ def dyn_balancing(
         If provided, estimate ATEs at each specified final period. Returns a
         :class:`DynBalancingHetResult`. Mutually exclusive with
         ``histories_length``.
+    impulse_response : bool, default=False
+        If True (requires ``histories_length``), estimate impulse responses
+        instead of cumulative effects. For each history length ``k``, the
+        treatment sequences are set to ``ds1 = [1, 0, ..., 0]`` and
+        ``ds2 = [0, 0, ..., 0]`` (both length ``k``), measuring the effect
+        of a one-period treatment shock at varying horizons.
     n_jobs : int, default=1
         Number of parallel workers for ``histories_length`` and
         ``final_periods`` modes. 1 = sequential, -1 = all cores,
@@ -213,6 +220,8 @@ def dyn_balancing(
     """
     if histories_length is not None and final_periods is not None:
         raise ValueError("histories_length and final_periods are mutually exclusive.")
+    if impulse_response and histories_length is None:
+        raise ValueError("impulse_response=True requires histories_length.")
     if not ds1:
         raise ValueError("ds1 must be a non-empty list of treatment values.")
     if not ds2:
@@ -269,6 +278,7 @@ def dyn_balancing(
             lags=lags,
             robust_quantile=robust_quantile,
             demeaned_fe=demeaned_fe,
+            impulse_response=impulse_response,
             n_jobs=n_jobs,
         )
 
@@ -486,7 +496,9 @@ def dyn_balancing(
     )
 
 
-def _run_history(*, ds1, ds2, histories_length, n_jobs=1, **kwargs) -> DynBalancingHistoryResult:
+def _run_history(
+    *, ds1, ds2, histories_length, impulse_response=False, n_jobs=1, **kwargs
+) -> DynBalancingHistoryResult:
     """Dispatch for histories_length mode."""
     if not histories_length:
         raise ValueError("histories_length must be a non-empty list.")
@@ -496,7 +508,10 @@ def _run_history(*, ds1, ds2, histories_length, n_jobs=1, **kwargs) -> DynBalanc
             raise ValueError(f"All entries in histories_length must be between 1 and {t_all} (len(ds1)), got {h}.")
 
     sorted_lengths = sorted(histories_length)
-    args_list = [(ds1[-h:], ds2[-h:], kwargs) for h in sorted_lengths]
+    if impulse_response:
+        args_list = [([1] + [0] * (h - 1), [0] * h, kwargs) for h in sorted_lengths]
+    else:
+        args_list = [(ds1[-h:], ds2[-h:], kwargs) for h in sorted_lengths]
     results = parallel_map(_call_dyn_balancing, args_list, n_jobs=n_jobs)
 
     summary = pl.DataFrame(

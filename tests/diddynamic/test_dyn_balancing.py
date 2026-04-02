@@ -663,3 +663,103 @@ def test_het_repr_contains_table(het_result):
     text = str(het_result)
     assert "ATE" in text
     assert "Period" in text
+
+
+@pytest.mark.parametrize("h", [2, 3])
+def test_impulse_response_matches_manual_ds(impulse_panel, h):
+    ir = dyn_balancing(
+        data=impulse_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1, 1],
+        ds2=[0, 0, 0],
+        histories_length=[h],
+        impulse_response=True,
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    expected_ds1 = [1] + [0] * (h - 1)
+    expected_ds2 = [0] * h
+    manual = dyn_balancing(
+        data=impulse_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=expected_ds1,
+        ds2=expected_ds2,
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert ir.results[0].att == pytest.approx(manual.att, abs=1e-10)
+    assert ir.results[0].mu1 == pytest.approx(manual.mu1, abs=1e-10)
+    assert ir.results[0].mu2 == pytest.approx(manual.mu2, abs=1e-10)
+
+
+def test_impulse_response_att_equals_mu_diff(impulse_result):
+    for row in impulse_result.summary.iter_rows(named=True):
+        assert row["att"] == pytest.approx(row["mu1"] - row["mu2"], abs=1e-10)
+
+
+def test_impulse_response_var_att_equals_var_sum(impulse_result):
+    for row in impulse_result.summary.iter_rows(named=True):
+        assert row["var_att"] == pytest.approx(row["var_mu1"] + row["var_mu2"], abs=1e-10)
+
+
+def test_impulse_response_ignores_original_ds(impulse_panel):
+    r1 = dyn_balancing(
+        data=impulse_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1, 1],
+        ds2=[0, 0, 0],
+        histories_length=[2],
+        impulse_response=True,
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    r2 = dyn_balancing(
+        data=impulse_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 0, 0],
+        ds2=[1, 1, 1],
+        histories_length=[2],
+        impulse_response=True,
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+    assert r1.results[0].att == pytest.approx(r2.results[0].att, abs=1e-10)
+
+
+def test_impulse_response_without_histories_raises(estimator_panel):
+    with pytest.raises(ValueError, match="requires histories_length"):
+        dyn_balancing(
+            data=estimator_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            impulse_response=True,
+            xformla="~ X1",
+        )

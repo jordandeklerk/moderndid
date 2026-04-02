@@ -201,6 +201,51 @@ def history_result(estimator_panel):
 
 
 @pytest.fixture
+def impulse_panel():
+    """Panel with diverse treatment patterns including [1,0] over last 2 periods."""
+    rng = np.random.default_rng(77)
+    n_units = 80
+    n_periods = 3
+    ids = np.repeat(np.arange(n_units), n_periods)
+    times = np.tile(np.arange(1, n_periods + 1), n_units)
+    treatment = np.zeros(n_units * n_periods)
+    # Units 0-19: pattern [0, 0, 0] (never treated)
+    # Units 20-39: pattern [0, 1, 0] (impulse at period 2)
+    for i in range(20, 40):
+        treatment[i * n_periods + 1] = 1.0
+    # Units 40-59: pattern [1, 0, 0] (impulse at period 1)
+    for i in range(40, 60):
+        treatment[i * n_periods] = 1.0
+    # Units 60-79: pattern [0, 1, 1] (treated from period 2)
+    for i in range(60, 80):
+        treatment[i * n_periods + 1 : (i + 1) * n_periods] = 1.0
+    y = rng.standard_normal(n_units * n_periods) + 1.5 * treatment
+    x1 = rng.standard_normal(n_units * n_periods)
+    return pl.DataFrame({"id": ids, "time": times, "y": y, "D": treatment, "X1": x1})
+
+
+@pytest.fixture
+def impulse_result(impulse_panel):
+    """Impulse response result with history lengths 2 and 3."""
+    return dyn_balancing(
+        data=impulse_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1, 1],
+        ds2=[0, 0, 0],
+        histories_length=[2, 3],
+        impulse_response=True,
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+
+
+@pytest.fixture
 def het_result(estimator_panel):
     """Het result with final_periods=[2, 3] for estimation tests."""
     return dyn_balancing(
