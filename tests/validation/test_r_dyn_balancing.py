@@ -547,3 +547,206 @@ def test_non_default_alpha():
     np.testing.assert_allclose(py_result.mu2, r_result["Mu2"], atol=1e-3)
     expected_robust_q = np.sqrt(chi2.isf(0.1, 2 * 2))
     np.testing.assert_allclose(py_result.robust_quantile, expected_robust_q, rtol=1e-6)
+
+
+def r_dyn_balancing_history(
+    data_path,
+    covariates,
+    ds1,
+    ds2,
+    histories_length,
+    fixed_effects=None,
+    pooled=False,
+    initial_period=None,
+    impulse_response=False,
+    ub=10,
+    final_period=None,
+):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    cov_str = 'c("' + '", "'.join(covariates) + '")'
+    ds1_str = "c(" + ", ".join(str(d) for d in ds1) + ")"
+    ds2_str = "c(" + ", ".join(str(d) for d in ds2) + ")"
+    hl_str = "c(" + ", ".join(str(h) for h in histories_length) + ")"
+
+    fe_str = "NA"
+    if fixed_effects:
+        fe_str = 'c("' + '", "'.join(fixed_effects) + '")'
+
+    pooled_str = "TRUE" if pooled else "FALSE"
+    ir_str = "TRUE" if impulse_response else "FALSE"
+
+    params_parts = [
+        'method = "lasso_plain"',
+        "open_source = TRUE",
+        "fast_adaptive = FALSE",
+        "alpha = 0.05",
+        f"ub = {ub}",
+        "numcores = 1",
+    ]
+    if initial_period is not None:
+        params_parts.append(f"initial_period = {initial_period}")
+    if final_period is not None:
+        params_parts.append(f"final_period = {final_period}")
+    params_parts.append(f"impulse_response = {ir_str}")
+    params_str = "list(" + ", ".join(params_parts) + ")"
+
+    r_script = f"""
+load("{R_PKG_PATH}/data/params_default.rda")
+fpath <- "{R_PKG_PATH}/R"
+source_files <- list.files(fpath, full.names=TRUE, pattern="[.]R$")
+for(f in source_files) source(f)
+
+library(jsonlite)
+library(doParallel)
+library(foreach)
+
+panel <- read.csv("{data_path}", check.names=FALSE)
+
+result <- DynBalancing_History(
+    panel,
+    covariates_names = {cov_str},
+    Time_name = "Time",
+    unit_name = "Unit",
+    outcome_name = "Y",
+    treatment_name = "D",
+    ds1 = {ds1_str},
+    ds2 = {ds2_str},
+    histories_length = {hl_str},
+    fixed_effects = {fe_str},
+    pooled = {pooled_str},
+    params = {params_str}
+)
+
+m <- result$all_results
+out <- list(
+    ATEs = as.numeric(m$ATE),
+    Mu1s = as.numeric(m$mu1),
+    Mu2s = as.numeric(m$mu2),
+    Period_lengths = as.numeric(m$Period_length)
+)
+
+write_json(out, "{result_path}", digits = 16)
+"""
+    try:
+        return _run_r_script(r_script, result_path, timeout=600)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R or required R packages not available")
+def test_history_ates_match_r():
+    covariates = ["V1", "V2", "V3", "V4", "V5"]
+    data_path = _prepare_panel_csv(covariates, extra_cols=["region"])
+
+    r_result = r_dyn_balancing_history(
+        data_path,
+        covariates,
+        ds1=[1, 1],
+        ds2=[0, 0],
+        histories_length=[1, 2],
+        fixed_effects=["region"],
+    )
+    if r_result is None:
+        pytest.skip("R estimation failed")
+
+    df = pl.read_csv(data_path)
+    py_result = dyn_balancing(
+        data=df,
+        yname="Y",
+        tname="Time",
+        idname="Unit",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        xformla="~ " + " + ".join(covariates),
+        fixed_effects=["region"],
+        histories_length=[1, 2],
+        ub=10.0,
+    )
+
+    r_ates = r_result["ATEs"]
+    py_ates = py_result.summary["att"].to_list()
+    for i in range(len(r_ates)):
+        np.testing.assert_allclose(py_ates[i], r_ates[i], atol=0.15)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R or required R packages not available")
+def test_history_mu_values_match_r():
+    covariates = ["V1", "V2", "V3", "V4", "V5"]
+    data_path = _prepare_panel_csv(covariates, extra_cols=["region"])
+
+    r_result = r_dyn_balancing_history(
+        data_path,
+        covariates,
+        ds1=[1, 1],
+        ds2=[0, 0],
+        histories_length=[1, 2],
+        fixed_effects=["region"],
+    )
+    if r_result is None:
+        pytest.skip("R estimation failed")
+
+    df = pl.read_csv(data_path)
+    py_result = dyn_balancing(
+        data=df,
+        yname="Y",
+        tname="Time",
+        idname="Unit",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        xformla="~ " + " + ".join(covariates),
+        fixed_effects=["region"],
+        histories_length=[1, 2],
+        ub=10.0,
+    )
+
+    py_mu1s = py_result.summary["mu1"].to_list()
+    py_mu2s = py_result.summary["mu2"].to_list()
+    for i in range(len(r_result["Mu1s"])):
+        np.testing.assert_allclose(py_mu1s[i], r_result["Mu1s"][i], atol=0.15)
+        np.testing.assert_allclose(py_mu2s[i], r_result["Mu2s"][i], atol=0.15)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R or required R packages not available")
+def test_impulse_response_ates_match_r():
+    covariates = ["V1", "V2", "V3", "V4", "V5"]
+    data_path = _prepare_panel_csv(covariates, extra_cols=["region"])
+
+    r_result = r_dyn_balancing_history(
+        data_path,
+        covariates,
+        ds1=[1, 1],
+        ds2=[0, 0],
+        histories_length=[2],
+        fixed_effects=["region"],
+        impulse_response=True,
+        ub=50,
+        final_period=4,
+    )
+    if r_result is None:
+        pytest.skip("R estimation failed")
+
+    df = pl.read_csv(data_path)
+    py_result = dyn_balancing(
+        data=df,
+        yname="Y",
+        tname="Time",
+        idname="Unit",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        xformla="~ " + " + ".join(covariates),
+        fixed_effects=["region"],
+        histories_length=[2],
+        impulse_response=True,
+        ub=50.0,
+        final_period=4,
+    )
+
+    r_ates = r_result["ATEs"]
+    py_ates = py_result.summary["att"].to_list()
+    for i in range(len(r_ates)):
+        np.testing.assert_allclose(py_ates[i], r_ates[i], atol=0.15)
