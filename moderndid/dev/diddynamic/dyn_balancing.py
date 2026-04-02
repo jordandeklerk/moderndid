@@ -1,4 +1,4 @@
-"""Main estimator function for the dynamic covariate balancing estimator."""
+"""Dynamic covariate balancing treatment effect estimation for panel data with time-varying treatments."""
 
 from __future__ import annotations
 
