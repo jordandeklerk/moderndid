@@ -1236,43 +1236,53 @@ class DynBalancingPooler(BaseTransformer):
                 config.fixed_effects = ["new_Time" if fe == tname else fe for fe in config.fixed_effects]
             return df
 
-        pseudo_frames: list[pl.DataFrame] = []
-        individuals = sorted(df[idname].unique().to_list())
-
-        for i in individuals:
-            unit_df = df.filter(pl.col(idname) == i)
-            unit_times = set(unit_df[tname].to_list())
-
-            for j in range(1, num_periods + 1):
-                keep_final = final_period - j
-                keep_init = final_period - j - length_treatment + 1
-                needed = list(range(keep_init, keep_final + 1))
-
-                if not all(t in unit_times for t in needed):
-                    continue
-
-                window = unit_df.filter(pl.col(tname).is_in(needed)).sort(tname)
-
-                shifted_times = [t + j for t in needed]
-                window = window.with_columns(
-                    pl.col(tname).alias("new_Time"),
-                    pl.lit(f"{i}l{j}unit").alias("new_name"),
-                )
-                window = window.with_columns(pl.Series(name=tname, values=shifted_times))
-                pseudo_frames.append(window)
-
-        original = df.with_columns(
-            pl.col(tname).alias("new_Time"),
-            pl.col(idname).cast(pl.Utf8).alias("new_name"),
+        # Build lag offsets and the time windows they require
+        lags = pl.DataFrame({"_lag": list(range(1, num_periods + 1))})
+        lags = lags.with_columns(
+            pl.col("_lag")
+            .map_elements(
+                lambda j: list(range(final_period - j - length_treatment + 1, final_period - j + 1)),
+                return_dtype=pl.List(pl.Int64),
+            )
+            .alias("_needed")
         )
 
-        if pseudo_frames:
-            pooled_df = pl.concat([original, *pseudo_frames], how="align")
+        # Cross-join every unit-period row with every lag
+        df_with_lag = df.join(lags, how="cross")
+
+        # Keep only rows whose time falls within the needed window for that lag
+        df_with_lag = df_with_lag.filter(pl.col(tname).is_in(pl.col("_needed")))
+
+        # Filter to units that have complete windows for each lag
+        complete_keys = (
+            df_with_lag.group_by([idname, "_lag"])
+            .agg(pl.len().alias("_cnt"))
+            .filter(pl.col("_cnt") == length_treatment)
+            .select([idname, "_lag"])
+        )
+        df_with_lag = df_with_lag.join(complete_keys, on=[idname, "_lag"])
+
+        if df_with_lag.height > 0:
+            pseudo = df_with_lag.with_columns(
+                pl.col(tname).alias("new_Time"),
+                (pl.col(idname).cast(pl.Utf8) + "l" + pl.col("_lag").cast(pl.Utf8) + "unit").alias("new_name"),
+                (pl.col(tname) + pl.col("_lag")).alias(tname),
+            ).drop("_lag", "_needed")
+
+            original = df.with_columns(
+                pl.col(tname).alias("new_Time"),
+                pl.col(idname).cast(pl.Utf8).alias("new_name"),
+            )
+            pooled_df = pl.concat([original, pseudo], how="align")
         else:
             warnings.warn(
                 "pooled=True produced no pseudo-observations. Check that the "
                 "panel has enough periods relative to the treatment history length.",
                 stacklevel=2,
+            )
+            original = df.with_columns(
+                pl.col(tname).alias("new_Time"),
+                pl.col(idname).cast(pl.Utf8).alias("new_name"),
             )
             pooled_df = original
 

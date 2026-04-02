@@ -8,6 +8,7 @@ import numpy as np
 import polars as pl
 
 from moderndid.core.dataframe import to_polars
+from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess import DynBalancingConfig, PreprocessDataBuilder
 
 from .container import DynBalancingHetResult, DynBalancingHistoryResult, DynBalancingResult
@@ -49,6 +50,7 @@ def dyn_balancing(
     demeaned_fe: bool = False,
     histories_length: list[int] | None = None,
     final_periods: list[int] | None = None,
+    n_jobs: int = 1,
 ) -> DynBalancingResult | DynBalancingHistoryResult | DynBalancingHetResult:
     r"""Estimate treatment effects under dynamic treatment regimes.
 
@@ -153,6 +155,10 @@ def dyn_balancing(
         If provided, estimate ATEs at each specified final period. Returns a
         :class:`DynBalancingHetResult`. Mutually exclusive with
         ``histories_length``.
+    n_jobs : int, default=1
+        Number of parallel workers for ``histories_length`` and
+        ``final_periods`` modes. 1 = sequential, -1 = all cores,
+        >1 = that many threads.
 
     Returns
     -------
@@ -263,6 +269,7 @@ def dyn_balancing(
             lags=lags,
             robust_quantile=robust_quantile,
             demeaned_fe=demeaned_fe,
+            n_jobs=n_jobs,
         )
 
     if final_periods is not None:
@@ -297,6 +304,7 @@ def dyn_balancing(
             lags=lags,
             robust_quantile=robust_quantile,
             demeaned_fe=demeaned_fe,
+            n_jobs=n_jobs,
         )
 
     df = to_polars(data)
@@ -478,7 +486,7 @@ def dyn_balancing(
     )
 
 
-def _run_history(*, ds1, ds2, histories_length, **kwargs) -> DynBalancingHistoryResult:
+def _run_history(*, ds1, ds2, histories_length, n_jobs=1, **kwargs) -> DynBalancingHistoryResult:
     """Dispatch for histories_length mode."""
     if not histories_length:
         raise ValueError("histories_length must be a non-empty list.")
@@ -487,14 +495,13 @@ def _run_history(*, ds1, ds2, histories_length, **kwargs) -> DynBalancingHistory
         if h < 1 or h > t_all:
             raise ValueError(f"All entries in histories_length must be between 1 and {t_all} (len(ds1)), got {h}.")
 
-    results: list[DynBalancingResult] = []
-    for h in sorted(histories_length):
-        res = dyn_balancing(ds1=ds1[-h:], ds2=ds2[-h:], **kwargs)
-        results.append(res)
+    sorted_lengths = sorted(histories_length)
+    args_list = [(ds1[-h:], ds2[-h:], kwargs) for h in sorted_lengths]
+    results = parallel_map(_call_dyn_balancing, args_list, n_jobs=n_jobs)
 
     summary = pl.DataFrame(
         {
-            "period_length": sorted(histories_length),
+            "period_length": sorted_lengths,
             "att": [r.att for r in results],
             "var_att": [r.var_att for r in results],
             "mu1": [r.mu1 for r in results],
@@ -508,19 +515,18 @@ def _run_history(*, ds1, ds2, histories_length, **kwargs) -> DynBalancingHistory
     return DynBalancingHistoryResult(summary=summary, results=results)
 
 
-def _run_het(*, ds1, ds2, final_periods, **kwargs) -> DynBalancingHetResult:
+def _run_het(*, ds1, ds2, final_periods, n_jobs=1, **kwargs) -> DynBalancingHetResult:
     """Dispatch for final_periods mode."""
     if not final_periods:
         raise ValueError("final_periods must be a non-empty list.")
 
-    results: list[DynBalancingResult] = []
-    for p in sorted(final_periods):
-        res = dyn_balancing(ds1=ds1, ds2=ds2, final_period=p, **kwargs)
-        results.append(res)
+    sorted_periods = sorted(final_periods)
+    args_list = [(ds1, ds2, {**kwargs, "final_period": p}) for p in sorted_periods]
+    results = parallel_map(_call_dyn_balancing, args_list, n_jobs=n_jobs)
 
     summary = pl.DataFrame(
         {
-            "final_period": sorted(final_periods),
+            "final_period": sorted_periods,
             "att": [r.att for r in results],
             "var_att": [r.var_att for r in results],
             "mu1": [r.mu1 for r in results],
@@ -532,6 +538,11 @@ def _run_het(*, ds1, ds2, final_periods, **kwargs) -> DynBalancingHetResult:
         }
     )
     return DynBalancingHetResult(summary=summary, results=results)
+
+
+def _call_dyn_balancing(dd1, dd2, kwargs):
+    """Call dyn_balancing with unpacked arguments for parallel_map."""
+    return dyn_balancing(ds1=dd1, ds2=dd2, **kwargs)
 
 
 def _reindex_covariates(covariate_dict: dict[int, np.ndarray], time_periods: np.ndarray) -> dict[int, np.ndarray]:
