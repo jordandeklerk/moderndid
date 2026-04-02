@@ -210,8 +210,8 @@ def test_lb_greater_than_ub_raises(estimator_panel):
         )
 
 
-def test_continuous_treatment_with_regularization_raises(estimator_panel):
-    with pytest.raises(ValueError, match="Regularization with continuous treatment"):
+def test_continuous_treatment_raises_not_implemented(estimator_panel):
+    with pytest.raises(NotImplementedError, match="not yet implemented"):
         dyn_balancing(
             data=estimator_panel,
             yname="y",
@@ -221,7 +221,6 @@ def test_continuous_treatment_with_regularization_raises(estimator_panel):
             ds1=[0, 1, 1],
             ds2=[0, 0, 0],
             continuous_treatment=True,
-            regularization=True,
         )
 
 
@@ -262,6 +261,7 @@ def test_single_period_ds_warns(estimator_panel):
         )
 
 
+@pytest.mark.filterwarnings("ignore:pooled=True produced no pseudo-observations:UserWarning")
 def test_pooled_auto_sets_cluster(estimator_panel):
     result = dyn_balancing(
         data=estimator_panel,
@@ -513,6 +513,7 @@ def test_history_var_att_equals_var_sum(history_result):
         assert row["var_att"] == pytest.approx(row["var_mu1"] + row["var_mu2"], abs=1e-10)
 
 
+@pytest.mark.filterwarnings("ignore:ds1 contains one element:UserWarning")
 def test_history_slices_ds_correctly(estimator_panel):
     ds1 = [0, 1, 1]
     ds2 = [0, 0, 0]
@@ -604,6 +605,7 @@ def test_het_var_att_equals_var_sum(het_result):
         assert row["var_att"] == pytest.approx(row["var_mu1"] + row["var_mu2"], abs=1e-10)
 
 
+@pytest.mark.filterwarnings("ignore:ds1 contains one element:UserWarning")
 def test_het_matches_single_call(estimator_panel):
     het = dyn_balancing(
         data=estimator_panel,

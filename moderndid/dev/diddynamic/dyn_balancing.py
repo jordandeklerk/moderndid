@@ -236,8 +236,11 @@ def dyn_balancing(
         raise ValueError(f"alp must be between 0 and 1 (exclusive), got {alp}.")
     if lb > ub:
         raise ValueError(f"lb ({lb}) must be less than or equal to ub ({ub}).")
-    if continuous_treatment and regularization:
-        raise ValueError("Regularization with continuous treatment is not supported.")
+    if continuous_treatment:
+        raise NotImplementedError(
+            "Continuous treatment estimation is not yet implemented. "
+            "The reference R package (DynBalancing) also lacks this feature."
+        )
     if alp > 0.1:
         warnings.warn("Significance level larger than 0.1 selected.", stacklevel=2)
     if histories_length is None and final_periods is None and len(ds1) == 1:
