@@ -36,7 +36,7 @@ __ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library f
 
 ## Features
 
-- [Staggered DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_triple_did.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html), [Honest DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html), [Extended TWFE](https://moderndid.readthedocs.io/en/latest/api/etwfe.html), and [Nonparametric IV](https://moderndid.readthedocs.io/en/latest/user_guide/example_npiv.html).
+- [Staggered DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_triple_did.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html), [Dynamic Covariate Balancing DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_dyn_balancing.html), [Honest DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html), [Extended TWFE](https://moderndid.readthedocs.io/en/latest/api/etwfe.html), and [Nonparametric IV](https://moderndid.readthedocs.io/en/latest/user_guide/example_npiv.html).
 - Works with any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more) via [narwhals](https://narwhals-dev.github.io/narwhals/).
 - [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT computations, and threaded parallel compute.
 - Optional [CuPy](https://cupy.dev/) GPU acceleration with multi-GPU support in distributed mode.
@@ -132,6 +132,7 @@ result = did.ddd(data, yname="y", tname="t", idname="id", gname="g", pname="p", 
 result = did.cont_did(data, yname="y", tname="t", idname="id", gname="g", dname="dose", ...)
 result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", ...)
 result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
+result = did.dyn_balancing(data, yname="y", tname="t", idname="id", treatment_name="treat", ds1=[1,1], ds2=[0,0], ...)
 result = did.etwfe(data, yname="y", tname="t", gname="g", idname="id", ...)
 ```
 
@@ -187,6 +188,7 @@ result = did.att_gt(data,
 Datasets from published studies and synthetic data generators for simulations:
 
 ```python
+did.load_acemoglu()        # Democracy and growth (Acemoglu et al.)
 did.load_mpdta()           # County teen employment
 did.load_nsw()             # NSW job training program
 did.load_ehec()            # Medicaid expansion
@@ -210,7 +212,6 @@ did.gen_ddd_scalable()     # Large-scale triple DiD
 - `moderndid.didbacon` — Goodman-Bacon decomposition ([Goodman-Bacon, 2019](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf))
 - `moderndid.didlocal` — Local projections DiD ([Dube et al., 2025](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf))
 - `moderndid.did2s` — Two-stage DiD ([Gardner, 2021](https://jrgcmu.github.io/2sdd_current.pdf))
-- `moderndid.diddynamic` — Dynamic covariate balancing for time-varying treatments ([Viviano & Bradic, 2026](https://doi.org/10.1093/biomet/asag016))
 - `moderndid.functional` — Specification tests ([Roth & Sant'Anna, 2023](https://arxiv.org/pdf/2010.04814))
 
 ## Acknowledgements

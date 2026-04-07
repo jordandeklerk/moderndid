@@ -107,6 +107,8 @@ key arguments, and guidance on when to use each one.
      - `Ortiz-Villavicencio & Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
    * - **Intertemporal treatment** (:func:`~moderndid.did_multiplegt`)
      - `de Chaisemartin & D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
+   * - **Dynamic covariate balancing DiD** (:func:`~moderndid.dyn_balancing`)
+     - `Viviano & Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_
    * - **Sensitivity analysis** (:func:`~moderndid.honest_did`)
      - `Rambachan & Roth (2023) <https://asheshrambachan.github.io/assets/files/hpt-draft.pdf>`_
    * - **Extended TWFE** (:func:`~moderndid.etwfe`)

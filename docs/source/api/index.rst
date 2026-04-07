@@ -26,6 +26,7 @@ methodology are found in :ref:`background`.
    didtriple
    didcont
    didinter
+   diddynamic
    honestdid
    etwfe
 

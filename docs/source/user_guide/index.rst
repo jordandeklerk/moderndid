@@ -25,6 +25,7 @@ features; details are found in :ref:`api`.
    example_triple_did
    example_inter_did
    example_cont_did
+   example_dyn_balancing
    example_honest_did
    example_etwfe
    example_npiv

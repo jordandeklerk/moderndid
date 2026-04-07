@@ -16,6 +16,7 @@ methodologies implemented in **ModernDiD**; for practical usage see the
    tripledid
    didcont
    didinter
+   diddynamic
    didhonest
    etwfe
    npiv

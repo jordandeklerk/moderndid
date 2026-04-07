@@ -41,6 +41,11 @@ and research question.
   intensity over time, :func:`~moderndid.did_multiplegt` provides valid
   inference by comparing units whose treatment changed to those with the
   same baseline treatment that have not yet changed.
+- When units dynamically select into treatment based on past outcomes and
+  covariates, ``dyn_balancing`` estimates the effect of specific treatment
+  histories using sequential covariate balancing weights that do not require
+  propensity score estimation. This is appropriate when parallel trends is
+  violated by dynamic treatment selection.
 - After running any estimator, :func:`~moderndid.honest_did` assesses how
   large violations of the parallel trends assumption would need to be to
   overturn your conclusions.
@@ -234,6 +239,65 @@ identically.
    periods, and cannot be combined with event study aggregation.
 
 
+Dynamic Covariate Balancing DiD
+-------------------------------
+
+The ``dyn_balancing`` function estimates treatment effects in panel data
+where treatments change dynamically over time and units select into
+treatment based on past outcomes and covariates. This implements the
+`Viviano and Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_
+framework.
+
+.. code-block:: python
+
+    from moderndid.diddynamic import dyn_balancing
+
+    result = dyn_balancing(
+        data=data,
+        yname="outcome",
+        tname="year",
+        idname="unit_id",
+        treatment_name="treatment",
+        ds1=[1, 1],                   # always treated for 2 periods
+        ds2=[0, 0],                   # never treated for 2 periods
+        xformla="~ covariate1 + covariate2",
+        fixed_effects=["region"],
+        balancing="dcb",
+    )
+
+The result includes the ATE, potential outcomes under each treatment
+history, analytical standard errors, and covariate imbalance diagnostics.
+The ``ds1`` and ``ds2`` arguments specify the two treatment sequences to
+compare, where the last element corresponds to the final period.
+
+Three estimation modes are available through additional arguments.
+``histories_length`` traces out how the effect evolves with exposure
+length (1 through :math:`h` periods), ``final_periods`` estimates effects
+at different final time points, and ``impulse_response=True`` measures
+the effect of a one-period treatment shock at varying horizons.
+
+.. code-block:: python
+
+    history = dyn_balancing(
+        data=data,
+        yname="outcome",
+        tname="year",
+        idname="unit_id",
+        treatment_name="treatment",
+        ds1=[1, 1, 1, 1, 1],
+        ds2=[0, 0, 0, 0, 0],
+        histories_length=[1, 2, 3, 4, 5],
+        xformla="~ covariate1 + covariate2",
+    )
+
+Unlike the staggered DiD estimators, dynamic covariate balancing does not
+require parallel trends or staggered adoption. Instead, it relies on
+sequential ignorability (no unobserved confounders conditional on past
+observables) and a high-dimensional linear model on potential outcomes.
+The DCB weights are constructed through a quadratic program that does not
+require estimating or specifying the propensity score.
+
+
 Difference-in-Differences with Intertemporal Treatment Effects
 --------------------------------------------------------------
 
@@ -412,6 +476,7 @@ analysis with real or simulated data.
 - :doc:`example_cont_did` for dose-response with :func:`~moderndid.cont_did`
 - :doc:`example_triple_did` for triple differences with :func:`~moderndid.ddd`
 - :doc:`example_inter_did` for time-varying treatments with :func:`~moderndid.did_multiplegt`
+- :doc:`example_dyn_balancing` for dynamic treatments with ``dyn_balancing``
 - :doc:`example_honest_did` for sensitivity analysis with :func:`~moderndid.honest_did`
 - :doc:`example_npiv` for nonparametric IV with :func:`~moderndid.npiv`
 
