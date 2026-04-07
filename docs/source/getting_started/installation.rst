@@ -38,6 +38,7 @@ Some estimators and features require additional dependencies that are not
 installed by default. Extras are additive and build on the base install, so
 you always get the core estimators plus whatever extras you specify.
 
+- **diddynamic** -- Dynamic covariate balancing DiD (:func:`~moderndid.dyn_balancing`)
 - **didcont** -- Continuous treatment DiD (:func:`~moderndid.cont_did`)
 - **didhonest** -- Sensitivity analysis (:func:`~moderndid.honest_did`)
 - **etwfe** -- Extended TWFE (:func:`~moderndid.etwfe`)

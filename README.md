@@ -55,6 +55,7 @@ uv pip install moderndid   # Core estimators (did, drdid, didinter, didtriple)
 
 Some estimators and features require additional dependencies that are not installed by default. Extras are additive and build on the base install, so you always get the core estimators ([`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid()`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt()`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
 
+- **`diddynamic`** - Dynamic covariate balancing DiD ([`dyn_balancing()`](https://moderndid.readthedocs.io/en/latest/api/generated/diddynamic/moderndid.diddynamic.dyn_balancing.html))
 - **`didcont`** - Continuous treatment DiD ([`cont_did()`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html))
 - **`didhonest`** - Sensitivity analysis ([`honest_did()`](https://moderndid.readthedocs.io/en/latest/api/generated/honestdid/moderndid.honest_did.html))
 - **`etwfe`** - Extended TWFE ([`etwfe()`](https://moderndid.readthedocs.io/en/latest/api/generated/etwfe/moderndid.etwfe.html))

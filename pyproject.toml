@@ -43,6 +43,9 @@ tracker = "https://github.com/jordandeklerk/moderndid/issues"
 documentation = "https://moderndid.readthedocs.io"
 
 [project.optional-dependencies]
+diddynamic = [
+    "scikit-learn>=1.3.0",
+]
 didcont = [
     "formulaic>=1.1.0",
 ]
@@ -78,7 +81,7 @@ gpu = [
     "rmm-cu12>=24.04",
 ]
 all = [
-    "moderndid[didcont,didhonest,etwfe,plots,numba,dask]",
+    "moderndid[diddynamic,didcont,didhonest,etwfe,plots,numba,dask]",
 ]
 test = [
     "pytest",
