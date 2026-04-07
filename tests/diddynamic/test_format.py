@@ -1,7 +1,7 @@
 """Tests for dynamic covariate balancing formatted output."""
 
-import moderndid.dev.diddynamic.format  # noqa: F401
-from moderndid.dev.diddynamic.container import DynBalancingResult
+import moderndid.diddynamic.format  # noqa: F401
+from moderndid.diddynamic.container import DynBalancingResult
 
 
 def test_str_contains_title(sample_result):

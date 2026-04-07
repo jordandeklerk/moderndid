@@ -7,7 +7,7 @@ from typing import NamedTuple
 import numpy as np
 import statsmodels.api as sm
 
-from moderndid.dev.diddynamic.estimation.coefficients import compute_coefficients
+from moderndid.diddynamic.estimation.coefficients import compute_coefficients
 
 
 class IPWResult(NamedTuple):

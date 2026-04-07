@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from moderndid.dev.diddynamic.estimation.weights_dcb import (
+from moderndid.diddynamic.estimation.weights_dcb import (
     DCBResult,
     _build_balance_bounds,
     _solve_balance_qp,

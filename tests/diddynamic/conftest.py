@@ -7,8 +7,8 @@ import polars as pl
 import pytest
 
 from moderndid.core.preprocess import DynBalancingConfig, PreprocessDataBuilder
-from moderndid.dev.diddynamic.container import DynBalancingResult
-from moderndid.dev.diddynamic.dyn_balancing import dyn_balancing
+from moderndid.diddynamic.container import DynBalancingResult
+from moderndid.diddynamic.dyn_balancing import dyn_balancing
 
 
 def build_dyn_balancing(data, **config_kwargs):

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from moderndid.dev.diddynamic.estimation.coefficients import CoefficientResult, compute_coefficients
+from moderndid.diddynamic.estimation.coefficients import CoefficientResult, compute_coefficients
 
 
 @pytest.mark.parametrize("method", ["lasso_plain", "lasso_subsample"])

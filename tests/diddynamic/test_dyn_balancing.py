@@ -4,9 +4,9 @@ import numpy as np
 import polars as pl
 import pytest
 
-import moderndid.dev.diddynamic.format  # noqa: F401
-from moderndid.dev.diddynamic.container import DynBalancingResult
-from moderndid.dev.diddynamic.dyn_balancing import dyn_balancing
+import moderndid.diddynamic.format  # noqa: F401
+from moderndid.diddynamic.container import DynBalancingResult
+from moderndid.diddynamic.dyn_balancing import dyn_balancing
 
 
 def test_returns_result(estimator_panel):

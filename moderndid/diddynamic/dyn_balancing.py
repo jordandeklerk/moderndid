@@ -195,7 +195,7 @@ def dyn_balancing(
     .. code-block:: python
 
         from moderndid.core.data import load_acemoglu
-        from moderndid.dev.diddynamic import dyn_balancing
+        from moderndid.diddynamic import dyn_balancing
 
         df = load_acemoglu()
         result = dyn_balancing(

@@ -46,6 +46,10 @@ __all__ = [
     "DeltaSDRMMResult",
     "DeltaSDRMResult",
     "DeltaSDResult",
+    # diddynamic module
+    "DynBalancingHetResult",
+    "DynBalancingHistoryResult",
+    "DynBalancingResult",
     "EmfxResult",
     "EtwfeResult",
     "FLCIResult",
@@ -142,6 +146,7 @@ __all__ = [
     "drdid_panel",
     "drdid_rc",
     "drdid_trad_rc",
+    "dyn_balancing",
     "emfx",
     "estimate_lowerbound_m_conditional_test",
     "etwfe",
@@ -173,6 +178,7 @@ __all__ = [
     "is_balanced_panel",
     "is_full_rank",
     "lee_coefficient",
+    "load_acemoglu",
     "load_cai2016",
     "load_ehec",
     "load_engel",
@@ -258,7 +264,7 @@ __all__ = [
 # Submodules that can be loaded lazily
 # Note: drdid is excluded because we want `from moderndid import drdid` to get
 # the drdid() function, not the drdid submodule. Access submodule via moderndid.drdid.
-_submodules = ["core", "did", "didinter", "didtriple", "didcont", "didhonest", "npiv", "plots"]
+_submodules = ["core", "did", "diddynamic", "didinter", "didtriple", "didcont", "didhonest", "npiv", "plots"]
 
 # Map attribute names to their module paths (for base/always-available imports)
 _lazy_imports = {
@@ -315,6 +321,12 @@ _lazy_imports = {
     "att_gt": "moderndid.did.att_gt",
     "compute_aggte": "moderndid.did.compute_aggte",
     "mboot": "moderndid.did.mboot",
+    # diddynamic
+    "DynBalancingHetResult": "moderndid.diddynamic.container",
+    "DynBalancingHistoryResult": "moderndid.diddynamic.container",
+    "DynBalancingResult": "moderndid.diddynamic.container",
+    "dyn_balancing": "moderndid.diddynamic.dyn_balancing",
+    "load_acemoglu": "moderndid.core.data",
     # drdid
     "drdid": "moderndid.drdid.drdid",
     "ipwdid": "moderndid.drdid.ipwdid",

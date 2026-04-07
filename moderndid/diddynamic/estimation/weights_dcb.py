@@ -7,7 +7,7 @@ from typing import NamedTuple
 import numpy as np
 from scipy.optimize import LinearConstraint, minimize
 
-from moderndid.dev.diddynamic.estimation.coefficients import compute_coefficients
+from moderndid.diddynamic.estimation.coefficients import compute_coefficients
 
 
 class DCBResult(NamedTuple):

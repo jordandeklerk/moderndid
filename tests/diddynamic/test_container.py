@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from moderndid.dev.diddynamic.container import DynBalancingResult
+from moderndid.diddynamic.container import DynBalancingResult
 
 
 def test_result_creation(sample_result):

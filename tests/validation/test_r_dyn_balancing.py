@@ -14,7 +14,7 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 np = importorskip("numpy")
 
-from moderndid.dev.diddynamic import dyn_balancing
+from moderndid.diddynamic import dyn_balancing
 
 R_PKG_PATH = "DynBalancing"
 

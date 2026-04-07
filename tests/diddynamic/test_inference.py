@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from moderndid.dev.diddynamic.estimation.inference import (
+from moderndid.diddynamic.estimation.inference import (
     QuantileResult,
     compute_quantiles,
     compute_variance,

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from moderndid.dev.diddynamic.estimation.weights_ipw import (
+from moderndid.diddynamic.estimation.weights_ipw import (
     IPWResult,
     _estimate_joint_propensity,
     _match_mask,
