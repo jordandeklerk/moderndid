@@ -56,15 +56,8 @@ Loading the data
 .. code-block:: python
 
     from moderndid.core.data import load_acemoglu
-    import polars as pl
 
     df = load_acemoglu()
-
-    # The estimator requires numeric unit identifiers
-    units = sorted(df["Unit"].unique().to_list())
-    unit_map = {u: i for i, u in enumerate(units)}
-    df = df.with_columns(pl.col("Unit").replace(unit_map).cast(pl.Int64))
-
     print(df.select("Y", "D", "Unit", "Time", "region", "V1", "V2").head(6))
 
 .. code-block:: text

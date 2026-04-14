@@ -82,7 +82,16 @@ def load_acemoglu() -> pl.DataFrame:
     with gzip.open(data_path, "rb") as f:
         data = pickle.load(f)
 
-    return to_polars(data)
+    df = to_polars(data)
+
+    # Convert string Unit identifiers to numeric for compatibility with
+    # estimators that require numeric panel IDs.
+    if df["Unit"].dtype == pl.String:
+        units = sorted(df["Unit"].unique().to_list())
+        unit_map = {u: i for i, u in enumerate(units)}
+        df = df.with_columns(pl.col("Unit").replace(unit_map).cast(pl.Int64))
+
+    return df
 
 
 def load_nsw() -> pl.DataFrame:
