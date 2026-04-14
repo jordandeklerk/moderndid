@@ -4,65 +4,66 @@ Dynamic Covariate Balancing DiD
 ================================
 
 The ``diddynamic`` module implements the dynamic covariate balancing (DCB) estimator of
-`Viviano and Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_ for estimating treatment
-effects in panel data where treatments change over time. The method accommodates settings
-where treatment assignments depend on high-dimensional covariates, past outcomes, and past
-treatments, and where outcomes and time-varying covariates may depend on the entire
-trajectory of past treatments.
+`Viviano and Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_ for panel data where
+treatments change over time. It handles settings where treatment assignments depend on
+high-dimensional covariates, past outcomes, and past treatments, and where outcomes and
+time-varying covariates may depend on the entire trajectory of past treatments.
 
-Many empirical questions involve treatment sequences rather than one-time interventions.
-Countries transition to and from democracy, patients start and stop medications, workers
-move in and out of training programmes. In each case the causal quantity of interest depends
-on the *sequence* of treatments. For example, researchers studying the effect of democracy
-on GDP growth (`Acemoglu et al., 2019 <https://doi.org/10.1086/700936>`_) want to compare
-countries that were democratic for five consecutive years against those that were not,
-averaging over earlier treatment assignments. Standard DiD methods designed for one-time
-adoption cannot address this question.
+Think about a country deciding whether to adopt democratic institutions. That decision is
+shaped by past economic performance, the political trajectories of neighbours, and dozens
+of other observable factors. Once the country transitions, its GDP, trade flows, and
+institutional quality all change, which in turn influence whether democracy persists in the
+next period. This kind of feedback loop between treatments and outcomes over time is
+precisely what makes dynamic treatment regimes so challenging to analyse. The standard DiD
+toolkit, built for settings where treatment is a one-time permanent event, simply cannot
+accommodate this back-and-forth.
 
-Why Standard Approaches Are Problematic
----------------------------------------
+Why standard approaches fall short
+-----------------------------------
 
-Three common strategies for handling dynamic treatments each have important limitations.
+Before introducing DCB, it helps to understand what goes wrong with the usual tools.
 
 **Standard DiD and event studies** assume staggered adoption, where once a unit receives
-treatment it remains treated. When units can switch treatment status in response to previous
-outcomes, parallel trends is violated
+treatment it stays treated forever. When countries can switch in and out of democracy based
+on past economic outcomes, the parallel trends assumption breaks down
 (`Ghanem et al., 2022 <https://doi.org/10.3982/ECTA19402>`_;
-`Marx et al., 2022 <https://doi.org/10.1016/j.jeconom.2021.12.014>`_). The standard TWFE
-regression compounds this problem by collapsing different treatment histories into a single
-coefficient, and negative weighting becomes more severe because the pool of "control" units
-changes in each period.
+`Marx et al., 2022 <https://doi.org/10.1016/j.jeconom.2021.12.014>`_). TWFE compounds the
+problem by collapsing different treatment sequences into a single coefficient, and negative
+weighting gets worse because the pool of "control" units shifts every period.
 
 **Standard local projections** (`Jordà, 2005 <https://doi.org/10.1257/0002828053828518>`_)
-model observed outcomes as a linear function of current and lagged treatments and covariates.
-Because the model is specified on *observed* rather than *potential* outcomes, the estimated
-treatment effect absorbs the distribution of future treatment assignments and therefore
-depends on the propensity score. With dynamic selection into treatment, this conflation biases
-the estimated coefficients. In the democracy application of Viviano and Bradic (2026), local
-projections substantially underestimate the long-run effect compared to DCB.
+regress observed outcomes on current and lagged treatments plus covariates. The trouble is
+that this model is written in terms of *observed* rather than *potential* outcomes. With
+dynamic treatment selection, the resulting coefficient conflates the causal effect with the
+distribution of future treatment decisions, which means it depends on the propensity score.
+In the empirical application of
+`Viviano and Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_, local projections
+substantially underestimate long-run treatment effects compared to DCB.
 
-**Inverse probability weighting** (IPW) estimators reweight observations by the probability of
-the observed treatment sequence. For :math:`T` periods, the IPW weight for unit :math:`i` is
-the product of :math:`T` conditional probabilities,
+**Inverse probability weighting** (IPW) takes a different approach, reweighting each unit
+by the probability of the treatment sequence it actually experienced. For :math:`T` periods,
+the weight for unit :math:`i` is the product of :math:`T` conditional probabilities,
 
 .. math::
 
    w_i = \prod_{t=1}^T \frac{1}{P(D_{i,t} = d_t \mid H_{i,t})},
 
-which can be highly unstable for even moderately long histories. If any single-period
-propensity score is close to zero, the product explodes. In the Acemoglu et al. data, the
-estimated probability of being democratic for just two consecutive years already drops below
-0.1 for some countries, making IPW weights for five-year histories extremely variable. The
-DCB estimator avoids this problem by replacing propensity score estimation with a quadratic
-program that directly constructs balancing weights with minimum variance.
+and this product can blow up fast. If any single-period propensity score is close to zero,
+the whole product explodes. In many empirical settings the estimated probability of following
+a given treatment path for just two consecutive periods already drops below 0.1 for some
+units, making IPW weights for longer histories wildly variable. DCB sidesteps this entirely
+by
+constructing balancing weights through a quadratic program that never estimates the
+propensity score at all.
 
-Setup and Notation
+Setup and notation
 ------------------
 
-Consider a panel with :math:`n` i.i.d. units observed over :math:`T` periods. For unit
-:math:`i` in period :math:`t`, let :math:`X_{i,t}` denote time-varying covariates,
-:math:`D_{i,t} \in \{0,1\}` the binary treatment, and :math:`Y_{i,t}` the outcome. Define
-the history vector
+We observe a panel of :math:`n` i.i.d. units over :math:`T` periods. For unit :math:`i` in
+period :math:`t`, let :math:`X_{i,t}` denote time-varying covariates,
+:math:`D_{i,t} \in \{0,1\}` the binary treatment, and :math:`Y_{i,t}` the outcome. All the
+information available up to (but not including) the treatment decision at time :math:`t` is
+collected in the history vector
 
 .. math::
 
@@ -70,11 +71,10 @@ the history vector
               X_{i,1}, \ldots, X_{i,t},\;
               Y_{i,1}, \ldots, Y_{i,t-1}\bigr] \in \mathbb{R}^{p_t},
 
-which collects all information from period 1 through :math:`t`, excluding the treatment
-assigned in the current period. The dimension :math:`p_t` grows with :math:`t` since each
-additional period contributes covariates, treatments, and outcomes to the history. Since
-covariates and outcomes at period :math:`t` may themselves depend on earlier treatments,
-we also need the *potential* history under a given treatment path :math:`d_{1:(t-1)}`:
+which grows with :math:`t` as each additional period contributes its own covariates,
+treatments, and outcomes. Since those covariates and outcomes may themselves depend on
+earlier treatments, we also define the *potential* history under treatment path
+:math:`d_{1:(t-1)}`,
 
 .. math::
 
@@ -82,14 +82,14 @@ we also need the *potential* history under a given treatment path :math:`d_{1:(t
    X_{i,1:t}(d_{1:(t-1)}),\;
    Y_{i,1:(t-1)}(d_{1:(t-1)})\bigr],
 
-where :math:`X_{i,t}(d_{1:(t-1)})` and :math:`Y_{i,t-1}(d_{1:(t-1)})` are the covariates
-and outcomes that would have been observed under treatment path :math:`d_{1:(t-1)}`.
+capturing the covariates and outcomes that *would have been observed* had the unit followed
+treatment path :math:`d_{1:(t-1)}`.
 
-Estimands of Interest
-~~~~~~~~~~~~~~~~~~~~~
+What we are estimating
+~~~~~~~~~~~~~~~~~~~~~~
 
-The primary estimand is the average treatment effect of two treatment histories
-:math:`d_{1:T}` and :math:`d'_{1:T}`,
+The target is the average treatment effect of two treatment histories :math:`d_{1:T}` and
+:math:`d'_{1:T}`,
 
 .. math::
 
@@ -97,56 +97,56 @@ The primary estimand is the average treatment effect of two treatment histories
    \quad
    \mu_T(d_{1:T}) = \mathbb{E}\bigl[Y_T(d_{1:T})\bigr],
 
-where :math:`Y_T(d_{1:T})` is the potential outcome at period :math:`T` under the full
-treatment history :math:`d_{1:T}`. This estimand captures the total effect of exposure to
-history :math:`d_{1:T}` compared to :math:`d'_{1:T}`, including both direct effects on the
-outcome and indirect effects mediated through intermediate covariates and outcomes.
+where :math:`Y_T(d_{1:T})` is the potential outcome at the final period under the full
+history :math:`d_{1:T}`. This captures the total effect, including both direct effects on
+the outcome and indirect effects that propagate through intermediate covariates and
+outcomes.
 
-Several specific estimands are of practical interest.
+A few concrete examples make this more tangible.
 
-- :math:`\text{ATE}((1,1),(0,0))` is the total effect of being treated for two consecutive
-  periods compared to no treatment, the most common target in applications with short panels.
-- :math:`\text{ATE}((1,0),(0,0))` is the direct effect of treatment in the first period only,
-  allowing the treatment to "wear off" in the second period. The difference between this
-  and :math:`\text{ATE}((1,1),(0,0))` reveals how much of the total effect comes from
-  sustained versus one-time exposure.
-- For long panels with :math:`T` periods, averaging over earlier treatment assignments
-  produces estimands of the form
+- :math:`\text{ATE}((1,1),(0,0))` asks what happens when a unit is treated for two
+  consecutive periods compared to untreated for two periods. This is the most common target
+  in short-panel applications.
+- :math:`\text{ATE}((1,0),(0,0))` isolates the direct effect of a single period of
+  treatment that is then reversed. Comparing this to :math:`\text{ATE}((1,1),(0,0))` reveals
+  how much of the total effect comes from sustained versus one-time exposure.
+- With long panels, we often want to average over earlier treatment assignments and focus on
+  the last :math:`h` periods. The resulting estimand,
 
   .. math::
 
      \mathbb{E}\bigl[Y_T(D_{1:(T-h)}, d_{(T-h+1):T})\bigr]
      - \mathbb{E}\bigl[Y_T(D_{1:(T-h)}, d'_{(T-h+1):T})\bigr],
 
-  which compare the last :math:`h` periods of treatment while averaging over past
-  assignments. This is the estimand targeted by the ``histories_length`` option.
+  is what the ``histories_length`` option targets. Varying :math:`h` traces out how the
+  treatment effect evolves with exposure length.
 
-Identifying Assumptions
+Identifying assumptions
 -----------------------
 
-Identification of :math:`\mu_T(d_{1:T})` rests on three assumptions that generalize the
-standard unconfoundedness framework to the dynamic setting. We present these first for two
-periods to build intuition, then state the general versions.
+Identification rests on three core assumptions that generalise the standard
+unconfoundedness framework to the dynamic setting. We develop these first for two periods,
+where the logic is easiest to follow, and then state the general versions.
 
-Two-Period Case
-~~~~~~~~~~~~~~~
+The two-period case
+~~~~~~~~~~~~~~~~~~~
 
-In the two-period case, we observe :math:`(X_{i,1}, D_{i,1}, Y_{i,1}, X_{i,2}, D_{i,2},
+With two periods, we observe :math:`(X_{i,1}, D_{i,1}, Y_{i,1}, X_{i,2}, D_{i,2},
 Y_{i,2})` for each unit and define :math:`H_{i,2} = [D_{i,1}, X_{i,1}, X_{i,2}, Y_{i,1}]`.
-The potential outcome :math:`Y_{i,2}(d_1, d_2)` is the outcome that would be observed if
-unit :math:`i` received treatment :math:`d_1` in period 1 and :math:`d_2` in period 2.
+The potential outcome :math:`Y_{i,2}(d_1, d_2)` represents the outcome a unit would achieve
+if it received treatment :math:`d_1` in period 1 and :math:`d_2` in period 2.
 
 .. admonition:: Assumption 1 (No Anticipation)
 
    For :math:`d_1 \in \{0,1\}`, let :math:`Y_{i,1}(d_1, 1) = Y_{i,1}(d_1, 0)` and
    :math:`X_{i,2}(d_1, 1) = X_{i,2}(d_1, 0)`.
 
-   Intermediate potential outcomes and covariates depend only on past but not future
-   treatment assignments. The treatment status at :math:`t = 2` has no contemporaneous effect
-   on covariates.
+   Intermediate outcomes and covariates depend only on past treatments, not on future ones.
+   Treatment at :math:`t = 2` has no contemporaneous effect on covariates.
 
-This allows anticipatory effects governed by expectations (individuals may choose treatments
-based on expected future utilities) but not on future treatment realisations.
+This is a standard restriction in the causal inference literature. It allows forward-looking
+behaviour (a unit may choose treatment in anticipation of future benefits) but rules out
+effects from treatment realisations that haven't happened yet.
 
 .. admonition:: Assumption 2 (Sequential Ignorability)
 
@@ -156,11 +156,11 @@ based on expected future utilities) but not on future treatment realisations.
 
    (B) :math:`(Y_{i,2}(d_1, d_2), H_{i,2}(d_1)) \perp D_{i,1} \mid X_{i,1}`.
 
-Part (A) states that second-period treatment is unconfounded given the full first-period
-history. Part (B) states that first-period treatment is unconfounded given baseline
-covariates. Together they require that there are no unobserved confounders *after* controlling
-for observable characteristics, but they allow treatment decisions to depend on all observed
-past information, including past outcomes and treatments.
+Part (A) says that, once we condition on everything observed through period 1, the
+second-period treatment is as good as random. Part (B) says the same for the first-period
+treatment conditional on baseline covariates. Together, these allow treatment decisions to
+depend on all observed history (including past outcomes and treatments) as long as there are
+no unobserved confounders *after* conditioning.
 
 .. admonition:: Assumption 3 (Potential Local Projections)
 
@@ -173,23 +173,20 @@ past information, including past outcomes and treatments.
       \mathbb{E}[Y_{i,2}(d_1, d_2) \mid X_{i,1}, X_{i,2}, Y_{i,1}, D_{i,1} = d_1]
       &= [d_1, X_{i,1}, X_{i,2}, Y_{i,1}]\,\beta_{d_1,d_2}^{(2)}.
 
-Following in spirit the local projection framework of
-`Jordà (2005) <https://doi.org/10.1257/0002828053828518>`_, Assumption 3 imposes linearity on
-expected *potential* outcomes rather than observed outcomes. This is a crucial distinction.
-A model on realized outcomes would impose restrictions on the distribution of treatment
-assignments (the propensity score), whereas a potential outcome model does not. The model
-allows coefficients to be heterogeneous across treatment histories :math:`(d_1, d_2)` and the
-dimensions :math:`p_1, p_2` can grow with :math:`n`, accommodating high-dimensional
-covariates and their transformations.
+This is where DCB departs from both standard local projections and from IPW. Following the
+spirit of `Jordà (2005) <https://doi.org/10.1257/0002828053828518>`_, Assumption 3 imposes
+linearity, but on expected *potential* outcomes rather than observed ones. This distinction
+matters greatly. A model on realised outcomes would tie the estimated treatment effect to the
+propensity score, whereas a potential outcome model does not. Coefficients can differ across
+treatment histories :math:`(d_1, d_2)`, and the dimensions :math:`p_1, p_2` are allowed to
+grow with :math:`n`, so the model can accommodate large numbers of covariates and their
+transformations. In high dimensions, the linearity can be relaxed to an approximation
+accurate to :math:`o(n^{-1/2})`, which is enough for valid inference.
 
-In high dimensions, Assumption 3 can be relaxed to approximate linearity up to an order
-:math:`o(n^{-1/2})`, covering settings where many covariates and their transformations
-approximate the conditional mean function well enough for valid inference.
-
-General Case
+General case
 ~~~~~~~~~~~~
 
-The two-period assumptions extend naturally to :math:`T` periods. The key change is that
+Moving from two to :math:`T` periods is conceptually straightforward. The key change is that
 sequential ignorability now conditions on the full history :math:`H_{i,t}` at each period
 rather than just baseline covariates or a single lag.
 
@@ -222,43 +219,48 @@ rather than just baseline covariates or a single lag.
    :math:`P(D_{i,t} = d_t \mid H_{i,t}) \in (\delta, 1 - \delta)` for some
    :math:`\delta \in (0,1)` and each :math:`t \in \{1, \ldots, T\}`.
 
-Strict overlap ensures that there exist weights satisfying the dynamic balance constraints
-introduced below, with the true inverse probability weights being one such set of weights.
+Overlap ensures that the dynamic balance constraints introduced below are feasible.
+Intuitively, every unit must have a positive probability of following the target treatment
+path at each step. The true IPW weights turn out to be one feasible set of weights, but DCB
+will find better ones.
 
-Identification
-~~~~~~~~~~~~~~
+From assumptions to estimable quantities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The identifying assumptions connect the potential outcome model to observable quantities,
-enabling recursive estimation. In the two-period case, the identification result takes a
-particularly transparent form.
+The assumptions above connect the potential outcome model to things we can actually measure.
+In the two-period case, the identification result is especially clean.
 
 **Lemma (Identification, Two Periods).** Under Assumptions 1--3, for any
 :math:`(d_1, d_2) \in \{0,1\}^2`,
 
 .. math::
 
-   \mathbb{E}[Y_{i,2} \mid H_{i,2},\, D_{i,2} = d_2,\, D_{i,1} = d_1]
-   &= \mathbb{E}[Y_{i,2}(d_1, d_2) \mid H_{i,2},\, D_{i,1} = d_1]
-   = H_{i,2}(d_1)\,\beta_{d_1,d_2}^{(2)}, \\[6pt]
+   \mathbb{E}\bigl[Y_{i,2} \mid H_{i,2},\, D_{i,2} = d_2,\, D_{i,1} = d_1\bigr]
+   &= \mathbb{E}\bigl[Y_{i,2}(d_1, d_2) \mid H_{i,2},\, D_{i,1} = d_1\bigr] \\
+   &= H_{i,2}(d_1)\,\beta_{d_1,d_2}^{(2)},
+
+and, iterating the conditional expectation,
+
+.. math::
+
    \mathbb{E}\bigl[\mathbb{E}[Y_{i,2} \mid H_{i,2},\, D_{i,2} = d_2,\, D_{i,1} = d_1]
-   \;\big|\; X_{i,1},\, D_{i,1} = d_1\bigr]
-   &= \mathbb{E}[Y_{i,2}(d_1, d_2) \mid X_{i,1}]
-   = X_{i,1}\,\beta_{d_1,d_2}^{(1)}.
+     \,\big|\, X_{i,1},\, D_{i,1} = d_1\bigr]
+   &= \mathbb{E}\bigl[Y_{i,2}(d_1, d_2) \mid X_{i,1}\bigr] \\
+   &= X_{i,1}\,\beta_{d_1,d_2}^{(1)}.
 
-The first line uses sequential ignorability (Assumption 2A) to replace the observed outcome
-:math:`Y_{i,2}` with the potential outcome :math:`Y_{i,2}(d_1, d_2)`, and then applies the
-potential local projection (Assumption 3) to write the conditional expectation as linear in
+Read from top to bottom, the logic is recursive. The first line uses sequential ignorability
+(Assumption 2A) to swap the observed outcome for the potential outcome, then applies the
+linear model (Assumption 3) to express the conditional expectation in terms of
 :math:`H_{i,2}(d_1)`. The second line iterates backward, using Assumption 2B and the
-first-period projection to express the iterated conditional expectation as linear in
-:math:`X_{i,1}`.
+first-period projection to push the conditioning down to baseline covariates :math:`X_{i,1}`.
 
-This two-step identification is the key insight connecting marginal structural models
+This two-step recursion is the key insight of the paper. It connects the marginal structural
+models literature
 (`Robins et al., 2000 <https://doi.org/10.1097/00001648-200009000-00011>`_) to local
-projections in economics, and it motivates the recursive estimation strategy in which
-coefficients are estimated backward through time.
+projections in economics, and it motivates the backward estimation strategy at the heart of
+DCB.
 
-**Identification, General.** For :math:`T` periods, under Assumptions 1'--3', the result
-generalises. For each period :math:`t`,
+For :math:`T` periods, the same recursion applies at each step. For every :math:`t`,
 
 .. math::
 
@@ -273,55 +275,48 @@ and projecting backward,
    \;\big|\; H_{i,t}, D_{i,1:(t-1)} = d_{1:(t-1)}\bigr]
    = H_{i,t}(d_{1:(t-1)})\,\beta_{d_{1:T}}^{(t)}.
 
-These recursive relationships show that the coefficients :math:`\beta_{d_{1:T}}^{(t)}` can
-be estimated from observable data by regressing backward through time, and the potential
-outcome :math:`\mu_T(d_{1:T})` can then be recovered by combining these estimates with
-appropriately chosen balancing weights.
+These relationships tell us how to estimate the coefficients from data (regress backward
+through time) and how to recover the potential outcome :math:`\mu_T(d_{1:T})` by combining
+those estimates with balancing weights.
 
-Estimation with Dynamic Balancing
----------------------------------
+Estimation
+----------
 
-Estimation of :math:`\mu_T(d_{1:T})` proceeds in two stages, recursive coefficient
-estimation followed by sequential balancing weight construction.
+With the identification result in hand, estimation proceeds in two stages.
 
-Recursive Coefficient Estimation
+Recursive coefficient estimation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Coefficients are estimated recursively backward through time using penalised regression.
-Two model specifications are available, differing in how they handle treatment effect
-heterogeneity.
+The coefficients are estimated by working backward from the final period, with penalised
+regression at each step. Two model specifications are available, trading off flexibility
+against sample efficiency.
 
-**Fully interacted model.** Let :math:`\hat{\beta}_{d_{1:T}}^{(T)}` be the coefficient of
-the regression of :math:`Y_{i,T}` onto :math:`H_{i,T}` for all units with
-:math:`D_{i,1:T} = d_{1:T}` (dropping collinear columns). Then for each
-:math:`t = T-1, \ldots, 1`, regress the fitted values
+The **fully interacted model** starts by regressing :math:`Y_{i,T}` onto :math:`H_{i,T}`
+using only units with :math:`D_{i,1:T} = d_{1:T}`. It then regresses the fitted values
 :math:`H_{i,t+1}\hat{\beta}_{d_{1:T}}^{(t+1)}` onto :math:`H_{i,t}` for units with
-:math:`D_{i,1:t} = d_{1:t}` to obtain :math:`\hat{\beta}_{d_{1:T}}^{(t)}`.
+:math:`D_{i,1:t} = d_{1:t}`, working backward to :math:`t = 1`. This allows completely
+heterogeneous treatment effects but limits the sample at each step to units on the target
+path.
 
-**Linear model.** Let :math:`\tilde{\beta}^{(T)}` be the coefficient from regressing
-:math:`Y_{i,T}` onto :math:`(H_{i,T}, D_{i,1:T})` for *all* units, without penalising the
-treatment indicators :math:`D_{i,1:T}`. Create fitted values by plugging in the target
-history :math:`d_T` for the treatment indicator. Then proceed recursively as above.
+The **linear model** instead regresses :math:`Y_{i,T}` onto :math:`(H_{i,T}, D_{i,1:T})`
+using *all* units, leaving treatment indicators unpenalised. It then plugs in the target
+history for the treatment indicators and proceeds backward. This pools information across
+treatment paths, improving precision with long histories at the cost of assuming treatment effects are additive and linear.
 
-The linear model pools information across treatment paths, which improves precision with
-long histories at the cost of imposing treatment effect homogeneity (additive and linear, as
-in `Acemoglu et al. (2019) <https://doi.org/10.1086/700936>`_). The fully interacted model
-allows arbitrary heterogeneity but requires the effective sample size to not shrink
-exponentially in :math:`T`.
-
-Both specifications use LASSO with cross-validated penalty, where treatment indicators are
-left unpenalised to avoid shrinking the treatment effect toward zero. An alternative
+Both specifications use LASSO with cross-validated penalty, keeping treatment indicators
+unpenalised to avoid shrinking the treatment effect toward zero. An alternative
 ``lasso_subsample`` strategy partitions the data into separate fitting and evaluation sets,
 which can improve stability when the sample is small relative to the number of covariates.
 
-Sequential Balancing Weights
+Sequential balancing weights
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The key insight of DCB is that valid inference requires controlling the high-dimensional
-bias through balancing conditions rather than propensity score estimation.
+Here is where DCB diverges most sharply from existing methods. Rather than estimating
+propensity scores and inverting them (as IPW does), DCB finds weights that directly
+*balance* the covariate distributions across treatment groups. The balancing is done
+sequentially, one period at a time, through a series of quadratic programs.
 
-**Two-period estimator.** In the two-period case, the potential outcome estimator takes the
-form of a sequential augmented estimator,
+To see why balancing matters, consider the two-period estimator,
 
 .. math::
 
@@ -330,26 +325,13 @@ form of a sequential augmented estimator,
    + \hat{\gamma}_1(d_{1:2})^\top\bigl(H_2\hat{\beta}_{d_{1:2}}^{(2)} - X_1\hat{\beta}_{d_{1:2}}^{(1)}\bigr)
    + \bar{X}_1\hat{\beta}_{d_{1:2}}^{(1)},
 
-where :math:`\bar{X}_1` is the sample mean. The last term,
-:math:`\bar{X}_1\hat{\beta}_{d_{1:2}}^{(1)}`, would suffice as an estimator in low
-dimensions, but it is not :math:`\sqrt{n}`-consistent when covariates are high-dimensional.
-The first two terms correct for this by reweighting the period-specific residuals, with the
-second-period term adjusting for the gap between the outcome and the period-2 prediction, and
-the first-period term adjusting for the gap between the period-2 and period-1 predictions.
+where :math:`\bar{X}_1` is the sample mean. In low dimensions, the last term alone would
+give a consistent estimator. But with many covariates, the LASSO estimates
+:math:`\hat{\beta}` have non-negligible bias, and the first two terms are the correction.
+They reweight the period-specific residuals so that the high-dimensional estimation error
+washes out.
 
-The estimation error decomposes as
-
-.. math::
-
-   \hat{\mu}_2 - \bar{X}_1\beta^{(1)} =
-   \underbrace{\bigl(\hat{\gamma}_1^\top X_1 - \bar{X}_1\bigr)
-   \bigl(\beta^{(1)} - \hat{\beta}^{(1)}\bigr)
-   + \bigl(\hat{\gamma}_2^\top H_2 - \hat{\gamma}_1^\top H_2\bigr)
-   \bigl(\beta^{(2)} - \hat{\beta}^{(2)}\bigr)}_{T_1\text{ (bias)}}
-   + T_2 + T_3,
-
-where :math:`T_2, T_3` are mean-zero under measurability conditions on the weights. The bias
-:math:`T_1` is bounded by
+When we decompose the estimation error, the key term is
 
 .. math::
 
@@ -360,20 +342,22 @@ where :math:`T_2, T_3` are mean-zero under measurability conditions on the weigh
    \|\hat{\beta}^{(2)} - \beta^{(2)}\|_1\,
    \|\hat{\gamma}_2^\top H_2 - \hat{\gamma}_1^\top H_2\|_\infty.
 
-This product-of-rates structure shows that to make the bias :math:`o(n^{-1/2})`, the weights
-must satisfy *dynamic balance constraints*: the weighted covariates under
-:math:`\hat{\gamma}_t` must be close (in :math:`\ell_\infty` norm) to the weighted covariates
-under :math:`\hat{\gamma}_{t-1}`.
+This has a beautiful product-of-rates structure. Each factor is the product of a coefficient
+estimation error and a *covariate imbalance* term. To make the bias vanish at the
+:math:`o(n^{-1/2})` rate needed for valid inference, we need the weighted covariates under
+:math:`\hat{\gamma}_t` to be close to those under :math:`\hat{\gamma}_{t-1}`.
 
-- The first term, :math:`\|\bar{X}_1 - \hat{\gamma}_1^\top X_1\|_\infty`, coincides with
-  the static balancing condition of
-  `Athey et al. (2018) <https://doi.org/10.1111/rssb.12268>`_.
-- The second term,
-  :math:`\|\hat{\gamma}_2^\top H_2 - \hat{\gamma}_1^\top H_2\|_\infty`, is novel and
-  specific to the dynamic setting. It requires that histories in the second period are
-  balanced once reweighted by the first-period weights.
+- The first imbalance term,
+  :math:`\|\bar{X}_1 - \hat{\gamma}_1^\top X_1\|_\infty`, is the same static balancing
+  condition that appears in cross-sectional studies
+  (`Athey et al., 2018 <https://doi.org/10.1111/rssb.12268>`_).
+- The second,
+  :math:`\|\hat{\gamma}_2^\top H_2 - \hat{\gamma}_1^\top H_2\|_\infty`, is new. It
+  requires that the second-period histories be balanced after reweighting by the
+  first-period weights. This is the *dynamic* balancing condition that gives the method
+  its name.
 
-**General estimator.** For :math:`T` periods, the estimator generalises to
+For :math:`T` periods, the estimator generalises to
 
 .. math::
 
@@ -381,10 +365,10 @@ under :math:`\hat{\gamma}_{t-1}`.
    \hat{\gamma}_{i,T}\,Y_{i,T}
    - \sum_{t=2}^T (\hat{\gamma}_{i,t} - \hat{\gamma}_{i,t-1})\,H_{i,t}\hat{\beta}_{d_{1:T}}^{(t)}
    - \Bigl(\hat{\gamma}_{i,1} - \frac{1}{n}\Bigr)\,X_{i,1}\hat{\beta}_{d_{1:T}}^{(1)}
-   \Biggr\}.
+   \Biggr\},
 
-**Error decomposition.** The estimation error of the general estimator decomposes into three
-components. Define the residuals and prediction gaps as
+and the estimation error decomposes into three terms. Define the residuals and prediction
+gaps as
 
 .. math::
 
@@ -403,16 +387,18 @@ Then
    + \underbrace{\hat{\gamma}_T^\top \varepsilon_T}_{(I_2)}
    + \underbrace{\sum_{t=2}^T \hat{\gamma}_{t-1}^\top \nu_{t-1}}_{(I_3)}.
 
-The bias :math:`(I_1)` depends on the product of the coefficient estimation error and the
-imbalance of the balancing weights, motivating the dynamic balance constraints. The remaining
-terms :math:`(I_2)` and :math:`(I_3)` are mean-zero provided the weights satisfy two
-measurability conditions: (i) :math:`\hat{\gamma}_t` is measurable with respect to
-:math:`\sigma(H_{i,t}, D_{i,t})` but not :math:`Y_{i,T}`, and (ii) :math:`\hat{\gamma}_{i,t}`
-is zero whenever :math:`D_{i,1:t} \neq d_{1:t}`. Both conditions are satisfied by the DCB
-quadratic program by construction.
+The bias :math:`(I_1)` is the product of coefficient errors and imbalances, exactly as in
+the two-period case. The remaining terms :math:`(I_2)` and :math:`(I_3)` are mean-zero as
+long as the weights satisfy two natural conditions: (i) :math:`\hat{\gamma}_t` depends
+only on :math:`(H_{i,t}, D_{i,t})` and not on the outcome :math:`Y_{i,T}`, and
+(ii) :math:`\hat{\gamma}_{i,t} = 0` whenever the unit's treatment path doesn't match the
+target. Both are built into the quadratic program by construction.
 
-**Algorithm (DCB).** Initialise :math:`\hat{\gamma}_{i,0} = 1/n`. For each
-:math:`t \in \{1, \ldots, T\}`, solve
+The DCB algorithm
+~~~~~~~~~~~~~~~~~~
+
+With the motivation in place, the algorithm itself is simple. Initialise
+:math:`\hat{\gamma}_{i,0} = 1/n` and for each :math:`t \in \{1, \ldots, T\}`, solve
 
 .. math::
 
@@ -424,37 +410,32 @@ quadratic program by construction.
      \|\gamma_t\|_\infty \leq C_{n,t}, \\
    & \gamma_{i,t} = 0 \;\text{if}\; D_{i,1:t} \neq d_{1:t}.
 
-The weights minimise their :math:`\ell_2` norm (equivalently, maximise the effective sample
-size) subject to dynamic balance, normalisation, and non-negativity constraints. Non-zero
-weights are restricted to units whose observed treatment path matches the target history up
-to period :math:`t`.
+In words, at each period we find the weights with the smallest :math:`\ell_2` norm (which
+maximises the effective sample size) subject to the dynamic balance constraint, a summing-to-
+one normalisation, non-negativity, an upper bound on individual weights, and the requirement
+that only units on the target treatment path receive positive weight.
 
-Tuning Parameter Selection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The quadratic program requires choosing three quantities. The balance tolerance and the upper
-bound on individual weights are set following the theory as
+The tuning parameters are set by the theory. The balance tolerance scales as
 
 .. math::
 
    \delta_t(n, p_t) = \frac{\log^{3/2}(p_t n)}{\sqrt{n}},
    \qquad
-   C_{n,t} = \log(n) \cdot n^{-2/3}.
+   C_{n,t} = \log(n) \cdot n^{-2/3},
 
-The implementation uses a data-driven grid search over :math:`K_{1,t}`, selecting the
-smallest value for which the quadratic program admits a feasible solution. This approach
-minimises the estimator's bias and, within the set of weighting estimators with the smallest
-bias, selects the one with the smallest variance. When ``adaptive_balancing=True``, the
-algorithm refines the constraints to weight more heavily the covariates with non-zero
-estimated coefficients, further reducing the effective number of binding constraints.
+and a data-driven grid search selects the smallest :math:`K_{1,t}` for which the quadratic
+program has a feasible solution. This minimises bias first, then variance. When
+``adaptive_balancing=True``, the algorithm tightens the constraints on covariates with large
+estimated coefficients, further improving balance where it matters most.
 
-The computational complexity scales polynomially in :math:`n` and :math:`p`, consisting of
-a sequence of :math:`T` quadratic programs with linear constraints.
+Computationally, this is a sequence of :math:`T` quadratic programs with linear constraints,
+so the cost scales polynomially in :math:`n` and :math:`p`.
 
-Comparison with IPW
-~~~~~~~~~~~~~~~~~~~
+Why DCB beats IPW
+~~~~~~~~~~~~~~~~~~
 
-The inverse probability weights
+A natural question is why not just use IPW. The answer comes from a clean theoretical
+result. The normalised IPW weights,
 
 .. math::
 
@@ -463,47 +444,28 @@ The inverse probability weights
    \bigg/
    \sum_i \hat{\gamma}_{i,t-1}\,\frac{\mathbf{1}\{D_{i,t}=d_t\}}{P(D_{i,t}=d_t \mid H_{i,t})}
 
-are a feasible solution to the DCB quadratic program (as formalised in the Existence theorem
-below). A useful diagnostic is :math:`1/(n\|\hat{\gamma}_t\|^2)`, which measures the effective
-sample size at time :math:`t`. Larger values indicate more precise treatment effect
-estimates. In the Acemoglu et al. application, the effective sample size for DCB at horizon
-:math:`h = 3` is 62, compared to 10 for IPW at the same horizon.
+are themselves a *feasible solution* to the DCB quadratic program. Since DCB minimises the
+:math:`\ell_2` norm over a constraint set that includes IPW, the DCB weights are guaranteed
+to have variance no larger than IPW. And in practice the improvement is often dramatic. The effective sample size diagnostic
+:math:`1/(n\|\hat{\gamma}_t\|^2)` typically shows DCB retaining several times more effective
+observations than IPW at the same horizon.
 
-DCB does not require consistent estimation or correct specification of the propensity
-score. AIPW and IPW-MSM alternatives are also available as benchmarks but require
-propensity score estimation.
-
-Existence of Feasible Weights
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A key theoretical result is that the DCB quadratic program always admits a feasible
-solution under the overlap assumption.
-
-**Theorem (Existence).** Under Assumptions 1'--4, with
+On top of lower variance, DCB has a major theoretical advantage. AIPW in high dimensions
+requires consistent estimation of *both* the propensity score and the outcome model, each at
+rate :math:`o_p(n^{-1/4})`. DCB requires only the outcome model condition, with no
+assumption on the propensity score at all. The balancing weights absorb the role of the
+propensity score through the quadratic program, and the product-of-rates structure
 
 .. math::
 
-   \delta_t(n, p_t) \geq c_{0,t}\,n^{-1/2}\log^{3/2}(p_t n)
-   \quad\text{and}\quad
-   C_{n,t} \geq \frac{\bar{c}}{n\delta^t}
+   \|\hat{\beta} - \beta\|_1 \cdot \delta(n, p)
 
-for sufficiently large :math:`\bar{c}`, the following holds with probability approaching 1.
-For each :math:`t \in \{1, \ldots, T\}`, there exists a feasible solution
-:math:`\hat{\gamma}_t^*(\hat{\gamma}_{t-1})` of the form
+replaces the usual product of propensity score and outcome model errors with a product of
+outcome model error and balance tolerance, which is controlled mechanically rather than
+estimated.
 
-.. math::
-
-   \hat{\gamma}_{i,0}^* = \frac{1}{n}, \quad
-   \hat{\gamma}_{i,t}^*(\hat{\gamma}_{t-1}) =
-   \frac{\hat{\gamma}_{i,t-1}\,w_{i,t}^*}{\sum_j \hat{\gamma}_{j,t-1}\,w_{j,t}^*},
-   \quad
-   w_{i,t}^* = \frac{\mathbf{1}\{D_{i,t} = d_t\}}{P(D_{i,t} = d_t \mid H_{i,t})}.
-
-The stabilised IPW weights, reweighted by the solution from the previous period, satisfy all
-constraints in the quadratic program. Since DCB minimises the :math:`\ell_2` norm over this
-constraint set, the DCB solution is guaranteed to have variance no larger than IPW.
-
-**Corollary (Weight Stability).** The DCB weights satisfy the period-by-period bound
+**Weight stability across periods.** A further reassurance comes from the following result.
+The DCB weights satisfy
 
 .. math::
 
@@ -511,93 +473,49 @@ constraint set, the DCB solution is guaranteed to have variance no larger than I
    \quad\text{and}\quad
    n\|\hat{\gamma}_t\|^2 \leq n\,c_t\,\|\hat{\gamma}_{t-1}\|^2
 
-for a finite constant :math:`c_t < \infty`. The first inequality shows that DCB weights have
-smaller :math:`\ell_2` norm than IPW at every period. The second shows that the weights' norm
-is controlled across periods by the norm in the previous period, preventing the kind of
-explosive growth that plagues IPW weights in long panels.
+for a finite constant :math:`c_t`. The first bound says DCB beats IPW at every period. The
+second says the weights' norm is controlled from one period to the next, preventing the
+explosive growth that plagues IPW in long panels.
 
-Theoretical Properties and Inference
--------------------------------------
+Inference
+---------
 
-Convergence Rate
-~~~~~~~~~~~~~~~~
+Convergence and variance
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Under Assumptions 1'--4 and the coefficient consistency condition
+Under the identifying assumptions and the coefficient consistency condition
 
 .. math::
 
    \max_t \|\hat{\beta}_{d_{1:T}}^{(t)} - \beta_{d_{1:T}}^{(t)}\|_1
    \cdot \delta_t(n, p_t) = o_p(n^{-1/2}),
 
-the DCB estimator achieves a parametric :math:`n^{-1/2}` convergence rate even when the
-number of covariates grows with :math:`n`, provided
+the DCB estimator converges at the parametric :math:`n^{-1/2}` rate, even with
+high-dimensional covariates, as long as
 
 .. math::
 
    \frac{\log\bigl(n \sum_t p_t\bigr)}{n^{1/4}} \to 0.
 
-The coefficient consistency condition is
-satisfied by standard high-dimensional estimators such as LASSO under sparsity and restricted
-eigenvalue conditions. Two sufficient forms of this condition are:
+This condition is satisfied by LASSO under standard sparsity and restricted eigenvalue
+assumptions, either with sub-Gaussian covariates
+(:math:`\max_t \|\hat{\beta}^{(t)} - \beta^{(t)}\|_1 = O_p(n^{-1/4})`) or uniformly
+bounded covariates
+(:math:`\max_t \|\hat{\beta}^{(t)} - \beta^{(t)}\|_1 = o_p(1/\log n)`).
 
-(a) With sub-Gaussian covariates,
-
-.. math::
-
-   \max_t \|\hat{\beta}^{(t)} - \beta^{(t)}\|_1 = O_p(n^{-1/4}).
-
-(b) With uniformly bounded covariates,
-
-.. math::
-
-   \max_t \|\hat{\beta}^{(t)} - \beta^{(t)}\|_1 = o_p(1/\log n).
-
-Rate Advantage Over AIPW
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The convergence rate conditions highlight a key advantage of DCB over augmented IPW. In
-high-dimensional settings, AIPW requires *both*
-
-.. math::
-
-   \|\hat{e} - e\| = o_p(n^{-1/4})
-   \quad\text{and}\quad
-   \|\hat{\beta} - \beta\| = o_p(n^{-1/4}),
-
-where :math:`e` denotes the propensity score. That is, AIPW demands consistent estimation of
-both the propensity score and the outcome model at rates faster than :math:`n^{-1/4}` (the
-product-of-rates condition for doubly robust estimators). DCB requires only the condition on
-the outcome model coefficients, with *no condition on the propensity score*. This is
-because the balancing weights inherit a product-of-rates structure of the form
-
-.. math::
-
-   \|\hat{\beta} - \beta\|_1 \cdot \delta(n, p),
-
-where :math:`\delta(n, p)` is the balance tolerance controlled by the quadratic program
-rather than a propensity score estimation error.
-
-Propagation of Error Over Time
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A natural concern with dynamic estimation is how error accumulates over multiple periods. The
-total bias is bounded by
+A natural worry with sequential estimation is that errors compound over time. They do, but
+in a controlled way. The total bias is bounded by
 
 .. math::
 
    \sum_{t=1}^T
    \bigl\|\hat{\beta}_{d_{1:T}}^{(t)} - \beta_{d_{1:T}}^{(t)}\bigr\|_1
    \cdot
-   \bigl\|\hat{\gamma}_t^\top H_t - \hat{\gamma}_{t-1}^\top H_t\bigr\|_\infty.
+   \bigl\|\hat{\gamma}_t^\top H_t - \hat{\gamma}_{t-1}^\top H_t\bigr\|_\infty,
 
-As the number of periods increases, it becomes harder to guarantee approximate balance,
-reflected in the balance constraint constants growing at rate :math:`K_{1,t} = \log^{1/2}(t)`.
-In practice, this means the effective sample size decreases with longer treatment histories,
-which is why the ``histories_length`` option is recommended for long panels to diagnose this
-trade-off between identification of long-run effects and statistical precision.
-
-Variance Estimation
-~~~~~~~~~~~~~~~~~~~
+with the balance constants growing at rate :math:`K_{1,t} = \log^{1/2}(t)`. In practice,
+the effective sample size shrinks with longer histories, which is why reporting effects at
+multiple history lengths is the recommended diagnostic.
 
 The analytical variance estimator is
 
@@ -610,36 +528,26 @@ The analytical variance estimator is
    + \frac{1}{n}\bigl(\bar{X}_1\hat{\beta}^{(1)} - X_{i,1}\hat{\beta}^{(1)}\bigr)^2
    \Biggr\},
 
-Each of the three terms captures uncertainty from a different source. The first accounts for
-the final-period residual variance, weighted by :math:`\hat{\gamma}_{i,T}^2`. The second
-accounts for the between-period prediction gaps, weighted by :math:`\hat{\gamma}_{i,t}^2`.
-The third accounts for the baseline covariate variation. Under homoskedasticity the variance
-is proportional to a weighted sum of :math:`\|\hat{\gamma}_t\|^2`, though homoskedasticity
-is not required for the result.
-
-The normalised estimator converges in distribution to a standard normal,
+with three terms reflecting three sources of uncertainty. The first captures the
+final-period residual variance (weighted by the squared final-period weights), the second
+captures the between-period prediction gaps (weighted by the squared intermediate weights),
+and the third captures the baseline covariate variation. The normalised estimator is
+asymptotically standard normal,
 
 .. math::
 
    \frac{\sqrt{n}\bigl(\hat{\mu}_T(d_{1:T}) - \mu_T(d_{1:T})\bigr)}
    {\hat{V}_T(d_{1:T})^{1/2}} \;\xrightarrow{d}\; \mathcal{N}(0,1).
 
-ATE Inference
-~~~~~~~~~~~~~
-
-Inference on the ATE for two histories :math:`d_{1:T}` and :math:`d'_{1:T}` with
-:math:`d_1 \neq d'_1` follows as a direct corollary. The two potential outcome estimators
-:math:`\hat{\mu}_T(d_{1:T})` and :math:`\hat{\mu}_T(d'_{1:T})` use disjoint sets of units
-(those with :math:`D_{i,1} = d_1` versus :math:`D_{i,1} = d'_1`), so the ATE variance is
-the sum of the individual variances,
+For the ATE comparing two histories :math:`d_{1:T}` and :math:`d'_{1:T}` with
+:math:`d_1 \neq d'_1`, the two estimators use disjoint sets of units, so
 
 .. math::
 
    \text{Var}\bigl(\widehat{\text{ATE}}\bigr) =
    \hat{V}_T(d_{1:T}) + \hat{V}_T(d'_{1:T}).
 
-When conditioning on baseline covariates :math:`X_1`, the relevant variance for each
-potential outcome subtracts the baseline variation term,
+When conditioning on baseline covariates :math:`X_1`, the baseline variation term drops out,
 
 .. math::
 
@@ -649,100 +557,80 @@ potential outcome subtracts the baseline variation term,
 
 and the ATE variance is the sum of these conditional variances.
 
-Critical Values
-~~~~~~~~~~~~~~~
+Critical values and clustering
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Two approaches to critical values are available.
+Two flavours of critical values are available. **Gaussian quantiles** use the standard
+normal and give tighter intervals when the balancing weights are well-behaved. **Robust
+quantiles** use a chi-squared distribution that accounts for weight estimation error,
+providing valid coverage under weaker conditions. Robust quantiles are the default and are
+generally recommended.
 
-**Gaussian quantiles** use the standard normal distribution. They are tighter but require
-stronger regularity conditions on the balancing weights.
-
-**Robust quantiles** use a chi-squared distribution to account for the estimation error of
-the balancing weights and provide valid inference under weaker conditions. Specifically,
-the robust approach constructs a test statistic :math:`T_n^2` that converges to a weighted
-chi-squared distribution under the null, and uses the :math:`(1 - \alpha)` quantile of this
-distribution for confidence intervals. Robust quantiles are recommended by default.
-
-Clustered Standard Errors
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-When observations are correlated within clusters (for example, countries within the same
-geographic region), the analytical variance estimator is replaced by a cluster-robust
-sandwich estimator. The cluster-robust variance aggregates influence function contributions
-within each cluster,
+When within-cluster correlation is a concern (countries in the same region, patients in the
+same hospital), the analytical variance is replaced by a cluster-robust sandwich,
 
 .. math::
 
    \hat{V}_T^{cl}(d_{1:T}) = \sum_{c=1}^C
    \Bigl(\sum_{i \in \mathcal{C}_c} \psi_i\Bigr)^2,
 
-where :math:`\psi_i` is the influence function for unit :math:`i` and
-:math:`\mathcal{C}_c` denotes the set of units in cluster :math:`c`. This produces valid
-standard errors under arbitrary within-cluster dependence.
+where :math:`\psi_i` is the influence function and :math:`\mathcal{C}_c` is the set of
+units in cluster :math:`c`. This is valid under arbitrary within-cluster dependence.
 
-Practical Extensions
+Practical extensions
 --------------------
 
-Pooled Regression
+Pooled regression
 ~~~~~~~~~~~~~~~~~
 
-By default, the estimator uses the outcome in the final period only. With the pooled option,
-the regression model becomes
+By default, the estimator targets the outcome in the final period. With ``pooled=True``,
+the regression pools all periods into a single model with time fixed effects,
 
 .. math::
 
    Y_{i,t}(d_{1:t}) = \beta_0 + \beta_1 d_t + \beta_2 Y_{i,t-1}(d_{1:(t-1)})
    + X_{i,t}(d_{1:(t-1)})\gamma + \tau_t + \varepsilon_{i,t},
 
-where :math:`\tau_t` denotes time fixed effects. Pooling combines outcomes from all periods
-into a single regression, increasing the effective sample size at the cost of assuming
-that the treatment effect is stationary across periods. Standard errors are automatically
-clustered at the unit level to account for within-unit serial correlation, unless a larger
-clustering variable is specified.
+which increases the effective sample size at the cost of assuming the treatment effect is
+stable across periods. Standard errors are automatically clustered at the unit level to
+account for serial correlation, unless a larger clustering variable is specified.
 
-Treatment History Length
+Treatment history length
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-With long panels, selecting the full treatment history :math:`h = T` can thin the effective
-sample because only units matching the entire treatment path contribute non-zero weights.
-The ``histories_length`` option estimates effects for varying history lengths
-:math:`h \in \{h_1, \ldots, h_K\}`, where each :math:`h` uses the last :math:`h` elements
-of the treatment histories. The estimand becomes
+With long panels, using the full treatment history thins the sample because only units
+on the exact target path get positive weight. The ``histories_length`` option lets you
+estimate effects at multiple horizons :math:`h \in \{h_1, \ldots, h_K\}`, each using the
+last :math:`h` elements of the treatment sequences. The resulting estimand,
 
 .. math::
 
    \mathbb{E}\bigl[Y_{i,T}(D_{1:(T-h)}, d_{(T-h+1):T})\bigr]
    - \mathbb{E}\bigl[Y_{i,T}(D_{1:(T-h)}, d'_{(T-h+1):T})\bigr],
 
-which compares the effect of the last :math:`h` periods of treatment while averaging over
-prior assignments. Following the recommendation of the paper, reporting effects for multiple
-values of :math:`h` (say :math:`h \in \{1, \ldots, 10\}` in a long panel) traces out how
-the treatment effect evolves with exposure length. The standard errors at each horizon help
-disentangle the trade-off between identification of long-run effects and statistical
-precision.
+averages over prior assignments and isolates the effect of the last :math:`h` periods.
+Reporting a range of :math:`h` values (say 1 through 10 in a long panel) traces out how the
+effect builds with exposure and reveals the precision trade-off at each horizon.
 
-Impulse Response
+Impulse response
 ~~~~~~~~~~~~~~~~
 
-Setting ``impulse_response=True`` changes the treatment sequences for each history length
-:math:`h` to :math:`d_{1:h} = (1, 0, \ldots, 0)` versus :math:`d'_{1:h} = (0, \ldots, 0)`.
-This measures the effect of a one-period treatment shock at varying horizons, analogous to
-impulse response functions in time series analysis. The impulse response is useful for
-studying how a transient treatment (such as a one-time policy intervention) propagates
-through the system over time.
+Setting ``impulse_response=True`` flips the treatment sequences for each :math:`h` to
+:math:`d_{1:h} = (1, 0, \ldots, 0)` versus :math:`d'_{1:h} = (0, \ldots, 0)`. This
+measures the effect of a one-period treatment shock at increasing horizons, much like an
+impulse response function in time series. It is particularly useful for studying how a
+transient policy intervention propagates through the system over time.
 
-Heterogeneous Effects Across Periods
+Heterogeneous effects across periods
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``final_periods`` option estimates treatment effects at multiple final time periods,
-holding the treatment histories fixed. This reveals how the same treatment history produces
-different outcomes at different points in time, which can arise from time-varying confounders,
-cohort effects, or secular trends.
+The ``final_periods`` option estimates treatment effects at multiple final time points,
+holding the treatment histories fixed. This reveals whether the same treatment sequence
+produces different outcomes at different calendar times, which could reflect time-varying
+confounders, cohort effects, or secular trends.
 
 .. note::
 
-   For the complete theoretical treatment, including formal proofs of the existence of
-   feasible weights, the connection between DCB and marginal structural models, comparisons
-   with standard local projections and DiD, and extensive numerical simulations, see the
-   original paper by
+   For formal proofs, the connection to marginal structural models, detailed comparisons
+   with local projections and DiD, and extensive Monte Carlo evidence, see the full paper by
    `Viviano and Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_.
