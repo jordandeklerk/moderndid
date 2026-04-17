@@ -28,6 +28,7 @@ __all__ = [
     "gen_ddd_scalable",
     "gen_did_scalable",
     "gen_simple_ddd_data",
+    "load_acemoglu",
     "load_cai2016",
     "load_ehec",
     "load_engel",
@@ -35,6 +36,62 @@ __all__ = [
     "load_mpdta",
     "load_nsw",
 ]
+
+
+def load_acemoglu() -> pl.DataFrame:
+    """Load the Acemoglu et al. (2019) democracy and economic growth dataset.
+
+    This dataset contains country-level panel data used to study the
+    effects of democracy on GDP per capita. Countries transition to
+    democracy at different times, creating a dynamic treatment regime
+    where treatment effects may depend on the length of exposure. The
+    dataset is suitable for dynamic covariate balancing estimation.
+
+    The panel contains 141 countries observed across 6 five-year periods,
+    for a total of 846 observations, with 158 country-level covariates
+    and 4 lagged outcome variables.
+
+    Returns
+    -------
+    pl.DataFrame
+        A DataFrame with the following columns:
+
+        - *Y*: Log GDP per capita (outcome)
+        - *D*: Democracy indicator (treatment)
+        - *Unit*: Country identifier
+        - *Time*: Time period (0-5)
+        - *region*: World Bank region
+        - *V1-V158*: Country-level covariates
+        - *lag1.Value1* through *lag4.Value1*: Lagged outcomes
+
+    References
+    ----------
+
+    .. [1] Acemoglu, D., Naidu, S., Restrepo, P., and Robinson, J.A.
+       (2019). "Democracy does cause growth." Journal of Political
+       Economy, 127(1), 47-100.
+    """
+    data_path = Path(__file__).parent / "datasets" / "acemoglu.pkl.gz"
+
+    if not data_path.exists():
+        raise FileNotFoundError(
+            f"Acemoglu data file not found at {data_path}. "
+            "Please ensure the data file is included in the moderndid installation."
+        )
+
+    with gzip.open(data_path, "rb") as f:
+        data = pickle.load(f)
+
+    df = to_polars(data)
+
+    # Convert string Unit identifiers to numeric for compatibility with
+    # estimators that require numeric panel IDs.
+    if df["Unit"].dtype == pl.String:
+        units = sorted(df["Unit"].unique().to_list())
+        unit_map = {u: i for i, u in enumerate(units)}
+        df = df.with_columns(pl.col("Unit").replace(unit_map).cast(pl.Int64))
+
+    return df
 
 
 def load_nsw() -> pl.DataFrame:

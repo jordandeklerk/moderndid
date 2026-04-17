@@ -150,6 +150,26 @@ You can learn more about ``triplediff``
 **ModernDiD** is benchmarked and validated against ``triplediff`` via R scripts to
 ensure numerical equivalence.
 
+DynBalancing (R)
+----------------
+
+The `DynBalancing <https://github.com/daviviano/DynBalancing>`_ R package by
+`Davide Viviano <https://dviviano.github.io/>`_ and
+`Jelena Bradic <https://pages.stat.wisc.edu/~bradic/>`_ is the basis for
+**ModernDiD**'s dynamic covariate balancing DiD estimator. The
+`dyn_balancing() <api/generated/diddynamic/moderndid.diddynamic.dyn_balancing.html>`_
+function implements the methodology in
+`Viviano and Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_,
+which estimates treatment effects in panel data with time-varying treatments
+using sequential covariate balancing weights and potential local projections.
+
+You can learn more about ``DynBalancing``
+`on GitHub <https://github.com/daviviano/DynBalancing>`_ or by reading the
+`associated paper <https://doi.org/10.1093/biomet/asag016>`_.
+
+**ModernDiD** is benchmarked and validated against ``DynBalancing`` via R scripts
+to ensure numerical equivalence.
+
 did_multiplegt_dyn (R / Stata / Python)
 ---------------------------------------
 
@@ -263,6 +283,7 @@ would not be possible:
 - `PyArrow <https://arrow.apache.org/docs/python/>`_ -- Apache Arrow for Python
 - `statsmodels <https://www.statsmodels.org/>`_ -- Statistical models
 - `Numba <https://numba.pydata.org/>`_ -- JIT compilation for numerical code
+- `scikit-learn <https://scikit-learn.org/>`_ -- Machine learning (LASSO, Ridge)
 - `CuPy <https://cupy.dev/>`_ -- GPU-accelerated array computing
 - `Dask <https://www.dask.org/>`_ -- Distributed computing
 - `PySpark <https://spark.apache.org/docs/latest/api/python/>`_ -- Distributed computing on Spark
@@ -311,6 +332,10 @@ The following papers describe the core methodologies implemented in **ModernDiD*
   Difference-in-Differences Estimators." *Journal of Econometrics*, 219(1),
   101-122.
   `DOI:10.1016/j.jeconom.2020.06.003 <https://doi.org/10.1016/j.jeconom.2020.06.003>`_.
+- Viviano, D., & Bradic, J. (2026). "Dynamic Covariate Balancing: Estimating
+  Treatment Effects over Time with Potential Local Projections." *Biometrika*,
+  asag016.
+  `DOI:10.1093/biomet/asag016 <https://doi.org/10.1093/biomet/asag016>`_.
 - Wooldridge, J. M. (2023). "Simple Approaches to Nonlinear
   Difference-in-Differences with Panel Data." *The Econometrics Journal*,
   26(3), C31-C66.

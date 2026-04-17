@@ -9,6 +9,10 @@ from plotnine import ggplot
 from moderndid.plots import (
     plot_agg,
     plot_dose_response,
+    plot_dyn_balancing,
+    plot_dyn_balancing_coefs,
+    plot_dyn_balancing_het,
+    plot_dyn_balancing_history,
     plot_event_study,
     plot_gt,
     plot_multiplegt,
@@ -189,3 +193,166 @@ def test_plot_multiplegt_ref_line(didinter_result, ref_line):
 def test_plot_multiplegt_custom_labels(didinter_result):
     plot = plot_multiplegt(didinter_result, xlab="Event Horizon", ylab="Treatment Effect", title="Custom Title")
     assert isinstance(plot, ggplot)
+
+
+def test_plot_dyn_balancing_returns_ggplot(dyn_balancing_result):
+    plot = plot_dyn_balancing(dyn_balancing_result)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("show_ci", [True, False])
+def test_plot_dyn_balancing_show_ci(dyn_balancing_result, show_ci):
+    plot = plot_dyn_balancing(dyn_balancing_result, show_ci=show_ci)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("ci_type", ["robust", "gaussian"])
+def test_plot_dyn_balancing_ci_type(dyn_balancing_result, ci_type):
+    plot = plot_dyn_balancing(dyn_balancing_result, ci_type=ci_type)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("parameter", ["att", "mu1", "mu2", "all"])
+def test_plot_dyn_balancing_parameter(dyn_balancing_result, parameter):
+    plot = plot_dyn_balancing(dyn_balancing_result, parameter=parameter)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_dyn_balancing_invalid_parameter_raises(dyn_balancing_result):
+    with pytest.raises(ValueError, match="parameter must be one of"):
+        plot_dyn_balancing(dyn_balancing_result, parameter="bad")
+
+
+@pytest.mark.parametrize("ref_line", [0, None, 0.5])
+def test_plot_dyn_balancing_ref_line(dyn_balancing_result, ref_line):
+    plot = plot_dyn_balancing(dyn_balancing_result, ref_line=ref_line)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_dyn_balancing_custom_labels(dyn_balancing_result):
+    plot = plot_dyn_balancing(dyn_balancing_result, xlab="Quantity", ylab="Value", title="My Title")
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_dyn_balancing_invalid_input_raises():
+    with pytest.raises(TypeError, match="plot_dyn_balancing requires"):
+        plot_dyn_balancing("invalid")
+
+
+def test_plot_dyn_balancing_invalid_ci_type_raises(dyn_balancing_result):
+    with pytest.raises(ValueError, match="ci_type must be"):
+        plot_dyn_balancing(dyn_balancing_result, ci_type="bogus")
+
+
+def test_plot_dyn_balancing_history_returns_ggplot(dyn_balancing_history_result):
+    plot = plot_dyn_balancing_history(dyn_balancing_history_result)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("parameter", ["att", "mu1", "mu2"])
+def test_plot_dyn_balancing_history_parameter(dyn_balancing_history_result, parameter):
+    plot = plot_dyn_balancing_history(dyn_balancing_history_result, parameter=parameter)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("ci_type", ["robust", "gaussian"])
+def test_plot_dyn_balancing_history_ci_type(dyn_balancing_history_result, ci_type):
+    plot = plot_dyn_balancing_history(dyn_balancing_history_result, ci_type=ci_type)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("show_ci", [True, False])
+def test_plot_dyn_balancing_history_show_ci(dyn_balancing_history_result, show_ci):
+    plot = plot_dyn_balancing_history(dyn_balancing_history_result, show_ci=show_ci)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("ref_line", [0, None, 0.5])
+def test_plot_dyn_balancing_history_ref_line(dyn_balancing_history_result, ref_line):
+    plot = plot_dyn_balancing_history(dyn_balancing_history_result, ref_line=ref_line)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_dyn_balancing_history_custom_labels(dyn_balancing_history_result):
+    plot = plot_dyn_balancing_history(dyn_balancing_history_result, xlab="Lag", ylab="Value", title="Trace")
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_dyn_balancing_history_invalid_input_raises():
+    with pytest.raises(TypeError, match="plot_dyn_balancing_history requires"):
+        plot_dyn_balancing_history("invalid")
+
+
+def test_plot_dyn_balancing_history_invalid_parameter_raises(dyn_balancing_history_result):
+    with pytest.raises(ValueError, match="parameter must be one of"):
+        plot_dyn_balancing_history(dyn_balancing_history_result, parameter="bad")
+
+
+def test_plot_dyn_balancing_history_invalid_ci_type_raises(dyn_balancing_history_result):
+    with pytest.raises(ValueError, match="ci_type must be"):
+        plot_dyn_balancing_history(dyn_balancing_history_result, ci_type="bogus")
+
+
+def test_plot_dyn_balancing_het_returns_ggplot(dyn_balancing_het_result):
+    plot = plot_dyn_balancing_het(dyn_balancing_het_result)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("parameter", ["att", "mu1", "mu2"])
+def test_plot_dyn_balancing_het_parameter(dyn_balancing_het_result, parameter):
+    plot = plot_dyn_balancing_het(dyn_balancing_het_result, parameter=parameter)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("ci_type", ["robust", "gaussian"])
+def test_plot_dyn_balancing_het_ci_type(dyn_balancing_het_result, ci_type):
+    plot = plot_dyn_balancing_het(dyn_balancing_het_result, ci_type=ci_type)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("show_ci", [True, False])
+def test_plot_dyn_balancing_het_show_ci(dyn_balancing_het_result, show_ci):
+    plot = plot_dyn_balancing_het(dyn_balancing_het_result, show_ci=show_ci)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("ref_line", [0, None, 0.5])
+def test_plot_dyn_balancing_het_ref_line(dyn_balancing_het_result, ref_line):
+    plot = plot_dyn_balancing_het(dyn_balancing_het_result, ref_line=ref_line)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_dyn_balancing_het_invalid_input_raises():
+    with pytest.raises(TypeError, match="plot_dyn_balancing_het requires"):
+        plot_dyn_balancing_het("invalid")
+
+
+def test_plot_dyn_balancing_het_invalid_ci_type_raises(dyn_balancing_het_result):
+    with pytest.raises(ValueError, match="ci_type must be"):
+        plot_dyn_balancing_het(dyn_balancing_het_result, ci_type="bogus")
+
+
+def test_plot_dyn_balancing_coefs_returns_ggplot(dyn_balancing_result_with_coefs):
+    plot = plot_dyn_balancing_coefs(dyn_balancing_result_with_coefs)
+    assert isinstance(plot, ggplot)
+
+
+@pytest.mark.parametrize("history", ["ds1", "ds2"])
+def test_plot_dyn_balancing_coefs_history(dyn_balancing_result_with_coefs, history):
+    plot = plot_dyn_balancing_coefs(dyn_balancing_result_with_coefs, history=history)
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_dyn_balancing_coefs_custom_labels(dyn_balancing_result_with_coefs):
+    plot = plot_dyn_balancing_coefs(dyn_balancing_result_with_coefs, xlab="Coef", ylab="Var", title="Custom")
+    assert isinstance(plot, ggplot)
+
+
+def test_plot_dyn_balancing_coefs_invalid_input_raises():
+    with pytest.raises(TypeError, match="plot_dyn_balancing_coefs requires"):
+        plot_dyn_balancing_coefs("invalid")
+
+
+def test_plot_dyn_balancing_coefs_empty_raises(dyn_balancing_result):
+    with pytest.raises(ValueError, match="No coefficients available"):
+        plot_dyn_balancing_coefs(dyn_balancing_result)

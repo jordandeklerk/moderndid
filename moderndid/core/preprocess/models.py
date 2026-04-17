@@ -11,6 +11,7 @@ from .config import (
     DDDConfig,
     DIDConfig,
     DIDInterConfig,
+    DynBalancingConfig,
     EtwfeConfig,
     TwoPeriodDIDConfig,
 )
@@ -197,6 +198,31 @@ class EtwfeData:
     weights: np.ndarray
     cluster: np.ndarray | None = None
     config: EtwfeConfig = field(default_factory=EtwfeConfig)
+
+
+@dataclass
+class DynBalancingData:
+    """Dynamic covariate balancing data."""
+
+    panel: pl.DataFrame = field(default_factory=lambda: pl.DataFrame())
+    outcome_vector: np.ndarray = field(default_factory=lambda: np.array([]))
+    treatment_matrix: np.ndarray = field(default_factory=lambda: np.array([]))
+    covariate_dict: dict[int, np.ndarray] = field(default_factory=dict)
+    cluster: np.ndarray | None = None
+    n_units: int = 0
+    covariate_names: list[str] = field(default_factory=list)
+    config: DynBalancingConfig = field(default_factory=DynBalancingConfig)
+    dim_fe: int = 0
+
+    @property
+    def has_covariates(self) -> bool:
+        """Check if data has covariates."""
+        return len(self.covariate_dict) > 0 and any(m.shape[1] > 0 for m in self.covariate_dict.values())
+
+    @property
+    def has_cluster(self) -> bool:
+        """Check if data has cluster variable."""
+        return self.cluster is not None
 
 
 @dataclass

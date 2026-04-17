@@ -237,3 +237,43 @@ class EtwfeConfig(ConfigMixin):
     _xvar_dm_cols: list = field(default_factory=list)
     _xvar_time_dummies: list = field(default_factory=list)
     _formula: str = ""
+
+
+@dataclass
+class DynBalancingConfig(ConfigMixin):
+    """Dynamic covariate balancing config."""
+
+    yname: str = ""
+    tname: str = ""
+    idname: str = ""
+    treatment_name: str = ""
+    ds1: list[int] = field(default_factory=list)
+    ds2: list[int] = field(default_factory=list)
+    xformla: str | None = None
+    fixed_effects: list[str] | None = None
+    pooled: bool = False
+    clustervars: list[str] | None = None
+    balancing: str = "dcb"
+    method: str = "lasso_plain"
+    alp: float = DEFAULT_ALPHA
+    final_period: int | None = None
+    initial_period: int | None = None
+    adaptive_balancing: bool = True
+    debias: bool = False
+    continuous_treatment: bool = False
+    lb: float = 0.0005
+    ub: float = 2.0
+    regularization: bool = True
+    fast_adaptive: bool = False
+    grid_length: int = 1000
+    n_beta_nonsparse: float = 1e-4
+    ratio_coefficients: float = 1 / 3
+    nfolds: int = 10
+    lags: int | None = None
+    robust_quantile: bool = True
+    demeaned_fe: bool = False
+
+    time_periods: np.ndarray = field(default_factory=lambda: np.array([]))
+    n_units: int = 0
+    n_periods: int = 0
+    covariate_names: list[str] = field(default_factory=list)

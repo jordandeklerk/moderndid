@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import polars as pl
+from scipy.stats import chi2
 
 if TYPE_CHECKING:
     from moderndid.did.container import AGGTEResult, MPResult
     from moderndid.didcont.container import DoseResult, PTEResult
+    from moderndid.diddynamic.container import DynBalancingHetResult, DynBalancingHistoryResult, DynBalancingResult
     from moderndid.didhonest.honest_did import HonestDiDResult
     from moderndid.didinter.container import DIDInterResult, HeterogeneityResult
     from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult
@@ -555,6 +558,201 @@ def emfxresult_to_polars(result: EmfxResult) -> pl.DataFrame:
     return df.filter(~pl.col("se").is_nan())
 
 
+def dynbalancingresult_to_polars(result: DynBalancingResult) -> pl.DataFrame:
+    """Convert DynBalancingResult to polars DataFrame for plotting.
+
+    Returns one row per parameter (ATE, ``mu(ds1)``, ``mu(ds2)``) with point
+    estimates, standard errors, and both robust (chi-squared) and Gaussian
+    confidence interval bounds. The robust quantile for the potential
+    outcomes is recomputed using the appropriate degrees of freedom.
+
+    Parameters
+    ----------
+    result : DynBalancingResult
+        Single dynamic covariate balancing result.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns:
+
+        - parameter: parameter label ("ATE", "mu(ds1)", or "mu(ds2)")
+        - estimate: point estimate
+        - se: standard error
+        - ci_lower_robust: robust (chi-squared) lower CI
+        - ci_upper_robust: robust (chi-squared) upper CI
+        - ci_lower_gaussian: Gaussian lower CI
+        - ci_upper_gaussian: Gaussian upper CI
+    """
+    params = result.estimation_params
+    alpha = params.get("alpha", 0.05)
+    n_periods = params.get("n_periods", 1)
+
+    robust_q_ate = result.robust_quantile
+    gaussian_q = result.gaussian_quantile
+
+    robust_q_mu = math.sqrt(chi2.ppf(1.0 - alpha, n_periods)) if alpha is not None and n_periods >= 1 else robust_q_ate
+
+    estimates = np.array([result.att, result.mu1, result.mu2])
+    variances = np.array([result.var_att, result.var_mu1, result.var_mu2])
+    ses = np.sqrt(np.maximum(variances, 0.0))
+    robust_qs = np.array([robust_q_ate, robust_q_mu, robust_q_mu])
+
+    return pl.DataFrame(
+        {
+            "parameter": ["ATE", "mu(ds1)", "mu(ds2)"],
+            "estimate": estimates,
+            "se": ses,
+            "ci_lower_robust": estimates - robust_qs * ses,
+            "ci_upper_robust": estimates + robust_qs * ses,
+            "ci_lower_gaussian": estimates - gaussian_q * ses,
+            "ci_upper_gaussian": estimates + gaussian_q * ses,
+        }
+    )
+
+
+def dynbalancinghistoryresult_to_polars(
+    result: DynBalancingHistoryResult,
+    parameter: str = "att",
+) -> pl.DataFrame:
+    """Convert DynBalancingHistoryResult to polars DataFrame for plotting.
+
+    Returns one row per history length with the chosen parameter's point
+    estimate, standard error, and both robust and Gaussian confidence
+    interval bounds.
+
+    Parameters
+    ----------
+    result : DynBalancingHistoryResult
+        History-mode dynamic covariate balancing result.
+    parameter : {"att", "mu1", "mu2"}, default="att"
+        Which parameter to extract.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns:
+
+        - period_length: treatment history length
+        - estimate: point estimate
+        - se: standard error
+        - ci_lower_robust: robust (chi-squared) lower CI
+        - ci_upper_robust: robust (chi-squared) upper CI
+        - ci_lower_gaussian: Gaussian lower CI
+        - ci_upper_gaussian: Gaussian upper CI
+    """
+    if parameter not in ("att", "mu1", "mu2"):
+        raise ValueError(f"parameter must be one of 'att', 'mu1', 'mu2', got {parameter!r}")
+
+    var_col = f"var_{parameter}"
+    summary = result.summary
+
+    estimates = summary[parameter].to_numpy()
+    variances = summary[var_col].to_numpy()
+    ses = np.sqrt(np.maximum(variances, 0.0))
+    robust_qs = summary["robust_quantile"].to_numpy()
+    gaussian_qs = summary["gaussian_quantile"].to_numpy()
+
+    return pl.DataFrame(
+        {
+            "period_length": summary["period_length"].to_numpy(),
+            "estimate": estimates,
+            "se": ses,
+            "ci_lower_robust": estimates - robust_qs * ses,
+            "ci_upper_robust": estimates + robust_qs * ses,
+            "ci_lower_gaussian": estimates - gaussian_qs * ses,
+            "ci_upper_gaussian": estimates + gaussian_qs * ses,
+        }
+    )
+
+
+def dynbalancinghetresult_to_polars(
+    result: DynBalancingHetResult,
+    parameter: str = "att",
+) -> pl.DataFrame:
+    """Convert DynBalancingHetResult to polars DataFrame for plotting.
+
+    Parameters
+    ----------
+    result : DynBalancingHetResult
+        Het-mode dynamic covariate balancing result.
+    parameter : {"att", "mu1", "mu2"}, default="att"
+        Which parameter to extract.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns ``final_period``, ``estimate``, ``se``,
+        ``ci_lower_robust``, ``ci_upper_robust``, ``ci_lower_gaussian``,
+        ``ci_upper_gaussian``.
+    """
+    if parameter not in ("att", "mu1", "mu2"):
+        raise ValueError(f"parameter must be one of 'att', 'mu1', 'mu2', got {parameter!r}")
+
+    var_col = f"var_{parameter}"
+    summary = result.summary
+
+    estimates = summary[parameter].to_numpy()
+    variances = summary[var_col].to_numpy()
+    ses = np.sqrt(np.maximum(variances, 0.0))
+    robust_qs = summary["robust_quantile"].to_numpy()
+    gaussian_qs = summary["gaussian_quantile"].to_numpy()
+
+    return pl.DataFrame(
+        {
+            "final_period": summary["final_period"].to_numpy(),
+            "estimate": estimates,
+            "se": ses,
+            "ci_lower_robust": estimates - robust_qs * ses,
+            "ci_upper_robust": estimates + robust_qs * ses,
+            "ci_lower_gaussian": estimates - gaussian_qs * ses,
+            "ci_upper_gaussian": estimates + gaussian_qs * ses,
+        }
+    )
+
+
+def dynbalancingcoefs_to_polars(result: DynBalancingResult, history: str = "ds1") -> pl.DataFrame:
+    """Convert LASSO coefficients from a DynBalancingResult to polars DataFrame.
+
+    Returns one row per (period, covariate) combination with the
+    estimated coefficient value. The intercept (index 0) is excluded.
+
+    Parameters
+    ----------
+    result : DynBalancingResult
+        Single dynamic covariate balancing result.
+    history : {"ds1", "ds2"}, default="ds1"
+        Which treatment history's coefficients to extract.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with columns ``period``, ``covariate``, ``coefficient``,
+        ``is_nonzero``.
+    """
+    if history not in ("ds1", "ds2"):
+        raise ValueError(f"history must be 'ds1' or 'ds2', got {history!r}")
+
+    coefs = result.coefficients.get(history, [])
+    if not coefs:
+        return pl.DataFrame({"period": [], "covariate": [], "coefficient": [], "is_nonzero": []})
+
+    rows: list[dict] = []
+    for t, coef_arr in enumerate(coefs):
+        coef_no_intercept = coef_arr[1:]
+        for j, val in enumerate(coef_no_intercept):
+            rows.append(
+                {
+                    "period": t + 1,
+                    "covariate": f"X{j + 1}",
+                    "coefficient": float(val),
+                    "is_nonzero": bool(abs(val) > 1e-10),
+                }
+            )
+
+    return pl.DataFrame(rows)
+
+
 _DISPATCH: dict[str, Any] = {
     "MPResult": mpresult_to_polars,
     "AGGTEResult": aggteresult_to_polars,
@@ -567,6 +765,9 @@ _DISPATCH: dict[str, Any] = {
     "DIDInterResult": didinterresult_to_polars,
     "HeterogeneityResult": heterogeneityresult_to_polars,
     "EmfxResult": emfxresult_to_polars,
+    "DynBalancingResult": dynbalancingresult_to_polars,
+    "DynBalancingHistoryResult": dynbalancinghistoryresult_to_polars,
+    "DynBalancingHetResult": dynbalancinghetresult_to_polars,
 }
 
 
