@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
+import polars as pl
 from plotnine import (
     aes,
     element_text,
@@ -29,12 +30,17 @@ from moderndid.core.converters import (
     dddmpresult_to_polars,
     didinterresult_to_polars,
     doseresult_to_polars,
+    dynbalancingcoefs_to_polars,
+    dynbalancinghetresult_to_polars,
+    dynbalancinghistoryresult_to_polars,
+    dynbalancingresult_to_polars,
     emfxresult_to_polars,
     honestdid_to_polars,
     mpresult_to_polars,
     pteresult_to_polars,
 )
 from moderndid.did.container import AGGTEResult, MPResult
+from moderndid.diddynamic.container import DynBalancingHetResult, DynBalancingHistoryResult, DynBalancingResult
 from moderndid.didinter.container import DIDInterResult
 from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult
 from moderndid.etwfe.container import EmfxResult
@@ -528,6 +534,358 @@ def plot_multiplegt(
             x=xlab or "Horizon",
             y=ylab or "Effect",
             title=title or "Intertemporal Treatment Effects",
+        )
+        + theme_gray()
+        + theme(legend_position="bottom")
+    )
+
+    return plot
+
+
+def plot_dyn_balancing(
+    result: DynBalancingResult,
+    parameter: Literal["att", "mu1", "mu2", "all"] = "att",
+    show_ci: bool = True,
+    ci_type: Literal["robust", "gaussian"] = "robust",
+    ref_line: float | None = 0,
+    xlab: str | None = None,
+    ylab: str | None = None,
+    title: str | None = None,
+    **_kwargs: Any,
+) -> ggplot:
+    """Plot point estimates from a dynamic covariate balancing result.
+
+    By default shows the average treatment effect (``att``) as a point
+    with an error bar. Set ``parameter="mu1"`` or ``"mu2"`` to plot one
+    of the potential outcome estimates instead, or ``"all"`` to show all
+    three side by side. The robust (chi-squared) confidence interval is
+    drawn by default; set ``ci_type="gaussian"`` to use the Gaussian
+    quantile instead.
+
+    Parameters
+    ----------
+    result : DynBalancingResult
+        Single dynamic covariate balancing result.
+    parameter : {"att", "mu1", "mu2", "all"}, default="att"
+        Which parameter to plot. ``"all"`` shows the ATE alongside both
+        potential outcome estimates on a shared axis.
+    show_ci : bool, default=True
+        Whether to draw confidence intervals.
+    ci_type : {"robust", "gaussian"}, default="robust"
+        Which critical value to use when drawing confidence intervals.
+    ref_line : float or None, default=0
+        Y-value for a horizontal reference line. Set to None to hide.
+    xlab : str, optional
+        X-axis label. Defaults to "Parameter".
+    ylab : str, optional
+        Y-axis label. Defaults based on ``parameter``.
+    title : str, optional
+        Plot title. Defaults based on ``parameter``.
+
+    Returns
+    -------
+    ggplot
+        A plotnine ggplot object that can be further customized.
+    """
+    if not isinstance(result, DynBalancingResult):
+        raise TypeError(f"plot_dyn_balancing requires DynBalancingResult, got {type(result).__name__}")
+
+    if ci_type not in ("robust", "gaussian"):
+        raise ValueError(f"ci_type must be 'robust' or 'gaussian', got {ci_type!r}")
+
+    if parameter not in ("att", "mu1", "mu2", "all"):
+        raise ValueError(f"parameter must be one of 'att', 'mu1', 'mu2', 'all', got {parameter!r}")
+
+    df = dynbalancingresult_to_polars(result)
+
+    label_map = {
+        "att": ("ATE", "ATE", "Dynamic Covariate Balancing ATE"),
+        "mu1": ("mu(ds1)", "mu(ds1)", "Potential Outcome under ds1"),
+        "mu2": ("mu(ds2)", "mu(ds2)", "Potential Outcome under ds2"),
+    }
+
+    if parameter != "all":
+        row_label, default_ylab, default_title = label_map[parameter]
+        df = df.filter(pl.col("parameter") == row_label)
+    else:
+        default_ylab = "Estimate"
+        default_title = "Dynamic Covariate Balancing Estimates"
+
+    ymin_col = f"ci_lower_{ci_type}"
+    ymax_col = f"ci_upper_{ci_type}"
+
+    plot = ggplot(df, aes(x="parameter", y="estimate"))
+
+    if ref_line is not None:
+        plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
+
+    if show_ci:
+        plot = plot + geom_errorbar(
+            aes(ymin=ymin_col, ymax=ymax_col),
+            width=0.2,
+            size=0.8,
+            color=COLORS["post_treatment"],
+        )
+
+    plot = (
+        plot
+        + geom_point(color=COLORS["post_treatment"], size=3.5)
+        + labs(
+            x=xlab or "Parameter",
+            y=ylab or default_ylab,
+            title=title or default_title,
+        )
+        + theme_gray()
+    )
+
+    if parameter == "all":
+        plot = (
+            plot
+            + facet_wrap("~parameter", scales="free", ncol=3)
+            + theme(strip_text=element_text(size=11, weight="bold"))
+        )
+
+    return plot
+
+
+def plot_dyn_balancing_history(
+    result: DynBalancingHistoryResult,
+    parameter: Literal["att", "mu1", "mu2"] = "att",
+    show_ci: bool = True,
+    ci_type: Literal["robust", "gaussian"] = "robust",
+    ref_line: float | None = 0,
+    xlab: str | None = None,
+    ylab: str | None = None,
+    title: str | None = None,
+    **_kwargs: Any,
+) -> ggplot:
+    """Plot dynamic covariate balancing estimates across treatment history lengths.
+
+    Shows how the chosen parameter (ATE by default) evolves as the length
+    of the treatment history considered increases. Points mark each
+    horizon with error bars for the selected confidence interval, and a
+    dotted line connects successive estimates. By default the robust
+    (chi-squared) critical values are used.
+
+    Parameters
+    ----------
+    result : DynBalancingHistoryResult
+        History-mode dynamic covariate balancing result.
+    parameter : {"att", "mu1", "mu2"}, default="att"
+        Which parameter to plot.
+    show_ci : bool, default=True
+        Whether to draw confidence intervals.
+    ci_type : {"robust", "gaussian"}, default="robust"
+        Which critical value to use when drawing confidence intervals.
+    ref_line : float or None, default=0
+        Y-value for a horizontal reference line. Set to None to hide.
+    xlab : str, optional
+        X-axis label. Defaults to "History Length".
+    ylab : str, optional
+        Y-axis label. Defaults based on ``parameter``.
+    title : str, optional
+        Plot title. Defaults based on ``parameter``.
+
+    Returns
+    -------
+    ggplot
+        A plotnine ggplot object that can be further customized.
+    """
+    if not isinstance(result, DynBalancingHistoryResult):
+        raise TypeError(f"plot_dyn_balancing_history requires DynBalancingHistoryResult, got {type(result).__name__}")
+
+    if ci_type not in ("robust", "gaussian"):
+        raise ValueError(f"ci_type must be 'robust' or 'gaussian', got {ci_type!r}")
+
+    df = dynbalancinghistoryresult_to_polars(result, parameter=parameter)
+
+    label_map = {
+        "att": ("ATE", "ATE by Treatment History Length"),
+        "mu1": ("mu(ds1)", "Potential Outcome under ds1 by History Length"),
+        "mu2": ("mu(ds2)", "Potential Outcome under ds2 by History Length"),
+    }
+    default_ylab, default_title = label_map[parameter]
+
+    ymin_col = f"ci_lower_{ci_type}"
+    ymax_col = f"ci_upper_{ci_type}"
+
+    plot = ggplot(df, aes(x="period_length", y="estimate"))
+
+    if show_ci:
+        plot = plot + geom_errorbar(
+            aes(ymin=ymin_col, ymax=ymax_col),
+            width=0.2,
+            size=0.8,
+            color=COLORS["post_treatment"],
+        )
+
+    if ref_line is not None:
+        plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
+
+    x_breaks = sorted(df["period_length"].unique().to_list())
+
+    plot = (
+        plot
+        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6, linetype="dotted")
+        + geom_point(color=COLORS["post_treatment"], size=3.5)
+        + scale_x_continuous(breaks=x_breaks)
+        + labs(
+            x=xlab or "History Length",
+            y=ylab or default_ylab,
+            title=title or default_title,
+        )
+        + theme_gray()
+    )
+
+    return plot
+
+
+def plot_dyn_balancing_het(
+    result: DynBalancingHetResult,
+    parameter: Literal["att", "mu1", "mu2"] = "att",
+    show_ci: bool = True,
+    ci_type: Literal["robust", "gaussian"] = "robust",
+    ref_line: float | None = 0,
+    xlab: str | None = None,
+    ylab: str | None = None,
+    title: str | None = None,
+    **_kwargs: Any,
+) -> ggplot:
+    """Plot dynamic covariate balancing estimates across final time periods.
+
+    Shows how the chosen parameter (ATE by default) varies when the
+    treatment histories are evaluated at different final periods. Points
+    mark each period with error bars for the selected confidence interval,
+    and a dotted line connects successive estimates.
+
+    Parameters
+    ----------
+    result : DynBalancingHetResult
+        Het-mode dynamic covariate balancing result.
+    parameter : {"att", "mu1", "mu2"}, default="att"
+        Which parameter to plot.
+    show_ci : bool, default=True
+        Whether to draw confidence intervals.
+    ci_type : {"robust", "gaussian"}, default="robust"
+        Which critical value to use when drawing confidence intervals.
+    ref_line : float or None, default=0
+        Y-value for a horizontal reference line. Set to None to hide.
+    xlab : str, optional
+        X-axis label. Defaults to "Final Period".
+    ylab : str, optional
+        Y-axis label. Defaults based on ``parameter``.
+    title : str, optional
+        Plot title. Defaults based on ``parameter``.
+
+    Returns
+    -------
+    ggplot
+        A plotnine ggplot object that can be further customized.
+    """
+    if not isinstance(result, DynBalancingHetResult):
+        raise TypeError(f"plot_dyn_balancing_het requires DynBalancingHetResult, got {type(result).__name__}")
+
+    if ci_type not in ("robust", "gaussian"):
+        raise ValueError(f"ci_type must be 'robust' or 'gaussian', got {ci_type!r}")
+
+    df = dynbalancinghetresult_to_polars(result, parameter=parameter)
+
+    label_map = {
+        "att": ("ATE", "ATE by Final Period"),
+        "mu1": ("mu(ds1)", "Potential Outcome under ds1 by Final Period"),
+        "mu2": ("mu(ds2)", "Potential Outcome under ds2 by Final Period"),
+    }
+    default_ylab, default_title = label_map[parameter]
+
+    ymin_col = f"ci_lower_{ci_type}"
+    ymax_col = f"ci_upper_{ci_type}"
+
+    plot = ggplot(df, aes(x="final_period", y="estimate"))
+
+    if show_ci:
+        plot = plot + geom_errorbar(
+            aes(ymin=ymin_col, ymax=ymax_col),
+            width=0.2,
+            size=0.8,
+            color=COLORS["post_treatment"],
+        )
+
+    if ref_line is not None:
+        plot = plot + geom_hline(yintercept=ref_line, linetype="dashed", color="#7f8c8d", alpha=0.7)
+
+    x_breaks = sorted(df["final_period"].unique().to_list())
+
+    plot = (
+        plot
+        + geom_line(color=COLORS["line"], size=0.8, alpha=0.6, linetype="dotted")
+        + geom_point(color=COLORS["post_treatment"], size=3.5)
+        + scale_x_continuous(breaks=x_breaks)
+        + labs(
+            x=xlab or "Final Period",
+            y=ylab or default_ylab,
+            title=title or default_title,
+        )
+        + theme_gray()
+    )
+
+    return plot
+
+
+def plot_dyn_balancing_coefs(
+    result: DynBalancingResult,
+    history: Literal["ds1", "ds2"] = "ds1",
+    xlab: str | None = None,
+    ylab: str | None = None,
+    title: str | None = None,
+    **_kwargs: Any,
+) -> ggplot:
+    """Plot LASSO coefficient estimates from a dynamic covariate balancing result.
+
+    Shows a dot plot of the estimated coefficients for each covariate,
+    faceted by time period. Non-zero coefficients (selected by the LASSO)
+    are highlighted in red and zero coefficients are shown in gray.
+
+    Parameters
+    ----------
+    result : DynBalancingResult
+        Single dynamic covariate balancing result with non-empty
+        ``coefficients`` attribute.
+    history : {"ds1", "ds2"}, default="ds1"
+        Which treatment history's coefficients to plot.
+    xlab : str, optional
+        X-axis label. Defaults to "Coefficient".
+    ylab : str, optional
+        Y-axis label. Defaults to "Covariate".
+    title : str, optional
+        Plot title. Defaults to "LASSO Coefficients by Period".
+
+    Returns
+    -------
+    ggplot
+        A plotnine ggplot object that can be further customized.
+    """
+    if not isinstance(result, DynBalancingResult):
+        raise TypeError(f"plot_dyn_balancing_coefs requires DynBalancingResult, got {type(result).__name__}")
+
+    df = dynbalancingcoefs_to_polars(result, history=history)
+
+    if df.is_empty():
+        raise ValueError("No coefficients available in this result. Run with balancing='dcb'.")
+
+    plot = (
+        ggplot(df, aes(x="coefficient", y="covariate", color="is_nonzero"))
+        + geom_vline(xintercept=0, linetype="dashed", color="#7f8c8d", alpha=0.7)
+        + geom_point(size=3)
+        + scale_color_manual(
+            values={True: COLORS["post_treatment"], False: COLORS["ci_fill"]},
+            labels={True: "Non-zero", False: "Zero"},
+            name="LASSO Selection",
+        )
+        + facet_wrap("~period", labeller="label_both")
+        + labs(
+            x=xlab or "Coefficient",
+            y=ylab or "Covariate",
+            title=title or "LASSO Coefficients by Period",
         )
         + theme_gray()
         + theme(legend_position="bottom")

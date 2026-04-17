@@ -208,6 +208,10 @@ __all__ = [
     # Optional: plots (requires plotnine)
     "plot_agg",
     "plot_dose_response",
+    "plot_dyn_balancing",
+    "plot_dyn_balancing_coefs",
+    "plot_dyn_balancing_het",
+    "plot_dyn_balancing_history",
     "plot_event_study",
     "plot_gt",
     "plot_multiplegt",
@@ -520,6 +524,10 @@ _optional_imports = {
     # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),
     "plot_dose_response": ("moderndid.plots", "plots"),
+    "plot_dyn_balancing": ("moderndid.plots", "plots"),
+    "plot_dyn_balancing_coefs": ("moderndid.plots", "plots"),
+    "plot_dyn_balancing_het": ("moderndid.plots", "plots"),
+    "plot_dyn_balancing_history": ("moderndid.plots", "plots"),
     "plot_event_study": ("moderndid.plots", "plots"),
     "plot_gt": ("moderndid.plots", "plots"),
     "plot_multiplegt": ("moderndid.plots", "plots"),

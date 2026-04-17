@@ -6,6 +6,7 @@ import pytest
 
 from moderndid.did.container import AGGTEResult, MPResult
 from moderndid.didcont.container import DoseResult
+from moderndid.diddynamic.container import DynBalancingHetResult, DynBalancingHistoryResult, DynBalancingResult
 from moderndid.didhonest.honest_did import HonestDiDResult
 from moderndid.didhonest.sensitivity import OriginalCSResult
 from moderndid.didinter.container import DIDInterResult, EffectsResult, PlacebosResult
@@ -285,4 +286,85 @@ def didinter_result_with_placebos():
         n_switchers=50,
         n_never_switchers=50,
         ci_level=95.0,
+    )
+
+
+@pytest.fixture
+def dyn_balancing_result():
+    return DynBalancingResult(
+        att=0.30,
+        var_att=0.04,
+        mu1=8.00,
+        mu2=7.70,
+        var_mu1=0.02,
+        var_mu2=0.022,
+        robust_quantile=2.45,
+        gaussian_quantile=1.96,
+        gammas={"ds1": np.array([]), "ds2": np.array([])},
+        coefficients={"ds1": [], "ds2": []},
+        imbalances={},
+        estimation_params={"alpha": 0.05, "n_periods": 2},
+    )
+
+
+@pytest.fixture
+def dyn_balancing_history_result():
+    summary = pl.DataFrame(
+        {
+            "period_length": [1, 2, 3, 4, 5],
+            "att": [0.27, 0.30, 0.24, 0.28, 0.25],
+            "var_att": [0.040, 0.041, 0.047, 0.049, 0.053],
+            "mu1": [7.97, 8.00, 8.01, 8.01, 8.01],
+            "var_mu1": [0.018, 0.019, 0.022, 0.024, 0.027],
+            "mu2": [7.70, 7.70, 7.77, 7.73, 7.76],
+            "var_mu2": [0.022, 0.022, 0.025, 0.025, 0.026],
+            "robust_quantile": [2.45, 2.45, 2.45, 2.45, 2.45],
+            "gaussian_quantile": [1.96, 1.96, 1.96, 1.96, 1.96],
+        }
+    )
+    return DynBalancingHistoryResult(summary=summary, results=[])
+
+
+@pytest.fixture
+def dyn_balancing_het_result():
+    summary = pl.DataFrame(
+        {
+            "final_period": [3, 4, 5],
+            "att": [0.25, 0.30, 0.28],
+            "var_att": [0.038, 0.041, 0.045],
+            "mu1": [7.98, 8.00, 8.01],
+            "var_mu1": [0.019, 0.020, 0.022],
+            "mu2": [7.73, 7.70, 7.73],
+            "var_mu2": [0.019, 0.021, 0.023],
+            "robust_quantile": [2.45, 2.45, 2.45],
+            "gaussian_quantile": [1.96, 1.96, 1.96],
+        }
+    )
+    return DynBalancingHetResult(summary=summary, results=[])
+
+
+@pytest.fixture
+def dyn_balancing_result_with_coefs():
+    return DynBalancingResult(
+        att=0.30,
+        var_att=0.04,
+        mu1=8.00,
+        mu2=7.70,
+        var_mu1=0.02,
+        var_mu2=0.022,
+        robust_quantile=2.45,
+        gaussian_quantile=1.96,
+        gammas={"ds1": np.array([]), "ds2": np.array([])},
+        coefficients={
+            "ds1": [
+                np.array([0.5, 0.3, -0.1, 0.0, 0.0, 0.2]),
+                np.array([0.4, 0.25, 0.0, -0.15, 0.0, 0.18]),
+            ],
+            "ds2": [
+                np.array([0.45, 0.28, 0.0, 0.0, 0.0, 0.19]),
+                np.array([0.38, 0.22, -0.12, 0.0, 0.0, 0.16]),
+            ],
+        },
+        imbalances={},
+        estimation_params={"alpha": 0.05, "n_periods": 2},
     )
