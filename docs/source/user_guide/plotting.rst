@@ -20,7 +20,7 @@ and modify any visual element using the full plotnine API.
 Built-in plot functions
 =======================
 
-**ModernDiD** ships six plot functions. Pass a result object, get back a
+**ModernDiD** includes ten plot functions. Pass a result object, get back a
 ``ggplot`` you can customize with the ``+`` operator.
 
 .. list-table::
@@ -50,6 +50,20 @@ Built-in plot functions
    * - :func:`~moderndid.plots.plot_sensitivity`
      - Confidence intervals across a sensitivity parameter grid
      - :func:`~moderndid.honest_did`
+   * - :func:`~moderndid.plots.plot_dyn_balancing`
+     - Point estimate and confidence interval for the ATE (or potential
+       outcomes) under two treatment histories
+     - :func:`~moderndid.dyn_balancing`
+   * - :func:`~moderndid.plots.plot_dyn_balancing_history`
+     - Estimates across treatment history lengths
+     - :func:`~moderndid.dyn_balancing` (``histories_length`` mode)
+   * - :func:`~moderndid.plots.plot_dyn_balancing_het`
+     - Estimates across final time periods
+     - :func:`~moderndid.dyn_balancing` (``final_periods`` mode)
+   * - :func:`~moderndid.plots.plot_dyn_balancing_coefs`
+     - LASSO coefficient dot plot faceted by period, highlighting the
+       selected covariates
+     - :func:`~moderndid.dyn_balancing`
 
 Every estimator tutorial includes plotting code with rendered output.
 See the :ref:`tutorial list <plotting_tutorials>` at the bottom of this page
@@ -450,6 +464,9 @@ action on real data.
   ``plot_dose_response``, ``plot_event_study``
 - :ref:`Intertemporal Treatment <example_inter_did>` —
   ``plot_multiplegt``
+- :ref:`Dynamic Covariate Balancing <example_dyn_balancing>` —
+  ``plot_dyn_balancing``, ``plot_dyn_balancing_history``,
+  ``plot_dyn_balancing_het``, ``plot_dyn_balancing_coefs``
 - :ref:`Sensitivity Analysis <example_honest_did>` —
   ``plot_event_study``, ``plot_sensitivity``
 
