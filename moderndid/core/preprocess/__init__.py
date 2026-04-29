@@ -2,7 +2,15 @@
 
 from ..preprocessing import preprocess_did, preprocess_drdid
 from .builders import PreprocessDataBuilder
-from .config import BasePreprocessConfig, ContDIDConfig, DDDConfig, DIDConfig, DynBalancingConfig, TwoPeriodDIDConfig
+from .config import (
+    BasePreprocessConfig,
+    ContDIDConfig,
+    DDDConfig,
+    DIDConfig,
+    DIDMLConfig,
+    DynBalancingConfig,
+    TwoPeriodDIDConfig,
+)
 from .constants import (
     DEFAULT_ALPHA,
     DEFAULT_ANTICIPATION_PERIODS,
@@ -65,6 +73,7 @@ __all__ = [
     "DDDData",
     "DIDConfig",
     "DIDData",
+    "DIDMLConfig",
     "DataFormat",
     "DataTransformerPipeline",
     "DynBalancingConfig",
