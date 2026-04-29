@@ -82,12 +82,18 @@ def fit_rlearner(
     Returns
     -------
     dict
-        Dictionary with keys ``tau_hat`` (length-:math:`n` ndarray of
-        cross-fitted CATE predictions), ``p_hat`` (length-:math:`n`
-        cross-fitted propensity), ``m_hat`` (length-:math:`n` cross-fitted
-        outcome mean), ``tau_coef`` (length-:math:`p+1` ndarray with
-        intercept first), and ``best_penalty_factor`` (scalar; equal to
-        ``penalty_factor[0]`` when tuning is off).
+        Dictionary containing cross-fitted R-learner outputs:
+
+        - **tau_hat**: Length-:math:`n` array of cross-fitted CATE predictions
+          :math:`\hat{\tau}(X_i)` at each training row
+        - **p_hat**: Length-:math:`n` array of cross-fitted propensity scores
+          :math:`\hat{e}(X_i) = \mathbb{E}[D \mid X_i]`
+        - **m_hat**: Length-:math:`n` array of cross-fitted outcome predictions
+          :math:`\hat{m}(X_i) = \mathbb{E}[Y \mid X_i]`
+        - **tau_coef**: Length-:math:`(p+1)` array of CATE linear-model
+          coefficients with intercept first
+        - **best_penalty_factor**: Scalar penalty factor used in the residual
+          lasso (equals ``penalty_factor[0]`` when ``tune_penalty=False``)
 
     Raises
     ------
