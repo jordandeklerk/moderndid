@@ -2,6 +2,7 @@
 
 try:
     import cvxpy
+    import econml
     import sklearn
 except ImportError as e:
     raise ImportError(

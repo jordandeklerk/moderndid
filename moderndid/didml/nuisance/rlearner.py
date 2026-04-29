@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
-from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import Lasso, LassoCV
 from sklearn.model_selection import KFold
+from sklearn.preprocessing import StandardScaler
 
 
 def fit_rlearner(
@@ -177,8 +175,11 @@ def _fit_rlasso(
     """Single R-learner fit at the given penalty factor."""
     n = X.shape[0]
 
-    m_hat = _cross_fit_lasso(X, Y, k_folds=k_folds, random_state=random_state)
-    p_hat = _cross_fit_lasso(X, treatment, k_folds=k_folds, random_state=random_state)
+    scaler = StandardScaler().fit(X)
+    X_scl = scaler.transform(X)
+
+    m_hat = _cross_fit_lasso(X_scl, Y, k_folds=k_folds, random_state=random_state)
+    p_hat = _cross_fit_lasso(X_scl, treatment, k_folds=k_folds, random_state=random_state)
 
     y_tilde = Y - m_hat
     w_tilde = treatment - p_hat
@@ -190,7 +191,7 @@ def _fit_rlasso(
             "the propensity model perfectly explains the treatment indicator."
         )
 
-    interaction_cols = w_tilde[:, None] * X
+    interaction_cols = w_tilde[:, None] * X_scl
     alpha_y = float(w_tilde @ y_tilde) / w_inner
     alpha_z = (w_tilde @ interaction_cols) / w_inner
     y_resid = y_tilde - alpha_y * w_tilde
@@ -204,10 +205,15 @@ def _fit_rlasso(
         lambda_choice=lambda_choice,
         random_state=random_state,
     )
-    beta_penalized = beta_scaled / penalty_factor
-    beta_intercept = alpha_y - float(alpha_z @ beta_penalized)
+    beta_penalized_scl = beta_scaled / penalty_factor
+    beta_intercept_scl = alpha_y - float(alpha_z @ beta_penalized_scl)
 
-    tau_coef = np.concatenate([[beta_intercept], beta_penalized])
+    sigma = scaler.scale_
+    mu = scaler.mean_
+    beta_raw_X = beta_penalized_scl / sigma
+    beta_raw_intercept = beta_intercept_scl - float(beta_raw_X @ mu)
+
+    tau_coef = np.concatenate([[beta_raw_intercept], beta_raw_X])
     design = np.column_stack([np.ones(n), X])
     tau_hat = design @ tau_coef
 
@@ -250,9 +256,7 @@ def _select_penalty_factor(
                 random_state=random_state,
                 best_penalty_factor=float(pf_scalar),
             )
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", ConvergenceWarning)
-                fit = _fit_rlasso(**fit_kwargs)
+            fit = _fit_rlasso(**fit_kwargs)
             design_test = np.column_stack([np.ones(len(test_idx)), X[test_idx]])
             tau_pred = design_test @ fit["tau_coef"]
             fold_errors[k] = float(np.mean((Y[test_idx] - tau_pred) ** 2))
@@ -262,15 +266,15 @@ def _select_penalty_factor(
 
 
 def _cross_fit_lasso(X, y, *, k_folds, random_state):
-    """Return out-of-fold lasso predictions for ``y`` on ``X``."""
+    r"""Return out-of-fold lasso predictions for ``y`` on ``X`` at the full-data optimal :math:`\lambda`."""
+    full = LassoCV(cv=k_folds, n_alphas=100, max_iter=10_000, random_state=random_state).fit(X, y)
+    optimal_alpha = float(full.alpha_)
+
     n = len(y)
     y_hat = np.empty(n)
     kf = KFold(n_splits=k_folds, shuffle=True, random_state=random_state)
     for train_idx, test_idx in kf.split(X):
-        inner_cv = max(2, min(k_folds, len(train_idx) - 1))
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", ConvergenceWarning)
-            model = LassoCV(cv=inner_cv, alphas=100, random_state=random_state).fit(X[train_idx], y[train_idx])
+        model = Lasso(alpha=optimal_alpha, max_iter=10_000).fit(X[train_idx], y[train_idx])
         y_hat[test_idx] = model.predict(X[test_idx])
     return y_hat
 
@@ -278,14 +282,13 @@ def _cross_fit_lasso(X, y, *, k_folds, random_state):
 def _fit_lasso_with_lambda_choice(features, y, *, k_folds, lambda_choice, random_state):
     r"""Fit LassoCV and return coefficients at the chosen :math:`\lambda`."""
     inner_cv = max(2, min(k_folds, features.shape[0] - 1))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ConvergenceWarning)
-        model = LassoCV(
-            cv=inner_cv,
-            alphas=100,
-            random_state=random_state,
-            fit_intercept=False,
-        ).fit(features, y)
+    model = LassoCV(
+        cv=inner_cv,
+        n_alphas=100,
+        max_iter=10_000,
+        random_state=random_state,
+        fit_intercept=False,
+    ).fit(features, y)
 
     if lambda_choice == "lambda.min":
         return np.asarray(model.coef_, dtype=float)
@@ -304,7 +307,5 @@ def _fit_lasso_with_lambda_choice(features, y, *, k_folds, lambda_choice, random
 
 def _refit_lasso_at_alpha(features, y, alpha):
     """Refit a plain Lasso at the supplied ``alpha`` and return its coefficients."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", ConvergenceWarning)
-        model = Lasso(alpha=alpha, fit_intercept=False, max_iter=10_000).fit(features, y)
+    model = Lasso(alpha=alpha, fit_intercept=False, max_iter=10_000).fit(features, y)
     return np.asarray(model.coef_, dtype=float)
