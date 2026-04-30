@@ -11159,7 +11159,7 @@ packages:
 - pypi: ./
   name: moderndid
   version: 0.2.0
-  sha256: 0b0d2eb15c61236bc2322ddfe8812149ca3169982432dd69f419ebc4f6fac3f7
+  sha256: 0e997d653996d077bb1883369518f2d329d253d808f3fde83200e06af392742e
   requires_dist:
   - numpy>=1.22.0
   - scipy>=1.17
@@ -11180,6 +11180,7 @@ packages:
   - scikit-learn>=1.3.0 ; extra == 'didml'
   - cvxpy[ecos]>=1.3.0 ; extra == 'didml'
   - econml>=0.15.0 ; extra == 'didml'
+  - xgboost>=2.0.0 ; extra == 'didml'
   - formulaic>=1.1.0 ; extra == 'didml'
   - sphinx-book-theme ; extra == 'doc'
   - myst-parser[linkify] ; extra == 'doc'
