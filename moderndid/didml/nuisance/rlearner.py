@@ -93,12 +93,6 @@ def fit_rlearner(
         - **best_penalty_factor**: Scalar penalty factor used in the residual
           lasso (equals ``penalty_factor[0]`` when ``tune_penalty=False``)
 
-    Raises
-    ------
-    ValueError
-        If inputs have inconsistent shapes, ``k_folds`` is too small, or
-        ``lambda_choice`` is invalid.
-
     References
     ----------
 

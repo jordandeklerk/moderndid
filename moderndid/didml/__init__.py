@@ -24,7 +24,8 @@ from .container import (
     summary_didml,
     summary_didml_agg,
 )
-from .weights import solve_minimax_weights
+from .lnw import lnw_did
+from .weights import amle_weights
 
 __all__ = [
     "BLPResult",
@@ -32,11 +33,12 @@ __all__ = [
     "DIDMLAggResult",
     "DIDMLConfig",
     "DIDMLResult",
+    "amle_weights",
     "blp_result",
     "clan_result",
     "didml_agg",
     "didml_result",
-    "solve_minimax_weights",
+    "lnw_did",
     "summary_didml",
     "summary_didml_agg",
 ]

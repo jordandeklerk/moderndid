@@ -6,7 +6,7 @@ import cvxpy as cp
 import numpy as np
 
 
-def solve_minimax_weights(
+def amle_weights(
     covariates,
     post_indicator,
     cohort_indicator,
@@ -18,48 +18,16 @@ def solve_minimax_weights(
     r"""Solve the augmented minimax-linear balancing weights for one group-time cell.
 
     Computes the weight vector :math:`\hat{\gamma} \in \mathbb{R}^n` that
-    enters the doubly-robust ATT estimator
+    enters the doubly-robust ATT estimator as the residual correction term
+    :math:`\hat{\gamma}_i (Y_i - \hat{y}_i)`.
 
-    .. math::
+    The weights solve the Augmented Minimax Linear Estimation (AMLE)
+    program of [1]_, adapted to the doubly-robust DiD setting by [2]_.
 
-        \widehat{ATT}(g, t) = \frac{1}{n} \sum_{i=1}^{n}
-        \left[\hat{\tau}(X_i)
-        + \hat{\gamma}_i \, \bigl(Y_i - \hat{y}(X_i, G_i, T_i)\bigr)\right],
-
-    where :math:`\hat{\tau}` is the conditional ATT and :math:`\hat{y}` is
-    the orthogonal-decomposition prediction for :math:`Y`. The weights solve
-    the Augmented Minimax Linear Estimation (AMLE) program of [1]_, adapted
-    to the doubly-robust DiD setting by [2]_, over a length ``n + 4``
-    decision vector
-    :math:`g = (g_1, \ldots, g_n, g_{n+1}, \ldots, g_{n+4})`:
-
-    .. math::
-
-        \min_{g} \; (1 - \zeta) \sum_{i=1}^n g_i^2
-        + \zeta \sum_{k=1}^{4} g_{n+k}^2
-
-    subject to
-
-    .. math::
-
-        \begin{aligned}
-            \sum_{i=1}^n g_i &= 0,\\
-            \big|X^\top g_{1:n}\big|_j &\le g_{n+1},\\
-            \big|X^\top (T \odot g_{1:n})\big|_j &\le g_{n+2},\\
-            \big|X^\top (G \odot g_{1:n})\big|_j &\le g_{n+3},\\
-            \sum_{i=1}^n T_i G_i g_i &= 1,\\
-            \big|X^\top (T \odot G \odot g_{1:n}) - \bar{X}\big|_j
-            &\le g_{n+4},
-        \end{aligned}
-
-    where :math:`T \in \{0, 1\}^n` is the post-period indicator,
-    :math:`G \in \{0, 1\}^n` is the treated-cohort indicator, and
-    :math:`\bar{X}` is the column mean of ``covariates``. The four slack
-    variables :math:`g_{n+1}, \ldots, g_{n+4}` represent worst-case
-    imbalance levels in each balance condition; the objective trades off
-    raw weight magnitude (small :math:`\zeta`) against tighter moment
-    balance (large :math:`\zeta`). The returned weights are scaled to
-    :math:`\hat{\gamma} = n \cdot g_{1:n}^\star`.
+    Balance conditions cover covariate moments together with
+    covariate-by-:math:`T`, covariate-by-:math:`G`, and
+    covariate-by-:math:`T \cdot G` interactions, matching the treated cell
+    :math:`(T = G = 1)` against the rest of the sample.
 
     Parameters
     ----------
@@ -83,14 +51,40 @@ def solve_minimax_weights(
     ndarray of shape (n,)
         The minimax weight vector :math:`n \cdot g[:n]^\star`.
 
-    Raises
-    ------
-    ValueError
-        If ``zeta`` is outside :math:`(0, 1)`, the inputs are inconsistent,
-        or no units satisfy ``post_indicator == 1`` and
-        ``cohort_indicator == 1``.
-    RuntimeError
-        If the convex program fails to reach an optimal solution.
+    Notes
+    -----
+    The decision vector
+    :math:`g = (g_1, \ldots, g_n, g_{n+1}, \ldots, g_{n+4})` has length
+    :math:`n + 4`. The first :math:`n` entries are the per-observation
+    balancing weights and the final four entries are slack variables
+    bounding the worst-case imbalance in each balance condition. The
+    program is
+
+    .. math::
+
+        \min_{g} \; (1 - \zeta) \sum_{i=1}^n g_i^2
+        + \zeta \sum_{k=1}^{4} g_{n+k}^2
+
+    subject to
+
+    .. math::
+
+        \begin{aligned}
+            \sum_{i=1}^n g_i &= 0,\\
+            \big|X^\top g_{1:n}\big|_j &\le g_{n+1},\\
+            \big|X^\top (T \odot g_{1:n})\big|_j &\le g_{n+2},\\
+            \big|X^\top (G \odot g_{1:n})\big|_j &\le g_{n+3},\\
+            \sum_{i=1}^n T_i G_i g_i &= 1,\\
+            \big|X^\top (T \odot G \odot g_{1:n}) - \bar{X}\big|_j
+            &\le g_{n+4},
+        \end{aligned}
+
+    where :math:`T \in \{0, 1\}^n` is the post-period indicator,
+    :math:`G \in \{0, 1\}^n` is the treated-cohort indicator, and
+    :math:`\bar{X}` is the column mean of ``covariates``. The objective
+    trades off raw weight magnitude (small :math:`\zeta`) against tighter
+    moment balance (large :math:`\zeta`). The returned weights are scaled
+    to :math:`\hat{\gamma} = n \cdot g_{1:n}^\star`.
 
     References
     ----------

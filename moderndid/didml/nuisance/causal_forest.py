@@ -80,14 +80,6 @@ def fit_causal_forest(
         - **tau_coef**: ``None`` (forests have no linear coefficients)
         - **best_penalty_factor**: ``None`` (no penalty schedule)
 
-    Raises
-    ------
-    ImportError
-        If the optional ``econml`` package is not available.
-    ValueError
-        If inputs have inconsistent shapes or any forest hyperparameter is
-        invalid.
-
     References
     ----------
 

@@ -68,7 +68,7 @@ source_suffix = {
 }
 
 autosummary_generate = True
-autodoc_mock_imports = ["pyfixest", "sklearn"]
+autodoc_mock_imports = ["pyfixest", "sklearn", "econml", "xgboost"]
 autodoc_typehints = "signature"
 autodoc_default_options = {
     "members": False,

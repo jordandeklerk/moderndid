@@ -101,12 +101,6 @@ def fit_delta(
           ``'stack'`` backend)
         - **best_penalty_factor**: Selected penalty factor scalar (``None``
           for the ``'stack'`` backend or when ``tune_penalty=False``)
-
-    Raises
-    ------
-    ValueError
-        If ``model`` is not ``'glm'`` or ``'stack'``, or if inputs have
-        inconsistent shapes.
     """
     if model not in ("glm", "stack"):
         raise ValueError(f"model must be 'glm' or 'stack', got {model!r}.")

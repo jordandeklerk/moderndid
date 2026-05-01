@@ -268,7 +268,18 @@ __all__ = [
 # Submodules that can be loaded lazily
 # Note: drdid is excluded because we want `from moderndid import drdid` to get
 # the drdid() function, not the drdid submodule. Access submodule via moderndid.drdid.
-_submodules = ["core", "did", "diddynamic", "didinter", "didtriple", "didcont", "didhonest", "npiv", "plots"]
+_submodules = [
+    "core",
+    "did",
+    "diddynamic",
+    "didinter",
+    "didtriple",
+    "didcont",
+    "didhonest",
+    "didml",
+    "npiv",
+    "plots",
+]
 
 # Map attribute names to their module paths (for base/always-available imports)
 _lazy_imports = {
@@ -504,6 +515,22 @@ _optional_imports = {
     "test_in_identified_set_max": ("moderndid.didhonest", "didhonest"),
     "validate_conformable": ("moderndid.didhonest", "didhonest"),
     "validate_symmetric_psd": ("moderndid.didhonest", "didhonest"),
+    # didml (requires cvxpy + econml + xgboost + scikit-learn)
+    "BLPResult": ("moderndid.didml", "didml"),
+    "CLANResult": ("moderndid.didml", "didml"),
+    "DIDMLAggResult": ("moderndid.didml", "didml"),
+    "DIDMLResult": ("moderndid.didml", "didml"),
+    "blp_result": ("moderndid.didml", "didml"),
+    "clan_result": ("moderndid.didml", "didml"),
+    "didml_agg": ("moderndid.didml", "didml"),
+    "didml_result": ("moderndid.didml", "didml"),
+    "fit_causal_forest": ("moderndid.didml.nuisance", "didml"),
+    "fit_delta": ("moderndid.didml.nuisance", "didml"),
+    "fit_rlearner": ("moderndid.didml.nuisance", "didml"),
+    "lnw_did": ("moderndid.didml", "didml"),
+    "amle_weights": ("moderndid.didml", "didml"),
+    "summary_didml": ("moderndid.didml", "didml"),
+    "summary_didml_agg": ("moderndid.didml", "didml"),
     # etwfe (requires pyfixest)
     "EtwfeResult": ("moderndid.etwfe", "etwfe"),
     "EmfxResult": ("moderndid.etwfe", "etwfe"),
