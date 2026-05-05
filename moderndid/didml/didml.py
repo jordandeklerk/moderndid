@@ -1,4 +1,4 @@
-"""User-facing entry point for the ML-based doubly-robust DiD estimator."""
+"""ML-based doubly-robust DiD estimator."""
 
 from __future__ import annotations
 

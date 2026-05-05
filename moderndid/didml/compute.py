@@ -1,4 +1,4 @@
-"""Group-time orchestration for the doubly-robust ML DiD estimator."""
+"""Group-time computation for the doubly-robust ML DiD estimator."""
 
 from __future__ import annotations
 
