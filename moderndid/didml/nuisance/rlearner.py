@@ -190,6 +190,7 @@ def _fit_rlasso(
     interaction_cols = w_tilde[:, None] * X_scl
     alpha_y = float(w_tilde @ y_tilde) / w_inner
     alpha_z = (w_tilde @ interaction_cols) / w_inner
+
     y_resid = y_tilde - alpha_y * w_tilde
     z_resid = interaction_cols - w_tilde[:, None] * alpha_z[None, :]
 
@@ -201,6 +202,7 @@ def _fit_rlasso(
         lambda_choice=lambda_choice,
         random_state=random_state,
     )
+
     beta_penalized_scl = beta_scaled / penalty_factor
     beta_intercept_scl = alpha_y - float(alpha_z @ beta_penalized_scl)
 
@@ -238,9 +240,11 @@ def _select_penalty_factor(
     fold_indices = list(kf.split(X))
 
     cv_errors = np.empty(len(candidates))
+
     for i, pf_scalar in enumerate(candidates):
         fold_errors = np.empty(k_folds)
         pf_train = np.full(p, float(pf_scalar))
+
         for k, (train_idx, test_idx) in enumerate(fold_indices):
             fit_kwargs = dict(
                 X=X[train_idx],
@@ -253,9 +257,11 @@ def _select_penalty_factor(
                 best_penalty_factor=float(pf_scalar),
             )
             fit = _fit_rlasso(**fit_kwargs)
+
             design_test = np.column_stack([np.ones(len(test_idx)), X[test_idx]])
             tau_pred = design_test @ fit["tau_coef"]
             fold_errors[k] = float(np.mean((Y[test_idx] - tau_pred) ** 2))
+
         cv_errors[i] = float(np.mean(fold_errors))
 
     return float(candidates[int(np.argmin(cv_errors))])

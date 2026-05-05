@@ -105,6 +105,7 @@ def cv_lasso_with_oof(
 
     col_std = X.std(axis=0, ddof=0)
     zero_var_mask = col_std == 0
+
     if zero_var_mask.any():
         warnings.warn(
             f"Detected {int(zero_var_mask.sum())} zero-variance column(s); their coefficients are forced to 0.",
@@ -136,6 +137,7 @@ def cv_lasso_with_oof(
     # built on the same residualized problem the lasso will see, matching the
     # joint KKT solution rather than treating X_unp/X_pen as orthogonal.
     y_for_grid, X_pen_for_grid = _residualize_for_grid(X_scaled, y, X_pen_scaled_full, unp_idx)
+
     if pen_idx.size > 0:
         alphas = _build_alpha_grid(X_pen_for_grid, y_for_grid, n_alphas=n_alphas, eps=eps)
     else:
@@ -172,8 +174,10 @@ def cv_lasso_with_oof(
             # predictions and the final refit at the same alpha.
             train_mean_X = X_pen_train_res.mean(axis=0)
             train_mean_y = y_train_res.mean()
+
             X_pen_train_centered = X_pen_train_res - train_mean_X[None, :]
             y_train_centered = y_train_res - train_mean_y
+
             try:
                 _, coefs_path, _ = lasso_path(
                     X_pen_train_centered,
@@ -210,6 +214,7 @@ def cv_lasso_with_oof(
         raise RuntimeError("Lasso path failed to converge for every alpha in every fold.")
 
     min_idx = int(np.argmin(cv_errors))
+
     if lambda_choice == "lambda.min":
         chosen_idx = min_idx
     else:
@@ -217,7 +222,9 @@ def cv_lasso_with_oof(
         finite_cols = np.isfinite(cv_errors)
         n_converged = int(fold_converged.sum())
         se[finite_cols] = np.std(fold_mse[np.ix_(fold_converged, finite_cols)], axis=0, ddof=1) / np.sqrt(n_converged)
+
         threshold = cv_errors[min_idx] + se[min_idx]
+
         # Largest alpha with CV error within one SE of the minimum
         candidate_mask = (cv_errors <= threshold) & finite_cols
         chosen_idx = int(np.argmax(np.where(candidate_mask, alphas, -np.inf)))

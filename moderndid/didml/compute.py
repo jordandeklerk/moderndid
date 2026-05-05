@@ -45,8 +45,8 @@ def compute_didml(data, *, n_jobs=1):
     n_units = data.config.id_count
     n_periods = len(data.config.time_periods)
     n_treated = data.config.treated_groups_count
-
     n_time_periods = n_periods - 1
+
     pairs = [(g, t) for g in range(n_treated) for t in range(n_time_periods)]
     args_list = [(g_idx, t_idx, data) for g_idx, t_idx in pairs]
 
@@ -94,6 +94,7 @@ def _process_didml_cell(group_idx, time_idx, data):
 
     cohort_idx = get_did_cohort_index(group_idx, time_idx, time_factor, pre_treatment_idx, data)
     valid = ~np.isnan(cohort_idx)
+
     if not (np.any(cohort_idx[valid] == 1) and np.any(cohort_idx[valid] == 0)):
         return None
 
@@ -102,15 +103,17 @@ def _process_didml_cell(group_idx, time_idx, data):
     Y = np.concatenate([Y_pre, Y_post])
 
     cohort_valid = cohort_idx[valid]
-    G = np.concatenate([cohort_valid, cohort_valid])
     n_valid = int(valid.sum())
+    G = np.concatenate([cohort_valid, cohort_valid])
     T = np.concatenate([np.zeros(n_valid), np.ones(n_valid)])
 
     X_pre = data.covariates_tensor[pre_treatment_idx][valid]
     X_post = data.covariates_tensor[time_idx + time_factor][valid]
     X = np.vstack([X_pre, X_post])
+
     if X.shape[1] > 0 and np.allclose(X[:, 0], 1.0):
         X = X[:, 1:]
+
     if X.shape[1] == 0:
         warnings.warn(
             f"No covariates after intercept removal for group {treated_groups[group_idx]}, "
@@ -193,10 +196,12 @@ def _maybe_run_drdid_benchmark(data, cohort_idx, valid, pre_treatment_idx, time_
         return None, None, None
 
     n_units = data.config.id_count
-    inf_full = np.zeros(n_units)
     n_valid = int(valid.sum())
+    inf_full = np.zeros(n_units)
+
     if n_valid > 0:
         inf_full[valid] = (n_units / n_valid) * result.att_inf_func
+
     return float(result.att), float(result.se), inf_full
 
 
@@ -206,15 +211,19 @@ def _stack_per_unit(cell_results, n_units, key):
         return sp.csr_matrix((n_units, 0))
 
     columns = []
+
     for cell in cell_results:
         col = np.zeros(n_units)
         values = getattr(cell, key)
+
         if values is None:
             columns.append(col)
             continue
+
         valid = ~np.isnan(cell.cohort_idx)
         n_valid = int(valid.sum())
         post_block = values[n_valid : 2 * n_valid] if values.shape[0] >= 2 * n_valid else values[:n_valid]
+
         col[valid] = post_block
         columns.append(col)
 

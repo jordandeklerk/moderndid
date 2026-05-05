@@ -150,6 +150,7 @@ def amle_weights(
 
     problem = cp.Problem(objective, constraints)
     chosen_solver = solver or "ECOS"
+
     try:
         problem.solve(solver=chosen_solver, verbose=verbose)
     except cp.error.SolverError as exc:
@@ -159,6 +160,7 @@ def amle_weights(
         raise RuntimeError(f"Minimax problem did not reach an optimal solution (status={problem.status!r}).")
 
     solution = g.value
+
     if solution is None:
         raise RuntimeError("Solver returned a null solution.")
 

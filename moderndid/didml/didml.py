@@ -293,8 +293,8 @@ def didml(
     times = np.array([c.year for c in cell_results])
     att_values = np.array([c.att for c in cell_results])
 
-    influence_funcs = compute_out.scores.toarray().astype(float)
     n_units = dp.config.id_count
+    influence_funcs = compute_out.scores.toarray().astype(float)
 
     variance_matrix = influence_funcs.T @ influence_funcs / n_units
     standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
@@ -311,11 +311,11 @@ def didml(
         )
 
     wald_statistic, wald_pvalue = _pretest_wald(att_values, variance_matrix, groups, times, n_units, anticipation)
-
     critical_value = scipy.stats.norm.ppf(1 - alp / 2)
 
     drdid_benchmark = None
     drdid_benchmark_se = None
+
     if compute_drdid_benchmark and any(c.drdid_att is not None for c in cell_results):
         drdid_benchmark = np.array([np.nan if c.drdid_att is None else c.drdid_att for c in cell_results])
         drdid_benchmark_se = np.array([np.nan if c.drdid_se is None else c.drdid_se for c in cell_results])
@@ -373,6 +373,7 @@ def didml(
 def _pretest_wald(att_values, variance_matrix, groups, times, n_units, anticipation):
     """Compute the parallel-trends Wald statistic from pre-treatment cells."""
     pre_indices = np.where(groups > times)[0]
+
     if len(pre_indices) == 0:
         msg = "No pre-treatment periods available for the parallel-trends Wald pre-test."
         if anticipation > 0:
@@ -386,15 +387,18 @@ def _pretest_wald(att_values, variance_matrix, groups, times, n_units, anticipat
     if np.any(np.isnan(pre_var)):
         warnings.warn("Pre-test Wald not returned due to NaN entries in pre-treatment variance.", UserWarning)
         return None, None
+
     if la.norm(pre_var) == 0 or np.linalg.matrix_rank(pre_var) < pre_var.shape[0]:
         warnings.warn("Pre-test Wald not returned due to a singular pre-treatment variance.", UserWarning)
         return None, None
+
     try:
         wald_stat = float(n_units * pre_att.T @ np.linalg.solve(pre_var, pre_att))
         wald_pvalue = round(1 - scipy.stats.chi2.cdf(wald_stat, len(pre_indices)), 5)
     except np.linalg.LinAlgError:
         warnings.warn("Pre-test Wald not returned due to a numerical solver failure.", UserWarning)
         return None, None
+
     return wald_stat, wald_pvalue
 
 

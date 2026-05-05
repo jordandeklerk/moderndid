@@ -129,6 +129,7 @@ def fit_delta(
 def _fit_delta_glm(X, y, *, k_folds, tune_penalty, random_state):
     """Single-pass CV lasso for the delta nuisance, optionally tuning a scalar penalty factor."""
     _, p = X.shape
+
     scaler = StandardScaler().fit(X)
     X_scl = scaler.transform(X)
 
@@ -136,6 +137,7 @@ def _fit_delta_glm(X, y, *, k_folds, tune_penalty, random_state):
         pf_grid = (0.01, 0.25, 0.5, 0.75, 0.99, 1.0)
         best_score = np.inf
         best_pf = 1.0
+
         for pf in pf_grid:
             penalty_factor = np.full(p, float(pf))
             candidate = cv_lasso_with_oof(
@@ -148,6 +150,7 @@ def _fit_delta_glm(X, y, *, k_folds, tune_penalty, random_state):
                 lambda_choice="lambda.min",
             )
             cv_score = float(np.mean((y - candidate["oof_predictions"]) ** 2))
+
             if cv_score < best_score:
                 best_score = cv_score
                 best_pf = float(pf)

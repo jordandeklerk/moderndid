@@ -230,25 +230,31 @@ def lnw_did(
     Y = np.asarray(Y, dtype=float)
     post_indicator = np.asarray(post_indicator, dtype=float)
     cohort_indicator = np.asarray(cohort_indicator, dtype=float)
+
     if X.ndim != 2:
         raise ValueError(f"X must be 2-D, got shape {X.shape}.")
+
     n, _ = X.shape
+
     if Y.shape != (n,):
         raise ValueError(f"Y length {Y.shape} does not match X row count {n}.")
     if post_indicator.shape != (n,):
         raise ValueError(f"post_indicator length {post_indicator.shape} does not match X row count {n}.")
     if cohort_indicator.shape != (n,):
         raise ValueError(f"cohort_indicator length {cohort_indicator.shape} does not match X row count {n}.")
+
     if gamma is not None:
         gamma = np.asarray(gamma, dtype=float)
         if gamma.shape != (n,):
             raise ValueError(f"gamma length {gamma.shape} does not match X row count {n}.")
 
     nu_kwargs = dict(k_folds=k_folds, tune_penalty=tune_penalty, random_state=random_state)
+
     if nu_model == "rlearner":
         nu_fit = fit_rlearner(X, Y, post_indicator, lambda_choice=lambda_choice, **nu_kwargs)
     else:
         nu_fit = fit_causal_forest(X, Y, post_indicator, random_state=random_state)
+
     nu_hat = np.asarray(nu_fit["tau_hat"], dtype=float)
     t_hat = np.asarray(nu_fit["p_hat"], dtype=float)
     m_hat = np.asarray(nu_fit["m_hat"], dtype=float)
@@ -257,6 +263,7 @@ def lnw_did(
         sigma_fit = fit_rlearner(X, Y, cohort_indicator, lambda_choice=lambda_choice, **nu_kwargs)
     else:
         sigma_fit = fit_causal_forest(X, Y, cohort_indicator, random_state=random_state)
+
     sigma_hat = np.asarray(sigma_fit["tau_hat"], dtype=float)
     s_hat = np.asarray(sigma_fit["p_hat"], dtype=float)
 
@@ -279,12 +286,14 @@ def lnw_did(
 
     var_product = s_safe * (1.0 - s_safe) * t_safe * (1.0 - t_safe)
     inv_scaling = 1.0 / (1.0 - delta_hat**2 / var_product)
+
     A_hat = inv_scaling * (
         post_indicator - t_safe - delta_hat * (cohort_indicator - s_safe) / (s_safe * (1.0 - s_safe))
     )
     B_hat = inv_scaling * (
         cohort_indicator - s_safe - delta_hat * (post_indicator - t_safe) / (t_safe * (1.0 - t_safe))
     )
+
     iota = s_safe * t_safe + delta_hat
     C_hat = (
         cohort_indicator * post_indicator
@@ -298,8 +307,10 @@ def lnw_did(
     if constant_eff == "constant":
         ols = sm.OLS(H_hat, C_hat[:, None]).fit()
         tau_scalar = float(ols.params[0])
+
         robust = ols.get_robustcov_results(cov_type="HC3")
         std_err = float(np.sqrt(robust.cov_params()[0, 0]))
+
         return {
             "TAU_hat": tau_scalar,
             "std_err": std_err,
@@ -326,6 +337,7 @@ def lnw_did(
         lambda_choice=lambda_choice,
         random_state=tau_random_state,
     )
+
     design = np.column_stack([np.ones(n), X])
     tau_hat = design @ tau_coef
     y_hat = m_hat + A_hat * nu_hat + B_hat * sigma_hat + C_hat * tau_hat
@@ -337,6 +349,7 @@ def lnw_did(
     else:
         score = tau_hat + gamma * (Y - y_hat)
         TAU_hat = float(np.mean(score))
+
         residual_var = np.mean((tau_hat - TAU_hat) ** 2 + gamma**2 * (Y - y_hat) ** 2)
         std_err = float(np.sqrt(residual_var / n))
 
@@ -362,8 +375,8 @@ def lnw_did(
 def _fit_tau_coef(*, X, H_hat, C_hat, k_folds, lambda_choice, random_state):
     r"""Return the length-(p+1) CATT coefficient vector :math:`(b_0, b_1, \ldots, b_p)`."""
     n, p = X.shape
-
     c_inner = float(C_hat @ C_hat)
+
     if c_inner < 1e-12:
         raise RuntimeError("C_hat is degenerate (C_hat'C_hat ≈ 0); check propensity overlap and delta estimate.")
 
