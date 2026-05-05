@@ -423,6 +423,54 @@ class CLANResult(NamedTuple):
     test_type: Literal["glh", "t"]
 
 
+class DIDMLCellResult(NamedTuple):
+    r"""Per-cell ML doubly-robust DiD result for a single :math:`(g, t)` pair."""
+
+    #: Treatment cohort identifier (period first treated).
+    group: float
+    #: Time period this estimate refers to.
+    year: float
+    #: 1 for post-treatment cells (:math:`t \geq g`), 0 for pre-treatment placebos.
+    post: int
+    #: Pre-period index in ``data.config.time_periods``.
+    pre_idx: int
+    #: Post-period index in ``data.config.time_periods``.
+    post_idx: int
+    #: Cell-level :math:`\widehat{ATT}(g, t)` from the LNW score.
+    att: float
+    #: Standard error for ``att`` (NaN when ``gamma`` is unused).
+    se: float
+    #: Length-:math:`n_{cell}` cross-fitted CATT predictions (None for skipped cells).
+    tau_hat: np.ndarray | None
+    #: Length-:math:`n_{cell}` doubly-robust score contributions.
+    score: np.ndarray | None
+    #: Length-:math:`n_{cell}` AMLE weights.
+    gamma: np.ndarray | None
+    #: Length-:math:`n_{units}` membership indicator: 1=treated, 0=control, NaN=excluded.
+    cohort_idx: np.ndarray
+    #: Doubly-robust benchmark ATT (None when ``compute_drdid_benchmark=False``).
+    drdid_att: float | None
+    #: Standard error for the benchmark ATT.
+    drdid_se: float | None
+    #: Length-:math:`n_{units}` benchmark influence function (None when disabled).
+    drdid_inf_func: np.ndarray | None
+
+
+class ComputeDIDMLResult(NamedTuple):
+    r"""Container for the cell-loop output from :func:`compute_didml`."""
+
+    #: Per-cell records, one entry per :math:`(g, t)` pair successfully estimated.
+    cell_results: list[DIDMLCellResult]
+    #: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit CATT predictions.
+    cates: sp.csr_matrix
+    #: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit DR score contributions.
+    scores: sp.csr_matrix
+    #: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit AMLE weights.
+    gammas: sp.csr_matrix
+    #: Sparse :math:`(n_{units}, n_{cells})` matrix of benchmark influence functions.
+    drdid_inf_funcs: sp.csr_matrix
+
+
 def didml_result(
     groups,
     times,

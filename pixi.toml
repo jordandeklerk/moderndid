@@ -63,6 +63,13 @@ formulaic = ">=1.1.0"
 [feature.didhonest.pypi-dependencies]
 cvxpy = { version = ">=1.3.0", extras = ["ECOS"] }
 
+[feature.didml.pypi-dependencies]
+scikit-learn = ">=1.3.0"
+cvxpy = { version = ">=1.3.0", extras = ["ECOS"] }
+econml = ">=0.15.0"
+xgboost = ">=2.0.0"
+formulaic = ">=1.1.0"
+
 [feature.plots.pypi-dependencies]
 plotnine = ">=0.14.0"
 
@@ -124,8 +131,8 @@ didhonest = "pytest tests/validation/test_r_didhonest.py -vv"
 npiv = "pytest tests/validation/test_r_npiv.py -vv"
 
 [environments]
-dev = ["dev", "build", "etwfe", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
-docs = ["docs", "build", "etwfe", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
+dev = ["dev", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba", "dask", "spark"]
+docs = ["docs", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba", "dask", "spark"]
 check = ["lint"]
 build = ["build"]
 gpu = ["gpu"]

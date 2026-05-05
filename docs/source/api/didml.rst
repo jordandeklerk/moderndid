@@ -10,10 +10,19 @@ effect heterogeneity is recovered through a doubly-robust orthogonal score
 plus an augmented minimax-linear weighting scheme. The implementation follows
 `Hatamyar, Kreif, Rocha, and Huber (2023) <https://arxiv.org/abs/2310.11962>`_.
 
-Doubly-Robust Score
--------------------
+Main Functions
+--------------
 
 .. currentmodule:: moderndid.didml
+
+.. autosummary::
+   :toctree: generated/didml/
+   :nosignatures:
+
+   didml
+
+Doubly-Robust Score
+-------------------
 
 .. autosummary::
    :toctree: generated/didml/

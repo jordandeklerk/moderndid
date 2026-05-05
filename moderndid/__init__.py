@@ -266,8 +266,9 @@ __all__ = [
 ]
 
 # Submodules that can be loaded lazily
-# Note: drdid is excluded because we want `from moderndid import drdid` to get
-# the drdid() function, not the drdid submodule. Access submodule via moderndid.drdid.
+# Note: drdid and didml are excluded because we want `from moderndid import drdid` /
+# `from moderndid import didml` to resolve to the function, not the submodule. Access
+# submodules via moderndid.drdid / moderndid.didml.
 _submodules = [
     "core",
     "did",
@@ -276,7 +277,6 @@ _submodules = [
     "didtriple",
     "didcont",
     "didhonest",
-    "didml",
     "npiv",
     "plots",
 ]
@@ -522,6 +522,7 @@ _optional_imports = {
     "DIDMLResult": ("moderndid.didml", "didml"),
     "blp_result": ("moderndid.didml", "didml"),
     "clan_result": ("moderndid.didml", "didml"),
+    "didml": ("moderndid.didml", "didml"),
     "didml_agg": ("moderndid.didml", "didml"),
     "didml_result": ("moderndid.didml", "didml"),
     "fit_causal_forest": ("moderndid.didml.nuisance", "didml"),
@@ -605,11 +606,14 @@ def __getattr__(name: str) -> Any:
 from moderndid.drdid.drdid import drdid
 from moderndid.npiv.npiv import npiv
 
-try:
+from contextlib import suppress as _suppress
+
+with _suppress(ImportError):
+    from moderndid.didml.didml import didml
+
+with _suppress(ImportError):
     from moderndid.etwfe.etwfe import etwfe
     from moderndid.etwfe.emfx import emfx
-except ImportError:
-    pass
 
 
 def __dir__() -> list[str]:

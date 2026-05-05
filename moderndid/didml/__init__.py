@@ -24,8 +24,10 @@ from .container import (
     summary_didml,
     summary_didml_agg,
 )
+from .didml import didml
 from .lnw import lnw_did
 from .weights import amle_weights
+from . import format as _format
 
 __all__ = [
     "BLPResult",
@@ -36,6 +38,7 @@ __all__ = [
     "amle_weights",
     "blp_result",
     "clan_result",
+    "didml",
     "didml_agg",
     "didml_result",
     "lnw_did",

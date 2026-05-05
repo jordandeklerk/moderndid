@@ -6,10 +6,12 @@ import numpy as np
 from scipy.optimize import nnls
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.ensemble import RandomForestRegressor, StackingRegressor
-from sklearn.linear_model import ElasticNet, ElasticNetCV, LassoCV
-from sklearn.model_selection import KFold, cross_val_predict
+from sklearn.linear_model import LassoCV
+from sklearn.model_selection import cross_val_predict
 from sklearn.preprocessing import StandardScaler
 from xgboost import XGBRegressor
+
+from .cv_lasso import cv_lasso_with_oof
 
 
 class _NNLSMetaLearner(RegressorMixin, BaseEstimator):
@@ -67,10 +69,12 @@ def fit_delta(
     response : ndarray of shape (n,)
         Pointwise product of residualized treatment and cohort indicators.
     model : {'glm', 'stack'}, default='glm'
-        Backend to use. ``'glm'`` fits an elastic-net regression on
-        standardized covariates with optional L1-ratio / penalty-factor
-        grid search; cross-fitted predictions come from selecting the
-        optimal :math:`\lambda` on full data and refitting per fold.
+        Backend to use. ``'glm'`` fits a cross-validated lasso on
+        standardized covariates via :func:`cv_lasso_with_oof`: out-of-fold
+        predictions at the chosen :math:`\lambda` come directly from the
+        same fold partition that selects it. With ``tune_penalty=True``,
+        a grid of scalar penalty factors is swept and the candidate with
+        the lowest mean squared OOF error is refit.
         ``'stack'`` fits a stacking ensemble with three base learners
         (:class:`~sklearn.linear_model.LassoCV`,
         :class:`~sklearn.ensemble.RandomForestRegressor` with
@@ -82,11 +86,10 @@ def fit_delta(
     k_folds : int, default=10
         Number of folds for cross-fitting.
     tune_penalty : bool, default=False
-        For the ``'glm'`` backend, when True, grid-search over L1 ratios in
-        :math:`\{0.01, 0.1, 0.25, 0.5, 0.75, 1\}` and per-coefficient penalty
-        factors in :math:`\{0.01, 0.25, 0.5, 0.75, 0.99, 1\}` to find the
-        combination minimizing CV error, then refit at the chosen L1 ratio
-        on the full standardized design.
+        For the ``'glm'`` backend, when True, grid-search over per-coefficient
+        penalty factors in :math:`\{0.01, 0.25, 0.5, 0.75, 0.99, 1\}` to find
+        the value minimizing the mean squared out-of-fold error, then refit
+        at the chosen penalty factor.
     random_state : int, optional
         Seed controlling fold splits and the inner CV of the base estimators.
 
@@ -97,8 +100,8 @@ def fit_delta(
 
         - **delta_hat**: Length-:math:`n` array of cross-fitted predictions
           :math:`\hat{\Delta}(X_i)`
-        - **best_l1_ratio**: Selected elastic-net L1 ratio (``None`` for the
-          ``'stack'`` backend)
+        - **best_l1_ratio**: Always ``1.0`` for the ``'glm'`` backend (lasso),
+          ``None`` for the ``'stack'`` backend
         - **best_penalty_factor**: Selected penalty factor scalar (``None``
           for the ``'stack'`` backend or when ``tune_penalty=False``)
     """
@@ -124,61 +127,46 @@ def fit_delta(
 
 
 def _fit_delta_glm(X, y, *, k_folds, tune_penalty, random_state):
-    """Elastic-net fit with optional L1-ratio / penalty-factor grid search."""
-    n, p = X.shape
+    """Single-pass CV lasso for the delta nuisance, optionally tuning a scalar penalty factor."""
+    _, p = X.shape
     scaler = StandardScaler().fit(X)
     X_scl = scaler.transform(X)
 
     if tune_penalty:
-        l1_ratio_grid = (0.01, 0.1, 0.25, 0.5, 0.75, 1.0)
         pf_grid = (0.01, 0.25, 0.5, 0.75, 0.99, 1.0)
         best_score = np.inf
-        best_l1_ratio = 1.0
         best_pf = 1.0
-        for l1_ratio in l1_ratio_grid:
-            for pf in pf_grid:
-                X_scaled = X_scl / pf
-                fit = ElasticNetCV(
-                    l1_ratio=l1_ratio,
-                    cv=k_folds,
-                    n_alphas=100,
-                    max_iter=10_000,
-                    random_state=random_state,
-                ).fit(X_scaled, y)
-                cv_score = float(fit.mse_path_.mean(axis=-1).min())
-                if cv_score < best_score:
-                    best_score = cv_score
-                    best_l1_ratio = float(l1_ratio)
-                    best_pf = float(pf)
-        chosen_pf = np.ones(p)
+        for pf in pf_grid:
+            penalty_factor = np.full(p, float(pf))
+            candidate = cv_lasso_with_oof(
+                X_scl,
+                y,
+                k_folds=k_folds,
+                random_state=random_state,
+                penalty_factor=penalty_factor,
+                standardize=False,
+                lambda_choice="lambda.min",
+            )
+            cv_score = float(np.mean((y - candidate["oof_predictions"]) ** 2))
+            if cv_score < best_score:
+                best_score = cv_score
+                best_pf = float(pf)
     else:
-        best_l1_ratio = 1.0
         best_pf = 1.0
-        chosen_pf = np.ones(p)
 
-    X_chosen = X_scl / chosen_pf[None, :]
-    full = ElasticNetCV(
-        l1_ratio=best_l1_ratio,
-        cv=k_folds,
-        n_alphas=100,
-        max_iter=10_000,
+    final = cv_lasso_with_oof(
+        X_scl,
+        y,
+        k_folds=k_folds,
         random_state=random_state,
-    ).fit(X_chosen, y)
-    optimal_alpha = float(full.alpha_)
-
-    delta_hat = np.empty(n)
-    kf = KFold(n_splits=k_folds, shuffle=True, random_state=random_state)
-    for train_idx, test_idx in kf.split(X):
-        fold_model = ElasticNet(
-            alpha=optimal_alpha,
-            l1_ratio=best_l1_ratio,
-            max_iter=10_000,
-        ).fit(X_chosen[train_idx], y[train_idx])
-        delta_hat[test_idx] = fold_model.predict(X_chosen[test_idx])
+        penalty_factor=np.full(p, best_pf),
+        standardize=False,
+        lambda_choice="lambda.min",
+    )
 
     return {
-        "delta_hat": delta_hat,
-        "best_l1_ratio": best_l1_ratio,
+        "delta_hat": np.asarray(final["oof_predictions"], dtype=float),
+        "best_l1_ratio": 1.0,
         "best_penalty_factor": best_pf,
     }
 

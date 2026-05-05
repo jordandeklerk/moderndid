@@ -7,6 +7,8 @@ from sklearn.linear_model import Lasso, LassoCV
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import StandardScaler
 
+from .cv_lasso import cv_lasso_with_oof
+
 
 def fit_rlearner(
     X,
@@ -260,17 +262,16 @@ def _select_penalty_factor(
 
 
 def _cross_fit_lasso(X, y, *, k_folds, random_state):
-    r"""Return out-of-fold lasso predictions for ``y`` on ``X`` at the full-data optimal :math:`\lambda`."""
-    full = LassoCV(cv=k_folds, n_alphas=100, max_iter=10_000, random_state=random_state).fit(X, y)
-    optimal_alpha = float(full.alpha_)
-
-    n = len(y)
-    y_hat = np.empty(n)
-    kf = KFold(n_splits=k_folds, shuffle=True, random_state=random_state)
-    for train_idx, test_idx in kf.split(X):
-        model = Lasso(alpha=optimal_alpha, max_iter=10_000).fit(X[train_idx], y[train_idx])
-        y_hat[test_idx] = model.predict(X[test_idx])
-    return y_hat
+    r"""Return out-of-fold lasso predictions for ``y`` on ``X`` at the CV-optimal :math:`\lambda`."""
+    out = cv_lasso_with_oof(
+        X,
+        y,
+        k_folds=k_folds,
+        random_state=random_state,
+        lambda_choice="lambda.min",
+        standardize=False,
+    )
+    return out["oof_predictions"]
 
 
 def _fit_lasso_with_lambda_choice(features, y, *, k_folds, lambda_choice, random_state):

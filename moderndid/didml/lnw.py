@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 import statsmodels.api as sm
-from sklearn.linear_model import Lasso, LassoCV
-from sklearn.preprocessing import StandardScaler
 
 from .nuisance import fit_causal_forest, fit_delta, fit_rlearner
+from .nuisance.cv_lasso import cv_lasso_with_oof
 
 
 def lnw_did(
@@ -31,18 +30,31 @@ def lnw_did(
 
     Implements the orthogonal decomposition of [1]_ for difference-in-
     differences with cross-fitted machine-learning nuisance estimates.
+    The estimator is built on the structural representation
 
-    Three nuisance functions are fit, the orthogonal :math:`(A, B, C)`
-    coefficients and pseudo-outcome :math:`H` are computed in closed form,
-    and the conditional treatment effect :math:`\tau(x)` is recovered by
-    one of two routes selected by ``constant_eff``.
+    .. math::
 
-    With ``'non_constant'`` (default), :math:`\tau(x)` is fit as a
-    penalized linear function of :math:`x` and combined with the
-    optionally supplied augmented minimax-linear weights
-    :math:`\hat{\gamma}` from [2]_. With ``'constant'``, a single scalar
-    :math:`\tau` is fit by no-intercept OLS with HC3 robust standard
-    errors.
+        Y_i = m(X_i)
+            + A_i \, \nu(X_i)
+            + B_i \, \zeta(X_i)
+            + C_i \, \tau(X_i)
+            + \varepsilon_i,
+
+    where :math:`m, \nu, \zeta` are conditional response surfaces of
+    :math:`Y` on covariates and treatment indicators; :math:`A, B, C` are
+    closed-form orthogonalization coefficients depending on cross-fitted
+    propensities and the cross-derivative term; and :math:`\tau(x)` is
+    the conditional treatment effect on the treated. The function
+    cross-fits the response surfaces and propensities, plugs them into
+    :math:`A`, :math:`B`, and :math:`C`, and recovers :math:`\tau(x)`
+    from the implied pseudo-outcome.
+
+    The conditional treatment effect is recovered by one of two routes
+    selected by ``constant_eff``. With ``'non_constant'`` (default) the
+    function fits :math:`\tau(x)` as a penalized linear function of
+    :math:`x` and combines it with optional augmented minimax-linear
+    weights from [2]_; with ``'constant'`` it fits a single scalar
+    :math:`\tau` by no-intercept OLS with HC3 robust standard errors.
 
     Parameters
     ----------
@@ -55,21 +67,23 @@ def lnw_did(
     cohort_indicator : ndarray of shape (n,)
         Binary 0/1 indicator equal to 1 for units in the treated cohort.
     constant_eff : {'constant', 'non_constant'}, default='non_constant'
-        Whether to fit a constant CATT (single scalar :math:`\tau`) or a
-        linear CATT :math:`\tau(x)`.
+        Whether to fit a constant treatment effect (a single scalar) or a
+        unit-level linear conditional treatment effect.
     gamma : ndarray of shape (n,), optional
         Augmented minimax-linear weights from
         :func:`~moderndid.didml.amle_weights`. Required for
         ``constant_eff='non_constant'`` to produce a non-NaN standard error.
     nu_model : {'rlearner', 'cf'}, default='rlearner'
-        Nuisance backend for :math:`\nu`, :math:`m`, and :math:`t`.
+        Nuisance backend for the post-period CATE, the outcome regression,
+        and the post-period propensity score.
     sigma_model : {'rlearner', 'cf'}, default='rlearner'
-        Nuisance backend for :math:`\zeta` and :math:`g`.
+        Nuisance backend for the cohort-marginal CATE and the cohort
+        propensity score.
     delta_model : {'glm', 'stack'}, default='glm'
-        Nuisance backend for :math:`\Delta`.
+        Nuisance backend for the cross-derivative term.
     t_func : bool, default=True
-        If False, replace the estimated :math:`\hat{t}(X)` with the constant
-        :math:`0.5` to enforce balanced post-period probability.
+        If False, replace the estimated post-period propensity with the
+        constant 0.5 to enforce balanced post-period probability.
     k_folds : int, default=10
         Number of folds for cross-fitting.
     tune_penalty : bool, default=False
@@ -98,25 +112,20 @@ def lnw_did(
           ``constant_eff='constant'``)
         - **y_hat**: Length-:math:`n` array of orthogonal-decomposition
           fitted values :math:`\hat{y}_i`
-        - **m_hat**, **t_hat**, **s_hat**, **nu_hat**, **sigma_hat**,
-          **delta_hat**: Cross-fitted nuisance components
-        - **A_hat**, **B_hat**, **C_hat**: Closed-form orthogonal
-          coefficients
+        - **m_hat**: Cross-fitted outcome regression :math:`\hat{m}(X_i)`
+        - **t_hat**: Cross-fitted post-period propensity :math:`\hat{t}(X_i)`
+        - **s_hat**: Cross-fitted cohort propensity :math:`\hat{g}(X_i)`
+        - **nu_hat**: Cross-fitted post-period CATE :math:`\hat{\nu}(X_i)`
+        - **sigma_hat**: Cross-fitted cohort-marginal CATE :math:`\hat{\zeta}(X_i)`
+        - **delta_hat**: Cross-fitted cross-derivative :math:`\hat{\Delta}(X_i)`
+        - **A_hat**: Closed-form orthogonal coefficient :math:`A_i`
+        - **B_hat**: Closed-form orthogonal coefficient :math:`B_i`
+        - **C_hat**: Closed-form orthogonal coefficient :math:`C_i`
 
     Notes
     -----
-    **Outcome decomposition.** The observation-level outcome admits the
-    representation
-
-    .. math::
-
-        Y_i = m(X_i)
-            + A(X_i, G_i, T_i) \, \nu(X_i)
-            + B(X_i, G_i, T_i) \, \zeta(X_i)
-            + C(X_i, G_i, T_i) \, \tau(X_i)
-            + \varepsilon_i,
-
-    with the conditional response surfaces
+    **Conditional response surfaces.** The components of the
+    decomposition above are
 
     .. math::
 
@@ -167,8 +176,10 @@ def lnw_did(
         \sum_i \bigl(H_i - C_i \cdot (1, X_i)^\top \beta\bigr)^2
         + \lambda \sum_{j \ge 1} |\beta_j|,
 
-    leaving the intercept-equivalent coefficient unpenalized via
-    Frisch-Waugh-Lovell partialling-out.
+    fit by cross-validated lasso on the augmented design
+    :math:`C_i \cdot (1, X_i)`. The first column (:math:`C_i \cdot 1`)
+    is held unpenalized so it can absorb the intercept of
+    :math:`\hat{\tau}(x)`.
 
     **ATT formula.** The cell-level ATT combines :math:`\hat{\tau}(X_i)`
     with the augmented minimax-linear weights :math:`\hat{\gamma}_i` (when
@@ -306,13 +317,16 @@ def lnw_did(
             "C_hat": C_hat,
         }
 
+    # R uses an independent fold partition for the tau lasso (ATTestimator.R:323);
+    # offset by 1 to mirror that without coupling to the nuisance fits.
+    tau_random_state = None if random_state is None else random_state + 1
     tau_coef = _fit_tau_coef(
         X=X,
         H_hat=H_hat,
         C_hat=C_hat,
         k_folds=k_folds,
         lambda_choice=lambda_choice,
-        random_state=random_state,
+        random_state=tau_random_state,
     )
     design = np.column_stack([np.ones(n), X])
     tau_hat = design @ tau_coef
@@ -348,48 +362,24 @@ def lnw_did(
 
 
 def _fit_tau_coef(*, X, H_hat, C_hat, k_folds, lambda_choice, random_state):
-    """Fit the linear CATT coefficients via residualized penalized lasso."""
-    n = X.shape[0]
+    r"""Return the length-(p+1) CATT coefficient vector :math:`(b_0, b_1, \ldots, b_p)`."""
+    n, p = X.shape
 
-    scaler = StandardScaler().fit(X)
-    X_scl = scaler.transform(X)
-
-    interaction = C_hat[:, None] * X_scl
     c_inner = float(C_hat @ C_hat)
     if c_inner < 1e-12:
         raise RuntimeError("C_hat is degenerate (C_hat'C_hat ≈ 0); check propensity overlap and delta estimate.")
 
-    alpha_y = float(C_hat @ H_hat) / c_inner
-    alpha_z = (C_hat @ interaction) / c_inner
-    H_resid = H_hat - alpha_y * C_hat
-    Z_resid = interaction - C_hat[:, None] * alpha_z[None, :]
+    design = C_hat[:, None] * np.column_stack([np.ones(n), X])
+    penalty_factor = np.concatenate([[0.0], np.ones(p)])
 
-    inner_cv = max(2, min(k_folds, n - 1))
-    cv_fit = LassoCV(
-        cv=inner_cv,
-        n_alphas=100,
-        max_iter=10_000,
+    fit = cv_lasso_with_oof(
+        design,
+        H_hat,
+        k_folds=k_folds,
         random_state=random_state,
-        fit_intercept=False,
-    ).fit(Z_resid, H_resid)
-
-    if lambda_choice == "lambda.min":
-        beta_scl = np.asarray(cv_fit.coef_, dtype=float)
-    else:
-        alphas = np.asarray(cv_fit.alphas_)
-        mse_path = np.asarray(cv_fit.mse_path_)
-        mean_mse = mse_path.mean(axis=1)
-        se_mse = mse_path.std(axis=1, ddof=1) / np.sqrt(mse_path.shape[1])
-        min_idx = int(np.argmin(mean_mse))
-        threshold = mean_mse[min_idx] + se_mse[min_idx]
-        chosen_alpha = float(alphas[np.where(mean_mse <= threshold)[0]].max())
-        beta_scl = np.asarray(
-            Lasso(alpha=chosen_alpha, fit_intercept=False, max_iter=10_000).fit(Z_resid, H_resid).coef_,
-            dtype=float,
-        )
-
-    sigma = scaler.scale_
-    mu = scaler.mean_
-    beta_raw_X = beta_scl / sigma
-    beta_raw_intercept = alpha_y - float(alpha_z @ beta_scl) - float(beta_raw_X @ mu)
-    return np.concatenate([[beta_raw_intercept], beta_raw_X])
+        lambda_choice=lambda_choice,
+        penalty_factor=penalty_factor,
+        standardize=False,
+        max_iter=100_000,
+    )
+    return np.asarray(fit["coef"], dtype=float)
