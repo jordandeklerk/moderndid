@@ -317,8 +317,6 @@ def lnw_did(
             "C_hat": C_hat,
         }
 
-    # R uses an independent fold partition for the tau lasso (ATTestimator.R:323);
-    # offset by 1 to mirror that without coupling to the nuisance fits.
     tau_random_state = None if random_state is None else random_state + 1
     tau_coef = _fit_tau_coef(
         X=X,
