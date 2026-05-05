@@ -123,7 +123,7 @@ def cv_lasso_with_oof(
     # Force zero-variance columns out of the model entirely. Drop them from
     # the unpenalized OLS (where they are collinear with the intercept) and
     # from the lasso path (where they would otherwise be absorbed into the
-    # intercept).
+    # intercept)
     active_mask = ~zero_var_mask
     unpenalized_mask = (penalty_factor == 0) & active_mask
     penalized_mask = (penalty_factor > 0) & active_mask
@@ -135,7 +135,7 @@ def cv_lasso_with_oof(
 
     # Residualize BOTH y and X_pen against [1, X_unp] so the alpha grid is
     # built on the same residualized problem the lasso will see, matching the
-    # joint KKT solution rather than treating X_unp/X_pen as orthogonal.
+    # joint KKT solution rather than treating X_unp/X_pen as orthogonal
     y_for_grid, X_pen_for_grid = _residualize_for_grid(X_scaled, y, X_pen_scaled_full, unp_idx)
 
     if pen_idx.size > 0:
@@ -165,13 +165,11 @@ def cv_lasso_with_oof(
             # on the training fold so the lasso sees the partialled-out
             # problem implied by the joint KKT solution. Residualizing only
             # the response is correct when the unpenalized and penalized
-            # columns are orthogonal but biases coefficients otherwise.
+            # columns are orthogonal but biases coefficients otherwise
             y_train_res, X_pen_train_res = _residualize_for_grid(X_train_scaled, y_train, X_pen_train_scaled, unp_idx)
 
             # Pre-center BOTH X and y so lasso_path with no intercept matches
-            # what Lasso(fit_intercept=True) would produce internally. Skipping
-            # the X-centering causes a measurable disagreement between fold
-            # predictions and the final refit at the same alpha.
+            # what Lasso(fit_intercept=True) would produce internally
             train_mean_X = X_pen_train_res.mean(axis=0)
             train_mean_y = y_train_res.mean()
 
@@ -192,8 +190,7 @@ def cv_lasso_with_oof(
             # Recover unpenalized slopes and intercept from the post-lasso
             # residual on the training fold, then apply unpenalized
             # coefficients and intercept to the raw test unpenalized columns
-            # and the lasso coefficients to the raw test penalized columns —
-            # the standard identity for scoring held-out data.
+            # and the lasso coefficients to the raw test penalized columns
             y_train_post = y_train[:, None] - X_pen_train_scaled @ coefs_path
             beta_unp_path, intercept_unp_path = _recover_unpenalized_path(X_train_scaled, y_train_post, unp_idx)
             unp_predictions_test = _predict_unpenalized_path(X_test_scaled, unp_idx, beta_unp_path, intercept_unp_path)
@@ -244,7 +241,7 @@ def cv_lasso_with_oof(
     # Convert from standardized scale back to raw scale. Standardization is
     # column-wise division by ``col_std`` with no centering, so the
     # intercept passes through unchanged and only the coefficients rescale
-    # by ``col_std``.
+    # by ``col_std``
     coef = coef_full_scaled / col_std_safe
 
     return {
@@ -335,7 +332,7 @@ def _refit_full(X_scaled, y, *, unp_idx, pen_idx, pf_pen, alpha, max_iter):
     coef_pen_scaled = coef_pen_in_res / pf_pen
     coef[pen_idx] = coef_pen_scaled
 
-    # Recover the unpenalized slopes and intercept from the post-lasso residual.
+    # Recover the unpenalized slopes and intercept from the post-lasso residual
     y_post = y - X_pen_scaled @ coef_pen_in_res
     beta_unp, _, intercept_unp = _fit_unpenalized(X_scaled, y_post, unp_idx)
     if unp_idx.size > 0:
