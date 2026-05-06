@@ -13,7 +13,7 @@ plus an augmented minimax-linear weighting scheme. The implementation follows
 Main Functions
 --------------
 
-.. currentmodule:: moderndid.didml
+.. currentmodule:: moderndid
 
 .. autosummary::
    :toctree: generated/didml/
@@ -48,7 +48,7 @@ Nuisance Backends
 Result Objects
 --------------
 
-.. currentmodule:: moderndid.didml
+.. currentmodule:: moderndid
 
 .. autosummary::
    :toctree: generated/didml/
