@@ -320,6 +320,8 @@ def didml(
         drdid_benchmark = np.array([np.nan if c.drdid_att is None else c.drdid_att for c in cell_results])
         drdid_benchmark_se = np.array([np.nan if c.drdid_se is None else c.drdid_se for c in cell_results])
 
+    cohort_counts = _derive_cohort_counts(dp, gname)
+
     estimation_params = {
         "yname": yname,
         "control_group": control_group,
@@ -344,6 +346,7 @@ def didml(
         "t_func": t_func,
         "use_gamma": use_gamma,
         "zeta": zeta,
+        "cohort_counts": cohort_counts,
     }
 
     unit_ids, unit_periods = _build_unit_period_index(dp)
@@ -368,6 +371,14 @@ def didml(
         alpha=alp,
         estimation_params=estimation_params,
     )
+
+
+def _derive_cohort_counts(dp, gname):
+    """Count unique treated units per cohort for event-study weighting."""
+    df = dp.data
+    treated = df.filter(df[gname] > 0)
+    counts = treated.unique(subset=[dp.config.idname, gname]).group_by(gname).len()
+    return {float(row[gname]): int(row["len"]) for row in counts.iter_rows(named=True)}
 
 
 def _pretest_wald(att_values, variance_matrix, groups, times, n_units, anticipation):

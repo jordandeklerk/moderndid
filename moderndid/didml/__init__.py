@@ -24,6 +24,7 @@ from .container import (
     summary_didml,
     summary_didml_agg,
 )
+from .aggte import aggte_didml
 from .didml import didml
 from .lnw import lnw_did
 from .weights import amle_weights
@@ -35,6 +36,7 @@ __all__ = [
     "DIDMLAggResult",
     "DIDMLConfig",
     "DIDMLResult",
+    "aggte_didml",
     "amle_weights",
     "blp_result",
     "clan_result",

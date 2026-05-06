@@ -20,6 +20,7 @@ Main Functions
    :nosignatures:
 
    didml
+   aggte_didml
 
 Doubly-Robust Score
 -------------------

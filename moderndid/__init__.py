@@ -520,6 +520,7 @@ _optional_imports = {
     "CLANResult": ("moderndid.didml", "didml"),
     "DIDMLAggResult": ("moderndid.didml", "didml"),
     "DIDMLResult": ("moderndid.didml", "didml"),
+    "aggte_didml": ("moderndid.didml", "didml"),
     "blp_result": ("moderndid.didml", "didml"),
     "clan_result": ("moderndid.didml", "didml"),
     "didml": ("moderndid.didml", "didml"),
