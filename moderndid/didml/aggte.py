@@ -1,4 +1,4 @@
-"""Event-study aggregation of group-time ATTs from didml()."""
+"""Event-study aggregation of group-time ATTs."""
 
 from __future__ import annotations
 
