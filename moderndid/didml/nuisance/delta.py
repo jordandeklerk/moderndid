@@ -42,22 +42,24 @@ def fit_delta(
     tune_penalty=False,
     random_state=None,
 ):
-    r"""Fit the cross-derivative (delta) nuisance model.
+    r"""Fit the conditional covariance (delta) nuisance model.
 
     The doubly-robust ML score requires an estimate of the conditional
-    covariance of the residualized post-period indicator and the
-    residualized cohort indicator,
+    covariance of the post-period indicator :math:`T` and the cohort
+    indicator :math:`G`,
 
     .. math::
 
-        \Delta(x) = \mathbb{E}\bigl[(D_i - \hat{e}(X_i))(S_i - \hat{s}(X_i))
-        \mid X_i = x\bigr].
+        \Delta(x) = \mathbb{E}\bigl[(T - t(X))(G - g(X)) \mid X = x\bigr],
 
-    The function takes the pointwise product
+    where :math:`t(x) = \mathbb{E}[T \mid X = x]` and
+    :math:`g(x) = \mathbb{E}[G \mid X = x]` are the post-period and cohort
+    propensities. The function takes the pointwise product of the
+    indicators residualized at their estimated propensities,
 
     .. math::
 
-        \text{response}_i = (D_i - \hat{e}(X_i))(S_i - \hat{s}(X_i))
+        \text{response}_i = (T_i - \hat{t}(X_i))(G_i - \hat{g}(X_i)),
 
     and regresses it on the covariates, returning cross-fitted predictions
     :math:`\hat{\Delta}(X_i)`.
@@ -67,22 +69,14 @@ def fit_delta(
     X : ndarray of shape (n, p)
         Covariate design matrix without the intercept column.
     response : ndarray of shape (n,)
-        Pointwise product of residualized treatment and cohort indicators.
+        Pointwise product of residualized post-period and cohort indicators.
     model : {'glm', 'stack'}, default='glm'
         Backend to use. ``'glm'`` fits a cross-validated lasso on
-        standardized covariates via :func:`cv_lasso_with_oof`: out-of-fold
+        standardized covariates via :func:`cv_lasso_with_oof`. Out-of-fold
         predictions at the chosen :math:`\lambda` come directly from the
-        same fold partition that selects it. With ``tune_penalty=True``,
-        a grid of scalar penalty factors is swept and the candidate with
-        the lowest mean squared OOF error is refit.
-        ``'stack'`` fits a stacking ensemble with three base learners
-        (:class:`~sklearn.linear_model.LassoCV`,
-        :class:`~sklearn.ensemble.RandomForestRegressor` with
-        ``n_estimators=1000`` and ``max_features=p/3``,
-        :class:`xgboost.XGBRegressor` with ``n_estimators=1000``,
-        ``max_depth=4``, ``learning_rate=0.1``) combined by a
-        non-negative least-squares meta-learner; cross-fitted predictions
-        come from :func:`~sklearn.model_selection.cross_val_predict`.
+        same fold partition that selects it. ``'stack'`` fits a stacking
+        ensemble of lasso, random forest, and gradient boosting base
+        learners combined by a non-negative least-squares meta-learner.
     k_folds : int, default=10
         Number of folds for cross-fitting.
     tune_penalty : bool, default=False

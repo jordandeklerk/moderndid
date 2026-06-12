@@ -1,4 +1,4 @@
-"""Lu-Nie-Wager doubly-robust score for the ML DiD estimator."""
+"""Nie-Lu-Wager doubly-robust score for the ML DiD estimator."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def lnw_did(
     nu_model="rlearner",
     sigma_model="rlearner",
     delta_model="glm",
-    t_func=True,
+    t_func=False,
     k_folds=10,
     tune_penalty=False,
     lambda_choice="lambda.min",
@@ -43,7 +43,7 @@ def lnw_did(
     where :math:`m, \nu, \zeta` are conditional response surfaces of
     :math:`Y` on covariates and treatment indicators; :math:`A, B, C` are
     closed-form orthogonalization coefficients depending on cross-fitted
-    propensities and the cross-derivative term; and :math:`\tau(x)` is
+    propensities and the conditional covariance term; and :math:`\tau(x)` is
     the conditional treatment effect on the treated. The function
     cross-fits the response surfaces and propensities, plugs them into
     :math:`A`, :math:`B`, and :math:`C`, and recovers :math:`\tau(x)`
@@ -66,30 +66,34 @@ def lnw_did(
         Binary 0/1 indicator equal to 1 for the post-treatment period.
     cohort_indicator : ndarray of shape (n,)
         Binary 0/1 indicator equal to 1 for units in the treated cohort.
-    constant_eff : {'constant', 'non_constant'}, default='non_constant'
+    constant_eff : {"constant", "non_constant"}, default="non_constant"
         Whether to fit a constant treatment effect (a single scalar) or a
         unit-level linear conditional treatment effect.
     gamma : ndarray of shape (n,), optional
         Augmented minimax-linear weights from
         :func:`~moderndid.didml.amle_weights`. Required for
         ``constant_eff='non_constant'`` to produce a non-NaN standard error.
-    nu_model : {'rlearner', 'cf'}, default='rlearner'
-        Nuisance backend for the post-period CATE, the outcome regression,
-        and the post-period propensity score.
-    sigma_model : {'rlearner', 'cf'}, default='rlearner'
-        Nuisance backend for the cohort-marginal CATE and the cohort
+    nu_model : {"rlearner", "cf"}, default="rlearner"
+        Nuisance backend for the conditional time trend (the effect of the
+        post-period indicator on the outcome marginal over cohort), the
+        outcome regression, and the post-period propensity score.
+    sigma_model : {"rlearner", "cf"}, default="rlearner"
+        Nuisance backend for the conditional cohort contrast (the effect of
+        cohort membership on the outcome marginal over time) and the cohort
         propensity score.
-    delta_model : {'glm', 'stack'}, default='glm'
-        Nuisance backend for the cross-derivative term.
-    t_func : bool, default=True
-        If False, replace the estimated post-period propensity with the
-        constant 0.5 to enforce balanced post-period probability.
+    delta_model : {"glm", "stack"}, default="glm"
+        Nuisance backend for the conditional covariance term.
+    t_func : bool, default=False
+        Whether to use the estimated post-period propensity. The stacked
+        cell holds one pre-period and one post-period row per unit, so
+        the post-period probability is exactly 0.5 by construction and
+        the default replaces the estimate with that constant.
     k_folds : int, default=10
         Number of folds for cross-fitting.
     tune_penalty : bool, default=False
         Whether to grid-search penalty factors for the nuisance and tau
         fits.
-    lambda_choice : {'lambda.min', 'lambda.1se'}, default='lambda.min'
+    lambda_choice : {"lambda.min", "lambda.1se"}, default="lambda.min"
         Cross-validation rule for selecting the penalty in the
         non-constant tau fit.
     random_state : int, optional
@@ -115,17 +119,16 @@ def lnw_did(
         - **m_hat**: Cross-fitted outcome regression :math:`\hat{m}(X_i)`
         - **t_hat**: Cross-fitted post-period propensity :math:`\hat{t}(X_i)`
         - **s_hat**: Cross-fitted cohort propensity :math:`\hat{g}(X_i)`
-        - **nu_hat**: Cross-fitted post-period CATE :math:`\hat{\nu}(X_i)`
-        - **sigma_hat**: Cross-fitted cohort-marginal CATE :math:`\hat{\zeta}(X_i)`
-        - **delta_hat**: Cross-fitted cross-derivative :math:`\hat{\Delta}(X_i)`
+        - **nu_hat**: Cross-fitted conditional time trend :math:`\hat{\nu}(X_i)`
+        - **sigma_hat**: Cross-fitted conditional cohort contrast :math:`\hat{\zeta}(X_i)`
+        - **delta_hat**: Cross-fitted conditional covariance :math:`\hat{\Delta}(X_i)`
         - **A_hat**: Closed-form orthogonal coefficient :math:`A_i`
         - **B_hat**: Closed-form orthogonal coefficient :math:`B_i`
         - **C_hat**: Closed-form orthogonal coefficient :math:`C_i`
 
     Notes
     -----
-    **Conditional response surfaces.** The components of the
-    decomposition above are
+    The conditional response surfaces in the decomposition above are
 
     .. math::
 
@@ -137,13 +140,10 @@ def lnw_did(
 
     where :math:`\tau(x)` is the conditional treatment effect on the
     treated. Letting :math:`g(x) = \mathbb{E}[G \mid X = x]`,
-    :math:`t(x) = \mathbb{E}[T \mid X = x]`, and
-
-    .. math::
-
-        \Delta(x) = \mathbb{E}[(T - t(X))(G - g(X)) \mid X = x],
-
-    the orthogonal coefficients are
+    :math:`t(x) = \mathbb{E}[T \mid X = x]`, and :math:`\Delta(x)` denote
+    the conditional covariance of the post-period and cohort indicators
+    (see :func:`~moderndid.didml.nuisance.fit_delta`), the orthogonal
+    coefficients are
 
     .. math::
 
@@ -158,7 +158,7 @@ def lnw_did(
              - \left(g(X) + \tfrac{\Delta(X)}{t(X)}\right) A
              - \left(t(X) + \tfrac{\Delta(X)}{g(X)}\right) B.
 
-    **Pseudo-outcome and tau regression.** The pseudo-outcome
+    The pseudo-outcome
 
     .. math::
 
@@ -181,9 +181,8 @@ def lnw_did(
     is held unpenalized so it can absorb the intercept of
     :math:`\hat{\tau}(x)`.
 
-    **ATT formula.** The cell-level ATT combines :math:`\hat{\tau}(X_i)`
-    with the augmented minimax-linear weights :math:`\hat{\gamma}_i` (when
-    supplied):
+    The cell-level ATT combines :math:`\hat{\tau}(X_i)` with the
+    augmented minimax-linear weights :math:`\hat{\gamma}_i` when supplied
 
     .. math::
 

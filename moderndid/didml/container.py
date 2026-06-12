@@ -23,7 +23,7 @@ class DIDMLResult(NamedTuple):
     the treated together with individual-level conditional treatment effects
     (CATTs), influence functions, and minimax weights for each group-time cell.
     Implements the ``maketables`` plug-in interface for publication-quality
-    tables.
+    tables. See :ref:`publication_tables`.
 
     Attributes
     ----------
@@ -41,18 +41,21 @@ class DIDMLResult(NamedTuple):
         Influence-function matrix of shape (n_units, n_cells) used for variance
         estimation and downstream aggregation.
     cates : scipy.sparse.csr_matrix
-        Sparse matrix of shape (n_obs, n_cells) holding individual CATT estimates
-        for the rows participating in each group-time cell.
+        Sparse matrix of shape (n_units, n_cells) holding individual CATT
+        estimates for the units participating in each group-time cell.
     scores : scipy.sparse.csr_matrix
-        Sparse matrix of shape (n_obs, n_cells) holding doubly-robust score
-        contributions per observation per cell.
+        Sparse matrix of shape (n_units, n_cells) holding doubly-robust score
+        contributions per unit per cell.
     gammas : scipy.sparse.csr_matrix
-        Sparse matrix of shape (n_obs, n_cells) holding the cell-specific
-        minimax weights from the CVXR-equivalent solver.
+        Sparse matrix of shape (n_units, n_cells) holding the cell-specific
+        augmented minimax linear weights from
+        :func:`~moderndid.didml.weights.amle_weights`.
     unit_ids : ndarray
         Unit identifier for each row of the sparse CATT/score/gamma matrices.
     unit_periods : ndarray
-        Time period for each row of the sparse CATT/score/gamma matrices.
+        Placeholder period index for the sparse-matrix rows. The rows are
+        per-unit aggregates within each cell, so the period index is not
+        populated and holds zeros.
     drdid_benchmark : ndarray, optional
         Doubly-robust ATT benchmark estimates for each cell, used for
         comparison when ``compute_drdid_benchmark`` is enabled.
@@ -98,7 +101,7 @@ class DIDMLResult(NamedTuple):
     gammas: sp.csr_matrix
     #: Unit identifier for each sparse-matrix row.
     unit_ids: np.ndarray
-    #: Time period for each sparse-matrix row.
+    #: Placeholder period index for the sparse-matrix rows (not populated).
     unit_periods: np.ndarray
     #: DRDID benchmark estimates per cell.
     drdid_benchmark: np.ndarray | None = None
@@ -184,8 +187,9 @@ class DIDMLAggResult(NamedTuple):
     """Container for aggregated ML treatment effect parameters.
 
     Mirrors the shape of ``AGGTEResult`` so that downstream tooling (plotting,
-    maketables) can dispatch on the same field structure. Adds an optional
-    doubly-robust event-time benchmark column.
+    maketables) can dispatch on the same field structure. See
+    :ref:`publication_tables`. Adds an optional doubly-robust event-time
+    benchmark column.
 
     Attributes
     ----------
@@ -202,7 +206,7 @@ class DIDMLAggResult(NamedTuple):
     se_by_event : ndarray, optional
         Standard errors specific to each event time value.
     critical_values : ndarray, optional
-        Critical values for uniform confidence bands.
+        Pointwise normal critical values for confidence intervals.
     influence_func : ndarray, optional
         Influence functions of the aggregated parameters.
 
@@ -236,7 +240,7 @@ class DIDMLAggResult(NamedTuple):
     att_by_event: np.ndarray | None = None
     #: Standard errors specific to each event time value.
     se_by_event: np.ndarray | None = None
-    #: Critical values for uniform confidence bands.
+    #: Pointwise normal critical values for confidence intervals.
     critical_values: np.ndarray | None = None
     #: Influence functions of the aggregated parameters.
     influence_func: np.ndarray | None = None
@@ -403,8 +407,10 @@ class CLANResult(NamedTuple):
     pvalues : ndarray
         P-values for the high-vs-low mean differences.
     test_type : {'glh', 't'}
-        Test variant. ``'glh'`` is the multivariate generalized linear
-        hypothesis test; ``'t'`` is a Welch two-sample t-test per covariate.
+        Test variant. ``'glh'`` runs a per-covariate general linear
+        hypothesis test of the high-minus-low group-mean contrast from a
+        two-group OLS fit; ``'t'`` runs a per-covariate Welch two-sample
+        t-test.
     """
 
     #: Covariate names tested.
@@ -430,44 +436,44 @@ class DIDMLCellResult(NamedTuple):
     group: float
     #: Time period this estimate refers to.
     year: float
-    #: 1 for post-treatment cells (:math:`t \geq g`), 0 for pre-treatment placebos.
+    #: 1 for post-treatment cells (t >= g), 0 for pre-treatment placebos.
     post: int
     #: Pre-period index in ``data.config.time_periods``.
     pre_idx: int
     #: Post-period index in ``data.config.time_periods``.
     post_idx: int
-    #: Cell-level :math:`\widehat{ATT}(g, t)` from the LNW score.
+    #: Cell-level ATT(g, t) estimate from the LNW score.
     att: float
     #: Standard error for ``att`` (NaN when ``gamma`` is unused).
     se: float
-    #: Length-:math:`n_{cell}` cross-fitted CATT predictions (None for skipped cells).
+    #: Cross-fitted CATT predictions, one per cell row (None for skipped cells).
     tau_hat: np.ndarray | None
-    #: Length-:math:`n_{cell}` doubly-robust score contributions.
+    #: Doubly-robust score contributions, one per cell row.
     score: np.ndarray | None
-    #: Length-:math:`n_{cell}` AMLE weights.
+    #: AMLE weights, one per cell row.
     gamma: np.ndarray | None
-    #: Length-:math:`n_{units}` membership indicator: 1=treated, 0=control, NaN=excluded.
+    #: Per-unit membership indicator (1 treated, 0 control, NaN excluded).
     cohort_idx: np.ndarray
     #: Doubly-robust benchmark ATT (None when ``compute_drdid_benchmark=False``).
     drdid_att: float | None
     #: Standard error for the benchmark ATT.
     drdid_se: float | None
-    #: Length-:math:`n_{units}` benchmark influence function (None when disabled).
+    #: Per-unit benchmark influence function (None when disabled).
     drdid_inf_func: np.ndarray | None
 
 
 class ComputeDIDMLResult(NamedTuple):
     r"""Container for the cell-loop output from :func:`compute_didml`."""
 
-    #: Per-cell records, one entry per :math:`(g, t)` pair successfully estimated.
+    #: Per-cell records, one entry per (g, t) pair successfully estimated.
     cell_results: list[DIDMLCellResult]
-    #: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit CATT predictions.
+    #: Sparse (n_units, n_cells) matrix of per-unit CATT predictions.
     cates: sp.csr_matrix
-    #: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit DR score contributions.
+    #: Sparse (n_units, n_cells) matrix of per-unit DR score contributions.
     scores: sp.csr_matrix
-    #: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit AMLE weights.
+    #: Sparse (n_units, n_cells) matrix of per-unit AMLE weights.
     gammas: sp.csr_matrix
-    #: Sparse :math:`(n_{units}, n_{cells})` matrix of benchmark influence functions.
+    #: Sparse (n_units, n_cells) matrix of benchmark influence functions.
     drdid_inf_funcs: sp.csr_matrix
 
 
@@ -517,7 +523,7 @@ def didml_result(
     unit_ids : array_like
         Unit identifier for each sparse-matrix row.
     unit_periods : array_like
-        Time period for each sparse-matrix row.
+        Placeholder period index for the sparse-matrix rows (not populated).
     drdid_benchmark : array_like, optional
         Doubly-robust ATT benchmark estimates per cell.
     drdid_benchmark_se : array_like, optional
@@ -803,7 +809,7 @@ def clan_result(
     )
 
 
-def summary_didml(result: DIDMLResult) -> str:
+def summary_didml(result):
     """Print summary of a DIDMLResult.
 
     Parameters
@@ -819,7 +825,7 @@ def summary_didml(result: DIDMLResult) -> str:
     return str(result)
 
 
-def summary_didml_agg(result: DIDMLAggResult) -> str:
+def summary_didml_agg(result):
     """Print summary of a DIDMLAggResult.
 
     Parameters

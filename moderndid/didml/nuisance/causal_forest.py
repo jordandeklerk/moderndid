@@ -22,21 +22,24 @@ def fit_causal_forest(
 ):
     r"""Fit a causal-forest nuisance backend for the doubly-robust score.
 
-    Estimates the conditional treatment effect
-    :math:`\tau(x) = \mathbb{E}[Y(1) - Y(0) \mid X = x]` using the
-    generalized-random-forest DML estimator of [1]_, which internally:
+    Estimates the conditional mean contrast
 
-    1. Cross-fits a regression-forest model for the outcome
-       :math:`\hat{m}(x) = \mathbb{E}[Y \mid X = x]`.
-    2. Cross-fits a regression-forest model for the treatment
-       :math:`\hat{e}(x) = \mathbb{E}[D \mid X = x]`.
-    3. Forms residuals :math:`\tilde{Y} = Y - \hat{m}(X)` and
-       :math:`\tilde{D} = D - \hat{e}(X)`.
-    4. Fits an honest causal forest on the residualized data, returning
-       :math:`\hat{\tau}(X)` predictions at each training row.
+    .. math::
+
+        \tau(x) = \mathbb{E}[Y \mid X = x, D = 1]
+                - \mathbb{E}[Y \mid X = x, D = 0],
+
+    where :math:`D` is whichever binary indicator is passed as
+    ``treatment``, either the post-period indicator or the cohort
+    indicator, using the generalized-random-forest DML estimator of [1]_.
+
+    Both the outcome and the indicator are residualized against the
+    covariates with cross-fitted regression forests. An honest causal
+    forest fit on the residualized data then predicts
+    :math:`\hat{\tau}(x)` at each training row.
 
     Returns the same dictionary shape as :func:`fit_rlearner` so the
-    nuisance backend is interchangeable in the cross-derivative
+    nuisance backend is interchangeable in the doubly-robust score
     computation. The fields ``tau_coef`` and ``best_penalty_factor`` are
     set to ``None`` because the forest has no linear coefficients and no
     L1 penalty schedule to tune.
@@ -79,6 +82,19 @@ def fit_causal_forest(
           regressions :math:`\hat{m}(X_i) = \mathbb{E}[Y \mid X_i]`
         - **tau_coef**: ``None`` (forests have no linear coefficients)
         - **best_penalty_factor**: ``None`` (no penalty schedule)
+
+    Notes
+    -----
+    The estimator proceeds in four steps:
+
+    1. Cross-fit a regression-forest model for the outcome
+       :math:`\hat{m}(x) = \mathbb{E}[Y \mid X = x]`.
+    2. Cross-fit a regression-forest model for the indicator
+       :math:`\hat{e}(x) = \mathbb{E}[D \mid X = x]`.
+    3. Form residuals :math:`\tilde{Y} = Y - \hat{m}(X)` and
+       :math:`\tilde{D} = D - \hat{e}(X)`.
+    4. Fit an honest causal forest on the residualized data, returning
+       :math:`\hat{\tau}(X)` predictions at each training row.
 
     References
     ----------

@@ -23,36 +23,25 @@ def fit_rlearner(
 ):
     r"""Fit a cross-fitted R-learner of the conditional average treatment effect.
 
-    Estimates :math:`\tau(x) = \mathbb{E}[Y(1) - Y(0) \mid X = x]` from
-    a binary treatment indicator using the residualization method of [1]_:
+    Estimates the conditional mean contrast
 
-    1. Cross-fit nuisances :math:`\hat{m}(x) = \mathbb{E}[Y \mid X = x]` and
-       :math:`\hat{e}(x) = \mathbb{E}[D \mid X = x]` via k-fold lasso
-       regression. Each fold is fit by an inner lasso with cross-validated
-       :math:`\lambda` selection.
-    2. Form residuals :math:`\tilde{Y} = Y - \hat{m}(X)` and
-       :math:`\tilde{D} = D - \hat{e}(X)`.
-    3. Solve the residualized lasso problem
+    .. math::
 
-       .. math::
+        \tau(x) = \mathbb{E}[Y \mid X = x, D = 1]
+                - \mathbb{E}[Y \mid X = x, D = 0],
 
-           \hat{\beta} = \operatorname*{argmin}_{\beta}
-           \frac{1}{n} \sum_{i=1}^{n}
-               \bigl(\tilde{Y}_i - \tilde{D}_i \cdot [1, X_i]^\top \beta\bigr)^2
-           + \lambda \sum_{j \ge 1} w_j \, |\beta_j|
+    where :math:`D` is whichever binary indicator is passed as
+    ``treatment``, either the post-period indicator or the cohort
+    indicator, using the residualization method of [1]_.
 
-       with the intercept-equivalent coefficient :math:`\beta_0` left
-       unpenalized and per-coefficient penalty factors :math:`w_j` for
-       :math:`j \ge 1`.
-    4. Predict :math:`\hat{\tau}(X_i) = [1, X_i]^\top \hat{\beta}` at each
-       training row.
+    Both the outcome and the indicator are first residualized against the
+    covariates with cross-fitted lasso nuisances. A penalized regression
+    of the outcome residual on the indicator residual interacted with the
+    covariates then recovers a linear model for :math:`\tau(x)`.
 
-    With ``tune_penalty=True`` the function performs an outer k-fold grid
-    search over a scalar penalty factor in
-    :math:`\{0.01, 0.25, 0.5, 0.75, 0.99, 1\}`, evaluating each candidate
-    by the mean squared error of the held-out :math:`\tau` predictions
-    against the held-out outcomes, then refits on the full sample with the
-    minimizing value.
+    With ``tune_penalty=True``, an outer k-fold grid search selects the
+    scalar penalty factor for the residual lasso before the final fit,
+    using the candidate grid documented under ``tune_penalty``.
 
     Parameters
     ----------
@@ -94,6 +83,36 @@ def fit_rlearner(
           coefficients with intercept first
         - **best_penalty_factor**: Scalar penalty factor used in the residual
           lasso (equals ``penalty_factor[0]`` when ``tune_penalty=False``)
+
+    Notes
+    -----
+    The estimator proceeds in four steps:
+
+    1. Cross-fit nuisances :math:`\hat{m}(x) = \mathbb{E}[Y \mid X = x]` and
+       :math:`\hat{e}(x) = \mathbb{E}[D \mid X = x]` via k-fold lasso
+       regression. Each fold is fit by an inner lasso with cross-validated
+       :math:`\lambda` selection.
+    2. Form residuals :math:`\tilde{Y} = Y - \hat{m}(X)` and
+       :math:`\tilde{D} = D - \hat{e}(X)`.
+    3. Solve the residualized lasso problem
+
+       .. math::
+
+           \hat{\beta} = \operatorname*{argmin}_{\beta}
+           \frac{1}{n} \sum_{i=1}^{n}
+               \bigl(\tilde{Y}_i - \tilde{D}_i \cdot [1, X_i]^\top \beta\bigr)^2
+           + \lambda \sum_{j \ge 1} w_j \, |\beta_j|
+
+       with the intercept-equivalent coefficient :math:`\beta_0` left
+       unpenalized and per-coefficient penalty factors :math:`w_j` for
+       :math:`j \ge 1`.
+    4. Predict :math:`\hat{\tau}(X_i) = [1, X_i]^\top \hat{\beta}` at each
+       training row.
+
+    The ``tune_penalty=True`` grid search evaluates each candidate penalty
+    factor by the mean squared error of the held-out :math:`\tau`
+    predictions against the held-out outcomes, then refits on the full
+    sample with the minimizing value.
 
     References
     ----------
@@ -276,6 +295,7 @@ def _cross_fit_lasso(X, y, *, k_folds, random_state):
         random_state=random_state,
         lambda_choice="lambda.min",
         standardize=False,
+        max_iter=100_000,
     )
     return out["oof_predictions"]
 

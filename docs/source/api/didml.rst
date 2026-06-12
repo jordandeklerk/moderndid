@@ -21,6 +21,19 @@ Main Functions
 
    didml
    aggte_didml
+   dynamic_cates
+
+Heterogeneity Analysis
+----------------------
+
+.. autosummary::
+   :toctree: generated/didml/
+   :nosignatures:
+
+   het_prep
+   blp_eventtimes
+   clan_glhtest
+   clan_ttest
 
 Doubly-Robust Score
 -------------------

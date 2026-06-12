@@ -1,8 +1,9 @@
-"""Event-study aggregation of group-time ATTs."""
+"""Event-study aggregation of group-time ATTs and per-unit CATTs."""
 
 from __future__ import annotations
 
 import numpy as np
+import polars as pl
 import scipy.stats as _stats
 
 from .container import didml_agg
@@ -42,9 +43,14 @@ def aggte_didml(result, type="dynamic", alpha=None):
 
     which this function returns in ``att_by_event``.
 
-    The overall summary is the simple mean of post-treatment event-time
-    effects, :math:`\bar\theta = (1/|\mathcal{E}_+|) \sum_{e \ge 0} \theta(e)`,
-    returned as ``overall_att``.
+    The overall summary, returned as ``overall_att``, is the simple mean of
+    the post-treatment event-time effects
+
+    .. math::
+
+        \bar\theta = \frac{1}{|\mathcal{E}_+|} \sum_{e \ge 0} \theta(e),
+
+    which follows the overall event-study summary convention of [2]_.
 
     Parameters
     ----------
@@ -61,18 +67,24 @@ def aggte_didml(result, type="dynamic", alpha=None):
     Returns
     -------
     DIDMLAggResult
-        Aggregated result. Key fields:
+        Object containing aggregated event-study results:
 
-        - **event_times**: Array of integer event times :math:`e = t - g`.
-        - **att_by_event**: Per-event-time aggregate :math:`\theta(e)`.
-        - **se_by_event**: Influence-function-based standard error per event time.
-        - **critical_values**: Pointwise normal critical values at level :math:`1 - \alpha/2`.
-        - **overall_att**: Simple mean of post-treatment event-time ATTs.
-        - **overall_se**: Influence-function-based standard error for ``overall_att``.
-        - **influence_func**: Aggregate influence-function matrix of shape ``(n_units, n_event_times)``.
-        - **influence_func_overall**: Influence-function vector of length ``n_units`` for ``overall_att``.
-        - **drdid_benchmark_by_event**: Doubly-robust benchmark aggregated to
-          event time when ``result.drdid_benchmark`` is present.
+        - **overall_att**: Simple mean of post-treatment event-time ATTs
+        - **overall_se**: Influence-function-based standard error for ``overall_att``
+        - **aggregation_type**: Type of aggregation performed (always ``'dynamic'``)
+        - **event_times**: Array of integer event times :math:`e = t - g`
+        - **att_by_event**: Per-event-time aggregate :math:`\theta(e)`
+        - **se_by_event**: Influence-function-based standard error per event time
+        - **critical_values**: Pointwise critical values given by the standard normal quantile at :math:`1 - \alpha/2`
+        - **influence_func**: Aggregate influence-function matrix of shape ``(n_units, n_event_times)``
+        - **influence_func_overall**: Influence-function vector of length ``n_units`` for ``overall_att``
+        - **drdid_benchmark_by_event**: Doubly-robust benchmark aggregated to event time when
+          ``result.drdid_benchmark`` is present
+        - **min_event_time**: Smallest event time in ``event_times``
+        - **max_event_time**: Largest event time in ``event_times``
+        - **balanced_event_threshold**: Balanced event-time threshold (``None`` for this aggregation)
+        - **estimation_params**: Dictionary with estimation details carried over from ``result``
+        - **call_info**: Information about the function call that created the result
 
     Examples
     --------
@@ -95,6 +107,11 @@ def aggte_didml(result, type="dynamic", alpha=None):
            ...: )
            ...: agg = aggte_didml(res, type="dynamic")
            ...: print(agg)
+
+    See Also
+    --------
+    didml : Compute group-time ATTs and CATTs with cross-fitted ML nuisances.
+    dynamic_cates : Aggregate per-unit CATTs or doubly-robust scores to event time.
 
     References
     ----------
@@ -161,6 +178,100 @@ def aggte_didml(result, type="dynamic", alpha=None):
         max_event_time=int(event_times.max()) if len(event_times) else None,
         estimation_params=estimation_params,
     )
+
+
+def dynamic_cates(result, type="cates"):
+    r"""Aggregate per-unit CATTs or doubly-robust scores to event time.
+
+    Extends the event-study aggregation of [1]_ to the per-unit conditional
+    treatment effects from :func:`didml`. For each unit and event time
+    :math:`e = t - g`, the cell-level CATT predictions stored in
+    ``result.cates`` (or the doubly-robust scores in ``result.scores`` when
+    ``type="scores"``) are combined across cohorts with the same
+    cohort-probability weights used by :func:`aggte_didml`, placing the
+    per-unit aggregates on the same event-time scale.
+
+    Parameters
+    ----------
+    result : DIDMLResult
+        Output of :func:`didml`.
+    type : {'cates', 'scores'}, default='cates'
+        Which per-unit matrix to aggregate. ``'cates'`` uses the ML CATT
+        predictions; ``'scores'`` uses the doubly-robust score
+        contributions.
+
+    Returns
+    -------
+    polars.DataFrame
+        Long-format frame with columns:
+
+        - **id**: Unit identifier from ``result.unit_ids``
+        - **event_time**: Integer event time :math:`e = t - g`
+        - **cate**: Aggregated per-unit CATT at that event time, present when ``type="cates"``
+        - **score**: Aggregated per-unit DR score at that event time, present when ``type="scores"``
+
+    Examples
+    --------
+    Run :func:`didml` and pivot per-unit CATEs to event time:
+
+    .. ipython::
+        :okwarning:
+
+        In [1]: from moderndid import didml, dynamic_cates, gen_did_scalable
+           ...:
+           ...: data = gen_did_scalable(
+           ...:     n=300, n_periods=4, n_cohorts=2,
+           ...:     n_covariates=4, random_state=0,
+           ...: )["data"].to_pandas()
+           ...:
+           ...: res = didml(
+           ...:     data, yname="y", tname="time", idname="id", gname="group",
+           ...:     xformla="~ cov1 + cov2 + cov3 + cov4",
+           ...:     k_folds=5, tune_penalty=False, random_state=0,
+           ...: )
+           ...: dyn_cates = dynamic_cates(res, type="cates")
+           ...: print(dyn_cates.head())
+
+    See Also
+    --------
+    aggte_didml : Aggregate ML group-time ATTs to a dynamic event-study summary.
+
+    References
+    ----------
+
+    .. [1] Hatamyar, J., Kreif, N., Rocha, R., & Huber, M. (2023).
+           "Machine learning for staggered difference-in-differences and
+           dynamic treatment effect heterogeneity." arXiv:2310.11962.
+           https://arxiv.org/abs/2310.11962
+    """
+    if type not in ("cates", "scores"):
+        raise ValueError(f"type must be 'cates' or 'scores', got {type!r}.")
+
+    cohort_counts = result.estimation_params["cohort_counts"]
+    matrix = result.cates if type == "cates" else result.scores
+    dense = matrix.toarray() if hasattr(matrix, "toarray") else np.asarray(matrix)
+
+    indices, weights = _event_time_weights(result.groups, result.times, cohort_counts)
+    event_times = np.array(sorted(indices.keys()), dtype=int)
+
+    n_units = dense.shape[0]
+    aggregated = np.zeros((n_units, len(event_times)))
+
+    for k, e in enumerate(event_times):
+        aggregated[:, k] = dense[:, indices[int(e)]] @ weights[int(e)]
+
+    unit_ids = np.asarray(result.unit_ids)
+
+    if unit_ids.shape[0] != n_units:
+        unit_ids = np.arange(n_units)
+
+    n_events = len(event_times)
+    long_id = np.repeat(unit_ids, n_events)
+    long_event = np.tile(event_times, n_units)
+    long_value = aggregated.reshape(-1)
+
+    value_col = "cate" if type == "cates" else "score"
+    return pl.DataFrame({"id": long_id, "event_time": long_event, value_col: long_value})
 
 
 def _event_time_weights(groups, times, cohort_counts):

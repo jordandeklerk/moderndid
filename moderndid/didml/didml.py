@@ -40,7 +40,7 @@ def didml(
     k_folds=10,
     tune_penalty=False,
     lambda_choice="lambda.min",
-    t_func=True,
+    t_func=False,
     use_gamma=True,
     zeta=0.5,
     compute_drdid_benchmark=True,
@@ -69,7 +69,7 @@ def didml(
 
     For each cell, the function stacks the relevant pre and post periods
     over the treated cohort and the not-yet-treated controls, runs
-    :func:`lnw_did` to compute the cell-level Lu-Nie-Wager [2]_ score
+    :func:`lnw_did` to compute the cell-level Nie-Lu-Wager [2]_ score
     with cross-fitted nuisances, and combines the per-unit conditional
     treatment effects with augmented minimax-linear weights from [3]_.
 
@@ -115,15 +115,17 @@ def didml(
     base_period : {"varying", "universal"}, default="varying"
         Choice of base period for pretreatment comparisons.
     nu_model : {"rlearner", "cf"}, default="rlearner"
-        Backend for the post-period CATE :math:`\nu(x)` and the propensity
-        :math:`t(x)`.
+        Backend for the conditional time trend :math:`\nu(x)` (the effect
+        of the post-period indicator on the outcome marginal over cohort)
+        and the propensity :math:`t(x)`.
     sigma_model : {"rlearner", "cf"}, default="rlearner"
-        Backend for the cohort-marginal CATE :math:`\zeta(x)` and the
-        propensity :math:`g(x)`.
+        Backend for the conditional cohort contrast :math:`\zeta(x)` (the
+        effect of cohort membership on the outcome marginal over time) and
+        the propensity :math:`g(x)`.
     delta_model : {"glm", "stack"}, default="glm"
-        Backend for the cross-derivative term :math:`\Delta(x)`. ``"glm"``
-        uses elastic-net regression with optional grid tuning; ``"stack"``
-        uses a SuperLearner-style ensemble.
+        Backend for the conditional covariance term :math:`\Delta(x)`.
+        ``"glm"`` fits a cross-validated lasso with optional penalty-factor
+        tuning; ``"stack"`` uses a stacking ensemble.
     k_folds : int, default=10
         Number of folds for cross-fitting the nuisance models.
     tune_penalty : bool, default=False
@@ -132,8 +134,11 @@ def didml(
     lambda_choice : {"lambda.min", "lambda.1se"}, default="lambda.min"
         Cross-validation rule for selecting the lasso penalty in the
         non-constant tau fit.
-    t_func : bool, default=True
-        If ``False``, sets :math:`\hat{t}(X) = 0.5` for all units.
+    t_func : bool, default=False
+        Whether to use the estimated post-period propensity. The default
+        replaces the estimate with the constant 0.5, which is exact
+        because each stacked cell is balanced by construction. See
+        :func:`lnw_did`.
     use_gamma : bool, default=True
         Whether to compute and apply AMLE weights. When ``False``, the
         cell ATT reduces to the simple mean of cross-fitted CATTs.
@@ -169,6 +174,7 @@ def didml(
         - **n_units**: Number of unique cross-sectional units
         - **wald_stat**: Wald statistic for pre-testing parallel trends
         - **wald_pvalue**: P-value for the parallel-trends pre-test
+        - **aggregate_effects**: Aggregate treatment effects object populated by ``aggte_didml``
         - **alpha**: Significance level used
         - **estimation_params**: Dictionary with estimation details (nu_model, sigma_model, delta_model, k_folds, etc.)
 
@@ -176,7 +182,7 @@ def didml(
     --------
     Generate a small staggered-adoption panel with four covariates, two
     treated cohorts, and four periods, then estimate group-time ATTs and
-    CATTs with R-learner nuisance backends and the elastic-net delta model:
+    CATTs with R-learner nuisance backends and the lasso delta model:
 
     .. ipython::
         :okwarning:
@@ -211,6 +217,7 @@ def didml(
 
     See Also
     --------
+    aggte_didml : Aggregate ML group-time ATTs to a dynamic event-study summary.
     lnw_did : Per-cell doubly-robust ML score.
     amle_weights : Augmented minimax-linear weighting solver.
 
@@ -416,6 +423,18 @@ def _pretest_wald(att_values, variance_matrix, groups, times, n_units, anticipat
 def _build_unit_period_index(dp):
     """Return arrays mapping each sparse-matrix row to (unit_id, period_index)."""
     n_units = dp.config.id_count
-    unit_ids = np.arange(n_units)
+    idname = dp.config.idname
+    tname = dp.config.tname
+    gname = dp.config.gname
+
+    # The per-cell tensors slice the data in (tname, gname, idname) order, so
+    # the first time-period block fixes the unit order of every sparse-matrix
+    # row. Reproduce that block order here so each row carries the right id.
+    first_period_block = dp.data.sort([tname, gname, idname]).slice(0, n_units)
+    unit_ids = first_period_block[idname].to_numpy()
+
+    if unit_ids.shape[0] != n_units:
+        unit_ids = np.arange(n_units)
+
     unit_periods = np.zeros(n_units, dtype=int)
     return unit_ids, unit_periods

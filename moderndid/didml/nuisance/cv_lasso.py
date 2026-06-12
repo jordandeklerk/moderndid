@@ -66,17 +66,17 @@ def cv_lasso_with_oof(
     Returns
     -------
     dict
-        Dictionary with the following keys:
+        Dictionary containing the cross-validated lasso outputs:
 
-        - **oof_predictions**: ndarray of shape (n,). Out-of-fold predictions at
-          the selected alpha.
-        - **selected_alpha**: float. Alpha chosen by the ``lambda_choice`` rule.
-        - **coef**: ndarray of shape (p,). Refitted coefficients on the full
-          data at ``selected_alpha``, on the original (unstandardized) scale.
-        - **intercept**: float. Refitted intercept on the original scale.
-        - **alphas**: ndarray of shape (n_alphas_effective,). Full alpha path.
-        - **cv_errors**: ndarray of shape (n_alphas_effective,). Mean squared
-          CV error per alpha.
+        - **oof_predictions**: Length-:math:`n` array of out-of-fold
+          predictions at the selected alpha
+        - **selected_alpha**: Alpha chosen by the ``lambda_choice`` rule
+        - **coef**: Length-:math:`p` array of coefficients refit on the full
+          data at ``selected_alpha``, on the original (unstandardized) scale
+        - **intercept**: Intercept refit on the original scale
+        - **alphas**: Array holding the full alpha path
+        - **cv_errors**: Array of mean squared CV errors, one per alpha in
+          the path
     """
     if lambda_choice not in ("lambda.min", "lambda.1se"):
         raise ValueError(f"lambda_choice must be 'lambda.min' or 'lambda.1se', got {lambda_choice!r}.")
@@ -133,9 +133,10 @@ def cv_lasso_with_oof(
     pf_pen = penalty_factor[pen_idx]
     X_pen_scaled_full = X_scaled[:, pen_idx] / pf_pen[None, :] if pen_idx.size > 0 else X_scaled[:, pen_idx]
 
-    # Residualize BOTH y and X_pen against [1, X_unp] so the alpha grid is
-    # built on the same residualized problem the lasso will see, matching the
-    # joint KKT solution rather than treating X_unp/X_pen as orthogonal
+    # Residualize both the response and the penalized columns against the
+    # intercept and the unpenalized columns so the alpha grid is built on the
+    # same residualized problem the lasso will see, matching the joint KKT
+    # solution rather than treating the two column blocks as orthogonal
     y_for_grid, X_pen_for_grid = _residualize_for_grid(X_scaled, y, X_pen_scaled_full, unp_idx)
 
     if pen_idx.size > 0:
@@ -187,10 +188,9 @@ def cv_lasso_with_oof(
                 fold_converged[k] = False
                 continue
 
-            # Recover unpenalized slopes and intercept from the post-lasso
-            # residual on the training fold, then apply unpenalized
-            # coefficients and intercept to the raw test unpenalized columns
-            # and the lasso coefficients to the raw test penalized columns
+            # Predictions must be formed on the raw test columns rather than
+            # residualized ones, since the residualized coordinates are only
+            # defined relative to the training-fold projection
             y_train_post = y_train[:, None] - X_pen_train_scaled @ coefs_path
             beta_unp_path, intercept_unp_path = _recover_unpenalized_path(X_train_scaled, y_train_post, unp_idx)
             unp_predictions_test = _predict_unpenalized_path(X_test_scaled, unp_idx, beta_unp_path, intercept_unp_path)
@@ -259,8 +259,20 @@ def _build_alpha_grid(X, y, *, n_alphas, eps):
     n = len(y)
     y_centered = y - y.mean()
     alpha_max = float(np.max(np.abs(X.T @ y_centered))) / n
-    if alpha_max <= 0:
-        return np.array([0.0])
+
+    # When the response is orthogonal to every column by construction
+    # (e.g., a balanced post-period indicator with time-invariant
+    # covariates), alpha_max is pure floating-point cancellation noise
+    # and a path built from it makes the solver grind on a problem whose
+    # exact solution is the null model. Detect that case against the
+    # rounding-error scale of the inner products and pin the grid to a
+    # single alpha at which the all-zero solution holds on any subsample
+    x_extreme = float(np.max(np.abs(X))) if X.size else 0.0
+    y_extreme = float(np.max(np.abs(y_centered))) if y_centered.size else 0.0
+    noise_floor = np.finfo(float).eps * x_extreme * y_extreme
+    if alpha_max <= noise_floor:
+        return np.array([max(1.0, 4.0 * x_extreme * y_extreme)])
+
     return np.geomspace(alpha_max, alpha_max * eps, n_alphas)
 
 
@@ -332,7 +344,6 @@ def _refit_full(X_scaled, y, *, unp_idx, pen_idx, pf_pen, alpha, max_iter):
     coef_pen_scaled = coef_pen_in_res / pf_pen
     coef[pen_idx] = coef_pen_scaled
 
-    # Recover the unpenalized slopes and intercept from the post-lasso residual
     y_post = y - X_pen_scaled @ coef_pen_in_res
     beta_unp, _, intercept_unp = _fit_unpenalized(X_scaled, y_post, unp_idx)
     if unp_idx.size > 0:

@@ -27,7 +27,7 @@ def amle_weights(
     Balance conditions cover covariate moments together with
     covariate-by-:math:`T`, covariate-by-:math:`G`, and
     covariate-by-:math:`T \cdot G` interactions, matching the treated cell
-    :math:`(T = G = 1)` against the rest of the sample.
+    :math:`(T = G = 1)` to the full-sample covariate mean.
 
     Parameters
     ----------
@@ -49,7 +49,7 @@ def amle_weights(
     Returns
     -------
     ndarray of shape (n,)
-        The minimax weight vector :math:`n \cdot g[:n]^\star`.
+        The minimax weight vector :math:`n \cdot g_{1:n}^\star`.
 
     Notes
     -----
