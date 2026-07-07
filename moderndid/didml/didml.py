@@ -113,7 +113,13 @@ def didml(
         Number of pre-treatment periods where treated units may anticipate
         treatment.
     base_period : {"varying", "universal"}, default="varying"
-        Choice of base period for pretreatment comparisons.
+        Choice of base period for each comparison. With ``"varying"``,
+        each pre-treatment period is compared with the immediately
+        preceding period. With ``"universal"``, every comparison for
+        cohort ``g`` is anchored at the last period before ``g`` minus
+        the anticipation periods, the reference cell at that base period
+        is reported as zero, and earlier calendar periods are included
+        as placebo comparisons.
     nu_model : {"rlearner", "cf"}, default="rlearner"
         Backend for the conditional time trend :math:`\nu(x)` (the effect
         of the post-period indicator on the outcome marginal over cohort)
@@ -391,6 +397,9 @@ def _derive_cohort_counts(dp, gname):
 def _pretest_wald(att_values, variance_matrix, groups, times, n_units, anticipation):
     """Compute the parallel-trends Wald statistic from pre-treatment cells."""
     pre_indices = np.where(groups > times)[0]
+    # Zero-variance cells, including universal-base reference cells, carry no
+    # information and would make the variance singular.
+    pre_indices = pre_indices[np.diag(variance_matrix)[pre_indices] != 0]
 
     if len(pre_indices) == 0:
         msg = "No pre-treatment periods available for the parallel-trends Wald pre-test."

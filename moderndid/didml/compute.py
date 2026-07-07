@@ -8,6 +8,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from moderndid.core.parallel import parallel_map
+from moderndid.core.preprocess import BasePeriod
 from moderndid.did.compute_att_gt import get_did_cohort_index
 from moderndid.drdid.estimators.drdid_panel import drdid_panel
 
@@ -47,7 +48,11 @@ def compute_didml(data, *, n_jobs=1):
     n_treated = data.config.treated_groups_count
     n_time_periods = n_periods - 1
 
-    pairs = [(g, t) for g in range(n_treated) for t in range(n_time_periods)]
+    # A universal base sits before period index 0 for early cohorts, so the
+    # first calendar period becomes a valid current period and the grid must
+    # start one step earlier.
+    t_start = -1 if data.config.base_period == BasePeriod.UNIVERSAL else 0
+    pairs = [(g, t) for g in range(n_treated) for t in range(t_start, n_time_periods)]
     args_list = [(g_idx, t_idx, data) for g_idx, t_idx in pairs]
 
     raw_results = parallel_map(_process_didml_cell, args_list, n_jobs=n_jobs)
@@ -75,10 +80,12 @@ def _process_didml_cell(group_idx, time_idx, data):
     treated_groups = cfg.treated_groups
     time_periods = cfg.time_periods
 
+    universal = cfg.base_period == BasePeriod.UNIVERSAL
+
     pre_periods = np.where(time_periods < (treated_groups[group_idx] - cfg.anticipation))[0]
     is_post_treatment = treated_groups[group_idx] <= time_periods[time_idx + time_factor]
 
-    if is_post_treatment:
+    if universal or is_post_treatment:
         if len(pre_periods) == 0:
             warnings.warn(
                 f"No pre-treatment periods for group first treated at {treated_groups[group_idx]}; skipping.",
@@ -90,7 +97,27 @@ def _process_didml_cell(group_idx, time_idx, data):
         pre_treatment_idx = time_idx
 
     if time_periods[pre_treatment_idx] == time_periods[time_idx + time_factor]:
-        return None
+        if not universal:
+            return None
+        # The universal base period anchors every comparison for the cohort,
+        # so the cell at the base itself is kept as an explicit zero
+        # reference instead of being dropped.
+        return DIDMLCellResult(
+            group=float(treated_groups[group_idx]),
+            year=float(time_periods[time_idx + time_factor]),
+            post=0,
+            pre_idx=int(pre_treatment_idx),
+            post_idx=int(time_idx + time_factor),
+            att=0.0,
+            se=float("nan"),
+            tau_hat=None,
+            score=None,
+            gamma=None,
+            cohort_idx=np.full(cfg.id_count, np.nan),
+            drdid_att=None,
+            drdid_se=None,
+            drdid_inf_func=None,
+        )
 
     cohort_idx = get_did_cohort_index(group_idx, time_idx, time_factor, pre_treatment_idx, data)
     valid = ~np.isnan(cohort_idx)
@@ -186,7 +213,9 @@ def _maybe_run_drdid_benchmark(data, cohort_idx, valid, pre_treatment_idx, time_
     y0 = data.outcomes_tensor[pre_treatment_idx][valid]
     d = cohort_idx[valid]
     weights = data.weights[valid]
-    covariates = data.covariates_tensor[min(pre_treatment_idx, time_idx)][valid]
+    # time_idx + 1 is the current period, so this picks the earlier of the
+    # base and current periods and stays valid when time_idx is -1.
+    covariates = data.covariates_tensor[min(pre_treatment_idx, time_idx + 1)][valid]
 
     try:
         result = drdid_panel(
