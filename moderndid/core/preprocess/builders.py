@@ -253,6 +253,7 @@ class PreprocessDataBuilder:
         if isinstance(self._config, EtwfeConfig):
             return self._build_etwfe_data()
         if isinstance(self._config, DIDConfig):
+            # DIDMLConfig is a DIDConfig subclass; reuses DIDData container.
             return self._build_did_data()
         if isinstance(self._config, ContDIDConfig):
             return self._build_cont_did_data()

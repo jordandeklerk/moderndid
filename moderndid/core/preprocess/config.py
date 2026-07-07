@@ -71,6 +71,44 @@ class DIDConfig(BasePreprocessConfig):
 
 
 @dataclass
+class DIDMLConfig(DIDConfig):
+    """DIDML config."""
+
+    nu_model: str = "rlearner"
+    sigma_model: str = "rlearner"
+    delta_model: str = "glm"
+
+    k_folds: int = 10
+    lambda_choice: str = "lambda.min"
+    tune_penalty: bool = True
+    t_func: bool = True
+
+    use_gamma: bool = True
+    zeta: float = 0.5
+
+    compute_drdid_benchmark: bool = True
+
+    random_state: int | None = None
+
+    control_group: ControlGroup = ControlGroup.NOT_YET_TREATED
+
+    def __post_init__(self) -> None:
+        """Validate config fields."""
+        if self.nu_model not in ("rlearner", "cf"):
+            raise ValueError(f"nu_model must be 'rlearner' or 'cf', got {self.nu_model!r}.")
+        if self.sigma_model not in ("rlearner", "cf"):
+            raise ValueError(f"sigma_model must be 'rlearner' or 'cf', got {self.sigma_model!r}.")
+        if self.delta_model not in ("glm", "stack"):
+            raise ValueError(f"delta_model must be 'glm' or 'stack', got {self.delta_model!r}.")
+        if self.lambda_choice not in ("lambda.min", "lambda.1se"):
+            raise ValueError(f"lambda_choice must be 'lambda.min' or 'lambda.1se', got {self.lambda_choice!r}.")
+        if not 0 < self.zeta < 1:
+            raise ValueError(f"zeta must be in the open interval (0, 1), got {self.zeta!r}.")
+        if self.k_folds < 2:
+            raise ValueError(f"k_folds must be >= 2, got {self.k_folds!r}.")
+
+
+@dataclass
 class TwoPeriodDIDConfig(ConfigMixin):
     """Two-period DiD config."""
 
