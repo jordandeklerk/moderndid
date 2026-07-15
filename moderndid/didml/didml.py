@@ -167,7 +167,7 @@ def didml(
         - **groups**: Array indicating which cohort (period first treated) each ATT is for
         - **times**: Array indicating which time period each ATT is for
         - **att_gt**: Array of group-time ML ATT estimates
-        - **se_gt**: Standard errors derived from the per-unit DR scores
+        - **se_gt**: Per-cell analytical doubly-robust standard errors of each group-time ATT
         - **critical_value**: Critical value for confidence intervals
         - **influence_func**: Per-unit DR-score matrix of shape ``(n_units, n_cells)``
         - **cates**: Sparse matrix of per-unit CATT predictions
@@ -305,13 +305,12 @@ def didml(
     groups = np.array([c.group for c in cell_results])
     times = np.array([c.year for c in cell_results])
     att_values = np.array([c.att for c in cell_results])
+    se_values = np.array([c.se for c in cell_results], dtype=float)
 
     n_units = dp.config.id_count
     influence_funcs = compute_out.scores.toarray().astype(float)
 
     variance_matrix = influence_funcs.T @ influence_funcs / n_units
-    standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
-    standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
     if clustervars is not None and idname in clustervars:
         clustervars = [v for v in clustervars if v != idname]
@@ -368,7 +367,7 @@ def didml(
         groups=groups,
         times=times,
         att_gt=att_values,
-        se_gt=standard_errors,
+        se_gt=se_values,
         critical_value=critical_value,
         influence_func=influence_funcs,
         cates=compute_out.cates,
