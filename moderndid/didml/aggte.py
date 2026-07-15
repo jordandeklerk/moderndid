@@ -74,7 +74,7 @@ def aggte_didml(result, type="dynamic", alpha=None):
         - **aggregation_type**: Type of aggregation performed (always ``'dynamic'``)
         - **event_times**: Array of integer event times :math:`e = t - g`
         - **att_by_event**: Per-event-time aggregate :math:`\theta(e)`
-        - **se_by_event**: Influence-function-based standard error per event time
+        - **se_by_event**: Weighted average of the per-cell doubly-robust standard errors at each event time
         - **critical_values**: Pointwise critical values given by the standard normal quantile at :math:`1 - \alpha/2`
         - **influence_func**: Aggregate influence-function matrix of shape ``(n_units, n_event_times)``
         - **influence_func_overall**: Influence-function vector of length ``n_units`` for ``overall_att``
@@ -137,8 +137,9 @@ def aggte_didml(result, type="dynamic", alpha=None):
     inf_by_event = _aggregate_influence_func(result.influence_func, indices, weights)
 
     n_units = int(result.n_units)
-    var_by_event = (inf_by_event**2).sum(axis=0) / n_units
-    se_by_event = np.sqrt(var_by_event / n_units)
+    # Reference/zero cells carry no sampling variance, so their NaN SE contributes exactly zero.
+    se_gt = np.nan_to_num(np.asarray(result.se_gt, dtype=float), nan=0.0)
+    se_by_event = _aggregate_to_event_time(se_gt, indices, weights)
 
     drdid_benchmark_by_event = None
     if result.drdid_benchmark is not None:

@@ -247,7 +247,7 @@ def format_didml_agg_result(result):
     if result.estimation_params.get("bootstrap", False):
         lines.append(" Bootstrap standard errors")
     else:
-        lines.append(" Analytical standard errors (influence-function based)")
+        lines.append(" Analytical standard errors")
 
     lines.extend(format_footer("Reference: Hatamyar, Kreif, Rocha, and Huber (2023)"))
 
