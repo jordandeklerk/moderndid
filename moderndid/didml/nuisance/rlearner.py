@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
-from sklearn.linear_model import Lasso, LassoCV
+from scipy.special import expit
+from sklearn.linear_model import Lasso, LassoCV, LogisticRegression
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import StandardScaler
 
@@ -35,8 +36,10 @@ def fit_rlearner(
     indicator, using the residualization method of [1]_.
 
     Both the outcome and the indicator are first residualized against the
-    covariates with cross-fitted lasso nuisances. A penalized regression
-    of the outcome residual on the indicator residual interacted with the
+    covariates with cross-fitted penalized nuisances, a squared-error
+    lasso for the continuous outcome and an L1-penalized logistic
+    regression for the binary indicator. A penalized regression of the
+    outcome residual on the indicator residual interacted with the
     covariates then recovers a linear model for :math:`\tau(x)`.
 
     With ``tune_penalty=True``, an outer k-fold grid search selects the
@@ -66,7 +69,9 @@ def fit_rlearner(
         :math:`\lambda` whose mean CV MSE is within one standard error of
         the minimum.
     random_state : int, optional
-        Seed controlling the cross-fitting fold splits and inner CV.
+        Seed controlling the cross-fitting fold splits, the inner CV, and the
+        penalized logistic fit, whose solver shuffles coordinates internally
+        and so needs the same seed for the result to be fully reproducible.
 
     Returns
     -------
@@ -76,7 +81,8 @@ def fit_rlearner(
         - **tau_hat**: Length-:math:`n` array of cross-fitted CATE predictions
           :math:`\hat{\tau}(X_i)` at each training row
         - **p_hat**: Length-:math:`n` array of cross-fitted propensity scores
-          :math:`\hat{e}(X_i) = \mathbb{E}[D \mid X_i]`
+          :math:`\hat{e}(X_i) = \mathbb{P}[D = 1 \mid X_i]`, fitted
+          probabilities lying strictly in :math:`(0, 1)`
         - **m_hat**: Length-:math:`n` array of cross-fitted outcome predictions
           :math:`\hat{m}(X_i) = \mathbb{E}[Y \mid X_i]`
         - **tau_coef**: Length-:math:`(p+1)` array of CATE linear-model
@@ -89,9 +95,13 @@ def fit_rlearner(
     The estimator proceeds in four steps:
 
     1. Cross-fit nuisances :math:`\hat{m}(x) = \mathbb{E}[Y \mid X = x]` and
-       :math:`\hat{e}(x) = \mathbb{E}[D \mid X = x]` via k-fold lasso
-       regression. Each fold is fit by an inner lasso with cross-validated
-       :math:`\lambda` selection.
+       :math:`\hat{e}(x) = \mathbb{P}[D = 1 \mid X = x]` over k folds, each
+       fold predicting its held-out rows from a penalized fit on the
+       remaining folds. The outcome nuisance is a squared-error lasso with
+       cross-validated :math:`\lambda`; the indicator nuisance is an
+       L1-penalized logistic regression whose :math:`\lambda` minimizes the
+       cross-validated binomial deviance, so :math:`\hat{e}` comes back
+       through the logistic link as a probability.
     2. Form residuals :math:`\tilde{Y} = Y - \hat{m}(X)` and
        :math:`\tilde{D} = D - \hat{e}(X)`.
     3. Solve the residualized lasso problem
@@ -194,7 +204,7 @@ def _fit_rlasso(
     X_scl = scaler.transform(X)
 
     m_hat = _cross_fit_lasso(X_scl, Y, k_folds=k_folds, random_state=random_state)
-    p_hat = _cross_fit_lasso(X_scl, treatment, k_folds=k_folds, random_state=random_state)
+    p_hat = _cross_fit_logistic_lasso(X_scl, treatment, k_folds=k_folds, random_state=random_state)
 
     y_tilde = Y - m_hat
     w_tilde = treatment - p_hat
@@ -298,6 +308,69 @@ def _cross_fit_lasso(X, y, *, k_folds, random_state):
         max_iter=100_000,
     )
     return out["oof_predictions"]
+
+
+def _cross_fit_logistic_lasso(X, y, *, k_folds, random_state):
+    r"""Return out-of-fold logistic-lasso probabilities for binary ``y`` on standardized columns at min deviance."""
+    n = X.shape[0]
+    lambdas = _binomial_lambda_grid(X, y)
+
+    kf = KFold(n_splits=k_folds, shuffle=True, random_state=random_state)
+    oof_linear = np.empty((n, lambdas.size))
+    fold_deviance = np.empty((k_folds, lambdas.size))
+
+    for k, (train_idx, test_idx) in enumerate(kf.split(X)):
+        y_train = y[train_idx]
+        y_test = y[test_idx]
+
+        for j, penalty in enumerate(lambdas):
+            model = LogisticRegression(
+                penalty="l1",
+                C=1.0 / (train_idx.size * penalty),
+                solver="liblinear",
+                # The solver folds the intercept into the design as a constant
+                # column that the L1 term would otherwise shrink; scaling that
+                # column up drives its share of the penalty to nothing, which
+                # is what the binomial lasso asks of an intercept
+                intercept_scaling=1e4,
+                max_iter=10_000,
+                # The solver shuffles coordinates internally, so it needs the
+                # seed as well for the fit to be reproducible
+                random_state=random_state,
+            ).fit(X[train_idx], y_train)
+            oof_linear[test_idx, j] = model.decision_function(X[test_idx])
+
+        # Evaluating the deviance on the linear predictor rather than on the
+        # probability keeps the logarithms exact when a held-out fit is close
+        # to certain about a row
+        eta_test = oof_linear[test_idx, :]
+        fold_deviance[k, :] = 2.0 * np.mean(np.logaddexp(0.0, eta_test) - y_test[:, None] * eta_test, axis=0)
+
+    best_idx = int(np.argmin(fold_deviance.mean(axis=0)))
+
+    return expit(oof_linear[:, best_idx])
+
+
+def _binomial_lambda_grid(X, y):
+    r"""Build the shared binomial :math:`\lambda` path anchored at the score of the intercept-only model."""
+    y_centered = y - y.mean()
+    lambda_max = float(np.max(np.abs(X.T @ y_centered))) / len(y)
+
+    # When the indicator is orthogonal to every column by construction (a
+    # balanced post-period indicator whose covariate rows repeat across the
+    # base and current periods), lambda_max is pure floating-point
+    # cancellation noise and an unpenalized path would fit that noise instead
+    # of the intercept-only model that solves the problem exactly. Detect that
+    # against the rounding-error scale of the score and pin the grid to a
+    # single penalty above the largest attainable score, at which every slope
+    # is zero on any subsample and the propensity is the observed frequency
+    x_extreme = float(np.max(np.abs(X))) if X.size else 0.0
+    y_extreme = float(np.max(np.abs(y_centered))) if y_centered.size else 0.0
+    noise_floor = np.finfo(float).eps * x_extreme * y_extreme
+    if lambda_max <= noise_floor:
+        return np.array([max(1.0, 2.0 * x_extreme)])
+
+    return np.geomspace(lambda_max, lambda_max * 1e-3, 100)
 
 
 def _fit_lasso_with_lambda_choice(features, y, *, k_folds, lambda_choice, random_state):

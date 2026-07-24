@@ -269,10 +269,7 @@ def lnw_did(
     if not t_func:
         t_hat = np.full(n, 0.5)
 
-    s_safe = np.clip(s_hat, 1e-3, 1.0 - 1e-3)
-    t_safe = np.clip(t_hat, 1e-3, 1.0 - 1e-3)
-
-    response = (post_indicator - t_safe) * (cohort_indicator - s_safe)
+    response = (post_indicator - t_hat) * (cohort_indicator - s_hat)
     delta_fit = fit_delta(
         X,
         response,
@@ -283,22 +280,18 @@ def lnw_did(
     )
     delta_hat = np.asarray(delta_fit["delta_hat"], dtype=float)
 
-    var_product = s_safe * (1.0 - s_safe) * t_safe * (1.0 - t_safe)
+    var_product = s_hat * (1.0 - s_hat) * t_hat * (1.0 - t_hat)
     inv_scaling = 1.0 / (1.0 - delta_hat**2 / var_product)
 
-    A_hat = inv_scaling * (
-        post_indicator - t_safe - delta_hat * (cohort_indicator - s_safe) / (s_safe * (1.0 - s_safe))
-    )
-    B_hat = inv_scaling * (
-        cohort_indicator - s_safe - delta_hat * (post_indicator - t_safe) / (t_safe * (1.0 - t_safe))
-    )
+    A_hat = inv_scaling * (post_indicator - t_hat - delta_hat * (cohort_indicator - s_hat) / (s_hat * (1.0 - s_hat)))
+    B_hat = inv_scaling * (cohort_indicator - s_hat - delta_hat * (post_indicator - t_hat) / (t_hat * (1.0 - t_hat)))
 
-    iota = s_safe * t_safe + delta_hat
+    iota = s_hat * t_hat + delta_hat
     C_hat = (
         cohort_indicator * post_indicator
         - iota
-        - (s_safe + delta_hat / t_safe) * A_hat
-        - (t_safe + delta_hat / s_safe) * B_hat
+        - (s_hat + delta_hat / t_hat) * A_hat
+        - (t_hat + delta_hat / s_hat) * B_hat
     )
 
     H_hat = Y - m_hat - A_hat * nu_hat - B_hat * sigma_hat
