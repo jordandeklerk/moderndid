@@ -38,9 +38,9 @@ def compute_didml(data, *, n_jobs=1):
         Object containing the cell-loop output:
 
         - **cell_results**: List of per-cell :class:`DIDMLCellResult` records
-        - **cates**: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit CATT predictions
-        - **scores**: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit DR score contributions
-        - **gammas**: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit AMLE weights
+        - **cates**: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit CATT predictions (two-period mean)
+        - **scores**: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit DR score contributions (two-period mean)
+        - **gammas**: Sparse :math:`(n_{units}, n_{cells})` matrix of per-unit AMLE weights (two-period mean)
         - **drdid_inf_funcs**: Sparse :math:`(n_{units}, n_{cells})` matrix of benchmark influence functions
     """
     n_units = data.config.id_count
@@ -235,7 +235,7 @@ def _maybe_run_drdid_benchmark(data, cohort_idx, valid, pre_treatment_idx, time_
 
 
 def _stack_per_unit(cell_results, n_units, key):
-    """Stack a per-cell length-:math:`n_{cell}` array as a sparse :math:`(n, n_{cells})` column."""
+    """Collapse each cell to a sparse column holding the per-unit average of its base- and current-period rows."""
     if not cell_results:
         return sp.csr_matrix((n_units, 0))
 
@@ -251,9 +251,12 @@ def _stack_per_unit(cell_results, n_units, key):
 
         valid = ~np.isnan(cell.cohort_idx)
         n_valid = int(valid.sum())
-        post_block = values[n_valid : 2 * n_valid] if values.shape[0] >= 2 * n_valid else values[:n_valid]
+        if values.shape[0] >= 2 * n_valid:
+            per_unit = 0.5 * (values[:n_valid] + values[n_valid : 2 * n_valid])
+        else:
+            per_unit = values[:n_valid]
 
-        col[valid] = post_block
+        col[valid] = per_unit
         columns.append(col)
 
     return sp.csr_matrix(np.column_stack(columns))
