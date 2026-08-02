@@ -325,7 +325,6 @@ def lnw_did(
         X=X,
         H_hat=H_hat,
         C_hat=C_hat,
-        k_folds=k_folds,
         lambda_choice=lambda_choice,
         random_state=tau_random_state,
     )
@@ -364,7 +363,7 @@ def lnw_did(
     }
 
 
-def _fit_tau_coef(*, X, H_hat, C_hat, k_folds, lambda_choice, random_state):
+def _fit_tau_coef(*, X, H_hat, C_hat, lambda_choice, random_state):
     r"""Return the length-(p+1) CATT coefficient vector :math:`(b_0, b_1, \ldots, b_p)`."""
     n, p = X.shape
     c_inner = float(C_hat @ C_hat)
@@ -378,11 +377,11 @@ def _fit_tau_coef(*, X, H_hat, C_hat, k_folds, lambda_choice, random_state):
     fit = cv_lasso_with_oof(
         design,
         H_hat,
-        k_folds=k_folds,
+        k_folds=10,
         random_state=random_state,
         lambda_choice=lambda_choice,
         penalty_factor=penalty_factor,
-        standardize=False,
+        standardize=True,
         max_iter=100_000,
     )
     return np.asarray(fit["coef"], dtype=float)
