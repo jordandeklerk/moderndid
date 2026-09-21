@@ -31,7 +31,7 @@ jobs:
           SKIP: no-commit-to-branch
           TEST_SUITE: core
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
@@ -62,7 +62,7 @@ jobs:
       - name: Run Spark test suite with coverage
         run: tox -e spark-coverage
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: Spark Python ${{ matrix.python-version }}
@@ -85,7 +85,7 @@ jobs:
       - name: Run full test suite with coverage
         run: tox -e full-coverage
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: Full Coverage
