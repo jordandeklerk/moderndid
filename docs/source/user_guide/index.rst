@@ -1,38 +1,35 @@
 .. _user-guide:
 
-####################
-ModernDiD User Guide
-####################
+==========
+User Guide
+==========
 
-This guide provides an overview of **ModernDiD** and explains the important
-features; details are found in :ref:`api`.
+Learn how to choose an estimator, prepare your panel, and work with results.
+The guides build on the :ref:`Quickstart <quickstart>` and cover the tools
+shared across ModernDiD's estimators.
 
-.. toctree::
-   :caption: Getting started
-   :maxdepth: 2
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
 
-   quickstart
-   estimator_overview
-   plotting
-   publication_tables
-   panel_utilities
+   * - Section
+     - Description
+   * - :doc:`fundamentals`
+     - Choose an estimator, create plots and publication tables, and prepare panel data.
+   * - :doc:`scaling`
+     - Run estimators on distributed Dask and Spark clusters or NVIDIA GPUs.
 
-.. toctree::
-   :caption: Examples
-   :maxdepth: 2
-
-   example_staggered_did
-   example_triple_did
-   example_inter_did
-   example_cont_did
-   example_dyn_balancing
-   example_honest_did
-   example_etwfe
-   example_npiv
+For a full analysis with a particular treatment design, see the
+:doc:`Examples <../examples/index>`. Function signatures and parameters live in
+the :ref:`API Reference <api>`.
 
 .. toctree::
-   :caption: Scaling
+   :hidden:
    :maxdepth: 2
 
-   distributed
-   gpu
+   fundamentals
+   scaling
+
+.. raw:: html
+
+   <p class="mdid-footer-logo"><img src="../_static/logo-wordmark.svg" alt="ModernDiD logo"></p>

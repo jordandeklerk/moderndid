@@ -1,95 +1,80 @@
-<div style="text-align: center;" align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png">
-  <img alt="moderndid logo" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/moderndid-light.png" width="300">
-</picture>
+<div align="center">
 
-<p>
-  <em>A scalable, GPU-accelerated difference-in-differences library for Python.</em>
-</p>
+<img alt="ModernDiD" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/logo-wordmark.svg" width="300">
 
-<p>
-  <a href="https://moderndid.readthedocs.io/en/latest/" target="_blank"><strong>Docs</strong></a> ·
-  <a href="https://moderndid.readthedocs.io/en/latest/api/index.html" target="_blank"><strong>API Reference</strong></a> ·
-  <a href="https://moderndid.readthedocs.io/en/latest/user_guide/index.html" target="_blank"><strong>Tutorials</strong></a> ·
-  <a href="https://github.com/jordandeklerk/moderndid/blob/main/CHANGELOG.md" target="_blank"><strong>Changelog</strong></a>
-</p>
+## Modern causal inference in Python
 
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit)
-[![PyPI -Version](https://img.shields.io/pypi/v/moderndid.svg)](https://pypi.org/project/moderndid/)
+[![License](https://img.shields.io/badge/License-MIT-315bc4.svg)](https://github.com/jordandeklerk/moderndid/blob/main/LICENSE)
+[![PyPI version](https://img.shields.io/pypi/v/moderndid.svg?color=315bc4)](https://pypi.org/project/moderndid/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Pixi Badge](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prefix-dev/pixi/main/assets/badge/v0.json)](https://pixi.sh)
-[![prek](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/j178/prek/master/docs/assets/badge-v0.json)](https://github.com/j178/prek)
-[![Code Coverage](https://codecov.io/gh/jordandeklerk/moderndid/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/moderndid)
-[![Build Status](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml)
+[![Code coverage](https://codecov.io/gh/jordandeklerk/moderndid/branch/main/graph/badge.svg)](https://codecov.io/gh/jordandeklerk/moderndid)
+[![Build status](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml)
 [![Documentation](https://readthedocs.org/projects/moderndid/badge/?version=latest)](https://moderndid.readthedocs.io/en/latest/)
-[![Last commit](https://img.shields.io/github/last-commit/jordandeklerk/moderndid)](https://github.com/jordandeklerk/moderndid/graphs/commit-activity)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/jordandeklerk/moderndid)](https://github.com/jordandeklerk/moderndid/graphs/commit-activity)
-[![PyPI Downloads](https://static.pepy.tech/personalized-badge/moderndid?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/moderndid)
-[![PyPI Downloads](https://static.pepy.tech/personalized-badge/moderndid?period=monthly&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads/month)](https://pepy.tech/projects/moderndid)
-[![Python version](https://img.shields.io/badge/3.11%20%7C%203.12%20%7C%203.13-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![Citation](https://img.shields.io/badge/Cite%20as-ModernDiD-blue)](#citation)
+
+[What is ModernDiD](#what-is-moderndid) | [Installation](#installation) | [Estimation](#estimation) | [Aggregation and plots](#aggregation-and-plots) | [Scaling](#scaling) | [Documentation](https://moderndid.readthedocs.io/en/latest/)
+
 </div>
 
-__ModernDiD__ is a scalable, GPU-accelerated difference-in-differences library for Python. It consolidates modern DiD estimators from leading econometric research and various R and Stata packages into a single framework with a consistent API. Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
+## What is ModernDiD?
 
-## Features
+ModernDiD is an open-source Python library for difference-in-differences (DiD).
+It brings estimators from modern econometric research and separate R and Stata
+packages into one library, with a consistent API for applied researchers,
+economists, and data scientists.
 
-- [Staggered DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html), [Doubly Robust DiD](https://moderndid.readthedocs.io/en/latest/api/drdid.html), [Continuous DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html), [Triple DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_triple_did.html), [Intertemporal DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html), [Dynamic Covariate Balancing DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_dyn_balancing.html), [Honest DiD](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html), [Extended TWFE](https://moderndid.readthedocs.io/en/latest/api/etwfe.html), and [Nonparametric IV](https://moderndid.readthedocs.io/en/latest/user_guide/example_npiv.html).
-- Works with any [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html) DataFrame ([polars](https://pola.rs/), [pandas](https://pandas.pydata.org/), [pyarrow](https://arrow.apache.org/docs/python/), [duckdb](https://duckdb.org/), and more) via [narwhals](https://narwhals-dev.github.io/narwhals/).
-- [Polars](https://pola.rs/) for internal data wrangling, [NumPy](https://numpy.org/) vectorization, [Numba](https://numba.pydata.org/) JIT computations, and threaded parallel compute.
-- Optional [CuPy](https://cupy.dev/) GPU acceleration with multi-GPU support in distributed mode.
-- Distributed computing with [Spark](https://spark.apache.org/) and [Dask](https://www.dask.org/) backends for staggered and triple DiD.
-- [plotnine](https://plotnine.org/)-based plots that return `ggplot` objects you can customize.
-- Result objects plug directly into [maketables](https://py-econometrics.github.io/maketables/) for LaTeX, HTML, Word, and Typst tables.
-- Analytical SEs, weighted and multiplier bootstrap, simultaneous confidence bands.
+Supported methods include staggered and two-period DiD, triple differences,
+continuous and intertemporal treatments, dynamic covariate balancing,
+[machine learning DiD](https://moderndid.readthedocs.io/en/latest/api/didml.html),
+extended two-way fixed effects, and sensitivity analysis. Nonparametric
+instrumental-variable estimation is also included. The
+[estimator overview](https://moderndid.readthedocs.io/en/latest/user_guide/estimator_overview.html)
+describes the treatment designs and assumptions behind each method.
 
-For detailed documentation, see [ModernDiD Documentation](https://moderndid.readthedocs.io/en/latest/).
+Pass pandas, Polars, or another Arrow-compatible DataFrame to an estimator, then
+aggregate the effects and plot the results. Computation uses NumPy and Polars,
+with optional Numba acceleration. Supported estimators also run on NVIDIA GPUs
+and distributed Spark or Dask clusters. If you are new to DiD, start with the
+[introduction](https://moderndid.readthedocs.io/en/latest/getting_started/causal_inference.html).
 
 ## Installation
 
-```bash
-uv pip install moderndid   # Core estimators (did, drdid, didinter, didtriple)
-```
-
-Some estimators and features require additional dependencies that are not installed by default. Extras are additive and build on the base install, so you always get the core estimators ([`att_gt()`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html), [`drdid()`](https://moderndid.readthedocs.io/en/latest/api/generated/drdid/moderndid.drdid.html), [`did_multiplegt()`](https://moderndid.readthedocs.io/en/latest/api/generated/didinter/moderndid.did_multiplegt.html), [`ddd()`](https://moderndid.readthedocs.io/en/latest/api/generated/didtriple/moderndid.ddd.html)) plus whatever extras you specify:
-
-- **`diddynamic`** - Dynamic covariate balancing DiD ([`dyn_balancing()`](https://moderndid.readthedocs.io/en/latest/api/generated/diddynamic/moderndid.diddynamic.dyn_balancing.html))
-- **`didcont`** - Continuous treatment DiD ([`cont_did()`](https://moderndid.readthedocs.io/en/latest/api/generated/didcont/moderndid.cont_did.html))
-- **`didhonest`** - Sensitivity analysis ([`honest_did()`](https://moderndid.readthedocs.io/en/latest/api/generated/honestdid/moderndid.honest_did.html))
-- **`etwfe`** - Extended TWFE ([`etwfe()`](https://moderndid.readthedocs.io/en/latest/api/generated/etwfe/moderndid.etwfe.html))
-- **`plots`** - Batteries-included plots
-- **`numba`** - Faster bootstrap inference
-- **`spark`** - Distributed estimation via PySpark
-- **`dask`** - Distributed estimation via Dask
-- **`gpu`** - GPU-accelerated estimation (requires CUDA)
+ModernDiD requires Python 3.11 or later. Install the core estimators from PyPI:
 
 ```bash
-uv pip install "moderndid[all]"             # All extras except gpu and spark
-uv pip install "moderndid[didcont,plots]"   # Combine specific extras
-uv pip install "moderndid[gpu,spark]"       # GPU + distributed
+uv pip install moderndid
 ```
 
-To install the latest development version directly from GitHub:
+Use `pip install` in place of `uv pip install` if you prefer pip. Optional
+dependencies are selected with extras:
+
+```bash
+uv pip install "moderndid[plots]"          # Core estimators and plotting
+uv pip install "moderndid[all]"            # All estimator extras, plots, Numba, and Dask
+uv pip install "moderndid[didcont,plots]"   # Choose individual extras
+uv pip install "moderndid[gpu,spark]"      # CUDA 12 GPU and Spark dependencies
+```
+
+The `all` extra includes `didml` and excludes `gpu` and `spark`. The
+[installation guide](https://moderndid.readthedocs.io/en/latest/getting_started/installation.html)
+covers every extra, GPU setup, and troubleshooting. To install the development
+version from GitHub:
 
 ```bash
 uv pip install "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
 ```
 
-See the [Installation guide](https://moderndid.readthedocs.io/en/latest/getting_started/installation.html) for troubleshooting and GPU-specific setup.
+## Estimation
 
-## Quick Start
-
-Using county-level panel data from [Callaway and Sant'Anna (2021)](https://doi.org/10.1016/j.jeconom.2020.12.001) to estimate the effect of minimum wage increases on teen employment:
+This example uses county-level panel data from
+[Callaway and Sant'Anna (2021)](https://doi.org/10.1016/j.jeconom.2020.12.001)
+to estimate the effect of minimum wage increases on teen employment. `att_gt`
+estimates an average treatment effect for each treatment cohort and time period.
 
 ```python
 import moderndid as did
-from plotnine import element_text, labs, theme, theme_gray
 
 data = did.load_mpdta()
 
-# Group-time ATTs
 result = did.att_gt(
     data=data,
     yname="lemp",
@@ -99,53 +84,49 @@ result = did.att_gt(
     xformla="~1",
     est_method="dr",
     boot=True,
+    random_state=123,
 )
 
-# Use grammar of graphics to customize plots
-p = did.plot_gt(result, ncol=3)
-p = (p
-    + labs(
-        x="Year",
-        y="ATT (Log Employment)",
-        title="Minimum Wage Effects on Teen Employment",
-        subtitle="Group-time average treatment effects by treatment cohort",
-    )
-    + theme_gray()
-    + theme(
-        legend_position="bottom",
-        strip_text=element_text(size=11, weight="bold"),
-    )
-)
-p.save("att.png", dpi=200, width=8, height=5)
+print(result)
 ```
 
-<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/att.png" alt="Group-time ATT estimates">
+Analytical standard errors and bootstrap inference are available, including
+simultaneous confidence bands. Estimators share argument names such as `yname`,
+`tname`, and `idname`; each design has its own treatment arguments. See the
+[examples](https://moderndid.readthedocs.io/en/latest/examples/index.html)
+for complete analyses and the
+[dataset reference](https://moderndid.readthedocs.io/en/latest/api/data.html)
+for data from published studies and simulation generators.
 
-The [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html) has tutorials for every estimator. See also the [Plotting Guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html).
+## Aggregation and plots
 
-### Consistent API
-
-All estimators use the same naming conventions for core arguments:
+Aggregate the group-time effects into an event study, then plot effects by time
+relative to treatment. Install the `plots` extra to run the plotting code.
 
 ```python
-result = did.att_gt(data, yname="y", tname="t", idname="id", gname="g", ...)
-result = did.ddd(data, yname="y", tname="t", idname="id", gname="g", pname="p", ...)
-result = did.cont_did(data, yname="y", tname="t", idname="id", gname="g", dname="dose", ...)
-result = did.drdid(data, yname="y", tname="t", idname="id", treatname="treat", ...)
-result = did.did_multiplegt(data, yname="y", tname="t", idname="id", dname="treat", ...)
-result = did.dyn_balancing(data, yname="y", tname="t", idname="id", treatment_name="treat", ds1=[1,1], ds2=[0,0], ...)
-result = did.etwfe(data, yname="y", tname="t", gname="g", idname="id", ...)
+event_study = did.aggte(result, type="dynamic", random_state=123)
+
+plot = did.plot_event_study(event_study)
+plot.save("event_study.png", dpi=200, width=8, height=5)
 ```
 
-### Publication Tables
+<img src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/readme-event-study.png" alt="Event-study treatment effect estimates with confidence intervals">
 
-Result objects plug into [maketables](https://py-econometrics.github.io/maketables/). Pass them to `ETable` and estimates, SEs, CIs, and metadata are extracted automatically:
+Plots return standard plotnine `ggplot` objects, so you can add labels, themes,
+and other layers. Use `did.plot_gt(result, ncol=3)` to plot each treatment
+cohort separately. The
+[plotting guide](https://moderndid.readthedocs.io/en/latest/user_guide/plotting.html)
+covers customization and plots for other estimators.
+
+## Publication tables
+
+Result objects integrate with
+[maketables](https://py-econometrics.github.io/maketables/), installed separately
+with `uv pip install maketables`. Pass a result to `ETable` to extract estimates,
+standard errors, confidence intervals, and model metadata:
 
 ```python
 import maketables as mt
-
-# Aggregate results from earlier into an event study
-event_study = did.aggte(result, type="dynamic")
 
 tab = mt.ETable(
     [event_study],
@@ -157,77 +138,47 @@ tab = mt.ETable(
 tab.make("tex")  # or "html", "docx", "typst"
 ```
 
-See the [Publication Tables guide](https://moderndid.readthedocs.io/en/latest/user_guide/publication_tables.html) for `MTable` layouts and more examples.
+The
+[publication tables guide](https://moderndid.readthedocs.io/en/latest/user_guide/publication_tables.html)
+covers comparisons across specifications and custom `MTable` layouts.
 
-### Scaling Up
+## Scaling
 
-Pass a Spark or Dask DataFrame and estimation distributes automatically. See the [Distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html).
+For staggered or triple DiD on larger panels, pass a Spark or Dask DataFrame
+and estimation uses the distributed backend. The
+[distributed guide](https://moderndid.readthedocs.io/en/latest/user_guide/distributed.html)
+covers cluster setup and supported estimators.
 
-```python
-from pyspark.sql import SparkSession
-spark = SparkSession.builder.master("local[*]").getOrCreate()
-result = did.att_gt(data=spark.read.parquet("panel.parquet"),
-                    yname="y",
-                    tname="t",
-                    idname="id",
-                    gname="g")
-```
-
-For GPUs, pass `backend="cupy"`. See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html) and [benchmarks](scripts/README.md).
+On an NVIDIA GPU, install the `gpu` extra and select the CuPy backend:
 
 ```python
-result = did.att_gt(data,
-                    yname="lemp",
-                    tname="year",
-                    idname="countyreal",
-                    gname="first.treat",
-                    backend="cupy")
+result_gpu = did.att_gt(
+    data=data,
+    yname="lemp",
+    tname="year",
+    idname="countyreal",
+    gname="first.treat",
+    backend="cupy",
+)
 ```
 
-### Example Datasets
+See the [GPU guide](https://moderndid.readthedocs.io/en/latest/user_guide/gpu.html)
+for CUDA requirements and multi-GPU computation, and the
+[benchmark scripts](https://github.com/jordandeklerk/moderndid/blob/main/scripts/README.md)
+for performance comparisons.
 
-Datasets from published studies and synthetic data generators for simulations:
+## Documentation
 
-```python
-did.load_acemoglu()        # Democracy and growth (Acemoglu et al.)
-did.load_mpdta()           # County teen employment
-did.load_nsw()             # NSW job training program
-did.load_ehec()            # Medicaid expansion
-did.load_engel()           # Household expenditure
-did.load_favara_imbs()     # Bank lending
-did.load_cai2016()         # Crop insurance
-
-did.gen_did_scalable()     # Staggered DiD panel
-did.gen_cont_did_data()    # Continuous treatment DiD
-did.gen_ddd_2periods()     # Two-period triple DiD
-did.gen_ddd_mult_periods() # Staggered triple DiD
-did.gen_ddd_scalable()     # Large-scale triple DiD
-```
-
-## Planned Development
-
-- `moderndid.didml` — Machine learning approaches to DiD ([Hatamyar et al., 2023](https://arxiv.org/pdf/2310.11962))
-- `moderndid.drdidweak` — Robust to weak overlap ([Ma et al., 2023](https://arxiv.org/pdf/2304.08974))
-- `moderndid.didcomp` — Compositional changes in repeated cross-sections ([Sant'Anna & Xu, 2025](https://arxiv.org/pdf/2304.13925))
-- `moderndid.didimpute` — Imputation-based estimators ([Borusyak, Jaravel, & Spiess, 2024](https://arxiv.org/pdf/2108.12419))
-- `moderndid.didbacon` — Goodman-Bacon decomposition ([Goodman-Bacon, 2019](https://cdn.vanderbilt.edu/vu-my/wp-content/uploads/sites/2318/2019/07/29170757/ddtiming_7_29_2019.pdf))
-- `moderndid.didlocal` — Local projections DiD ([Dube et al., 2025](https://www.nber.org/system/files/working_papers/w31184/w31184.pdf))
-- `moderndid.did2s` — Two-stage DiD ([Gardner, 2021](https://jrgcmu.github.io/2sdd_current.pdf))
-- `moderndid.functional` — Specification tests ([Roth & Sant'Anna, 2023](https://arxiv.org/pdf/2010.04814))
+- [Getting Started](https://moderndid.readthedocs.io/en/latest/getting_started/index.html): installation, background, and the quickstart.
+- [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html): estimator selection, panel data, plots, tables, and scaling.
+- [Examples](https://moderndid.readthedocs.io/en/latest/examples/index.html): analyses for each treatment design.
+- [API Reference](https://moderndid.readthedocs.io/en/latest/api/index.html): function signatures, parameters, and result objects.
+- [Development](https://moderndid.readthedocs.io/en/latest/dev/index.html): contributing, architecture, and testing.
+- [Release Notes](https://moderndid.readthedocs.io/en/latest/release/index.html): changes between versions.
 
 ## Acknowledgements
 
-ModernDiD would not be possible without the researchers who developed the underlying econometric methods and implemented them in various R and Stata packages. See our [Acknowledgements](https://moderndid.readthedocs.io/en/latest/acknowledgements.html) page for a full list of the software, packages, and papers that have influenced this project.
-
-## Citation
-
-If you use ModernDiD in your research, please cite it as:
-
-```bibtex
-@software{moderndid,
-  author  = {{The ModernDiD Authors}},
-  title   = {{ModernDiD: Scalable, GPU-Accelerated Difference-in-Differences for Python}},
-  year    = {2025},
-  url     = {https://github.com/jordandeklerk/moderndid}
-}
-```
+ModernDiD builds on methods and implementations developed by researchers across
+the DiD literature. The
+[acknowledgements](https://moderndid.readthedocs.io/en/latest/acknowledgements.html)
+list the papers and R and Stata packages behind each estimator.

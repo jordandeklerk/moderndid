@@ -1,0 +1,227 @@
+/*
+The landing page drawn by _templates/landing.html. Styles use landing-only
+classes because instant navigation keeps this stylesheet loaded on every page.
+*/
+
+/* Keep the home page's drawer available when the header tabs are folded away. */
+@media screen and (min-width: 76.25em) {
+  .mdid-home-nav {
+    display: none;
+  }
+}
+
+.mdid-landing {
+  --mdid-ink: #18233d;
+  --mdid-ink-soft: #56617a;
+  --mdid-brand: #315bc4;
+  --mdid-accent: #315bc4;
+  --mdid-line: rgba(49, 91, 196, 0.16);
+  --mdid-secondary: #6d46c1;
+  --mdid-contour: #315bc4;
+  --mdid-contour-opacity: 0.9;
+  --mdid-press-face: #ffffff;
+  --mdid-press-edge: #18233d;
+}
+
+[data-md-color-scheme="slate"] .mdid-landing {
+  --mdid-ink: #edf1ff;
+  --mdid-ink-soft: #b1bbd3;
+  --mdid-brand: #91acff;
+  --mdid-accent: #91acff;
+  --mdid-line: rgba(255, 255, 255, 0.16);
+  --mdid-contour: #91acff;
+  --mdid-contour-opacity: 0.55;
+  --mdid-press-face: var(--md-default-bg-color);
+  --mdid-press-edge: #e0e6f5;
+}
+
+.mdid-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  align-items: center;
+  column-gap: clamp(2.5rem, 5vw, 5.5rem);
+  min-height: min(calc(100vh - 10rem), 52rem);
+  padding: 0 clamp(0.8rem, 2.5vw, 2.4rem) clamp(2rem, 5vh, 4rem);
+  color: var(--mdid-ink);
+  font-family: var(--md-text-font-family);
+}
+
+/* The copy column. */
+
+.mdid-name {
+  margin: 0 0 1.5rem;
+  color: var(--mdid-brand);
+  font-size: clamp(30px, 2.8vw, 42px);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+
+.mdid-title {
+  margin: 0;
+  color: var(--mdid-ink);
+  font-size: clamp(36px, 3.9vw, 58px);
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  line-height: 1.08;
+}
+
+.mdid-title__accent {
+  color: var(--mdid-accent);
+}
+
+.mdid-lede {
+  max-width: 27em;
+  margin: 1.9rem 0 0;
+  color: var(--mdid-ink-soft);
+  font-size: clamp(17px, 1.35vw, 20px);
+  line-height: 1.55;
+}
+
+/*
+The buttons follow marimo's. Each sits on a colored block offset down and to
+the left, and on hover it slides onto the block as if pressed.
+*/
+.mdid-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4rem;
+  margin-top: 2.6rem;
+}
+
+.mdid-press {
+  position: relative;
+}
+
+.mdid-press__block {
+  position: absolute;
+  bottom: -4px;
+  left: -4px;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--mdid-press-block);
+}
+
+.mdid-press--brand {
+  --mdid-press-block: rgba(49, 91, 196, 0.85);
+}
+
+.mdid-press--secondary {
+  --mdid-press-block: rgba(109, 70, 193, 0.8);
+}
+
+[data-md-color-scheme="slate"] .mdid-press--brand {
+  --mdid-press-block: rgba(145, 172, 255, 0.85);
+}
+
+.mdid-press__button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 160px;
+  height: 58px;
+  border: 1px solid var(--mdid-press-edge);
+  border-radius: 6px;
+  background: var(--mdid-press-face);
+  color: var(--mdid-ink);
+  font-size: 19px;
+  text-decoration: none;
+  transition: transform 0.2s ease;
+}
+
+.mdid-press__button:hover,
+.mdid-press__button:focus-visible {
+  color: var(--mdid-ink);
+  transform: translate(-4px, 4px);
+}
+
+.mdid-link {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.45em;
+  margin-top: 1.8rem;
+  color: var(--mdid-accent);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.mdid-link span {
+  display: inline-block;
+  transition: transform 0.18s ease;
+}
+
+.mdid-link:hover,
+.mdid-link:focus-visible {
+  color: var(--mdid-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+}
+
+.mdid-link:hover span {
+  transform: translateX(3px);
+}
+
+.mdid-press__button:focus-visible,
+.mdid-link:focus-visible {
+  outline: 2px solid var(--mdid-secondary);
+  outline-offset: 3px;
+}
+
+/* The visual is the logo mark, drawn in the scheme's colors. */
+
+.mdid-hero__visual {
+  position: relative;
+}
+
+.mdid-mark {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+[data-md-color-scheme="slate"] .mdid-mark {
+  filter: brightness(1.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdid-press__button,
+  .mdid-link span {
+    transition: none;
+  }
+}
+
+/* The columns stack where the theme folds its tabs into the drawer. */
+
+@media screen and (max-width: 76.1875em) {
+  .mdid-hero {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 3rem;
+    min-height: 0;
+    padding-top: 2rem;
+  }
+
+  .mdid-hero__visual {
+    max-width: 36rem;
+  }
+}
+
+@media screen and (max-width: 30em) {
+  .mdid-title {
+    font-size: 36px;
+  }
+
+  .mdid-actions {
+    gap: 1rem;
+  }
+
+  .mdid-press__button {
+    width: 140px;
+    height: 52px;
+    font-size: 17px;
+  }
+}

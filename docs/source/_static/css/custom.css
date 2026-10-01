@@ -1,0 +1,566 @@
+/* ModernDiD styling. */
+
+body[data-md-color-scheme="default"] {
+  --mdid-header-bg: #ffffff;
+  --mdid-header-fg: rgba(0, 0, 0, 0.87);
+  --mdid-search-bg: rgba(0, 0, 0, 0.07);
+  --mdid-search-fg: #212121;
+  --mdid-search-placeholder: rgba(0, 0, 0, 0.6);
+  --mdid-symbol: #6d46c1;
+  --mdid-code-parameter: #6543ba;
+  --mdid-error-name: #c62828;
+}
+
+body[data-md-color-scheme="slate"] {
+  --mdid-header-bg: #14151a;
+  --mdid-header-fg: #ffffff;
+  --mdid-search-bg: #0f1013;
+  --mdid-search-fg: #ffffff;
+  --mdid-search-placeholder: rgba(255, 255, 255, 0.7);
+  --mdid-symbol: #c4b5fd;
+  --mdid-code-parameter: #c4b5fd;
+  --mdid-error-name: #ff8a80;
+}
+
+/* Both schemes take the blue of the ModernDiD logo for the accent instead of the theme's teal. */
+body[data-md-color-accent] {
+  --md-accent-fg-color: #315bc4;
+  --md-accent-fg-color--transparent: rgba(49, 91, 196, 0.1);
+}
+
+header.md-header,
+.md-tabs {
+  background-color: var(--mdid-header-bg);
+  color: var(--mdid-header-fg);
+}
+
+.md-search form input,
+.md-search form input:active,
+.md-search form input:focus {
+  background-color: var(--mdid-search-bg);
+  color: var(--mdid-search-fg);
+}
+
+.md-search form input::placeholder {
+  color: var(--mdid-search-placeholder);
+}
+
+/* Content width and type scale, following marimo's documentation. */
+.md-grid {
+  max-width: 1440px;
+}
+
+@media screen and (min-width: 100em) {
+  html {
+    font-size: 133.333%;
+  }
+}
+
+.md-typeset {
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.md-typeset h1 {
+  font-size: 2em;
+  font-weight: 600;
+}
+
+.md-typeset table:not([class]) {
+  font-size: 0.75rem;
+}
+
+/* The theme pads each table cell by nearly a line above and below, so a lookup table of a dozen rows runs a screen long. */
+.md-typeset table.data:not(.plain) th,
+.md-typeset table.data:not(.plain) td {
+  padding: 0.5em 1em;
+}
+
+.md-nav {
+  font-size: 0.7rem;
+}
+
+/* The User Guide's sidebar lists its sections as headings, and the theme sets their pages flush with the heading, so this indents them as ArviZ's sidebar does. */
+@media screen and (min-width: 76.25em) {
+  .md-nav--primary .md-nav__item--section .md-nav__item--section > .md-nav {
+    margin-left: 0;
+  }
+}
+
+/*
+toc-rail.js traces the "On this page" outline with a hairline that curves in and out with its indentation and
+slides a solid thumb over the sections on screen. Sections on screen stay bright, the one being read turns
+blue, and the rest dim.
+*/
+.md-sidebar--secondary {
+  --mdid-rail-line: color-mix(in srgb, var(--md-default-fg-color) 16%, transparent);
+}
+
+/* The sidebar's scroll box clips at its edge, so the outline moves right to leave the line room. */
+.md-nav--secondary.mdid-rail-on {
+  position: relative;
+  padding-left: 0.5rem;
+}
+
+.mdid-rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.mdid-rail__track,
+.mdid-rail__thumb {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mdid-rail__track {
+  stroke: var(--mdid-rail-line);
+  stroke-width: 1;
+}
+
+.mdid-rail__thumb {
+  stroke: var(--md-accent-fg-color);
+  stroke-width: 2;
+  transition: opacity 0.2s;
+}
+
+.md-nav--secondary.mdid-rail-on .md-nav__link:not(:hover) {
+  color: var(--md-default-fg-color--light);
+  transition: color 0.25s;
+}
+
+.md-nav--secondary.mdid-rail-on .md-nav__link.mdid-visible:not(:hover) {
+  color: var(--md-default-fg-color);
+}
+
+.md-nav--secondary.mdid-rail-on .md-nav__link.mdid-current:not(:hover) {
+  color: var(--md-accent-fg-color);
+}
+
+.mdid-ring {
+  width: 0.85em;
+  height: 0.85em;
+  margin-left: 0.5em;
+  vertical-align: -0.1em;
+}
+
+.mdid-ring circle {
+  fill: none;
+  stroke-width: 1.75;
+}
+
+.mdid-ring__track {
+  stroke: var(--mdid-rail-line);
+}
+
+.mdid-ring__arc {
+  stroke: var(--md-accent-fg-color);
+  stroke-linecap: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-nav--secondary.mdid-rail-on .md-nav__link:not(:hover),
+  .mdid-rail__thumb {
+    transition: none;
+  }
+}
+
+.highlight {
+  background-color: var(--md-code-bg-color);
+  border-radius: 4px;
+}
+
+/* The semantic_highlighting extension tags parameters and keyword arguments, which take violet, while calls keep the theme's purple. */
+.highlight .nv,
+.highlight .na {
+  color: var(--mdid-code-parameter);
+}
+
+/*
+Errors sit in a red box with the exception's name in bold. A written-out ipythontb block and an executed cell's
+error share the box, and on an output it replaces MyST-NB's frame. The lexer reads a message's later lines as
+Python, so their token colors are cleared.
+*/
+.md-typeset .highlight-ipythontb pre {
+  border: 0.05rem solid color-mix(in srgb, #ff1744 35%, transparent);
+  border-left: 4px solid #ff1744;
+  border-radius: 4px;
+  background-color: color-mix(in srgb, #ff1744 7%, var(--md-code-bg-color));
+}
+
+.md-typeset .highlight-ipythontb .highlight,
+.md-typeset .highlight-ipythontb pre > code {
+  background-color: transparent;
+}
+
+.md-typeset .cell_output .output.traceback {
+  border: none;
+  background: none;
+}
+
+.md-typeset .highlight-ipythontb code span {
+  color: inherit;
+  font-style: inherit;
+}
+
+.md-typeset .highlight-ipythontb code .ne {
+  color: var(--mdid-error-name);
+  font-weight: 700;
+}
+
+.admonition {
+  border-left-width: 4px !important;
+}
+
+/* \hl in a formula marks where a symbol appears, in the secondary accent, deepened on the light scheme so it reads on white. */
+.md-typeset .mdid-symbol {
+  color: var(--mdid-symbol);
+}
+
+/* Index pages end with the logo at the right, as marimo's home page does. */
+.md-typeset .mdid-footer-logo {
+  margin-top: 3rem;
+  text-align: right;
+}
+
+.md-typeset .mdid-footer-logo img {
+  width: 525px;
+  max-width: 100%;
+}
+
+/*
+The theme pads object signatures but paints each parameter, return, and
+attribute entry with a bare code background that hugs the name. Give those
+entries the same breathing room as the signature block.
+*/
+.md-typeset dl.api-field > dt {
+  padding: 0.35em 0.6em;
+  border-radius: 0.1rem;
+  margin-top: 0.75em;
+}
+
+.md-typeset dl.api-field > dd {
+  margin-top: 0.5em;
+  margin-bottom: 1em;
+}
+
+/*
+The theme recolors the example box's border, title, and icon from the
+configured color but leaves the collapse arrow on Material's purple, so it
+follows the brand blue here. The focus glow is removed entirely.
+*/
+.md-typeset .example > .admonition-title::after,
+.md-typeset .example > summary::after {
+  color: #315bc4;
+}
+
+.md-typeset .admonition.example:focus-within,
+.md-typeset details.example:focus-within {
+  box-shadow: none;
+}
+
+.md-typeset div.math,
+.md-typeset mjx-container[display="true"] {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.2rem;
+}
+
+button.copybtn {
+  opacity: 0.4;
+}
+
+.highlight:hover button.copybtn,
+button.copybtn:hover,
+button.copybtn:focus,
+button.copybtn.success {
+  opacity: 1;
+}
+
+[data-md-color-scheme="slate"] button.copybtn {
+  background-color: var(--md-code-bg-color);
+  border-color: var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color--light);
+}
+
+/* Wide printed tables scroll inside the code element, so room at its end keeps the last column clear of the copy button. */
+.md-typeset .cell_output div.highlight pre > code {
+  padding-right: 2.5rem;
+}
+
+:root {
+  --sd-fontsize-tabs-label: 0.64rem;
+}
+
+.sd-tab-set > label {
+  padding: 0.78125em 1.25em 0.625em;
+}
+
+/* Keep the banner and sidebar offsets aligned around a compact wordmark. */
+:root {
+  --mdid-header-height: 55px;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 36px;
+  width: auto;
+}
+
+.md-header__button.md-logo {
+  height: 100%;
+  margin: 0 0 0 53px;
+  padding: 0;
+}
+
+.md-header__title {
+  height: var(--mdid-header-height);
+  line-height: var(--mdid-header-height);
+}
+
+.md-sidebar {
+  top: var(--mdid-header-height);
+}
+
+.md-header--lifted ~ .md-container .md-sidebar {
+  top: calc(var(--mdid-header-height) + 2.4rem);
+}
+
+.md-sidebar--primary .md-sidebar__scrollwrap {
+  max-height: calc(100vh - var(--mdid-header-height) - 1.2rem);
+  overflow-y: auto;
+}
+
+[dir="ltr"] .md-header__title {
+  margin-left: 0.5rem;
+}
+
+/*
+The wordmark already names the project, so the text title only shows on narrow
+screens where the theme hides the logo. The element stays in the flow to keep
+the search bar and repository widget in place.
+*/
+@media screen and (min-width: 76.25em) {
+  .md-header__title .md-header__topic {
+    visibility: hidden;
+  }
+}
+
+.md-header__title .md-header__topic {
+  opacity: 1;
+  transform: none;
+}
+
+.md-header__title .md-header__topic .md-ellipsis {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.md-header__title .md-header__topic + .md-header__topic {
+  display: none;
+}
+
+/*
+plotnine reports each plot's size in pixels, and the fixed height would stretch
+the image once the column narrows its width.
+*/
+.md-typeset .cell_output img {
+  height: auto !important;
+}
+
+/*
+MyST-NB folds a hide-input cell into an admonition, which the theme boxes in
+with an icon and a tinted title. These rules turn it into a small pill in the
+accent color that opens onto the code, like marimo's show code toggle, and
+keep the theme's chevron to show which way it turns.
+*/
+.md-typeset div.cell details.hide.above-input {
+  margin: 0.5em 0 1em;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+.md-typeset div.cell details.hide.above-input > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  width: fit-content;
+  margin: 0;
+  padding: 0.25em 0.9em 0.25em 0.6em;
+  border: 0.05rem solid var(--md-accent-fg-color);
+  border-radius: 1em;
+  background-color: var(--md-accent-fg-color--transparent);
+  color: var(--md-accent-fg-color);
+  transition: background-color 0.2s;
+}
+
+.md-typeset div.cell details.hide.above-input > summary:hover {
+  background-color: color-mix(in srgb, var(--md-accent-fg-color) 22%, transparent);
+}
+
+.md-typeset div.cell details.hide.above-input > summary::before,
+.md-typeset div.cell details.hide.above-input > summary > p.admonition-title::before {
+  display: none;
+}
+
+.md-typeset div.cell details.hide.above-input > summary::after {
+  position: static;
+  order: -1;
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.md-typeset div.cell details.hide.above-input > summary > p.admonition-title {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  list-style: none;
+}
+
+/* MyST-NB frames only code that sits directly in its cell, so the folded code takes the same frame here. */
+.md-typeset div.cell details.hide.above-input > .cell_input {
+  margin-top: 0.4em;
+  border: var(--mystnb-source-border-width) var(--mystnb-source-border-color) solid;
+  border-left-color: var(--mystnb-source-margin-color);
+  border-left-width: medium;
+  border-radius: var(--mystnb-source-border-radius);
+  background-color: var(--mystnb-source-bg-color);
+}
+
+/*
+pandas and polars frames render the way JupyterLab draws them, with a rule
+under the header, striped rows, and no cell borders. The colors come from the
+theme so the frames read in both schemes.
+*/
+.md-typeset .cell_output .output.text_html {
+  overflow-x: auto;
+}
+
+.md-typeset .cell_output table.dataframe {
+  border: none;
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin: 0.5em 0 1em;
+  color: var(--md-default-fg-color);
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.md-typeset .cell_output table.dataframe thead {
+  border-bottom: 0.05rem solid var(--md-default-fg-color--lighter);
+  vertical-align: bottom;
+}
+
+.md-typeset .cell_output table.dataframe th,
+.md-typeset .cell_output table.dataframe td {
+  border: none;
+  padding: 0.5em;
+  line-height: normal;
+  text-align: right;
+  white-space: normal;
+}
+
+.md-typeset .cell_output table.dataframe th {
+  font-weight: 700;
+}
+
+.md-typeset .cell_output table.dataframe td {
+  vertical-align: middle;
+}
+
+/* A cell tagged wide-table keeps each row on one line and scrolls sideways, for frames with many text columns. */
+.md-typeset div.cell.tag_wide-table table.dataframe th,
+.md-typeset div.cell.tag_wide-table table.dataframe td {
+  white-space: nowrap;
+}
+
+.md-typeset .cell_output table.dataframe tbody tr:nth-child(even) {
+  background-color: var(--md-code-bg-color);
+}
+
+.md-typeset .cell_output table.dataframe tbody tr:hover {
+  background-color: rgba(3, 169, 244, 0.12);
+}
+
+/*
+xarray draws datasets and trees with its own markup, colored from JupyterLab's
+or the PyData theme's variables, neither of which exists here. These rules take
+the colors from this theme in both schemes and undo the typeset list margins
+that would pull its grid apart.
+*/
+.md-typeset .xr-wrap {
+  --xr-font-color0: var(--md-default-fg-color);
+  --xr-font-color2: var(--md-default-fg-color--light);
+  --xr-font-color3: var(--md-default-fg-color--lighter);
+  --xr-border-color: var(--md-typeset-table-color);
+  --xr-disabled-color: var(--md-default-fg-color--lighter);
+  --xr-background-color: var(--md-default-bg-color);
+  --xr-background-color-row-even: var(--md-default-bg-color);
+  --xr-background-color-row-odd: var(--md-code-bg-color);
+  max-width: 44rem;
+  margin: 0.5em 0 1em;
+  color: var(--md-default-fg-color);
+  font-size: 0.64rem;
+}
+
+/* The theme's rule for pre outranks xarray's own and would show the plain-text copy too. */
+.md-typeset .xr-text-repr-fallback {
+  display: none;
+}
+
+.md-typeset .xr-wrap ul,
+.md-typeset .xr-wrap ul li,
+.md-typeset .xr-wrap dl,
+.md-typeset .xr-wrap dd {
+  margin: 0;
+}
+
+/* The theme lays out every list as flow-root, which stacks the cells of xarray's grid. */
+.md-typeset .xr-wrap .xr-sections {
+  display: grid;
+}
+
+.md-typeset .xr-wrap .xr-var-list {
+  display: contents;
+}
+
+.md-typeset .xr-wrap .xr-dim-list {
+  list-style: none;
+}
+
+/* The toggles sit in zero-width grid columns, and their labels show the state. */
+.md-typeset .xr-wrap .xr-var-item > input {
+  opacity: 0;
+  margin: 0;
+}
+
+.md-typeset .xr-wrap pre {
+  margin: 0;
+  font-size: 0.95em;
+}
+
+/* Preserve contrast for links and the reading rail in the dark scheme. */
+body[data-md-color-scheme="slate"] {
+  --md-accent-fg-color: #91acff;
+  --md-accent-fg-color--transparent: rgba(145, 172, 255, 0.1);
+}
+
+/* Keep the existing guide plots proportional on narrow screens. */
+.md-typeset img {
+  height: auto;
+}
+
+.md-typeset .mdid-footer-logo img {
+  width: 360px;
+}

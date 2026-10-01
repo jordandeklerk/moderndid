@@ -1,0 +1,46 @@
+{# The documentation home, styled by _static/css/landing.css. #}
+{% extends "page.html" %}
+
+{% block site_nav %}
+<div class="md-sidebar md-sidebar--primary mdid-home-nav" data-md-component="sidebar" data-md-type="navigation">
+  <div class="md-sidebar__scrollwrap">
+    <div class="md-sidebar__inner">
+      {% include "partials/nav.html" %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block container %}
+<div class="md-content mdid-landing" data-md-component="content">
+  <section class="mdid-hero" aria-labelledby="moderndid">
+    <div class="mdid-hero__copy">
+      <span id="moderndid-docs-mainpage"></span>
+      <h1 id="moderndid" class="mdid-name">ModernDiD</h1>
+      <p class="mdid-title">
+        Modern
+        <span class="mdid-title__accent">causal inference</span>
+        in Python
+      </p>
+      <p class="mdid-lede">
+        Difference-in-differences estimators from modern econometric research
+        in one consistent API.
+      </p>
+      <div class="mdid-actions">
+        <div class="mdid-press mdid-press--brand">
+          <span class="mdid-press__block" aria-hidden="true"></span>
+          <a class="mdid-press__button" href="{{ pathto('getting_started/index') }}">Get Started</a>
+        </div>
+        <div class="mdid-press mdid-press--secondary">
+          <span class="mdid-press__block" aria-hidden="true"></span>
+          <a class="mdid-press__button" href="{{ pathto('user_guide/index') }}">User Guide</a>
+        </div>
+      </div>
+      <a class="mdid-link" href="{{ pathto('api/index') }}">See API reference<span aria-hidden="true">&rarr;</span></a>
+    </div>
+    <div class="mdid-hero__visual">
+      <img class="mdid-mark" src="{{ pathto('_static/logo-mark.svg', 1) }}" alt="" width="480" height="270">
+    </div>
+  </section>
+</div>
+{% endblock %}

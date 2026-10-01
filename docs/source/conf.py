@@ -1,8 +1,12 @@
 """moderndid sphinx configuration."""
 
 import math
+import sys
 from datetime import date
 from importlib.metadata import metadata
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent / "_ext"))
 
 # -- Project information
 
@@ -19,18 +23,22 @@ release = version
 # -- General configuration
 
 extensions = [
+    "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx.ext.viewcode",
     "sphinx.ext.autosummary",
     "sphinx.ext.extlinks",
-    "numpydoc",
+    "sphinx.ext.napoleon",
     "myst_parser",
     "sphinx_copybutton",
     "sphinx_design",
     "IPython.sphinxext.ipython_directive",
     "IPython.sphinxext.ipython_console_highlighting",
     "matplotlib.sphinxext.plot_directive",
+    "sphinx_immaterial",
+    "last_updated",
+    "semantic_highlighting",
 ]
 
 templates_path = ["_templates"]
@@ -39,6 +47,9 @@ exclude_patterns = [
     "Thumbs.db",
     ".DS_Store",
     ".ipynb_checkpoints",
+    "_static/**",
+    "_templates/**",
+    "_ext/**",
 ]
 
 # The reST default role (used for this markup: `text`) to use for all documents.
@@ -76,24 +87,10 @@ autodoc_default_options = {
     "show-inheritance": False,
 }
 
-numpydoc_show_class_members = False
-numpydoc_validation_checks = {"all"} - {"GL08", "ES01", "SA01", "EX01"}
-numpydoc_xref_param_type = True
-numpydoc_xref_ignore = {"of", "or", "optional", "scalar", "default"}
-singulars = ("int", "list", "dict", "float")
-numpydoc_xref_aliases = {
-    "ndarray": ":class:`numpy.ndarray`",
-    "Series": ":class:`pandas.Series`",
-    "pd.DataFrame": ":class:`pandas.DataFrame`",
-    "pd.Series": ":class:`pandas.Series`",
-    "pl.DataFrame": ":class:`polars.DataFrame`",
-    "pl.LazyFrame": ":class:`polars.LazyFrame`",
-    "np.ndarray": ":class:`numpy.ndarray`",
-    "np.random.Generator": ":class:`numpy.random.Generator`",
-    "matplotlib.figure.Figure": ":class:`matplotlib.figure.Figure`",
-    "ggplot": ":class:`plotnine.ggplot`",
-    **{f"{singular}s": f":any:`{singular}s <{singular}>`" for singular in singulars},
-}
+napoleon_numpy_docstring = True
+napoleon_google_docstring = False
+napoleon_use_ivar = True
+napoleon_use_admonition_for_examples = True
 
 intersphinx_mapping = {
     "numpy": ("https://numpy.org/doc/stable/", None),
@@ -102,58 +99,82 @@ intersphinx_mapping = {
     "polars": ("https://docs.pola.rs/api/python/stable/", None),
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "matplotlib": ("https://matplotlib.org/stable/", None),
-    "plotnine": ("https://plotnine.org/reference/", None),
+    "plotnine": ("https://plotnine.org/", None),
 }
 
 # -- Options for HTML output
 
-html_theme = "pydata_sphinx_theme"
+html_theme = "sphinx_immaterial"
 
-html_logo = "_static/logo.svg"
-html_favicon = "_static/favicon.ico"
-
-html_sidebars = {
-    "index": [],
-    "acknowledgements": [],
-    "**": ["sidebar-nav-bs"],
-}
+html_logo = "_static/logo-wordmark.svg"
+html_favicon = "_static/logo-mark.svg"
 
 html_theme_options = {
-    "header_links_before_dropdown": 7,
-    "icon_links": [
+    "font": {"text": "PT Sans", "code": "Fira Mono"},
+    "repo_url": "https://github.com/jordandeklerk/moderndid",
+    "repo_name": "ModernDiD",
+    "icon": {"repo": "fontawesome/brands/git-alt"},
+    "features": [
+        "header.autohide",
+        "navigation.instant",
+        "navigation.tabs",
+        "navigation.tabs.sticky",
+        "navigation.path",
+        "navigation.top",
+        "navigation.footer",
+        "navigation.tracking",
+        "announce.dismiss",
+        "search.highlight",
+        "search.share",
+        "toc.follow",
+    ],
+    "toc_title": "On this page",
+    "globaltoc_collapse": False,
+    "palette": [
         {
-            "name": "GitHub",
-            "url": "https://github.com/jordandeklerk/moderndid",
-            "icon": "fa-brands fa-github",
+            "media": "(prefers-color-scheme)",
+            "toggle": {"icon": "material/brightness-auto", "name": "Switch to light mode"},
+        },
+        {
+            "media": "(prefers-color-scheme: light)",
+            "scheme": "default",
+            "primary": "white",
+            "accent": "blue",
+            "toggle": {"icon": "material/weather-sunny", "name": "Switch to dark mode"},
+        },
+        {
+            "media": "(prefers-color-scheme: dark)",
+            "scheme": "slate",
+            "primary": "black",
+            "accent": "blue",
+            "toggle": {"icon": "material/weather-night", "name": "Switch to system preference"},
         },
     ],
-    "logo": {
-        "text": "ModernDiD",
-        "image_light": "_static/logo.svg",
-        "image_dark": "_static/logo.svg",
-    },
-    "collapse_navigation": False,
-    "navbar_start": ["navbar-logo"],
-    "navbar_end": ["search-button", "theme-switcher", "navbar-icon-links"],
-    "navbar_persistent": [],
-    "show_version_warning_banner": False,
-    "navigation_depth": 4,
 }
 
-html_title = f"{project} v{version} Manual"
+html_title = "ModernDiD"
 html_static_path = ["_static"]
-html_last_updated_fmt = "%b %d, %Y"
 
-html_css_files = [
-    "custom.css",
+html_css_files = ["css/custom.css", "css/landing.css"]
+html_js_files = [
+    ("js/copybutton-shim.js", {"priority": 200}),
+    "js/header-title-link.js",
+    "js/toc-rail.js",
 ]
-html_context = {"default_mode": "light"}
 html_use_modindex = True
 html_copy_source = False
 html_domain_indices = False
 html_file_suffix = ".html"
 
 htmlhelp_basename = "moderndid"
+
+sphinx_immaterial_custom_admonitions = [
+    {"name": "example", "override": True, "icon": "material/code-braces", "color": (49, 91, 196)},
+    {"name": "important", "override": True, "icon": "material/alert-decagram", "color": (124, 77, 255)},
+]
+
+myst_enable_extensions = ["linkify", "colon_fence", "dollarmath"]
+myst_heading_anchors = 3
 
 plot_pre_code = """
 import numpy as np
@@ -184,3 +205,42 @@ plot_rcparams = {
     "figure.subplot.wspace": 0.4,
     "text.usetex": False,
 }
+
+
+def _landing_template(app, pagename, templatename, context, doctree):
+    """Render the documentation home with the landing page template."""
+    if pagename == app.config.root_doc:
+        return "landing.html"
+    return None
+
+
+def _user_guide_sections(app, pagename, templatename, context, doctree):
+    """Display guide sections as headings without expanding the API sidebar."""
+    if pagename.startswith("user_guide/") and not pagename.startswith("user_guide/example_"):
+        theme = context["config"]["theme"]
+        features = [*theme["features"], "navigation.sections"]
+        context["config"] = {**context["config"], "theme": {**theme, "features": features}}
+        _link_parents(context["nav"])
+
+
+def _link_parents(entries, parent=None):
+    """Reconnect copied navigation entries to their parents on the current page."""
+    for entry in entries:
+        entry.parent = parent
+        _link_parents(entry.children, entry)
+
+
+def _open_examples_boxes(app, doctree):
+    """Render API examples as open, collapsible example boxes."""
+    from docutils import nodes
+
+    for node in doctree.findall(nodes.admonition):
+        if "example" in node["classes"] and node.get("collapsible") is None:
+            node["collapsible"] = "open"
+
+
+def setup(app):
+    """Register the landing page, grouped guide navigation, and API example boxes."""
+    app.connect("html-page-context", _landing_template)
+    app.connect("html-page-context", _user_guide_sections, priority=600)
+    app.connect("doctree-read", _open_examples_boxes)

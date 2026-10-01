@@ -1,111 +1,25 @@
+:hide-navigation: true
+:hide-toc: true
+:hide-footer: true
+:hide-edit-link: true
+
 .. _moderndid_docs_mainpage:
 
-#########################
-ModernDiD documentation
-#########################
+=========
+ModernDiD
+=========
+
+.. The landing template renders this page; this document holds the site navigation.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :hidden:
 
-   Getting Started <getting_started/overview>
+   Getting Started <getting_started/index>
    User Guide <user_guide/index>
-   API <api/index>
-   Development <dev/index>
+   Examples <examples/index>
+   API Reference <api/index>
    Background <background/index>
+   Development <dev/index>
    Release Notes <release/index>
    Acknowledgements <acknowledgements>
-
-
-**Version**: |version|
-
-**Useful links**:
-`Installation <getting_started/installation.html>`_ |
-`Introduction to DiD <getting_started/causal_inference.html>`_ |
-`Source Repository <https://github.com/jordandeklerk/moderndid>`_ |
-`Issue Tracker <https://github.com/jordandeklerk/moderndid/issues>`_ |
-`PyPI <https://pypi.org/project/moderndid/>`_
-
-**ModernDiD** is a scalable, GPU-accelerated difference-in-differences library for
-Python. It consolidates modern DiD estimators from leading econometric research
-and various R and Stata packages into a single framework with a consistent API.
-Runs on a single machine, NVIDIA GPUs, and distributed Spark and Dask clusters.
-
-.. grid:: 1 1 2 2
-    :gutter: 2 3 4 4
-
-    .. grid-item-card::
-        :img-top: _static/tutorial.svg
-        :text-align: center
-
-        Getting started
-        ^^^
-
-        New to **ModernDiD**? Check out the Getting Started guide for installation
-        instructions and an introduction to difference-in-differences methodology.
-
-        +++
-
-        .. button-ref:: overview
-            :expand:
-            :color: secondary
-            :click-parent:
-
-            To the getting started guide
-
-    .. grid-item-card::
-        :img-top: _static/user_guide.svg
-        :text-align: center
-
-        User guide
-        ^^^
-
-        The user guide provides in-depth tutorials and practical guidance for
-        implementing DiD estimators with real-world data scenarios.
-
-        +++
-
-        .. button-ref:: user-guide
-            :expand:
-            :color: secondary
-            :click-parent:
-
-            To the user guide
-
-    .. grid-item-card::
-        :img-top: _static/api_reference.svg
-        :text-align: center
-
-        API reference
-        ^^^
-
-        The API reference contains detailed documentation on all of **ModernDiD**'s
-        estimators, methods, and classes including function signatures and parameters.
-
-        +++
-
-        .. button-ref:: api
-            :expand:
-            :color: secondary
-            :click-parent:
-
-            To the API reference
-
-    .. grid-item-card::
-        :img-top: _static/developer.svg
-        :text-align: center
-
-        Development
-        ^^^
-
-        Want to contribute to **ModernDiD**? The development guide covers setup,
-        coding standards, testing, and submission guidelines.
-
-        +++
-
-        .. button-ref:: development
-            :expand:
-            :color: secondary
-            :click-parent:
-
-            To the development guide

@@ -124,13 +124,3 @@ Next steps
 - :ref:`Quickstart <quickstart>` to learn the API with working examples.
 - :ref:`Introduction to DiD <causal_inference>` for background on the
   difference-in-differences framework.
-
-
-.. toctree::
-   :maxdepth: 1
-   :caption: Getting Started
-   :hidden:
-
-   self
-   installation
-   causal_inference
