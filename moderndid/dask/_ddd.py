@@ -59,6 +59,10 @@ def dask_ddd(
     Users do not need to call this function directly. Passing a Dask DataFrame
     to :func:`~moderndid.ddd` will automatically dispatch here.
 
+    See the :ref:`distributed estimation guide <distributed-interfaces>` for when to
+    call ``dask_ddd`` with an explicit client instead of passing a Dask DataFrame to
+    ``ddd``.
+
     Parameters
     ----------
     data : dask.dataframe.DataFrame
@@ -136,61 +140,6 @@ def dask_ddd(
         - **inf_func_mat**: Influence function matrix
         - **n**: Number of units
         - **args**: Estimation arguments
-
-    Examples
-    --------
-    For datasets that fit in memory, create a Dask DataFrame from an existing
-    pandas or polars DataFrame:
-
-    .. code-block:: python
-
-        import dask.dataframe as dd
-        from moderndid import ddd, gen_ddd_mult_periods
-
-        dgp = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
-        ddf = dd.from_pandas(dgp["data"].to_pandas(), npartitions=4)
-
-        result = ddd(
-            data=ddf,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="group",
-            pname="partition",
-            est_method="dr",
-        )
-
-    For large datasets stored on disk, read directly into Dask:
-
-    .. code-block:: python
-
-        ddf = dd.read_parquet("large_panel/*.parquet")
-        result = ddd(
-            data=ddf,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="group",
-            pname="partition",
-        )
-
-    To connect to an existing Dask cluster instead of the default local one:
-
-    .. code-block:: python
-
-        from dask.distributed import Client
-        from moderndid.dask import dask_ddd
-
-        client = Client("scheduler-address:8786")
-        result = dask_ddd(
-            data=ddf,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="group",
-            pname="partition",
-            client=client,
-        )
 
     See Also
     --------

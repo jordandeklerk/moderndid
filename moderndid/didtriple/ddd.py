@@ -73,6 +73,9 @@ def ddd(
     parallel trends within or across groups, making DDD appealing when such assumptions
     are implausible.
 
+    See the :ref:`triple differences example <example_triple_did>` for two-period and
+    staggered designs on panel and repeated cross-section data.
+
     Parameters
     ----------
     data : DataFrame
@@ -193,102 +196,6 @@ def ddd(
 
         For multi-period repeated cross-section data, returns DDDMultiPeriodRCResult
         with the same structure.
-
-    Examples
-    --------
-    We can generate synthetic data for a 2-period DDD setup using the ``gen_ddd_2periods``
-    function. The data contains treatment status (``state``), eligibility within treatment
-    groups  (``partition``), and covariates.
-
-    .. ipython::
-
-        In [1]: import numpy as np
-           ...: from moderndid import ddd, gen_ddd_2periods
-           ...:
-           ...: dgp = gen_ddd_2periods(n=1000, dgp_type=1, random_state=42)
-           ...: df = dgp["data"]
-           ...: df.head()
-
-    Now we can compute the DDD estimate using the doubly robust estimator. The ``pname``
-    parameter identifies which units within a treatment group are eligible to receive
-    treatment, which is the key distinction from standard DiD.
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: result = ddd(
-           ...:     data=df,
-           ...:     yname="y",
-           ...:     tname="time",
-           ...:     idname="id",
-           ...:     gname="state",
-           ...:     pname="partition",
-           ...:     xformla="~ cov1 + cov2 + cov3 + cov4",
-           ...:     est_method="dr",
-           ...: )
-           ...: result
-
-    The function automatically detects multi-period data with staggered treatment adoption.
-    When there are more than two time periods or treatment cohorts, it returns group-time
-    ATT estimates that can be aggregated using ``agg_ddd``.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: from moderndid import gen_ddd_mult_periods
-           ...:
-           ...: dgp_mp = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
-           ...: result_mp = ddd(
-           ...:     data=dgp_mp["data"],
-           ...:     yname="y",
-           ...:     tname="time",
-           ...:     idname="id",
-           ...:     gname="group",
-           ...:     pname="partition",
-           ...:     control_group="nevertreated",
-           ...:     base_period="varying",
-           ...:     est_method="dr",
-           ...: )
-           ...: result_mp
-
-    The function also supports repeated cross-section data where different units are
-    sampled in each time period. Set ``panel=False`` to use this mode.
-
-    .. ipython::
-        :okwarning:
-
-        In [4]: dgp_rcs = gen_ddd_2periods(n=2000, dgp_type=1, panel=False, random_state=42)
-           ...: result_rcs = ddd(
-           ...:     data=dgp_rcs["data"],
-           ...:     yname="y",
-           ...:     tname="time",
-           ...:     gname="state",
-           ...:     pname="partition",
-           ...:     xformla="~ cov1 + cov2 + cov3 + cov4",
-           ...:     est_method="dr",
-           ...:     panel=False,
-           ...: )
-           ...: result_rcs
-
-    For multi-period repeated cross-section data with staggered treatment adoption,
-    set ``panel=False`` with multiple time periods.
-
-    .. ipython::
-        :okwarning:
-
-        In [5]: dgp_mp_rcs = gen_ddd_mult_periods(n=500, dgp_type=1, panel=False, random_state=42)
-           ...: result_mp_rcs = ddd(
-           ...:     data=dgp_mp_rcs["data"],
-           ...:     yname="y",
-           ...:     tname="time",
-           ...:     gname="group",
-           ...:     pname="partition",
-           ...:     control_group="notyettreated",
-           ...:     base_period="universal",
-           ...:     est_method="dr",
-           ...:     panel=False,
-           ...: )
-           ...: result_mp_rcs
 
     Notes
     -----

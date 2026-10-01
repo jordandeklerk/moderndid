@@ -168,6 +168,12 @@ cython_debug/
 .c*
 .m*
 
+# Track the project's Claude Code instructions and skills while the rest of .claude stays local
+!/.claude/
+/.claude/*
+!/.claude/CLAUDE.md
+!/.claude/skills/
+
 # Large test data files
 tests/didcont/r_simulated_data.csv
 

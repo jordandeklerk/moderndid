@@ -57,6 +57,19 @@ Functions for visualizing HonestDiD sensitivity analysis results.
 
    plot_sensitivity
 
+Themes
+------
+
+Each theme replaces the default gray panels and grid lines when you add it to a plot with ``+``.
+
+.. autosummary::
+   :toctree: generated/plotting/
+   :nosignatures:
+
+   theme_moderndid
+   theme_publication
+   theme_minimal
+
 Data Converters
 ---------------
 

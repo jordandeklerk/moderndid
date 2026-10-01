@@ -259,10 +259,17 @@ class RepeatedCrossSectionHandler(BaseTransformer):
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
-        if config.panel:
-            return to_polars(data)
-
         df = to_polars(data)
+
+        if config.panel and config.allow_unbalanced_panel and config.idname:
+            unit_counts = df.group_by(config.idname).len()
+            # An unbalanced panel has no outcome tensor, so it takes the repeated cross section estimators,
+            # which still sum each unit's influence function through the row id.
+            if (unit_counts["len"] != df[config.tname].n_unique()).any():
+                config.panel = False
+
+        if config.panel:
+            return df
 
         if config.idname is None:
             config.true_repeated_cross_sections = True

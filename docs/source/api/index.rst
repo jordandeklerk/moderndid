@@ -12,6 +12,7 @@ This is the API reference for **ModernDiD**; details on the underlying
 methodology are found in :ref:`background`.
 
 .. list-table::
+   :class: section-index-table
    :header-rows: 1
    :widths: 35 65
 

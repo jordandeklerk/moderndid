@@ -90,6 +90,9 @@ def etwfe(
     :func:`~moderndid.etwfe.emfx.emfx` to aggregate the cell-level
     estimates into overall, group, calendar, or event-study summaries.
 
+    See the :ref:`extended TWFE example <example_etwfe>` for ``etwfe`` on the minimum
+    wage data with covariates, control groups, model families, and variance options.
+
     Parameters
     ----------
     data : DataFrame
@@ -189,41 +192,6 @@ def etwfe(
        Difference-in-Differences with Panel Data." The Econometrics
        Journal, 26(3), C31-C66.
 
-    Examples
-    --------
-    The dataset below contains 500 counties observed from 2003 to 2007.
-    Some counties are first treated in 2004, some in 2006, and some in 2007.
-    The variable ``first.treat`` indicates the first period of treatment:
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: from moderndid import etwfe, emfx, load_mpdta
-           ...:
-           ...: df = load_mpdta()
-           ...: print(df.head())
-
-    Estimate the saturated ETWFE model and print the cohort-time ATTs:
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: mod = etwfe(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...: )
-           ...: print(mod)
-
-    Aggregate into an event study with ``emfx``:
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: es = emfx(mod, type="event")
-           ...: print(es)
     """
     if family not in (None, "gaussian", "poisson", "logit", "probit"):
         raise ValueError(f"family must be None, 'gaussian', 'poisson', 'logit', or 'probit', got '{family}'")

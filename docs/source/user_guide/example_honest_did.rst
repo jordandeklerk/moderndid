@@ -535,6 +535,8 @@ here is what the authors recommend.
   actually plausible given the institutional context.
 
 
+.. _example_honest_did_external:
+
 Using external event study estimates
 ------------------------------------
 

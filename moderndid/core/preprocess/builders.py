@@ -21,7 +21,7 @@ from .constants import WEIGHTS_COLUMN
 from .models import ContDIDData, DDDData, DIDData, DIDInterData, DynBalancingData, EtwfeData, TwoPeriodDIDData
 from .tensors import TensorFactorySelector
 from .transformers import DataTransformerPipeline
-from .utils import extract_ddd_covariates, extract_vars_from_formula
+from .utils import extract_ddd_covariates, extract_unit_clusters, extract_vars_from_formula
 from .validators import CompositeValidator
 
 
@@ -628,9 +628,7 @@ class PreprocessDataBuilder:
 
     def _extract_cluster_variable(self, time_invariant_data: pl.DataFrame) -> np.ndarray | None:
         """Extract cluster variable if specified."""
-        if self._config.clustervars and len(self._config.clustervars) > 0:
-            return time_invariant_data[self._config.clustervars[0]].to_numpy()
-        return None
+        return extract_unit_clusters(time_invariant_data, self._config.clustervars, self._config.idname)
 
     @staticmethod
     def _extract_weights(time_invariant_data: pl.DataFrame) -> np.ndarray:

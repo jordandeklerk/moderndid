@@ -92,6 +92,9 @@ def att_gt(
     change in outcomes, and :math:`m_{g,t}(X)` is the expected outcome change
     for the comparison group.
 
+    See the :ref:`staggered DiD example <example_staggered_did>` for a full analysis of
+    the minimum wage data with ``att_gt``.
+
     Parameters
     ----------
     data : DataFrame
@@ -139,9 +142,8 @@ def att_gt(
         Whether or not the data is a panel dataset. The panel dataset should be
         provided in long format.
     allow_unbalanced_panel : bool, default=False
-        Whether or not function should "balance" the panel with respect to time and
-        id. The default values if False which means that att_gt will drop all units
-        where data is not observed in all periods.
+        Whether to keep units observed in only some periods. If False, att_gt drops
+        every unit missing from any period.
     control_group : {"nevertreated", "notyettreated"}, default="nevertreated"
         Which units to use the control group. The default is "nevertreated" which
         sets the control group to be the group of units that never participate in
@@ -191,38 +193,6 @@ def att_gt(
         - **estimation_params**: Dictionary with estimation details (control_group, anticipation_periods, etc.)
         - **G**: Unit-level group assignments
         - **weights_ind**: Unit-level sampling weights (if provided)
-
-    Examples
-    --------
-    The dataset below contains 500 observations of county-level teen employment rates from 2003-2007.
-    Some states are first treated in 2004, some in 2006, and some in 2007. The variable ``first.treat``
-    indicates the first period in which a state is treated:
-
-    .. ipython::
-
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, load_mpdta
-           ...:
-           ...: df = load_mpdta()
-           ...: print(df.head())
-
-    We can compute group-time average treatment effects for a staggered adoption design
-    where different units adopt treatment at different time periods. The output is an object of type
-    ``MPResult`` which is a container for the results:
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
-           ...: print(result)
 
     See Also
     --------

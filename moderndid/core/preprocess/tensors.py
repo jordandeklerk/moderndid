@@ -11,7 +11,7 @@ from moderndid.cupy.backend import get_backend, to_device
 from ..dataframe import DataFrame, to_polars
 from .config import DIDConfig
 from .constants import WEIGHTS_COLUMN, DataFormat
-from .utils import extract_vars_from_formula
+from .utils import extract_unit_clusters, extract_vars_from_formula
 
 
 class TensorFactory(Protocol):
@@ -93,9 +93,7 @@ class BaseTensorFactory(ABC):
     @staticmethod
     def extract_cluster_variable(time_invariant_data: pl.DataFrame, config: DIDConfig) -> np.ndarray | None:
         """Extract cluster variable if specified."""
-        if config.clustervars and len(config.clustervars) > 0:
-            return time_invariant_data[config.clustervars[0]].to_numpy()
-        return None
+        return extract_unit_clusters(time_invariant_data, config.clustervars, config.idname)
 
     @staticmethod
     def extract_weights(time_invariant_data: pl.DataFrame) -> np.ndarray:

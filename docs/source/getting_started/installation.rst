@@ -59,8 +59,8 @@ you always get the core estimators plus whatever extras you specify.
 
     We recommend ``uv pip install "moderndid[all]"`` for full functionality.
     The ``numba`` extra provides significant performance gains for bootstrap
-    inference and the ``plots`` extra provides customizable, batteries-included
-    plotting out of the box. Install minimal extras only if you have specific
+    inference, and the ``plots`` extra adds customizable plotting functions for
+    every estimator's results. Install minimal extras only if you have specific
     dependency constraints.
 
 From source

@@ -66,6 +66,10 @@ def spark_ddd(
     Users do not need to call this function directly. Passing a PySpark
     DataFrame to :func:`~moderndid.ddd` will automatically dispatch here.
 
+    See the :ref:`distributed estimation guide <distributed-interfaces>` for when to
+    call ``spark_ddd`` with an explicit session instead of passing a Spark DataFrame to
+    ``ddd``.
+
     Parameters
     ----------
     data : pyspark.sql.DataFrame
@@ -141,60 +145,6 @@ def spark_ddd(
         - **inf_func_mat**: Influence function matrix
         - **n**: Number of units
         - **args**: Estimation arguments
-
-    Examples
-    --------
-    For datasets that fit in memory, create a Spark DataFrame from an existing
-    pandas or polars DataFrame:
-
-    .. code-block:: python
-
-        from pyspark.sql import SparkSession
-        from moderndid import ddd, gen_ddd_mult_periods
-
-        spark = SparkSession.builder.master("local[*]").getOrCreate()
-        dgp = gen_ddd_mult_periods(n=500, dgp_type=1, random_state=42)
-        sdf = spark.createDataFrame(dgp["data"].to_pandas())
-
-        result = ddd(
-            data=sdf,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="group",
-            pname="partition",
-            est_method="dr",
-        )
-
-    For large datasets stored on disk, read directly into Spark:
-
-    .. code-block:: python
-
-        sdf = spark.read.parquet("large_panel/*.parquet")
-        result = ddd(
-            data=sdf,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="group",
-            pname="partition",
-        )
-
-    To use an existing Spark session:
-
-    .. code-block:: python
-
-        from moderndid.spark import spark_ddd
-
-        result = spark_ddd(
-            data=sdf,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="group",
-            pname="partition",
-            spark=spark,
-        )
 
     See Also
     --------

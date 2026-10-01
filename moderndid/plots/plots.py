@@ -118,7 +118,6 @@ def plot_gt(
         + theme_gray()
         + theme(
             strip_text=element_text(size=11, weight="bold"),
-            plot_title=element_text(margin={"b": 25}),
             legend_position="bottom",
         )
     )

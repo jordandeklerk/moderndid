@@ -99,6 +99,9 @@ def create_sensitivity_results_sm(
     The conditional and hybrid methods (C-F, C-LF) provide uniform size control and are
     recommended when monotonicity or sign restrictions are added.
 
+    See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
+    function applied to event study estimates from outside moderndid.
+
     Parameters
     ----------
     betahat : ndarray
@@ -152,67 +155,6 @@ def create_sensitivity_results_sm(
     Notes
     -----
     Cannot specify both monotonicity_direction and bias_direction.
-
-    Examples
-    --------
-    To use this function directly, we need to compute an event study and extract the
-    estimates and covariance matrix. If you're using moderndid's built-in estimators,
-    you can use the `honest_did` function to process the event study and extract the
-    estimates and covariance matrix for you.
-
-    If you're using an external estimator, you will need to extract the influence functions and
-    construct the covariance matrix. Then, you can use the `create_sensitivity_results_sm` function
-    to run the sensitivity analysis.
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, aggte, load_mpdta
-           ...: from moderndid.didhonest import create_sensitivity_results_sm
-           ...
-           ...: df = load_mpdta()
-           ...: gt_result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
-           ...: es_result = aggte(gt_result, type="dynamic")
-
-    Suppose this is an external estimator. We can extract the influence functions and
-    construct the covariance matrix, removing the reference period.
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: influence_func = es_result.influence_func
-           ...: event_times = es_result.event_times
-           ...: ref_idx = np.where(event_times == -1)[0][0]
-           ...: att_no_ref = np.delete(es_result.att_by_event, ref_idx)
-           ...: influence_no_ref = np.delete(influence_func, ref_idx, axis=1)
-           ...: n = influence_no_ref.shape[0]
-           ...: vcov = influence_no_ref.T @ influence_no_ref / (n * n)
-           ...: num_pre = int(np.sum(np.delete(event_times, ref_idx) < -1))
-           ...: num_post = len(att_no_ref) - num_pre
-
-    Finally, we run the smoothness-based sensitivity analysis with different
-    values of :math:`M` bounding how much the trend can change between periods.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: results = create_sensitivity_results_sm(
-           ...:     betahat=att_no_ref,
-           ...:     sigma=vcov,
-           ...:     num_pre_periods=num_pre,
-           ...:     num_post_periods=num_post,
-           ...:     m_vec=[0.0, 0.01, 0.02]
-           ...: )
-           ...: results
 
     References
     ----------
@@ -350,6 +292,9 @@ def create_sensitivity_results_rm(
     maximum pre-treatment violation. This function computes confidence intervals across
     a range of :math:`\bar{M}` values, facilitating sensitivity analysis.
 
+    See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
+    function applied to event study estimates from outside moderndid.
+
     Parameters
     ----------
     betahat : ndarray
@@ -398,68 +343,6 @@ def create_sensitivity_results_rm(
     Notes
     -----
     Deviation from linear trend requires at least 3 pre-treatment periods.
-
-    Examples
-    --------
-    To use this function directly, we need to compute an event study and extract the
-    estimates and covariance matrix. If you're using moderndid's built-in estimators,
-    you can use the `honest_did` function to process the event study and extract the
-    estimates and covariance matrix for you.
-
-    If you're using an external estimator, you will need to extract the influence functions
-    and construct the covariance matrix. Then, you can use the `create_sensitivity_results_rm`
-    function to run the sensitivity analysis.
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, aggte, load_mpdta
-           ...: from moderndid.didhonest import create_sensitivity_results_rm
-           ...
-           ...: df = load_mpdta()
-           ...: gt_result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
-           ...: es_result = aggte(gt_result, type="dynamic")
-
-    Suppose this is an external estimator. We can extract the influence functions and
-    construct the covariance matrix, removing the reference period.
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: influence_func = es_result.influence_func
-           ...: event_times = es_result.event_times
-           ...: ref_idx = np.where(event_times == -1)[0][0]
-           ...: att_no_ref = np.delete(es_result.att_by_event, ref_idx)
-           ...: influence_no_ref = np.delete(influence_func, ref_idx, axis=1)
-           ...: n = influence_no_ref.shape[0]
-           ...: vcov = influence_no_ref.T @ influence_no_ref / (n * n)
-           ...: num_pre = int(np.sum(np.delete(event_times, ref_idx) < -1))
-           ...: num_post = len(att_no_ref) - num_pre
-
-    Finally, we run the sensitivity analysis with different values of :math:`\bar{M}`
-    bounding how large post-treatment violations can be relative to pre-treatment
-    violations.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: results = create_sensitivity_results_rm(
-           ...:     betahat=att_no_ref,
-           ...:     sigma=vcov,
-           ...:     num_pre_periods=num_pre,
-           ...:     num_post_periods=num_post,
-           ...:     m_bar_vec=[0.0, 0.5, 1.0]
-           ...: )
-           ...: results
 
     References
     ----------
@@ -573,6 +456,9 @@ def construct_original_cs(
     confidence set uses only the post-treatment coefficients and their
     covariance to construct a standard normal-based interval.
 
+    See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
+    function applied to event study estimates from outside moderndid.
+
     Parameters
     ----------
     betahat : ndarray
@@ -599,57 +485,6 @@ def construct_original_cs(
     create_sensitivity_results_sm
     create_sensitivity_results_rm
 
-    Examples
-    --------
-    To use this function directly, we need to compute an event study and extract the
-    estimates and covariance matrix.
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, aggte, load_mpdta
-           ...: from moderndid.didhonest import construct_original_cs
-           ...
-           ...: df = load_mpdta()
-           ...: gt_result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
-           ...: es_result = aggte(gt_result, type="dynamic")
-
-    Now we can extract the estimates and covariance matrix.
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: influence_func = es_result.influence_func
-           ...: event_times = es_result.event_times
-           ...: ref_idx = np.where(event_times == -1)[0][0]
-           ...: att_no_ref = np.delete(es_result.att_by_event, ref_idx)
-           ...: influence_no_ref = np.delete(influence_func, ref_idx, axis=1)
-           ...: n = influence_no_ref.shape[0]
-           ...: vcov = influence_no_ref.T @ influence_no_ref / (n * n)
-           ...: num_pre = int(np.sum(np.delete(event_times, ref_idx) < -1))
-           ...: num_post = len(att_no_ref) - num_pre
-
-    Finally, we can construct the original confidence interval for the first post-treatment effect.
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: original_ci = construct_original_cs(
-           ...:     betahat=att_no_ref,
-           ...:     sigma=vcov,
-           ...:     num_pre_periods=num_pre,
-           ...:     num_post_periods=num_post
-           ...: )
-           ...: original_ci
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)

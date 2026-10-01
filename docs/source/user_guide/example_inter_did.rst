@@ -528,7 +528,7 @@ analyze. Use ``[-1]`` to analyze all estimated horizons.
     │ 3       ┆ state_n   ┆ 0.000174  ┆ 0.001323  ┆ 0.131911  ┆ -0.002421 ┆ 0.00277  ┆ 904 ┆ 0.895084  │
     └─────────┴───────────┴───────────┴───────────┴───────────┴───────────┴──────────┴─────┴───────────┘
 
-Under the hood, ``predict_het`` regresses each switcher's signed outcome
+``predict_het`` regresses each switcher's signed outcome
 change on the specified covariates and cohort fixed effects at each horizon. The F p-value column tests whether the
 covariate has any predictive power for treatment effect heterogeneity. Here
 the p-values at all three horizons are large (0.20, 0.25, and 0.90),

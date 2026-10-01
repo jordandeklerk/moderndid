@@ -125,6 +125,9 @@ def diagnose_panel(
     :func:`fill_panel_gaps`, :func:`make_balanced_panel`), making it a
     natural first step before calling any estimator.
 
+    See the :ref:`panel data utilities guide <panel-utilities-diagnosing>` for a
+    diagnosis of a county panel with gaps and how to read its report.
+
     Parameters
     ----------
     data : DataFrame
@@ -143,16 +146,6 @@ def diagnose_panel(
     -------
     PanelDiagnostics
         Structured report with counts and actionable suggestions.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import diagnose_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: diag = diagnose_panel(df, idname="county", tname="year", treatname="inter_bra")
-           ...: diag
 
     See Also
     --------
@@ -247,6 +240,9 @@ def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: 
     treatment onset: any unit with a positive value of *treatname* in any
     period receives ``G = treat_period``, and all others receive ``G = 0``.
 
+    See the :ref:`panel data utilities guide <panel-utilities-group-timing>` for
+    building the ``gname`` column from a binary treatment indicator.
+
     Parameters
     ----------
     data : DataFrame
@@ -271,31 +267,6 @@ def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: 
     DataFrame
         Original columns plus ``"G"``, in the same format as *data*.
 
-    Examples
-    --------
-    When the treatment indicator switches on at a specific period, the
-    default behaviour detects the first switch automatically:
-
-    .. ipython::
-
-        In [1]: from moderndid import get_group, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = get_group(df, idname="county", tname="year", treatname="inter_bra")
-           ...: df.select("county", "year", "inter_bra", "G").head(10)
-
-    When the treatment indicator is static (e.g., a region dummy), pass
-    ``treat_period`` to specify the known onset:
-
-    .. ipython::
-
-        In [2]: from moderndid import get_group, load_cai2016
-           ...:
-           ...: df = load_cai2016()
-           ...: df = get_group(df, idname="hhno", tname="year",
-           ...:                treatname="treatment", treat_period=2003)
-           ...: df.select("hhno", "year", "treatment", "G").head(10)
-
     See Also
     --------
     att_gt : Estimate group-time average treatment effects.
@@ -312,6 +283,9 @@ def get_first_difference(data: Any, idname: str, yname: str, tname: str) -> Any:
     for each unit, removing time-invariant unit fixed effects. The
     :func:`att_gt` estimator performs this step internally, but exposing it
     here allows inspection of the transformed data before estimation.
+
+    See the :ref:`panel data utilities guide <panel-utilities-reshaping>` for first
+    differences alongside the other reshaping functions.
 
     Parameters
     ----------
@@ -330,16 +304,6 @@ def get_first_difference(data: Any, idname: str, yname: str, tname: str) -> Any:
     -------
     DataFrame
         Original columns plus ``"dy"``, in the same format as *data*.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import get_first_difference, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = get_first_difference(df, idname="county", yname="Dl_vloans_b", tname="year")
-           ...: df.select("county", "year", "Dl_vloans_b", "dy").head(10)
 
     See Also
     --------
@@ -360,6 +324,9 @@ def make_balanced_panel(data: Any, idname: str, tname: str) -> Any:
     whether balancing, gap-filling with :func:`fill_panel_gaps`, or a
     flexible threshold via :func:`complete_data` is more appropriate.
 
+    See the :ref:`panel data utilities guide <panel-utilities-gaps>` for dropping a
+    county panel's incomplete units and how that compares with filling their gaps.
+
     Parameters
     ----------
     data : DataFrame
@@ -375,16 +342,6 @@ def make_balanced_panel(data: Any, idname: str, tname: str) -> Any:
     -------
     DataFrame
         Balanced panel in the same format as *data*.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import make_balanced_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: balanced = make_balanced_panel(df, idname="county", tname="year")
-           ...: print(f"Before: {df.shape[0]} rows, After: {balanced.shape[0]} rows")
 
     See Also
     --------
@@ -405,6 +362,9 @@ def is_balanced_panel(data: Any, idname: str, tname: str) -> bool:
     :func:`make_balanced_panel` to drop incomplete units or
     :func:`fill_panel_gaps` to insert null rows for the missing pairs.
 
+    See the :ref:`panel data utilities guide <panel-utilities-inspection>` for this
+    check alongside the other panel inspection helpers.
+
     Parameters
     ----------
     data : DataFrame
@@ -420,15 +380,6 @@ def is_balanced_panel(data: Any, idname: str, tname: str) -> bool:
     -------
     bool
         ``True`` if every unit is observed in every period.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import is_balanced_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: is_balanced_panel(df, idname="county", tname="year")
 
     See Also
     --------
@@ -446,6 +397,9 @@ def deduplicate_panel(data: Any, idname: str, tname: str, strategy: str = "last"
     differenced. Run :func:`diagnose_panel` first to see how many
     duplicates exist, then call this function to resolve them before
     estimation.
+
+    See the :ref:`panel data utilities guide <panel-utilities-inspection>` for resolving
+    duplicate unit-time pairs by keeping the last row or averaging numeric columns.
 
     Parameters
     ----------
@@ -470,18 +424,6 @@ def deduplicate_panel(data: Any, idname: str, tname: str, strategy: str = "last"
     ------
     ValueError
         If *strategy* is not one of ``"first"``, ``"last"``, ``"mean"``.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: import polars as pl
-           ...: from moderndid import deduplicate_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df_with_dups = pl.concat([df, df.head(5)])
-           ...: deduped = deduplicate_panel(df_with_dups, idname="county", tname="year")
-           ...: print(f"Before: {df_with_dups.shape[0]} rows, After: {deduped.shape[0]} rows")
 
     See Also
     --------
@@ -516,6 +458,10 @@ def fill_panel_gaps(data: Any, idname: str, tname: str) -> Any:
     Unlike :func:`make_balanced_panel` (which drops incomplete units), this
     function *fills* gaps so that every unit appears in every period.
 
+    See the :ref:`panel data utilities guide <panel-utilities-gaps>` for filling a
+    county panel's missing years and how that compares with dropping incomplete
+    counties.
+
     Parameters
     ----------
     data : DataFrame
@@ -531,18 +477,6 @@ def fill_panel_gaps(data: Any, idname: str, tname: str) -> Any:
     -------
     DataFrame
         Rectangular panel in the same format as *data*.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import fill_panel_gaps, has_gaps, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: print(has_gaps(df, idname="county", tname="year"))
-
-        In [2]: filled = fill_panel_gaps(df, idname="county", tname="year")
-           ...: print(f"Before: {df.shape[0]} rows, After: {filled.shape[0]} rows")
 
     See Also
     --------
@@ -568,6 +502,9 @@ def complete_data(data: Any, idname: str, tname: str, min_periods: int | None = 
     When *min_periods* is ``None`` the behaviour is identical to
     :func:`make_balanced_panel`.
 
+    See the :ref:`panel data utilities guide <panel-utilities-inspection>` for keeping
+    only the units observed in enough periods.
+
     Parameters
     ----------
     data : DataFrame
@@ -586,16 +523,6 @@ def complete_data(data: Any, idname: str, tname: str, min_periods: int | None = 
     -------
     DataFrame
         Filtered panel in the same format as *data*.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import complete_data, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: filtered = complete_data(df, idname="county", tname="year", min_periods=10)
-           ...: print(f"Before: {df.shape[0]} rows, After: {filtered.shape[0]} rows")
 
     See Also
     --------
@@ -625,6 +552,9 @@ def assign_rc_ids(data: Any) -> Any:
     passed as the ``idname`` argument to :func:`att_gt` with
     ``panel=False``.
 
+    See the :ref:`panel data utilities guide <panel-utilities-reshaping>` for adding the
+    row ids that repeated cross-section estimators need.
+
     Parameters
     ----------
     data : DataFrame
@@ -637,16 +567,6 @@ def assign_rc_ids(data: Any) -> Any:
     DataFrame
         Original data plus an integer ``"rowid"`` column, in the same format
         as *data*.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import assign_rc_ids, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = assign_rc_ids(df)
-           ...: df.select("rowid", "county", "year").head(5)
 
     See Also
     --------
@@ -788,6 +708,9 @@ def panel_to_wide(data: Any, idname: str, tname: str, separator: str = "_") -> A
     columns are spread into one column per period while time-invariant
     columns are kept as-is.
 
+    See the :ref:`panel data utilities guide <panel-utilities-reshaping>` for reshaping
+    a panel to wide format and back with ``wide_to_panel``.
+
     Parameters
     ----------
     data : DataFrame
@@ -807,17 +730,6 @@ def panel_to_wide(data: Any, idname: str, tname: str, separator: str = "_") -> A
     DataFrame
         Wide-format DataFrame with one row per unit, in the same format
         as *data*.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import make_balanced_panel, panel_to_wide, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = make_balanced_panel(df, idname="county", tname="year")
-           ...: wide = panel_to_wide(df, idname="county", tname="year")
-           ...: wide.head(5)
 
     See Also
     --------
@@ -868,6 +780,9 @@ def wide_to_panel(
     variable and period. All other columns (except *idname*) are treated
     as time-invariant and repeated for every period.
 
+    See the :ref:`panel data utilities guide <panel-utilities-reshaping>` for reshaping
+    a wide panel back to long format after ``panel_to_wide``.
+
     Parameters
     ----------
     data : DataFrame
@@ -889,18 +804,6 @@ def wide_to_panel(
     -------
     DataFrame
         Long-format panel in the same format as *data*.
-
-    Examples
-    --------
-    .. ipython::
-
-        In [1]: from moderndid import make_balanced_panel, panel_to_wide, wide_to_panel, load_favara_imbs
-           ...:
-           ...: df = load_favara_imbs()
-           ...: df = make_balanced_panel(df, idname="county", tname="year")
-           ...: wide = panel_to_wide(df, idname="county", tname="year")
-           ...: long = wide_to_panel(wide, idname="county", stub_names=["Dl_vloans_b", "Dl_hpi"], tname="year")
-           ...: long.head(10)
 
     See Also
     --------

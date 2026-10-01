@@ -80,6 +80,10 @@ def did_multiplegt(
     as a weighted average of the effects of the current treatment and its
     :math:`\ell - 1` first lags on the outcome.
 
+    See the :ref:`intertemporal treatment example <example_inter_did>` for dynamic
+    effects, placebo tests, normalized effects, and heterogeneous effects with
+    ``did_multiplegt``.
+
     Parameters
     ----------
     data : DataFrame
@@ -212,39 +216,6 @@ def did_multiplegt(
         - **influence_placebos**: Influence functions for placebos
         - **heterogeneity**: Heterogeneous effects analysis (if predict_het specified)
         - **estimation_params**: Dictionary of estimation parameters used
-
-    Examples
-    --------
-    Estimate intertemporal treatment effects using the Favara and Imbs (2015)
-    banking deregulation data, where treatment (interstate branching) is
-    non-binary and potentially non-absorbing.
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import moderndid as md
-           ...: df = md.load_favara_imbs()
-           ...: df.head()
-
-    Estimate effects at multiple horizons with placebo tests.
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: result = md.did_multiplegt(
-           ...:     data=df,
-           ...:     yname="Dl_vloans_b",
-           ...:     idname="county",
-           ...:     tname="year",
-           ...:     dname="inter_bra",
-           ...:     effects=8,
-           ...:     placebo=3,
-           ...:     cluster="state_n",
-           ...:     normalized=True,
-           ...:     same_switchers=True,
-           ...:     effects_equal=True,
-           ...: )
-           ...: result
 
     Notes
     -----

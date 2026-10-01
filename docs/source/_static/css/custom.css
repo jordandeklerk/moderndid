@@ -8,6 +8,7 @@ body[data-md-color-scheme="default"] {
   --mdid-search-placeholder: rgba(0, 0, 0, 0.6);
   --mdid-symbol: #6d46c1;
   --mdid-code-parameter: #6543ba;
+  --mdid-code-type: #315bc4;
   --mdid-error-name: #c62828;
 }
 
@@ -19,6 +20,7 @@ body[data-md-color-scheme="slate"] {
   --mdid-search-placeholder: rgba(255, 255, 255, 0.7);
   --mdid-symbol: #c4b5fd;
   --mdid-code-parameter: #c4b5fd;
+  --mdid-code-type: #91acff;
   --mdid-error-name: #ff8a80;
 }
 
@@ -66,14 +68,15 @@ header.md-header,
   font-weight: 600;
 }
 
-.md-typeset table:not([class]) {
+/* Keep table text and spacing consistent across indexes and subpages. */
+.md-typeset table:not([class]),
+.md-typeset table.data:not(.plain) {
   font-size: 0.75rem;
 }
 
-/* The theme pads each table cell by nearly a line above and below, so a lookup table of a dozen rows runs a screen long. */
 .md-typeset table.data:not(.plain) th,
 .md-typeset table.data:not(.plain) td {
-  padding: 0.5em 1em;
+  padding: 0.65em 1.1em;
 }
 
 .md-nav {
@@ -232,20 +235,61 @@ Python, so their token colors are cleared.
   max-width: 100%;
 }
 
-/*
-The theme pads object signatures but paints each parameter, return, and
-attribute entry with a bare code background that hugs the name. Give those
-entries the same breathing room as the signature block.
-*/
+.md-typeset dl.field-list > dd:has(> dl.api-field) {
+  margin-inline-start: 0;
+}
+
+.md-typeset dl.api-field.highlight {
+  margin: 0.6rem 0 1.2rem;
+  background: transparent;
+  border-radius: 0;
+}
+
 .md-typeset dl.api-field > dt {
-  padding: 0.35em 0.6em;
-  border-radius: 0.1rem;
-  margin-top: 0.75em;
+  display: block;
+  margin: 0;
+  padding: 0.75rem 1rem 0.25rem;
+  background: transparent;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.md-typeset dl.api-field > dt:not(:first-child) {
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset dl.api-field > dt .sig-name:not(.sig-name-nonprimary) {
+  color: var(--mdid-code-parameter);
+}
+
+.md-typeset dl.api-field > dt .desctype,
+.md-typeset dl.api-field > dt .desctype a.reference {
+  color: var(--mdid-code-type);
+  font-weight: 400;
+}
+
+.md-typeset dl.api-field > dt code {
+  background: transparent;
+  font-size: inherit;
+}
+
+.md-typeset dl.api-field > dt a.headerlink {
+  left: 0;
+  width: auto;
+  margin-left: 0.5em;
 }
 
 .md-typeset dl.api-field > dd {
-  margin-top: 0.5em;
-  margin-bottom: 1em;
+  margin: 0;
+  padding: 0 1rem 0.75rem;
+}
+
+.md-typeset dl.api-field > dd > :first-child {
+  margin-top: 0;
+}
+
+.md-typeset dl.api-field > dd > :last-child {
+  margin-bottom: 0;
 }
 
 /*
@@ -428,6 +472,18 @@ keep the theme's chevron to show which way it turns.
   list-style: none;
 }
 
+/*
+MyST-NB keys its dark colors to html[data-theme="dark"], which this theme never sets, and marks code with a green
+margin, so code cells take the theme's colors in both schemes and the accent for their margin.
+*/
+body[data-md-color-scheme] {
+  --mystnb-source-bg-color: var(--md-code-bg-color);
+  --mystnb-source-border-color: var(--md-default-fg-color--lightest);
+  --mystnb-source-margin-color: var(--md-accent-fg-color);
+  --mystnb-stdout-bg-color: var(--md-code-bg-color);
+  --mystnb-stdout-border-color: var(--md-default-fg-color--lightest);
+}
+
 /* MyST-NB frames only code that sits directly in its cell, so the folded code takes the same frame here. */
 .md-typeset div.cell details.hide.above-input > .cell_input {
   margin-top: 0.4em;
@@ -436,6 +492,101 @@ keep the theme's chevron to show which way it turns.
   border-left-width: medium;
   border-radius: var(--mystnb-source-border-radius);
   background-color: var(--mystnb-source-bg-color);
+}
+
+/* MyST-NB fades in the code a fold opens, so reduced motion stops that along with the pill's color fade. */
+@media (prefers-reduced-motion: reduce) {
+  .md-typeset div.cell details.hide.above-input > summary {
+    transition: none;
+  }
+
+  .md-typeset div.cell details.hide[open] > summary ~ * {
+    animation: none;
+  }
+}
+
+/* A printed report sits on a sheet in the page color so it reads apart from the gray code that printed it. */
+body[data-md-color-scheme="default"] {
+  --mdid-output-border: color-mix(in srgb, var(--md-default-fg-color) 15%, transparent);
+  --mdid-output-shadow: 0 0.05rem 0.1rem rgb(0 0 0 / 4%), 0 0.2rem 0.6rem -0.1rem rgb(0 0 0 / 8%);
+}
+
+/* Since a shadow barely shows on the dark page, the sheet leans on a brighter hairline there. */
+body[data-md-color-scheme="slate"] {
+  --mdid-output-border: color-mix(in srgb, var(--md-default-fg-color) 20%, transparent);
+  --mdid-output-shadow: 0 0.05rem 0.1rem rgb(0 0 0 / 30%), 0 0.25rem 0.8rem -0.2rem rgb(0 0 0 / 50%);
+}
+
+/* The sheet cancels the 1em indent MyST-NB gives every output to line up with the code cell. */
+.md-typeset .cell_output .output:is(.stream, .text_plain) {
+  position: relative;
+  margin: 1.6em 0 0 -1em;
+  border: 1px solid var(--mdid-output-border);
+  border-radius: var(--mystnb-source-border-radius);
+  background-color: var(--md-default-bg-color);
+  box-shadow: var(--mdid-output-shadow);
+}
+
+/* Since MyST-NB leaves no space between an output and a plot or table after it, the sheet keeps a gap of its own. */
+.md-typeset .cell_output .output:is(.stream, .text_plain):not(:last-child) {
+  margin-bottom: 1em;
+}
+
+/* The label on the top edge marks where the code ends and its printed results begin. */
+.md-typeset .cell_output .output:is(.stream, .text_plain)::before {
+  content: "Output";
+  position: absolute;
+  top: 0;
+  left: 0.85rem;
+  z-index: 1;
+  padding: 0 0.35rem;
+  transform: translateY(-50%);
+  background-color: var(--md-default-bg-color);
+  color: var(--md-default-fg-color--light);
+  font-family: var(--md-text-font-family);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+/* A cell that prints twice keeps one label. */
+.md-typeset .cell_output .output:is(.stream, .text_plain) + .output:is(.stream, .text_plain)::before {
+  content: none;
+}
+
+.md-typeset .cell_output .output:is(.stream, .text_plain) .highlight {
+  background-color: transparent;
+}
+
+/*
+A line height under Fira Mono's 1.5em vertical box line lets each one overlap the next so table borders join.
+Two thirds of a rem makes each character a whole 8px wide so the horizontal rules meet on pixel edges.
+*/
+.md-typeset .cell_output .output:is(.stream, .text_plain) pre > code {
+  padding: 1.1rem 1.2rem 1rem;
+  border-radius: calc(var(--mystnb-source-border-radius) - 1px);
+  background-color: transparent;
+  font-size: 0.6667rem;
+  font-variant-ligatures: none;
+  letter-spacing: normal;
+  line-height: 1.425;
+}
+
+/*
+The copy button rides the top edge across from the label so a wide report never scrolls under it.
+The right gutter then only needs to match the left.
+*/
+.md-typeset .cell_output .output:is(.stream, .text_plain) button.copybtn {
+  top: 0;
+  right: 0.6rem;
+  transform: translateY(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-typeset .cell_output .output:is(.stream, .text_plain) button.copybtn {
+    transition: none;
+  }
 }
 
 /*
@@ -485,12 +636,17 @@ theme so the frames read in both schemes.
   white-space: nowrap;
 }
 
+/* MyST-NB 1.3 shades odd rows a fixed light gray, which matches the even rows on the light scheme and washes out the text on the dark one. */
+.md-typeset .cell_output table.dataframe tbody tr:nth-child(odd) {
+  background-color: transparent;
+}
+
 .md-typeset .cell_output table.dataframe tbody tr:nth-child(even) {
   background-color: var(--md-code-bg-color);
 }
 
 .md-typeset .cell_output table.dataframe tbody tr:hover {
-  background-color: rgba(3, 169, 244, 0.12);
+  background-color: var(--md-accent-fg-color--transparent);
 }
 
 /*

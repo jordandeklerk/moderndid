@@ -253,12 +253,16 @@ underlying data, then build any visualization you want with plotnine or
 another plotting library.
 
 
+.. _plotting-extracting-data:
+
 Extracting plot data
 --------------------
 
 The :func:`~moderndid.to_df` function converts any result object to a polars
 DataFrame. It auto-detects the result type, so there is one function to
-remember regardless of which estimator produced the result.
+remember regardless of which estimator produced the result. Here
+``event_study`` is the event study from the
+:ref:`Staggered DiD example <example_staggered_did>`.
 
 .. code-block:: python
 
@@ -275,13 +279,13 @@ remember regardless of which estimator produced the result.
     │ ---        ┆ ---       ┆ ---      ┆ ---       ┆ ---       ┆ ---              │
     │ f64        ┆ f64       ┆ f64      ┆ f64       ┆ f64       ┆ str              │
     ╞════════════╪═══════════╪══════════╪═══════════╪═══════════╪══════════════════╡
-    │ -3.0       ┆ 0.030507  ┆ 0.015034 ┆ -0.010777 ┆ 0.071791  ┆ Pre              │
-    │ -2.0       ┆ -0.000563 ┆ 0.013292 ┆ -0.037064 ┆ 0.035937  ┆ Pre              │
-    │ -1.0       ┆ -0.024459 ┆ 0.014236 ┆ -0.063554 ┆ 0.014636  ┆ Pre              │
-    │ 0.0        ┆ -0.019932 ┆ 0.011826 ┆ -0.052408 ┆ 0.012545  ┆ Post             │
-    │ 1.0        ┆ -0.050957 ┆ 0.016893 ┆ -0.097349 ┆ -0.004566 ┆ Post             │
-    │ 2.0        ┆ -0.137259 ┆ 0.036436 ┆ -0.237315 ┆ -0.037202 ┆ Post             │
-    │ 3.0        ┆ -0.100811 ┆ 0.034359 ┆ -0.195166 ┆ -0.006457 ┆ Post             │
+    │ -4.0       ┆ 0.006296  ┆ 0.0245   ┆ -0.05644  ┆ 0.069032  ┆ Pre              │
+    │ -3.0       ┆ 0.02686   ┆ 0.018367 ┆ -0.020171 ┆ 0.073892  ┆ Pre              │
+    │ -2.0       ┆ 0.023244  ┆ 0.014425 ┆ -0.013693 ┆ 0.060181  ┆ Pre              │
+    │ 0.0        ┆ -0.02106  ┆ 0.011678 ┆ -0.050963 ┆ 0.008843  ┆ Post             │
+    │ 1.0        ┆ -0.053003 ┆ 0.016409 ┆ -0.09502  ┆ -0.010986 ┆ Post             │
+    │ 2.0        ┆ -0.140448 ┆ 0.035726 ┆ -0.231929 ┆ -0.048968 ┆ Post             │
+    │ 3.0        ┆ -0.106904 ┆ 0.033324 ┆ -0.192233 ┆ -0.021574 ┆ Post             │
     └────────────┴───────────┴──────────┴───────────┴───────────┴──────────────────┘
 
 The DataFrame contains one row per displayed estimate with columns for the
@@ -457,7 +461,7 @@ output. These are the best place to see the built-in plot functions in
 action on real data.
 
 - :ref:`Staggered DiD <example_staggered_did>` —
-  ``plot_gt``, ``plot_event_study``, ``plot_agg``
+  ``plot_gt``, ``plot_event_study``
 - :ref:`Triple DiD <example_triple_did>` —
   ``plot_gt``, ``plot_event_study``, custom comparison figures
 - :ref:`Continuous Treatment <example_cont_did>` —

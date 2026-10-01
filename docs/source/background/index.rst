@@ -9,6 +9,7 @@ methodologies implemented in **ModernDiD**; for practical usage see the
 :ref:`User Guide <user-guide>`.
 
 .. list-table::
+   :class: section-index-table
    :header-rows: 1
    :widths: 35 65
 

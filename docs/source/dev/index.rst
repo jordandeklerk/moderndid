@@ -4,46 +4,36 @@
 Development
 ###########
 
-Everything you need to contribute to **ModernDiD** and understand its internals.
-For usage documentation see the :ref:`User Guide <user-guide>`.
+These guides explain how ModernDiD works inside and how to extend it, from the
+shared estimator interfaces to adding an estimator or a distributed backend. If
+you want to set up an environment and send a change, start with
+:ref:`Contributing <contributing-index>` instead.
 
 .. list-table::
+   :class: section-index-table
    :header-rows: 1
    :widths: 35 65
 
    * - Guide
      - Description
-   * - :doc:`contributing`
-     - Set up a development environment and make your first contribution.
    * - :doc:`architecture`
      - Understand the library's estimator, data, and result interfaces.
    * - :doc:`new_estimator`
      - Add an estimator that fits the shared API.
-   * - :doc:`testing`
-     - Write tests and validate implementations against reference packages.
-   * - :doc:`workflow` and :doc:`reviewing`
-     - Prepare changes and review pull requests.
-   * - :doc:`debugging` and :doc:`benchmarking`
-     - Diagnose issues and measure performance.
    * - :doc:`distributed_architecture`
      - Work with the Dask and Spark backends.
-   * - :doc:`releasing`
-     - Prepare and publish a library release.
+   * - :doc:`debugging` and :doc:`benchmarking`
+     - Diagnose issues and measure performance.
 
 .. toctree::
    :maxdepth: 2
    :hidden:
 
-   contributing
    architecture
    new_estimator
-   testing
-   workflow
-   reviewing
+   distributed_architecture
    debugging
    benchmarking
-   distributed_architecture
-   releasing
 
 .. raw:: html
 

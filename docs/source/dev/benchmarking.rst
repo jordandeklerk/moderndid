@@ -6,7 +6,7 @@ Benchmarking
 
 **ModernDiD** includes a benchmark suite that measures the computational
 performance of Python estimators against their canonical R implementations.
-You can run predefined suites out of the box, write custom configurations,
+You can run the predefined suites as they are, write custom configurations,
 and add benchmarks for new estimators.
 
 Running benchmarks

@@ -9,6 +9,7 @@ The guides build on the :ref:`Quickstart <quickstart>` and cover the tools
 shared across ModernDiD's estimators.
 
 .. list-table::
+   :class: section-index-table
    :header-rows: 1
    :widths: 30 70
 

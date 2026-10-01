@@ -72,9 +72,10 @@ def format_aggte_result(result):
             lines.append(" Time Effects:")
             col1_header = "Time"
 
-        bootstrap = result.estimation_params.get("bootstrap", False)
+        # aggte draws its simultaneous bands from a bootstrap even without boot=True, and it clears
+        # uniform_bands when it falls back to pointwise intervals, so the flag alone decides the label.
         uniform_bands = result.estimation_params.get("uniform_bands", False)
-        cb_label = "Simult. Conf. Band" if bootstrap and uniform_bands else "Pointwise Conf. Band"
+        cb_label = "Simult. Conf. Band" if uniform_bands else "Pointwise Conf. Band"
 
         if result.critical_values is not None:
             crit_vals = result.critical_values

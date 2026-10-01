@@ -168,7 +168,7 @@ def test_att_gt_repeated_cross_section(mpdta_data):
 
 
 def test_att_gt_unbalanced_panel(mpdta_data):
-    mpdta_data = mpdta_data.filter(~((pl.col("countyreal") < 1010) & (pl.col("year") == 2005)))
+    mpdta_data = mpdta_data.filter(~((pl.col("countyreal") % 7 == 0) & (pl.col("year") == 2005)))
 
     result = att_gt(
         data=mpdta_data,
@@ -181,6 +181,9 @@ def test_att_gt_unbalanced_panel(mpdta_data):
     )
 
     assert isinstance(result, MPResult)
+    assert result.n_units == 500
+    np.testing.assert_allclose(result.att_gt[:4], [-0.0105, -0.14462, -0.13726, -0.10081], atol=1e-4)
+    np.testing.assert_allclose(result.se_gt[:4], [0.02325, 0.06288, 0.03644, 0.03436], atol=1e-4)
 
 
 def test_att_gt_clustering(mpdta_data):

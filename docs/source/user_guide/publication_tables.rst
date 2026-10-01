@@ -49,7 +49,7 @@ No manual extraction is required. Every result object returned by a
 reads the estimates, standard errors, confidence intervals, and model
 metadata automatically.
 
-Under the hood, each result class implements a small set of attributes that
+Each result class implements a small set of attributes that
 maketables discovers at runtime.
 
 - ``__maketables_coef_table__`` provides a pandas DataFrame with columns

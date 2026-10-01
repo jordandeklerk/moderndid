@@ -8,7 +8,7 @@ Panel Data Utilities
 cleaning panel data before estimation. Every estimator has a robust
 preprocessing pipeline that automatically handles most panel irregularities,
 so these utilities are optional. They are useful when you want to understand
-what the pipeline is doing under the hood, or when you want to make cleaning
+what the pipeline does to your data, or when you want to make cleaning
 decisions yourself rather than relying on the defaults.
 
 Like the estimators, every panel utility function accepts any
@@ -16,6 +16,8 @@ Arrow-compatible DataFrame, converts to
 Polars internally for speed, and returns results in your original dataframe
 format.
 
+
+.. _panel-utilities-diagnosing:
 
 Diagnosing the Data
 -------------------
@@ -86,6 +88,8 @@ The value of running diagnostics first is that you see *what* gets
 dropped and can decide whether that is acceptable for your analysis.
 
 
+.. _panel-utilities-gaps:
+
 Fixing the Gaps
 ---------------
 
@@ -134,6 +138,8 @@ last occurrence by default, or can average numeric columns with
 ``strategy="mean"``.
 
 
+.. _panel-utilities-group-timing:
+
 Building the Group-Timing Variable
 -----------------------------------
 
@@ -156,6 +162,8 @@ and writes that period into a new ``"G"`` column.
 The output shows six distinct deregulation cohorts plus the
 never-treated group (``0``). This ``"G"`` column can be passed directly
 to ``gname`` in any estimator.
+
+.. _panel-utilities-inspection:
 
 Inspection Helpers
 ------------------
@@ -193,6 +201,8 @@ numeric columns instead.
 
     deduped = did.deduplicate_panel(data, idname="county", tname="year", strategy="last")
 
+
+.. _panel-utilities-reshaping:
 
 Reshaping and Transformations
 -----------------------------

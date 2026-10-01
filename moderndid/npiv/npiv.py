@@ -74,6 +74,9 @@ def npiv(
     When a fixed ``j_x_segments`` is supplied, the standard undersmoothing approach
     of [1]_ is used instead.
 
+    See the :ref:`nonparametric IV example <example_npiv>` for an Engel curve estimate,
+    data-driven basis selection, and a check against a known function.
+
     Parameters
     ----------
     data : DataFrame, optional
@@ -181,64 +184,6 @@ def npiv(
         - **args** -- Diagnostic dictionary. When data-driven selection is
           used, includes ``j_x_seg``, ``k_w_seg``, ``j_hat_max``,
           ``theta_star``, and other selection diagnostics.
-
-    Examples
-    --------
-    The Engel dataset contains household expenditure shares and income measures
-    for 1655 households. We estimate a nonparametric Engel curve relating food
-    share (``food``) to log-expenditure (``logexp``), using log-wages
-    (``logwages``) as an instrument for potentially endogenous expenditure:
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import numpy as np
-           ...: from moderndid import npiv, load_engel
-           ...:
-           ...: df = load_engel()
-           ...: df.head()
-
-    Estimate the structural function with 5 B-spline segments and 95% uniform
-    confidence bands. The output is an ``NPIVResult`` containing the estimated
-    function, confidence bands, derivatives, and diagnostics:
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: result = npiv(
-           ...:     data=df,
-           ...:     yname="food",
-           ...:     xname="logexp",
-           ...:     wname="logwages",
-           ...:     j_x_segments=5,
-           ...:     biters=500,
-           ...:     seed=42,
-           ...: )
-           ...: print(f"Estimates at {len(result.h)} points")
-           ...: print(f"h[:5] = {result.h[:5]}")
-           ...: print(f"95% UCB critical value: {result.cv:.3f}")
-           ...: print(f"Basis: degree={result.j_x_degree}, segments={result.j_x_segments}")
-
-    The derivative of the Engel curve (the marginal propensity to spend on food)
-    is estimated simultaneously:
-
-    .. ipython::
-
-        In [3]: print(f"deriv[:5] = {result.deriv[:5]}")
-           ...: print(f"Derivative UCB critical value: {result.cv_deriv:.3f}")
-
-    You can also pass numpy arrays directly instead of a DataFrame:
-
-    .. ipython::
-        :okwarning:
-
-        In [4]: rng = np.random.default_rng(0)
-           ...: n = 200
-           ...: w = rng.uniform(0, 1, (n, 1))
-           ...: x = w + 0.2 * rng.normal(0, 1, (n, 1))
-           ...: y = np.sin(2 * np.pi * x).ravel() + 0.1 * rng.normal(0, 1, n)
-           ...: result = npiv(y=y, x=x, w=w, j_x_segments=4, biters=500, seed=0)
-           ...: result.h.shape
 
     See Also
     --------

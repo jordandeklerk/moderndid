@@ -20,6 +20,8 @@ ModernDiD
    Examples <examples/index>
    API Reference <api/index>
    Background <background/index>
+   FAQ <faq>
    Development <dev/index>
+   Contributing <contributing/index>
    Release Notes <release/index>
    Acknowledgements <acknowledgements>

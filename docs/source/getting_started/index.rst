@@ -27,6 +27,7 @@ Where to start
 --------------
 
 .. list-table::
+   :class: section-index-table
    :header-rows: 1
    :widths: 30 70
 

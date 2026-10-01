@@ -43,6 +43,9 @@ def emfx(
     Standard errors are obtained via the delta method using the model's
     variance-covariance matrix.
 
+    See the :ref:`extended TWFE example <example_etwfe>` for overall, group, and event
+    study aggregations of ``etwfe`` estimates.
+
     Parameters
     ----------
     result : EtwfeResult
@@ -77,42 +80,6 @@ def emfx(
        Mundlak Regression, and Difference-in-Differences Estimators."
        Empirical Economics.
 
-    Examples
-    --------
-    .. ipython::
-        :okwarning:
-
-        In [1]: from moderndid import etwfe, emfx, load_mpdta
-           ...:
-           ...: df = load_mpdta()
-           ...: mod = etwfe(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...: )
-
-    Simple overall ATT:
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: print(emfx(mod, type="simple"))
-
-    Event-study aggregation by exposure time:
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: print(emfx(mod, type="event"))
-
-    Group-level aggregation:
-
-    .. ipython::
-        :okwarning:
-
-        In [4]: print(emfx(mod, type="group"))
     """
     if not isinstance(result, EtwfeResult):
         raise TypeError(f"Expected EtwfeResult, got {result.__class__.__name__}")

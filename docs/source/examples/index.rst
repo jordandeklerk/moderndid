@@ -8,13 +8,14 @@ plots. Choose the design that matches your study. The
 use each method.
 
 .. list-table::
+   :class: section-index-table
    :header-rows: 1
    :widths: 35 65
 
    * - Example
      - Description
    * - :doc:`Staggered adoption <../user_guide/example_staggered_did>`
-     - Estimate group-time effects and aggregate them into an event study.
+     - Estimate group-time effects and aggregate them into an event study and an overall effect.
    * - :doc:`Triple differences <../user_guide/example_triple_did>`
      - Add a third comparison to a difference-in-differences design.
    * - :doc:`Intertemporal treatment <../user_guide/example_inter_did>`

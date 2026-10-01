@@ -207,11 +207,10 @@ Overall effect
 
 The overall ATT of -0.048 means minimum wage increases reduced log teen
 employment by about 4.8 percent on average across all treated counties and
-post-treatment periods. For comparison, Callaway and Sant'Anna give an
-overall ATT of -0.040 on the same data (see the
-:ref:`Staggered DiD example <example_staggered_did>`). The gap is small and
-stems from the different default control groups (not-yet-treated vs
-never-treated) and from differences in how the two methods handle weighting.
+post-treatment periods. For comparison, with never-treated controls and no
+covariates, the simple aggregation of the Callaway and Sant'Anna estimator gives
+an overall ATT of -0.040 on the same data. The gap is small and stems from the
+different default control groups (not-yet-treated vs never-treated).
 
 
 Event study

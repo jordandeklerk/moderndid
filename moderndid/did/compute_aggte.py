@@ -141,7 +141,7 @@ def compute_aggte(
             influence_function = influence_function[:, keep]
 
     elif np.any(np.isnan(att)):
-        raise ValueError("Missing values at att_gt found. If you want to remove these, set `dropna = True'.")
+        raise ValueError("Missing values at att_gt found. If you want to remove these, set na_rm=True in aggte.")
 
     original_groups = groups.copy()
     original_times = times.copy()

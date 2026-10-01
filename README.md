@@ -2,7 +2,7 @@
 
 <img alt="ModernDiD" src="https://raw.githubusercontent.com/jordandeklerk/moderndid/main/docs/source/_static/logo-wordmark.svg" width="300">
 
-## Modern causal inference in Python
+## Modern Difference-in-Differences in Python
 
 [![License](https://img.shields.io/badge/License-MIT-315bc4.svg)](https://github.com/jordandeklerk/moderndid/blob/main/LICENSE)
 [![PyPI version](https://img.shields.io/pypi/v/moderndid.svg?color=315bc4)](https://pypi.org/project/moderndid/)
@@ -173,7 +173,9 @@ for performance comparisons.
 - [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html): estimator selection, panel data, plots, tables, and scaling.
 - [Examples](https://moderndid.readthedocs.io/en/latest/examples/index.html): analyses for each treatment design.
 - [API Reference](https://moderndid.readthedocs.io/en/latest/api/index.html): function signatures, parameters, and result objects.
-- [Development](https://moderndid.readthedocs.io/en/latest/dev/index.html): contributing, architecture, and testing.
+- [FAQ](https://moderndid.readthedocs.io/en/latest/faq.html): answers to common questions about data, estimators, and results.
+- [Development](https://moderndid.readthedocs.io/en/latest/dev/index.html): architecture, new estimators, and distributed backends.
+- [Contributing](https://moderndid.readthedocs.io/en/latest/contributing/index.html): setup, workflow, testing, and releases.
 - [Release Notes](https://moderndid.readthedocs.io/en/latest/release/index.html): changes between versions.
 
 ## Acknowledgements

@@ -30,7 +30,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.extlinks",
     "sphinx.ext.napoleon",
-    "myst_parser",
+    "myst_nb",
     "sphinx_copybutton",
     "sphinx_design",
     "IPython.sphinxext.ipython_directive",
@@ -75,7 +75,7 @@ copybutton_prompt_is_regexp = True
 
 source_suffix = {
     ".rst": "restructuredtext",
-    ".md": "myst-parser",
+    ".md": "myst-nb",
 }
 
 autosummary_generate = True
@@ -175,6 +175,18 @@ sphinx_immaterial_custom_admonitions = [
 
 myst_enable_extensions = ["linkify", "colon_fence", "dollarmath"]
 myst_heading_anchors = 3
+
+# Example pages run during the build, so an example that stops working fails it. The cache reruns a page
+# only when its cells change.
+nb_execution_mode = "cache"
+nb_execution_raise_on_error = True
+nb_execution_timeout = 600
+nb_output_stderr = "remove"
+# Draw each cell's prints in one box. The kernel sends them in chunks that vary with timing.
+nb_merge_streams = True
+# A hide-input cell folds its code behind one line.
+nb_code_prompt_show = "Show code"
+nb_code_prompt_hide = "Hide code"
 
 plot_pre_code = """
 import numpy as np

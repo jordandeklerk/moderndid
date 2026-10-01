@@ -43,7 +43,7 @@ def aggte(
         P(G = g \mid G + e \le \mathcal{T}) \, ATT(g, g + e).
 
     Group-specific aggregation averages effects over time for each treatment
-    cohort :math:`\tilde{g}`, revealing whether early versus late adopters
+    cohort :math:`\tilde{g}`, so it shows whether early and late adopters
     experience different effects
 
     .. math::
@@ -51,21 +51,36 @@ def aggte(
         \theta_{sel}(\tilde{g}) = \frac{1}{\mathcal{T} - \tilde{g} + 1}
         \sum_{t=\tilde{g}}^{\mathcal{T}} ATT(\tilde{g}, t).
 
+    The overall effect the group aggregation reports weights these cohort
+    effects by the distribution of treatment timing
+
+    .. math::
+
+        \theta_{sel}^O = \sum_{g \in \mathcal{G}} \theta_{sel}(g) \,
+        P(G = g \mid G \le \mathcal{T}).
+
     Calendar-time aggregation averages across treated groups within each period
-    :math:`\tilde{t}`, showing how effects vary with time-specific factors
+    :math:`\tilde{t}`, so it shows how effects vary with time-specific factors
 
     .. math::
 
         \theta_{c}(\tilde{t}) = \sum_{g \in \mathcal{G}} \mathbf{1}\{\tilde{t} \ge g\}
         P(G = g \mid G \le \tilde{t}) \, ATT(g, \tilde{t}).
 
-    The simple or overall aggregation provides a single summary measure by
-    weighting group-specific effects by the distribution of treatment timing
+    The simple aggregation averages every post-treatment group-time effect with
+    weights proportional to group size
 
     .. math::
 
-        \theta_{sel}^O = \sum_{g \in \mathcal{G}} \theta_{sel}(g) \,
-        P(G = g \mid G \le \mathcal{T}).
+        \theta_{W}^O = \frac{1}{\kappa} \sum_{g \in \mathcal{G}} \sum_{t=2}^{\mathcal{T}}
+        \mathbf{1}\{g \le t\} \, ATT(g, t) \, P(G = g \mid G \le \mathcal{T}),
+
+    where :math:`\kappa` makes the weights sum to one. A group contributes one
+    term for each period after it is treated, so groups treated earlier receive
+    more weight than in :math:`\theta_{sel}^O`.
+
+    See the :ref:`staggered DiD example <example_staggered_did>` for event study,
+    cohort, and overall aggregations of the minimum wage effects.
 
     Parameters
     ----------
@@ -128,82 +143,6 @@ def aggte(
     -------
     AGGTEResult
         An AGGTEobj object that holds the results from the aggregation.
-
-    Examples
-    --------
-    First, we compute group-time average treatment effects using the ``att_gt`` function:
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, aggte, load_mpdta
-           ...:
-           ...: df = load_mpdta()
-           ...:
-           ...: # Compute group-time ATTs
-           ...: att_gt_result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
-
-    Now we can aggregate these group-time effects in different ways. The "simple" aggregation
-    computes an overall ATT by taking a weighted average of all group-time ATTs:
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: # Simple aggregation - overall ATT
-           ...: simple_agg = aggte(MP=att_gt_result, type="simple")
-           ...: print(simple_agg)
-
-    The "group" aggregation computes average treatment effects separately for each treatment
-    cohort (units first treated in the same period):
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: # Group aggregation - ATT by treatment cohort
-           ...: group_agg = aggte(MP=att_gt_result, type="group")
-           ...: print(group_agg)
-
-    The "dynamic" aggregation creates an event study, showing how treatment effects evolve
-    relative to the treatment start date:
-
-    .. ipython::
-        :okwarning:
-
-        In [4]: # Dynamic aggregation - event study
-           ...: dynamic_agg = aggte(MP=att_gt_result, type="dynamic")
-           ...: print(dynamic_agg)
-
-    We can also limit the event study to specific event times:
-
-    .. ipython::
-        :okwarning:
-
-        In [5]: # Dynamic effects from 2 periods before to 2 periods after treatment
-           ...: dynamic_limited = aggte(
-           ...:     MP=att_gt_result,
-           ...:     type="dynamic",
-           ...:     min_e=-2,
-           ...:     max_e=2
-           ...: )
-           ...: print(dynamic_limited)
-
-    The "calendar" aggregation computes average treatment effects by calendar time period:
-
-    .. ipython::
-        :okwarning:
-
-        In [6]: # Calendar time aggregation - ATT by year
-           ...: calendar_agg = aggte(MP=att_gt_result, type="calendar")
-           ...: print(calendar_agg)
 
     See Also
     --------

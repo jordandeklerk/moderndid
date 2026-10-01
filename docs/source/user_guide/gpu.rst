@@ -215,9 +215,8 @@ CPU-GPU communication overhead is small relative to the computation.
 Memory management
 -----------------
 
-**ModernDiD** ships with `RAPIDS Memory Manager (RMM)
-<https://docs.rapids.ai/api/rmm/stable/>`_ as part of the ``[gpu]``
-extra. When ``backend="cupy"`` is activated, **ModernDiD** automatically
+The ``[gpu]`` extra installs `RAPIDS Memory Manager (RMM)
+<https://docs.rapids.ai/api/rmm/stable/>`_ alongside **ModernDiD**. When ``backend="cupy"`` is activated, **ModernDiD** automatically
 configures CuPy to use RMM's pool allocator instead of the default
 per-allocation ``cudaMalloc`` calls. This eliminates the ~1 ms
 overhead per GPU allocation that otherwise dominates tight loops such

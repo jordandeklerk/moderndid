@@ -124,6 +124,8 @@ utilities like ``aggte``, ``agg_ddd``, ``plot_event_study``, and related
 plotting functions continue to work without changes.
 
 
+.. _distributed-interfaces:
+
 Interfaces
 ----------
 

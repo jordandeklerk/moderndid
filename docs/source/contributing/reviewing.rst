@@ -57,7 +57,7 @@ at hand.
 
 **Design and architecture**
 
-- Does the change follow the patterns described in :doc:`architecture`?
+- Does the change follow the patterns described in :ref:`architecture`?
   New estimators should use the preprocessing pipeline, return immutable
   ``NamedTuple`` results, and include influence functions.
 - Is the public API consistent with existing estimators? Check parameter

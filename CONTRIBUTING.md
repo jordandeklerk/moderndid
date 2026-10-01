@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to ModernDiD!
 
-For detailed contribution guidelines, including development setup, coding standards, testing conventions, and architecture documentation, please see our [Development Guide](https://moderndid.readthedocs.io/en/latest/dev/contributing.html).
+For detailed contribution guidelines, including development setup, coding standards, and testing conventions, see the [Contributing guide](https://moderndid.readthedocs.io/en/latest/contributing/index.html). The [Development guide](https://moderndid.readthedocs.io/en/latest/dev/index.html) covers the library's architecture and how to add an estimator.
 
 ## Quick Start
 

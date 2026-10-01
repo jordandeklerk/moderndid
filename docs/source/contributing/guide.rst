@@ -1,8 +1,8 @@
 .. _contributing:
 
-########################
+#########################
 Contributing to ModernDiD
-########################
+#########################
 
 Welcome to **ModernDiD**! We appreciate your interest in contributing to the project.
 Whether you're fixing a bug, adding a new feature, improving documentation, or
@@ -103,7 +103,7 @@ NumPy docstring standard. This ensures consistency across the codebase and
 enables automatic API documentation generation.
 
 If you're adding a new estimator, follow the established architecture patterns
-described in :doc:`architecture`. That document covers the preprocessing pipeline,
+described in :ref:`architecture`. That document covers the preprocessing pipeline,
 result object design, and the consistent API conventions that make **ModernDiD**
 predictable for users.
 
@@ -345,7 +345,7 @@ GitHub Actions tab. The most common causes are
   indicate a test that hangs or does excessive computation on the driver.
 - Platform differences. CI runs on Ubuntu while you may develop on macOS.
   Floating-point behavior can differ slightly between platforms. See
-  :doc:`debugging` for guidance on numerical tolerances.
+  :ref:`debugging` for guidance on numerical tolerances.
 
 Registering new public API
 ==========================

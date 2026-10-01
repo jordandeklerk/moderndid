@@ -10,6 +10,16 @@ import scipy.linalg
 from ..dataframe import to_polars
 
 
+def extract_unit_clusters(time_invariant_data, clustervars, idname):
+    """Return each unit's cluster from the cluster variables in the order att_gt uses them."""
+    if not clustervars:
+        return None
+    # Validation allows at most one cluster variable besides idname, and att_gt's bootstrap clusters
+    # on that one whenever it's given, so the unit id decides the clusters only when it stands alone.
+    others = [var for var in clustervars if var != idname]
+    return time_invariant_data[(others or clustervars)[0]].to_numpy()
+
+
 def map_to_idx(vals, time_map):
     """Map values to indices."""
     vals_arr = np.asarray(vals, dtype=float)

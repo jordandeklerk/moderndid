@@ -21,6 +21,8 @@ terminology and setup, see :ref:`Introduction to Difference-in-Differences <caus
 For theoretical details on each estimator, see the :ref:`Background <background>` section.
 
 
+.. _quickstart-dataframes:
+
 Dataframe Agnostic
 ------------------
 
@@ -294,10 +296,12 @@ by anticipation of the upcoming treatment.
 Base Period
 ^^^^^^^^^^^
 
-The ``base_period`` parameter controls which pre-treatment period is used
-as the comparison. The default ``"varying"`` uses the period immediately
-before treatment (or before anticipation). Setting ``base_period="universal"``
-uses the same base period for all groups.
+The ``base_period`` parameter controls which period each estimate is compared
+against. After treatment, both settings compare with the period just before
+treatment (or before anticipation). Before treatment, the default ``"varying"``
+compares each period with the one just before it, while
+``base_period="universal"`` compares every period with the period just before
+each group's treatment.
 
 .. code-block:: python
 
@@ -310,6 +314,8 @@ uses the same base period for all groups.
 A universal base period can be useful when you want all pre-treatment
 estimates to be relative to the same reference point.
 
+
+.. _quickstart-panel-data:
 
 Panel Data Options
 ^^^^^^^^^^^^^^^^^^
@@ -383,7 +389,7 @@ it with any plotnine layer using the ``+`` operator.
     )
     plot.save("event_study.png", dpi=200, width=8, height=5)
 
-**ModernDiD** also ships with ready-made themes for common use cases.
+**ModernDiD** also includes ready-made themes for common use cases.
 
 .. code-block:: python
 

@@ -75,6 +75,9 @@ def dyn_balancing(
     bias-corrected weighted average of outcomes in the final period. IPW,
     AIPW, and IPW-MSM alternatives are also available as benchmarks.
 
+    See the :ref:`dynamic covariate balancing example <example_dyn_balancing>` for
+    treatment history effects, balancing strategies, and clustered standard errors.
+
     Parameters
     ----------
     data : DataFrame
@@ -193,88 +196,6 @@ def dyn_balancing(
        estimating treatment effects over time with potential local projections."
        *Biometrika*, asag016. https://doi.org/10.1093/biomet/asag016
 
-    .. [2] Acemoglu, D., Naidu, S., Restrepo, P., and Robinson, J.A. (2019).
-       "Democracy does cause growth." *Journal of Political Economy*, 127(1),
-       47-100. https://doi.org/10.1086/700936
-
-    Examples
-    --------
-    The dataset below contains 141 countries observed across six five-year
-    periods (1989--2010) from the democracy and growth study of
-    Acemoglu et al. (2019) [2]_. The treatment ``D`` is a binary democracy
-    indicator that can switch on and off across periods, and the outcome
-    ``Y`` is log GDP per capita. This is the same application used in [1]_.
-
-    We estimate the effect of being democratic for two consecutive periods
-    compared to not being democratic, controlling for five country-level
-    covariates and region fixed effects. The treatment histories
-    ``ds1=[1, 1]`` and ``ds2=[0, 0]`` specify the two sequences to compare,
-    read left to right from the earliest to the most recent period:
-
-    .. code-block:: python
-
-        from moderndid import load_acemoglu, dyn_balancing
-
-        df = load_acemoglu()
-        result = dyn_balancing(
-            data=df,
-            yname="Y",
-            tname="Time",
-            idname="Unit",
-            treatment_name="D",
-            ds1=[1, 1],
-            ds2=[0, 0],
-            xformla="~ V1 + V2 + V3 + V4 + V5",
-            fixed_effects=["region"],
-        )
-        print(result)
-
-    .. code-block:: text
-
-        ==============================================================================
-         Dynamic Covariate Balancing Estimation
-        ==============================================================================
-
-         DCB estimation for the ATE:
-
-        ┌────────┬────────────┬──────────┬────────────────────────┐
-        │    ATE │ Std. Error │ Pr(>|t|) │ [95% Conf. Interval]   │
-        ├────────┼────────────┼──────────┼────────────────────────┤
-        │ 0.3011 │     0.2032 │   0.1383 │ [ -0.0971,   0.6993]   │
-        └────────┴────────────┴──────────┴────────────────────────┘
-
-        ------------------------------------------------------------------------------
-         Signif. codes: '*' confidence interval does not cover 0
-
-        ------------------------------------------------------------------------------
-         Potential Outcomes
-        ------------------------------------------------------------------------------
-         mu(ds1):  8.0044  (0.1397)
-         mu(ds2):  7.7033  (0.1476)
-
-        ------------------------------------------------------------------------------
-         Data Info
-        ------------------------------------------------------------------------------
-         Treatment history ds1: [1, 1]
-         Treatment history ds2: [0, 0]
-         Outcome variable: Y
-         Units: 137
-         Observations: 274
-
-        ------------------------------------------------------------------------------
-         Estimation Details
-        ------------------------------------------------------------------------------
-         Balancing: DCB
-         Coefficient estimation: lasso_plain
-
-        ------------------------------------------------------------------------------
-         Inference
-        ------------------------------------------------------------------------------
-         Significance level: 0.05
-         Analytical standard errors
-         Robust (chi-squared) critical values
-        ==============================================================================
-         Viviano and Bradic (2026)
     """
     if histories_length is not None and final_periods is not None:
         raise ValueError("histories_length and final_periods are mutually exclusive.")

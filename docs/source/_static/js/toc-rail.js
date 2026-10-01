@@ -39,7 +39,7 @@ solid thumb along it over the sections on screen.
       .map(function (link) {
         return {
           link: link,
-          text: link.querySelector(".md-ellipsis") || link,
+          anchor: link.querySelector(".objinfo-icon") || link.querySelector(".md-ellipsis") || link,
           target: link.hash ? document.getElementById(decodeURIComponent(link.hash.slice(1))) : null,
         };
       })
@@ -86,14 +86,14 @@ solid thumb along it over the sections on screen.
     var frame = 0;
     var last = 0;
 
-    // The line runs just left of each entry's text and curves between indentation levels.
+    // The line runs left of each entry's badge or text and curves between indentation levels.
     function layout() {
       var box = nav.getBoundingClientRect();
       var path = "";
       var previous = null;
       entries.forEach(function (entry, index) {
         var row = entry.link.getBoundingClientRect();
-        var x = entry.text.getBoundingClientRect().left - box.left - 10;
+        var x = entry.anchor.getBoundingClientRect().left - box.left - 10;
         var inset = Math.min(7, (row.height - 2) / 2);
         var top = row.top - box.top + inset;
         var bottom = row.bottom - box.top - inset;

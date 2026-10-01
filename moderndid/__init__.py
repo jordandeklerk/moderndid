@@ -239,6 +239,10 @@ __all__ = [
     "test_in_identified_set_flci_hybrid",
     "test_in_identified_set_lf_hybrid",
     "test_in_identified_set_max",
+    # Optional: plot themes (requires plotnine)
+    "theme_minimal",
+    "theme_moderndid",
+    "theme_publication",
     "to_df",
     "twfe_did_panel",
     "twfe_did_rc",
@@ -566,6 +570,9 @@ _optional_imports = {
     "plot_gt": ("moderndid.plots", "plots"),
     "plot_multiplegt": ("moderndid.plots", "plots"),
     "plot_sensitivity": ("moderndid.plots", "plots"),
+    "theme_minimal": ("moderndid.plots", "plots"),
+    "theme_moderndid": ("moderndid.plots", "plots"),
+    "theme_publication": ("moderndid.plots", "plots"),
 }
 
 # Aliased imports (different name in source module)

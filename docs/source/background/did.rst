@@ -8,6 +8,8 @@ variation in treatment timing from the work of `Callaway and Sant'Anna (2020) <h
 This approach addresses the challenges of staggered DiD designs by providing flexible estimators for group-time average treatment effects and
 various aggregation schemes to summarize treatment effect heterogeneity.
 
+.. _background-did-twfe:
+
 Why Standard TWFE Regressions Are Problematic
 ----------------------------------------------
 
@@ -81,6 +83,8 @@ treatment effect for group :math:`g` at time :math:`t` given by
 
 This parameter is flexible and does not impose homogeneity across groups or time. The set of all :math:`ATT(g, t)`'s can be
 used to understand treatment effect dynamics and heterogeneity.
+
+.. _background-did-assumptions:
 
 Identifying Assumptions
 -----------------------
@@ -233,6 +237,8 @@ The DR estimand for not-yet-treated comparisons combines both approaches and is 
 
    ATT_{dr}^{ny}(g, t; \delta) = \mathbb{E}\left[\left(\frac{G_g}{\mathbb{E}[G_g]} - \frac{\frac{p_{g,t+\delta}(X)(1 - D_{t+\delta})(1 - G_g)}{1 - p_{g,t+\delta}(X)}}{\mathbb{E}\left[\frac{p_{g,t+\delta}(X)(1 - D_{t+\delta})(1 - G_g)}{1 - p_{g,t+\delta}(X)}\right]}\right) \left( \Delta Y_{t,g,\delta} - m_{g,t,\delta}^{ny}(X) \right) \right].
 
+.. _background-did-comparison-groups:
+
 The choice between never-treated and not-yet-treated comparison groups involves real trade-offs.
 Never-treated comparisons are attractive when a sizable group of units never receives treatment
 and those units are similar enough to the eventually-treated units. Under no anticipation
@@ -320,6 +326,8 @@ study parameter is
 
 This parameter weights the group-time effects by the relative size of each group among those observed :math:`e` periods
 after treatment, providing insights into whether effects strengthen, weaken, or remain stable over time.
+
+.. _background-did-balanced:
 
 **Compositional Changes and Balanced Event-Study**
 

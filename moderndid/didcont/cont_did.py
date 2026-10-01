@@ -102,6 +102,9 @@ def cont_did(
         ATT^o = \mathbb{E}[ATT(D|D) \mid D > 0], \quad
         ACRT^o = \mathbb{E}[ACRT(D|D) \mid D > 0].
 
+    See the :ref:`continuous treatment example <example_cont_did>` for dose-response
+    functions, event studies, and control group options with ``cont_did``.
+
     Parameters
     ----------
     data : DataFrame
@@ -223,58 +226,6 @@ def cont_did(
         - **overall_att_se** : Standard error for overall ATT
         - **overall_acrt** : Overall average causal response (if applicable)
         - **overall_acrt_se** : Standard error for overall ACRT
-
-    Examples
-    --------
-    Estimate the dose-response function using simulated data with continuous treatment:
-
-    .. ipython::
-        :okwarning:
-
-        In [1]: import moderndid
-           ...: data = moderndid.gen_cont_did_data(n=500, seed=42)
-           ...: data.head()
-
-    Estimate ATT as a function of dose using the parametric (B-spline) estimator:
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: result = moderndid.cont_did(
-           ...:     data=data,
-           ...:     yname="Y",
-           ...:     tname="time_period",
-           ...:     idname="id",
-           ...:     gname="G",
-           ...:     dname="D",
-           ...:     target_parameter="level",
-           ...:     aggregation="dose",
-           ...:     degree=3,
-           ...:     biters=100
-           ...: )
-           ...: result
-
-    For the non-parametric CCK estimator, we need exactly 2 groups and 2 time periods:
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: data_cck = moderndid.gen_cont_did_data(
-           ...:     n=500, num_time_periods=2, seed=42
-           ...: )
-           ...: cck_result = moderndid.cont_did(
-           ...:     data=data_cck,
-           ...:     yname="Y",
-           ...:     tname="time_period",
-           ...:     idname="id",
-           ...:     gname="G",
-           ...:     dname="D",
-           ...:     dose_est_method="cck",
-           ...:     target_parameter="level",
-           ...:     aggregation="dose",
-           ...:     biters=100
-           ...: )
-           ...: cck_result
 
     References
     ----------

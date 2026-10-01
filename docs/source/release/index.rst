@@ -7,6 +7,7 @@ Release Notes
 This page contains release notes for **ModernDiD** releases.
 
 .. list-table::
+   :class: section-index-table
    :header-rows: 1
    :widths: 25 75
 
