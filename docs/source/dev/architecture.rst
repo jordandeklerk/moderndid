@@ -655,7 +655,7 @@ with no overhead.
        params = result.params
 
 Users enable GPU acceleration by installing the ``gpu`` extra
-(``uv pip install moderndid[gpu]``) and either passing ``backend="cupy"``
+(``uv add "moderndid[gpu]"``) and either passing ``backend="cupy"``
 to ``att_gt``/``ddd`` or calling ``set_backend("cupy")`` before running
 an estimator. The ``gpu`` extra is not included in ``all`` because it
 requires CUDA hardware.
@@ -770,8 +770,7 @@ Creating a New Estimator
 
 See the dedicated :doc:`new_estimator` guide for a complete step-by-step
 walkthrough covering configuration, result objects, estimation, formatting,
-plotting, public API export, aggregation, maketables support, distributed
-backends, and testing.
+plotting, public API export, aggregation, maketables support, and testing.
 
 Plotting Architecture
 =====================

@@ -18,8 +18,8 @@ This is completely fine. Once the math works, you can work through
 the steps in order to wire it into the rest of the package. The first few
 steps (config, preprocessing, result object, estimator function) are the
 foundation. The later steps (aggregation, formatting, plotting, maketables,
-distributed, tests) can be done in any order and some may not apply to your
-estimator at all.
+tests) can be done in any order and some may not apply to your estimator at
+all.
 
 Sticking to the patterns here ensures your estimator integrates with the
 plotting, aggregation, sensitivity analysis, and publication table tools
@@ -29,7 +29,7 @@ as close to the standard pattern as you can and document any differences
 clearly.
 
 Before starting, read the :doc:`architecture` guide for background on the
-preprocessing pipeline, result objects, formatting, and distributed support.
+preprocessing pipeline, result objects, and formatting.
 
 
 .. _new-estimator-dispatch-table:
@@ -785,8 +785,7 @@ runs the estimation, and returns an immutable result object.
 
 The function follows four phases, shown in the code example below.
 
-1. **Delegation.** Check for a CuPy backend, Dask collection, or Spark
-   DataFrame and dispatch accordingly.
+1. **Delegation.** Check for a CuPy backend and dispatch accordingly.
 2. **Setup.** Validate inputs, construct the config dataclass, and run the
    preprocessing builder.
 3. **Estimation.** Call the core compute function, derive standard errors
@@ -842,25 +841,13 @@ section 5 (config fields), section 7 (core computation), and section 11
                    biters=biters, n_jobs=n_jobs, backend=None,
                )
 
-       # 2. Dask delegation
-       from moderndid.dask._utils import is_dask_collection
-       if is_dask_collection(data):
-           from moderndid.dask._my_estimator import dask_my_estimator
-           return dask_my_estimator(...)
-
-       # 3. Spark delegation
-       from moderndid.spark._utils import is_spark_dataframe
-       if is_spark_dataframe(data):
-           from moderndid.spark._my_estimator import spark_my_estimator
-           return spark_my_estimator(...)
-
-       # 4. Input validation
+       # 2. Input validation
        if gname is None:
            raise ValueError("gname is required.")
        if not 0 < alp < 1:
            raise ValueError(f"alp={alp} must be between 0 and 1.")
 
-       # 5. Build configuration
+       # 3. Build configuration
        config = MyEstimatorConfig(
            yname=yname,
            tname=tname,
@@ -872,7 +859,7 @@ section 5 (config fields), section 7 (core computation), and section 11
            biters=biters,
        )
 
-       # 6. Preprocess data
+       # 4. Preprocess data
        dp = (
            PreprocessDataBuilder()
            .with_data(data)
@@ -882,17 +869,17 @@ section 5 (config fields), section 7 (core computation), and section 11
            .build()
        )
 
-       # 7. Core computation
+       # 5. Core computation
        results = _compute(dp, n_jobs=n_jobs)
 
-       # 8. Variance estimation from influence functions
+       # 6. Variance estimation from influence functions
        n_units = dp.config.id_count
        influence_funcs = to_numpy(np.array(results.influence_functions))
        variance_matrix = influence_funcs.T @ influence_funcs / n_units
        standard_errors = np.sqrt(np.diag(variance_matrix) / n_units)
        standard_errors[standard_errors <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
 
-       # 9. Bootstrap (if requested)
+       # 7. Bootstrap (if requested)
        critical_value = scipy.stats.norm.ppf(1 - alp / 2)
        if boot:
            from .mboot import mboot
@@ -905,10 +892,10 @@ section 5 (config fields), section 7 (core computation), and section 11
            standard_errors = bootstrap_results["se"]
            critical_value = bootstrap_results["crit_val"]
 
-       # 10. Pre-test (for multi-period estimators, compute Wald statistic
+       # 8. Pre-test (for multi-period estimators, compute Wald statistic
        #     from pre-treatment influence functions; see att_gt for the pattern)
 
-       # 11. Package results
+       # 9. Package results
        return MyEstimatorResult(
            att=results.att_values,
            se=standard_errors,
@@ -1289,8 +1276,8 @@ import at the bottom of ``__init__.py`` so the function takes precedence.
                return getattr(module, name)
            except ImportError as e:
                raise ImportError(
-                   f"'{name}' requires extra dependencies: "
-                   f"uv pip install 'moderndid[{extra}]'"
+                   f"'{name}' requires extra dependencies. Install them with "
+                   f"uv add 'moderndid[{extra}]' or pip install 'moderndid[{extra}]'"
                ) from e
 
        if name in _submodules:
@@ -1426,27 +1413,7 @@ tries ``"n_obs"`` first, then ``"n_units"``, and as a last resort uses the
 first dimension of the influence function array.
 
 
-Step 10: Add Distributed Support (optional)
--------------------------------------------
-
-If your estimator performs independent group-time computations that can be
-parallelized across a cluster, add Dask and/or Spark backends. The existing
-distributed implementations for :func:`~moderndid.att_gt` and
-:func:`~moderndid.ddd` provide a template. See :doc:`distributed_architecture`
-for the reduction patterns and memory strategy.
-
-The distributed backends follow a single design rule. **Never materialize the
-full dataset on any single machine**. All computation happens on workers via
-partition-level sufficient statistics. Only small summary matrices return to
-the driver.
-
-Add your Dask implementation in ``moderndid/dask/_my_estimator.py`` and your
-Spark implementation in ``moderndid/spark/_my_estimator.py``. The main
-estimator function delegates to these when it detects a Dask or Spark input
-(see Step 4).
-
-
-Step 11: Write Tests
+Step 10: Write Tests
 --------------------
 
 See :ref:`how to write tests <testing-how-to-write>` for detailed guidance on

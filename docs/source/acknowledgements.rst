@@ -285,8 +285,6 @@ would not be possible:
 - `Numba <https://numba.pydata.org/>`_ -- JIT compilation for numerical code
 - `scikit-learn <https://scikit-learn.org/>`_ -- Machine learning (LASSO, Ridge)
 - `CuPy <https://cupy.dev/>`_ -- GPU-accelerated array computing
-- `Dask <https://www.dask.org/>`_ -- Distributed computing
-- `PySpark <https://spark.apache.org/docs/latest/api/python/>`_ -- Distributed computing on Spark
 - `plotnine <https://plotnine.org/>`_ -- Grammar of graphics plotting
 - `CVXPY <https://www.cvxpy.org/>`_ -- Convex optimization
 - `formulaic <https://matthewwardrop.github.io/formulaic/>`_ -- Formula parsing

@@ -82,8 +82,6 @@ at hand.
 - Could the change introduce performance regressions on large datasets?
 - If the code adds loops over observations, should it use Numba or
   vectorized operations instead?
-- For distributed code, does the change maintain the "never materialize
-  full data on the driver" principle?
 
 **Documentation**
 
@@ -111,7 +109,7 @@ Merge criteria
 
 Before merging a pull request, verify the following.
 
-1. CI must pass. All test jobs (core, Dask, Spark) must be green. Do not
+1. CI must pass. All test jobs must be green. Do not
    merge with failing checks unless there is a known flaky test that is
    unrelated to the PR, and document this in a comment.
 

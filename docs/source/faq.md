@@ -262,14 +262,12 @@ results into one table for a paper.
 
 The base install runs the core estimators, such as {func}`~moderndid.att_gt`,
 {func}`~moderndid.ddd`, and {func}`~moderndid.did_multiplegt`, along with
-{func}`~moderndid.npiv` and the panel utilities. Since `gpu` needs CUDA and
-`spark` needs Java, `"moderndid[all]"` adds every extra except those two. A
-function whose extra is missing raises an `ImportError` that names the install
-command, such as `uv pip install 'moderndid[didcont]'` for
-{func}`~moderndid.cont_did`. If {func}`~moderndid.etwfe` or
-{func}`~moderndid.diddynamic.dyn_balancing` raises a plain `ModuleNotFoundError`
-instead, install the `etwfe` or `diddynamic` extra. You need the `dask` or
-`spark` extra only when you pass a Dask or Spark DataFrame to an estimator.
+{func}`~moderndid.npiv` and the panel utilities. Because the `gpu` extra needs
+CUDA, `"moderndid[all]"` leaves it out and adds every other extra. A function
+whose extra is missing raises an `ImportError` that names the install command,
+such as `uv add 'moderndid[didcont]'` for {func}`~moderndid.cont_did`. If
+{func}`~moderndid.etwfe` or {func}`~moderndid.diddynamic.dyn_balancing` raises a
+plain `ModuleNotFoundError` instead, install the `etwfe` or `diddynamic` extra.
 {doc}`Installation <getting_started/installation>` lists every extra along with
 fixes for common install failures.
 
@@ -282,6 +280,3 @@ the `numba` extra and a smaller `biters` both help. With an NVIDIA GPU and the
 `gpu` extra, `backend="cupy"` runs `att_gt`, `ddd`, and
 {func}`~moderndid.cont_did` on the GPU. {ref}`GPU acceleration <gpu>` explains
 why that pays off only once cells hold thousands of units.
-{ref}`Distributed estimation <distributed>` covers panels too large to fit in
-memory on one machine. A Dask or Spark DataFrame passed to `att_gt`, `ddd`,
-`cont_did`, or `did_multiplegt` returns the same result types as a local run.

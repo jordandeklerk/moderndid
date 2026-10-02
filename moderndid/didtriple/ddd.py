@@ -35,8 +35,6 @@ def ddd(
     allow_unbalanced_panel=False,
     random_state=None,
     n_jobs=1,
-    n_partitions=None,
-    max_cohorts=None,
     backend=None,
 ):
     r"""Compute the doubly robust Triple Difference-in-Differences estimator for the ATT.
@@ -144,27 +142,11 @@ def ddd(
         Number of parallel jobs for group-time estimation in multi-period
         settings. 1 = sequential (default), -1 = all cores, >1 = that many
         workers. Ignored for 2-period data.
-    n_partitions : int or None, default=None
-        Number of Dask partitions per cell. Only used when ``data`` is a Dask
-        DataFrame; ignored for non-Dask inputs.
-    max_cohorts : int or None, default=None
-        Maximum number of treatment cohorts to process in parallel when
-        using the Dask distributed backend. Each cohort's group-time cells
-        are computed concurrently within a thread, so this controls how
-        many cohorts share the cluster simultaneously. Higher values
-        increase throughput but require more memory on workers to hold
-        the per-cohort wide-pivoted DataFrames. When ``None``, defaults
-        to the number of Dask workers. Ignored for non-Dask inputs.
-
-        For best performance, set this equal to the total number of
-        treatment cohorts so that all cohorts run concurrently. Reduce
-        the value if the cluster runs out of memory.
     backend : {"numpy", "cupy"} or None, default=None
         Array backend to use for this call only. When set, the backend is
         activated for the duration of this call and reverted automatically
         when the call returns. ``None`` (the default) uses whatever backend
-        is currently active (see :func:`~moderndid.set_backend`). Ignored
-        when ``data`` is a Dask DataFrame.
+        is currently active (see :func:`~moderndid.set_backend`).
 
     Returns
     -------
@@ -251,70 +233,8 @@ def ddd(
                 allow_unbalanced_panel=allow_unbalanced_panel,
                 random_state=random_state,
                 n_jobs=n_jobs,
-                n_partitions=n_partitions,
-                max_cohorts=max_cohorts,
                 backend=None,
             )
-
-    from moderndid.dask._utils import is_dask_collection
-
-    if is_dask_collection(data):
-        from moderndid.dask._ddd import dask_ddd
-
-        return dask_ddd(
-            data,
-            yname,
-            tname,
-            idname,
-            gname,
-            pname,
-            xformla,
-            control_group=control_group,
-            base_period=base_period,
-            est_method=est_method,
-            weightsname=weightsname,
-            boot=boot,
-            biters=biters,
-            cluster=cluster,
-            alpha=alpha,
-            trim_level=trim_level,
-            panel=panel,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            max_cohorts=max_cohorts,
-            backend=backend,
-        )
-
-    from moderndid.spark._utils import is_spark_dataframe
-
-    if is_spark_dataframe(data):
-        from moderndid.spark._ddd import spark_ddd
-
-        return spark_ddd(
-            data,
-            yname,
-            tname,
-            idname,
-            gname,
-            pname,
-            xformla,
-            control_group=control_group,
-            base_period=base_period,
-            est_method=est_method,
-            weightsname=weightsname,
-            boot=boot,
-            biters=biters,
-            cluster=cluster,
-            alpha=alpha,
-            trim_level=trim_level,
-            panel=panel,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            max_cohorts=max_cohorts,
-            backend=backend,
-        )
 
     if gname is None:
         raise ValueError("gname is required. Please specify the treatment group column.")

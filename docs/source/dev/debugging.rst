@@ -5,8 +5,8 @@ Debugging Guide
 =================
 
 **ModernDiD** combines several technologies (Polars DataFrames, Numba JIT
-compilation, CuPy GPU arrays, and Dask/Spark distributed computing) that
-each have their own debugging characteristics and common failure modes.
+compilation, and CuPy GPU arrays) that each have their own debugging
+characteristics and common failure modes.
 
 General strategies
 ==================
@@ -187,59 +187,6 @@ same computation on both backends and compare step by step::
        result_cpu.att_gt, to_numpy(result_gpu.att_gt), rtol=1e-5
    )
 
-Debugging distributed execution
-================================
-
-Dask and Spark tests can be harder to debug because computation is deferred
-and distributed across workers.
-
-Dask
-----
-
-**View the task graph.** For Dask computations, you can visualize what will
-be computed before triggering execution::
-
-   import dask
-   result = dask_att_gt(ddf, ...)  # returns a delayed result
-   dask.visualize(result, filename="task_graph.png")
-
-**Use a local cluster with a single worker.** This serializes execution and
-makes errors easier to trace::
-
-   from dask.distributed import Client
-   client = Client(n_workers=1, threads_per_worker=1)
-
-**Check worker logs.** When running with a distributed client, exceptions on
-workers may not surface as clearly. Use the Dask dashboard
-(``http://localhost:8787`` by default) to inspect worker logs and task
-states.
-
-**Timeouts.** Dask tests use ``--timeout=120`` in CI. If a test hangs
-locally, run it with a timeout to get a traceback::
-
-   pytest tests/dask/ --timeout=60 -vv
-
-Spark
------
-
-**Java version.** Spark requires Java 17+. Check with ``java -version``.
-If you see ``UnsupportedClassVersionError``, your Java version is too old.
-
-**Driver memory.** Spark allocates limited driver memory by default. For
-large test fixtures, you may need to increase it::
-
-   export SPARK_DRIVER_MEMORY=4g
-
-**Verbose logging.** Spark is noisy by default. To focus on your code's
-output, set the Spark log level::
-
-   spark.sparkContext.setLogLevel("WARN")
-
-**Serialization errors.** If you see ``PicklingError`` or
-``SerializationException``, it means Spark tried to serialize an object
-that can't be sent to workers. This usually happens when a closure captures
-a non-serializable object (like a database connection or a compiled Numba
-function).
 
 Test failure patterns
 =====================
@@ -269,9 +216,6 @@ Here are common test failure patterns and what they typically indicate.
        ``module``-scoped fixture being modified)
    * - ``TypingError`` from Numba
      - Type mismatch in Numba-compiled function arguments
-   * - ``TimeoutError`` in distributed tests
-     - Deadlock, excessive data shuffling, or the driver materializing
-       too much data
    * - R validation test fails after code change
      - Likely a regression that changed estimation results. Investigate
        carefully before loosening tolerances, as these tests verify that
@@ -280,7 +224,7 @@ Here are common test failure patterns and what they typically indicate.
 Using a debugger
 ================
 
-For non-Numba, non-distributed code, standard Python debugging works well.
+For code outside Numba, standard Python debugging works well.
 
 **With pytest**, add the ``--pdb`` flag to drop into the debugger on the
 first failure::

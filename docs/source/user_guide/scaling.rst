@@ -2,8 +2,8 @@
 Scaling
 =======
 
-Start on a single machine, then use a distributed backend or GPU acceleration
-when your data and estimation workload need it.
+Start on a single machine and add GPU acceleration when your data and
+estimation workload need it.
 
 .. list-table::
    :header-rows: 1
@@ -11,8 +11,6 @@ when your data and estimation workload need it.
 
    * - Guide
      - Description
-   * - :doc:`distributed`
-     - Estimate on Dask and Spark clusters and configure distributed computation.
    * - :doc:`gpu`
      - Install GPU dependencies and run supported estimators on NVIDIA GPUs.
 
@@ -20,7 +18,6 @@ when your data and estimation workload need it.
    :hidden:
    :maxdepth: 1
 
-   distributed
    gpu
 
 .. raw:: html

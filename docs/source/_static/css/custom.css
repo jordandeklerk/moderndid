@@ -219,6 +219,19 @@ Python, so their token colors are cleared.
   border-left-width: 4px !important;
 }
 
+/* See also boxes on the API pages take the violet of parameter names in each scheme instead of the theme's blue. */
+.md-typeset .admonition.seealso {
+  border-color: var(--mdid-code-parameter);
+}
+
+.md-typeset .admonition.seealso > .admonition-title {
+  background-color: color-mix(in srgb, var(--mdid-code-parameter) 10%, transparent);
+}
+
+.md-typeset .admonition.seealso > .admonition-title::before {
+  background-color: var(--mdid-code-parameter);
+}
+
 /* \hl in a formula marks where a symbol appears, in the secondary accent, deepened on the light scheme so it reads on white. */
 .md-typeset .mdid-symbol {
   color: var(--mdid-symbol);

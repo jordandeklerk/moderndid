@@ -23,5 +23,5 @@ ModernDiD
    FAQ <faq>
    Development <dev/index>
    Contributing <contributing/index>
-   Release Notes <release/index>
+   Changelog <release/index>
    Acknowledgements <acknowledgements>

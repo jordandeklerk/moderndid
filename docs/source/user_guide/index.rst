@@ -18,7 +18,7 @@ shared across ModernDiD's estimators.
    * - :doc:`fundamentals`
      - Choose an estimator, create plots and publication tables, and prepare panel data.
    * - :doc:`scaling`
-     - Run estimators on distributed Dask and Spark clusters or NVIDIA GPUs.
+     - Run supported estimators on NVIDIA GPUs.
 
 For a full analysis with a particular treatment design, see the
 :doc:`Examples <../examples/index>`. Function signatures and parameters live in

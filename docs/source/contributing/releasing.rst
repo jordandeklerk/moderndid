@@ -26,7 +26,7 @@ Before starting a release, verify the following.
 1. All CI checks pass on ``main``. Check the
    `Actions tab <https://github.com/jordandeklerk/moderndid/actions>`__ to
    confirm that the latest commit on ``main`` is green across all test
-   matrices (core, Dask, Spark).
+   matrices.
 
 2. The full test suite passes. The weekly scheduled run
    (``test-full.yml``) exercises slow tests that are skipped in normal CI.

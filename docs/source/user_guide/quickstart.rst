@@ -410,7 +410,5 @@ design.
 - :ref:`Estimator Overview <estimator-overview>` surveys all available
   estimators, including continuous treatment, triple differences,
   intertemporal DiD, and sensitivity analysis.
-- :ref:`Distributed Estimation <distributed>` explains how to scale
-  estimation to datasets that do not fit on one machine using Dask.
 - The :ref:`Examples <user-guide>` section walks through each estimator
   end-to-end with real and simulated data.

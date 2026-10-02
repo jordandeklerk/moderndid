@@ -176,11 +176,6 @@ Run the test suite locally before pushing::
    pixi run -e dev tests-core      # Fast test suite (recommended during development)
    pixi run -e dev tests-full      # Full test suite including slow tests
 
-To run distributed test suites::
-
-   pixi run -e dev tests-dask      # Dask distributed tests
-   pixi run -e dev tests-spark     # Spark distributed tests
-
 R validation tests
 ==================
 
@@ -214,7 +209,7 @@ R packages::
 
    pixi run -e validation setup-r
 
-This runs `setup.sh <https://github.com/jordandeklerk/moderndid/tree/main/scripts/setup.sh>`__, which installs ``contdid``,
+This runs `setup-r.sh <https://github.com/jordandeklerk/moderndid/tree/main/.github/scripts/setup-r.sh>`__, which installs ``contdid``,
 ``triplediff``, ``HonestDiD``, ``DIDmultiplegtDYN``, ``Rglpk``, and
 ``polars`` from CRAN and r-universe. The first run compiles everything from
 source and can take a few minutes (most of that is the Rust build for
@@ -268,17 +263,13 @@ Primary test suite
 -------------------
 
 The ``test.yml`` workflow runs on every pull request and on pushes to ``main``
-(excluding changes under ``docs/``). It has four jobs.
+(excluding changes under ``docs/``). It has two jobs.
 
-- The ``test`` job runs the core test suite (excluding slow and distributed
-  tests) across Python 3.11, 3.12, and 3.13. This is the most common job to
+- The ``test`` job runs the core test suite (excluding slow tests) across
+  Python 3.12 and 3.13 on Ubuntu and Windows. This is the most common job to
   check when your PR fails.
-- The ``dask`` job runs the Dask distributed tests on Python 3.12 and 3.13
-  with a 120-second timeout per test.
-- The ``spark`` job runs the Spark distributed tests on Python 3.12 and 3.13.
-  It also provisions Java 17, which Spark requires.
 - The ``coverage`` job runs the full test suite (including slow tests) on
-  ``main`` only. It does not run on PRs.
+  Python 3.14 on ``main`` only. It does not run on PRs.
 
 All jobs upload coverage reports to Codecov.
 
@@ -341,8 +332,6 @@ GitHub Actions tab. The most common causes are
   reproduce.
 - Lint failures from ruff or mypy. Run ``pixi run lint`` locally to see the
   same errors.
-- Timeout failures in Dask or Spark jobs (120-second limit). These usually
-  indicate a test that hangs or does excessive computation on the driver.
 - Platform differences. CI runs on Ubuntu while you may develop on macOS.
   Floating-point behavior can differ slightly between platforms. See
   :ref:`debugging` for guidance on numerical tolerances.
@@ -369,7 +358,7 @@ The lazy loader resolves names through three dictionaries checked in order.
    name raises an ``ImportError`` with a helpful message telling the user
    which extra to install. For example,
    ``"cont_did": ("moderndid.didcont.cont_did", "didcont")`` means the user
-   sees ``uv pip install 'moderndid[didcont]'`` in the error.
+   sees ``uv add 'moderndid[didcont]'`` in the error.
 
 ``_submodules``
    A set of submodule names that can be accessed as ``moderndid.<submodule>``.
@@ -421,7 +410,7 @@ corresponding tox testenv in ``tox.ini``.
 Python version support
 -----------------------
 
-**ModernDiD** supports Python 3.11 and above (``requires-python = ">=3.11"``).
-CI tests against 3.11, 3.12, and 3.13. Do not use language features that
-require a Python version above 3.11 (e.g., ``type`` statement from 3.12)
-without gating them behind a version check.
+**ModernDiD** supports Python 3.12 and above (``requires-python = ">=3.12"``).
+CI tests against 3.12 and 3.13, and the coverage job on ``main`` runs 3.14. Do
+not use language features that need a Python version above 3.12, such as type
+parameter defaults from 3.13, without gating them behind a version check.

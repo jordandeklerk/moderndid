@@ -124,12 +124,11 @@ def to_numpy(arr):
 
 
 def _array_module(*arrays):
-    """Return ``cupy`` if any array is a CuPy ndarray, else ``numpy``.
+    """Return the array module that matches the given arrays.
 
-    This is used by Dask partition functions to detect whether their
-    input arrays are CuPy or NumPy and use the matching ``xp`` module,
-    without relying on the ``ContextVar``-based ``get_backend()`` which
-    does not propagate to Dask worker processes.
+    Unlike :func:`get_backend`, which reads the active backend, this reads the
+    arrays themselves. A helper that uses it always works in the module of the
+    arrays it receives.
 
     Parameters
     ----------
@@ -193,13 +192,15 @@ def _cupy_install_message():
         return (
             f"CuPy is not installed. Detected CUDA {cuda_ver}.x on this machine.\n"
             f"Install the matching wheel:\n"
-            f"  uv pip install {wheel}"
+            f"  uv add {wheel}\n"
+            "Use pip install in place of uv add outside a uv project."
         )
     return (
         "CuPy is not installed. Install the wheel matching your CUDA version "
         "(run 'nvidia-smi' or 'nvcc --version' to check):\n"
-        "  uv pip install cupy-cuda11x   # CUDA 11.x\n"
-        "  uv pip install cupy-cuda12x   # CUDA 12.x"
+        "  uv add cupy-cuda11x   # CUDA 11.x\n"
+        "  uv add cupy-cuda12x   # CUDA 12.x\n"
+        "Use pip install in place of uv add outside a uv project."
     )
 
 

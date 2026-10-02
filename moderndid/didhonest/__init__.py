@@ -5,7 +5,7 @@ try:
 except ImportError as e:
     raise ImportError(
         "The 'didhonest' module requires additional dependencies. "
-        "Install them with: uv pip install 'moderndid[didhonest]'"
+        "Install them with uv add 'moderndid[didhonest]' or pip install 'moderndid[didhonest]'"
     ) from e
 
 from .arp_no_nuisance import (

@@ -49,8 +49,6 @@ def control_test_data():
             "x2": x2,
             "weight_gt": np.ones(len(units)),
             "diff_y_1": diff_y_1,
-            "lag_x1_1": np.roll(x1, 1),
-            "lag_x2_1": np.roll(x2, 1),
         }
     )
 
@@ -64,7 +62,7 @@ def test_compute_control_coefficients_basic(control_test_data):
         xformla="~ x1 + x2",
     )
 
-    coefficients = compute_control_coefficients(control_test_data, config, horizon=1)
+    _, coefficients = compute_control_coefficients(control_test_data, config, n_groups=30)
 
     assert isinstance(coefficients, dict)
 
@@ -87,7 +85,7 @@ def test_compute_control_coefficients_no_controls(xformla):
         }
     )
 
-    coefficients = compute_control_coefficients(df, config, horizon=1)
+    _, coefficients = compute_control_coefficients(df, config, n_groups=2)
 
     assert not coefficients
 
@@ -108,14 +106,14 @@ def test_apply_control_adjustment_returns_diff_column(control_test_data, xformla
         xformla=xformla,
     )
 
-    result = apply_control_adjustment(control_test_data, config, horizon=1, coefficients={})
+    result = apply_control_adjustment(control_test_data, config, horizon=1, coefficients={}, horizon_type="effect")
 
     assert expected_column in result.columns
 
 
 @pytest.mark.parametrize(
     "expected_column",
-    ["diff_x1_1", "diff_x2_1"],
+    ["_ctrl_diff_0_1", "_ctrl_diff_1_1"],
 )
 def test_apply_control_adjustment_creates_diff_columns(control_test_data, expected_column):
     config = DIDInterConfig(
@@ -131,7 +129,9 @@ def test_apply_control_adjustment_creates_diff_columns(control_test_data, expect
         1.0: {"theta": np.array([0.4, 0.2]), "inv_denom": None, "useful": True},
     }
 
-    result = apply_control_adjustment(control_test_data, config, horizon=1, coefficients=coefficients)
+    result = apply_control_adjustment(
+        control_test_data, config, horizon=1, coefficients=coefficients, horizon_type="effect"
+    )
 
     assert expected_column in result.columns
 
@@ -149,7 +149,7 @@ def test_coefficient_structure_keys(control_test_data, expected_key):
         xformla="~ x1 + x2",
     )
 
-    coefficients = compute_control_coefficients(control_test_data, config, horizon=1)
+    _, coefficients = compute_control_coefficients(control_test_data, config, n_groups=30)
 
     for _, coef_dict in coefficients.items():
         assert expected_key in coef_dict
@@ -164,7 +164,7 @@ def test_coefficient_useful_is_bool(control_test_data):
         xformla="~ x1 + x2",
     )
 
-    coefficients = compute_control_coefficients(control_test_data, config, horizon=1)
+    _, coefficients = compute_control_coefficients(control_test_data, config, n_groups=30)
 
     for _, coef_dict in coefficients.items():
         assert isinstance(coef_dict["useful"], bool)
@@ -190,12 +190,10 @@ def test_compute_control_coefficients_insufficient_data():
             "x2": [2.0],
             "weight_gt": [1.0],
             "diff_y_1": [0.1],
-            "lag_x1_1": [0.5],
-            "lag_x2_1": [1.0],
         }
     )
 
-    coefficients = compute_control_coefficients(df, config, horizon=1)
+    _, coefficients = compute_control_coefficients(df, config, n_groups=1)
 
     for _, coef_dict in coefficients.items():
         assert coef_dict["useful"] is False

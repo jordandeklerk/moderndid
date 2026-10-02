@@ -37,7 +37,8 @@ separately:
 
 .. code-block:: bash
 
-    uv pip install maketables
+    uv add maketables       # in a project managed by uv
+    pip install maketables  # with pip
 
 
 Plug-in interface

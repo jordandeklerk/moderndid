@@ -27,10 +27,31 @@ pytest-cov = ">=4.0.0"
 pytest-timeout = ">=2.0.0"
 
 [feature.dev.tasks]
-tests-core = "pytest -m 'not slow' --ignore=tests/dask --ignore=tests/spark -vv"
-tests-full = "pytest --ignore=tests/dask --ignore=tests/spark -vv"
-tests-dask = "pytest tests/dask -m 'not slow' --timeout=120 -vv"
-tests-spark = "pytest tests/spark --timeout=120 -vv"
+tests-core = "pytest -m 'not slow' -vv"
+tests-full = "pytest -vv"
+
+[feature.benchmark.dependencies]
+python = "3.12.*"
+asv = ">=0.6.6,<0.7"
+asv_runner = "==0.3.1"
+spin = ">=0.18,<0.19"
+python-build = ">=1.2.2"
+pytest = ">=7.0.0"
+
+[feature.benchmark.activation.env]
+OMP_NUM_THREADS = "1"
+OPENBLAS_NUM_THREADS = "1"
+MKL_NUM_THREADS = "1"
+NUMEXPR_NUM_THREADS = "1"
+NUMBA_NUM_THREADS = "1"
+POLARS_MAX_THREADS = "1"
+
+[feature.benchmark.tasks]
+bench = "spin bench"
+benchmark-r = "spin compare"
+benchmark-check = "spin asv check -E existing"
+benchmark-machine = "spin asv machine --yes"
+benchmark-run = "spin asv run --show-stderr"
 
 [feature.docs]
 platforms = ["linux-64", "osx-arm64", "osx-64"]
@@ -85,13 +106,6 @@ plotnine = ">=0.14.0"
 [feature.numba.dependencies]
 numba = ">=0.57.0"
 
-[feature.dask.dependencies]
-dask = ">=2024.1.0"
-distributed = ">=2024.1.0"
-
-[feature.spark.pypi-dependencies]
-pyspark = ">=3.4.0"
-
 [feature.gpu]
 platforms = ["linux-64"]
 
@@ -128,8 +142,12 @@ r-drdid = "*"
 r-jsonlite = "*"
 glpk = "*"
 
+# Since R 4.3.3 links Fortran code against gfortran 14.3's libraries, a newer gfortran breaks source installs.
+[feature.validation.target.osx-arm64.dependencies]
+gfortran_osx-arm64 = "14.3.*"
+
 [feature.validation.tasks]
-setup-r = "bash scripts/setup.sh"
+setup-r = "bash .github/scripts/setup-r.sh"
 all = "pytest tests/validation/ -vv"
 did = "pytest tests/validation/test_r_did.py -vv"
 didcont = "pytest tests/validation/test_r_didcont.py -vv"
@@ -140,9 +158,10 @@ didhonest = "pytest tests/validation/test_r_didhonest.py -vv"
 npiv = "pytest tests/validation/test_r_npiv.py -vv"
 
 [environments]
-dev = ["dev", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba", "dask", "spark"]
-docs = ["docs", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba", "dask", "spark"]
+benchmark = { features = ["benchmark", "build", "didcont", "numba", "validation"], solve-group = "benchmark" }
+dev = ["dev", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba"]
+docs = ["docs", "build", "etwfe", "didcont", "didhonest", "didml", "plots", "numba"]
 check = ["lint"]
 build = ["build"]
 gpu = ["gpu"]
-validation = ["dev", "build", "etwfe", "validation", "didcont", "didhonest", "plots", "numba", "dask", "spark"]
+validation = ["dev", "build", "etwfe", "validation", "didcont", "didhonest", "plots", "numba"]

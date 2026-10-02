@@ -126,10 +126,6 @@ __all__ = [
     "create_sensitivity_results_sm",
     "create_sign_constraint_matrix",
     # Core data
-    "dask_att_gt",
-    "dask_cont_did",
-    "dask_ddd",
-    "dask_did_multiplegt",
     "data",
     "ddd",
     "ddd_mp",
@@ -228,10 +224,6 @@ __all__ = [
     "setup_pte_basic",
     "setup_pte_cont",
     "simulate_cont_did_data",
-    "spark_att_gt",
-    "spark_cont_did",
-    "spark_ddd",
-    "spark_did_multiplegt",
     "std_ipw_did_panel",
     "std_ipw_did_rc",
     "summary_mp_pretest",
@@ -549,16 +541,6 @@ _optional_imports = {
     "emfx": ("moderndid.etwfe", "etwfe"),
     "format_etwfe_result": ("moderndid.etwfe", "etwfe"),
     "format_emfx_result": ("moderndid.etwfe", "etwfe"),
-    # dask (requires dask + distributed)
-    "dask_att_gt": ("moderndid.dask._did", "dask"),
-    "dask_cont_did": ("moderndid.dask._didcont", "dask"),
-    "dask_ddd": ("moderndid.dask._ddd", "dask"),
-    "dask_did_multiplegt": ("moderndid.dask._didinter", "dask"),
-    # spark (requires pyspark)
-    "spark_att_gt": ("moderndid.spark._did", "spark"),
-    "spark_cont_did": ("moderndid.spark._didcont", "spark"),
-    "spark_ddd": ("moderndid.spark._ddd", "spark"),
-    "spark_did_multiplegt": ("moderndid.spark._didinter", "spark"),
     # plots (requires plotnine)
     "plot_agg": ("moderndid.plots", "plots"),
     "plot_dose_response": ("moderndid.plots", "plots"),
@@ -605,7 +587,10 @@ def __getattr__(name: str) -> Any:
             module = _importlib.import_module(module_path)
             return getattr(module, name)
         except ImportError as e:
-            raise ImportError(f"'{name}' requires extra dependencies: uv pip install 'moderndid[{extra}]'") from e
+            raise ImportError(
+                f"'{name}' requires extra dependencies. Install them with "
+                f"uv add 'moderndid[{extra}]' or pip install 'moderndid[{extra}]'"
+            ) from e
 
     # Submodules - checked last so specific imports take precedence
     if name in _submodules:

@@ -7,16 +7,9 @@ import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
-from moderndid.core.preprocess.utils import get_covariate_names_from_formula
-
 from .bootstrap import cluster_bootstrap
 from .container import ATEResult, DIDInterResult, EffectsResult, HeterogeneityResult, PlacebosResult
-from .controls import (
-    apply_control_adjustment,
-    compute_control_coefficients,
-    compute_control_influence,
-    compute_variance_adjustment,
-)
+from .controls import apply_control_adjustment, compute_control_coefficients, compute_variance_adjustment
 from .variance import (
     build_treatment_paths,
     compute_clustered_variance,
@@ -58,6 +51,8 @@ def compute_did_multiplegt(preprocessed):
     if config.same_switchers_pl and config.placebo > 0:
         df = _compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
 
+    df, coefficients = compute_control_coefficients(df, config, n_groups)
+
     effects_results = _compute_did_effects(
         df=df,
         config=config,
@@ -65,6 +60,7 @@ def compute_did_multiplegt(preprocessed):
         n_groups=n_groups,
         t_max=t_max,
         horizon_type="effect",
+        coefficients=coefficients,
     )
 
     placebos_results = None
@@ -76,6 +72,7 @@ def compute_did_multiplegt(preprocessed):
             n_groups=n_groups,
             t_max=t_max,
             horizon_type="placebo",
+            coefficients=coefficients,
         )
 
     if config.boot:
@@ -213,6 +210,8 @@ def _compute_bootstrap_estimates(df, config):
     if config.same_switchers_pl and config.placebo > 0:
         df = _compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
 
+    df, coefficients = compute_control_coefficients(df, config, n_groups)
+
     effects_results = _compute_did_effects(
         df=df,
         config=config,
@@ -220,6 +219,7 @@ def _compute_bootstrap_estimates(df, config):
         n_groups=n_groups,
         t_max=t_max,
         horizon_type="effect",
+        coefficients=coefficients,
     )
 
     result = {"effects": effects_results["estimates"]}
@@ -232,6 +232,7 @@ def _compute_bootstrap_estimates(df, config):
             n_groups=n_groups,
             t_max=t_max,
             horizon_type="placebo",
+            coefficients=coefficients,
         )
         result["placebos"] = placebos_results["estimates"]
 
@@ -246,7 +247,7 @@ def _compute_bootstrap_estimates(df, config):
     return result
 
 
-def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
+def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, coefficients):
     """Compute effects at multiple horizons."""
     gname = config.gname
     tname = config.tname
@@ -281,16 +282,6 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
             dist_col = f"dist_to_switch_pl_{abs_h}"
 
         df = build_treatment_paths(df, abs_h, config)
-
-        coefficients = None
-        covariate_names = get_covariate_names_from_formula(config.xformla)
-        if covariate_names:
-            for ctrl in covariate_names:
-                lag_col = f"lag_{ctrl}_{abs_h}"
-                df = df.with_columns(pl.col(ctrl).shift(abs_h).over(gname).alias(lag_col))
-
-            coefficients = compute_control_coefficients(df, config, abs_h)
-            df = apply_control_adjustment(df, config, abs_h, coefficients)
 
         never_col = f"never_change_{abs_h}"
         df = df.with_columns(
@@ -371,6 +362,10 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
             n_obs_arr[idx] = 0
             continue
 
+        # The switcher and control flags above come from the unadjusted outcome differences.
+        if coefficients:
+            df = apply_control_adjustment(df, config, abs_h, coefficients, horizon_type)
+
         inf_temp_col = f"inf_func_{abs_h}_temp"
         n_control_is_zero = pl.col(n_control_col).is_null() | (pl.col(n_control_col) == 0)
         safe_n_control = pl.when(n_control_is_zero).then(1.0).otherwise(pl.col(n_control_col))
@@ -402,9 +397,8 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type):
 
         estimates[idx] = did_estimate
 
-        if covariate_names and coefficients:
-            df = compute_control_influence(df, config, abs_h, coefficients, n_groups, safe_n_switchers)
-            df = compute_variance_adjustment(df, config, abs_h, coefficients, n_groups)
+        if coefficients:
+            df = compute_variance_adjustment(df, config, abs_h, coefficients, safe_n_switchers, dist_col)
 
         switcher_flag = f"is_switcher_{abs_h}"
         weighted_diff = f"weighted_diff_{abs_h}"

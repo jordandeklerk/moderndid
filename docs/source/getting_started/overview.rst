@@ -61,12 +61,6 @@ Key features
   `pyarrow <https://arrow.apache.org/docs/python/>`_,
   `duckdb <https://duckdb.org/>`_, and more, powered by
   `narwhals <https://narwhals-dev.github.io/narwhals/>`_.
-- **Scales up.** Runs locally on a laptop, then transparently scales to
-  multi-node `Dask <https://www.dask.org/>`_ and
-  `Spark <https://spark.apache.org/>`_ clusters for datasets that exceed
-  single-machine memory. Just pass a Dask or Spark DataFrame and the
-  :doc:`distributed backend </user_guide/distributed>` activates
-  automatically.
 - **Fast computation.**
   `Polars <https://pola.rs/>`_ for internal data wrangling,
   `NumPy <https://numpy.org/>`_ vectorization,
@@ -74,8 +68,7 @@ Key features
   parallel compute.
 - **GPU acceleration.** Optional
   `CuPy <https://cupy.dev/>`_-accelerated regression and propensity score
-  estimation on NVIDIA GPUs, with multi-GPU scaling in distributed
-  environments. See the :doc:`GPU guide </user_guide/gpu>`.
+  estimation on NVIDIA GPUs. See the :doc:`GPU guide </user_guide/gpu>`.
 - **Native plots.** Built-in
   `plotnine <https://plotnine.org/>`_ visualizations returning standard
   ``ggplot`` objects you can customize with the full grammar of graphics.

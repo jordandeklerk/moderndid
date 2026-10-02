@@ -103,10 +103,6 @@ Clustered standard errors require ``boot=True``. When ``clustervars`` is
 specified without the bootstrap, the reported standard errors do not account
 for clustering. At most two clustering variables are supported.
 
-When a Dask or Spark DataFrame is passed as ``data``, the estimator
-automatically routes to a distributed implementation. See :doc:`distributed`
-for configuration details.
-
 
 Extended Two-Way Fixed Effects (ETWFE)
 --------------------------------------
@@ -191,8 +187,7 @@ The estimator automatically detects whether the data has two periods or
 multiple periods, and whether the data is a balanced panel or repeated
 cross-sections. For two-period data the ``control_group`` and
 ``base_period`` parameters are ignored since there is only one possible
-comparison. Like :func:`~moderndid.att_gt`, passing a Dask or Spark DataFrame automatically
-routes to a distributed implementation.
+comparison.
 
 
 Difference-in-Differences with Continuous Treatments
@@ -479,6 +474,3 @@ analysis with real or simulated data.
 - :doc:`example_dyn_balancing` for dynamic treatments with ``dyn_balancing``
 - :doc:`example_honest_did` for sensitivity analysis with :func:`~moderndid.honest_did`
 - :doc:`example_npiv` for nonparametric IV with :func:`~moderndid.npiv`
-
-For scaling any of these estimators to large datasets, see
-:doc:`distributed`.

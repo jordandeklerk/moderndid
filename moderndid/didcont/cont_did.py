@@ -59,7 +59,6 @@ def cont_did(
     clustervars=None,
     base_period="varying",
     random_state=None,
-    n_partitions=None,
     backend=None,
     **kwargs,
 ):
@@ -199,16 +198,11 @@ def cont_did(
         Controls the randomness of the bootstrap. Pass an int for reproducible
         results across multiple function calls. Can also accept a NumPy
         ``Generator`` instance.
-    n_partitions : int, optional
-        Number of partitions for distributed computation when ``data`` is a
-        Dask or Spark DataFrame. If ``None``, defaults to the framework's
-        default parallelism.
     backend : {"numpy", "cupy"} or None, default=None
         Array backend to use for this call only. When set, the backend is
         activated before estimation and the previous backend is restored
         when the call returns. ``None`` (the default) uses whatever backend
-        is currently active (see :func:`~moderndid.set_backend`). Ignored
-        when ``data`` is a Dask or Spark DataFrame.
+        is currently active (see :func:`~moderndid.set_backend`).
     **kwargs
         Additional keyword arguments passed to internal functions.
 
@@ -269,7 +263,6 @@ def cont_did(
                 clustervars=clustervars,
                 base_period=base_period,
                 random_state=random_state,
-                n_partitions=n_partitions,
                 backend=None,
                 **kwargs,
             )
@@ -301,78 +294,6 @@ def cont_did(
         raise ValueError(f"num_knots={num_knots} is not valid. Must be non-negative.")
     if treatment_type not in ("continuous", "discrete"):
         raise ValueError(f"treatment_type='{treatment_type}' is not valid. Must be 'continuous' or 'discrete'.")
-
-    from moderndid.dask._utils import is_dask_collection
-
-    if is_dask_collection(data):
-        from moderndid.dask._didcont import dask_cont_did
-
-        return dask_cont_did(
-            data,
-            yname,
-            tname,
-            idname,
-            gname=gname,
-            dname=dname,
-            xformla=xformla,
-            target_parameter=target_parameter,
-            aggregation=aggregation,
-            treatment_type=treatment_type,
-            dose_est_method=dose_est_method,
-            dvals=dvals,
-            degree=degree,
-            num_knots=num_knots,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            control_group=control_group,
-            anticipation=anticipation,
-            weightsname=weightsname,
-            alp=alp,
-            cband=cband,
-            boot=boot,
-            boot_type=boot_type,
-            biters=biters,
-            clustervars=clustervars,
-            base_period=base_period,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            **kwargs,
-        )
-
-    from moderndid.spark._utils import is_spark_dataframe
-
-    if is_spark_dataframe(data):
-        from moderndid.spark._didcont import spark_cont_did
-
-        return spark_cont_did(
-            data,
-            yname,
-            tname,
-            idname,
-            gname=gname,
-            dname=dname,
-            xformla=xformla,
-            target_parameter=target_parameter,
-            aggregation=aggregation,
-            treatment_type=treatment_type,
-            dose_est_method=dose_est_method,
-            dvals=dvals,
-            degree=degree,
-            num_knots=num_knots,
-            allow_unbalanced_panel=allow_unbalanced_panel,
-            control_group=control_group,
-            anticipation=anticipation,
-            weightsname=weightsname,
-            alp=alp,
-            cband=cband,
-            boot=boot,
-            boot_type=boot_type,
-            biters=biters,
-            clustervars=clustervars,
-            base_period=base_period,
-            random_state=random_state,
-            n_partitions=n_partitions,
-            **kwargs,
-        )
 
     data = to_polars(data)
 

@@ -141,7 +141,20 @@ def compute_agg_ddd(
     keepers = np.where((group <= t) & (t <= group + max_e))[0]
 
     if aggregation_type == "simple":
-        return _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, biters, alpha, args, random_state)
+        return _compute_simple(
+            att,
+            inf_func_mat,
+            keepers,
+            pg_obs,
+            n,
+            boot,
+            biters,
+            alpha,
+            args,
+            random_state,
+            orig_group,
+            unit_groups,
+        )
 
     if aggregation_type == "group":
         return _compute_group(
@@ -182,6 +195,8 @@ def compute_agg_ddd(
             cband,
             args,
             random_state,
+            orig_group,
+            unit_groups,
         )
 
     return _compute_eventstudy(
@@ -205,20 +220,36 @@ def compute_agg_ddd(
         cband,
         args,
         random_state,
+        unit_groups,
     )
 
 
-def _compute_simple(att, inf_func_mat, keepers, pg_obs, n, boot, biters, alpha, args, random_state):
+def _compute_simple(
+    att,
+    inf_func_mat,
+    keepers,
+    pg_obs,
+    n,
+    boot,
+    biters,
+    alpha,
+    args,
+    random_state,
+    orig_group,
+    unit_groups,
+):
     """Compute simple ATT aggregation."""
     simple_att = np.sum(att[keepers] * pg_obs[keepers]) / pg_obs[keepers].sum()
 
     if np.isnan(simple_att):
         simple_att = np.nan
-
-    weights = pg_obs[keepers] / pg_obs[keepers].sum()
-    simple_if = _get_agg_inf_func(inf_func_mat, keepers, weights)
-
-    simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state)
+        simple_se = np.nan
+        simple_if = np.zeros(n)
+    else:
+        weights = pg_obs[keepers] / pg_obs[keepers].sum()
+        wif = _get_weight_influence(keepers=keepers, pg=pg_obs, unit_groups=unit_groups, glist=orig_group)
+        simple_if = _get_agg_inf_func(inf_func_mat, keepers, weights) + wif @ att[keepers]
+        simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state)
 
     return DDDAggResult(
         overall_att=simple_att,
@@ -327,6 +358,8 @@ def _compute_calendar(
     cband,
     args,
     random_state,
+    orig_group,
+    unit_groups,
 ):
     """Compute calendar time ATT aggregation."""
     min_g = group.min()
@@ -341,7 +374,8 @@ def _compute_calendar(
         if len(whicht) > 0:
             pgt = pg_obs[whicht] / pg_obs[whicht].sum()
             calendar_att_t[i] = np.sum(pgt * att[whicht])
-            inf_func_t = _get_agg_inf_func(inf_func_mat, whicht, pgt)
+            wif_t = _get_weight_influence(keepers=whicht, pg=pg_obs, unit_groups=unit_groups, glist=orig_group)
+            inf_func_t = _get_agg_inf_func(inf_func_mat, whicht, pgt) + wif_t @ att[whicht]
         else:
             calendar_att_t[i] = np.nan
             inf_func_t = np.zeros(n)
@@ -411,6 +445,7 @@ def _compute_eventstudy(
     cband,
     args,
     random_state,
+    unit_groups,
 ):
     """Compute event study ATT aggregation."""
     eseq = np.unique(orig_periods - orig_group)
@@ -440,7 +475,8 @@ def _compute_eventstudy(
         if len(whiche) > 0:
             pge = pg_obs[whiche] / pg_obs[whiche].sum()
             dynamic_att_e[i] = np.sum(att[whiche] * pge)
-            inf_func_e = _get_agg_inf_func(inf_func_mat, whiche, pge)
+            wif_e = _get_weight_influence(keepers=whiche, pg=pg_obs, unit_groups=unit_groups, glist=orig_group)
+            inf_func_e = _get_agg_inf_func(inf_func_mat, whiche, pge) + wif_e @ att[whiche]
         else:
             dynamic_att_e[i] = np.nan
             inf_func_e = np.zeros(n)
@@ -582,7 +618,11 @@ def _get_crit_val(inf_func_mat, biters, alpha, random_state):
 
 
 def _get_weight_influence(keepers, pg, unit_groups, glist):
-    """Compute influence function for estimated weights."""
+    """Compute influence function for estimated weights.
+
+    ``keepers`` indexes both ``pg`` and ``glist``. They hold one entry per group in the group
+    aggregation and one per group-time cell in the other aggregations.
+    """
     sum_pg = pg[keepers].sum()
     indicators = np.column_stack([(unit_groups == glist[ki]).astype(float) for ki in keepers])
 

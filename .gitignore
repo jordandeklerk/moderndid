@@ -178,10 +178,7 @@ cython_debug/
 tests/didcont/r_simulated_data.csv
 
 # Benchmark output
-benchmark/output/*.csv
-benchmark/output/*.json
-!benchmark/output/.gitkeep
-plot_gpu_benchmark.py
+benchmarks/.asv/
 
 MLDID/
 *tex

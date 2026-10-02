@@ -900,6 +900,157 @@ def test_more_granular_matches_less_conservative(favara_imbs_csv_path):
     )
 
 
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DIDmultiplegtDYN package not available")
+@pytest.mark.parametrize("normalized", [False, True])
+def test_controls_effects(favara_imbs_data, favara_imbs_csv_path, normalized):
+    r_result = r_did_multiplegt(favara_imbs_csv_path, effects=3, normalized=normalized, controls=["Dl_hpi"])
+
+    if r_result is None or "error" in r_result:
+        pytest.fail("R estimation failed")
+
+    py_result = did_multiplegt(
+        favara_imbs_data,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=3,
+        normalized=normalized,
+        xformla="~ Dl_hpi",
+    )
+
+    np.testing.assert_allclose(
+        py_result.effects.estimates,
+        np.array(r_result["effect_estimates"]),
+        rtol=1e-10,
+        err_msg=f"normalized={normalized}: Controls effect estimates mismatch",
+    )
+    np.testing.assert_allclose(
+        py_result.effects.std_errors,
+        np.array(r_result["effect_se"]),
+        rtol=1e-10,
+        err_msg=f"normalized={normalized}: Controls effect standard errors mismatch",
+    )
+    np.testing.assert_array_equal(
+        py_result.effects.n_switchers,
+        np.array(r_result["effect_n_switchers"]),
+        err_msg=f"normalized={normalized}: Controls number of switchers mismatch",
+    )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DIDmultiplegtDYN package not available")
+@pytest.mark.parametrize("normalized", [False, True])
+def test_controls_placebos(favara_imbs_data, favara_imbs_csv_path, normalized):
+    r_result = r_did_multiplegt(favara_imbs_csv_path, effects=3, placebo=2, normalized=normalized, controls=["Dl_hpi"])
+
+    if r_result is None or "error" in r_result:
+        pytest.fail("R estimation failed")
+
+    py_result = did_multiplegt(
+        favara_imbs_data,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=3,
+        placebo=2,
+        normalized=normalized,
+        xformla="~ Dl_hpi",
+    )
+
+    np.testing.assert_allclose(
+        py_result.placebos.estimates,
+        np.array(r_result["placebo_estimates"]),
+        rtol=1e-10,
+        err_msg=f"normalized={normalized}: Controls placebo estimates mismatch",
+    )
+    np.testing.assert_allclose(
+        py_result.placebos.std_errors,
+        np.array(r_result["placebo_se"]),
+        rtol=1e-6,
+        err_msg=f"normalized={normalized}: Controls placebo standard errors mismatch",
+    )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DIDmultiplegtDYN package not available")
+def test_controls_ate(favara_imbs_data, favara_imbs_csv_path):
+    r_result = r_did_multiplegt(favara_imbs_csv_path, effects=3, controls=["Dl_hpi"])
+
+    if r_result is None or "error" in r_result:
+        pytest.fail("R estimation failed")
+
+    if "ate_estimate" not in r_result:
+        pytest.fail("R did not return ATE estimate")
+
+    py_result = did_multiplegt(
+        favara_imbs_data,
+        yname="Dl_vloans_b",
+        idname="county",
+        tname="year",
+        dname="inter_bra",
+        effects=3,
+        xformla="~ Dl_hpi",
+    )
+
+    np.testing.assert_allclose(
+        py_result.ate.estimate,
+        r_result["ate_estimate"],
+        rtol=1e-10,
+        err_msg="Controls ATE estimate mismatch",
+    )
+    np.testing.assert_allclose(
+        py_result.ate.std_error,
+        r_result["ate_se"],
+        rtol=1e-10,
+        err_msg="Controls ATE standard error mismatch",
+    )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DIDmultiplegtDYN package not available")
+def test_controls_collinear(favara_imbs_data, favara_imbs_csv_path):
+    r_result = r_did_multiplegt(favara_imbs_csv_path, effects=3, placebo=2, controls=["Dl_hpi", "w1"])
+
+    if r_result is None or "error" in r_result:
+        pytest.fail("R estimation failed")
+
+    with pytest.warns(UserWarning, match="collinear"):
+        py_result = did_multiplegt(
+            favara_imbs_data,
+            yname="Dl_vloans_b",
+            idname="county",
+            tname="year",
+            dname="inter_bra",
+            effects=3,
+            placebo=2,
+            xformla="~ Dl_hpi + w1",
+        )
+
+    np.testing.assert_allclose(
+        py_result.effects.estimates,
+        np.array(r_result["effect_estimates"]),
+        rtol=1e-10,
+        err_msg="Collinear controls: Effect estimates mismatch",
+    )
+    np.testing.assert_allclose(
+        py_result.effects.std_errors,
+        np.array(r_result["effect_se"]),
+        rtol=1e-10,
+        err_msg="Collinear controls: Effect standard errors mismatch",
+    )
+    np.testing.assert_allclose(
+        py_result.placebos.estimates,
+        np.array(r_result["placebo_estimates"]),
+        rtol=1e-10,
+        err_msg="Collinear controls: Placebo estimates mismatch",
+    )
+    np.testing.assert_allclose(
+        py_result.placebos.std_errors,
+        np.array(r_result["placebo_se"]),
+        rtol=1e-6,
+        err_msg="Collinear controls: Placebo standard errors mismatch",
+    )
+
+
 def _generate_synthetic_het_data(seed=315):
     """Generate a synthetic panel dataset where HC2 standard errors are well-defined.
 

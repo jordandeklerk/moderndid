@@ -3,33 +3,34 @@ Installation
 ============
 
 Installing **ModernDiD**
------------------------
+------------------------
 
-The only prerequisite for installing **ModernDiD** is Python 3.11 or later.
+The only prerequisite for installing **ModernDiD** is Python 3.12 or later.
 
 From PyPI
 ^^^^^^^^^
 
 The base installation includes core DiD estimators
 (:func:`~moderndid.att_gt`, :func:`~moderndid.drdid`,
-:func:`~moderndid.did_multiplegt`, :func:`~moderndid.ddd`).
+:func:`~moderndid.did_multiplegt`, :func:`~moderndid.ddd`). In a project managed
+by `uv <https://docs.astral.sh/uv/>`_, add it as a dependency.
 
 .. code-block:: console
 
-    uv pip install moderndid
+    uv add moderndid
 
-For full functionality including all estimators, plotting, and performance
-optimizations, install with the ``all`` extra.
-
-.. code-block:: console
-
-    uv pip install "moderndid[all]"
-
-Or install just the base with pip.
+With pip, install it into your environment instead.
 
 .. code-block:: console
 
     pip install moderndid
+
+For full functionality including all estimators, plotting, and performance
+optimizations, add the ``all`` extra.
+
+.. code-block:: console
+
+    uv add "moderndid[all]"
 
 Optional extras
 ^^^^^^^^^^^^^^^
@@ -45,19 +46,17 @@ you always get the core estimators plus whatever extras you specify.
 - **plots** -- Visualization (``plot_gt``, ``plot_event_study``, ...)
 - **numba** -- Faster bootstrap inference
 - **gpu** -- GPU-accelerated estimation (requires CUDA)
-- **dask** -- Distributed estimation on Dask clusters
-- **spark** -- Distributed estimation on Spark clusters
-- **all** -- Everything except ``gpu`` and ``spark``, which require specific infrastructure
+- **all** -- Everything except ``gpu``, which requires an NVIDIA GPU
 
 .. code-block:: console
 
-    uv pip install "moderndid[all]"             # All extras except gpu and spark
-    uv pip install "moderndid[didcont,plots]"   # Combine specific extras
-    uv pip install "moderndid[gpu,spark]"       # GPU + distributed
+    uv add "moderndid[all]"             # All extras except gpu
+    uv add "moderndid[didcont,plots]"   # Combine specific extras
+    uv add "moderndid[gpu]"             # GPU acceleration
 
 .. tip::
 
-    We recommend ``uv pip install "moderndid[all]"`` for full functionality.
+    We recommend ``uv add "moderndid[all]"`` for full functionality.
     The ``numba`` extra provides significant performance gains for bootstrap
     inference, and the ``plots`` extra adds customizable plotting functions for
     every estimator's results. Install minimal extras only if you have specific
@@ -70,7 +69,7 @@ To install the latest development version from GitHub.
 
 .. code-block:: console
 
-    uv pip install "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
+    uv add "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
 
 Or with pip.
 
@@ -124,7 +123,7 @@ install command when you first call a function that needs it.
 .. code-block:: python
 
     >>> moderndid.cont_did(...)
-    ImportError: 'cont_did' requires extra dependencies: uv pip install 'moderndid[didcont]'
+    ImportError: 'cont_did' requires extra dependencies. Install them with uv add 'moderndid[didcont]' or pip install 'moderndid[didcont]'
 
 Silent version downgrades
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -146,7 +145,7 @@ error instead of a silent downgrade.
 
 .. code-block:: console
 
-    uv pip install "moderndid[gpu]>=0.1.0"
+    uv add "moderndid[gpu]>=0.1.0"
 
 GPU extra
 ^^^^^^^^^^
@@ -172,37 +171,8 @@ If you have multiple CuPy packages, remove the extras before installing.
 .. code-block:: console
 
     pip uninstall cupy cupy-cuda11x cupy-cuda12x -y
-    uv pip install "moderndid[gpu]"
+    pip install "moderndid[gpu]"
 
-Spark extra
-^^^^^^^^^^^^
-
-``pip install "moderndid[spark]"`` succeeds without Java installed, but
-PySpark fails at runtime. This is because pip installs the Python package
-while Java is a system-level dependency that pip cannot manage.
-
-Verify that Java is installed and ``JAVA_HOME`` is set.
-
-.. code-block:: console
-
-    java -version
-    echo $JAVA_HOME
-
-PySpark 3.4 requires Java 11 or later. On macOS, install with Homebrew.
-
-.. code-block:: console
-
-    brew install openjdk@17
-    export JAVA_HOME="$(brew --prefix openjdk@17)"
-
-On Ubuntu/Debian.
-
-.. code-block:: console
-
-    sudo apt install openjdk-17-jdk
-    export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-
-Add the ``export`` line to your shell profile to make it permanent.
 
 Sensitivity analysis extra
 ^^^^^^^^^^^^^^^^^^^^^^^^^^

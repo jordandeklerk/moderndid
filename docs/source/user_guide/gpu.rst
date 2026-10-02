@@ -23,7 +23,8 @@ Install the GPU extra:
 
 .. code-block:: bash
 
-    uv pip install 'moderndid[gpu]'
+    uv add "moderndid[gpu]"        # in a project managed by uv
+    pip install "moderndid[gpu]"   # with pip
 
 This installs a CuPy wheel that matches the CUDA version specified in
 the package metadata.  If you need a different CuPy wheel for your CUDA
@@ -32,8 +33,8 @@ extra:
 
 .. code-block:: bash
 
-    uv pip install cupy-cuda11x   # example for CUDA 11
-    uv pip install moderndid
+    uv add cupy-cuda11x moderndid        # example for CUDA 11
+    pip install cupy-cuda11x moderndid   # the same with pip
 
 Verify the installation:
 
@@ -93,10 +94,7 @@ globally or use the :func:`~moderndid.use_backend` context manager:
         result2 = did.ddd(...)
 
 All three approaches are thread-safe and compose correctly with
-``n_jobs > 1``. When ``data`` is a Dask or Spark DataFrame,
-``backend="cupy"`` enables GPU-accelerated linear algebra on worker GPUs
-(see :ref:`Combining GPU and Dask <gpu-dask-workers>` and
-:ref:`Combining GPU and Spark <gpu-spark-workers>`).
+``n_jobs > 1``.
 
 If CuPy is installed but no GPU is available, ``backend="cupy"``
 raises a ``RuntimeError`` with an actionable message. If CuPy is not
@@ -304,11 +302,6 @@ device context:
             idname="id", gname="group", backend="cupy",
         )
 
-For multi-GPU parallelism, use a distributed backend to pin one worker
-or executor per GPU. See :ref:`Combining GPU and Dask <gpu-dask-workers>`
-(using ``dask-cuda``) or :ref:`Combining GPU and Spark <gpu-spark-workers>`
-(using Spark GPU resource scheduling).
-
 
 Benchmarking correctly
 ----------------------
@@ -338,175 +331,6 @@ The first call in a process incurs one-time overhead from CUDA context
 initialization and kernel compilation. CuPy caches compiled kernels in
 ``~/.cupy/kernel_cache``, so subsequent calls in the same or later
 sessions are faster.
-
-
-.. _gpu-dask-workers:
-
-Combining GPU and Dask
-----------------------
-
-The GPU backend and the Dask distributed backend can be combined.
-Pass ``backend="cupy"`` to :func:`~moderndid.att_gt` or
-:func:`~moderndid.ddd` with a Dask DataFrame to run partition-level
-linear algebra on worker GPUs. The low-level functions
-:func:`~moderndid.dask.dask_att_gt` and :func:`~moderndid.dask.dask_ddd`
-also accept the ``backend`` parameter:
-
-.. code-block:: python
-
-    import dask.dataframe as dd
-    import moderndid as did
-
-    ddf = dd.read_parquet("panel_data.parquet")
-
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        backend="cupy",
-    )
-
-When ``backend="cupy"`` is active, each worker converts its partition
-arrays to CuPy after building them from pandas. All Gram matrix
-accumulation, IRLS iterations, and influence function computation run on
-the worker's GPU. Results are converted back to NumPy before leaving the
-worker, so driver-side aggregation (tree-reduce, precomputation) stays
-on the CPU.
-
-CuPy must be installed on every worker. For multi-GPU machines, use
-``dask-cuda`` with a ``LocalCUDACluster`` to pin one worker per GPU:
-
-.. code-block:: python
-
-    from dask.distributed import Client
-    from dask_cuda import LocalCUDACluster
-
-    cluster = LocalCUDACluster()
-    client = Client(cluster)
-
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        backend="cupy",
-    )
-
-The ``set_backend`` / ``use_backend`` context manager does **not**
-propagate to Dask worker processes. Always use the ``backend`` parameter
-on the estimator call instead.
-
-The following example shows a complete workflow where we connect to a multi-GPU
-cluster, read data, run estimation, and clean up.
-
-.. code-block:: python
-
-    import dask.dataframe as dd
-    from dask.distributed import Client, wait
-    from dask_cuda import LocalCUDACluster
-
-    import moderndid as did
-
-    # Start one worker per GPU
-    cluster = LocalCUDACluster()
-    client = Client(cluster)
-
-    # Read and persist input data
-    ddf = dd.read_parquet("panel_data.parquet").persist()
-    wait(ddf)
-
-    result = did.att_gt(
-        data=ddf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        xformla="~ x1 + x2",
-        est_method="dr",
-        backend="cupy",
-    )
-
-    # Post-estimation stays the same
-    event_study = did.aggte(result, type="dynamic")
-    did.plot_event_study(event_study)
-
-    client.close()
-    cluster.close()
-
-When you need explicit control over the client (for example on
-Databricks or a managed cluster), use the low-level
-:func:`~moderndid.dask.dask_att_gt` entry point which accepts a
-``client`` parameter directly.
-
-
-.. _gpu-spark-workers:
-
-Combining GPU and Spark
------------------------
-
-The GPU backend and the Spark distributed backend can be combined.
-Pass ``backend="cupy"`` to :func:`~moderndid.att_gt` or
-:func:`~moderndid.ddd` with a PySpark DataFrame to run partition-level
-linear algebra on executor GPUs. The low-level functions
-:func:`~moderndid.spark.spark_att_gt` and :func:`~moderndid.spark.spark_ddd`
-also accept the ``backend`` parameter:
-
-.. code-block:: python
-
-    from pyspark.sql import SparkSession
-    import moderndid as did
-
-    spark = SparkSession.builder.master("local[*]").getOrCreate()
-    sdf = spark.read.parquet("panel_data.parquet")
-
-    result = did.att_gt(
-        data=sdf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        backend="cupy",
-    )
-
-When ``backend="cupy"`` is active, partition arrays are converted to CuPy
-after collection. All Gram matrix accumulation, IRLS iterations, and
-influence function computation run on the GPU. Results are converted back
-to NumPy before being stored in the result object.
-
-CuPy must be installed on the driver (and on executors if using Spark's
-``mapInPandas`` GPU paths). On GPU-enabled Spark clusters (e.g., Databricks
-ML Runtime with GPU instances, or YARN with GPU resource scheduling),
-configure executors with GPU resources:
-
-.. code-block:: python
-
-    spark = (
-        SparkSession.builder
-        .master("yarn")
-        .config("spark.executor.resource.gpu.amount", "1")
-        .config("spark.task.resource.gpu.amount", "1")
-        .getOrCreate()
-    )
-
-    result = did.att_gt(
-        data=sdf,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        backend="cupy",
-    )
-
-The ``set_backend`` / ``use_backend`` context manager does **not**
-propagate to Spark executor processes. Always use the ``backend`` parameter
-on the estimator call instead.
 
 
 Local GPU setup
@@ -545,8 +369,8 @@ Missing libraries surface as errors such as
 
 .. code-block:: bash
 
-    uv pip install nvidia-cuda-nvrtc nvidia-cuda-cccl nvidia-cuda-runtime
-    uv pip install nvidia-cublas nvidia-cusparse nvidia-cusolver nvidia-cufft nvidia-curand nvidia-nvjitlink
+    pip install nvidia-cuda-nvrtc nvidia-cuda-cccl nvidia-cuda-runtime
+    pip install nvidia-cublas nvidia-cusparse nvidia-cusolver nvidia-cufft nvidia-curand nvidia-nvjitlink
 
 **Linux**
 
@@ -560,8 +384,8 @@ no additional pip packages are needed.
 macOS does not have local NVIDIA GPU support.  Apple dropped CUDA after
 macOS 10.13 (High Sierra), and Apple Silicon uses Metal instead of CUDA.
 ``backend="cupy"`` still works from macOS when connected to a remote GPU
-such as a cloud notebook, an SSH session to a GPU server, or a
-Dask/Spark cluster with GPU workers.  Install the ``[gpu]`` extra on the
+such as a cloud notebook or an SSH session to a GPU server.  Install the
+``[gpu]`` extra on the
 remote environment where CuPy has access to an NVIDIA GPU.
 
 **Corrupted installs**
@@ -572,7 +396,7 @@ Force reinstall to fix this.
 
 .. code-block:: bash
 
-    uv pip install --force-reinstall cupy-cuda12x  # match your CUDA version
+    pip install --force-reinstall cupy-cuda12x  # match your CUDA version
 
 
 Verifying GPU usage
@@ -619,7 +443,7 @@ Troubleshooting
 
 The most common cause is installing the generic ``cupy`` package, which
 tries to compile from source.  Install a prebuilt wheel that matches
-your CUDA driver version instead (e.g. ``uv pip install cupy-cuda12x``).
+your CUDA driver version instead, such as ``uv add cupy-cuda12x`` or ``pip install cupy-cuda12x``.
 Run ``nvidia-smi`` to check which CUDA version your driver supports.
 After installing, restart your Python process (or notebook runtime)
 before importing **ModernDiD**.  CuPy availability is checked once at
@@ -641,7 +465,5 @@ Next steps
 
 - :ref:`Quickstart <quickstart>` covers estimation options, aggregation
   types, and visualization for local workflows.
-- :doc:`distributed` describes the Dask and Spark backends for datasets that
-  exceed single-machine memory.
 - The :ref:`Examples <user-guide>` section walks through each estimator
   end-to-end with real and simulated data.

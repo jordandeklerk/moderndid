@@ -74,6 +74,9 @@ class MissingDataHandler(BaseTransformer):
         df = to_polars(data)
 
         if isinstance(config, DIDInterConfig):
+            # Rows missing a control have no adjusted outcome and leave before baselines and switch dates are set.
+            if config.xformla and config.xformla != "~1":
+                df = df.drop_nulls(subset=extract_vars_from_formula(config.xformla))
             df = df.with_columns(
                 [
                     pl.col(config.dname).mean().over(config.gname).alias("_mean_D"),
@@ -263,8 +266,8 @@ class RepeatedCrossSectionHandler(BaseTransformer):
 
         if config.panel and config.allow_unbalanced_panel and config.idname:
             unit_counts = df.group_by(config.idname).len()
-            # An unbalanced panel has no outcome tensor, so it takes the repeated cross section estimators,
-            # which still sum each unit's influence function through the row id.
+            # Since an unbalanced panel has no outcome tensor, it takes the repeated cross section estimators.
+            # They still sum each unit's influence function through the row id.
             if (unit_counts["len"] != df[config.tname].n_unique()).any():
                 config.panel = False
 

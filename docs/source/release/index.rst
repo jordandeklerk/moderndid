@@ -1,10 +1,10 @@
 .. _release-notes:
 
-=============
-Release Notes
-=============
+=========
+Changelog
+=========
 
-This page contains release notes for **ModernDiD** releases.
+This page lists what changed in each ModernDiD release.
 
 .. list-table::
    :class: section-index-table

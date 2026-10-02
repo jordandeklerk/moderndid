@@ -5,8 +5,8 @@ Development
 ###########
 
 These guides explain how ModernDiD works inside and how to extend it, from the
-shared estimator interfaces to adding an estimator or a distributed backend. If
-you want to set up an environment and send a change, start with
+shared estimator interfaces to adding an estimator. If you want to set up an
+environment and send a change, start with
 :ref:`Contributing <contributing-index>` instead.
 
 .. list-table::
@@ -20,8 +20,6 @@ you want to set up an environment and send a change, start with
      - Understand the library's estimator, data, and result interfaces.
    * - :doc:`new_estimator`
      - Add an estimator that fits the shared API.
-   * - :doc:`distributed_architecture`
-     - Work with the Dask and Spark backends.
    * - :doc:`debugging` and :doc:`benchmarking`
      - Diagnose issues and measure performance.
 
@@ -31,7 +29,6 @@ you want to set up an environment and send a change, start with
 
    architecture
    new_estimator
-   distributed_architecture
    debugging
    benchmarking
 

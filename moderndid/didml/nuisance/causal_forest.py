@@ -107,7 +107,8 @@ def fit_causal_forest(
         from econml.dml import CausalForestDML
     except ImportError as exc:
         raise ImportError(
-            "The 'cf' nuisance backend requires the econml package. Install it with: uv pip install 'moderndid[didml]'"
+            "The 'cf' nuisance backend requires the econml package. Install it with "
+            "uv add 'moderndid[didml]' or pip install 'moderndid[didml]'"
         ) from exc
 
     X = np.asarray(X, dtype=float)

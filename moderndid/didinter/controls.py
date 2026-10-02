@@ -1,371 +1,385 @@
 """Control variable adjustments."""
 
+import warnings
+
 import numpy as np
 import polars as pl
+from scipy.linalg import lapack
 
 from moderndid.core.preprocess.utils import get_covariate_names_from_formula
 
 
-def compute_control_coefficients(df, config, horizon):
-    r"""Compute regression coefficients for covariate adjustment.
+def compute_control_coefficients(df, config, n_groups):
+    r"""Estimate the control coefficients for each baseline treatment.
 
-    Estimates coefficients :math:`\boldsymbol{\theta}` for adjusting the
-    :math:`\text{DID}_{g,\ell}` estimator when covariates are included. The
-    adjustment uses never-switchers with the same baseline treatment to estimate
-    how covariates relate to outcome changes, then applies this relationship to
-    remove covariate-driven differences between switchers and non-switchers.
+    The coefficients come from a regression of the outcome's first differences on the
+    controls' first differences with period fixed effects. For each baseline treatment
+    :math:`d` the regression uses the observations of groups with :math:`D_{g,1} = d`
+    whose treatment has not changed yet. Levels whose groups all share one switch date
+    contribute no comparison and keep their outcomes unadjusted.
 
-    For each baseline treatment level :math:`d`, computes weighted least squares
-    regression of outcome differences on covariate differences among never-switchers
-    with :math:`D_{g,1} = d`.
+    The returned data carry one influence column per control with each group's
+    contribution to the coefficients of its baseline treatment.
+    :func:`compute_variance_adjustment` turns these columns into the variance term of
+    every horizon.
 
     Parameters
     ----------
     df : pl.DataFrame
-        Data with outcome and control columns.
+        Preprocessed panel with the outcome, the controls, ``F_g``, ``d_sq``, and ``weight_gt``.
     config : DIDInterConfig
         Configuration object.
-    horizon : int
-        Current horizon :math:`\ell`.
+    n_groups : int
+        Number of groups :math:`G`.
 
     Returns
     -------
-    dict
-        Mapping from baseline treatment level to dict with theta (coefficients),
-        inv_denom (inverse of X'WX for variance), and useful (validity flag).
-    """
-    controls = get_covariate_names_from_formula(config.xformla)
-    if not controls:
-        return {}
-    gname = config.gname
+    df : pl.DataFrame
+        Data with the influence columns ``_ctrl_influence_{j}``.
+    coefficients : dict
+        Mapping from each baseline treatment to its coefficients:
 
-    diff_y_col = f"diff_y_{horizon}"
-    results = {}
+        - **theta**: Coefficients :math:`\hat{\boldsymbol{\theta}}_d` of the control differences
+        - **inv_denom**: Inverse of the residualized control cross product scaled by the sample weight and :math:`G`
+        - **useful**: Whether the outcomes of groups with this baseline treatment are adjusted
 
-    baseline_levels = df.filter(pl.col("F_g") == float("inf"))["d_sq"].unique().to_list()
-    n_groups = df[gname].n_unique()
-
-    for d_level in baseline_levels:
-        subset = df.filter(
-            (pl.col("d_sq") == d_level) & (pl.col("F_g") == float("inf")) & pl.col(diff_y_col).is_not_null()
-        )
-
-        n_unique_groups = subset[gname].n_unique() if len(subset) > 0 else 0
-
-        if len(subset) < len(controls) + 1 or n_unique_groups <= 1:
-            results[d_level] = {
-                "theta": np.zeros(len(controls)),
-                "inv_denom": None,
-                "useful": False,
-            }
-            continue
-
-        y = subset.select(diff_y_col).to_numpy().flatten()
-        weights = subset.select("weight_gt").to_numpy().flatten()
-
-        X_cols = []
-        for ctrl in controls:
-            lag_col = f"lag_{ctrl}_{horizon}"
-            if lag_col in subset.columns:
-                diff_ctrl = subset.select(pl.col(ctrl) - pl.col(lag_col)).to_numpy().flatten()
-            else:
-                diff_ctrl = np.zeros(len(subset))
-            X_cols.append(diff_ctrl)
-
-        X = np.column_stack(X_cols)
-
-        valid_mask = ~np.isnan(y) & ~np.any(np.isnan(X), axis=1)
-        if np.sum(valid_mask) < len(controls) + 1:
-            results[d_level] = {
-                "theta": np.zeros(len(controls)),
-                "inv_denom": None,
-                "useful": False,
-            }
-            continue
-
-        y_valid = y[valid_mask]
-        X_valid = X[valid_mask]
-        w_valid = weights[valid_mask]
-
-        try:
-            W = np.diag(w_valid)
-            XtWX = X_valid.T @ W @ X_valid
-            XtWy = X_valid.T @ W @ y_valid
-
-            if abs(np.linalg.det(XtWX)) <= 1e-16:
-                theta = np.linalg.pinv(XtWX) @ XtWy
-                inv_denom = None
-                useful = False
-            else:
-                theta = np.linalg.solve(XtWX, XtWy)
-                rsum = np.sum(w_valid)
-                inv_denom = np.linalg.pinv(XtWX) * rsum * n_groups
-                useful = True
-
-            results[d_level] = {
-                "theta": theta,
-                "inv_denom": inv_denom,
-                "useful": useful,
-            }
-        except np.linalg.LinAlgError:
-            results[d_level] = {
-                "theta": np.zeros(len(controls)),
-                "inv_denom": None,
-                "useful": False,
-            }
-
-    return results
-
-
-def apply_control_adjustment(df, config, horizon, coefficients):
-    r"""Apply covariate adjustment to outcome differences.
-
-    Adjusts the outcome difference :math:`Y_{g,F_g-1+\ell} - Y_{g,F_g-1}` by
-    removing the component explained by covariate changes. For each group,
-    computes
+    Notes
+    -----
+    Let :math:`\Delta Y_{g,t} = Y_{g,t} - Y_{g,t-1}` and let :math:`\Delta \mathbf{X}_{g,t}`
+    be the first differences of the controls. For baseline treatment :math:`d` the sample
+    :math:`\mathcal{S}_d` holds the pairs :math:`(g, t)` with :math:`D_{g,1} = d`,
+    :math:`t < F_g`, and observed differences. Let :math:`\widetilde{\Delta \mathbf{X}}_{g,t}`
+    subtract the weighted mean of :math:`\Delta \mathbf{X}` over the observations of
+    :math:`\mathcal{S}_d` in the same period and ``trends_nonparam`` cell. With
 
     .. math::
 
-        \widetilde{\Delta Y}_{g,\ell} = \Delta Y_{g,\ell} -
-        \boldsymbol{\theta}_{D_{g,1}}' \Delta \mathbf{X}_{g,\ell}
+        \mathbf{A}_d = \sum_{(g,t) \in \mathcal{S}_d} N_{g,t}
+        \widetilde{\Delta \mathbf{X}}_{g,t} \widetilde{\Delta \mathbf{X}}_{g,t}'
 
-    where :math:`\boldsymbol{\theta}_{D_{g,1}}` are the coefficients estimated
-    from never-switchers with the same baseline treatment.
+    the coefficients are
 
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Data with outcome and control columns.
-    config : DIDInterConfig
-        Configuration object.
-    horizon : int
-        Current horizon :math:`\ell`.
-    coefficients : dict
-        Mapping from baseline treatment level to coefficient dict from
-        :func:`compute_control_coefficients`.
+    .. math::
 
-    Returns
-    -------
-    pl.DataFrame
-        DataFrame with adjusted outcome differences.
+        \hat{\boldsymbol{\theta}}_d = \mathbf{A}_d^{-1} \sum_{(g,t) \in \mathcal{S}_d}
+        N_{g,t} \widetilde{\Delta \mathbf{X}}_{g,t} \Delta Y_{g,t}
+
+    where the inverse comes from a pivoted Cholesky factor that drops collinear controls.
+
+    The influence of group :math:`g` on :math:`\hat{\boldsymbol{\theta}}_d` is
+
+    .. math::
+
+        \boldsymbol{\psi}_g = G \frac{W_d}{N^c_d} \mathbf{A}_d^{-1}
+        \sum_{t : (g,t) \in \mathcal{S}_d} N_{g,t} \widetilde{\Delta \mathbf{X}}_{g,t}
+        \kappa_{d,t} \left(\Delta Y_{g,t} - \hat{E}_{g,t}\right)
+
+    where :math:`W_d` sums the weights in :math:`\mathcal{S}_d` and :math:`N^c_d` sums
+    the weights of the not-yet-switched observations with baseline treatment :math:`d`
+    and an observed outcome difference. The fitted value :math:`\hat{E}_{g,t}` comes from
+    a weighted regression of :math:`\Delta Y` on :math:`\Delta \mathbf{X}` with period
+    fixed effects in :math:`\mathcal{S}_d`. When :math:`n_{d,t} \geq 2` not-yet-switched
+    observations of the baseline treatment are observed in period :math:`t`, the factor
+    :math:`\kappa_{d,t} = \sqrt{n_{d,t} / (n_{d,t} - 1)}` corrects for degrees of freedom.
+    Otherwise :math:`\kappa_{d,t} = 1` and :math:`\hat{E}_{g,t} = 0`.
     """
     controls = get_covariate_names_from_formula(config.xformla)
-    if not controls or not coefficients:
-        return df
-
-    gname = config.gname
-    diff_y_col = f"diff_y_{horizon}"
-
-    for ctrl in controls:
-        lag_col = f"lag_{ctrl}_{horizon}"
-
-        if lag_col not in df.columns:
-            df = df.sort([gname, config.tname])
-            df = df.with_columns(pl.col(ctrl).shift(horizon).over(gname).alias(lag_col))
-
-        diff_ctrl_col = f"diff_{ctrl}_{horizon}"
-        df = df.with_columns((pl.col(ctrl) - pl.col(lag_col)).alias(diff_ctrl_col))
-
-    for d_level, coef_dict in coefficients.items():
-        theta = coef_dict["theta"]
-        adjustment = pl.lit(0.0)
-        for ctrl_idx, ctrl in enumerate(controls):
-            diff_ctrl_col = f"diff_{ctrl}_{horizon}"
-            adjustment = adjustment + pl.lit(theta[ctrl_idx]) * pl.col(diff_ctrl_col).fill_null(0.0)
-
-        df = df.with_columns(
-            pl.when(pl.col("d_sq") == d_level)
-            .then(pl.col(diff_y_col) - adjustment)
-            .otherwise(pl.col(diff_y_col))
-            .alias(diff_y_col)
-        )
-
-    return df
-
-
-def compute_control_influence(df, config, horizon, coefficients, n_groups, n_switchers):
-    r"""Compute influence function adjustment for covariate-adjusted estimator.
-
-    Computes the additional influence function terms arising from estimating
-    the covariate adjustment coefficients :math:`\boldsymbol{\theta}`. The
-    influence function for the adjusted estimator accounts for uncertainty
-    in both the treatment effect estimate and the covariate coefficients.
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Data with control columns and DID computation columns.
-    config : DIDInterConfig
-        Configuration object.
-    horizon : int
-        Current horizon :math:`\ell`.
-    coefficients : dict
-        Mapping from baseline treatment level to coefficient dict.
-    n_groups : int
-        Total number of groups :math:`G`.
-    n_switchers : int
-        Number of switchers at this horizon.
-
-    Returns
-    -------
-    pl.DataFrame
-        DataFrame with control influence columns added.
-    """
-    controls = get_covariate_names_from_formula(config.xformla)
-    if not controls or not coefficients or n_switchers == 0:
-        return df
+    if not controls:
+        return df, {}
 
     gname = config.gname
     tname = config.tname
-    dist_col = (
-        f"dist_to_switch_{horizon}" if f"dist_to_switch_{horizon}" in df.columns else f"distance_to_switch_{horizon}"
+    first_diff_y = "_ctrl_first_diff_y"
+    first_diffs = [f"_ctrl_first_diff_{k}" for k in range(len(controls))]
+    centered = [f"_ctrl_centered_{k}" for k in range(len(controls))]
+    influence_cols = [f"_ctrl_influence_{k}" for k in range(len(controls))]
+    cells = [tname, "d_sq", *(config.trends_nonparam or [])]
+    raw_weight = pl.col(config.weightsname).fill_null(0.0) if config.weightsname else pl.lit(1.0)
+
+    df = df.drop(influence_cols, strict=False).sort([gname, tname])
+    df = df.with_columns(
+        (pl.col(config.yname) - pl.col(config.yname).shift(1).over(gname)).alias(first_diff_y),
+        *[
+            (pl.col(ctrl) - pl.col(ctrl).shift(1).over(gname)).alias(name)
+            for ctrl, name in zip(controls, first_diffs, strict=True)
+        ],
+        raw_weight.cast(pl.Float64).alias("_ctrl_raw_weight"),
     )
-    never_col = f"never_change_{horizon}"
-    n_treated_col = f"n_treated_{horizon}"
-    n_control_col = f"n_control_{horizon}"
+    not_yet_switched = (pl.col(tname) < pl.col("F_g")) & pl.col(first_diff_y).is_not_null()
+    observed = pl.all_horizontal(pl.col(name).is_not_null() for name in first_diffs)
+    df = df.with_columns(
+        (not_yet_switched & observed).alias("_ctrl_sample"),
+        not_yet_switched.sum().over([tname, "d_sq"]).cast(pl.Float64).alias("_ctrl_period_count"),
+    )
+    sample_weight = pl.when(pl.col("_ctrl_sample")).then(pl.col("weight_gt")).otherwise(0.0)
+    df = df.with_columns(
+        pl.when(pl.col("_ctrl_sample"))
+        .then(pl.col(name) - (sample_weight * pl.col(name)).sum().over(cells) / sample_weight.sum().over(cells))
+        .alias(centered_name)
+        for name, centered_name in zip(first_diffs, centered, strict=True)
+    )
 
-    if dist_col not in df.columns or never_col not in df.columns:
-        return df
-
-    safe_n_control = pl.when(pl.col(n_control_col) == 0).then(1.0).otherwise(pl.col(n_control_col))
-    baseline_levels = [d for d, c in coefficients.items() if c.get("useful", False)]
-
-    for ctrl_idx, ctrl in enumerate(controls):
-        diff_ctrl_col = f"diff_{ctrl}_{horizon}"
-        weighted_diff_ctrl = f"weighted_diff_{ctrl}_{horizon}"
-
-        if diff_ctrl_col not in df.columns:
+    sample = df.filter(pl.col("_ctrl_sample"))
+    coefficients = {}
+    influence_frames = []
+    dropped = []
+    collinear = []
+    for level in sorted(df["d_sq"].drop_nulls().unique().to_list()):
+        coefficients[level] = {"theta": np.zeros(len(controls)), "inv_denom": None, "useful": False}
+        is_level = pl.col("d_sq") == level
+        if df.filter(is_level)["F_g"].n_unique() < 2:
             continue
 
-        df = df.with_columns((pl.col(diff_ctrl_col).fill_null(0.0) * pl.col("weight_gt")).alias(weighted_diff_ctrl))
-
-        for d_level in baseline_levels:
-            m_col = f"m_{ctrl_idx}_{d_level}_{horizon}"
-            m_sum_col = f"m_sum_{ctrl_idx}_{d_level}_{horizon}"
-
-            is_level = pl.col("d_sq") == d_level
-            time_cond = (pl.col(tname) >= horizon + 1) & (pl.col(tname) <= pl.col("t_max_by_group"))
-
-            df = df.with_columns(
-                (
-                    is_level.cast(pl.Float64)
-                    * (pl.lit(n_groups) / pl.lit(n_switchers))
-                    * (pl.col(dist_col) - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0))
-                    * time_cond.cast(pl.Float64)
-                    * pl.col(weighted_diff_ctrl)
-                ).alias(m_col)
-            )
-
-            df = df.with_columns(pl.col(m_col).sum().over(gname).alias(m_sum_col))
-            df = df.with_columns((pl.col(m_sum_col) * pl.col("first_obs_by_gp")).alias(m_sum_col))
-
-    for ctrl_idx, ctrl in enumerate(controls):
-        weighted_diff_ctrl = f"weighted_diff_{ctrl}_{horizon}"
-
-        if weighted_diff_ctrl not in df.columns:
+        rows = sample.filter(is_level)
+        root_weight = np.sqrt(rows["weight_gt"].to_numpy())
+        x = rows.select(centered).to_numpy() * root_weight[:, None]
+        y = rows[first_diff_y].to_numpy() * root_weight
+        if rows.height == 0 or np.isnan(x).any():
+            dropped.append(level)
             continue
 
-        for d_level in baseline_levels:
-            in_sum_col = f"in_sum_{ctrl_idx}_{d_level}_{horizon}"
+        inverse, rank = _invert_symmetric(x.T @ x)
+        if rank < len(controls):
+            collinear.append(level)
+        inv_denom = inverse * rows["weight_gt"].sum() * n_groups
+        coefficients[level] = {"theta": inverse @ (x.T @ y), "inv_denom": inv_denom, "useful": True}
 
-            is_control = (pl.col("F_g") == float("inf")) & (pl.col("d_sq") == d_level)
-            time_cond = (pl.col(tname) >= 2) & (pl.col(tname) < pl.col("F_g"))
+        n_control = df.filter(is_level & not_yet_switched)["weight_gt"].sum()
+        scores = _control_scores(rows, config, first_diffs, centered) / n_control
+        score_cols = [f"_ctrl_score_{k}" for k in range(len(controls))]
+        in_sum = (
+            rows.select(gname, *[pl.Series(name, scores[:, k]) for k, name in enumerate(score_cols)])
+            .group_by(gname)
+            .agg(pl.col(score_cols).sum())
+        )
+        influence = in_sum.select(score_cols).to_numpy() @ inv_denom.T
+        influence_frames.append(
+            in_sum.select(gname).with_columns(pl.Series(name, influence[:, k]) for k, name in enumerate(influence_cols))
+        )
 
-            group_vars = [tname, "d_sq"]
-            if config.trends_nonparam:
-                group_vars.extend(config.trends_nonparam)
+    if dropped:
+        warnings.warn(
+            f"Groups with baseline treatment {_format_levels(dropped)} were dropped because none of their "
+            "not-yet-switched observations has every control difference.",
+            UserWarning,
+            stacklevel=4,
+        )
+        df = df.filter(~pl.col("d_sq").is_in(dropped))
+    if collinear:
+        warnings.warn(
+            f"Some controls are not taken into account for groups with baseline treatment "
+            f"{_format_levels(collinear)} because their differences are collinear among the "
+            "not-yet-switched observations.",
+            UserWarning,
+            stacklevel=4,
+        )
 
-            df = df.with_columns(
-                pl.when(is_control & time_cond)
-                .then(pl.col(weighted_diff_ctrl).sum().over(group_vars))
-                .otherwise(pl.lit(0.0))
-                .alias(in_sum_col)
-            )
+    df = df.drop(first_diff_y, *first_diffs, *centered, "_ctrl_raw_weight", "_ctrl_sample", "_ctrl_period_count")
+    if influence_frames:
+        df = df.join(pl.concat(influence_frames), on=gname, how="left")
+    else:
+        df = df.with_columns(pl.lit(None, dtype=pl.Float64).alias(name) for name in influence_cols)
+    df = df.with_columns(pl.col(influence_cols).fill_null(0.0)).sort([gname, tname])
 
-    return df
+    return df, coefficients
 
 
-def compute_variance_adjustment(df, config, horizon, coefficients, n_groups):
-    r"""Compute variance adjustment for covariate-adjusted estimator.
+def apply_control_adjustment(df, config, horizon, coefficients, horizon_type):
+    r"""Remove the control component from the outcome differences.
 
-    Computes the second component of the influence function variance that
-    arises from estimating covariate adjustment coefficients. This accounts
-    for the additional uncertainty introduced by the two-step estimation
-    procedure (first estimating :math:`\boldsymbol{\theta}`, then applying
-    the adjustment).
+    At an effect horizon :math:`\ell` the outcome difference of group :math:`g` becomes
+
+    .. math::
+
+        Y_{g,t} - Y_{g,t-\ell} - \hat{\boldsymbol{\theta}}_{D_{g,1}}'
+        \left(\mathbf{X}_{g,t} - \mathbf{X}_{g,t-\ell}\right)
+
+    At a placebo horizon the difference :math:`Y_{g,t-2\ell} - Y_{g,t-\ell}` loses the same
+    coefficients times :math:`\mathbf{X}_{g,t-2\ell} - \mathbf{X}_{g,t-\ell}`. The coefficients
+    come from :func:`compute_control_coefficients`.
 
     Parameters
     ----------
     df : pl.DataFrame
-        Data with control influence columns from :func:`compute_control_influence`.
+        Data sorted by group and period with the outcome difference ``diff_y_{horizon}``.
     config : DIDInterConfig
         Configuration object.
     horizon : int
         Current horizon :math:`\ell`.
     coefficients : dict
-        Mapping from baseline treatment level to coefficient dict.
-    n_groups : int
-        Total number of groups :math:`G`.
+        Mapping from baseline treatment to coefficients from :func:`compute_control_coefficients`.
+    horizon_type : {"effect", "placebo"}
+        Whether the horizon is an effect or a placebo.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with variance adjustment column for each group.
+        Data with the adjusted outcome difference and the control differences ``_ctrl_diff_{j}_{horizon}``.
     """
     controls = get_covariate_names_from_formula(config.xformla)
     if not controls or not coefficients:
         return df
 
     gname = config.gname
-    part2_col = f"part2_{horizon}"
-    df = df.with_columns(pl.lit(0.0).alias(part2_col))
+    diff_col = f"diff_y_{horizon}"
+    diff_cols = [f"_ctrl_diff_{k}_{horizon}" for k in range(len(controls))]
+    if horizon_type == "effect":
+        differences = [pl.col(ctrl) - pl.col(ctrl).shift(horizon).over(gname) for ctrl in controls]
+    else:
+        differences = [
+            pl.col(ctrl).shift(2 * horizon).over(gname) - pl.col(ctrl).shift(horizon).over(gname) for ctrl in controls
+        ]
+    df = df.with_columns(difference.alias(name) for difference, name in zip(differences, diff_cols, strict=True))
 
-    baseline_levels = [d for d, c in coefficients.items() if c.get("useful", False)]
-
-    for d_level in baseline_levels:
-        coef_dict = coefficients[d_level]
-        inv_denom = coef_dict.get("inv_denom")
-        theta = coef_dict["theta"]
-
-        if inv_denom is None:
+    adjusted = pl.col(diff_col)
+    for level, coef in coefficients.items():
+        if not coef["useful"]:
             continue
+        explained = sum(float(theta) * pl.col(name) for theta, name in zip(coef["theta"], diff_cols, strict=True))
+        adjusted = pl.when(pl.col("d_sq") == level).then(pl.col(diff_col) - explained).otherwise(adjusted)
 
-        combined_col = f"combined_{d_level}_{horizon}"
-        df = df.with_columns(pl.lit(0.0).alias(combined_col))
+    return df.with_columns(adjusted.alias(diff_col))
 
-        for j in range(len(controls)):
-            in_brackets_col = f"in_brackets_{d_level}_{j}_{horizon}"
-            df = df.with_columns(pl.lit(0.0).alias(in_brackets_col))
 
-            for k in range(len(controls)):
-                in_sum_col = f"in_sum_{k}_{d_level}_{horizon}"
-                if in_sum_col not in df.columns:
-                    continue
+def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, dist_col):
+    r"""Compute the variance term for the estimated control coefficients.
 
-                coef_jk = float(inv_denom[j, k])
-                is_level = (pl.col("d_sq") == d_level) & (pl.col("F_g") != float("inf"))
+    The adjusted estimator depends on the coefficients through the control differences of
+    the switchers and their controls. This term carries the estimation error of the
+    coefficients into each group's influence function at the horizon. The influence of
+    each group on the coefficients comes from :func:`compute_control_coefficients`.
 
-                df = df.with_columns(
-                    pl.when(is_level)
-                    .then(pl.col(in_brackets_col) + pl.lit(coef_jk) * pl.col(in_sum_col))
-                    .otherwise(pl.col(in_brackets_col))
-                    .alias(in_brackets_col)
-                )
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Data with the influence columns, the control differences from
+        :func:`apply_control_adjustment`, and the horizon's switcher and control columns.
+    config : DIDInterConfig
+        Configuration object.
+    horizon : int
+        Current horizon :math:`\ell`.
+    coefficients : dict
+        Mapping from baseline treatment to coefficients from :func:`compute_control_coefficients`.
+    n_switchers : float
+        Weighted number of switchers :math:`N_\ell` at this horizon.
+    dist_col : str
+        Name of the column flagging the switchers at this horizon.
 
-            theta_j = float(theta[j])
-            df = df.with_columns((pl.col(in_brackets_col) - pl.lit(theta_j)).alias(in_brackets_col))
+    Returns
+    -------
+    pl.DataFrame
+        Data with the variance term ``part2_{horizon}`` of each group.
 
-            m_sum_col = f"m_sum_{j}_{d_level}_{horizon}"
-            if m_sum_col in df.columns:
-                M_total = df.filter(pl.col("first_obs_by_gp") == 1).select(pl.col(m_sum_col).sum()).item()
-                M_scaled = M_total / n_groups if n_groups > 0 else 0.0
+    Notes
+    -----
+    For baseline treatment :math:`d` and control :math:`j` let
 
-                df = df.with_columns(
-                    (pl.col(combined_col) + pl.lit(M_scaled) * pl.col(in_brackets_col)).alias(combined_col)
-                )
+    .. math::
 
-        df = df.with_columns((pl.col(part2_col) + pl.col(combined_col)).alias(part2_col))
+        M_{d,j,\ell} = \frac{1}{N_\ell} \sum_{g,t} \mathbb{1}\{D_{g,1} = d\} N_{g,t}
+        \left(S_{g,t} - \frac{N^S_{t}}{N^C_{t}} C_{g,t}\right) \Delta_\ell X_{j,g,t}
 
-    df = df.with_columns((pl.col(part2_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(part2_col))
+    where :math:`S_{g,t}` flags the switchers at the horizon, :math:`C_{g,t}` flags their
+    controls, :math:`N^S_t` and :math:`N^C_t` are their weighted counts in the period and
+    baseline treatment, and :math:`\Delta_\ell X_{j,g,t}` is the control difference that
+    adjusts the outcome. The term of group :math:`g` is
 
-    return df
+    .. math::
+
+        \sum_{d} \sum_{j} M_{d,j,\ell} \left(\psi_{g,d,j} - \hat{\theta}_{d,j}\right)
+
+    where :math:`\psi_{g,d,j}` is zero unless :math:`D_{g,1} = d`.
+    """
+    controls = get_covariate_names_from_formula(config.xformla)
+    part2_col = f"part2_{horizon}"
+    useful = {level: coef for level, coef in coefficients.items() if coef["useful"]}
+    if not controls or not useful:
+        return df.with_columns(pl.lit(0.0).alias(part2_col))
+
+    tname = config.tname
+    n_control = pl.col(f"n_control_{horizon}")
+    safe_n_control = pl.when(n_control.is_null() | (n_control == 0)).then(1.0).otherwise(n_control)
+    comparison = (
+        ((pl.col("T_g") - 2) >= horizon).cast(pl.Float64)
+        * ((pl.col(tname) >= horizon + 1) & (pl.col(tname) <= pl.col("T_g"))).cast(pl.Float64)
+        * pl.col("weight_gt")
+        * (
+            pl.col(dist_col)
+            - (pl.col(f"n_treated_{horizon}") / safe_n_control) * pl.col(f"never_change_{horizon}").fill_null(0.0)
+        )
+        / n_switchers
+    )
+    totals = df.select(
+        pl.when(pl.col("d_sq") == level)
+        .then(comparison * pl.col(f"_ctrl_diff_{k}_{horizon}"))
+        .sum()
+        .alias(f"_ctrl_m_{index}_{k}")
+        for index, level in enumerate(useful)
+        for k in range(len(controls))
+    ).row(0)
+    weights = np.array(totals, dtype=float).reshape(len(useful), len(controls))
+
+    part2 = pl.lit(0.0)
+    for level_weights, (level, coef) in zip(weights, useful.items(), strict=True):
+        influence = sum(float(m) * pl.col(f"_ctrl_influence_{k}") for k, m in enumerate(level_weights))
+        part2 = (
+            part2
+            + pl.when(pl.col("d_sq") == level).then(influence).otherwise(0.0)
+            - float(level_weights @ coef["theta"])
+        )
+
+    return df.with_columns(part2.alias(part2_col))
+
+
+def _control_scores(rows, config, first_diffs, centered):
+    """Score each sample row against a period fixed-effects fit of the outcome differences."""
+    tname = config.tname
+    times = rows[tname].to_numpy()
+    raw_weight = rows["_ctrl_raw_weight"].to_numpy()
+    dx = rows.select(first_diffs).to_numpy()
+    dy = rows["_ctrl_first_diff_y"].to_numpy()
+
+    # Since a zero-weight row cannot set a period's mean, it only receives a fitted value.
+    fit = raw_weight > 0
+    fitted = np.full(len(dy), np.nan)
+    if fit.any():
+        periods, index = np.unique(times[fit], return_inverse=True)
+        period_weight = np.bincount(index, weights=raw_weight[fit])
+        dx_mean = np.column_stack([np.bincount(index, weights=raw_weight[fit] * col) for col in dx[fit].T])
+        dx_mean = dx_mean / period_weight[:, None]
+        dy_mean = np.bincount(index, weights=raw_weight[fit] * dy[fit]) / period_weight
+        root_weight = np.sqrt(raw_weight[fit])[:, None]
+        beta = np.linalg.lstsq(
+            (dx[fit] - dx_mean[index]) * root_weight,
+            (dy[fit] - dy_mean[index]) * root_weight[:, 0],
+            rcond=None,
+        )[0]
+        position = np.minimum(np.searchsorted(periods, times), len(periods) - 1)
+        covered = periods[position] == times
+        fitted[covered] = (dy_mean - dx_mean @ beta)[position[covered]] + dx[covered] @ beta
+
+    count = rows["_ctrl_period_count"].to_numpy()
+    enough = count >= 2
+    kappa = np.ones(len(count))
+    kappa[enough] = np.sqrt(count[enough] / (count[enough] - 1))
+    residual = kappa * (dy - fitted * enough)
+    scores = rows["weight_gt"].to_numpy()[:, None] * rows.select(centered).to_numpy() * residual[:, None]
+    # A row without a fitted value drops out of the sums like a missing value.
+    return np.where(np.isnan(scores), 0.0, scores)
+
+
+def _invert_symmetric(matrix):
+    """Invert a symmetric matrix through a pivoted Cholesky factor and zero out dependent columns."""
+    size = matrix.shape[0]
+    factor, pivot, rank, _ = lapack.dpstrf(matrix)
+    inverse = np.zeros((size, size))
+    if rank > 0:
+        block, _ = lapack.dpotri(np.triu(factor[:rank, :rank]))
+        kept = pivot[:rank] - 1
+        inverse[np.ix_(kept, kept)] = np.triu(block) + np.triu(block, 1).T
+    return inverse, rank
+
+
+def _format_levels(levels):
+    """Format baseline treatment levels for a warning."""
+    return ", ".join(f"{level:g}" for level in levels)

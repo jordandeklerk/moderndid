@@ -5,7 +5,7 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "moderndid"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = {file = "LICENSE"}
 authors = [
     {name = "Jordan DeKlerk", email = "jordan.deklerk@gmail.com"}
@@ -19,7 +19,6 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
@@ -43,6 +42,14 @@ tracker = "https://github.com/jordandeklerk/moderndid/issues"
 documentation = "https://moderndid.readthedocs.io"
 
 [project.optional-dependencies]
+benchmark = [
+    "asv>=0.6.6,<0.7",
+    "asv-runner==0.3.1",
+    "spin>=0.18,<0.19",
+    "build>=1.2.2",
+    "formulaic>=1.1.0",
+    "numba>=0.57.0",
+]
 diddynamic = [
     "scikit-learn>=1.3.0",
 ]
@@ -76,19 +83,12 @@ plots = [
 numba = [
     "numba>=0.57.0",
 ]
-dask = [
-    "dask[dataframe]>=2024.1.0",
-    "distributed>=2024.1.0",
-]
-spark = [
-    "pyspark>=3.4.0",
-]
 gpu = [
     "cupy-cuda12x>=13.0",
     "rmm-cu12>=24.04",
 ]
 all = [
-    "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots,numba,dask]",
+    "moderndid[diddynamic,didcont,didhonest,didml,etwfe,plots,numba]",
 ]
 test = [
     "pytest",
@@ -128,6 +128,12 @@ dev = [
     "mypy",
 ]
 
+[tool.spin]
+package = "moderndid"
+
+[tool.spin.commands]
+"Benchmarks" = [".spin/cmds.py:bench", ".spin/cmds.py:compare", ".spin/cmds.py:asv"]
+
 [tool.ruff]
 line-length = 120
 
@@ -166,7 +172,7 @@ convention = "numpy"
 docstring-code-format = false
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_redundant_casts = true
 warn_unused_configs = true
 pretty = true

@@ -25,7 +25,10 @@ def __getattr__(name: str) -> Any:
 
             return plot_event_study if name == "plot_event_study" else plot_gt
         except ImportError as e:
-            raise ImportError(f"'{name}' requires extra dependencies: uv pip install 'moderndid[plots]'") from e
+            raise ImportError(
+                f"'{name}' requires extra dependencies. Install them with "
+                "uv add 'moderndid[plots]' or pip install 'moderndid[plots]'"
+            ) from e
     raise AttributeError(f"module 'moderndid.did' has no attribute '{name}'")
 
 

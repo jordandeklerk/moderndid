@@ -28,18 +28,6 @@ To run the full test suite (all tests including slow ones):
 
    pixi run -e dev tests-full
 
-To run the Dask distributed tests:
-
-.. code-block:: bash
-
-   pixi run -e dev tests-dask
-
-To run the Spark distributed tests:
-
-.. code-block:: bash
-
-   pixi run -e dev tests-spark
-
 To run the R validation tests (requires R with ``did``, ``DRDID``, and related
 packages installed via the ``validation`` environment):
 
@@ -311,8 +299,8 @@ computations.
 Testing with different backends
 -------------------------------
 
-Some tests need to verify behavior across multiple backends (NumPy vs CuPy,
-local vs Dask). Use ``importorskip`` to gate backend-specific tests so they
+Some tests need to verify behavior across multiple backends (NumPy vs CuPy).
+Use ``importorskip`` to gate backend-specific tests so they
 are skipped gracefully when the backend is not available.
 
 .. code-block:: python
