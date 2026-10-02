@@ -279,10 +279,11 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
         M_{d,j,\ell} = \frac{1}{N_\ell} \sum_{g,t} \mathbb{1}\{D_{g,1} = d\} N_{g,t}
         \left(S_{g,t} - \frac{N^S_{t}}{N^C_{t}} C_{g,t}\right) \Delta_\ell X_{j,g,t}
 
-    where :math:`S_{g,t}` flags the switchers at the horizon, :math:`C_{g,t}` flags their
-    controls, :math:`N^S_t` and :math:`N^C_t` are their weighted counts in the period and
-    baseline treatment, and :math:`\Delta_\ell X_{j,g,t}` is the control difference that
-    adjusts the outcome. The term of group :math:`g` is
+    where :math:`S_{g,t}` flags the switchers at the horizon and :math:`C_{g,t}` flags their
+    controls. Their weighted counts in the period and baseline treatment are :math:`N^S_t`
+    and :math:`N^C_t`. Control :math:`j` enters through the same difference
+    :math:`\Delta_\ell X_{j,g,t}` that adjusts the outcome at the horizon. The term of
+    group :math:`g` is
 
     .. math::
 

@@ -76,7 +76,10 @@ class MissingDataHandler(BaseTransformer):
         if isinstance(config, DIDInterConfig):
             # Rows missing a control have no adjusted outcome and leave before baselines and switch dates are set.
             if config.xformla and config.xformla != "~1":
+                n_orig = len(df)
                 df = df.drop_nulls(subset=extract_vars_from_formula(config.xformla))
+                if len(df) < n_orig:
+                    warnings.warn(f"Dropped {n_orig - len(df)} rows from original data due to missing covariates")
             df = df.with_columns(
                 [
                     pl.col(config.dname).mean().over(config.gname).alias("_mean_D"),

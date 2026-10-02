@@ -117,13 +117,6 @@ result = did.att_gt(
 )
 ```
 
-The [examples](https://moderndid.readthedocs.io/en/latest/examples/index.html)
-walk through a complete analysis for each design. The
-[dataset reference](https://moderndid.readthedocs.io/en/latest/api/data.html)
-lists the data from published studies and the simulation generators.
-
-## Aggregation and plotting
-
 Aggregate the group-time effects into an event study and plot them by time
 relative to treatment. Install the `plots` extra to run the plotting code.
 
