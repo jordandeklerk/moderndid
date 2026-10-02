@@ -11,26 +11,60 @@
 [![Build status](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml/badge.svg)](https://github.com/jordandeklerk/moderndid/actions/workflows/test.yml)
 [![Documentation](https://readthedocs.org/projects/moderndid/badge/?version=latest)](https://moderndid.readthedocs.io/en/latest/)
 
-[What is ModernDiD](#what-is-moderndid) | [Features](#features) | [Installation](#installation) | [Estimation](#estimation) | [Aggregation and plots](#aggregation-and-plots) | [Scaling](#scaling) | [Documentation](https://moderndid.readthedocs.io/en/latest/)
+[**Features**](#features)
+| [**Install guide**](#installation)
+| [**Changelog**](https://moderndid.readthedocs.io/en/latest/release/index.html)
+| [**Documentation**](https://moderndid.readthedocs.io/en/latest/)
 
 </div>
 
 ## What is ModernDiD?
 
-ModernDiD is an open-source Python library for difference-in-differences (DiD),
-written for applied researchers, economists, and data scientists. It brings
-estimators from recent econometric research together behind one consistent API.
-The estimators share their core arguments. Their results come back as objects
-you can print, convert to a DataFrame, and plot.
+ModernDiD is a Python library for difference-in-differences (DiD), designed for
+applied researchers, economists, and data scientists who estimate the effects of
+policies and treatments.
 
-If you're new to DiD, the
+For staggered adoption,
+[`att_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html)
+estimates an average effect for each treatment cohort and period.
+[`aggte`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.aggte.html)
+averages those effects into an event study or a single overall effect. The same
+interface covers two-period designs, triple differences, continuous doses, and
+treatments that switch on and off.
+
+Every estimator reports analytical or bootstrap standard errors with clustering
+and simultaneous confidence bands. Estimation runs in parallel threads on one
+machine and supported estimators also run on NVIDIA GPUs for large panels.
+
+ModernDiD is under active development. Please help by trying it out,
+[reporting bugs](https://github.com/jordandeklerk/moderndid/issues), and telling
+us what you think. If you're new to DiD, the
 [introduction](https://moderndid.readthedocs.io/en/latest/getting_started/causal_inference.html)
 covers the ideas behind the methods before any code.
 
+```python
+import moderndid as did
+
+# County teen employment and state minimum wage increases from 2003 to 2007
+data = did.load_mpdta()
+
+# An average effect for each treatment cohort and year
+result = did.att_gt(
+    data=data,
+    yname="lemp",
+    tname="year",
+    idname="countyreal",
+    gname="first.treat",
+)
+
+# An event study by time relative to treatment, plotted with the plots extra
+event_study = did.aggte(result, type="dynamic")
+did.plot_event_study(event_study)
+```
+
 ## Features
 
-ModernDiD covers the main research designs in the modern DiD literature, each
-with a worked example or an API reference page.
+ModernDiD covers the main research designs in the modern DiD literature:
 
 - [Staggered adoption](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html): `att_gt` and `aggte`, based on Callaway and Sant'Anna (2021)
 - [Two periods](https://moderndid.readthedocs.io/en/latest/api/drdid.html): `drdid`, `ipwdid`, and `ordid`, based on Sant'Anna and Zhao (2020)
@@ -90,39 +124,6 @@ installs straight from GitHub.
 
 ```bash
 uv add "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
-```
-
-## Quickstart
-
-This example uses county-level panel data from
-[Callaway and Sant'Anna (2021)](https://doi.org/10.1016/j.jeconom.2020.12.001)
-to estimate the effect of minimum wage increases on teen employment. `att_gt`
-estimates an average treatment effect for each treatment cohort and time period.
-
-```python
-import moderndid as did
-
-data = did.load_mpdta()
-
-result = did.att_gt(
-    data=data,
-    yname="lemp",
-    tname="year",
-    idname="countyreal",
-    gname="first.treat",
-    xformla="~1",
-    est_method="dr",
-    boot=True,
-    random_state=123,
-)
-```
-
-Aggregate the group-time effects into an event study and plot them by time
-relative to treatment. Install the `plots` extra to run the plotting code.
-
-```python
-event_study = did.aggte(result, type="dynamic", random_state=123)
-plot = did.plot_event_study(event_study)
 ```
 
 ## Documentation
