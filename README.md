@@ -86,9 +86,9 @@ Every estimator also comes with the tools the rest of an analysis needs.
   simultaneous confidence bands.
 - Plots return plotnine `ggplot` objects that take any further plotnine layer or
   theme.
-- Results convert to polars DataFrames with `to_df` and drop straight into
-  [maketables](https://py-econometrics.github.io/maketables/) for LaTeX, HTML,
-  Word, and Typst tables.
+- Results work directly with
+  [maketables](https://py-econometrics.github.io/maketables/) to build LaTeX,
+  HTML, Word, and Typst tables.
 - Parallel threads and an optional Numba bootstrap speed up estimation on one
   machine.
 - Supported estimators also run on NVIDIA GPUs through CuPy for large panels.
