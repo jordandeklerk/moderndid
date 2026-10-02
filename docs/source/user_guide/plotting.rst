@@ -463,7 +463,7 @@ action on real data.
 - :ref:`Staggered DiD <example_staggered_did>` —
   ``plot_gt``, ``plot_event_study``
 - :ref:`Triple DiD <example_triple_did>` —
-  ``plot_gt``, ``plot_event_study``, custom comparison figures
+  ``plot_event_study``, custom comparison figures
 - :ref:`Continuous Treatment <example_cont_did>` —
   ``plot_dose_response``, ``plot_event_study``
 - :ref:`Intertemporal Treatment <example_inter_did>` —

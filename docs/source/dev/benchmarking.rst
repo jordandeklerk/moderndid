@@ -96,8 +96,8 @@ explains the tolerances and the cases that need care when you read the report.
 Writing and checking benchmarks
 -------------------------------
 
-Timing modules live in ``benchmarks/``. Workload definitions live in
-``benchmarks/cases.py`` and shared setup helpers live in
+Timing modules live in ``benchmarks/benchmarks/``. Workload definitions live
+in ``benchmarks/cases.py`` and shared setup helpers live in
 ``benchmarks/common.py``. Put data generation and warmup in ``setup``. A
 ``time_`` method should contain the operation you want to measure.
 

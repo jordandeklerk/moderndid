@@ -63,8 +63,8 @@ def agg_ddd(
 
         \theta_t = \sum_{g \leq t} \mathbb{P}(G=g \mid G \leq t) \, ATT(g, t).
 
-    See the :ref:`triple differences example <example_triple_did>` for event study,
-    cohort, and overall aggregations of ``ddd`` group-time effects.
+    See the :ref:`triple differences example <example_triple_did>` for an event study
+    and an overall effect from the crop insurance data.
 
     Parameters
     ----------

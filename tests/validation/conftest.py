@@ -4,7 +4,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from moderndid import ddd_mp, load_engel
+from moderndid import ddd_mp, load_cai2016, load_engel
 from moderndid.didtriple.dgp import gen_ddd_2periods
 
 
@@ -42,6 +42,25 @@ def mp_ddd_data():
             records.append({"id": unit, "time": t, "y": y, "group": g, "partition": p})
 
     return pl.DataFrame(records)
+
+
+@pytest.fixture
+def mp_ddd_unbalanced_data(mp_ddd_data):
+    """Drop about 8 percent of the multi-period panel rows to unbalance it."""
+    rng = np.random.default_rng(7)
+    return mp_ddd_data.filter(pl.Series(rng.random(len(mp_ddd_data)) >= 0.08))
+
+
+@pytest.fixture
+def cai_data():
+    """Load the Cai (2016) households with group 2003 for the treated regions."""
+    return load_cai2016().with_columns((pl.col("treatment") * 2003).alias("group"))
+
+
+@pytest.fixture
+def cai_balanced_data(cai_data):
+    """Keep the Cai (2016) households observed in all nine years."""
+    return cai_data.filter(pl.len().over("hhno") == 9)
 
 
 @pytest.fixture

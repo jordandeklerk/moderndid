@@ -272,7 +272,7 @@ def test_ddd_mp_parallel_matches_sequential(mp_ddd_data, base_period):
     np.testing.assert_allclose(result_seq.inf_func_mat, result_par.inf_func_mat, rtol=1e-10)
 
 
-def test_ddd_unbalanced_panel_uses_panel_mode(mp_ddd_data):
+def test_ddd_unbalanced_panel_returns_unit_level_result(mp_ddd_data):
     rng = np.random.default_rng(99)
     n_rows = len(mp_ddd_data)
     drop_mask = rng.random(n_rows) < 0.05

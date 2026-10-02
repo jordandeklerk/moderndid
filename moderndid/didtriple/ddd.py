@@ -71,8 +71,8 @@ def ddd(
     parallel trends within or across groups, making DDD appealing when such assumptions
     are implausible.
 
-    See the :ref:`triple differences example <example_triple_did>` for two-period and
-    staggered designs on panel and repeated cross-section data.
+    See the :ref:`triple differences example <example_triple_did>` for a full analysis of
+    the crop insurance data.
 
     Parameters
     ----------
@@ -130,12 +130,9 @@ def ddd(
         Panel data has the same units observed across time periods. Repeated
         cross-section data has different samples in each period.
     allow_unbalanced_panel : bool, default=False
-        If True and panel=True, allows unbalanced panel data. For multi-period
-        settings, estimation stays in panel mode (preserving panel efficiency)
-        while handling units that appear in different subsets of periods. For
-        2-period settings, unbalanced data falls back to repeated cross-section
-        mode. If the panel is unbalanced and this is False, an error will be
-        raised.
+        Whether to estimate an unbalanced panel with the repeated cross-section
+        estimator when panel=True. If False, each comparison keeps only the
+        units observed in both of its periods.
     random_state : int, Generator, optional
         Random seed for reproducibility of bootstrap.
     n_jobs : int, default=1
@@ -191,6 +188,9 @@ def ddd(
     DDD estimators that combine outcome regression and inverse probability weighting.
     These estimators are consistent if either the outcome model or the propensity
     score model is correctly specified.
+
+    With ``allow_unbalanced_panel=True`` and multiple periods, the standard errors
+    come from each unit's influence function summed over its observations.
 
     See Also
     --------
@@ -314,6 +314,7 @@ def ddd(
             cband=False,
             cluster=cluster,
             alpha=alpha,
+            allow_unbalanced_panel=allow_unbalanced_panel,
             random_state=random_state,
             n_jobs=n_jobs,
         )

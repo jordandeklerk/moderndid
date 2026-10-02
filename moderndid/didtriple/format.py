@@ -192,8 +192,7 @@ def format_ddd_mp_result(result):
     lines.extend(_estimation_method_lines(est_method_lower))
 
     lines.extend(format_section_header("Inference"))
-    lines.append(f" Significance level: {alpha}")
-    lines.append(" Analytical standard errors")
+    lines.extend(_inference_lines(args))
 
     lines.extend(format_footer(_DDD_REFERENCE))
 
@@ -328,8 +327,7 @@ def format_ddd_mp_rc_result(result):
     lines.extend(_estimation_method_lines(est_method_lower, mp_rc=True))
 
     lines.extend(format_section_header("Inference"))
-    lines.append(f" Significance level: {alpha}")
-    lines.append(" Analytical standard errors")
+    lines.extend(_inference_lines(args))
 
     lines.extend(format_footer(_DDD_REFERENCE))
 

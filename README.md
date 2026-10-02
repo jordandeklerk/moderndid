@@ -29,8 +29,7 @@ For staggered adoption,
 estimates an average effect for each treatment cohort and period.
 [`aggte`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.aggte.html)
 averages those effects into an event study or a single overall effect. The same
-interface covers two-period designs, triple differences, continuous doses, and
-treatments that switch on and off.
+workflow applies to other estimators such as two-period designs, triple differences, continuous doses, and treatments that switch on and off.
 
 Every estimator reports analytical or bootstrap standard errors with clustering
 and simultaneous confidence bands. Estimation runs in parallel threads on one

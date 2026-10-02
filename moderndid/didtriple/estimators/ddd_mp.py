@@ -13,7 +13,9 @@ from moderndid.core.parallel import parallel_map
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from ..container import ATTgtResult, DDDMultiPeriodResult
+from ..utils import is_balanced_panel
 from .ddd_panel import ddd_panel
+from .ddd_rc import ddd_rc
 
 
 def ddd_mp(
@@ -32,6 +34,7 @@ def ddd_mp(
     cband=False,
     cluster=None,
     alpha=0.05,
+    allow_unbalanced_panel=False,
     random_state=None,
     n_jobs=1,
 ):
@@ -117,6 +120,9 @@ def ddd_mp(
         level (only used if boot=True).
     alpha : float, default 0.05
         Significance level for confidence intervals.
+    allow_unbalanced_panel : bool, default False
+        Whether to keep units observed in only some periods. If False, each
+        cell keeps only the units observed in both of its periods.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
     n_jobs : int, default=1
@@ -147,6 +153,9 @@ def ddd_mp(
     The influence functions are rescaled by :math:`n / n_{g,t}` where :math:`n_{g,t}`
     is the number of units in each (g,t) cell, following the approach in [1]_.
 
+    Each cell conditions on covariate values from its base period. Since that
+    period always precedes treatment, the covariates cannot respond to it.
+
     The standard errors are computed from the influence function matrix as
 
     .. math::
@@ -156,6 +165,15 @@ def ddd_mp(
     where :math:`\widehat{\Psi}` is the :math:`n \times k` matrix of influence
     functions. For cells with GMM aggregation, the standard error formula from
     Equation 4.12 is used instead.
+
+    An unbalanced panel with ``allow_unbalanced_panel=True`` lacks the outcome
+    change of any unit missing one of a cell's two periods. Each cell then
+    applies :func:`ddd_rc` to all observations from its two periods. Every
+    observation keeps its own covariate values. Let :math:`m_{g,t}` denote the
+    number of these observations. Each observation's influence function is
+    rescaled by :math:`n / m_{g,t}` and summed within its unit. Because the rows of
+    :math:`\widehat{\Psi}` remain one per unit, the standard errors treat the
+    unit as the sampling unit.
 
     References
     ----------
@@ -182,6 +200,7 @@ def ddd_mp(
 
     unique_ids = np.sort(data[id_col].unique().to_numpy())
     id_to_idx = {uid: idx for idx, uid in enumerate(unique_ids)}
+    unbalanced = allow_unbalanced_panel and not is_balanced_panel(data, time_col, id_col)
 
     args_list = []
     for g in glist:
@@ -204,6 +223,8 @@ def ddd_mp(
                     covariate_cols,
                     est_method,
                     n_units,
+                    unique_ids,
+                    unbalanced,
                 )
             )
 
@@ -280,6 +301,7 @@ def ddd_mp(
         "cband": cband if boot else None,
         "cluster": cluster,
         "alpha": alpha,
+        "allow_unbalanced_panel": allow_unbalanced_panel,
     }
 
     return DDDMultiPeriodResult(
@@ -314,6 +336,8 @@ def _process_gt_cell(
     covariate_cols,
     est_method,
     n_units,
+    unique_ids,
+    unbalanced,
 ):
     """Process a single (g,t) cell and return results.
 
@@ -342,6 +366,29 @@ def _process_gt_cell(
 
     if cell_data is None or len(available_controls) == 0:
         return None
+
+    if unbalanced:
+        att_result, inf_func_scaled, cell_id_list, se_gmm = _process_unbalanced_cell(
+            cell_data,
+            available_controls,
+            y_col,
+            time_col,
+            id_col,
+            group_col,
+            partition_col,
+            g,
+            t,
+            covariate_cols,
+            est_method,
+            unique_ids,
+        )
+        if att_result is None:
+            return None
+        return (
+            ATTgtResult(att=att_result, group=int(g), time=int(t), post=post_treat),
+            (inf_func_scaled, cell_id_list),
+            se_gmm,
+        )
 
     n_cell = cell_data[id_col].n_unique()
 
@@ -523,10 +570,75 @@ def _process_multiple_controls(
     return att_gmm, inf_func_scaled, cell_id_list, se_gmm
 
 
-def _compute_single_ddd(
-    cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
+def _process_unbalanced_cell(
+    cell_data,
+    available_controls,
+    y_col,
+    time_col,
+    id_col,
+    group_col,
+    partition_col,
+    g,
+    t,
+    covariate_cols,
+    est_method,
+    unique_ids,
 ):
-    """Compute DDD for a single (g,t) cell with a single control group."""
+    """Process a (g,t) cell of an unbalanced panel with the repeated cross-section estimator."""
+    n_units = len(unique_ids)
+    att_vals = []
+    inf_cols = []
+
+    for ctrl in available_controls:
+        subset_data = cell_data.filter((pl.col(group_col) == g) | (pl.col(group_col) == ctrl))
+        att_result, inf_func = _compute_unbalanced_ddd(
+            subset_data, y_col, time_col, group_col, partition_col, g, t, covariate_cols, est_method
+        )
+        if att_result is None:
+            continue
+
+        # Summing within units accounts for the correlation between a unit's two observations.
+        inf_col = np.zeros(n_units)
+        unit_idx = np.searchsorted(unique_ids, subset_data[id_col].to_numpy())
+        np.add.at(inf_col, unit_idx, (n_units / len(subset_data)) * inf_func)
+        att_vals.append(att_result)
+        inf_cols.append(inf_col)
+
+    if len(att_vals) == 0:
+        return None, None, None, None
+
+    cell_idx = np.unique(np.searchsorted(unique_ids, cell_data[id_col].to_numpy()))
+    if len(available_controls) == 1:
+        return att_vals[0], inf_cols[0][cell_idx], unique_ids[cell_idx], None
+
+    att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(att_vals), np.column_stack(inf_cols), n_units)
+    return att_gmm, if_gmm[cell_idx], unique_ids[cell_idx], se_gmm
+
+
+def _compute_unbalanced_ddd(cell_data, y_col, time_col, group_col, partition_col, g, t, covariate_cols, est_method):
+    """Compute DDD for one comparison group of an unbalanced panel cell."""
+    cell_data = _with_subgroup(cell_data, group_col, partition_col, g)
+    subgroup = cell_data["subgroup"].to_numpy()
+
+    if 4 not in set(subgroup):
+        return None, None
+
+    try:
+        result = ddd_rc(
+            y=cell_data[y_col].to_numpy(),
+            post=(cell_data[time_col] == t).cast(pl.Int64).to_numpy(),
+            subgroup=subgroup,
+            covariates=_design_matrix(cell_data, covariate_cols),
+            est_method=est_method,
+            influence_func=True,
+        )
+        return result.att, result.att_inf_func
+    except (ValueError, np.linalg.LinAlgError):
+        return None, None
+
+
+def _with_subgroup(cell_data, group_col, partition_col, g):
+    """Label each row with its treatment-by-eligibility subgroup."""
     treat_col = (pl.col(group_col) == g).cast(pl.Int64).alias("treat")
     subgroup_expr = (
         4 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
@@ -535,7 +647,22 @@ def _compute_single_ddd(
         + 1 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
     ).alias("subgroup")
 
-    cell_data = cell_data.with_columns([treat_col]).with_columns([subgroup_expr])
+    return cell_data.with_columns([treat_col]).with_columns([subgroup_expr])
+
+
+def _design_matrix(frame, covariate_cols):
+    """Stack an intercept column with the covariates of each row."""
+    intercept = np.ones((len(frame), 1))
+    if covariate_cols is None:
+        return intercept
+    return np.hstack([intercept, frame.select(covariate_cols).to_numpy()])
+
+
+def _compute_single_ddd(
+    cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
+):
+    """Compute DDD for a single (g,t) cell with a single control group."""
+    cell_data = _with_subgroup(cell_data, group_col, partition_col, g)
 
     post_data = cell_data.filter(pl.col(time_col) == t).sort(id_col)
     pre_data = cell_data.filter(pl.col(time_col) == pret).sort(id_col)
@@ -559,12 +686,8 @@ def _compute_single_ddd(
     if 4 not in set(subgroup):
         return None, None, None
 
-    if covariate_cols is None:
-        X = np.ones((len(y1), 1))
-    else:
-        cov_matrix = post_data.select(covariate_cols).to_numpy()
-        intercept = np.ones((len(y1), 1))
-        X = np.hstack([intercept, cov_matrix])
+    # Since the base period precedes treatment in every cell, its covariates cannot respond to treatment.
+    X = _design_matrix(pre_data, covariate_cols)
 
     try:
         result = ddd_panel(y1=y1, y0=y0, subgroup=subgroup, covariates=X, est_method=est_method, influence_func=True)

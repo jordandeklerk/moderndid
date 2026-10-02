@@ -104,13 +104,13 @@ Three cases need some care when you read the report.
 
 ## Writing benchmarks
 
-Timing modules live in this directory and are named `bench_*.py`. Workload
-definitions live in `cases.py`, shared setup helpers in `common.py`, and the R
-references in `references.py`. Generate data and warm up the estimator in
-`setup`. A `time_` method then measures only the operation. Estimator
-benchmarks time the complete public call, including preprocessing and
-inference. Aggregation benchmarks fit the estimator during setup and time only
-the aggregation.
+Timing modules live in the `benchmarks/` folder inside this directory and are
+named `bench_*.py`. Workload definitions live in `cases.py`, shared setup
+helpers in `common.py`, and the R references in `references.py`. Generate data
+and warm up the estimator in `setup`. A `time_` method then measures only the
+operation. Estimator benchmarks time the complete public call, including
+preprocessing and inference. Aggregation benchmarks fit the estimator during
+setup and time only the aggregation.
 
 Keep `params` and `param_names` stable across revisions. Increase the
 benchmark's `version` when its workload, setup, or measured operation changes.

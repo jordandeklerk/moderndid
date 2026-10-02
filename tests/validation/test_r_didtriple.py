@@ -1793,6 +1793,185 @@ def test_rcs_ddd_formula_holds(two_period_rcs_data):
     np.testing.assert_almost_equal(result.att, computed_ddd, decimal=10, err_msg="DDD formula mismatch for RCS")
 
 
+def r_estimate_with_eventstudy(
+    data,
+    yname="y",
+    tname="time",
+    idname="id",
+    gname="group",
+    pname="partition",
+    xformla="~1",
+    control_group="nevertreated",
+    allow_unbalanced_panel=False,
+):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_path = Path(tmpdir) / "data.csv"
+        result_path = Path(tmpdir) / "result.json"
+
+        data.write_csv(data_path)
+
+        unbalanced_str = "TRUE" if allow_unbalanced_panel else "FALSE"
+
+        r_script = f"""
+library(triplediff)
+library(jsonlite)
+
+data <- read.csv("{data_path}")
+
+result <- ddd(
+    yname = "{yname}",
+    tname = "{tname}",
+    idname = "{idname}",
+    gname = "{gname}",
+    pname = "{pname}",
+    xformla = {xformla},
+    data = data,
+    control_group = "{control_group}",
+    base_period = "universal",
+    est_method = "dr",
+    allow_unbalanced_panel = {unbalanced_str},
+    boot = FALSE
+)
+
+es <- agg_ddd(result, type = "eventstudy", boot = FALSE)$aggte_ddd
+
+output <- list(
+    att = result$ATT,
+    se = result$se,
+    groups = result$groups,
+    times = result$periods,
+    es_egt = es$egt,
+    es_att = es$att.egt,
+    es_se = es$se.egt,
+    es_overall_att = es$overall.att,
+    es_overall_se = es$overall.se
+)
+
+write_json(output, "{result_path}", auto_unbox = TRUE, digits = NA)
+"""
+        try:
+            return _run_r_script(r_script, result_path, timeout=300)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+            return None
+
+
+def python_estimate_cai(data, xformla=None, allow_unbalanced_panel=False):
+    return ddd(
+        data=data,
+        yname="checksaving_ratio",
+        tname="year",
+        idname="hhno",
+        gname="group",
+        pname="sector",
+        xformla=xformla,
+        control_group="nevertreated",
+        base_period="universal",
+        est_method="dr",
+        allow_unbalanced_panel=allow_unbalanced_panel,
+    )
+
+
+def r_estimate_cai(data, xformla=None, allow_unbalanced_panel=False):
+    return r_estimate_with_eventstudy(
+        data,
+        yname="checksaving_ratio",
+        tname="year",
+        idname="hhno",
+        gname="group",
+        pname="sector",
+        xformla=xformla or "~1",
+        allow_unbalanced_panel=allow_unbalanced_panel,
+    )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("xformla", [None, "~ hhsize + age"])
+def test_cai_unbalanced_att_gt_match(cai_data, xformla):
+    py_result = python_estimate_cai(cai_data, xformla=xformla, allow_unbalanced_panel=True)
+    r_result = r_estimate_cai(cai_data, xformla=xformla, allow_unbalanced_panel=True)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    assert py_result.n == cai_data["hhno"].n_unique()
+    np.testing.assert_array_equal(py_result.times, np.atleast_1d(r_result["times"]))
+    np.testing.assert_allclose(py_result.att, _convert_r_array(r_result["att"]), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_result.se, _convert_r_array(r_result["se"]), rtol=0, atol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+def test_cai_unbalanced_eventstudy_matches(cai_data):
+    py_result = python_estimate_cai(cai_data, xformla="~ hhsize + age", allow_unbalanced_panel=True)
+    py_agg = agg_ddd(py_result, type="eventstudy", boot=False, cband=False)
+    r_result = r_estimate_cai(cai_data, xformla="~ hhsize + age", allow_unbalanced_panel=True)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    np.testing.assert_array_equal(py_agg.egt, np.atleast_1d(r_result["es_egt"]))
+    np.testing.assert_allclose(py_agg.att_egt, _convert_r_array(r_result["es_att"]), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_agg.se_egt, _convert_r_array(r_result["es_se"]), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_agg.overall_att, r_result["es_overall_att"], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_agg.overall_se, r_result["es_overall_se"], rtol=0, atol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+def test_cai_balanced_covariates_post_treatment_match(cai_balanced_data):
+    py_result = python_estimate_cai(cai_balanced_data, xformla="~ hhsize + age")
+    r_result = r_estimate_cai(cai_balanced_data, xformla="~ hhsize + age")
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    post = py_result.times >= py_result.groups
+    np.testing.assert_array_equal(py_result.times, np.atleast_1d(r_result["times"]))
+    np.testing.assert_allclose(py_result.att[post], _convert_r_array(r_result["att"])[post], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_result.se[post], _convert_r_array(r_result["se"])[post], rtol=0, atol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+def test_cai_balanced_covariates_pre_treatment_close(cai_balanced_data):
+    py_result = python_estimate_cai(cai_balanced_data, xformla="~ hhsize + age")
+    r_result = r_estimate_cai(cai_balanced_data, xformla="~ hhsize + age")
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    pre = py_result.times < py_result.groups
+    np.testing.assert_allclose(py_result.att[pre], _convert_r_array(r_result["att"])[pre], rtol=0, atol=5e-5)
+    np.testing.assert_allclose(py_result.se[pre], _convert_r_array(r_result["se"])[pre], rtol=0, atol=1e-5)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
+def test_mp_unbalanced_panel_matches(mp_ddd_unbalanced_data, control_group):
+    data = mp_ddd_unbalanced_data
+
+    py_result = ddd(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        control_group=control_group,
+        base_period="universal",
+        est_method="dr",
+        allow_unbalanced_panel=True,
+    )
+    py_agg = agg_ddd(py_result, type="eventstudy", boot=False, cband=False)
+    r_result = r_estimate_with_eventstudy(data, control_group=control_group, allow_unbalanced_panel=True)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    np.testing.assert_allclose(py_result.att, _convert_r_array(r_result["att"]), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_result.se, _convert_r_array(r_result["se"]), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_agg.att_egt, _convert_r_array(r_result["es_att"]), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_agg.se_egt, _convert_r_array(r_result["es_se"]), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_agg.overall_se, r_result["es_overall_se"], rtol=0, atol=1e-10)
+
+
 def _run_r_script(r_script, result_path, timeout=60):
     proc = subprocess.run(
         ["R", "--vanilla", "--quiet"],
