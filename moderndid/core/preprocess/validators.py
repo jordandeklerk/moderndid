@@ -15,8 +15,9 @@ from .config import (
     DynBalancingConfig,
     TwoPeriodDIDConfig,
 )
+from .constants import ROW_ID_COLUMN, WEIGHTS_COLUMN
 from .models import ValidationResult
-from .utils import extract_vars_from_formula
+from .utils import extract_vars_from_formula, get_formula_columns, nonfinite_to_null
 
 
 class DataValidator(Protocol):
@@ -73,6 +74,7 @@ class ColumnValidator(BaseValidator):
             if config.yname in data_columns and not _is_numeric_dtype(df[config.yname]):
                 errors.append(f"yname = '{config.yname}' is not numeric. Please convert it")
 
+            covariate_names = []
             if config.xformla and config.xformla != "~1":
                 covariate_names = extract_vars_from_formula(config.xformla)
                 for cov in covariate_names:
@@ -86,6 +88,18 @@ class ColumnValidator(BaseValidator):
                 and not _is_numeric_dtype(df[config.dname])
             ):
                 errors.append(f"dname = '{config.dname}' is not numeric. Please convert it")
+
+            named_columns = {
+                "yname": config.yname,
+                "tname": config.tname,
+                "gname": config.gname,
+                "idname": config.idname,
+                "weightsname": config.weightsname,
+                "clustervars": config.clustervars,
+                "xformla": covariate_names,
+                "dname": config.dname if isinstance(config, ContDIDConfig) else None,
+            }
+            errors.extend(_reserved_name_errors(named_columns, (WEIGHTS_COLUMN, ROW_ID_COLUMN)))
 
         return self._create_result(errors, warnings)
 
@@ -149,12 +163,11 @@ class PanelStructureValidator(BaseValidator):
         warnings.extend(mismatch_warnings)
 
         if config.panel and config.idname:
-            if df.select([config.idname, config.tname]).is_duplicated().any():
-                errors.append(
-                    "The value of idname must be unique (by tname). Some units are observed more than once in a period."
-                )
-
-            if not config.allow_unbalanced_panel:
+            duplicate_error = _duplicate_unit_period_error(df, config.idname, config.tname)
+            if duplicate_error is not None:
+                errors.append(duplicate_error)
+            # Since a repeated row counts toward its unit's rows, the unbalanced count would misdescribe that unit.
+            elif not config.allow_unbalanced_panel:
                 n_time_periods = df[config.tname].n_unique()
                 unit_counts = df.group_by(config.idname).len()
 
@@ -204,31 +217,6 @@ class ClusterValidator(BaseValidator):
     @staticmethod
     def _create_result(errors: list[str] | None = None, warnings: list[str] | None = None) -> ValidationResult:
         """Create result."""
-        errors = errors or []
-        warnings = warnings or []
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
-
-
-class WeightValidator(BaseValidator):
-    """Weight validator."""
-
-    def validate(self, data: DataFrame, config) -> ValidationResult:
-        """Validate weights are non-negative."""
-        df = to_polars(data)
-        errors = []
-        weightsname = getattr(config, "weightsname", None)
-        if not weightsname or weightsname not in df.columns:
-            return self._create_result(errors, [])
-        weights = df[weightsname]
-        if _is_numeric_dtype(weights) and (weights < 0).any():
-            n_neg = int((weights < 0).sum())
-            errors.append(
-                f"weightsname = '{weightsname}' contains {n_neg} negative values. Weights must be non-negative."
-            )
-        return self._create_result(errors, [])
-
-    @staticmethod
-    def _create_result(errors=None, warnings=None):
         errors = errors or []
         warnings = warnings or []
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
@@ -329,6 +317,20 @@ class PrePostColumnValidator(BaseValidator):
             if config.yname in data_columns and not _is_numeric_dtype(df[config.yname]):
                 errors.append(f"yname = '{config.yname}' is not numeric. Please convert it")
 
+            # Since a transformed term such as I(x**2) still reads its columns, the check covers them too.
+            formula_columns = []
+            if config.xformla and config.xformla != "~1":
+                formula_columns = get_formula_columns(config.xformla, data_columns)
+            named_columns = {
+                "yname": config.yname,
+                "tname": config.tname,
+                "treat_col": config.treat_col,
+                "idname": config.idname,
+                "weightsname": config.weightsname,
+                "xformla": formula_columns,
+            }
+            errors.extend(_reserved_name_errors(named_columns, (WEIGHTS_COLUMN, "Intercept")))
+
         return self._create_result(errors, warnings)
 
     @staticmethod
@@ -386,6 +388,10 @@ class PrePostPanelValidator(BaseValidator):
         warnings.extend(mismatch_warnings)
 
         if config.panel and config.idname:
+            duplicate_error = _duplicate_unit_period_error(df, config.idname, config.tname)
+            if duplicate_error is not None:
+                errors.append(duplicate_error)
+
             treat_counts = df.group_by(config.idname).agg(pl.col(config.treat_col).n_unique().alias("n_unique"))
             if (treat_counts["n_unique"] > 1).any():
                 invalid_ids = treat_counts.filter(pl.col("n_unique") > 1)[config.idname].to_list()
@@ -444,11 +450,38 @@ class DIDInterColumnValidator(BaseValidator):
         if config.cluster and config.cluster not in data_columns:
             errors.append(f"cluster = '{config.cluster}' must be a column in the dataset")
 
+        covariate_names = []
         if config.xformla and config.xformla != "~1":
             covariate_names = extract_vars_from_formula(config.xformla)
             for ctrl in covariate_names:
                 if ctrl not in data_columns:
                     errors.append(f"xformla contains '{ctrl}' which is not in the dataset")
+
+        named_columns = {
+            "yname": config.yname,
+            "tname": config.tname,
+            "gname": config.gname,
+            "dname": config.dname,
+            "weightsname": config.weightsname,
+            "cluster": config.cluster,
+            "xformla": covariate_names,
+            "trends_nonparam": config.trends_nonparam,
+            "predict_het": config.predict_het[0] if config.predict_het else None,
+        }
+        reserved = (
+            WEIGHTS_COLUMN,
+            "F_g",
+            "d_sq",
+            "d_sq_int",
+            "d_fg",
+            "S_g",
+            "L_g",
+            "T_g",
+            "weight_gt",
+            "first_obs_by_gp",
+            "t_max_by_group",
+        )
+        errors.extend(_reserved_name_errors(named_columns, reserved))
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
@@ -496,12 +529,11 @@ class DIDInterPanelValidator(BaseValidator):
         errors = []
         warnings = []
 
-        if df.select([config.gname, config.tname]).is_duplicated().any():
-            errors.append(
-                "The combination of gname and tname must be unique. Some units are observed more than once in a period."
-            )
-
-        if not config.allow_unbalanced_panel:
+        # The intertemporal config stores the caller's idname column in gname.
+        duplicate_error = _duplicate_unit_period_error(df, config.gname, config.tname)
+        if duplicate_error is not None:
+            errors.append(duplicate_error)
+        elif not config.allow_unbalanced_panel:
             n_time_periods = df[config.tname].n_unique()
             unit_counts = df.group_by(config.gname).len()
 
@@ -543,6 +575,7 @@ class DDDColumnValidator(BaseValidator):
         if config.weightsname is not None and config.weightsname not in data_columns:
             errors.append(f"weightsname='{config.weightsname}' not found in data.")
 
+        covariate_vars = []
         if config.xformla != "~1":
             try:
                 covariate_vars = extract_vars_from_formula(config.xformla)
@@ -559,6 +592,18 @@ class DDDColumnValidator(BaseValidator):
                 col_name = getattr(config, col_type)
                 if col_name in data_columns and not _is_numeric_dtype(df[col_name]):
                     errors.append(f"{col_type}='{col_name}' is not numeric. Please convert it.")
+
+        named_columns = {
+            "yname": config.yname,
+            "tname": config.tname,
+            "idname": config.idname,
+            "gname": config.gname,
+            "pname": config.pname,
+            "cluster": config.cluster,
+            "weightsname": config.weightsname,
+            "xformla": covariate_vars,
+        }
+        errors.extend(_reserved_name_errors(named_columns, (WEIGHTS_COLUMN, "_post", "_subgroup")))
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
@@ -596,10 +641,10 @@ class DDDInvarianceValidator(BaseValidator):
 
 
 class DDDDataValidator(BaseValidator):
-    """DDD data validator for time periods and treatment values."""
+    """DDD data validator for time periods, treatment values, and the partition."""
 
     def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
-        """Validate exactly 2 time periods and 2 treatment values."""
+        """Validate exactly 2 time periods, 2 treatment values, and a 0/1 partition."""
         if not isinstance(config, DDDConfig):
             return ValidationResult(is_valid=True, errors=[], warnings=[])
 
@@ -616,6 +661,10 @@ class DDDDataValidator(BaseValidator):
         elif glist[0] != 0:
             errors.append("Treatment variable must include 0 for never-treated units.")
 
+        partition_error = _ddd_partition_error(df, config.pname)
+        if partition_error is not None:
+            errors.append(partition_error)
+
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
 
 
@@ -630,6 +679,12 @@ class DDDPanelStructureValidator(BaseValidator):
         df = to_polars(data)
         panel = getattr(config, "panel", True)
         errors, warnings = _check_panel_mismatch(df, config.idname, config.tname, panel)
+
+        if panel and df.select([config.idname, config.tname]).is_duplicated().any():
+            errors.append(
+                "The value of idname must be unique (by tname). Some units are observed more than once in a period."
+            )
+
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
@@ -682,6 +737,19 @@ class DynBalancingColumnValidator(BaseValidator):
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 
+class DynBalancingPanelValidator(BaseValidator):
+    """Dynamic balancing panel validator."""
+
+    def validate(self, data, config):
+        """Check that each unit has at most one row per period."""
+        if not isinstance(config, DynBalancingConfig):
+            return ValidationResult(is_valid=True, errors=[], warnings=[])
+
+        duplicate_error = _duplicate_unit_period_error(to_polars(data), config.idname, config.tname)
+        errors = [] if duplicate_error is None else [duplicate_error]
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
+
+
 class CompositeValidator(BaseValidator):
     """Composite validator."""
 
@@ -701,7 +769,6 @@ class CompositeValidator(BaseValidator):
                 PrePostArgumentValidator(),
                 PrePostDataValidator(),
                 PrePostPanelValidator(),
-                WeightValidator(),
             ]
 
         if config_type == "didinter":
@@ -710,13 +777,11 @@ class CompositeValidator(BaseValidator):
                 DIDInterArgumentValidator(),
                 DIDInterTreatmentValidator(),
                 DIDInterPanelValidator(),
-                WeightValidator(),
             ]
 
         if config_type == "etwfe":
             return [
                 ColumnValidator(),
-                WeightValidator(),
                 PanelStructureValidator(),
             ]
 
@@ -727,18 +792,17 @@ class CompositeValidator(BaseValidator):
                 DDDPanelStructureValidator(),
                 DDDInvarianceValidator(),
                 DDDDataValidator(),
-                WeightValidator(),
             ]
 
         if config_type == "dyn_balancing":
             return [
                 DynBalancingColumnValidator(),
+                DynBalancingPanelValidator(),
             ]
 
         common_validators = [
             ArgumentValidator(),
             ColumnValidator(),
-            WeightValidator(),
             TreatmentValidator(),
             PanelStructureValidator(),
             ClusterValidator(),
@@ -788,6 +852,175 @@ def _check_panel_mismatch(df: pl.DataFrame, idname: str | None, tname: str, pane
         )
 
     return errors, warnings
+
+
+def _duplicate_unit_period_error(df, idname, tname):
+    """Describe the units that have more than one row in a period.
+
+    The message names up to three of the repeated pairs. Rows that miss the
+    unit or the period are left out, since the missing-data step drops them.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Data that holds the unit and period columns.
+    idname : str
+        Name of the unit identifier column.
+    tname : str
+        Name of the period column.
+
+    Returns
+    -------
+    str or None
+        The error message, or None when no unit has two rows in one period.
+    """
+    if idname not in df.columns or tname not in df.columns:
+        return None
+
+    # Since etwfe and dyn_balancing keep rows with an infinite unit or period, two such rows still repeat a pair.
+    keys = nonfinite_to_null(df.select(idname, tname), keep_infinite=(idname, tname)).drop_nulls()
+    repeated = keys.filter(keys.is_duplicated()).unique().sort(idname, tname)
+    if repeated.height == 0:
+        return None
+
+    shown = [f"({unit}, {period})" for unit, period in repeated.head(3).iter_rows()]
+    listed = " and ".join(shown) if len(shown) < 3 else f"{', '.join(shown[:-1])}, and {shown[-1]}"
+    if repeated.height <= 3:
+        noun = "pair" if repeated.height == 1 else "pairs"
+        where = f"the ({idname}, {tname}) {noun} {listed}"
+    else:
+        where = f"{repeated.height} ({idname}, {tname}) pairs, such as {listed}"
+    return (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        f"Rows repeat for {where}."
+    )
+
+
+def _ddd_partition_error(df, pname):
+    """Describe a partition that takes values other than 0 and 1.
+
+    Since the missing-data step drops rows with null values, the check skips them.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Data that holds the partition column.
+    pname : str
+        Name of the partition column.
+
+    Returns
+    -------
+    str or None
+        The error message, or None when every partition value is 0 or 1.
+    """
+    if pname not in df.columns:
+        return None
+
+    values = df[pname].drop_nulls()
+    if not (values.dtype.is_numeric() or values.dtype == pl.Boolean):
+        return f"pname='{pname}' is not numeric. Code it 1 for eligible units and 0 for ineligible units."
+
+    invalid = values.filter(~values.cast(pl.Float64).is_in([0.0, 1.0])).unique().sort()
+    if len(invalid) == 0:
+        return None
+    return (
+        f"pname='{pname}' must be 1 for eligible units and 0 for ineligible units, "
+        f"but it also takes the values {invalid.head(5).to_list()}."
+    )
+
+
+def _ddd_subgroup_error(subgroup, gname, pname):
+    """Describe the treatment and eligibility subgroups that have no units.
+
+    Parameters
+    ----------
+    subgroup : ndarray
+        Subgroup of each unit or observation, coded from 1 to 4.
+    gname : str
+        Name of the treatment group column.
+    pname : str
+        Name of the partition column.
+
+    Returns
+    -------
+    str or None
+        The error message, or None when all four subgroups have units.
+    """
+    labels = {
+        4: "treated and eligible",
+        3: "treated and ineligible",
+        2: "untreated and eligible",
+        1: "untreated and ineligible",
+    }
+    present = set(np.unique(subgroup).tolist())
+    missing = [f"subgroup {sg} ({label})" for sg, label in labels.items() if sg not in present]
+    if not missing:
+        return None
+    return (
+        f"No units fall in {' or '.join(missing)}. "
+        f"The triple difference needs units in every combination of {gname} and {pname}."
+    )
+
+
+def _weights_error(weights, weightsname):
+    """Describe sampling weights that are negative or have a mean that is not positive.
+
+    Since normalizing divides each weight by the mean weight, a mean of zero
+    turns every weight into NaN. A negative weight flips the sign of its
+    observation. The intertemporal estimator keeps rows with a missing weight
+    and gives them zero weight. The check leaves those weights out.
+
+    Parameters
+    ----------
+    weights : pl.Series
+        Sampling weights of the rows that the missing-data step keeps.
+    weightsname : str
+        Name of the weights column.
+
+    Returns
+    -------
+    str or None
+        The error message, or None when the weights pass the check or are not
+        numeric.
+    """
+    if not (weights.dtype.is_numeric() or weights.dtype == pl.Boolean):
+        return None
+    values = weights.drop_nulls().cast(pl.Float64)
+    if (values < 0).any() or (len(values) > 0 and values.mean() <= 0):
+        return f"The weights variable '{weightsname}' must be non-negative with a positive mean."
+    return None
+
+
+def _reserved_name_errors(named_columns, reserved):
+    """Describe the columns of a call whose names an internal column also uses.
+
+    Preprocessing adds its own columns next to the columns a call names. A
+    user column with the same name would be overwritten or read in place of
+    the internal one.
+
+    Parameters
+    ----------
+    named_columns : dict
+        Each argument, such as ``"yname"``, mapped to the column or list of
+        columns it names. None names no column.
+    reserved : tuple of str
+        Names of the internal columns that the estimator adds.
+
+    Returns
+    -------
+    list of str
+        One error message for each named column whose name is reserved.
+    """
+    errors = []
+    for argument, names in named_columns.items():
+        names = [names] if isinstance(names, str) else names or []
+        errors.extend(
+            f"{argument} names the column '{name}'. Since moderndid uses that name for an internal column, "
+            "rename the column."
+            for name in dict.fromkeys(names)
+            if name in reserved
+        )
+    return errors
 
 
 def _is_numeric_dtype(series: pl.Series) -> bool:

@@ -73,6 +73,10 @@ def didml(
     with cross-fitted nuisances, and combines the per-unit conditional
     treatment effects with augmented minimax-linear weights from [3]_.
 
+    Since every cell compares each unit's outcomes in two periods, the
+    function keeps only the units observed in every period and warns about
+    the units it drops.
+
     Parameters
     ----------
     data : DataFrame
@@ -269,6 +273,9 @@ def didml(
         idname=idname,
         gname=gname,
         xformla=xformla if xformla is not None else "~1",
+        # Since preprocessing builds the outcome tensor only for a balanced panel and every cell reads it,
+        # units missing from any period are dropped as att_gt does by default.
+        allow_unbalanced_panel=False,
         weightsname=weightsname,
         alp=alp,
         cband=cband,

@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+import moderndid
 from moderndid.core.data import (
     gen_cont_did_data,
     gen_did_scalable,
@@ -10,12 +11,104 @@ from moderndid.core.data import (
     load_ehec,
     load_engel,
     load_favara_imbs,
+    load_fracking,
     load_mpdta,
     load_nsw,
 )
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
+
+
+def test_load_fracking():
+    fracking_data = load_fracking()
+
+    assert isinstance(fracking_data, pl.DataFrame)
+    assert fracking_data.shape == (10050, 7)
+    assert fracking_data.schema == {
+        "i": pl.Int64,
+        "t": pl.Int64,
+        "y": pl.Float64,
+        "d": pl.Float64,
+        "G": pl.Int64,
+        "shale_basin1": pl.Int64,
+        "G_original": pl.Int64,
+    }
+    assert fracking_data.equals(fracking_data.sort("i", "t"))
+    assert fracking_data.null_count().row(0) == (0,) * 7
+    assert np.isfinite(fracking_data.to_numpy()).all()
+
+
+def test_load_fracking_panel_integrity():
+    fracking_data = load_fracking()
+
+    assert fracking_data["i"].n_unique() == 402
+    assert fracking_data["t"].unique().sort().to_list() == list(range(1990, 2015))
+    assert not fracking_data.select("i", "t").is_duplicated().any()
+    county_counts = fracking_data.group_by("i").len()
+    assert (county_counts["len"] == 25).all()
+    county_characteristics = fracking_data.group_by("i").agg(pl.col("d", "G", "shale_basin1", "G_original").n_unique())
+    assert (county_characteristics.select("d", "G", "shale_basin1", "G_original").to_numpy() == 1).all()
+
+
+def test_load_fracking_dose_and_cohort():
+    counties = load_fracking().unique("i")
+    positive_doses = counties.filter(pl.col("d") > 0)["d"]
+
+    assert (counties["d"] == 0).sum() == 73
+    assert len(positive_doses) == 329
+    assert (counties["d"] >= 0).all()
+    assert ((counties["d"] == 0) == (counties["G"] == 0)).all()
+    assert set(counties["G"].unique()) == {0, 2001, 2005, 2006, 2007, 2008, 2009, 2010, 2012}
+    assert counties["shale_basin1"].n_unique() == 12
+    assert positive_doses.min() == pytest.approx(0.2)
+    assert positive_doses.median() == pytest.approx(3.95)
+    assert positive_doses.max() == pytest.approx(9.34)
+
+
+def test_load_fracking_preserves_original_dates():
+    counties = load_fracking().unique("i")
+    treated = counties.filter(pl.col("d") > 0)
+    controls = counties.filter(pl.col("d") == 0)
+
+    assert treated["G"].equals(treated["G_original"].rename("G"))
+    assert controls.filter(pl.col("G_original") == 2012).height == 13
+    assert controls.filter(pl.col("G_original") + 4 <= 2014).height == 60
+    assert controls.filter(pl.col("i") == 38095)["G_original"].item() == 2007
+
+
+@pytest.mark.parametrize(
+    "county, year, employment, dose, cohort, shale",
+    [
+        (5023, 1990, 9.020389556884766, 4.400000095367432, 2005, 204),
+        (38095, 1990, 7.619724273681641, 0.0, 0, 232),
+        (38095, 2014, 7.46508264541626, 0.0, 0, 232),
+        (42131, 2014, 9.475317001342773, 4.25, 2008, 202),
+    ],
+)
+def test_load_fracking_source_values(county, year, employment, dose, cohort, shale):
+    observation = load_fracking().filter((pl.col("i") == county) & (pl.col("t") == year)).row(0)
+
+    assert observation[:2] == (county, year)
+    assert observation[2:4] == pytest.approx((employment, dose))
+    assert observation[4:6] == (cohort, shale)
+
+
+def test_import_fracking_from_package():
+    assert moderndid.load_fracking is load_fracking
+    assert moderndid.data.load_fracking is load_fracking
+    assert "load_fracking" in moderndid.__all__
+    assert "load_fracking" in moderndid.data.__all__
+
+
+def test_load_fracking_returns_copy():
+    fracking_data1 = load_fracking()
+    fracking_data2 = load_fracking()
+
+    assert fracking_data1 is not fracking_data2
+    fracking_data1[0, "y"] = -1.0
+
+    assert fracking_data2[0, "y"] == pytest.approx(9.020389556884766)
 
 
 def test_load_nsw():

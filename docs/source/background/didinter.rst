@@ -3,26 +3,28 @@
 DiD with intertemporal treatment effects
 ========================================
 
-Comparing groups only by their current treatment can miss the effects of
-earlier exposure when a policy changes intensity or is withdrawn. The
-``didinter`` module estimates the effect of a group's observed treatment
-path relative to continuing its initial treatment level by comparing it
-with groups that retain the same initial treatment.
+Intertemporal difference-in-differences studies how changes in treatment affect
+outcomes over the periods that follow. If treatment increases, decreases, or is
+withdrawn, earlier exposure can still influence the outcome you observe.
+Comparing groups only by their current treatment can therefore miss part of the
+effect. The ``didinter`` module estimates the effect of each group's observed
+treatment path relative to keeping treatment at its initial level.
 
-We follow the framework of `de Chaisemartin and D'Haultfœuille
-<https://doi.org/10.1162/rest_a_01414>`_. Its potential outcomes allow current
-and lagged treatment to affect the outcome. Its identifying assumption concerns
-parallel trends in the outcome that would arise if each group maintained its
-baseline treatment. The estimator does not require an absorbing binary
-intervention or homogeneous treatment effects.
+The framework of `de Chaisemartin and D'Haultfœuille
+<https://doi.org/10.1162/rest_a_01414>`_ reveals that missing outcome change using
+groups that retain the same initial treatment. Its no-anticipation and parallel
+trends restrictions concern the outcomes groups would have experienced if their
+baseline treatment had continued. Treatment can be binary or a more general dose
+without requiring homogeneous effects. A :ref:`staggered adoption analysis
+<background-did>` also allows effects to evolve after adoption while treatment
+remains in place; here treatment itself can change again.
 
-The distinction from a :ref:`staggered adoption analysis <background-did>`
-is therefore the treatment path and counterfactual you want to compare.
-Staggered DiD already allows effects to evolve after adoption while the
-intervention remains in place. Here, treatment can also decrease or increase
-again after its first change. The :ref:`worked example
-<example_inter_did>` connects these targets to
-:func:`~moderndid.did_multiplegt`.
+We begin with the comparisons available in your panel and derive the effect of
+the observed treatment path before examining what normalization by treatment
+exposure changes. These targets guide the horizon, placebo, and inference choices
+in :func:`~moderndid.did_multiplegt`. The :ref:`worked example
+<example_inter_did>` puts those distinctions into practice in an analysis you can
+run.
 
 The comparison available in your panel
 --------------------------------------

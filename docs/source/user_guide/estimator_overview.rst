@@ -195,7 +195,7 @@ Difference-in-Differences with Continuous Treatments
 
 The :func:`~moderndid.didcont.cont_did` function handles settings with
 treatment intensity rather than binary treatment. This implements the
-`Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_
+`Callaway, Goodman-Bacon, and Sant'Anna (2025) <https://psantanna.com/files/CGBS_v4.pdf>`_
 framework.
 
 .. code-block:: python
@@ -474,7 +474,7 @@ analysis with real or simulated data.
 
 - :doc:`example_staggered_did` for staggered adoption with :func:`~moderndid.att_gt`
 - :doc:`example_etwfe` for extended TWFE with :func:`~moderndid.etwfe`
-- :doc:`example_cont_did` for dose-response with :func:`~moderndid.cont_did`
+- :doc:`example_cont_did` for the paper's fracking event studies and dose curves
 - :doc:`example_triple_did` for triple differences with :func:`~moderndid.ddd`
 - :doc:`example_inter_did` for time-varying treatments with :func:`~moderndid.did_multiplegt`
 - :doc:`example_dyn_balancing` for dynamic treatments with ``dyn_balancing``

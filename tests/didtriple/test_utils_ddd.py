@@ -35,6 +35,11 @@ def test_get_covariate_names_rejects_transforms(formula, term):
         get_covariate_names(formula)
 
 
+def test_get_covariate_names_rejects_left_hand_side():
+    with pytest.raises(ValueError, match=re.escape("xformla='cov1 ~ 1' has a left-hand side.")):
+        get_covariate_names("cov1 ~ 1")
+
+
 @pytest.mark.parametrize(
     "times,groups,expected",
     [

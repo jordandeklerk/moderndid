@@ -227,3 +227,22 @@ def mpdta_converted(request, mpdta_data):
         conn.register("mpdta", mpdta_data.to_arrow())
         return conn.execute("SELECT * FROM mpdta").fetch_arrow_table()
     raise ValueError(f"Unknown dataframe type: {df_type}")
+
+
+@pytest.fixture(params=["repeated_row", "hidden_gap", "relabeled_row"])
+def mpdta_duplicated(request, mpdta_data):
+    """mpdta in which county 17005 has two rows in 2005."""
+    county = pl.col("countyreal") == 17005
+    row = mpdta_data.filter(county & (pl.col("year") == 2005))
+    if request.param == "repeated_row":
+        return pl.concat([mpdta_data, row])
+    if request.param == "hidden_gap":
+        return pl.concat([mpdta_data.filter(~(county & (pl.col("year") == 2006))), row])
+    return pl.concat([mpdta_data, row.with_columns(pl.col("lemp") + 1)])
+
+
+@pytest.fixture
+def mpdta_without_years(mpdta_data):
+    """mpdta plus two rows of county 17005 whose year is missing."""
+    rows = mpdta_data.filter((pl.col("countyreal") == 17005) & (pl.col("year") == 2005))
+    return pl.concat([mpdta_data, pl.concat([rows, rows]).with_columns(pl.lit(None, dtype=pl.Int64).alias("year"))])

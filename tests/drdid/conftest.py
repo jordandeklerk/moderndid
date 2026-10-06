@@ -62,3 +62,24 @@ def unknown_result():
 def result_with_call_params():
     WithCP = namedtuple("DRDIDPanelCallResult", ["att", "se", "lci", "uci", "args", "call_params"])
     return WithCP(att=1.0, se=0.2, lci=0.6, uci=1.4, args={}, call_params={"data_shape": (500, 8)})
+
+
+@pytest.fixture(params=["repeated_row", "hidden_gap", "relabeled_row"])
+def nsw_duplicated(request, nsw_data):
+    """NSW panel in which unit 15995 has two rows in 1975."""
+    unit = pl.col("id") == 15995
+    row = nsw_data.filter(unit & (pl.col("year") == 1975))
+    if request.param == "repeated_row":
+        return pl.concat([nsw_data, row])
+    if request.param == "hidden_gap":
+        return pl.concat([nsw_data.filter(~(unit & (pl.col("year") == 1978))), row])
+    return pl.concat([nsw_data, row.with_columns(pl.col("re") + 1000)])
+
+
+@pytest.fixture
+def nsw_one_infinite(request, nsw_data):
+    """NSW panel with weights in w and an infinite value in one 1978 row of unit 15995."""
+    column, value = request.param
+    row = (pl.col("id") == 15995) & (pl.col("year") == 1978)
+    data = nsw_data.with_columns(pl.lit(1.5).alias("w"))
+    return data.with_columns(pl.when(row).then(value).otherwise(pl.col(column).cast(pl.Float64)).alias(column))

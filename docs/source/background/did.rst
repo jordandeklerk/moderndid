@@ -3,6 +3,12 @@
 Staggered difference-in-differences
 ===================================
 
+Staggered difference-in-differences studies treatment effects when units
+adopt at different dates and remain treated afterward. To estimate an
+effect for a cohort of units that adopt in the same period, you need to
+reconstruct its untreated outcome path without assuming that every cohort
+responds to treatment in the same way.
+
 In the :ref:`minimum wage example <example_staggered_did>`, counties whose
 states raised the minimum wage in 2004 have already had two years of
 exposure by the time the 2006 cohort adopts. If employment

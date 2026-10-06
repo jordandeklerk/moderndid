@@ -465,7 +465,7 @@ action on real data.
 - :ref:`Triple DiD <example_triple_did>` —
   ``plot_event_study``, custom comparison figures
 - :ref:`Continuous Treatment <example_cont_did>` —
-  ``plot_dose_response``, ``plot_event_study``
+  custom comparisons of dose curves and event studies
 - :ref:`Intertemporal Treatment <example_inter_did>` —
   ``plot_multiplegt``
 - :ref:`Dynamic Covariate Balancing <example_dyn_balancing>` —

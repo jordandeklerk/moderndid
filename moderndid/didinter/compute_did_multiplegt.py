@@ -205,6 +205,11 @@ def _compute_bootstrap_estimates(df, config):
     if config.placebo > 0:
         nan_result["placebos"] = np.full(config.placebo, np.nan)
 
+    # Since the full sample passed the weight check, a draw can fail it only when none of its weights is positive.
+    # Like a draw without switchers, such a draw has no estimates and drops out of the standard errors.
+    if config.weightsname is not None and not (df[config.weightsname].cast(pl.Float64) > 0).any():
+        return nan_result
+
     # Since point estimates never use the cluster, the draws skip the clustered variance computations.
     config = replace(config, cluster=None)
     for step in DataTransformerPipeline.get_didinter_pipeline().transformers:
@@ -1286,8 +1291,8 @@ def _reaches_horizon(df, config, lag, t_max):
 
 
 def _get_group_vars(config):
-    """Get grouping variables for control matching."""
-    group_vars = [config.tname, "d_sq"]
+    """Get the columns whose values define a control pool."""
+    group_vars = [config.tname, "d_sq_int"]
 
     if config.trends_nonparam:
         group_vars.extend(config.trends_nonparam)

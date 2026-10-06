@@ -30,7 +30,8 @@ def compute_control_coefficients(df, config, n_groups):
     Parameters
     ----------
     df : pl.DataFrame
-        Preprocessed panel with the outcome, the controls, ``F_g``, ``d_sq``, and ``weight_gt``.
+        Preprocessed panel with the outcome, the controls, ``F_g``, ``d_sq``, its rank ``d_sq_int``,
+        and ``weight_gt``.
     config : DIDInterConfig
         Configuration object.
     n_groups : int
@@ -41,7 +42,7 @@ def compute_control_coefficients(df, config, n_groups):
     df : pl.DataFrame
         Data with the influence columns ``_ctrl_influence_{j}``.
     coefficients : dict
-        Mapping from each baseline treatment to its coefficients:
+        Mapping from the rank ``d_sq_int`` of each baseline treatment to its coefficients:
 
         - **theta**: Coefficients :math:`\hat{\boldsymbol{\theta}}_d` of the control differences
         - **inv_denom**: Inverse of the residualized control cross product scaled by the sample weight and :math:`G`
@@ -97,7 +98,7 @@ def compute_control_coefficients(df, config, n_groups):
     first_diffs = [f"_ctrl_first_diff_{k}" for k in range(len(controls))]
     centered = [f"_ctrl_centered_{k}" for k in range(len(controls))]
     influence_cols = [f"_ctrl_influence_{k}" for k in range(len(controls))]
-    cells = [tname, "d_sq", *(config.trends_nonparam or [])]
+    cells = [tname, "d_sq_int", *(config.trends_nonparam or [])]
     raw_weight = pl.col(config.weightsname).fill_null(0.0) if config.weightsname else pl.lit(1.0)
 
     df = df.drop(influence_cols, strict=False).sort([gname, tname])
@@ -113,7 +114,7 @@ def compute_control_coefficients(df, config, n_groups):
     observed = pl.all_horizontal(pl.col(name).is_not_null() for name in first_diffs)
     df = df.with_columns(
         (not_yet_switched & observed).alias("_ctrl_sample"),
-        not_yet_switched.sum().over([tname, "d_sq"]).cast(pl.Float64).alias("_ctrl_period_count"),
+        not_yet_switched.sum().over([tname, "d_sq_int"]).cast(pl.Float64).alias("_ctrl_period_count"),
     )
     sample_weight = pl.when(pl.col("_ctrl_sample")).then(pl.col("weight_gt")).otherwise(0.0)
     df = df.with_columns(
@@ -124,13 +125,14 @@ def compute_control_coefficients(df, config, n_groups):
     )
 
     sample = df.filter(pl.col("_ctrl_sample"))
+    baselines = dict(df.group_by("d_sq_int").agg(pl.col("d_sq").first()).drop_nulls().iter_rows())
     coefficients = {}
     influence_frames = []
     dropped = []
     collinear = []
-    for level in sorted(df["d_sq"].drop_nulls().unique().to_list()):
+    for level in sorted(baselines):
         coefficients[level] = {"theta": np.zeros(len(controls)), "inv_denom": None, "useful": False}
-        is_level = pl.col("d_sq") == level
+        is_level = pl.col("d_sq_int") == level
         if df.filter(is_level)["F_g"].n_unique() < 2:
             continue
 
@@ -163,17 +165,17 @@ def compute_control_coefficients(df, config, n_groups):
 
     if dropped:
         warnings.warn(
-            f"Groups with baseline treatment {_format_levels(dropped)} were dropped because none of their "
-            "not-yet-switched observations has every control difference.",
+            f"Groups with baseline treatment {_format_levels([baselines[level] for level in dropped])} were dropped "
+            "because none of their not-yet-switched observations has every control difference.",
             UserWarning,
             stacklevel=4,
         )
-        df = df.filter(~pl.col("d_sq").is_in(dropped))
+        df = df.filter(~pl.col("d_sq_int").is_in(dropped))
     if collinear:
         warnings.warn(
             f"Some controls are not taken into account for groups with baseline treatment "
-            f"{_format_levels(collinear)} because their differences are collinear among the "
-            "not-yet-switched observations.",
+            f"{_format_levels([baselines[level] for level in collinear])} because their differences are collinear "
+            "among the not-yet-switched observations.",
             UserWarning,
             stacklevel=4,
         )
@@ -211,7 +213,7 @@ def apply_control_adjustment(df, config, horizon, coefficients, horizon_type):
     horizon : int
         Current horizon :math:`\ell`.
     coefficients : dict
-        Mapping from baseline treatment to coefficients from :func:`compute_control_coefficients`.
+        Mapping from baseline treatment rank to coefficients from :func:`compute_control_coefficients`.
     horizon_type : {"effect", "placebo"}
         Whether the horizon is an effect or a placebo.
 
@@ -240,7 +242,7 @@ def apply_control_adjustment(df, config, horizon, coefficients, horizon_type):
         if not coef["useful"]:
             continue
         explained = sum(float(theta) * pl.col(name) for theta, name in zip(coef["theta"], diff_cols, strict=True))
-        adjusted = pl.when(pl.col("d_sq") == level).then(pl.col(diff_col) - explained).otherwise(adjusted)
+        adjusted = pl.when(pl.col("d_sq_int") == level).then(pl.col(diff_col) - explained).otherwise(adjusted)
 
     return df.with_columns(adjusted.alias(diff_col))
 
@@ -263,7 +265,7 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
     horizon : int
         Current horizon :math:`\ell`.
     coefficients : dict
-        Mapping from baseline treatment to coefficients from :func:`compute_control_coefficients`.
+        Mapping from baseline treatment rank to coefficients from :func:`compute_control_coefficients`.
     n_switchers : float
         Weighted number of switchers :math:`N_\ell` at this horizon.
     dist_col : str
@@ -315,7 +317,7 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
         / n_switchers
     )
     totals = df.select(
-        pl.when(pl.col("d_sq") == level)
+        pl.when(pl.col("d_sq_int") == level)
         .then(comparison * pl.col(f"_ctrl_diff_{k}_{horizon}"))
         .sum()
         .alias(f"_ctrl_m_{index}_{k}")
@@ -329,7 +331,7 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
         influence = sum(float(m) * pl.col(f"_ctrl_influence_{k}") for k, m in enumerate(level_weights))
         part2 = (
             part2
-            + pl.when(pl.col("d_sq") == level).then(influence).otherwise(0.0)
+            + pl.when(pl.col("d_sq_int") == level).then(influence).otherwise(0.0)
             - float(level_weights @ coef["theta"])
         )
 

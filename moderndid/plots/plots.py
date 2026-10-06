@@ -347,8 +347,8 @@ def plot_dose_response(
     the result's critical value and is therefore uniform over doses when the
     estimate ran with ``cband=True``.
 
-    See the :ref:`continuous treatment example <example_cont_did>` for both
-    curves of a simulated dose-response.
+    See the :ref:`continuous treatment background <background-didcont>` for
+    the distinction between level effects and causal responses.
 
     Parameters
     ----------

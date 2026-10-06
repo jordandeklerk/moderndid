@@ -44,6 +44,7 @@ def control_test_data():
             "time": periods,
             "y": y,
             "d_sq": d_sq,
+            "d_sq_int": np.where(d_sq == 0.0, 1, 2),
             "F_g": f_g,
             "x1": x1,
             "x2": x2,
@@ -125,8 +126,8 @@ def test_apply_control_adjustment_creates_diff_columns(control_test_data, expect
     )
 
     coefficients = {
-        0.0: {"theta": np.array([0.5, 0.3]), "inv_denom": None, "useful": True},
-        1.0: {"theta": np.array([0.4, 0.2]), "inv_denom": None, "useful": True},
+        1: {"theta": np.array([0.5, 0.3]), "inv_denom": None, "useful": True},
+        2: {"theta": np.array([0.4, 0.2]), "inv_denom": None, "useful": True},
     }
 
     result = apply_control_adjustment(
@@ -185,6 +186,7 @@ def test_compute_control_coefficients_insufficient_data():
             "time": [1],
             "y": [0.5],
             "d_sq": [0.0],
+            "d_sq_int": [1],
             "F_g": [float("inf")],
             "x1": [1.0],
             "x2": [2.0],

@@ -6,12 +6,13 @@ import warnings
 from typing import NamedTuple
 
 import numpy as np
+import polars as pl
 import scipy.sparse as sp
 import statsmodels.api as sm
 from statsmodels.tools.sm_exceptions import PerfectSeparationError
 
 from moderndid.core.parallel import parallel_map
-from moderndid.core.preprocess import ControlGroup, DIDData, EstimationMethod
+from moderndid.core.preprocess import WEIGHTS_COLUMN, ControlGroup, DIDData, EstimationMethod
 from moderndid.cupy.backend import get_backend
 from moderndid.drdid.estimators.drdid_panel import drdid_panel
 from moderndid.drdid.estimators.drdid_rc import drdid_rc
@@ -68,6 +69,10 @@ class ComputeATTgtResult(NamedTuple):
 def compute_att_gt(data: DIDData, n_jobs=1):
     """Compute group-time average treatment effects.
 
+    Each 2x2 comparison on a balanced panel uses the weights from the earlier
+    of its two periods. When a unit's weight changes over time, a warning
+    names this rule.
+
     Parameters
     ----------
     data : DIDData
@@ -86,8 +91,15 @@ def compute_att_gt(data: DIDData, n_jobs=1):
     n_time_periods = len(time_periods) - 1 if data.config.base_period != "universal" else len(time_periods)
     group_time_pairs = [(g, t) for g in range(data.config.treated_groups_count) for t in range(n_time_periods)]
 
+    if _weights_vary_within_units(data):
+        warnings.warn(
+            "Time-varying weights detected. For balanced panel data, each 2x2 comparison uses the weights "
+            "from the earlier of its two periods, the base period for post-treatment cells.",
+            UserWarning,
+        )
+
     # Since every cell of an unbalanced panel maps rows to the same units, the mapping is built once here.
-    unit_index = _unit_index(data) if not data.config.panel and data.config.allow_unbalanced_panel else None
+    unit_index = _unit_index(data) if _is_unbalanced_panel(data) else None
     args_list = [(g_idx, t_idx, data, unit_index) for g_idx, t_idx in group_time_pairs]
     cell_results = parallel_map(_process_gt_cell_did, args_list, n_jobs=n_jobs)
 
@@ -187,22 +199,25 @@ def run_att_gt_estimation(
         return None
 
     if data.config.panel:
+        # min(pre_treatment_idx, time_idx) is the earlier of the cell's two periods. Weights that vary over
+        # time enter through that period, as the covariates do.
+        earlier_idx = min(pre_treatment_idx, time_idx)
         cohort_data = {
             "D": cohort_index,
             "y1": data.outcomes_tensor[time_idx + time_factor],
             "y0": data.outcomes_tensor[pre_treatment_idx],
-            "weights": data.weights,
+            "weights": data.weights_tensor[earlier_idx],
         }
-        covariates = data.covariates_tensor[min(pre_treatment_idx, time_idx)]
+        covariates = data.covariates_tensor[earlier_idx]
     else:
         post_mask = (data.data[data.config.tname] == data.config.time_periods[time_idx + time_factor]).to_numpy()
         cohort_data = {
             "D": cohort_index,
             "y": data.data[data.config.yname].to_numpy(),
             "post": post_mask.astype(int),
-            "weights": data.data["weights"].to_numpy(),
+            "weights": data.data[WEIGHTS_COLUMN].to_numpy(),
         }
-        if data.config.allow_unbalanced_panel:
+        if _is_unbalanced_panel(data):
             cohort_data["unit_index"] = _unit_index(data) if unit_index is None else unit_index
         covariates = data.covariates_matrix
 
@@ -385,6 +400,26 @@ def get_did_cohort_index(
     return cohort_index
 
 
+def _is_unbalanced_panel(data):
+    """Tell whether the rows belong to the units of an unbalanced panel.
+
+    Preprocessing hands an unbalanced panel to the repeated cross section estimators and keys its
+    rows by unit. Each unit's influence function then adds up over its rows. With ``panel=False``
+    every row is its own observation whatever ``allow_unbalanced_panel`` says.
+
+    Parameters
+    ----------
+    data : DIDData
+        Preprocessed DiD data object.
+
+    Returns
+    -------
+    bool
+        True for an unbalanced panel and False for a balanced panel or repeated cross sections.
+    """
+    return not data.config.panel and not data.config.true_repeated_cross_sections
+
+
 def _unit_index(data):
     """Map each row of the data to its unit's row in the time-invariant data.
 
@@ -400,6 +435,29 @@ def _unit_index(data):
     """
     unit_ids = data.time_invariant_data[data.config.idname]
     return data.data[data.config.idname].replace_strict(unit_ids, np.arange(len(unit_ids))).to_numpy()
+
+
+def _weights_vary_within_units(data):
+    """Tell whether some unit carries different weights in different periods.
+
+    Repeated cross sections have no units to follow. A spread of at most the
+    square root of machine precision counts as no change.
+
+    Parameters
+    ----------
+    data : DIDData
+        Preprocessed DiD data object.
+
+    Returns
+    -------
+    bool
+        True when the normalized weights of some unit differ across its rows.
+    """
+    if data.config.weightsname is None or data.config.true_repeated_cross_sections:
+        return False
+    weights = pl.col(WEIGHTS_COLUMN)
+    spread = data.data.group_by(data.config.idname).agg((weights.max() - weights.min()).alias("spread"))
+    return bool((spread["spread"] > np.sqrt(np.finfo(float).eps)).any())
 
 
 def run_drdid(
@@ -485,7 +543,7 @@ def run_drdid(
                 y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )
 
-        if data.config.allow_unbalanced_panel and "unit_index" in cohort_data:
+        if _is_unbalanced_panel(data) and "unit_index" in cohort_data:
             inf_func_long = np.zeros(n)
             inf_func_long[valid_obs] = (data.config.id_count / valid_obs.sum()) * result.att_inf_func
             # Since aggte pairs these rows with the groups and weights in time_invariant_data, each unit's

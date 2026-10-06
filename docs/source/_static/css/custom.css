@@ -226,16 +226,20 @@ Python, so their token colors are cleared.
   border-left-width: 4px !important;
 }
 
-/* See also boxes on the API pages take the violet of parameter names in each scheme instead of the theme's blue. */
-.md-typeset .admonition.seealso {
+/* API See also and Examples boxes use the same violet as parameter names in each scheme. */
+.md-typeset .admonition.seealso,
+.md-typeset .admonition.example,
+.md-typeset details.example {
   border-color: var(--mdid-code-parameter);
 }
 
-.md-typeset .admonition.seealso > .admonition-title {
+.md-typeset .admonition.seealso > .admonition-title,
+.md-typeset .example > .admonition-title {
   background-color: color-mix(in srgb, var(--mdid-code-parameter) 10%, transparent);
 }
 
-.md-typeset .admonition.seealso > .admonition-title::before {
+.md-typeset .admonition.seealso > .admonition-title::before,
+.md-typeset .example > .admonition-title::before {
   background-color: var(--mdid-code-parameter);
 }
 
@@ -312,14 +316,9 @@ Python, so their token colors are cleared.
   margin-bottom: 0;
 }
 
-/*
-The theme recolors the example box's border, title, and icon from the
-configured color but leaves the collapse arrow on Material's purple, so it
-follows the brand blue here. The focus glow is removed entirely.
-*/
 .md-typeset .example > .admonition-title::after,
 .md-typeset .example > summary::after {
-  color: #315bc4;
+  color: var(--mdid-code-parameter);
 }
 
 .md-typeset .admonition.example:focus-within,

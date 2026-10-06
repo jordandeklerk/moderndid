@@ -37,6 +37,7 @@ def ddd_mp(
     allow_unbalanced_panel=False,
     random_state=None,
     n_jobs=1,
+    weights_col=None,
 ):
     r"""Compute the multi-period doubly robust DDD estimator for the ATT with panel data.
 
@@ -128,21 +129,28 @@ def ddd_mp(
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
+    weights_col : str or None, default None
+        Name of the column of sampling weights. A unit should keep the same
+        weight in every period. If None, every unit has weight 1.
 
     Returns
     -------
     DDDMultiPeriodResult
         A NamedTuple containing:
 
-        - att: Array of ATT(g,t) point estimates
-        - se: Standard errors for each ATT(g,t)
-        - uci, lci: Confidence interval bounds
-        - groups: Treatment cohort for each estimate
-        - times: Time period for each estimate
-        - glist, tlist: Unique cohorts and periods
-        - inf_func_mat: Influence function matrix (n x k)
-        - n: Number of units
-        - args: Estimation arguments
+        - **att**: Array of ATT(g,t) point estimates
+        - **se**: Standard errors for each ATT(g,t)
+        - **uci**: Upper confidence interval bounds
+        - **lci**: Lower confidence interval bounds
+        - **groups**: Treatment cohort for each estimate
+        - **times**: Time period for each estimate
+        - **glist**: Unique cohorts
+        - **tlist**: Unique periods
+        - **inf_func_mat**: Influence function matrix (n x k)
+        - **n**: Number of units
+        - **args**: Estimation arguments
+        - **unit_groups**: Treatment cohort of each unit
+        - **unit_weights**: Sampling weight of each unit, or None without weights
 
     See Also
     --------
@@ -225,22 +233,25 @@ def ddd_mp(
                     n_units,
                     unique_ids,
                     unbalanced,
+                    weights_col,
                 )
             )
 
     cell_results = parallel_map(_process_gt_cell, args_list, n_jobs=n_jobs)
 
     attgt_list = []
-    for counter, result in enumerate(cell_results):
-        if result is not None:
-            att_entry, inf_data, se_val = result
-            if att_entry is not None:
-                attgt_list.append(att_entry)
-                if inf_data is not None:
-                    inf_func_scaled, cell_id_list = inf_data
-                    _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, counter)
-                if se_val is not None:
-                    se_array[counter] = se_val
+    for result in cell_results:
+        if result is None or result[0] is None:
+            continue
+        att_entry, inf_data, se_val = result
+        # Since a skipped cell takes no column, each kept cell's column sits at its position among the estimates.
+        column = len(attgt_list)
+        attgt_list.append(att_entry)
+        if inf_data is not None:
+            inf_func_scaled, cell_id_list = inf_data
+            _update_inf_func_matrix(inf_func_mat, inf_func_scaled, cell_id_list, id_to_idx, column)
+        if se_val is not None:
+            se_array[column] = se_val
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
@@ -258,6 +269,7 @@ def ddd_mp(
         cluster_vals = unit_info[cluster].to_numpy()
 
     unit_groups = unit_info[group_col].to_numpy()
+    unit_weights = None if weights_col is None else unit_info[weights_col].to_numpy()
 
     if boot:
         boot_result = mboot_ddd(
@@ -317,6 +329,7 @@ def ddd_mp(
         n=n_units,
         args=args,
         unit_groups=unit_groups,
+        unit_weights=unit_weights,
     )
 
 
@@ -338,6 +351,7 @@ def _process_gt_cell(
     n_units,
     unique_ids,
     unbalanced,
+    weights_col=None,
 ):
     """Process a single (g,t) cell and return results.
 
@@ -381,6 +395,7 @@ def _process_gt_cell(
             covariate_cols,
             est_method,
             unique_ids,
+            weights_col,
         )
         if att_result is None:
             return None
@@ -407,6 +422,8 @@ def _process_gt_cell(
             est_method,
             n_units,
             n_cell,
+            available_controls[0],
+            weights_col,
         )
         att_result, inf_func_scaled, cell_id_list = result
         if att_result is not None:
@@ -432,6 +449,7 @@ def _process_gt_cell(
             est_method,
             n_units,
             n_cell,
+            weights_col,
         )
         if result[0] is not None:
             att_gmm, inf_func_scaled, cell_id_list, se_gmm = result
@@ -499,10 +517,24 @@ def _process_single_control(
     est_method,
     n_units,
     n_cell,
+    ctrl,
+    weights_col=None,
 ):
     """Process a (g,t) cell with a single control group."""
     att_result, inf_func, common_ids = _compute_single_ddd(
-        cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
+        cell_data,
+        y_col,
+        time_col,
+        id_col,
+        group_col,
+        partition_col,
+        g,
+        t,
+        pret,
+        covariate_cols,
+        est_method,
+        ctrl,
+        weights_col,
     )
 
     if att_result is None:
@@ -527,6 +559,7 @@ def _process_multiple_controls(
     est_method,
     n_units,
     n_cell,
+    weights_col=None,
 ):
     """Process a (g,t) cell with multiple control groups using GMM aggregation."""
     ddd_results = []
@@ -538,7 +571,19 @@ def _process_multiple_controls(
         subset_data = cell_data.filter(ctrl_expr)
 
         att_result, inf_func, common_ids = _compute_single_ddd(
-            subset_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
+            subset_data,
+            y_col,
+            time_col,
+            id_col,
+            group_col,
+            partition_col,
+            g,
+            t,
+            pret,
+            covariate_cols,
+            est_method,
+            ctrl,
+            weights_col,
         )
 
         if att_result is None:
@@ -583,6 +628,7 @@ def _process_unbalanced_cell(
     covariate_cols,
     est_method,
     unique_ids,
+    weights_col=None,
 ):
     """Process a (g,t) cell of an unbalanced panel with the repeated cross-section estimator."""
     n_units = len(unique_ids)
@@ -592,7 +638,7 @@ def _process_unbalanced_cell(
     for ctrl in available_controls:
         subset_data = cell_data.filter((pl.col(group_col) == g) | (pl.col(group_col) == ctrl))
         att_result, inf_func = _compute_unbalanced_ddd(
-            subset_data, y_col, time_col, group_col, partition_col, g, t, covariate_cols, est_method
+            subset_data, y_col, time_col, group_col, partition_col, g, t, covariate_cols, est_method, ctrl, weights_col
         )
         if att_result is None:
             continue
@@ -615,7 +661,9 @@ def _process_unbalanced_cell(
     return att_gmm, if_gmm[cell_idx], unique_ids[cell_idx], se_gmm
 
 
-def _compute_unbalanced_ddd(cell_data, y_col, time_col, group_col, partition_col, g, t, covariate_cols, est_method):
+def _compute_unbalanced_ddd(
+    cell_data, y_col, time_col, group_col, partition_col, g, t, covariate_cols, est_method, ctrl, weights_col=None
+):
     """Compute DDD for one comparison group of an unbalanced panel cell."""
     cell_data = _with_subgroup(cell_data, group_col, partition_col, g)
     subgroup = cell_data["subgroup"].to_numpy()
@@ -629,12 +677,22 @@ def _compute_unbalanced_ddd(cell_data, y_col, time_col, group_col, partition_col
             post=(cell_data[time_col] == t).cast(pl.Int64).to_numpy(),
             subgroup=subgroup,
             covariates=_design_matrix(cell_data, covariate_cols),
+            i_weights=None if weights_col is None else cell_data[weights_col].to_numpy(),
             est_method=est_method,
             influence_func=True,
         )
         return result.att, result.att_inf_func
-    except (ValueError, np.linalg.LinAlgError):
+    except (ValueError, np.linalg.LinAlgError) as error:
+        _warn_failed_comparison(g, t, ctrl, error)
         return None, None
+
+
+def _warn_failed_comparison(g, t, ctrl, error):
+    """Warn that the comparison of a (g,t) cell with one control group failed."""
+    warnings.warn(
+        f"Skipping comparison group {ctrl:g} for ATT({g:g}, {t:g}) because its estimation failed: {error}",
+        UserWarning,
+    )
 
 
 def _with_subgroup(cell_data, group_col, partition_col, g):
@@ -659,7 +717,19 @@ def _design_matrix(frame, covariate_cols):
 
 
 def _compute_single_ddd(
-    cell_data, y_col, time_col, id_col, group_col, partition_col, g, t, pret, covariate_cols, est_method
+    cell_data,
+    y_col,
+    time_col,
+    id_col,
+    group_col,
+    partition_col,
+    g,
+    t,
+    pret,
+    covariate_cols,
+    est_method,
+    ctrl,
+    weights_col=None,
 ):
     """Compute DDD for a single (g,t) cell with a single control group."""
     cell_data = _with_subgroup(cell_data, group_col, partition_col, g)
@@ -688,11 +758,21 @@ def _compute_single_ddd(
 
     # Since the base period precedes treatment in every cell, its covariates cannot respond to treatment.
     X = _design_matrix(pre_data, covariate_cols)
+    i_weights = None if weights_col is None else pre_data[weights_col].to_numpy()
 
     try:
-        result = ddd_panel(y1=y1, y0=y0, subgroup=subgroup, covariates=X, est_method=est_method, influence_func=True)
+        result = ddd_panel(
+            y1=y1,
+            y0=y0,
+            subgroup=subgroup,
+            covariates=X,
+            i_weights=i_weights,
+            est_method=est_method,
+            influence_func=True,
+        )
         return result.att, result.att_inf_func, common_ids_arr
-    except (ValueError, np.linalg.LinAlgError):
+    except (ValueError, np.linalg.LinAlgError) as error:
+        _warn_failed_comparison(g, t, ctrl, error)
         return None, None, None
 
 

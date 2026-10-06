@@ -32,6 +32,10 @@ class BaseTensorFactory(ABC):
     def create_covariates_tensor(self, data: pl.DataFrame, config: DIDConfig) -> list[np.ndarray] | np.ndarray | None:
         """Create covariates tensor or matrix."""
 
+    @abstractmethod
+    def create_weights_tensor(self, data, config):
+        """Create the weights of each period or None when each row keeps its own weight."""
+
     @staticmethod
     def create_time_invariant_data(data: DataFrame, config: DIDConfig) -> pl.DataFrame:
         """Extract time-invariant data."""
@@ -104,6 +108,37 @@ class BaseTensorFactory(ABC):
 class PanelTensorFactory(BaseTensorFactory):
     """Factory for balanced panel data tensors."""
 
+    @staticmethod
+    def check_layout(data, config):
+        """Check that the rows form one block per period with the units in one order.
+
+        The tensors take each period's rows by position. Each block of
+        ``config.id_count`` rows must therefore hold one period, in the order
+        of ``config.time_periods``, and list the units in the order of the
+        first block. Data in any other order would pair one unit's outcome
+        with another unit's outcome without an error.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Balanced panel sorted by period, cohort, and unit.
+        config : DIDConfig
+            Configuration that holds the periods and the unit count.
+        """
+        df = to_polars(data)
+        periods = np.asarray(config.time_periods)
+        shape = (len(periods), config.id_count)
+        aligned = df.height == shape[0] * shape[1]
+        if aligned:
+            times = df[config.tname].to_numpy().reshape(shape)
+            units = df[config.idname].to_numpy().reshape(shape)
+            aligned = bool((times == periods[:, None]).all() and (units == units[0]).all())
+        if not aligned:
+            raise ValueError(
+                "The panel tensors take each period's rows by position. The data must hold one block of rows per "
+                "period and list the units in the same order in every block. Sort it by period, cohort, and unit."
+            )
+
     def create_outcomes_tensor(self, data: pl.DataFrame, config: DIDConfig) -> list[np.ndarray]:
         """Create list of outcome arrays, one per time period."""
         df = to_polars(data)
@@ -115,6 +150,31 @@ class PanelTensorFactory(BaseTensorFactory):
             outcomes_tensor.append(df[config.yname].slice(start_idx, end_idx - start_idx).to_numpy())
 
         return outcomes_tensor
+
+    def create_weights_tensor(self, data, config):
+        """Create the normalized weights of each period.
+
+        The weights follow the unit order of the outcomes tensor. A unit whose
+        weight changes over time therefore carries a different weight in each
+        period.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Balanced panel sorted by period, cohort, and unit.
+        config : DIDConfig
+            Configuration that holds the periods and the unit count.
+
+        Returns
+        -------
+        list of ndarray
+            One array of unit weights per period.
+        """
+        df = to_polars(data)
+        return [
+            df[WEIGHTS_COLUMN].slice(i * config.id_count, config.id_count).to_numpy()
+            for i in range(len(config.time_periods))
+        ]
 
     def create_covariates_tensor(self, data: pl.DataFrame, config: DIDConfig) -> list[np.ndarray]:
         """Create list of covariate matrices, one per time period."""
@@ -143,6 +203,10 @@ class UnbalancedPanelTensorFactory(BaseTensorFactory):
 
     def create_outcomes_tensor(self, data: pl.DataFrame, config: DIDConfig) -> None:
         """No outcomes tensor for unbalanced panels."""
+        return None
+
+    def create_weights_tensor(self, data, config):
+        """No weights tensor for unbalanced panels."""
         return None
 
     def create_covariates_tensor(self, data: pl.DataFrame, config: DIDConfig) -> np.ndarray:
@@ -181,6 +245,10 @@ class RepeatedCrossSectionTensorFactory(BaseTensorFactory):
         """No outcomes tensor for repeated cross-sections."""
         return None
 
+    def create_weights_tensor(self, data, config):
+        """No weights tensor for repeated cross-sections."""
+        return None
+
     def create_covariates_tensor(self, data: pl.DataFrame, config: DIDConfig) -> np.ndarray:
         """Create covariate matrix from full data."""
         df = to_polars(data)
@@ -217,12 +285,15 @@ class TensorFactorySelector:
         """Create all tensors using appropriate factory."""
         df = to_polars(data)
         factory = cls.get_factory(config)
+        if isinstance(factory, PanelTensorFactory):
+            factory.check_layout(df, config)
 
         time_invariant_data = factory.create_time_invariant_data(df, config)
         summary_tables = factory.create_summary_tables(df, time_invariant_data, config)
 
         outcomes_tensor = factory.create_outcomes_tensor(df, config)
         covariates_tensor = factory.create_covariates_tensor(df, config)
+        weights_tensor = factory.create_weights_tensor(df, config)
 
         cluster = factory.extract_cluster_variable(time_invariant_data, config)
         weights = factory.extract_weights(time_invariant_data)
@@ -241,6 +312,8 @@ class TensorFactorySelector:
                 covariates_tensor = [to_device(arr) for arr in covariates_tensor]
             if covariates_matrix is not None:
                 covariates_matrix = to_device(covariates_matrix)
+            if weights_tensor is not None:
+                weights_tensor = [to_device(arr) for arr in weights_tensor]
             weights = to_device(weights)
 
         return {
@@ -249,6 +322,7 @@ class TensorFactorySelector:
             "outcomes_tensor": outcomes_tensor,
             "covariates_matrix": covariates_matrix,
             "covariates_tensor": covariates_tensor,
+            "weights_tensor": weights_tensor,
             "cluster": cluster,
             "weights": weights,
             **summary_tables,

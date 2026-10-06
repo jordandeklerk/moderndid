@@ -3,20 +3,22 @@
 Nonparametric instrumental variables
 ====================================
 
-A flexible regression can describe how an outcome varies with a regressor
-without recovering the structural relationship you want. When unobserved
-determinants of the outcome also influence that regressor, the conditional
-mean of the outcome can differ from the structural function.
+Nonparametric instrumental variables uses instruments to recover a structural
+outcome relationship while allowing its shape to be estimated from the data.
+The question is how that relationship varies with a regressor whose value may
+also reflect unobserved determinants of the outcome. In that setting, even a
+flexible regression of the outcome on the regressor can miss the structural
+function. Identification requires both a valid instrument restriction and enough
+information in the instruments to distinguish between candidate functions.
 
-An instrument connects the structural function to outcome variation
-through a restriction that does not require the regressor to be exogenous.
-Recovering a whole function from that restriction can be harder than
-estimating a linear IV coefficient because the difficulty depends on which
-features of the function the instruments reveal.
+Once identified, the function can still be difficult to recover from finitely
+many observations. When instruments reveal some features of the function only
+weakly, allowing more flexibility can magnify uncertainty. Choosing the
+approximation space therefore needs to account for what the instruments reveal
+as well as how closely that space can approximate the function.
 
-We examine how the instrument restriction identifies the function before
-turning to sieve estimation, dimension selection, and uncertainty over the
-function and its derivatives.
+We follow the identification argument through sieve estimation and dimension
+selection before constructing bands for the function and its derivatives.
 The methods behind :func:`~moderndid.npiv` follow
 `Chen, Christensen, and Kankanala (2024)
 <https://arxiv.org/abs/2107.11869>`_. Their

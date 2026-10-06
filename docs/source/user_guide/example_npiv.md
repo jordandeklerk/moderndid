@@ -24,9 +24,7 @@ household splits its budget can also shape how much it spends in total.
 
 {func}`~moderndid.npiv` addresses the first flaw with splines whose number of
 segments the data choose and the second with the earnings of each household's
-head as an instrument for its total spending. It's the same estimator that lets
-the data pick the spline in the last check of the
-{ref}`continuous treatment example <example_cont_did>`. You'll come away with
+head as an instrument for its total spending. You'll come away with
 the curve and a band that covers all of it at once, the slope and food
 elasticity the curve implies, and a set of checks that each change one choice.
 
@@ -643,8 +641,8 @@ share that stays flat as total spending rises. How fast it falls depends most on
 whether earnings serve as the instrument and on how finely the instrument's splines
 are cut. Only the first of those choices leans on the assumption that earnings are
 unrelated to food tastes and reach the food share only through total spending. With
-the instrument set equal to the regressor, the same estimator gives the
-dose-response curve that the {ref}`continuous treatment example <example_cont_did>`
-estimates with `dose_est_method="cck"`, where the curve is an effect at each
-dose. The [background page on nonparametric instrumental variables](../background/npiv)
+the instrument set equal to the regressor, the same estimator also provides
+the data-driven dose-response fit available through
+{func}`~moderndid.cont_did` with `dose_est_method="cck"` in a two-period design.
+The [background page on nonparametric instrumental variables](../background/npiv)
 writes out the selection rule and the margin in the data-driven band.

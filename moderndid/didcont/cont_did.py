@@ -74,19 +74,25 @@ def cont_did(
     without treatment among the units that received dose :math:`d`. The
     average causal response :math:`ACRT(d \mid d)` measures how the outcome of
     those units would respond to a slightly larger dose. Parallel trends
-    identifies the level effects and their average :math:`ATT^o` over treated
-    doses. Reading the slope of the level curve as that response also takes
-    strong parallel trends, the assumption that rules out selection on gains.
+    identifies the level effects and their local average :math:`ATT^{loc}`
+    over treated doses. The curve's derivative also changes the dose group
+    being compared. A causal interpretation therefore requires restrictions
+    on treated potential outcomes. In two periods, strong parallel trends
+    identifies the response for all treated units rather than necessarily
+    the response local to the observed dose group.
 
     With ``aggregation="dose"``, the estimator fits a curve in the dose for
     each cohort in each period after treatment starts. It then averages those
-    curves into :math:`ATT(d \mid d)` and :math:`ACRT(d \mid d)` along with
-    the summaries :math:`ATT^o` and :math:`ACRT^o`. With
+    curves using fixed cohort shares and averages each cell's effects over
+    its own observed doses for the overall summaries. With
     ``aggregation="eventstudy"``, it reports the level effects or the average
     slopes by time since treatment started.
 
     See the :ref:`continuous treatment example <example_cont_did>` for a full
-    analysis of a simulated dose-response.
+    analysis of county employment and geological exposure to fracking.
+    The :ref:`continuous treatment background <background-didcont>` explains
+    the distinction between local and global effects and the additional
+    restrictions needed to interpret the reported slopes.
 
     Parameters
     ----------
@@ -159,8 +165,8 @@ def cont_did(
         percent coverage.
     cband : bool, default=False
         Whether each band covers all doses, or all event times, at once.
-        With ``dose_est_method="cck"``, the ATT(d) band is a conservative
-        approximation.
+        With ``dose_est_method="cck"``, the fitted level band uses a
+        conservative approximation.
     boot : bool, default=False
         Not used. The B-spline estimator always bootstraps its standard
         errors.
@@ -197,12 +203,12 @@ def cont_did(
         With ``aggregation="dose"``, a DoseResult containing:
 
         - **dose**: Doses at which the curves are evaluated
-        - **att_d**: ATT(d) at each dose
-        - **att_d_se**: Standard errors of ATT(d)
-        - **att_d_crit_val**: Critical value of the ATT(d) band
-        - **acrt_d**: ACRT(d) at each dose
-        - **acrt_d_se**: Standard errors of ACRT(d)
-        - **acrt_d_crit_val**: Critical value of the ACRT(d) band
+        - **att_d**: Fitted level contrasts at each dose
+        - **att_d_se**: Standard errors of the fitted level contrasts
+        - **att_d_crit_val**: Critical value of the level band
+        - **acrt_d**: Fitted dose derivatives at each dose
+        - **acrt_d_se**: Standard errors of the fitted dose derivatives
+        - **acrt_d_crit_val**: Critical value of the derivative band
         - **overall_att**: Overall ATT
         - **overall_att_se**: Standard error of the overall ATT
         - **overall_acrt**: Overall ACRT
@@ -233,8 +239,14 @@ def cont_did(
 
     .. math::
 
-        ATT^o = \mathbb{E}[ATT(D \mid D) \mid D > 0], \qquad
-        ACRT^o = \mathbb{E}[ACRT(D \mid D) \mid D > 0].
+        ATT^{loc} = \mathbb{E}[ATT(D \mid D) \mid D > 0], \qquad
+        ACRT^{loc} = \mathbb{E}[ACRT(D \mid D) \mid D > 0].
+
+    The slope of the observed level comparison includes selection across
+    dose groups under ordinary parallel trends. The two-period strong
+    parallel trends assumption identifies :math:`ACRT(d)` for all treated
+    units and its global average. The stronger multi-period restriction in
+    Appendix C of [1]_ supports a local response interpretation as well.
 
     With staggered adoption, these quantities are estimated for each cohort in
     each period after treatment starts. The dose aggregation gives each cohort
@@ -244,12 +256,13 @@ def cont_did(
     References
     ----------
 
-    .. [1] Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. C. (2024).
+    .. [1] Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. C. (2025).
            "Difference-in-differences with a continuous treatment."
            American Economic Review, forthcoming.
-           https://arxiv.org/abs/2107.02637
+           December 31, 2025 manuscript.
+           https://psantanna.com/files/CGBS_v4.pdf
 
-    .. [2] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
+    .. [2] Chen, X., Christensen, T. M., & Kankanala, S. (2025).
            "Adaptive Estimation and Uniform Confidence Bands for Nonparametric
            Structural Functions and Elasticities."
            The Review of Economic Studies, 92(1), 162-196.

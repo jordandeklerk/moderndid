@@ -326,9 +326,11 @@ print(result)
 
 According to the table that opens the report, two years of democracy change log
 GDP per capita in the last year by −0.0244 compared with two years of autocracy,
-about 2.4 percent less. Since the 95 percent interval from −0.0639 to 0.0151
-covers zero and the p-value is 0.2259, the data gives no reason to reject an
-effect of zero.
+about 2.4 percent less. The 95 percent interval from −0.0639 to 0.0151 permits
+changes ranging from about 6.2 percent less GDP per capita to 1.5 percent more
+under the democracy history. Along with the p-value of 0.2259, that interval
+gives us no reason to reject an effect of zero. Since it still allows changes in
+either direction, it doesn't establish that democracy has no effect.
 
 Below the table, `mu(ds1)` estimates the mean log GDP per capita of all 137
 countries in the last year at 7.8179 had every one of them been a democracy in
@@ -424,9 +426,10 @@ it.
 :::{admonition} Each length is a separate comparison
 :class: note
 
-Read the points as five separate answers rather than one effect unfolding over
-time. Since each length draws on the countries that kept one status for that
-long, the five estimates rest on slightly different groups of countries.
+Read the points as five separate comparisons for the same 137 countries rather
+than one effect unfolding over time. The countries that supply each observed
+history change as the window lengthens because fewer kept one status for that
+long.
 :::
 
 ## Which choices move the answer
@@ -609,6 +612,10 @@ runs from −0.0244 to −0.0121 and every interval covers zero. The fully
 interacted model comes closest to excluding zero, since its interval tops out at
 0.0004. Only leaving out past GDP per capita moves the estimate much, to 0.3067
 with an interval from −0.1153 to 0.7286.
+
+Across the histories of one to five years, we haven't isolated a clear gain in
+GDP per capita from democracy. These comparisons leave the effects of longer
+stretches unanswered.
 
 Sequential ignorability given region and past GDP per capita still carries every
 estimate on this page. A hidden factor that moved democracy and growth together

@@ -199,11 +199,10 @@ class PreprocessDataBuilder:
                 "the time a unit is first treated (0 if never-treated)"
             )
 
-        if self._config.panel:
-            gsize = self._data.group_by(self._config.gname).len()
-            gsize = gsize.with_columns((pl.col("len") / self._config.time_periods_count).alias("size"))
-        else:
-            gsize = self._data.group_by(self._config.gname).len().rename({"len": "size"})
+        # A group's rows per period measure its size in panels, unbalanced panels, and repeated cross sections
+        # alike. Reading config.panel instead would count raw rows once preprocessing flips it for an unbalanced panel.
+        gsize = self._data.group_by(self._config.gname).len()
+        gsize = gsize.with_columns((pl.col("len") / self._config.time_periods_count).alias("size"))
 
         if self._config and self._config.xformla and self._config.xformla != "~1":
             formula_vars = extract_vars_from_formula(self._config.xformla)
@@ -274,6 +273,7 @@ class PreprocessDataBuilder:
             outcomes_tensor=tensor_data["outcomes_tensor"],
             covariates_matrix=tensor_data["covariates_matrix"],
             covariates_tensor=tensor_data["covariates_tensor"],
+            weights_tensor=tensor_data["weights_tensor"],
             cluster=tensor_data["cluster"],
             config=self._config,
         )
@@ -353,14 +353,16 @@ class PreprocessDataBuilder:
             raise ValueError("Config must be DDDConfig")
 
         df = self._data
+        idname = self._config.idname
         glist = np.sort(df[self._config.gname].unique().to_numpy())
         treat_val = glist[1]
 
-        df_pre = df.filter(pl.col("_post") == 0)
-        df_post = df.filter(pl.col("_post") == 1)
+        # Joining on the unit id pairs each unit's two outcomes whatever the row order.
+        df_post = df.filter(pl.col("_post") == 1).select(idname, pl.col(self._config.yname).alias("_y_post"))
+        df_pre = df.filter(pl.col("_post") == 0).join(df_post, on=idname, how="inner", validate="1:1").sort(idname)
 
         y0 = df_pre[self._config.yname].to_numpy().astype(float)
-        y1 = df_post[self._config.yname].to_numpy().astype(float)
+        y1 = df_pre["_y_post"].to_numpy().astype(float)
         treat = df_pre[self._config.gname].to_numpy()
         treat = (treat == treat_val).astype(int)
         partition = df_pre[self._config.pname].to_numpy().astype(int)
@@ -368,7 +370,7 @@ class PreprocessDataBuilder:
         weights_arr = df_pre[WEIGHTS_COLUMN].to_numpy()
 
         subgroup_pre = df_pre["_subgroup"].to_numpy()
-        covariates, covariate_names = extract_ddd_covariates(df, self._config.xformla, subgroup=subgroup_pre)
+        covariates, covariate_names = extract_ddd_covariates(df_pre, self._config.xformla, subgroup=subgroup_pre)
 
         cluster_arr = None
         if self._config.cluster is not None:

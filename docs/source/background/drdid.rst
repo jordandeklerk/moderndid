@@ -3,12 +3,12 @@
 Doubly robust DiD
 =================
 
-When the treated and comparison groups differ in pre-treatment characteristics that predict
-outcome changes, a DiD estimate needs to adjust for those differences. We want to make that
-adjustment without making the entire analysis depend on one regression specification. Doubly
-robust difference-in-differences combines an outcome model with a treatment assignment model
-so that the estimator remains consistent if either model is correct, provided the assumptions
-that identify the treatment effect still hold.
+Doubly robust difference-in-differences estimates the average effect of treatment on the units
+that receive it while adjusting for pre-treatment characteristics. When those characteristics
+predict untreated outcome changes and differ between groups, an unadjusted comparison may
+mistake differences in untreated trends for a treatment effect. The method combines an outcome
+model with a treatment assignment model so that the estimate remains consistent if either model
+is correct, provided the assumptions that identify the effect still hold.
 
 This page develops the two-period estimators in `Sant'Anna and Zhao (2020)
 <https://psantanna.com/files/SantAnna_Zhao_DRDID.pdf>`_. We will follow the missing counterfactual

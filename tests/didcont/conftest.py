@@ -971,3 +971,24 @@ def contdid_converted(request, contdid_data):
         conn.register("contdid_data", contdid_data.to_arrow())
         return conn.execute("SELECT * FROM contdid_data").fetch_arrow_table()
     raise ValueError(f"Unknown dataframe type: {df_type}")
+
+
+@pytest.fixture(params=["repeated_row", "hidden_gap", "relabeled_row"])
+def contdid_duplicated(request, contdid_data):
+    """Continuous dose panel in which unit 1 has two rows in period 2."""
+    unit = pl.col("id") == 1
+    row = contdid_data.filter(unit & (pl.col("period") == 2))
+    if request.param == "repeated_row":
+        return pl.concat([contdid_data, row])
+    if request.param == "hidden_gap":
+        return pl.concat([contdid_data.filter(~(unit & (pl.col("period") == 3))), row])
+    return pl.concat([contdid_data, row.with_columns(pl.col("Y") + 1)])
+
+
+@pytest.fixture
+def contdid_one_infinite(request, contdid_data):
+    """Continuous dose panel with an infinite value in the period 2 row of the first treated unit."""
+    column = request.param
+    unit = contdid_data.filter(pl.col("G") != 0)["id"].min()
+    row = (pl.col("id") == unit) & (pl.col("period") == 2)
+    return contdid_data.with_columns(pl.when(row).then(float("inf")).otherwise(pl.col(column)).alias(column))

@@ -43,9 +43,10 @@ def ordid(
         For panel data: time-invariant indicator (1 if ever treated, 0 if never treated).
         For repeated cross-sections: treatment status in the post-period.
     xformla : str | None, default None
-        A formula for the covariates to include in the model.
-        Should be of the form "~ X1 + X2" (intercept is always included).
-        If None, equivalent to "~ 1" (intercept only).
+        Formula that joins covariate column names with ``+``, as in
+        ``"~ x1 + x2"``. The model always includes an intercept. Transformed
+        terms such as ``I(x**2)`` or ``C(x)`` and columns of strings or
+        categories require formulaic. If None, only the intercept enters.
     panel : bool, default True
         Whether the data is panel (True) or repeated cross-sections (False).
         Panel data should be in long format with each row representing

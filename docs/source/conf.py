@@ -173,7 +173,7 @@ html_file_suffix = ".html"
 htmlhelp_basename = "moderndid"
 
 sphinx_immaterial_custom_admonitions = [
-    {"name": "example", "override": True, "icon": "material/code-braces", "color": (49, 91, 196)},
+    {"name": "example", "override": True, "icon": "material/code-braces"},
     {"name": "important", "override": True, "icon": "material/alert-decagram", "color": (124, 77, 255)},
     {"name": "assumption", "icon": "material/format-list-checks", "color": (201, 63, 117)},
     {"name": "theorem", "icon": "material/equal-box", "color": (0, 200, 83)},

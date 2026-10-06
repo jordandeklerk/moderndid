@@ -42,6 +42,7 @@ class DIDData(PreprocessedData):
     outcomes_tensor: list[np.ndarray] | None = None
     covariates_matrix: np.ndarray | None = None
     covariates_tensor: list[np.ndarray] | None = None
+    weights_tensor: list[np.ndarray] | None = None
 
     config: DIDConfig = field(default_factory=DIDConfig)
 

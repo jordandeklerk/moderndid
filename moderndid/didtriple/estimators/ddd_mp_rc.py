@@ -13,7 +13,7 @@ from moderndid.core.parallel import parallel_map
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from ..container import ATTgtRCResult, DDDMultiPeriodRCResult
-from .ddd_mp import _gmm_aggregate
+from .ddd_mp import _gmm_aggregate, _warn_failed_comparison
 from .ddd_rc import ddd_rc
 
 
@@ -36,6 +36,7 @@ def ddd_mp_rc(
     trim_level=0.995,
     random_state=None,
     n_jobs=1,
+    weights_col=None,
 ):
     r"""Compute the multi-period doubly robust DDD estimator for the ATT with repeated cross-section data.
 
@@ -123,21 +124,28 @@ def ddd_mp_rc(
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
+    weights_col : str or None, default None
+        Name of the column of sampling weights. If None, every observation
+        has weight 1.
 
     Returns
     -------
     DDDMultiPeriodRCResult
         A NamedTuple containing:
 
-        - att: Array of ATT(g,t) point estimates
-        - se: Standard errors for each ATT(g,t)
-        - uci, lci: Confidence interval bounds
-        - groups: Treatment cohort for each estimate
-        - times: Time period for each estimate
-        - glist, tlist: Unique cohorts and periods
-        - inf_func_mat: Influence function matrix (n_obs x k)
-        - n: Number of observations
-        - args: Estimation arguments
+        - **att**: Array of ATT(g,t) point estimates
+        - **se**: Standard errors for each ATT(g,t)
+        - **uci**: Upper confidence interval bounds
+        - **lci**: Lower confidence interval bounds
+        - **groups**: Treatment cohort for each estimate
+        - **times**: Time period for each estimate
+        - **glist**: Unique cohorts
+        - **tlist**: Unique periods
+        - **inf_func_mat**: Influence function matrix (n_obs x k)
+        - **n**: Number of observations
+        - **args**: Estimation arguments
+        - **unit_groups**: Treatment cohort of each observation
+        - **unit_weights**: Sampling weight of each observation, or None without weights
 
     See Also
     --------
@@ -196,22 +204,25 @@ def ddd_mp_rc(
                     est_method,
                     trim_level,
                     n_obs,
+                    weights_col,
                 )
             )
 
     cell_results = parallel_map(_process_gt_cell_rc, args_list, n_jobs=n_jobs)
 
     attgt_list = []
-    for counter, result in enumerate(cell_results):
-        if result is not None:
-            att_entry, inf_data, se_val = result
-            if att_entry is not None:
-                attgt_list.append(att_entry)
-                if inf_data is not None:
-                    inf_func_scaled, obs_indices = inf_data
-                    _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, counter)
-                if se_val is not None:
-                    se_array[counter] = se_val
+    for result in cell_results:
+        if result is None or result[0] is None:
+            continue
+        att_entry, inf_data, se_val = result
+        # Since a skipped cell takes no column, each kept cell's column sits at its position among the estimates.
+        column = len(attgt_list)
+        attgt_list.append(att_entry)
+        if inf_data is not None:
+            inf_func_scaled, obs_indices = inf_data
+            _update_inf_func_matrix_rc(inf_func_mat, inf_func_scaled, obs_indices, column)
+        if se_val is not None:
+            se_array[column] = se_val
 
     if len(attgt_list) == 0:
         raise ValueError("No valid (g,t) cells found.")
@@ -272,6 +283,7 @@ def ddd_mp_rc(
     }
 
     obs_groups = data[group_col].to_numpy()
+    obs_weights = None if weights_col is None else data[weights_col].to_numpy()
 
     return DDDMultiPeriodRCResult(
         att=att_array,
@@ -286,6 +298,7 @@ def ddd_mp_rc(
         n=n_obs,
         args=args,
         unit_groups=obs_groups,
+        unit_weights=obs_weights,
     )
 
 
@@ -306,6 +319,7 @@ def _process_gt_cell_rc(
     est_method,
     trim_level,
     n_obs,
+    weights_col=None,
 ):
     """Process a single (g,t) cell and return results for RCS.
 
@@ -352,6 +366,8 @@ def _process_gt_cell_rc(
             trim_level,
             n_obs,
             n_cell,
+            available_controls[0],
+            weights_col,
         )
         att_result, inf_func_scaled, obs_indices = result
         if att_result is not None:
@@ -377,6 +393,7 @@ def _process_gt_cell_rc(
             trim_level,
             n_obs,
             n_cell,
+            weights_col,
         )
         if result[0] is not None:
             att_gmm, inf_func_scaled, obs_indices, se_gmm = result
@@ -444,10 +461,24 @@ def _process_single_control_rc(
     trim_level,
     n_obs,
     n_cell,
+    ctrl,
+    weights_col=None,
 ):
     """Process a (g,t) cell with a single control group for RCS."""
     att_result, inf_func, obs_indices = _compute_single_ddd_rc(
-        cell_data, y_col, time_col, group_col, partition_col, g, t, pret, covariate_cols, est_method, trim_level
+        cell_data,
+        y_col,
+        time_col,
+        group_col,
+        partition_col,
+        g,
+        t,
+        pret,
+        covariate_cols,
+        est_method,
+        trim_level,
+        ctrl,
+        weights_col,
     )
 
     if att_result is None:
@@ -472,6 +503,7 @@ def _process_multiple_controls_rc(
     trim_level,
     n_obs,
     n_cell,
+    weights_col=None,
 ):
     """Process a (g,t) cell with multiple control groups using GMM aggregation for RCS."""
     ddd_results = []
@@ -485,7 +517,19 @@ def _process_multiple_controls_rc(
         subset_data = cell_data.filter(ctrl_expr)
 
         att_result, inf_func, subset_obs_indices = _compute_single_ddd_rc(
-            subset_data, y_col, time_col, group_col, partition_col, g, t, pret, covariate_cols, est_method, trim_level
+            subset_data,
+            y_col,
+            time_col,
+            group_col,
+            partition_col,
+            g,
+            t,
+            pret,
+            covariate_cols,
+            est_method,
+            trim_level,
+            ctrl,
+            weights_col,
         )
 
         if att_result is None:
@@ -511,7 +555,19 @@ def _process_multiple_controls_rc(
 
 
 def _compute_single_ddd_rc(
-    cell_data, y_col, time_col, group_col, partition_col, g, t, _pret, covariate_cols, est_method, trim_level
+    cell_data,
+    y_col,
+    time_col,
+    group_col,
+    partition_col,
+    g,
+    t,
+    _pret,
+    covariate_cols,
+    est_method,
+    trim_level,
+    ctrl,
+    weights_col=None,
 ):
     """Compute DDD for a single (g,t) cell with a single control group using RCS."""
     treat_col = (pl.col(group_col) == g).cast(pl.Int64).alias("treat")
@@ -547,10 +603,12 @@ def _compute_single_ddd_rc(
             post=post,
             subgroup=subgroup,
             covariates=X,
+            i_weights=None if weights_col is None else cell_data[weights_col].to_numpy(),
             est_method=est_method,
             trim_level=trim_level,
             influence_func=True,
         )
         return result.att, result.att_inf_func, obs_indices
-    except (ValueError, np.linalg.LinAlgError):
+    except (ValueError, np.linalg.LinAlgError) as error:
+        _warn_failed_comparison(g, t, ctrl, error)
         return None, None, None

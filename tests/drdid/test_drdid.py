@@ -1,9 +1,12 @@
 """Tests for doubly robust DiD."""
 
+import re
+
 import numpy as np
 import pytest
 
 from moderndid.core.data import load_nsw
+from moderndid.drdid import drdid_imp_panel, drdid_imp_rc
 from moderndid.drdid.drdid import drdid
 from tests.helpers import importorskip
 
@@ -615,4 +618,223 @@ def test_drdid_formula_without_tilde_raises(nsw_data):
             idname="id",
             panel=True,
             xformla="age + educ",
+        )
+
+
+def test_drdid_panel_plain_covariates_without_formulaic(nsw_data, without_formulaic):
+    post = nsw_data.filter(pl.col("year") == nsw_data["year"].max()).sort("id")
+    pre = nsw_data.filter(pl.col("year") == nsw_data["year"].min()).sort("id")
+    covariates = np.column_stack([np.ones(post.height), post.select("age", "educ", "black").to_numpy()])
+    expected = drdid_imp_panel(
+        y1=post["re"].to_numpy(),
+        y0=pre["re"].to_numpy(),
+        d=post["experimental"].to_numpy(),
+        covariates=covariates,
+        i_weights=np.ones(post.height),
+    )
+
+    result = drdid(
+        data=nsw_data,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ + black",
+    )
+
+    np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=1e-12)
+
+
+def test_drdid_rc_plain_covariates_without_formulaic(nsw_data, without_formulaic):
+    covariates = np.column_stack([np.ones(nsw_data.height), nsw_data.select("age", "educ", "black").to_numpy()])
+    expected = drdid_imp_rc(
+        y=nsw_data["re"].to_numpy(),
+        post=(nsw_data["year"] == nsw_data["year"].max()).cast(pl.Int64).to_numpy(),
+        d=nsw_data["experimental"].to_numpy(),
+        covariates=covariates,
+        i_weights=np.ones(nsw_data.height),
+    )
+
+    result = drdid(
+        data=nsw_data,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        panel=False,
+        xformla="~ age + educ + black",
+    )
+
+    np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=1e-12)
+
+
+def test_drdid_transformed_covariate_without_formulaic_raises(nsw_data, without_formulaic):
+    with pytest.raises(ImportError, match=re.escape("xformla term 'I(age**2)' requires formulaic")):
+        drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            xformla="~ age + I(age**2)",
+        )
+
+
+def test_drdid_string_covariate_without_formulaic_raises(nsw_data, without_formulaic):
+    data = nsw_data.with_columns(
+        pl.when(pl.col("age") <= 25).then(pl.lit("young")).otherwise(pl.lit("old")).alias("age_group")
+    )
+
+    with pytest.raises(ImportError, match="xformla column 'age_group' holds strings or categories"):
+        drdid(
+            data=data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            xformla="~ age_group + educ",
+        )
+
+
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_string_covariate_matches_categorical_term(nsw_data, panel):
+    data = nsw_data.with_columns(
+        pl.when(pl.col("age") <= 25).then(pl.lit("young")).otherwise(pl.lit("old")).alias("age_group")
+    )
+    spec = {"yname": "re", "tname": "year", "treatname": "experimental", "panel": panel}
+    if panel:
+        spec["idname"] = "id"
+
+    result = drdid(data=data, xformla="~ age_group + educ", **spec)
+    expected = drdid(data=data, xformla="~ C(age_group) + educ", **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+
+
+@pytest.mark.parametrize("xformla", ["re ~ age", "age ~ 1", "re ~ I(age**2)"])
+def test_drdid_rejects_left_hand_side(nsw_data, xformla):
+    with pytest.raises(ValueError, match="has a left-hand side"):
+        drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            xformla=xformla,
+        )
+
+
+@pytest.mark.parametrize("xformla", ["~ age - 1", "~ 0 + age", "~ I(age**2) - 1"])
+def test_drdid_rejects_dropping_the_intercept(nsw_data, xformla):
+    with pytest.raises(ValueError, match="drops the intercept"):
+        drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            xformla=xformla,
+        )
+
+
+def test_drdid_missing_covariate_raises(nsw_data):
+    with pytest.raises(ValueError, match="xformla contains 'nope' which is not a column in the dataset"):
+        drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            xformla="~ age + nope",
+        )
+
+
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_outcome_named_weights(nsw_data, panel):
+    spec = dict(tname="year", treatname="experimental", idname="id", xformla="~ age + educ", panel=panel)
+    renamed = drdid(data=nsw_data.rename({"re": "weights"}), yname="weights", **spec)
+    expected = drdid(data=nsw_data, yname="re", **spec)
+
+    assert renamed.att == expected.att
+    assert renamed.se == expected.se
+
+
+@pytest.mark.parametrize(
+    ("column", "argument", "xformla"),
+    [("re", "yname", "~ age + educ"), ("educ", "xformla", "~ age + {}"), ("educ", "xformla", "~ age + I({}**2)")],
+)
+@pytest.mark.parametrize("reserved", [".w", "Intercept"])
+def test_drdid_rejects_reserved_column_names(nsw_data, column, argument, xformla, reserved):
+    with pytest.raises(ValueError, match=re.escape(f"{argument} names the column '{reserved}'")):
+        drdid(
+            data=nsw_data.rename({column: reserved}),
+            yname=reserved if column == "re" else "re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            xformla=xformla.format(reserved),
+        )
+
+
+def test_drdid_rejects_repeated_unit_periods(nsw_duplicated):
+    message = (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (id, year) pair (15995, 1975)."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        drdid(data=nsw_duplicated, yname="re", tname="year", treatname="experimental", idname="id", panel=True)
+
+
+@pytest.mark.parametrize(
+    ("nsw_one_infinite", "weightsname"),
+    [(("re", float("inf")), None), (("age", float("-inf")), None), (("w", float("inf")), "w")],
+    indirect=["nsw_one_infinite"],
+)
+def test_drdid_drops_infinite_rows_of_repeated_cross_sections(nsw_one_infinite, weightsname):
+    spec = {
+        "yname": "re",
+        "tname": "year",
+        "treatname": "experimental",
+        "idname": "id",
+        "xformla": "~ age + educ",
+        "weightsname": weightsname,
+        "panel": False,
+    }
+    expected = drdid(data=nsw_one_infinite.filter(pl.all_horizontal(pl.col("re", "age", "w").is_finite())), **spec)
+
+    with pytest.warns(UserWarning, match="^Dropped 1 rows from original data due to missing values$"):
+        result = drdid(data=nsw_one_infinite, **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+
+
+@pytest.mark.parametrize("nsw_one_infinite", [("re", float("inf")), ("w", float("-inf"))], indirect=True)
+def test_drdid_panel_rejects_infinite_values_like_missing_ones(nsw_one_infinite):
+    with pytest.raises(ValueError, match="^Missing values found in panel data\\. Dropped 1 rows\\."):
+        drdid(
+            data=nsw_one_infinite,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            weightsname="w",
+            panel=True,
+        )
+
+
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_rejects_weights_without_positive_mean(nsw_data, panel):
+    message = "The weights variable 'w' must be non-negative with a positive mean."
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        drdid(
+            data=nsw_data.with_columns(pl.lit(0.0).alias("w")),
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            weightsname="w",
+            panel=panel,
         )

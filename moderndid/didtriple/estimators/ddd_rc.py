@@ -9,12 +9,13 @@ import polars as pl
 from scipy import stats
 
 from moderndid.core.dataframe import to_polars
-from moderndid.core.preprocess.utils import parse_formula
+from moderndid.core.preprocess.validators import _ddd_partition_error, _ddd_subgroup_error
 from moderndid.cupy.backend import get_backend, to_numpy
 
 from ..bootstrap.mboot_ddd import mboot_ddd
 from ..container import DDDRCResult
 from ..nuisance_rc import compute_all_did_rc, compute_all_nuisances_rc
+from ..utils import get_covariate_names
 
 
 def ddd_rc(
@@ -309,7 +310,7 @@ def _ddd_rc_2period(
     random_state : int, Generator, or None
         Random state for reproducibility.
     cluster : str or None, default None
-        Name of the cluster column. It turns on the multiplier bootstrap.
+        Name of the cluster column. It requires boot=True and boot_type="multiplier".
     idname : str or None, default None
         Name of the unit column. A unit's rows must share one cluster.
 
@@ -334,10 +335,11 @@ def _ddd_rc_2period(
             clusters_per_unit = data.group_by(idname).agg(pl.col(cluster).n_unique().alias("n_clusters"))
             if clusters_per_unit["n_clusters"].max() > 1:
                 raise ValueError("Cluster variable must be time-invariant within units.")
-        if not boot:
-            warnings.warn("Clustered SEs require bootstrap. Setting boot=True, cband=True.", UserWarning, stacklevel=3)
-            boot = True
         cluster_arr = data[cluster].to_numpy()
+
+    partition_error = _ddd_partition_error(data, pname)
+    if partition_error is not None:
+        raise ValueError(partition_error)
 
     t1 = tlist[1]
 
@@ -356,21 +358,15 @@ def _ddd_rc_2period(
         + 1 * ((~treat_arr) * (partition == 0))
     )
 
-    if xformla is not None and xformla != "~1":
-        formula_str = xformla.strip()
-        if formula_str.startswith("~"):
-            formula_str = "y " + formula_str
+    subgroup_error = _ddd_subgroup_error(subgroup, gname, pname)
+    if subgroup_error is not None:
+        raise ValueError(subgroup_error)
 
-        parsed = parse_formula(formula_str)
-        covariate_names = parsed["predictors"]
-        covariate_names = [c for c in covariate_names if c != "1"]
-
-        if covariate_names:
-            X = data.select(covariate_names).to_numpy()
-            intercept = np.ones((X.shape[0], 1))
-            covariates = np.hstack([intercept, X])
-        else:
-            covariates = np.ones((len(y), 1))
+    covariate_names = get_covariate_names(xformla)
+    if covariate_names is not None:
+        X = data.select(covariate_names).to_numpy()
+        intercept = np.ones((X.shape[0], 1))
+        covariates = np.hstack([intercept, X])
     else:
         covariates = np.ones((len(y), 1))
 

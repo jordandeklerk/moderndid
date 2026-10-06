@@ -22,9 +22,11 @@ from moderndid.core.preprocess.utils import (
     get_first_difference,
     get_formula_columns,
     get_group,
+    get_transformed_terms,
     is_balanced_panel,
     make_balanced_panel,
     map_to_idx,
+    nonfinite_to_null,
     parse_formula,
     remove_collinear,
     two_by_two_subset,
@@ -159,6 +161,29 @@ def test_two_by_two_subset_control_groups(control_group, base_period, g, tp, che
     assert check_fn(result)
 
 
+@pytest.mark.parametrize(
+    "kwargs, expected_ids",
+    [
+        ({"g": 3, "tp": 3, "control_group": "notyettreated", "anticipation": 1}, [0, 1, 4, 5, 6, 7]),
+        ({"g": 4, "tp": 2, "control_group": "notyettreated", "base_period": "universal"}, [2, 3, 4, 5, 6, 7]),
+        ({"g": 3, "tp": 3, "control_group": "notyettreated"}, [0, 1, 2, 3, 4, 5, 6, 7]),
+        ({"g": 3, "tp": 3, "control_group": "nevertreated"}, [0, 1, 4, 5, 6, 7]),
+    ],
+)
+def test_two_by_two_subset_keeps_controls_untreated_in_both_periods(two_by_two_panel, kwargs, expected_ids):
+    result = two_by_two_subset(two_by_two_panel, **kwargs)
+
+    assert sorted(result["gt_data"]["id"].unique().to_list()) == expected_ids
+    assert result["n1"] == len(expected_ids)
+    np.testing.assert_array_equal(result["disidx"], np.isin(np.arange(8), expected_ids))
+
+
+def test_two_by_two_subset_accepts_pandas(two_by_two_panel):
+    result = two_by_two_subset(two_by_two_panel.to_pandas(), g=3, tp=3, anticipation=1)
+
+    assert sorted(result["gt_data"]["id"].unique().to_list()) == [0, 1, 4, 5, 6, 7]
+
+
 def test_two_by_two_subset_insufficient_variation():
     df = pl.DataFrame(
         {
@@ -286,8 +311,14 @@ def test_parse_formula_invalid(formula):
 
 
 def test_extract_vars_from_formula():
-    result = extract_vars_from_formula("y ~ x1 + x2 + x3")
-    assert result == ["y", "x1", "x2", "x3"]
+    result = extract_vars_from_formula("~ x1 + x2 + x3")
+    assert result == ["x1", "x2", "x3"]
+
+
+@pytest.mark.parametrize("formula", ["y ~ x1 + x2 + x3", "lpop ~ 1", "`my y` ~ x1"])
+def test_extract_vars_from_formula_rejects_left_hand_side(formula):
+    with pytest.raises(ValueError, match=re.escape(f"xformla='{formula}' has a left-hand side")):
+        extract_vars_from_formula(formula)
 
 
 def test_extract_vars_from_formula_keeps_dotted_names():
@@ -318,6 +349,39 @@ def test_get_formula_columns(formula, expected):
 def test_get_formula_columns_invalid(formula):
     with pytest.raises(ValueError, match="must be in the form"):
         get_formula_columns(formula, ["y", "age", "educ"])
+
+
+@pytest.mark.parametrize(
+    "formula, expected",
+    [
+        ("~ x1 + x2", []),
+        ("~ 1", []),
+        ("~1", []),
+        ("~ log.pop + `log pop` + 1", []),
+        ("~ x1 + I(x1**2)", ["I(x1**2)"]),
+        ("~ C(group) + x1 + x1:x2", ["C(group)", "x1:x2"]),
+        ("~ np.log(x1 + 1)", ["np.log(x1 + 1)"]),
+        ("~ x1 - x2", ["x1 - x2"]),
+    ],
+)
+def test_get_transformed_terms(formula, expected):
+    assert get_transformed_terms(formula) == expected
+
+
+@pytest.mark.parametrize(
+    "formula, message",
+    [
+        ("y ~ I(x1**2)", "has a left-hand side"),
+        ("x1 ~ 1", "has a left-hand side"),
+        ("~ I(x1**2) - 1", "drops the intercept"),
+        ("~ 0 + x1", "drops the intercept"),
+        ("~ I(x1**2) + + x1", "xformla has an empty term"),
+        ("x1 + I(x1**2)", "must be in the form"),
+    ],
+)
+def test_get_transformed_terms_rejects_invalid_formulas(formula, message):
+    with pytest.raises(ValueError, match=message):
+        get_transformed_terms(formula)
 
 
 @pytest.mark.parametrize(
@@ -382,9 +446,12 @@ def test_get_covariate_names_from_formula_none_cases(formula, expected):
 
 
 def test_get_covariate_names_from_formula_with_vars():
-    result = get_covariate_names_from_formula("y ~ x1 + x2")
-    assert "x1" in result
-    assert "x2" in result
+    assert get_covariate_names_from_formula("~ x1 + x2") == ["x1", "x2"]
+
+
+def test_get_covariate_names_from_formula_rejects_left_hand_side():
+    with pytest.raises(ValueError, match="has a left-hand side"):
+        get_covariate_names_from_formula("y ~ x1 + x2")
 
 
 def test_remove_collinear_no_collinearity():
@@ -477,3 +544,36 @@ def test_extract_ddd_covariates_with_nan_raises():
     )
     with pytest.raises(ValueError):
         extract_ddd_covariates(df, "~ x1")
+
+
+def test_nonfinite_to_null_turns_nan_and_infinity_into_null():
+    df = pl.DataFrame(
+        {
+            "y": [1.0, float("nan"), float("inf")],
+            "x": pl.Series([float("nan"), 2.0, -float("inf")], dtype=pl.Float32),
+            "g": [0, 1, 2],
+        }
+    )
+    result = nonfinite_to_null(df)
+
+    assert result["y"].to_list() == [1.0, None, None]
+    assert result["x"].to_list() == [None, 2.0, None]
+    assert result["g"].to_list() == [0, 1, 2]
+    assert result.schema == df.schema
+    assert result.equals(nonfinite_to_null(df.to_pandas()))
+
+
+def test_nonfinite_to_null_keeps_infinity_in_named_columns():
+    df = pl.DataFrame({"y": [float("inf"), 2.0, 3.0], "g": [float("inf"), float("nan"), -float("inf")]})
+    result = nonfinite_to_null(df, keep_infinite=["g"])
+
+    assert result["y"].to_list() == [None, 2.0, 3.0]
+    assert result["g"].to_list() == [float("inf"), None, -float("inf")]
+
+
+def test_make_balanced_panel_drops_units_with_two_rows_in_a_period(panel_with_duplicates):
+    complete = pl.DataFrame({"id": [3, 3, 3], "time": [1, 2, 3], "y": [30.0, 31.0, 32.0], "cat": ["e", "e", "e"]})
+
+    result = make_balanced_panel(pl.concat([panel_with_duplicates, complete]), "id", "time")
+
+    assert result.equals(complete)

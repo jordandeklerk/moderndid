@@ -165,10 +165,16 @@ The row at event time −1 shows 0.0000 and NA, since every other estimate is
 measured from that year. The four rows above it are placebo estimates, from
 −0.0125 five years before expansion to −0.0049 two years before. Every one of
 their intervals covers zero, although the interval at −5 only just does with an
-upper end of 0.0003. In the year of expansion the estimate is 0.0453, a rise of
-4.53 percentage points in the share with insurance. The 95 percent interval
-around it runs from 0.0335 to 0.0571. By five years after expansion the estimate
-has grown to 0.0803.
+upper end of 0.0003.
+
+The estimate of 0.0453 in the year of expansion corresponds to a 4.53 percentage
+point rise in coverage for low-income adults without children relative to the
+comparison states. Since the fit leaves population weights unused, each of the
+30 expansion states gets equal weight in that average. Its 95 percent interval
+runs from 3.35 to 5.71 percentage points. Only the 22 states that expanded in
+2014 contribute five years later, when the estimate of 0.0803 corresponds to an
+8.03 percentage point gain. The larger estimate therefore concerns a different
+group of states as well as a later year after expansion.
 
 The event-study plot below shows the navy placebo estimates climbing toward zero
 on their way to the dashed line at the base year. That climb hints that the
@@ -327,7 +333,8 @@ The lower bound falls as $M$ grows, to 0.0073 at $M = 0.02$ and to 0.0023 at
 $M = 0.025$. On this grid, zero first enters at $M = 0.03$, where the lower bound
 reaches −0.0027. The interval for the effect in the year of expansion therefore
 excludes zero for every bend up to 0.025 a year, more than four times the
-sharpest bend among the placebo estimates.
+sharpest bend among the placebo estimates. At the smoothness bound of 0.025,
+the interval still permits coverage gains as small as 0.23 percentage points.
 
 The plot draws the gold original interval at the left and a navy fixed-length
 interval for each value of $M$ to its right.
@@ -424,9 +431,11 @@ did.plot_sensitivity(relative) + did.theme_moderndid()
 
 ## Three years after expansion
 
-The effect three years after expansion shows what happens once a departure from
-parallel trends has had longer to build. Changing `event_time` to 3 reruns the
-smoothness analysis for that later effect.
+Only the 27 states that expanded in 2014, 2015, or 2016 are observed three years
+after expansion. This later effect therefore concerns fewer states than the
+adoption-year effect for all 30 expansion states. Any departure from parallel
+trends has also had longer to build by then. Changing `event_time` to 3 reruns
+the smoothness analysis for that later effect.
 
 ```{code-cell} ipython3
 # The same restriction applied to the effect three years after expansion.
@@ -673,14 +682,11 @@ magnitudes the answer hinges on the event window instead. On the five-year
 window the interval excludes zero up to $\bar{M} = 2.5$, against only
 $\bar{M} = 0.5$ with every event time.
 
-Whether expansion raised coverage in the year it took effect therefore comes
-down to a belief about how the gap between the expansion states and their
-comparison states could have moved. Doubting the effect means believing that
-gap could bend by between 0.025 and 0.03 a year, four to five times as sharply
-as any bend among the placebo estimates, or change more than two and a half
-times as fast as its largest change before expansion. Three years later, a bend
-of 0.005 a year or changes one and a half times that largest change would
-already be enough.
+With the five-year window, the intervals first include zero on our grids at a
+smoothness bound of 0.03 or a relative magnitude bound of three times the
+largest pre-expansion change. For the effect three years later, zero already
+enters at 0.005 and one and a half times that change. At those bounds, the data
+no longer distinguish a coverage gain from zero at the 95 percent level.
 
 (example_honest_did_external)=
 

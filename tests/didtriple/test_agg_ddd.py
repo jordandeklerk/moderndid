@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from moderndid import agg_ddd
+from moderndid import agg_ddd, ddd
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
@@ -240,3 +240,12 @@ def test_agg_ddd_print(mp_ddd_result, agg_type, expected_text):
 
     assert "Aggregate DDD Treatment Effects" in output
     assert expected_text in output
+
+
+@pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
+def test_agg_ddd_weighted_shares_match_replicated_units(mp_weighted_df, mp_weighted_replicated_df, agg_type):
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "group", "pname": "partition", "est_method": "reg"}
+    weighted = agg_ddd(ddd(data=mp_weighted_df, weightsname="w", **spec), type=agg_type, boot=False, cband=False)
+    replicated = agg_ddd(ddd(data=mp_weighted_replicated_df, **spec), type=agg_type, boot=False, cband=False)
+
+    np.testing.assert_allclose(weighted.overall_att, replicated.overall_att, rtol=1e-10, atol=1e-10)

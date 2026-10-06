@@ -1,5 +1,7 @@
 """Root test warnings configuration and shared fixtures."""
 
+import sys
+
 import numpy as np
 import pytest
 
@@ -42,3 +44,10 @@ class FixedDraws(np.random.Generator):
 def fixed_draws():
     """Generator class that hands the bootstrap preset cluster draws."""
     return FixedDraws
+
+
+@pytest.fixture
+def without_formulaic(monkeypatch):
+    """Hide formulaic the way an install without extras does."""
+    monkeypatch.setitem(sys.modules, "formulaic", None)
+    monkeypatch.setattr("moderndid.core.preprocess.transformers.formulaic", None, raising=False)

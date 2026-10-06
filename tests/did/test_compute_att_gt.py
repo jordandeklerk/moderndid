@@ -548,16 +548,14 @@ def test_cohort_index_edge_cases(mpdta_data):
     assert isinstance(cohort_index, np.ndarray)
 
 
-@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
-def test_influence_function_aggregation(mpdta_data):
+def test_influence_function_aggregation(mpdta_unbalanced):
     data = preprocess_did(
-        mpdta_data,
+        mpdta_unbalanced,
         yname="lemp",
         tname="year",
         idname="countyreal",
         gname="first.treat",
         xformla="~lpop",
-        panel=False,
         allow_unbalanced_panel=True,
         control_group="nevertreated",
     )
@@ -579,6 +577,17 @@ def test_influence_function_aggregation(mpdta_data):
     assert result["inf_func"].shape == (data.config.id_count,)
     assert np.any(result["inf_func"][:50] != 0)
     assert not result["inf_func"][50:].any()
+
+
+@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
+def test_compute_att_gt_cross_section_keys_every_row_whatever_idname(mpdta_data):
+    spec = dict(yname="lemp", tname="year", gname="first.treat", xformla="~lpop", panel=False)
+
+    plain = compute_att_gt(preprocess_did(mpdta_data, **spec))
+    with_id = compute_att_gt(preprocess_did(mpdta_data, idname="countyreal", **spec))
+
+    assert with_id.influence_functions.shape == (mpdta_data.height, len(with_id.attgt_list))
+    np.testing.assert_array_equal(with_id.influence_functions.toarray(), plain.influence_functions.toarray())
 
 
 def test_compute_att_gt_unbalanced_rows_follow_time_invariant_data(mpdta_unbalanced):

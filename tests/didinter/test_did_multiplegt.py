@@ -1,5 +1,7 @@
 """Tests for the did_multiplegt main entry point."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -1121,3 +1123,184 @@ def test_same_switchers_pl_restricts_only_the_placebos(simple_panel_data):
     np.testing.assert_array_equal(same_pl.effects.n_switchers, [30, 30])
     np.testing.assert_array_equal(same.placebos.n_switchers, [30, 10])
     np.testing.assert_array_equal(same_pl.placebos.n_switchers, [10, 10])
+
+
+@pytest.mark.parametrize("options", [{}, {"xformla": "~ x"}, {"normalized": True}])
+def test_shifting_every_treatment_by_a_constant_leaves_the_estimates_unchanged(baseline_shift_panels, options):
+    kwargs = {"yname": "y", "idname": "g", "tname": "t", "dname": "d", "effects": 3, "placebo": 1, "cluster": "cl"}
+    tenth = did_multiplegt(baseline_shift_panels[0], **kwargs, **options)
+    eighth = did_multiplegt(baseline_shift_panels[1], **kwargs, **options)
+
+    np.testing.assert_array_equal(tenth.effects.n_switchers, [105, 91, 72])
+    np.testing.assert_array_equal(tenth.effects.n_switchers, eighth.effects.n_switchers)
+    np.testing.assert_array_equal(tenth.effects.n_observations, eighth.effects.n_observations)
+    np.testing.assert_allclose(tenth.effects.estimates, eighth.effects.estimates, rtol=1e-12)
+    np.testing.assert_allclose(tenth.effects.std_errors, eighth.effects.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(tenth.placebos.estimates, eighth.placebos.estimates, rtol=1e-12)
+    np.testing.assert_allclose(tenth.placebos.std_errors, eighth.placebos.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(tenth.ate.estimate, eighth.ate.estimate, rtol=1e-12)
+    np.testing.assert_allclose(tenth.ate.std_error, eighth.ate.std_error, rtol=1e-12)
+
+
+def test_outcome_named_weights_matches_baseline(simple_panel_data):
+    kwargs = {"idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 1}
+    renamed = did_multiplegt(simple_panel_data.rename({"y": "weights"}), yname="weights", **kwargs)
+    expected = did_multiplegt(simple_panel_data, yname="y", **kwargs)
+
+    np.testing.assert_array_equal(renamed.effects.estimates, expected.effects.estimates)
+    np.testing.assert_array_equal(renamed.effects.std_errors, expected.effects.std_errors)
+    np.testing.assert_array_equal(renamed.placebos.estimates, expected.placebos.estimates)
+
+
+@pytest.mark.parametrize("column", ["y", "d", "w"])
+def test_infinite_outcome_treatment_or_weight_counts_as_missing(weighted_clustered_panel, column):
+    row = (pl.col("id") == 35) & (pl.col("time") == 4)
+    kwargs = {
+        "yname": "y",
+        "idname": "id",
+        "tname": "time",
+        "dname": "d",
+        "weightsname": "w",
+        "effects": 2,
+        "placebo": 1,
+    }
+    missing = weighted_clustered_panel.with_columns(pl.when(row).then(None).otherwise(pl.col(column)).alias(column))
+    infinite = weighted_clustered_panel.with_columns(
+        pl.when(row).then(float("inf")).otherwise(pl.col(column)).alias(column)
+    )
+
+    expected = did_multiplegt(missing, **kwargs)
+    result = did_multiplegt(infinite, **kwargs)
+
+    np.testing.assert_array_equal(result.effects.estimates, expected.effects.estimates)
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+    np.testing.assert_array_equal(result.placebos.estimates, expected.placebos.estimates)
+
+
+def test_rows_with_an_infinite_control_are_dropped(weighted_clustered_panel):
+    row = (pl.col("id") == 35) & (pl.col("time") == 4)
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "xformla": "~ x1 + x2", "effects": 2}
+    infinite = weighted_clustered_panel.with_columns(
+        pl.when(row).then(float("-inf")).otherwise(pl.col("x1")).alias("x1")
+    )
+
+    expected = did_multiplegt(weighted_clustered_panel.filter(~row), **kwargs)
+    with pytest.warns(UserWarning, match="^Dropped 1 rows from original data due to missing covariates$"):
+        result = did_multiplegt(infinite, **kwargs)
+
+    np.testing.assert_array_equal(result.effects.estimates, expected.effects.estimates)
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+@pytest.mark.parametrize("boot", [False, True])
+def test_non_finite_cluster_counts_as_missing(weighted_clustered_panel, value, boot):
+    group = pl.col("id") == 1
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "cluster": "cl", "effects": 2}
+    if boot:
+        kwargs |= {"boot": True, "biters": 30, "random_state": 7}
+    missing = weighted_clustered_panel.with_columns(pl.when(group).then(None).otherwise(pl.col("cl")).alias("cl"))
+    non_finite = weighted_clustered_panel.with_columns(pl.when(group).then(value).otherwise(pl.col("cl")).alias("cl"))
+
+    expected = did_multiplegt(missing, **kwargs)
+    result = did_multiplegt(non_finite, **kwargs)
+
+    np.testing.assert_array_equal(result.effects.estimates, expected.effects.estimates)
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+
+
+@pytest.mark.parametrize("weights", ["zero", "one negative"])
+def test_weights_without_positive_mean_raise(weighted_clustered_panel, weights):
+    row = (pl.col("id") == 1) & (pl.col("time") == 5)
+    values = {"zero": pl.lit(0.0), "one negative": pl.when(row).then(-1.0).otherwise(pl.col("w"))}
+    data = weighted_clustered_panel.with_columns(values[weights].alias("w"))
+    message = "The weights variable 'w' must be non-negative with a positive mean."
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        did_multiplegt(data, yname="y", idname="id", tname="time", dname="d", weightsname="w")
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_bootstrap_leaves_out_draws_without_positive_weight(
+    zero_weight_cluster_panel, fixed_draws, relabel_cluster_copies
+):
+    draws = [
+        [0, 1, 2, 3, 4, 0, 1, 2, 3, 4],
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        [5, 5, 6, 7, 8, 9, 0, 1, 2, 2],
+        [9, 8, 7, 6, 5, 4, 3, 3, 1, 0],
+    ]
+    kwargs = {
+        "yname": "y",
+        "idname": "id",
+        "tname": "time",
+        "dname": "d",
+        "weightsname": "w",
+        "effects": 2,
+        "placebo": 1,
+    }
+
+    result = did_multiplegt(
+        zero_weight_cluster_panel, **kwargs, cluster="cl", boot=True, biters=4, random_state=fixed_draws(draws)
+    )
+    fits = [
+        did_multiplegt(relabel_cluster_copies(zero_weight_cluster_panel, draw, "cl", "id"), **kwargs)
+        for draw in draws[1:]
+    ]
+
+    np.testing.assert_allclose(
+        result.effects.std_errors, np.std([fit.effects.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+    np.testing.assert_allclose(
+        result.placebos.std_errors, np.std([fit.placebos.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+    np.testing.assert_allclose(result.ate.std_error, np.std([fit.ate.estimate for fit in fits], ddof=1), rtol=1e-10)
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_seeded_bootstrap_with_a_zero_weight_draw_gives_known_standard_errors(zero_weight_cluster_panel):
+    result = did_multiplegt(
+        zero_weight_cluster_panel,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        weightsname="w",
+        effects=2,
+        placebo=1,
+        cluster="cl",
+        boot=True,
+        biters=20,
+        random_state=46,
+    )
+
+    np.testing.assert_allclose(result.effects.std_errors, [0.4562282558172498, 0.3962547382974173], rtol=1e-10)
+    np.testing.assert_allclose(result.placebos.std_errors, [0.6528766325260316], rtol=1e-10)
+    np.testing.assert_allclose(result.ate.std_error, 0.4042719986527167, rtol=1e-10)
+
+
+@pytest.mark.parametrize(
+    "reserved",
+    [".w", "F_g", "d_sq", "d_sq_int", "d_fg", "S_g", "L_g", "T_g", "weight_gt", "first_obs_by_gp", "t_max_by_group"],
+)
+@pytest.mark.parametrize(("column", "argument"), [("y", "yname"), ("x1", "xformla")])
+def test_reserved_column_names_raise(panel_with_controls, reserved, column, argument):
+    with pytest.raises(ValueError, match=re.escape(f"{argument} names the column '{reserved}'")):
+        did_multiplegt(
+            panel_with_controls.rename({column: reserved}),
+            yname=reserved if column == "y" else "y",
+            idname="id",
+            tname="time",
+            dname="d",
+            xformla=f"~ {reserved} + x2" if column == "x1" else "~ x1 + x2",
+        )
+
+
+def test_did_multiplegt_rejects_repeated_unit_periods(simple_panel_duplicated):
+    message = (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (id, time) pair (5, 3)."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        did_multiplegt(simple_panel_duplicated, yname="y", tname="time", idname="id", dname="d")

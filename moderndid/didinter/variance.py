@@ -215,7 +215,7 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
     Parameters
     ----------
     df : pl.DataFrame
-        Data with never_change column.
+        Data with the never_change column and the baseline treatment rank ``d_sq_int``.
     horizon : int
         Current horizon.
     config : DIDInterConfig
@@ -240,7 +240,7 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
 
     # A placebo control whose current outcome is missing has zero weight and leaves the group size unchanged.
     is_control = (pl.col(never_col) == 1.0) & (pl.col("weight_gt") != 0)
-    group_vars = [tname, "d_sq", *list(trends)]
+    group_vars = [tname, "d_sq_int", *list(trends)]
 
     weight_sum_col = f"control_weight_sum_{h}"
     diff_sum_col = f"control_diff_sum_{h}"
@@ -285,7 +285,7 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
     Parameters
     ----------
     df : pl.DataFrame
-        Data with switcher and control flags.
+        Data with switcher and control flags and the baseline treatment rank ``d_sq_int``.
     horizon : int
         Current horizon.
     config : DIDInterConfig
@@ -310,7 +310,7 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
         return df
 
     is_union = ((pl.col(switcher_flag) == 1) | (pl.col(never_col) == 1.0)) & (pl.col("weight_gt") != 0)
-    group_vars = [tname, "d_sq", *list(trends)]
+    group_vars = [tname, "d_sq_int", *list(trends)]
 
     union_flag = f"is_union_{h}"
     weight_sum_col = f"union_weight_sum_{h}"

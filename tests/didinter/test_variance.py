@@ -209,7 +209,7 @@ def test_compute_control_dof_skips_zero_weight_rows(variance_config):
     df = pl.DataFrame(
         {
             "time": [2, 2, 2, 2],
-            "d_sq": [0.0, 0.0, 0.0, 0.0],
+            "d_sq_int": [1, 1, 1, 1],
             "never_change_1": [1.0, 1.0, 1.0, None],
             "weight_gt": [1.0, 1.0, 0.0, 1.0],
             "weighted_diff_1": [0.5, 1.5, 0.0, 0.0],
@@ -226,7 +226,7 @@ def test_compute_control_dof_counts_distinct_clusters(variance_config):
     df = pl.DataFrame(
         {
             "time": [2, 2, 2, 2],
-            "d_sq": [0.0, 0.0, 0.0, 0.0],
+            "d_sq_int": [1, 1, 1, 1],
             "never_change_1": [1.0, 1.0, 0.0, 1.0],
             "weight_gt": [1.0, 1.0, 1.0, 1.0],
             "weighted_diff_1": [0.0, 0.0, 0.0, 0.0],
@@ -243,7 +243,7 @@ def test_compute_union_dof_counts_distinct_weighted_clusters(variance_config):
     df = pl.DataFrame(
         {
             "time": [3, 3, 3, 3, 3],
-            "d_sq": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "d_sq_int": [1, 1, 1, 1, 1],
             "is_switcher_1": [1, 0, 0, 0, None],
             "never_change_1": [0.0, 1.0, 1.0, 0.0, None],
             "weight_gt": [1.0, 1.0, 0.0, 1.0, 1.0],

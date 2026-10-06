@@ -15,6 +15,9 @@ from moderndid.core.preprocess import (
 from moderndid.core.preprocess import (
     map_to_idx as _map_to_idx,
 )
+from moderndid.core.preprocess import (
+    two_by_two_subset as _core_two_by_two_subset,
+)
 from moderndid.core.preprocess.models import ContDIDData
 
 from ..container import GroupTimeATTResult, PTEAggteResult, PTEParams, PTEResult
@@ -879,37 +882,11 @@ def _two_by_two_subset(
     base_period="varying",
     **kwargs,
 ):
-    """Compute two-by-two subset for binary treatment DiD."""
-    main_base_period = g - anticipation - 1
+    """Subset one group-time cell with :func:`~moderndid.core.preprocess.two_by_two_subset`.
 
-    if base_period == "varying":
-        base_period_val = tp - 1 if tp < (g - anticipation) else main_base_period
-    else:  # universal
-        base_period_val = main_base_period
-
-    if control_group == "notyettreated":
-        # A comparison unit must be untreated, and not yet anticipating treatment, in both periods of the cell.
-        latest_untreated = max(tp, base_period_val) + anticipation
-        unit_mask = (pl.col("G") == g) | (pl.col("G") > latest_untreated) | (pl.col("G") == 0)
-    else:
-        unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite() | (pl.col("G") == 0)
-
-    this_data = data.filter(unit_mask)
-
-    time_mask = (pl.col("period") == tp) | (pl.col("period") == base_period_val)
-    this_data = this_data.filter(time_mask)
-
-    this_data = this_data.with_columns(
-        pl.when(pl.col("period") == tp).then(pl.lit("post")).otherwise(pl.lit("pre")).alias("name"),
-        (pl.col("G") == g).cast(pl.Int64).alias("D"),
+    Since the panel treatment effects routine hands every option to each subset
+    function, this one ignores the options it does not use.
+    """
+    return _core_two_by_two_subset(
+        data, g, tp, control_group=control_group, anticipation=anticipation, base_period=base_period
     )
-
-    if this_data["D"].n_unique() < 2:
-        return {"gt_data": pl.DataFrame(), "n1": 0, "disidx": np.array([])}
-
-    n1 = this_data["id"].n_unique()
-    all_ids = np.unique(data["id"].to_numpy())
-    subset_ids = this_data["id"].unique().to_numpy()
-    disidx = np.isin(all_ids, subset_ids)
-
-    return {"gt_data": this_data, "n1": n1, "disidx": disidx}

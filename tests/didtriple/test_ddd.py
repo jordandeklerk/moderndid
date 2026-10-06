@@ -1,6 +1,7 @@
 """Tests for the main DDD wrapper function."""
 
 import re
+import warnings
 
 import numpy as np
 import pytest
@@ -65,7 +66,6 @@ def test_ddd_2period_with_covariates(two_period_df):
     assert np.isfinite(result.att)
 
 
-@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 def test_ddd_2period_bootstrap(two_period_df):
     result = ddd(
         data=two_period_df,
@@ -86,7 +86,6 @@ def test_ddd_2period_bootstrap(two_period_df):
     assert result.se > 0
 
 
-@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 @pytest.mark.parametrize("boot_type", ["multiplier", "weighted"])
 def test_ddd_2period_boot_types(two_period_df, boot_type):
     result = ddd(
@@ -142,7 +141,6 @@ def test_ddd_2period_subgroup_counts(two_period_df):
     assert all(c > 0 for c in result.subgroup_counts.values())
 
 
-@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 def test_ddd_2period_reproducibility(two_period_df):
     result1 = ddd(
         data=two_period_df,
@@ -174,7 +172,6 @@ def test_ddd_2period_reproducibility(two_period_df):
     assert result1.se == result2.se
 
 
-@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 def test_ddd_2period_args_stored(two_period_df):
     result = ddd(
         data=two_period_df,
@@ -519,7 +516,6 @@ def test_ddd_rejects_transformed_covariates(request, data_fixture, gname, panel)
         )
 
 
-@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 @pytest.mark.parametrize("data_fixture, panel", [("two_period_df", True), ("two_period_rcs_data", False)])
 def test_ddd_2period_cluster_bootstrap(request, data_fixture, panel):
     data = request.getfixturevalue(data_fixture).with_columns((pl.col("id") % 40).cast(pl.String).alias("cl"))
@@ -535,13 +531,12 @@ def test_ddd_2period_cluster_bootstrap(request, data_fixture, panel):
     assert clustered.uci == clustered.att + expected.crit_val * expected.se[0]
 
 
-@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 @pytest.mark.parametrize("data_fixture, panel", [("two_period_df", True), ("two_period_rcs_data", False)])
 def test_ddd_2period_cluster_sets_boot(request, data_fixture, panel):
     data = request.getfixturevalue(data_fixture).with_columns((pl.col("id") % 40).alias("cl"))
     spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition", "panel": panel}
 
-    with pytest.warns(UserWarning, match="Clustered SEs require bootstrap"):
+    with pytest.warns(UserWarning, match=r"^Clustered SEs require bootstrap\. Setting boot=True\.$"):
         forced = ddd(data=data, biters=199, cluster="cl", random_state=3, **spec)
     booted = ddd(data=data, boot=True, biters=199, cluster="cl", random_state=3, **spec)
 
@@ -591,7 +586,6 @@ def test_ddd_2period_rcs_cluster_errors(two_period_rcs_data, cluster, match):
         )
 
 
-@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 @pytest.mark.parametrize("allow_unbalanced_panel", [False, True])
 def test_ddd_2period_time_varying_cluster_raises(two_period_df, allow_unbalanced_panel):
     data = two_period_df.with_columns((pl.col("id") + 1000 * pl.col("time")).alias("cl")).filter(
@@ -609,4 +603,456 @@ def test_ddd_2period_time_varying_cluster_raises(two_period_df, allow_unbalanced
             allow_unbalanced_panel=allow_unbalanced_panel,
             boot=True,
             cluster="cl",
+        )
+
+
+@pytest.mark.parametrize(
+    "data_fixture, gname, panel",
+    [
+        ("two_period_df", "state", True),
+        ("two_period_rcs_data", "state", False),
+        ("multi_period_df", "group", True),
+        ("mp_rcs_data", "group", False),
+    ],
+)
+def test_ddd_alpha_above_tenth_uses_005_on_every_route(request, data_fixture, gname, panel):
+    data = request.getfixturevalue(data_fixture)
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id" if panel else None,
+        "gname": gname,
+        "pname": "partition",
+        "panel": panel,
+        "est_method": "reg",
+    }
+
+    with pytest.warns(UserWarning, match=re.escape("alpha=0.2 is above 0.10. Using alpha=0.05.")):
+        high = ddd(data=data, alpha=0.2, **spec)
+    default = ddd(data=data, **spec)
+
+    assert high.args["alpha"] == 0.05
+    np.testing.assert_array_equal(high.lci, default.lci)
+    np.testing.assert_array_equal(high.uci, default.uci)
+
+
+@pytest.mark.parametrize("data_fixture, panel", [("multi_period_df", True), ("mp_rcs_data", False)])
+def test_ddd_mp_cluster_without_boot_warns(request, data_fixture, panel):
+    data = request.getfixturevalue(data_fixture).with_columns((pl.col("id") % 30).alias("cl"))
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id" if panel else None,
+        "gname": "group",
+        "pname": "partition",
+        "panel": panel,
+        "est_method": "reg",
+    }
+
+    with pytest.warns(UserWarning, match="cluster has no effect with several periods unless boot=True"):
+        clustered = ddd(data=data, cluster="cl", **spec)
+    plain = ddd(data=data, **spec)
+
+    assert clustered.args["boot"] is False
+    np.testing.assert_array_equal(clustered.se, plain.se)
+
+
+def test_ddd_2period_bootstrap_does_not_warn_about_cband(two_period_df):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = ddd(
+            data=two_period_df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            boot=True,
+            biters=49,
+            random_state=1,
+        )
+
+    assert all("cband" not in str(w.message) for w in caught)
+    assert result.args["boot"] is True
+
+
+@pytest.mark.parametrize("allow_unbalanced_panel", [False, True])
+def test_ddd_2period_duplicated_unit_periods_raise(two_period_duplicated_df, allow_unbalanced_panel):
+    with pytest.raises(ValueError, match=re.escape("The value of idname must be unique (by tname).")):
+        ddd(
+            data=two_period_duplicated_df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            xformla="~ cov1 + cov2 + cov3 + cov4",
+            est_method="reg",
+            allow_unbalanced_panel=allow_unbalanced_panel,
+        )
+
+
+@pytest.mark.parametrize("data_fixture, panel", [("two_period_df", True), ("two_period_rcs_data", False)])
+def test_ddd_2period_partition_must_be_binary(request, data_fixture, panel):
+    data = request.getfixturevalue(data_fixture).with_columns((pl.col("partition") + 1).alias("partition"))
+    message = (
+        "pname='partition' must be 1 for eligible units and 0 for ineligible units, but it also takes the values [2]."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id" if panel else None,
+            gname="state",
+            pname="partition",
+            panel=panel,
+        )
+
+
+def test_ddd_2period_boolean_partition_matches_integer(two_period_df):
+    flagged = two_period_df.with_columns(pl.col("partition") == 1)
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"}
+
+    assert ddd(data=flagged, **spec).att == ddd(data=two_period_df, **spec).att
+
+
+@pytest.mark.parametrize("data_fixture, panel", [("two_period_df", True), ("two_period_rcs_data", False)])
+def test_ddd_2period_requires_all_four_subgroups(request, data_fixture, panel):
+    data = request.getfixturevalue(data_fixture).filter(~((pl.col("state") == 0) & (pl.col("partition") == 1)))
+
+    with pytest.raises(ValueError, match=re.escape("No units fall in subgroup 2 (untreated and eligible).")):
+        ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id" if panel else None,
+            gname="state",
+            pname="partition",
+            panel=panel,
+        )
+
+
+def test_ddd_2period_balancing_warns_and_keeps_complete_units(two_period_df):
+    unbalanced = two_period_df.filter(~((pl.col("id") % 25 == 0) & (pl.col("time") == 2)))
+    complete = unbalanced.filter(pl.len().over("id") == 2)
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition", "est_method": "reg"}
+
+    with pytest.warns(UserWarning, match="Dropped 40 units while converting to balanced panel"):
+        result = ddd(data=unbalanced, **spec)
+    expected = ddd(data=complete, **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+
+
+@pytest.mark.parametrize(
+    "two_period_df_one_infinite",
+    [("y", float("inf")), ("cov1", float("-inf")), ("w", float("inf"))],
+    indirect=True,
+)
+def test_ddd_2period_drops_infinite_rows_like_missing_ones(two_period_df_one_infinite):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "state",
+        "pname": "partition",
+        "xformla": "~ cov1 + cov2",
+        "weightsname": "w",
+        "est_method": "reg",
+    }
+    expected = ddd(data=two_period_df_one_infinite.filter(pl.col("id") != 11), **spec)
+
+    with (
+        pytest.warns(UserWarning, match="^Dropped 1 rows from original data due to missing values$"),
+        pytest.warns(UserWarning, match="^Dropped 1 units while converting to balanced panel$"),
+    ):
+        result = ddd(data=two_period_df_one_infinite, **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+
+
+def test_ddd_2period_rejects_weights_without_positive_mean(two_period_df):
+    message = "The weights variable 'w' must be non-negative with a positive mean."
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ddd(
+            data=two_period_df.with_columns(pl.lit(0.0).alias("w")),
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            weightsname="w",
+            est_method="reg",
+        )
+
+
+def test_ddd_2period_outcome_named_weights(two_period_df):
+    spec = {
+        "tname": "time",
+        "idname": "id",
+        "gname": "state",
+        "pname": "partition",
+        "xformla": "~ cov1 + cov2",
+        "est_method": "reg",
+    }
+    renamed = ddd(data=two_period_df.rename({"y": "weights"}), yname="weights", **spec)
+    expected = ddd(data=two_period_df, yname="y", **spec)
+
+    assert renamed.att == expected.att
+    assert renamed.se == expected.se
+
+
+@pytest.mark.parametrize(("column", "argument"), [("y", "yname"), ("cov2", "xformla")])
+@pytest.mark.parametrize("reserved", [".w", "_post", "_subgroup"])
+def test_ddd_2period_rejects_reserved_column_names(two_period_df, column, argument, reserved):
+    with pytest.raises(ValueError, match=re.escape(f"{argument} names the column '{reserved}'")):
+        ddd(
+            data=two_period_df.rename({column: reserved}),
+            yname=reserved if column == "y" else "y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            xformla=f"~ cov1 + {reserved}" if column == "cov2" else "~ cov1 + cov2",
+        )
+
+
+@pytest.mark.parametrize("base_period", ["universal", "varying"])
+def test_ddd_mp_drops_units_treated_in_first_period(mp_first_period_cohort_df, base_period):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "pname": "partition",
+        "base_period": base_period,
+        "est_method": "reg",
+    }
+    n_early = mp_first_period_cohort_df.filter(pl.col("group") == 1)["id"].n_unique()
+
+    with pytest.warns(UserWarning, match=f"^Dropped {n_early} units that were already treated in the first period$"):
+        result = ddd(data=mp_first_period_cohort_df, **spec)
+    expected = ddd(data=mp_first_period_cohort_df.filter(pl.col("group") != 1), **spec)
+
+    assert result.n == expected.n
+    np.testing.assert_array_equal(result.glist, expected.glist)
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
+
+
+@pytest.mark.parametrize("base_period", ["universal", "varying"])
+def test_ddd_mp_no_never_treated_cells_match_trimmed_panel(mp_no_never_treated_df, base_period):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "pname": "partition",
+        "control_group": "notyettreated",
+        "base_period": base_period,
+        "est_method": "reg",
+    }
+    result = ddd(data=mp_no_never_treated_df, **spec)
+    trimmed = ddd(data=mp_no_never_treated_df.filter(pl.col("time") < 4), **spec)
+
+    cells = {(g, t): i for i, (g, t) in enumerate(zip(result.groups, result.times))}
+    rows = [cells[(g, t)] for g, t in zip(trimmed.groups, trimmed.times)]
+    np.testing.assert_allclose(result.att[rows], trimmed.att, rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(result.se[rows], trimmed.se, rtol=1e-10, atol=1e-10)
+
+
+@pytest.mark.parametrize("base_period", ["universal", "varying"])
+def test_ddd_mp_failed_comparison_warns_and_leaves_other_cells(multi_period_df, base_period):
+    all_eligible = multi_period_df.with_columns(
+        pl.when(pl.col("group") == 2).then(1).otherwise(pl.col("partition")).alias("partition")
+    )
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "pname": "partition",
+        "base_period": base_period,
+        "est_method": "reg",
+    }
+
+    with pytest.warns(UserWarning, match=re.escape("Skipping comparison group 0 for ATT(2, 3) because its estimation")):
+        result = ddd(data=all_eligible, **spec)
+    expected = ddd(data=multi_period_df, **spec)
+
+    assert not np.any((result.groups == 2) & (result.times >= 2))
+    np.testing.assert_array_equal(result.att[result.groups == 3], expected.att[expected.groups == 3])
+    np.testing.assert_array_equal(result.se[result.groups == 3], expected.se[expected.groups == 3])
+
+
+@pytest.mark.parametrize("mp_recoded_never_treated_df", [99.0, float("inf")], indirect=True)
+def test_ddd_mp_late_or_infinite_cohort_counts_as_never_treated(mp_recoded_never_treated_df, multi_period_df):
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "group", "pname": "partition"}
+    result = ddd(data=mp_recoded_never_treated_df, **spec)
+    expected = ddd(data=multi_period_df, **spec)
+
+    np.testing.assert_array_equal(result.glist, expected.glist)
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
+    assert f"Units never enabling treatment: {np.sum(expected.unit_groups == 0)}" in str(result)
+
+
+@pytest.mark.parametrize("mp_missing_outcome_df", [None, float("nan")], indirect=True)
+def test_ddd_mp_drops_rows_with_missing_values(mp_missing_outcome_df, multi_period_df):
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "group", "pname": "partition"}
+    complete = multi_period_df.with_row_index("row").filter(~pl.col("row").is_in([1, 5, 9])).drop("row")
+
+    with pytest.warns(UserWarning, match="^Dropped 3 rows from original data due to missing values$"):
+        result = ddd(data=mp_missing_outcome_df, **spec)
+    expected = ddd(data=complete, **spec)
+
+    assert np.isfinite(result.att).all()
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
+
+
+@pytest.mark.parametrize("allow_unbalanced_panel", [False, True])
+def test_ddd_mp_duplicated_unit_periods_raise(multi_period_df, allow_unbalanced_panel):
+    repeated = pl.concat([multi_period_df, multi_period_df.filter((pl.col("id") == 3) & (pl.col("time") == 1))])
+    message = (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (id, time) pair (3, 1)."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ddd(
+            data=repeated,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            allow_unbalanced_panel=allow_unbalanced_panel,
+        )
+
+
+@pytest.mark.parametrize(
+    ("column", "change", "message"),
+    [
+        ("partition", 1 - pl.col("partition"), "The value of partition must be the same across all periods"),
+        ("group", pl.col("group") + 1, "The value of group must be the same across all periods"),
+        ("cl", pl.col("cl") + 1, "Cluster variable must be time-invariant within units."),
+        ("w", pl.col("w") + 1, "Weights must be the same across all periods for each unit."),
+    ],
+)
+def test_ddd_mp_rejects_unit_attributes_that_change(multi_period_df, column, change, message):
+    data = multi_period_df.with_columns((pl.col("id") % 7).alias("cl"), pl.lit(1.0).alias("w"))
+    changed = (pl.col("id") == 3) & (pl.col("time") == 3)
+    data = data.with_columns(pl.when(changed).then(change).otherwise(pl.col(column)).alias(column))
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            weightsname="w",
+            cluster="cl",
+            boot=True,
+        )
+
+
+@pytest.mark.parametrize("argument", ["pname", "cluster", "weightsname"])
+def test_ddd_mp_reports_missing_columns(multi_period_df, argument):
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "group", "pname": "partition", "boot": True}
+
+    with pytest.raises(ValueError, match=re.escape(f"{argument}='nope' not found in data.")):
+        ddd(data=multi_period_df, **(spec | {argument: "nope"}))
+
+
+@pytest.mark.parametrize("data_fixture, panel", [("multi_period_df", True), ("mp_rcs_data", False)])
+def test_ddd_mp_partition_must_be_binary(request, data_fixture, panel):
+    data = request.getfixturevalue(data_fixture).with_columns((pl.col("partition") + 1).alias("partition"))
+    message = (
+        "pname='partition' must be 1 for eligible units and 0 for ineligible units, but it also takes the values [2]."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id" if panel else None,
+            gname="group",
+            pname="partition",
+            panel=panel,
+        )
+
+
+@pytest.mark.parametrize("est_method", ["dr", "reg"])
+def test_ddd_mp_integer_weights_match_replicated_units(mp_weighted_df, mp_weighted_replicated_df, est_method):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "pname": "partition",
+        "xformla": "~ cov1 + cov2",
+        "est_method": est_method,
+    }
+    weighted = ddd(data=mp_weighted_df, weightsname="w", **spec)
+    replicated = ddd(data=mp_weighted_replicated_df, **spec)
+    unweighted = ddd(data=mp_weighted_df, **spec)
+
+    np.testing.assert_allclose(weighted.att, replicated.att, rtol=1e-8, atol=1e-8)
+    assert np.max(np.abs(weighted.att - unweighted.att)) > 1e-3
+
+
+def test_ddd_mp_rcs_integer_weights_match_replicated_rows(mp_rcs_weighted_df, mp_rcs_weighted_replicated_df):
+    spec = {"yname": "y", "tname": "time", "gname": "group", "pname": "partition", "panel": False}
+    weighted = ddd(data=mp_rcs_weighted_df, weightsname="w", **spec)
+    replicated = ddd(data=mp_rcs_weighted_replicated_df, **spec)
+
+    np.testing.assert_allclose(weighted.att, replicated.att, rtol=1e-8, atol=1e-8)
+
+
+def test_ddd_mp_rejects_negative_weights(mp_weighted_df):
+    message = "The weights variable 'w' must be non-negative with a positive mean."
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ddd(
+            data=mp_weighted_df.with_columns(-pl.col("w")),
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            weightsname="w",
+        )
+
+
+@pytest.mark.parametrize(
+    "data_fixture, gname, panel",
+    [
+        ("two_period_df", "state", True),
+        ("two_period_rcs_data", "state", False),
+        ("multi_period_df", "group", True),
+        ("mp_rcs_data", "group", False),
+    ],
+)
+def test_ddd_rejects_left_hand_side_in_xformla(request, data_fixture, gname, panel):
+    data = request.getfixturevalue(data_fixture)
+
+    with pytest.raises(ValueError, match=re.escape("xformla='y ~ 1' has a left-hand side.")):
+        ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id" if panel else None,
+            gname=gname,
+            pname="partition",
+            xformla="y ~ 1",
+            panel=panel,
         )

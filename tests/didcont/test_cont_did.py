@@ -1,5 +1,7 @@
 """Tests for continuous treatment difference-in-differences estimation."""
 
+import re
+
 import numpy as np
 import pytest
 from scipy import stats
@@ -1380,3 +1382,53 @@ def test_cont_did_gname_none_reads_start_of_treatment_from_dose(contdid_data):
 def test_cont_did_gname_none_needs_a_period_before_treatment(contdid_data):
     with pytest.raises(ValueError, match="With gname=None"):
         cont_did(data=contdid_data.drop("G"), yname="Y", tname="period", idname="id", dname="D", gname=None)
+
+
+def test_cont_did_outcome_named_weights(contdid_data):
+    kwargs = {"tname": "period", "idname": "id", "gname": "G", "dname": "D", "degree": 2, "biters": 10}
+    renamed = cont_did(data=contdid_data.rename({"Y": "weights"}), yname="weights", random_state=0, **kwargs)
+    expected = cont_did(data=contdid_data, yname="Y", random_state=0, **kwargs)
+
+    assert renamed.overall_att == expected.overall_att
+    assert renamed.overall_att_se == expected.overall_att_se
+    np.testing.assert_array_equal(renamed.att_d, expected.att_d)
+
+
+@pytest.mark.parametrize("contdid_one_infinite", ["Y", "D"], indirect=True)
+def test_cont_did_drops_infinite_rows_like_missing_ones(contdid_one_infinite):
+    kwargs = {"yname": "Y", "tname": "period", "idname": "id", "gname": "G", "dname": "D", "degree": 2, "biters": 10}
+    expected = cont_did(
+        data=contdid_one_infinite.filter(pl.col("Y").is_finite() & pl.col("D").is_finite()), random_state=0, **kwargs
+    )
+
+    with pytest.warns(UserWarning, match="^Dropped 1 rows from original data due to missing values$"):
+        result = cont_did(data=contdid_one_infinite, random_state=0, **kwargs)
+
+    assert result.overall_att == expected.overall_att
+    assert result.overall_att_se == expected.overall_att_se
+    np.testing.assert_array_equal(result.att_d, expected.att_d)
+
+
+def test_cont_did_rejects_reserved_outcome_name(contdid_data):
+    with pytest.raises(ValueError, match=re.escape("yname names the column '.w'")):
+        cont_did(data=contdid_data.rename({"Y": ".w"}), yname=".w", tname="period", idname="id", gname="G", dname="D")
+
+
+@pytest.mark.filterwarnings("error:.*unbalanced:UserWarning")
+def test_cont_did_rejects_repeated_unit_periods(contdid_duplicated):
+    message = (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (id, period) pair (1, 2)."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        cont_did(
+            data=contdid_duplicated,
+            yname="Y",
+            tname="period",
+            idname="id",
+            gname="G",
+            dname="D",
+            biters=10,
+            random_state=0,
+        )

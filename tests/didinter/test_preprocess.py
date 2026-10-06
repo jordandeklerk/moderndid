@@ -10,7 +10,7 @@ pl = importorskip("polars")
 from moderndid.core.preprocess import PreprocessDataBuilder
 from moderndid.core.preprocess.config import DIDInterConfig
 from moderndid.core.preprocess.models import DIDInterData
-from moderndid.core.preprocess.transformers import ControlsTimeFilter
+from moderndid.core.preprocess.transformers import ControlsTimeFilter, SwitcherIdentifier
 
 
 @pytest.fixture
@@ -347,6 +347,7 @@ def test_continuous_pools_distinct_baselines_and_marks_each_switch(continuous_pa
 
     assert data["id"].n_unique() == 120
     assert (data["d_sq"] == 0).all()
+    assert (data["d_sq_int"] == 1).all()
     assert (data.filter(pl.col("F_g") == float("inf"))["weight_gt"] == 1).all()
     np.testing.assert_array_equal(switched["d"], switched["S_g"] * (switched["time"] >= switched["F_g"]))
     np.testing.assert_array_equal(switched["d_fg"], switched["S_g"])
@@ -367,3 +368,36 @@ def test_trends_lin_keeps_outcome_levels_and_baseline_trends_after_the_first_per
         f"_baseline_trend_{t}_1" for t in range(3, 7)
     ]
     np.testing.assert_allclose(levels["_outcome_levels"], levels["raw"])
+
+
+def test_balanced_panel_keeps_the_observed_baseline_in_every_row(baseline_shift_panels):
+    tenth, _ = baseline_shift_panels
+    config = DIDInterConfig(yname="y", tname="t", gname="g", dname="d", effects=3)
+
+    data = PreprocessDataBuilder().with_data(tenth).with_config(config).validate().transform().build().data
+
+    assert data.height == data["g"].n_unique() * data["t"].n_unique()
+    assert data["d_sq"].unique().to_list() == [0.1]
+    assert data["d_sq_int"].unique().to_list() == [1]
+
+
+def test_switcher_identifier_ranks_the_baseline_treatments(order_sensitive_panel):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d")
+
+    result = SwitcherIdentifier().transform(order_sensitive_panel, config)
+
+    ranks = dict(result.group_by("id").agg(pl.col("d_sq_int").first()).iter_rows())
+    assert ranks == {1: 1, 2: 1, 3: 2, 4: 2, 5: 1, 6: 2, 7: 3, 8: 3}
+
+
+def test_switcher_identifier_reads_each_group_in_time_order_whatever_order_joins_return(
+    order_sensitive_panel, shuffling_joins
+):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d")
+
+    result = SwitcherIdentifier().transform(order_sensitive_panel, config)
+
+    groups = result.group_by("id").agg(pl.col("time").max(), pl.col("S_g").first()).sort("id")
+    assert groups["time"].to_list() == [6, 6, 3, 4, 6, 6, 3, 4]
+    assert groups["S_g"].to_list() == [1, 1, -1, 1, 0, 0, 1, -1]
+    assert result.select("id", "time").equals(result.select("id", "time").sort("id", "time"))

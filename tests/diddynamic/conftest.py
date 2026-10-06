@@ -314,3 +314,15 @@ def het_result(estimator_panel):
             nfolds=3,
             adaptive_balancing=False,
         )
+
+
+@pytest.fixture(params=["repeated_row", "hidden_gap", "relabeled_row"])
+def estimator_panel_duplicated(request, estimator_panel):
+    """Estimator panel in which unit 7 has two rows in period 3."""
+    unit = pl.col("id") == 7
+    row = estimator_panel.filter(unit & (pl.col("time") == 3))
+    if request.param == "repeated_row":
+        return pl.concat([estimator_panel, row])
+    if request.param == "hidden_gap":
+        return pl.concat([estimator_panel.filter(~(unit & (pl.col("time") == 2))), row])
+    return pl.concat([estimator_panel, row.with_columns(pl.col("y") + 1)])

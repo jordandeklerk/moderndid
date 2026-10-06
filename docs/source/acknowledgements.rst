@@ -100,7 +100,7 @@ The `contdid <https://github.com/bcallaway11/contdid>`_ R package by
 **ModernDiD**'s continuous treatment DiD estimator. The
 `cont_did() <api/generated/didcont/moderndid.cont_did.html>`_ function
 implements the methodology in
-`Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_,
+`Callaway, Goodman-Bacon, and Sant'Anna (2025) <https://psantanna.com/files/CGBS_v4.pdf>`_,
 which extends the DiD framework to settings where treatment intensity varies
 continuously across units.
 
@@ -301,9 +301,10 @@ The following papers describe the core methodologies implemented in **ModernDiD*
 - Callaway, B., & Sant'Anna, P. H. C. (2021). "Difference-in-Differences with
   Multiple Time Periods." *Journal of Econometrics*, 225(2), 200-230.
   `DOI:10.1016/j.jeconom.2020.12.001 <https://doi.org/10.1016/j.jeconom.2020.12.001>`_.
-- Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. C. (2024).
+- Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. C. (2025).
   "Difference-in-Differences with a Continuous Treatment."
-  `arXiv:2107.02637 <https://arxiv.org/abs/2107.02637>`_.
+  American Economic Review, forthcoming.
+  `December 31, 2025 manuscript <https://psantanna.com/files/CGBS_v4.pdf>`_.
 - Chen, X., & Christensen, T. M. (2018). "Optimal Sup-norm Rates and Uniform
   Inference on Nonlinear Functionals of Nonparametric IV." *Quantitative
   Economics*, 9(1), 39-84.

@@ -3,25 +3,29 @@
 Dynamic covariate balancing
 ===========================
 
-A country's economic performance can affect whether it adopts democracy
-and whether its democratic institutions persist. If democracy itself changes
-GDP and trade flows, estimating the effect of sustained democracy requires
-accounting for the feedback between past treatment, observed economic
-conditions, and later treatment decisions.
+Dynamic covariate balancing compares average outcomes under two specified
+sequences of treatment, including sequences with treatment reversals.
+The challenge is that outcomes and covariates affected by earlier treatment can
+also influence later treatment decisions. In a study of democracy and growth,
+for example, past economic conditions may affect whether democracy is adopted
+and whether it persists. Accounting for that feedback is part of estimating the
+effect of sustained democracy on later GDP.
 
-The ``diddynamic`` module implements the dynamic covariate balancing estimator
-of `Viviano and Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_.
-We compare specified treatment histories under sequential ignorability and
-models for potential outcomes. The method allows treatment to reverse and
-covariates to respond to earlier treatment. Its balancing weights correct the
-outcome projections without estimating treatment probabilities.
+The ``diddynamic`` module implements the estimator of `Viviano and Bradic (2026)
+<https://doi.org/10.1093/biomet/asag016>`_. Its sequential ignorability assumption
+requires the observed history to account for confounding at each treatment
+decision. Under that assumption and models for potential-outcome means, the
+estimator works backward through those histories and corrects outcome
+projections with balancing weights. This approach permits covariates to respond
+to earlier treatment without estimating treatment probabilities. The
+:ref:`intertemporal DiD framework <background-didinter>` instead identifies path
+effects from parallel trends for outcome changes.
 
-The :ref:`intertemporal DiD framework <background-didinter>` relies on
-parallel trends for outcome changes. DCB instead conditions on the history
-available before each treatment decision. Neither identifying assumption
-follows from observing a panel or choosing a flexible regression. The
-:ref:`worked example <example_dyn_balancing>` shows how these choices enter
-:func:`~moderndid.diddynamic.dyn_balancing`.
+We will work from the effect of a full treatment history through the identifying
+restrictions to the recursive projections and sequential balance constraints.
+The later inference results make precise when those corrections support a normal
+approximation. The :ref:`worked example <example_dyn_balancing>` connects these
+steps to the choices you make in :func:`~moderndid.diddynamic.dyn_balancing`.
 
 What a treatment history changes
 --------------------------------

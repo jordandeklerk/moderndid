@@ -4,6 +4,7 @@ import numpy as np
 import polars as pl
 
 from moderndid.core.preprocess.transformers import DIDInterColumnSelector, MissingDataHandler
+from moderndid.core.preprocess.utils import nonfinite_to_null
 
 from .container import BootstrapResult
 from .numba import compute_column_std, gather_bootstrap_indices
@@ -57,7 +58,9 @@ def cluster_bootstrap(
     gname = config.gname
     bs_group = config.cluster if config.cluster else gname
 
-    data = DIDInterColumnSelector().transform(data, config).filter(pl.col(bs_group).is_not_null())
+    # Since the full-sample estimate counts a NaN or infinite cluster as missing,
+    # such a cluster must not enter the draws.
+    data = nonfinite_to_null(DIDInterColumnSelector().transform(data, config)).filter(pl.col(bs_group).is_not_null())
     data = data.with_columns(
         (pl.col(bs_group).min().over(gname).rank("dense") - 1).cast(pl.Int64).alias("_boot_cluster")
     )

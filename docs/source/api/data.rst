@@ -22,6 +22,7 @@ Built-in datasets
    load_ehec
    load_engel
    load_favara_imbs
+   load_fracking
    load_cai2016
    load_acemoglu
 

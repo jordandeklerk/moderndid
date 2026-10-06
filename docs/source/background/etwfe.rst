@@ -3,32 +3,35 @@
 Extended two-way fixed effects
 ==============================
 
-With staggered adoption, you rarely have reason to expect the same treatment effect for every
-cohort in every period, even though a regression with one treatment coefficient asks the data
-for one effect. Extended two-way fixed effects, or ETWFE, gives each treated cohort-time cell
-its own coefficient within the regression. We can then estimate those effects before choosing
-how to average them.
+Extended two-way fixed effects, or ETWFE, uses a regression to estimate treatment effects
+separately for each period and adoption cohort. A cohort contains units that begin treatment
+in the same period. This flexibility addresses a problem with the usual regression that
+summarizes staggered adoption through one treatment coefficient. When
+effects differ across cohorts or change after adoption, that coefficient can combine comparisons
+whose average does not answer your question. ETWFE estimates the cohort-period effects before
+you choose how to average them.
 
 This page follows `Wooldridge (2025) <https://doi.org/10.1007/s00181-025-02807-z>`_ for the
 linear estimator and `Wooldridge (2023) <https://doi.org/10.1093/ectj/utad016>`_ for nonlinear
 outcomes. We will build the untreated outcome model that identifies each effect and use it to
 show why imputation and a saturated regression can give the same estimates. That connection explains
-the specification fitted by :func:`~moderndid.etwfe`. The nonlinear extension also explains why
-you need :func:`~moderndid.emfx` to turn index coefficients into effects on the outcome scale.
+the specification fitted by :func:`~moderndid.etwfe`. You can then use :func:`~moderndid.emfx`
+to form the averages you want to report and calculate their confidence intervals.
+The nonlinear extension also explains why
+index coefficients must be converted into effects on the outcome scale before averaging.
 
 Why a separate effect for each cell
 -----------------------------------
 
-The :ref:`staggered DiD background <background-did>` describes how a conventional TWFE
-regression can mix comparisons across cohorts and exposure lengths. With heterogeneous effects,
-its single treatment coefficient can place negative weights on some cohort-time ATTs. Adding
-covariates to that regression does not remove the restriction that one coefficient summarize
-all treated observations.
+With heterogeneous effects, a conventional TWFE regression can place negative weights on some
+cohort-time average treatment effects. The :ref:`staggered DiD background <background-did>`
+traces those weights to the comparisons the regression makes across cohorts and exposure
+lengths. Adding covariates to that regression still leaves one coefficient to summarize all
+treated observations.
 
-By replacing that coefficient with a full set of cohort-time treatment indicators, ETWFE
-allows effects to differ both across a cohort's post-treatment periods and across cohorts
-observed in the same calendar period. The remaining challenge is to specify an untreated
-outcome model that makes those cell coefficients interpretable.
+Each separate cohort-time coefficient still needs an untreated outcome model that makes its
+effect interpretable. That model must justify the comparison observations and the covariate
+adjustment used to recover each cohort's missing mean.
 
 Cohorts, periods, and potential outcomes
 ----------------------------------------

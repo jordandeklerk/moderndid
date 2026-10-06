@@ -4,7 +4,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from moderndid import ddd_mp
+from moderndid import ddd_mp, gen_ddd_scalable
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 from moderndid.didtriple.container import (
     DDDAggResult,
@@ -447,3 +447,84 @@ def ddd_converted(request, two_period_df):
         conn.register("ddd_data", two_period_df.to_arrow())
         return conn.execute("SELECT * FROM ddd_data").fetch_arrow_table()
     raise ValueError(f"Unknown dataframe type: {df_type}")
+
+
+@pytest.fixture(params=["repeated_pre_row", "compensating_rows", "relabeled_post_row"])
+def two_period_duplicated_df(request, two_period_df):
+    """Two-period panel in which unit 11 or unit 21 appears twice in one period."""
+    pre_a = (pl.col("id") == 11) & (pl.col("time") == 1)
+    post_a = (pl.col("id") == 11) & (pl.col("time") == 2)
+    pre_b = (pl.col("id") == 21) & (pl.col("time") == 1)
+    post_b = (pl.col("id") == 21) & (pl.col("time") == 2)
+    if request.param == "repeated_pre_row":
+        return pl.concat([two_period_df, two_period_df.filter(pre_a)])
+    if request.param == "compensating_rows":
+        kept = two_period_df.filter(~(post_a | pre_b))
+        return pl.concat([kept, two_period_df.filter(pre_a), two_period_df.filter(post_b)])
+    return two_period_df.with_columns(pl.when(post_a).then(1).otherwise(pl.col("time")).alias("time"))
+
+
+@pytest.fixture
+def two_period_df_one_infinite(request, two_period_df):
+    """Two-period panel with weights in w and an infinite value in the second-period row of unit 11."""
+    column, value = request.param
+    row = (pl.col("id") == 11) & (pl.col("time") == 2)
+    data = two_period_df.with_columns(pl.lit(1.0).alias("w"))
+    return data.with_columns(pl.when(row).then(value).otherwise(pl.col(column).cast(pl.Float64)).alias(column))
+
+
+@pytest.fixture
+def mp_first_period_cohort_df(multi_period_df):
+    """Multi-period panel in which a fifth of the units of cohort 2 are first treated in period 1."""
+    early = (pl.col("group") == 2) & (pl.col("id") % 5 == 0)
+    return multi_period_df.with_columns(pl.when(early).then(1).otherwise(pl.col("group")).alias("group"))
+
+
+@pytest.fixture
+def mp_no_never_treated_df():
+    """Panel over five periods whose units are all treated by period 4."""
+    data = gen_ddd_scalable(n=1500, n_periods=5, n_cohorts=3, n_covariates=4, random_state=11)["data"]
+    return data.filter(pl.col("group") != 0)
+
+
+@pytest.fixture
+def mp_recoded_never_treated_df(request, multi_period_df):
+    """Multi-period panel in which half of the never-treated units carry the code in request.param."""
+    never = multi_period_df.filter(pl.col("group") == 0)["id"].unique().sort()
+    recoded = pl.col("id").is_in(never.head(len(never) // 2).implode())
+    group = pl.col("group").cast(pl.Float64)
+    return multi_period_df.with_columns(pl.when(recoded).then(request.param).otherwise(group).alias("group"))
+
+
+@pytest.fixture
+def mp_missing_outcome_df(request, multi_period_df):
+    """Multi-period panel whose rows 1, 5, and 9 hold the missing value in request.param as the outcome."""
+    rows = pl.int_range(pl.len()).is_in([1, 5, 9])
+    return multi_period_df.with_columns(pl.when(rows).then(request.param).otherwise(pl.col("y")).alias("y"))
+
+
+@pytest.fixture
+def mp_weighted_df(multi_period_df):
+    """Multi-period panel with an integer weight from 1 to 3 for each unit in w."""
+    ids = multi_period_df["id"].unique().sort()
+    weights = pl.DataFrame({"id": ids, "w": np.random.default_rng(3).integers(1, 4, len(ids))})
+    return multi_period_df.join(weights, on="id")
+
+
+@pytest.fixture
+def mp_weighted_replicated_df(mp_weighted_df):
+    """The weighted panel with each unit copied as many times as its weight. Every copy is a unit of its own."""
+    copies = mp_weighted_df.with_columns(pl.int_ranges(pl.col("w")).alias("copy")).explode("copy")
+    return copies.with_columns((10 * pl.col("id") + pl.col("copy")).alias("id")).drop("copy", "w")
+
+
+@pytest.fixture
+def mp_rcs_weighted_df(mp_rcs_data):
+    """Multi-period repeated cross-section with an integer weight from 1 to 3 for each observation in w."""
+    return mp_rcs_data.with_columns(pl.Series("w", np.random.default_rng(4).integers(1, 4, mp_rcs_data.height)))
+
+
+@pytest.fixture
+def mp_rcs_weighted_replicated_df(mp_rcs_weighted_df):
+    """The weighted cross-section with each observation copied as many times as its weight."""
+    return mp_rcs_weighted_df.with_columns(pl.int_ranges(pl.col("w")).alias("copy")).explode("copy").drop("copy", "w")

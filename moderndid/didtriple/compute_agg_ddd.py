@@ -82,6 +82,11 @@ def compute_agg_ddd(
     tlist = ddd_result.tlist.copy()
     glist = ddd_result.glist.copy()
     unit_groups = ddd_result.unit_groups.copy()
+    unit_weights = (
+        np.ones(len(unit_groups))
+        if ddd_result.unit_weights is None
+        else np.asarray(ddd_result.unit_weights, dtype=float)
+    )
 
     args = {
         "aggregation_type": aggregation_type,
@@ -132,7 +137,7 @@ def compute_agg_ddd(
     tlist_recoded = np.unique(t)
     max_t = int(t.max())
 
-    pgg = np.array([np.mean(unit_groups == g) for g in orig_glist])
+    pgg = np.array([np.mean(unit_weights * (unit_groups == g)) for g in orig_glist])
     pg = pgg.copy()
     pg_obs = np.zeros(len(group))
     for i, g in enumerate(glist_recoded):
@@ -154,6 +159,7 @@ def compute_agg_ddd(
             random_state,
             orig_group,
             unit_groups,
+            unit_weights,
         )
 
     if aggregation_type == "group":
@@ -176,6 +182,7 @@ def compute_agg_ddd(
             args,
             random_state,
             unit_groups,
+            unit_weights,
         )
 
     if aggregation_type == "calendar":
@@ -197,6 +204,7 @@ def compute_agg_ddd(
             random_state,
             orig_group,
             unit_groups,
+            unit_weights,
         )
 
     return _compute_eventstudy(
@@ -221,6 +229,7 @@ def compute_agg_ddd(
         args,
         random_state,
         unit_groups,
+        unit_weights,
     )
 
 
@@ -237,6 +246,7 @@ def _compute_simple(
     random_state,
     orig_group,
     unit_groups,
+    unit_weights,
 ):
     """Compute simple ATT aggregation."""
     simple_att = np.sum(att[keepers] * pg_obs[keepers]) / pg_obs[keepers].sum()
@@ -247,7 +257,9 @@ def _compute_simple(
         simple_if = np.zeros(n)
     else:
         weights = pg_obs[keepers] / pg_obs[keepers].sum()
-        wif = _get_weight_influence(keepers=keepers, pg=pg_obs, unit_groups=unit_groups, glist=orig_group)
+        wif = _get_weight_influence(
+            keepers=keepers, pg=pg_obs, unit_groups=unit_groups, glist=orig_group, unit_weights=unit_weights
+        )
         simple_if = _get_agg_inf_func(inf_func_mat, keepers, weights) + wif @ att[keepers]
         simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state)
 
@@ -284,6 +296,7 @@ def _compute_group(
     args,
     random_state,
     unit_groups,
+    unit_weights,
 ):
     """Compute group-specific ATT aggregation."""
     selective_att_g = np.zeros(len(glist_recoded))
@@ -323,6 +336,7 @@ def _compute_group(
         pg=pgg,
         unit_groups=unit_groups,
         glist=orig_glist,
+        unit_weights=unit_weights,
     )
 
     selective_inf_func = selective_inf_func_g @ weights_overall + wif @ selective_att_g_clean
@@ -360,6 +374,7 @@ def _compute_calendar(
     random_state,
     orig_group,
     unit_groups,
+    unit_weights,
 ):
     """Compute calendar time ATT aggregation."""
     min_g = group.min()
@@ -374,7 +389,9 @@ def _compute_calendar(
         if len(whicht) > 0:
             pgt = pg_obs[whicht] / pg_obs[whicht].sum()
             calendar_att_t[i] = np.sum(pgt * att[whicht])
-            wif_t = _get_weight_influence(keepers=whicht, pg=pg_obs, unit_groups=unit_groups, glist=orig_group)
+            wif_t = _get_weight_influence(
+                keepers=whicht, pg=pg_obs, unit_groups=unit_groups, glist=orig_group, unit_weights=unit_weights
+            )
             inf_func_t = _get_agg_inf_func(inf_func_mat, whicht, pgt) + wif_t @ att[whicht]
         else:
             calendar_att_t[i] = np.nan
@@ -446,6 +463,7 @@ def _compute_eventstudy(
     args,
     random_state,
     unit_groups,
+    unit_weights,
 ):
     """Compute event study ATT aggregation."""
     eseq = np.unique(orig_periods - orig_group)
@@ -475,7 +493,9 @@ def _compute_eventstudy(
         if len(whiche) > 0:
             pge = pg_obs[whiche] / pg_obs[whiche].sum()
             dynamic_att_e[i] = np.sum(att[whiche] * pge)
-            wif_e = _get_weight_influence(keepers=whiche, pg=pg_obs, unit_groups=unit_groups, glist=orig_group)
+            wif_e = _get_weight_influence(
+                keepers=whiche, pg=pg_obs, unit_groups=unit_groups, glist=orig_group, unit_weights=unit_weights
+            )
             inf_func_e = _get_agg_inf_func(inf_func_mat, whiche, pge) + wif_e @ att[whiche]
         else:
             dynamic_att_e[i] = np.nan
@@ -617,14 +637,15 @@ def _get_crit_val(inf_func_mat, biters, alpha, random_state):
     return crit_val
 
 
-def _get_weight_influence(keepers, pg, unit_groups, glist):
+def _get_weight_influence(keepers, pg, unit_groups, glist, unit_weights):
     """Compute influence function for estimated weights.
 
     ``keepers`` indexes both ``pg`` and ``glist``. They hold one entry per group in the group
-    aggregation and one per group-time cell in the other aggregations.
+    aggregation and one per group-time cell in the other aggregations. Each unit enters the
+    group shares with its sampling weight.
     """
     sum_pg = pg[keepers].sum()
-    indicators = np.column_stack([(unit_groups == glist[ki]).astype(float) for ki in keepers])
+    indicators = np.column_stack([unit_weights * (unit_groups == glist[ki]) for ki in keepers])
 
     if1 = (indicators - pg[keepers]) / sum_pg
     row_sums = (indicators - pg[keepers]).sum(axis=1)

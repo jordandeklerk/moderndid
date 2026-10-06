@@ -3,20 +3,23 @@
 Sensitivity to departures from parallel trends
 ==============================================
 
-An event study can show little evidence of a pre-treatment difference
-without ruling out a difference large enough to change your conclusion,
-particularly when the estimates are imprecise. Even a precisely estimated
-pre-treatment path leaves us to decide how that path would continue after
-treatment.
+Sensitivity analysis asks how much a departure from parallel trends could
+change a difference-in-differences conclusion. A pre-treatment event study
+can inform that question without resolving it, since imprecise estimates
+can miss differences large enough to matter for the treatment effect.
+Even if the earlier differences were known precisely, you would still need
+an assumption about how they would evolve after treatment in the absence
+of the policy.
 
-The approach of `Rambachan and Roth (2023)
-<https://doi.org/10.1093/restud/rdad018>`_ makes that decision explicit.
-We restrict how the untreated difference between groups can evolve,
-then ask which treatment effects remain compatible with the restriction.
-The confidence sets account for uncertainty in both the estimated event
-study and the counterfactual path. The
+We follow `Rambachan and Roth (2023)
+<https://doi.org/10.1093/restud/rdad018>`_ by making that missing untreated
+path explicit. Allowing the path to vary within a stated restriction can
+make the same event-study coefficients compatible with several treatment
+effects. The page develops the resulting identified sets and confidence
+sets to show you how conclusions depend on the restriction as well as
+sampling uncertainty. The
 `published paper <https://www.jonathandroth.com/assets/files/HonestParallelTrends_Main.pdf>`_
-provides the assumptions and results developed below.
+provides the formal assumptions and inference results.
 
 In ModernDiD, :func:`~moderndid.honest_did` takes an estimated event
 study into this calculation. To use the lower-level sensitivity functions,
@@ -29,7 +32,7 @@ What the event-study coefficients measure
 
 We begin with estimates that have a causal interpretation under parallel
 trends, since sensitivity analysis cannot repair the mixing of effects
-across cohorts and event times in a single-coefficient two-way fixed
+across cohorts and event times in a conventional two-way fixed
 effects event study. For staggered adoption, first use an estimator whose
 effects and comparison groups match your target, such as the one in the
 :ref:`staggered DiD background <background-did>`.

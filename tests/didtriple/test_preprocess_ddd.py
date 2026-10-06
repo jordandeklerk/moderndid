@@ -4,6 +4,8 @@ import warnings
 
 import pytest
 
+from moderndid.core.preprocess.builders import PreprocessDataBuilder
+from moderndid.core.preprocess.config import DDDConfig
 from moderndid.core.preprocess.models import DDDData
 from moderndid.core.preprocess.utils import check_partition_collinearity
 from moderndid.core.preprocessing import preprocess_ddd_2periods
@@ -289,7 +291,7 @@ def test_preprocess_ddd_small_subgroup():
     ids = np.repeat(np.arange(n), 2)
     times = np.tile([1, 2], n)
     state = np.repeat(np.array([1] * 2 + [0] * (n - 2)), 2)
-    partition = np.repeat(np.array([1] * 1 + [0] * (n - 1)), 2)
+    partition = np.repeat(np.array([1, 0] + [1] * 9 + [0] * 9), 2)
     y = rng.normal(0, 1, n * 2)
 
     data = pl.DataFrame(
@@ -313,7 +315,6 @@ def test_preprocess_ddd_small_subgroup():
         )
 
 
-@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
 def test_preprocess_ddd_with_cluster():
     result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
@@ -331,6 +332,56 @@ def test_preprocess_ddd_with_cluster():
 
     assert ddd_data.has_cluster
     assert len(ddd_data.cluster) == ddd_data.n_units
+
+
+def test_preprocess_ddd_stores_inference_options_as_given():
+    result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
+
+    ddd_data = preprocess_ddd_2periods(
+        data=result["data"],
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+        cluster="cluster",
+        alp=0.2,
+    )
+
+    assert ddd_data.config.alp == 0.2
+    assert ddd_data.config.boot is False
+    assert ddd_data.config.cband is False
+
+
+def test_preprocess_ddd_pairs_outcomes_by_unit_id(two_period_df):
+    shuffled = two_period_df.sample(fraction=1.0, shuffle=True, seed=3)
+    wide = two_period_df.pivot(on="time", index="id", values="y").sort("id")
+
+    ddd_data = preprocess_ddd_2periods(
+        data=shuffled,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+    )
+
+    np.testing.assert_array_equal(ddd_data.y0, wide["1"].to_numpy())
+    np.testing.assert_array_equal(ddd_data.y1, wide["2"].to_numpy())
+
+
+@pytest.mark.parametrize("two_period_duplicated_df", ["compensating_rows"], indirect=True)
+def test_ddd_builder_drops_units_whose_repeated_rows_hide_a_missing_period(two_period_duplicated_df, two_period_df):
+    config = DDDConfig(yname="y", tname="time", idname="id", gname="state", pname="partition")
+
+    with pytest.warns(UserWarning, match="Dropped 2 units while converting to balanced panel"):
+        result = PreprocessDataBuilder().with_data(two_period_duplicated_df).with_config(config).transform().build()
+
+    clean = two_period_df.filter(~pl.col("id").is_in([11, 21]))
+    expected = PreprocessDataBuilder().with_data(clean).with_config(config).transform().build()
+    np.testing.assert_array_equal(result.y1, expected.y1)
+    np.testing.assert_array_equal(result.y0, expected.y0)
+    np.testing.assert_array_equal(result.subgroup, expected.subgroup)
 
 
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])

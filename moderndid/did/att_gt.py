@@ -19,7 +19,7 @@ from moderndid.core.preprocess import (
 )
 from moderndid.cupy.backend import to_numpy
 
-from .compute_att_gt import compute_att_gt
+from .compute_att_gt import _is_unbalanced_panel, compute_att_gt
 from .container import mp
 from .mboot import mboot
 
@@ -92,6 +92,11 @@ def att_gt(
     change in outcomes, and :math:`m_{g,t}(X)` is the expected outcome change
     for the comparison group.
 
+    Sampling weights may change over time within a unit of a balanced panel.
+    Each 2x2 comparison then uses the weights from the earlier of its two
+    periods. A warning names this rule. :func:`~moderndid.aggte` weights each
+    unit by its weight in the first period.
+
     See the :ref:`staggered DiD example <example_staggered_did>` for a full analysis of
     the minimum wage data with ``att_gt``.
 
@@ -140,10 +145,11 @@ def att_gt(
         time average treatment effects.
     panel : bool, default=True
         Whether or not the data is a panel dataset. The panel dataset should be
-        provided in long format.
+        provided in long format. With panel=False every row is its own observation,
+        even when idname is given.
     allow_unbalanced_panel : bool, default=False
         Whether to keep units observed in only some periods. If False, att_gt drops
-        every unit missing from any period.
+        every unit missing from any period. It applies only when panel=True.
     control_group : {"nevertreated", "notyettreated"}, default="nevertreated"
         Which units to use the control group. The default is "nevertreated" which
         sets the control group to be the group of units that never participate in
@@ -428,6 +434,10 @@ def att_gt(
                 UserWarning,
             )
 
+    # Since preprocessing keys repeated cross sections by row, its cluster vector can come from idname.
+    # aggte reads the clusters of the variable the bootstrap above used instead.
+    cluster_vector = dp.time_invariant_data[clustervars[0]].to_numpy() if clustervars else dp.cluster
+
     estimation_params = {
         "yname": yname,
         "control_group": control_group,
@@ -438,7 +448,7 @@ def att_gt(
         "base_period": base_period,
         "panel": panel,
         "clustervars": clustervars,
-        "cluster": dp.cluster,
+        "cluster": cluster_vector,
         "biters": biters,
         "random_state": random_state,
         "n_units": n_units,
@@ -454,7 +464,7 @@ def att_gt(
         # Preprocessing keeps the normalized weights in one internal column whatever the user's column is called.
         if weightsname is not None:
             sampling_weights = dp.time_invariant_data[WEIGHTS_COLUMN]
-            if dp.config.allow_unbalanced_panel and not dp.config.panel:
+            if _is_unbalanced_panel(dp):
                 # Since a unit of an unbalanced panel can carry a different weight in each of its rows, aggte
                 # weighs the unit by the mean of those weights.
                 unit_ids = dp.time_invariant_data[dp.config.idname]

@@ -8,8 +8,8 @@ from moderndid.core.dataframe import DataFrame, to_polars
 from moderndid.core.preprocess.utils import (
     add_intercept,
     extract_covariates,
+    extract_vars_from_formula,
     is_balanced_panel,
-    parse_formula,
 )
 from moderndid.core.preprocess.validators import _check_panel_mismatch
 
@@ -28,6 +28,9 @@ __all__ = [
 def get_covariate_names(xformla: str | None) -> list[str] | None:
     """Extract covariate column names from a formula.
 
+    As in :func:`~moderndid.core.preprocess.utils.extract_vars_from_formula`,
+    a left-hand side raises an error.
+
     Parameters
     ----------
     xformla : str or None
@@ -40,18 +43,7 @@ def get_covariate_names(xformla: str | None) -> list[str] | None:
     """
     if xformla is None or xformla == "~1":
         return None
-
-    formula_str = xformla.strip()
-    if formula_str.startswith("~"):
-        formula_str = "y " + formula_str
-
-    parsed = parse_formula(formula_str)
-    covariate_names = parsed["predictors"]
-
-    if not covariate_names or covariate_names == ["1"]:
-        return None
-
-    return [c for c in covariate_names if c != "1"]
+    return extract_vars_from_formula(xformla) or None
 
 
 def detect_multiple_periods(data: DataFrame, tname: str, gname: str) -> bool:

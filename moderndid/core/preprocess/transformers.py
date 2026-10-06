@@ -29,9 +29,17 @@ from .utils import (
     create_ddd_subgroups,
     extract_vars_from_formula,
     get_formula_columns,
+    get_transformed_terms,
     make_balanced_panel,
+    nonfinite_to_null,
     validate_subgroup_sizes,
 )
+from .validators import _ddd_subgroup_error, _weights_error
+
+try:
+    import formulaic
+except ImportError:
+    formulaic = None
 
 
 class DataTransformer(Protocol):
@@ -73,11 +81,22 @@ class ColumnSelector(BaseTransformer):
 
 
 class MissingDataHandler(BaseTransformer):
-    """Missing data."""
+    """Drop the rows that have missing values.
+
+    A null, a NaN, and an infinity all count as missing. The same data
+    therefore loses the same rows whether polars or pandas holds it. Since an
+    infinity marks never-treated units in the cohort column, it stays there.
+    The intertemporal estimator keeps rows with a missing outcome or
+    treatment and drops the rows and groups that :meth:`drop_didinter_rows`
+    describes.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
-        df = to_polars(data)
+        # The intertemporal estimator's gname names groups. Every other gname holds cohorts.
+        cohort = getattr(config, "gname", None)
+        keep_infinite = [] if isinstance(config, DIDInterConfig) or cohort is None else [cohort]
+        df = nonfinite_to_null(data, keep_infinite=keep_infinite)
 
         if isinstance(config, DIDInterConfig):
             df, messages = self.drop_didinter_rows(df, config)
@@ -96,6 +115,10 @@ class MissingDataHandler(BaseTransformer):
                     "Panel data requires complete observations for all time periods. "
                     "Please handle missing values before preprocessing."
                 )
+            if n_new == 0:
+                columns = [f"'{name}'" for name in df.columns if df[name].null_count() > 0]
+                where = columns[0] if len(columns) == 1 else f"at least one of the columns {', '.join(columns)}"
+                raise ValueError(f"Every row has a missing value in {where}. No data is left to estimate from.")
             warnings.warn(f"Dropped {n_orig - n_new} rows from original data due to missing values")
 
         return data_clean
@@ -148,11 +171,21 @@ class MissingDataHandler(BaseTransformer):
 
 
 class WeightNormalizer(BaseTransformer):
-    """Weight normalizer."""
+    """Check the sampling weights and divide them by their mean.
+
+    The weights must be non-negative with a positive mean. Since the step runs
+    after the missing-data step, the check covers only the rows that stay.
+    Without ``weightsname`` every row gets weight 1.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         df = to_polars(data)
+
+        if config.weightsname is not None:
+            error = _weights_error(df[config.weightsname], config.weightsname)
+            if error is not None:
+                raise ValueError(error)
 
         weights = np.ones(len(df)) if config.weightsname is None else df[config.weightsname].to_numpy()
 
@@ -176,31 +209,39 @@ class DataSorter(BaseTransformer):
 
 
 class TreatmentEncoder(BaseTransformer):
-    """Treatment encoder."""
+    """Code the cohort of never-treated units as infinity.
+
+    A cohort of 0 or infinity marks never-treated units. So does a start
+    after the last period. For att_gt, a cohort that starts at most
+    ``anticipation`` periods after the last period stays treated. Its units
+    already react inside the panel. A negative cohort raises an error.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         df = to_polars(data)
+        cohort = pl.col(config.gname)
+        df = df.with_columns(cohort.cast(pl.Float64))
 
-        df = df.with_columns(pl.col(config.gname).cast(pl.Float64))
+        negative = df.filter(cohort < 0)[config.gname]
+        if len(negative) > 0:
+            raise ValueError(
+                f"gname = '{config.gname}' holds negative values such as {negative.min():g}. It must hold 0 for "
+                "never-treated units and the first treated period for the others. Since 0 marks never-treated "
+                "units, shift the periods so that the earliest one is positive."
+            )
 
-        df = df.with_columns(
-            pl.when(pl.col(config.gname) == 0)
+        last_start = df[config.tname].max()
+        # Since cont_did places every cohort at an observed period, a start after the panel stays never-treated there.
+        if isinstance(config, DIDConfig):
+            last_start += config.anticipation
+
+        return df.with_columns(
+            pl.when((cohort == 0) | (cohort > last_start))
             .then(pl.lit(NEVER_TREATED_VALUE))
-            .otherwise(pl.col(config.gname))
+            .otherwise(cohort)
             .alias(config.gname)
         )
-
-        tlist = sorted(df[config.tname].unique().to_list())
-        max_treatment_time = max(tlist)
-        df = df.with_columns(
-            pl.when(pl.col(config.gname) > max_treatment_time)
-            .then(pl.lit(NEVER_TREATED_VALUE))
-            .otherwise(pl.col(config.gname))
-            .alias(config.gname)
-        )
-
-        return df
 
 
 class EarlyTreatmentFilter(BaseTransformer):
@@ -213,7 +254,8 @@ class EarlyTreatmentFilter(BaseTransformer):
         tlist = sorted(df[config.tname].unique().to_list())
         first_period = min(tlist)
 
-        treated_early_mask = pl.col(config.gname) <= first_period + config.anticipation
+        # Because the triple difference config has no anticipation, its units react from their first treated period.
+        treated_early_mask = pl.col(config.gname) <= first_period + getattr(config, "anticipation", 0)
 
         if config.idname:
             early_units = df.filter(treated_early_mask)[config.idname].unique().to_list()
@@ -231,7 +273,14 @@ class EarlyTreatmentFilter(BaseTransformer):
 
 
 class ControlGroupCreator(BaseTransformer):
-    """Control group creator."""
+    """Keep the periods that have comparison units when no unit is never treated.
+
+    From the start of the latest cohort's treatment, less anticipation, no unit
+    is untreated. Those periods leave the data. With never-treated controls, the
+    latest cohort becomes the never-treated group. With not-yet-treated controls,
+    it stays in the data as a comparison group that :class:`ConfigUpdater` leaves
+    out of the treated groups.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -308,24 +357,20 @@ class RepeatedCrossSectionHandler(BaseTransformer):
         """Transform data."""
         df = to_polars(data)
 
-        if config.panel and config.allow_unbalanced_panel and config.idname:
+        # Since panel=False asks for the repeated cross section estimators, every row is its own observation,
+        # even when idname names a unit that several rows share.
+        if not config.panel:
+            config.true_repeated_cross_sections = True
+            config.idname = ROW_ID_COLUMN
+            return df.with_row_index(name=ROW_ID_COLUMN)
+
+        if config.allow_unbalanced_panel and config.idname:
             unit_counts = df.group_by(config.idname).len()
             # Since an unbalanced panel has no outcome tensor, it takes the repeated cross section estimators.
             # They still sum each unit's influence function through the row id.
             if (unit_counts["len"] != df[config.tname].n_unique()).any():
                 config.panel = False
-
-        if config.panel:
-            return df
-
-        if config.idname is None:
-            config.true_repeated_cross_sections = True
-
-        if config.true_repeated_cross_sections:
-            df = df.with_row_index(name=ROW_ID_COLUMN)
-            config.idname = ROW_ID_COLUMN
-        else:
-            df = df.with_columns(pl.col(config.idname).alias(ROW_ID_COLUMN))
+                return df.with_columns(pl.col(config.idname).alias(ROW_ID_COLUMN))
 
         return df
 
@@ -536,6 +581,11 @@ class ConfigUpdater:
         glist = sorted(df[config.gname].unique().to_list())
 
         glist_finite = [g for g in glist if np.isfinite(g)]
+        # Without never-treated units, no unit is untreated once the latest cohort starts treatment.
+        # That cohort is therefore only a comparison group and gets no cells of its own.
+        no_never_treated = len(glist_finite) == len(glist)
+        if isinstance(config, DIDConfig) and config.control_group == ControlGroup.NOT_YET_TREATED and no_never_treated:
+            glist_finite = glist_finite[:-1]
 
         n_units = df[config.idname].n_unique() if config.idname else len(df)
 
@@ -581,8 +631,16 @@ class PrePostColumnSelector(BaseTransformer):
             cols_to_keep.append(config.weightsname)
 
         if config.xformla and config.xformla != "~1":
-            # Since PrePostCovariateProcessor evaluates the formula itself, transformed terms stay allowed here.
-            formula_vars = get_formula_columns(config.xformla, df.columns)
+            if get_transformed_terms(config.xformla):
+                # Since PrePostCovariateProcessor evaluates transformed terms itself, only the columns they read stay.
+                formula_vars = get_formula_columns(config.xformla, df.columns)
+            else:
+                formula_vars = extract_vars_from_formula(config.xformla)
+                missing = [name for name in formula_vars if name not in df.columns]
+                if missing:
+                    raise ValueError(
+                        "\n".join(f"xformla contains '{name}' which is not a column in the dataset" for name in missing)
+                    )
             formula_vars = [v for v in formula_vars if v != config.yname]
             cols_to_keep.extend(formula_vars)
 
@@ -593,7 +651,14 @@ class PrePostColumnSelector(BaseTransformer):
 
 
 class PrePostCovariateProcessor(BaseTransformer):
-    """Pre-post covariate processor."""
+    """Build the intercept and covariate columns of the two-period estimators.
+
+    A formula of numeric or boolean columns gives an intercept plus those
+    columns, as for every other estimator. The formulaic package evaluates
+    any other formula, such as one with a transformed term like ``I(x**2)``
+    or with a column of strings or categories. Since formulaic comes with the
+    optional extras only, such a formula raises an error on a base install.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig | TwoPeriodDIDConfig) -> pl.DataFrame:
         """Transform data."""
@@ -605,12 +670,39 @@ class PrePostCovariateProcessor(BaseTransformer):
         if not config.xformla or config.xformla == "~1":
             return df.with_columns(pl.lit(1.0).alias("Intercept"))
 
-        import formulaic as fml
+        transformed = get_transformed_terms(config.xformla)
+        if transformed:
+            return self._evaluate_formula(
+                df,
+                config.xformla,
+                f"xformla term '{transformed[0]}' requires formulaic. Install it with uv add formulaic or "
+                "pip install formulaic. You can also add the transformed covariate to the data as its own column.",
+            )
 
-        covariates_formula = config.xformla
+        # Since the builder never reads the design columns as covariates, they keep their own types.
+        design = {config.yname, config.tname, config.treat_col, config.idname, config.weightsname}
+        names = [name for name in extract_vars_from_formula(config.xformla) if name not in design]
+        categorical = [name for name in names if not (df.schema[name].is_numeric() or df.schema[name] == pl.Boolean)]
+        if categorical:
+            return self._evaluate_formula(
+                df,
+                config.xformla,
+                f"xformla column '{categorical[0]}' holds strings or categories. Expanding it into indicator "
+                "columns requires formulaic. Install it with uv add formulaic or pip install formulaic. You can "
+                "also add the indicator columns to the data yourself.",
+            )
+
+        others = [col for col in df.columns if col not in names]
+        return df.select(*others, pl.lit(1.0).alias("Intercept"), *(pl.col(name).cast(pl.Float64) for name in names))
+
+    @staticmethod
+    def _evaluate_formula(df, formula, install_hint):
+        """Build the intercept and covariate columns with formulaic."""
+        if formulaic is None:
+            raise ImportError(install_hint)
 
         try:
-            model_matrix_result = fml.model_matrix(covariates_formula, df)
+            model_matrix_result = formulaic.model_matrix(formula, df)
             covariates_pl = model_matrix_result.__wrapped__
 
             if hasattr(model_matrix_result, "model_spec") and model_matrix_result.model_spec:
@@ -620,7 +712,7 @@ class PrePostCovariateProcessor(BaseTransformer):
                 warnings.warn("Could not retrieve model_spec from formulaic output.", UserWarning)
 
         except Exception as e:
-            raise ValueError(f"Error processing covariates_formula '{covariates_formula}' with formulaic: {e}") from e
+            raise ValueError(f"Error processing covariates_formula '{formula}' with formulaic: {e}") from e
 
         cols_to_drop = [name for name in original_cov_names if name in df.columns]
         cols_to_keep = [col for col in df.columns if col not in cols_to_drop]
@@ -743,7 +835,16 @@ class DIDInterTimeRanker(BaseTransformer):
 
 
 class SwitcherIdentifier(BaseTransformer):
-    """Identify switchers."""
+    """Find the baseline treatment and the first switch of each group.
+
+    The step adds the baseline treatment ``d_sq``, its dense rank ``d_sq_int``, the first switch
+    period ``F_g``, the treatment ``d_fg`` in that period, the switch direction ``S_g``, and the
+    number of periods ``L_g`` from the first switch through the group's last period. Control pools
+    group on ``d_sq_int`` because integer ranks compare exactly.
+
+    The joins keep the row order of the data. The flags of bidirectional switchers and the
+    direction of the first switch read each group's periods in time order.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -760,7 +861,7 @@ class SwitcherIdentifier(BaseTransformer):
             .select([config.gname, pl.col(config.dname).alias("_d_sq_pre")])
             .unique()
         )
-        df = df.join(base_treatment_pre, on=config.gname, how="left")
+        df = df.join(base_treatment_pre, on=config.gname, how="left", maintain_order="left")
         df = df.with_columns((pl.col(config.dname) - pl.col("_d_sq_pre")).alias("_diff_from_sq"))
 
         first_switch_pre = (
@@ -768,10 +869,10 @@ class SwitcherIdentifier(BaseTransformer):
             .group_by(config.gname)
             .agg(pl.col(config.tname).min().alias("_F_g_pre"))
         )
-        df = df.join(first_switch_pre, on=config.gname, how="left")
+        df = df.join(first_switch_pre, on=config.gname, how="left", maintain_order="left")
 
         t_max_per_unit = df.group_by(config.gname).agg(pl.col(config.tname).max().alias("_T_max_unit"))
-        df = df.join(t_max_per_unit, on=config.gname, how="left")
+        df = df.join(t_max_per_unit, on=config.gname, how="left", maintain_order="left")
 
         df = df.with_columns(
             pl.when(pl.col("_F_g_pre").is_not_null())
@@ -811,7 +912,7 @@ class SwitcherIdentifier(BaseTransformer):
             .agg(pl.col(config.tname).min().alias("F_g"))
         )
 
-        df = df.join(first_switch, on=config.gname, how="left")
+        df = df.join(first_switch, on=config.gname, how="left", maintain_order="left")
         df = df.with_columns(pl.col("F_g").fill_null(float("inf")))
 
         base_treatment = (
@@ -819,21 +920,21 @@ class SwitcherIdentifier(BaseTransformer):
             .select([config.gname, pl.col(config.dname).alias("d_sq")])
             .unique()
         )
-        df = df.join(base_treatment, on=config.gname, how="left")
+        df = df.join(base_treatment, on=config.gname, how="left", maintain_order="left")
 
         switch_treatment = (
             df.filter(pl.col(config.tname) == pl.col("F_g"))
             .select([config.gname, pl.col(config.dname).alias("d_fg")])
             .unique()
         )
-        df = df.join(switch_treatment, on=config.gname, how="left")
+        df = df.join(switch_treatment, on=config.gname, how="left", maintain_order="left")
 
         switch_direction = (
             df.filter(pl.col("_d_diff").is_not_null() & (pl.col("_d_diff") != 0))
             .group_by(config.gname)
             .agg(pl.col("_d_diff").first().alias("_first_diff"))
         )
-        df = df.join(switch_direction, on=config.gname, how="left")
+        df = df.join(switch_direction, on=config.gname, how="left", maintain_order="left")
 
         df = df.with_columns(
             pl.when(pl.col("F_g") == float("inf"))
@@ -852,7 +953,7 @@ class SwitcherIdentifier(BaseTransformer):
                 .group_by(config.gname)
                 .agg(pl.col(config.tname).min().alias("_min_treat_time"))
             )
-            df = df.join(min_treat_time, on=config.gname, how="left")
+            df = df.join(min_treat_time, on=config.gname, how="left", maintain_order="left")
 
             df = df.filter(
                 ~(
@@ -866,7 +967,7 @@ class SwitcherIdentifier(BaseTransformer):
 
         df = df.drop(["_d_diff", "_first_diff"])
 
-        return df
+        return df.with_columns(pl.col("d_sq").rank("dense").cast(pl.Int64).alias("d_sq_int"))
 
 
 class FgVariationFilter(BaseTransformer):
@@ -927,9 +1028,9 @@ class ContinuousTreatmentProcessor(BaseTransformer):
     Since few groups share a value of a continuous baseline treatment, groups with the same
     baseline cannot serve as each other's controls. With ``continuous`` set to a degree :math:`p`,
     the baseline goes to ``d_sq_orig`` and its powers up to :math:`p` go to ``d_sq_1``, ...,
-    ``d_sq_p``. Setting ``d_sq`` to 0 for every group lets all groups compare with each other.
-    :class:`ContinuousTreatmentBinarizer` later adds the controls that let the outcome trends
-    depend on the baseline.
+    ``d_sq_p``. Setting ``d_sq`` to 0 and its rank ``d_sq_int`` to 1 for every group lets all
+    groups compare with each other. :class:`ContinuousTreatmentBinarizer` later adds the controls
+    that let the outcome trends depend on the baseline.
     """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
@@ -941,7 +1042,7 @@ class ContinuousTreatmentProcessor(BaseTransformer):
         df = df.with_columns(
             (pl.col("d_sq_orig") ** power).alias(f"d_sq_{power}") for power in range(1, config.continuous + 1)
         )
-        return df.with_columns(pl.lit(0.0).alias("d_sq"))
+        return df.with_columns(pl.lit(0.0).alias("d_sq"), pl.lit(1, dtype=pl.Int64).alias("d_sq_int"))
 
 
 class ContinuousTreatmentBinarizer(BaseTransformer):
@@ -987,7 +1088,10 @@ class ContinuousTreatmentBinarizer(BaseTransformer):
 
 
 class DIDInterPanelBalancer(BaseTransformer):
-    """DIDInter panel balancer."""
+    """Give every group a row in every period.
+
+    The added rows copy the group's switch columns from its observed rows.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -1003,12 +1107,20 @@ class DIDInterPanelBalancer(BaseTransformer):
 
         df = full_index.join(df, on=[config.gname, config.tname], how="left")
 
-        time_invariant_cols = ["F_g", "d_sq", "S_g", "L_g"]
-        for col in time_invariant_cols:
-            if col in df.columns:
-                df = df.with_columns(pl.col(col).mean().over(config.gname).alias(col))
-
-        return df
+        # A mean of copies of a value such as 0.1 can land a rounding error away from it and differ
+        # between groups. Copying the observed value keeps each baseline in one control pool.
+        group_columns = {
+            "F_g": pl.Float64,
+            "d_sq": pl.Float64,
+            "d_sq_int": pl.Int64,
+            "S_g": pl.Float64,
+            "L_g": pl.Float64,
+        }
+        return df.with_columns(
+            pl.col(col).drop_nulls().first().over(config.gname).cast(dtype)
+            for col, dtype in group_columns.items()
+            if col in df.columns
+        )
 
 
 class DIDInterConfigUpdater:
@@ -1252,6 +1364,9 @@ class DDDWeightProcessor(BaseTransformer):
         df = to_polars(data)
 
         if config.weightsname is not None:
+            error = _weights_error(df[config.weightsname], config.weightsname)
+            if error is not None:
+                raise ValueError(error)
             weights = df[config.weightsname].to_numpy().astype(float)
             if np.any(np.isnan(weights)):
                 raise ValueError("Missing values in weights column.")
@@ -1275,10 +1390,15 @@ class DDDPanelBalancer(BaseTransformer):
 
         df = to_polars(data)
         df = df.sort([config.idname, config.tname])
+        n_old = df[config.idname].n_unique()
         df = make_balanced_panel(df, config.idname, config.tname)
 
         if len(df) == 0:
             raise ValueError("No observations remain after creating balanced panel.")
+
+        n_dropped = n_old - df[config.idname].n_unique()
+        if n_dropped > 0:
+            warnings.warn(f"Dropped {n_dropped} units while converting to balanced panel")
 
         return df
 
@@ -1325,7 +1445,7 @@ class DDDSubgroupCreator(BaseTransformer):
     """DDD subgroup creator."""
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
-        """Assign 4-group subgroups and validate sizes."""
+        """Assign 4-group subgroups and check that each has enough units."""
         if not isinstance(config, DDDConfig):
             return to_polars(data)
 
@@ -1335,6 +1455,10 @@ class DDDSubgroupCreator(BaseTransformer):
 
         subgroup = create_ddd_subgroups(df[config.gname].to_numpy(), df[config.pname].to_numpy(), treat_val)
         df = df.with_columns(pl.Series("_subgroup", subgroup))
+
+        subgroup_error = _ddd_subgroup_error(subgroup, config.gname, config.pname)
+        if subgroup_error is not None:
+            raise ValueError(subgroup_error)
 
         counts_df = df.group_by("_subgroup").agg(pl.col(config.idname).n_unique().alias("count"))
         subgroup_counts = {int(row["_subgroup"]): int(row["count"]) for row in counts_df.iter_rows(named=True)}

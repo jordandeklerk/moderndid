@@ -1,5 +1,7 @@
 """Tests for the main dynamic covariate balancing estimator function."""
 
+import re
+
 import numpy as np
 import polars as pl
 import pytest
@@ -1173,3 +1175,26 @@ def test_het_converter_gives_potential_outcomes_their_own_degrees_of_freedom(imp
     np.testing.assert_allclose(
         ((ate["ci_upper_robust"] - ate["estimate"]) / ate["se"]).to_numpy(), np.sqrt(chi2.ppf(0.9, 4))
     )
+
+
+def test_dyn_balancing_rejects_repeated_unit_periods(estimator_panel_duplicated):
+    message = (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (id, time) pair (7, 3)."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        dyn_balancing(
+            data=estimator_panel_duplicated,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[0, 1, 1],
+            ds2=[0, 0, 0],
+            xformla="~ X1",
+            ub=20.0,
+            grid_length=50,
+            nfolds=3,
+            adaptive_balancing=False,
+        )

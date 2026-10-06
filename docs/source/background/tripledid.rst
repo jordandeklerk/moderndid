@@ -3,27 +3,33 @@
 Triple differences with staggered adoption
 ==========================================
 
-When a jurisdiction enables a policy in a given year for eligible units only, its ineligible
-units never receive treatment. Those ineligible units can help measure local changes that an
-ordinary difference-in-differences comparison would attribute to the policy.
+Triple differences estimates a policy's effect using comparisons that account
+for both where the policy is adopted and who is eligible to receive it. This
+is useful when eligible units in adopting and comparison jurisdictions would
+have experienced different outcome changes even without the policy.
+Ineligible units in those same jurisdictions can help measure the difference
+that an ordinary difference-in-differences comparison would leave behind.
 
-By adding the eligibility comparison to the time and adoption comparisons, triple differences
-asks whether the untreated eligible-minus-ineligible trend gap would have evolved similarly
-across jurisdictions. This can be credible even when neither eligibility group satisfies an
-ordinary parallel trends restriction on its own.
+The assumption we need is that the difference between eligible and ineligible
+units' untreated outcome changes would be the same across adopting and
+comparison jurisdictions, possibly after conditioning on covariates. Both
+eligibility groups can therefore have different untreated trends across
+jurisdictions, provided those differences cancel in the added comparison.
 
-We follow `Ortiz-Villavicencio and Sant'Anna (2025)
-<https://arxiv.org/abs/2505.09942>`_ to identify effects separately by
-adoption cohort and period. Their `paper <https://arxiv.org/pdf/2505.09942v1>`_
-shows why covariate adjustment and the choice of comparison cohorts
-need special care in this design. ModernDiD implements the estimators
-through :func:`~moderndid.ddd` and their summaries through
-:func:`~moderndid.agg_ddd`.
+Following `Ortiz-Villavicencio and Sant'Anna (2025)
+<https://arxiv.org/abs/2505.09942>`_, we develop the cohort-period effects
+estimated by :func:`~moderndid.ddd`. Their
+`paper <https://arxiv.org/pdf/2505.09942v1>`_ explains why covariate adjustment
+and the choice of comparison cohorts each require more care than in ordinary
+DiD. The identification and inference results lead to the event studies and
+average effects you can construct with :func:`~moderndid.agg_ddd`.
 
 Adoption and eligibility describe different groups
 --------------------------------------------------
 
-In a panel observed in periods :math:`1,\ldots,T`, let
+To make these comparisons precise, we distinguish the date a jurisdiction
+adopts the policy from the eligibility of the units within it. In a panel
+observed in periods :math:`1,\ldots,T`, let
 :math:`S_i\in\{2,\ldots,T,\infty\}` be the first period when
 unit :math:`i`'s jurisdiction enables treatment. Given its fixed eligibility status
 :math:`Q_i\in\{0,1\}`, treatment requires both an enabled jurisdiction and an eligible unit,

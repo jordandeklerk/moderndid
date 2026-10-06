@@ -246,11 +246,13 @@ def r_did_multiplegt_bootstrap(
     group="county",
     time="year",
     treatment="inter_bra",
+    weight=None,
 ):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
 
     cluster_str = f'"{cluster}"' if cluster is not None else "NULL"
+    weight_str = f'"{weight}"' if weight is not None else "NULL"
 
     r_script = f"""
 options(rgl.useNULL = TRUE, DID_BOOTSTRAP_SAMPLE_DIR = "{sample_dir}")
@@ -270,6 +272,7 @@ r <- suppressMessages(did_multiplegt_dyn(
     placebo = {placebo},
     switchers = "{switchers}",
     cluster = {cluster_str},
+    weight = {weight_str},
     bootstrap = c({reps}, {seed}),
     graph_off = TRUE
 ))$results
@@ -1773,6 +1776,41 @@ def test_bootstrap_matches_reference_on_its_draws_in_both_directions(
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R DIDmultiplegtDYN package not available")
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_bootstrap_with_a_zero_weight_draw_matches_reference_on_its_other_draws(
+    didinter_zero_weight_clusters, didinter_zero_weight_clusters_csv_path, fixed_draws, reference_draws, tmp_path
+):
+    columns = {"outcome": "y", "group": "g", "time": "t", "treatment": "d"}
+    r_result = r_did_multiplegt_bootstrap(
+        didinter_zero_weight_clusters_csv_path, tmp_path, reps=10, seed=5, cluster="cl", weight="w", **columns
+    )
+
+    if r_result is None or "error" in r_result:
+        pytest.fail("R estimation failed")
+
+    draws = [np.tile([0, 1], 9), *reference_draws(tmp_path, didinter_zero_weight_clusters["cl"])]
+    py_result = did_multiplegt(
+        didinter_zero_weight_clusters,
+        yname="y",
+        idname="g",
+        tname="t",
+        dname="d",
+        weightsname="w",
+        effects=3,
+        placebo=2,
+        cluster="cl",
+        boot=True,
+        biters=len(draws),
+        random_state=fixed_draws(draws),
+    )
+
+    assert len(draws) == 11
+    np.testing.assert_allclose(py_result.effects.std_errors, r_result["effect_se"], rtol=1e-10)
+    np.testing.assert_allclose(py_result.placebos.std_errors, r_result["placebo_se"], rtol=1e-10)
+    np.testing.assert_allclose(py_result.ate.std_error, r_result["ate_se"], rtol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DIDmultiplegtDYN package not available")
 @pytest.mark.filterwarnings("ignore:Dropped:UserWarning")
 @pytest.mark.parametrize("cluster", ["state_n", None])
 def test_rows_with_a_missing_cluster_leave_the_sample(favara_missing_states, favara_missing_states_csv_path, cluster):
@@ -2265,3 +2303,31 @@ def test_predict_het_with_trends_lin_regresses_effects_only(didinter_het_data, d
     np.testing.assert_allclose(
         [h.std_errors[0] for h in py_result.heterogeneity], np.array(r_result["het_se"])[effects], rtol=1e-10
     )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DIDmultiplegtDYN package not available")
+@pytest.mark.parametrize(("controls", "normalized"), [(None, False), (["x"], False), (None, True)])
+def test_baseline_of_a_tenth_matches_the_reference_on_the_panel_shifted_to_an_eighth(
+    didinter_baseline_shift_data, didinter_baseline_shift_csv_path, controls, normalized
+):
+    kwargs = {"effects": 3, "placebo": 1, "cluster": "cl", "normalized": normalized}
+    r_result = r_did_multiplegt(
+        didinter_baseline_shift_csv_path, **kwargs, controls=controls, outcome="y", group="g", time="t", treatment="d"
+    )
+
+    if r_result is None or "error" in r_result:
+        pytest.fail("R estimation failed")
+
+    xformla = "~ " + " + ".join(controls) if controls else "~1"
+    for data in didinter_baseline_shift_data:
+        py_result = did_multiplegt(data, yname="y", idname="g", tname="t", dname="d", xformla=xformla, **kwargs)
+
+        np.testing.assert_allclose(py_result.effects.estimates, r_result["effect_estimates"], rtol=1e-10)
+        np.testing.assert_allclose(py_result.effects.std_errors, r_result["effect_se"], rtol=1e-10)
+        np.testing.assert_array_equal(py_result.effects.n_switchers, r_result["effect_n_switchers"])
+        np.testing.assert_array_equal(py_result.effects.n_observations, r_result["effect_n"])
+        np.testing.assert_allclose(py_result.placebos.estimates, r_result["placebo_estimates"], rtol=1e-10)
+        np.testing.assert_allclose(py_result.placebos.std_errors, r_result["placebo_se"], rtol=1e-10)
+        np.testing.assert_array_equal(py_result.placebos.n_switchers, r_result["placebo_n_switchers"])
+        np.testing.assert_allclose(py_result.ate.estimate, r_result["ate_estimate"], rtol=1e-10)
+        np.testing.assert_allclose(py_result.ate.std_error, r_result["ate_se"], rtol=1e-10)

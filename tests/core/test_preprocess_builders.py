@@ -1,5 +1,7 @@
 """Tests for builder paths."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -365,3 +367,167 @@ def test_cont_did_preprocessing_names_each_group_between_observed_periods():
 
     with pytest.raises(ValueError, match="Treatment starts between observed periods for groups 2, 3\\."):
         preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+
+def test_small_group_guard_unbalanced_panel_counts_rows_per_period(small_never_treated_panel):
+    sparse_controls = small_never_treated_panel.filter(~((pl.col("g") == 0) & pl.col("t").is_in([1, 3])))
+    config = DIDConfig(yname="y", tname="t", idname="id", gname="g", allow_unbalanced_panel=True)
+    builder = PreprocessDataBuilder().with_data(sparse_controls).with_config(config).validate()
+
+    with pytest.warns(UserWarning, match="Check groups: inf$"), pytest.raises(ValueError, match="too small"):
+        builder.transform()
+
+
+def test_small_group_guard_keeps_balanced_panel_with_enough_controls(small_never_treated_panel):
+    config = DIDConfig(yname="y", tname="t", idname="id", gname="g", allow_unbalanced_panel=True)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        PreprocessDataBuilder().with_data(small_never_treated_panel).with_config(config).validate().transform()
+
+    assert not [w for w in caught if "small groups" in str(w.message)]
+
+
+def test_small_group_guard_cross_sections_count_rows_per_period(small_never_treated_cross_sections):
+    config = DIDConfig(yname="y", tname="t", gname="g", panel=False)
+    builder = PreprocessDataBuilder().with_data(small_never_treated_cross_sections).with_config(config).validate()
+
+    with pytest.warns(UserWarning, match="Check groups: inf$"), pytest.raises(ValueError, match="too small"):
+        builder.transform()
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs", "data_name"),
+    [
+        (
+            DIDConfig,
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "xformla": "~ lpop"},
+            "mpdta_with_nan",
+        ),
+        (
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D"},
+            "cont_did_panel_with_nan",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "idname": "id", "xformla": "~ x", "panel": False},
+            "drdid_panel_with_nan",
+        ),
+        (
+            DDDConfig,
+            {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"},
+            "ddd_panel_with_nan",
+        ),
+        (
+            DIDInterConfig,
+            {"yname": "y", "tname": "t", "gname": "id", "dname": "d", "xformla": "~ x"},
+            "didinter_panel_with_nan",
+        ),
+    ],
+)
+def test_builder_treats_nan_as_missing_for_pandas_and_polars(request, config_class, config_kwargs, data_name):
+    data = request.getfixturevalue(data_name)
+    built = [
+        PreprocessDataBuilder().with_data(frame).with_config(config_class(**config_kwargs)).validate().transform()._data
+        for frame in (data, data.to_pandas())
+    ]
+
+    assert built[0].equals(built[1])
+    assert sum(int(column.is_nan().sum()) for column in built[0].iter_columns() if column.dtype.is_float()) == 0
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs", "data_name"),
+    [
+        (
+            DIDConfig,
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat", "xformla": "~ lpop"},
+            "mpdta_with_nan",
+        ),
+        (
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D"},
+            "cont_did_panel_with_nan",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "idname": "id", "xformla": "~ x", "panel": False},
+            "drdid_panel_with_nan",
+        ),
+        (
+            DDDConfig,
+            {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"},
+            "ddd_panel_with_nan",
+        ),
+        (
+            DIDInterConfig,
+            {"yname": "y", "tname": "t", "gname": "id", "dname": "d", "xformla": "~ x"},
+            "didinter_panel_with_nan",
+        ),
+    ],
+)
+def test_builder_treats_infinity_like_nan(request, config_class, config_kwargs, data_name):
+    with_nan = request.getfixturevalue(data_name)
+    with_infinity = with_nan.with_columns(pl.col(pl.Float64).fill_nan(float("inf")))
+    built = [
+        PreprocessDataBuilder().with_data(frame).with_config(config_class(**config_kwargs)).validate().transform()._data
+        for frame in (with_nan, with_infinity)
+    ]
+
+    assert built[0].equals(built[1])
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs", "data_name"),
+    [
+        (DIDConfig, {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"}, "mpdta"),
+        (
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D"},
+            "cont_did_panel_with_nan",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "idname": "id"},
+            "drdid_panel_data",
+        ),
+        (
+            DDDConfig,
+            {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"},
+            "ddd_panel_with_nan",
+        ),
+        (DIDInterConfig, {"yname": "y", "tname": "t", "gname": "id", "dname": "d"}, "didinter_panel_with_nan"),
+    ],
+)
+def test_builder_rejects_weights_without_positive_mean(request, config_class, config_kwargs, data_name):
+    data = request.getfixturevalue(data_name).with_columns(pl.lit(0.0).alias("w"))
+    config = config_class(**config_kwargs, weightsname="w")
+    builder = PreprocessDataBuilder().with_data(data).with_config(config).validate()
+
+    with pytest.raises(ValueError, match="^The weights variable 'w' must be non-negative with a positive mean\\.$"):
+        builder.transform()
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs"),
+    [
+        (DIDConfig, {"yname": "y", "tname": "time", "idname": "id", "gname": "group"}),
+        (ContDIDConfig, {"yname": "y", "tname": "time", "idname": "id", "gname": "group", "dname": "x1"}),
+    ],
+)
+def test_builder_rejects_negative_cohort(panel_data, config_class, config_kwargs):
+    data = panel_data.with_columns(pl.col("group").replace(0, -2), pl.col("x1").abs())
+    builder = PreprocessDataBuilder().with_data(data).with_config(config_class(**config_kwargs)).validate()
+
+    with pytest.raises(ValueError, match="^gname = 'group' holds negative values such as -2\\."):
+        builder.transform()
+
+
+def test_builder_names_the_columns_when_no_row_is_complete(mpdta):
+    data = mpdta.with_columns(pl.lit(float("nan")).alias("lpop"))
+    config = DIDConfig(yname="lemp", tname="year", idname="countyreal", gname="first.treat", xformla="~ lpop")
+    builder = PreprocessDataBuilder().with_data(data).with_config(config).validate()
+
+    with pytest.raises(ValueError, match="^Every row has a missing value in 'lpop'\\. No data is left"):
+        builder.transform()

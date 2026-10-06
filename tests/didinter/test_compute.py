@@ -20,10 +20,10 @@ from moderndid.didinter.compute_did_multiplegt import (
 @pytest.mark.parametrize(
     "trends_nonparam,expected_len,expected_vars",
     [
-        (None, 2, ["time", "d_sq"]),
-        ([], 2, ["time", "d_sq"]),
-        (["region"], 3, ["time", "d_sq", "region"]),
-        (["region", "industry"], 4, ["time", "d_sq", "region", "industry"]),
+        (None, 2, ["time", "d_sq_int"]),
+        ([], 2, ["time", "d_sq_int"]),
+        (["region"], 3, ["time", "d_sq_int", "region"]),
+        (["region", "industry"], 4, ["time", "d_sq_int", "region", "industry"]),
     ],
 )
 def test__get_group_vars(trends_nonparam, expected_len, expected_vars):

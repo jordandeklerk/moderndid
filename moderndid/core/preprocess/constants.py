@@ -47,7 +47,8 @@ DEFAULT_ANTICIPATION_PERIODS = 0
 DEFAULT_TRIM_LEVEL = 0.995
 DEFAULT_CORES = 1
 
-WEIGHTS_COLUMN = "weights"
+# Preprocessing adds these internal columns to the data. The column checks reject user columns with these names.
+WEIGHTS_COLUMN = ".w"
 ROW_ID_COLUMN = ".rowid"
 
 NEVER_TREATED_VALUE = float("inf")

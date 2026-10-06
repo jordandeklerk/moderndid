@@ -1,5 +1,6 @@
 """Tests for the ETWFE estimator."""
 
+import re
 import warnings
 
 import numpy as np
@@ -734,3 +735,27 @@ def test_etwfe_treated_reference_keeps_never_treated_as_controls(mpdta_data, mpd
     assert mod.gt_pairs == [(2004.0, 2004.0), (2004.0, 2005.0), (2004.0, 2006.0), (2006.0, 2006.0)]
     assert mod.n_obs == 2000
     _assert_same_fit(mod, _fit(mpdta_never_codes["9999"], gref=2007))
+
+
+def test_etwfe_rejects_repeated_unit_periods(mpdta_duplicated):
+    message = (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (countyreal, year) pair (17005, 2005)."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        etwfe(data=mpdta_duplicated, yname="lemp", tname="year", gname="first.treat", idname="countyreal")
+
+
+def test_etwfe_without_idname_keeps_every_row(mpdta_duplicated):
+    result = etwfe(data=mpdta_duplicated, yname="lemp", tname="year", gname="first.treat")
+
+    assert result.n_obs == mpdta_duplicated.height
+
+
+def test_etwfe_drops_rows_without_a_year_before_the_unit_check(mpdta_without_years, etwfe_baseline):
+    with pytest.warns(UserWarning, match=r"^Dropped 2 rows with missing values in year\.$"):
+        result = etwfe(data=mpdta_without_years, yname="lemp", tname="year", gname="first.treat", idname="countyreal")
+
+    np.testing.assert_array_equal(result.coefficients, etwfe_baseline.coefficients)
+    np.testing.assert_array_equal(result.std_errors, etwfe_baseline.std_errors)

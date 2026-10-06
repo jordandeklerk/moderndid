@@ -4,7 +4,16 @@ import numpy as np
 import polars as pl
 import pytest
 
-from moderndid import ddd_mp, load_cai2016, load_engel, load_favara_imbs, load_mpdta
+from moderndid import (
+    ddd_mp,
+    gen_ddd_mult_periods,
+    gen_ddd_scalable,
+    load_cai2016,
+    load_engel,
+    load_favara_imbs,
+    load_mpdta,
+    load_nsw,
+)
 from moderndid.didtriple.dgp import gen_ddd_2periods
 
 
@@ -101,6 +110,52 @@ def mpdta_pop_weighted_csv_path(mpdta_pop_weighted, tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def mpdta_repeated_row():
+    """Append a second copy of the 2005 record of county 17005 to mpdta."""
+    data = load_mpdta()
+    return pl.concat([data, data.filter((pl.col("countyreal") == 17005) & (pl.col("year") == 2005))])
+
+
+@pytest.fixture(scope="module")
+def mpdta_repeated_row_csv_path(mpdta_repeated_row, tmp_path_factory):
+    """Write the mpdta panel with the repeated record to a CSV file and return its path."""
+    path = tmp_path_factory.mktemp("mpdta") / "mpdta_repeated_row.csv"
+    mpdta_repeated_row.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture(scope="module")
+def mpdta_without_years():
+    """Append two records of county 17005 whose year is missing to mpdta."""
+    data = load_mpdta()
+    rows = data.filter((pl.col("countyreal") == 17005) & (pl.col("year") == 2005))
+    return pl.concat([data, pl.concat([rows, rows]).with_columns(pl.lit(None, dtype=pl.Int64).alias("year"))])
+
+
+@pytest.fixture(scope="module")
+def mpdta_without_years_csv_path(mpdta_without_years, tmp_path_factory):
+    """Write the mpdta panel with the yearless records to a CSV file and return its path."""
+    path = tmp_path_factory.mktemp("mpdta") / "mpdta_without_years.csv"
+    mpdta_without_years.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture(scope="module")
+def nsw_repeated_row():
+    """Append a second copy of the 1975 record of unit 15995 to the NSW panel."""
+    data = load_nsw().select("id", "year", "re", "experimental")
+    return pl.concat([data, data.filter((pl.col("id") == 15995) & (pl.col("year") == 1975))])
+
+
+@pytest.fixture(scope="module")
+def nsw_repeated_row_csv_path(nsw_repeated_row, tmp_path_factory):
+    """Write the NSW panel with the repeated record to a CSV file and return its path."""
+    path = tmp_path_factory.mktemp("nsw") / "nsw_repeated_row.csv"
+    nsw_repeated_row.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture(scope="module")
 def mpdta_unbalanced():
     """Drop the 2005 record of each mpdta county whose id is a multiple of seven."""
     return load_mpdta().filter(~((pl.col("countyreal") % 7 == 0) & (pl.col("year") == 2005)))
@@ -131,6 +186,59 @@ def mpdta_unbalanced_varying_weights_csv_path(mpdta_unbalanced_varying_weights, 
 
 
 @pytest.fixture(scope="module")
+def mpdta_varying_weights():
+    """Weight the balanced mpdta panel by population times a factor that changes from year to year."""
+    return load_mpdta().with_columns(
+        (pl.col("lpop").exp() * (1 + (pl.col("countyreal") + pl.col("year")) % 4)).alias("w")
+    )
+
+
+@pytest.fixture(scope="module")
+def mpdta_varying_weights_csv_path(mpdta_varying_weights, tmp_path_factory):
+    """Write the balanced mpdta panel with time-varying weights to a CSV file and return its path."""
+    path = tmp_path_factory.mktemp("mpdta") / "mpdta_varying_weights.csv"
+    mpdta_varying_weights.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture
+def mpdta_one_infinite(request):
+    """Weight mpdta by population in pop and put an infinite value in the 2005 record of county 17005."""
+    column, value = request.param
+    row = (pl.col("countyreal") == 17005) & (pl.col("year") == 2005)
+    data = load_mpdta().with_columns(pl.col("lpop").exp().alias("pop"))
+    return data.with_columns(pl.when(row).then(value).otherwise(pl.col(column).cast(pl.Float64)).alias(column))
+
+
+@pytest.fixture
+def mpdta_one_infinite_csv_path(mpdta_one_infinite, tmp_path):
+    """Write the mpdta panel with the infinite value to a CSV file and return its path."""
+    path = tmp_path / "mpdta_one_infinite.csv"
+    mpdta_one_infinite.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture
+def mpdta_bad_weights(request):
+    """Give mpdta weights in w that are all zero, zero outside one infinite record, or negative in one record."""
+    row = (pl.col("countyreal") == 17005) & (pl.col("year") == 2005)
+    weights = {
+        "zero": pl.lit(0.0),
+        "zero outside an infinite row": pl.when(row).then(float("inf")).otherwise(0.0),
+        "one negative": pl.when(row).then(-1.0).otherwise(pl.col("lpop").exp()),
+    }
+    return load_mpdta().with_columns(weights[request.param].alias("w"))
+
+
+@pytest.fixture
+def mpdta_bad_weights_csv_path(mpdta_bad_weights, tmp_path):
+    """Write the mpdta panel with the invalid weights to a CSV file and return its path."""
+    path = tmp_path / "mpdta_bad_weights.csv"
+    mpdta_bad_weights.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture(scope="module")
 def mpdta_unbalanced_clustered(mpdta_unbalanced):
     """Add a cluster column that holds the last digit of the county id to the unbalanced mpdta panel."""
     return mpdta_unbalanced.with_columns((pl.col("countyreal") % 10).alias("cluster"))
@@ -141,6 +249,20 @@ def mpdta_unbalanced_clustered_csv_path(mpdta_unbalanced_clustered, tmp_path_fac
     """Write the unbalanced mpdta panel with its cluster column to a CSV file and return its path."""
     path = tmp_path_factory.mktemp("mpdta") / "mpdta_unbalanced_clustered.csv"
     mpdta_unbalanced_clustered.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture(scope="module")
+def mpdta_rotating():
+    """Keep each mpdta county in three of the five years, the way a rotating survey samples households."""
+    return load_mpdta().filter((pl.col("countyreal") + pl.col("year")) % 5 < 3)
+
+
+@pytest.fixture(scope="module")
+def mpdta_rotating_csv_path(mpdta_rotating, tmp_path_factory):
+    """Write the rotating mpdta sample to a CSV file and return its path."""
+    path = tmp_path_factory.mktemp("mpdta") / "mpdta_rotating.csv"
+    mpdta_rotating.write_csv(path)
     return str(path)
 
 
@@ -389,6 +511,20 @@ def didinter_two_way_csv_path(didinter_two_way_data, tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def didinter_zero_weight_clusters(didinter_two_way_data):
+    """Panel with treatment rises and falls whose clusters 1 and 2 carry zero weight in every row."""
+    return didinter_two_way_data.with_columns(pl.when(pl.col("cl") <= 2).then(0.0).otherwise(pl.col("w")).alias("w"))
+
+
+@pytest.fixture(scope="module")
+def didinter_zero_weight_clusters_csv_path(didinter_zero_weight_clusters, tmp_path_factory):
+    """Write the panel with zero-weight clusters to a CSV file and return its path."""
+    path = tmp_path_factory.mktemp("didinter") / "didinter_zero_weight_clusters.csv"
+    didinter_zero_weight_clusters.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture(scope="module")
 def didinter_all_switch_data():
     """Clustered staggered panel in which every group eventually raises its treatment from 0 or lowers it from 1."""
     rng = np.random.default_rng(11)
@@ -557,6 +693,35 @@ def didinter_het_csv_path(didinter_het_data, tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def didinter_baseline_shift_data():
+    """Unbalanced panel with baseline treatment 0.1 and some bidirectional switchers, and the same panel at 0.125."""
+    rng = np.random.default_rng(3)
+    rows = []
+    for unit in range(1, 201):
+        switch = int(rng.integers(3, 8)) if rng.random() < 0.6 else None
+        back = switch is not None and unit % 6 == 0 and switch + 2 <= 8
+        effect = rng.normal()
+        for t in range(1, 9):
+            change = 0.0
+            if switch is not None and t >= switch:
+                change = -1.0 if back and t >= switch + 2 else 1.0
+            x = rng.normal() + 0.1 * t
+            y = effect + 0.1 * t + 0.6 * change + 0.5 * x + rng.normal()
+            rows.append((unit, t, change, y, x, (unit - 1) // 10 + 1))
+    df = pl.DataFrame(rows, schema=["g", "t", "change", "y", "x", "cl"], orient="row")
+    df = df.filter(~(pl.Series(rng.random(df.height) < 0.08) & (df["t"] > 1)))
+    return [df.with_columns((pl.col("change") + base).alias("d")).drop("change") for base in (0.1, 0.125)]
+
+
+@pytest.fixture(scope="module")
+def didinter_baseline_shift_csv_path(didinter_baseline_shift_data, tmp_path_factory):
+    """Write the panel at baseline 0.125 to a CSV file and return its path."""
+    path = tmp_path_factory.mktemp("didinter") / "didinter_baseline_shift.csv"
+    didinter_baseline_shift_data[1].write_csv(path)
+    return str(path)
+
+
+@pytest.fixture(scope="module")
 def favara_missing_states():
     """Favara and Imbs data without the state in three rows of switching counties and in every row of 42 counties."""
     data = load_favara_imbs()
@@ -706,3 +871,70 @@ def rm_cases():
         "B": np.array([-0.03, -0.02, -0.005, 0.05, 0.06]),
         "C": np.array([-0.05, -0.005, -0.02, 0.05, 0.06]),
     }
+
+
+@pytest.fixture(scope="module")
+def mpdta_without_never_treated():
+    """Keep the mpdta counties that are eventually treated."""
+    return load_mpdta().filter(pl.col("first.treat") != 0)
+
+
+@pytest.fixture(scope="module")
+def mpdta_without_never_treated_csv_path(mpdta_without_never_treated, tmp_path_factory):
+    """Write mpdta without its never-treated counties to a CSV file and return its path."""
+    path = tmp_path_factory.mktemp("mpdta") / "mpdta_without_never_treated.csv"
+    mpdta_without_never_treated.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture
+def mpdta_cohort_after_panel(request):
+    """Move the 2007 cohort of mpdta to the year in request.param, after the last observed year."""
+    return load_mpdta().with_columns(
+        pl.when(pl.col("first.treat") == 2007).then(request.param).otherwise(pl.col("first.treat")).alias("first.treat")
+    )
+
+
+@pytest.fixture
+def mpdta_cohort_after_panel_csv_path(mpdta_cohort_after_panel, tmp_path):
+    """Write mpdta with the moved cohort to a CSV file and return its path."""
+    path = tmp_path / "mpdta_cohort_after_panel.csv"
+    mpdta_cohort_after_panel.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture
+def mp_first_period_cohort_data():
+    """Multi-period panel in which a fifth of the units of cohort 2 are first treated in period 1."""
+    data = gen_ddd_mult_periods(n=1000, random_state=7)["data"]
+    early = (pl.col("group") == 2) & (pl.col("id") % 5 == 0)
+    return data.with_columns(pl.when(early).then(1).otherwise(pl.col("group")).alias("group"))
+
+
+@pytest.fixture
+def mp_no_never_treated_data():
+    """Panel over five periods whose units are all treated by period 4."""
+    data = gen_ddd_scalable(n=3000, n_periods=5, n_cohorts=3, n_covariates=4, random_state=11)["data"]
+    return data.filter(pl.col("group") != 0)
+
+
+@pytest.fixture
+def mp_ddd_weighted_data():
+    """Multi-period panel with a sampling weight from U(0.2, 5) for each unit in w."""
+    data = gen_ddd_mult_periods(n=1000, random_state=7)["data"]
+    ids = data["id"].unique().sort()
+    weights = pl.DataFrame({"id": ids, "w": np.random.default_rng(0).uniform(0.2, 5.0, len(ids))})
+    return data.join(weights, on="id").sort("id", "time")
+
+
+@pytest.fixture
+def mp_ddd_weighted_unbalanced_data(mp_ddd_weighted_data):
+    """Drop about 8 percent of the rows of the weighted multi-period panel to unbalance it."""
+    keep = np.random.default_rng(7).random(mp_ddd_weighted_data.height) >= 0.08
+    return mp_ddd_weighted_data.filter(pl.Series(keep))
+
+
+@pytest.fixture
+def mp_rcs_weighted_data(mp_ddd_weighted_data):
+    """The weighted multi-period panel with every row taken as an observation of its own in rid."""
+    return mp_ddd_weighted_data.with_columns(pl.int_range(pl.len()).alias("rid"))

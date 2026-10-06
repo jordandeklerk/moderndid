@@ -525,3 +525,21 @@ def test_aggte_cross_section_allow_unbalanced_matches_cross_section(mpdta_data, 
     np.testing.assert_allclose(flagged.overall_se, plain.overall_se, rtol=1e-12)
     if agg_type != "simple":
         np.testing.assert_allclose(flagged.se_by_event, plain.se_by_event, rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
+@pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
+@pytest.mark.parametrize("allow_unbalanced_panel", [False, True])
+def test_aggte_cross_section_with_idname_matches_cross_section(mpdta_data, agg_type, allow_unbalanced_panel):
+    spec = dict(yname="lemp", tname="year", gname="first.treat", panel=False, boot=False, cband=False)
+
+    plain = aggte(att_gt(data=mpdta_data, **spec), type=agg_type)
+    with_id = aggte(
+        att_gt(data=mpdta_data, idname="countyreal", allow_unbalanced_panel=allow_unbalanced_panel, **spec),
+        type=agg_type,
+    )
+
+    np.testing.assert_allclose(with_id.overall_att, plain.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(with_id.overall_se, plain.overall_se, rtol=1e-12)
+    if agg_type != "simple":
+        np.testing.assert_allclose(with_id.se_by_event, plain.se_by_event, rtol=1e-12)

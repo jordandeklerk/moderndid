@@ -13,6 +13,7 @@ from moderndid import (
     ddd,
     did_multiplegt,
     gen_cont_did_data,
+    gen_ddd_2periods,
     gen_ddd_mult_periods,
     honest_did,
     load_favara_imbs,
@@ -298,3 +299,89 @@ def dyn_balancing_robust_history_result(dyn_balancing_robust_result):
         }
     )
     return DynBalancingHistoryResult(summary=summary, results=results)
+
+
+@pytest.fixture
+def small_never_treated_panel():
+    """Balanced five-period panel with two cohorts of 20 units and 6 never-treated units."""
+    rng = np.random.default_rng(0)
+    cohort = np.repeat([3, 4, 0], [20, 20, 6])
+    ids = np.repeat(np.arange(len(cohort)), 5)
+    t = np.tile(np.arange(1, 6), len(cohort))
+    g = np.repeat(cohort, 5)
+    y = rng.standard_normal(len(ids)) + (t >= np.where(g > 0, g, 99))
+    return pl.DataFrame({"id": ids, "t": t, "g": g, "y": y})
+
+
+@pytest.fixture
+def small_never_treated_cross_sections():
+    """Five cross sections, each with 20 units from each of two cohorts and 3 never-treated units."""
+    rng = np.random.default_rng(1)
+    g = np.tile(np.repeat([3, 4, 0], [20, 20, 3]), 5)
+    t = np.repeat(np.arange(1, 6), 43)
+    y = rng.standard_normal(len(g)) + (t >= np.where(g > 0, g, 99))
+    return pl.DataFrame({"id": np.arange(len(g)), "t": t, "g": g, "y": y})
+
+
+@pytest.fixture
+def two_by_two_panel():
+    """Four-period panel with cohorts 3 and 4 and never-treated units coded both inf and 0."""
+    return pl.DataFrame(
+        {
+            "id": np.repeat(np.arange(8), 4),
+            "period": np.tile(np.arange(1, 5), 8),
+            "G": np.repeat([3, 3, 4, 4, np.inf, np.inf, 0, 0], 4).astype(float),
+            "Y": np.arange(32, dtype=float),
+        }
+    )
+
+
+@pytest.fixture
+def mpdta_with_nan(mpdta):
+    """mpdta with a NaN outcome in one row and a NaN covariate in another."""
+    row = pl.int_range(pl.len())
+    return mpdta.with_columns(
+        pl.when(row == 7).then(float("nan")).otherwise(pl.col("lemp")).alias("lemp"),
+        pl.when(row == 21).then(float("nan")).otherwise(pl.col("lpop")).alias("lpop"),
+    )
+
+
+@pytest.fixture
+def cont_did_panel_with_nan():
+    """Continuous treatment panel with a NaN outcome in one row and a NaN dose in another."""
+    row = pl.int_range(pl.len())
+    return gen_cont_did_data(n=100, num_time_periods=4, seed=42).with_columns(
+        pl.when(row == 9).then(float("nan")).otherwise(pl.col("Y")).alias("Y"),
+        pl.when(row == 30).then(float("nan")).otherwise(pl.col("D")).alias("D"),
+    )
+
+
+@pytest.fixture
+def drdid_panel_with_nan(drdid_panel_data):
+    """Two-period panel with a NaN outcome in one row and a NaN covariate in another."""
+    row = pl.int_range(pl.len())
+    return drdid_panel_data.with_columns(
+        pl.when(row == 3).then(float("nan")).otherwise(pl.col("y")).alias("y"),
+        pl.when(row == 50).then(float("nan")).otherwise(pl.col("x")).alias("x"),
+    )
+
+
+@pytest.fixture
+def ddd_panel_with_nan():
+    """Two-period triple-difference panel with a NaN outcome in one row."""
+    data = gen_ddd_2periods(n=200, dgp_type=1, random_state=0)["data"]
+    return data.with_columns(pl.when(pl.int_range(pl.len()) == 5).then(float("nan")).otherwise(pl.col("y")).alias("y"))
+
+
+@pytest.fixture
+def didinter_panel_with_nan():
+    """Panel of 80 groups over six periods with staggered switches and a NaN outcome, treatment, and control."""
+    rng = np.random.default_rng(5)
+    ids = np.repeat(np.arange(80), 6)
+    t = np.tile(np.arange(1, 7), 80)
+    start = np.repeat(np.array([3, 4, 0, 5])[np.arange(80) % 4], 6)
+    d = ((start > 0) & (t >= start)).astype(float)
+    y = np.sin(ids + t) + d + rng.normal(0, 0.1, ids.size)
+    x = rng.normal(size=ids.size)
+    y[13], d[20], x[31] = np.nan, np.nan, np.nan
+    return pl.DataFrame({"id": ids, "t": t, "d": d, "y": y, "x": x})

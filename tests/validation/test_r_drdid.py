@@ -1,6 +1,7 @@
 """Validation tests comparing Python drdid implementation with R DRDID package."""
 
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -210,6 +211,32 @@ write_json(out, "{result_path}", digits = 16)
 """
     try:
         return _run_r_script(r_script, result_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+def r_estimator_error(data_path, estimator):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+library(DRDID)
+library(jsonlite)
+
+data <- read.csv("{data_path}")
+
+message <- tryCatch(
+  {{
+    {estimator}(yname = "re", tname = "year", idname = "id", dname = "experimental", data = data, panel = TRUE)
+    ""
+  }},
+  error = function(e) conditionMessage(e)
+)
+
+write_json(list(message = message), "{result_path}", auto_unbox = TRUE)
+"""
+    try:
+        return _run_r_script(r_script, result_path)["message"]
     except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
         return None
 
@@ -694,3 +721,63 @@ def test_invalid_trim_level(nsw_data, trim_level):
             est_method="imp",
             trim_level=trim_level,
         )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DRDID package not available")
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_covariates_without_formulaic_match_r(nsw_data, data_path, without_formulaic, panel):
+    xformla = "~ age + educ + black + married"
+
+    r_result = r_drdid(data_path, est_method="trad", panel=panel, xformla=xformla)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_result = python_drdid(nsw_data, est_method="trad", panel=panel, xformla=xformla)
+
+    np.testing.assert_allclose(py_result.att, r_result["ATT"], rtol=1e-8)
+    np.testing.assert_allclose(py_result.se, r_result["se"], rtol=1e-8)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DRDID package not available")
+@pytest.mark.parametrize("panel", [True, False])
+def test_ipwdid_covariates_without_formulaic_match_r(nsw_data, data_path, without_formulaic, panel):
+    xformla = "~ age + educ + black + married"
+
+    r_result = r_ipwdid(data_path, normalized=True, panel=panel, xformla=xformla)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_result = python_ipwdid(nsw_data, est_method="std_ipw", panel=panel, xformla=xformla)
+
+    np.testing.assert_allclose(py_result.att, r_result["ATT"], rtol=1e-8)
+    np.testing.assert_allclose(py_result.se, r_result["se"], rtol=1e-8)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DRDID package not available")
+@pytest.mark.parametrize("panel", [True, False])
+def test_ordid_covariates_without_formulaic_match_r(nsw_data, data_path, without_formulaic, panel):
+    xformla = "~ age + educ + black + married"
+
+    r_result = r_ordid(data_path, panel=panel, xformla=xformla)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_result = python_ordid(nsw_data, panel=panel, xformla=xformla)
+
+    np.testing.assert_allclose(py_result.att, r_result["ATT"], rtol=1e-8)
+    np.testing.assert_allclose(py_result.se, r_result["se"], rtol=1e-8)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R DRDID package not available")
+@pytest.mark.parametrize(
+    ("estimator", "py_estimator"), [("drdid", drdid), ("ipwdid", ipwdid), ("ordid", ordid)], ids=["dr", "ipw", "or"]
+)
+def test_repeated_unit_periods_raise_like_r(nsw_repeated_row, nsw_repeated_row_csv_path, estimator, py_estimator):
+    r_message = r_estimator_error(nsw_repeated_row_csv_path, estimator)
+
+    assert r_message == "The value of idname must be the unique (by tname)"
+    with pytest.raises(ValueError, match=re.escape("The value of idname must be unique (by tname).")):
+        py_estimator(data=nsw_repeated_row, yname="re", tname="year", treatname="experimental", idname="id", panel=True)

@@ -33,6 +33,7 @@ __all__ = [
     "load_ehec",
     "load_engel",
     "load_favara_imbs",
+    "load_fracking",
     "load_mpdta",
     "load_nsw",
 ]
@@ -341,6 +342,99 @@ def load_favara_imbs():
     return pl.read_csv(data_path)
 
 
+def load_fracking():
+    """Load the county employment panel for the fracking application.
+
+    The panel follows 402 US counties from 1990 through 2014 for 10,050 rows.
+    Callaway, Goodman-Bacon, and Sant'Anna [1]_ use this county data from Bartik,
+    Currie, Greenstone, and Knittel [2]_ in their continuous treatment application.
+    The processed source file comes from their replication archive [3]_.
+
+    The loader retains counties observed in all 25 years after removing missing
+    employment outcomes. Each county's dose is a fixed geological prospectivity
+    score. The source preparation sets missing scores to zero without retaining
+    an imputation flag. Those zeros therefore cannot be distinguished from
+    observed zero scores. The scores measure prospectivity within shale plays and are
+    not comparable across plays.
+
+    See the :ref:`continuous treatment example <example_cont_did>` for an
+    analysis of geological prospectivity and county employment with this data.
+
+    Returns
+    -------
+    pl.DataFrame
+        A balanced county panel sorted by county and year.
+
+        - **i**: County FIPS code
+        - **t**: Year (1990-2014)
+        - **y**: Log total county employment
+        - **d**: Time-invariant geological prospectivity score
+        - **G**: Adoption year based on publicity about successful fracking or 0 for zero-dose counties
+        - **shale_basin1**: Shale-basin identifier
+        - **G_original**: Formation adoption year retained for every county from the source file
+
+    Notes
+    -----
+    The bundled extract is prepared from ``bcgk_replication.dta`` in [3]_.
+    Preparation removes 2015 and missing employment outcomes, retains counties
+    observed in every year from 1990 through 2014, and sets ``G=0`` when ``d=0``.
+    The ``G_original`` column preserves the source dates used to restrict the
+    comparison sample in the paper's time-averaged dose curves.
+    Identifiers and years are integers. Outcomes and scores retain the source
+    values without rescaling.
+
+    Adoption dates follow the original study's first publicity about successful
+    fracking in a shale play. Announcements after June are assigned to the
+    following year to match the annual outcomes.
+
+    The prospectivity data are county-level aggregates released with [2]_ and
+    its replication package [4]_. Data reuse follows the AEA's published
+    guidance for older replication deposits at
+    https://aeadataeditor.github.io/aea-de-guidance/FAQ.html#licensing.
+    The source data's rights are separate from ModernDiD's software license.
+
+    References
+    ----------
+
+    .. [1] Callaway, B., Goodman-Bacon, A., and Sant'Anna, P. H. C. (2024).
+       "Event Studies with a Continuous Treatment." AEA Papers and
+       Proceedings, 114, 601-605. https://doi.org/10.1257/pandp.20241047.
+
+    .. [2] Bartik, A. W., Currie, J., Greenstone, M., and Knittel, C. R. (2019).
+       "The Local Economic and Welfare Consequences of Hydraulic Fracturing."
+       American Economic Journal: Applied Economics, 11(4), 105-155.
+       https://doi.org/10.1257/app.20170487.
+
+    .. [3] Callaway, B., Goodman-Bacon, A., and Sant'Anna, P. H. C. (2024).
+       "Data and Code for: Event-Studies with a Continuous Treatment."
+       https://doi.org/10.3886/E201785V1.
+
+    .. [4] Bartik, A. W., Currie, J., Greenstone, M., and Knittel, C. R.
+       "Replication data for: The Local Economic and Welfare Consequences
+       of Hydraulic Fracturing." https://doi.org/10.3886/E231454V1.
+    """
+    data_path = Path(__file__).parent / "datasets" / "fracking.csv.gz"
+
+    if not data_path.exists():
+        raise FileNotFoundError(
+            f"Fracking data file not found at {data_path}. "
+            "Please ensure the data file is included in the moderndid installation."
+        )
+
+    return pl.read_csv(
+        data_path,
+        schema_overrides={
+            "i": pl.Int64,
+            "t": pl.Int64,
+            "y": pl.Float64,
+            "d": pl.Float64,
+            "G": pl.Int64,
+            "shale_basin1": pl.Int64,
+            "G_original": pl.Int64,
+        },
+    )
+
+
 def load_cai2016():
     """Load the Cai (2016) agricultural insurance dataset.
 
@@ -599,8 +693,9 @@ def gen_cont_did_data(
     A unit fixed effect centered on the cohort shifts outcome levels without
     changing their trends.
 
-    See the :ref:`continuous treatment example <example_cont_did>` for an
-    analysis that checks the estimates against these planted effects.
+    You can use this data to check whether an estimator recovers the planted
+    effects. See the :ref:`continuous treatment example <example_cont_did>`
+    for an analysis of the county employment data from :func:`load_fracking`.
 
     Parameters
     ----------

@@ -12,10 +12,14 @@ import polars as pl
 from scipy import stats
 
 from moderndid.core.preprocess.utils import parse_formula
+from moderndid.core.preprocess.validators import _duplicate_unit_period_error
 
 
 def clean_etwfe_data(data, config, vcov=None):
     """Drop the rows and units that cannot enter the regression.
+
+    Two rows for one unit in one period raise an error before any row is
+    dropped, since the regression would count that period twice.
 
     Rows with a missing value in the time, cohort, or unit column, a control,
     the moderator, the weights, or a cluster variable leave the sample before
@@ -44,6 +48,11 @@ def clean_etwfe_data(data, config, vcov=None):
     missing_cols = [c for c in ctrls if c not in data.columns]
     if missing_cols:
         raise ValueError(f"xformla columns {missing_cols} not found in data columns")
+
+    if config.idname is not None:
+        duplicate_error = _duplicate_unit_period_error(data, config.idname, config.tname)
+        if duplicate_error is not None:
+            raise ValueError(duplicate_error)
 
     clusters = _cluster_columns(vcov, data.columns)
     cols = [config.tname, config.gname, config.idname, *ctrls, config.xvar, config.weightsname, *clusters]

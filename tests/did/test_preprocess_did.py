@@ -11,8 +11,11 @@ pl = importorskip("polars")
 
 from moderndid.core.preprocess import (
     NEVER_TREATED_VALUE,
+    ROW_ID_COLUMN,
+    WEIGHTS_COLUMN,
     BasePeriod,
     CompositeValidator,
+    ContDIDConfig,
     ControlGroup,
     DataTransformerPipeline,
     DIDConfig,
@@ -31,7 +34,6 @@ from moderndid.core.preprocess.validators import (
     ColumnValidator,
     PanelStructureValidator,
     TreatmentValidator,
-    WeightValidator,
 )
 from moderndid.did.aggte import aggte
 from moderndid.did.att_gt import att_gt
@@ -259,8 +261,8 @@ class TestTransformers:
         config = DIDConfig(yname="y", tname="time", gname="g")
 
         df_transformed = transformer.transform(df, config)
-        assert "weights" in df_transformed.columns
-        assert np.isclose(df_transformed["weights"].mean(), 1.0)
+        assert WEIGHTS_COLUMN in df_transformed.columns
+        assert np.isclose(df_transformed[WEIGHTS_COLUMN].mean(), 1.0)
 
     def test_treatment_encoder(self):
         df = create_test_panel_data()
@@ -287,7 +289,7 @@ class TestTransformers:
 
         df_transformed = pipeline.transform(df, config)
 
-        assert "weights" in df_transformed.columns
+        assert WEIGHTS_COLUMN in df_transformed.columns
         assert df_transformed["g"].is_infinite().any()
         assert len(df_transformed) > 0
 
@@ -953,15 +955,16 @@ def test_column_validator_missing_covariate():
     assert any("missing_var" in err for err in result.errors)
 
 
-def test_weight_validator_negative_weights():
+@pytest.mark.parametrize("weights", ["negative", "zero"])
+def test_weight_normalizer_rejects_negative_weights_and_a_zero_mean(weights):
     df = create_test_panel_data()
-    w = np.random.uniform(-1, 1, len(df))
-    df = df.with_columns(pl.Series("w", w))
-    validator = WeightValidator()
+    values = np.random.uniform(-1, 1, len(df)) if weights == "negative" else np.zeros(len(df))
+    df = df.with_columns(pl.Series("w", values))
     config = DIDConfig(yname="y", tname="time", idname="id", gname="g", weightsname="w")
-    result = validator.validate(df, config)
-    assert not result.is_valid
-    assert any("negative values" in err for err in result.errors)
+    message = "The weights variable 'w' must be non-negative with a positive mean."
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        WeightNormalizer().transform(df, config)
 
 
 def test_argument_validator_invalid_biters():
@@ -970,3 +973,192 @@ def test_argument_validator_invalid_biters():
     config = DIDConfig(yname="y", tname="time", idname="id", gname="g", biters=0)
     result = validator.validate(df, config)
     assert result.is_valid
+
+
+@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
+@pytest.mark.parametrize("allow_unbalanced_panel", [False, True])
+def test_preprocess_did_panel_false_keys_every_row(mpdta_data, allow_unbalanced_panel):
+    result = preprocess_did(
+        mpdta_data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        panel=False,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+    )
+
+    assert result.config.true_repeated_cross_sections is True
+    assert result.config.idname == ".rowid"
+    assert result.config.id_count == mpdta_data.height
+    assert result.time_invariant_data.height == mpdta_data.height
+
+
+def test_preprocess_did_unbalanced_panel_keeps_unit_keys(mpdta_unbalanced):
+    result = preprocess_did(
+        mpdta_unbalanced,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        allow_unbalanced_panel=True,
+    )
+
+    assert result.config.panel is False
+    assert result.config.true_repeated_cross_sections is False
+    assert result.config.idname == "countyreal"
+    assert result.config.id_count == mpdta_unbalanced["countyreal"].n_unique()
+    assert result.time_invariant_data.height == result.config.id_count
+
+
+def test_preprocess_did_keeps_nan_cohort_out_of_never_treated(mpdta_nan_cohort):
+    with pytest.warns(UserWarning, match="^Dropped 50 rows from original data due to missing values$"):
+        result = preprocess_did(mpdta_nan_cohort, yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+    cohorts = result.time_invariant_data["first.treat"]
+
+    assert result.config.id_count == 490
+    assert cohorts.is_infinite().sum() == 309
+    assert cohorts.is_nan().sum() == 0
+
+
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        (DIDConfig(yname="y", tname="time", gname="g"), [np.inf, np.inf, np.inf]),
+        (DIDConfig(yname="y", tname="time", gname="g", anticipation=1), [np.inf, 4.0, np.inf]),
+        (ContDIDConfig(yname="y", tname="time", gname="g", anticipation=1), [np.inf, np.inf, np.inf]),
+    ],
+)
+def test_treatment_encoder_codes_never_treated_cohorts(cohort_codes_panel, config, expected):
+    result = TreatmentEncoder().transform(cohort_codes_panel, config)
+
+    assert result.filter(pl.col("time") == 1)["g"].to_list() == expected
+
+
+@pytest.mark.filterwarnings("ignore:No never-treated group is available:UserWarning")
+@pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
+def test_preprocess_did_without_never_treated_treats_earlier_cohorts_only(mpdta_without_never_treated, control_group):
+    result = preprocess_did(
+        mpdta_without_never_treated,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        control_group=control_group,
+    )
+
+    np.testing.assert_array_equal(result.config.treated_groups, [2004.0, 2006.0])
+    np.testing.assert_array_equal(result.config.time_periods, [2003, 2004, 2005, 2006])
+    assert result.config.id_count == 191
+
+
+def test_preprocess_did_weights_tensor_holds_each_period(mpdta_varying_weights):
+    result = preprocess_did(
+        mpdta_varying_weights, yname="lemp", tname="year", idname="countyreal", gname="first.treat", weightsname="w"
+    )
+    normalized = mpdta_varying_weights.with_columns(pl.col("w") / pl.col("w").mean())
+    units = result.time_invariant_data["countyreal"]
+
+    assert len(result.weights_tensor) == 5
+    for period, weights in zip(result.config.time_periods, result.weights_tensor):
+        rows = normalized.filter(pl.col("year") == period)
+        np.testing.assert_allclose(weights, units.replace_strict(rows["countyreal"], rows["w"]).to_numpy(), rtol=1e-12)
+
+
+@pytest.mark.parametrize("panel", [True, False])
+def test_preprocess_did_weights_tensor_needs_balanced_panel(mpdta_unbalanced_varying_weights, panel):
+    result = preprocess_did(
+        mpdta_unbalanced_varying_weights,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        weightsname="w",
+        panel=panel,
+    )
+
+    assert result.weights_tensor is None
+
+
+@pytest.mark.parametrize("reserved", [WEIGHTS_COLUMN, ROW_ID_COLUMN])
+def test_column_validator_rejects_reserved_names(reserved):
+    df = create_test_panel_data().rename({"y": reserved, "x1": f"{reserved}x"})
+    config = DIDConfig(yname=reserved, tname="time", idname="id", gname="g", xformla=f"~ {reserved}x")
+
+    result = ColumnValidator().validate(df, config)
+
+    assert not result.is_valid
+    assert result.errors == [
+        f"yname names the column '{reserved}'. "
+        "Since moderndid uses that name for an internal column, rename the column."
+    ]
+
+
+@pytest.mark.parametrize(
+    "pairs, where",
+    [
+        ([(1, 1)], "the (id, time) pair (1, 1)"),
+        ([(2, 2), (1, 1)], "the (id, time) pairs (1, 1) and (2, 2)"),
+        ([(3, 1), (1, 1), (2, 2)], "the (id, time) pairs (1, 1), (2, 2), and (3, 1)"),
+        ([(5, 1), (4, 2), (3, 1), (2, 2), (1, 1)], "5 (id, time) pairs, such as (1, 1), (2, 2), and (3, 1)"),
+    ],
+)
+def test_panel_structure_validator_names_repeated_unit_periods(unit_period_panel, pairs, where):
+    repeated = pl.concat([unit_period_panel.filter((pl.col("id") == i) & (pl.col("time") == t)) for i, t in pairs])
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", panel=True)
+
+    result = PanelStructureValidator().validate(pl.concat([unit_period_panel, repeated]), config)
+
+    assert result.errors == [
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        f"Rows repeat for {where}."
+    ]
+    assert result.warnings == []
+
+
+@pytest.mark.parametrize("missing", [None, float("nan")])
+def test_panel_structure_validator_skips_rows_missing_unit_or_period(unit_period_panel, missing):
+    panel = unit_period_panel.with_columns(pl.col("id", "time").cast(pl.Float64))
+    incomplete = pl.DataFrame(
+        {"id": [1.0, 1.0, missing, missing], "time": [missing, missing, 2.0, 2.0], "y": [0.0] * 4, "g": [0] * 4},
+        schema=panel.schema,
+    )
+    config = DIDConfig(yname="y", tname="time", idname="id", gname="g", panel=True, allow_unbalanced_panel=True)
+
+    result = PanelStructureValidator().validate(pl.concat([panel, incomplete]), config)
+
+    assert result.errors == []
+
+
+def test_create_tensors_rejects_unit_major_rows(mpdta_data):
+    config = DIDConfig(yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+    dp = PreprocessDataBuilder().with_data(mpdta_data).with_config(config).validate().transform().build()
+    message = (
+        "The panel tensors take each period's rows by position. The data must hold one block of rows per period "
+        "and list the units in the same order in every block. Sort it by period, cohort, and unit."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        TensorFactorySelector.create_tensors(dp.data.sort("countyreal", "year"), dp.config)
+
+
+def test_create_tensors_rejects_units_reordered_within_one_period(mpdta_data):
+    config = DIDConfig(yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+    dp = PreprocessDataBuilder().with_data(mpdta_data).with_config(config).validate().transform().build()
+    in_2005 = pl.col("year") == 2005
+    blocks = [dp.data.filter(~in_2005), dp.data.filter(in_2005).reverse()]
+    reordered = pl.concat(blocks).sort("year", maintain_order=True)
+
+    with pytest.raises(ValueError, match="list the units in the same order in every block"):
+        TensorFactorySelector.create_tensors(reordered, dp.config)
+
+
+def test_create_tensors_pairs_each_unit_across_periods_on_shuffled_rows(mpdta_shuffled):
+    config = DIDConfig(yname="lemp", tname="year", idname="countyreal", gname="first.treat")
+    dp = PreprocessDataBuilder().with_data(mpdta_shuffled).with_config(config).validate().transform().build()
+    wide = dp.time_invariant_data.select("countyreal").join(
+        mpdta_shuffled.pivot(on="year", index="countyreal", values="lemp"), on="countyreal", how="left"
+    )
+
+    for i, year in enumerate(range(2003, 2008)):
+        np.testing.assert_array_equal(dp.outcomes_tensor[i], wide[str(year)].to_numpy())

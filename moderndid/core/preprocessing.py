@@ -44,8 +44,9 @@ def preprocess_drdid(
     idname : str | None, default None
         Name of entity/unit identifier column. Required for panel data.
     xformla : str | None, default None
-        Formula for covariates as a string (e.g., "x1 + x2").
-        If None, only intercept is included.
+        Formula for the covariates, such as ``"~ x1 + x2"``. A transformed
+        term such as ``I(x**2)`` requires formulaic. If None, only the
+        intercept is included.
     panel : bool, default True
         Whether data is in panel format (vs repeated cross-sections).
     weightsname : str | None, default None
@@ -256,8 +257,8 @@ def preprocess_cont_did(
     idname : str | None, default None
         Name of entity/unit identifier column. Required for panel data.
     xformla : str | None, default None
-        Formula for covariates as a string (e.g., "x1 + x2").
-        If None, no covariates are included. Currently only "~1" is supported.
+        Formula for the covariates, such as ``"~ x1 + x2"``. If None, no
+        covariates are included. Currently only ``"~1"`` is supported.
     panel : bool, default True
         Whether data is in panel format (vs repeated cross-sections).
     allow_unbalanced_panel : bool, default False
@@ -379,6 +380,9 @@ def preprocess_ddd_2periods(
 ):
     """Preprocess data for 2-period DDD estimation.
 
+    The inference options are stored as given. :func:`~moderndid.ddd` settles
+    them for every data layout before it calls this function.
+
     Parameters
     ----------
     data : pd.DataFrame | pl.DataFrame
@@ -395,8 +399,8 @@ def preprocess_ddd_2periods(
     pname : str
         Name of partition/eligibility column (1=eligible, 0=ineligible).
     xformla : str | None, default None
-        Formula for covariates as a string (e.g., "x1 + x2").
-        If None, no covariates are included.
+        Formula for the covariates, such as ``"~ x1 + x2"``. If None, no
+        covariates are included.
     est_method : {"dr", "reg", "ipw"}, default "dr"
         Estimation method: doubly robust, regression, or IPW.
     weightsname : str | None, default None
@@ -432,27 +436,9 @@ def preprocess_ddd_2periods(
     if xformla is None:
         xformla = "~1"
 
-    if alp > 0.10:
-        warnings.warn(f"alp={alp} is high. Using alp=0.05.", stacklevel=2)
-        alp = 0.05
-
     if boot and n_boot is None:
         warnings.warn("n_boot not specified. Using 999.", stacklevel=2)
         n_boot = 999
-
-    if boot and not cband:
-        warnings.warn("Setting cband=True for bootstrap.", stacklevel=2)
-        cband = True
-
-    if cluster is not None and not boot:
-        warnings.warn(
-            "Clustered SEs require bootstrap. Setting boot=True, cband=True.",
-            stacklevel=2,
-        )
-        boot = True
-        cband = True
-        if n_boot is None:
-            n_boot = 999
 
     if est_method not in ["dr", "reg", "ipw"]:
         raise ValueError(f"est_method must be 'dr', 'reg', or 'ipw', got '{est_method}'.")

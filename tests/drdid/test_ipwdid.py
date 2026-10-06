@@ -1,9 +1,12 @@
 """Tests for inverse propensity weighted DiD."""
 
+import re
+
 import numpy as np
 import pytest
 
 from moderndid.core.data import load_nsw
+from moderndid.drdid import ipw_did_panel, std_ipw_did_rc
 from moderndid.drdid.ipwdid import ipwdid
 from tests.helpers import importorskip
 
@@ -408,7 +411,7 @@ def test_ipwdid_categorical_covariates(nsw_data):
 @pytest.mark.filterwarnings("ignore:Missing values found:UserWarning")
 @pytest.mark.filterwarnings("ignore:Dropped.*rows due to missing values:UserWarning")
 @pytest.mark.filterwarnings("ignore:Panel data is unbalanced:UserWarning")
-def test_ipwdid_missing_values_handled():
+def test_ipwdid_missing_values_raise_in_panel():
     rng = np.random.default_rng(42)
     y_vals = rng.standard_normal(100)
     y_vals[5] = np.nan
@@ -422,17 +425,16 @@ def test_ipwdid_missing_values_handled():
         }
     )
 
-    result = ipwdid(
-        data=df,
-        yname="y",
-        tname="time",
-        treatname="treat",
-        idname="id",
-        xformla="~ x1",
-        panel=True,
-    )
-    assert isinstance(result.att, float)
-    assert np.isfinite(result.att) or np.isnan(result.att)
+    with pytest.raises(ValueError, match="Missing values found in panel data"):
+        ipwdid(
+            data=df,
+            yname="y",
+            tname="time",
+            treatname="treat",
+            idname="id",
+            xformla="~ x1",
+            panel=True,
+        )
 
 
 @pytest.mark.filterwarnings("ignore:Small group size detected:UserWarning")
@@ -622,3 +624,91 @@ def test_ipwdid_comparison_with_other_estimators(nsw_data):
 
     atts = [ipw_result.att, dr_result.att, or_result.att]
     assert max(atts) - min(atts) < max(abs(att) for att in atts) * 2
+
+
+def test_ipwdid_panel_plain_covariates_without_formulaic(nsw_data, without_formulaic):
+    post = nsw_data.filter(pl.col("year") == nsw_data["year"].max()).sort("id")
+    pre = nsw_data.filter(pl.col("year") == nsw_data["year"].min()).sort("id")
+    covariates = np.column_stack([np.ones(post.height), post.select("age", "educ", "black").to_numpy()])
+    expected = ipw_did_panel(
+        y1=post["re"].to_numpy(),
+        y0=pre["re"].to_numpy(),
+        d=post["experimental"].to_numpy(),
+        covariates=covariates,
+        i_weights=np.ones(post.height),
+    )
+
+    result = ipwdid(
+        data=nsw_data,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        idname="id",
+        xformla="~ age + educ + black",
+        est_method="ipw",
+    )
+
+    np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=1e-12)
+
+
+def test_ipwdid_rc_plain_covariates_without_formulaic(nsw_data, without_formulaic):
+    covariates = np.column_stack([np.ones(nsw_data.height), nsw_data.select("age", "educ", "black").to_numpy()])
+    expected = std_ipw_did_rc(
+        y=nsw_data["re"].to_numpy(),
+        post=(nsw_data["year"] == nsw_data["year"].max()).cast(pl.Int64).to_numpy(),
+        d=nsw_data["experimental"].to_numpy(),
+        covariates=covariates,
+        i_weights=np.ones(nsw_data.height),
+    )
+
+    result = ipwdid(
+        data=nsw_data,
+        yname="re",
+        tname="year",
+        treatname="experimental",
+        panel=False,
+        xformla="~ age + educ + black",
+        est_method="std_ipw",
+    )
+
+    np.testing.assert_allclose([result.att, result.se], [expected.att, expected.se], rtol=1e-12)
+
+
+def test_ipwdid_rejects_repeated_unit_periods(nsw_duplicated):
+    message = (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (id, year) pair (15995, 1975)."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ipwdid(data=nsw_duplicated, yname="re", tname="year", treatname="experimental", idname="id", panel=True)
+
+
+@pytest.mark.parametrize("nsw_one_infinite", [("re", float("inf")), ("age", float("-inf"))], indirect=True)
+def test_ipwdid_drops_infinite_rows_of_repeated_cross_sections(nsw_one_infinite):
+    spec = {"yname": "re", "tname": "year", "treatname": "experimental", "idname": "id", "xformla": "~ age + educ"}
+    expected = ipwdid(
+        data=nsw_one_infinite.filter(pl.all_horizontal(pl.col("re", "age").is_finite())), panel=False, **spec
+    )
+
+    with pytest.warns(UserWarning, match="^Dropped 1 rows from original data due to missing values$"):
+        result = ipwdid(data=nsw_one_infinite, panel=False, **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+
+
+@pytest.mark.parametrize("panel", [True, False])
+def test_ipwdid_rejects_weights_without_positive_mean(nsw_data, panel):
+    message = "The weights variable 'w' must be non-negative with a positive mean."
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ipwdid(
+            data=nsw_data.with_columns(pl.lit(0.0).alias("w")),
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            weightsname="w",
+            panel=panel,
+        )

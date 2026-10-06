@@ -1,5 +1,6 @@
 """Shared fixtures for didinter tests."""
 
+import itertools
 from types import SimpleNamespace
 
 import numpy as np
@@ -133,6 +134,18 @@ def panel_with_controls(simple_panel_data, rng):
             pl.Series("x2", x2),
         ]
     )
+
+
+@pytest.fixture
+def weighted_clustered_panel(panel_with_controls):
+    """Panel with controls, a weight of 2 in w, and ten clusters of five groups in cl."""
+    return panel_with_controls.with_columns(pl.lit(2.0).alias("w"), (pl.col("id") % 10).cast(pl.Float64).alias("cl"))
+
+
+@pytest.fixture
+def zero_weight_cluster_panel(weighted_clustered_panel):
+    """Weighted clustered panel whose clusters 0 to 4 carry zero weight in every row."""
+    return weighted_clustered_panel.with_columns(pl.when(pl.col("cl") < 5).then(0.0).otherwise(pl.col("w")).alias("w"))
 
 
 @pytest.fixture
@@ -487,8 +500,8 @@ def reach_panel():
         for t in range(1, 7):
             y = None if t in missing else float(unit + t)
             weight = 0.0 if y is None else 1.0
-            rows.append((unit, t, y, switch, last_period_with_controls[baseline], baseline, weight))
-    return pl.DataFrame(rows, schema=["id", "time", "y", "F_g", "T_g", "d_sq", "weight_gt"], orient="row")
+            rows.append((unit, t, y, switch, last_period_with_controls[baseline], baseline, int(baseline) + 1, weight))
+    return pl.DataFrame(rows, schema=["id", "time", "y", "F_g", "T_g", "d_sq", "d_sq_int", "weight_gt"], orient="row")
 
 
 @pytest.fixture
@@ -601,3 +614,68 @@ def trend_switchers_by_hand():
         return observed.filter(pl.col("n") == horizon + 2).height
 
     return count
+
+
+@pytest.fixture
+def baseline_shift_panels():
+    """Unbalanced panel with baseline treatment 0.1 and some bidirectional switchers, and the same panel at 0.125."""
+    rng = np.random.default_rng(3)
+    rows = []
+    for unit in range(1, 201):
+        switch = int(rng.integers(3, 8)) if rng.random() < 0.6 else None
+        back = switch is not None and unit % 6 == 0 and switch + 2 <= 8
+        effect = rng.normal()
+        for t in range(1, 9):
+            change = 0.0
+            if switch is not None and t >= switch:
+                change = -1.0 if back and t >= switch + 2 else 1.0
+            x = rng.normal() + 0.1 * t
+            y = effect + 0.1 * t + 0.6 * change + 0.5 * x + rng.normal()
+            rows.append((unit, t, change, y, x, (unit - 1) // 10 + 1))
+    df = pl.DataFrame(rows, schema=["g", "t", "change", "y", "x", "cl"], orient="row")
+    df = df.filter(~(pl.Series(rng.random(df.height) < 0.08) & (df["t"] > 1)))
+    return [df.with_columns((pl.col("change") + base).alias("d")).drop("change") for base in (0.1, 0.125)]
+
+
+@pytest.fixture
+def order_sensitive_panel():
+    """Panel whose groups change treatment more than once and sometimes to both sides of their baseline."""
+    paths = {
+        1: [0, 0, 1, 1, 0, 0],
+        2: [0, 0, 2, 1, 1, 1],
+        3: [1, 1, 0, 2, 2, 2],
+        4: [1, 1, 1, 2, 0, 0],
+        5: [0, 0, 0, 0, 0, 0],
+        6: [1, 1, 1, 1, 1, 1],
+        7: [2, 2, 3, 1, 1, 1],
+        8: [2, 2, 1, 1, 3, 3],
+    }
+    rows = [(unit, t, float(d), float(unit + t)) for unit, path in paths.items() for t, d in enumerate(path, start=1)]
+    return pl.DataFrame(rows, schema=["id", "time", "d", "y"], orient="row")
+
+
+@pytest.fixture
+def shuffling_joins(monkeypatch):
+    """Make DataFrame.join return its rows in a shuffled order unless the call sets maintain_order."""
+    join = pl.DataFrame.join
+    seeds = itertools.count()
+
+    def shuffled_join(self, *args, maintain_order=None, **kwargs):
+        joined = join(self, *args, maintain_order=maintain_order, **kwargs)
+        if maintain_order in (None, "none"):
+            return joined.sample(fraction=1.0, shuffle=True, seed=next(seeds))
+        return joined
+
+    monkeypatch.setattr(pl.DataFrame, "join", shuffled_join)
+
+
+@pytest.fixture(params=["repeated_row", "hidden_gap", "relabeled_row"])
+def simple_panel_duplicated(request, simple_panel_data):
+    """Simple panel in which unit 5 has two rows in period 3."""
+    unit = pl.col("id") == 5
+    row = simple_panel_data.filter(unit & (pl.col("time") == 3))
+    if request.param == "repeated_row":
+        return pl.concat([simple_panel_data, row])
+    if request.param == "hidden_gap":
+        return pl.concat([simple_panel_data.filter(~(unit & (pl.col("time") == 4))), row])
+    return pl.concat([simple_panel_data, row.with_columns(pl.col("y") + 1)])
