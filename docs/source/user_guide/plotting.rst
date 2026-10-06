@@ -469,8 +469,7 @@ action on real data.
 - :ref:`Intertemporal Treatment <example_inter_did>` —
   ``plot_multiplegt``
 - :ref:`Dynamic Covariate Balancing <example_dyn_balancing>` —
-  ``plot_dyn_balancing``, ``plot_dyn_balancing_history``,
-  ``plot_dyn_balancing_het``, ``plot_dyn_balancing_coefs``
+  ``plot_dyn_balancing_history``
 - :ref:`Sensitivity Analysis <example_honest_did>` —
   ``plot_event_study``, ``plot_sensitivity``
 

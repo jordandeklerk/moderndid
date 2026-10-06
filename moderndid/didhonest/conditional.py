@@ -3,9 +3,9 @@
 import warnings
 
 import numpy as np
-from scipy import stats
+from scipy import special
 
-from .numba import compute_bounds, selection_matrix
+from .numba import compute_bounds, create_second_differences_matrix, selection_matrix
 
 
 def test_in_identified_set_max(
@@ -15,7 +15,7 @@ def test_in_identified_set_max(
     A,
     alpha,
     d,
-) -> bool:
+):
     r"""Run conditional test of the moments.
 
     Tests whether a given value of :math:`M` is in the identified set by checking if
@@ -76,7 +76,8 @@ def test_in_identified_set_max(
         sd=sigma_bar.item(),
     )
 
-    reject = max_moment > critical_val
+    # The truncation bounds and critical value refer to gamma'y, the moment plus its bound.
+    reject = max_moment + d_tilde[max_location] > critical_val
 
     return bool(reject)
 
@@ -87,7 +88,7 @@ def estimate_lowerbound_m_conditional_test(
     grid_ub,
     alpha=0.05,
     grid_points=1000,
-) -> float:
+):
     r"""Estimate a lower bound for :math:`M` using the conditional test.
 
     Constructs a lower bound for :math:`M` by inverting the conditional test over a
@@ -150,33 +151,27 @@ def estimate_lowerbound_m_conditional_test(
 def _create_pre_period_second_diff_constraints(num_pre_periods):
     r"""Create constraint matrix and bounds for pre-period second differences.
 
+    Builds :math:`A` and :math:`d` so that :math:`A \beta_{pre} \le d M` bounds every
+    second difference of the pre-period coefficients by :math:`M` in absolute value. Since
+    the coefficient at the reference period is normalized to zero, the last row is the
+    second difference :math:`\beta_{-2} - 2\beta_{-1}` through that period.
+
     Parameters
     ----------
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods. Must be at least 2.
 
     Returns
     -------
     tuple
-        (A, d) where A is the constraint matrix and d is the bounds vector.
-
-    Raises
-    ------
-    ValueError
-        If num_pre_periods < 2.
+        (A, d) where A stacks the second differences with both signs and d is a vector
+        of ones.
     """
     if num_pre_periods < 2:
-        raise ValueError("Can't estimate M in pre-period with < 2 pre-period coeffs")
+        raise ValueError("Cannot estimate M in pre-period with < 2 pre-period coefficients.")
 
-    a_tilde = np.zeros((num_pre_periods - 1, num_pre_periods))
-
-    a_tilde[num_pre_periods - 2, (num_pre_periods - 2) : num_pre_periods] = [1, -1]
-
-    if num_pre_periods > 2:
-        a_tilde[num_pre_periods - 2, (num_pre_periods - 3) : num_pre_periods] = [1, -2, 1]
-
-        for r in range(num_pre_periods - 3):
-            a_tilde[r, r : (r + 3)] = [1, -2, 1]
+    a_tilde = create_second_differences_matrix(num_pre_periods - 1, num_pre_periods + 1)
+    a_tilde = np.delete(a_tilde, num_pre_periods, axis=1)
 
     A = np.vstack([a_tilde, -a_tilde])
     d = np.ones(A.shape[0])
@@ -191,15 +186,20 @@ def _norminvp_generalized(
     mu=0.0,
     sd=1.0,
 ):
-    r"""Compute generalized inverse of normal CDF with truncation.
+    r"""Compute the quantile of a truncated normal distribution.
 
-    Computes the :math:`p`-th quantile of a normal distribution with mean :math:`\\mu`
-    and standard deviation :math:`\\sigma`, truncated to the interval :math:`[lower, upper]`.
+    Computes the :math:`p`-th quantile of a normal distribution with mean :math:`\mu`
+    and standard deviation :math:`\sigma`, truncated to the interval :math:`[lower, upper]`.
+
+    The inversion runs on the log scale. It uses survival probabilities when the interval
+    lies above the mean and distribution-function values otherwise. The quantile then stays
+    accurate when the truncation point sits many standard deviations out, as it does when the
+    conditional tests evaluate large violations.
 
     Parameters
     ----------
     p : float
-        Probability level (between 0 and 1).
+        Probability level between 0 and 1.
     lower : float
         Lower truncation bound.
     upper : float
@@ -207,17 +207,13 @@ def _norminvp_generalized(
     mu : float, default=0.0
         Mean of the normal distribution.
     sd : float, default=1.0
-        Standard deviation of the normal distribution.
+        Standard deviation of the normal distribution. Must be positive.
 
     Returns
     -------
     float
-        The :math:`p`-th quantile of the truncated normal distribution.
-
-    Notes
-    -----
-    When :math:`lower = -\\infty` and :math:`upper = \\infty`, this reduces to the standard
-    normal quantile function.
+        The :math:`p`-th quantile of the truncated normal distribution, or ``lower``
+        when the interval is empty or a single point.
     """
     if sd <= 0:
         raise ValueError("Standard deviation must be positive")
@@ -226,22 +222,21 @@ def _norminvp_generalized(
         return lower if not np.isinf(lower) else -np.inf
     if p >= 1:
         return upper if not np.isinf(upper) else np.inf
-
-    l_std = (lower - mu) / sd if not np.isinf(lower) else -np.inf
-    u_std = (upper - mu) / sd if not np.isinf(upper) else np.inf
-
-    if np.isinf(l_std) and np.isinf(u_std):
-        return mu + sd * stats.norm.ppf(p)
-
-    p_l = stats.norm.cdf(l_std) if not np.isinf(l_std) else 0
-
-    p_u = stats.norm.cdf(u_std) if not np.isinf(u_std) else 1
-
-    p_trunc = p_l + p * (p_u - p_l)
-
-    if p_trunc <= p_l:
+    if lower >= upper:
         return lower
-    if p_trunc >= p_u:
-        return upper
 
-    return mu + sd * stats.norm.ppf(p_trunc)
+    a = (lower - mu) / sd
+    b = (upper - mu) / sd
+
+    if a >= 0:
+        log_sf_a = special.log_ndtr(-a)
+        log_sf_b = special.log_ndtr(-b)
+        log_sf_q = log_sf_a + np.log1p(p * np.expm1(log_sf_b - log_sf_a))
+        z = -special.ndtri_exp(log_sf_q)
+    else:
+        log_cdf_a = special.log_ndtr(a)
+        log_cdf_b = special.log_ndtr(b)
+        log_cdf_q = log_cdf_b + np.log1p((1 - p) * np.expm1(log_cdf_a - log_cdf_b))
+        z = special.ndtri_exp(log_cdf_q)
+
+    return float(min(max(mu + sd * z, lower), upper))

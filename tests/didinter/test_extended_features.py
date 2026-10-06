@@ -171,6 +171,20 @@ def test_het_regression_hc2bm_differs_from_hc2(het_sample, hc2_config, hc2bm_con
     assert not np.allclose(result_hc2.std_errors, result_hc2bm.std_errors)
 
 
+def test_het_regression_hc2bm_handles_weights_that_vary_within_a_cluster(
+    het_sample, hc2bm_weighted_config, block_hc2_by_hand
+):
+    result = _run_het_regression(het_sample, ["x1", "x2"], 1, hc2bm_weighted_config)
+
+    cohort = het_sample["F_g"].to_numpy()
+    X = np.column_stack([np.ones(60), het_sample.select("x1", "x2").to_numpy(), cohort == 4.0, cohort == 5.0])
+    expected = block_hc2_by_hand(
+        X, het_sample["_prod_het"].to_numpy(), het_sample["weight_gt"].to_numpy(), het_sample["cluster_id"].to_numpy()
+    )
+
+    np.testing.assert_allclose(result.std_errors, expected[1:3], rtol=1e-10)
+
+
 def test_het_regression_hc2bm_warns_without_cluster(het_sample):
     sample = het_sample.rename({"cluster_id": "unit_id"})
     config = SimpleNamespace(
@@ -226,7 +240,7 @@ def test_more_granular_demeaning_matches_less_conservative_se(simple_panel_data)
     )
 
 
-def test_more_granular_demeaning_differs_from_default(simple_panel_data):
+def test_more_granular_demeaning_matches_default_on_absorbing_paths(simple_panel_data):
     result_default = md.did_multiplegt(
         simple_panel_data,
         yname="y",
@@ -248,10 +262,30 @@ def test_more_granular_demeaning_differs_from_default(simple_panel_data):
         result_default.effects.estimates,
         result_granular.effects.estimates,
     )
-    assert not np.allclose(
+    np.testing.assert_allclose(
         result_default.effects.std_errors,
         result_granular.effects.std_errors,
+        rtol=1e-12,
     )
+
+
+def test_less_conservative_se_demeans_within_treatment_paths(stepped_panel_data):
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 1}
+    result_default = md.did_multiplegt(stepped_panel_data, **kwargs)
+    result_paths = md.did_multiplegt(stepped_panel_data, **kwargs, less_conservative_se=True)
+
+    np.testing.assert_array_equal(result_default.effects.estimates, result_paths.effects.estimates)
+    np.testing.assert_allclose(result_default.effects.std_errors[0], result_paths.effects.std_errors[0], rtol=1e-12)
+    assert not np.isclose(result_default.effects.std_errors[1], result_paths.effects.std_errors[1], rtol=1e-6)
+
+
+@pytest.mark.parametrize("cluster", [None, "cluster"])
+def test_less_conservative_se_leaves_placebos_unchanged(stepped_panel_data, cluster):
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 2}
+    result_default = md.did_multiplegt(stepped_panel_data, **kwargs, cluster=cluster)
+    result_paths = md.did_multiplegt(stepped_panel_data, **kwargs, cluster=cluster, less_conservative_se=True)
+
+    np.testing.assert_array_equal(result_default.placebos.std_errors, result_paths.placebos.std_errors)
 
 
 @pytest.mark.parametrize(
@@ -499,7 +533,7 @@ def test_predict_het_weights_change_estimates(weighted_panel_data):
         )
 
 
-def test_switchers_out_produces_negative_estimates(rng):
+def test_switchers_out_estimates_carry_the_sign_of_the_effect(rng):
     n_units, n_periods = 40, 6
     units = np.repeat(np.arange(n_units), n_periods)
     periods = np.tile(np.arange(1, n_periods + 1), n_units)
@@ -519,7 +553,7 @@ def test_switchers_out_produces_negative_estimates(rng):
         effects=2,
         switchers="out",
     )
-    assert all(est < 0 for est in result.effects.estimates)
+    np.testing.assert_allclose(result.effects.estimates, 1.5, atol=0.6)
     assert all(nsw == 15 for nsw in result.effects.n_switchers)
 
 
@@ -532,6 +566,7 @@ def test_same_switchers_pl_preserves_placebo_validity(simple_panel_data):
         dname="d",
         effects=2,
         placebo=2,
+        same_switchers=True,
         same_switchers_pl=True,
     )
     assert len(result.placebos.estimates) == 2
@@ -598,6 +633,7 @@ def test_format_estimation_detail_lines(minimal_effects, params, expected_substr
         ("predict_het", (["x"], "bad"), "predict_het.*must be a list of integer"),
         ("trends_nonparam", "bad", "trends_nonparam must be a list"),
         ("trends_nonparam", [1, 2], "trends_nonparam must be a list"),
+        ("same_switchers_pl", True, "same_switchers_pl=True requires same_switchers=True"),
     ],
 )
 @pytest.mark.filterwarnings("ignore:When continuous > 0:UserWarning")
@@ -611,3 +647,76 @@ def test_new_param_validation(simple_panel_data, param, value, match):
             dname="d",
             **{param: value},
         )
+
+
+def test_predict_het_regresses_placebo_changes_on_the_covariates(het_panel_data, switcher_changes):
+    result = md.did_multiplegt(
+        het_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        placebo=2,
+        predict_het=(["x"], [-1]),
+    )
+    wide, placebo_change = switcher_changes(het_panel_data, 2)
+    _, effect_change = switcher_changes(het_panel_data, 5)
+
+    assert [h.horizon for h in result.heterogeneity] == [-2, -1, 1, 2]
+    np.testing.assert_allclose(result.heterogeneity[1].estimates[0], np.polyfit(wide["x"], placebo_change, 1)[0])
+    np.testing.assert_allclose(result.heterogeneity[3].estimates[0], np.polyfit(wide["x"], effect_change, 1)[0])
+    assert all(h.n_obs == 50 for h in result.heterogeneity)
+
+
+def test_predict_het_standard_errors_are_nan_when_a_group_is_fit_exactly(het_panel_data):
+    data = het_panel_data.with_columns(
+        pl.when((pl.col("id") == 0) & (pl.col("time") == 3)).then(1.0).otherwise(pl.col("d")).alias("d")
+    )
+
+    with pytest.warns(UserWarning, match="horizons 1, 2 fit a group exactly"):
+        result = md.did_multiplegt(
+            data, yname="y", idname="id", tname="time", dname="d", effects=2, predict_het=(["x"], [-1])
+        )
+
+    for het in result.heterogeneity:
+        assert np.isfinite(het.estimates).all()
+        assert np.isnan(het.std_errors).all()
+        assert np.isnan(het.ci_lower).all()
+        assert np.isnan(het.f_pvalue)
+
+
+@pytest.mark.filterwarnings("ignore:When trends_lin=True:UserWarning")
+def test_predict_het_detrends_outcome_levels_with_trends_lin(het_panel_data, switcher_changes):
+    with pytest.warns(UserWarning, match="no placebo regressions when trends_lin=True"):
+        result = md.did_multiplegt(
+            het_panel_data,
+            yname="y",
+            idname="id",
+            tname="time",
+            dname="d",
+            effects=2,
+            placebo=1,
+            trends_lin=True,
+            predict_het=(["x"], [-1]),
+        )
+    wide, change = switcher_changes(het_panel_data, 5)
+    _, trend = switcher_changes(het_panel_data, 3, start=2)
+
+    assert [h.horizon for h in result.heterogeneity] == [1, 2]
+    np.testing.assert_allclose(result.heterogeneity[1].estimates[0], np.polyfit(wide["x"], change - 2 * trend, 1)[0])
+
+
+def test_predict_het_weights_each_group_by_its_first_period_weight(het_panel_data, switcher_changes):
+    data = het_panel_data.with_columns(
+        pl.when((pl.col("id") < 10) & (pl.col("time") == 1)).then(None).otherwise(pl.col("y")).alias("y")
+    )
+    result = md.did_multiplegt(
+        data, yname="y", idname="id", tname="time", dname="d", weightsname="w", effects=1, predict_het=(["x"], [-1])
+    )
+    wide, change = switcher_changes(data, 4)
+
+    assert result.heterogeneity[0].n_obs == 50
+    np.testing.assert_allclose(
+        result.heterogeneity[0].estimates[0], np.polyfit(wide["x"], change, 1, w=np.sqrt(wide["w"]))[0]
+    )

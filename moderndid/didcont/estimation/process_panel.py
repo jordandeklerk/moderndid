@@ -1,10 +1,12 @@
 """Functions for panel treatment effects."""
 
 import warnings
+from functools import partial
 from typing import NamedTuple
 
 import numpy as np
 import polars as pl
+import scipy.stats as st
 
 from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess import (
@@ -15,10 +17,10 @@ from moderndid.core.preprocess import (
 )
 from moderndid.core.preprocess.models import ContDIDData
 
-from ..container import PTEParams, PTEResult
+from ..container import GroupTimeATTResult, PTEAggteResult, PTEParams, PTEResult
 from .bootstrap import panel_empirical_bootstrap
 from .estimators import pte_attgt
-from .process_aggte import aggregate_att_gt
+from .process_aggte import _event_times, aggregate_att_gt, check_critical_value
 from .process_attgt import process_att_gt
 from .process_dose import process_dose_gt
 
@@ -79,7 +81,8 @@ def pte(
     alp : float, default=0.05
         Significance level.
     boot_type : str, default="multiplier"
-        Bootstrap type ("multiplier" or "empirical").
+        Bootstrap type ("multiplier" or "empirical"). The empirical bootstrap
+        doesn't support ``min_e``, ``max_e``, or ``balance_e``.
     weightsname : str, optional
         Name of weights variable.
     gt_type : str, default="att"
@@ -102,6 +105,15 @@ def pte(
     PTEResult or DoseResult
         Results object depending on gt_type.
     """
+    # Since the empirical path aggregates every event time without balancing, these options would otherwise be
+    # dropped silently.
+    event_time_options = [name for name in ("min_e", "max_e", "balance_e") if kwargs.get(name) is not None]
+    if boot_type == "empirical" and event_time_options:
+        raise ValueError(
+            f"The empirical bootstrap doesn't support {', '.join(event_time_options)}. Use boot_type='multiplier' "
+            "to trim or balance the event study."
+        )
+
     ptep = setup_pte_fun(
         yname=yname,
         gname=gname,
@@ -147,7 +159,7 @@ def pte(
         bootstrap_result = panel_empirical_bootstrap(
             attgt_list=res["attgt_list"],
             pte_params=ptep,
-            setup_pte_fun=setup_pte,
+            setup_pte_fun=partial(_bootstrap_draw_params, ptep=ptep),
             subset_fun=subset_fun,
             attgt_fun=attgt_fun,
             extra_gt_returns=res.get("extra_gt_returns", []),
@@ -155,45 +167,7 @@ def pte(
             random_state=random_state,
             **kwargs,
         )
-
-        att_gt_data = {
-            "att": bootstrap_result.attgt_results["att"].to_numpy(),
-            "group": bootstrap_result.attgt_results["group"].to_numpy(),
-            "time_period": bootstrap_result.attgt_results["time_period"].to_numpy(),
-            "se": (
-                bootstrap_result.attgt_results["se"].to_numpy()
-                if "se" in bootstrap_result.attgt_results.columns
-                else np.nan * np.ones(len(bootstrap_result.attgt_results))
-            ),
-        }
-
-        att_gt_result = {
-            "att": att_gt_data["att"],
-            "group": att_gt_data["group"],
-            "time_period": att_gt_data["time_period"],
-            "se": att_gt_data["se"],
-            "influence_func": None,
-        }
-
-        overall_att = OverallResult(
-            overall_att=bootstrap_result.overall_results["att"],
-            overall_se=bootstrap_result.overall_results["se"],
-            influence_func=None,
-        )
-
-        event_study = None
-        if bootstrap_result.dyn_results is not None:
-            event_study = {
-                "e": bootstrap_result.dyn_results["e"].to_numpy(),
-                "att_e": bootstrap_result.dyn_results["att_e"].to_numpy(),
-                "se": (
-                    bootstrap_result.dyn_results["se"].to_numpy()
-                    if "se" in bootstrap_result.dyn_results.columns
-                    else np.nan * np.ones(len(bootstrap_result.dyn_results))
-                ),
-            }
-
-        return PTEResult(att_gt=att_gt_result, overall_att=overall_att, event_study=event_study, ptep=ptep)
+        return _empirical_bootstrap_result(bootstrap_result, ptep, kwargs.get("aggregation", "dose"))
 
     rng = np.random.default_rng(random_state)
     att_gt = process_att_gt(res, ptep, rng=rng)
@@ -203,7 +177,12 @@ def pte(
     balance_e = kwargs.get("balance_e")
 
     event_study = aggregate_att_gt(
-        att_gt, aggregation_type="dynamic", balance_event=balance_e, min_event_time=min_e, max_event_time=max_e
+        att_gt,
+        aggregation_type="dynamic",
+        balance_event=balance_e,
+        min_event_time=min_e,
+        max_event_time=max_e,
+        rng=rng,
     )
 
     aggregation = kwargs.get("aggregation", "dose")
@@ -214,7 +193,120 @@ def pte(
             influence_func=event_study.influence_func.get("overall") if event_study.influence_func else None,
         )
     else:
-        overall_att = aggregate_att_gt(att_gt, aggregation_type="overall")
+        overall_att = aggregate_att_gt(att_gt, aggregation_type="overall", rng=rng)
+
+    return PTEResult(att_gt=att_gt, overall_att=overall_att, event_study=event_study, ptep=ptep)
+
+
+def _bootstrap_draw_params(data, ptep, **kwargs):
+    """Rebuild the estimation settings for one empirical bootstrap draw.
+
+    Parameters
+    ----------
+    data : pl.DataFrame
+        Units resampled from ``ptep.data``.
+    ptep : PTEParams
+        Settings of the estimate.
+    **kwargs
+        Setup arguments that a draw ignores.
+
+    Returns
+    -------
+    PTEParams
+        The estimate's settings with the resampled data and the cohorts that the draw contains.
+    """
+    # A draw reruns the estimate's cells, knots, and dose grid on resampled units. Since the draw
+    # renumbers units in the id column, the working id column has to follow it.
+    data = data.with_columns(pl.col(ptep.idname).alias("id"))
+    g_list = np.asarray(ptep.g_list)
+    if "G" in data.columns:
+        # A small cohort can be missing from a draw. Its cells would then have no treated units.
+        g_list = g_list[np.isin(g_list, data["G"].unique().to_numpy())]
+    return ptep._replace(data=data, g_list=g_list)
+
+
+def _empirical_bootstrap_result(bootstrap_result, ptep, aggregation):
+    """Collect empirical bootstrap results into the multiplier bootstrap's containers.
+
+    Parameters
+    ----------
+    bootstrap_result : PteEmpBootResult
+        Estimates, bootstrap standard errors, and event-study draws.
+    ptep : PTEParams
+        Settings of the estimate.
+    aggregation : str
+        Requested aggregation. An event study takes its overall effect from the event-study effects.
+
+    Returns
+    -------
+    PTEResult
+        NamedTuple containing:
+
+        - **att_gt**: Group-time effects with bootstrap standard errors
+        - **overall_att**: Overall effect with its bootstrap standard error
+        - **event_study**: Event study by event time, or None without event-study draws
+        - **ptep**: Settings of the estimate
+    """
+    alpha = float(ptep.alp)
+    pointwise_z = st.norm.ppf(1 - alpha / 2)
+    cells = bootstrap_result.attgt_results
+    att_gt = GroupTimeATTResult(
+        groups=cells["group"].to_numpy(),
+        times=cells["time_period"].to_numpy(),
+        att=cells["att"].to_numpy(),
+        vcov_analytical=None,
+        se=cells["se"].to_numpy() if "se" in cells.columns else np.full(cells.height, np.nan),
+        critical_value=pointwise_z,
+        influence_func=None,
+        n_units=ptep.data[ptep.idname].n_unique(),
+        cband=False,
+        alpha=alpha,
+        pte_params=ptep,
+        extra_gt_returns=bootstrap_result.extra_gt_returns,
+    )
+
+    event_study = None
+    dyn = bootstrap_result.dyn_results
+    draws = bootstrap_result.dyn_draws
+    if dyn is not None and dyn.height > 0 and draws is not None:
+        event_times = _event_times(dyn["e"].to_numpy())
+        att_e = dyn["att_e"].to_numpy()
+        se_e = dyn["se"].to_numpy()
+
+        crit = pointwise_z
+        valid = se_e > 0
+        if ptep.cband and np.any(valid):
+            # The largest standardized deviation across event times sets a band that holds for all of them.
+            sup_t = np.max(np.abs(draws[:, valid] - att_e[valid]) / se_e[valid], axis=1)
+            crit = check_critical_value(float(np.quantile(sup_t, 1 - alpha)), alpha)
+
+        post = event_times >= 0
+        overall, overall_se = np.nan, np.nan
+        if np.any(post):
+            overall = float(np.mean(att_e[post]))
+            overall_se = float(np.std(np.mean(draws[:, post], axis=1), ddof=1))
+
+        event_study = PTEAggteResult(
+            overall_att=overall,
+            overall_se=overall_se,
+            aggregation_type="dynamic",
+            event_times=event_times,
+            att_by_event=att_e,
+            se_by_event=se_e,
+            critical_value=crit,
+            att_gt_result=att_gt,
+        )
+
+    if aggregation == "eventstudy" and event_study is not None:
+        overall_att = OverallResult(
+            overall_att=event_study.overall_att, overall_se=event_study.overall_se, influence_func=None
+        )
+    else:
+        overall_att = OverallResult(
+            overall_att=bootstrap_result.overall_results["att"],
+            overall_se=bootstrap_result.overall_results["se"],
+            influence_func=None,
+        )
 
     return PTEResult(att_gt=att_gt, overall_att=overall_att, event_study=event_study, ptep=ptep)
 
@@ -392,9 +484,13 @@ def setup_pte(
     sorted_original_time_periods = np.sort(original_time_periods)
     time_map = {orig: i + 1 for i, orig in enumerate(sorted_original_time_periods)}
 
+    # The "G" and "period" columns hold positions from here on, even when the input names one of them. Results
+    # and cohort shares read the data's own labels from separate columns.
     data = data.with_columns(
         pl.Series("period", _map_to_idx(period_series, time_map)),
         pl.Series("G", _map_to_idx(g_series, time_map)),
+        pl.Series(".period_label", period_series),
+        pl.Series(".group_label", g_series),
     )
 
     recoded_time_periods = _map_to_idx(sorted_original_time_periods, time_map)
@@ -415,8 +511,8 @@ def setup_pte(
 
     params_dict = {
         "yname": yname,
-        "gname": gname,
-        "tname": tname,
+        "gname": ".group_label",
+        "tname": ".period_label",
         "idname": idname,
         "data": data,
         "g_list": g_list,
@@ -538,7 +634,12 @@ def setup_pte_cont(
         data = data.filter(~timing_no_dose)
         warnings.warn(f"Dropped {num_dropped} observations that are post-treatment but have no dose.")
 
-    dose_values = data.filter((pl.col(gname) > 0) & (pl.col(tname) >= pl.col(gname)))[dname].to_numpy()
+    # Knots and the dose grid count each treated unit once, at its dose in the first post-treatment period.
+    post_treatment = (pl.col(gname) > 0) & (pl.col(tname) >= pl.col(gname))
+    unit_doses = (
+        data.filter(post_treatment).sort(idname, tname).unique(subset=idname, keep="first", maintain_order=True)
+    )
+    dose_values = unit_doses[dname].to_numpy()
 
     pte_params = setup_pte(
         yname=yname,
@@ -620,9 +721,19 @@ def _process_pte_cell(tp, g, data, base_period, anticipation, subset_fun, attgt_
         adjusted_inf_func = (n_units / n1) * attgt_result.inf_func
         inf_func_data = ("values", adjusted_inf_func, disidx)
 
+    extra_gt_returns = attgt_result.extra_gt_returns
+    if isinstance(extra_gt_returns, dict) and "att_inf_func" in extra_gt_returns:
+        # Since dose cells also return the binary ATT influence function on the cell's rows, it takes the
+        # same rescaling as inf_func and keeps the full-sample row of each unit in the cell.
+        extra_gt_returns = {
+            **extra_gt_returns,
+            "att_inf_func": (n_units / n1) * extra_gt_returns["att_inf_func"],
+            "rows": np.flatnonzero(disidx),
+        }
+
     return {
         "att_entry": {"att": attgt_result.attgt, "group": g, "time_period": tp},
-        "extra_entry": {"extra_gt_returns": attgt_result.extra_gt_returns, "group": g, "time_period": tp},
+        "extra_entry": {"extra_gt_returns": extra_gt_returns, "group": g, "time_period": tp},
         "inf_func_data": inf_func_data,
     }
 
@@ -649,7 +760,10 @@ def _build_pte_params(
     Returns
     -------
     PTEParams
-        Parameters object for panel treatment effects estimation.
+        Settings for estimating the group-time effects. Its ``gname`` and
+        ``tname`` are the internal columns ``.group_label`` and
+        ``.period_label``. These hold each unit's group and each period as
+        the data codes them.
     """
     config = cont_did_data.config
     data = cont_did_data.data.clone()
@@ -695,10 +809,23 @@ def _build_pte_params(
     groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
     data = data.filter(~pl.col("G").is_in(groups_to_drop))
 
+    # Cells index periods by their position in "period" and "G". Since an input column may itself be named
+    # "G" or "period", results and cohort shares read the data's own period labels from separate columns.
+    period_labels = {position: period for period, position in cont_did_data.time_map.items()}
+    data = data.with_columns(
+        pl.col("period").replace(period_labels).alias(".period_label"),
+        pl.col("G").replace(period_labels).alias(".group_label"),
+    )
+
     is_treated = data["G"].is_finite()
     is_post_treatment = data["period"] >= data["G"]
-    mask = is_treated & is_post_treatment
-    dose_values = data.filter(mask)["D"].to_numpy()
+    # Knots and the dose grid count each treated unit once, at its dose in the first post-treatment period.
+    treated_units = (
+        data.filter(is_treated & is_post_treatment)
+        .sort("id", "period")
+        .unique(subset="id", keep="first", maintain_order=True)
+    )
+    dose_values = treated_units["D"].to_numpy()
     positive_doses = dose_values[dose_values > 0]
 
     knots = _choose_knots_quantile(positive_doses, config.num_knots)
@@ -712,8 +839,8 @@ def _build_pte_params(
 
     params_dict = {
         "yname": config.yname,
-        "gname": config.gname,
-        "tname": config.tname,
+        "gname": ".group_label",
+        "tname": ".period_label",
         "idname": config.idname,
         "data": data,
         "g_list": g_list,
@@ -761,7 +888,9 @@ def _two_by_two_subset(
         base_period_val = main_base_period
 
     if control_group == "notyettreated":
-        unit_mask = (pl.col("G") == g) | (pl.col("G") > tp) | (pl.col("G") == 0)
+        # A comparison unit must be untreated, and not yet anticipating treatment, in both periods of the cell.
+        latest_untreated = max(tp, base_period_val) + anticipation
+        unit_mask = (pl.col("G") == g) | (pl.col("G") > latest_untreated) | (pl.col("G") == 0)
     else:
         unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite() | (pl.col("G") == 0)
 
@@ -779,7 +908,7 @@ def _two_by_two_subset(
         return {"gt_data": pl.DataFrame(), "n1": 0, "disidx": np.array([])}
 
     n1 = this_data["id"].n_unique()
-    all_ids = data["id"].unique().to_numpy()
+    all_ids = np.unique(data["id"].to_numpy())
     subset_ids = this_data["id"].unique().to_numpy()
     disidx = np.isin(all_ids, subset_ids)
 

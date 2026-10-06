@@ -79,6 +79,13 @@ header.md-header,
   padding: 0.65em 1.1em;
 }
 
+/* Index tables fill the column, so the stacked tables on the API index line up. Their two columns
+of wrapping text never need the sideways scrolling the theme's block layout allows. */
+.md-typeset table.data.section-index-table {
+  display: table;
+  width: 100%;
+}
+
 .md-nav {
   font-size: 0.7rem;
 }

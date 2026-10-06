@@ -189,7 +189,7 @@ which is supported on **Linux and macOS** only (``linux-64``, ``osx-arm64``,
 builds.
 
 Prerequisites
-^^^^^^^^^^^^^
+-------------
 
 The validation environment requires a **Rust toolchain** (``cargo``,
 ``rustc``) to compile the R ``polars`` package from source. Install Rust
@@ -202,7 +202,7 @@ R itself and the R packages that are on conda-forge (``did``, ``DRDID``,
 validation environment.
 
 One-time setup
-^^^^^^^^^^^^^^
+--------------
 
 Before running validation tests for the first time, install the CRAN-only
 R packages::
@@ -217,7 +217,7 @@ source and can take a few minutes (most of that is the Rust build for
 installs packages that are missing.
 
 Running tests
-^^^^^^^^^^^^^
+-------------
 
 Run validation tests for individual estimators::
 

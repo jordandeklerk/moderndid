@@ -1,7 +1,10 @@
 """Tests for FLCI (Fixed-Length Confidence Intervals) module."""
 
+import warnings
+
 import numpy as np
 import pytest
+from scipy import stats
 
 from moderndid.didhonest.fixed_length_ci import (
     FLCIResult,
@@ -500,3 +503,80 @@ def test_flci_grid_fallback():
 
     assert isinstance(result, FLCIResult)
     assert result.optimal_half_length > 0
+
+
+def test_compute_flci_zero_smoothness_uses_minimum_variance_without_warnings(flci_event_study):
+    sigma = flci_event_study["sigma"]
+    beta_hat = flci_event_study["betahat"]
+    post_period_weights = flci_event_study["post_period_weights"]
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message="Solution may be inaccurate")
+        result = compute_flci(beta_hat, sigma, 0.0, 3, 2, post_period_weights=post_period_weights)
+
+    h_min = minimize_variance(sigma, 3, 2, post_period_weights)
+    variance = affine_variance(result.optimal_pre_period_vec, post_period_weights, sigma, 3)
+
+    assert result.status == "optimal"
+    assert result.optimal_half_length == pytest.approx(stats.norm.ppf(0.975) * h_min, rel=1e-12)
+    assert np.sqrt(variance) == pytest.approx(h_min, rel=1e-6)
+    assert result.flci[1] - result.flci[0] == pytest.approx(2 * result.optimal_half_length)
+
+
+def test_compute_flci_small_smoothness_reaches_minimum_variance_limit_without_warnings(flci_event_study):
+    sigma = flci_event_study["sigma"]
+    beta_hat = flci_event_study["betahat"]
+    post_period_weights = flci_event_study["post_period_weights"]
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message="Solution may be inaccurate")
+        result = compute_flci(beta_hat, sigma, 1e-6, 3, 2, post_period_weights=post_period_weights)
+    limit = compute_flci(beta_hat, sigma, 0.0, 3, 2, post_period_weights=post_period_weights)
+
+    assert result.status == "optimal"
+    assert np.mean(result.flci) == pytest.approx(np.mean(limit.flci), abs=1e-7)
+    assert limit.optimal_half_length < result.optimal_half_length < limit.optimal_half_length * (1 + 1e-6)
+
+
+@pytest.mark.parametrize(
+    "case, expected",
+    [
+        ("zero_variance", (0.007226094841626358, 0.056470091562518726)),
+        ("duplicated", (0.007226094926793873, 0.056470091592214326)),
+        ("zero_variance_second_difference", (0.007836256360534217, 0.05616373378434372)),
+    ],
+)
+def test_compute_flci_singular_pre_period_covariance_keeps_search_interval(
+    singular_pre_period_event_studies, case, expected
+):
+    betahat, sigma = singular_pre_period_event_studies[case]
+
+    result = compute_flci(betahat, sigma, 0.01, 4, 2)
+
+    assert result.flci == pytest.approx(expected, abs=1e-7)
+
+
+@pytest.mark.parametrize("case", ["zero_variance", "duplicated", "scaled_duplicate"])
+def test_compute_flci_small_smoothness_singular_pre_period_covariance_keeps_weight_sum(
+    singular_pre_period_event_studies, case
+):
+    betahat, sigma = singular_pre_period_event_studies[case]
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message="Solution may be inaccurate")
+        result = compute_flci(betahat, sigma, 1e-6, 4, 2)
+    limit = compute_flci(betahat, sigma, 0.0, 4, 2)
+
+    assert np.sum(np.cumsum(result.optimal_pre_period_vec)) == pytest.approx(1.0, abs=1e-10)
+    assert limit.optimal_half_length < result.optimal_half_length < limit.optimal_half_length * (1 + 1e-5)
+
+
+@pytest.mark.parametrize("smoothness_bound", [1e-7, 3e-4])
+def test_compute_flci_rank_deficient_covariance_returns_finite_interval(rank_deficient_event_study, smoothness_bound):
+    betahat, sigma = rank_deficient_event_study
+
+    result = compute_flci(betahat, sigma, smoothness_bound, 4, 2)
+
+    assert np.all(np.isfinite(result.flci))
+    assert result.optimal_half_length > 0
+    assert np.sum(np.cumsum(result.optimal_pre_period_vec)) == pytest.approx(1.0, abs=1e-10)

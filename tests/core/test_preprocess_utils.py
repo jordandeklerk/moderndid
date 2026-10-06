@@ -1,5 +1,7 @@
 """Tests for preprocessing utility functions."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -18,6 +20,7 @@ from moderndid.core.preprocess.utils import (
     extract_vars_from_formula,
     get_covariate_names_from_formula,
     get_first_difference,
+    get_formula_columns,
     get_group,
     is_balanced_panel,
     make_balanced_panel,
@@ -217,6 +220,16 @@ def test_validate_dose_values(dose, groups, is_valid, error_substr, warning_subs
     "formula, expected_outcome, expected_predictors",
     [
         ("y ~ x1 + x2", "y", ["x1", "x2"]),
+        ("~ x1 + x2", "", ["x1", "x2"]),
+        ("~ log.pop + x2", "", ["log.pop", "x2"]),
+        ("~ lag1.Value1 + .G + _x", "", ["lag1.Value1", ".G", "_x"]),
+        ("~ `log pop` + `lag1.Value1`", "", ["log pop", "lag1.Value1"]),
+        ("~ `a+b` + `c~d` + `I(x)`", "", ["a+b", "c~d", "I(x)"]),
+        ("`my y` ~ x1", "my y", ["x1"]),
+        ("~ 1 + x1 + 1", "", ["x1"]),
+        ("~ x1 + x2 + x1 + `x2`", "", ["x1", "x2"]),
+        ("~1", "", []),
+        ("~ 1", "", []),
     ],
 )
 def test_parse_formula_basic(formula, expected_outcome, expected_predictors):
@@ -225,22 +238,86 @@ def test_parse_formula_basic(formula, expected_outcome, expected_predictors):
     assert parsed["predictors"] == expected_predictors
 
 
-def test_parse_formula_with_functions():
-    parsed = parse_formula("y ~ log(x1) + I(x2**2)")
-    assert "x1" in parsed["predictors"]
-    assert "x2" in parsed["predictors"]
-    assert "log" not in parsed["predictors"]
-    assert "I" not in parsed["predictors"]
+@pytest.mark.parametrize(
+    "formula, term",
+    [
+        ("y ~ x1 + log(x2)", "log(x2)"),
+        ("~ x1 + I(x1**2)", "I(x1**2)"),
+        ("~ I(x1 + x2)", "I(x1 + x2)"),
+        ("~ np.log(x1)", "np.log(x1)"),
+        ("~ C(group)", "C(group)"),
+        ("~ x1:x2", "x1:x2"),
+        ("~ x1*x2", "x1*x2"),
+        ("~ x1 - x2", "x1 - x2"),
+        ("~ I(x1 - 1)", "I(x1 - 1)"),
+        ("~ my col", "my col"),
+        ("~ 2x", "2x"),
+    ],
+)
+def test_parse_formula_rejects_terms_that_are_not_columns(formula, term):
+    with pytest.raises(ValueError, match=re.escape(f"xformla term '{term}' is not a column name")):
+        parse_formula(formula)
 
 
-def test_parse_formula_invalid():
+@pytest.mark.parametrize(
+    "formula, term",
+    [
+        ("~ 0 + x1", "0"),
+        ("~ -1 + x1", "-1"),
+        ("~ x1 - 1", "x1 - 1"),
+        ("~ x1 + x2-1", "x2-1"),
+    ],
+)
+def test_parse_formula_rejects_intercept_removal(formula, term):
+    with pytest.raises(ValueError, match=re.escape(f"xformla term '{term}' drops the intercept")):
+        parse_formula(formula)
+
+
+@pytest.mark.parametrize("formula", ["~ x1 +", "~ x1 + + x2", "~ + x1"])
+def test_parse_formula_rejects_empty_terms(formula):
+    with pytest.raises(ValueError, match="xformla has an empty term"):
+        parse_formula(formula)
+
+
+@pytest.mark.parametrize("formula", ["x1 + x2", "y ~ x1 ~ x2"])
+def test_parse_formula_invalid(formula):
     with pytest.raises(ValueError, match="must be in the form"):
-        parse_formula("x1 + x2")
+        parse_formula(formula)
 
 
 def test_extract_vars_from_formula():
     result = extract_vars_from_formula("y ~ x1 + x2 + x3")
     assert result == ["y", "x1", "x2", "x3"]
+
+
+def test_extract_vars_from_formula_keeps_dotted_names():
+    assert extract_vars_from_formula("~ lag1.Value1 + `log pop`") == ["lag1.Value1", "log pop"]
+
+
+@pytest.mark.parametrize(
+    "formula, expected",
+    [
+        ("~ age + I(age**2) + educ", ["age", "educ"]),
+        ("~ np.log(age) + C(group, Treatment('a'))", ["age", "group"]),
+        ("~ age:educ + center(age)", ["age", "educ"]),
+        ("~ age.yrs + I(`age yrs`**2)", ["age.yrs", "age yrs"]),
+        ("~ I(age.clip(0)) + educ", ["age", "educ"]),
+        ("~ I(x1 * 1e5)", ["x1"]),
+        ("~ missing + educ", ["educ"]),
+        ("~ poly(age, degree=2)", ["age"]),
+        ("~ bs(age, df = 3) + degree", ["age", "degree"]),
+        ("~ I(age == 2) + I(educ>=1)", ["age", "educ"]),
+    ],
+)
+def test_get_formula_columns(formula, expected):
+    columns = ["age", "educ", "group", "a", "age.yrs", "age yrs", "x1", "e5", "degree", "df", "d"]
+    assert get_formula_columns(formula, columns) == expected
+
+
+@pytest.mark.parametrize("formula", ["age + educ", "y ~ age ~ educ"])
+def test_get_formula_columns_invalid(formula):
+    with pytest.raises(ValueError, match="must be in the form"):
+        get_formula_columns(formula, ["y", "age", "educ"])
 
 
 @pytest.mark.parametrize(

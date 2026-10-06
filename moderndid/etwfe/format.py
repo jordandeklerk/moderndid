@@ -37,6 +37,9 @@ def format_etwfe_result(result):
     conf_level = int((1 - alpha) * 100)
     z_crit = stats.norm.ppf(1 - alpha / 2)
 
+    family = result.estimation_params.get("family")
+    linear = family in (None, "gaussian")
+
     if len(result.gt_pairs) > 0:
         gt_groups = np.array([g for g, _ in result.gt_pairs])
         gt_times = np.array([t for _, t in result.gt_pairs])
@@ -46,18 +49,23 @@ def format_etwfe_result(result):
         lci = att - z_crit * se
         uci = att + z_crit * se
 
-        lines.extend(
-            format_group_time_table(
-                gt_groups,
-                gt_times,
-                att,
-                se,
-                lci,
-                uci,
-                conf_level,
-                "Pointwise Conf. Band",
-            )
+        table = format_group_time_table(
+            gt_groups,
+            gt_times,
+            att,
+            se,
+            lci,
+            uci,
+            conf_level,
+            "Pointwise Conf. Band",
         )
+        if not linear:
+            # Nonlinear cell coefficients are index-scale parameters, not ATTs. Both headers are
+            # eight characters wide. Swapping them keeps the table aligned.
+            table = [line.replace("ATT(g,t)", "Estimate") for line in table]
+            scale = {"poisson": "log", "logit": "log-odds", "probit": "probit index"}[family]
+            table.append(f" Estimates are on the {scale} scale. Use emfx for effects on the outcome scale.")
+        lines.extend(table)
 
     lines.extend(format_significance_note(band=True))
 
@@ -72,18 +80,21 @@ def format_etwfe_result(result):
         lines.append(f" Fixed Effects:  {fe_spec}")
 
     lines.extend(format_section_header("Estimation Details"))
-    family = result.estimation_params.get("family")
-    if family and family not in (None, "gaussian"):
-        lines.append(f" Estimation Method:  Extended TWFE ({family})")
-    else:
+    if linear:
         lines.append(" Estimation Method:  Extended TWFE (OLS)")
+    else:
+        lines.append(f" Estimation Method:  Extended TWFE ({family})")
     if result.r_squared is not None:
         lines.append(f" R-squared:  {result.r_squared:.4f}")
 
     lines.extend(format_section_header("Inference"))
     lines.append(f" Significance level: {alpha}")
     vcov_type = result.estimation_params.get("vcov_type", "hetero")
-    lines.append(f" Std. errors: {vcov_type}")
+    clustervar = result.estimation_params.get("clustervar")
+    if clustervar:
+        lines.append(f" Std. errors: {vcov_type} clustered by {clustervar}")
+    else:
+        lines.append(f" Std. errors: {vcov_type}")
 
     lines.extend(format_footer("Reference: Wooldridge (2021, 2023)"))
 

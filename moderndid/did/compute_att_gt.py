@@ -86,7 +86,9 @@ def compute_att_gt(data: DIDData, n_jobs=1):
     n_time_periods = len(time_periods) - 1 if data.config.base_period != "universal" else len(time_periods)
     group_time_pairs = [(g, t) for g in range(data.config.treated_groups_count) for t in range(n_time_periods)]
 
-    args_list = [(g_idx, t_idx, data) for g_idx, t_idx in group_time_pairs]
+    # Since every cell of an unbalanced panel maps rows to the same units, the mapping is built once here.
+    unit_index = _unit_index(data) if not data.config.panel and data.config.allow_unbalanced_panel else None
+    args_list = [(g_idx, t_idx, data, unit_index) for g_idx, t_idx in group_time_pairs]
     cell_results = parallel_map(_process_gt_cell_did, args_list, n_jobs=n_jobs)
 
     att_results = []
@@ -121,6 +123,7 @@ def run_att_gt_estimation(
     group_idx,
     time_idx,
     data,
+    unit_index=None,
 ):
     """Run ATT estimation for a given group-time pair.
 
@@ -132,6 +135,9 @@ def run_att_gt_estimation(
         Index of the time period.
     data : DIDData
         Preprocessed DiD data object.
+    unit_index : ndarray, optional
+        Position of each row's unit in ``data.time_invariant_data`` for an
+        unbalanced panel. It's built from the data when not given.
 
     Returns
     -------
@@ -197,7 +203,7 @@ def run_att_gt_estimation(
             "weights": data.data["weights"].to_numpy(),
         }
         if data.config.allow_unbalanced_panel:
-            cohort_data["rowid"] = data.data[".rowid"].to_numpy()
+            cohort_data["unit_index"] = _unit_index(data) if unit_index is None else unit_index
         covariates = data.covariates_matrix
 
     if not callable(data.config.est_method):
@@ -379,6 +385,23 @@ def get_did_cohort_index(
     return cohort_index
 
 
+def _unit_index(data):
+    """Map each row of the data to its unit's row in the time-invariant data.
+
+    Parameters
+    ----------
+    data : DIDData
+        Preprocessed DiD data object.
+
+    Returns
+    -------
+    ndarray
+        Position of each row's unit in ``data.time_invariant_data``.
+    """
+    unit_ids = data.time_invariant_data[data.config.idname]
+    return data.data[data.config.idname].replace_strict(unit_ids, np.arange(len(unit_ids))).to_numpy()
+
+
 def run_drdid(
     cohort_data,
     covariates,
@@ -462,16 +485,14 @@ def run_drdid(
                 y=y, post=post, d=d, covariates=cov_valid, i_weights=weights, boot=False, influence_func=True
             )
 
-        # Handle influence function for unbalanced panel
-        if data.config.allow_unbalanced_panel and "rowid" in cohort_data:
+        if data.config.allow_unbalanced_panel and "unit_index" in cohort_data:
             inf_func_long = np.zeros(n)
             inf_func_long[valid_obs] = (data.config.id_count / valid_obs.sum()) * result.att_inf_func
-
-            unique_ids = np.unique(cohort_data["rowid"])
-            influence_func = np.zeros(len(unique_ids))
-            for i, uid in enumerate(unique_ids):
-                mask = cohort_data["rowid"] == uid
-                influence_func[i] = inf_func_long[mask].sum()
+            # Since aggte pairs these rows with the groups and weights in time_invariant_data, each unit's
+            # observations add up in that unit's row there.
+            influence_func = np.bincount(
+                cohort_data["unit_index"], weights=inf_func_long, minlength=data.config.id_count
+            )
         else:
             influence_func = np.zeros(n)
             influence_func[valid_obs] = (n / valid_obs.sum()) * result.att_inf_func
@@ -482,7 +503,7 @@ def run_drdid(
     return {"att": result.att, "inf_func": influence_func}
 
 
-def _process_gt_cell_did(group_idx, time_idx, data):
+def _process_gt_cell_did(group_idx, time_idx, data, unit_index=None):
     """Process a single (group, time) cell for DiD estimation.
 
     Returns
@@ -492,7 +513,7 @@ def _process_gt_cell_did(group_idx, time_idx, data):
     n_units = data.config.id_count
     time_factor = 1 if data.config.base_period != "universal" else 0
 
-    estimation_result = run_att_gt_estimation(group_idx, time_idx, data)
+    estimation_result = run_att_gt_estimation(group_idx, time_idx, data, unit_index)
 
     is_post_treatment = int(data.config.treated_groups[group_idx] <= data.config.time_periods[time_idx + time_factor])
 

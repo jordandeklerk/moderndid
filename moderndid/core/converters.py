@@ -130,25 +130,19 @@ def doseresult_to_polars(result: DoseResult, effect_type: str = "att") -> pl.Dat
     result : DoseResult
         Continuous treatment dose-response result.
     effect_type : {'att', 'acrt'}, default='att'
-        Type of effect to extract:
-        - 'att': Average Treatment Effect on Treated
-        - 'acrt': Average Causal Response on Treated
+        Curve to extract. ``'att'`` takes the level effects ATT(d) and
+        ``'acrt'`` takes their slope ACRT(d).
 
     Returns
     -------
     pl.DataFrame
         DataFrame with columns:
 
-        - dose: dose level
-        - effect: effect estimate (ATT or ACRT)
-        - se: standard error
-        - ci_lower: lower confidence interval
-        - ci_upper: upper confidence interval
-
-    Raises
-    ------
-    ValueError
-        If effect_type is invalid or required data is missing.
+        - **dose**: Dose level
+        - **effect**: Estimate of ATT(d) or ACRT(d)
+        - **se**: Standard error
+        - **ci_lower**: Lower end of the band
+        - **ci_upper**: Upper end of the band
     """
     dose = result.dose
 
@@ -186,6 +180,9 @@ def doseresult_to_polars(result: DoseResult, effect_type: str = "att") -> pl.Dat
 def pteresult_to_polars(result: PTEResult) -> pl.DataFrame:
     """Convert PTEResult event study to polars DataFrame for plotting.
 
+    The row of a universal base period, whose standard error is undefined,
+    is left out.
+
     Parameters
     ----------
     result : PTEResult
@@ -196,17 +193,12 @@ def pteresult_to_polars(result: PTEResult) -> pl.DataFrame:
     pl.DataFrame
         DataFrame with columns:
 
-        - event_time: event time relative to treatment
-        - att: ATT estimate
-        - se: standard error
-        - ci_lower: lower confidence interval
-        - ci_upper: upper confidence interval
-        - treatment_status: "Pre" or "Post" treatment
-
-    Raises
-    ------
-    ValueError
-        If result does not contain event study.
+        - **event_time**: Event time relative to treatment
+        - **att**: Estimate at that event time
+        - **se**: Standard error
+        - **ci_lower**: Lower end of the band
+        - **ci_upper**: Upper end of the band
+        - **treatment_status**: "Pre" or "Post" treatment
     """
     if result.event_study is None:
         raise ValueError("PTEResult does not contain event study results")
@@ -256,7 +248,9 @@ def honestdid_to_polars(result: HonestDiDResult) -> pl.DataFrame:
         - lb: lower bound of confidence interval
         - ub: upper bound of confidence interval
         - midpoint: (lb + ub) / 2
-        Combined with original CI at param_value before the minimum robust value.
+
+        The original confidence interval enters as one more row whose
+        param_value comes before the smallest robust one.
 
     Raises
     ------
@@ -562,9 +556,11 @@ def dynbalancingresult_to_polars(result: DynBalancingResult) -> pl.DataFrame:
     """Convert DynBalancingResult to polars DataFrame for plotting.
 
     Returns one row per parameter (ATE, ``mu(ds1)``, ``mu(ds2)``) with point
-    estimates, standard errors, and both robust (chi-squared) and Gaussian
-    confidence interval bounds. The robust quantile for the potential
-    outcomes is recomputed using the appropriate degrees of freedom.
+    estimates, standard errors, and both robust and Gaussian confidence
+    interval bounds. The robust bounds follow the estimator's
+    ``robust_quantile`` setting. With the setting on, the potential outcomes
+    get a chi-squared quantile with their own degrees of freedom. With it
+    off, the robust bounds equal the Gaussian ones.
 
     Parameters
     ----------
@@ -579,19 +575,14 @@ def dynbalancingresult_to_polars(result: DynBalancingResult) -> pl.DataFrame:
         - parameter: parameter label ("ATE", "mu(ds1)", or "mu(ds2)")
         - estimate: point estimate
         - se: standard error
-        - ci_lower_robust: robust (chi-squared) lower CI
-        - ci_upper_robust: robust (chi-squared) upper CI
+        - ci_lower_robust: robust lower CI (Gaussian unless ``robust_quantile=True``)
+        - ci_upper_robust: robust upper CI (Gaussian unless ``robust_quantile=True``)
         - ci_lower_gaussian: Gaussian lower CI
         - ci_upper_gaussian: Gaussian upper CI
     """
-    params = result.estimation_params
-    alpha = params.get("alpha", 0.05)
-    n_periods = params.get("n_periods", 1)
-
     robust_q_ate = result.robust_quantile
     gaussian_q = result.gaussian_quantile
-
-    robust_q_mu = math.sqrt(chi2.ppf(1.0 - alpha, n_periods)) if alpha is not None and n_periods >= 1 else robust_q_ate
+    robust_q_mu = _dynbalancing_mu_quantile(result)
 
     estimates = np.array([result.att, result.mu1, result.mu2])
     variances = np.array([result.var_att, result.var_mu1, result.var_mu2])
@@ -619,7 +610,8 @@ def dynbalancinghistoryresult_to_polars(
 
     Returns one row per history length with the chosen parameter's point
     estimate, standard error, and both robust and Gaussian confidence
-    interval bounds.
+    interval bounds. As in :func:`dynbalancingresult_to_polars`, the robust
+    bounds of each row follow the settings of its estimate.
 
     Parameters
     ----------
@@ -636,8 +628,8 @@ def dynbalancinghistoryresult_to_polars(
         - period_length: treatment history length
         - estimate: point estimate
         - se: standard error
-        - ci_lower_robust: robust (chi-squared) lower CI
-        - ci_upper_robust: robust (chi-squared) upper CI
+        - ci_lower_robust: robust lower CI (Gaussian unless ``robust_quantile=True``)
+        - ci_upper_robust: robust upper CI (Gaussian unless ``robust_quantile=True``)
         - ci_lower_gaussian: Gaussian lower CI
         - ci_upper_gaussian: Gaussian upper CI
     """
@@ -650,7 +642,7 @@ def dynbalancinghistoryresult_to_polars(
     estimates = summary[parameter].to_numpy()
     variances = summary[var_col].to_numpy()
     ses = np.sqrt(np.maximum(variances, 0.0))
-    robust_qs = summary["robust_quantile"].to_numpy()
+    robust_qs = _dynbalancing_summary_quantiles(result, parameter)
     gaussian_qs = summary["gaussian_quantile"].to_numpy()
 
     return pl.DataFrame(
@@ -671,6 +663,9 @@ def dynbalancinghetresult_to_polars(
     parameter: str = "att",
 ) -> pl.DataFrame:
     """Convert DynBalancingHetResult to polars DataFrame for plotting.
+
+    As in :func:`dynbalancingresult_to_polars`, the robust bounds of each row
+    follow the settings of its estimate.
 
     Parameters
     ----------
@@ -695,7 +690,7 @@ def dynbalancinghetresult_to_polars(
     estimates = summary[parameter].to_numpy()
     variances = summary[var_col].to_numpy()
     ses = np.sqrt(np.maximum(variances, 0.0))
-    robust_qs = summary["robust_quantile"].to_numpy()
+    robust_qs = _dynbalancing_summary_quantiles(result, parameter)
     gaussian_qs = summary["gaussian_quantile"].to_numpy()
 
     return pl.DataFrame(
@@ -709,6 +704,25 @@ def dynbalancinghetresult_to_polars(
             "ci_upper_gaussian": estimates + gaussian_qs * ses,
         }
     )
+
+
+def _dynbalancing_mu_quantile(result):
+    """Return the robust critical value of a potential outcome in a dynamic covariate balancing result."""
+    params = result.estimation_params
+    # Since the robust quantile equals the Gaussian one only when the setting is off, a result
+    # built without the setting still reveals it.
+    if not params.get("robust_quantile", result.robust_quantile != result.gaussian_quantile):
+        return result.gaussian_quantile
+    return math.sqrt(chi2.ppf(1.0 - params.get("alpha", 0.05), params.get("n_periods", 1)))
+
+
+def _dynbalancing_summary_quantiles(result, parameter):
+    """Return the robust critical value of each row of a history or heterogeneity summary."""
+    summary = result.summary
+    # A summary built without its estimates carries only the critical value of the ATE.
+    if parameter == "att" or len(result.results) != summary.height:
+        return summary["robust_quantile"].to_numpy()
+    return np.array([_dynbalancing_mu_quantile(r) for r in result.results])
 
 
 def dynbalancingcoefs_to_polars(result: DynBalancingResult, history: str = "ds1") -> pl.DataFrame:

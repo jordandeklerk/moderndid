@@ -29,7 +29,7 @@ from moderndid.etwfe.format import format_emfx_result, format_etwfe_result
         "Extended TWFE (OLS)",
         "R-squared:",
         "Significance level:",
-        "hetero",
+        "CRV1 clustered by countyreal",
         "Wooldridge (2021, 2023)",
     ],
 )
@@ -47,6 +47,21 @@ def test_format_etwfe_poisson_family(mpdta_data):
     mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", family="poisson")
     output = format_etwfe_result(mod)
     assert "Extended TWFE (poisson)" in output
+
+
+def test_format_etwfe_nonlinear_labels_index_estimates(etwfe_poisson_id):
+    output = format_etwfe_result(etwfe_poisson_id)
+    assert "ATT(g,t)" not in output
+    assert "│ Estimate │" in output
+    assert "log scale" in output
+    assert "Units:  500" in output
+
+
+def test_format_etwfe_hetero_without_cluster_variable(mpdta_data):
+    mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", vcov="hetero")
+    output = format_etwfe_result(mod)
+    assert "Std. errors: hetero" in output
+    assert "clustered by" not in output
 
 
 @pytest.mark.parametrize("method", [str, repr])
@@ -114,7 +129,7 @@ def test_etwfe_maketables_coef_table(etwfe_baseline):
     [
         ("N", 2500),
         ("n_units", 500),
-        ("se_type", "hetero"),
+        ("se_type", "CRV1"),
     ],
 )
 def test_etwfe_maketables_stat(etwfe_baseline, key, expected):
@@ -141,8 +156,13 @@ def test_etwfe_maketables_fixef(etwfe_baseline):
 
 def test_etwfe_maketables_vcov_info(etwfe_baseline):
     info = etwfe_baseline.__maketables_vcov_info__
-    assert info["vcov_type"] == "hetero"
-    assert info["clustervar"] is None
+    assert info["vcov_type"] == "CRV1"
+    assert info["clustervar"] == "countyreal"
+
+
+def test_etwfe_maketables_nonlinear_names_cells_as_coefficients(etwfe_poisson_id):
+    table = etwfe_poisson_id.__maketables_coef_table__
+    assert all(name.startswith("Coef(") for name in table.index)
 
 
 def test_emfx_maketables_coef_table(etwfe_baseline):
@@ -232,7 +252,7 @@ def test_format_emfx_poisson_family(mpdta_data):
     "key,expected",
     [
         ("N", 2500),
-        ("se_type", "hetero"),
+        ("se_type", "CRV1"),
     ],
 )
 def test_emfx_maketables_stat_n_and_se_type(etwfe_baseline, key, expected):

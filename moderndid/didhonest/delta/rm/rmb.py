@@ -5,6 +5,7 @@ from typing import NamedTuple
 import numpy as np
 import scipy.optimize as opt
 
+from ...arp_no_nuisance import compute_arp_ci
 from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
 from ...delta.rm.rm import _create_relative_magnitudes_constraint_matrix
@@ -45,7 +46,7 @@ def compute_conditional_cs_rmb(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
-    seed=None,
+    seed=0,
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{RM}(\bar{M})` with bias sign restrictions.
 
@@ -53,8 +54,7 @@ def compute_conditional_cs_rmb(
     lies in the intersection of the relative magnitudes set :math:`\Delta^{RM}(\bar{M})`
     and a bias sign restriction set :math:`\Delta^{B}`.
 
-    The combined restriction is defined as the intersection of the sets from
-    Sections 2.4.1 and 2.4.4 of [2]_
+    The combined restriction is the intersection of the two sets
 
     .. math::
 
@@ -66,7 +66,7 @@ def compute_conditional_cs_rmb(
 
     Since :math:`\Delta^{RMB}(\bar{M})` is a finite union of polyhedra, a valid
     confidence set is constructed by taking the union of confidence sets for each
-    component polyhedron, following Lemma 2.2 of [2]_.
+    component polyhedron.
 
     Parameters
     ----------
@@ -100,8 +100,8 @@ def compute_conditional_cs_rmb(
         Lower bound for grid search.
     grid_ub : float, optional
         Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -111,19 +111,10 @@ def compute_conditional_cs_rmb(
 
     Notes
     -----
-    The confidence set is constructed using the moment inequality approach from [1]_,
-    as described in Section 3 of [2]_. The intersection of :math:`\Delta^{RM}(\bar{M})`
-    and :math:`\Delta^{B}` forms a finite union of polyhedra (Section 2.4.5 of [2]_),
-    allowing the application of Lemma 2.2 for constructing a valid confidence set.
+    The confidence set is constructed using the moment inequality approach. Since the
+    intersection of :math:`\Delta^{RM}(\bar{M})` and :math:`\Delta^{B}` forms a finite union
+    of polyhedra, the union of the confidence sets for the polyhedra is a valid confidence set.
     The sign restriction on the bias often sharpens the identified set.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods < 2:
         raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
@@ -226,16 +217,14 @@ def compute_identified_set_rmb(m_bar, true_beta, l_vec, num_pre_periods, num_pos
     Computes the identified set for :math:`l'\tau_{post}` under the restriction
     :math:`\delta \in \Delta^{RM}(\bar{M}) \cap \Delta^B`.
 
-    The identified set is the union of identified sets for each component polyhedron,
-    as stated in (7) of [2]_
+    The identified set is the union of identified sets for each component polyhedron
 
     .. math::
 
         \mathcal{S}(\beta, \Delta^{RMB}(\bar{M})) = \bigcup_{s<0, \text{sign} \in \{+,-\}}
         \mathcal{S}(\beta, \Delta^{RM}_{s, \text{sign}}(\bar{M}) \cap \Delta^B).
 
-    For each component, the bounds are determined by solving the linear programs
-    from Lemma 2.1 of [2]_.
+    For each component, the bounds are determined by solving linear programs.
 
     Parameters
     ----------
@@ -256,14 +245,6 @@ def compute_identified_set_rmb(m_bar, true_beta, l_vec, num_pre_periods, num_pos
     -------
     DeltaRMBResult
         Lower and upper bounds of the identified set.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods < 2:
         raise ValueError("Need at least 2 pre-periods for relative magnitudes restriction")
@@ -328,9 +309,8 @@ def _create_relative_magnitudes_bias_constraint_matrix(
         \Delta^{RMB}_{s,sign}(\bar{M}) = \Delta^{RM}_{s,sign}(\bar{M}) \cap \Delta^{B}
 
     where :math:`\Delta^{RM}_{s,sign}(\bar{M})` is a component of the relative
-    magnitudes restriction and :math:`\Delta^B` is the bias sign restriction from
-    Section 2.4.4 of [2]_. Both are polyhedra, so their intersection is also a
-    polyhedron.
+    magnitudes restriction and :math:`\Delta^B` is the bias sign restriction. Since both
+    are polyhedra, their intersection is also a polyhedron.
 
     Parameters
     ----------
@@ -341,7 +321,7 @@ def _create_relative_magnitudes_bias_constraint_matrix(
     m_bar : float, default=1
         Relative magnitude parameter :math:`\bar{M}`.
     s : int, default=0
-        Reference period for relative magnitudes restriction.
+        Period whose first difference :math:`\delta_s - \delta_{s-1}` bounds the others.
     max_positive : bool, default=True
         If True, uses (+) restriction; if False, uses (-) restriction.
     drop_zero_period : bool, default=True
@@ -353,14 +333,6 @@ def _create_relative_magnitudes_bias_constraint_matrix(
     -------
     ndarray
         Constraint matrix A for the combined restriction.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     A_rm = _create_relative_magnitudes_constraint_matrix(
         num_pre_periods=num_pre_periods,
@@ -392,13 +364,13 @@ def _compute_identified_set_rmb_fixed_s(
 ):
     r"""Compute identified set for a component of :math:`\Delta^{RMB}(\bar{M})` at fixed s.
 
-    Helper function that solves the linear programs from Lemma 2.1 of [2]_ for a
-    specific polyhedron :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M}) \cap \Delta^B`.
+    Helper function that solves the linear programs for a specific polyhedron
+    :math:`\Delta^{RM}_{s,\text{sign}}(\bar{M}) \cap \Delta^B`.
 
     Parameters
     ----------
     s : int
-        Reference period for relative magnitudes restriction.
+        Period whose first difference :math:`\delta_s - \delta_{s-1}` bounds the others.
     m_bar : float
         Relative magnitude parameter :math:`\bar{M}`.
     max_positive : bool
@@ -418,14 +390,6 @@ def _compute_identified_set_rmb_fixed_s(
     -------
     DeltaRMBResult
         Lower and upper bounds of the identified set for the component polyhedron.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     # Objective: min/max l'*delta_post
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec])
@@ -502,7 +466,7 @@ def _compute_conditional_cs_rmb_fixed_s(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
-    seed=None,
+    seed=0,
 ):
     r"""Compute conditional CS for a component of :math:`\Delta^{RMB}(\bar{M})` at fixed :math:`s`.
 
@@ -512,7 +476,7 @@ def _compute_conditional_cs_rmb_fixed_s(
     Parameters
     ----------
     s : int
-        Reference period for relative magnitudes restriction.
+        Period whose first difference :math:`\delta_s - \delta_{s-1}` bounds the others.
     max_positive : bool
         If True, uses (+) restriction; if False, uses (-) restriction.
     m_bar : float
@@ -543,21 +507,13 @@ def _compute_conditional_cs_rmb_fixed_s(
         Lower bound for grid search.
     grid_ub : float, optional
         Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     dict
         Dictionary with 'grid' and 'accept' arrays.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if hybrid_kappa is None:
         hybrid_kappa = alpha / 10
@@ -577,16 +533,15 @@ def _compute_conditional_cs_rmb_fixed_s(
     )
     d_rmb = _create_relative_magnitudes_bias_constraint_vector(A_rmb)
 
+    rows_for_arp = None
     if post_period_moments_only and num_post_periods > 1:
         post_period_indices = list(range(num_pre_periods, num_pre_periods + num_post_periods))
         rows_for_arp = find_rows_with_post_period_values(A_rmb, post_period_indices)
-    else:
-        rows_for_arp = None
-        if num_post_periods == 1:
-            post_period_rows = np.where(A_rmb[:, -1] != 0)[0]
-            if len(post_period_rows) > 0:
-                A_rmb = A_rmb[post_period_rows, :]
-                d_rmb = d_rmb[post_period_rows]
+    elif post_period_moments_only:
+        # With one post-period, rows that leave out its coefficient say nothing about theta.
+        post_period_rows = np.flatnonzero(A_rmb[:, -1] != 0)
+        A_rmb = A_rmb[post_period_rows]
+        d_rmb = d_rmb[post_period_rows]
 
     if grid_lb is None or grid_ub is None:
         sel = slice(num_pre_periods, num_pre_periods + num_post_periods)
@@ -620,24 +575,22 @@ def _compute_conditional_cs_rmb_fixed_s(
             )
             hybrid_list["lf_cv"] = lf_cv
 
-        # Use no-nuisance CI function
-        result = compute_arp_nuisance_ci(
-            betahat=betahat,
+        result = compute_arp_ci(
+            beta_hat=betahat,
             sigma=sigma,
-            l_vec=l_vec,
-            a_matrix=A_rmb,
-            d_vec=d_rmb,
-            num_pre_periods=num_pre_periods,
-            num_post_periods=num_post_periods,
+            A=A_rmb,
+            d=d_rmb,
+            n_pre_periods=num_pre_periods,
+            n_post_periods=num_post_periods,
             alpha=alpha,
             hybrid_flag=hybrid_flag,
-            hybrid_list=hybrid_list,
+            hybrid_kappa=hybrid_kappa,
+            lf_cv=hybrid_list.get("lf_cv"),
             grid_lb=grid_lb,
             grid_ub=grid_ub,
             grid_points=grid_points,
-            rows_for_arp=None,
         )
-        return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
+        return {"grid": result.theta_grid, "accept": result.accept_grid.astype(float)}
 
     # Multiple post-periods case
     result = compute_arp_nuisance_ci(
@@ -655,6 +608,7 @@ def _compute_conditional_cs_rmb_fixed_s(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}

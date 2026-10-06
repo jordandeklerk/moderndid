@@ -10,12 +10,14 @@ from moderndid.didcont.estimation import (
     overall_weights,
 )
 from moderndid.didcont.estimation.process_aggte import (
+    _event_times,
     check_critical_value,
     get_aggregated_influence_function,
     get_se,
     safe_normalize,
     set_small_se_to_nan,
     weight_influence_function_from_att_indices,
+    weight_influence_function_from_cells,
     weight_influence_function_from_groups,
 )
 
@@ -333,3 +335,41 @@ def test_aggregate_att_gt_group_no_positive_groups(mock_att_gt_result):
 
     assert result.aggregation_type == "group"
     assert len(result.att_by_event) == 0
+
+
+def test_weight_influence_function_from_groups_matches_delta_method():
+    rng = np.random.default_rng(5)
+    group = rng.choice([0, 1, 2, 3], 2000)
+    labels = np.array([1, 2, 3])
+    pg = np.array([np.mean(group == g) for g in labels])
+    treated = group > 0
+    shares = pg / pg.sum()
+    expected = np.column_stack([((group == g) - shares[j] * treated) / treated.mean() for j, g in enumerate(labels)])
+
+    result = weight_influence_function_from_groups(pg, np.ones(len(group)), group, labels)
+
+    np.testing.assert_allclose(result, expected, atol=1e-12)
+
+
+def test_weight_influence_function_from_cells_spreads_cohort_shares(att_gt_result_with_data):
+    weights = overall_weights(att_gt_result_with_data)["weights"]
+
+    result = weight_influence_function_from_cells(att_gt_result_with_data, weights)
+
+    groups = np.asarray(att_gt_result_with_data.groups)
+    assert result.shape == (100, len(weights))
+    assert np.all(result[:, weights == 0] == 0)
+    np.testing.assert_allclose(result.sum(axis=1), 0, atol=1e-12)
+    for g in np.unique(groups):
+        cells = np.flatnonzero((groups == g) & (weights > 0))
+        ratio = result[:, cells] / weights[cells]
+        np.testing.assert_allclose(ratio, np.repeat(ratio[:, :1], len(cells), axis=1), atol=1e-12)
+
+
+def test_event_times_match_labels_with_rounding_error():
+    fractional = _event_times(np.array([2001.3 - 2001.1, 2001.4 - 2001.2, 2001.2 - 2001.2]))
+    whole = _event_times(np.array([2003.0 - 2001.0, 2001.0 - 2002.0, 1_000_000_001.0, 946_080_001.0]))
+
+    np.testing.assert_array_equal(fractional, [0.2, 0.2, 0.0])
+    np.testing.assert_array_equal(whole, [2, -1, 1_000_000_001, 946_080_001])
+    assert whole.dtype.kind == "i"

@@ -82,6 +82,21 @@ def test_boundary_extrapolation():
     assert result_extrap.basis.shape == (5, 5)
 
 
+@pytest.mark.filterwarnings("ignore:Some 'x' values beyond boundary knots:UserWarning")
+@pytest.mark.parametrize("deriv", [0, 1, 2])
+def test_extrapolation_continues_the_boundary_polynomial(deriv):
+    edges = np.array([0.0, 1.0])
+    outside = np.array([-1e-9, 1 + 1e-9])
+    far = np.array([-0.2, 1.3])
+
+    at_edge = gsl_bs(edges, degree=3, nbreak=4, deriv=deriv, x_min=0.0, x_max=1.0, intercept=True).basis
+    past_edge = gsl_bs(outside, degree=3, nbreak=4, deriv=deriv, x_min=0.0, x_max=1.0, intercept=True).basis
+    beyond = gsl_bs(far, degree=3, nbreak=4, deriv=deriv, x_min=0.0, x_max=1.0, intercept=True).basis
+
+    np.testing.assert_allclose(past_edge, at_edge, atol=1e-6)
+    np.testing.assert_allclose(beyond.sum(axis=1), 1.0 if deriv == 0 else 0.0, atol=1e-12)
+
+
 @pytest.fixture
 def basis_obj(bspline_simple_data):
     return gsl_bs(bspline_simple_data, degree=3, nbreak=5)

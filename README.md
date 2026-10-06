@@ -24,73 +24,20 @@ ModernDiD is a Python library for difference-in-differences (DiD), designed for
 applied researchers, economists, and data scientists who estimate the effects of
 policies and treatments.
 
-For staggered adoption,
-[`att_gt`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.att_gt.html)
-estimates an average effect for each treatment cohort and period.
-[`aggte`](https://moderndid.readthedocs.io/en/latest/api/generated/multiperiod/moderndid.aggte.html)
-averages those effects into an event study or a single overall effect. The same
-workflow applies to other estimators such as two-period designs, triple differences, continuous doses, and treatments that switch on and off.
+A two-way fixed effects regression, long the default way to run DiD in applied settings,
+[can give misleading answers](https://moderndid.readthedocs.io/en/latest/background/did.html#background-did-twfe)
+when treatment effects differ across groups or change over time. ModernDiD
+implements the estimators that recent research developed to avoid that problem.
 
 Every estimator reports analytical or bootstrap standard errors with clustering
 and simultaneous confidence bands. Estimation runs in parallel threads on one
 machine and supported estimators also run on NVIDIA GPUs for large panels.
 
-ModernDiD is under active development. Please help by trying it out,
+ModernDiD is under active development so expect sharp edges. Please help by trying it out,
 [reporting bugs](https://github.com/jordandeklerk/moderndid/issues), and telling
 us what you think. If you're new to DiD, the
 [introduction](https://moderndid.readthedocs.io/en/latest/getting_started/causal_inference.html)
 covers the ideas behind the methods before any code.
-
-```python
-import moderndid as did
-
-# County teen employment and state minimum wage increases from 2003 to 2007
-data = did.load_mpdta()
-
-# An average effect for each treatment cohort and year
-result = did.att_gt(
-    data=data,
-    yname="lemp",
-    tname="year",
-    idname="countyreal",
-    gname="first.treat",
-)
-
-# An event study by time relative to treatment, plotted with the plots extra
-event_study = did.aggte(result, type="dynamic")
-did.plot_event_study(event_study)
-```
-
-## Features
-
-ModernDiD covers the main research designs in the modern DiD literature:
-
-- [Staggered adoption](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html): `att_gt` and `aggte`, based on Callaway and Sant'Anna (2021)
-- [Two periods](https://moderndid.readthedocs.io/en/latest/api/drdid.html): `drdid`, `ipwdid`, and `ordid`, based on Sant'Anna and Zhao (2020)
-- [Triple differences](https://moderndid.readthedocs.io/en/latest/user_guide/example_triple_did.html): `ddd` and `agg_ddd`, based on Ortiz-Villavicencio and Sant'Anna (2025)
-- [Continuous treatment](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html): `cont_did`, based on Callaway, Goodman-Bacon, and Sant'Anna (2024)
-- [Treatments that switch on and off](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html): `did_multiplegt`, based on de Chaisemartin and D'Haultfoeuille (2024)
-- [Dynamic covariate balancing](https://moderndid.readthedocs.io/en/latest/user_guide/example_dyn_balancing.html): `dyn_balancing`, based on Viviano and Bradic (2026)
-- [Machine learning DiD](https://moderndid.readthedocs.io/en/latest/api/didml.html): `didml`, based on Hatamyar, Kreif, Rocha, and Huber (2023)
-- [Extended two-way fixed effects](https://moderndid.readthedocs.io/en/latest/user_guide/example_etwfe.html): `etwfe` and `emfx`, based on Wooldridge (2021, 2023)
-- [Sensitivity analysis](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html): `honest_did`, based on Rambachan and Roth (2023)
-- [Nonparametric IV](https://moderndid.readthedocs.io/en/latest/user_guide/example_npiv.html): `npiv`, based on Chen, Christensen, and Kankanala (2024)
-
-Every estimator also comes with the tools the rest of an analysis needs.
-
-- Estimators accept any
-  [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)
-  DataFrame, such as polars, pandas, pyarrow, or a DuckDB result.
-- Inference covers analytical and bootstrap standard errors, clustering, and
-  simultaneous confidence bands.
-- Plots return plotnine `ggplot` objects that take any further plotnine layer or
-  theme.
-- Results work directly with
-  [maketables](https://py-econometrics.github.io/maketables/) to build LaTeX,
-  HTML, Word, and Typst tables.
-- Parallel threads and an optional Numba bootstrap speed up estimation on one
-  machine.
-- Supported estimators also run on NVIDIA GPUs through CuPy for large panels.
 
 ## Installation
 
@@ -124,6 +71,64 @@ installs straight from GitHub.
 ```bash
 uv add "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
 ```
+
+## Quickstart
+
+The example below estimates how state minimum wage increases that took effect in
+different years affected teen employment. The
+[staggered adoption example](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html)
+works through the same analysis at a deeper level.
+
+```python
+import moderndid as did
+
+# County teen employment and state minimum wage increases from 2003 to 2007
+data = did.load_mpdta()
+
+# An average effect for each treatment cohort and year
+result = did.att_gt(
+    data=data,
+    yname="lemp",
+    tname="year",
+    idname="countyreal",
+    gname="first.treat",
+)
+
+# An event study by time relative to treatment, plotted with the plots extra
+event_study = did.aggte(result, type="dynamic")
+did.plot_event_study(event_study)
+```
+
+## Features
+
+ModernDiD covers the main research designs in the modern DiD literature.
+
+- [Staggered adoption](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html): `att_gt` and `aggte`, based on Callaway and Sant'Anna (2021)
+- [Two periods](https://moderndid.readthedocs.io/en/latest/api/drdid.html): `drdid`, `ipwdid`, and `ordid`, based on Sant'Anna and Zhao (2020)
+- [Triple differences](https://moderndid.readthedocs.io/en/latest/user_guide/example_triple_did.html): `ddd` and `agg_ddd`, based on Ortiz-Villavicencio and Sant'Anna (2025)
+- [Continuous treatment](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html): `cont_did`, based on Callaway, Goodman-Bacon, and Sant'Anna (2024)
+- [Treatments that switch on and off](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html): `did_multiplegt`, based on de Chaisemartin and D'Haultfoeuille (2024)
+- [Dynamic covariate balancing](https://moderndid.readthedocs.io/en/latest/user_guide/example_dyn_balancing.html): `dyn_balancing`, based on Viviano and Bradic (2026)
+- [Machine learning DiD](https://moderndid.readthedocs.io/en/latest/api/didml.html): `didml`, based on Hatamyar, Kreif, Rocha, and Huber (2023)
+- [Extended two-way fixed effects](https://moderndid.readthedocs.io/en/latest/user_guide/example_etwfe.html): `etwfe` and `emfx`, based on Wooldridge (2021, 2023)
+- [Sensitivity analysis](https://moderndid.readthedocs.io/en/latest/user_guide/example_honest_did.html): `honest_did`, based on Rambachan and Roth (2023)
+- [Nonparametric IV](https://moderndid.readthedocs.io/en/latest/user_guide/example_npiv.html): `npiv`, based on Chen, Christensen, and Kankanala (2024)
+
+Every estimator also comes with the tools the rest of an analysis needs.
+
+- Estimators accept any
+  [Arrow-compatible](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)
+  DataFrame, such as polars, pandas, pyarrow, or a DuckDB result.
+- Inference covers analytical and bootstrap standard errors, clustering, and
+  simultaneous confidence bands.
+- Plots return plotnine `ggplot` objects that take any further plotnine layer or
+  theme.
+- Results work directly with
+  [maketables](https://py-econometrics.github.io/maketables/) to build LaTeX,
+  HTML, Word, and Typst tables.
+- Parallel threads and an optional Numba bootstrap speed up estimation on one
+  machine.
+- Supported estimators also run on NVIDIA GPUs through CuPy for large panels.
 
 ## Documentation
 

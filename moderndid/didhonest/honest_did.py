@@ -21,7 +21,7 @@ class HonestDiDResult(NamedTuple):
     ----------
     robust_ci : pl.DataFrame
         DataFrame with columns for the smoothness/relative magnitude
-        parameter (M or Mbar) and the corresponding lower and upper
+        parameter (m or Mbar) and the corresponding lower and upper
         confidence interval bounds that are robust to violations of
         parallel trends.
     original_ci : OriginalCSResult
@@ -54,17 +54,64 @@ def honest_did(
     event_study,
     event_time=0,
     sensitivity_type="smoothness",
-    grid_points=100,
+    grid_points=None,
     **kwargs,
 ):
     r"""Compute sensitivity analysis for event study estimates.
 
     Implements the approach of [1]_ for robust inference in difference-in-differences
-    and event study designs. This method relaxes the parallel trends assumption by
-    allowing for bounded violations, providing confidence intervals that remain
-    valid under specified deviations from exact parallel trends.
+    and event study designs. The method relaxes the parallel trends assumption by
+    allowing bounded violations and reports confidence intervals that remain valid
+    under those violations.
 
-    The event-study coefficient vector :math:`\boldsymbol{\beta}` admits the causal
+    Because every coefficient must be measured against one reference period before treatment,
+    the event study must use a universal base period. Estimate it with
+    :func:`~moderndid.att_gt` and ``base_period="universal"`` before aggregating it with
+    :func:`~moderndid.aggte`. An event study whose estimation parameters record another
+    base period raises an error. The reference period is :math:`-1` minus the number of
+    anticipation periods.
+
+    Smoothness restrictions use the fixed-length confidence interval (FLCI) by default.
+    Since the FLCI ignores sign and shape restrictions, the method switches to the conditional
+    FLCI hybrid (C-F) when ``bias_direction`` or ``monotonicity_direction`` is given.
+    The C-F, C-LF, and conditional methods invert a test over a grid of candidate values.
+    Their bounds are points of that grid. Relative magnitudes always use a grid and default
+    to the conditional least favorable hybrid (C-LF).
+
+    See the :ref:`sensitivity analysis example <example_honest_did>` for a full analysis of
+    the Medicaid expansion data under smoothness, relative magnitudes, and sign restrictions.
+
+    Parameters
+    ----------
+    event_study : AGGTEResult or similar
+        Event study result with influence functions, estimated with a universal base period.
+    event_time : int, default=0
+        Event time to compute sensitivity analysis for. Default is 0 (on impact).
+    sensitivity_type : {'smoothness', 'relative_magnitude'}, default='smoothness'
+        Restriction on the violations of parallel trends. 'smoothness' bounds how much the
+        differential trend can bend from one period to the next. 'relative_magnitude' bounds
+        each change in the violation from the reference period on by a multiple of the largest
+        such change up to it.
+    grid_points : int, optional
+        Number of grid points for the test inversion. If None, smoothness uses 1000 points
+        and relative magnitudes uses 100.
+    **kwargs
+        Additional arguments for :func:`~moderndid.create_sensitivity_results_sm` or
+        :func:`~moderndid.create_sensitivity_results_rm`, such as ``method``, ``m_vec``,
+        ``m_bar_vec``, ``bias_direction``, ``monotonicity_direction``, and ``alpha``.
+
+    Returns
+    -------
+    HonestDiDResult
+        NamedTuple containing:
+
+        - **robust_ci**: DataFrame with sensitivity analysis results
+        - **original_ci**: Original confidence interval
+        - **sensitivity_type**: Type of analysis performed
+
+    Notes
+    -----
+    The event study coefficient vector :math:`\boldsymbol{\beta}` admits the causal
     decomposition
 
     .. math::
@@ -76,69 +123,16 @@ def honest_did(
     where :math:`\boldsymbol{\tau}` represents treatment effects and
     :math:`\boldsymbol{\delta}` represents differential trends between treated and
     comparison groups. The conventional parallel trends assumption imposes
-    :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`, which this method relaxes by
-    assuming :math:`\boldsymbol{\delta} \in \Delta` for a researcher-specified set
-    :math:`\Delta`.
-
-    The smoothness restriction bounds the discrete second derivative of the trend
-    by a constant :math:`M`
-
-    .. math::
-
-        \Delta^{SD}(M) = \big\{\boldsymbol{\delta}:
-        |(\delta_{t+1} - \delta_t) - (\delta_t - \delta_{t-1})| \le M, \forall t \big\}.
-
-    The relative magnitudes restriction bounds post-treatment violations relative to
-    the maximum pre-treatment violation
-
-    .. math::
-
-        \Delta^{RM}(\bar{M}) = \big\{\boldsymbol{\delta}:
-        |\delta_{t+1} - \delta_t| \le \bar{M} \cdot \max_{s<0} |\delta_{s+1} - \delta_s|,
-        \forall t \ge 0 \big\}.
-
-    See the :ref:`sensitivity analysis example <example_honest_did>` for bounds on event
-    study effects under smoothness, relative magnitudes, sign, and monotonicity
-    restrictions.
-
-    Parameters
-    ----------
-    event_study : AGGTEResult or similar
-        Event study result object containing influence functions and estimates.
-    event_time : int, default=0
-        Event time to compute sensitivity analysis for. Default is 0 (on impact).
-    sensitivity_type : {'smoothness', 'relative_magnitude'}, default='smoothness'
-        Type of sensitivity analysis:
-
-        - 'smoothness': Allows violations of linear trends in pre-treatment periods
-        - 'relative_magnitude': Based on relative magnitudes of deviations from parallel trends
-
-    grid_points : int, default=100
-        Number of grid points for underlying test inversion.
-    **kwargs : Additional parameters
-        Additional parameters passed to sensitivity analysis functions:
-
-        - method : CI method ('FLCI', 'Conditional', 'C-F', 'C-LF')
-        - m_vec : Vector of M values for smoothness bounds
-        - m_bar_vec : Vector of Mbar values for relative magnitude bounds
-        - monotonicity_direction : 'increasing' or 'decreasing'
-        - bias_direction : 'positive' or 'negative'
-        - alpha : Significance level (default 0.05)
-
-    Returns
-    -------
-    HonestDiDResult
-        NamedTuple containing:
-
-        - **robust_ci**: DataFrame with sensitivity analysis results
-        - **original_ci**: Original confidence interval
-        - **sensitivity_type**: Type of analysis performed
+    :math:`\boldsymbol{\delta}_{post} = \mathbf{0}`. The method relaxes it by assuming
+    :math:`\boldsymbol{\delta} \in \Delta` for a researcher-specified set :math:`\Delta`,
+    such as :math:`\Delta^{SD}(M)` in :func:`~moderndid.compute_conditional_cs_sd` or
+    :math:`\Delta^{RM}(\bar{M})` in :func:`~moderndid.compute_conditional_cs_rm`.
 
     References
     ----------
 
-    .. [1] Rambachan, A., & Roth, J. (2021). A more credible approach to
-       parallel trends. Review of Economic Studies.
+    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
+       parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if hasattr(event_study, "aggregation_type") and isinstance(event_study, EventStudyProtocol):
         return _honest_did_aggte(
@@ -158,7 +152,7 @@ def _honest_did_aggte(
     event_study,
     event_time=0,
     sensitivity_type="smoothness",
-    grid_points=100,
+    grid_points=None,
     **kwargs,
 ):
     """Implement sensitivity analysis for event study objects.
@@ -169,38 +163,37 @@ def _honest_did_aggte(
         Event study result from aggte function.
     event_time : int, default=0
         Event time to compute sensitivity analysis for. Default is 0 (on impact).
-    sensitivity_type : str
-        Type of sensitivity analysis:
-
-        - 'smoothness': Allows violations of linear trends in pre-treatment periods
-        - 'relative_magnitude': Based on relative magnitudes of deviations from parallel trends
-
-    grid_points : int, default=100
-        Number of grid points for underlying test inversion.
-    **kwargs : Additional parameters
-        Additional parameters passed to sensitivity analysis functions:
-
-        - method : CI method ('FLCI', 'Conditional', 'C-F', 'C-LF')
-        - m_vec : Vector of M values for smoothness bounds
-        - m_bar_vec : Vector of Mbar values for relative magnitude bounds
-        - monotonicity_direction : 'increasing' or 'decreasing'
-        - bias_direction : 'positive' or 'negative'
-        - alpha : Significance level (default 0.05)
+    sensitivity_type : {'smoothness', 'relative_magnitude'}, default='smoothness'
+        Type of sensitivity analysis.
+    grid_points : int, optional
+        Number of grid points for the test inversion. If None, smoothness uses 1000 points
+        and relative magnitudes uses 100.
+    **kwargs
+        Additional arguments for the sensitivity analysis functions.
 
     Returns
     -------
     HonestDiDResult
-        NamedTuple with:
+        NamedTuple containing:
 
-        - robust_ci : DataFrame with sensitivity analysis results
-        - original_ci : Original confidence interval
-        - sensitivity_type : Type of analysis performed
+        - **robust_ci**: DataFrame with sensitivity analysis results
+        - **original_ci**: Original confidence interval
+        - **sensitivity_type**: Type of analysis performed
     """
     if event_study.aggregation_type != "dynamic":
         raise ValueError("honest_did requires an event study (dynamic aggregation).")
 
     if event_study.influence_func is None:
         raise ValueError("Event study must have influence functions computed.")
+
+    estimation_params = event_study.estimation_params or {}
+    base_period = estimation_params.get("base_period", "universal")
+    if base_period != "universal":
+        raise ValueError(
+            f"honest_did requires an event study with a universal base period, but this one uses "
+            f"base_period='{base_period}'. Re-estimate the group-time effects with base_period='universal' "
+            "and aggregate them again with aggte(type='dynamic')."
+        )
 
     influence_func = event_study.influence_func
 
@@ -212,7 +205,8 @@ def _honest_did_aggte(
     event_times = event_study.event_times
     att_estimates = event_study.att_by_event
 
-    reference_period = -1
+    # The normalized base period sits just before the anticipation window, at -1 minus its length.
+    reference_period = -1 - estimation_params.get("anticipation_periods", 0)
 
     pre_periods = event_times[event_times < reference_period]
     post_periods = event_times[event_times > reference_period]
@@ -249,8 +243,6 @@ def _honest_did_aggte(
     if num_post_periods <= 0:
         raise ValueError("Not enough post-treatment periods for honest_did.")
 
-    # Create weight vector for the requested event time
-    # Note that event_time is relative to treatment, so we need to find its position in post-periods
     post_event_times = event_times_no_ref[num_pre_periods:]
     if event_time not in post_event_times:
         available_times = ", ".join(map(str, post_event_times))
@@ -277,7 +269,7 @@ def _honest_did_aggte(
             num_pre_periods=num_pre_periods,
             num_post_periods=num_post_periods,
             l_vec=l_vec,
-            grid_points=grid_points,
+            grid_points=100 if grid_points is None else grid_points,
             **kwargs,
         )
     elif sensitivity_type == "smoothness":
@@ -287,7 +279,7 @@ def _honest_did_aggte(
             num_pre_periods=num_pre_periods,
             num_post_periods=num_post_periods,
             l_vec=l_vec,
-            grid_points=grid_points,
+            grid_points=1000 if grid_points is None else grid_points,
             **kwargs,
         )
     else:

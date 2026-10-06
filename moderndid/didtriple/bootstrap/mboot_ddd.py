@@ -8,7 +8,7 @@ from typing import NamedTuple
 import numpy as np
 
 from ..nuisance import compute_all_did, compute_all_nuisances
-from ..numba import aggregate_by_cluster, multiplier_bootstrap
+from ..numba import multiplier_bootstrap
 
 
 class MbootResult(NamedTuple):
@@ -39,7 +39,7 @@ def mboot_ddd(
     cluster=None,
     random_state=None,
 ):
-    """Compute multiplier bootstrap for DDD estimator.
+    r"""Compute multiplier bootstrap for DDD estimator.
 
     Parameters
     ----------
@@ -50,9 +50,8 @@ def mboot_ddd(
     alpha : float, default 0.05
         Significance level for confidence intervals.
     cluster : ndarray or None, default None
-        Cluster identifiers for each unit. If provided, the bootstrap
-        resamples at the cluster level by aggregating influence functions
-        within clusters before bootstrapping.
+        Cluster identifier for each row of the influence function. If
+        provided, the bootstrap draws one multiplier per cluster.
     random_state : int, Generator, or None, default None
         Controls random number generation for reproducibility.
 
@@ -61,24 +60,37 @@ def mboot_ddd(
     MbootResult
         NamedTuple containing:
 
-        - bres: Bootstrap results matrix of shape (biters, k)
-        - se: Standard errors for each parameter
-        - crit_val: Critical value for uniform confidence bands
+        - **bres**: Bootstrap results matrix of shape (biters, k).
+        - **se**: Standard errors for each parameter.
+        - **crit_val**: Critical value for uniform confidence bands.
 
-    References
-    ----------
+    Notes
+    -----
+    Let :math:`n` be the number of rows of the influence function :math:`\psi` and
+    :math:`G` the number of clusters. With clusters, each multiplier scales the sum
+    of :math:`\psi` within one cluster. The standard error then estimates the
+    cluster-robust standard error
 
-    .. [1] Ortiz-Villavicencio, M., & Sant'Anna, P. H. C. (2025).
-           *Better Understanding Triple Differences Estimators.*
-           arXiv preprint arXiv:2505.09942.
-           https://arxiv.org/abs/2505.09942
+    .. math::
+
+        \frac{1}{n} \sqrt{\sum_{c=1}^{G} \left(\sum_{i \in c} \psi_i\right)^2}.
+
+    Summing rather than averaging within clusters gives every unit the same
+    weight when clusters differ in size.
     """
     inf_func = inf_func.reshape(-1, 1) if inf_func.ndim == 1 else np.atleast_2d(inf_func)
 
     n, k = inf_func.shape
 
     if cluster is not None:
-        inf_func_boot, n_eff = aggregate_by_cluster(inf_func, cluster)
+        cluster = np.asarray(cluster).ravel()
+        if len(cluster) != n:
+            raise ValueError(f"cluster has {len(cluster)} entries but inf_func has {n} rows.")
+        _, cluster_idx = np.unique(cluster, return_inverse=True)
+        n_eff = int(cluster_idx.max()) + 1
+        inf_func_boot = np.column_stack(
+            [np.bincount(cluster_idx, weights=inf_func[:, j], minlength=n_eff) for j in range(k)]
+        )
     else:
         inf_func_boot = inf_func
         n_eff = n
@@ -97,7 +109,10 @@ def mboot_ddd(
         q25 = np.percentile(bres_clean, 25, axis=0)
         b_sigma = (q75 - q25) / 1.3489795
         b_sigma[b_sigma <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-        se_full[ndg_dim] = b_sigma / np.sqrt(n_eff)
+        if cluster is None:
+            se_full[ndg_dim] = b_sigma / np.sqrt(n)
+        else:
+            se_full[ndg_dim] = b_sigma * np.sqrt(n_eff) / n
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)

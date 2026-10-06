@@ -27,7 +27,7 @@ def ipwdid(
 ):
     r"""Wrap the inverse propensity weighted DiD estimators for the ATT.
 
-    This function is a wrapper for inverse propensity weighted (IPW) DiD estimators.
+    This function is a wrapper for inverse propensity weighted (IPW) DiD estimators [1]_, [2]_.
     It can be used with panel or stationary repeated cross-section data and calls the
     appropriate estimator based on the panel argument and estimation method.
 

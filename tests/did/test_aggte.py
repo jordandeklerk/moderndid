@@ -490,3 +490,38 @@ def test_aggte_bootstrap_reproducibility(mp_result, agg_type):
 
     if agg_type != "simple":
         np.testing.assert_array_equal(result1.se_by_event, result2.se_by_event)
+
+
+@pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
+def test_aggte_unbalanced_se_invariant_to_unit_labels(mpdta_unbalanced, agg_type):
+    spec = dict(
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        allow_unbalanced_panel=True,
+        boot=False,
+        cband=False,
+    )
+    reversed_ids = mpdta_unbalanced.with_columns((100000 - pl.col("countyreal")).alias("countyreal"))
+
+    original = aggte(att_gt(data=mpdta_unbalanced, **spec), type=agg_type)
+    relabeled = aggte(att_gt(data=reversed_ids, **spec), type=agg_type)
+
+    np.testing.assert_allclose(relabeled.overall_att, original.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(relabeled.overall_se, original.overall_se, rtol=1e-12)
+    if agg_type != "simple":
+        np.testing.assert_allclose(relabeled.se_by_event, original.se_by_event, rtol=1e-12)
+
+
+@pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
+def test_aggte_cross_section_allow_unbalanced_matches_cross_section(mpdta_data, agg_type):
+    spec = dict(yname="lemp", tname="year", gname="first.treat", panel=False, boot=False, cband=False)
+
+    plain = aggte(att_gt(data=mpdta_data, **spec), type=agg_type)
+    flagged = aggte(att_gt(data=mpdta_data, allow_unbalanced_panel=True, **spec), type=agg_type)
+
+    np.testing.assert_allclose(flagged.overall_att, plain.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(flagged.overall_se, plain.overall_se, rtol=1e-12)
+    if agg_type != "simple":
+        np.testing.assert_allclose(flagged.se_by_event, plain.se_by_event, rtol=1e-12)

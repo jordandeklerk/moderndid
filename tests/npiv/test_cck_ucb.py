@@ -6,7 +6,8 @@ import pytest
 pytestmark = pytest.mark.slow
 
 from moderndid.npiv.cck_ucb import compute_cck_ucb
-from moderndid.npiv.results import NPIVResult
+from moderndid.npiv.confidence_bands import compute_ucb
+from moderndid.npiv.container import NPIVResult
 
 
 def test_basic_cck_ucb(simple_data, selection_result):
@@ -244,3 +245,32 @@ def test_higher_order_derivatives(simple_data, selection_result):
     assert result.deriv is not None
     assert result.h_lower_deriv is not None
     assert result.h_upper_deriv is not None
+
+
+def test_cck_bootstrap_bases_match_estimator_dimension(simple_data):
+    y, x, w = simple_data
+    single_dimension = {
+        "j_x_seg": 3,
+        "k_w_seg": 12,
+        "j_tilde": 4,
+        "theta_star": 0.0,
+        "j_x_segments_set": np.array([3]),
+        "k_w_segments_set": np.array([12]),
+    }
+
+    adaptive = compute_cck_ucb(y=y, x=x, w=w, biters=50, seed=5, selection_result=single_dimension)
+    fixed = compute_ucb(y=y, x=x, w=w, j_x_segments=3, k_w_segments=12, biters=50, seed=5)
+
+    assert adaptive.cv == pytest.approx(fixed.cv, rel=1e-12)
+    assert adaptive.cv_deriv == pytest.approx(fixed.cv_deriv, rel=1e-12)
+
+
+def test_cck_zero_support_bound_is_used(simple_data, selection_result):
+    y, x, w = simple_data
+
+    zero = compute_cck_ucb(y=y, x=x, w=w, w_min=0.0, w_max=1.0, biters=30, seed=6, selection_result=selection_result)
+    tiny = compute_cck_ucb(y=y, x=x, w=w, w_min=1e-300, w_max=1.0, biters=30, seed=6, selection_result=selection_result)
+    data = compute_cck_ucb(y=y, x=x, w=w, w_max=1.0, biters=30, seed=6, selection_result=selection_result)
+
+    assert zero.cv == pytest.approx(tiny.cv, rel=1e-9)
+    assert zero.cv != data.cv

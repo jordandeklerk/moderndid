@@ -220,18 +220,23 @@ framework.
         dose_est_method="parametric",  # parametric or cck
     )
 
-All the inference options (``alp``, ``boot``, ``biters``, ``clustervars``,
-``cband``) work the same way across estimators. The shared estimation
-options (``control_group``, ``anticipation``, ``base_period``) also behave
-identically.
+The inference options (``alp``, ``boot``, ``biters``, ``clustervars``,
+``cband``) and the shared estimation options (``control_group``,
+``anticipation``, ``base_period``) mean what they mean in
+:func:`~moderndid.att_gt` except in two places. On two-period data
+:func:`~moderndid.att_gt` turns ``cband`` off, since its single cell needs no
+simultaneous band. A dose aggregation keeps the band there, because the band
+covers the whole grid of doses. ``anticipation`` also counts the periods in the
+data rather than units of ``tname``. The two readings differ only when the
+periods are spaced unevenly.
 
 .. important::
 
    The continuous treatment estimator does not yet support covariates (only
-   ``xformla="~1"``), unbalanced panels, or discrete treatment values.
-   Two-way clustering is not supported. The CCK estimation method
-   (``dose_est_method="cck"``) requires exactly two groups and two time
-   periods, and cannot be combined with event study aggregation.
+   ``xformla="~1"``), sampling weights, unbalanced panels, or discrete
+   treatment values. Two-way clustering is not supported. The CCK estimation
+   method (``dose_est_method="cck"``) requires exactly two groups and two time
+   periods and cannot be combined with event study aggregation.
 
 
 Dynamic Covariate Balancing DiD
@@ -359,7 +364,8 @@ computed when ``trends_lin=True``. The estimator can also restrict to
 one direction of treatment change with ``switchers="in"`` or
 ``switchers="out"``, and test for effect heterogeneity across
 time-invariant covariates with ``predict_het``. See the
-:ref:`user guide <example_inter_did>` for worked examples of these features.
+:ref:`intertemporal example <example_inter_did>` for a full analysis of bank
+branching deregulation across US states.
 
 .. important::
 

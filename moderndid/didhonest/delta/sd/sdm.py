@@ -46,7 +46,7 @@ def compute_conditional_cs_sdm(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
-    seed=None,
+    seed=0,
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{SDI}(M)`.
 
@@ -54,7 +54,7 @@ def compute_conditional_cs_sdm(
     coefficients being in the identified set under the second differences with monotonicity
     restriction :math:`\Delta^{SDI}(M)`.
 
-    The combined smoothness and monotonicity restriction, denoted :math:`\Delta^{SDI}(M)` in [2]_, is
+    The combined smoothness and monotonicity restriction, denoted :math:`\Delta^{SDI}(M)`, is
     defined as the intersection of :math:`\Delta^{SD}(M)` and a monotonicity restriction :math:`\Delta^I`
 
     .. math::
@@ -104,8 +104,8 @@ def compute_conditional_cs_sdm(
         Lower bound for grid search.
     grid_ub : float, optional
         Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -116,23 +116,15 @@ def compute_conditional_cs_sdm(
     -----
     :math:`\Delta^{SDI}(M)` is a polyhedron formed by the intersection of smoothness and monotonicity
     constraints. The confidence set is constructed using either FLCIs or the moment inequality
-    approach from Section 3 of [2]_.
+    approach.
 
-    As noted in [2]_, monotonicity restrictions are often motivated by economic arguments. For
-    example, Lovenheim & Willen (2019) argue that pre-treatment trends in the "wrong direction"
-    (opposite to treatment effects) support their findings.
+    Monotonicity restrictions are often motivated by economic arguments. For example, pre-treatment
+    trends in the "wrong direction" (opposite to the treatment effects) can support an empirical
+    finding.
 
     Unlike :math:`\Delta^{SD}(M)` alone, the optimal FLCI for :math:`\Delta^{SDI}(M)` has the same
     worst-case bias as for :math:`\Delta^{SD}(M)`, meaning FLCIs do not adapt to the additional
     monotonicity restriction.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -228,6 +220,7 @@ def compute_conditional_cs_sdm(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -247,7 +240,7 @@ def compute_identified_set_sdm(
     trend :math:`\delta` lies in :math:`\Delta^{SDI}(M)`, which combines second differences bounds
     with a monotonicity restriction.
 
-    The identified set is an interval :math:`[\theta^{lb}, \theta^{ub}]` derived from Lemma 2.1 in [2]_.
+    The identified set is an interval :math:`[\theta^{lb}, \theta^{ub}]`.
     The bounds are given by
 
     .. math::
@@ -281,14 +274,6 @@ def compute_identified_set_sdm(
     -------
     DeltaSDMResult
         Lower and upper bounds of the identified set.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
 

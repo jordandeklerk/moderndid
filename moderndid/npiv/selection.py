@@ -38,7 +38,10 @@ def npiv_choose_j(
     This step defines the search grid :math:`\hat{\mathcal{J}}` as
 
     .. math::
-        \hat{J}_{\max} = \min \left\{ J \in \mathcal{T} : J \sqrt{\log J} \hat{s}_J^{-1} \leq c \sqrt{n} \right\}.
+        \hat{J}_{\max} = \min \left\{ J \in \mathcal{T} : J \sqrt{\log J}\, \hat{s}_J^{-1} \leq c \sqrt{n}
+        < J^{+} \sqrt{\log J^{+}}\, \hat{s}_{J^{+}}^{-1} \right\},
+
+    where :math:`J^{+}` is the next larger element of the dyadic grid :math:`\mathcal{T}` and :math:`c = 10`.
 
     Second, use a Lepski-style method with a multiplier bootstrap to select the optimal dimension
     :math:`\hat{J}` from the grid :math:`\hat{\mathcal{J}}`. This is done by comparing estimates across different
@@ -49,7 +52,7 @@ def npiv_choose_j(
     .. math::
         \hat{J} = \min \left\{ J \in \hat{\mathcal{J}} : \sup_{x, J_2 > J} \left|
         \frac{\hat{h}_J(x) - \hat{h}_{J_2}(x)}{\hat{\sigma}_{J, J_2}(x)} \right|
-        \leq \theta_{1-\hat{\alpha}}^* \right\}.
+        \leq 1.1\, \theta_{1-\hat{\alpha}}^* \right\}.
 
     Parameters
     ----------
@@ -66,15 +69,14 @@ def npiv_choose_j(
     k_w_degree : int, default=4
         Degree of B-spline basis for :math:`W`.
     k_w_smooth : int, default=2
-        Smoothness parameter for :math:`K` selection.
+        Number of dyadic refinements of the :math:`W` basis relative to the
+        :math:`X` basis at each grid point.
     knots : {"uniform", "quantiles"}, default="uniform"
         Knot placement method.
     basis : {"tensor", "additive", "glp"}, default="tensor"
-        Type of basis for multivariate :math:`X`:
-
-        - "tensor": Full tensor product of univariate bases
-        - "additive": Sum of univariate bases
-        - "glp": Generalized linear product (hierarchical)
+        Type of basis for multivariate :math:`X`, either the full tensor
+        product of the univariate bases, their sum, or the generalized
+        polynomial basis described in :func:`prodspline`.
     x_min, x_max, w_min, w_max : float, optional
         Range limits for basis construction.
     grid_num : int, default=50
@@ -91,12 +93,15 @@ def npiv_choose_j(
     dict
         Dictionary containing:
 
-        - **j_x_segments**: Selected number of segments for :math:`X`
-        - **k_w_segments**: Corresponding segments for :math:`W`
-        - **j_tilde**: Selected dimension
-        - **theta_star**: Bootstrap critical value
         - **j_hat_max**: Maximum feasible dimension
-        - Additional diagnostic information
+        - **j_hat_n**: Truncated dimension from the second-largest grid point
+        - **j_hat**: Unadjusted Lepski choice of the dimension
+        - **j_tilde**: Selected dimension
+        - **j_x_seg**: Selected number of segments for :math:`X`
+        - **k_w_seg**: Corresponding number of segments for :math:`W`
+        - **j_x_segments_set**: Grid of segments for :math:`X`
+        - **k_w_segments_set**: Grid of segments for :math:`W`
+        - **theta_star**: Bootstrap critical value of the Lepski test
 
     Examples
     --------

@@ -43,7 +43,7 @@ def compute_conditional_cs_sdrm(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
-    seed=None,
+    seed=0,
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{SDRM}(\bar{M})`.
 
@@ -51,7 +51,7 @@ def compute_conditional_cs_sdrm(
     lies in :math:`\Delta^{SDRM}(\bar{M})`, which bounds the second differences in post-treatment
     periods based on the maximum absolute second difference in pre-treatment periods.
 
-    The combined smoothness and relative magnitudes restriction, :math:`\Delta^{SDRM}(\bar{M})`, is defined in [1]_ as
+    The combined smoothness and relative magnitudes restriction, :math:`\Delta^{SDRM}(\bar{M})`, is defined as
 
     .. math::
 
@@ -93,35 +93,22 @@ def compute_conditional_cs_sdrm(
         Lower bound for grid search.
     grid_ub : float, optional
         Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     dict
         Returns dict with 'grid' and 'accept' arrays.
 
-    Raises
-    ------
-    ValueError
-        If num_pre_periods == 1 (not enough pre-periods for second differences).
-        If hybrid_flag is not in {'LF', 'ARP', 'FLCI'}.
-
     Notes
     -----
-    The confidence set is constructed using the moment inequality approach from Section 3.
-    Since :math:`\Delta^{SDRM}(\bar{M})` is a finite union of polyhedra, we can apply Lemma 2.2
-    to construct a valid confidence set by taking the union of the confidence sets for each
-    of its components.
+    The confidence set is constructed using the moment inequality approach. Since
+    :math:`\Delta^{SDRM}(\bar{M})` is a finite union of polyhedra, the union of the confidence
+    sets for its components is a valid confidence set.
 
     Unlike :math:`\Delta^{SD}(M)`, this restriction is not convex, so Fixed Length Confidence
     Intervals (FLCIs) may have poor performance. The conditional/hybrid approach is recommended.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods == 1:
         raise ValueError(
@@ -234,8 +221,7 @@ def compute_identified_set_sdrm(
     Computes the identified set for :math:`l'\tau_{post}` under the restriction that the
     underlying trend delta lies in :math:`\Delta^{SDRM}(\bar{M})`.
 
-    The identified set is the union of identified sets for each component polyhedron,
-    following Equation (7) in [1]_,
+    The identified set is the union of identified sets for each component polyhedron
 
     .. math::
 
@@ -276,17 +262,12 @@ def compute_identified_set_sdrm(
     -------
     DeltaSDRMResult
         Lower and upper bounds of the identified set.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     l_vec = np.asarray(l_vec).flatten()
 
     min_s = -(num_pre_periods - 2)
-    s_values = range(min_s, 1)  # Include s=0 to match R's min_s:0
+    # Since the second difference at s = 0 ends at the reference period, it is a pre-period one too.
+    s_values = range(min_s, 1)
 
     all_bounds = []
 
@@ -444,7 +425,7 @@ def _compute_conditional_cs_sdrm_fixed_s(
     grid_ub : float
         Upper bound of grid.
     seed : int
-        Random seed.
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -515,6 +496,7 @@ def _compute_conditional_cs_sdrm_fixed_s(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -582,7 +564,7 @@ def _create_sdrm_constraint_matrix(
     Creates a matrix for the linear constraints defining the polyhedron
     :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})`. This corresponds to the case where the
     maximum absolute second difference in the pre-treatment period occurs at period `s`
-    and has a specified sign, as discussed in Section 2.4.5 of [1]_.
+    and has a specified sign.
 
     The polyhedron :math:`\Delta^{SDRM}_{s,+}(\bar{M})` is defined by constraints ensuring that
     the second difference at `s` is non-negative, that it is the maximum absolute second
@@ -653,7 +635,7 @@ def _create_sdrm_constraint_vector(a_matrix):
     Notes
     -----
     The constraint vector is all zeros because the inequalities defining
-    :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})` in [1]_ are all homogeneous
+    :math:`\Delta^{SDRM}_{s,\text{sign}}(\bar{M})` are all homogeneous
     (i.e., of the form :math:`c'\delta \le 0`).
     """
     return np.zeros(a_matrix.shape[0])

@@ -5,10 +5,12 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
+import polars as pl
 import scipy.linalg as la
 import scipy.stats
 
 from moderndid.core.preprocess import (
+    WEIGHTS_COLUMN,
     BasePeriod,
     ControlGroup,
     DIDConfig,
@@ -449,8 +451,17 @@ def att_gt(
     if hasattr(dp, "time_invariant_data"):
         if gname in dp.time_invariant_data.columns:
             group_assignments = dp.time_invariant_data[gname]
-        if weightsname is not None and weightsname in dp.time_invariant_data.columns:
-            sampling_weights = dp.time_invariant_data[weightsname]
+        # Preprocessing keeps the normalized weights in one internal column whatever the user's column is called.
+        if weightsname is not None:
+            sampling_weights = dp.time_invariant_data[WEIGHTS_COLUMN]
+            if dp.config.allow_unbalanced_panel and not dp.config.panel:
+                # Since a unit of an unbalanced panel can carry a different weight in each of its rows, aggte
+                # weighs the unit by the mean of those weights.
+                unit_ids = dp.time_invariant_data[dp.config.idname]
+                unit_means = dp.data.group_by(dp.config.idname).agg(pl.col(WEIGHTS_COLUMN).mean())
+                sampling_weights = unit_ids.replace_strict(
+                    unit_means[dp.config.idname], unit_means[WEIGHTS_COLUMN]
+                ).alias(WEIGHTS_COLUMN)
 
     return mp(
         groups=groups,

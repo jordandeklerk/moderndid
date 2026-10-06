@@ -2,12 +2,12 @@
 
 from .cck_ucb import compute_cck_ucb
 from .confidence_bands import compute_ucb
+from .container import BSplineBasis, MultivariateBasis, NPIVResult
 from .estimators import npiv_est
-from .gsl_bspline import BSplineBasis, gsl_bs, predict_gsl_bs
+from .gsl_bspline import gsl_bs, predict_gsl_bs
 from .lepski import npiv_j, npiv_jhat_max
 from .npiv import npiv
-from .prodspline import MultivariateBasis, glp_model_matrix, prodspline, tensor_prod_model_matrix
-from .results import NPIVResult
+from .prodspline import glp_model_matrix, prodspline, tensor_prod_model_matrix
 from .selection import npiv_choose_j
 
 __all__ = [

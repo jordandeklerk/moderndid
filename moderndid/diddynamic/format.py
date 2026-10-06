@@ -22,13 +22,22 @@ def format_dyn_balancing_result(result):
     params = result.estimation_params
     alpha = params.get("alpha", 0.05)
     conf_level = int((1 - alpha) * 100)
+    # Since the robust quantile equals the Gaussian one only when the setting is off, a result
+    # built without the setting still reveals it.
+    robust = params.get("robust_quantile", result.robust_quantile != result.gaussian_quantile)
 
     se = result.se
-    z_crit = result.gaussian_quantile
+    t_val = result.att / se if se > 0 else np.nan
+    if robust:
+        z_crit = result.robust_quantile
+        n_periods = params.get("n_periods")
+        # Taking the p-value from the chi-squared bound behind the robust interval keeps the two consistent.
+        p_val = stats.chi2.sf(t_val**2, 2 * n_periods) if n_periods and np.isfinite(t_val) else np.nan
+    else:
+        z_crit = result.gaussian_quantile
+        p_val = 2 * (1 - stats.norm.cdf(np.abs(t_val))) if np.isfinite(t_val) else np.nan
     lci = result.att - z_crit * se
     uci = result.att + z_crit * se
-    t_val = result.att / se if se > 0 else np.nan
-    p_val = 2 * (1 - stats.norm.cdf(np.abs(t_val))) if np.isfinite(t_val) else np.nan
 
     balancing = params.get("balancing", "dcb")
 
@@ -70,6 +79,9 @@ def format_dyn_balancing_result(result):
     n_units = params.get("n_units")
     if n_units is not None:
         lines.append(f" Units: {n_units}")
+    n_stacked = params.get("n_stacked_units")
+    if n_stacked is not None:
+        lines.append(f" Stacked unit histories: {n_stacked}")
     n_obs = params.get("n_obs")
     if n_obs is not None:
         lines.append(f" Observations: {n_obs}")
@@ -82,7 +94,7 @@ def format_dyn_balancing_result(result):
     lines.extend(format_section_header("Inference"))
     lines.append(f" Significance level: {alpha}")
     lines.append(" Analytical standard errors")
-    if params.get("robust_quantile", True):
+    if robust:
         lines.append(" Robust (chi-squared) critical values")
     else:
         lines.append(" Gaussian critical values")

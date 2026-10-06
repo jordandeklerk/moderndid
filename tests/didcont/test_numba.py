@@ -103,22 +103,6 @@ def test_tensor_prod_model_matrix_correctness(basis_matrices):
     assert np.allclose(single_result, bases[0])
 
 
-def test_glp_model_matrix_correctness(basis_matrices):
-    bases = basis_matrices[:2]
-    n_obs = bases[0].shape[0]
-
-    result = nb_module.glp_model_matrix(bases)
-
-    expected_cols = 3 + 4 + (3 * 4)
-    assert result.shape == (n_obs, expected_cols)
-
-    assert np.allclose(result[:, :3], bases[0])
-    assert np.allclose(result[:, 3:7], bases[1])
-
-    assert np.allclose(result[:, 7], bases[0][:, 0] * bases[1][:, 0])
-    assert np.allclose(result[:, 8], bases[0][:, 0] * bases[1][:, 1])
-
-
 def test_numpy_performance_check_full_rank(matrices_large):
     """Test that NumPy implementation is efficient for full rank check."""
     x, _, _, _ = matrices_large
@@ -183,9 +167,6 @@ def test_numba_performance_tensor_product():
 def test_error_handling():
     with pytest.raises(ValueError, match="bases cannot be empty"):
         nb_module.tensor_prod_model_matrix([])
-
-    with pytest.raises(ValueError, match="bases cannot be empty"):
-        nb_module.glp_model_matrix([])
 
     with pytest.raises(TypeError, match="must be a NumPy array"):
         nb_module.tensor_prod_model_matrix([[[1, 2], [3, 4]]])

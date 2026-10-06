@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from scipy import stats
 
 from moderndid.didhonest import arp_no_nuisance
 from moderndid.didhonest.arp_no_nuisance import APRCIResult, compute_arp_ci
@@ -154,9 +155,12 @@ def test_test_in_identified_set():
     A_full = np.array([[1, 0], [0, 1], [-1, 0], [0, -1]])
     d_full = np.array([1.0, 1.0, 1.0, 1.0])
 
-    y_clearly_out = np.array([2.0, 2.0])
+    y_clearly_out = np.array([2.0, 0.0])
     not_in_set = arp_no_nuisance.test_in_identified_set(y_clearly_out, sigma, A_full, d_full, alpha=0.10)
     assert not not_in_set
+
+    y_tied = np.array([2.0, 2.0])
+    assert arp_no_nuisance.test_in_identified_set(y_tied, sigma, A_full, d_full, alpha=0.10)
 
     y_well_within = np.array([0.0, 0.0])
     well_within_set = arp_no_nuisance.test_in_identified_set(y_well_within, sigma, A_full, d_full, alpha=0.05)
@@ -325,3 +329,34 @@ def test_hybrid_lf_requires_params(event_study_data, constraint_matrices):
             hybrid_flag="LF",
             hybrid_kappa=0.005,
         )
+
+
+def test_in_identified_set_adds_bound_back():
+    A = np.array([[1.0, -2.0], [-1.0, 2.0]])
+    d = np.full(2, np.sqrt(5))
+    sigma = np.eye(2)
+    quantile = 1 + stats.truncnorm.ppf(0.95, -1, np.inf)
+
+    y_above = np.array([np.sqrt(5) * (quantile + 0.05), 0.0])
+    y_below = np.array([np.sqrt(5) * (quantile - 0.05), 0.0])
+
+    assert not arp_no_nuisance.test_in_identified_set(y_above, sigma, A, d, alpha=0.05)
+    assert arp_no_nuisance.test_in_identified_set(y_below, sigma, A, d, alpha=0.05)
+
+
+def test_in_identified_set_lf_hybrid_adds_bound_back():
+    A = np.array([[1.0, -2.0], [-1.0, 2.0]])
+    d = np.full(2, np.sqrt(5))
+    sigma = np.eye(2)
+    alpha_tilde = (0.05 - 0.005) / (1 - 0.005)
+    quantile = 1 + stats.truncnorm.ppf(1 - alpha_tilde, -1, np.inf)
+
+    y_above = np.array([np.sqrt(5) * (quantile + 0.05), 0.0])
+    y_below = np.array([np.sqrt(5) * (quantile - 0.05), 0.0])
+
+    assert not arp_no_nuisance.test_in_identified_set_lf_hybrid(
+        y_above, sigma, A, d, alpha=0.05, hybrid_kappa=0.005, lf_cv=50.0
+    )
+    assert arp_no_nuisance.test_in_identified_set_lf_hybrid(
+        y_below, sigma, A, d, alpha=0.05, hybrid_kappa=0.005, lf_cv=50.0
+    )

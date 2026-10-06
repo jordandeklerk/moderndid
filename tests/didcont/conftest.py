@@ -4,7 +4,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from moderndid import att_gt, load_mpdta
+from moderndid import att_gt, gen_cont_did_data, load_mpdta
 from moderndid.didcont.estimation import PTEParams, process_att_gt
 
 
@@ -603,6 +603,7 @@ def mock_gt_results_with_dose():
                     "beta": np.random.randn(n_basis),
                     "bread": np.random.randn(n_basis, n_basis),
                     "x_expanded": np.random.randn(50, n_basis),
+                    **mock_dose_cell_pieces(n_units, n_treated=50),
                 },
             }
             extra_gt_returns.append(dose_results)
@@ -619,9 +620,13 @@ def mock_gt_results_no_dose(att_gt_raw_results):
 
 @pytest.fixture
 def contdid_data():
-    from moderndid import gen_cont_did_data
-
     data = gen_cont_did_data(n=1000, seed=12345)
+    return data.rename({"time_period": "period"})
+
+
+@pytest.fixture
+def contdid_two_period_data():
+    data = gen_cont_did_data(n=1000, num_time_periods=2, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=2024)
     return data.rename({"time_period": "period"})
 
 
@@ -678,6 +683,13 @@ def panel_data_with_group(panel_data_balanced):
     return data
 
 
+def mock_dose_cell_pieces(n_units, n_treated, n_cell=120):
+    rows = np.sort(np.random.choice(n_units, size=n_cell, replace=False))
+    treated = np.zeros(n_cell, dtype=bool)
+    treated[np.random.choice(n_cell, size=n_treated, replace=False)] = True
+    return {"att_inf_func": np.random.randn(n_cell), "rows": rows, "treated": treated, "boundary_knots": None}
+
+
 def mock_gt_results(degree, knots, n_doses=20):
     if knots is None:
         n_knots = 0
@@ -711,6 +723,7 @@ def mock_gt_results(degree, knots, n_doses=20):
                     "beta": np.random.randn(n_basis),
                     "bread": np.random.randn(n_basis, n_basis),
                     "x_expanded": np.random.randn(50, n_basis),
+                    **mock_dose_cell_pieces(n_units, n_treated=50),
                 },
             }
             extra_gt_returns.append(dose_results)

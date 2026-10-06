@@ -550,8 +550,12 @@ class PreprocessDataBuilder:
             for period in time_periods:
                 period_df = df.filter(pl.col(cfg.tname) == period).sort(cfg.idname)
                 cols = all_cov_names[:-dim_fe] if dim_fe > 0 and period != final_period else all_cov_names
+                # Casting first turns a missing value of any column type into NaN. The estimator
+                # then leaves that unit out of the affected periods only.
                 covariate_dict[period] = (
-                    period_df.select(cols).to_numpy().astype(float) if cols else np.empty((period_df.height, 0))
+                    period_df.select(pl.col(cols).cast(pl.Float64)).to_numpy()
+                    if cols
+                    else np.empty((period_df.height, 0))
                 )
 
         cluster = None

@@ -201,3 +201,35 @@ def test_flci_warning_with_restriction(basic_event_study_data):
             method="FLCI",
             m_vec=np.array([0.1]),
         )
+
+
+def test_single_post_period_least_favorable_results_reproducible(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "grid_points": 21,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    sm_first = create_sensitivity_results_sm(**kwargs, method="C-LF", m_vec=[0.01])
+    sm_second = create_sensitivity_results_sm(**kwargs, method="C-LF", m_vec=[0.01])
+    rm_first = create_sensitivity_results_rm(**kwargs, method="C-LF", m_bar_vec=[1.0])
+    rm_second = create_sensitivity_results_rm(**kwargs, method="C-LF", m_bar_vec=[1.0])
+
+    assert sm_first.equals(sm_second)
+    assert rm_first.equals(rm_second)
+    assert sm_first["lb"][0] > 0.0
+
+
+def test_default_m_vec_with_two_pre_periods():
+    betahat = np.array([0.01, -0.02, 0.3])
+    sigma = np.diag([0.0004, 0.0003, 0.0005])
+
+    result = create_sensitivity_results_sm(betahat, sigma, num_pre_periods=2, num_post_periods=1)
+
+    assert len(result) == 10
+    assert result["m"][0] == 0.0
+    assert result["m"][-1] > 0.0

@@ -3,10 +3,10 @@
 import numpy as np
 
 from ..cupy.backend import get_backend, to_device
+from .container import NPIVResult
 from .estimators import _ginv, npiv_est
 from .prodspline import prodspline
-from .results import NPIVResult
-from .utils import _quantile_basis, avoid_zero_division
+from .utils import _as_eval_points, _as_matrix, _quantile_basis, avoid_zero_division
 
 
 def compute_cck_ucb(
@@ -150,14 +150,14 @@ def compute_cck_ucb(
     """
     xp = get_backend()
     y = xp.asarray(y).ravel()
-    x = xp.atleast_2d(xp.asarray(x))
-    w = xp.atleast_2d(xp.asarray(w))
+    x = _as_matrix(x)
+    w = _as_matrix(w)
 
     n = len(y)
     p_x = x.shape[1]
     p_w = w.shape[1]
 
-    x_eval = x.copy() if x_eval is None else xp.atleast_2d(xp.asarray(x_eval))
+    x_eval = x.copy() if x_eval is None else _as_eval_points(x_eval, p_x)
 
     j_x_segments = selection_result["j_x_seg"]
     k_w_segments = selection_result["k_w_seg"]
@@ -204,24 +204,25 @@ def compute_cck_ucb(
         for j_idx, j_seg in enumerate(j_segments_boot):
             k_seg = k_w_segments_set[np.where(j_x_segments_set == j_seg)[0][0]]
 
-            K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_seg)])
-            K_w = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k_seg)])
+            # prodspline takes the number of segments minus one, as in npiv_est and the selection step.
+            K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_seg - 1)])
+            K_w = np.column_stack([np.full(p_w, k_w_degree), np.full(p_w, k_seg - 1)])
 
             psi_x = prodspline(
                 x=x,
                 K=K_x,
                 knots=knots,
                 basis=basis,
-                x_min=np.full(p_x, x_min) if x_min else None,
-                x_max=np.full(p_x, x_max) if x_max else None,
+                x_min=np.full(p_x, x_min) if x_min is not None else None,
+                x_max=np.full(p_x, x_max) if x_max is not None else None,
             ).basis
             b_w = prodspline(
                 x=w,
                 K=K_w,
                 knots=knots,
                 basis=basis,
-                x_min=np.full(p_w, w_min) if w_min else None,
-                x_max=np.full(p_w, w_max) if w_max else None,
+                x_min=np.full(p_w, w_min) if w_min is not None else None,
+                x_max=np.full(p_w, w_max) if w_max is not None else None,
             ).basis
 
             psi_x_eval = prodspline(
@@ -230,8 +231,8 @@ def compute_cck_ucb(
                 K=K_x,
                 knots=knots,
                 basis=basis,
-                x_min=np.full(p_x, x_min) if x_min else None,
-                x_max=np.full(p_x, x_max) if x_max else None,
+                x_min=np.full(p_x, x_min) if x_min is not None else None,
+                x_max=np.full(p_x, x_max) if x_max is not None else None,
             ).basis
 
             if ucb_deriv:
@@ -243,8 +244,8 @@ def compute_cck_ucb(
                     basis=basis,
                     deriv_index=deriv_index,
                     deriv=deriv_order,
-                    x_min=np.full(p_x, x_min) if x_min else None,
-                    x_max=np.full(p_x, x_max) if x_max else None,
+                    x_min=np.full(p_x, x_min) if x_min is not None else None,
+                    x_max=np.full(p_x, x_max) if x_max is not None else None,
                 ).basis
 
             if basis in ("additive", "glp"):
@@ -265,12 +266,13 @@ def compute_cck_ucb(
             weighted_tmp = tmp.T * residuals[:, None]
             D_inv_rho_D_inv = weighted_tmp.T @ weighted_tmp
 
+            # Row sums give the diagonal of psi D psi' without forming the m x m matrix.
             if ucb_h:
-                var_h = xp.diag(psi_x_eval @ D_inv_rho_D_inv @ psi_x_eval.T)
+                var_h = xp.sum((psi_x_eval @ D_inv_rho_D_inv) * psi_x_eval, axis=1)
                 asy_se_h = xp.sqrt(xp.maximum(var_h, 0))
 
             if ucb_deriv:
-                var_deriv = xp.diag(psi_x_deriv_eval @ D_inv_rho_D_inv @ psi_x_deriv_eval.T)
+                var_deriv = xp.sum((psi_x_deriv_eval @ D_inv_rho_D_inv) * psi_x_deriv_eval, axis=1)
                 asy_se_deriv = xp.sqrt(xp.maximum(var_deriv, 0))
 
             for b in range(biters):

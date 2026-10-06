@@ -8,6 +8,7 @@ import polars as pl
 from ...core.dataframe import to_polars
 from ..container import PteEmpBootResult
 from ..utils import _quantile_basis
+from .process_aggte import _event_times
 
 
 def panel_empirical_bootstrap(
@@ -135,13 +136,23 @@ def panel_empirical_bootstrap(
             dyn_se = filtered_boots.group_by("e").agg(pl.col("att_e").std().alias("se"))
 
             dyn_results = aggte_results["dyn_results"].clone()
-            dyn_results = dyn_results.join(dyn_se, on="e", how="inner")
+            dyn_results = dyn_results.join(dyn_se, on="e", how="inner").sort("e")
+            # Every draw holds each event time kept here once. Sorting lines its effects up with the estimates.
+            kept_e = dyn_results["e"].to_list()
+            dyn_draws = np.vstack(
+                [
+                    res["dyn_results"].filter(pl.col("e").is_in(kept_e)).sort("e")["att_e"].to_numpy()
+                    for res in bootstrap_results
+                ]
+            )
         else:
             dyn_results = aggte_results["dyn_results"].clone()
             dyn_results = dyn_results.with_columns(pl.lit(np.nan).alias("se"))
             dyn_results = dyn_results.filter(pl.col("e").is_in([]))
+            dyn_draws = None
     else:
         dyn_results = None
+        dyn_draws = None
 
     if aggte_results.get("group_results") is not None:
         group_boots = pl.concat(
@@ -180,6 +191,7 @@ def panel_empirical_bootstrap(
         group_results=group_results,
         dyn_results=dyn_results,
         extra_gt_returns=extra_gt_returns,
+        dyn_draws=dyn_draws,
     )
 
 
@@ -236,7 +248,8 @@ def attgt_pte_aggregations(attgt_list, pte_params):
         groups = np.array([time_map.get(g, g) for g in groups])
         time_periods = np.array([time_map.get(t, t) for t in time_periods])
 
-    attgt_df = attgt_df.with_columns((pl.col("time_period") - pl.col("group")).alias("e"))
+    event_times = _event_times((attgt_df["time_period"] - attgt_df["group"]).to_numpy())
+    attgt_df = attgt_df.with_columns(pl.Series("e", event_times, dtype=pl.Float64))
 
     first_period = time_periods[0]
     group_sizes = (

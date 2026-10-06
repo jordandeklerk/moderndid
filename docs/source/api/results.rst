@@ -1,11 +1,12 @@
 .. _api-results:
 
-Result Extraction
+Result extraction
 =================
 
-The :func:`~moderndid.to_df` function converts any estimator result object
-into a polars DataFrame. It auto-detects the result type, so there is one
-function to remember regardless of which estimator produced the result.
+:func:`~moderndid.to_df` converts a ModernDiD result into a polars DataFrame by
+detecting the result's type and calling the matching converter below. The
+:ref:`plotting guide <plotting-extracting-data>` shows an event study converted
+this way and the columns it holds.
 
 .. currentmodule:: moderndid
 
@@ -15,12 +16,11 @@ function to remember regardless of which estimator produced the result.
 
    to_df
 
-Individual Converters
----------------------
+Converters
+----------
 
-The named converters are the underlying implementations that
-:func:`~moderndid.to_df` dispatches to. They are available for direct use
-when you need explicit control over the conversion.
+Since each converter handles one result type, you can call it directly when you
+know what your result is.
 
 .. currentmodule:: moderndid.core.converters
 
@@ -36,3 +36,9 @@ when you need explicit control over the conversion.
    pteresult_to_polars
    honestdid_to_polars
    didinterresult_to_polars
+   heterogeneityresult_to_polars
+   emfxresult_to_polars
+   dynbalancingresult_to_polars
+   dynbalancinghistoryresult_to_polars
+   dynbalancinghetresult_to_polars
+   dynbalancingcoefs_to_polars

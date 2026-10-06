@@ -137,65 +137,9 @@ consistent when either its outcome regression or its propensity score is right.
 
 With the data and the target in place, there are a handful of choices to make
 before estimating anything. Each one encodes an assumption about how minimum
-wages and teen employment behave. We'll go through them in the order you'd think
-about them and then put them all into a single specification.
-
-The first choice is which counties each cohort gets compared with. With
-`control_group="nevertreated"`, the comparison counties are the 309
-never-treated counties and nobody else. The alternative, `"notyettreated"`,
-would also borrow the later cohorts in the years before they adopt. That buys
-more comparisons at the price of a stronger assumption, since parallel trends
-would then have to hold for those later adopters too.
-
-Next comes the question of what makes two counties comparable in the first
-place. Since big and small counties can follow different employment trends,
-`xformla="~lpop"` conditions on size. Each comparison is then built with
-`est_method="dr"`, the doubly robust estimator from the previous section. The
-alternatives `"ipw"` and `"reg"` each lean on just one of its two models.
-
-:::{admonition} Covariates the policy moves bias the effect
-:class: warning
-
-A covariate that the policy itself can move would absorb part of the effect
-you're trying to measure. Population is safe here because it was measured in
-2000, before any of the increases took effect.
-:::
-
-The third choice is the year that each comparison starts from. With
-`base_period="universal"`, every year gets measured against the year just before
-adoption, $g-1$. That's what you want when you plot an event study, because it
-puts the placebo estimates before adoption on the same scale as the effects
-after it. The default, `"varying"`, instead compares each year before adoption
-with the year right before it.
-
-:::{admonition} What the base period changes
-:class: note
-
-The base period decides how the estimates before adoption are measured and
-nothing else. The effects after adoption come out the same under either setting,
-as [The base period](#the-base-period) confirms near the end of the guide.
-:::
-
-Setting `anticipation=0` says that employment didn't react before the increases
-took effect. That assumption is exactly what makes $g-1$ a clean base year for
-every cohort. Since it's also the easiest one to doubt, it gets its own test
-near the end of the guide.
-
-Last comes the question of how to measure the uncertainty in the estimates.
-Setting `boot=True` and `cband=True` gives bootstrap standard errors along with
-simultaneous bands that cover every estimate in a table at once. Raising the
-number of draws from the default 1,000 to 10,000 makes the bands depend less on
-the random seed. We'll come back to each of these choices in [Pushing on the
-answer](#pushing-on-the-answer) and change it to see whether the answer moves.
-
-:::{admonition} Seed the bootstrap
-:class: tip
-
-Without `random_state`, every run of the code draws new bootstrap weights and
-prints new standard errors and bands. Even under the default `boot=False`,
-{func}`~moderndid.aggte` draws a bootstrap for its simultaneous bands whenever
-`cband=True`.
-:::
+wages and teen employment behave. In
+[Pushing on the answer](#pushing-on-the-answer), we'll change them one at a time
+to see whether the answer moves.
 
 ```{code-cell} ipython3
 # Keep every choice in one dictionary so each check later on can change a single argument.
@@ -218,7 +162,82 @@ spec = dict(
     cband=True,
     random_state=7,
 )
+```
 
+### Never-treated counties of a similar size
+
+The first choice is which counties each cohort gets compared with. With
+`control_group="nevertreated"`, the comparison counties are the 309
+never-treated counties and nobody else. The alternative,
+[`"notyettreated"`](#other-control-groups-and-estimators), would also borrow the
+later cohorts in the years before they adopt. That buys more comparisons at the
+price of a stronger assumption, since parallel trends would then have to hold
+for those later adopters too.
+
+Next comes the question of what makes two counties comparable in the first
+place. Since big and small counties can follow different employment trends,
+`xformla="~lpop"` conditions on size.
+[Without the covariate](#without-the-covariate) later tests how much that
+adjustment matters. Each comparison is then built with `est_method="dr"`,
+the doubly robust estimator from the previous section. The alternatives
+[`"ipw"` and `"reg"`](#other-control-groups-and-estimators) each lean on just one
+of its two models.
+
+:::{admonition} Covariates the policy moves bias the effect
+:class: warning
+
+A covariate that the policy itself can move would absorb part of the effect
+you're trying to measure. Population is safe here because it was measured in
+2000, before any of the increases took effect.
+:::
+
+### The year before adoption as the base
+
+Each comparison runs from a base year to the year it estimates. With
+`base_period="universal"`, every year gets measured against the year just before
+adoption, $g-1$. That's what you want when you plot an event study, because it
+puts the placebo estimates before adoption on the same scale as the effects
+after it. The default, `"varying"`, instead compares each year before adoption
+with the year right before it.
+
+:::{admonition} What the base period changes
+:class: note
+
+The base period decides how the estimates before adoption are measured. The
+effects after adoption and their standard errors come out the same under either
+setting, as [The base period](#the-base-period) confirms near the end of the
+guide.
+:::
+
+The year before adoption only works as a base if employment didn't react before
+the increases took effect. Setting `anticipation=0` writes that assumption into
+the specification for every cohort. Since it's also the easiest one to doubt, it
+gets [its own test](#anticipation) near the end of the guide.
+
+### Bootstrap standard errors and simultaneous bands
+
+Last comes the question of how to measure the uncertainty in the estimates.
+Setting `boot=True` and `cband=True` gives bootstrap standard errors along with
+simultaneous bands that cover every estimate in a table at once. Raising the
+number of draws from the default 1,000 to 10,000 makes the bands depend less on
+the random seed. If shocks that hit a whole state worry you,
+[Clustering by state](#clustering-by-state) reruns the bootstrap with one random
+weight per state rather than per county.
+
+:::{admonition} Seed the bootstrap
+:class: tip
+
+Without `random_state`, every run of the code draws new bootstrap weights and
+prints new standard errors and bands. Even under the default `boot=False`,
+{func}`~moderndid.aggte` draws a bootstrap for its simultaneous bands whenever
+`cband=True`.
+:::
+
+With every choice in `spec`, the estimation itself takes a single call to
+{func}`~moderndid.att_gt`.
+
+```{code-cell} ipython3
+# Estimate each cohort's effect in each year.
 result = did.att_gt(data, **spec)
 print(result)
 ```
@@ -437,9 +456,10 @@ varying_by_cohort = did.aggte(varying, type="group")
 print(varying)
 ```
 
-The estimates after adoption and the pre-test p-value of 0.2327 don't change at
-all. Only the rows before adoption differ, since they now show one-year changes
-such as the 2007 cohort's −0.0284 from 2005 to 2006.
+The estimates after adoption, their standard errors, and the pre-test p-value
+of 0.2327 don't change at all. The rows before adoption now show one-year changes
+such as the 2007 cohort's −0.0284 from 2005 to 2006. Because the simultaneous
+bands cover those rows too, the bands after adoption widen slightly.
 
 ### Anticipation
 

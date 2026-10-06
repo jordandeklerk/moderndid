@@ -75,7 +75,7 @@ seaborn = ">=0.13.0"
 great-tables = ">=0.15.0"
 
 [feature.docs.tasks]
-docs = "sphinx-build -E -a --keep-going -d docs/_doctree docs/source docs/_build/html --color -bhtml"
+docs = "env -u VIRTUAL_ENV sphinx-build -E -a --keep-going -d docs/_doctree docs/source docs/_build/html --color -bhtml"
 docs-open = { cmd = "python -c \"import functools, http.server, threading, webbrowser; threading.Timer(0.8, lambda: webbrowser.open('http://127.0.0.1:8765')).start(); handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory='docs/_build/html'); print('serving docs at http://127.0.0.1:8765, stop with ctrl-c'); http.server.HTTPServer(('127.0.0.1', 8765), handler).serve_forever()\"", depends-on = [
   "docs",
 ] }

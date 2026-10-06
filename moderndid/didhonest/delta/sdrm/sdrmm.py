@@ -46,7 +46,7 @@ def compute_conditional_cs_sdrmm(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
-    seed=None,
+    seed=0,
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{SDRMM}(\bar{M})`.
 
@@ -55,7 +55,7 @@ def compute_conditional_cs_sdrmm(
     restriction with a monotonicity constraint.
 
     This combined restriction is the intersection of :math:`\Delta^{SDRM}(\bar{M})` and a
-    monotonicity restriction :math:`\Delta^{Mon}`, as discussed in Section 2.4.4 of [1]_,
+    monotonicity restriction :math:`\Delta^{Mon}`
 
     .. math::
 
@@ -99,37 +99,24 @@ def compute_conditional_cs_sdrmm(
         Lower bound for grid search.
     grid_ub : float, optional
         Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     dict or float
         Returns dict with 'grid' and 'accept' arrays.
 
-    Raises
-    ------
-    ValueError
-        If num_pre_periods == 1 (not enough pre-periods for second differences).
-        If hybrid_flag is not in {'LF', 'ARP', 'FLCI'}.
-
     Notes
     -----
-    The confidence set is constructed using the moment inequality approach from Section 3 of Rambachan & Roth (2023).
-    Since :math:`\Delta^{SDRMM}(\bar{M})` is a finite union of polyhedra, we can apply Lemma 2.2
-    to construct a valid confidence set by taking the union of the confidence sets for each
-    of its components.
+    The confidence set is constructed using the moment inequality approach. Since
+    :math:`\Delta^{SDRMM}(\bar{M})` is a finite union of polyhedra, the union of the confidence
+    sets for its components is a valid confidence set.
 
     This restriction provides a middle ground between the flexibility of
     :math:`\Delta^{SDRM}` and the additional structure imposed by monotonicity,
     potentially yielding tighter confidence intervals when both assumptions
     are plausible.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods == 1:
         raise ValueError(
@@ -243,8 +230,8 @@ def compute_identified_set_sdrmm(
     underlying trend delta lies in :math:`\Delta^{SDRMM}(\bar{M})`.
 
     This set combines the second-differences-with-relative-magnitudes constraint with a
-    monotonicity constraint, as discussed in Section 2.4.4 of [1]_. The identified set is
-    the union of identified sets for each component polyhedron,
+    monotonicity constraint. The identified set is the union of identified sets for each
+    component polyhedron,
 
     .. math::
 
@@ -287,17 +274,12 @@ def compute_identified_set_sdrmm(
     The linear programs solve for the maximum and minimum of :math:`l'\delta_{post}`
     subject to constraints including :math:`\delta_{pre} = \beta_{pre}` and
     :math:`\delta \in \Delta^{SDRM}_{s,sign}(\bar{M}) \cap \Delta^{Mon}`.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     l_vec = np.asarray(l_vec).flatten()
 
     min_s = -(num_pre_periods - 2)
-    s_values = range(min_s, 1)  # Include s=0 to match R's min_s:0
+    # Since the second difference at s = 0 ends at the reference period, it is a pre-period one too.
+    s_values = range(min_s, 1)
 
     all_bounds = []
 
@@ -481,7 +463,7 @@ def _compute_conditional_cs_sdrmm_fixed_s(
     grid_ub : float
         Upper bound of grid.
     seed : int
-        Random seed.
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -554,6 +536,7 @@ def _compute_conditional_cs_sdrmm_fixed_s(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -622,7 +605,7 @@ def _create_sdrmm_constraint_matrix(
 
     Creates a matrix for the linear constraints that define
     :math:`\Delta^{SDRMM}_{s,sign}(\bar{M})`. This set combines the second-differences-with-relative-magnitudes
-    constraint with a monotonicity constraint, as discussed in Section 2.4.4 of [1]_.
+    constraint with a monotonicity constraint.
 
     The constraint set is the intersection of two polyhedra,
 
@@ -680,8 +663,7 @@ def _create_sdrmm_constraint_vector(a_matrix):
     For the combined smoothness with relative magnitudes and monotonicity restriction,
     the constraint vector :math:`d` is a vector of zeros. This arises because the
     relative magnitudes constraints in :math:`\Delta^{SDRM}` and the monotonicity
-    constraints in :math:`\Delta^{Mon}` can be written as homogeneous inequalities,
-    as shown in [1]_.
+    constraints in :math:`\Delta^{Mon}` can be written as homogeneous inequalities.
 
     Parameters
     ----------

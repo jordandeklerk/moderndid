@@ -5,7 +5,7 @@ import numpy as np
 from ..cupy.backend import get_backend, to_device, to_numpy
 from .estimators import _ginv, npiv_est
 from .prodspline import prodspline
-from .utils import _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
+from .utils import _as_eval_points, _as_matrix, _quantile_basis, avoid_zero_division, basis_dimension, matrix_sqrt
 
 
 def npiv_j(
@@ -42,7 +42,8 @@ def npiv_j(
         \sup_{x \in \mathcal{X}} \left| \frac{\hat{h}_J(x) - \hat{h}_{J_2}(x)}{\hat{\sigma}_{J, J_2}(x)} \right|.
 
     The optimal dimension :math:`\hat{J}` is the smallest :math:`J \in \hat{\mathcal{J}}` for which this statistic
-    is below a bootstrap critical value :math:`\theta_{1-\hat{\alpha}}^*` for all :math:`J_2 > J`.
+    is below :math:`1.1\, \theta_{1-\hat{\alpha}}^*` for all :math:`J_2 > J`, where
+    :math:`\theta_{1-\hat{\alpha}}^*` is a bootstrap critical value.
 
     The bootstrap critical value is the :math:`(1-\hat{\alpha})` quantile of the multiplier bootstrap process
 
@@ -72,9 +73,12 @@ def npiv_j(
     k_w_degree : int, default=4
         Degree of B-spline basis for :math:`W`.
     j_x_segments_set : ndarray, optional
-        Set of :math:`J` values to test. If None, uses [1, 3, 7, 15, 31, 63].
+        Numbers of segments for the :math:`X` basis to compare. If None, uses
+        [2, 4, 8, 16, 32, 64].
     k_w_segments_set : ndarray, optional
-        Set of :math:`K` values to test. If None, computed from :math:`J` values.
+        Numbers of segments for the :math:`W` basis, one for each entry of
+        ``j_x_segments_set``. If None, uses [2, 4, 8, 16, 32, 64]. Each
+        instrument basis needs at least as many columns as its :math:`X` basis.
     knots : {"uniform", "quantiles"}, default="uniform"
         Knot placement method.
     basis : {"tensor", "additive", "glp"}, default="tensor"
@@ -103,6 +107,10 @@ def npiv_j(
         - **j_x_seg**: Final selected J segments
         - **k_w_seg**: Corresponding K segments
         - **theta_star**: Bootstrap critical value
+        - **test_matrix**: Matrix whose entry (i, j) with j > i is 1 when the sup-t-statistic for grid
+          dimensions i and j is at most :math:`1.1\, \theta_{1-\hat{\alpha}}^*` and 0 otherwise
+        - **z_sup**: Sup-t-statistic for each pair of grid dimensions, in the row order of the entries
+          of ``test_matrix`` above the diagonal
 
     See Also
     --------
@@ -118,8 +126,8 @@ def npiv_j(
     """
     xp = get_backend()
     y = xp.asarray(y).ravel()
-    x = xp.atleast_2d(xp.asarray(x))
-    w = xp.atleast_2d(xp.asarray(w))
+    x = _as_matrix(x)
+    w = _as_matrix(w)
 
     n = len(y)
     p_x = x.shape[1]
@@ -130,12 +138,25 @@ def npiv_j(
     if k_w_segments_set is None:
         k_w_segments_set = np.array([2, 4, 8, 16, 32, 64])
 
+    # Since npiv_est sets the instrument basis to the X basis when w equals x, only the IV case can be unidentified.
+    if not np.array_equal(to_numpy(x), to_numpy(w)):
+        for j_seg, k_seg in zip(j_x_segments_set, k_w_segments_set, strict=False):
+            j_dim = basis_dimension(basis=basis, degree=np.full(p_x, j_x_degree), segments=np.full(p_x, j_seg))
+            k_dim = basis_dimension(basis=basis, degree=np.full(p_w, k_w_degree), segments=np.full(p_w, k_seg))
+            if k_dim < j_dim:
+                raise ValueError(
+                    f"With {k_seg} instrument segments the instrument basis has {k_dim} functions, fewer than the "
+                    f"{j_dim} functions of the X basis with {j_seg} segments, so that dimension is not identified."
+                )
+
     if x_grid is None:
         x_np = to_numpy(x)
         x_grid = np.zeros((grid_num, p_x))
         for j in range(p_x):
             x_grid[:, j] = np.linspace(x_np[:, j].min(), x_np[:, j].max(), grid_num)
         x_grid = to_device(x_grid)
+    else:
+        x_grid = _as_eval_points(x_grid, p_x)
 
     j1_j2_pairs = []
     for i, j1 in enumerate(j_x_segments_set):
@@ -273,15 +294,17 @@ def npiv_jhat_max(
     This serves as the upper bound for the grid of dimensions searched over in the Lepski-style
     selection procedure.
 
-    :math:`\hat{J}_{\max}` is defined as the largest :math:`J` in a dyadic grid :math:`\mathcal{T}`
+    Following [1]_, :math:`\hat{J}_{\max}` is the first :math:`J` in a dyadic grid :math:`\mathcal{T}`
     that satisfies
 
     .. math::
 
         J \sqrt{\log J} \hat{s}_{J}^{-1} \leq c \sqrt{n}
 
-    for a constant :math:`c` (here, 10). The term :math:`\hat{s}_J` is the smallest singular value of
-    a matrix related to the instrumented basis functions, which captures the degree of ill-posedness.
+    while the next grid point does not, for a constant :math:`c` (here, 10). The term :math:`\hat{s}_J`, the
+    smallest singular value of a matrix related to the instrumented basis functions, measures the degree of
+    ill-posedness. Since a zero :math:`\hat{s}_J` means the instruments cannot identify that dimension, the
+    grid stops below it.
 
     Parameters
     ----------
@@ -294,7 +317,8 @@ def npiv_jhat_max(
     k_w_degree : int, default=4
         Degree of B-spline basis for W.
     k_w_smooth : int, default=2
-        Smoothness parameter for K selection.
+        Number of dyadic refinements of the :math:`W` basis relative to the
+        :math:`X` basis at each grid point.
     knots : {"uniform", "quantiles"}, default="uniform"
         Knot placement method.
     basis : {"tensor", "additive", "glp"}, default="tensor"
@@ -324,13 +348,13 @@ def npiv_jhat_max(
         Adaptive Estimation and Uniform Confidence Bands for Nonparametric
         Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
     """
-    x = np.atleast_2d(x)
-    w = np.atleast_2d(w)
+    x = _as_matrix(x)
+    w = _as_matrix(w)
     n = x.shape[0]
     p_x = x.shape[1]
     p_w = w.shape[1]
 
-    is_regression = np.array_equal(x, w)
+    is_regression = np.array_equal(to_numpy(x), to_numpy(w))
 
     L_max = max(int(np.floor(np.log(n) / np.log(2 * p_x))), 3)
     j_x_segments_set = 2 ** np.arange(L_max + 1)
@@ -370,7 +394,11 @@ def npiv_jhat_max(
                 segments=np.full(p_x, j_x_segments),
             )
 
-            test_val[i] = j_x_dim * np.sqrt(np.log(j_x_dim)) * max((0.1 * np.log(n)) ** 4, 1 / s_hat_j)
+            if s_hat_j > 0:
+                test_val[i] = j_x_dim * np.sqrt(np.log(j_x_dim)) * max((0.1 * np.log(n)) ** 4, 1 / s_hat_j)
+            else:
+                # An infinite inverse sieve measure fails the bound and ends the grid here.
+                test_val[i] = np.inf
         elif i > 1:
             test_val[i] = test_val[i - 1]
 
@@ -400,7 +428,10 @@ def npiv_jhat_max(
 def _compute_sieve_measure(
     x, w, j_x_segments, k_w_segments, j_x_degree, k_w_degree, p_x, p_w, knots, basis, x_min, x_max, w_min, w_max, n
 ):
-    """Compute sieve measure of ill-posedness."""
+    """Compute the sieve measure of ill-posedness.
+
+    It returns 0 when the measure cannot be computed.
+    """
     xp = get_backend()
     try:
         K_x = np.column_stack([np.full(p_x, j_x_degree), np.full(p_x, j_x_segments - 1)])
@@ -411,29 +442,32 @@ def _compute_sieve_measure(
             K=K_x,
             knots=knots,
             basis=basis,
-            x_min=np.full(p_x, x_min) if x_min else None,
-            x_max=np.full(p_x, x_max) if x_max else None,
+            x_min=np.full(p_x, x_min) if x_min is not None else None,
+            x_max=np.full(p_x, x_max) if x_max is not None else None,
         ).basis
         b_w = prodspline(
             x=w,
             K=K_w,
             knots=knots,
             basis=basis,
-            x_min=np.full(p_w, w_min) if w_min else None,
-            x_max=np.full(p_w, w_max) if w_max else None,
+            x_min=np.full(p_w, w_min) if w_min is not None else None,
+            x_max=np.full(p_w, w_max) if w_max is not None else None,
         ).basis
+
+        if basis in ("additive", "glp"):
+            psi_x = xp.concatenate([xp.ones((n, 1)), psi_x], axis=1)
+            b_w = xp.concatenate([xp.ones((n, 1)), b_w], axis=1)
 
         psi_x_gram_sqrt = matrix_sqrt(_ginv(psi_x.T @ psi_x))
         b_w_gram_sqrt = matrix_sqrt(_ginv(b_w.T @ b_w))
 
         svd_matrix = psi_x_gram_sqrt @ (psi_x.T @ b_w) @ b_w_gram_sqrt
-        s_val = float(xp.min(xp.linalg.svd(svd_matrix, compute_uv=False)))
-        s_hat_j = s_val if s_val > 0 else max(1, (0.1 * np.log(n)) ** 4)
+        s_hat_j = float(xp.min(xp.linalg.svd(svd_matrix, compute_uv=False)))
 
     except (ValueError, np.linalg.LinAlgError):
-        s_hat_j = max(1, (0.1 * np.log(n)) ** 4)
+        s_hat_j = 0.0
 
-    return s_hat_j
+    return s_hat_j if np.isfinite(s_hat_j) else 0.0
 
 
 def _compute_basis_and_influence(
@@ -448,8 +482,8 @@ def _compute_basis_and_influence(
         K=K_x,
         knots=knots,
         basis=basis,
-        x_min=np.full(p_x, x_min) if x_min else None,
-        x_max=np.full(p_x, x_max) if x_max else None,
+        x_min=np.full(p_x, x_min) if x_min is not None else None,
+        x_max=np.full(p_x, x_max) if x_max is not None else None,
     ).basis
 
     b_w = prodspline(
@@ -457,8 +491,8 @@ def _compute_basis_and_influence(
         K=K_w,
         knots=knots,
         basis=basis,
-        x_min=np.full(p_w, w_min) if w_min else None,
-        x_max=np.full(p_w, w_max) if w_max else None,
+        x_min=np.full(p_w, w_min) if w_min is not None else None,
+        x_max=np.full(p_w, w_max) if w_max is not None else None,
     ).basis
 
     psi_x_eval = prodspline(
@@ -467,9 +501,15 @@ def _compute_basis_and_influence(
         K=K_x,
         knots=knots,
         basis=basis,
-        x_min=np.full(p_x, x_min) if x_min else None,
-        x_max=np.full(p_x, x_max) if x_max else None,
+        x_min=np.full(p_x, x_min) if x_min is not None else None,
+        x_max=np.full(p_x, x_max) if x_max is not None else None,
     ).basis
+
+    if basis in ("additive", "glp"):
+        xp = get_backend()
+        psi_x = xp.concatenate([xp.ones((psi_x.shape[0], 1)), psi_x], axis=1)
+        psi_x_eval = xp.concatenate([xp.ones((psi_x_eval.shape[0], 1)), psi_x_eval], axis=1)
+        b_w = xp.concatenate([xp.ones((b_w.shape[0], 1)), b_w], axis=1)
 
     # influence matrices
     btb_inv = _ginv(b_w.T @ b_w)
@@ -483,17 +523,16 @@ def _compute_basis_and_influence(
 def _compute_test_statistic(result_j1, result_j2, psi_x_eval_j1, psi_x_eval_j2, tmp_j1, tmp_j2, u_j1, u_j2):
     """Compute sup-t test statistic for comparing two estimators."""
     xp = get_backend()
-    # variance components
+    # Row sums give the diagonals of the variance and covariance matrices without forming them.
     D_j1_inv_rho = tmp_j1.T * u_j1[:, None]
     D_j1_var = D_j1_inv_rho.T @ D_j1_inv_rho
-    var_j1 = xp.diag(psi_x_eval_j1 @ D_j1_var @ psi_x_eval_j1.T)
+    var_j1 = xp.sum((psi_x_eval_j1 @ D_j1_var) * psi_x_eval_j1, axis=1)
 
     D_j2_inv_rho = tmp_j2.T * u_j2[:, None]
     D_j2_var = D_j2_inv_rho.T @ D_j2_inv_rho
-    var_j2 = xp.diag(psi_x_eval_j2 @ D_j2_var @ psi_x_eval_j2.T)
+    var_j2 = xp.sum((psi_x_eval_j2 @ D_j2_var) * psi_x_eval_j2, axis=1)
 
-    # cross-covariance
-    cov_j1_j2 = xp.diag(psi_x_eval_j1 @ (D_j1_inv_rho.T @ D_j2_inv_rho) @ psi_x_eval_j2.T)
+    cov_j1_j2 = xp.sum((psi_x_eval_j1 @ (D_j1_inv_rho.T @ D_j2_inv_rho)) * psi_x_eval_j2, axis=1)
 
     asy_var_diff = var_j1 + var_j2 - 2 * cov_j1_j2
     asy_se = xp.sqrt(xp.maximum(asy_var_diff, 0))

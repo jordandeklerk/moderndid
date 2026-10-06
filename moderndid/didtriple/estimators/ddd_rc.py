@@ -31,6 +31,7 @@ def ddd_rc(
     alpha=0.05,
     trim_level=0.995,
     random_state=None,
+    cluster=None,
 ):
     r"""Compute the 2-period doubly robust DDD estimator for the ATT with repeated cross-section data.
 
@@ -100,8 +101,8 @@ def ddd_rc(
     boot : bool, default False
         Whether to use bootstrap for inference.
     boot_type : {"multiplier", "weighted"}, default "multiplier"
-        Type of bootstrap. Multiplier bootstrap uses Rademacher weights on the
-        influence function; weighted bootstrap re-estimates with exponential weights.
+        Type of bootstrap. The multiplier bootstrap draws Mammen weights on the
+        influence function. The weighted bootstrap re-estimates with exponential weights.
     biters : int, default 1000
         Number of bootstrap repetitions.
     influence_func : bool, default False
@@ -112,6 +113,9 @@ def ddd_rc(
         Trimming level for propensity scores.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
+    cluster : ndarray, optional
+        A 1D array that gives the cluster of each observation for clustered
+        standard errors. It requires boot=True and boot_type="multiplier".
 
     Returns
     -------
@@ -144,6 +148,9 @@ def ddd_rc(
         Journal of Econometrics, 219(1), 101-122.
         https://doi.org/10.1016/j.jeconom.2020.06.003
     """
+    if cluster is not None and not (boot and boot_type == "multiplier"):
+        raise ValueError("cluster requires boot=True and boot_type='multiplier'.")
+
     xp = get_backend()
     y, post, subgroup, covariates, i_weights, n_obs = _validate_inputs_rc(xp, y, post, subgroup, covariates, i_weights)
 
@@ -194,7 +201,7 @@ def ddd_rc(
         lci = ddd_att - z_val * se_ddd
     else:
         if boot_type == "multiplier":
-            boot_result = mboot_ddd(inf_func, biters, alpha, random_state=random_state)
+            boot_result = mboot_ddd(inf_func, biters, alpha, cluster=cluster, random_state=random_state)
             dr_boot = boot_result.bres.flatten()
             se_ddd = boot_result.se[0]
             cv = boot_result.crit_val if np.isfinite(boot_result.crit_val) else z_val
@@ -266,6 +273,8 @@ def _ddd_rc_2period(
     alpha,
     trim_level,
     random_state,
+    cluster=None,
+    idname=None,
 ):
     """Run 2-period DDD estimator for repeated cross-section data.
 
@@ -299,6 +308,10 @@ def _ddd_rc_2period(
         Trimming level for propensity scores.
     random_state : int, Generator, or None
         Random state for reproducibility.
+    cluster : str or None, default None
+        Name of the cluster column. It turns on the multiplier bootstrap.
+    idname : str or None, default None
+        Name of the unit column. A unit's rows must share one cluster.
 
     Returns
     -------
@@ -310,6 +323,21 @@ def _ddd_rc_2period(
     tlist = np.sort(data[tname].unique().to_numpy())
     if len(tlist) != 2:
         raise ValueError("2-period RCS estimator requires exactly 2 time periods.")
+
+    cluster_arr = None
+    if cluster is not None:
+        if cluster not in data.columns:
+            raise ValueError(f"cluster='{cluster}' not found in data.")
+        if data[cluster].null_count() > 0:
+            raise ValueError(f"cluster='{cluster}' has missing values.")
+        if idname is not None:
+            clusters_per_unit = data.group_by(idname).agg(pl.col(cluster).n_unique().alias("n_clusters"))
+            if clusters_per_unit["n_clusters"].max() > 1:
+                raise ValueError("Cluster variable must be time-invariant within units.")
+        if not boot:
+            warnings.warn("Clustered SEs require bootstrap. Setting boot=True, cband=True.", UserWarning, stacklevel=3)
+            boot = True
+        cluster_arr = data[cluster].to_numpy()
 
     t1 = tlist[1]
 
@@ -362,6 +390,7 @@ def _ddd_rc_2period(
         alpha=alpha,
         trim_level=trim_level,
         random_state=random_state,
+        cluster=cluster_arr,
     )
 
 

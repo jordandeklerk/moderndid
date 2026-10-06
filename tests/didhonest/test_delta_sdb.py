@@ -245,3 +245,25 @@ def test_compute_identified_set_sdb_large_smoothness(simple_data):
     )
 
     assert result.id_ub - result.id_lb > 0
+
+
+def test_conditional_cs_sdb_single_post_period(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    arp = compute_conditional_cs_sdb(**kwargs, m_bar=0.01, hybrid_flag="ARP", bias_direction="positive")
+    flci = compute_conditional_cs_sdb(**kwargs, m_bar=0.01, hybrid_flag="FLCI", bias_direction="positive")
+    lf_first = compute_conditional_cs_sdb(**kwargs, m_bar=0.01, hybrid_flag="LF", bias_direction="positive")
+    lf_second = compute_conditional_cs_sdb(**kwargs, m_bar=0.01, hybrid_flag="LF", bias_direction="positive")
+
+    assert arp["accept"].astype(int).tolist() == [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+    assert flci["accept"][np.argmin(np.abs(flci["grid"] - 0.045))] == 1
+    assert np.array_equal(lf_first["accept"], lf_second["accept"])

@@ -8,6 +8,7 @@ from moderndid.npiv.prodspline import (
     prodspline,
     tensor_prod_model_matrix,
 )
+from moderndid.npiv.utils import basis_dimension
 
 
 @pytest.mark.parametrize("basis_type", ["additive", "tensor", "glp"])
@@ -173,7 +174,7 @@ def test_glp_model_matrix_basic():
 
     result = glp_model_matrix(bases)
 
-    assert result.shape == (50, 11)
+    assert result.shape == (50, 7)
 
 
 def test_discrete_only():
@@ -221,3 +222,76 @@ def test_basis_properties(basis_type):
     assert np.all(np.isfinite(result.basis))
     assert np.min(result.basis) >= -10
     assert np.max(result.basis) <= 10
+
+
+@pytest.mark.parametrize("segments", [1, 2, 3, 4])
+def test_glp_dimension_matches_basis_dimension(segments):
+    np.random.seed(1)
+    x = np.random.uniform(0, 1, (400, 2))
+    K = np.array([[3, segments - 1], [3, segments - 1]])
+
+    glp = prodspline(x, K, knots="uniform", basis="glp").basis
+    tensor = prodspline(x, K, knots="uniform", basis="tensor").basis
+
+    assert glp.shape[1] == basis_dimension("glp", degree=[3, 3], segments=[segments, segments])
+    assert glp.shape[1] < tensor.shape[1]
+    assert np.linalg.matrix_rank(np.column_stack([np.ones(400), glp])) == glp.shape[1] + 1
+
+
+def test_glp_derivative_zeroes_columns_without_the_variable():
+    np.random.seed(2)
+    x = np.random.uniform(0, 1, (100, 2))
+    K = np.array([[3, 1], [3, 1]])
+
+    level = prodspline(x, K, knots="uniform", basis="glp").basis
+    deriv = prodspline(x, K, knots="uniform", basis="glp", deriv=1, deriv_index=2).basis
+    x1_basis = prodspline(x[:, :1], K[:1], knots="uniform", basis="glp").basis
+
+    assert level.shape == (100, 14)
+    np.testing.assert_allclose(level[:, :4], x1_basis, rtol=1e-12)
+    np.testing.assert_array_equal(deriv[:, :4], 0.0)
+    assert np.all(np.any(deriv[:, 4:] != 0, axis=0))
+
+
+def test_glp_small_marginal_bases_raise():
+    np.random.seed(3)
+    x = np.random.uniform(0, 1, (100, 2))
+
+    with pytest.raises(ValueError, match="glp"):
+        prodspline(x, np.array([[1, 0], [3, 1]]), knots="uniform", basis="glp")
+
+
+def test_additive_derivative_ignores_other_regressors():
+    np.random.seed(4)
+    x = np.random.uniform(0, 1, (300, 2))
+    K = np.array([[3, 3], [3, 3]])
+    xeval = np.array([[0.2, 0.5], [0.8, 0.5]])
+
+    deriv = prodspline(x, K, xeval=xeval, knots="uniform", basis="additive", deriv=1, deriv_index=2).basis
+
+    np.testing.assert_array_equal(deriv[:, :6], 0.0)
+    np.testing.assert_allclose(deriv[0], deriv[1], rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("ignore:deriv order too large:UserWarning")
+@pytest.mark.parametrize("basis_type", ["additive", "tensor", "glp"])
+def test_derivative_in_degree_zero_variable_is_zero(basis_type):
+    np.random.seed(5)
+    x = np.random.uniform(0, 1, (50, 2))
+    K = np.array([[0, 0], [3, 2]])
+
+    result = prodspline(x, K, knots="uniform", basis=basis_type, deriv=1, deriv_index=1)
+
+    assert result.basis.shape[0] == 50
+    np.testing.assert_array_equal(result.basis, 0.0)
+
+
+@pytest.mark.filterwarnings("ignore:deriv order too large:UserWarning")
+def test_derivative_without_splines_is_zero():
+    x = np.random.uniform(0, 1, (20, 1))
+
+    level = prodspline(x, np.array([[0, 0]]), knots="uniform")
+    deriv = prodspline(x, np.array([[0, 0]]), knots="uniform", deriv=1)
+
+    np.testing.assert_array_equal(level.basis, 1.0)
+    np.testing.assert_array_equal(deriv.basis, 0.0)

@@ -123,6 +123,24 @@ def test_mboot_ddd_clustered_2d():
     assert all(np.isfinite(se) for se in result.se)
 
 
+def test_mboot_ddd_clustered_matches_presummed_clusters():
+    rng = np.random.default_rng(0)
+    cluster = np.repeat(np.arange(40), np.arange(1, 41))
+    inf_func = rng.standard_normal(len(cluster))
+    sums = np.bincount(cluster, weights=inf_func)
+
+    clustered = mboot_ddd(inf_func, biters=50, cluster=cluster, random_state=3)
+    presummed = mboot_ddd(sums, biters=50, cluster=np.arange(40), random_state=3)
+
+    np.testing.assert_array_equal(clustered.bres, presummed.bres)
+    np.testing.assert_allclose(clustered.se, presummed.se * 40 / len(inf_func), rtol=1e-12)
+
+
+def test_mboot_ddd_cluster_length_mismatch():
+    with pytest.raises(ValueError, match="cluster has 5 entries but inf_func has 10 rows"):
+        mboot_ddd(np.ones(10), biters=5, cluster=np.arange(5))
+
+
 def test_mboot_ddd_clustered_vs_unclustered():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal(100)

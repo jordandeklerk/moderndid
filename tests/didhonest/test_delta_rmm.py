@@ -424,3 +424,50 @@ def test_post_period_moments_only_flag(fast_config):
 
     assert np.any(result_all["accept"] > 0)
     assert np.any(result_post_only["accept"] > 0)
+
+
+@pytest.mark.parametrize(
+    "case,m_bar,expected",
+    [
+        ("A", 1.0, [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0]),
+        ("B", 0.5, [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]),
+    ],
+)
+def test_conditional_cs_rmm_conditional_accepts(rm_cases, case, m_bar, expected):
+    result = compute_conditional_cs_rmm(
+        betahat=rm_cases[case],
+        sigma=rm_cases["sigma"],
+        num_pre_periods=3,
+        num_post_periods=2,
+        l_vec=np.array([1.0, 0.0]),
+        m_bar=m_bar,
+        hybrid_flag="ARP",
+        monotonicity_direction="increasing",
+        grid_points=11,
+        grid_lb=-0.1,
+        grid_ub=0.2,
+    )
+
+    assert result["accept"].tolist() == expected
+
+
+def test_conditional_cs_rmm_single_post_period(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "m_bar": 1.0,
+        "monotonicity_direction": "increasing",
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    arp = compute_conditional_cs_rmm(**kwargs, hybrid_flag="ARP")
+    first = compute_conditional_cs_rmm(**kwargs, hybrid_flag="LF")
+    second = compute_conditional_cs_rmm(**kwargs, hybrid_flag="LF")
+
+    assert arp["accept"].astype(int).tolist() == [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0]
+    assert np.array_equal(first["accept"], second["accept"])

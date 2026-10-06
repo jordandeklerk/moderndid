@@ -562,21 +562,65 @@ def test_influence_function_aggregation(mpdta_data):
         control_group="nevertreated",
     )
 
-    n_units = 100
+    rng = np.random.default_rng(0)
+    n_rows = 100
     cohort_data = {
-        "D": np.random.choice([0, 1], n_units),
-        "y": np.random.randn(n_units),
-        "post": np.random.choice([0, 1], n_units),
-        "weights": np.ones(n_units),
-        "rowid": np.repeat(np.arange(50), 2),
+        "D": rng.choice([0, 1], n_rows),
+        "y": rng.standard_normal(n_rows),
+        "post": rng.choice([0, 1], n_rows),
+        "weights": np.ones(n_rows),
+        "unit_index": np.repeat(np.arange(50), 2),
     }
-    covariates = np.column_stack([np.ones(n_units), np.random.randn(n_units)])
+    covariates = np.column_stack([np.ones(n_rows), rng.standard_normal(n_rows)])
 
     result = run_drdid(cohort_data, covariates, data)
 
     assert "att" in result
-    assert "inf_func" in result
-    assert len(result["inf_func"]) <= n_units
+    assert result["inf_func"].shape == (data.config.id_count,)
+    assert np.any(result["inf_func"][:50] != 0)
+    assert not result["inf_func"][50:].any()
+
+
+def test_compute_att_gt_unbalanced_rows_follow_time_invariant_data(mpdta_unbalanced):
+    data = preprocess_did(
+        mpdta_unbalanced,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        allow_unbalanced_panel=True,
+        control_group="nevertreated",
+    )
+
+    result = compute_att_gt(data)
+    influence = result.influence_functions.toarray()
+    cohorts = data.time_invariant_data["first.treat"].to_numpy()
+
+    assert not data.config.panel
+    assert influence.shape[0] == data.time_invariant_data.height
+    for column, cell in enumerate(result.attgt_list):
+        other_cohorts = np.isfinite(cohorts) & (cohorts != cell.group)
+        assert np.any(influence[cohorts == cell.group, column] != 0)
+        assert not influence[other_cohorts, column].any()
+
+
+def test_run_att_gt_estimation_unbalanced_matches_compute_att_gt(mpdta_unbalanced):
+    data = preprocess_did(
+        mpdta_unbalanced,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        allow_unbalanced_panel=True,
+        control_group="nevertreated",
+    )
+
+    full = compute_att_gt(data)
+    cell = run_att_gt_estimation(group_idx=0, time_idx=1, data=data)
+
+    assert (full.attgt_list[1].group, full.attgt_list[1].year) == (2004, 2005)
+    assert cell["att"] == full.attgt_list[1].att
+    np.testing.assert_array_equal(cell["inf_func"], full.influence_functions.toarray()[:, 1])
 
 
 @pytest.mark.parametrize(

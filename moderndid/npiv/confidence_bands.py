@@ -6,8 +6,8 @@ import numpy as np
 
 from ..cupy.backend import get_backend, to_device
 from .cck_ucb import compute_cck_ucb
-from .estimators import npiv_est
-from .results import NPIVResult
+from .container import NPIVResult
+from .estimators import _fit_sieve_tsls
 from .utils import _quantile_basis, avoid_zero_division
 
 
@@ -23,6 +23,7 @@ def compute_ucb(
     j_x_segments=None,
     k_w_degree=4,
     k_w_segments=None,
+    k_w_smooth=2,
     knots="uniform",
     ucb_h=True,
     ucb_deriv=True,
@@ -38,9 +39,9 @@ def compute_ucb(
     r"""Compute uniform confidence bands for nonparametric instrumental variables.
 
     Constructs simultaneous confidence bands for the structural function :math:`h_0` and its
-    derivatives :math:`\partial^a h_0`. For a fixed sieve dimension :math:`J`, the bands are constructed
-    by under-smoothing, which requires :math:`J` to be larger than the optimal dimension for estimation.
-    The confidence bands are given by
+    derivatives :math:`\partial^a h_0`. For a fixed sieve dimension :math:`J`, the bands of [1]_ are
+    constructed by under-smoothing. Under-smoothing requires :math:`J` to be larger than the optimal
+    dimension for estimation. The confidence bands are given by
 
     .. math::
 
@@ -86,7 +87,11 @@ def compute_ucb(
     k_w_degree : int, default=4
         Degree of B-spline basis for :math:`W`.
     k_w_segments : int, optional
-        Number of segments for :math:`W` basis. If None, chosen automatically.
+        Number of segments for :math:`W` basis. If None, set to
+        ``j_x_segments * 2**k_w_smooth``.
+    k_w_smooth : int, default=2
+        Number of dyadic refinements of the :math:`W` basis relative to the
+        :math:`X` basis, used when ``k_w_segments`` is None.
     knots : {"uniform", "quantiles"}, default="uniform"
         Knot placement method.
     ucb_h : bool, default=True
@@ -153,7 +158,7 @@ def compute_ucb(
         Adaptive Estimation and Uniform Confidence Bands for Nonparametric
         Structural Functions and Elasticities. https://arxiv.org/abs/2107.11869.
     """
-    main_result = npiv_est(
+    main_result, (tmp, psi_x_eval, psi_x_deriv_eval) = _fit_sieve_tsls(
         y=y,
         x=x,
         w=w,
@@ -163,9 +168,11 @@ def compute_ucb(
         j_x_segments=j_x_segments,
         k_w_degree=k_w_degree,
         k_w_segments=k_w_segments,
+        k_w_smooth=k_w_smooth,
         knots=knots,
         deriv_index=deriv_index,
         deriv_order=deriv_order,
+        check_is_fullrank=False,
         w_min=w_min,
         w_max=w_max,
         x_min=x_min,
@@ -206,10 +213,6 @@ def compute_ucb(
 
     xp = get_backend()
     rng = np.random.default_rng(seed)
-
-    tmp = main_result.args["tmp"]
-    psi_x_eval = main_result.args["psi_x_eval"]
-    psi_x_deriv_eval = main_result.args["psi_x_deriv_eval"]
 
     for b in range(biters):
         try:

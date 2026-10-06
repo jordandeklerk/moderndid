@@ -2,63 +2,36 @@
 
 from __future__ import annotations
 
-from typing import NamedTuple
-
 import numpy as np
-from scipy.optimize import LinearConstraint, minimize
+from scipy.optimize import LinearConstraint, linprog, minimize
 
+from moderndid.diddynamic.container import DCBResult
 from moderndid.diddynamic.estimation.coefficients import compute_coefficients
 
 
-class DCBResult(NamedTuple):
-    """Result of DCB weight estimation.
-
-    Attributes
-    ----------
-    mu_hat : float
-        Estimated potential outcome under target treatment history.
-    gammas : np.ndarray
-        Weight matrix of shape ``(n, T)`` with per-period balancing weights.
-    predictions : np.ndarray
-        Prediction matrix of shape ``(n, T)`` from the coefficient stage.
-    not_nas : list[np.ndarray]
-        Valid row indices per period.
-    coef_t : list[np.ndarray]
-        Coefficient vectors per period.
-    bias : float
-        Debiasing correction, ``nan`` if debiasing was not requested.
-    """
-
-    mu_hat: float
-    gammas: np.ndarray
-    predictions: np.ndarray
-    not_nas: list[np.ndarray]
-    coef_t: list[np.ndarray]
-    bias: float
-
-
 def compute_dcb_estimator(
-    n_periods: int,
-    outcome: np.ndarray,
-    treatment_matrix: np.ndarray,
-    covariates_t: dict[int, np.ndarray],
-    ds: np.ndarray,
+    n_periods,
+    outcome,
+    treatment_matrix,
+    covariates_t,
+    ds,
     *,
-    method: str = "lasso_subsample",
-    adaptive_balancing: bool = True,
-    debias: bool = False,
-    regularization: bool = True,
-    nfolds: int = 10,
-    lb: float = 1e-4,
-    ub: float = 10.0,
-    grid_length: int = 1000,
-    n_beta_nonsparse: float = 1e-4,
-    ratio_coefficients: float = 1 / 3,
-    lags: int | None = None,
-    dim_fe: int = 0,
-    fast_adaptive: bool = False,
-    tolerance: float = 1e-8,
-) -> DCBResult:
+    method="lasso_subsample",
+    adaptive_balancing=True,
+    debias=False,
+    regularization=True,
+    nfolds=10,
+    lb=1e-4,
+    ub=10.0,
+    grid_length=1000,
+    n_beta_nonsparse=1e-4,
+    ratio_coefficients=1 / 3,
+    lags=None,
+    dim_fe=0,
+    fast_adaptive=False,
+    tolerance=1e-8,
+    random_state=None,
+):
     r"""Estimate potential outcomes using dynamic covariate balancing weights.
 
     Implements Algorithm 1 from [1]_. For each period :math:`t`, solves a
@@ -101,7 +74,9 @@ def compute_dcb_estimator(
         If True, use tighter balance constraints on covariates with
         large estimated coefficients.
     debias : bool
-        If True, apply bootstrap debiasing with 20 replicates.
+        If True, estimate the bias of the projection coefficients from 20
+        bootstrap resamples. The coefficient bias times the covariate
+        imbalance of each period gives the returned ``bias``.
     regularization : bool
         If True use cross-validated LASSO, otherwise ridge.
     nfolds : int
@@ -117,7 +92,8 @@ def compute_dcb_estimator(
     ratio_coefficients : float
         Fraction of largest coefficients to prioritise when sparsity is low.
     lags : int or None
-        Treatment lags for the coefficient stage.
+        Number of most recent treatment indicators that ``lasso_plain``
+        leaves unpenalized. Defaults to ``n_periods``.
     dim_fe : int
         Number of fixed-effect columns at the end of each covariate matrix.
     fast_adaptive : bool
@@ -125,6 +101,8 @@ def compute_dcb_estimator(
         three-segment nested search.
     tolerance : float
         Lower bound on individual weights to enforce strict positivity.
+    random_state : int, Generator, optional
+        Seeds the bootstrap resamples of ``debias=True``.
 
     Returns
     -------
@@ -227,6 +205,7 @@ def compute_dcb_estimator(
             covariates_nonna,
             not_nas,
             keep_gammas,
+            np.random.default_rng(random_state),
         )
 
     return DCBResult(
@@ -237,6 +216,60 @@ def compute_dcb_estimator(
         coef_t=list(coef_t),
         bias=final_bias,
     )
+
+
+def compute_imbalances(gammas, not_nas, covariates_t):
+    r"""Compute the standardized covariate imbalance that the weights leave in each period.
+
+    The first period compares the weights with equal weights on every unit
+    that enters it. Each later period compares them with the weights of the
+    period before. Up to the scaling, these are the differences that the
+    balancing constraints of :func:`compute_dcb_estimator` keep small.
+
+    Each covariate is divided by its standard deviation among the units that
+    enter the period. A covariate that takes one value among them keeps its
+    raw imbalance.
+
+    Parameters
+    ----------
+    gammas : ndarray, shape (n, T)
+        Weights per unit and period.
+    not_nas : list[ndarray]
+        Row indices that enter each period.
+    covariates_t : dict[int, ndarray]
+        Per-period covariate matrices keyed by 0-based period index.
+
+    Returns
+    -------
+    ndarray, shape (T, p)
+        Standardized imbalance of each covariate in each period.
+
+    Notes
+    -----
+    With :math:`\hat{\gamma}_{i,0} = 1/n_1` for the :math:`n_1` units that
+    enter the first period, the imbalance of covariate :math:`j` in period
+    :math:`t` is
+
+    .. math::
+
+        I_{t,j} = \frac{1}{\hat{\sigma}_{t,j}} \sum_{i}
+        \left(\hat{\gamma}_{i,t} - \hat{\gamma}_{i,t-1}\right) X_{i,t,j},
+
+    where the sum runs over the units that enter period :math:`t` with all
+    covariates observed and :math:`\hat{\sigma}_{t,j}` is the standard
+    deviation of :math:`X_{t,j}` among them.
+    """
+    n_periods = gammas.shape[1]
+    imbalances = np.empty((n_periods, covariates_t[0].shape[1]))
+    for t in range(n_periods):
+        rows = np.asarray(not_nas[t])
+        x = covariates_t[t][rows]
+        observed = ~np.isnan(x).any(axis=1)
+        rows, x = rows[observed], x[observed]
+        previous = np.full(len(rows), 1.0 / len(rows)) if t == 0 else gammas[rows, t - 1]
+        scale = np.where(np.ptp(x, axis=0) > 0, x.std(axis=0, ddof=1), 1.0)
+        imbalances[t] = ((gammas[rows, t] - previous) @ x) / scale
+    return imbalances
 
 
 def _solve_qp_first_period(
@@ -323,8 +356,27 @@ def _build_balance_bounds(p, tight, loose, with_beta, beta, n_beta_nonsparse, ra
 
 
 def _solve_balance_qp(x_sub, x_bar, n_sub, bounds_vec, tolerance):
-    r"""Solve :math:`\min \|\gamma\|^2` subject to balance, simplex, and box constraints."""
+    r"""Find the minimum-norm weights that satisfy the balancing constraints.
+
+    A linear program first checks that the constraints admit a solution. Most
+    tolerances in the grid search are infeasible. The linear program rejects
+    such a tolerance in milliseconds. The quadratic solver would instead run
+    to its iteration limit before giving up.
+
+    An accepted solution must satisfy every constraint to within
+    :math:`10^{-8}`. Balance violations are measured relative to the size of
+    the balance bounds.
+    """
+    # With fewer than two units the weight cap log(n) n^(-2/3) cannot reach a sum of one.
+    if n_sub < 2:
+        return None
+
     upper_bound = np.log(n_sub) * n_sub ** (-2 / 3)
+    lb_bal = x_bar - bounds_vec
+    ub_bal = x_bar + bounds_vec
+
+    if _is_infeasible(x_sub, lb_bal, ub_bal, tolerance, upper_bound):
+        return None
 
     x0 = np.full(n_sub, 1.0 / n_sub)
     x0 = np.clip(x0, tolerance, upper_bound)
@@ -335,8 +387,6 @@ def _solve_balance_qp(x_sub, x_bar, n_sub, bounds_vec, tolerance):
 
     p = x_sub.shape[1]
     if p > 0:
-        lb_bal = x_bar - bounds_vec
-        ub_bal = x_bar + bounds_vec
         constraints.append(LinearConstraint(x_sub.T, lb=lb_bal, ub=ub_bal))
 
     bounds = [(tolerance, upper_bound)] * n_sub
@@ -351,14 +401,51 @@ def _solve_balance_qp(x_sub, x_bar, n_sub, bounds_vec, tolerance):
         options={"maxiter": 2000, "gtol": 1e-12, "xtol": 1e-12},
     )
 
-    if not result.success and result.status not in (1, 2):
+    # Status 4 marks a converged solve whose violation exceeds gtol. That limit is
+    # far stricter than the direct check below.
+    if result.status not in (1, 2, 4):
         return None
 
     gamma = result.x
-    if not np.isclose(gamma.sum(), 1.0, atol=1e-4):
+    if _max_violation(gamma, x_sub, lb_bal, ub_bal, tolerance, upper_bound) > 1e-8:
         return None
 
     return gamma
+
+
+def _is_infeasible(x_sub, lb_bal, ub_bal, lower, upper):
+    """Return True when a linear program proves the balancing constraints infeasible."""
+    a_ub = None
+    b_ub = None
+    if x_sub.shape[1] > 0:
+        a_ub = np.vstack([x_sub.T, -x_sub.T])
+        b_ub = np.concatenate([ub_bal, -lb_bal])
+
+    n_sub = x_sub.shape[0]
+    result = linprog(
+        np.zeros(n_sub),
+        A_ub=a_ub,
+        b_ub=b_ub,
+        A_eq=np.ones((1, n_sub)),
+        b_eq=[1.0],
+        bounds=(lower, upper),
+        method="highs",
+    )
+    return result.status == 2
+
+
+def _max_violation(gamma, x_sub, lb_bal, ub_bal, lower, upper):
+    """Return the largest violation among the weight constraints."""
+    violations = [
+        abs(gamma.sum() - 1.0),
+        np.max(lower - gamma, initial=0.0),
+        np.max(gamma - upper, initial=0.0),
+    ]
+    if x_sub.shape[1] > 0:
+        balance = x_sub.T @ gamma
+        scale = 1.0 + np.maximum(np.abs(lb_bal), np.abs(ub_bal))
+        violations.append(np.max(np.maximum(lb_bal - balance, balance - ub_bal) / scale, initial=0.0))
+    return max(violations)
 
 
 def _qp_objective(x):
@@ -440,10 +527,12 @@ def _compute_bias(
     covariates_nonna,
     not_nas,
     keep_gammas,
+    rng,
 ):
     """Bootstrap debiasing correction."""
-    rng = np.random.default_rng()
-    coef_accum = [c.copy() for c in coef_t]
+    # The full-sample fit stays out of the sum, since adding it would shift the bias estimate by a
+    # twentieth of the coefficients.
+    coef_accum = [np.zeros_like(c) for c in coef_t]
 
     for _ in range(20):
         idx = rng.choice(n, size=n, replace=True)

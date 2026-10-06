@@ -65,6 +65,154 @@ def etwfe_with_covariates(mpdta_data):
 
 
 @pytest.fixture
+def etwfe_poisson_id(mpdta_data):
+    return etwfe(
+        data=mpdta_data,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        family="poisson",
+    )
+
+
+@pytest.fixture
+def mpdta_moderators(mpdta_data):
+    gls_states = [17, 18, 26, 27, 36, 39, 42, 55]
+    lpop = pl.col("lpop")
+    popcat = (
+        pl.when(lpop <= lpop.quantile(1 / 3))
+        .then(pl.lit("low"))
+        .when(lpop <= lpop.quantile(2 / 3))
+        .then(pl.lit("mid"))
+        .otherwise(pl.lit("high"))
+    )
+    return mpdta_data.with_columns((pl.col("countyreal") // 1000).is_in(gls_states).alias("gls")).with_columns(
+        (~pl.col("gls")).alias("notgls"),
+        pl.col("gls").cast(pl.Float64).alias("gls01"),
+        (2 * pl.col("lpop") + 3).alias("lpop_aff"),
+        (pl.col("lemp") > pl.col("lemp").median()).cast(pl.Int64).alias("ybin"),
+        popcat.alias("popcat"),
+        popcat.replace("high", "z_high").alias("popcat2"),
+    )
+
+
+@pytest.fixture
+def mpdta_unbalanced_moderators(mpdta_moderators):
+    trend = 0.05 * (pl.col("countyreal") % 5 - 2) * (pl.col("year") - 2005)
+    data = mpdta_moderators.with_columns((pl.col("lpop") + trend).alias("x_tv"))
+    return data.filter(~((pl.col("countyreal") % 7 == 0) & (pl.col("year") == 2005)))
+
+
+@pytest.fixture
+def mpdta_state_dummies(mpdta_data):
+    data = mpdta_data.with_columns((pl.col("countyreal") // 1000).alias("state"))
+    states = sorted(data["state"].unique().to_list())[1:]
+    data = data.with_columns([(pl.col("state") == s).cast(pl.Float64).alias(f"st{s}") for s in states])
+    return data, "~" + " + ".join(f"st{s}" for s in states)
+
+
+@pytest.fixture
+def mpdta_renamed(mpdta_data):
+    lpop = pl.col("lpop")
+    popcat = (
+        pl.when(lpop <= lpop.quantile(1 / 3))
+        .then(pl.lit("low"))
+        .when(lpop <= lpop.quantile(2 / 3))
+        .then(pl.lit("mid"))
+        .otherwise(pl.lit("high"))
+    )
+    weights = 1 + (pl.col("countyreal") % 7) / 7
+    return mpdta_data.with_columns(
+        pl.col("first.treat").alias("first_treat"),
+        pl.col("first.treat").alias("first treat"),
+        pl.col("countyreal").alias("county.id"),
+        pl.col("countyreal").alias("county id"),
+        pl.col("year").alias("year.t"),
+        pl.col("year").alias("year t"),
+        pl.col("lpop").alias("log.pop"),
+        pl.col("lpop").alias("log pop"),
+        pl.col("lemp").alias("l.emp"),
+        pl.col("lemp").alias("l emp"),
+        pl.col("lemp").alias("l-emp"),
+        weights.alias("w"),
+        weights.alias("w t"),
+        popcat.alias("popcat"),
+        (popcat + pl.lit(" pop")).alias("popcat spaced"),
+    )
+
+
+@pytest.fixture
+def mpdta_never_codes(mpdta_data):
+    never = pl.col("first.treat") == 0
+    cohort = pl.col("first.treat").cast(pl.Float64)
+    codes = {"null": None, "nan": float("nan"), "inf": float("inf"), "9999": 9999.0}
+    return {
+        label: mpdta_data.with_columns(
+            pl.when(never).then(pl.lit(code, dtype=pl.Float64)).otherwise(cohort).alias("first.treat")
+        )
+        for label, code in codes.items()
+    }
+
+
+@pytest.fixture
+def mpdta_late_cohort(mpdta_data):
+    late = pl.when(pl.col("first.treat") == 2006)
+    return (
+        mpdta_data.with_columns(late.then(2008).otherwise(pl.col("first.treat")).alias("first.treat")),
+        mpdta_data.with_columns(late.then(0).otherwise(pl.col("first.treat")).alias("first.treat")),
+    )
+
+
+@pytest.fixture
+def mpdta_always_treated(mpdta_data):
+    ids = mpdta_data.filter(pl.col("first.treat") == 0)["countyreal"].unique().sort().tail(30)
+    in_ids = pl.col("countyreal").is_in(ids.implode())
+    return (
+        mpdta_data.with_columns(pl.when(in_ids).then(2003).otherwise(pl.col("first.treat")).alias("first.treat")),
+        mpdta_data.filter(~in_ids),
+    )
+
+
+@pytest.fixture
+def mpdta_missing(mpdta_data):
+    data = mpdta_data.with_columns(
+        (1 + (pl.col("countyreal") % 7) / 7).alias("w"),
+        (pl.col("countyreal") // 1000).is_in([17, 18, 26, 27, 36, 39, 42, 55]).alias("gls"),
+    )
+    return data, (pl.col("countyreal") * 31 + pl.col("year")) % 17 == 0
+
+
+@pytest.fixture
+def mpdta_singletons(mpdta_data):
+    never = mpdta_data.filter(pl.col("first.treat") == 0)["countyreal"].unique().sort().head(15)
+    early = mpdta_data.filter(pl.col("first.treat") == 2004)["countyreal"].unique().sort().head(10)
+    single = pl.col("countyreal").is_in(pl.concat([never, early]).implode())
+    return mpdta_data.filter(~single | (pl.col("year") == 2006))
+
+
+@pytest.fixture
+def mpdta_no_never(mpdta_data):
+    return mpdta_data.filter(pl.col("first.treat") != 0)
+
+
+@pytest.fixture
+def mpdta_calendar_gap(mpdta_data):
+    return mpdta_data.filter(pl.col("year") != 2005)
+
+
+@pytest.fixture
+def mpdta_late_entry(mpdta_data):
+    return mpdta_data.filter(~((pl.col("first.treat") == 2006) & (pl.col("year") < 2006)))
+
+
+@pytest.fixture
+def mpdta_states(mpdta_data):
+    data = mpdta_data.with_columns((pl.col("countyreal") // 1000).cast(pl.Float64).alias("st"))
+    return data, pl.col("countyreal") % 50 == 0
+
+
+@pytest.fixture
 def mpdta_converted(request, mpdta_data):
     df_type = request.param
     if df_type == "pandas":

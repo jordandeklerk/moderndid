@@ -269,28 +269,143 @@ def validate_dose_values(dose, treatment_group, never_treated_value=float("inf")
 
 
 def parse_formula(formula):
-    """Parse formula string to extract components."""
-    parts = formula.split("~")
-    if len(parts) != 2:
+    """Split a covariate formula into its outcome and covariate columns.
+
+    The right-hand side lists data columns joined by ``+``. A column name may
+    contain dots, as in ``log.pop``. A name in backticks, as in
+    ``"~ `log pop` + x"``, may contain any character but a backtick. A ``1``
+    stands for the intercept and adds no column.
+
+    Since the estimators take each covariate as a plain column, any other term
+    raises an error. A transformation such as ``I(x**2)``, ``log(x)``, or
+    ``C(x)`` and an interaction such as ``x1:x2`` or ``x1*x2`` go into the data
+    as columns of their own first.
+
+    Parameters
+    ----------
+    formula : str
+        Formula of the form ``"y ~ x1 + x2"`` or ``"~ x1 + x2"``.
+
+    Returns
+    -------
+    dict
+        - **outcome**: Name left of ``~``, or an empty string when there is none
+        - **predictors**: Covariate column names in the order given, each once
+        - **formula**: The formula as given
+    """
+    sides = _split_outside_quotes(formula, "~")
+    if len(sides) != 2:
         raise ValueError("Formula must be in the form 'y ~ x1 + x2 + ...'")
 
-    outcome = parts[0].strip()
-    predictors_str = parts[1].strip()
+    outcome = sides[0].strip()
+    outcome = _column_name(outcome) or outcome
+    rhs = sides[1].strip()
+    terms = _split_outside_quotes(rhs, "+") if rhs else []
 
-    var_pattern = r"\b[a-zA-Z_]\w*\b"
-    all_vars = re.findall(var_pattern, predictors_str)
-
-    exclude = {"C", "I", "Q", "bs", "ns", "log", "exp", "sqrt", "abs", "np"}
-    predictors = [v for v in all_vars if v not in exclude]
-
-    seen = set()
-    predictors = [x for x in predictors if not (x in seen or seen.add(x))]
+    predictors = []
+    for term in terms:
+        term = term.strip()
+        if term == "1":
+            continue
+        name = _column_name(term)
+        if name is None:
+            if not term:
+                raise ValueError("xformla has an empty term. Remove the extra '+'.")
+            if term == "0" or re.search(r"-\s*1$", term):
+                raise ValueError(
+                    f"xformla term '{term}' drops the intercept. Since the estimators always include an "
+                    "intercept, remove the '0' or '-1' from xformla."
+                )
+            raise ValueError(
+                f"xformla term '{term}' is not a column name. xformla accepts column names joined by '+'. "
+                "Add a transformed or interaction covariate to the data as its own column first. "
+                "A name that holds spaces or symbols goes in backticks."
+            )
+        if name not in predictors:
+            predictors.append(name)
 
     return {
         "outcome": outcome,
         "predictors": predictors,
         "formula": formula,
     }
+
+
+def get_formula_columns(formula, columns):
+    """List the data columns that a formula refers to.
+
+    The formula may hold transformations and interactions such as
+    ``I(x**2)``, ``C(group)``, or ``x1:x2``. A name counts when it is a column
+    of the data. Function names such as ``np.log`` drop out unless a column
+    carries that name. When a dotted name such as ``x.clip`` is not a column,
+    its longest leading part that is a column counts instead. A keyword
+    argument name such as ``degree`` in ``poly(age, degree=2)`` never counts.
+
+    Parameters
+    ----------
+    formula : str
+        Formula with one ``~``, such as ``"~ x1 + I(x1**2) + C(group)"``.
+    columns : list of str
+        Column names of the data.
+
+    Returns
+    -------
+    list of str
+        The columns the formula names, in order of first appearance.
+    """
+    if len(_split_outside_quotes(formula, "~")) != 2:
+        raise ValueError("Formula must be in the form 'y ~ x1 + x2 + ...'")
+
+    available = set(columns)
+    found = []
+    # Quoted strings are skipped so that a level such as 'a' in C(g, Treatment('a')) is not read as a column.
+    # A keyword argument such as degree in poly(age, degree=2) names no column. The lookahead after the
+    # name keeps a prefix such as d in df=3 from matching instead.
+    pattern = r"`([^`]+)`|'[^']*'|\"[^\"]*\"|(?<![\w.])((?:[^\W\d]|\.+[^\W\d])[\w.]*)(?![\w.])(?!\s*=(?!=))"
+    for match in re.finditer(pattern, formula):
+        quoted, plain = match.group(1), match.group(2)
+        if quoted is not None:
+            candidates = [quoted]
+        elif plain is not None:
+            parts = plain.split(".")
+            candidates = [".".join(parts[:k]) for k in range(len(parts), 0, -1)]
+        else:
+            continue
+        name = next((c for c in candidates if c in available), None)
+        if name is not None and name not in found:
+            found.append(name)
+    return found
+
+
+def _split_outside_quotes(text, sep):
+    """Split text at each separator outside quotes and brackets."""
+    parts = []
+    start = 0
+    depth = 0
+    quote = None
+    for i, char in enumerate(text):
+        if quote is not None:
+            if char == quote:
+                quote = None
+        elif char in "`'\"":
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        elif char == sep and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return parts
+
+
+def _column_name(term):
+    """Return the column a formula term names or None for any other term."""
+    match = re.fullmatch(r"`([^`]+)`|((?:[^\W\d]|\.+[^\W\d])[\w.]*)", term)
+    if match is None:
+        return None
+    return match.group(1) or match.group(2)
 
 
 def extract_vars_from_formula(formula):

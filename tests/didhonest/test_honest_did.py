@@ -1,4 +1,6 @@
-"""Tests for sensitivity analysis using the approach of Rambachan and Roth (2021)."""
+"""Tests for sensitivity analysis using the approach of Rambachan and Roth (2023)."""
+
+import importlib
 
 import numpy as np
 import pytest
@@ -8,6 +10,8 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 
 from moderndid import AGGTEResult, HonestDiDResult, honest_did
+
+honest_did_module = importlib.import_module("moderndid.didhonest.honest_did")
 
 
 @pytest.fixture
@@ -227,3 +231,64 @@ def test_honest_did_no_post_periods():
 
     with pytest.raises(ValueError, match="post-treatment periods"):
         honest_did(result)
+
+
+def test_honest_did_rejects_varying_base_period(sample_aggte_result):
+    params = {**sample_aggte_result.estimation_params, "base_period": "varying"}
+    varying = sample_aggte_result._replace(estimation_params=params)
+
+    with pytest.raises(ValueError, match="universal base period"):
+        honest_did(varying, event_time=1)
+
+
+def test_honest_did_accepts_universal_base_period(sample_aggte_result):
+    params = {**sample_aggte_result.estimation_params, "base_period": "universal"}
+    universal = sample_aggte_result._replace(estimation_params=params)
+
+    result = honest_did(universal, event_time=1, m_vec=np.array([0.0]))
+
+    assert len(result.robust_ci) == 1
+
+
+def test_honest_did_anticipation_moves_reference_period():
+    rng = np.random.default_rng(3)
+    event_times = np.array([-5, -4, -3, -2, -1, 0, 1, 2])
+    att_by_event = np.array([0.02, -0.01, 0.03, 0.0, 0.04, 0.3, 0.35, 0.4])
+    influence_func = rng.normal(0, 0.5, (200, 8))
+    influence_func[:, 3] = 0.0
+    event_study = AGGTEResult(
+        overall_att=0.3,
+        overall_se=0.05,
+        aggregation_type="dynamic",
+        event_times=event_times,
+        att_by_event=att_by_event,
+        se_by_event=np.sqrt(np.sum(influence_func**2, axis=0)) / 200,
+        influence_func=influence_func,
+        estimation_params={"base_period": "universal", "anticipation_periods": 1},
+    )
+
+    result = honest_did(event_study, event_time=0, m_vec=np.array([0.0]))
+    anticipation = honest_did(event_study, event_time=-1, m_vec=np.array([0.0]))
+
+    se = np.sqrt(np.sum(influence_func[:, 5] ** 2)) / 200
+    assert result.original_ci.lb == pytest.approx(0.3 - 1.959963984540054 * se)
+    assert result.original_ci.ub == pytest.approx(0.3 + 1.959963984540054 * se)
+    assert anticipation.original_ci.lb < 0.04 < anticipation.original_ci.ub
+
+
+def test_honest_did_grid_points_defaults(sample_aggte_result, monkeypatch):
+    calls = []
+
+    def record(**kwargs):
+        calls.append(kwargs["grid_points"])
+        return pl.DataFrame({"lb": [0.0], "ub": [1.0]})
+
+    monkeypatch.setattr(honest_did_module, "create_sensitivity_results_sm", record)
+    monkeypatch.setattr(honest_did_module, "create_sensitivity_results_rm", record)
+
+    honest_did(sample_aggte_result, event_time=1, bias_direction="positive")
+    honest_did(sample_aggte_result, event_time=1, sensitivity_type="relative_magnitude")
+    honest_did(sample_aggte_result, event_time=1, grid_points=12)
+    honest_did(sample_aggte_result, event_time=1, sensitivity_type="relative_magnitude", grid_points=12)
+
+    assert calls == [1000, 100, 12, 12]

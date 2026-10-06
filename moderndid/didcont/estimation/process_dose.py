@@ -14,6 +14,7 @@ from .process_aggte import (
     check_critical_value,
     get_se,
     overall_weights,
+    weight_influence_function_from_cells,
 )
 from .process_attgt import process_att_gt
 
@@ -23,14 +24,20 @@ def process_dose_gt(
 ):
     """Process group-time results for continuous treatment dose-response.
 
+    Every cell enters with the weights of the group aggregation. These give each cohort its share of the
+    treated units and split that share evenly over the cohort's post-treatment cells. The overall ATT
+    takes its influence function from the binary ATT of each cell. Each aggregate also carries the term
+    that estimating the cohort shares adds to its influence function.
+
     Parameters
     ----------
     gt_results : dict
         Dictionary containing group-time specific results with keys:
 
         - **attgt_list**: list of ATT(g,t) estimates
-        - **influence_func**: influence function matrix
-        - **extra_gt_returns**: list of extra returns with dose-specific results
+        - **influence_func**: influence function matrix of each cell's overall ACRT
+        - **extra_gt_returns**: list of extra returns with dose-specific results and the cell's
+          ``att_inf_func``, ``rows``, and ``treated`` entries
 
     pte_params : PTEParams
         Parameters object containing estimation settings including dose values.
@@ -67,6 +74,7 @@ def process_dose_gt(
         raise ValueError("Mismatch between order of groups and time periods in processing dose results")
 
     weights_dict = overall_weights(att_gt, balance_event, min_event_time, max_event_time)
+    weights = weights_dict["weights"]
 
     inner_extra_gt_returns = [item.get("extra_gt_returns") for item in all_extra_gt_returns]
 
@@ -79,19 +87,19 @@ def process_dose_gt(
         [(item.get("acrt_overall", np.nan) if item else np.nan) for item in inner_extra_gt_returns]
     )
 
-    bread_matrices = [(item.get("bread") if item else None) for item in inner_extra_gt_returns]
-    x_expanded_by_group = [(item.get("x_expanded") if item else None) for item in inner_extra_gt_returns]
-
     acrt_influence_matrix = gt_results["influence_func"]
     n_obs = acrt_influence_matrix.shape[0]
     bootstrap_iterations = pte_params.biters
     alpha = pte_params.alp
     confidence_band = pte_params.cband
 
-    overall_att = float(np.nansum(att_overall_by_group * weights_dict["weights"]))
+    att_influence_matrix = _binary_att_influence_matrix(inner_extra_gt_returns, groups, time_periods, n_obs)
+    weight_inf_func = weight_influence_function_from_cells(att_gt, weights)
 
-    att_influence_matrix = att_gt.influence_func
-    overall_att_inf_func = _compute_overall_att_inf_func(weights_dict["weights"], att_influence_matrix)
+    overall_att = float(np.nansum(att_overall_by_group * weights))
+    overall_att_inf_func = _compute_overall_att_inf_func(
+        weights, att_influence_matrix
+    ) + weight_inf_func @ np.nan_to_num(att_overall_by_group)
     overall_att_se = float(
         get_se(
             overall_att_inf_func[:, None],
@@ -102,8 +110,10 @@ def process_dose_gt(
         )
     )
 
-    overall_acrt = float(np.nansum(acrt_overall_by_group * weights_dict["weights"]))
-    overall_acrt_inf_func = np.sum(acrt_influence_matrix * weights_dict["weights"][np.newaxis, :], axis=1)
+    overall_acrt = float(np.nansum(acrt_overall_by_group * weights))
+    overall_acrt_inf_func = _compute_overall_att_inf_func(
+        weights, acrt_influence_matrix
+    ) + weight_inf_func @ np.nan_to_num(acrt_overall_by_group)
     overall_acrt_se = float(
         get_se(
             overall_acrt_inf_func[:, None],
@@ -131,58 +141,36 @@ def process_dose_gt(
     degree = pte_params.degree if pte_params.degree is not None else 1
     knots = pte_params.knots if pte_params.knots is not None else np.array([])
 
-    if len(knots) > 0:
-        bspline = BSpline(x=dose_values, internal_knots=knots, degree=degree)
-    else:
-        bspline = BSpline(x=dose_values, degree=degree)
-
-    basis_matrix = to_numpy(bspline.basis(complete_basis=False))
-    basis_matrix = np.column_stack([np.ones(len(dose_values)), basis_matrix])
-
-    if degree > 0:
-        derivative_matrix = to_numpy(bspline.derivative(derivs=1, complete_basis=False))
-        derivative_matrix = np.column_stack([np.zeros(len(dose_values)), derivative_matrix])
-    else:
-        derivative_matrix = np.zeros((len(dose_values), basis_matrix.shape[1]))
-
     if att_d_by_group and any(x is not None for x in att_d_by_group):
-        att_d = _weighted_combine_arrays(att_d_by_group, weights_dict["weights"])
+        att_d = _weighted_combine_arrays(att_d_by_group, weights)
     else:
         att_d = np.full(len(dose_values), np.nan)
 
     if acrt_d_by_group and any(x is not None for x in acrt_d_by_group):
-        acrt_d = _weighted_combine_arrays(acrt_d_by_group, weights_dict["weights"])
+        acrt_d = _weighted_combine_arrays(acrt_d_by_group, weights)
     else:
         acrt_d = np.full(len(dose_values), np.nan)
 
     att_d_inf_func, acrt_d_inf_func = _compute_dose_influence_functions(
-        x_expanded_by_group,
-        bread_matrices,
-        basis_matrix,
-        derivative_matrix,
-        acrt_influence_matrix,
-        att_influence_matrix,
-        weights_dict["weights"],
+        inner_extra_gt_returns,
+        dose_values,
+        degree,
+        knots,
+        weights,
         n_obs,
     )
+    att_d_inf_func = att_d_inf_func + weight_inf_func @ _stack_cell_curves(att_d_by_group, len(dose_values))
+    acrt_d_inf_func = acrt_d_inf_func + weight_inf_func @ _stack_cell_curves(acrt_d_by_group, len(dose_values))
 
-    if att_d_inf_func is not None:
-        boot_res = mboot(att_d_inf_func, n_units=n_obs, biters=bootstrap_iterations, alp=alpha, random_state=rng)
-        att_d_se = boot_res["se"]
-        att_d_crit_val = boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
-        att_d_crit_val = check_critical_value(att_d_crit_val, alpha)
-    else:
-        att_d_se = np.full(len(dose_values), np.nan)
-        att_d_crit_val = st.norm.ppf(1 - alpha / 2)
+    boot_res = mboot(att_d_inf_func, n_units=n_obs, biters=bootstrap_iterations, alp=alpha, random_state=rng)
+    att_d_se = boot_res["se"]
+    att_d_crit_val = boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
+    att_d_crit_val = check_critical_value(att_d_crit_val, alpha)
 
-    if acrt_d_inf_func is not None:
-        acrt_boot_res = mboot(acrt_d_inf_func, n_units=n_obs, biters=bootstrap_iterations, alp=alpha, random_state=rng)
-        acrt_d_se = acrt_boot_res["se"]
-        acrt_d_crit_val = acrt_boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
-        acrt_d_crit_val = check_critical_value(acrt_d_crit_val, alpha)
-    else:
-        acrt_d_se = np.full(len(dose_values), np.nan)
-        acrt_d_crit_val = st.norm.ppf(1 - alpha / 2)
+    acrt_boot_res = mboot(acrt_d_inf_func, n_units=n_obs, biters=bootstrap_iterations, alp=alpha, random_state=rng)
+    acrt_d_se = acrt_boot_res["se"]
+    acrt_d_crit_val = acrt_boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
+    acrt_d_crit_val = check_critical_value(acrt_d_crit_val, alpha)
 
     return DoseResult(
         dose=dose_values,
@@ -205,87 +193,107 @@ def process_dose_gt(
 
 
 def _compute_dose_influence_functions(
-    x_expanded_by_group,
-    bread_matrices,
-    basis_matrix,
-    derivative_matrix,
-    acrt_influence_matrix,
-    att_influence_matrix,
+    cell_returns,
+    dose_values,
+    degree,
+    knots,
     weights,
     n_obs,
 ):
     """Compute influence functions for dose-specific treatment effects.
 
+    Within a cell the estimated spline coefficients drive the treated units' part of both influence
+    functions. Since ATT(d) also subtracts the comparison mean, the comparison units enter it with the
+    same value at every dose. Each cell builds its basis with the boundary knots that its point
+    estimates use.
+
     Parameters
     ----------
-    x_expanded_by_group : list
-        List of expanded design matrices for each group.
-    bread_matrices : list
-        List of bread matrices from sandwich estimator for each group.
-    basis_matrix : ndarray
-        B-spline basis matrix evaluated at dose values.
-    derivative_matrix : ndarray
-        Derivative of B-spline basis matrix.
-    acrt_influence_matrix : ndarray
-        Influence function matrix for ACRT from group-time estimation.
-    att_influence_matrix : ndarray
-        Influence function matrix for ATT from group-time estimation.
+    cell_returns : list
+        Dose-specific results of each cell with ``x_expanded``, ``bread``, ``boundary_knots``,
+        ``att_inf_func``, ``rows``, and ``treated`` entries, or None for cells without results.
+    dose_values : ndarray
+        Doses at which the effects are evaluated.
+    degree : int
+        Degree of the B-spline basis.
+    knots : ndarray
+        Interior knots of the B-spline basis.
     weights : ndarray
-        Weights for aggregating across groups.
+        Aggregation weight of each cell.
     n_obs : int
-        Number of observations.
+        Number of units.
 
     Returns
     -------
     tuple of ndarray
-        (att_d_influence, acrt_d_influence) - Influence functions for ATT(d) and ACRT(d).
+        Tuple containing:
+
+        - **att_d_influence**: Influence function of ATT(d) at each dose
+        - **acrt_d_influence**: Influence function of ACRT(d) at each dose
     """
-    n_doses = basis_matrix.shape[0]
-    n_groups = acrt_influence_matrix.shape[1]
+    n_doses = len(dose_values)
 
     att_d_influence = np.zeros((n_obs, n_doses))
     acrt_d_influence = np.zeros((n_obs, n_doses))
 
-    treated_mask = acrt_influence_matrix != 0
-    all_involved_mask = att_influence_matrix != 0
-    comparison_mask = all_involved_mask & ~treated_mask
-
-    n_treated_by_group = np.sum(treated_mask, axis=0)
-
-    for group_idx in range(n_groups):
-        if weights[group_idx] == 0:
+    for weight, cell in zip(weights, cell_returns, strict=True):
+        if weight == 0 or not cell:
             continue
 
-        x_expanded = x_expanded_by_group[group_idx]
-        bread = bread_matrices[group_idx]
+        rows = np.asarray(cell["rows"])
+        treated = np.asarray(cell["treated"], dtype=bool)
+        treated_rows = rows[treated]
+        basis_matrix, derivative_matrix = _dose_basis(dose_values, degree, knots, cell.get("boundary_knots"))
 
-        if x_expanded is not None and bread is not None and n_treated_by_group[group_idx] > 0:
-            treated_contribution = x_expanded @ bread @ basis_matrix.T
-            treated_indices = np.where(treated_mask[:, group_idx])[0]
-
-            n_rows_x_expanded = treated_contribution.shape[0]
-            n_treated_to_use = min(len(treated_indices), n_rows_x_expanded)
-
-            for i in range(n_treated_to_use):
-                idx = treated_indices[i]
-                att_d_influence[idx, :] += (
-                    weights[group_idx] * (n_obs / n_treated_by_group[group_idx]) * treated_contribution[i, :]
-                )
-
-            comparison_influence = att_influence_matrix[comparison_mask[:, group_idx], group_idx]
-            att_d_influence[comparison_mask[:, group_idx], :] -= weights[group_idx] * np.tile(
-                comparison_influence[:, np.newaxis], (1, n_doses)
-            )
-
-            acrt_contribution = x_expanded @ bread @ derivative_matrix.T
-
-            for i in range(n_treated_to_use):
-                idx = treated_indices[i]
-                acrt_d_influence[idx, :] += (
-                    weights[group_idx] * (n_obs / n_treated_by_group[group_idx]) * acrt_contribution[i, :]
-                )
+        score_bread = cell["x_expanded"] @ cell["bread"]
+        scale = weight * n_obs / len(treated_rows)
+        att_d_influence[treated_rows, :] += scale * (score_bread @ basis_matrix.T)
+        acrt_d_influence[treated_rows, :] += scale * (score_bread @ derivative_matrix.T)
+        att_d_influence[rows[~treated], :] += weight * np.asarray(cell["att_inf_func"])[~treated][:, None]
 
     return att_d_influence, acrt_d_influence
+
+
+def _dose_basis(dose_values, degree, knots, boundary_knots):
+    """Evaluate the intercept-augmented B-spline basis and its derivative at the doses."""
+    bspline = BSpline(x=dose_values, degree=degree, internal_knots=knots, boundary_knots=boundary_knots)
+
+    basis_matrix = to_numpy(bspline.basis(complete_basis=False))
+    basis_matrix = np.column_stack([np.ones(len(dose_values)), basis_matrix])
+
+    if degree > 0:
+        derivative_matrix = to_numpy(bspline.derivative(derivs=1, complete_basis=False))
+        derivative_matrix = np.column_stack([np.zeros(len(dose_values)), derivative_matrix])
+    else:
+        derivative_matrix = np.zeros_like(basis_matrix)
+
+    return basis_matrix, derivative_matrix
+
+
+def _binary_att_influence_matrix(cell_returns, groups, time_periods, n_obs):
+    """Place each cell's binary ATT influence function on the full sample."""
+    att_influence_matrix = np.zeros((n_obs, len(cell_returns)))
+
+    for k, cell in enumerate(cell_returns):
+        if not cell:
+            continue
+        if "att_inf_func" not in cell or "rows" not in cell:
+            raise ValueError(
+                f"Dose results for group {groups[k]} and period {time_periods[k]} lack the binary ATT "
+                "influence function ('att_inf_func') or its rows ('rows')."
+            )
+        att_influence_matrix[np.asarray(cell["rows"]), k] = cell["att_inf_func"]
+
+    return att_influence_matrix
+
+
+def _stack_cell_curves(curves, n_doses):
+    """Stack per-cell dose curves into a matrix with zeros for missing cells."""
+    stacked = np.zeros((len(curves), n_doses))
+    for k, curve in enumerate(curves):
+        if curve is not None:
+            stacked[k] = np.nan_to_num(np.asarray(curve, dtype=float))
+    return stacked
 
 
 def _weighted_combine_arrays(array_list, weights):

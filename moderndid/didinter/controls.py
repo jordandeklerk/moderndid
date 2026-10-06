@@ -23,6 +23,10 @@ def compute_control_coefficients(df, config, n_groups):
     :func:`compute_variance_adjustment` turns these columns into the variance term of
     every horizon.
 
+    The controls are the covariates of ``xformla``. With a continuous treatment they also
+    include the interactions of period indicators with powers of the baseline treatment that
+    preprocessing adds to the data.
+
     Parameters
     ----------
     df : pl.DataFrame
@@ -83,7 +87,7 @@ def compute_control_coefficients(df, config, n_groups):
     :math:`\kappa_{d,t} = \sqrt{n_{d,t} / (n_{d,t} - 1)}` corrects for degrees of freedom.
     Otherwise :math:`\kappa_{d,t} = 1` and :math:`\hat{E}_{g,t} = 0`.
     """
-    controls = get_covariate_names_from_formula(config.xformla)
+    controls = _control_names(df, config)
     if not controls:
         return df, {}
 
@@ -216,7 +220,7 @@ def apply_control_adjustment(df, config, horizon, coefficients, horizon_type):
     pl.DataFrame
         Data with the adjusted outcome difference and the control differences ``_ctrl_diff_{j}_{horizon}``.
     """
-    controls = get_covariate_names_from_formula(config.xformla)
+    controls = _control_names(df, config)
     if not controls or not coefficients:
         return df
 
@@ -291,7 +295,7 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
 
     where :math:`\psi_{g,d,j}` is zero unless :math:`D_{g,1} = d`.
     """
-    controls = get_covariate_names_from_formula(config.xformla)
+    controls = _control_names(df, config)
     part2_col = f"part2_{horizon}"
     useful = {level: coef for level, coef in coefficients.items() if coef["useful"]}
     if not controls or not useful:
@@ -330,6 +334,14 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
         )
 
     return df.with_columns(part2.alias(part2_col))
+
+
+def _control_names(df, config):
+    """Get the control columns of the formula and the continuous baseline trends."""
+    controls = get_covariate_names_from_formula(config.xformla) or []
+    if config.continuous > 0:
+        controls = [*controls, *(name for name in df.columns if name.startswith("_baseline_trend_"))]
+    return controls
 
 
 def _control_scores(rows, config, first_diffs, centered):

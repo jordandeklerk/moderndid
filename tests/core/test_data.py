@@ -427,3 +427,30 @@ def test_gen_cont_did_data_reproducible():
     df1 = gen_cont_did_data(n=50, seed=42)
     df2 = gen_cont_did_data(n=50, seed=42)
     np.testing.assert_array_equal(df1["Y"].to_numpy(), df2["Y"].to_numpy())
+
+
+def test_gen_cont_did_data_num_groups_sets_treated_groups():
+    df = gen_cont_did_data(n=600, num_time_periods=5, num_groups=3, seed=1)
+    assert sorted(df["G"].unique().to_list()) == [0, 2, 3]
+    assert df["time_period"].n_unique() == 5
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"num_groups": 5}, "num_groups=5 is not valid"),
+        ({"num_groups": 1}, "num_groups=1 is not valid"),
+        ({"p_group": [0.5, 0.5]}, "p_group needs one probability for each of the 3 treated groups"),
+    ],
+)
+def test_gen_cont_did_data_rejects_invalid_groups(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        gen_cont_did_data(n=100, num_time_periods=4, **kwargs)
+
+
+def test_gen_cont_did_data_dose_constant_within_units():
+    df = gen_cont_did_data(n=200, seed=3)
+    doses = df.group_by("id").agg(pl.col("D").n_unique().alias("n_doses"), pl.col("G").first())
+    assert (doses["n_doses"] == 1).all()
+    pre_treatment = df.filter((pl.col("G") > 0) & (pl.col("time_period") < pl.col("G")))
+    assert (pre_treatment["D"] > 0).all()

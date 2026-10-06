@@ -29,6 +29,7 @@ from .estimation import (
 )
 from .estimation.estimators import pte_attgt
 from .estimation.process_dose import DoseResult
+from .estimation.process_panel import _two_by_two_subset
 from .spline import BSpline
 
 
@@ -64,45 +65,28 @@ def cont_did(
 ):
     r"""Compute difference-in-differences with a continuous treatment.
 
-    Implements difference-in-differences estimation for settings where treatment
-    intensity varies across units but remains constant over time for each unit,
-    following [1]_.
+    Implements the difference-in-differences estimator of [1]_ for a treatment
+    that comes in different amounts, or doses, across units. Units may start
+    treatment in different periods but keep one dose over time.
 
-    With continuous treatments, two distinct causal parameters are of interest.
-    The average treatment effect on the treated at dose :math:`d`, denoted
-    :math:`ATT(d|d)`, measures the effect of receiving dose :math:`d` compared
-    to no treatment among units that actually received dose :math:`d`
+    Two effects arise at each dose :math:`d`. The level effect
+    :math:`ATT(d \mid d)` compares outcomes under dose :math:`d` with outcomes
+    without treatment among the units that received dose :math:`d`. The
+    average causal response :math:`ACRT(d \mid d)` measures how the outcome of
+    those units would respond to a slightly larger dose. Parallel trends
+    identifies the level effects and their average :math:`ATT^o` over treated
+    doses. Reading the slope of the level curve as that response also takes
+    strong parallel trends, the assumption that rules out selection on gains.
 
-    .. math::
+    With ``aggregation="dose"``, the estimator fits a curve in the dose for
+    each cohort in each period after treatment starts. It then averages those
+    curves into :math:`ATT(d \mid d)` and :math:`ACRT(d \mid d)` along with
+    the summaries :math:`ATT^o` and :math:`ACRT^o`. With
+    ``aggregation="eventstudy"``, it reports the level effects or the average
+    slopes by time since treatment started.
 
-        ATT(d|d) = \mathbb{E}[Y_{t}(d) - Y_{t}(0) \mid D = d].
-
-    The average causal response on the treated, :math:`ACRT(d|d)`, measures the
-    marginal effect of increasing the dose, i.e., the slope of the dose-response
-    function
-
-    .. math::
-
-        ACRT(d|d) = \left.\frac{\partial}{\partial l}
-        \mathbb{E}[Y_{t}(l) \mid D = d]\right|_{l=d}.
-
-    Under a parallel trends assumption, the :math:`ATT(d|d)` is identified by
-    comparing outcome changes between dose group :math:`d` and the untreated
-
-    .. math::
-
-        ATT(d|d) = \mathbb{E}[\Delta Y \mid D = d] - \mathbb{E}[\Delta Y \mid D = 0].
-
-    Aggregating over the dose distribution among treated units yields the overall
-    average treatment effect and average causal response
-
-    .. math::
-
-        ATT^o = \mathbb{E}[ATT(D|D) \mid D > 0], \quad
-        ACRT^o = \mathbb{E}[ACRT(D|D) \mid D > 0].
-
-    See the :ref:`continuous treatment example <example_cont_did>` for dose-response
-    functions, event studies, and control group options with ``cont_did``.
+    See the :ref:`continuous treatment example <example_cont_did>` for a full
+    analysis of a simulated dose-response.
 
     Parameters
     ----------
@@ -118,82 +102,83 @@ def cont_did(
         Name of the column containing the unit ID variable.
     gname : str, optional
         Name of the column containing the timing-group variable indicating
-        when treatment starts for each unit. If None, it will be computed
-        from the treatment variable. Should be 0 for never-treated units.
+        when treatment starts for each unit. Each group must be one of the
+        observed periods, or 0 for never-treated units. If None, each unit's
+        group is the first period in which its dose is positive. The dose
+        must then be 0 before treatment starts.
     dname : str
-        Name of the column containing the continuous treatment variable.
-        This should represent the "dose" or amount of treatment received,
-        and should be constant across time periods for each unit.
-        Use 0 for never-treated units.
+        Name of the column containing the continuous treatment variable,
+        the "dose" or amount of treatment received. Each unit's dose must
+        stay the same over time. Before treatment starts, it may also be
+        recorded as 0. Never-treated units get a dose of 0 whatever the column
+        holds.
     xformla : str, default="~1"
-        A formula for the covariates to include in the model.
-        Should be of the form "~ X1 + X2" (intercept is always included).
-        Currently only "~1" (no covariates) is supported.
+        Formula for the covariates. Since covariates aren't supported yet, it
+        must be ``"~1"``.
     target_parameter : {"level", "slope"}, default="level"
-        Type of treatment effect to focus on:
-
-        - "level": Average treatment effect (ATT) at different dose levels
-        - "slope": Average causal response (ACRT), the derivative of the dose-response curve
-
-        For ``aggregation="dose"``, both ATT(d) and ACRT(d) are always computed
-        and reported regardless of this setting. This parameter mainly affects
-        ``aggregation="eventstudy"``, where it determines whether to aggregate
-        ATT or ACRT over event time.
+        Effect that an event study averages. ``"level"`` treats every unit in
+        a cohort as treated whatever its dose. ``"slope"`` averages the slope
+        of each cohort's curve. With ``aggregation="dose"``, both curves are
+        returned whatever this says.
     aggregation : {"dose", "eventstudy"}, default="dose"
-        How to aggregate the treatment effects:
-
-        - "dose": Average across timing-groups and time periods, report by dose.
-          Both ATT(d) and ACRT(d) curves are returned.
-        - "eventstudy": Average across timing-groups and doses, report by event time.
-          Returns ATT or ACRT by event time depending on ``target_parameter``.
+        How to average the cohort-period effects. ``"dose"`` reports the curves
+        over doses along with the overall ATT and ACRT. ``"eventstudy"``
+        reports the effects by time since treatment started.
     treatment_type : {"continuous", "discrete"}, default="continuous"
-        Nature of the treatment variable. Only "continuous" is currently supported.
+        Type of treatment. Only ``"continuous"`` is supported.
     dose_est_method : {"parametric", "cck"}, default="parametric"
-        Method for estimating dose-specific effects:
-
-        - "parametric": Use B-splines with specified degree and knots
-        - "cck": Use non-parametric method based on [2]_.
+        Estimator of the curves. ``"parametric"`` fits the B-spline that
+        ``degree`` and ``num_knots`` set. ``"cck"`` chooses the sieve from the
+        data following [2]_ and needs two periods with a single treated cohort.
     dvals : array-like, optional
-        Values of the treatment dose at which to compute effects.
-        If None, uses quantiles of the dose distribution among treated units.
+        Doses at which to evaluate the curves. Defaults to 50 evenly spaced
+        doses between the smallest and largest treated dose.
     degree : int, default=3
-        Degree of the B-spline basis functions. Combined with num_knots=0 (default),
-        this fits a global polynomial of the specified degree.
+        Degree of the B-spline in the dose. With ``num_knots=0`` the spline is
+        a single polynomial of this degree.
     num_knots : int, default=0
-        Number of interior knots for the B-spline. More knots allow more
-        flexibility but may increase variance.
+        Number of interior knots of the B-spline, placed at quantiles of the
+        treated doses. More knots make the curve more flexible and its
+        estimates noisier.
     allow_unbalanced_panel : bool, default=False
-        Whether to allow unbalanced panel data. Currently not supported.
+        Whether to allow an unbalanced panel. Only False is supported.
     control_group : {"notyettreated", "nevertreated"}, default="notyettreated"
-        Which units to use as controls:
-
-        - "notyettreated": Units not yet treated by time t
-        - "nevertreated": Only never-treated units
+        Units to compare with. ``"notyettreated"`` uses never-treated units
+        together with cohorts whose treatment, including any anticipation,
+        starts after both periods of a comparison. ``"nevertreated"`` uses
+        never-treated units alone.
     anticipation : int, default=0
-        Number of time periods before treatment where effects may appear.
+        Number of observed periods before treatment in which outcomes may
+        already react. It counts the periods in the data rather than units of
+        ``tname``.
     weightsname : str, optional
-        Name of the column containing sampling weights.
-        If None, all observations have equal weight.
+        Name of the column containing sampling weights. Sampling weights
+        are not supported yet. Only None is accepted.
     alp : float, default=0.05
-        Significance level for confidence intervals (e.g., 0.05 for 95% CI).
+        Significance level of the intervals and bands, such as 0.05 for 95
+        percent coverage.
     cband : bool, default=False
-        Whether to compute uniform confidence bands over all dose values.
+        Whether each band covers all doses, or all event times, at once.
+        With ``dose_est_method="cck"``, the ATT(d) band is a conservative
+        approximation.
     boot : bool, default=False
-        Whether to use bootstrap inference. If False, uses analytical
-        standard errors.
-    boot_type : str, default="multiplier"
-        Type of bootstrap to perform ("multiplier" or "empirical").
-        Only used when ``boot=True``.
+        Not used. The B-spline estimator always bootstraps its standard
+        errors.
+    boot_type : {"multiplier", "empirical"}, default="multiplier"
+        Bootstrap for event-study standard errors and bands. ``"empirical"``
+        resamples units and reruns the estimation in each draw. Since the dose
+        curves always use the multiplier bootstrap, it needs
+        ``aggregation="eventstudy"``. It doesn't support the event-time
+        options ``min_e``, ``max_e``, and ``balance_e``.
     biters : int, default=1000
-        Number of bootstrap iterations for inference. Only used when
-        ``boot=True``.
+        Number of bootstrap draws.
     clustervars : str, optional
-        Variable(s) for clustering standard errors. Not currently supported.
+        Variables for clustering standard errors. Clustering isn't supported
+        yet. Anything passed is ignored with a warning.
     base_period : {"varying", "universal"}, default="varying"
-        How to choose the base period for comparisons:
-
-        - "varying": Use different base periods for different timing groups
-        - "universal": Use the same base period for all comparisons
+        Base period of each comparison. ``"universal"`` measures every period
+        from the one before the cohort starts. ``"varying"`` measures each
+        period before treatment from the period just before it.
     random_state : int, Generator, optional
         Controls the randomness of the bootstrap. Pass an int for reproducible
         results across multiple function calls. Can also accept a NumPy
@@ -209,30 +194,66 @@ def cont_did(
     Returns
     -------
     DoseResult or PTEResult
-        Results object containing:
+        With ``aggregation="dose"``, a DoseResult containing:
 
-        - **dose** : Array of dose values at which effects are evaluated
-        - **att_d** : Dose-specific ATT estimates
-        - **att_d_se** : Standard errors for dose-specific ATT
-        - **acrt_d** : Dose-specific ACRT estimates (if target_parameter="slope")
-        - **acrt_d_se** : Standard errors for dose-specific ACRT
-        - **overall_att** : Overall average treatment effect
-        - **overall_att_se** : Standard error for overall ATT
-        - **overall_acrt** : Overall average causal response (if applicable)
-        - **overall_acrt_se** : Standard error for overall ACRT
+        - **dose**: Doses at which the curves are evaluated
+        - **att_d**: ATT(d) at each dose
+        - **att_d_se**: Standard errors of ATT(d)
+        - **att_d_crit_val**: Critical value of the ATT(d) band
+        - **acrt_d**: ACRT(d) at each dose
+        - **acrt_d_se**: Standard errors of ACRT(d)
+        - **acrt_d_crit_val**: Critical value of the ACRT(d) band
+        - **overall_att**: Overall ATT
+        - **overall_att_se**: Standard error of the overall ATT
+        - **overall_acrt**: Overall ACRT
+        - **overall_acrt_se**: Standard error of the overall ACRT
+
+        With ``aggregation="eventstudy"``, a PTEResult that holds the event
+        study in ``event_study``. Its overall effect averages the event-study
+        effects over event times e >= 0.
+
+    Notes
+    -----
+    The level effect and the average causal response at dose :math:`d` are
+
+    .. math::
+
+        ATT(d \mid d) = \mathbb{E}[Y_{t}(d) - Y_{t}(0) \mid D = d], \qquad
+        ACRT(d \mid d) = \left.\frac{\partial}{\partial l}
+        \mathbb{E}[Y_{t}(l) \mid D = d]\right|_{l=d}.
+
+    Under parallel trends, a comparison of the outcome changes of units at
+    dose :math:`d` with those of untreated units identifies the level effect,
+
+    .. math::
+
+        ATT(d \mid d) = \mathbb{E}[\Delta Y \mid D = d] - \mathbb{E}[\Delta Y \mid D = 0].
+
+    Averaging over the doses of the treated units gives the summaries
+
+    .. math::
+
+        ATT^o = \mathbb{E}[ATT(D \mid D) \mid D > 0], \qquad
+        ACRT^o = \mathbb{E}[ACRT(D \mid D) \mid D > 0].
+
+    With staggered adoption, these quantities are estimated for each cohort in
+    each period after treatment starts. The dose aggregation gives each cohort
+    its share of the treated units and splits that share evenly over the
+    cohort's periods after treatment starts.
 
     References
     ----------
 
-    .. [1] Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. (2024).
+    .. [1] Callaway, B., Goodman-Bacon, A., & Sant'Anna, P. H. C. (2024).
            "Difference-in-differences with a continuous treatment."
-           Journal of Econometrics, forthcoming.
+           American Economic Review, forthcoming.
            https://arxiv.org/abs/2107.02637
 
     .. [2] Chen, X., Christensen, T. M., & Kankanala, S. (2024).
            "Adaptive Estimation and Uniform Confidence Bands for Nonparametric
            Structural Functions and Elasticities."
-           https://arxiv.org/abs/2107.11869
+           The Review of Economic Studies, 92(1), 162-196.
+           https://doi.org/10.1093/restud/rdae025
     """
     if backend is not None:
         with use_backend(backend):
@@ -286,6 +307,11 @@ def cont_did(
         raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
     if boot_type not in ("weighted", "multiplier", "empirical"):
         raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted', 'multiplier', or 'empirical'.")
+    if boot_type == "empirical" and aggregation == "dose":
+        raise ValueError(
+            "boot_type='empirical' needs aggregation='eventstudy'. Since the dose curves always use the multiplier "
+            "bootstrap, use boot_type='multiplier' with aggregation='dose'."
+        )
     if not isinstance(anticipation, int | float) or anticipation < 0:
         raise ValueError(f"anticipation={anticipation} is not valid. Must be a non-negative number.")
     if degree < 1:
@@ -306,15 +332,12 @@ def cont_did(
     if allow_unbalanced_panel:
         raise NotImplementedError("Unbalanced panel not currently supported")
 
+    if weightsname is not None:
+        raise NotImplementedError("Sampling weights are not supported yet. Use weightsname=None.")
+
     if clustervars is not None:
         warnings.warn("Two-way clustering not currently supported", UserWarning)
         clustervars = None
-
-    if anticipation != 0:
-        warnings.warn("Anticipation not fully tested yet, may not work correctly", UserWarning)
-
-    if weightsname is not None:
-        warnings.warn("Sampling weights not fully tested yet", UserWarning)
 
     if dose_est_method == "cck" and aggregation != "dose":
         raise ValueError("Event study not supported with CCK estimator yet, use aggregation='dose'")
@@ -331,6 +354,13 @@ def cont_did(
         data = get_group(data, idname=idname, tname=tname, treatname=dname)
         data = data.rename({"G": ".G"})
         gname = ".G"
+        treated_starts = data.filter(pl.col(gname) > 0)[gname]
+        if treated_starts.len() > 0 and (treated_starts == data[tname].min()).all():
+            raise ValueError(
+                "With gname=None, a unit's group is the first period in which its dose is positive. Since every "
+                "unit with a positive dose already has one in the first period, no unit is observed before "
+                "treatment. Pass gname or record the dose as 0 before treatment starts."
+            )
 
     req_pre_periods = 0 if dose_est_method == "cck" else 1
 
@@ -371,12 +401,16 @@ def cont_did(
             **kwargs,
         )
 
+    subset_fun = cont_two_by_two_subset
     if aggregation == "eventstudy":
         if target_parameter == "slope":
             attgt_fun = cont_did_acrt
             gt_type = "dose"
         else:
+            # A level effect averaged over doses compares the cohort with untreated units. Its cells
+            # take the binary treatment indicator in place of the dose.
             attgt_fun = pte_attgt
+            subset_fun = _two_by_two_subset
             gt_type = "att"
     elif target_parameter in ["level", "slope"]:
         attgt_fun = cont_did_acrt
@@ -397,7 +431,7 @@ def cont_did(
         idname=cont_did_data.config.idname,
         data=cont_did_data.data,
         setup_pte_fun=setup_fn,
-        subset_fun=cont_two_by_two_subset,
+        subset_fun=subset_fun,
         attgt_fun=attgt_fun,
         xformla=xformla,
         target_parameter=target_parameter,
@@ -455,13 +489,20 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
         NamedTuple containing:
 
         - **attgt**: Overall ACRT estimate
-        - **inf_func**: Influence function for inference
+        - **inf_func**: Influence function of the overall ACRT on the cell's units
         - **extra_gt_returns**: Dictionary with detailed results including
-          dose-specific ATT and ACRT estimates
+          dose-specific ATT and ACRT estimates, the influence function of the
+          cell's binary ATT, and the pieces of the dose-specific influence functions
     """
-    gt_data = _get_first_difference(gt_data, "id", "Y", "period")
-
-    post_data = gt_data.filter(pl.col("name") == "post")
+    # Under a universal base, a pre-treatment cell's base period comes after the cell's own period. The
+    # change in outcomes therefore runs from the named base period rather than from the previous row.
+    pre_outcomes = gt_data.filter(pl.col("name") == "pre").select("id", pl.col("Y").alias(".y_pre"))
+    post_data = (
+        gt_data.filter(pl.col("name") == "post")
+        .join(pre_outcomes, on="id", how="left")
+        .with_columns((pl.col("Y") - pl.col(".y_pre")).alias("dy"))
+        .sort("id")
+    )
     dose = post_data["D"].to_numpy()
     dy = post_data["dy"].to_numpy()
 
@@ -518,8 +559,18 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
     avg_deriv = np.mean(x_deriv_overall, axis=0)
     inf_func2 = score @ bread @ np.concatenate([np.zeros(1), avg_deriv])
 
-    inf_func = np.zeros(len(post_data))
-    inf_func[treated_mask] = inf_func1 + inf_func2
+    n_cell = len(post_data)
+    # The ACRT uses treated units only. Scaling by n1/n_treated here turns the n/n1 factor that
+    # compute_pte applies into n/n_treated.
+    inf_func = np.zeros(n_cell)
+    inf_func[treated_mask] = (n_cell / n_treated) * (inf_func1 + inf_func2)
+
+    comparison_mask = ~treated_mask
+    n_comparison = int(np.sum(comparison_mask))
+    att_inf_func = np.zeros(n_cell)
+    att_inf_func[treated_mask] = (n_cell / n_treated) * (y_treated - np.mean(y_treated))
+    if n_comparison > 0:
+        att_inf_func[comparison_mask] = -(n_cell / n_comparison) * (dy[comparison_mask] - control_mean)
 
     extra_gt_returns = {
         "att_d": att_d,
@@ -531,6 +582,9 @@ def cont_did_acrt(gt_data, dvals=None, degree=3, knots=None, **kwargs):
         "bread": bread,
         "x_expanded": x_expanded,
         "score": score,
+        "att_inf_func": att_inf_func,
+        "treated": treated_mask,
+        "boundary_knots": boundary_knots,
     }
 
     return AttgtResult(attgt=acrt_overall, inf_func=inf_func, extra_gt_returns=extra_gt_returns)
@@ -554,7 +608,9 @@ def cont_two_by_two_subset(
         base_period_val = main_base_period
 
     if control_group == "notyettreated":
-        unit_mask = (pl.col("G") == g) | (pl.col("G") > tp)
+        # A comparison unit must be untreated, and not yet anticipating treatment, in both periods of the cell.
+        latest_untreated = max(tp, base_period_val) + anticipation
+        unit_mask = (pl.col("G") == g) | (pl.col("G") > latest_untreated)
     else:
         unit_mask = (pl.col("G") == g) | pl.col("G").is_infinite()
 
@@ -568,7 +624,7 @@ def cont_two_by_two_subset(
     subset_data = subset_data.with_columns((pl.col("D") * (pl.col("G") == g).cast(pl.Float64)).alias("D"))
 
     n1 = subset_data["id"].n_unique()
-    all_ids = data["id"].unique().to_numpy()
+    all_ids = np.unique(data["id"].to_numpy())
     subset_ids = subset_data["id"].unique().to_numpy()
     disidx = np.isin(all_ids, subset_ids)
 
@@ -613,11 +669,15 @@ def _estimate_cck(cont_did_data, original_data, random_state=None, **kwargs):
 
     dvals = np.asarray(dvals).reshape(-1, 1)
 
+    alp = config.alp
+    cband = config.cband
+
     cck_res = npiv(
         y=dy_centered[dose > 0],
         x=dose[dose > 0].reshape(-1, 1),
         w=dose[dose > 0].reshape(-1, 1),
         x_grid=dvals,
+        alpha=alp,
         knots="quantiles",
         biters=999,
         j_x_degree=3,
@@ -626,25 +686,26 @@ def _estimate_cck(cont_did_data, original_data, random_state=None, **kwargs):
     )
 
     att_d = cck_res.h
-    att_d_se = cck_res.asy_se
+    # npiv treats the comparison mean as known. Since ATT(d) subtracts the estimated mean, the variance
+    # of that mean adds to npiv's.
+    n_control = int(np.sum(dose == 0))
+    se_m0 = np.sqrt(np.sum((dy[dose == 0] - m0) ** 2)) / n_control
+    att_d_se = np.sqrt(to_numpy(cck_res.asy_se) ** 2 + se_m0**2)
 
-    alp = config.alp
-    cband = config.cband
-
-    if cband:
-        att_d_crit_val = (
-            (cck_res.h_upper[0] - att_d[0]) / att_d_se[0] if att_d_se[0] > 0 else stats.norm.ppf(1 - alp / 2)
-        )
+    pointwise_crit_val = stats.norm.ppf(1 - alp / 2)
+    # A band that covers every dose at once can't be narrower than the pointwise intervals.
+    if cband and cck_res.cv is not None and np.isfinite(cck_res.cv):
+        att_d_crit_val = max(float(cck_res.cv), pointwise_crit_val)
     else:
-        att_d_crit_val = stats.norm.ppf(1 - alp / 2)
+        att_d_crit_val = pointwise_crit_val
 
     acrt_d = cck_res.deriv if hasattr(cck_res, "deriv") else np.gradient(att_d, dvals.flatten())
     acrt_d_se = cck_res.deriv_asy_se if hasattr(cck_res, "deriv_asy_se") else np.full_like(acrt_d, np.nan)
 
-    if cband and hasattr(cck_res, "h_upper_deriv") and acrt_d_se[0] > 0:
-        acrt_d_crit_val = (cck_res.h_upper_deriv[0] - acrt_d[0]) / acrt_d_se[0]
+    if cband and cck_res.cv_deriv is not None and np.isfinite(cck_res.cv_deriv):
+        acrt_d_crit_val = max(float(cck_res.cv_deriv), pointwise_crit_val)
     else:
-        acrt_d_crit_val = att_d_crit_val
+        acrt_d_crit_val = pointwise_crit_val
 
     ptep = _build_pte_params(cont_did_data, gt_type="att")
 
@@ -713,7 +774,7 @@ def _estimate_cck(cont_did_data, original_data, random_state=None, **kwargs):
 
     overall_att = overall_att_res.overall_att.overall_att
     overall_att_se = overall_att_res.overall_att.overall_se
-    overall_att_inf_func = overall_att_res.overall_att.influence_func
+    overall_att_inf_func = overall_att_res.overall_att.influence_func["overall"]
 
     result = DoseResult(
         dose=to_numpy(dvals.flatten() if dvals.ndim > 1 else dvals),

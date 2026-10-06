@@ -27,6 +27,7 @@ def ddd_panel(
     influence_func=False,
     alpha=0.05,
     random_state=None,
+    cluster=None,
 ):
     r"""Compute the 2-period doubly robust DDD estimator for the ATT with panel data.
 
@@ -98,8 +99,8 @@ def ddd_panel(
     boot : bool, default False
         Whether to use bootstrap for inference.
     boot_type : {"multiplier", "weighted"}, default "multiplier"
-        Type of bootstrap. Multiplier bootstrap uses Rademacher weights on the
-        influence function; weighted bootstrap re-estimates with exponential weights.
+        Type of bootstrap. The multiplier bootstrap draws Mammen weights on the
+        influence function. The weighted bootstrap re-estimates with exponential weights.
     biters : int, default 1000
         Number of bootstrap repetitions.
     influence_func : bool, default False
@@ -108,6 +109,9 @@ def ddd_panel(
         Significance level for confidence intervals.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
+    cluster : ndarray, optional
+        A 1D array that gives the cluster of each unit for clustered standard
+        errors. It requires boot=True and boot_type="multiplier".
 
     Returns
     -------
@@ -151,6 +155,9 @@ def ddd_panel(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
+    if cluster is not None and not (boot and boot_type == "multiplier"):
+        raise ValueError("cluster requires boot=True and boot_type='multiplier'.")
+
     xp = get_backend()
     y1, y0, subgroup, covariates, i_weights, n_units = _validate_inputs(xp, y1, y0, subgroup, covariates, i_weights)
 
@@ -198,7 +205,7 @@ def ddd_panel(
         lci = ddd_att - z_val * se_ddd
     else:
         if boot_type == "multiplier":
-            boot_result = mboot_ddd(inf_func, biters, alpha, random_state=random_state)
+            boot_result = mboot_ddd(inf_func, biters, alpha, cluster=cluster, random_state=random_state)
             dr_boot = boot_result.bres.flatten()
             se_ddd = boot_result.se[0]
             cv = boot_result.crit_val if np.isfinite(boot_result.crit_val) else z_val

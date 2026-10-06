@@ -127,7 +127,7 @@ def basis_dimension(basis="additive", degree=None, segments=None):
     """Compute dimension of multivariate basis without constructing it.
 
     Efficiently computes the dimension of additive, tensor product, or
-    generalized linear product (GLP) bases without the memory overhead
+    generalized polynomial (glp) bases without the memory overhead
     of constructing the full basis matrix.
 
     Parameters
@@ -137,7 +137,7 @@ def basis_dimension(basis="additive", degree=None, segments=None):
 
         - "additive": Sum of univariate bases
         - "tensor": Full tensor product
-        - "glp": Generalized linear product
+        - "glp": Generalized polynomial
     degree : ndarray, optional
         Polynomial degrees for each variable. Must be provided with segments.
     segments : ndarray, optional
@@ -200,7 +200,7 @@ def basis_dimension(basis="additive", degree=None, segments=None):
 
 
 def _compute_glp_dimension_step(d1, d2, nd1, pd12):
-    """Compute a step in the GLP dimension calculation."""
+    """Compute a step in the glp dimension calculation."""
     if d2 == 1:
         return {"d12": pd12, "nd1": nd1}
 

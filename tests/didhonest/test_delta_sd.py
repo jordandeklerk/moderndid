@@ -230,3 +230,47 @@ def test_edge_case_all_zero_beta():
 
     assert isinstance(result, DeltaSDResult)
     assert result.id_lb <= 0 <= result.id_ub
+
+
+@pytest.mark.parametrize(
+    "m_bar,expected",
+    [
+        (0.0, [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0]),
+        (0.01, [0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0]),
+    ],
+)
+def test_conditional_cs_sd_single_post_period_conditional(one_post_event_study, m_bar, expected):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    result = compute_conditional_cs_sd(**kwargs, m_bar=m_bar, hybrid_flag="ARP")
+
+    assert result["accept"].astype(int).tolist() == expected
+
+
+def test_conditional_cs_sd_single_post_period_hybrids(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    flci = compute_conditional_cs_sd(**kwargs, m_bar=0.01, hybrid_flag="FLCI")
+    lf_first = compute_conditional_cs_sd(**kwargs, m_bar=0.01, hybrid_flag="LF")
+    lf_second = compute_conditional_cs_sd(**kwargs, m_bar=0.01, hybrid_flag="LF")
+
+    assert flci["accept"][np.argmin(np.abs(flci["grid"] - 0.045))] == 1
+    assert np.array_equal(lf_first["accept"], lf_second["accept"])

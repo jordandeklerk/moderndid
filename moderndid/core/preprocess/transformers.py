@@ -25,7 +25,13 @@ from .constants import (
     ControlGroup,
     DataFormat,
 )
-from .utils import create_ddd_subgroups, extract_vars_from_formula, make_balanced_panel, validate_subgroup_sizes
+from .utils import (
+    create_ddd_subgroups,
+    extract_vars_from_formula,
+    get_formula_columns,
+    make_balanced_panel,
+    validate_subgroup_sizes,
+)
 
 
 class DataTransformer(Protocol):
@@ -74,20 +80,9 @@ class MissingDataHandler(BaseTransformer):
         df = to_polars(data)
 
         if isinstance(config, DIDInterConfig):
-            # Rows missing a control have no adjusted outcome and leave before baselines and switch dates are set.
-            if config.xformla and config.xformla != "~1":
-                n_orig = len(df)
-                df = df.drop_nulls(subset=extract_vars_from_formula(config.xformla))
-                if len(df) < n_orig:
-                    warnings.warn(f"Dropped {n_orig - len(df)} rows from original data due to missing covariates")
-            df = df.with_columns(
-                [
-                    pl.col(config.dname).mean().over(config.gname).alias("_mean_D"),
-                    pl.col(config.yname).mean().over(config.gname).alias("_mean_Y"),
-                ]
-            )
-            df = df.filter(pl.col("_mean_D").is_not_null() & pl.col("_mean_Y").is_not_null())
-            df = df.drop(["_mean_D", "_mean_Y"])
+            df, messages = self.drop_didinter_rows(df, config)
+            for message in messages:
+                warnings.warn(message)
             return df
 
         n_orig = len(df)
@@ -104,6 +99,52 @@ class MissingDataHandler(BaseTransformer):
             warnings.warn(f"Dropped {n_orig - n_new} rows from original data due to missing values")
 
         return data_clean
+
+    @staticmethod
+    def drop_didinter_rows(data, config):
+        """Drop the rows and groups that the intertemporal estimator cannot use.
+
+        Rows missing a control have no adjusted outcome. Since the clustered variance needs the
+        cluster of every row, rows missing the cluster leave as well. Both kinds of rows leave before
+        baselines and switch dates are set. Groups whose treatment or outcome is missing in every
+        remaining row leave next.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Panel before preprocessing.
+        config : DIDInterConfig
+            Configuration that names the controls and the cluster.
+
+        Returns
+        -------
+        df : polars.DataFrame
+            The panel without those rows and groups.
+        messages : list of str
+            One warning message for each kind of row dropped. The list is empty when no row is dropped.
+        """
+        df = to_polars(data)
+        messages = []
+        if config.xformla and config.xformla != "~1":
+            n_orig = len(df)
+            df = df.drop_nulls(subset=extract_vars_from_formula(config.xformla))
+            if len(df) < n_orig:
+                messages.append(f"Dropped {n_orig - len(df)} rows from original data due to missing covariates")
+        if config.cluster:
+            n_orig = len(df)
+            df = df.drop_nulls(subset=config.cluster)
+            if len(df) < n_orig:
+                messages.append(
+                    f"Dropped {n_orig - len(df)} rows from original data due to a missing cluster in '{config.cluster}'"
+                )
+        df = df.with_columns(
+            [
+                pl.col(config.dname).mean().over(config.gname).alias("_mean_D"),
+                pl.col(config.yname).mean().over(config.gname).alias("_mean_Y"),
+            ]
+        )
+        df = df.filter(pl.col("_mean_D").is_not_null() & pl.col("_mean_Y").is_not_null())
+        return df.drop(["_mean_D", "_mean_Y"]), messages
 
 
 class WeightNormalizer(BaseTransformer):
@@ -290,7 +331,7 @@ class RepeatedCrossSectionHandler(BaseTransformer):
 
 
 class TimePeriodRecoder(BaseTransformer):
-    """Time period recoder."""
+    """Recode the time and group columns to period positions."""
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -301,7 +342,26 @@ class TimePeriodRecoder(BaseTransformer):
         original_periods = sorted(df[config.tname].unique().to_list())
         time_map = {t: i + 1 for i, t in enumerate(original_periods)}
 
-        df = df.with_columns(pl.col(config.tname).replace(time_map).alias(config.tname))
+        # Since groups are compared with periods, they take the same positions. A start between two observed
+        # periods has no position. Moving it to a neighboring period would shift the group's event times.
+        groups = df[config.gname].to_numpy().astype(float)
+        finite = np.isfinite(groups)
+        between = finite & (groups > original_periods[0]) & ~np.isin(groups, original_periods)
+        if np.any(between):
+            between_groups = np.unique(groups[between])
+            starts = ", ".join(f"{g:g}" for g in between_groups)
+            which = f"group {starts}" if len(between_groups) == 1 else f"groups {starts}"
+            raise ValueError(
+                f"Treatment starts between observed periods for {which}. Each group must be an observed period "
+                "or 0. Recode such a group to the observed period from which its effects should count, such as "
+                "the first period that observes it as treated."
+            )
+        groups[finite] = np.searchsorted(original_periods, groups[finite], side="left") + 1
+
+        df = df.with_columns(
+            pl.col(config.tname).replace(time_map).alias(config.tname),
+            pl.Series(config.gname, groups),
+        )
         config.time_map = time_map
 
         return df
@@ -328,13 +388,61 @@ class EarlyTreatmentGroupFilter(BaseTransformer):
         groups_to_drop = [g for g in glist if g < min_valid_group]
 
         if groups_to_drop:
+            period_labels = {index: period for period, index in (config.time_map or {}).items()}
             warnings.warn(
-                f"Dropped {len(groups_to_drop)} groups treated before period {min_valid_group} "
+                f"Dropped {len(groups_to_drop)} groups treated before period "
+                f"{period_labels.get(min_valid_group, min_valid_group)} "
                 f"(required_pre_periods={config.required_pre_periods}, anticipation={config.anticipation})"
             )
             df = df.filter(~pl.col(config.gname).is_in(groups_to_drop))
 
         return df
+
+
+class ContDIDControlGroupFilter(BaseTransformer):
+    """Keep the periods that have untreated comparison units."""
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, ContDIDConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        groups = df[config.gname]
+        finite_groups = groups.filter(groups.is_finite())
+        if groups.is_infinite().any() or finite_groups.is_empty():
+            return df
+
+        if config.control_group == ControlGroup.NEVER_TREATED:
+            raise ValueError(
+                "control_group='nevertreated' needs never-treated units. The data has none. "
+                "Use control_group='notyettreated' instead."
+            )
+
+        # Without never-treated units, nobody is untreated from the start of the last cohort's
+        # treatment (less anticipation) on.
+        cutoff = finite_groups.max() - config.anticipation
+        kept = df.filter(pl.col(config.tname) < cutoff)
+        n_kept_periods = kept[config.tname].n_unique()
+        if n_kept_periods < 2:
+            raise ValueError(
+                "The data has no never-treated units. Since fewer than two periods come before the last "
+                "cohort starts treatment, no period has untreated units to compare with."
+            )
+
+        period_labels = {position: period for period, position in (config.time_map or {}).items()}
+        # Without a kept period in which some cohort is treated, no effect is left to estimate.
+        if not (kept[config.gname] <= kept[config.tname].max()).any():
+            raise ValueError(
+                "The data has no never-treated units. Since no cohort starts treatment before period "
+                f"{period_labels.get(cutoff, cutoff)}, no treated period has untreated units to compare with."
+            )
+
+        warnings.warn(
+            "The data has no never-treated units. Since no unit is untreated from period "
+            f"{period_labels.get(cutoff, cutoff)} on, those periods were dropped."
+        )
+        return kept
 
 
 class DoseValidatorTransformer(BaseTransformer):
@@ -366,6 +474,39 @@ class DoseValidatorTransformer(BaseTransformer):
         if n_invalid > 0:
             warnings.warn(f"Dropped {n_invalid} post-treatment observations with missing or zero dose values")
             df = df.filter(~invalid_mask)
+
+        if not config.idname:
+            return df
+
+        # Each cell reads a unit's dose from a single period, even a cell before treatment starts. A dose
+        # recorded as 0 until then takes its value at the start of treatment.
+        start_dose = (
+            df.filter(pl.col(config.gname).is_finite() & (pl.col(config.tname) >= pl.col(config.gname)))
+            .group_by(config.idname)
+            .agg(pl.col(config.dname).sort_by(config.tname).first().alias(".start_dose"))
+        )
+        df = (
+            df.join(start_dose, on=config.idname, how="left")
+            .with_columns(
+                pl.when((pl.col(config.tname) < pl.col(config.gname)) & (pl.col(config.dname) == 0))
+                .then(pl.col(".start_dose").fill_null(0))
+                .otherwise(pl.col(config.dname))
+                .alias(config.dname)
+            )
+            .drop(".start_dose")
+        )
+
+        # A dose that moved over time would give the cells different treatments.
+        dose_range = df.group_by(config.idname).agg(
+            (pl.col(config.dname).max() - pl.col(config.dname).min()).alias("range"),
+            pl.col(config.dname).abs().max().alias("scale"),
+        )
+        n_varying = dose_range.filter(pl.col("range") > 1e-8 * (1 + pl.col("scale"))).height
+        if n_varying > 0:
+            raise ValueError(
+                f"Each unit's dose in '{config.dname}' must stay the same over time. Before treatment starts, "
+                f"the dose may also be recorded as 0. The dose changes over time for {n_varying} units."
+            )
 
         return df
 
@@ -416,7 +557,9 @@ class ConfigUpdater:
         else:
             config.data_format = DataFormat.REPEATED_CROSS_SECTION
 
-        if len(tlist) == 2:
+        # With two periods there is one cell. A dose-response band still spans the dose grid.
+        dose_band = isinstance(config, ContDIDConfig) and config.aggregation == "dose"
+        if len(tlist) == 2 and not dose_band:
             config.cband = False
 
 
@@ -438,7 +581,8 @@ class PrePostColumnSelector(BaseTransformer):
             cols_to_keep.append(config.weightsname)
 
         if config.xformla and config.xformla != "~1":
-            formula_vars = extract_vars_from_formula(config.xformla)
+            # Since PrePostCovariateProcessor evaluates the formula itself, transformed terms stay allowed here.
+            formula_vars = get_formula_columns(config.xformla, df.columns)
             formula_vars = [v for v in formula_vars if v != config.yname]
             cols_to_keep.extend(formula_vars)
 
@@ -580,6 +724,24 @@ class DIDInterColumnSelector(BaseTransformer):
         return df
 
 
+class DIDInterTimeRanker(BaseTransformer):
+    """Replace each period by its rank among the observed periods.
+
+    The estimator moves through periods one step at a time, for example from the period before a
+    group's first switch to the periods after it. Ranking puts consecutive observed periods one step
+    apart however the periods are coded. The sorted original periods go to ``config.time_periods``.
+    """
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig):
+            return to_polars(data)
+
+        df = to_polars(data)
+        config.time_periods = np.sort(df[config.tname].drop_nulls().unique().to_numpy())
+        return df.with_columns(pl.col(config.tname).rank("dense").cast(pl.Int64))
+
+
 class SwitcherIdentifier(BaseTransformer):
     """Identify switchers."""
 
@@ -707,26 +869,6 @@ class SwitcherIdentifier(BaseTransformer):
         return df
 
 
-class SwitcherFilter(BaseTransformer):
-    """Filter units based on switchers parameter."""
-
-    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
-        """Transform data."""
-        if not isinstance(config, DIDInterConfig):
-            return to_polars(data)
-
-        df = to_polars(data)
-
-        if config.switchers == "in":
-            valid_units = df.filter((pl.col("S_g") == 1) | (pl.col("S_g") == 0))[config.gname].unique().to_list()
-            df = df.filter(pl.col(config.gname).is_in(valid_units))
-        elif config.switchers == "out":
-            valid_units = df.filter((pl.col("S_g") == -1) | (pl.col("S_g") == 0))[config.gname].unique().to_list()
-            df = df.filter(pl.col(config.gname).is_in(valid_units))
-
-        return df
-
-
 class FgVariationFilter(BaseTransformer):
     """Filter out baseline treatment groups with no variation in F_g."""
 
@@ -754,7 +896,7 @@ class FgVariationFilter(BaseTransformer):
 
 
 class ControlsTimeFilter(BaseTransformer):
-    """Filter to cells with at least one never-switcher as control."""
+    """Keep the periods in which a baseline treatment still has a group that has not switched."""
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -763,52 +905,85 @@ class ControlsTimeFilter(BaseTransformer):
 
         df = to_polars(data)
 
-        df = df.with_columns(pl.when(pl.col("F_g") == float("inf")).then(1).otherwise(0).alias("_never_change_d"))
+        # A group is a control until its first switch. A period without a never-switcher still has
+        # controls when some group with the same baseline treatment switches later.
+        df = df.with_columns((pl.col("F_g") > pl.col(config.tname)).cast(pl.Int64).alias("_not_yet_switched"))
 
         ctrl_group = [config.tname, "d_sq"]
         if config.trends_nonparam:
             ctrl_group.extend(config.trends_nonparam)
 
-        df = df.with_columns(pl.col("_never_change_d").max().over(ctrl_group).alias("_controls_time"))
+        df = df.with_columns(pl.col("_not_yet_switched").max().over(ctrl_group).alias("_controls_time"))
 
         df = df.filter(pl.col("_controls_time") > 0)
-        df = df.drop(["_never_change_d", "_controls_time"])
+        df = df.drop(["_not_yet_switched", "_controls_time"])
 
         return df
 
 
 class ContinuousTreatmentProcessor(BaseTransformer):
-    """Process continuous treatment for DIDInter."""
+    """Pool the groups of a continuous baseline treatment into one baseline.
+
+    Since few groups share a value of a continuous baseline treatment, groups with the same
+    baseline cannot serve as each other's controls. With ``continuous`` set to a degree :math:`p`,
+    the baseline goes to ``d_sq_orig`` and its powers up to :math:`p` go to ``d_sq_1``, ...,
+    ``d_sq_p``. Setting ``d_sq`` to 0 for every group lets all groups compare with each other.
+    :class:`ContinuousTreatmentBinarizer` later adds the controls that let the outcome trends
+    depend on the baseline.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
-        if not isinstance(config, DIDInterConfig):
+        if not isinstance(config, DIDInterConfig) or config.continuous <= 0:
             return to_polars(data)
 
-        if config.continuous <= 0:
-            return to_polars(data)
-
-        df = to_polars(data)
-        degree_pol = config.continuous
-
-        df = df.with_columns(pl.col("d_sq").alias("d_sq_orig"))
-
-        for p in range(1, degree_pol + 1):
-            df = df.with_columns((pl.col("d_sq_orig") ** p).alias(f"d_sq_{p}"))
-
-        df = df.with_columns(pl.lit(0).alias("d_sq"))
-
-        mapping_df = (
-            df.select("d_sq")
-            .filter(pl.col("d_sq").is_not_null())
-            .unique()
-            .sort("d_sq")
-            .with_row_index("d_sq_int", offset=1)
-            .select(["d_sq", "d_sq_int"])
+        df = to_polars(data).with_columns(pl.col("d_sq").cast(pl.Float64).alias("d_sq_orig"))
+        df = df.with_columns(
+            (pl.col("d_sq_orig") ** power).alias(f"d_sq_{power}") for power in range(1, config.continuous + 1)
         )
-        df = df.join(mapping_df, on="d_sq", how="left")
+        return df.with_columns(pl.lit(0.0).alias("d_sq"))
 
-        return df
+
+class ContinuousTreatmentBinarizer(BaseTransformer):
+    """Turn a continuous treatment into the signed indicator of having switched.
+
+    The original treatment goes to ``{dname}_orig``. The treatment becomes ``S_g`` from ``F_g`` on
+    and 0 before. ``d_fg`` and the treatment paths then track the switch and its direction. The
+    original treatment and baseline still measure the size of each switch for the normalized
+    effects and the average total effect.
+
+    For every period :math:`j` after the first and every power :math:`k` up to ``continuous``, the
+    step also adds the control ``_baseline_trend_{j}_{k}``. It interacts the indicator of period
+    :math:`j` or later with the :math:`k`-th power of the baseline treatment. The first differences
+    of these controls let the outcome evolution of each period depend on a polynomial in the
+    baseline treatment.
+    """
+
+    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
+        """Transform data."""
+        if not isinstance(config, DIDInterConfig) or config.continuous <= 0:
+            return to_polars(data)
+
+        tname = config.tname
+        df = to_polars(data)
+        switched = pl.col("F_g") != float("inf")
+        df = df.with_columns(
+            pl.col(config.dname).alias(f"{config.dname}_orig"),
+            pl.when(switched)
+            .then(pl.col("S_g") * (pl.col(tname) >= pl.col("F_g")).cast(pl.Float64))
+            .otherwise(None)
+            .alias(config.dname),
+            pl.when(switched).then(pl.col("S_g")).otherwise(pl.col("d_sq")).cast(pl.Float64).alias("d_fg"),
+        )
+
+        periods = sorted(df[tname].unique().to_list())
+        return df.with_columns(
+            ((pl.col(tname) >= period).cast(pl.Float64) * pl.col(f"d_sq_{power}")).alias(
+                f"_baseline_trend_{period}_{power}"
+            )
+            for period in periods[1:]
+            for power in range(1, config.continuous + 1)
+        )
 
 
 class DIDInterPanelBalancer(BaseTransformer):
@@ -844,56 +1019,46 @@ class DIDInterConfigUpdater:
         """Update config."""
         df = to_polars(data)
 
+        max_effects, max_placebo = DIDInterConfigUpdater.estimable_horizons(df, config)
+        if max_effects == 0:
+            kind = {"in": " whose treatment increases", "out": " whose treatment decreases"}.get(config.switchers, "")
+            raise ValueError(
+                f"No effect can be estimated because no switching group{kind} has a group with the same baseline "
+                "treatment that has not switched yet."
+            )
+
         tlist = sorted(df[config.tname].unique().to_list())
         n_groups = df[config.gname].n_unique()
 
-        config.time_periods = np.array(tlist)
+        # The data holds period ranks. Rank r stands for the r-th period that DIDInterTimeRanker recorded.
+        config.time_periods = np.asarray(config.time_periods)[np.array(tlist, dtype=int) - 1]
         config.time_periods_count = len(tlist)
         config.n_groups = n_groups
         config.id_count = n_groups
+        config.max_effects_available = max_effects
+        config.max_placebo_available = max_placebo
 
-        T_max = int(df[config.tname].max())
-        T_min = int(df[config.tname].min())
-
-        switchers = df.filter(pl.col("F_g") != float("inf"))
-        if len(switchers) > 0:
-            max_effects = (
-                switchers.group_by(config.gname)
-                .agg((pl.lit(T_max) - pl.col("F_g") + 1).max().alias("max_exp"))
-                .select("max_exp")
-                .max()
-                .item()
-            )
-            max_placebo = (
-                switchers.group_by(config.gname)
-                .agg((pl.col("F_g") - pl.lit(T_min) - 1).max().alias("max_pre"))
-                .select("max_pre")
-                .max()
-                .item()
-            )
-            config.max_effects_available = int(max_effects) if max_effects is not None else 0
-            config.max_placebo_available = int(max_placebo) if max_placebo is not None else 0
-        else:
-            config.max_effects_available = 0
-            config.max_placebo_available = 0
-
-        if config.effects > config.max_effects_available:
+        if config.effects > max_effects:
             warnings.warn(
-                f"Requested effects={config.effects} but only {config.max_effects_available} "
-                f"post-treatment periods available. Using effects={config.max_effects_available}.",
+                f"Requested effects={config.effects} but effects can only be estimated up to horizon {max_effects}. "
+                f"Using effects={max_effects}.",
                 UserWarning,
                 stacklevel=4,
             )
-            config.effects = config.max_effects_available
+            config.effects = max_effects
 
-        if config.placebo > config.max_placebo_available:
+        placebo_cap = min(max_placebo, config.effects)
+        if config.placebo > placebo_cap:
+            if placebo_cap < max_placebo:
+                reason = "the number of placebos cannot exceed the number of effects"
+            else:
+                reason = f"placebos can only be estimated up to horizon {max_placebo}"
             warnings.warn(
-                f"Requested placebo={config.placebo} but only {config.max_placebo_available} "
-                f"pre-treatment periods available. Using placebo={config.max_placebo_available}.",
+                f"Requested placebo={config.placebo} but {reason}. Using placebo={placebo_cap}.",
                 UserWarning,
                 stacklevel=4,
             )
-            config.placebo = config.max_placebo_available
+            config.placebo = placebo_cap
 
         if config.allow_unbalanced_panel:
             unit_counts = df.group_by(config.gname).len()
@@ -905,9 +1070,69 @@ class DIDInterConfigUpdater:
         else:
             config.data_format = DataFormat.PANEL
 
+    @staticmethod
+    def switcher_directions(config):
+        """Get the treatment directions of the switchers that the estimates cover.
+
+        With ``switchers="in"`` or ``"out"`` only one direction is estimated. The groups that switch the
+        other way stay in the data as controls until they switch.
+
+        Parameters
+        ----------
+        config : DIDInterConfig
+            Configuration whose ``switchers`` names the directions.
+
+        Returns
+        -------
+        list of int
+            The values of ``S_g`` to estimate, 1 for treatment increases and -1 for decreases.
+        """
+        return {"in": [1], "out": [-1]}.get(config.switchers, [1, -1])
+
+    @staticmethod
+    def estimable_horizons(data, config):
+        """Count the effects and placebos that the switchers in the data reach.
+
+        An effect needs a group with the same baseline treatment that has not switched yet. Since
+        ``T_g`` is the last period with such a group, a switcher reaches horizon l when
+        ``F_g - 1 + l <= T_g``. A placebo at horizon l also needs the period ``F_g - 1 - l``. Only
+        the switchers that reach the effect at horizon l enter that placebo.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Preprocessed panel with the columns ``F_g``, ``S_g``, and ``T_g``.
+        config : DIDInterConfig
+            Configuration whose ``switchers`` sets the switchers that count.
+
+        Returns
+        -------
+        max_effects : int
+            Number of effects that some switcher reaches, 0 when none does.
+        max_placebo : int
+            Number of placebos that some switcher reaches.
+        """
+        df = to_polars(data)
+        directions = DIDInterConfigUpdater.switcher_directions(config)
+        switchers = df.filter((pl.col("F_g") != float("inf")) & pl.col("S_g").is_in(directions))
+        if switchers.is_empty():
+            return 0, 0
+
+        effect_horizons = pl.col("T_g") - pl.col("F_g") + 1
+        # Since periods are ranks from 1, F_g - 2 periods come before the last period before the switch.
+        placebo_horizons = pl.min_horizontal(effect_horizons, pl.col("F_g") - 2)
+        max_effects, max_placebo = switchers.select(
+            effect_horizons.max().alias("effects"), placebo_horizons.max().alias("placebo")
+        ).row(0)
+        # Since the differenced outcome of trends_lin starts one period later, one placebo fewer fits.
+        return int(max_effects), max(int(max_placebo) - int(config.trends_lin), 0)
+
 
 class TrendsLinTransformer(BaseTransformer):
-    """Apply first-differencing transformation for linear trends."""
+    """Apply first-differencing transformation for linear trends.
+
+    The outcome in levels stays in ``_outcome_levels`` for the heterogeneity regressions.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -924,7 +1149,8 @@ class TrendsLinTransformer(BaseTransformer):
         df = df.sort([config.gname, config.tname])
 
         df = df.with_columns(
-            (pl.col(config.yname) - pl.col(config.yname).shift(1).over(config.gname)).alias(config.yname)
+            pl.col(config.yname).alias("_outcome_levels"),
+            (pl.col(config.yname) - pl.col(config.yname).shift(1).over(config.gname)).alias(config.yname),
         )
 
         if config.xformla and config.xformla != "~1":
@@ -1185,7 +1411,12 @@ class DynBalancingColumnSelector(BaseTransformer):
 
 
 class DynBalancingPanelBalancer(BaseTransformer):
-    """Dynamic balancing panel balancer."""
+    """Keep the units with a full treatment history and an observed final outcome.
+
+    Rows outside the history window are gone by this step. Missing values
+    there never drop a unit. Missing covariates stay in place as NaN for the
+    estimator to handle period by period.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -1193,17 +1424,33 @@ class DynBalancingPanelBalancer(BaseTransformer):
             return to_polars(data)
 
         df = to_polars(data)
-        df = df.drop_nulls(subset=[config.yname, config.treatment_name])
+        idname = config.idname
+        noun = "stacked unit histories" if config.pooled else "units"
+        n_start = df[idname].n_unique()
 
-        n_periods = df[config.tname].n_unique()
-        counts = df.group_by(config.idname).len()
-        complete_ids = counts.filter(pl.col("len") == n_periods)[config.idname].to_list()
+        treatment = pl.col(config.treatment_name)
+        df = df.filter(treatment.is_not_null() & treatment.cast(pl.Float64).is_not_nan())
+        counts = df.group_by(idname).len()
+        complete_ids = counts.filter(pl.col("len") == len(config.ds1))[idname]
+        n_incomplete = n_start - len(complete_ids)
+        if n_incomplete > 0:
+            warnings.warn(
+                f"Dropped {n_incomplete} {noun} that are not observed in every period of the treatment history.",
+                stacklevel=2,
+            )
 
-        n_dropped = df[config.idname].n_unique() - len(complete_ids)
-        if n_dropped > 0:
-            warnings.warn(f"Dropped {n_dropped} units that are not observed in all periods.", stacklevel=2)
+        outcome = pl.col(config.yname)
+        observed_ids = df.filter(
+            (pl.col(config.tname) == config.final_period)
+            & pl.col(idname).is_in(complete_ids.implode())
+            & outcome.is_not_null()
+            & outcome.cast(pl.Float64).is_not_nan()
+        )[idname]
+        n_missing_outcome = len(complete_ids) - len(observed_ids)
+        if n_missing_outcome > 0:
+            warnings.warn(f"Dropped {n_missing_outcome} {noun} with a missing final-period outcome.", stacklevel=2)
 
-        df = df.filter(pl.col(config.idname).is_in(complete_ids))
+        df = df.filter(pl.col(idname).is_in(observed_ids.implode()))
 
         if len(df) == 0:
             raise ValueError("No observations remain after creating balanced panel.")
@@ -1212,14 +1459,18 @@ class DynBalancingPanelBalancer(BaseTransformer):
 
 
 class DynBalancingPooler(BaseTransformer):
-    """Dynamic balancing pooled regression reshaper."""
+    """Check the treatment-history window and stack earlier windows when pooling.
+
+    The history covers the ``len(ds1)`` periods that end at ``final_period``.
+    With ``pooled=True`` every complete window that ends between
+    ``initial_period`` and ``final_period`` becomes a separate unit history.
+    Its periods are shifted to line up with the last window. The default
+    ``initial_period`` is the earliest period at which a full window ends.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
         if not isinstance(config, DynBalancingConfig):
-            return to_polars(data)
-
-        if not config.pooled:
             return to_polars(data)
 
         df = to_polars(data)
@@ -1227,17 +1478,41 @@ class DynBalancingPooler(BaseTransformer):
         idname = config.idname
         length_treatment = len(config.ds1)
 
-        time_periods = sorted(df[tname].unique().to_list())
-        final_period = config.final_period if config.final_period is not None else max(time_periods)
-        initial_period = (
-            config.initial_period if config.initial_period is not None else final_period - length_treatment + 1
-        )
-        num_periods = final_period - initial_period
+        time_periods = sorted(df[tname].drop_nulls().unique().to_list())
+        if config.final_period is None:
+            config.final_period = int(time_periods[-1])
+        final_period = config.final_period
+        if final_period not in time_periods:
+            raise ValueError(f"final_period={final_period} is not in the data time periods.")
+
+        window = list(range(final_period - length_treatment + 1, final_period + 1))
+        absent = [p for p in window if p not in time_periods]
+        if absent:
+            raise ValueError(
+                f"The treatment history needs periods {window[0]} to {final_period}. Period "
+                f"{absent[0]} is not in the data. Time periods must be consecutive integers. "
+                "The history may also be too long for the available periods."
+            )
+
+        if not config.pooled:
+            if config.initial_period is not None:
+                warnings.warn("initial_period only applies when pooled=True. It is ignored.", stacklevel=2)
+            return df
+
+        if config.initial_period is None:
+            config.initial_period = int(time_periods[0]) + length_treatment - 1
+        elif config.initial_period not in time_periods:
+            raise ValueError(f"initial_period={config.initial_period} is not in the data time periods.")
+        elif config.initial_period > final_period:
+            raise ValueError(
+                f"initial_period={config.initial_period} must not be later than final_period={final_period}."
+            )
+        num_periods = final_period - config.initial_period
 
         if num_periods <= 0:
             warnings.warn(
-                "pooled=True has no effect when the treatment history spans the "
-                "entire panel (num_periods=0). Falling back to non-pooled estimation.",
+                "pooled=True has no effect because no earlier treatment-history window ends "
+                "between initial_period and final_period. Falling back to non-pooled estimation.",
                 stacklevel=2,
             )
             df = df.with_columns(
@@ -1286,7 +1561,7 @@ class DynBalancingPooler(BaseTransformer):
                 pl.col(tname).alias("new_Time"),
                 pl.col(idname).cast(pl.Utf8).alias("new_name"),
             )
-            pooled_df = pl.concat([original, pseudo], how="align")
+            pooled_df = pl.concat([original, pseudo.select(original.columns)], how="vertical_relaxed")
         else:
             warnings.warn(
                 "pooled=True produced no pseudo-observations. Check that the "
@@ -1306,7 +1581,12 @@ class DynBalancingPooler(BaseTransformer):
 
 
 class DynBalancingFixedEffectDummifier(BaseTransformer):
-    """Dynamic balancing fixed effect dummifier."""
+    """Build one dummy per fixed-effect level among the rows that enter estimation.
+
+    This step runs after the window filter and the panel balancer. A level
+    that appears only outside the estimation sample would give an all-zero
+    column that still counts toward the number of balanced covariates.
+    """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -1328,7 +1608,7 @@ class DynBalancingFixedEffectDummifier(BaseTransformer):
 
 
 class DynBalancingPeriodFilter(BaseTransformer):
-    """Dynamic balancing period filter."""
+    """Keep the ``len(ds1)`` periods that end at ``final_period``."""
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -1336,24 +1616,8 @@ class DynBalancingPeriodFilter(BaseTransformer):
             return to_polars(data)
 
         df = to_polars(data)
-        time_periods = np.sort(df[config.tname].unique().to_numpy())
-
-        if config.final_period is None:
-            config.final_period = int(time_periods[-1])
-        if config.initial_period is None:
-            config.initial_period = config.final_period - len(config.ds1) + 1
-
-        if config.final_period not in time_periods:
-            raise ValueError(f"final_period={config.final_period} is not in the data time periods.")
-        if config.initial_period not in time_periods:
-            raise ValueError(
-                f"initial_period={config.initial_period} is not in the data. "
-                "The treatment history may be too long for the available periods."
-            )
-
-        df = df.filter((pl.col(config.tname) >= config.initial_period) & (pl.col(config.tname) <= config.final_period))
-
-        return df
+        first_period = config.final_period - len(config.ds1) + 1
+        return df.filter(pl.col(config.tname).is_between(first_period, config.final_period))
 
 
 class DynBalancingConfigUpdater:
@@ -1411,6 +1675,7 @@ class DataTransformerPipeline:
                 TreatmentEncoder(),
                 TimePeriodRecoder(),
                 EarlyTreatmentGroupFilter(),
+                ContDIDControlGroupFilter(),
                 DoseValidatorTransformer(),
                 PanelBalancer(),
                 DataSorter(),
@@ -1438,15 +1703,16 @@ class DataTransformerPipeline:
             [
                 DIDInterColumnSelector(),
                 MissingDataHandler(),
+                DIDInterTimeRanker(),
                 WeightNormalizer(),
                 SwitcherIdentifier(),
-                SwitcherFilter(),
+                ContinuousTreatmentProcessor(),
                 FgVariationFilter(),
                 ControlsTimeFilter(),
-                ContinuousTreatmentProcessor(),
                 DIDInterPanelBalancer(),
                 TrendsLinTransformer(),
                 DIDInterDataPreparer(),
+                ContinuousTreatmentBinarizer(),
                 DataSorter(),
             ]
         )
@@ -1485,10 +1751,10 @@ class DataTransformerPipeline:
         return DataTransformerPipeline(
             [
                 DynBalancingColumnSelector(),
-                DynBalancingPanelBalancer(),
                 DynBalancingPooler(),
-                DynBalancingFixedEffectDummifier(),
                 DynBalancingPeriodFilter(),
+                DynBalancingPanelBalancer(),
+                DynBalancingFixedEffectDummifier(),
             ]
         )
 

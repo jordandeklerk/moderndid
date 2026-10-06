@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 import polars as pl
 from plotnine import (
@@ -41,14 +41,9 @@ from moderndid.core.converters import (
 )
 from moderndid.did.container import AGGTEResult, MPResult
 from moderndid.diddynamic.container import DynBalancingHetResult, DynBalancingHistoryResult, DynBalancingResult
-from moderndid.didinter.container import DIDInterResult
 from moderndid.didtriple.container import DDDAggResult, DDDMultiPeriodRCResult, DDDMultiPeriodResult
 from moderndid.etwfe.container import EmfxResult
 from moderndid.plots.themes import COLORS
-
-if TYPE_CHECKING:
-    from moderndid.didcont.container import DoseResult, PTEResult
-    from moderndid.didhonest.honest_did import HonestDiDResult
 
 
 def plot_gt(
@@ -136,20 +131,29 @@ def plot_gt(
 
 
 def plot_event_study(
-    result: AGGTEResult | PTEResult | DDDAggResult | EmfxResult,
-    show_ci: bool = True,
-    ref_line: float | None = 0,
-    ref_period: float | None = -1,
-    xlab: str | None = None,
-    ylab: str | None = None,
-    title: str | None = None,
-    **_kwargs: Any,
-) -> ggplot:
+    result,
+    show_ci=True,
+    ref_line=0,
+    ref_period=-1,
+    xlab=None,
+    ylab=None,
+    title=None,
+    **_kwargs,
+):
     """Create event study plot for dynamic treatment effects.
+
+    Each estimate gets a point with an error bar, colored by whether it falls
+    before or after treatment starts. A dashed vertical line marks
+    ``ref_period``, the base period under a universal base. Under a varying
+    base no period is normalized. Passing ``ref_period=None`` then joins the
+    estimates with a dotted line instead.
+
+    See the :ref:`staggered DiD example <example_staggered_did>` for an event
+    study of the minimum wage data drawn this way.
 
     Parameters
     ----------
-    result : AGGTEResult, PTEResult, or DDDAggResult
+    result : AGGTEResult, PTEResult, DDDAggResult, or EmfxResult
         Aggregated treatment effect result with dynamic/eventstudy aggregation,
         or PTEResult with event_study attribute.
     show_ci : bool, default=True
@@ -327,25 +331,32 @@ def plot_agg(
 
 
 def plot_dose_response(
-    result: DoseResult,
-    effect_type: Literal["att", "acrt"] = "att",
-    show_ci: bool = True,
-    ref_line: float | None = 0,
-    xlab: str | None = None,
-    ylab: str | None = None,
-    title: str | None = None,
-    **_kwargs: Any,
-) -> ggplot:
-    """Plot dose-response function for continuous treatment.
+    result,
+    effect_type="att",
+    show_ci=True,
+    ref_line=0,
+    xlab=None,
+    ylab=None,
+    title=None,
+    **_kwargs,
+):
+    """Plot a dose-response curve with its confidence band.
+
+    Draws the level effects ATT(d) or their slope ACRT(d) from a continuous
+    treatment result over the doses at which it was evaluated. The band uses
+    the result's critical value and is therefore uniform over doses when the
+    estimate ran with ``cband=True``.
+
+    See the :ref:`continuous treatment example <example_cont_did>` for both
+    curves of a simulated dose-response.
 
     Parameters
     ----------
     result : DoseResult
-        Continuous treatment dose-response result.
+        Result of :func:`~moderndid.cont_did` with ``aggregation="dose"``.
     effect_type : {'att', 'acrt'}, default='att'
-        Type of effect to plot:
-        - 'att': Average Treatment Effect on Treated
-        - 'acrt': Average Causal Response on Treated (marginal effect)
+        Curve to plot. ``'att'`` draws the level effects ATT(d) and ``'acrt'``
+        draws their slope ACRT(d).
     show_ci : bool, default=True
         Whether to show confidence bands.
     ref_line : float or None, default=0
@@ -398,19 +409,26 @@ def plot_dose_response(
 
 
 def plot_sensitivity(
-    result: HonestDiDResult,
-    ref_line: float | None = 0,
-    xlab: str | None = None,
-    ylab: str | None = None,
-    title: str | None = None,
-    **_kwargs: Any,
-) -> ggplot:
-    """Create sensitivity analysis plot for HonestDiD results.
+    result,
+    ref_line=0,
+    xlab=None,
+    ylab=None,
+    title=None,
+    **_kwargs,
+):
+    """Plot robust confidence intervals from a sensitivity analysis.
+
+    The leftmost interval is the original confidence interval, valid only if parallel trends
+    hold exactly. Each interval to its right is the robust confidence interval for one bound
+    on the violations of parallel trends. Its color names the method that built it.
+
+    See the :ref:`sensitivity analysis example <example_honest_did>` for these plots under
+    smoothness and relative magnitudes bounds on the Medicaid expansion data.
 
     Parameters
     ----------
     result : HonestDiDResult
-        Honest DiD sensitivity analysis result.
+        Result of :func:`~moderndid.honest_did`.
     ref_line : float or None, default=0
         Y-value for reference line. Set to None to hide.
     xlab : str, optional
@@ -471,20 +489,27 @@ def plot_sensitivity(
 
 
 def plot_multiplegt(
-    result: DIDInterResult,
-    show_ci: bool = True,
-    ref_line: float | None = 0,
-    xlab: str | None = None,
-    ylab: str | None = None,
-    title: str | None = None,
-    **_kwargs: Any,
-) -> ggplot:
-    """Create event study plot for intertemporal treatment effects.
+    result,
+    show_ci=True,
+    ref_line=0,
+    xlab=None,
+    ylab=None,
+    title=None,
+    **_kwargs,
+):
+    """Plot the effects and placebos of an intertemporal treatment effects result.
+
+    Each horizon gets a point with an error bar for its confidence interval. Placebos
+    sit at negative horizons and effects at positive ones, colored by which of the two
+    they are. A dashed vertical line at zero separates them.
+
+    See the :ref:`intertemporal treatment example <example_inter_did>` for the effects
+    and placebos of the banking deregulations drawn this way.
 
     Parameters
     ----------
     result : DIDInterResult
-        Intertemporal treatment effects result from did_multiplegt().
+        Result of :func:`~moderndid.did_multiplegt`.
     show_ci : bool, default=True
         Whether to show confidence intervals as error bars.
     ref_line : float or None, default=0
@@ -557,9 +582,10 @@ def plot_dyn_balancing(
     By default shows the average treatment effect (``att``) as a point
     with an error bar. Set ``parameter="mu1"`` or ``"mu2"`` to plot one
     of the potential outcome estimates instead, or ``"all"`` to show all
-    three side by side. The robust (chi-squared) confidence interval is
-    drawn by default; set ``ci_type="gaussian"`` to use the Gaussian
-    quantile instead.
+    three side by side. With the default ``ci_type="robust"``, the interval
+    matches the Gaussian one unless the estimate ran with
+    ``robust_quantile=True``. In that case it uses the larger chi-squared
+    critical value.
 
     Parameters
     ----------
@@ -648,23 +674,30 @@ def plot_dyn_balancing(
 
 
 def plot_dyn_balancing_history(
-    result: DynBalancingHistoryResult,
-    parameter: Literal["att", "mu1", "mu2"] = "att",
-    show_ci: bool = True,
-    ci_type: Literal["robust", "gaussian"] = "robust",
-    ref_line: float | None = 0,
-    xlab: str | None = None,
-    ylab: str | None = None,
-    title: str | None = None,
-    **_kwargs: Any,
-) -> ggplot:
+    result,
+    parameter="att",
+    show_ci=True,
+    ci_type="robust",
+    ref_line=0,
+    xlab=None,
+    ylab=None,
+    title=None,
+    **_kwargs,
+):
     """Plot dynamic covariate balancing estimates across treatment history lengths.
 
-    Shows how the chosen parameter (ATE by default) evolves as the length
-    of the treatment history considered increases. Points mark each
-    horizon with error bars for the selected confidence interval, and a
-    dotted line connects successive estimates. By default the robust
-    (chi-squared) critical values are used.
+    Shows how the chosen parameter, the ATE by default, changes as the
+    treatment history grows longer. Each length gets a point with an error
+    bar for the chosen confidence interval. A dotted line joins the points
+    from one length to the next.
+
+    With the default ``ci_type="robust"``, the intervals match the Gaussian
+    ones unless the estimates ran with ``robust_quantile=True``. In that case
+    they use the larger chi-squared critical values.
+
+    See the :ref:`dynamic covariate balancing example <example_dyn_balancing>`
+    for this plot of the effects of one to five years of democracy on GDP per
+    capita.
 
     Parameters
     ----------
@@ -756,6 +789,10 @@ def plot_dyn_balancing_het(
     treatment histories are evaluated at different final periods. Points
     mark each period with error bars for the selected confidence interval,
     and a dotted line connects successive estimates.
+
+    With the default ``ci_type="robust"``, the intervals match the Gaussian
+    ones unless the estimates ran with ``robust_quantile=True``. In that case
+    they use the larger chi-squared critical values.
 
     Parameters
     ----------

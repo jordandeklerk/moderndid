@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from typing import NamedTuple
 
+import numpy as np
 import polars as pl
 
 from moderndid.core.maketables import build_single_coef_table
@@ -43,23 +44,26 @@ class DynBalancingResult(NamedTuple):
     var_mu2 : float
         Variance of *mu2*.
     robust_quantile : float
-        Robust chi-squared critical value for inference.
+        Chi-squared critical value of the ATE when the estimator ran with
+        ``robust_quantile=True``, and the Gaussian critical value otherwise.
     gaussian_quantile : float
         Gaussian critical value for inference.
     gammas : dict
-        Balancing weights per treatment history (keys ``'ds1'``, ``'ds2'``).
+        Weights per treatment history (keys ``'ds1'``, ``'ds2'``). They are
+        balancing weights for ``balancing='dcb'`` and inverse probability
+        weights otherwise.
     coefficients : dict
-        LASSO coefficients per treatment history.
+        LASSO coefficients per treatment history. Empty unless
+        ``balancing='dcb'``.
     imbalances : dict
-        Covariate imbalance measures.
+        Standardized covariate imbalance of the weights per treatment history
+        (keys ``'ds1'``, ``'ds2'``). Each value is a DataFrame with columns
+        ``period``, ``covariate``, and ``imbalance``. The imbalance compares
+        the weighted covariate mean of a period with that of the period
+        before, or with the plain mean in the first period, in units of the
+        covariate's standard deviation.
     estimation_params : dict
         Standard moderndid metadata (observation count, variable names, etc.).
-
-    References
-    ----------
-    .. [1] Viviano, D. and Bradic, J. (2026). "Dynamic covariate balancing:
-       estimating treatment effects over time with potential local projections."
-       *Biometrika*, asag016. https://doi.org/10.1093/biomet/asag016
     """
 
     #: The ATE point estimate.
@@ -74,15 +78,15 @@ class DynBalancingResult(NamedTuple):
     var_mu1: float
     #: Variance of mu2.
     var_mu2: float
-    #: Robust chi-squared critical value.
+    #: Chi-squared critical value, or the Gaussian one when robust quantiles are off.
     robust_quantile: float
     #: Gaussian critical value.
     gaussian_quantile: float
-    #: Balancing weights per treatment history.
+    #: Weights per treatment history.
     gammas: dict
-    #: LASSO coefficients per treatment history.
+    #: LASSO coefficients per treatment history (DCB only).
     coefficients: dict
-    #: Covariate imbalance measures.
+    #: Standardized covariate imbalance per treatment history.
     imbalances: dict
     #: Standard moderndid metadata.
     estimation_params: dict = {}
@@ -184,3 +188,104 @@ class DynBalancingHetResult(NamedTuple):
 
     summary: pl.DataFrame
     results: list
+
+
+class IPWResult(NamedTuple):
+    """Result of inverse probability weighting for one treatment history.
+
+    Attributes
+    ----------
+    mu_hat : float
+        Estimated potential outcome under the target treatment history.
+    variance : float
+        Estimated variance of ``mu_hat``.
+    gammas : ndarray
+        Weight matrix of shape ``(n, T)``. Column ``t`` holds the normalized
+        inverse probability weights of the units that follow the target
+        history through period ``t``.
+    predictions : ndarray
+        Matrix of shape ``(n, T)`` with the outcome projection of each period
+        that enters the estimate. Without an outcome model every entry equals
+        ``mu_hat``.
+    not_nas : list[ndarray]
+        Row indices that enter each period.
+    """
+
+    mu_hat: float
+    variance: float
+    gammas: np.ndarray
+    predictions: np.ndarray
+    not_nas: list
+
+
+class DCBResult(NamedTuple):
+    """Result of DCB weight estimation.
+
+    Attributes
+    ----------
+    mu_hat : float
+        Estimated potential outcome under target treatment history.
+    gammas : np.ndarray
+        Weight matrix of shape ``(n, T)`` with per-period balancing weights.
+    predictions : np.ndarray
+        Prediction matrix of shape ``(n, T)`` from the coefficient stage.
+    not_nas : list[np.ndarray]
+        Valid row indices per period.
+    coef_t : list[np.ndarray]
+        Coefficient vectors per period.
+    bias : float
+        Debiasing correction, ``nan`` if debiasing was not requested.
+    """
+
+    mu_hat: float
+    gammas: np.ndarray
+    predictions: np.ndarray
+    not_nas: list[np.ndarray]
+    coef_t: list[np.ndarray]
+    bias: float
+
+
+class CoefficientResult(NamedTuple):
+    """Per-period coefficient estimates and predictions.
+
+    Attributes
+    ----------
+    coef_t : list[ndarray]
+        Coefficient vectors per period, each with shape ``(1 + p,)``
+        where the first element is the intercept.
+    pred_t : list[ndarray]
+        Prediction vectors per period on the clean covariate matrix.
+    covariates_nonna : list[ndarray]
+        Covariate matrices per period with NaN rows removed.
+    not_nas : list[ndarray]
+        Integer arrays of valid row indices per period.
+    model_effect : list[float]
+        Last treatment coefficient per period. Empty for ``lasso_subsample``.
+    """
+
+    coef_t: list[np.ndarray]
+    pred_t: list[np.ndarray]
+    covariates_nonna: list[np.ndarray]
+    not_nas: list[np.ndarray]
+    model_effect: list[float]
+
+
+class QuantileResult(NamedTuple):
+    """Critical values for confidence interval construction.
+
+    Attributes
+    ----------
+    robust_quantile_ate : float
+        Chi-squared-based critical value for ATE inference.
+    gaussian_quantile_ate : float
+        Gaussian critical value for ATE inference.
+    robust_quantile_mu : float
+        Chi-squared-based critical value for potential outcome inference.
+    gaussian_quantile_mu : float
+        Gaussian critical value for potential outcome inference.
+    """
+
+    robust_quantile_ate: float
+    gaussian_quantile_ate: float
+    robust_quantile_mu: float
+    gaussian_quantile_mu: float

@@ -297,3 +297,20 @@ def test_monotonicity_directions(basic_setup, direction, fast_config):
 
     assert isinstance(result, dict)
     assert len(result["grid"]) == fast_config["grid_points_small"]
+
+
+def test_conditional_cs_sdm_single_post_period_conditional(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    result = compute_conditional_cs_sdm(**kwargs, m_bar=0.01, hybrid_flag="ARP", monotonicity_direction="increasing")
+
+    assert result["accept"].astype(int).tolist() == [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]

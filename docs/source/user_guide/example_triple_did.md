@@ -9,18 +9,21 @@ kernelspec:
 
 # Triple differences
 
-Bad weather can wipe out a whole year's tobacco crop in a single season. Until 2003, the farmers of
-Jiangxi province in China carried that risk on their own. That year the People's
-Insurance Company of China began selling weather insurance to the tobacco farmers
-of one county there. This example asks whether the insurance changed how those
-households saved, measured by how much of their new savings they kept in
-checking accounts they could draw on at any time.
+The tobacco farmers we'll follow here could lose a whole year's crop to bad
+weather in a single season. Until 2003, the farmers of Jiangxi province in China
+carried that risk on their own. That year the People's Insurance Company of
+China began selling weather insurance to the tobacco farmers of one county
+there. This example asks whether the insurance changed how those households
+saved, measured by how much of their new savings they kept in checking accounts
+they could draw on at any time.
 
 Two simple comparisons get this question wrong in opposite ways. Setting the insured
 farmers against tobacco farmers in other counties would credit the insurance
 with anything else that hit their county. Setting them against their own
 neighbors who grew other crops would credit it with anything that hit tobacco
-farmers everywhere. {func}`~moderndid.ddd` sidesteps both by measuring how the
+farmers everywhere.
+
+{func}`~moderndid.ddd` sidesteps both by measuring how the
 gap between tobacco farmers and their neighbors changed in the insured county
 and subtracting how the same gap changed in counties without insurance. By the
 end you'll have a year-by-year event study from {func}`~moderndid.agg_ddd` and a
@@ -39,8 +42,8 @@ options.dpi = 100
 
 ## The insurance rollout
 
-The way the insurance reached farmers turns this data into a natural
-experiment. In 2003 the company launched its first weather-indexed crop
+The way the insurance reached farmers makes this data a natural experiment. In
+2003 the company launched its first weather-indexed crop
 insurance for tobacco farmers in selected counties of Jiangxi province. Every
 tobacco grower in those counties had to take a contract. Households growing
 other crops were left out even in the same counties. So was every household in
@@ -147,25 +150,58 @@ households to move alike across counties.
 
 ## Setting up the estimation
 
-Each argument in the specification below answers a question about this design.
-The paragraphs that follow take those questions in turn before the estimation
-puts them together.
+Apart from the first four, which only name columns in the data, every argument
+below settles a question about this design. We write them all out first so that
+you can see every answer in one place.
 
-Two arguments tell {func}`~moderndid.ddd` which households are which in this
-design. The argument
-`pname="sector"` marks the households within each county that the insurance
-covered. With `control_group="nevertreated"`, the comparisons come from the 11
-counties that never offered insurance. Its alternative, `"notyettreated"`, would
-also add counties that adopt insurance later. Since none do in this data, the
-two settings give identical results.
+```{code-cell} ipython3
+# The whole specification lives in one dictionary.
+# Each later check swaps out a single argument.
+spec = dict(
+    # The outcome, year, household, and adoption-year columns.
+    yname="checksaving_ratio",
+    tname="year",
+    idname="hhno",
+    gname="group",
+    # Mark tobacco farmers and compare with counties without insurance.
+    pname="sector",
+    control_group="nevertreated",
+    # Adjust for household size and age with the doubly robust estimator.
+    xformla="~ hhsize + age",
+    est_method="dr",
+    # Anchor every year to 2002 and allow the unbalanced panel.
+    base_period="universal",
+    allow_unbalanced_panel=True,
+    # Bootstrap the standard errors with 999 draws and a fixed seed.
+    boot=True,
+    biters=999,
+    random_state=7,
+)
+```
 
-Households also differ in ways that could shape how they save. Following
-Ortiz-Villavicencio and Sant'Anna (2025), `xformla="~ hhsize + age"` adjusts for
-household size and the age of the household head. Under `est_method="dr"`, each
-comparison combines an outcome model with a propensity model. Switching to
-`"ipw"` or `"reg"` would keep only one of the two.
+### Tobacco farmers and the counties without insurance
 
-:::{admonition} Adjust only for what the insurance can't change
+Since the insurance was meant for tobacco farmers alone, `pname="sector"` splits
+every county's households into tobacco farmers and everyone else.
+[Two differences instead of three](#two-differences-instead-of-three) tests what
+that split adds over a plain DiD.
+
+For the comparison counties, `control_group="nevertreated"` takes the 11 that
+never offered insurance. The other setting, `"notyettreated"`, would also let in
+counties that adopt insurance later. Since none do in this data, the two
+settings give identical results.
+
+### Adjusting for household size and age
+
+Beyond their crop and county, households differ in ways that could shape how
+they save. Following Ortiz-Villavicencio and Sant'Anna (2025), we adjust for
+household size and the age of the household head with `xformla="~ hhsize + age"`.
+Under `est_method="dr"`, each comparison combines an outcome model with a
+propensity model. Switching to `"ipw"` or `"reg"` would keep only one of the
+two. [Other estimators and no covariates](#other-estimators-and-no-covariates)
+tries both and then drops the covariates.
+
+:::{admonition} Choose covariates the insurance can't change
 :class: tip
 
 Conditioning on something the insurance itself affects would soak up part of the
@@ -174,54 +210,45 @@ count. Household income, which the insurance protects, would not be safe to
 adjust for.
 :::
 
-The default `base_period="universal"` anchors every year to 2002, the last year
-before coverage. With every year anchored there, the placebo years and the
-treated years share one reference point in the event study. Under `"varying"`,
-each year before 2003 would instead be compared with the year just before it.
+### One base year and an unbalanced panel
 
-Setting `allow_unbalanced_panel=True` keeps the 361 households with gaps in
-their records rather than dropping them. Each comparison then pools everyone
-observed in either of its two years and treats the two years as separate
-samples. Before computing standard errors, moderndid adds up each household's
-contributions. That keeps the household as the unit of inference throughout.
+Each yearly estimate is a change measured from a base year. Because the default
+`base_period="universal"` measures every year from 2002, the last year before
+coverage, the placebo years and the treated years share one reference point in
+the event study. If you
+[set `base_period="varying"`](#the-trend-before-2003) instead, each year before
+2003 takes the year that precedes it as its base.
 
-Last, `boot=True` with `biters=999` repeats the 999 bootstrap draws that
-Ortiz-Villavicencio and Sant'Anna (2025) used. Fixing `random_state` keeps the
+For the 361 households missing from at least one year, some comparisons have no
+change to measure. With `allow_unbalanced_panel=True`, each comparison pools
+everyone observed in either of its two years and treats those years as separate
+samples. The default `False` would keep only the households seen in both.
+Because moderndid adds up each household's contributions before computing
+standard errors, the household stays the unit of inference throughout.
+[Households seen every year](#households-seen-every-year) drops those 361
+households from the data altogether.
+
+### Standard errors from 999 bootstrap draws
+
+To repeat the 999 draws that Ortiz-Villavicencio and Sant'Anna (2025) used, the
+specification sets `boot=True` and `biters=999`. Fixing `random_state` keeps the
 printed numbers from changing between runs. The simultaneous bands come in
 later, once {func}`~moderndid.agg_ddd` builds the event study.
 
-:::{admonition} One insured county, no county clustering
+:::{admonition} Every interval here may be too narrow
 :class: warning
 
-Since {func}`~moderndid.ddd` clusters standard errors only with two periods,
-every interval here treats households as independent draws. A shock to the whole
-insured county would make them too narrow. With a single insured county,
-clustering by county couldn't account for it anyway.
+Every interval on this page treats each household as an independent draw. A
+shock that hit the insured county's tobacco farmers differently from its other
+households would make them too narrow. With a single insured county, clustering
+by county couldn't account for it anyway.
 :::
 
-```{code-cell} ipython3
-# The whole specification lives in one dictionary. Each later check swaps out a single argument.
-spec = dict(
-    # The columns that hold the outcome, the year, the household, and its county's adoption year.
-    yname="checksaving_ratio",
-    tname="year",
-    idname="hhno",
-    gname="group",
-    # The insurance covered tobacco farmers only.
-    pname="sector",
-    # Compare with the counties that never offered insurance, among households of similar size and age.
-    control_group="nevertreated",
-    xformla="~ hhsize + age",
-    est_method="dr",
-    # Measure every year against 2002 and keep the households that miss a year.
-    base_period="universal",
-    allow_unbalanced_panel=True,
-    # Bootstrap the standard errors with a fixed seed.
-    boot=True,
-    biters=999,
-    random_state=7,
-)
+Passing `spec` to {func}`~moderndid.ddd` runs the estimation under every choice
+above.
 
+```{code-cell} ipython3
+# Estimate the effect of the insurance in each year.
 result = did.ddd(data, **spec)
 print(result)
 ```
@@ -238,7 +265,9 @@ that excludes zero. The 2001 estimate of −0.0264 sits between it and the base
 year, as if the gap were already widening on its way to 2002. We'll come back to
 that pattern near the end, since it shapes how to read everything after 2003.
 After 2003 the estimates rise from 0.0118 in the first year to 0.1553 by 2008.
-Only the intervals for 2007 and 2008, the last two years, exclude zero.
+The one break in that climb comes in 2006, when the estimate slips from 0.0525
+to 0.0494. Only the intervals for 2007 and 2008, the last two years, exclude
+zero.
 
 To read these effects by time since the insurance arrived and to get one overall
 number, `type="eventstudy"` in {func}`~moderndid.agg_ddd` lines the years up by
@@ -275,7 +304,7 @@ mystnb:
   image:
     alt: Event study with placebo estimates at event times -3 and -2 and effects at 0 to 5
 ---
-# The dotted line at event time -1 marks 2002, the base year.
+# The dashed line at event time -1 marks 2002, the base year.
 did.plot_event_study(event_study) + did.theme_moderndid()
 ```
 
@@ -374,8 +403,9 @@ dodge = position_dodge(width=0.3)
 )
 ```
 
-In the figure, the blue triangles of the triple difference and the gray circles
-of the regression follow the same rising path after 2003. They part most at the
+Although only the triple difference dips in 2006, its blue triangles and the
+gray circles of the regression rise together in the figure after 2003. They part
+most at the
 ends, where the regression's 2000 placebo is −0.0175 against −0.0599 and its
 2008 effect is 0.1047 against 0.1553. On this data the regression's intervals
 also come out narrower, between 0.74 and 0.95 times as wide as the triple
@@ -449,8 +479,9 @@ for name, change in changes.items():
     print(f"{name:>18}  {variants[name].overall_att:.4f}  ({variants[name].overall_se:.4f})")
 ```
 
-None of the three swaps pushes the overall effect outside the range from 0.0565
-to 0.0608. The estimator and the adjustment for size and age matter little here.
+Each of the three swaps lowers the overall effect from 0.0652 to somewhere
+between 0.0565 and 0.0608. The estimator and the adjustment for size and age
+matter little here.
 Outcome regression does give the least precise estimate of the three. Its
 standard error of
 0.0220 compares with 0.0200 for the doubly robust one.

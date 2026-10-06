@@ -3,8 +3,10 @@
 import json
 import subprocess
 import tempfile
+from functools import partial
 
 import pytest
+from scipy import stats
 
 pytestmark = pytest.mark.slow
 
@@ -24,6 +26,8 @@ from moderndid.didhonest import (
     compute_conditional_cs_sdrm,
     compute_conditional_cs_sdrmb,
     compute_conditional_cs_sdrmm,
+    compute_delta_sd_lowerbound_m,
+    compute_delta_sd_upperbound_m,
     compute_flci,
     compute_identified_set_rm,
     compute_identified_set_rmb,
@@ -32,10 +36,15 @@ from moderndid.didhonest import (
     compute_identified_set_sdrm,
     compute_identified_set_sdrmb,
     compute_identified_set_sdrmm,
+    compute_vlo_vup_dual,
     construct_original_cs,
     create_sensitivity_results_rm,
     create_sensitivity_results_sm,
 )
+from moderndid.didhonest.arp_nuisance import _construct_gamma, _test_delta_lp
+from moderndid.didhonest.conditional import _norminvp_generalized
+from moderndid.didhonest.delta.rm.rmb import _create_relative_magnitudes_bias_constraint_matrix
+from moderndid.didhonest.numba import find_rows_with_post_period_values
 
 
 def _run_r_script(r_script, result_path, timeout=300):
@@ -325,6 +334,8 @@ def r_sensitivity_rm(
     grid_points=100,
     monotonicity_direction=None,
     bias_direction=None,
+    grid_lb=None,
+    grid_ub=None,
 ):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
@@ -342,6 +353,10 @@ def r_sensitivity_rm(
     method_str = "NULL" if method is None else f'"{method}"'
     monotonicity_str = "NULL" if monotonicity_direction is None else f'"{monotonicity_direction}"'
     bias_str = "NULL" if bias_direction is None else f'"{bias_direction}"'
+
+    grid_str = ""
+    if grid_lb is not None:
+        grid_str = f",\n    grid.lb = {grid_lb},\n    grid.ub = {grid_ub}"
 
     r_script = f"""
 library(HonestDiD)
@@ -364,7 +379,7 @@ result <- createSensitivityResults_relativeMagnitudes(
     alpha = {alpha},
     gridPoints = {grid_points},
     monotonicityDirection = {monotonicity_str},
-    biasDirection = {bias_str}
+    biasDirection = {bias_str}{grid_str}
 )
 
 out <- list(
@@ -699,6 +714,9 @@ def r_conditional_cs_rmb(
     method="LF",
     l_vec=None,
     alpha=0.05,
+    grid_points=None,
+    grid_lb=None,
+    grid_ub=None,
 ):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
@@ -711,6 +729,10 @@ def r_conditional_cs_rmb(
         l_vec_str = f"basisVector(index = 1, size = {num_post_periods})"
     else:
         l_vec_str = "c(" + ",".join(map(str, l_vec)) + ")"
+
+    grid_str = ""
+    if grid_points is not None:
+        grid_str = f",\n    gridPoints = {grid_points}, grid.lb = {grid_lb}, grid.ub = {grid_ub}"
 
     r_script = f"""
 library(HonestDiD)
@@ -729,7 +751,7 @@ result <- computeConditionalCS_DeltaRMB(
     Mbar = {m_bar},
     alpha = {alpha},
     hybrid_flag = "{method}",
-    biasDirection = "{bias_direction}"
+    biasDirection = "{bias_direction}"{grid_str}
 )
 
 accept_idx <- which(result$accept == 1)
@@ -766,6 +788,9 @@ def r_conditional_cs_rmm(
     method="LF",
     l_vec=None,
     alpha=0.05,
+    grid_points=None,
+    grid_lb=None,
+    grid_ub=None,
 ):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
@@ -778,6 +803,10 @@ def r_conditional_cs_rmm(
         l_vec_str = f"basisVector(index = 1, size = {num_post_periods})"
     else:
         l_vec_str = "c(" + ",".join(map(str, l_vec)) + ")"
+
+    grid_str = ""
+    if grid_points is not None:
+        grid_str = f",\n    gridPoints = {grid_points}, grid.lb = {grid_lb}, grid.ub = {grid_ub}"
 
     r_script = f"""
 library(HonestDiD)
@@ -796,7 +825,7 @@ result <- computeConditionalCS_DeltaRMM(
     Mbar = {m_bar},
     alpha = {alpha},
     hybrid_flag = "{method}",
-    monotonicityDirection = "{monotonicity_direction}"
+    monotonicityDirection = "{monotonicity_direction}"{grid_str}
 )
 
 accept_idx <- which(result$accept == 1)
@@ -1024,6 +1053,10 @@ def r_conditional_cs_sd(
     method="FLCI",
     l_vec=None,
     alpha=0.05,
+    grid_points=None,
+    grid_lb=None,
+    grid_ub=None,
+    bias_direction=None,
 ):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
@@ -1037,6 +1070,15 @@ def r_conditional_cs_sd(
     else:
         l_vec_str = "c(" + ",".join(map(str, l_vec)) + ")"
 
+    grid_str = ""
+    if grid_points is not None:
+        grid_str = f",\n    gridPoints = {grid_points}, grid.lb = {grid_lb}, grid.ub = {grid_ub}"
+
+    r_function = "computeConditionalCS_DeltaSD"
+    if bias_direction is not None:
+        r_function = "computeConditionalCS_DeltaSDB"
+        grid_str = f',\n    biasDirection = "{bias_direction}"' + grid_str
+
     r_script = f"""
 library(HonestDiD)
 library(jsonlite)
@@ -1045,7 +1087,7 @@ betahat <- {betahat_str}
 sigma <- {sigma_str}
 l_vec <- {l_vec_str}
 
-result <- computeConditionalCS_DeltaSD(
+result <- {r_function}(
     betahat = betahat,
     sigma = sigma,
     numPrePeriods = {num_pre_periods},
@@ -1053,7 +1095,7 @@ result <- computeConditionalCS_DeltaSD(
     l_vec = l_vec,
     M = {m_bar},
     alpha = {alpha},
-    hybrid_flag = "{method}"
+    hybrid_flag = "{method}"{grid_str}
 )
 
 accept_idx <- which(result$accept == 1)
@@ -1282,8 +1324,8 @@ def test_identified_set_rm_bc_data(bc_data, m_bar):
         num_post_periods=bc_data["num_post_periods"],
     )
 
-    np.testing.assert_allclose(py_result.id_lb, r_result["id_lb"], rtol=1e-3, atol=1e-4)
-    np.testing.assert_allclose(py_result.id_ub, r_result["id_ub"], rtol=1e-3, atol=1e-4)
+    np.testing.assert_allclose(py_result.id_lb, r_result["id_lb"], rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(py_result.id_ub, r_result["id_ub"], rtol=1e-10, atol=1e-12)
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -1337,17 +1379,24 @@ def test_sensitivity_sm_flci_bc_data(bc_data):
 @pytest.mark.parametrize("method", ["Conditional", "C-F", "C-LF"])
 def test_sensitivity_sm_methods_bc_data(bc_data, method):
     m_vec = [0.0, 0.1, 0.2]
+    hybrid_flag = {"Conditional": "ARP", "C-F": "FLCI", "C-LF": "LF"}[method]
 
-    r_result = r_sensitivity_sm(
-        betahat=bc_data["betahat"].tolist(),
-        sigma=bc_data["sigma"].tolist(),
-        num_pre_periods=bc_data["num_pre_periods"],
-        num_post_periods=bc_data["num_post_periods"],
-        m_vec=m_vec,
-        method=method,
-    )
+    r_results = [
+        r_conditional_cs_sd(
+            betahat=bc_data["betahat"].tolist(),
+            sigma=bc_data["sigma"].tolist(),
+            num_pre_periods=bc_data["num_pre_periods"],
+            num_post_periods=bc_data["num_post_periods"],
+            m_bar=m,
+            method=hybrid_flag,
+            grid_points=141,
+            grid_lb=-0.1,
+            grid_ub=0.6,
+        )
+        for m in m_vec
+    ]
 
-    if r_result is None:
+    if any(r_result is None for r_result in r_results):
         pytest.fail(f"R sensitivity SM {method} failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
@@ -1359,25 +1408,27 @@ def test_sensitivity_sm_methods_bc_data(bc_data, method):
         method=method,
         m_vec=np.array(m_vec),
         l_vec=l_vec,
-        grid_points=100,
+        grid_points=141,
+        grid_lb=-0.1,
+        grid_ub=0.6,
     )
 
     compared = 0
-    for i, m in enumerate(m_vec):
+    for m, r_result in zip(m_vec, r_results, strict=True):
         py_row = py_result.filter(pl.col("m") == m)
         if len(py_row) == 0:
             continue
 
         py_lb = py_row["lb"][0]
         py_ub = py_row["ub"][0]
-        r_lb = r_result["lb"][i]
-        r_ub = r_result["ub"][i]
+        r_lb = _extract_scalar(r_result["lb"])
+        r_ub = _extract_scalar(r_result["ub"])
 
         if not np.isnan(py_lb) and not np.isnan(r_lb):
-            np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+            np.testing.assert_allclose(py_lb, r_lb, rtol=0, atol=0.005 + 1e-12)
             compared += 1
         if not np.isnan(py_ub) and not np.isnan(r_ub):
-            np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+            np.testing.assert_allclose(py_ub, r_ub, rtol=0, atol=0.005 + 1e-12)
             compared += 1
     assert compared > 0, f"SM {method}: No non-NaN values to compare"
 
@@ -1393,7 +1444,9 @@ def test_sensitivity_rm_clf_bc_data(bc_data):
         num_post_periods=bc_data["num_post_periods"],
         m_bar_vec=m_bar_vec,
         method="C-LF",
-        grid_points=100,
+        grid_points=101,
+        grid_lb=-0.3,
+        grid_ub=0.7,
     )
 
     if r_result is None:
@@ -1408,7 +1461,9 @@ def test_sensitivity_rm_clf_bc_data(bc_data):
         method="C-LF",
         m_bar_vec=np.array(m_bar_vec),
         l_vec=l_vec,
-        grid_points=100,
+        grid_points=101,
+        grid_lb=-0.3,
+        grid_ub=0.7,
     )
 
     compared = 0
@@ -1423,10 +1478,10 @@ def test_sensitivity_rm_clf_bc_data(bc_data):
         r_ub = r_result["ub"][i]
 
         if not np.isnan(py_lb) and not np.isnan(r_lb):
-            np.testing.assert_allclose(py_lb, r_lb, rtol=0.2, atol=0.1)
+            np.testing.assert_allclose(py_lb, r_lb, rtol=0, atol=0.01 + 1e-12)
             compared += 1
         if not np.isnan(py_ub) and not np.isnan(r_ub):
-            np.testing.assert_allclose(py_ub, r_ub, rtol=0.2, atol=0.1)
+            np.testing.assert_allclose(py_ub, r_ub, rtol=0, atol=0.01 + 1e-12)
             compared += 1
     assert compared > 0, "RM C-LF: No non-NaN values to compare"
 
@@ -1486,17 +1541,23 @@ def test_sensitivity_sm_monotonicity(bc_data, monotonicity_direction):
 def test_sensitivity_sm_bias_direction(bc_data, bias_direction):
     m_vec = [0.0, 0.1, 0.2]
 
-    r_result = r_sensitivity_sm(
-        betahat=bc_data["betahat"].tolist(),
-        sigma=bc_data["sigma"].tolist(),
-        num_pre_periods=bc_data["num_pre_periods"],
-        num_post_periods=bc_data["num_post_periods"],
-        m_vec=m_vec,
-        method="C-F",
-        bias_direction=bias_direction,
-    )
+    r_results = [
+        r_conditional_cs_sd(
+            betahat=bc_data["betahat"].tolist(),
+            sigma=bc_data["sigma"].tolist(),
+            num_pre_periods=bc_data["num_pre_periods"],
+            num_post_periods=bc_data["num_post_periods"],
+            m_bar=m,
+            method="FLCI",
+            grid_points=141,
+            grid_lb=-0.1,
+            grid_ub=0.6,
+            bias_direction=bias_direction,
+        )
+        for m in m_vec
+    ]
 
-    if r_result is None:
+    if any(r_result is None for r_result in r_results):
         pytest.fail(f"R sensitivity SM with bias {bias_direction} failed")
 
     l_vec = basis_vector(1, bc_data["num_post_periods"])
@@ -1509,23 +1570,25 @@ def test_sensitivity_sm_bias_direction(bc_data, bias_direction):
         m_vec=np.array(m_vec),
         l_vec=l_vec,
         bias_direction=bias_direction,
-        grid_points=100,
+        grid_points=141,
+        grid_lb=-0.1,
+        grid_ub=0.6,
     )
 
     compared = 0
-    for i, m in enumerate(m_vec):
+    for m, r_result in zip(m_vec, r_results, strict=True):
         py_row = py_result.filter(pl.col("m") == m)
         if len(py_row) == 0:
             continue
         py_lb = py_row["lb"][0]
         py_ub = py_row["ub"][0]
-        r_lb = r_result["lb"][i]
-        r_ub = r_result["ub"][i]
+        r_lb = _extract_scalar(r_result["lb"])
+        r_ub = _extract_scalar(r_result["ub"])
         if not np.isnan(py_lb) and not np.isnan(r_lb):
-            np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+            np.testing.assert_allclose(py_lb, r_lb, rtol=0, atol=0.005 + 1e-12)
             compared += 1
         if not np.isnan(py_ub) and not np.isnan(r_ub):
-            np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+            np.testing.assert_allclose(py_ub, r_ub, rtol=0, atol=0.005 + 1e-12)
             compared += 1
     assert compared > 0, f"bias={bias_direction}: No non-NaN values to compare"
 
@@ -1541,6 +1604,9 @@ def test_conditional_cs_sd_flci_bc_data(bc_data):
         num_post_periods=bc_data["num_post_periods"],
         m_bar=m_bar,
         method="FLCI",
+        grid_points=141,
+        grid_lb=-0.1,
+        grid_ub=0.6,
     )
 
     if r_result is None:
@@ -1555,7 +1621,9 @@ def test_conditional_cs_sd_flci_bc_data(bc_data):
         l_vec=l_vec,
         m_bar=m_bar,
         hybrid_flag="FLCI",
-        grid_points=100,
+        grid_points=141,
+        grid_lb=-0.1,
+        grid_ub=0.6,
     )
 
     accept_idx = np.where(py_result["accept"])[0]
@@ -1566,12 +1634,16 @@ def test_conditional_cs_sd_flci_bc_data(bc_data):
         py_lb = np.nan
         py_ub = np.nan
 
+    r_lb = _extract_scalar(r_result["lb"])
+    r_ub = _extract_scalar(r_result["ub"])
+
     compared = 0
-    if not np.isnan(py_lb) and not np.isnan(r_result["lb"]):
-        np.testing.assert_allclose(py_lb, r_result["lb"], rtol=0.15, atol=0.05)
+    np.testing.assert_allclose(py_result["grid"], np.array(r_result["grid"]), rtol=0, atol=1e-12)
+    if not np.isnan(py_lb) and not np.isnan(r_lb):
+        np.testing.assert_allclose(py_lb, r_lb, rtol=0, atol=0.005 + 1e-12)
         compared += 1
-    if not np.isnan(py_ub) and not np.isnan(r_result["ub"]):
-        np.testing.assert_allclose(py_ub, r_result["ub"], rtol=0.15, atol=0.05)
+    if not np.isnan(py_ub) and not np.isnan(r_ub):
+        np.testing.assert_allclose(py_ub, r_ub, rtol=0, atol=0.005 + 1e-12)
         compared += 1
     assert compared > 0, "Conditional CS SD FLCI: No non-NaN values to compare"
 
@@ -1588,6 +1660,9 @@ def test_conditional_cs_sd_methods(bc_data, method):
         num_post_periods=bc_data["num_post_periods"],
         m_bar=m_bar,
         method=method,
+        grid_points=141,
+        grid_lb=-0.1,
+        grid_ub=0.6,
     )
 
     if r_result is None:
@@ -1602,7 +1677,9 @@ def test_conditional_cs_sd_methods(bc_data, method):
         l_vec=l_vec,
         m_bar=m_bar,
         hybrid_flag=method,
-        grid_points=100,
+        grid_points=141,
+        grid_lb=-0.1,
+        grid_ub=0.6,
     )
 
     accept_idx = np.where(py_result["accept"])[0]
@@ -1613,12 +1690,16 @@ def test_conditional_cs_sd_methods(bc_data, method):
         py_lb = np.nan
         py_ub = np.nan
 
+    r_lb = _extract_scalar(r_result["lb"])
+    r_ub = _extract_scalar(r_result["ub"])
+
     compared = 0
-    if not np.isnan(py_lb) and not np.isnan(r_result["lb"]):
-        np.testing.assert_allclose(py_lb, r_result["lb"], rtol=0.15, atol=0.05)
+    np.testing.assert_allclose(py_result["grid"], np.array(r_result["grid"]), rtol=0, atol=1e-12)
+    if not np.isnan(py_lb) and not np.isnan(r_lb):
+        np.testing.assert_allclose(py_lb, r_lb, rtol=0, atol=0.005 + 1e-12)
         compared += 1
-    if not np.isnan(py_ub) and not np.isnan(r_result["ub"]):
-        np.testing.assert_allclose(py_ub, r_result["ub"], rtol=0.15, atol=0.05)
+    if not np.isnan(py_ub) and not np.isnan(r_ub):
+        np.testing.assert_allclose(py_ub, r_ub, rtol=0, atol=0.005 + 1e-12)
         compared += 1
     assert compared > 0, f"conditional CS SD {method}: No non-NaN values to compare"
 
@@ -1930,8 +2011,8 @@ def test_identified_set_rmb_bc_data(bc_data, m_bar, bias_direction):
     r_lb = _extract_scalar(r_result["id_lb"])
     r_ub = _extract_scalar(r_result["id_ub"])
 
-    np.testing.assert_allclose(py_result.id_lb, r_lb, rtol=0.05, atol=1e-3)
-    np.testing.assert_allclose(py_result.id_ub, r_ub, rtol=0.05, atol=1e-3)
+    np.testing.assert_allclose(py_result.id_lb, r_lb, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(py_result.id_ub, r_ub, rtol=1e-10, atol=1e-12)
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -1945,6 +2026,9 @@ def test_conditional_cs_rmb_bc_data(bc_data, bias_direction):
         m_bar=0.5,
         bias_direction=bias_direction,
         method="LF",
+        grid_points=101,
+        grid_lb=-0.3,
+        grid_ub=0.7,
     )
 
     if r_result is None:
@@ -1960,7 +2044,9 @@ def test_conditional_cs_rmb_bc_data(bc_data, bias_direction):
         m_bar=0.5,
         bias_direction=bias_direction,
         hybrid_flag="LF",
-        grid_points=100,
+        grid_points=101,
+        grid_lb=-0.3,
+        grid_ub=0.7,
     )
 
     accept_idx = np.where(py_result["accept"])[0]
@@ -1974,11 +2060,12 @@ def test_conditional_cs_rmb_bc_data(bc_data, bias_direction):
     r_ub = _extract_scalar(r_result["ub"])
 
     compared = 0
+    np.testing.assert_allclose(py_result["grid"], np.array(r_result["grid"]), rtol=0, atol=1e-12)
     if not np.isnan(py_lb) and not np.isnan(r_lb):
-        np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+        np.testing.assert_allclose(py_lb, r_lb, rtol=0, atol=0.01 + 1e-12)
         compared += 1
     if not np.isnan(py_ub) and not np.isnan(r_ub):
-        np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+        np.testing.assert_allclose(py_ub, r_ub, rtol=0, atol=0.01 + 1e-12)
         compared += 1
     assert compared > 0, f"Conditional CS RMB {bias_direction}: No non-NaN values to compare"
 
@@ -2013,8 +2100,8 @@ def test_identified_set_rmm_bc_data(bc_data, m_bar, monotonicity_direction):
     r_lb = _extract_scalar(r_result["id_lb"])
     r_ub = _extract_scalar(r_result["id_ub"])
 
-    np.testing.assert_allclose(py_result.id_lb, r_lb, rtol=0.05, atol=1e-3)
-    np.testing.assert_allclose(py_result.id_ub, r_ub, rtol=0.05, atol=1e-3)
+    np.testing.assert_allclose(py_result.id_lb, r_lb, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(py_result.id_ub, r_ub, rtol=1e-10, atol=1e-12)
 
 
 @pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
@@ -2028,6 +2115,9 @@ def test_conditional_cs_rmm_bc_data(bc_data, monotonicity_direction):
         m_bar=0.5,
         monotonicity_direction=monotonicity_direction,
         method="LF",
+        grid_points=101,
+        grid_lb=-0.3,
+        grid_ub=0.7,
     )
 
     if r_result is None:
@@ -2043,7 +2133,9 @@ def test_conditional_cs_rmm_bc_data(bc_data, monotonicity_direction):
         m_bar=0.5,
         monotonicity_direction=monotonicity_direction,
         hybrid_flag="LF",
-        grid_points=100,
+        grid_points=101,
+        grid_lb=-0.3,
+        grid_ub=0.7,
     )
 
     accept_idx = np.where(py_result["accept"])[0]
@@ -2057,11 +2149,12 @@ def test_conditional_cs_rmm_bc_data(bc_data, monotonicity_direction):
     r_ub = _extract_scalar(r_result["ub"])
 
     compared = 0
+    np.testing.assert_allclose(py_result["grid"], np.array(r_result["grid"]), rtol=0, atol=1e-12)
     if not np.isnan(py_lb) and not np.isnan(r_lb):
-        np.testing.assert_allclose(py_lb, r_lb, rtol=0.15, atol=0.05)
+        np.testing.assert_allclose(py_lb, r_lb, rtol=0, atol=0.01 + 1e-12)
         compared += 1
     if not np.isnan(py_ub) and not np.isnan(r_ub):
-        np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
+        np.testing.assert_allclose(py_ub, r_ub, rtol=0, atol=0.01 + 1e-12)
         compared += 1
     assert compared > 0, f"Conditional CS RMM m_bar=0.5 {monotonicity_direction}: No non-NaN values to compare"
 
@@ -2307,3 +2400,244 @@ def test_conditional_cs_sdrmm_bc_data(bc_data, monotonicity_direction):
         np.testing.assert_allclose(py_ub, r_ub, rtol=0.15, atol=0.05)
         compared += 1
     assert compared > 0, f"Conditional CS SDRMM m_bar=0.5 {monotonicity_direction}: No non-NaN values to compare"
+
+
+def _r_vector(x):
+    return "c(" + ",".join(repr(float(v)) for v in np.ravel(x)) + ")"
+
+
+def _r_matrix(m):
+    m = np.asarray(m, dtype=float)
+    return f"matrix({_r_vector(m)}, nrow={m.shape[0]}, byrow=TRUE)"
+
+
+def r_honestdid_json(body):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+suppressPackageStartupMessages({{library(HonestDiD); library(jsonlite)}})
+{body}
+write_json(out, "{result_path}", digits = NA, auto_unbox = TRUE)
+"""
+    try:
+        return _run_r_script(r_script, result_path, timeout=600)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+@pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
+@pytest.mark.parametrize(
+    "case,restriction,m_bar",
+    [
+        ("C", "RM", 1.0),
+        ("A", "RMBpos", 1.0),
+        ("A", "RMI", 1.0),
+        ("B", "RMBpos", 0.5),
+        ("A", "RMI", 0.5),
+    ],
+)
+def test_conditional_cs_rm_family_matches_reference(rm_cases, case, restriction, m_bar):
+    betahat, sigma = rm_cases[case], rm_cases["sigma"]
+    r_call = {
+        "RM": "computeConditionalCS_DeltaRM(",
+        "RMBpos": "computeConditionalCS_DeltaRMB(biasDirection = 'positive', ",
+        "RMI": "computeConditionalCS_DeltaRMM(monotonicityDirection = 'increasing', ",
+    }[restriction]
+    r_result = r_honestdid_json(
+        f"ci <- {r_call}betahat = {_r_vector(betahat)}, sigma = {_r_matrix(sigma)}, numPrePeriods = 3, "
+        f"numPostPeriods = 2, l_vec = c(1, 0), Mbar = {m_bar}, hybrid_flag = 'ARP', gridPoints = 61, "
+        "grid.lb = -0.1, grid.ub = 0.2)\nout <- list(grid = ci$grid, accept = ci$accept)"
+    )
+    if r_result is None:
+        pytest.fail("R relative magnitudes confidence set failed")
+
+    py_fn = {
+        "RM": compute_conditional_cs_rm,
+        "RMBpos": partial(compute_conditional_cs_rmb, bias_direction="positive"),
+        "RMI": partial(compute_conditional_cs_rmm, monotonicity_direction="increasing"),
+    }[restriction]
+    py_result = py_fn(
+        betahat=betahat,
+        sigma=sigma,
+        num_pre_periods=3,
+        num_post_periods=2,
+        l_vec=np.array([1.0, 0.0]),
+        m_bar=m_bar,
+        hybrid_flag="ARP",
+        grid_points=61,
+        grid_lb=-0.1,
+        grid_ub=0.2,
+    )
+
+    np.testing.assert_allclose(py_result["grid"], np.array(r_result["grid"]), rtol=0, atol=1e-12)
+    np.testing.assert_array_equal(py_result["accept"], np.array(r_result["accept"], dtype=float))
+
+
+@pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
+@pytest.mark.parametrize("theta", [0.0, 0.03, 0.06, 0.09])
+def test_dual_truncation_bounds_match_reference(rm_cases, theta):
+    a_matrix = _create_relative_magnitudes_bias_constraint_matrix(
+        num_pre_periods=3, num_post_periods=2, m_bar=0.5, s=-2, max_positive=False, bias_direction="positive"
+    )
+    rows = find_rows_with_post_period_values(a_matrix, [3, 4])
+    a_gamma_inv = a_matrix[:, 3:5] @ np.linalg.inv(_construct_gamma(np.array([1.0, 0.0])))
+    y_t = (a_matrix @ rm_cases["A"] - a_gamma_inv[:, 0] * theta)[rows]
+    x_t = a_gamma_inv[rows][:, 1:]
+    sigma = (a_matrix @ rm_cases["sigma"] @ a_matrix.T)[np.ix_(rows, rows)]
+    lin_soln = _test_delta_lp(y_t, x_t, sigma)
+    gamma_tilde = lin_soln["lambda"]
+    s_t = y_t - sigma @ gamma_tilde * (gamma_tilde @ y_t) / (gamma_tilde @ sigma @ gamma_tilde)
+    w_t = np.column_stack([np.sqrt(np.diag(sigma)), x_t])
+
+    r_result = r_honestdid_json(
+        f"v <- HonestDiD:::.vlo_vup_dual_fn(eta = {float(lin_soln['eta_star'])!r}, s_T = {_r_vector(s_t)}, "
+        f"gamma_tilde = {_r_vector(gamma_tilde)}, sigma = {_r_matrix(sigma)}, W_T = {_r_matrix(w_t)})\n"
+        "out <- list(vlo = v$vlo, vup_infinite = is.infinite(v$vup))"
+    )
+    if r_result is None:
+        pytest.fail("R dual truncation bounds failed")
+
+    py_result = compute_vlo_vup_dual(lin_soln["eta_star"], s_t, gamma_tilde, sigma, w_t)
+
+    assert py_result["vlo"] == pytest.approx(r_result["vlo"], abs=1e-12)
+    assert r_result["vup_infinite"]
+    assert py_result["vup"] == np.inf
+
+
+@pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
+def test_identified_set_rm_earliest_difference_matches_reference():
+    betahat = np.array([0.10, 0.0, 0.01, 0.0, 0.05, 0.06])
+    r_result = r_honestdid_json(
+        f"b <- {_r_vector(betahat)}\n"
+        "rm <- HonestDiD:::.compute_IDset_DeltaRM(Mbar = 1, trueBeta = b, l_vec = c(1, 0), numPrePeriods = 4, "
+        "numPostPeriods = 2)\n"
+        "rmb <- HonestDiD:::.compute_IDset_DeltaRMB(Mbar = 1, trueBeta = b, l_vec = c(1, 0), numPrePeriods = 4, "
+        "numPostPeriods = 2, biasDirection = 'negative')\n"
+        "out <- list(rm = c(rm$id.lb, rm$id.ub), rmb = c(rmb$id.lb, rmb$id.ub))"
+    )
+    if r_result is None:
+        pytest.fail("R relative magnitudes identified set failed")
+
+    l_vec = np.array([1.0, 0.0])
+    rm = compute_identified_set_rm(1.0, betahat, l_vec, 4, 2)
+    rmb = compute_identified_set_rmb(1.0, betahat, l_vec, 4, 2, bias_direction="negative")
+
+    np.testing.assert_allclose([rm.id_lb, rm.id_ub], r_result["rm"], rtol=0, atol=1e-10)
+    np.testing.assert_allclose([rmb.id_lb, rmb.id_ub], r_result["rmb"], rtol=0, atol=1e-10)
+    assert rm.id_lb == pytest.approx(-0.05)
+
+
+@pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
+@pytest.mark.parametrize(
+    "restriction,hybrid_flag",
+    [
+        ("SD", "ARP"),
+        ("SD", "FLCI"),
+        ("SDBpos", "ARP"),
+        ("SDBpos", "FLCI"),
+        ("SDI", "ARP"),
+        ("RM", "ARP"),
+        ("RMBpos", "ARP"),
+        ("RMI", "ARP"),
+    ],
+)
+def test_single_post_period_matches_reference(bc_data, restriction, hybrid_flag):
+    betahat = bc_data["betahat"][:5]
+    sigma = bc_data["sigma"][:5, :5]
+    bound_name, bound = ("Mbar", 1.0) if restriction.startswith("RM") else ("M", 0.2)
+    r_call = {
+        "SD": "computeConditionalCS_DeltaSD(",
+        "SDBpos": "computeConditionalCS_DeltaSDB(biasDirection = 'positive', ",
+        "SDI": "computeConditionalCS_DeltaSDM(monotonicityDirection = 'increasing', ",
+        "RM": "computeConditionalCS_DeltaRM(",
+        "RMBpos": "computeConditionalCS_DeltaRMB(biasDirection = 'positive', ",
+        "RMI": "computeConditionalCS_DeltaRMM(monotonicityDirection = 'increasing', ",
+    }[restriction]
+    r_result = r_honestdid_json(
+        f"ci <- suppressWarnings({r_call}betahat = {_r_vector(betahat)}, sigma = {_r_matrix(sigma)}, "
+        f"numPrePeriods = 4, numPostPeriods = 1, l_vec = 1, {bound_name} = {bound}, hybrid_flag = '{hybrid_flag}', "
+        "gridPoints = 81, grid.lb = -0.2, grid.ub = 0.6))\nout <- list(grid = ci$grid, accept = ci$accept)"
+    )
+    if r_result is None:
+        pytest.fail("R single post-period confidence set failed")
+
+    py_fn = {
+        "SD": compute_conditional_cs_sd,
+        "SDBpos": partial(compute_conditional_cs_sdb, bias_direction="positive"),
+        "SDI": partial(compute_conditional_cs_sdm, monotonicity_direction="increasing"),
+        "RM": compute_conditional_cs_rm,
+        "RMBpos": partial(compute_conditional_cs_rmb, bias_direction="positive"),
+        "RMI": partial(compute_conditional_cs_rmm, monotonicity_direction="increasing"),
+    }[restriction]
+    py_result = py_fn(
+        betahat=betahat,
+        sigma=sigma,
+        num_pre_periods=4,
+        num_post_periods=1,
+        l_vec=np.array([1.0]),
+        m_bar=bound,
+        hybrid_flag=hybrid_flag,
+        grid_points=81,
+        grid_lb=-0.2,
+        grid_ub=0.6,
+    )
+
+    np.testing.assert_allclose(py_result["grid"], np.array(r_result["grid"]), rtol=0, atol=1e-12)
+    np.testing.assert_array_equal(
+        np.asarray(py_result["accept"], dtype=float), np.array(r_result["accept"], dtype=float)
+    )
+
+
+@pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
+def test_delta_sd_m_bounds_match_reference(bc_data):
+    betahat = bc_data["betahat"]
+    sigma = bc_data["sigma"]
+    r_result = r_honestdid_json(
+        f"b <- {_r_vector(betahat)}\ns <- {_r_matrix(sigma)}\n"
+        "out <- list(ub = DeltaSD_upperBound_Mpre(b, s, 4), ub_two = DeltaSD_upperBound_Mpre(b[3:8], s[3:8, 3:8], 2), "
+        "lb = suppressWarnings(DeltaSD_lowerBound_Mpre(b, s, 4, grid.ub = 0.3, gridPoints = 301)))"
+    )
+    if r_result is None:
+        pytest.fail("R bounds on M failed")
+
+    upper = compute_delta_sd_upperbound_m(betahat, sigma, 4)
+    upper_two = compute_delta_sd_upperbound_m(betahat[2:], sigma[2:, 2:], 2)
+    lower = compute_delta_sd_lowerbound_m(betahat, sigma, 4, grid_ub=0.3, grid_points=301)
+
+    assert upper == pytest.approx(r_result["ub"], rel=1e-10)
+    assert upper_two == pytest.approx(r_result["ub_two"], rel=1e-10)
+    assert lower == pytest.approx(r_result["lb"], abs=1e-12)
+
+
+@pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
+def test_flci_zero_smoothness_matches_reference(bc_data):
+    betahat = bc_data["betahat"]
+    sigma = bc_data["sigma"]
+    r_result = r_honestdid_json(
+        f"f <- findOptimalFLCI(betahat = {_r_vector(betahat)}, sigma = {_r_matrix(sigma)}, M = 0, "
+        "numPrePeriods = 4, numPostPeriods = 4)\n"
+        "out <- list(ci = f$FLCI, half = f$optimalHalfLength, q = HonestDiD:::.qfoldednormal(p = 0.95, mu = 0))"
+    )
+    if r_result is None:
+        pytest.fail("R FLCI failed")
+
+    py_result = compute_flci(betahat, sigma, 0.0, 4, 4)
+    rescaled_half = py_result.optimal_half_length * r_result["q"] / stats.norm.ppf(0.975)
+
+    assert np.mean(py_result.flci) == pytest.approx(np.mean(r_result["ci"]), abs=1e-5)
+    assert rescaled_half == pytest.approx(r_result["half"], rel=1e-6)
+
+
+@pytest.mark.skipif(not R_HONESTDID_AVAILABLE, reason="R HonestDiD package not available")
+def test_truncated_normal_quantile_matches_reference():
+    lower = [5.0, 8.0, 8.284, 9.0, 12.0, 30.0]
+    r_result = r_honestdid_json(
+        f"out <- sapply({_r_vector(lower)}, function(l) HonestDiD:::.norminvp_generalized(0.95, l, Inf))"
+    )
+    if r_result is None:
+        pytest.fail("R truncated normal quantile failed")
+
+    py_result = [_norminvp_generalized(0.95, value, np.inf) for value in lower]
+
+    np.testing.assert_allclose(py_result, r_result, rtol=1e-12)

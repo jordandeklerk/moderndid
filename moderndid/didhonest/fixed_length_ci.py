@@ -5,7 +5,8 @@ from typing import NamedTuple
 import cvxpy as cp
 import numpy as np
 from scipy import stats
-from scipy.optimize import brentq
+from scipy.linalg import null_space, solve_triangular
+from scipy.optimize import brentq, minimize_scalar
 
 from .utils import basis_vector, validate_conformable
 
@@ -126,7 +127,7 @@ def compute_flci(
     confidence interval length.
 
     For :math:`\Delta^{SD}(M)` with :math:`\theta = \tau_1`, the affine estimator
-    used by the optimal FLCI takes the form in [1]_
+    used by the optimal FLCI takes the form
 
     .. math::
 
@@ -141,13 +142,7 @@ def compute_flci(
     Under convexity and centrosymmetry conditions on the identified set, FLCIs achieve near-optimal
     expected length in finite samples. When :math:`\alpha = 0.05`, the expected
     length of the shortest possible confidence set that satisfies coverage is at
-    most 28% shorter than the FLCI.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    most 28 percent shorter than the FLCI.
     """
     if post_period_weights is None:
         post_period_weights = basis_vector(index=1, size=n_post_periods).flatten()
@@ -207,7 +202,7 @@ def maximize_bias(
     Here, the optimization is over first-difference weights :math:`w` and slack
     variables :math:`t`. The vector :math:`\ell_{pre}` contains the cumulative sums
     of :math:`w`. The quadratic variance constraint is reformulated as a second-order
-    cone, and the problem is solved using an interior-point method from [2]_.
+    cone. An interior-point method solves the resulting program.
 
     Parameters
     ----------
@@ -245,22 +240,10 @@ def maximize_bias(
     restrictions provide no benefit for FLCIs. For :math:`\Delta^{RM}(\bar{M})`,
     the worst-case bias is infinite whenever :math:`\bar{M} > 0`, as pre-treatment
     violations can be arbitrarily scaled up.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
-
-    .. [2] Goulart, P. J., & Chen, Y. (2024). Clarabel: An interior-point solver
-        for conic programs with quadratic objectives. *arXiv preprint arXiv:2405.13033*.
     """
     stacked_vars = cp.Variable(2 * n_pre_periods)
 
-    bias_constant = sum(
-        abs(np.dot(np.arange(1, s + 1), post_period_weights[(n_post_periods - s) : n_post_periods]))
-        for s in range(1, n_post_periods + 1)
-    ) - np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
+    bias_constant = _bias_constant(n_post_periods, post_period_weights)
 
     objective = cp.Minimize(bias_constant + cp.sum(stacked_vars[:n_pre_periods]))
 
@@ -345,10 +328,9 @@ def minimize_variance(
         \text{s.t.} \quad & -t_s \leq \sum_{j=-\underline{T}+1}^{s} w_j \leq t_s, \quad \forall s \\
                           & \sum_{s=-\underline{T}+1}^{0} w_s = \sum_{s=1}^{\bar{T}} s \cdot \ell_{post,s}.
 
-    The variance is a quadratic function of the first-difference weights :math:`w`,
-    making this a QP. The problem is solved using an interior-point method from [2]_.
-    The solution provides a lower bound for the feasible values of :math:`h` in
-    the FLCI optimization.
+    Since the variance is a quadratic function of the first-difference weights :math:`w`,
+    this is a QP that an interior-point method solves. The solution provides a lower bound
+    for the feasible values of :math:`h` in the FLCI optimization.
 
     Parameters
     ----------
@@ -365,15 +347,34 @@ def minimize_variance(
     -------
     float
         Minimum achievable standard deviation :math:`h_{min}`.
+    """
+    h_min, _ = _solve_minimum_variance(sigma, n_pre_periods, n_post_periods, post_period_weights)
+    return h_min
 
-    References
+
+def _solve_minimum_variance(
+    sigma,
+    n_pre_periods,
+    n_post_periods,
+    post_period_weights,
+):
+    """Solve the minimum variance problem and return its standard deviation and weights.
+
+    Parameters
     ----------
+    sigma : ndarray
+        Covariance matrix of event study coefficients.
+    n_pre_periods : int
+        Number of pre-treatment periods.
+    n_post_periods : int
+        Number of post-treatment periods.
+    post_period_weights : ndarray
+        Post-treatment weight vector.
 
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
-
-    .. [2] Goulart, P. J., & Chen, Y. (2024). Clarabel: An interior-point solver
-        for conic programs with quadratic objectives. *arXiv preprint arXiv:2405.13033*.
+    Returns
+    -------
+    tuple
+        The minimum standard deviation and the first-difference weights that attain it.
     """
     stacked_vars = cp.Variable(2 * n_pre_periods)
 
@@ -409,7 +410,7 @@ def minimize_variance(
         problem.solve(solver=cp.CLARABEL, verbose=False)
 
         if problem.status in ["optimal", "optimal_inaccurate"]:
-            return np.sqrt(problem.value)
+            return np.sqrt(problem.value), stacked_vars.value[n_pre_periods:]
 
         for scale_factor in [10, 100, 1000]:
             scaled_A_quadratic = A_quadratic * scale_factor
@@ -425,7 +426,7 @@ def minimize_variance(
             scaled_problem.solve(solver=cp.CLARABEL, verbose=False)
 
             if scaled_problem.status in ["optimal", "optimal_inaccurate"]:
-                return np.sqrt(scaled_problem.value / scale_factor)
+                return np.sqrt(scaled_problem.value / scale_factor), stacked_vars.value[n_pre_periods:]
 
         raise ValueError("Error in optimization for minimum variance")
     except (ValueError, RuntimeError, cp.error.SolverError) as e:
@@ -470,12 +471,6 @@ def affine_variance(
     -------
     float
         Variance of the affine estimator.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     sigma_pre = sigma[:n_pre_periods, :n_pre_periods]
     sigma_pre_post = sigma[:n_pre_periods, n_pre_periods:]
@@ -495,8 +490,8 @@ def folded_normal_quantile(
     r"""Compute quantile of folded normal distribution :math:`cv_{\alpha}(t)`.
 
     Computes the :math:`1-\alpha` quantile of the folded normal distribution
-    :math:`|N(t, 1)|`, denoted :math:`cv_{\alpha}(t)` in the paper. This function
-    arises in the FLCI construction through equation (18) in [1]_
+    :math:`|N(t, 1)|`, denoted :math:`cv_{\alpha}(t)`. This function sets the FLCI
+    half-length
 
     .. math::
 
@@ -535,14 +530,7 @@ def folded_normal_quantile(
     For non-zero :math:`t`, we use Monte Carlo simulation to approximate
     the quantile as no closed-form expression exists.
 
-    If :math:`t = \infty`, we define :math:`cv_{\alpha}(t) = \infty` as noted
-    in the paper (footnote 22).
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    If :math:`t = \infty`, we define :math:`cv_{\alpha}(t) = \infty`.
     """
     if sd <= 0:
         raise ValueError("Standard deviation must be positive")
@@ -632,8 +620,8 @@ def _optimize_flci_params(
         \chi_n(a, v; \alpha) = \sigma_{v,n} \cdot cv_{\alpha}(\bar{b}(a, v) / \sigma_{v,n}),
 
     where :math:`\sigma_{v,n} = \sqrt{v'\Sigma_n v}` is the standard deviation
-    of the affine estimator, :math:`\bar{b}(a, v)` is the worst-case bias from
-    equation (17), and :math:`cv_{\alpha}(t)` denotes the :math:`1-\alpha` quantile
+    of the affine estimator, :math:`\bar{b}(a, v)` is the worst-case bias,
+    and :math:`cv_{\alpha}(t)` denotes the :math:`1-\alpha` quantile
     of the folded normal distribution :math:`|N(t, 1)|`.
 
     The optimization is performed over :math:`(a, v)` pairs, which for
@@ -675,10 +663,44 @@ def _optimize_flci_params(
     The optimization uses golden section search (bisection) when possible,
     falling back to grid search if the bisection method fails. The search
     is over :math:`h \in [h_{min}, h_{max}]` where :math:`h_{min}` minimizes
-    variance and :math:`h_{max}` minimizes bias.
+    variance and :math:`h_{max}` minimizes bias. When :math:`M = 0` the bias
+    vanishes. The minimum variance estimator is then optimal and no search runs.
+
+    When :math:`M` is small enough that the shortest interval lies within the search
+    tolerance of :math:`h_{min}`, the closed form in :func:`_optimize_near_minimum_variance`
+    gives it exactly and the search does not run.
     """
+    h_min_variance, w_min_variance = _solve_minimum_variance(sigma, n_pre_periods, n_post_periods, post_period_weights)
+
+    if smoothness_bound == 0:
+        # Without a bias term the minimum variance weights give the shortest interval.
+        # Skipping the bias program avoids its degenerate solve where its feasible set is a point.
+        return {
+            "optimal_vec": np.concatenate([_weights_to_l(w_min_variance), post_period_weights]),
+            "optimal_pre_period_vec": _weights_to_l(w_min_variance),
+            "optimal_half_length": folded_normal_quantile(1 - alpha, mu=0.0, sd=1.0, seed=seed) * h_min_variance,
+            "smoothness_bound": smoothness_bound,
+            "status": "optimal",
+        }
+
     h_min_bias = get_min_bias_h(sigma, n_pre_periods, n_post_periods, post_period_weights)
-    h_min_variance = minimize_variance(sigma, n_pre_periods, n_post_periods, post_period_weights)
+
+    # The search below resolves h only to this tolerance. Its bias solves near h_min also turn inaccurate.
+    tolerance = min((h_min_bias - h_min_variance) / num_points, abs(h_min_bias) * 1e-6)
+    near_minimum_variance = _optimize_near_minimum_variance(
+        sigma,
+        smoothness_bound,
+        n_pre_periods,
+        n_post_periods,
+        post_period_weights,
+        h_min_variance,
+        w_min_variance,
+        2 * tolerance,
+        alpha,
+        seed,
+    )
+    if near_minimum_variance is not None:
+        return near_minimum_variance
 
     h_optimal = _optimize_h_bisection(
         h_min_variance,
@@ -833,6 +855,166 @@ def _optimize_h_bisection(
                 return np.nan
 
     return (h_lower + h_upper) / 2
+
+
+def _optimize_near_minimum_variance(
+    sigma,
+    smoothness_bound,
+    n_pre_periods,
+    n_post_periods,
+    post_period_weights,
+    h_min,
+    w_min_variance,
+    width,
+    alpha,
+    seed,
+):
+    r"""Find the shortest FLCI among estimators with standard deviation close to the minimum.
+
+    Searches the estimators whose standard deviation lies in :math:`[h_{min}, h_{min} + \text{width}]`.
+    Since the least biased estimator for each standard deviation in that range has a closed form,
+    no bias program is solved. The result is returned only when the shortest interval lies inside
+    the range. Because the half-length is unimodal in the standard deviation, a minimum inside the
+    range is then the global one.
+
+    Parameters
+    ----------
+    sigma : ndarray
+        Covariance matrix of event study coefficients.
+    smoothness_bound : float
+        Smoothness parameter :math:`M`.
+    n_pre_periods : int
+        Number of pre-treatment periods.
+    n_post_periods : int
+        Number of post-treatment periods.
+    post_period_weights : ndarray
+        Weight vector for post-treatment periods.
+    h_min : float
+        Minimum achievable standard deviation.
+    w_min_variance : ndarray
+        First-difference weights of the minimum variance estimator.
+    width : float
+        Length of the range of standard deviations above :math:`h_{min}` to search.
+    alpha : float
+        Significance level.
+    seed : int
+        Random seed.
+
+    Returns
+    -------
+    dict or None
+        Optimal parameters in the form :func:`_optimize_flci_params` returns them, or None when the
+        closed form does not apply over the whole range or the shortest interval may lie outside it.
+
+    Notes
+    -----
+    Every estimator with the required sum of weights is :math:`w = w_{mv} + Qv`, where the columns
+    of :math:`Q` form an orthonormal basis of the changes :math:`u` with :math:`\mathbf{1}'u = 0`.
+    Since :math:`w_{mv}` minimizes the variance under that constraint, the variance of :math:`w` is
+    :math:`h_{min}^2 + v'Q'AQv`, where :math:`A` is the matrix that writes the variance as a
+    quadratic form in the first-difference weights. While the cumulative sums :math:`Lw` keep the
+    signs :math:`s` they have at :math:`w_{mv}`, the worst-case bias is linear in :math:`v`. The
+    least biased estimator with standard deviation :math:`h` is then
+
+    .. math::
+
+        w(r) = w_{mv} - \frac{r}{g} z, \qquad z = Q(Q'AQ)^{-1}Q'L's, \qquad g = \sqrt{z'Az},
+
+    where :math:`r = \sqrt{h^2 - h_{min}^2}`. Its worst-case bias is :math:`M(b_{mv} - g r)`, where
+    :math:`b_{mv}` is the worst-case bias of the minimum variance estimator for :math:`M = 1`. The
+    half-length is then a smooth function of :math:`r` that a bounded scalar search minimizes.
+
+    If :math:`Q'AQ` is singular, the minimum variance estimator is not unique. The closed form then
+    does not apply. A singular :math:`A`, such as one from a pre-period coefficient with zero
+    variance, still qualifies when no change that keeps the weight sum lies in its null space. The
+    closed form holds until a cumulative sum changes sign.
+    """
+    # One pre-period leaves no direction that keeps the weight sum. A range without positive width holds nothing.
+    if n_pre_periods < 2 or not width > 0:
+        return None
+
+    weights_to_levels = _create_diff_matrix(n_pre_periods)
+    a_quadratic = weights_to_levels.T @ sigma[:n_pre_periods, :n_pre_periods] @ weights_to_levels
+    lower_triangular = np.tril(np.ones((n_pre_periods, n_pre_periods)))
+    cumulative = lower_triangular @ w_min_variance
+    signs = np.sign(cumulative)
+
+    # Solving in a basis of the changes that keep the weight sum holds that sum exactly, even when the
+    # pre-period covariance is singular or nearly so.
+    basis = null_space(np.ones((1, n_pre_periods)))
+    try:
+        factor = np.linalg.cholesky(basis.T @ a_quadratic @ basis)
+    except np.linalg.LinAlgError:
+        # Without a unique minimum variance estimator the closed form does not apply.
+        return None
+    half_solved = solve_triangular(factor, basis.T @ lower_triangular.T @ signs, lower=True)
+    direction = basis @ solve_triangular(factor.T, half_solved, lower=False)
+    slope = np.linalg.norm(half_solved)
+
+    r_end = np.sqrt((h_min + width) ** 2 - h_min**2)
+    rates = signs * (lower_triangular @ direction)
+    growing = rates > 0
+    if (
+        np.any(signs == 0)
+        or not 0 < slope < np.inf
+        or np.any(np.abs(cumulative[growing]) * slope / rates[growing] < r_end)
+    ):
+        return None
+
+    bias_constant = _bias_constant(n_post_periods, post_period_weights)
+    bias_min_variance = bias_constant + np.sum(np.abs(cumulative))
+
+    def _half_length(r):
+        h = np.sqrt(h_min**2 + r**2)
+        t = smoothness_bound * (bias_min_variance - slope * r) / h
+        return folded_normal_quantile(1 - alpha, mu=t, sd=1.0, seed=seed) * h
+
+    # A half-length that still falls at the end of the range has its minimum beyond it. Most M values stop here.
+    half_length_end = _half_length(r_end)
+    if half_length_end < _half_length(r_end * (1 - 1e-3)):
+        return None
+
+    best = minimize_scalar(_half_length, bounds=(0.0, r_end), method="bounded", options={"xatol": 1e-10 * r_end})
+    if half_length_end <= best.fun:
+        return None
+
+    weights = w_min_variance - (best.x / slope) * direction
+    optimal_l = _weights_to_l(weights)
+    variance = affine_variance(optimal_l, post_period_weights, sigma, n_pre_periods)
+    # A covariance that admits an estimator without noise can leave a variance that rounds to zero or below.
+    if not variance > 0:
+        return None
+    sd = np.sqrt(variance)
+    max_bias = smoothness_bound * (bias_constant + np.sum(np.abs(lower_triangular @ weights)))
+
+    return {
+        "optimal_vec": np.concatenate([optimal_l, post_period_weights]),
+        "optimal_pre_period_vec": optimal_l,
+        "optimal_half_length": folded_normal_quantile(1 - alpha, mu=max_bias / sd, sd=1.0, seed=seed) * sd,
+        "smoothness_bound": smoothness_bound,
+        "status": "optimal",
+    }
+
+
+def _bias_constant(n_post_periods, post_period_weights):
+    """Compute the part of the worst-case bias that the pre-period weights do not affect.
+
+    Parameters
+    ----------
+    n_post_periods : int
+        Number of post-treatment periods.
+    post_period_weights : ndarray
+        Post-treatment weight vector.
+
+    Returns
+    -------
+    float
+        Constant term of the worst-case bias for a unit smoothness bound.
+    """
+    return sum(
+        abs(np.dot(np.arange(1, s + 1), post_period_weights[(n_post_periods - s) : n_post_periods]))
+        for s in range(1, n_post_periods + 1)
+    ) - np.dot(np.arange(1, n_post_periods + 1), post_period_weights)
 
 
 def _weights_to_l(weights):

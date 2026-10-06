@@ -7,6 +7,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
+from moderndid import gen_cont_did_data
 from moderndid.core.preprocess.builders import PreprocessDataBuilder
 from moderndid.core.preprocess.config import (
     ContDIDConfig,
@@ -15,6 +16,7 @@ from moderndid.core.preprocess.config import (
     DIDInterConfig,
     TwoPeriodDIDConfig,
 )
+from moderndid.core.preprocessing import preprocess_cont_did, preprocess_did
 
 
 @pytest.fixture
@@ -270,3 +272,96 @@ def test_get_cont_did_summary_many_cohorts(builder):
     }
     summary = builder._get_cont_did_summary(summary_tables)
     assert "... and 2 more cohorts" in summary
+
+
+def test_two_period_band_rule_spares_continuous_treatment():
+    rng = np.random.default_rng(3)
+    n = 200
+    group = np.repeat(rng.choice([0, 2], n), 2)
+    df = pl.DataFrame(
+        {
+            "id": np.repeat(np.arange(n), 2),
+            "time": np.tile([1, 2], n),
+            "y": rng.standard_normal(2 * n),
+            "group": group,
+            "dose": np.repeat(rng.uniform(0.1, 1.0, n), 2) * (group > 0),
+        }
+    )
+
+    did_data = preprocess_did(df, yname="y", tname="time", gname="group", idname="id", cband=True)
+    dose_data = preprocess_cont_did(df, yname="y", tname="time", gname="group", dname="dose", idname="id", cband=True)
+    event_data = preprocess_cont_did(
+        df, yname="y", tname="time", gname="group", dname="dose", idname="id", cband=True, aggregation="eventstudy"
+    )
+
+    assert did_data.config.cband is False
+    assert dose_data.config.cband is True
+    assert event_data.config.cband is False
+
+
+def test_cont_did_preprocessing_recodes_groups_to_period_positions():
+    df = gen_cont_did_data(n=200, seed=5).with_columns(
+        (pl.col("time_period") + 2000).alias("time_period"),
+        pl.when(pl.col("G") > 0).then(pl.col("G") + 2000).otherwise(0).alias("G"),
+    )
+    data = preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+    assert data.time_map == {2001: 1, 2002: 2, 2003: 3, 2004: 4}
+    assert sorted(data.data["time_period"].unique().to_list()) == [1, 2, 3, 4]
+    np.testing.assert_array_equal(data.config.treated_groups, [2.0, 3.0, 4.0])
+
+
+def test_cont_did_preprocessing_without_never_treated_drops_late_periods():
+    df = gen_cont_did_data(n=200, p_untreated=0.0, seed=5)
+    kwargs = {"yname": "Y", "tname": "time_period", "gname": "G", "dname": "D", "idname": "id"}
+
+    with pytest.warns(UserWarning, match="no unit is untreated from period 4 on"):
+        data = preprocess_cont_did(df, **kwargs)
+    with pytest.raises(ValueError, match="needs never-treated units"):
+        preprocess_cont_did(df, control_group="nevertreated", **kwargs)
+
+    np.testing.assert_array_equal(data.config.time_periods, [1, 2, 3])
+
+
+def test_cont_did_preprocessing_without_never_treated_needs_a_treated_period():
+    df = gen_cont_did_data(n=200, seed=5).filter(pl.col("G") == 3)
+
+    with pytest.raises(ValueError, match="no treated period has untreated units to compare with"):
+        preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+
+def test_cont_did_preprocessing_rejects_dose_that_changes_over_time():
+    df = gen_cont_did_data(n=200, seed=5).with_columns(
+        pl.when(pl.col("time_period") == 4).then(pl.col("D") + 0.1).otherwise(pl.col("D")).alias("D")
+    )
+
+    with pytest.raises(ValueError, match="must stay the same over time"):
+        preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+
+def test_cont_did_preprocessing_fills_dose_recorded_as_zero_before_treatment():
+    df = gen_cont_did_data(n=200, seed=5)
+    zero_before = df.with_columns(
+        pl.when(pl.col("time_period") < pl.col("G")).then(0.0).otherwise(pl.col("D")).alias("D")
+    )
+    kwargs = {"yname": "Y", "tname": "time_period", "gname": "G", "dname": "D", "idname": "id"}
+
+    filled = preprocess_cont_did(zero_before, **kwargs).data
+    constant = preprocess_cont_did(df, **kwargs).data
+
+    np.testing.assert_array_equal(filled["id"].to_numpy(), constant["id"].to_numpy())
+    np.testing.assert_array_equal(filled["D"].to_numpy(), constant["D"].to_numpy())
+
+
+def test_cont_did_preprocessing_rejects_group_between_observed_periods():
+    df = gen_cont_did_data(n=200, seed=5).filter(pl.col("time_period") != 3)
+
+    with pytest.raises(ValueError, match="Treatment starts between observed periods for group 3\\."):
+        preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")
+
+
+def test_cont_did_preprocessing_names_each_group_between_observed_periods():
+    df = gen_cont_did_data(n=200, seed=5).filter(pl.col("time_period").is_in([1, 4]))
+
+    with pytest.raises(ValueError, match="Treatment starts between observed periods for groups 2, 3\\."):
+        preprocess_cont_did(df, yname="Y", tname="time_period", gname="G", dname="D", idname="id")

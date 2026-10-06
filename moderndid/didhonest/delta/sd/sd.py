@@ -43,7 +43,7 @@ def compute_conditional_cs_sd(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
-    seed=None,
+    seed=0,
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{SD}(M)`.
 
@@ -52,7 +52,7 @@ def compute_conditional_cs_sd(
 
     The smoothness restriction :math:`\Delta^{SD}(M)` formalizes the concern about confounding from
     secular trends that evolve smoothly over time. It bounds the discrete analog of the second
-    derivative, as defined in Equation (8) of [3]_
+    derivative
 
     .. math::
 
@@ -91,8 +91,8 @@ def compute_conditional_cs_sd(
         Lower bound for grid search.
     grid_ub : float, optional
         Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -101,25 +101,15 @@ def compute_conditional_cs_sd(
 
     Notes
     -----
-    :math:`\Delta^{SD}(M)` is convex and centrosymmetric (i.e. :math:`\tilde{\delta} \in \Delta` implies
-    :math:`-\tilde{\delta} \in \Delta`), which allows for the use of Fixed Length Confidence Intervals
-    (FLCIs) with near-optimal finite-sample properties [2]_. The identified set under
-    :math:`\Delta^{SD}(M)` has constant length :math:`2M` regardless of the pre-treatment coefficients.
+    :math:`\Delta^{SD}(M)` is convex and centrosymmetric, meaning that :math:`\tilde{\delta} \in \Delta`
+    implies :math:`-\tilde{\delta} \in \Delta`. Fixed Length Confidence Intervals (FLCIs) then have
+    near-optimal finite-sample properties. The identified set under :math:`\Delta^{SD}(M)` has constant
+    length :math:`2M` regardless of the pre-treatment coefficients.
 
-    The confidence set is constructed using either FLCIs (default) or the moment inequality approach
-    from Section 3 of [3]_. For FLCIs, the expected length is at most 28% longer than the shortest
-    possible confidence set satisfying the coverage requirement when the true parameter is at the
-    center of the identified set (Proposition 4.1 in [2]_).
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Armstrong, T. B., & Kolesár, M. (2018). Optimal inference in a class of
-        regression models. Econometrica, 86(2), 655-683.
-    .. [3] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    The confidence set is constructed using either FLCIs (default) or the moment inequality approach.
+    For FLCIs, the expected length is at most 28 percent longer than the shortest possible confidence
+    set satisfying the coverage requirement when the true parameter is at the center of the identified
+    set.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -215,6 +205,7 @@ def compute_conditional_cs_sd(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -232,7 +223,7 @@ def compute_identified_set_sd(
     Computes the identified set for :math:`l'\tau_{post}` under the restriction that the underlying
     trend :math:`\delta` lies in :math:`\Delta^{SD}(M)`.
 
-    Following Lemma 2.1 in [2]_, if :math:`\Delta` is closed and convex, then :math:`\mathcal{S}(\beta, \Delta)`
+    If :math:`\Delta` is closed and convex, then :math:`\mathcal{S}(\beta, \Delta)`
     is an interval, :math:`[\theta^{lb}(\beta, \Delta), \theta^{ub}(\beta, \Delta)]`, where
 
     .. math::
@@ -273,14 +264,6 @@ def compute_identified_set_sd(
     -----
     The constraint :math:`\delta_{pre} = \beta_{pre}` reflects that pre-treatment event study coefficients
     identify the pre-treatment trend under the no-anticipation assumption.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
 
@@ -427,8 +410,7 @@ def _compute_cs_sd_no_nuisance(
             alpha=hybrid_kappa,
         )
 
-        # For single post-period, we need only the post-period part of optimal_vec
-        hybrid_list["flci_l"] = flci_result.optimal_vec[num_pre_periods:]
+        hybrid_list["flci_l"] = flci_result.optimal_vec
         hybrid_list["flci_halflength"] = flci_result.optimal_half_length
 
         if grid_ub is None:

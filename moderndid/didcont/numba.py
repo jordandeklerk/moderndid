@@ -1,7 +1,5 @@
 """Numba operations for continuous treatment DiD."""
 
-from itertools import combinations, product
-
 import numpy as np
 
 from moderndid.cupy.backend import get_backend
@@ -31,7 +29,6 @@ __all__ = [
     "compute_basis_dimension",
     "compute_rsquared",
     "create_nonzero_divisor",
-    "glp_model_matrix",
     "matrix_sqrt_eigendecomp",
     "tensor_prod_model_matrix",
 ]
@@ -132,7 +129,7 @@ def _compute_tensor_dimension(degree, segments):
 
 
 def _compute_glp_dimension(degree, segments):
-    """Compute dimension of generalized linear product basis."""
+    """Compute dimension of generalized polynomial basis."""
     mask = degree > 0
     if not np.any(mask):
         return 0
@@ -160,7 +157,7 @@ def _compute_glp_dimension(degree, segments):
 
 
 def _two_dimension_update(d1, d2, nd1, pd12):
-    """Update dimension calculation for GLP basis."""
+    """Update dimension calculation for glp basis."""
     if d2 == 1:
         return pd12, nd1
 
@@ -203,47 +200,6 @@ def _tensor_prod_model_matrix_impl(bases_flat, n_obs, total_cols):
         for vec in row_vectors[1:]:
             tensor_row = np.kron(tensor_row, vec)
         result[row, :] = tensor_row
-    return result
-
-
-def _glp_model_matrix_impl(bases_flat, n_obs, dims):
-    """GLP model matrix computation."""
-    num_bases = len(dims)
-    total_cols = sum(dims)
-
-    for order in range(2, num_bases + 1):
-        for indices in combinations(range(num_bases), order):
-            interaction_dim = 1
-            for idx in indices:
-                interaction_dim *= dims[idx]
-            total_cols += interaction_dim
-
-    result = np.empty((n_obs, total_cols), dtype=np.float64)
-    col_idx = 0
-
-    for basis in bases_flat:
-        n_cols = basis.shape[1]
-        result[:, col_idx : col_idx + n_cols] = basis
-        col_idx += n_cols
-
-    for order in range(2, num_bases + 1):
-        for indices in combinations(range(num_bases), order):
-            selected_bases = [bases_flat[idx] for idx in indices]
-            selected_dims = [dims[idx] for idx in indices]
-
-            interaction_cols = int(np.prod(selected_dims))
-            interaction_result = np.empty((n_obs, interaction_cols))
-
-            for interaction_col_idx, func_indices in enumerate(product(*[range(dim) for dim in selected_dims])):
-                interaction_col = np.ones(n_obs)
-                for basis_idx, func_idx in enumerate(func_indices):
-                    interaction_col *= selected_bases[basis_idx][:, func_idx]
-
-                interaction_result[:, interaction_col_idx] = interaction_col
-
-            result[:, col_idx : col_idx + interaction_cols] = interaction_result
-            col_idx += interaction_cols
-
     return result
 
 
@@ -307,7 +263,7 @@ if HAS_NUMBA:
 
     @nb.njit(cache=True)
     def _compute_glp_dimension(degree, segments):
-        """Compute dimension of generalized linear product basis."""
+        """Compute dimension of generalized polynomial basis."""
         count = 0
         for deg in degree:
             if deg > 0:
@@ -346,7 +302,7 @@ if HAS_NUMBA:
 
     @nb.njit(cache=True)
     def _two_dimension_update(d1, d2, nd1, pd12):
-        """Update dimension calculation for GLP basis."""
+        """Update dimension calculation for glp basis."""
         if d2 == 1:
             return pd12, nd1
 
@@ -402,66 +358,6 @@ if HAS_NUMBA:
             result[row, :] = tensor_row
 
         return result
-
-    @nb.njit(cache=True)
-    def _glp_model_matrix_numba_impl(bases_flat, n_obs, dims):
-        """GLP model matrix computation."""
-        num_bases = len(dims)
-
-        total_cols = 0
-        for dim in dims:
-            total_cols += dim
-
-        for order in range(2, num_bases + 1):
-            n_combinations = 1
-            for i in range(order):
-                n_combinations = n_combinations * (num_bases - i) // (i + 1)
-
-            if order == 2:
-                for i in range(num_bases):
-                    for j in range(i + 1, num_bases):
-                        total_cols += dims[i] * dims[j]
-            elif order == 3:
-                for i in range(num_bases):
-                    for j in range(i + 1, num_bases):
-                        for k in range(j + 1, num_bases):
-                            total_cols += dims[i] * dims[j] * dims[k]
-
-        result = np.empty((n_obs, total_cols), dtype=np.float64)
-        col_idx = 0
-
-        for basis_idx in range(num_bases):
-            n_cols = dims[basis_idx]
-            for col in range(n_cols):
-                for row in range(n_obs):
-                    result[row, col_idx] = bases_flat[basis_idx][row, col]
-                col_idx += 1
-
-        for i in range(num_bases):
-            for j in range(i + 1, num_bases):
-                for col_i in range(dims[i]):
-                    for col_j in range(dims[j]):
-                        for row in range(n_obs):
-                            result[row, col_idx] = bases_flat[i][row, col_i] * bases_flat[j][row, col_j]
-                        col_idx += 1
-
-        for i in range(num_bases):
-            for j in range(i + 1, num_bases):
-                for k in range(j + 1, num_bases):
-                    for col_i in range(dims[i]):
-                        for col_j in range(dims[j]):
-                            for col_k in range(dims[k]):
-                                for row in range(n_obs):
-                                    result[row, col_idx] = (
-                                        bases_flat[i][row, col_i]
-                                        * bases_flat[j][row, col_j]
-                                        * bases_flat[k][row, col_k]
-                                    )
-                                col_idx += 1
-
-        return result
-
-    _glp_model_matrix_impl = _glp_model_matrix_numba_impl
 
 
 def check_full_rank_crossprod(x, tol=None):
@@ -538,39 +434,3 @@ def tensor_prod_model_matrix(bases):
     total_cols = int(np.prod(dims))
 
     return _tensor_prod_model_matrix_impl(bases_typed, n_obs, dims, total_cols)
-
-
-def glp_model_matrix(bases):
-    """GLP model matrix computation."""
-    if not bases:
-        raise ValueError("bases cannot be empty")
-
-    for i, basis in enumerate(bases):
-        if not isinstance(basis, np.ndarray):
-            raise TypeError(f"bases[{i}] must be a NumPy array")
-        if basis.ndim != 2:
-            raise ValueError(f"bases[{i}] must be 2-dimensional")
-
-    n_obs = bases[0].shape[0]
-    for i, basis in enumerate(bases[1:], 1):
-        if basis.shape[0] != n_obs:
-            raise ValueError(
-                f"All matrices must have same number of rows. bases[0] has {n_obs}, bases[{i}] has {basis.shape[0]}"
-            )
-
-    if n_obs == 0:
-        return np.empty((0, 0))
-
-    dims = np.array([basis.shape[1] for basis in bases], dtype=np.int32)
-
-    if HAS_NUMBA and len(bases) <= 3:
-        bases_typed = List()
-        for basis in bases:
-            bases_typed.append(np.asarray(basis, dtype=np.float64))
-        return _glp_model_matrix_numba_impl(bases_typed, n_obs, dims)
-
-    bases_typed = []
-    for basis in bases:
-        bases_typed.append(np.asarray(basis, dtype=np.float64))
-
-    return _glp_model_matrix_impl(bases_typed, n_obs, dims)

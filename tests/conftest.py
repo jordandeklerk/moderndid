@@ -1,4 +1,7 @@
-"""Root test warnings configuration."""
+"""Root test warnings configuration and shared fixtures."""
+
+import numpy as np
+import pytest
 
 
 # Only numerical RuntimeWarnings and third-party warnings are suppressed globally.
@@ -21,3 +24,21 @@ def pytest_configure(config):
     ]
     for f in filters:
         config.addinivalue_line("filterwarnings", f)
+
+
+class FixedDraws(np.random.Generator):
+    """Random generator whose integer draws come from a preset list of cluster draws."""
+
+    def __init__(self, draws):
+        super().__init__(np.random.PCG64(0))
+        self._draws = iter(draws)
+
+    def integers(self, low, high=None, size=None, dtype=np.int64, endpoint=False):
+        """Return the next preset draw."""
+        return np.asarray(next(self._draws), dtype=np.int64)
+
+
+@pytest.fixture
+def fixed_draws():
+    """Generator class that hands the bootstrap preset cluster draws."""
+    return FixedDraws

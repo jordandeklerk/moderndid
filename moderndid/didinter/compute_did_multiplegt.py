@@ -1,34 +1,41 @@
 """Core computations for estimation in heterogeneous and dynamic ATT estimation."""
 
 import warnings
+from dataclasses import replace
 
 import numpy as np
 import polars as pl
 import statsmodels.api as sm
 from scipy import stats
 
+from moderndid.core.preprocess.transformers import DataTransformerPipeline, DIDInterConfigUpdater
+
 from .bootstrap import cluster_bootstrap
 from .container import ATEResult, DIDInterResult, EffectsResult, HeterogeneityResult, PlacebosResult
 from .controls import apply_control_adjustment, compute_control_coefficients, compute_variance_adjustment
 from .variance import (
     build_treatment_paths,
+    compute_cluster_influence,
     compute_clustered_variance,
     compute_cohort_dof,
     compute_control_dof,
     compute_dof_scaling,
     compute_e_hat,
     compute_joint_test,
+    compute_path_cohort_dof,
     compute_union_dof,
 )
 
 
-def compute_did_multiplegt(preprocessed):
+def compute_did_multiplegt(preprocessed, data):
     """Compute treatment effects.
 
     Parameters
     ----------
     preprocessed : DIDInterData
         Preprocessed data.
+    data : DataFrame
+        The panel before preprocessing that the bootstrap resamples.
 
     Returns
     -------
@@ -45,13 +52,19 @@ def compute_did_multiplegt(preprocessed):
     n_groups = df[config.gname].n_unique()
     t_max = int(df[config.tname].max())
 
-    if config.same_switchers:
-        df = _compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
-
-    if config.same_switchers_pl and config.placebo > 0:
-        df = _compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
-
     df, coefficients = compute_control_coefficients(df, config, n_groups)
+
+    # Since a group's first row carries its influence function, clustering needs the cluster of each row the
+    # balancer inserted. The heterogeneity regressions read the column as observed.
+    het_df = df
+    if config.cluster:
+        cluster = pl.col(config.cluster)
+        df = df.with_columns(cluster.fill_null(cluster.min().over(config.gname)))
+        if df.select(cluster.n_unique().over(config.gname).max()).item() > 1:
+            raise ValueError(
+                f"Some groups belong to more than one cluster in '{config.cluster}'. Each group in "
+                f"'{config.gname}' must be nested within a single cluster."
+            )
 
     effects_results = _compute_did_effects(
         df=df,
@@ -84,7 +97,7 @@ def compute_did_multiplegt(preprocessed):
         )
 
         boot_result = cluster_bootstrap(
-            data=df,
+            data=data,
             config=config,
             compute_func=_compute_bootstrap_estimates,
             biters=config.biters,
@@ -95,7 +108,16 @@ def compute_did_multiplegt(preprocessed):
         if placebos_results is not None and boot_result.placebos_se is not None:
             placebos_results["std_errors"] = boot_result.placebos_se
 
-    ate = _compute_ate(effects_results, z_crit, n_groups) if effects_results else None
+    ate = None
+    if effects_results and not config.trends_lin:
+        ate = _compute_ate(effects_results, z_crit, n_groups)
+
+    if ate is not None and config.boot:
+        ate = ate._replace(
+            std_error=boot_result.ate_se,
+            ci_lower=ate.estimate - z_crit * boot_result.ate_se,
+            ci_upper=ate.estimate + z_crit * boot_result.ate_se,
+        )
 
     vcov_warnings = []
 
@@ -136,14 +158,19 @@ def compute_did_multiplegt(preprocessed):
             n_observations=placebos_results["n_observations"],
         )
 
-    heterogeneity = _compute_heterogeneity(df, config)
+    heterogeneity = _compute_heterogeneity(het_df, config)
+
+    # Since groups that switch in the direction left out are controls until they switch, they count as units
+    # but not as switchers.
+    groups = preprocessed.time_invariant_data
+    switches = (groups["F_g"] != float("inf")) & groups["S_g"].is_in(DIDInterConfigUpdater.switcher_directions(config))
 
     return DIDInterResult(
         effects=effects,
         placebos=placebos,
         ate=ate,
-        n_units=preprocessed.n_switchers + preprocessed.n_never_switchers,
-        n_switchers=preprocessed.n_switchers,
+        n_units=groups.height,
+        n_switchers=int(switches.sum()),
         n_never_switchers=preprocessed.n_never_switchers,
         ci_level=ci_level,
         effects_equal_test=effects_equal_test,
@@ -166,49 +193,33 @@ def compute_did_multiplegt(preprocessed):
             "same_switchers_pl": config.same_switchers_pl,
             "continuous": config.continuous,
             "weightsname": config.weightsname,
+            "boot": config.boot,
         },
         vcov_warnings=vcov_warnings,
     )
 
 
 def _compute_bootstrap_estimates(df, config):
-    """Compute estimates for a bootstrap sample of preprocessed data."""
-    nan_effects = np.full(config.effects, np.nan)
-    nan_placebos = np.full(config.placebo, np.nan) if config.placebo > 0 else None
+    """Preprocess one bootstrap draw and compute its point estimates."""
+    nan_result = {"effects": np.full(config.effects, np.nan)}
+    if config.placebo > 0:
+        nan_result["placebos"] = np.full(config.placebo, np.nan)
 
-    if df.height == 0:
-        result = {"effects": nan_effects}
-        if nan_placebos is not None:
-            result["placebos"] = nan_placebos
-        return result
+    # Since point estimates never use the cluster, the draws skip the clustered variance computations.
+    config = replace(config, cluster=None)
+    for step in DataTransformerPipeline.get_didinter_pipeline().transformers:
+        if df.is_empty():
+            return nan_result
+        df = step.transform(df, config)
 
+    max_effects, max_placebo = DIDInterConfigUpdater.estimable_horizons(df, config)
+    if max_effects == 0:
+        return nan_result
+
+    t_max = int(df[config.tname].max())
+    # A draw estimates the horizons its own switchers reach, as the full sample does.
+    config = replace(config, effects=min(config.effects, max_effects), placebo=min(config.placebo, max_placebo))
     n_groups = df[config.gname].n_unique()
-    if n_groups == 0:
-        result = {"effects": nan_effects}
-        if nan_placebos is not None:
-            result["placebos"] = nan_placebos
-        return result
-
-    t_max_val = df[config.tname].max()
-    if t_max_val is None:
-        result = {"effects": nan_effects}
-        if nan_placebos is not None:
-            result["placebos"] = nan_placebos
-        return result
-    t_max = int(t_max_val)
-
-    has_switchers = df.filter(pl.col("S_g") != 0).height > 0
-    if not has_switchers:
-        result = {"effects": nan_effects}
-        if nan_placebos is not None:
-            result["placebos"] = nan_placebos
-        return result
-
-    if config.same_switchers:
-        df = _compute_same_switchers_mask(df, config, config.effects, t_max, "effect")
-
-    if config.same_switchers_pl and config.placebo > 0:
-        df = _compute_same_switchers_mask(df, config, config.placebo, t_max, "placebo")
 
     df, coefficients = compute_control_coefficients(df, config, n_groups)
 
@@ -248,10 +259,20 @@ def _compute_bootstrap_estimates(df, config):
 
 
 def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, coefficients):
-    """Compute effects at multiple horizons."""
+    r"""Compute effects at multiple horizons.
+
+    Switchers whose treatment rises and switchers whose treatment falls are estimated in separate
+    passes against the same not-yet-switched controls. The passes combine in proportion to their
+    weighted numbers of switchers. Since a fall enters with a minus sign, both passes measure the
+    effect of moving away from the baseline treatment.
+
+    With ``same_switchers`` every horizon uses only the switchers that reach all the requested
+    effects. With ``same_switchers_pl`` the placebos also need all the requested placebos. With
+    ``trends_lin`` the estimate at horizon :math:`\ell` sums the estimates of horizons 1 to
+    :math:`\ell`. All of them come from the switchers that reach horizon :math:`\ell`.
+    """
     gname = config.gname
     tname = config.tname
-    yname = config.yname
 
     horizons = np.arange(1, n_horizons + 1) if horizon_type == "effect" else -np.arange(1, n_horizons + 1)
 
@@ -260,212 +281,70 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
     std_errors = np.zeros(n_horizons)
     n_switchers_arr = np.zeros(n_horizons)
     n_switchers_weighted_arr = np.zeros(n_horizons)
-    delta_d_arr = np.zeros(n_horizons)
+    ate_delta_arr = np.zeros(n_horizons)
     n_obs_arr = np.zeros(n_horizons)
     influence_funcs = []
     influence_funcs_unnorm = []
 
     df = df.sort([gname, tname])
+    unit_rows = df.filter(pl.col("first_obs_by_gp") == 1)
+    unit_clusters = unit_rows[config.cluster] if config.cluster else None
+    directions = [d for d in DIDInterConfigUpdater.switcher_directions(config) if (df["S_g"] == d).any()]
+
+    use_placebo_mask = horizon_type == "placebo" and (config.same_switchers_pl or config.trends_lin)
+    same_switchers = None
+    if config.same_switchers or config.trends_lin:
+        same_switchers = pl.col("_same_switcher")
+        if use_placebo_mask:
+            same_switchers = same_switchers & pl.col("_same_switcher_pl")
+    if config.same_switchers and not config.trends_lin:
+        df = _compute_same_switchers_mask(df, config, config.effects, config.placebo if use_placebo_mask else 0, t_max)
 
     for idx, h in enumerate(horizons):
         abs_h = abs(h)
 
-        diff_col = f"diff_y_{abs_h}"
-
-        if horizon_type == "effect":
-            df = df.with_columns(pl.col(yname).diff(abs_h).over(gname).alias(diff_col))
-            dist_col = f"dist_to_switch_{abs_h}"
-        else:
-            df = df.with_columns(
-                (pl.col(yname).shift(2 * abs_h).over(gname) - pl.col(yname).shift(abs_h).over(gname)).alias(diff_col)
+        if config.trends_lin:
+            df = _compute_same_switchers_mask(df, config, abs_h, abs_h if use_placebo_mask else 0, t_max)
+            df, passes = _estimate_cumulated_horizon(
+                df, config, abs_h, horizon_type, directions, n_groups, t_max, coefficients, same_switchers
             )
-            dist_col = f"dist_to_switch_pl_{abs_h}"
-
-        df = build_treatment_paths(df, abs_h, config)
-
-        never_col = f"never_change_{abs_h}"
-        df = df.with_columns(
-            pl.when(pl.col(diff_col).is_not_null())
-            .then((pl.col("F_g") > pl.col(tname)).cast(pl.Float64))
-            .otherwise(pl.lit(None))
-            .alias(never_col)
-        )
-
-        if config.only_never_switchers:
-            df = df.with_columns(
-                pl.when(
-                    (pl.col("F_g") > pl.col(tname)) & (pl.col("F_g") < (t_max + 1)) & pl.col(diff_col).is_not_null()
-                )
-                .then(0.0)
-                .otherwise(pl.col(never_col))
-                .alias(never_col)
+        else:
+            df, passes = _estimate_horizon(
+                df, config, abs_h, horizon_type, directions, n_groups, t_max, coefficients, same_switchers
             )
 
-        never_w_col = f"never_change_w_{abs_h}"
-        df = df.with_columns((pl.col(never_col) * pl.col("weight_gt")).alias(never_w_col))
-
-        group_vars = _get_group_vars(config)
-        n_control_col = f"n_control_{abs_h}"
-        df = df.with_columns(pl.col(never_w_col).sum().over(group_vars).alias(n_control_col))
-
-        if config.switchers == "in":
-            switcher_mask = pl.col("S_g") == 1
-            increase_val = 1
-        elif config.switchers == "out":
-            switcher_mask = pl.col("S_g") == -1
-            increase_val = -1
-        else:
-            switcher_mask = pl.col("S_g") != 0
-            increase_val = None
-
-        if config.same_switchers and "same_switcher_valid" in df.columns:
-            switcher_mask = switcher_mask & pl.col("same_switcher_valid")
-
-        base_cond = (
-            (pl.col(tname) == (pl.col("F_g") - 1 + abs_h))
-            & (pl.col("L_g") >= abs_h)
-            & (pl.col(n_control_col) > 0)
-            & pl.col(n_control_col).is_not_null()
-        )
-
-        if config.same_switchers and "same_switcher_valid" in df.columns:
-            base_cond = base_cond & pl.col("same_switcher_valid")
-
-        if increase_val is not None:
-            cond_expr = base_cond & (pl.col("S_g") == increase_val)
-        else:
-            cond_expr = base_cond & (pl.col("S_g") != 0)
-
-        df = df.with_columns(
-            pl.when(pl.col(diff_col).is_null()).then(pl.lit(None)).otherwise(cond_expr.cast(pl.Float64)).alias(dist_col)
-        )
-
-        dist_w_col = f"dist_to_switch_w_{abs_h}"
-        df = df.with_columns(
-            pl.when(switcher_mask).then(pl.col(dist_col) * pl.col("weight_gt")).otherwise(0.0).alias(dist_w_col)
-        )
-
-        n_treated_col = f"n_treated_{abs_h}"
-        df = df.with_columns(pl.col(dist_w_col).sum().over(group_vars).alias(n_treated_col))
-
-        switcher_filter = (pl.col(dist_col) == 1.0) & pl.col(diff_col).is_not_null() & switcher_mask
-        n_switchers_unweighted = df.filter(switcher_filter)[gname].n_unique()
-
-        n_switchers_weighted = df.select(pl.col(dist_w_col).sum()).item()
-        if n_switchers_weighted is None or n_switchers_weighted == 0:
-            n_switchers_weighted = 0.0
-
-        if n_switchers_unweighted == 0:
+        if not passes:
             estimates[idx] = np.nan
             std_errors[idx] = np.nan
             n_switchers_arr[idx] = 0
             n_obs_arr[idx] = 0
+            # A zero column keeps the influence functions aligned with the horizons for the average total effect.
+            influence_funcs_unnorm.append(np.zeros(unit_rows.height))
             continue
 
-        # The switcher and control flags above come from the unadjusted outcome differences.
-        if coefficients:
-            df = apply_control_adjustment(df, config, abs_h, coefficients, horizon_type)
-
-        inf_temp_col = f"inf_func_{abs_h}_temp"
-        n_control_is_zero = pl.col(n_control_col).is_null() | (pl.col(n_control_col) == 0)
-        safe_n_control = pl.when(n_control_is_zero).then(1.0).otherwise(pl.col(n_control_col))
-        safe_n_switchers = max(n_switchers_weighted, 1e-10)
-
-        df = df.with_columns(
-            (
-                (pl.lit(n_groups) / pl.lit(safe_n_switchers))
-                * pl.col("weight_gt")
-                * (pl.col(dist_col) - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0))
-                * pl.col(diff_col).fill_null(0.0)
-            ).alias(inf_temp_col)
-        )
-
-        inf_col = f"inf_func_{abs_h}"
-        df = df.with_columns((pl.col(inf_temp_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(inf_col))
-
-        did_estimate = df.select(pl.col(inf_col).sum()).item() / n_groups
+        n_switchers_weighted = sum(result["n_weighted"] for result in passes)
+        shares = [result["n_weighted"] / n_switchers_weighted for result in passes]
+        did_estimate = sum(s * result["sign"] * result["estimate"] for s, result in zip(shares, passes, strict=True))
+        inf_func = sum(s * result["sign"] * result["influence"] for s, result in zip(shares, passes, strict=True))
+        deltas = [s * result["delta"] for s, result in zip(shares, passes, strict=True) if result["delta"] is not None]
+        delta_d = sum(deltas) if deltas else None
 
         estimates_unnorm[idx] = did_estimate
-        n_switchers_weighted_arr[idx] = safe_n_switchers
-        delta_d = _compute_delta_d(df, config, abs_h, horizon_type, dist_col)
+        n_switchers_weighted_arr[idx] = n_switchers_weighted
 
         if horizon_type == "effect":
-            delta_d_arr[idx] = delta_d if delta_d is not None else 0.0
+            ate_delta_arr[idx] = sum(s * result["ate_delta"] for s, result in zip(shares, passes, strict=True))
 
         if config.normalized and delta_d is not None and delta_d != 0:
             did_estimate = did_estimate / delta_d
 
         estimates[idx] = did_estimate
 
-        if coefficients:
-            df = compute_variance_adjustment(df, config, abs_h, coefficients, safe_n_switchers, dist_col)
-
-        switcher_flag = f"is_switcher_{abs_h}"
-        weighted_diff = f"weighted_diff_{abs_h}"
-        df = df.with_columns(
-            pl.col(dist_col).cast(pl.Int64).alias(switcher_flag),
-            (pl.col(diff_col).fill_null(0.0) * pl.col("weight_gt")).alias(weighted_diff),
-        )
-
-        df = compute_cohort_dof(df, abs_h, config, config.cluster)
-        df = compute_control_dof(df, abs_h, config, config.cluster)
-        df = compute_union_dof(df, abs_h, config, config.cluster)
-        df = compute_dof_scaling(df, abs_h, config)
-        df = compute_e_hat(df, abs_h, config)
-
-        dof_scale_col = f"dof_scale_{abs_h}"
-        e_hat_col = f"E_hat_{abs_h}"
-        inf_var_col = f"inf_func_var_{abs_h}"
-        dof_scale_expr = pl.col(dof_scale_col).fill_null(1.0) if dof_scale_col in df.columns else pl.lit(1.0)
-        dummy_u_gg_col = f"dummy_u_gg_{abs_h}"
-        time_constraint_col = f"time_constraint_{abs_h}"
-
-        df = df.with_columns(
-            ((pl.col("T_g") - 1) >= abs_h).cast(pl.Int64).alias(dummy_u_gg_col),
-            ((pl.col(tname) >= (abs_h + 1)) & (pl.col(tname) <= pl.col("T_g")))
-            .cast(pl.Int64)
-            .alias(time_constraint_col),
-        )
-
-        if e_hat_col in df.columns:
-            df = df.with_columns(
-                (
-                    pl.col(dummy_u_gg_col)
-                    * (pl.lit(n_groups) / pl.lit(safe_n_switchers))
-                    * pl.col(time_constraint_col)
-                    * pl.col("weight_gt")
-                    * (pl.col(dist_col) - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0))
-                    * dof_scale_expr
-                    * (pl.col(diff_col).fill_null(0.0) - pl.col(e_hat_col).fill_null(0.0))
-                ).alias(inf_var_col)
-            )
-            df = df.with_columns((pl.col(inf_var_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(inf_var_col))
-
-            part2_col = f"part2_{abs_h}"
-            if part2_col in df.columns:
-                df = df.with_columns((pl.col(inf_var_col) - pl.col(part2_col).fill_null(0.0)).alias(inf_var_col))
-
-            inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_var_col).to_numpy().flatten()
-        else:
-            inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_col).to_numpy().flatten()
-
-            part2_col = f"part2_{abs_h}"
-            if part2_col in df.columns:
-                part2_vals = df.filter(pl.col("first_obs_by_gp") == 1).select(part2_col).to_numpy().flatten()
-                inf_func = inf_func - part2_vals
-
         if config.cluster:
-            cluster_data = df.filter(pl.col("first_obs_by_gp") == 1).select(
-                [config.cluster, inf_var_col if e_hat_col in df.columns else inf_col]
+            observed = unit_clusters.is_not_null()
+            std_error = compute_clustered_variance(
+                inf_func[observed.to_numpy()], unit_clusters.filter(observed).to_numpy(), n_groups
             )
-            valid_cluster_mask = cluster_data[config.cluster].is_not_null()
-            cluster_ids = cluster_data.filter(valid_cluster_mask)[config.cluster].to_numpy().flatten()
-            inf_func_for_cluster = (
-                cluster_data.filter(valid_cluster_mask)[inf_var_col if e_hat_col in df.columns else inf_col]
-                .to_numpy()
-                .flatten()
-            )
-            std_error = compute_clustered_variance(inf_func_for_cluster, cluster_ids, n_groups)
         else:
             std_error = np.sqrt(np.sum(inf_func**2)) / n_groups
 
@@ -477,29 +356,14 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
 
         influence_funcs.append(inf_func)
         std_errors[idx] = std_error
-        n_switchers_arr[idx] = n_switchers_unweighted
+        n_switchers_arr[idx] = sum(result["n_switchers"] for result in passes)
+        n_obs_arr[idx] = df.select(pl.col(f"count_{abs_h}").sum()).item()
 
-        count_col = f"count_{abs_h}"
-        df = df.with_columns(
-            pl.when(
-                (pl.col(inf_temp_col).is_not_null() & (pl.col(inf_temp_col) != 0))
-                | ((pl.col(inf_temp_col) == 0) & (pl.col(diff_col) == 0))
-            )
-            .then(1)
-            .otherwise(0)
-            .alias(count_col)
-        )
-        n_obs_arr[idx] = df.select(pl.col(count_col).sum()).item()
-
-    if config.trends_lin and len(influence_funcs) == n_horizons and n_horizons > 0:
-        estimates, std_errors, influence_funcs = _apply_trends_lin(
-            estimates, std_errors, influence_funcs, n_groups, config.cluster, df
-        )
-
+    # The covariances use the same uncentered cluster sums as the standard errors on the diagonal.
     vcov = None
     if len(influence_funcs) == n_horizons and all(len(f) > 0 for f in influence_funcs):
-        influence_matrix = np.column_stack(influence_funcs)
-        vcov = np.cov(influence_matrix, rowvar=False) / n_groups
+        cluster_sums = compute_cluster_influence(np.column_stack(influence_funcs), unit_clusters)
+        vcov = cluster_sums.T @ cluster_sums / n_groups**2
 
     return {
         "horizons": horizons.astype(float),
@@ -508,12 +372,346 @@ def _compute_did_effects(df, config, n_horizons, n_groups, t_max, horizon_type, 
         "std_errors": std_errors,
         "n_switchers": n_switchers_arr,
         "n_switchers_weighted": n_switchers_weighted_arr,
-        "delta_d_arr": delta_d_arr,
+        "ate_delta": ate_delta_arr,
         "n_observations": n_obs_arr,
         "influence_func": np.column_stack(influence_funcs) if influence_funcs else None,
         "influence_func_unnorm": np.column_stack(influence_funcs_unnorm) if influence_funcs_unnorm else None,
+        "unit_clusters": unit_clusters,
         "vcov": vcov,
         "df": df,
+    }
+
+
+def _estimate_horizon(df, config, horizon, horizon_type, directions, n_groups, t_max, coefficients, same_switchers):
+    """Estimate one horizon direction by direction.
+
+    Parameters
+    ----------
+    df : polars.DataFrame
+        Preprocessed panel sorted by group and period.
+    config : DIDInterConfig
+        Configuration object.
+    horizon : int
+        Number of periods from the last period before the switch, forward for an effect and backward
+        for a placebo.
+    horizon_type : {"effect", "placebo"}
+        Whether the horizon is an effect or a placebo.
+    directions : list of int
+        Values of ``S_g`` that get a pass.
+    n_groups : int
+        Number of groups in the sample.
+    t_max : int
+        Last period of the sample.
+    coefficients : dict
+        Coefficients of the control variables for each baseline treatment, empty without controls.
+    same_switchers : polars.Expr or None
+        Flags the switchers that the horizon may use. None lets every switcher in.
+
+    Returns
+    -------
+    df : polars.DataFrame
+        The panel with the columns of the horizon.
+    passes : list of dict
+        The results of :func:`_compute_direction_pass` for the directions with switchers at the horizon.
+    """
+    gname = config.gname
+    tname = config.tname
+    yname = config.yname
+    diff_col = f"diff_y_{horizon}"
+
+    if horizon_type == "effect":
+        df = df.with_columns(pl.col(yname).diff(horizon).over(gname).alias(diff_col))
+    else:
+        df = df.with_columns(
+            (pl.col(yname).shift(2 * horizon).over(gname) - pl.col(yname).shift(horizon).over(gname)).alias(diff_col)
+        )
+
+    df = build_treatment_paths(df, horizon, config)
+
+    never_col = f"never_change_{horizon}"
+    df = df.with_columns(
+        pl.when(pl.col(diff_col).is_not_null())
+        .then((pl.col("F_g") > pl.col(tname)).cast(pl.Float64))
+        .otherwise(pl.lit(None))
+        .alias(never_col)
+    )
+
+    if config.only_never_switchers:
+        df = df.with_columns(
+            pl.when((pl.col("F_g") > pl.col(tname)) & (pl.col("F_g") < (t_max + 1)) & pl.col(diff_col).is_not_null())
+            .then(0.0)
+            .otherwise(pl.col(never_col))
+            .alias(never_col)
+        )
+
+    never_w_col = f"never_change_w_{horizon}"
+    df = df.with_columns((pl.col(never_col) * pl.col("weight_gt")).alias(never_w_col))
+    df = df.with_columns(pl.col(never_w_col).sum().over(_get_group_vars(config)).alias(f"n_control_{horizon}"))
+
+    # Since the adjustment leaves missing outcome differences missing, the flags of each pass do not depend on it.
+    if coefficients:
+        df = apply_control_adjustment(df, config, horizon, coefficients, horizon_type)
+
+    df = df.with_columns(pl.lit(0, dtype=pl.Int32).alias(f"count_{horizon}"))
+    passes = []
+    for direction in directions:
+        df, result = _compute_direction_pass(
+            df, config, horizon, horizon_type, direction, n_groups, coefficients, same_switchers
+        )
+        if result is not None:
+            passes.append(result)
+
+    return df, passes
+
+
+def _estimate_cumulated_horizon(
+    df, config, horizon, horizon_type, directions, n_groups, t_max, coefficients, same_switchers
+):
+    """Sum the estimates of the horizons up to one horizon for each direction.
+
+    Since ``trends_lin`` first-differences the outcome, the estimate at a horizon sums the estimates
+    of the horizons up to it. All of them use the switchers that ``same_switchers`` flags. A direction
+    enters only when it has switchers at every horizon of the sum.
+
+    Parameters
+    ----------
+    df : polars.DataFrame
+        Preprocessed panel sorted by group and period.
+    config : DIDInterConfig
+        Configuration object.
+    horizon : int
+        Last horizon of the sum.
+    horizon_type : {"effect", "placebo"}
+        Whether the horizons are effects or placebos.
+    directions : list of int
+        Values of ``S_g`` that get a pass.
+    n_groups : int
+        Number of groups in the sample.
+    t_max : int
+        Last period of the sample.
+    coefficients : dict
+        Coefficients of the control variables for each baseline treatment, empty without controls.
+    same_switchers : polars.Expr
+        Flags the switchers that reach the last horizon.
+
+    Returns
+    -------
+    df : polars.DataFrame
+        The panel with the columns of the last horizon.
+    passes : list of dict
+        One dict per direction in the form of :func:`_compute_direction_pass`. The estimate and the
+        influence function are sums over the horizons. The other fields come from the last horizon.
+    """
+    sums = {}
+    for step in range(1, horizon + 1):
+        df, passes = _estimate_horizon(
+            df, config, step, horizon_type, directions, n_groups, t_max, coefficients, same_switchers
+        )
+        for result in passes:
+            total = sums.setdefault(result["sign"], {"estimate": 0.0, "influence": 0.0, "steps": 0})
+            total["estimate"] += result["estimate"]
+            total["influence"] = total["influence"] + result["influence"]
+            total["steps"] += 1
+            if step == horizon:
+                total.update({key: result[key] for key in ("sign", "n_switchers", "n_weighted", "delta", "ate_delta")})
+
+    return df, [sums[d] for d in directions if d in sums and sums[d]["steps"] == horizon]
+
+
+def _compute_direction_pass(df, config, horizon, horizon_type, direction, n_groups, coefficients, same_switchers=None):
+    """Estimate one horizon from the switchers whose treatment moves in one direction.
+
+    The pass also marks the cells it uses in the horizon's count column.
+
+    Parameters
+    ----------
+    df : polars.DataFrame
+        Preprocessed panel with the outcome differences and control flags of the horizon.
+    config : DIDInterConfig
+        Configuration object.
+    horizon : int
+        Number of periods from the last period before the switch, forward for an effect and backward
+        for a placebo.
+    horizon_type : {"effect", "placebo"}
+        Whether the horizon is an effect or a placebo.
+    direction : {1, -1}
+        Value of ``S_g`` for the switchers of this pass.
+    n_groups : int
+        Number of groups in the sample.
+    coefficients : dict
+        Coefficients of the control variables for each baseline treatment, empty without controls.
+    same_switchers : polars.Expr, optional
+        Flags the switchers that the pass may use. None lets every switcher in.
+
+    Returns
+    -------
+    df : polars.DataFrame
+        The panel with the columns of this pass.
+    result : dict or None
+        None when no switcher in this direction reaches the horizon. Otherwise a dict with
+
+        - **sign**: The direction of the pass
+        - **n_switchers**: Number of switchers
+        - **n_weighted**: Weighted number of switchers
+        - **estimate**: Estimate from the switchers of this pass
+        - **influence**: Influence function of the estimate, one entry per group
+        - **delta**: Average treatment change that normalizes the estimate, or None
+        - **ate_delta**: Average treatment change at the horizon for the average total effect, or None
+          for a placebo
+    """
+    gname = config.gname
+    tname = config.tname
+    yname = config.yname
+    dname = config.dname
+    diff_col = f"diff_y_{horizon}"
+    never_col = f"never_change_{horizon}"
+    n_control_col = f"n_control_{horizon}"
+    dist_col = f"dist_to_switch_{horizon}" if horizon_type == "effect" else f"dist_to_switch_pl_{horizon}"
+    group_vars = _get_group_vars(config)
+
+    switcher_mask = pl.col("S_g") == direction
+    if same_switchers is not None:
+        switcher_mask = switcher_mask & same_switchers
+
+    base_cond = (
+        (pl.col(tname) == (pl.col("F_g") - 1 + horizon))
+        & (pl.col("L_g") >= horizon)
+        & (pl.col(n_control_col) > 0)
+        & pl.col(n_control_col).is_not_null()
+    )
+
+    # Since a placebo switcher must also count toward the effect at the same lag, its outcome at F_g - 1 + l
+    # must be observed.
+    if horizon_type == "placebo":
+        base_cond = base_cond & pl.col(yname).is_not_null()
+
+    if same_switchers is not None:
+        base_cond = base_cond & same_switchers
+
+    cond_expr = base_cond & (pl.col("S_g") == direction)
+    df = df.with_columns(
+        pl.when(pl.col(diff_col).is_null()).then(pl.lit(None)).otherwise(cond_expr.cast(pl.Float64)).alias(dist_col)
+    )
+
+    dist_w_col = f"dist_to_switch_w_{horizon}"
+    df = df.with_columns(
+        pl.when(switcher_mask).then(pl.col(dist_col) * pl.col("weight_gt")).otherwise(0.0).alias(dist_w_col)
+    )
+
+    n_treated_col = f"n_treated_{horizon}"
+    df = df.with_columns(pl.col(dist_w_col).sum().over(group_vars).alias(n_treated_col))
+
+    switcher_filter = (pl.col(dist_col) == 1.0) & pl.col(diff_col).is_not_null() & switcher_mask
+    n_switchers_unweighted = df.filter(switcher_filter)[gname].n_unique()
+
+    n_switchers_weighted = df.select(pl.col(dist_w_col).sum()).item()
+    if n_switchers_weighted is None or n_switchers_weighted == 0:
+        n_switchers_weighted = 0.0
+
+    if n_switchers_unweighted == 0:
+        return df, None
+
+    inf_temp_col = f"inf_func_{horizon}_temp"
+    n_control_is_zero = pl.col(n_control_col).is_null() | (pl.col(n_control_col) == 0)
+    safe_n_control = pl.when(n_control_is_zero).then(1.0).otherwise(pl.col(n_control_col))
+    safe_n_switchers = max(n_switchers_weighted, 1e-10)
+
+    df = df.with_columns(
+        (
+            (pl.lit(n_groups) / pl.lit(safe_n_switchers))
+            * pl.col("weight_gt")
+            * (pl.col(dist_col) - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0))
+            * pl.col(diff_col).fill_null(0.0)
+        ).alias(inf_temp_col)
+    )
+
+    inf_col = f"inf_func_{horizon}"
+    df = df.with_columns((pl.col(inf_temp_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(inf_col))
+
+    did_estimate = df.select(pl.col(inf_col).sum()).item() / n_groups
+    delta_d = _compute_delta_d(df, config, horizon, horizon_type, dist_col)
+
+    # The average total effect measures each switch by its treatment change at the horizon. S_g makes it positive.
+    ate_delta = None
+    if horizon_type == "effect":
+        treat_col, base_col = (f"{dname}_orig", "d_sq_orig") if config.continuous > 0 else (dname, "d_sq")
+        dose_change = pl.col("S_g") * (pl.col(treat_col) - pl.col(base_col))
+        ate_delta = df.select((pl.col(dist_w_col) * dose_change).sum()).item() / safe_n_switchers
+
+    if coefficients:
+        df = compute_variance_adjustment(df, config, horizon, coefficients, safe_n_switchers, dist_col)
+
+    switcher_flag = f"is_switcher_{horizon}"
+    weighted_diff = f"weighted_diff_{horizon}"
+    df = df.with_columns(
+        pl.col(dist_col).cast(pl.Int64).alias(switcher_flag),
+        (pl.col(diff_col).fill_null(0.0) * pl.col("weight_gt")).alias(weighted_diff),
+    )
+
+    # Placebos keep the default cohorts because path cohorts track treatment after the switch.
+    if config.less_conservative_se and horizon_type == "effect":
+        df = compute_path_cohort_dof(df, horizon, config)
+    else:
+        df = compute_cohort_dof(df, horizon, config, config.cluster)
+    df = compute_control_dof(df, horizon, config, config.cluster)
+    df = compute_union_dof(df, horizon, config, config.cluster)
+    df = compute_dof_scaling(df, horizon, config)
+    df = compute_e_hat(df, horizon, config)
+
+    dof_scale_col = f"dof_scale_{horizon}"
+    e_hat_col = f"E_hat_{horizon}"
+    inf_var_col = f"inf_func_var_{horizon}"
+    part2_col = f"part2_{horizon}"
+    dof_scale_expr = pl.col(dof_scale_col).fill_null(1.0) if dof_scale_col in df.columns else pl.lit(1.0)
+    dummy_u_gg_col = f"dummy_u_gg_{horizon}"
+    time_constraint_col = f"time_constraint_{horizon}"
+
+    df = df.with_columns(
+        ((pl.col("T_g") - 1) >= horizon).cast(pl.Int64).alias(dummy_u_gg_col),
+        ((pl.col(tname) >= (horizon + 1)) & (pl.col(tname) <= pl.col("T_g"))).cast(pl.Int64).alias(time_constraint_col),
+    )
+
+    if e_hat_col in df.columns:
+        df = df.with_columns(
+            (
+                pl.col(dummy_u_gg_col)
+                * (pl.lit(n_groups) / pl.lit(safe_n_switchers))
+                * pl.col(time_constraint_col)
+                * pl.col("weight_gt")
+                * (pl.col(dist_col) - (pl.col(n_treated_col) / safe_n_control) * pl.col(never_col).fill_null(0.0))
+                * dof_scale_expr
+                * (pl.col(diff_col).fill_null(0.0) - pl.col(e_hat_col).fill_null(0.0))
+            ).alias(inf_var_col)
+        )
+        df = df.with_columns((pl.col(inf_var_col).sum().over(gname) * pl.col("first_obs_by_gp")).alias(inf_var_col))
+
+        if part2_col in df.columns:
+            df = df.with_columns((pl.col(inf_var_col) - pl.col(part2_col).fill_null(0.0)).alias(inf_var_col))
+
+        inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_var_col).to_numpy().flatten()
+    else:
+        inf_func = df.filter(pl.col("first_obs_by_gp") == 1).select(inf_col).to_numpy().flatten()
+
+        if part2_col in df.columns:
+            part2_vals = df.filter(pl.col("first_obs_by_gp") == 1).select(part2_col).to_numpy().flatten()
+            inf_func = inf_func - part2_vals
+
+    counted = pl.when(
+        (pl.col(inf_temp_col).is_not_null() & (pl.col(inf_temp_col) != 0))
+        | ((pl.col(inf_temp_col) == 0) & (pl.col(diff_col) == 0))
+    )
+    count_col = f"count_{horizon}"
+    # A cell that serves the switchers of both directions counts once.
+    df = df.with_columns(pl.max_horizontal(pl.col(count_col), counted.then(1).otherwise(0)).alias(count_col))
+
+    return df, {
+        "sign": direction,
+        "n_switchers": n_switchers_unweighted,
+        "n_weighted": safe_n_switchers,
+        "estimate": did_estimate,
+        "influence": inf_func,
+        "delta": delta_d,
+        "ate_delta": ate_delta,
     }
 
 
@@ -526,20 +724,16 @@ def _run_het_regression(het_sample, covariates, horizon, config):
     """
     y = het_sample["_prod_het"].to_numpy()
 
-    # Use uniform weights when the user has not specified a weight variable.
-    # The preprocessed weight_gt column zeros out rows with missing Y/D at the
-    # observation level, but the het regression uses a group-level dependent
-    # variable (_prod_het) that can be valid even when the raw outcome is null
-    # at _gr_id=0.  Inheriting those zeros would incorrectly drop valid
-    # switchers from the het regression.
-    has_user_weights = getattr(config, "weightsname", None) is not None
-    if has_user_weights and "weight_gt" in het_sample.columns:
-        weights = het_sample["weight_gt"].to_numpy()
+    # Since the regression has one row per group, each group carries its user weight in its first period even when
+    # the outcome is missing there. A group without a weight in that period drops out.
+    weightsname = getattr(config, "weightsname", None)
+    if weightsname is not None:
+        weights = het_sample[weightsname].cast(pl.Float64).fill_null(0.0).to_numpy()
     else:
         weights = np.ones(len(y))
 
     X_cov_raw = het_sample.select(covariates).to_numpy()
-    valid_mask = ~np.isnan(y) & np.all(np.isfinite(X_cov_raw), axis=1)
+    valid_mask = ~np.isnan(y) & np.all(np.isfinite(X_cov_raw), axis=1) & (weights > 0)
     if valid_mask.sum() < len(covariates) + 5:
         return None
 
@@ -618,6 +812,9 @@ def _run_het_regression(het_sample, covariates, horizon, config):
                 )
             use_hc2bm = False
 
+    # HC2 divides each residual by the square root of one minus its leverage. A group that the regressors fit
+    # exactly has leverage one and a zero residual. Its term in the variance is then 0/0.
+    tolerance = np.sqrt(np.finfo(float).eps)
     if use_hc2bm:
         model_fit = sm.WLS(y, X, weights=weights).fit()
 
@@ -631,19 +828,22 @@ def _run_het_regression(het_sample, covariates, horizon, config):
         unique_clusters = np.unique(cluster_ids)
         k = X.shape[1]
 
-        # Bell-McCaffrey block HC2
         M = np.zeros((k, k))
+        exact_fit = False
         for c in unique_clusters:
             ij = cluster_ids == c
             X_c = X[ij]
-            w_c = weights[ij]
+            sqrt_w = np.sqrt(weights[ij])
             res_c = resid_wt[ij]
             m_c = ij.sum()
 
-            H_cc = X_c @ XtWX_inv @ X_c.T @ np.diag(w_c)
-            eigvals, eigvecs = np.linalg.eigh(np.eye(m_c) - H_cc)
+            # I - X_c (X'WX)^-1 X_c' W_c is not symmetric when the weights vary within the cluster. Its inverse square
+            # root conjugates that of the symmetric I - W_c^1/2 X_c (X'WX)^-1 X_c' W_c^1/2 by W_c^1/2.
+            X_w = X_c * sqrt_w[:, None]
+            eigvals, eigvecs = np.linalg.eigh(np.eye(m_c) - X_w @ XtWX_inv @ X_w.T)
+            exact_fit = exact_fit or eigvals.min() < tolerance
             eigvals = np.maximum(eigvals, 1e-10)
-            A_inv_sqrt = eigvecs @ np.diag(eigvals ** (-0.5)) @ eigvecs.T
+            A_inv_sqrt = (eigvecs @ np.diag(eigvals ** (-0.5)) @ eigvecs.T) * (sqrt_w[None, :] / sqrt_w[:, None])
 
             res_adj = A_inv_sqrt @ res_c
             s_c = (res_adj[:, None] * X_c).sum(axis=0)
@@ -655,6 +855,9 @@ def _run_het_regression(het_sample, covariates, horizon, config):
         model = model_fit
     else:
         model = sm.WLS(y, X, weights=weights).fit(cov_type="HC2")
+        weighted_X = X * np.sqrt(weights)[:, None]
+        leverage = np.einsum("ij,ij->i", weighted_X @ np.linalg.pinv(weighted_X.T @ weighted_X), weighted_X)
+        exact_fit = leverage.max() > 1 - tolerance
 
     n_cov = len(covariates)
     coef_indices = list(range(1, n_cov + 1))
@@ -678,10 +881,14 @@ def _run_het_regression(het_sample, covariates, horizon, config):
             f_stat = float(beta_r @ np.linalg.solve(v_r, beta_r)) / n_cov
         except np.linalg.LinAlgError:
             f_stat = float(beta_r @ np.linalg.pinv(v_r) @ beta_r) / n_cov
-        f_pvalue = 1 - stats.f.cdf(f_stat, n_cov, model.df_resid)
+        f_pvalue = stats.f.sf(f_stat, n_cov, model.df_resid)
     else:
         f_test = model.f_test(r_matrix)
         f_pvalue = float(f_test.pvalue)
+
+    if exact_fit:
+        ses = t_stats = ci_lower = ci_upper = np.full(n_cov, np.nan)
+        f_pvalue = np.nan
 
     return HeterogeneityResult(
         horizon=horizon,
@@ -702,7 +909,7 @@ def _compute_delta_d(df, config, horizon, horizon_type, dist_col=None):
     tname = config.tname
     dname = config.dname
 
-    treat_col = f"{dname}_orig" if config.continuous > 0 and f"{dname}_orig" in df.columns else dname
+    treat_col, base_col = (f"{dname}_orig", "d_sq_orig") if config.continuous > 0 else (dname, "d_sq")
 
     if dist_col is None:
         dist_col = f"dist_to_switch_{horizon}" if horizon_type == "effect" else f"dist_to_switch_pl_{horizon}"
@@ -718,7 +925,7 @@ def _compute_delta_d(df, config, horizon, horizon_type, dist_col=None):
     mask = (pl.col(tname) >= time_start) & (pl.col(tname) <= time_end)
 
     switchers = switchers.with_columns(
-        pl.when(mask).then(pl.col(treat_col) - pl.col("d_sq")).otherwise(None).alias("_treat_diff_temp")
+        pl.when(mask).then(pl.col(treat_col) - pl.col(base_col)).otherwise(None).alias("_treat_diff_temp")
     )
 
     sum_by_unit = switchers.group_by(gname).agg(
@@ -753,10 +960,16 @@ def _compute_delta_d(df, config, horizon, horizon_type, dist_col=None):
 
 
 def _compute_ate(effects_results, z_crit, n_groups):
-    """Compute average total effect."""
+    r"""Compute average total effect.
+
+    The effects are averaged with weights proportional to their weighted numbers of switchers. The
+    average is divided by the same weighted average of the treatment changes. The change at horizon
+    :math:`\ell` averages :math:`S_g (D_{g,F_g-1+\ell} - D_{g,1})` over the switchers of that horizon.
+    Here :math:`S_g` is 1 for a rise and -1 for a fall.
+    """
     estimates = effects_results.get("estimates_unnorm", effects_results["estimates"])
     n_sw = effects_results.get("n_switchers_weighted", effects_results["n_switchers"])
-    delta_d_arr = effects_results.get("delta_d_arr", np.ones(len(estimates)))
+    ate_delta = effects_results["ate_delta"]
 
     valid_mask = ~np.isnan(estimates) & (n_sw > 0)
 
@@ -767,47 +980,27 @@ def _compute_ate(effects_results, z_crit, n_groups):
     weights = n_sw[valid_mask] / total_n_sw if total_n_sw > 0 else np.ones(np.sum(valid_mask)) / np.sum(valid_mask)
 
     weighted_mean_effect = np.sum(weights * estimates[valid_mask])
-
-    per_period_delta = np.diff(delta_d_arr, prepend=0.0)
-    valid_delta = per_period_delta[valid_mask]
-    ate_denom = np.sum(weights * valid_delta)
+    ate_denom = np.sum(weights * ate_delta[valid_mask])
     if ate_denom == 0:
-        ate_denom = delta_d_arr[0] if len(delta_d_arr) > 0 and delta_d_arr[0] != 0 else 1.0
+        return None
     ate_estimate = weighted_mean_effect / ate_denom
 
-    inf_func_unnorm = effects_results.get("influence_func_unnorm")
-    if inf_func_unnorm is not None and inf_func_unnorm.shape[1] == len(estimates):
-        weighted_inf = np.zeros(inf_func_unnorm.shape[0])
-        for i, (is_valid, wi) in enumerate(
-            zip(valid_mask, n_sw / total_n_sw if total_n_sw > 0 else np.ones(len(n_sw)) / len(n_sw), strict=False)
-        ):
-            if is_valid:
-                weighted_inf += wi * inf_func_unnorm[:, i]
+    # Since a horizon that no switcher reaches keeps a zero influence column, the columns line up with the horizons.
+    inf_func_unnorm = effects_results["influence_func_unnorm"]
+    weighted_inf = np.zeros(inf_func_unnorm.shape[0])
+    for column, weight in zip(inf_func_unnorm[:, valid_mask].T, weights, strict=True):
+        weighted_inf += weight * column
 
-        ate_inf = weighted_inf / ate_denom
-        ate_se = np.sqrt(np.sum(ate_inf**2)) / n_groups
-    elif effects_results.get("vcov") is not None:
-        vcov = effects_results["vcov"]
-        n_effects = np.sum(valid_mask)
-        if n_effects == 1:
-            ate_var = float(np.asarray(vcov).flat[0]) if vcov.size > 0 else np.nan
-        else:
-            ate_weights = np.zeros(len(estimates))
-            ate_weights[valid_mask] = weights
-            ate_var = ate_weights @ vcov @ ate_weights
+    ate_inf = weighted_inf / ate_denom
+    cluster_sums = compute_cluster_influence(ate_inf, effects_results.get("unit_clusters"))
+    ate_se = np.sqrt(np.sum(cluster_sums**2)) / n_groups
 
-        ate_var = ate_var / (ate_denom**2)
-
-        ate_se = np.sqrt(ate_var) if ate_var > 0 else np.nan
-    else:
-        std_errors = effects_results["std_errors"]
-        valid_se = std_errors[valid_mask]
-        ate_se = np.sqrt(np.mean(valid_se**2)) if len(valid_se) > 0 else np.nan
-        ate_se = ate_se / abs(ate_denom)
-
-    n_observations = effects_results.get("n_observations", np.zeros(len(estimates)))
-    total_n_obs = np.sum(n_observations[valid_mask])
-    total_n_switchers = np.sum(n_sw[valid_mask])
+    # A (group, period) cell that enters several horizons counts once in the sample size.
+    count_cols = [f"count_{i + 1}" for i in np.flatnonzero(valid_mask)]
+    total_n_obs = float(
+        effects_results["df"].select(pl.any_horizontal([pl.col(c) == 1 for c in count_cols]).sum()).item()
+    )
+    total_n_switchers = np.sum(effects_results["n_switchers"][valid_mask])
 
     return ATEResult(
         estimate=ate_estimate,
@@ -902,38 +1095,13 @@ def _test_effects_equality(effects_results, config=None):
         return None
 
 
-def _apply_trends_lin(estimates, std_errors, influence_funcs, n_groups, cluster, df):
-    """Apply linear trend adjustment by accumulating effects across horizons."""
-    n_horizons = len(influence_funcs)
-    if n_horizons == 0:
-        return estimates, std_errors, influence_funcs
-
-    valid_funcs = [f for f in influence_funcs if len(f) > 0 and not np.all(np.isnan(f))]
-    if len(valid_funcs) == 0:
-        return estimates, std_errors, influence_funcs
-
-    cumulative_estimates = np.cumsum(estimates)
-
-    for idx in range(1, n_horizons):
-        estimates[idx] = cumulative_estimates[idx]
-
-        cumulative_inf = np.zeros_like(valid_funcs[0])
-        for j in range(idx + 1):
-            if j < len(valid_funcs):
-                cumulative_inf = cumulative_inf + valid_funcs[j]
-        influence_funcs[idx] = cumulative_inf
-
-        if cluster:
-            cluster_ids = df.filter(df["first_obs_by_gp"] == 1).select(cluster).to_numpy().flatten()
-            std_errors[idx] = compute_clustered_variance(cumulative_inf, cluster_ids, n_groups)
-        else:
-            std_errors[idx] = np.sqrt(np.sum(cumulative_inf**2)) / n_groups
-
-    return estimates, std_errors, influence_funcs
-
-
 def _compute_heterogeneity(df, config):
-    """Compute heterogeneous effects analysis via WLS regressions."""
+    r"""Compute heterogeneous effects analysis via WLS regressions.
+
+    Each requested effect and each placebo gets a regression. The placebo at horizon :math:`\ell`
+    regresses the outcome change from :math:`F_g - 1` back to :math:`F_g - 1 - \ell` on the same
+    groups as the effect at horizon :math:`\ell`. With ``trends_lin`` only the effects get a regression.
+    """
     if config.predict_het is None or config.normalized:
         return None
 
@@ -944,7 +1112,8 @@ def _compute_heterogeneity(df, config):
 
     gname = config.gname
     tname = config.tname
-    yname = config.yname
+    # Since trends_lin differences the outcome, the regressions read the outcome in levels.
+    outcome = "_outcome_levels" if config.trends_lin else config.yname
 
     valid_covariates = []
     for cov in covariates:
@@ -958,24 +1127,29 @@ def _compute_heterogeneity(df, config):
     if len(valid_covariates) == 0:
         return None
 
-    all_horizons = (
-        list(range(1, config.effects + 1))
-        if -1 in het_effects
-        else [h for h in het_effects if 1 <= h <= config.effects]
-    )
+    effects = [h for h in range(1, config.effects + 1) if -1 in het_effects or h in het_effects]
+    placebos = [h for h in range(1, config.placebo + 1) if -1 in het_effects or h in het_effects]
+    if config.trends_lin and placebos:
+        warnings.warn(
+            "predict_het runs no placebo regressions when trends_lin=True.",
+            UserWarning,
+            stacklevel=4,
+        )
+        placebos = []
+    all_horizons = [*(-h for h in reversed(placebos)), *effects]
 
     if len(all_horizons) == 0:
         return None
 
     df = df.with_columns(
-        pl.when(pl.col(tname) == pl.col("F_g") - 1).then(pl.col(yname)).otherwise(None).alias("_Y_baseline")
+        pl.when(pl.col(tname) == pl.col("F_g") - 1).then(pl.col(outcome)).otherwise(None).alias("_Y_baseline")
     )
     df = df.with_columns(pl.col("_Y_baseline").mean().over(gname).alias("_Y_baseline"))
     df = df.with_columns(pl.col("_Y_baseline").is_not_null().alias("_feasible_het"))
 
     if config.trends_lin:
         df = df.with_columns(
-            pl.when(pl.col(tname) == pl.col("F_g") - 2).then(pl.col(yname)).otherwise(None).alias("_Y_baseline_m2")
+            pl.when(pl.col(tname) == pl.col("F_g") - 2).then(pl.col(outcome)).otherwise(None).alias("_Y_baseline_m2")
         )
         df = df.with_columns(pl.col("_Y_baseline_m2").mean().over(gname).alias("_Y_baseline_m2"))
         df = df.with_columns((pl.col("_feasible_het") & pl.col("_Y_baseline_m2").is_not_null()).alias("_feasible_het"))
@@ -985,22 +1159,35 @@ def _compute_heterogeneity(df, config):
 
     results = []
     for horizon in all_horizons:
-        het_result = _compute_het_horizon(df, valid_covariates, horizon, config)
+        het_result = _compute_het_horizon(df, valid_covariates, horizon, config, outcome)
         if het_result is not None:
             results.append(het_result)
+
+    # A regression whose HC2 variance is undefined reports NaN standard errors next to finite estimates.
+    exact = [r.horizon for r in results if np.isnan(r.std_errors).all() and np.isfinite(r.estimates).all()]
+    if exact:
+        warnings.warn(
+            f"The heterogeneity regressions at horizons {', '.join(map(str, exact))} fit a group exactly, for example "
+            "the only group with its switch date, baseline treatment, and switch direction. Since HC2 standard errors "
+            "are undefined for such a fit, their standard errors, confidence intervals, and F-test p-values are NaN.",
+            UserWarning,
+            stacklevel=4,
+        )
 
     return results if len(results) > 0 else None
 
 
-def _compute_het_horizon(df, covariates, horizon, config):
-    """Compute heterogeneity regression for a single horizon."""
+def _compute_het_horizon(df, covariates, horizon, config, outcome):
+    """Compute the heterogeneity regression at one horizon.
+
+    A negative horizon is a placebo.
+    """
     gname = config.gname
     tname = config.tname
-    yname = config.yname
 
     df = df.with_columns(
         pl.when(pl.col(tname) == pl.col("F_g") - 1 + horizon)
-        .then(pl.col(yname))
+        .then(pl.col(outcome))
         .otherwise(None)
         .alias(f"_Y_h{horizon}")
     )
@@ -1016,7 +1203,7 @@ def _compute_het_horizon(df, covariates, horizon, config):
     df = df.with_columns(pl.when(pl.col("_gr_id") != 0).then(None).otherwise(pl.col("_prod_het")).alias("_prod_het"))
 
     het_sample = df.filter(
-        (pl.col("F_g") - 1 + horizon <= pl.col("t_max_by_group"))
+        (pl.col("F_g") - 1 + abs(horizon) <= pl.col("T_g"))
         & pl.col("_feasible_het")
         & pl.col("_prod_het").is_not_null()
     )
@@ -1027,18 +1214,75 @@ def _compute_het_horizon(df, covariates, horizon, config):
     return _run_het_regression(het_sample, covariates, horizon, config)
 
 
-def _compute_same_switchers_mask(df, config, n_horizons, _t_max, horizon_type="effect"):
-    """Compute mask for switchers valid at all horizons."""
-    if "L_g" in df.columns:
-        if horizon_type == "effect":
-            df = df.with_columns((pl.col("L_g") >= n_horizons).alias("same_switcher_valid"))
-        else:
-            t_min = df[config.tname].min()
-            df = df.with_columns(((pl.col("F_g") - t_min) >= (n_horizons + 1)).alias("same_switcher_valid"))
-    else:
-        df = df.with_columns(pl.lit(True).alias("same_switcher_valid"))
+def _compute_same_switchers_mask(df, config, n_effects, n_placebos, t_max):
+    r"""Flag the switchers that every requested effect and placebo can use.
 
-    return df
+    A switcher reaches effect :math:`q` when its outcome difference :math:`Y_{g,F_g-1+q} - Y_{g,F_g-1}`
+    is observed and a group with the same baseline treatment that has not switched by
+    :math:`F_g - 1 + q` has an observed outcome difference over the same periods. It reaches placebo
+    :math:`q` when :math:`Y_{g,F_g-1-q} - Y_{g,F_g-1}` is observed and some not-yet-switched group
+    with the same baseline treatment has the same difference.
+
+    Parameters
+    ----------
+    df : polars.DataFrame
+        Preprocessed panel sorted by group and period.
+    config : DIDInterConfig
+        Configuration object.
+    n_effects : int
+        Number of effects every flagged switcher must reach.
+    n_placebos : int
+        Number of placebos every switcher flagged in ``_same_switcher_pl`` must reach, 0 for no placebo flag.
+    t_max : int
+        Last period of the sample.
+
+    Returns
+    -------
+    polars.DataFrame
+        The panel with the column ``_same_switcher`` for the effects and, when ``n_placebos`` is
+        positive, the column ``_same_switcher_pl`` for the placebos.
+    """
+    reaches_effects = (pl.col("F_g") - 1 + n_effects) <= pl.col("T_g")
+    for lag in range(1, n_effects + 1):
+        df, reached = _reaches_horizon(df, config, lag, t_max)
+        reaches_effects = reaches_effects & reached
+    df = df.with_columns(reaches_effects.fill_null(False).alias("_same_switcher"))
+
+    if n_placebos > 0:
+        reaches_placebos = pl.lit(True)
+        for lag in range(1, n_placebos + 1):
+            df, reached = _reaches_horizon(df, config, -lag, t_max)
+            reaches_placebos = reaches_placebos & reached
+        df = df.with_columns(reaches_placebos.fill_null(False).alias("_same_switcher_pl"))
+
+    return df.drop([name for name in df.columns if name.startswith("_reaches_")])
+
+
+def _reaches_horizon(df, config, lag, t_max):
+    """Flag the groups that reach the horizon ``lag`` periods from the last period before the switch."""
+    gname = config.gname
+    tname = config.tname
+    yname = config.yname
+    diff = f"_reaches_diff_{lag}"
+    flag = f"_reaches_{lag}"
+
+    # A negative lag shifts forward. A placebo then compares an earlier period with the period before the switch.
+    df = df.with_columns((pl.col(yname) - pl.col(yname).shift(lag).over(gname)).alias(diff))
+    target = pl.col(tname) == pl.col("F_g") - 1 + lag
+
+    not_yet_switched = pl.col(diff).is_not_null() & (pl.col("F_g") > pl.col(tname))
+    control = pl.when(not_yet_switched).then(1.0)
+    if config.only_never_switchers:
+        control = pl.when(not_yet_switched & (pl.col("F_g") < t_max + 1)).then(0.0).otherwise(control)
+    df = df.with_columns((control * pl.col("weight_gt")).sum().over(_get_group_vars(config)).alias(flag))
+    df = df.with_columns(
+        (
+            (pl.when(target).then(pl.col(flag)).mean().over(gname) > 0)
+            & pl.when(target).then(pl.col(diff)).mean().over(gname).is_not_null()
+        ).alias(flag)
+    )
+
+    return df, pl.col(flag).fill_null(False)
 
 
 def _get_group_vars(config):

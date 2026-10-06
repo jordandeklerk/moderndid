@@ -529,3 +529,58 @@ def test_post_period_moments_only_flag(fast_config):
 
     assert np.any(result_all_moments["accept"] > 0)
     assert np.any(result_post_only["accept"] > 0)
+
+
+def test_identified_set_rmb_bounded_when_mbar_at_least_one(rm_cases):
+    l_vec = np.array([1.0, 0.0])
+
+    positive = compute_identified_set_rmb(1.0, rm_cases["A"], l_vec, 3, 2, bias_direction="positive")
+    negative = compute_identified_set_rmb(1.0, rm_cases["A"], l_vec, 3, 2, bias_direction="negative")
+
+    assert (positive.id_lb, positive.id_ub) == pytest.approx((0.03, 0.05))
+    assert (negative.id_lb, negative.id_ub) == pytest.approx((0.05, 0.07))
+
+
+@pytest.mark.parametrize(
+    "case,m_bar,expected",
+    [
+        ("A", 1.0, [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0]),
+        ("B", 0.5, [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]),
+    ],
+)
+def test_conditional_cs_rmb_conditional_accepts(rm_cases, case, m_bar, expected):
+    result = compute_conditional_cs_rmb(
+        betahat=rm_cases[case],
+        sigma=rm_cases["sigma"],
+        num_pre_periods=3,
+        num_post_periods=2,
+        l_vec=np.array([1.0, 0.0]),
+        m_bar=m_bar,
+        hybrid_flag="ARP",
+        grid_points=11,
+        grid_lb=-0.1,
+        grid_ub=0.2,
+    )
+
+    assert result["accept"].tolist() == expected
+
+
+def test_conditional_cs_rmb_single_post_period(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "m_bar": 1.0,
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    arp = compute_conditional_cs_rmb(**kwargs, hybrid_flag="ARP")
+    lf_first = compute_conditional_cs_rmb(**kwargs, hybrid_flag="LF")
+    lf_second = compute_conditional_cs_rmb(**kwargs, hybrid_flag="LF")
+
+    assert arp["accept"].astype(int).tolist() == [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0]
+    assert np.array_equal(lf_first["accept"], lf_second["accept"])

@@ -1,5 +1,7 @@
 """Tests for DiD preprocessing functions."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -634,13 +636,7 @@ class TestDataIntegrity:
 
 class TestCovariateHandling:
     def test_formula_parsing(self):
-        df = create_test_panel_data()
-        df = df.with_columns(
-            [
-                (pl.col("x1") * pl.col("x2")).alias("x3"),
-                pl.Series("factor_var", np.random.choice(["A", "B", "C"], len(df))),
-            ]
-        )
+        df = create_test_panel_data().with_columns(pl.col("x1").alias("x.1"), pl.col("x2").alias("x 2"))
 
         result = preprocess_did(
             data=df,
@@ -654,44 +650,41 @@ class TestCovariateHandling:
         assert result.covariates_tensor is not None
         assert all(cov.shape[1] == 3 for cov in result.covariates_tensor)
 
-        result = preprocess_did(
+        renamed = preprocess_did(
             data=df,
             yname="y",
             tname="time",
             idname="id",
             gname="g",
-            xformla="~ x1 * x2",
+            xformla="~ x.1 + `x 2`",
         )
 
-        assert result.covariates_tensor is not None
-        assert all(cov.shape[1] == 3 for cov in result.covariates_tensor)
+        for cov, cov_renamed in zip(result.covariates_tensor, renamed.covariates_tensor, strict=True):
+            np.testing.assert_array_equal(cov, cov_renamed)
 
-        result = preprocess_did(
+
+@pytest.mark.parametrize(
+    "xformla, message",
+    [
+        ("~ x1 * x2", "xformla term 'x1 * x2' is not a column name"),
+        ("~ x1 + x2 + x1:x2", "xformla term 'x1:x2' is not a column name"),
+        ("~ C(x1)", "xformla term 'C(x1)' is not a column name"),
+        ("~ x1 + I(x2**2)", "xformla term 'I(x2**2)' is not a column name"),
+        ("~ 0 + x1 + x2", "xformla term '0' drops the intercept"),
+    ],
+)
+def test_formula_rejects_terms_that_are_not_columns(xformla, message):
+    df = create_test_panel_data()
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        preprocess_did(
             data=df,
             yname="y",
             tname="time",
             idname="id",
             gname="g",
-            xformla="~ C(factor_var)",
+            xformla=xformla,
         )
-
-        assert result.covariates_tensor is not None
-        assert all(cov.shape[1] == 2 for cov in result.covariates_tensor)
-
-    def test_no_intercept_formula(self):
-        df = create_test_panel_data()
-
-        result = preprocess_did(
-            data=df,
-            yname="y",
-            tname="time",
-            idname="id",
-            gname="g",
-            xformla="~ 0 + x1 + x2",
-        )
-
-        assert result.covariates_tensor is not None
-        assert all(cov.shape[1] == 3 for cov in result.covariates_tensor)
 
 
 class TestWeightHandling:

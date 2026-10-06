@@ -308,7 +308,7 @@ class DynBalancingConfig(ConfigMixin):
     ratio_coefficients: float = 1 / 3
     nfolds: int = 10
     lags: int | None = None
-    robust_quantile: bool = True
+    robust_quantile: bool = False
     demeaned_fe: bool = False
 
     time_periods: np.ndarray = field(default_factory=lambda: np.array([]))

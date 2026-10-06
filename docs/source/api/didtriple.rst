@@ -3,17 +3,21 @@
 Triple DiD
 ==========
 
-The triple DiD (DDD) module provides estimators for settings where
-units must satisfy two criteria to be treated: belonging to a group that enables treatment
-and being in an eligible partition of the population. This design allows for both
-group-specific and partition-specific violations of parallel trends, relaxing the
-assumptions required by standard DiD. The implementation follows
-`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_.
-
-Main Functions
---------------
+Following `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_,
+:func:`~moderndid.ddd` estimates treatment effects when a unit is treated only
+if its group enables the policy and it belongs to the eligible part of the
+population. Unlike standard DiD, the design tolerates parallel trends violations
+that are specific to a group or to the eligible part.
+:func:`~moderndid.agg_ddd` aggregates the group-time effects of a staggered
+design into an event study, summaries by group or calendar period, or one
+overall effect. See the :ref:`triple differences example <example_triple_did>`
+for a full analysis of the agricultural insurance data and the
+:ref:`background page <background-tripledid>` for the identification argument.
 
 .. currentmodule:: moderndid
+
+Main functions
+--------------
 
 .. autosummary::
    :toctree: generated/didtriple/
@@ -22,8 +26,8 @@ Main Functions
    ddd
    agg_ddd
 
-Two-Period Estimators
-----------------------
+Two-period estimators
+---------------------
 
 .. autosummary::
    :toctree: generated/didtriple/
@@ -32,7 +36,7 @@ Two-Period Estimators
    ddd_panel
    ddd_rc
 
-Multi-Period Estimators
+Multi-period estimators
 -----------------------
 
 .. autosummary::
@@ -42,7 +46,7 @@ Multi-Period Estimators
    ddd_mp
    ddd_mp_rc
 
-Result Objects
+Result objects
 --------------
 
 .. autosummary::

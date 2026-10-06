@@ -39,49 +39,29 @@ def did_multiplegt(
     biters=1000,
     random_state=None,
 ):
-    r"""Estimate intertemporal treatment effects with non-binary, non-absorbing treatments.
+    r"""Estimate event-study effects of a treatment whose level changes over time.
 
-    Implements difference-in-differences estimation for settings where treatment
-    may be non-binary, non-absorbing (time-varying), and where lagged treatments
-    may affect the outcome, following [3]_. Unlike standard DID which assumes
-    binary absorbing treatment, this estimator handles complex treatment patterns
-    where units can experience treatment increases, decreases, or multiple changes
-    over time.
+    Implements the difference-in-differences estimators of [3]_ for treatments that
+    can take many values, change more than once, and affect the outcome through their
+    lags. Each group whose treatment changes is compared with the groups that had the
+    same treatment in the first period and have not changed yet. Restricting the
+    comparison to the same starting treatment keeps it valid when past treatments
+    still move the outcome.
 
-    Let :math:`F_g` denote the first period when group :math:`g`'s treatment changes,
-    and let :math:`D_{g,1}` be its baseline (period-1) treatment. The key parameter
-    of interest is the actual-versus-status-quo (AVSQ) effect
+    The effect at horizon :math:`\ell` is the average effect of having been exposed
+    for :math:`\ell` periods to a treatment at least as high as the first-period one.
+    A group whose first change lowered its treatment enters with a minus sign.
+    Placebos run the same comparison over the periods before each group's first
+    change.
 
-    .. math::
+    With ``normalized=True``, each effect is divided by the average cumulative change
+    in treatment up to its horizon. It then becomes a weighted average of the effects
+    of the current treatment and its lags. The average total effect in ``ate`` adds up
+    the effects over the estimated horizons and divides them by the treatment changes
+    over the same horizons.
 
-        \delta_{g,\ell} = \mathbb{E}\left[Y_{g,F_g-1+\ell} -
-        Y_{g,F_g-1+\ell}(D_{g,1}, \ldots, D_{g,1}) \mid \boldsymbol{D}\right]
-
-    which measures the expected difference between group :math:`g`'s actual outcome
-    at :math:`F_g - 1 + \ell` and the counterfactual "status quo" outcome it would
-    have obtained if its treatment had remained equal to its period-one value.
-
-    The estimator computes
-
-    .. math::
-
-        \text{DID}_{g,\ell} = Y_{g,F_g-1+\ell} - Y_{g,F_g-1} -
-        \frac{1}{N_{F_g-1+\ell}^g} \sum_{g': D_{g',1}=D_{g,1}, F_{g'}>F_g-1+\ell}
-        \left(Y_{g',F_g-1+\ell} - Y_{g',F_g-1}\right)
-
-    comparing the outcome evolution of switchers to that of groups with the same
-    baseline treatment that have not yet switched. These are aggregated into
-    event-study effects :math:`\delta_\ell`, the average effect of having been
-    exposed to a weakly higher treatment dose for :math:`\ell` periods.
-
-    When ``normalized=True``, the estimator computes :math:`\delta_\ell^n`,
-    which normalizes by the cumulative treatment change and can be interpreted
-    as a weighted average of the effects of the current treatment and its
-    :math:`\ell - 1` first lags on the outcome.
-
-    See the :ref:`intertemporal treatment example <example_inter_did>` for dynamic
-    effects, placebo tests, normalized effects, and heterogeneous effects with
-    ``did_multiplegt``.
+    See the :ref:`intertemporal treatment example <example_inter_did>` for a full
+    analysis of the banking deregulation data.
 
     Parameters
     ----------
@@ -90,152 +70,184 @@ def did_multiplegt(
         PyCapsule Interface (``__arrow_c_stream__``), including polars, pandas,
         pyarrow Table, and cudf DataFrames.
     yname : str
-        Name of the outcome variable.
+        Name of the outcome column.
     tname : str
-        Name of the time period variable.
+        Name of the time period column. Periods enter by their rank and need not be
+        evenly spaced.
     idname : str
-        Name of the unit identifier variable.
+        Name of the group identifier column.
     dname : str
-        Name of the treatment variable. Can be binary or continuous, and
-        can vary over time for the same unit (non-absorbing). Must be
-        non-negative.
+        Name of the treatment column. The treatment must be non-negative and can be
+        binary or take many values that change more than once.
     cluster : str, optional
-        Name of the cluster variable for clustered standard errors.
-        If None, standard errors are computed using the influence function
-        at the unit level.
+        Name of the column to cluster standard errors by. Each group must belong
+        to a single cluster. Rows whose cluster is missing are dropped with a
+        warning. If None, groups are treated as independent.
     weightsname : str, optional
-        Name of the sampling weights column. If None, all observations
-        have equal weight.
+        Name of the column of sampling weights. If None, every observation has the
+        same weight.
     xformla : str, default="~1"
-        A formula for the covariates to include in the model.
-        Should be of the form "~ X1 + X2" (intercept is always included).
-        Use "~1" for no covariates.
+        Formula for time-varying covariates, such as ``"~ X1 + X2"``. Their changes
+        are netted out of each group's outcome changes. The coefficients come from
+        the not-yet-switched groups that share its first-period treatment. ``"~1"``
+        uses no covariates.
     effects : int, default=1
-        Number of post-treatment horizons to estimate (1, 2, ..., effects).
-        :math:`\delta_\ell` estimates the effect of :math:`\ell` periods of
-        exposure to changed treatment.
+        Number of horizons to estimate after each group's first change. A request
+        beyond the last horizon that any switcher reaches is cut back to that horizon
+        with a warning.
     placebo : int, default=0
-        Number of pre-treatment horizons to estimate for placebo tests
-        (-1, -2, ..., -placebo). These compare outcome trends of switchers
-        and non-switchers before switching occurs, testing the parallel
-        trends assumption.
+        Number of placebo horizons to estimate before each group's first change. A
+        request beyond what the data allow or beyond ``effects`` is cut back with a
+        warning.
     normalized : bool, default=False
-        If True, compute normalized effects :math:`\delta_\ell^n` by dividing
-        by the average cumulative treatment change. The normalized effect is
-        a weighted average of the effects of the current treatment and its
-        lags, useful when treatment magnitudes vary across units.
+        Whether to divide each effect by the average cumulative change in treatment
+        up to its horizon.
     effects_equal : bool or str or tuple, default=False
-        Test whether treatment effects are equal across horizons.
-
-        - ``True`` or ``"all"``: test all effects
-        - ``"lb, ub"`` string: test effects in the range [lb, ub]
-        - ``(lb, ub)`` tuple: test effects in the range [lb, ub]
-
-        Returns a chi-squared test statistic and p-value.
+        Whether to test that the effects are equal across horizons. True or
+        ``"all"`` tests every horizon. A string ``"lb, ub"`` or a tuple
+        ``(lb, ub)`` tests the horizons from ``lb`` to ``ub``.
     predict_het : tuple[list[str], list[int]], optional
-        Analyze heterogeneous effects by covariates. A tuple of (covariates, horizons)
-        where covariates is a list of time-invariant covariate names and horizons
-        is a list of effect horizons to analyze (use [-1] for all horizons).
-        Runs WLS regressions to test whether effects vary by covariates.
+        Time-invariant covariates and horizons for regressions that test whether
+        the effects vary with those covariates. Passing ``[-1]`` as the horizons
+        selects every estimated horizon. When placebos are estimated, each listed
+        horizon up to the number of placebos also gets a placebo regression unless
+        ``trends_lin=True``. Even when ``switchers`` is ``"in"`` or ``"out"``, the
+        regressions pool the switchers of both directions.
     predict_het_hc2bm : bool, default=False
-        If True, use HC2 Bell-McCaffrey degrees-of-freedom adjusted standard
-        errors for the ``predict_het`` regressions, which are more robust in
-        small samples. Requires ``predict_het`` to be specified. Clusters on
-        ``cluster`` if set, otherwise ``idname``.
+        Whether the ``predict_het`` regressions use HC2 standard errors clustered by
+        ``cluster`` [1]_. Requires ``predict_het`` and has no effect without
+        ``cluster``.
     switchers : {"", "in", "out"}, default=""
-        Which switchers to include in estimation:
-
-        - ``""``: All switchers (treatment increases and decreases)
-        - ``"in"``: Only treatment increases (:math:`D_{g,F_g} > D_{g,1}`)
-        - ``"out"``: Only treatment decreases (:math:`D_{g,F_g} < D_{g,1}`)
+        Which switchers to estimate effects for. ``""`` pools the groups whose
+        treatment first rises with the groups whose treatment first falls. The falls
+        enter with a minus sign. ``"in"`` keeps only the rises and ``"out"`` only the
+        falls. Groups that switch the other way serve as controls until they switch.
     only_never_switchers : bool, default=False
-        If True, use only never-switchers as controls. If False (default),
-        also use not-yet-switchers as controls.
+        Whether to use only the groups whose treatment never changes as controls.
+        If False, groups that have not switched yet also serve as controls.
     same_switchers : bool, default=False
-        If True, use the same set of switchers across all effect horizons.
-        This ensures comparability across horizons but may reduce sample size.
+        If True, every horizon uses only the switchers that reach all the requested
+        effects. A switcher reaches an effect when its outcome change and a
+        not-yet-switched group with the same baseline treatment are observed at that
+        horizon. This ensures comparability across horizons but may reduce sample size.
     same_switchers_pl : bool, default=False
-        If True, use the same set of switchers across all placebo horizons.
+        If True, the placebos also use only the switchers that reach all the
+        requested placebos. Requires ``same_switchers=True``.
     trends_lin : bool, default=False
-        If True, include unit-specific linear time trends in the estimation.
+        If True, include group-specific linear time trends in the estimation. The
+        effect at horizon :math:`\ell` then sums the estimates of horizons 1 to
+        :math:`\ell` on the switchers that reach horizon :math:`\ell`.
     trends_nonparam : list[str], optional
-        Variables for non-parametric group-specific trends.
+        Names of time-invariant columns whose values split the groups into sets with
+        their own trends. Each switcher is then compared only with groups in its own
+        set.
     continuous : int, default=0
-        Polynomial degree for continuous treatment. If > 0, treatment is
-        modeled as continuous with polynomial terms of the specified degree.
+        Degree of a polynomial in the baseline treatment, for baseline treatments
+        that are continuous. A positive degree compares each switcher with all
+        not-yet-switched groups and lets the outcome evolution of every period
+        depend on that polynomial.
     ci_level : float, default=95.0
-        Confidence level for confidence intervals (e.g., 95.0 for 95% CI).
+        Confidence level of the intervals in percent, such as 95.0.
     less_conservative_se : bool, default=False
-        If True, use less conservative standard error estimation with
-        degrees-of-freedom adjustment based on the number of clusters or
-        switchers.
+        Whether the effect standard errors demean each switcher's outcome change
+        among the switchers that share its treatment path up to the horizon, instead
+        of among those that share only its first-period treatment and switch period.
+        A switcher alone on its path falls back to the coarser groups. Placebo
+        standard errors don't change.
     more_granular_demeaning : bool, default=False
-        If True, enable path-based variance demeaning. This is a semantic
-        alias that automatically sets ``less_conservative_se=True``.
+        Alias that sets ``less_conservative_se=True``.
     keep_bidirectional_switchers : bool, default=False
-        If True, keep units that experience both treatment increases AND
-        decreases over time. By default, these units are dropped because
-        their :math:`\delta_{g,\ell}` may not satisfy the no-sign-reversal
-        property.
+        Whether to keep a group's periods after its treatment has been both above
+        and below its first-period value. By default these periods are dropped.
     drop_missing_preswitch : bool, default=False
-        If True, drop observations where treatment is missing before the
-        first switch time.
+        Whether to drop the observations whose treatment is missing before the
+        group's first switch.
     boot : bool, default=False
-        If True, compute standard errors using the multiplier bootstrap
-        instead of asymptotic influence function-based inference. The
-        bootstrap resamples at the cluster level when ``cluster`` is
-        specified.
+        Whether to replace the analytical standard errors of the effects, the
+        placebos, and ``ate`` with bootstrap ones. Each draw resamples clusters with
+        replacement and reruns the estimation. Groups take the place of clusters
+        when ``cluster`` is None. The joint placebo test and the test of equal
+        effects keep the analytical variance.
     biters : int, default=1000
-        Number of bootstrap iterations when ``boot=True``.
+        Number of bootstrap draws when ``boot=True``.
     random_state : int, Generator, optional
-        Random seed for reproducibility of bootstrap.
+        Seed or generator for the bootstrap draws.
 
     Returns
     -------
     DIDInterResult
         Result object containing:
 
-        - **effects**: EffectsResult with treatment effects at each horizon,
-          including point estimates, standard errors, confidence intervals,
-          and sample sizes
-        - **placebos**: PlacebosResult with placebo effects (if placebo > 0)
-        - **ate**: ATEResult with the average total effect :math:`\delta`,
-          which can be used for cost-benefit analysis
-        - **n_units**: Total number of units in the sample
-        - **n_switchers**: Number of switching units
-        - **n_never_switchers**: Number of never-switching units
-        - **ci_level**: Confidence level used for intervals
-        - **effects_equal_test**: Chi-squared test for equal effects (if requested)
-        - **placebo_joint_test**: Joint test that all placebo effects are zero
-        - **influence_effects**: Influence functions for effects (for custom inference)
-        - **influence_placebos**: Influence functions for placebos
-        - **heterogeneity**: Heterogeneous effects analysis (if predict_het specified)
-        - **estimation_params**: Dictionary of estimation parameters used
+        - **effects**: EffectsResult with the estimate, standard error, confidence
+          interval, switchers, and sample size at each horizon
+        - **placebos**: PlacebosResult with the same fields for each placebo, or None
+        - **ate**: ATEResult with the average total effect, or None when
+          ``trends_lin=True``
+        - **n_units**: Number of groups in the sample
+        - **n_switchers**: Number of groups that switch in the requested directions. Groups
+          that no effect uses also count.
+        - **n_never_switchers**: Number of groups whose treatment never changes
+        - **ci_level**: Confidence level of the intervals
+        - **effects_equal_test**: Chi-squared test that the effects are equal, if requested
+        - **placebo_joint_test**: Chi-squared test that all placebos are zero
+        - **influence_effects**: Influence functions of the effects
+        - **influence_placebos**: Influence functions of the placebos
+        - **heterogeneity**: Heterogeneity regressions, if ``predict_het`` is set
+        - **estimation_params**: Dictionary of the estimation settings
 
     Notes
     -----
-    Identification relies on a parallel trends assumption for groups with the
-    same baseline treatment. If two groups have the same period-one treatment,
-    they have the same expected evolution of their status-quo outcome. This is
-    weaker than standard parallel trends across all groups, which would rule out
-    both dynamic treatment effects and time-varying effects.
+    Let :math:`F_g` be the first period in which group :math:`g`'s treatment changes
+    and :math:`D_{g,1}` its first-period treatment. The actual-versus-status-quo
+    effect
 
-    With binary staggered treatment and uniform baseline, this is equivalent
-    to the :func:`att_gt` event-study estimator. With varying baseline treatments,
-    the estimators differ because this method compares switchers only to non-switchers
-    with the same baseline, preserving validity under a conditional parallel
-    trends assumption that allows for lagged and time-varying effects.
+    .. math::
 
-    By default, units that experience both treatment increases and decreases
-    are dropped (``keep_bidirectional_switchers=False``) because their
-    :math:`\delta_{g,\ell}` can be written as a linear combination with negative
-    weights of effects of different treatment lags, potentially violating the
-    no-sign-reversal property.
+        \delta_{g,\ell} = \mathbb{E}\left[Y_{g,F_g-1+\ell} -
+        Y_{g,F_g-1+\ell}(D_{g,1}, \ldots, D_{g,1}) \mid \boldsymbol{D}\right]
 
-    The ATE parameter :math:`\delta` measures the average total effect per
-    unit of treatment, where total effect includes both contemporaneous
-    and lagged effects. It can be compared to the average treatment cost
-    to assess whether treatment changes were beneficial.
+    compares the group's outcome at :math:`F_g - 1 + \ell` with the outcome it would
+    have had if its treatment had stayed at :math:`D_{g,1}`. Under no anticipation
+    and parallel trends among groups with the same first-period treatment, it is
+    estimated by
+
+    .. math::
+
+        \text{DID}_{g,\ell} = Y_{g,F_g-1+\ell} - Y_{g,F_g-1} -
+        \frac{1}{N_{F_g-1+\ell}^g} \sum_{g': D_{g',1}=D_{g,1}, F_{g'}>F_g-1+\ell}
+        \left(Y_{g',F_g-1+\ell} - Y_{g',F_g-1}\right),
+
+    where :math:`N_{F_g-1+\ell}^g` counts the groups in the sum. The effect at horizon
+    :math:`\ell` averages :math:`S_g \text{DID}_{g,\ell}` over the :math:`N_\ell`
+    switchers observed at that horizon. Here :math:`S_g` is 1 when the first change
+    raises the treatment and -1 when it lowers it. The normalized effect
+    divides that average by the average of
+    :math:`\left|\sum_{k=1}^{\ell} (D_{g,F_g-1+k} - D_{g,1})\right|` over the same
+    switchers. Over the requested horizons :math:`\ell = 1, \ldots, L`, the average
+    total effect is
+
+    .. math::
+
+        \hat{\delta} = \frac{\sum_{\ell=1}^{L} \sum_{g} S_g \text{DID}_{g,\ell}}
+        {\sum_{\ell=1}^{L} \sum_{g} S_g (D_{g,F_g-1+\ell} - D_{g,1})},
+
+    where each inner sum runs over the switchers observed at horizon :math:`\ell`.
+    It is a total effect per unit of treatment. Each change in treatment contributes
+    its effect in the period it happens and in every later period up to horizon
+    :math:`L`. Comparing it with the cost of a unit of treatment gives a cost-benefit
+    analysis.
+
+    With a binary treatment, comparing groups that start treated with groups that
+    start untreated would require the effect of being treated for :math:`t` periods
+    to equal that of being treated for :math:`t - 1` periods. That rules out effects
+    of lagged treatments and effects that vary over time. Every comparison therefore
+    keeps to one first-period treatment.
+
+    With a binary treatment that groups adopt at most once from a common
+    first-period value, the effects equal the event-study estimates of
+    :func:`~moderndid.att_gt` [2]_ with not-yet-treated controls, a universal base
+    period, and no covariates. The placebos agree only at the first horizon, since
+    each placebo keeps the comparison groups of the effect at the same horizon.
 
     See Also
     --------
@@ -301,6 +313,8 @@ def did_multiplegt(
             raise ValueError("predict_het[1] must be a list of integer horizons.")
     if predict_het_hc2bm and predict_het is None:
         raise ValueError("predict_het_hc2bm=True requires predict_het to be specified.")
+    if same_switchers_pl and not same_switchers:
+        raise ValueError("same_switchers_pl=True requires same_switchers=True.")
     if more_granular_demeaning:
         less_conservative_se = True
 
@@ -371,4 +385,4 @@ def did_multiplegt(
     builder = PreprocessDataBuilder()
     preprocessed = builder.with_data(data).with_config(config).validate().transform().build()
 
-    return compute_did_multiplegt(preprocessed)
+    return compute_did_multiplegt(preprocessed, data)

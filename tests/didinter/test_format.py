@@ -167,6 +167,27 @@ def test_format_with_estimation_params(minimal_effects, param_key, param_value, 
     assert expected_text in formatted
 
 
+@pytest.mark.parametrize(
+    ("params", "expected", "absent"),
+    [
+        ({"boot": False}, ["Standard errors: Analytical"], ["Bootstrap"]),
+        ({"boot": True}, ["Standard errors: Bootstrap"], ["Analytical", "Clustered"]),
+        (
+            {"boot": True, "cluster": "state"},
+            ["Standard errors: Bootstrap", "Clustered standard errors: state"],
+            ["Analytical"],
+        ),
+    ],
+)
+def test_format_labels_bootstrap_standard_errors(minimal_effects, params, expected, absent):
+    result = DIDInterResult(effects=minimal_effects, estimation_params={"effects": 2, "placebo": 0, **params})
+
+    formatted = format_didinter_result(result)
+
+    assert all(text in formatted for text in expected)
+    assert not any(text in formatted for text in absent)
+
+
 @pytest.mark.parametrize("method", ["__repr__", "__str__"])
 def test_string_methods(minimal_result, method):
     result_str = getattr(minimal_result, method)()

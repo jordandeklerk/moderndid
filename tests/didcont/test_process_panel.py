@@ -14,8 +14,10 @@ from moderndid.didcont.container import (
     PTEResult,
 )
 from moderndid.didcont.estimation.process_panel import (
+    _bootstrap_draw_params,
     compute_pte,
     pte,
+    pte_default,
 )
 
 
@@ -257,7 +259,7 @@ def test_bootstrap_logic():
         boot_type="empirical",
         biters=10,
     )
-    assert result_empirical.att_gt["influence_func"] is None
+    assert result_empirical.att_gt.influence_func is None
 
     result_multiplier = pte(
         yname="y",
@@ -286,7 +288,7 @@ def test_bootstrap_logic():
         boot_type="multiplier",
         biters=10,
     )
-    assert result_fallback.att_gt["influence_func"] is None
+    assert result_fallback.att_gt.influence_func is None
 
 
 def test_pte_dose_type():
@@ -356,3 +358,52 @@ def test_pte_dose_type():
     assert isinstance(result, DoseResult)
     assert result.overall_att == 0.3
     assert result.overall_att_se == 0.1
+
+
+def test_bootstrap_draw_params_keeps_estimate_settings_for_cohorts_in_draw(pte_params_basic):
+    draw = pte_params_basic.data.filter(pl.col("G") != 2006)
+    params = _bootstrap_draw_params(draw, ptep=pte_params_basic)
+
+    np.testing.assert_array_equal(params.g_list, [2004, 2007])
+    np.testing.assert_array_equal(params.t_list, pte_params_basic.t_list)
+    assert params.data.height == draw.height
+    assert params.base_period == pte_params_basic.base_period
+
+
+@pytest.mark.filterwarnings("ignore:Simultaneous band smaller than pointwise:UserWarning")
+@pytest.mark.parametrize(("gname", "tname"), [("G", "time"), ("cohort", "period"), ("G", "period")])
+def test_pte_default_keeps_labels_when_columns_are_named_g_or_period(contdid_data, gname, tname):
+    doubled = contdid_data.with_columns((pl.col("period") * 2).alias("period"), (pl.col("G") * 2).alias("G"))
+    kwargs = {"yname": "Y", "idname": "id", "d_outcome": True, "biters": 10, "random_state": 0}
+    reference = pte_default(
+        data=doubled.rename({"G": "cohort", "period": "time"}), gname="cohort", tname="time", **kwargs
+    )
+    result = pte_default(data=doubled.rename({"G": gname, "period": tname}), gname=gname, tname=tname, **kwargs)
+
+    np.testing.assert_array_equal(np.unique(reference.att_gt.groups), [4, 6, 8])
+    np.testing.assert_array_equal(result.att_gt.groups, reference.att_gt.groups)
+    np.testing.assert_array_equal(result.att_gt.times, reference.att_gt.times)
+    np.testing.assert_array_equal(result.event_study.event_times, reference.event_study.event_times)
+    np.testing.assert_allclose(result.event_study.att_by_event, reference.event_study.att_by_event, rtol=1e-12)
+    np.testing.assert_allclose(
+        result.event_study.influence_func["by_event"],
+        reference.event_study.influence_func["by_event"],
+        rtol=1e-12,
+        atol=1e-12,
+    )
+
+
+def test_pte_default_empirical_bootstrap_rejects_event_time_options(contdid_data):
+    with pytest.raises(ValueError, match="The empirical bootstrap doesn't support min_e, balance_e\\."):
+        pte_default(
+            yname="Y",
+            gname="G",
+            tname="period",
+            idname="id",
+            data=contdid_data,
+            d_outcome=True,
+            boot_type="empirical",
+            biters=5,
+            min_e=-1,
+            balance_e=1,
+        )

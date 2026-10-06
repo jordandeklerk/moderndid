@@ -39,43 +39,31 @@ def npiv(
     x_max=None,
     seed=None,
 ):
-    r"""Estimate nonparametric instrumental variables model with uniform confidence bands.
+    r"""Estimate a nonparametric instrumental variables model with uniform confidence bands.
 
-    Estimates the structural function :math:`h_0` and its derivatives in the
-    nonparametric IV model
+    Estimates a structural function :math:`h_0` and its derivatives when the
+    regressors :math:`X` may be endogenous and instruments :math:`W` are available.
+    The function is approximated by B-splines in :math:`X` whose coefficients are
+    estimated by two-stage least squares on B-splines in :math:`W`, the sieve
+    approach of [1]_.
 
-    .. math::
-        \mathbb{E}[Y - h_0(X) \mid W] = 0 \quad \text{(a.s.)}
+    When ``j_x_segments`` is None, the bootstrap Lepski procedure of [2]_ in
+    :func:`npiv_choose_j` picks the number of segments from the data. That choice
+    adapts to the unknown smoothness of :math:`h_0` and the strength of the
+    instruments. The bands then come from :func:`compute_cck_ucb`, whose critical
+    value adds a margin for a dimension chosen from the data.
 
-    where :math:`Y` is a scalar outcome, :math:`X` is a (possibly endogenous)
-    regressor vector, and :math:`W` is a vector of instrumental variables. The
-    function is approximated by a B-spline sieve :math:`h_0(x) \approx (\psi^J(x))' c_J`
-    and coefficients are estimated by two-stage least squares using :math:`K`
-    B-spline basis functions of :math:`W` as instruments
+    A fixed ``j_x_segments`` gives the undersmoothed bands of [3]_ from
+    :func:`compute_ucb` instead. Those bands are valid only when the number of
+    segments is large enough for the approximation bias to be negligible.
 
-    .. math::
-        \hat{c}_J = (\boldsymbol{\Psi}_J' \mathbf{P}_K \boldsymbol{\Psi}_J)^{-}
-        \boldsymbol{\Psi}_J' \mathbf{P}_K \mathbf{Y},
+    With a fixed ``j_x_segments``, the instrument basis uses ``k_w_segments``
+    segments, or ``j_x_segments * 2**k_w_smooth`` when ``k_w_segments`` is None.
+    Since the estimate is otherwise not identified, an instrument basis with fewer
+    functions than the basis for :math:`X` raises an error.
 
-    where :math:`\mathbf{P}_K = \mathbf{B}_K (\mathbf{B}_K' \mathbf{B}_K)^{-} \mathbf{B}_K'`
-    projects onto the instrument space. Function and derivative estimates are then given by
-
-    .. math::
-        \hat{h}_J(x) = (\psi^J(x))' \hat{c}_J, \quad
-        \partial^a \hat{h}_J(x) = (\partial^a \psi^J(x))' \hat{c}_J.
-
-    When ``j_x_segments`` is None, a bootstrap implementation of Lepski's
-    method selects the sieve dimension :math:`\tilde{J}` that adapts to the
-    unknown smoothness of :math:`h_0` and instrument strength, achieving the
-    minimax sup-norm convergence rate for both :math:`h_0` and its derivatives.
-
-    The adaptive CCK procedure then constructs honest uniform confidence bands
-    that guarantee coverage uniformly over a class of data-generating processes.
-    When a fixed ``j_x_segments`` is supplied, the standard undersmoothing approach
-    of [1]_ is used instead.
-
-    See the :ref:`nonparametric IV example <example_npiv>` for an Engel curve estimate,
-    data-driven basis selection, and a check against a known function.
+    See the :ref:`nonparametric IV example <example_npiv>` for a full analysis of the
+    Engel curve data.
 
     Parameters
     ----------
@@ -92,24 +80,28 @@ def npiv(
     y : ndarray of shape (n,), optional
         Outcome variable. Required when ``data`` is not provided.
     x : ndarray of shape (n,) or (n, p_x), optional
-        Endogenous regressors. Automatically promoted to 2-d if needed.
+        Endogenous regressors. A 1-d array is treated as a single regressor.
         Required when ``data`` is not provided.
     w : ndarray of shape (n,) or (n, p_w), optional
-        Instrumental variables. Requires :math:`K \geq J`.
+        Instrumental variables. A 1-d array is treated as a single instrument.
         Required when ``data`` is not provided.
     x_eval : ndarray of shape (m, p_x), optional
         Points at which to evaluate :math:`\hat{h}` and its derivatives. If
-        None, evaluates at the sample points ``x``.
-    x_grid : ndarray, optional
-        Alias for ``x_eval``. Ignored when ``x_eval`` is provided.
+        None, evaluates at ``x_grid`` when it is given and at the sample
+        points ``x`` otherwise. With one regressor a 1-d array holds m points.
+    x_grid : ndarray of shape (m, p_x), optional
+        Points over which the data-driven selection compares sieve
+        dimensions. If None, the selection uses 50 equally spaced values
+        between the smallest and largest value of each regressor. When
+        ``x_eval`` is None, the estimates are also evaluated at ``x_grid``.
     alpha : float, default=0.05
         Significance level for :math:`100(1-\alpha)\%` confidence bands.
     basis : {"tensor", "additive", "glp"}, default="tensor"
-        Multivariate basis construction for :math:`X`:
-
-        - ``"tensor"``: Full tensor product of univariate B-splines.
-        - ``"additive"``: Sum of univariate B-splines (additive model).
-        - ``"glp"``: Generalized linear product (hierarchical interactions).
+        Multivariate basis construction for :math:`X`. The tensor basis is
+        the full tensor product of univariate B-splines and the additive basis
+        is their sum. The generalized polynomial (glp) basis described in
+        :func:`prodspline` keeps the main effects and only the low-order
+        interactions.
     biters : int, default=99
         Number of multiplier bootstrap draws for critical value computation.
         Each draw generates i.i.d. :math:`N(0,1)` weights
@@ -124,22 +116,24 @@ def npiv(
         :math:`\tilde{J}` adaptively. Supplying a fixed value triggers the
         undersmoothing UCB approach.
     k_w_degree : int, default=4
-        Degree of B-spline basis for :math:`W`. Defaults to
-        ``j_x_degree + 1`` because the reduced form
-        :math:`\mathbb{E}[h_0(X) \mid W]` is smoother than :math:`h_0`.
+        Degree of B-spline basis for :math:`W`. The default is one above the
+        default ``j_x_degree`` because the reduced form
+        :math:`\mathbb{E}[h_0(X) \mid W]` is smoother than :math:`h_0`. When
+        ``w`` equals ``x``, it is set to ``j_x_degree``.
     k_w_segments : int, optional
-        Number of segments for the instrument basis. When None, chosen
-        proportionally to ``j_x_segments`` via the resolution-level mapping
-        :math:`l_w = \lceil (l + q) \, d / d_w \rceil`, where :math:`q` is controlled by ``k_w_smooth``.
+        Number of segments for the instrument basis when ``j_x_segments`` is
+        given. If None, set to ``j_x_segments * 2**k_w_smooth``. When ``w``
+        equals ``x``, it is set to ``j_x_segments``. The data-driven selection
+        ignores it and chooses the instrument segments together with :math:`J`.
     k_w_smooth : int, default=2
-        Controls the resolution gap :math:`q` between the :math:`X` and
-        :math:`W` bases in the data-driven procedure. Larger values yield more
-        instrument basis functions relative to the :math:`X` basis.
+        Number of dyadic refinements :math:`q` of the instrument basis
+        relative to the :math:`X` basis. The instrument basis has :math:`2^q`
+        times as many segments as the :math:`X` basis. It sets the instrument
+        segments on the data-driven grid and, when ``k_w_segments`` is None,
+        for a fixed ``j_x_segments``. When ``w`` equals ``x``, it is set to 0.
     knots : {"uniform", "quantiles"}, default="uniform"
-        Knot placement strategy:
-
-        - ``"uniform"``: Equally spaced knots on the support.
-        - ``"quantiles"``: Knots at empirical quantiles of the data.
+        Knot placement, either equally spaced over the support or at the
+        empirical quantiles of the data.
     ucb_h : bool, default=True
         Compute uniform confidence bands for :math:`\hat{h}`.
     ucb_deriv : bool, default=True
@@ -164,26 +158,25 @@ def npiv(
     NPIVResult
         Named tuple with the following fields:
 
-        - **h** -- Estimated :math:`\hat{h}_J(x)` at evaluation points.
-        - **deriv** -- Estimated :math:`\partial^a \hat{h}_J(x)`.
-        - **h_lower**, **h_upper** -- Lower/upper UCB for :math:`h_0`.
-        - **h_lower_deriv**, **h_upper_deriv** -- Lower/upper UCB for
-          :math:`\partial^a h_0`.
-        - **beta** -- Sieve coefficient vector :math:`\hat{c}_J`.
-        - **asy_se** -- Pointwise asymptotic standard errors
-          :math:`\hat{\sigma}_J(x)`.
-        - **deriv_asy_se** -- Pointwise asymptotic standard errors
-          :math:`\hat{\sigma}_J^a(x)` for derivatives.
-        - **cv**, **cv_deriv** -- Bootstrap critical values
-          :math:`z_{1-\alpha}^*` used for band construction.
-        - **residuals** -- TSLS residuals
-          :math:`\hat{u}_{i,J} = Y_i - \hat{h}_J(X_i)`.
-        - **j_x_degree**, **j_x_segments** -- Basis parameters for :math:`X`
-          (segments may differ from input when data-driven).
-        - **k_w_degree**, **k_w_segments** -- Basis parameters for :math:`W`.
-        - **args** -- Diagnostic dictionary. When data-driven selection is
-          used, includes ``j_x_seg``, ``k_w_seg``, ``j_hat_max``,
-          ``theta_star``, and other selection diagnostics.
+        - **h**: Estimated :math:`\hat{h}_J(x)` at the evaluation points.
+        - **h_lower**: Lower uniform confidence band for :math:`h_0`.
+        - **h_upper**: Upper uniform confidence band for :math:`h_0`.
+        - **deriv**: Estimated :math:`\partial^a \hat{h}_J(x)`.
+        - **h_lower_deriv**: Lower uniform confidence band for :math:`\partial^a h_0`.
+        - **h_upper_deriv**: Upper uniform confidence band for :math:`\partial^a h_0`.
+        - **beta**: Sieve coefficient vector :math:`\hat{c}_J`.
+        - **asy_se**: Pointwise asymptotic standard errors :math:`\hat{\sigma}_J(x)`.
+        - **deriv_asy_se**: Pointwise asymptotic standard errors :math:`\hat{\sigma}_J^a(x)` for derivatives.
+        - **cv**: Critical value of the function bands, the bootstrap quantile :math:`z_{1-\alpha}^*` for a
+          fixed dimension and that quantile plus the selection penalty of :func:`compute_cck_ucb` otherwise.
+        - **cv_deriv**: Critical value of the derivative bands, built the same way as ``cv``.
+        - **residuals**: TSLS residuals :math:`\hat{u}_{i,J} = Y_i - \hat{h}_J(X_i)`.
+        - **j_x_degree**: Degree of the basis for :math:`X`.
+        - **j_x_segments**: Segments of the basis for :math:`X`, the selected value when data-driven.
+        - **k_w_degree**: Degree of the basis for :math:`W`.
+        - **k_w_segments**: Segments of the basis for :math:`W`.
+        - **args**: Diagnostic dictionary. When data-driven selection is used, it includes ``j_x_seg``,
+          ``k_w_seg``, ``j_hat_max``, ``theta_star``, and the other selection diagnostics.
 
     See Also
     --------
@@ -191,20 +184,48 @@ def npiv(
     compute_ucb : Multiplier bootstrap confidence band construction.
     npiv_choose_j : Data-driven sieve dimension selection.
 
+    Notes
+    -----
+    The structural function :math:`h_0` satisfies the conditional moment restriction
+
+    .. math::
+
+        \mathbb{E}[Y - h_0(X) \mid W] = 0 \quad \text{(a.s.)},
+
+    where :math:`Y` is a scalar outcome, :math:`X` is a possibly endogenous
+    regressor vector, and :math:`W` is a vector of instruments. The sieve
+    approximates :math:`h_0(x) \approx (\psi^J(x))' c_J` with :math:`J` B-spline
+    functions of :math:`X`. Using :math:`K` B-spline functions of :math:`W` as
+    instruments, the two-stage least squares coefficients are
+
+    .. math::
+
+        \hat{c}_J = (\boldsymbol{\Psi}_J' \mathbf{P}_K \boldsymbol{\Psi}_J)^{-}
+        \boldsymbol{\Psi}_J' \mathbf{P}_K \mathbf{Y},
+
+    where :math:`\mathbf{P}_K = \mathbf{B}_K (\mathbf{B}_K' \mathbf{B}_K)^{-} \mathbf{B}_K'`
+    projects onto the instrument space. The estimates of the function and its
+    derivatives are
+
+    .. math::
+
+        \hat{h}_J(x) = (\psi^J(x))' \hat{c}_J, \quad
+        \partial^a \hat{h}_J(x) = (\partial^a \psi^J(x))' \hat{c}_J.
+
     References
     ----------
 
-    .. [1] Chen, X., & Christensen, T. M. (2018). Optimal sup-norm rates and
-        uniform inference on nonlinear functionals of nonparametric IV
-        regression. *Quantitative Economics*, 9(1), 39-84.
+    .. [1] Newey, W. K., & Powell, J. L. (2003). Instrumental variable
+        estimation of nonparametric models. *Econometrica*, 71(5), 1565-1578.
 
     .. [2] Chen, X., Christensen, T. M., & Kankanala, S. (2024). Adaptive
         estimation and uniform confidence bands for nonparametric structural
         functions and elasticities. *Review of Economic Studies*.
         https://arxiv.org/abs/2107.11869.
 
-    .. [3] Newey, W. K., & Powell, J. L. (2003). Instrumental variable
-        estimation of nonparametric models. *Econometrica*, 71(5), 1565-1578.
+    .. [3] Chen, X., & Christensen, T. M. (2018). Optimal sup-norm rates and
+        uniform inference on nonlinear functionals of nonparametric IV
+        regression. *Quantitative Economics*, 9(1), 39-84.
     """
     if data is not None:
         if y is not None or x is not None or w is not None:
@@ -233,8 +254,9 @@ def npiv(
         if len(y) != y.size:
             raise ValueError("y must be a 1-dimensional array")
 
-    x = np.atleast_2d(x)
-    w = np.atleast_2d(w)
+    # A 1-d array holds the n observations of a single regressor or instrument.
+    x = x.reshape(-1, 1) if x.ndim == 1 else np.atleast_2d(x)
+    w = w.reshape(-1, 1) if w.ndim == 1 else np.atleast_2d(w)
 
     n = len(y)
     if x.shape[0] != n or w.shape[0] != n:
@@ -247,6 +269,10 @@ def npiv(
         x_eval = x_grid
 
     if x_eval is not None:
+        x_eval = np.asarray(x_eval)
+        if x_eval.ndim == 1:
+            # A 1-d array lists evaluation points with one regressor and holds a single point with several.
+            x_eval = x_eval.reshape(-1, 1) if p_x == 1 else x_eval.reshape(1, -1)
         x_eval = np.atleast_2d(x_eval)
         if x_eval.shape[1] != p_x:
             raise ValueError("x_eval must have same number of columns as x")
@@ -262,6 +288,9 @@ def npiv(
 
     if k_w_degree < 0:
         raise ValueError("k_w_degree must be non-negative")
+
+    if k_w_smooth < 0:
+        raise ValueError("k_w_smooth must be non-negative")
 
     if deriv_order < 0:
         raise ValueError("deriv_order must be non-negative")
@@ -283,6 +312,11 @@ def npiv(
             f"deriv_order ({deriv_order}) > j_x_degree ({j_x_degree}), derivative will be zero everywhere",
             UserWarning,
         )
+
+    if np.array_equal(x, w):
+        # Since w equal to x makes every fit a regression, the instrument basis is the X basis at every dimension.
+        k_w_degree = j_x_degree
+        k_w_smooth = 0
 
     data_driven = j_x_segments is None
     selection_result = None
@@ -318,10 +352,6 @@ def npiv(
             j_x_segments = max(3, min(int(np.ceil(n ** (1 / (2 * j_x_degree + p_x)))), 10))
             k_w_segments = None
 
-    args = {"data_driven": data_driven}
-    if selection_result:
-        args.update(selection_result)
-
     if ucb_h or ucb_deriv:
         result = compute_ucb(
             y=y,
@@ -335,6 +365,7 @@ def npiv(
             j_x_segments=j_x_segments,
             k_w_degree=k_w_degree,
             k_w_segments=k_w_segments,
+            k_w_smooth=k_w_smooth,
             knots=knots,
             ucb_h=ucb_h,
             ucb_deriv=ucb_deriv,
@@ -358,6 +389,7 @@ def npiv(
             j_x_segments=j_x_segments,
             k_w_degree=k_w_degree,
             k_w_segments=k_w_segments,
+            k_w_smooth=k_w_smooth,
             knots=knots,
             deriv_index=deriv_index,
             deriv_order=deriv_order,

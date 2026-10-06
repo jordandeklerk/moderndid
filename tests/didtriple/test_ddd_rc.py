@@ -330,6 +330,22 @@ def test_ddd_rc_1d_covariates(two_period_rcs_data):
     assert 0.5 < result.att < 4.0
 
 
+@pytest.mark.parametrize("boot, boot_type", [(False, "multiplier"), (True, "weighted")])
+def test_ddd_rc_cluster_requires_multiplier_bootstrap(two_period_rcs_data, boot, boot_type):
+    data = two_period_rcs_data
+
+    with pytest.raises(ValueError, match="cluster requires boot=True and boot_type='multiplier'"):
+        ddd_rc(
+            y=data["y"].to_numpy(),
+            post=data["time"].to_numpy(),
+            subgroup=_create_subgroup(data["state"].to_numpy(), data["partition"].to_numpy()),
+            covariates=np.ones((len(data), 1)),
+            boot=boot,
+            boot_type=boot_type,
+            cluster=data["id"].to_numpy() % 20,
+        )
+
+
 def test_validate_inputs_rc_weight_normalization():
     y = np.ones(8)
     post = np.array([0, 0, 0, 0, 1, 1, 1, 1])

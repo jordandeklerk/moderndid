@@ -563,3 +563,56 @@ def test_drdid_comparison_with_ordid(nsw_data):
     )
 
     assert abs(or_result.att - dr_result.att) < abs(or_result.att) * 2
+
+
+@pytest.mark.parametrize(
+    "transformed, explicit",
+    [
+        ("~ age + I(age**2) + educ", "~ age + age_sq + educ"),
+        ("~ age + educ + age:educ", "~ age + educ + age_educ"),
+        ("~ center(age) + educ", "~ age_c + educ"),
+    ],
+)
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_transformed_covariates_match_explicit_columns(nsw_data, transformed, explicit, panel):
+    data = nsw_data.with_columns(
+        (pl.col("age") ** 2).alias("age_sq"),
+        (pl.col("age") * pl.col("educ")).alias("age_educ"),
+        (pl.col("age") - pl.col("age").mean()).alias("age_c"),
+    )
+    spec = {"yname": "re", "tname": "year", "treatname": "experimental", "panel": panel}
+    if panel:
+        spec["idname"] = "id"
+
+    result = drdid(data=data, xformla=transformed, **spec)
+    expected = drdid(data=data, xformla=explicit, **spec)
+
+    np.testing.assert_allclose(result.att, expected.att, rtol=1e-10)
+    np.testing.assert_allclose(result.se, expected.se, rtol=1e-10)
+
+
+@pytest.mark.parametrize("panel", [True, False])
+def test_drdid_dotted_and_backticked_covariate_names(nsw_data, panel):
+    data = nsw_data.with_columns(pl.col("age").alias("age.yrs"), pl.col("educ").alias("years of school"))
+    spec = {"yname": "re", "tname": "year", "treatname": "experimental", "panel": panel}
+    if panel:
+        spec["idname"] = "id"
+
+    result = drdid(data=data, xformla="~ age.yrs + `years of school`", **spec)
+    expected = drdid(data=data, xformla="~ age + educ", **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+
+
+def test_drdid_formula_without_tilde_raises(nsw_data):
+    with pytest.raises(ValueError, match="must be in the form"):
+        drdid(
+            data=nsw_data,
+            yname="re",
+            tname="year",
+            treatname="experimental",
+            idname="id",
+            panel=True,
+            xformla="age + educ",
+        )

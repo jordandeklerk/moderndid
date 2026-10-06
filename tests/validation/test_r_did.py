@@ -142,7 +142,17 @@ write_json(out, "{result_path}", digits = 16)
         return None
 
 
-def r_aggte(data_path, agg_type="simple", est_method="dr", balance_e=None, min_e=None, max_e=None, na_rm=False):
+def r_aggte(
+    data_path,
+    agg_type="simple",
+    est_method="dr",
+    balance_e=None,
+    min_e=None,
+    max_e=None,
+    na_rm=False,
+    weightsname=None,
+    allow_unbalanced_panel=False,
+):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
 
@@ -150,6 +160,8 @@ def r_aggte(data_path, agg_type="simple", est_method="dr", balance_e=None, min_e
     min_e_str = "-Inf" if min_e is None else str(min_e)
     max_e_str = "Inf" if max_e is None else str(max_e)
     na_rm_str = "TRUE" if na_rm else "FALSE"
+    weightsname_str = "NULL" if weightsname is None else f'"{weightsname}"'
+    allow_unbalanced_panel_str = "TRUE" if allow_unbalanced_panel else "FALSE"
 
     r_script = f"""
 library(did)
@@ -166,6 +178,8 @@ mp_result <- att_gt(
   data = data,
   est_method = "{est_method}",
   control_group = "nevertreated",
+  weightsname = {weightsname_str},
+  allow_unbalanced_panel = {allow_unbalanced_panel_str},
   bstrap = FALSE
 )
 
@@ -592,6 +606,34 @@ def test_att_gt_with_covariates(mpdta_data, mpdta_csv_path):
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.parametrize(
+    "r_xformla, py_xformla",
+    [("~log.pop", "~ log.pop"), ("~I(lpop^2)", "~ lpop_sq"), ("~log(lpop)", "~ log_lpop")],
+)
+def test_att_gt_formula_terms_as_columns(mpdta_formula_columns, mpdta_formula_columns_csv_path, r_xformla, py_xformla):
+    r_result = r_att_gt(mpdta_formula_columns_csv_path, est_method="dr", xformla=r_xformla)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_result = att_gt(
+        data=mpdta_formula_columns,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla=py_xformla,
+        est_method="dr",
+        boot=False,
+    )
+
+    np.testing.assert_array_equal(py_result.groups, r_result["groups"])
+    np.testing.assert_array_equal(py_result.times, r_result["times"])
+    np.testing.assert_allclose(py_result.att_gt, r_result["att_gt"], rtol=0, atol=1e-8)
+    np.testing.assert_allclose(py_result.se_gt, r_result["se_gt"], rtol=0, atol=1e-8)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
 def test_att_gt_bootstrap_se(mpdta_small, mpdta_small_csv_path):
     r_result = r_att_gt_bootstrap(mpdta_small_csv_path, est_method="dr", biters=100, cband=False)
 
@@ -840,6 +882,98 @@ def test_aggte_estimation_methods(mpdta_data, mpdta_csv_path, est_method):
         atol=1e-6,
         err_msg=f"{est_method}: Overall ATT mismatch",
     )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
+def test_aggte_weights_column_not_named_weights(mpdta_pop_weighted, mpdta_pop_weighted_csv_path, agg_type):
+    r_result = r_aggte(mpdta_pop_weighted_csv_path, agg_type=agg_type, weightsname="pop")
+
+    if r_result is None:
+        pytest.fail("R aggregation failed")
+
+    py_mp_result = att_gt(
+        data=mpdta_pop_weighted,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~1",
+        control_group="nevertreated",
+        weightsname="pop",
+        boot=False,
+    )
+
+    py_agg_result = aggte(py_mp_result, type=agg_type, cband=False)
+
+    np.testing.assert_allclose(py_agg_result.overall_att, r_result["overall_att"], rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(py_agg_result.overall_se, r_result["overall_se"], rtol=1e-9, atol=1e-12)
+    if agg_type != "simple":
+        np.testing.assert_allclose(py_agg_result.att_by_event, r_result["att_egt"], rtol=1e-9, atol=1e-12)
+        np.testing.assert_allclose(py_agg_result.se_by_event, r_result["se_egt"], rtol=1e-9, atol=1e-12)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
+def test_aggte_unbalanced_panel_se(mpdta_unbalanced, mpdta_unbalanced_csv_path, agg_type):
+    r_result = r_aggte(mpdta_unbalanced_csv_path, agg_type=agg_type, allow_unbalanced_panel=True)
+
+    if r_result is None:
+        pytest.fail("R aggregation failed")
+
+    py_mp_result = att_gt(
+        data=mpdta_unbalanced,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~1",
+        control_group="nevertreated",
+        allow_unbalanced_panel=True,
+        boot=False,
+    )
+
+    py_agg_result = aggte(py_mp_result, type=agg_type, cband=False)
+
+    np.testing.assert_allclose(py_agg_result.overall_att, r_result["overall_att"], rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(py_agg_result.overall_se, r_result["overall_se"], rtol=1e-9, atol=1e-12)
+    if agg_type != "simple":
+        np.testing.assert_allclose(py_agg_result.att_by_event, r_result["att_egt"], rtol=1e-9, atol=1e-12)
+        np.testing.assert_allclose(py_agg_result.se_by_event, r_result["se_egt"], rtol=1e-9, atol=1e-12)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
+def test_aggte_unbalanced_panel_time_varying_weights(
+    mpdta_unbalanced_varying_weights, mpdta_unbalanced_varying_weights_csv_path, agg_type
+):
+    r_result = r_aggte(
+        mpdta_unbalanced_varying_weights_csv_path, agg_type=agg_type, weightsname="w", allow_unbalanced_panel=True
+    )
+
+    if r_result is None:
+        pytest.fail("R aggregation failed")
+
+    py_mp_result = att_gt(
+        data=mpdta_unbalanced_varying_weights,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        xformla="~1",
+        control_group="nevertreated",
+        weightsname="w",
+        allow_unbalanced_panel=True,
+        boot=False,
+    )
+
+    py_agg_result = aggte(py_mp_result, type=agg_type, cband=False)
+
+    np.testing.assert_allclose(py_agg_result.overall_att, r_result["overall_att"], rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(py_agg_result.overall_se, r_result["overall_se"], rtol=1e-9, atol=1e-12)
+    if agg_type != "simple":
+        np.testing.assert_allclose(py_agg_result.att_by_event, r_result["att_egt"], rtol=1e-9, atol=1e-12)
+        np.testing.assert_allclose(py_agg_result.se_by_event, r_result["se_egt"], rtol=1e-9, atol=1e-12)
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
@@ -1135,6 +1269,45 @@ write_json(out, "{result_path}", digits = 16)
         return None
 
 
+def r_att_gt_unbalanced_clustered(data_path):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+library(did)
+library(jsonlite)
+
+data <- read.csv("{data_path}")
+
+result <- att_gt(
+  yname = "lemp",
+  tname = "year",
+  idname = "countyreal",
+  gname = "first.treat",
+  xformla = ~1,
+  data = data,
+  control_group = "nevertreated",
+  allow_unbalanced_panel = TRUE,
+  bstrap = FALSE,
+  cband = FALSE,
+  clustervars = "cluster"
+)
+
+out <- list(
+  groups = result$group,
+  times = result$t,
+  att_gt = result$att,
+  se_gt = result$se
+)
+
+write_json(out, "{result_path}", digits = 16)
+"""
+    try:
+        return _run_r_script(r_script, result_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
 @pytest.fixture(scope="module")
 def mpdta_clustered(mpdta_data):
     return mpdta_data.with_columns((pl.col("countyreal") % 10).alias("cluster"))
@@ -1337,6 +1510,40 @@ def test_clustering_changes_se(mpdta_small_clustered, mpdta_small_clustered_csv_
     assert not np.allclose(py_unclustered.se_gt[valid_py], py_clustered.se_gt[valid_py], rtol=0.01), (
         "Python: Clustering did not change SEs"
     )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.filterwarnings("ignore:Clustering the standard errors requires using the bootstrap:UserWarning")
+@pytest.mark.filterwarnings("ignore:The Wald pre-test is not reported:UserWarning")
+def test_att_gt_unbalanced_cluster_sums_match_analytic_clustered_se(
+    mpdta_unbalanced_clustered, mpdta_unbalanced_clustered_csv_path
+):
+    r_result = r_att_gt_unbalanced_clustered(mpdta_unbalanced_clustered_csv_path)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_result = att_gt(
+        data=mpdta_unbalanced_clustered,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        control_group="nevertreated",
+        clustervars=["cluster"],
+        allow_unbalanced_panel=True,
+        boot=False,
+        cband=False,
+    )
+
+    _, cluster_index = np.unique(py_result.estimation_params["cluster"], return_inverse=True)
+    cluster_sums = np.zeros((cluster_index.max() + 1, py_result.influence_func.shape[1]))
+    np.add.at(cluster_sums, cluster_index, py_result.influence_func)
+    clustered_se = np.sqrt((cluster_sums**2).sum(axis=0)) / py_result.n_units
+
+    assert list(zip(py_result.groups, py_result.times)) == list(zip(r_result["groups"], r_result["times"]))
+    np.testing.assert_allclose(py_result.att_gt, r_result["att_gt"], rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(clustered_se, r_result["se_gt"], rtol=1e-9, atol=1e-12)
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")

@@ -1,7 +1,9 @@
 """Tests for core result converters and to_df dispatch."""
 
+import numpy as np
 import polars as pl
 import pytest
+from scipy.stats import chi2
 
 from moderndid.core.converters import (
     aggteresult_to_polars,
@@ -9,6 +11,8 @@ from moderndid.core.converters import (
     dddmpresult_to_polars,
     didinterresult_to_polars,
     doseresult_to_polars,
+    dynbalancinghistoryresult_to_polars,
+    dynbalancingresult_to_polars,
     honestdid_to_polars,
     mpresult_to_polars,
     pteresult_to_polars,
@@ -188,3 +192,41 @@ class TestToDf:
     def test_bogus_kwarg_for_dose(self, cont_did_result):
         with pytest.raises(TypeError, match="unexpected keyword argument"):
             to_df(cont_did_result, bogus="foo")
+
+
+def test_dynbalancing_potential_outcome_bands_use_alpha(dyn_balancing_robust_result):
+    df = dynbalancingresult_to_polars(dyn_balancing_robust_result)
+    row = df.filter(pl.col("parameter") == "mu(ds1)").row(0, named=True)
+    assert (row["ci_upper_robust"] - row["estimate"]) / row["se"] == pytest.approx(np.sqrt(chi2.ppf(0.9, 2)))
+
+
+def test_dynbalancing_robust_bands_equal_gaussian_when_setting_off(dyn_balancing_robust_result):
+    params = {**dyn_balancing_robust_result.estimation_params, "robust_quantile": False}
+    result = dyn_balancing_robust_result._replace(
+        robust_quantile=dyn_balancing_robust_result.gaussian_quantile, estimation_params=params
+    )
+    df = dynbalancingresult_to_polars(result)
+    np.testing.assert_allclose(df["ci_lower_robust"].to_numpy(), df["ci_lower_gaussian"].to_numpy())
+    np.testing.assert_allclose(df["ci_upper_robust"].to_numpy(), df["ci_upper_gaussian"].to_numpy())
+
+
+@pytest.mark.parametrize("parameter", ["mu1", "mu2"])
+def test_dynbalancing_history_potential_outcome_bands_use_their_own_degrees_of_freedom(
+    dyn_balancing_robust_history_result, parameter
+):
+    df = dynbalancinghistoryresult_to_polars(dyn_balancing_robust_history_result, parameter=parameter)
+    ratio = ((df["ci_upper_robust"] - df["estimate"]) / df["se"]).to_numpy()
+    np.testing.assert_allclose(ratio, np.sqrt(chi2.ppf(0.9, [1, 2])))
+
+
+def test_dynbalancing_history_ate_bands_use_ate_quantile(dyn_balancing_robust_history_result):
+    df = dynbalancinghistoryresult_to_polars(dyn_balancing_robust_history_result)
+    ratio = ((df["ci_upper_robust"] - df["estimate"]) / df["se"]).to_numpy()
+    np.testing.assert_allclose(ratio, np.sqrt(chi2.ppf(0.9, [2, 4])))
+
+
+def test_dynbalancing_history_bands_use_summary_quantile_without_results(dyn_balancing_robust_history_result):
+    result = dyn_balancing_robust_history_result._replace(results=[])
+    df = dynbalancinghistoryresult_to_polars(result, parameter="mu1")
+    ratio = ((df["ci_upper_robust"] - df["estimate"]) / df["se"]).to_numpy()
+    np.testing.assert_allclose(ratio, np.sqrt(chi2.ppf(0.9, [2, 4])))

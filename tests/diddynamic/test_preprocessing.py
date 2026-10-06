@@ -1,5 +1,7 @@
 """Tests for dynamic covariate balancing preprocessing."""
 
+import re
+
 import numpy as np
 import polars as pl
 import pytest
@@ -41,6 +43,11 @@ def test_default_regularization():
 def test_default_debias():
     cfg = DynBalancingConfig()
     assert cfg.debias is False
+
+
+def test_default_robust_quantile():
+    cfg = DynBalancingConfig()
+    assert cfg.robust_quantile is False
 
 
 def test_custom_names():
@@ -162,6 +169,25 @@ def test_covariate_matrices_no_nan(simple_panel, base_config):
         assert not np.any(np.isnan(mat))
 
 
+def test_dotted_and_backticked_covariate_names(simple_panel, base_config):
+    renamed = simple_panel.with_columns(pl.col("X1").alias("lag1.X1"), pl.col("X2").alias("X 2"))
+    result = build_dyn_balancing(renamed, **base_config, xformla="~ lag1.X1 + `X 2`")
+    expected = build_dyn_balancing(simple_panel, **base_config, xformla="~X1+X2")
+
+    assert result.config.covariate_names == ["lag1.X1", "X 2"]
+    for period, mat in expected.covariate_dict.items():
+        np.testing.assert_array_equal(result.covariate_dict[period], mat)
+
+
+@pytest.mark.parametrize(
+    "xformla, term",
+    [("~ X1 + I(X1**2)", "I(X1**2)"), ("~ log(X2)", "log(X2)"), ("~ X1 + X1:X2", "X1:X2")],
+)
+def test_transformed_covariates_raise(simple_panel, base_config, xformla, term):
+    with pytest.raises(ValueError, match=re.escape(f"xformla term '{term}' is not a column name")):
+        build_dyn_balancing(simple_panel, **base_config, xformla=xformla)
+
+
 def test_intercept_only_formula(simple_panel, base_config):
     result = build_dyn_balancing(simple_panel, **base_config, xformla="~1")
     assert not result.has_covariates
@@ -218,7 +244,8 @@ def test_auto_final_period(simple_panel, base_config):
 
 def test_auto_initial_period(simple_panel, base_config):
     result = build_dyn_balancing(simple_panel, **base_config)
-    assert result.config.initial_period == 1
+    assert result.config.initial_period is None
+    assert result.config.time_periods.tolist() == [1, 2, 3, 4]
 
 
 def test_explicit_final_period(simple_panel):
@@ -246,6 +273,7 @@ def test_explicit_initial_and_final_period(simple_panel):
         ds2=[0, 0],
         final_period=4,
         initial_period=3,
+        pooled=True,
     )
     assert result.config.initial_period == 3
     assert result.config.final_period == 4
@@ -554,3 +582,159 @@ def test_pooled_outcome_vector_length(simple_panel):
         pooled=True,
     )
     assert len(result.outcome_vector) == result.n_units
+
+
+def test_pooled_default_initial_period_is_first_full_window(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel, yname="y", tname="time", idname="id", treatment_name="D", ds1=[1, 1], ds2=[0, 0], pooled=True
+    )
+    assert result.config.initial_period == 2
+
+
+def test_pooled_default_stacks_every_window(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel, yname="y", tname="time", idname="id", treatment_name="D", ds1=[1, 1], ds2=[0, 0], pooled=True
+    )
+    assert result.n_units == 30
+
+
+@pytest.mark.parametrize("initial_period, n_units", [(1, 30), (2, 30), (3, 20)])
+def test_pooled_initial_period_bounds_windows(simple_panel, initial_period, n_units):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+        initial_period=initial_period,
+    )
+    assert result.n_units == n_units
+    assert result.config.time_periods.tolist() == [3, 4]
+    assert result.treatment_matrix.shape == (n_units, 2)
+
+
+def test_pooled_initial_period_after_final_raises(simple_panel):
+    with pytest.raises(ValueError, match="must not be later than final_period"):
+        build_dyn_balancing(
+            simple_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[1, 1],
+            ds2=[0, 0],
+            pooled=True,
+            final_period=3,
+            initial_period=4,
+        )
+
+
+def test_pooled_initial_period_not_in_data_raises(simple_panel):
+    with pytest.raises(ValueError, match="initial_period=9 is not in the data"):
+        build_dyn_balancing(
+            simple_panel,
+            yname="y",
+            tname="time",
+            idname="id",
+            treatment_name="D",
+            ds1=[1, 1],
+            ds2=[0, 0],
+            pooled=True,
+            initial_period=9,
+        )
+
+
+def test_initial_period_without_pooling_warns(simple_panel, base_config):
+    with pytest.warns(UserWarning, match="initial_period only applies when pooled=True"):
+        result = build_dyn_balancing(simple_panel, **base_config, initial_period=1)
+    assert result.config.time_periods.tolist() == [1, 2, 3, 4]
+
+
+def test_non_consecutive_periods_raise(simple_panel):
+    df = simple_panel.with_columns((pl.col("time") * 5 + 1995).alias("time"))
+    with pytest.raises(ValueError, match="consecutive integers"):
+        build_dyn_balancing(df, yname="y", tname="time", idname="id", treatment_name="D", ds1=[1, 1], ds2=[0, 0])
+
+
+@pytest.mark.parametrize("col, time", [("y", 1), ("y", 3), ("D", 1), ("X1", 3)])
+def test_missing_value_outside_final_outcome_keeps_unit(simple_panel, col, time):
+    missing = (pl.col("id") == 0) & (pl.col("time") == time)
+    df = simple_panel.with_columns(pl.when(missing).then(None).otherwise(pl.col(col)).alias(col))
+    result = build_dyn_balancing(
+        df, yname="y", tname="time", idname="id", treatment_name="D", ds1=[1, 1], ds2=[0, 0], xformla="~X1"
+    )
+    assert result.n_units == 10
+
+
+def test_missing_row_outside_window_keeps_unit(simple_panel):
+    df = simple_panel.filter(~((pl.col("id") == 0) & (pl.col("time") == 1)))
+    result = build_dyn_balancing(df, yname="y", tname="time", idname="id", treatment_name="D", ds1=[1, 1], ds2=[0, 0])
+    assert result.n_units == 10
+
+
+def test_missing_covariate_in_window_becomes_nan(simple_panel):
+    missing = (pl.col("id") == 0) & (pl.col("time") == 3)
+    df = simple_panel.with_columns(pl.when(missing).then(None).otherwise(pl.col("X1")).alias("X1"))
+    result = build_dyn_balancing(
+        df, yname="y", tname="time", idname="id", treatment_name="D", ds1=[1, 1], ds2=[0, 0], xformla="~X1+X2"
+    )
+    assert np.isnan(result.covariate_dict[3][0, 0])
+    assert not np.isnan(result.covariate_dict[3][1:]).any()
+
+
+def test_missing_final_outcome_drops_unit(simple_panel):
+    missing = (pl.col("id") == 0) & (pl.col("time") == 4)
+    df = simple_panel.with_columns(pl.when(missing).then(None).otherwise(pl.col("y")).alias("y"))
+    with pytest.warns(UserWarning, match="Dropped 1 units with a missing final-period outcome"):
+        result = build_dyn_balancing(
+            df, yname="y", tname="time", idname="id", treatment_name="D", ds1=[1, 1], ds2=[0, 0]
+        )
+    assert result.n_units == 9
+    assert not np.isnan(result.outcome_vector).any()
+
+
+@pytest.mark.parametrize("value", [None, float("nan")])
+def test_missing_treatment_in_window_drops_unit(simple_panel, value):
+    missing = (pl.col("id") == 0) & (pl.col("time") == 3)
+    df = simple_panel.with_columns(pl.when(missing).then(value).otherwise(pl.col("D")).alias("D"))
+    with pytest.warns(UserWarning, match="Dropped 1 units that are not observed in every period"):
+        result = build_dyn_balancing(
+            df, yname="y", tname="time", idname="id", treatment_name="D", ds1=[1, 1], ds2=[0, 0]
+        )
+    assert result.n_units == 9
+
+
+def test_time_fixed_effects_cover_window_periods_only(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        fixed_effects=["time"],
+    )
+    fe_cols = [c for c in result.panel.columns if c.startswith("time_")]
+    assert fe_cols == ["time_3", "time_4"]
+
+
+def test_pooled_fixed_effect_dummies_have_no_empty_columns(simple_panel):
+    result = build_dyn_balancing(
+        simple_panel,
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[1, 1],
+        ds2=[0, 0],
+        pooled=True,
+        initial_period=3,
+        fixed_effects=["cluster_var", "time"],
+    )
+    fe_cols = [c for c in result.panel.columns if c.startswith("new_Time_")]
+    assert fe_cols == ["new_Time_2", "new_Time_3", "new_Time_4"]
+    assert all(result.panel[c].sum() > 0 for c in fe_cols)

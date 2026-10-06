@@ -52,7 +52,7 @@ def compute_conditional_cs_sdrmb(
     lies in :math:`\Delta^{SDRMB}(\bar{M})`, which intersects :math:`\Delta^{SDRM}(\bar{M})` with
     a sign restriction on the bias.
 
-    This combined restriction is defined in Section 2.4.4 of [1]_ as
+    This combined restriction is defined as
 
     .. math::
 
@@ -106,35 +106,22 @@ def compute_conditional_cs_sdrmb(
     grid_ub : float, optional
         Upper bound for grid search.
     seed : int, default=0
-        Random seed for reproducibility.
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     dict
         Returns dict with 'grid' and 'accept' arrays.
 
-    Raises
-    ------
-    ValueError
-        If num_pre_periods == 1 (not enough pre-periods for second differences).
-        If hybrid_flag is not in {'LF', 'ARP'}.
-
     Notes
     -----
-    The confidence set is constructed using the moment inequality approach from Section 3.
-    Since :math:`\Delta^{SDRMB}(\bar{M})` is a finite union of polyhedra, we can apply Lemma 2.2
-    to construct a valid confidence set by taking the union of the confidence sets for each
-    of its components.
+    The confidence set is constructed using the moment inequality approach. Since
+    :math:`\Delta^{SDRMB}(\bar{M})` is a finite union of polyhedra, the union of the confidence
+    sets for its components is a valid confidence set.
 
     This restriction is not convex, so Fixed Length Confidence Intervals (FLCIs)
     are not recommended. The conditional/hybrid approach provides better power
     when multiple constraints are binding.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods == 1:
         raise ValueError(
@@ -254,7 +241,7 @@ def compute_identified_set_sdrmb(
     The identified set under :math:`\Delta^{SDRMB}(\bar{M})` represents the values of
     :math:`\theta = l'\tau_{post}` consistent with the observed pre-treatment coefficients
     :math:`\beta_{pre} = \delta_{pre}`, the combined smoothness and relative magnitude constraints,
-    and a sign restriction on the post-treatment bias, as described in Section 2.4.4 of [1]_.
+    and a sign restriction on the post-treatment bias.
 
     The set is constructed by taking the union of identified sets for each sub-polyhedron,
     each corresponding to a specific pre-treatment period `s` and sign for the maximum
@@ -287,16 +274,11 @@ def compute_identified_set_sdrmb(
     The identified set is computed by solving linear programs for each choice of
     period :math:`s` and sign (positive/negative maximum), then taking the union of all
     resulting intervals, intersected with the sign restriction.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
     """
     l_vec = np.asarray(l_vec).flatten()
     min_s = -(num_pre_periods - 2)
-    s_values = range(min_s, 1)  # Include s=0 to match R's min_s:0
+    # Since the second difference at s = 0 ends at the reference period, it is a pre-period one too.
+    s_values = range(min_s, 1)
 
     all_bounds = []
 
@@ -462,7 +444,7 @@ def _compute_conditional_cs_sdrmb_fixed_s(
     grid_ub : float
         Upper bound of grid.
     seed : int
-        Random seed.
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -513,6 +495,7 @@ def _compute_conditional_cs_sdrmb_fixed_s(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -576,8 +559,7 @@ def _create_sdrmb_constraint_matrix(
 
     Creates a matrix for the linear constraints that define
     :math:`\Delta^{SDRMB}_{s,sign}(\bar{M})`. This set combines the second-difference
-    relative magnitude constraint with a sign restriction on the bias, as discussed in
-    Section 2.4.4 of [1]_.
+    relative magnitude constraint with a sign restriction on the bias.
 
     The constraint set is the intersection of two polyhedra
 
@@ -646,7 +628,7 @@ def _create_sdrmb_constraint_vector(a_matrix):
 
     For the combined smoothness with relative magnitudes and bias restriction,
     the constraint vector :math:`d` is a vector of zeros. This is because both
-    the :math:`\Delta^{SDRM}` and :math:`\Delta^{B}` restrictions, as defined in [1]_,
+    the :math:`\Delta^{SDRM}` and :math:`\Delta^{B}` restrictions
     can be written with homogeneous inequality constraints of the form :math:`A\delta \leq 0`.
 
     Parameters

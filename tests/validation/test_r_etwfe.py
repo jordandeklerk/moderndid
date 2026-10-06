@@ -1,5 +1,6 @@
 """Validation tests comparing Python etwfe implementation with R etwfe package."""
 
+import functools
 import json
 import re
 import subprocess
@@ -1334,7 +1335,7 @@ class TestXvar:
 
         r_base_gt, r_base_est = _extract_r_base_treatment(r_result)
         _match_gt_coefficients(
-            py_mod.gt_pairs, py_mod.coefficients, r_base_gt, r_base_est, rtol=0.25, atol=0.02, label="xvar coefficients"
+            py_mod.gt_pairs, py_mod.coefficients, r_base_gt, r_base_est, rtol=1e-7, atol=1e-8, label="xvar coefficients"
         )
 
     def test_xvar_event_study(self, mpdta_data):
@@ -1374,8 +1375,8 @@ class TestXvar:
                 np.testing.assert_allclose(
                     py_result.att_by_event[py_idx],
                     r_est[r_idx],
-                    rtol=0.05,
-                    atol=1e-2,
+                    rtol=1e-7,
+                    atol=1e-8,
                     err_msg=f"xvar event ATT mismatch at e={r_e}",
                 )
                 matched += 1
@@ -1672,7 +1673,22 @@ class TestNonEmptyGuards:
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
 class TestCrossConsistency:
-    def test_simple_vs_event_overall(self, mpdta_data):
+    def test_event_overall_averages_post_event_times(self, mpdta_data):
+        py_mod = etwfe(
+            data=mpdta_data,
+            yname="lemp",
+            tname="year",
+            gname="first.treat",
+            idname="countyreal",
+            vcov={"CRV1": "countyreal"},
+            cgroup="never",
+        )
+        event = emfx(py_mod, type="event", post_only=False)
+        post = event.event_times >= 0
+
+        np.testing.assert_allclose(event.overall_att, event.att_by_event[post].mean(), rtol=1e-12)
+
+    def test_group_overall_weights_cohorts_by_size(self, mpdta_data):
         py_mod = etwfe(
             data=mpdta_data,
             yname="lemp",
@@ -1681,26 +1697,14 @@ class TestCrossConsistency:
             idname="countyreal",
             vcov={"CRV1": "countyreal"},
         )
-        simple = emfx(py_mod, type="simple")
-        event = emfx(py_mod, type="event")
-
-        np.testing.assert_allclose(simple.overall_att, event.overall_att, rtol=1e-6)
-
-    def test_simple_vs_group_overall(self, mpdta_data):
-        py_mod = etwfe(
-            data=mpdta_data,
-            yname="lemp",
-            tname="year",
-            gname="first.treat",
-            idname="countyreal",
-            vcov={"CRV1": "countyreal"},
-        )
-        simple = emfx(py_mod, type="simple")
         group = emfx(py_mod, type="group")
+        sizes = mpdta_data.filter(pl.col("year") == 2003).group_by("first.treat").len()
+        size_map = dict(sizes.iter_rows())
+        weights = np.array([size_map[int(g)] for g in group.event_times], dtype=float)
 
-        np.testing.assert_allclose(simple.overall_att, group.overall_att, rtol=1e-6)
+        np.testing.assert_allclose(group.overall_att, np.sum(weights * group.att_by_event) / weights.sum(), rtol=1e-12)
 
-    def test_simple_vs_calendar_overall(self, mpdta_data):
+    def test_calendar_overall_averages_calendar_times(self, mpdta_data):
         py_mod = etwfe(
             data=mpdta_data,
             yname="lemp",
@@ -1709,10 +1713,9 @@ class TestCrossConsistency:
             idname="countyreal",
             vcov={"CRV1": "countyreal"},
         )
-        simple = emfx(py_mod, type="simple")
         calendar = emfx(py_mod, type="calendar")
 
-        np.testing.assert_allclose(simple.overall_att, calendar.overall_att, rtol=1e-6)
+        np.testing.assert_allclose(calendar.overall_att, calendar.att_by_event.mean(), rtol=1e-12)
 
     @pytest.mark.parametrize("cgroup", ["notyet", "never"])
     def test_all_aggregation_types_run(self, mpdta_data, cgroup):
@@ -1878,3 +1881,609 @@ class TestKnownValues:
                 atol=1e-8,
                 err_msg=f"Known calendar ATT mismatch at t={key}",
             )
+
+
+def r_etwfe_binary(family):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+library(etwfe)
+library(did)
+library(jsonlite)
+
+data("mpdta", package = "did")
+mpdta$ybin <- as.integer(mpdta$lemp > median(mpdta$lemp))
+
+mod <- etwfe(
+  fml = ybin ~ 0,
+  tvar = year,
+  gvar = first.treat,
+  data = mpdta,
+  ivar = countyreal,
+  family = "{family}",
+  vcov = ~countyreal
+)
+
+ct <- fixest::coeftable(mod)
+treat_rows <- grepl("^\\\\.Dtreat:", rownames(ct))
+mfx_simple <- emfx(mod, type = "simple")
+mfx_event <- emfx(mod, type = "event")
+
+out <- list(
+    coef_names = rownames(ct)[treat_rows],
+    estimates = unname(ct[treat_rows, "Estimate"]),
+    simple_estimate = mfx_simple$estimate,
+    simple_se = mfx_simple$std.error,
+    event_times = mfx_event$event,
+    event_estimates = mfx_event$estimate,
+    event_se = mfx_event$std.error
+)
+
+write_json(out, "{result_path}", auto_unbox = TRUE, digits = 16)
+"""
+    try:
+        return _run_r_script(r_script, result_path, timeout=180)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+def r_emfx_never_placebos():
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+library(etwfe)
+library(did)
+library(jsonlite)
+
+data("mpdta", package = "did")
+
+mod <- etwfe(
+  fml = lemp ~ 0,
+  tvar = year,
+  gvar = first.treat,
+  data = mpdta,
+  ivar = countyreal,
+  vcov = ~countyreal,
+  cgroup = "never"
+)
+
+mfx <- emfx(mod, type = "event", post_only = FALSE)
+
+out <- list(
+    event = mfx$event,
+    estimate = mfx$estimate,
+    std_error = mfx$std.error
+)
+
+write_json(out, "{result_path}", auto_unbox = TRUE, digits = 16, na = "null")
+"""
+    try:
+        return _run_r_script(r_script, result_path, timeout=180)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+def r_etwfe_xvar_recoded():
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+library(etwfe)
+library(did)
+library(jsonlite)
+
+data("mpdta", package = "did")
+mpdta$notgls <- !((mpdta$countyreal %/% 1000) %in% c(17, 18, 26, 27, 36, 39, 42, 55))
+
+mod <- etwfe(
+  fml = lemp ~ 0,
+  tvar = year,
+  gvar = first.treat,
+  data = mpdta,
+  ivar = countyreal,
+  xvar = notgls,
+  vcov = ~countyreal
+)
+
+mfx_simple <- emfx(mod, type = "simple", by_xvar = FALSE)
+ct <- fixest::coeftable(mod)
+treat_rows <- grepl("^\\\\.Dtreat:", rownames(ct))
+
+out <- list(
+    coef_names = rownames(ct)[treat_rows],
+    estimates = unname(ct[treat_rows, "Estimate"]),
+    simple_estimate = mfx_simple$estimate,
+    simple_se = mfx_simple$std.error
+)
+
+write_json(out, "{result_path}", auto_unbox = TRUE, digits = 16)
+"""
+    try:
+        return _run_r_script(r_script, result_path, timeout=180)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+def r_etwfe_state_dummies():
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+library(etwfe)
+library(did)
+library(jsonlite)
+
+data("mpdta", package = "did")
+mpdta$state <- mpdta$countyreal %/% 1000
+states <- sort(unique(mpdta$state))[-1]
+for (s in states) mpdta[[paste0("st", s)]] <- as.numeric(mpdta$state == s)
+fml <- as.formula(paste("lemp ~", paste0("st", states, collapse = " + ")))
+
+mod <- etwfe(
+  fml = fml,
+  tvar = year,
+  gvar = first.treat,
+  data = mpdta,
+  ivar = countyreal,
+  vcov = "hetero"
+)
+
+ct <- fixest::coeftable(mod)
+out <- list(n_treat_coefs = sum(grepl("^\\\\.Dtreat:", rownames(ct)) & !grepl("_dm", rownames(ct))))
+
+write_json(out, "{result_path}", auto_unbox = TRUE, digits = 16)
+"""
+    try:
+        return _run_r_script(r_script, result_path, timeout=180)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize("family", ["logit", "probit"])
+def test_binary_family_matches_r(mpdta_moderators, family):
+    r_result = r_etwfe_binary(family)
+    if r_result is None:
+        pytest.fail(f"R etwfe with family={family} failed")
+
+    py_mod = etwfe(
+        data=mpdta_moderators, yname="ybin", tname="year", gname="first.treat", idname="countyreal", family=family
+    )
+
+    r_gt = _parse_r_gt_pairs(r_result["coef_names"])
+    _match_gt_coefficients(
+        py_mod.gt_pairs,
+        py_mod.coefficients,
+        r_gt,
+        np.array(r_result["estimates"]),
+        rtol=1e-6,
+        atol=1e-8,
+        label=f"{family} cells",
+    )
+
+    simple = emfx(py_mod)
+    np.testing.assert_allclose(simple.overall_att, r_result["simple_estimate"], rtol=1e-6, atol=1e-9)
+    np.testing.assert_allclose(simple.overall_se, r_result["simple_se"], rtol=1e-4)
+
+    event = emfx(py_mod, type="event")
+    r_events = np.array(r_result["event_times"], dtype=float)
+    _match_agg_by_key(
+        event.event_times,
+        event.att_by_event,
+        r_events,
+        np.array(r_result["event_estimates"]),
+        rtol=1e-6,
+        atol=1e-9,
+        label=f"{family} event",
+    )
+    _match_agg_by_key(
+        event.event_times,
+        event.se_by_event,
+        r_events,
+        np.array(r_result["event_se"]),
+        rtol=1e-4,
+        atol=0,
+        label=f"{family} event SE",
+    )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+def test_never_event_placebos_match_r(mpdta_data):
+    r_result = r_emfx_never_placebos()
+    if r_result is None:
+        pytest.fail("R emfx with post_only = FALSE failed")
+
+    py_mod = etwfe(
+        data=mpdta_data,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        vcov={"CRV1": "countyreal"},
+        cgroup="never",
+    )
+    placebos = emfx(py_mod, type="event", post_only=False)
+    r_events = np.array(r_result["event"], dtype=float)
+    r_est = np.array(r_result["estimate"], dtype=float)
+    r_se = np.array([np.nan if v is None else v for v in r_result["std_error"]], dtype=float)
+
+    np.testing.assert_array_equal(placebos.event_times, r_events)
+    np.testing.assert_allclose(placebos.att_by_event, r_est, rtol=1e-7, atol=1e-8)
+    np.testing.assert_array_equal(np.isnan(placebos.se_by_event), np.isnan(r_se))
+    observed = ~np.isnan(r_se)
+    np.testing.assert_allclose(placebos.se_by_event[observed], r_se[observed], rtol=1e-4)
+
+    post = emfx(py_mod, type="event")
+    np.testing.assert_array_equal(post.event_times, r_events[r_events >= 0])
+    np.testing.assert_allclose(post.att_by_event, r_est[r_events >= 0], rtol=1e-7, atol=1e-8)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize("xvar", ["gls", "notgls"])
+def test_xvar_recoding_matches_r(mpdta_moderators, xvar):
+    r_result = r_etwfe_xvar_recoded()
+    if r_result is None:
+        pytest.fail("R etwfe with a recoded xvar failed")
+
+    py_mod = etwfe(
+        data=mpdta_moderators,
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        xvar=xvar,
+        vcov={"CRV1": "countyreal"},
+    )
+
+    r_base_gt, r_base_est = _extract_r_base_treatment(r_result)
+    _match_gt_coefficients(
+        py_mod.gt_pairs, py_mod.coefficients, r_base_gt, r_base_est, rtol=1e-7, atol=1e-8, label=f"xvar={xvar} cells"
+    )
+    simple = emfx(py_mod)
+    np.testing.assert_allclose(simple.overall_att, r_result["simple_estimate"], rtol=1e-7, atol=1e-8)
+    np.testing.assert_allclose(simple.overall_se, r_result["simple_se"], rtol=1e-4)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+def test_cells_collinear_with_controls_match_r(mpdta_state_dummies):
+    r_result = r_etwfe_state_dummies()
+    if r_result is None:
+        pytest.fail("R etwfe with state dummies failed")
+
+    data, xformla = mpdta_state_dummies
+    with pytest.warns(UserWarning, match="dropped the treatment cells"):
+        py_mod = etwfe(
+            data=data,
+            yname="lemp",
+            tname="year",
+            gname="first.treat",
+            idname="countyreal",
+            xformla=xformla,
+            vcov="hetero",
+        )
+
+    assert r_result["n_treat_coefs"] == 0
+    assert np.all(np.isnan(py_mod.coefficients))
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+def test_poisson_default_clusters_match_r(mpdta_data):
+    r_result = r_emfx(controls="0", agg_type="simple", family="poisson")
+    if r_result is None:
+        pytest.fail("R Poisson emfx failed")
+
+    mpdta_pois = mpdta_data.with_columns(pl.col("lemp").exp().alias("emp"))
+    py_mod = etwfe(
+        data=mpdta_pois, yname="emp", tname="year", gname="first.treat", idname="countyreal", family="poisson"
+    )
+    py_result = emfx(py_mod)
+
+    r_est = r_result["estimate"] if isinstance(r_result["estimate"], float) else r_result["estimate"][0]
+    r_se = r_result["std_error"] if isinstance(r_result["std_error"], float) else r_result["std_error"][0]
+    assert py_mod.estimation_params["clustervar"] == "countyreal"
+    assert py_mod.n_units == 500
+    np.testing.assert_allclose(py_result.overall_att, r_est, rtol=1e-6)
+    np.testing.assert_allclose(py_result.overall_se, r_se, rtol=1e-4)
+
+
+@functools.cache
+def r_etwfe_inputs():
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+suppressPackageStartupMessages({{
+  library(etwfe)
+  library(did)
+  library(jsonlite)
+}})
+
+data("mpdta", package = "did")
+info <- function(mod, xvar = FALSE) {{
+  ct <- fixest::coeftable(mod)
+  rows <- grepl("^\\\\.Dtreat:", rownames(ct)) & !grepl("_dm", rownames(ct))
+  s <- if (xvar) emfx(mod, type = "simple", by_xvar = FALSE) else emfx(mod, type = "simple")
+  list(coef_names = rownames(ct)[rows], estimates = unname(ct[rows, "Estimate"]), simple_estimate = s$estimate,
+       simple_se = s$std.error, n_obs = nobs(mod))
+}}
+fail <- function(expr) tryCatch({{ force(expr); "no error" }}, error = function(e) conditionMessage(e))
+fit <- function(data, fml = lemp ~ 0, ...) etwfe(fml, tvar = year, gvar = first.treat, data = data,
+                                                 ivar = countyreal, vcov = ~countyreal, ...)
+
+d <- mpdta
+d$county.id <- d$countyreal
+d$year.t <- d$year
+d$log.pop <- d$lpop
+d$l.emp <- d$lemp
+d$w <- 1 + (d$countyreal %% 7) / 7
+d$gls <- (d$countyreal %/% 1000) %in% c(17, 18, 26, 27, 36, 39, 42, 55)
+missing <- (d$countyreal * 31 + d$year) %% 17 == 0
+complete <- d[!missing, ]
+late <- d
+late$first.treat[late$first.treat == 2006] <- 0
+ids <- tail(sort(unique(d$countyreal[d$first.treat == 0])), 30)
+without_early <- d[!(d$countyreal %in% ids), ]
+d9999 <- d
+d9999$first.treat[d9999$first.treat == 0] <- 9999
+never1 <- head(sort(unique(d$countyreal[d$first.treat == 0])), 15)
+early1 <- head(sort(unique(d$countyreal[d$first.treat == 2004])), 10)
+singletons <- d[!(d$countyreal %in% c(never1, early1)) | d$year == 2006, ]
+no_never <- mpdta[mpdta$first.treat != 0, ]
+without_2006 <- mpdta[mpdta$first.treat != 2006, ]
+gap_without_2006 <- without_2006[without_2006$year != 2005, ]
+d_st <- mpdta
+d_st$st <- as.numeric(d_st$countyreal %/% 1000)
+d_st$st[d_st$countyreal %% 50 == 0] <- NA
+
+out <- list(
+  dotted_unit = info(etwfe(l.emp ~ log.pop, tvar = year.t, gvar = first.treat, data = d, ivar = county.id,
+                           vcov = ~county.id)),
+  dotted_cohort = info(etwfe(l.emp ~ log.pop, tvar = year.t, gvar = first.treat, data = d, vcov = "hetero")),
+  base_notyet = info(fit(d)),
+  base_never = info(fit(d, cgroup = "never")),
+  late_notyet = info(fit(late)),
+  late_never = info(fit(late, cgroup = "never")),
+  early_notyet = info(fit(without_early)),
+  early_never = info(fit(without_early, cgroup = "never")),
+  missing_control = info(fit(complete, lemp ~ lpop)),
+  missing_weights = info(fit(complete, weights = ~w)),
+  missing_xvar = info(fit(complete, xvar = gls), xvar = TRUE),
+  singletons = info(fit(singletons)),
+  treated_reference = info(fit(d9999, gref = 2007)),
+  error_gref_1999 = fail(fit(d, gref = 1999)),
+  error_gref_2005 = fail(fit(d, gref = 2005)),
+  error_tref_1990 = fail(fit(d, tref = 1990)),
+  error_gref_9999 = fail(fit(d, gref = 9999)),
+  no_never_notyet = info(fit(no_never)),
+  error_no_never_never = fail(fit(no_never, cgroup = "never")),
+  gap_without_2006_never = info(fit(gap_without_2006, cgroup = "never")),
+  without_2006_notyet = info(fit(without_2006)),
+  without_2006_never = info(fit(without_2006, cgroup = "never")),
+  cluster_missing = info(etwfe(lemp ~ 0, tvar = year, gvar = first.treat, data = d_st, ivar = countyreal,
+                               vcov = ~st))
+)
+
+write_json(out, "{result_path}", auto_unbox = TRUE, digits = 16)
+"""
+    try:
+        return _run_r_script(r_script, result_path, timeout=300)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+def _check_inputs_against_r(py_mod, r_fit, label):
+    _match_gt_coefficients(
+        py_mod.gt_pairs,
+        py_mod.coefficients,
+        _parse_r_gt_pairs(r_fit["coef_names"]),
+        np.array(r_fit["estimates"]),
+        rtol=0,
+        atol=1e-10,
+        label=f"{label} cells",
+    )
+    assert py_mod.n_obs == r_fit["n_obs"]
+    simple = emfx(py_mod)
+    np.testing.assert_allclose(simple.overall_att, r_fit["simple_estimate"], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(simple.overall_se, r_fit["simple_se"], rtol=1e-5)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize("idname,vcov,key", [("county.id", None, "dotted_unit"), (None, "hetero", "dotted_cohort")])
+def test_dotted_names_match_r(mpdta_dotted_names, idname, vcov, key):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    py_mod = etwfe(
+        data=mpdta_dotted_names,
+        yname="l.emp",
+        tname="year.t",
+        gname="first.treat",
+        idname=idname,
+        xformla="~ log.pop",
+        vcov=vcov,
+    )
+    _check_inputs_against_r(py_mod, r_result[key], key)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize("label", ["inf", "9999"])
+@pytest.mark.parametrize("cgroup", ["notyet", "never"])
+def test_never_treated_codes_match_r_zero_coding(mpdta_never_codes, label, cgroup):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    py_mod = etwfe(
+        data=mpdta_never_codes[label],
+        yname="lemp",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        cgroup=cgroup,
+    )
+    _check_inputs_against_r(py_mod, r_result[f"base_{cgroup}"], f"never coded {label}")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+def test_missing_cohort_codes_match_r_without_never_treated(mpdta_never_codes):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    kwargs = dict(data=mpdta_never_codes["null"], yname="lemp", tname="year", gname="first.treat", idname="countyreal")
+    with pytest.warns(UserWarning, match="Dropped 1545 rows with missing values in first.treat"):
+        py_mod = etwfe(**kwargs)
+    _check_inputs_against_r(py_mod, r_result["no_never_notyet"], "never coded null")
+
+    assert "could not be identified" in r_result["error_no_never_never"]
+    with (
+        pytest.warns(UserWarning, match="Dropped 1545 rows"),
+        pytest.raises(ValueError, match="Could not identify 'never' control group"),
+    ):
+        etwfe(**kwargs, cgroup="never")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize(
+    "keep,cgroup,key",
+    [
+        (pl.col("year") != 2005, "never", "gap_without_2006_never"),
+        (~((pl.col("first.treat") == 2006) & (pl.col("year") < 2006)), "notyet", "without_2006_notyet"),
+        (~((pl.col("first.treat") == 2006) & (pl.col("year") < 2006)), "never", "without_2006_never"),
+    ],
+)
+def test_cohorts_without_untreated_rows_match_r_without_them(mpdta_data, keep, cgroup, key):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    with pytest.warns(UserWarning, match="Dropped 40 units of cohorts with no row"):
+        py_mod = etwfe(
+            data=mpdta_data.filter(keep),
+            yname="lemp",
+            tname="year",
+            gname="first.treat",
+            idname="countyreal",
+            cgroup=cgroup,
+        )
+    _check_inputs_against_r(py_mod, r_result[key], key)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+def test_missing_cluster_values_match_r(mpdta_data):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    st = pl.when(pl.col("countyreal") % 50 == 0).then(None).otherwise(pl.col("countyreal") // 1000)
+    data = mpdta_data.with_columns(st.cast(pl.Float64).alias("st"))
+    with pytest.warns(UserWarning, match="Dropped 15 rows with missing values in st"):
+        py_mod = etwfe(
+            data=data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", vcov={"CRV1": "st"}
+        )
+    _check_inputs_against_r(py_mod, r_result["cluster_missing"], "cluster with missing values")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize("gref", [9999, float("inf")])
+def test_never_treated_code_as_gref_matches_r_default(mpdta_data, gref):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    assert "not found" in r_result["error_gref_9999"]
+    py_mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", gref=gref)
+    _check_inputs_against_r(py_mod, r_result["base_notyet"], f"gref {gref}")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize("cgroup", ["notyet", "never"])
+def test_cohort_after_last_period_matches_r_never_treated(mpdta_late_cohort, cgroup):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    py_mod = etwfe(
+        data=mpdta_late_cohort, yname="lemp", tname="year", gname="first.treat", idname="countyreal", cgroup=cgroup
+    )
+    _check_inputs_against_r(py_mod, r_result[f"late_{cgroup}"], "cohort 2008")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize("cgroup", ["notyet", "never"])
+def test_cohort_treated_in_first_period_matches_r_without_it(mpdta_always_treated, cgroup):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    with pytest.warns(UserWarning, match="Dropped 30 units of cohorts already treated in the first period"):
+        py_mod = etwfe(
+            data=mpdta_always_treated,
+            yname="lemp",
+            tname="year",
+            gname="first.treat",
+            idname="countyreal",
+            cgroup=cgroup,
+        )
+    assert py_mod.n_units == 470
+    _check_inputs_against_r(py_mod, r_result[f"early_{cgroup}"], "cohort 2003")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize(
+    "column,kwargs,key",
+    [
+        ("lpop", {"xformla": "~ lpop"}, "missing_control"),
+        ("w", {"weightsname": "w"}, "missing_weights"),
+        ("gls", {"xvar": "gls"}, "missing_xvar"),
+    ],
+)
+def test_missing_inputs_match_r_on_complete_rows(mpdta_missing_inputs, column, kwargs, key):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    data, missing = mpdta_missing_inputs
+    holed = data.with_columns(pl.when(missing).then(None).otherwise(pl.col(column)).alias(column))
+    with pytest.warns(UserWarning, match=f"Dropped 158 rows with missing values in {column}"):
+        py_mod = etwfe(data=holed, yname="lemp", tname="year", gname="first.treat", idname="countyreal", **kwargs)
+    _check_inputs_against_r(py_mod, r_result[key], f"missing {column}")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+def test_singleton_units_match_r(mpdta_singletons):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    py_mod = etwfe(data=mpdta_singletons, yname="lemp", tname="year", gname="first.treat", idname="countyreal")
+    assert (py_mod.n_units, py_mod.data.height) == (475, 2375)
+    _check_inputs_against_r(py_mod, r_result["singletons"], "singletons")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+def test_treated_reference_cohort_matches_r(mpdta_data):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    py_mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", gref=2007)
+    _check_inputs_against_r(py_mod, r_result["treated_reference"], "gref 2007")
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R etwfe package not available")
+@pytest.mark.parametrize(
+    "kwargs,key",
+    [({"gref": 1999}, "error_gref_1999"), ({"gref": 2005}, "error_gref_2005"), ({"tref": 1990}, "error_tref_1990")],
+)
+def test_references_outside_data_raise_like_r(mpdta_data, kwargs, key):
+    r_result = r_etwfe_inputs()
+    if r_result is None:
+        pytest.fail("R etwfe with the etwfe input variants failed")
+
+    assert "not found" in r_result[key]
+    with pytest.raises(ValueError, match="is not a"):
+        etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", **kwargs)

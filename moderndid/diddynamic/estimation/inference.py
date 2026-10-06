@@ -3,31 +3,11 @@
 from __future__ import annotations
 
 import math
-from typing import NamedTuple
 
 import numpy as np
 from scipy.stats import chi2, norm
 
-
-class QuantileResult(NamedTuple):
-    """Critical values for confidence interval construction.
-
-    Attributes
-    ----------
-    robust_quantile_ate : float
-        Chi-squared-based critical value for ATE inference.
-    gaussian_quantile_ate : float
-        Gaussian critical value for ATE inference.
-    robust_quantile_mu : float
-        Chi-squared-based critical value for potential outcome inference.
-    gaussian_quantile_mu : float
-        Gaussian critical value for potential outcome inference.
-    """
-
-    robust_quantile_ate: float
-    gaussian_quantile_ate: float
-    robust_quantile_mu: float
-    gaussian_quantile_mu: float
+from moderndid.diddynamic.container import QuantileResult
 
 
 def compute_variance(
@@ -182,8 +162,9 @@ def compute_quantiles(alp: float, n_periods: int, robust_quantile: bool) -> Quan
 
     The robust quantile uses
     :math:`\sqrt{\chi^2_{1-\alpha}(df)}` with :math:`df = 2T` for the ATE
-    and :math:`df = T` for each potential outcome, providing valid
-    coverage under the sequential estimation structure of [1]_.
+    and :math:`df = T` for each potential outcome. Since it exceeds the
+    Gaussian critical value, its intervals are conservative. The inference
+    theorem of [1]_ supports the Gaussian critical value.
 
     Parameters
     ----------

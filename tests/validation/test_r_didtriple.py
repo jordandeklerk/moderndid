@@ -261,6 +261,97 @@ write_json(output, "{result_path}", auto_unbox = TRUE)
             return None
 
 
+def r_estimate_2period_clustered(data, panel=True, biters=99999):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_path = Path(tmpdir) / "data.csv"
+        result_path = Path(tmpdir) / "result.json"
+
+        data.write_csv(data_path)
+
+        panel_str = "TRUE" if panel else "FALSE"
+
+        r_script = f"""
+library(triplediff)
+library(jsonlite)
+
+set.seed(42)
+data <- read.csv("{data_path}")
+
+result <- ddd(
+    yname = "y",
+    tname = "time",
+    idname = "id",
+    gname = "state",
+    pname = "partition",
+    xformla = ~ cov1 + cov2 + cov3 + cov4,
+    data = data,
+    est_method = "dr",
+    panel = {panel_str},
+    boot = TRUE,
+    nboot = {biters},
+    cluster = "cluster"
+)
+
+output <- list(
+    att = result$ATT,
+    se = result$se,
+    lci = result$lci,
+    uci = result$uci
+)
+
+write_json(output, "{result_path}", auto_unbox = TRUE, digits = NA)
+"""
+        try:
+            return _run_r_script(r_script, result_path, timeout=120)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+            return None
+
+
+def r_estimate_multiperiod_clustered(data, biters=99999):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_path = Path(tmpdir) / "data.csv"
+        result_path = Path(tmpdir) / "result.json"
+
+        data.write_csv(data_path)
+
+        r_script = f"""
+library(triplediff)
+library(jsonlite)
+
+set.seed(42)
+data <- read.csv("{data_path}")
+
+result <- ddd(
+    yname = "y",
+    tname = "time",
+    idname = "id",
+    gname = "group",
+    pname = "partition",
+    xformla = ~1,
+    data = data,
+    control_group = "nevertreated",
+    base_period = "universal",
+    est_method = "dr",
+    boot = TRUE,
+    nboot = {biters},
+    cluster = "cluster"
+)
+
+output <- list(
+    att = result$ATT,
+    se = result$se,
+    groups = result$groups,
+    times = result$periods
+)
+
+write_json(output, "{result_path}", auto_unbox = TRUE, digits = NA)
+"""
+        try:
+            return _run_r_script(r_script, result_path, timeout=120)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+            return None
+
+
 def r_ddd_wrapper(data, is_multiperiod=False, est_method="dr", control_group="nevertreated", base_period="universal"):
     with tempfile.TemporaryDirectory() as tmpdir:
         data_path = Path(tmpdir) / "data.csv"
@@ -472,6 +563,38 @@ def test_2period_bootstrap_se_reasonable(two_period_dgp_result):
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize(
+    "data_fixture, panel", [("two_period_clustered_data", True), ("two_period_rcs_clustered_data", False)]
+)
+def test_2period_clustered_bootstrap_matches(request, data_fixture, panel):
+    data = request.getfixturevalue(data_fixture)
+
+    py_result = ddd(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="state",
+        pname="partition",
+        xformla="~ cov1 + cov2 + cov3 + cov4",
+        est_method="dr",
+        panel=panel,
+        boot=True,
+        biters=99999,
+        cluster="cluster",
+        random_state=42,
+    )
+    r_result = r_estimate_2period_clustered(data, panel=panel)
+
+    if r_result is None:
+        pytest.fail("R clustered bootstrap estimation failed")
+
+    np.testing.assert_allclose(py_result.att, r_result["att"], rtol=1e-6)
+    np.testing.assert_allclose(py_result.se, r_result["se"], rtol=0.06)
+    np.testing.assert_allclose(py_result.uci - py_result.lci, r_result["uci"] - r_result["lci"], rtol=0.06)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
 def test_mp_att_gt_estimates_match(mp_ddd_data, est_method):
     data = mp_ddd_data
@@ -601,6 +724,34 @@ def test_mp_base_period_options(mp_ddd_data, base_period):
                     matches += 1
     match_rate = matches / len(py_result.att) if len(py_result.att) > 0 else 0
     assert match_rate > 0.95, f"{base_period}: Only {match_rate:.1%} of ATT(g,t) estimates match"
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+def test_mp_clustered_bootstrap_matches(mp_ddd_clustered_data):
+    py_result = ddd(
+        data=mp_ddd_clustered_data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        control_group="nevertreated",
+        base_period="universal",
+        est_method="dr",
+        boot=True,
+        biters=99999,
+        cluster="cluster",
+        random_state=42,
+    )
+    r_result = r_estimate_multiperiod_clustered(mp_ddd_clustered_data)
+
+    if r_result is None:
+        pytest.fail("R clustered bootstrap estimation failed")
+
+    np.testing.assert_array_equal(py_result.groups, np.atleast_1d(r_result["groups"]))
+    np.testing.assert_array_equal(py_result.times, np.atleast_1d(r_result["times"]))
+    np.testing.assert_allclose(py_result.att, _convert_r_array(r_result["att"]), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_result.se, _convert_r_array(r_result["se"]), rtol=0.06)
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")

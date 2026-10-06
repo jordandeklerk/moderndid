@@ -3,7 +3,7 @@
 import numpy as np
 from scipy import stats
 
-from .conditional import estimate_lowerbound_m_conditional_test
+from .conditional import _create_pre_period_second_diff_constraints, estimate_lowerbound_m_conditional_test
 from .numba import create_bounds_second_difference_matrix, create_monotonicity_matrix
 
 
@@ -15,14 +15,17 @@ def compute_delta_sd_upperbound_m(
 ):
     r"""Compute an upper bound for :math:`M` at the :math:`1-\alpha` level based on observed pre-period coefficients.
 
-    Constructs an upper bound for the smoothness parameter :math:`M` using the maximum
-    second difference of the observed pre-period coefficients.
+    Constructs an upper bound for the smoothness parameter :math:`M` from the largest
+    second difference of the observed pre-period coefficients, in absolute value.
 
-    The upper bound is computed as the maximum over all second differences of
+    The second differences run over the pre-period coefficients followed by the reference
+    period. Since its coefficient is normalized to zero, the last one is
+    :math:`\hat{\beta}_{-2} - 2\hat{\beta}_{-1}`. The upper bound is the maximum over these
+    differences of
 
     .. math::
 
-        \Delta^2 \hat{\beta}_t + z_{1-\alpha} \cdot \text{se}(\Delta^2 \hat{\beta}_t),
+        |\Delta^2 \hat{\beta}_t| + z_{1-\alpha} \cdot \text{se}(\Delta^2 \hat{\beta}_t),
 
     where :math:`\Delta^2 \hat{\beta}_t` is the second difference at time :math:`t`,
     :math:`\text{se}(\cdot)` denotes the standard error, and :math:`z_{1-\alpha}` is the
@@ -35,7 +38,7 @@ def compute_delta_sd_upperbound_m(
     sigma : ndarray
         Covariance matrix of estimated coefficients.
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods. Must be at least 2.
     alpha : float, default=0.05
         Significance level :math:`\alpha` for the confidence bound.
 
@@ -43,20 +46,14 @@ def compute_delta_sd_upperbound_m(
     -------
     float
         Upper bound for :math:`M`.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
-        The Review of Economic Studies, 90(5), 2555-2591.
     """
-    if num_pre_periods < 3:
-        raise ValueError("Cannot estimate M in pre-period with < 3 pre-period coefficients.")
+    if num_pre_periods < 2:
+        raise ValueError("Cannot estimate M in pre-period with < 2 pre-period coefficients.")
 
     pre_period_coef = betahat[:num_pre_periods]
     pre_period_sigma = sigma[:num_pre_periods, :num_pre_periods]
 
-    a_sd = create_second_difference_matrix(num_pre_periods=num_pre_periods, num_post_periods=0)
+    a_sd, _ = create_pre_period_constraint_matrix(num_pre_periods)
 
     pre_period_coef_diffs = a_sd @ pre_period_coef
     pre_period_sigma_diffs = a_sd @ pre_period_sigma @ a_sd.T
@@ -80,7 +77,7 @@ def compute_delta_sd_lowerbound_m(
 
     Constructs a lower bound for the smoothness parameter :math:`M` by constructing a
     one-sided confidence interval on the maximal second difference of the observed
-    pre-period coefficients using the conditional test from [1]_.
+    pre-period coefficients using the conditional test.
 
     Parameters
     ----------
@@ -101,14 +98,6 @@ def compute_delta_sd_lowerbound_m(
     -------
     float
         Lower bound for :math:`M`. Returns ``np.inf`` if no values accepted.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2019). Inference for linear conditional moment inequalities.
-        Technical report, National Bureau of Economic Research.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
-        The Review of Economic Studies, 90(5), 2555-2591.
     """
     if num_pre_periods < 3:
         raise ValueError("Cannot estimate M in pre-period with < 3 pre-period coefficients.")
@@ -177,10 +166,13 @@ def create_pre_period_constraint_matrix(num_pre_periods):
     set up as :math:`\Delta^2 \beta_i \leq M` for the upper bounds and :math:`-\Delta^2 \beta_i \leq M`
     for the lower bounds.
 
+    The second differences run over the pre-period coefficients followed by the reference period.
+    Since its coefficient is normalized to zero, the last one is :math:`\beta_{-2} - 2\beta_{-1}`.
+
     Parameters
     ----------
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods. Must be at least 2.
 
     Returns
     -------
@@ -191,29 +183,8 @@ def create_pre_period_constraint_matrix(num_pre_periods):
             Constraint matrix of shape :math:`(2 \cdot (n_{\text{pre}} - 1),\ n_{\text{pre}})`
         - ``d`` : ndarray
             Vector of ones of length :math:`2 \cdot (n_{\text{pre}} - 1)`
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
-        The Review of Economic Studies, 90(5), 2555-2591.
     """
-    if num_pre_periods < 2:
-        raise ValueError("Cannot estimate M in pre-period with < 2 pre-period coefficients.")
-
-    a_tilde = np.zeros((num_pre_periods - 1, num_pre_periods))
-    a_tilde[num_pre_periods - 2, (num_pre_periods - 2) : num_pre_periods] = [1, -1]
-
-    if num_pre_periods > 2:
-        a_tilde[num_pre_periods - 2, (num_pre_periods - 3) : num_pre_periods] = [1, -2, 1]
-
-        for r in range(num_pre_periods - 3):
-            a_tilde[r, r : (r + 3)] = [1, -2, 1]
-
-    a_pre = np.vstack([a_tilde, -a_tilde])
-    d = np.ones(a_pre.shape[0])
-
-    return a_pre, d
+    return _create_pre_period_second_diff_constraints(num_pre_periods)
 
 
 def create_monotonicity_constraint_matrix(
@@ -258,12 +229,6 @@ def create_monotonicity_constraint_matrix(
         Constraint matrix :math:`A` of shape :math:`(m, n)` where
         :math:`n = n_{\text{pre}} + n_{\text{post}}` and :math:`m` is the number
         of monotonicity constraints.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
-        The Review of Economic Studies, 90(5), 2555-2591.
     """
     total_periods = num_pre_periods + num_post_periods
 
@@ -321,12 +286,6 @@ def create_sign_constraint_matrix(
     -------
     ndarray
         Constraint matrix :math:`A` of shape :math:`(n_{\text{post}}, \, n_{\text{pre}} + n_{\text{post}})`.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to parallel trends.
-        The Review of Economic Studies, 90(5), 2555-2591.
     """
     total_periods = num_pre_periods + num_post_periods
 

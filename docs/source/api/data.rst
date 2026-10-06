@@ -1,15 +1,17 @@
 .. _api-data:
 
-Datasets and Simulation
-========================
+Datasets and simulation
+=======================
 
-**ModernDiD** includes built-in datasets for examples and benchmarking, as well as
-data generation functions for simulation studies and scalability testing.
-
-Built-in Datasets
------------------
+Each loader below returns one of the datasets that come with ModernDiD as a
+polars DataFrame. The simulators generate data with known treatment effects for
+each design. Monte Carlo studies and tests use them to check how well an
+estimator recovers those effects.
 
 .. currentmodule:: moderndid
+
+Built-in datasets
+-----------------
 
 .. autosummary::
    :toctree: generated/data/
@@ -21,12 +23,10 @@ Built-in Datasets
    load_engel
    load_favara_imbs
    load_cai2016
+   load_acemoglu
 
-Simulation Functions
+Simulation functions
 --------------------
-
-Functions for generating synthetic DiD and DDD panel data with known treatment
-effects, useful for Monte Carlo experiments and testing.
 
 .. autosummary::
    :toctree: generated/data/

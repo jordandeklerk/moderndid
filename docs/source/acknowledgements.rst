@@ -54,8 +54,8 @@ directly from ``did``:
   `plot_event_study() <api/generated/plotting/moderndid.plots.plot_event_study.html>`_
   follow the visual conventions of ``did``'s ``ggdid()``
 
-You can learn more about ``did`` `on GitHub <https://github.com/bcallaway11/did>`_
-or by reading the `associated paper <https://doi.org/10.1016/j.jeconom.2020.12.001>`_.
+You can learn more about ``did`` `on GitHub <https://github.com/bcallaway11/did>`__
+or by reading the `associated paper <https://doi.org/10.1016/j.jeconom.2020.12.001>`__.
 
 **ModernDiD** is benchmarked and validated against ``did`` via R scripts to ensure
 numerical equivalence for coefficients, standard errors, and confidence
@@ -64,11 +64,11 @@ intervals.
 DRDID (R)
 ---------
 
-The `DRDID <https://github.com/pedrohcgs/DRDID>`_ R package by
+The `DRDID <https://github.com/pedrohcgs/DRDID>`__ R package by
 `Pedro H.C. Sant'Anna <https://pedrohcgs.github.io/>`_ and
 Jun Zhao is the foundation for
 **ModernDiD**'s two-period doubly robust estimators in the
-`drdid <api/generated/drdid/moderndid.drdid.html>`_ module. The methodology
+`drdid <api/generated/drdid/moderndid.drdid.html>`__ module. The methodology
 follows
 `Sant'Anna and Zhao (2020) <https://doi.org/10.1016/j.jeconom.2020.06.003>`_,
 which develops locally efficient doubly robust DiD estimators for both panel and
@@ -84,8 +84,8 @@ regression estimators
 (`reg_did_rc() <api/generated/drdid/moderndid.reg_did_rc.html>`_), for both
 panel data and repeated cross-sections.
 
-You can learn more about ``DRDID`` `on GitHub <https://github.com/pedrohcgs/DRDID>`_
-or by reading the `associated paper <https://doi.org/10.1016/j.jeconom.2020.06.003>`_.
+You can learn more about ``DRDID`` `on GitHub <https://github.com/pedrohcgs/DRDID>`__
+or by reading the `associated paper <https://doi.org/10.1016/j.jeconom.2020.06.003>`__.
 
 **ModernDiD** is benchmarked and validated against ``DRDID`` via R scripts to
 ensure numerical equivalence.
@@ -105,8 +105,8 @@ which extends the DiD framework to settings where treatment intensity varies
 continuously across units.
 
 You can learn more about ``contdid``
-`on GitHub <https://github.com/bcallaway11/contdid>`_ or by reading the
-`associated paper <https://arxiv.org/abs/2107.02637>`_.
+`on GitHub <https://github.com/bcallaway11/contdid>`__ or by reading the
+`associated paper <https://arxiv.org/abs/2107.02637>`__.
 
 **ModernDiD** is benchmarked and validated against ``contdid`` via R scripts to
 ensure numerical equivalence.
@@ -125,7 +125,7 @@ for the nonparametric dose-response estimation in the continuous DiD estimator
 `cont_did() <api/generated/didcont/moderndid.cont_did.html>`_.
 
 You can learn more about ``npiv``
-`on GitHub <https://github.com/JeffreyRacine/npiv>`_ or by reading the
+`on GitHub <https://github.com/JeffreyRacine/npiv>`__ or by reading the
 associated papers by
 `Chen and Christensen (2018) <https://doi.org/10.3982/QE722>`_ and
 `Chen, Christensen, and Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_.
@@ -144,8 +144,8 @@ which develops doubly robust triple DiD estimators for staggered adoption
 designs.
 
 You can learn more about ``triplediff``
-`on GitHub <https://github.com/marcelortizv/triplediff>`_ or by reading the
-`associated paper <https://arxiv.org/abs/2505.09942>`_.
+`on GitHub <https://github.com/marcelortizv/triplediff>`__ or by reading the
+`associated paper <https://arxiv.org/abs/2505.09942>`__.
 
 **ModernDiD** is benchmarked and validated against ``triplediff`` via R scripts to
 ensure numerical equivalence.
@@ -164,8 +164,8 @@ which estimates treatment effects in panel data with time-varying treatments
 using sequential covariate balancing weights and potential local projections.
 
 You can learn more about ``DynBalancing``
-`on GitHub <https://github.com/daviviano/DynBalancing>`_ or by reading the
-`associated paper <https://doi.org/10.1093/biomet/asag016>`_.
+`on GitHub <https://github.com/daviviano/DynBalancing>`__ or by reading the
+`associated paper <https://doi.org/10.1093/biomet/asag016>`__.
 
 **ModernDiD** is benchmarked and validated against ``DynBalancing`` via R scripts
 to ensure numerical equivalence.
@@ -187,8 +187,8 @@ which estimates treatment effects in settings with potentially non-binary,
 non-absorbing treatments.
 
 You can learn more about ``did_multiplegt_dyn``
-`on GitHub <https://github.com/Credible-Answers/did_multiplegt_dyn>`_ or by
-reading the `associated paper <https://doi.org/10.1162/rest_a_01414>`_.
+`on GitHub <https://github.com/Credible-Answers/did_multiplegt_dyn>`__ or by
+reading the `associated paper <https://doi.org/10.1162/rest_a_01414>`__.
 
 **ModernDiD** is validated against ``did_multiplegt_dyn`` via R scripts to ensure
 numerical equivalence.
@@ -227,7 +227,7 @@ directly from ``etwfe``:
   heterogeneity by a categorical covariate
 
 You can learn more about ``etwfe``
-`on GitHub <https://github.com/grantmcdermott/etwfe>`_ or by reading the
+`on GitHub <https://github.com/grantmcdermott/etwfe>`__ or by reading the
 associated papers by
 `Wooldridge (2025) <https://doi.org/10.1007/s00181-025-02807-z>`_ and
 `Wooldridge (2023) <https://doi.org/10.1093/ectj/utad016>`_.
@@ -251,8 +251,8 @@ provides a more credible approach to evaluating the parallel trends assumption
 by constructing robust confidence sets under violations of parallel trends.
 
 You can learn more about ``HonestDiD``
-`on GitHub <https://github.com/asheshrambachan/HonestDiD>`_ or by reading the
-`associated paper <https://doi.org/10.1093/restud/rdad018>`_.
+`on GitHub <https://github.com/asheshrambachan/HonestDiD>`__ or by reading the
+`associated paper <https://doi.org/10.1093/restud/rdad018>`__.
 
 PyFixest (Python)
 -----------------
@@ -267,7 +267,7 @@ saturated interaction regression with high-dimensional fixed effects absorption.
 also influenced **ModernDiD**'s API design philosophy.
 
 You can learn more about ``PyFixest``
-`on GitHub <https://github.com/py-econometrics/pyfixest>`_ or via its
+`on GitHub <https://github.com/py-econometrics/pyfixest>`__ or via its
 `documentation <https://py-econometrics.github.io/pyfixest/>`_.
 
 Other software

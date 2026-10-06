@@ -129,8 +129,10 @@ def test_compute_identified_set_rm_basic(simple_event_study_data):
     observed_val = l_vec @ true_beta[num_pre_periods:]
     assert result.id_lb <= observed_val <= result.id_ub
 
-    max_pre_effect = np.max(np.abs(true_beta[:num_pre_periods]))
-    assert result.id_ub - result.id_lb <= 2 * max_pre_effect * 1
+    max_pre_diff = np.max(np.abs(np.diff(np.append(true_beta[:num_pre_periods], 0.0))))
+    assert max_pre_diff == pytest.approx(0.15)
+    assert result.id_lb == pytest.approx(observed_val - max_pre_diff)
+    assert result.id_ub == pytest.approx(observed_val + max_pre_diff)
 
 
 def test_compute_identified_set_rm_zero_m_bar():
@@ -186,12 +188,10 @@ def test_analytical_case_single_post_period():
     )
 
     observed_effect = 0.5
-    pre_diffs = [abs(true_beta[1] - true_beta[0]), abs(true_beta[2] - true_beta[1]), abs(true_beta[2] - true_beta[0])]
-    max_pre_diff = max(pre_diffs)
+    max_pre_diff = np.max(np.abs(np.diff(np.append(true_beta[:3], 0.0))))
 
-    assert result.id_lb <= observed_effect
-    assert result.id_ub >= observed_effect
-    assert result.id_ub - result.id_lb <= 2 * max_pre_diff
+    assert result.id_lb == pytest.approx(observed_effect - max_pre_diff)
+    assert result.id_ub == pytest.approx(observed_effect + max_pre_diff)
 
 
 def test_compute_identified_set_rm_monotonicity():
@@ -514,3 +514,72 @@ def test_confidence_set_contains_true_value(fast_config):
         ci_lb = grid[accepted_indices[0]]
         ci_ub = grid[accepted_indices[-1]]
         assert ci_lb <= true_effect <= ci_ub
+
+
+def test_identified_set_rm_uses_earliest_pre_period_difference():
+    true_beta = np.array([0.10, 0.0, 0.01, 0.0, 0.05, 0.06])
+
+    result = compute_identified_set_rm(
+        m_bar=1.0,
+        true_beta=true_beta,
+        l_vec=np.array([1.0, 0.0]),
+        num_pre_periods=4,
+        num_post_periods=2,
+    )
+
+    assert result.id_lb == pytest.approx(-0.05)
+    assert result.id_ub == pytest.approx(0.15)
+
+
+@pytest.mark.parametrize("s", [-2, -1, 0])
+def test_constraint_matrix_bounds_by_difference_ending_at_s(s):
+    A = _create_relative_magnitudes_constraint_matrix(
+        num_pre_periods=3, num_post_periods=2, m_bar=1.0, s=s, max_positive=True, drop_zero_period=False
+    )
+    delta = np.where(np.arange(6) >= 3 + s, 1.0, 0.0)
+
+    assert np.all(A @ delta <= 1e-12)
+    assert np.any(A @ np.roll(delta, 1) > 1e-12)
+
+
+def test_conditional_cs_rm_single_post_period_seeded():
+    betahat = np.array([-0.0125, -0.0067, -0.0038, -0.0049, 0.0453])
+    sigma = np.diag([0.004, 0.003, 0.003, 0.003, 0.006]) ** 2
+    kwargs = {
+        "betahat": betahat,
+        "sigma": sigma,
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "m_bar": 1.0,
+        "hybrid_flag": "LF",
+        "grid_points": 21,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    first = compute_conditional_cs_rm(**kwargs)
+    second = compute_conditional_cs_rm(**kwargs)
+
+    assert first["grid"].shape == (21,)
+    assert np.array_equal(first["accept"], second["accept"])
+    assert first["accept"][np.argmin(np.abs(first["grid"] - 0.045))] == 1
+    assert first["accept"][0] == 0
+    assert first["accept"][-1] == 0
+
+
+def test_conditional_cs_rm_single_post_period_conditional(one_post_event_study):
+    result = compute_conditional_cs_rm(
+        betahat=one_post_event_study["betahat"],
+        sigma=one_post_event_study["sigma"],
+        num_pre_periods=4,
+        num_post_periods=1,
+        l_vec=np.array([1.0]),
+        m_bar=1.0,
+        hybrid_flag="ARP",
+        grid_points=11,
+        grid_lb=0.0,
+        grid_ub=0.1,
+    )
+
+    assert result["accept"].astype(int).tolist() == [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0]

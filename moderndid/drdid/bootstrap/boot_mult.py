@@ -13,7 +13,7 @@ def mboot_did(
     r"""Compute multiplier bootstrap for doubly robust DiD estimator using Mammen weights.
 
     Implements the standard multiplier bootstrap for computing doubly robust
-    difference-in-differences estimates using Mammen's (1993) binary weights.
+    difference-in-differences estimates using Mammen's (1993) binary weights [1]_.
     It takes the influence function and applies bootstrap weights to
     compute bootstrap estimates.
 
@@ -51,7 +51,7 @@ def mboot_twfep_did(
 
     Implements the standard multiplier bootstrap for Two-Way Fixed Effects
     difference-in-differences with panel data (2 periods and 2 groups) using
-    Mammen's (1993) binary weights.
+    Mammen's (1993) binary weights [1]_.
 
     Parameters
     ----------

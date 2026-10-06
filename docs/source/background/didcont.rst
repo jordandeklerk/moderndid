@@ -1,824 +1,1096 @@
 .. _background-didcont:
 
-DiD with Continuous Treatments
-==============================
+Difference-in-differences with a continuous treatment
+=====================================================
 
-The ``didcont`` module implements difference-in-differences estimation for settings
-where treatment intensity varies continuously across units, following the methodology
-of `Callaway, Goodman-Bacon, and Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_.
-This approach addresses the unique challenges that arise when treatment is not simply
-binary but operates with varying intensity or "dose" across units.
+A policy can change the amount of treatment a unit receives as well as
+whether it receives treatment at all. Hospitals can lose different amounts
+of a subsidy. Counties can receive different amounts of funding. You may
+want to know both what the policy did at a given dose and what a small
+increase in that dose would do.
 
-Continuous treatments arise naturally in many empirical settings. Pollution exposure
-dissipates across space, affecting locations near sources more severely than distant
-ones. Localities spend different amounts on public goods and services. Students
-choose how long to stay in school. Medicare subsidies vary with hospital patient
-composition. In all these cases, treatment intensity varies substantially, and
-researchers often care about both the overall effect of the policy and how effects
-vary with dose.
+Those questions require different comparisons. Ordinary parallel trends
+can identify the effect of a dose for the units that received it. Comparing
+that effect with the effect at another dose also changes the units being
+compared. The slope of the resulting curve can therefore reflect selection
+into doses as well as a causal response to treatment.
 
-This module provides tools for identifying, estimating, and conducting inference on
-well-defined causal parameters in continuous DiD designs. A central insight is that
-with continuous treatments, there are fundamentally two types of causal parameters,
-level effects and causal responses, each requiring different identifying assumptions.
+We will work through that distinction before choosing an estimator.
+The results come from `Callaway, Goodman-Bacon, and Sant'Anna (2024)
+<https://arxiv.org/abs/2107.02637v4>`_. Sections 3 and 4 of their
+`author manuscript <https://arxiv.org/pdf/2107.02637v4>`_ cover the
+two-period argument and estimation. Appendix D extends the argument to
+staggered adoption. Formal statements retain the paper's numbering.
+Package details refer to :func:`~moderndid.cont_did`.
+The :ref:`continuous treatment example <example_cont_did>` shows how those
+choices affect an analysis.
 
-Setup and Notation
-------------------
+Defining the dose and the outcome paths
+---------------------------------------
 
-Consider a setup with two time periods, :math:`t = 1` (pre-treatment) and :math:`t =
-2` (post-treatment). In the first period, no unit is treated. In the second period,
-units receive a treatment "dose" denoted :math:`D_i`, which can be continuous or
-multi-valued discrete. The support of :math:`D` is :math:`\mathcal{D} = \{0\} \cup
-\mathcal{D}_{+}`, where :math:`\mathcal{D}_{+}` contains all positive doses and zero
-represents untreated units.
+We begin with :math:`n` units observed before treatment in period 1
+and afterward in period 2. Write :math:`D_i` for unit :math:`i`'s dose
+in period 2. Dose zero means that the unit remains untreated.
+The support :math:`\mathcal D` contains zero and positive doses
+:math:`\mathcal D_+`. We suppress the unit index in population expressions.
+Write :math:`\Delta Y=Y_2-Y_1` for the observed outcome change.
 
-.. admonition:: Assumption 1 (Random Sampling)
+.. admonition:: Assumption 1 Random sampling
+   :class: assumption
 
-   The observed data consist of :math:`\{Y_{i,t=2}, Y_{i,t=1}, D_i\}_{i=1}^n`, which
-   is independent and identically distributed.
+   The observed vectors :math:`(Y_{i2},Y_{i1},D_i)`,
+   :math:`i=1,\ldots,n`, are independent draws from a common population
+   distribution. Dependence between the two outcomes of a unit is unrestricted.
 
-.. admonition:: Assumption 2 (Continuous or Multi-Valued Discrete Treatment)
+.. admonition:: Assumption 2 Treatment support
+   :class: assumption
 
-   In period :math:`t = 1`, no unit is treated, while in period :math:`t = 2`, the
-   treatment dosage :math:`D` has support :math:`\mathcal{D} = \{0\} \cup
-   \mathcal{D}_{+}` and is either
+   No unit is treated in period 1. In period 2,
+   :math:`\mathcal D=\{0\}\cup\mathcal D_+` satisfies one of two alternatives.
 
-   (a) *Continuous*. :math:`\mathcal{D}_{+} = \mathcal{D}_{+}^c = [d_L, d_U]` with
-   :math:`0 < d_L < d_U < \bar{d} < \infty`. The density :math:`f_{D|D>0}` satisfies
-   :math:`a_f^{-1} < f_{D|D>0}(d) < a_f` for some positive constant :math:`a_f <
-   \infty` and all :math:`d \in \mathcal{D}_{+}^c`, and :math:`\mathbb{E}[\Delta Y |
-   D = d]` is continuously differentiable on :math:`\mathcal{D}_{+}^c`.
-
-   (b) *Multi-valued discrete*. :math:`\mathcal{D}_{+} = \mathcal{D}_{+}^{mv} =
-   \{d_1, d_2, \ldots, d_J\}` where :math:`0 < d_1 < d_2 < \cdots < d_J < \bar{d} <
-   \infty`, and :math:`\mathbb{P}(D = d) > 0` for all :math:`d \in \mathcal{D}`.
-
-   In both cases, we require a positive mass of untreated units, :math:`\mathbb{P}(D
-   = 0) > 0`.
-
-Potential Outcomes Framework
-----------------------------
-
-We adopt the potential outcomes framework where :math:`Y_{i,t}(d)` denotes the
-potential outcome for unit :math:`i` at time :math:`t` under dose :math:`d`. The
-observed outcome in each period satisfies
-
-.. math::
-
-   Y_{i,t=1} = Y_{i,t=1}(0), \quad Y_{i,t=2} = Y_{i,t=2}(D_i).
-
-.. admonition:: Assumption 3 (No-Anticipation and Observed Outcomes)
-
-   For all units and all :math:`d \in \mathcal{D}`,
+   For continuous doses, :math:`\mathcal D_+^c=[d_L,d_U]`
+   for :math:`0<d_L<d_U<\bar d<\infty`. There is positive untreated
+   mass, :math:`P(D=0)>0`. The conditional density among treated units
+   satisfies, for some finite :math:`a_f>0`,
 
    .. math::
 
-      Y_{i,t=1} = Y_{i,t=1}(d) = Y_{i,t=1}(0), \quad Y_{i,t=2} = Y_{i,t=2}(D_i).
+      a_f^{-1}<f_{D\mid D>0}(d)<a_f,\qquad d\in\mathcal D_+^c.
 
-This assumption rules out anticipatory effects, ensuring that in the pre-treatment
-period, all units exhibit their untreated potential outcomes regardless of their
-future dose. In the post-treatment period, we observe the potential outcome
-corresponding to the actual dose received. Let :math:`\Delta Y = Y_{t=2} - Y_{t=1}`
-denote the change in outcomes from period 1 to period 2.
+   The conditional mean :math:`\mathbb E[\Delta Y\mid D=d]` is
+   continuously differentiable on this interval.
 
-Parameters of Interest
-----------------------
+   For ordered discrete doses,
+   :math:`\mathcal D_+^{mv}=\{d_1,\ldots,d_J\}`
+   for :math:`0<d_1<\cdots<d_J<\bar d<\infty`.
+   Every dose, including zero, has positive probability.
 
-With continuous treatments, two fundamentally different types of causal effects can be
-defined. The distinction between these parameters matters for proper interpretation of
-continuous DiD results.
+The continuous-dose model has a mass at zero and a separate interval of
+positive doses. It permits a gap between no treatment and the smallest
+positive dose. We do not smooth across that gap.
 
-Level Treatment Effects
-~~~~~~~~~~~~~~~~~~~~~~~
+Let :math:`Y_{it}(d)` denote the outcome unit :math:`i` would have
+in period :math:`t` under dose :math:`d`. These potential outcomes
+describe the treatment amount received by that unit. They presume that
+another unit's dose does not change its outcome.
 
-The **level treatment effect** of dose :math:`d` for a given unit is the difference
-between its potential outcome under dose :math:`d` and its untreated potential outcome
+.. admonition:: Assumption 3 No anticipation and observed outcomes
+   :class: assumption
 
-.. math::
-
-   Y_{t=2}(d) - Y_{t=2}(0).
-
-This extends the binary treatment effect concept to a "dose-response function." The
-**average treatment effect on the treated** at dose :math:`d` among units receiving
-dose :math:`d'` is
-
-.. math::
-
-   ATT(d | d') = \mathbb{E}[Y_{t=2}(d) - Y_{t=2}(0) | D = d'].
-
-When :math:`d' = d`, this yields :math:`ATT(d | d)`, the average effect of dose
-:math:`d` compared to no treatment among units that actually received dose :math:`d`.
-This is the natural extension of the binary ATT to the continuous case.
-
-The population-level **average treatment effect** is
-
-.. math::
-
-   ATE(d) = \mathbb{E}[Y_{t=2}(d) - Y_{t=2}(0)].
-
-Note that :math:`ATT(d | d)` and :math:`ATE(d)` differ when there is selection into
-dose group :math:`d` on the basis of treatment effects. When units with larger
-treatment effects systematically choose higher doses, we have :math:`ATT(d | d) \neq
-ATE(d)`.
-
-Causal Responses
-~~~~~~~~~~~~~~~~
-
-The **causal response** at dose :math:`d` measures the effect of a marginal change in
-the dose. For continuous treatments, the causal response is defined as the derivative
-of the potential outcome with respect to dose
-
-.. math::
-
-   Y'_{t=2}(d) = \lim_{h \to 0^+} \frac{Y_{t=2}(d + h) - Y_{t=2}(d)}{h}.
-
-For discrete treatments, the causal response between adjacent doses :math:`d_j` and
-:math:`d_{j-1}` is
-
-.. math::
-
-   Y_{t=2}(d_j) - Y_{t=2}(d_{j-1}).
-
-When treatment is binary, level treatment effects and causal responses coincide, but
-they do not under a continuous treatment. This distinction has important practical
-implications since even if all :math:`ATT(d | d)` parameters are large and positive,
-some causal response parameters could be zero or negative.
-
-The **average causal response on the treated** (ACRT) for continuous treatments is
-
-.. math::
-
-   ACRT(d | d') = \left.\frac{\partial ATT(l | d')}{\partial l}\right|_{l=d} =
-   \left.\frac{\partial \mathbb{E}[Y_{t=2}(l) | D = d']}{\partial l}\right|_{l=d}.
-
-When :math:`d' = d`, this gives the average marginal effect of increasing the dose
-among units at that dose level. Equivalently, :math:`ACRT(d | d)` equals the
-derivative of the :math:`t = 2` average potential outcome for units that received
-dose :math:`d`, evaluated at :math:`d`.
-
-The population-level **average causal response** is
-
-.. math::
-
-   ACR(d) = \frac{\partial ATE(d)}{\partial d} =
-   \frac{\partial \mathbb{E}[Y_{t=2}(d)]}{\partial d}.
-
-For discrete treatments, the analogous parameters are
-
-.. math::
-
-   ACRT(d_j | d_k) &= \mathbb{E}[Y_{t=2}(d_j) - Y_{t=2}(d_{j-1}) | D = d_k], \\
-   ACR(d_j) &= \mathbb{E}[Y_{t=2}(d_j) - Y_{t=2}(d_{j-1})].
-
-Summary Parameters
-~~~~~~~~~~~~~~~~~~
-
-In practice, researchers often want to aggregate these functional parameters into
-lower-dimensional summary measures. Natural aggregations use the dose distribution
-among treated units
-
-.. math::
-
-   ATT^o &= \mathbb{E}[ATT(D | D) | D > 0], \quad & ATE^o &=
-   \mathbb{E}[ATE(D) | D > 0], \\
-   ACRT^o &= \mathbb{E}[ACRT(D | D) | D > 0], \quad & ACR^o &=
-   \mathbb{E}[ACR(D) | D > 0].
-
-These provide "best" approximations in the sense of minimizing the mean squared
-distance between the summary parameter and the underlying functional parameters. The
-parameters :math:`ACRT^o` and :math:`ACR^o` are average derivative-type parameters,
-which have been extensively studied in the econometrics literature on efficient
-estimation.
-
-Identification Assumptions
---------------------------
-
-The identification of treatment effect parameters relies on assumptions that restrict
-how untreated potential outcomes evolve over time across dose groups.
-
-Parallel Trends
-~~~~~~~~~~~~~~~
-
-The standard **parallel trends** assumption extends naturally from the binary case.
-
-.. admonition:: Assumption 4 (Parallel Trends)
-
-   For all :math:`d \in \mathcal{D}`,
+   For every unit and every :math:`d\in\mathcal D`,
 
    .. math::
 
-      \mathbb{E}[Y_{t=2}(0) - Y_{t=1}(0) | D = d] =
-      \mathbb{E}[Y_{t=2}(0) - Y_{t=1}(0) | D = 0].
+      Y_{i1}=Y_{i1}(d)=Y_{i1}(0),
+      \qquad Y_{i2}=Y_{i2}(D_i).
 
-This assumption states that the average evolution of untreated potential outcomes
-would be the same across all dose groups in the absence of treatment. Under parallel
-trends, the untreated group provides a valid counterfactual for the path of outcomes
-that treated units would have experienced without treatment.
+   All relevant expectations are finite and well defined.
 
-Parallel trends is an assumption about untreated potential outcomes :math:`Y_t(0)`
-only. It says nothing about how treated potential outcomes :math:`Y_t(d)` for
-:math:`d > 0` evolve across dose groups.
+The first period supplies an untreated outcome for every unit.
+The second period reveals only the potential outcome at its actual dose.
+The untreated post-treatment outcome remains missing for treated units,
+just as it does in a binary treatment design.
 
-Strong Parallel Trends
-~~~~~~~~~~~~~~~~~~~~~~
+Separating level effects from causal responses
+-----------------------------------------------
 
-A different assumption is required to identify causal response parameters and to make
-valid comparisons across dose groups.
+An effect measured against no treatment answers a different question from
+an effect of changing a positive dose. We need both definitions before
+reading the slope of a fitted dose curve.
 
-.. admonition:: Assumption 5 (Strong Parallel Trends)
-
-   For all :math:`d \in \mathcal{D}`,
-
-   .. math::
-
-      \mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0)] =
-      \mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0) | D = d].
-
-Under Assumption 3, the right-hand side of this equation is the observed average
-evolution of outcomes for dose group :math:`d`. Strong parallel trends says that the
-average evolution of outcomes for the entire population if all experienced dose
-:math:`d` (the left-hand side) equals the path of outcomes that dose group :math:`d`
-actually experienced.
-
-An equivalent characterization under Assumption 4 is that strong parallel trends
-holds if and only if
-
-.. math::
-
-   ATT(d | d) = ATE(d) \quad \text{for all } d \in \mathcal{D}.
-
-This means strong parallel trends rules out selection-on-gains into particular dose
-groups. While this condition does not impose full treatment effect homogeneity, it
-does ensure that observed outcome changes for each dose group reflect what would have
-happened to all other groups had they received that dose.
-
-.. note::
-
-   Conventional pre-tests for differential pre-trends cannot distinguish between
-   Assumptions 4 and 5. Because only untreated potential outcomes are observed before
-   treatment, pre-treatment periods cannot test the additional content of strong
-   parallel trends, which necessarily involves treated potential outcomes
-   :math:`Y_t(d)` for :math:`d > 0`.
-
-Relationship Between Assumptions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In general, Assumptions 4 and 5 are non-nested, though Assumption 5 will typically be
-stronger in most applications. To see this, consider that Assumption 4 restricts only
-the evolution of :math:`Y_t(0)` across dose groups, while Assumption 5 restricts the
-evolution of :math:`Y_t(d)` for each :math:`d \in \mathcal{D}`.
-
-When maintained jointly with Assumption 4, Assumption 5 can be understood as a
-structural assumption that allows extrapolation of treatment effects, ensuring that
-the treatment effects of dose :math:`d` among dose group :math:`d` equal the
-treatment effects of dose :math:`d` for the entire population.
-
-Identification Results
-----------------------
-
-Which parameters can be recovered from the data depends on the strength of the parallel
-trends assumption. Standard PT identifies level effects but not causal responses. The stronger
-SPT assumption identifies both.
-
-Identification Under Parallel Trends
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Under parallel trends (Assumption 4), the dose-specific average treatment effect on
-the treated is identified. Specifically, under Assumptions 1 to 4, :math:`ATT(d | d)`
-is identified for all :math:`d \in \mathcal{D}_{+}`, and it is given by
-
-.. math::
-
-   ATT(d | d) = \mathbb{E}[\Delta Y | D = d] - \mathbb{E}[\Delta Y | D = 0].
-
-The summary :math:`ATT^o = \mathbb{E}[\Delta Y | D > 0] - \mathbb{E}[\Delta Y | D =
-0]`.
-
-The identification argument proceeds as follows. By definition,
-
-.. math::
-
-   ATT(d | d) = \mathbb{E}[Y_{t=2}(d) - Y_{t=2}(0) | D = d].
-
-Adding and subtracting :math:`\mathbb{E}[Y_{t=1}(0) | D = d]` and applying
-Assumption 4,
-
-.. math::
-
-   ATT(d | d) &= \mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0) | D = d] -
-                  \mathbb{E}[Y_{t=2}(0) - Y_{t=1}(0) | D = d] \\
-              &= \mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0) | D = d] -
-                  \mathbb{E}[Y_{t=2}(0) - Y_{t=1}(0) | D = 0] \\
-              &= \mathbb{E}[\Delta Y | D = d] - \mathbb{E}[\Delta Y | D = 0],
-
-where the final equality uses the fact that :math:`Y_{t=2}(d)` and :math:`Y_{t=1}(0)`
-are observed for units with :math:`D = d`.
-
-Non-Identification of Causal Responses Under Parallel Trends
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A central result is that causal response parameters are **not identified** under
-parallel trends alone. Under Assumptions 1 to 4, the following decompositions reveal
-the source of the identification failure.
-
-(a) For continuous treatments with :math:`d \in \mathcal{D}_{+}^c`,
-
-.. math::
-
-   \frac{\partial \mathbb{E}[\Delta Y | D = d]}{\partial d} &=
-      \frac{\partial ATT(d | d)}{\partial d} \\
-   &= ACRT(d | d) +
-      \underbrace{\left.\frac{\partial ATT(d | l)}{\partial l}\right|_{l=d}}_{
-      \text{selection bias}}.
-
-(b) For any :math:`(h, l) \in \mathcal{D} \times \mathcal{D}` with :math:`h > l`,
-
-.. math::
-
-   \mathbb{E}[\Delta Y | D = h] - \mathbb{E}[\Delta Y | D = l] &= ATT(h | h) -
-      ATT(l | l) \\
-   &= \underbrace{\mathbb{E}[Y_{t=2}(h) - Y_{t=2}(l) | D = h]}_{
-      \text{causal response}} \\
-   &\quad + \underbrace{(ATT(l | h) - ATT(l | l))}_{\text{selection bias}}.
-
-The proof for part (b) is instructive. Starting from the identification result above,
-
-.. math::
-
-   ATT(h | h) - ATT(l | l) = \mathbb{E}[Y_{t=2}(h) - Y_{t=2}(0) | D = h] -
-      \mathbb{E}[Y_{t=2}(l) - Y_{t=2}(0) | D = l].
-
-Adding and subtracting :math:`\mathbb{E}[Y_{t=2}(l) | D = h]`,
-
-.. math::
-
-   &= \mathbb{E}[Y_{t=2}(h) - Y_{t=2}(l) | D = h] \\
-   &\quad + \mathbb{E}[Y_{t=2}(l) - Y_{t=2}(0) | D = h] -
-      \mathbb{E}[Y_{t=2}(l) - Y_{t=2}(0) | D = l] \\
-   &= \mathbb{E}[Y_{t=2}(h) - Y_{t=2}(l) | D = h] + (ATT(l | h) - ATT(l | l)).
-
-The selection bias term :math:`ATT(l | h) - ATT(l | l)` captures the fact that
-different dose groups may experience different treatment effects at the same dose
-:math:`l`. Even if untreated potential outcomes evolve identically (parallel trends),
-comparing outcome paths between dose groups conflates causal responses with this
-selection-on-gains phenomenon.
-
-For discrete treatments, taking :math:`h = d_j` and :math:`l = d_{j-1}` yields
-
-.. math::
-
-   \mathbb{E}[\Delta Y | D = d_j] - \mathbb{E}[\Delta Y | D = d_{j-1}] &=
-   ACRT(d_j | d_j) \\
-   &\quad + \underbrace{ATT(d_{j-1} | d_j) - ATT(d_{j-1} | d_{j-1})}_{
-   \text{selection bias}}.
-
-Identification Under Strong Parallel Trends
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Under strong parallel trends (Assumption 5), both level effects and causal responses
-are identified without selection bias. The following results hold under Assumptions 1
-to 3 and 5.
-
-(a) For :math:`d \in \mathcal{D}_{+}`,
-
-.. math::
-
-   ATE(d) = \mathbb{E}[\Delta Y | D = d] - \mathbb{E}[\Delta Y | D = 0].
-
-(b) When treatment is continuous, for :math:`d \in \mathcal{D}_{+}^c`,
-
-.. math::
-
-   ACR(d) = \frac{\partial \mathbb{E}[\Delta Y | D = d]}{\partial d} =
-   \frac{\partial ATE(d)}{\partial d}.
-
-(c) For any :math:`(h, l) \in \mathcal{D} \times \mathcal{D}`,
-
-.. math::
-
-   ATE(h) - ATE(l) = \mathbb{E}[Y_{t=2}(h) - Y_{t=2}(l)] =
-   \mathbb{E}[\Delta Y | D = h] - \mathbb{E}[\Delta Y | D = l].
-
-For part (a), the argument is similar to the identification under parallel trends but
-uses Assumption 5 instead
-
-.. math::
-
-   ATE(d) &= \mathbb{E}[Y_{t=2}(d) - Y_{t=2}(0)] \\
-          &= \mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0)] -
-             \mathbb{E}[Y_{t=2}(0) - Y_{t=1}(0)] \\
-          &= \mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0) | D = d] -
-             \mathbb{E}[Y_{t=2}(0) - Y_{t=1}(0) | D = 0] \\
-          &= \mathbb{E}[\Delta Y | D = d] - \mathbb{E}[\Delta Y | D = 0],
-
-where the third equality applies Assumption 5 to both terms.
-
-Parts (b) and (c) follow because strong parallel trends ensures that lower-dose
-groups are valid counterfactuals for higher-dose groups. The selection bias term
-vanishes since :math:`ATT(l | h) = ATT(l | l) = ATE(l)` for all :math:`h, l`.
-
-Under Assumptions 1 to 3 and 5, the summary parameters have the following
-identification results.
-
-(a)
-
-.. math::
-
-   ATE^o = \mathbb{E}[\Delta Y | D > 0] - \mathbb{E}[\Delta Y | D = 0].
-
-(b) For continuous treatments,
-
-.. math::
-
-   ACR^o = \mathbb{E}\left[\left.\frac{\partial \mathbb{E}[\Delta Y | D = d]}{
-   \partial d}\right|_{d=D} \,\middle|\, D > 0\right] =
-   \int_{d_L}^{d_U} \left.\frac{\partial \mathbb{E}[\Delta Y | D = d]}{\partial d}
-   \right|_{d=s} f_{D|D>0}(s) \, ds.
-
-(c) For discrete treatments,
-
-.. math::
-
-   ACR^o = \sum_{j=1}^{J} \left(\mathbb{E}[\Delta Y | D = d_j] -
-   \mathbb{E}[\Delta Y | D = d_{j-1}]\right) \mathbb{P}(D = d_j | D > 0).
-
-The Case Without Untreated Units
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In some applications, all units receive some positive amount of treatment. Without
-untreated units, it is infeasible to directly recover :math:`ATT(d | d)` or
-:math:`ATE(d)`. However, a natural alternative is to compare dose group :math:`d` to
-dose group :math:`d_L` (the lowest dose).
-
-Under parallel trends, when there are no untreated units,
-
-.. math::
-
-   \mathbb{E}[\Delta Y | D = d] - \mathbb{E}[\Delta Y | D = d_L] =
-   ATT(d | d) - ATT(d_L | d_L).
-
-This comparison is related to underlying causal parameters, but the right-hand side
-mixes together the average causal response of moving from :math:`d_L` to :math:`d`
-with selection bias.
-
-Under strong parallel trends,
-
-.. math::
-
-   \mathbb{E}[\Delta Y | D = d] - \mathbb{E}[\Delta Y | D = d_L] =
-   ATE(d) - ATE(d_L) = \mathbb{E}[Y_{t=2}(d) - Y_{t=2}(d_L)],
-
-which has a clean causal interpretation without selection bias.
-
-What Does TWFE Estimate with a Continuous Treatment?
------------------------------------------------------
-
-The negative weighting problems of TWFE in binary staggered settings are well documented (see
-:ref:`background-did`). With a continuous treatment, TWFE has additional problems that are
-specific to the dose variation. The coefficient :math:`\hat{\beta}^{TWFE}` from regressing
-:math:`\Delta Y` on :math:`D` admits several different decompositions, none of which cleanly
-recovers a single well-defined causal parameter.
-
-**Causal response decomposition.** Under parallel trends, :math:`\hat{\beta}^{TWFE}`
-estimates a weighted average of :math:`ACRT(d \mid d)` across doses, with positive weights
-that integrate to one. However, it also includes a selection bias term. Even if the weights
-are well-behaved, the estimand conflates causal responses with differential selection into
-dose groups. Under strong parallel trends the selection bias vanishes, but the weights still
-do not match the dose distribution among treated units. The TWFE-implied weights are
-concentrated around the mean dose and underweight the tails.
-
-**Level effects decomposition.** Under parallel trends, :math:`\hat{\beta}^{TWFE}` can also
-be written as a weighted average of :math:`ATT(d \mid d)` values, but with weights that
-integrate to *zero* rather than one and that can be negative. TWFE implicitly treats
-above-average doses as "treated" and below-average doses as part of the "comparison group,"
-which produces a Wald-type estimand that divides the difference in outcome changes by the
-difference in doses. This means TWFE does not estimate any recognizable average of level
-treatment effects.
-
-**Implications.** Even when outcome changes are linear in dose (which eliminates the
-weighting issues), selection bias persists under parallel trends. And even under strong
-parallel trends (which eliminates selection bias), TWFE's implicit weighting scheme does
-not match the dose distribution. The same TWFE coefficient has multiple interpretations
-depending on which decomposition one adopts, none of which corresponds to a parameter a
-researcher would deliberately target. This motivates using the explicitly-targeted
-estimators described below for :math:`ATT^o` and :math:`ACR^o`.
-
-Relaxing Strong Parallel Trends
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Strong parallel trends is a demanding assumption. Three intermediate approaches between
-standard PT and full SPT are available.
-
-1. **Directional selection.** Assume that higher-dose groups experience weakly larger
-   treatment effects at any given dose. Under this monotone selection assumption combined
-   with parallel trends, :math:`ACRT(d \mid d)` can be bounded (from above or below)
-   without requiring SPT. This is useful when the researcher believes selection into
-   higher doses is positively correlated with treatment effects but is unwilling to assume
-   it away entirely.
-
-2. **Local SPT.** Assume that SPT holds over a subset :math:`[d_a, d_b]` of the dose
-   range rather than globally. This identifies :math:`ATE(d)` and :math:`ACR(d)` only
-   over that subset but avoids imposing SPT at dose levels where it is implausible.
-
-3. **Conditional SPT on covariates.** Assume SPT holds conditional on pre-treatment
-   covariates :math:`X`, so that :math:`\mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0) \mid X]
-   = \mathbb{E}[Y_{t=2}(d) - Y_{t=1}(0) \mid D = d, X]`. This allows selection into
-   dose groups based on observables while maintaining the no-selection-on-gains
-   restriction within covariate cells. Identification proceeds by averaging conditional
-   ATEs over the covariate distribution.
-
-Estimation Methods
-------------------
-
-Given the identification results above, this section describes estimation procedures
-that target well-defined causal parameters.
-
-Discrete Treatments
-~~~~~~~~~~~~~~~~~~~
-
-When the treatment is multi-valued discrete, estimation is simple. Regressing
-outcome changes on a saturated set of dose indicators with untreated units as the
-omitted category,
-
-.. math::
-
-   \Delta Y_i = \beta_0 + \sum_{j=1}^{J} \mathbf{1}\{D_i = d_j\} \beta_j +
-   \varepsilon_i,
-
-yields OLS coefficients :math:`\widehat{\beta} = (\widehat{\beta}_1, \ldots,
-\widehat{\beta}_J)'` that consistently estimate :math:`ATT(d_j | d_j)` under
-parallel trends. Under strong parallel trends, each :math:`\widehat{\beta}_j`
-estimates :math:`ATE(d_j)`, and :math:`\widehat{\beta}_j - \widehat{\beta}_{j-1}`
-estimates :math:`ACR(d_j)`.
-
-Continuous Treatments - Sieve Estimation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For continuous treatments, the module provides sieve-based estimation using B-spline
-basis functions. Consider regression specifications of the form
-
-.. math::
-
-   \Delta Y_i = \sum_{k=1}^{K} \psi_{Kk}(D_i) \beta_{Kk} + \varepsilon_i,
-
-where :math:`\psi^K(d) = (\psi_{K1}(d), \ldots, \psi_{KK}(d))'` is a :math:`K`
--dimensional vector of B-spline basis functions (including an intercept),
-:math:`\beta_K = (\beta_{K1}, \ldots, \beta_{KK})'` is a vector of unknown
-parameters, and :math:`\varepsilon_i` is an idiosyncratic error term.
-
-The OLS estimator is
-
-.. math::
-
-   \widehat{\beta}_K = \mathbb{E}_n\Big[\mathbf{1}\{D > 0\} \psi^K(D) \psi^K(D)'
-   \Big]^{-} \mathbb{E}_n\Big[\mathbf{1}\{D > 0\} \psi^K(D) (\Delta Y -
-   \mathbb{E}_n[\Delta Y | D = 0])\Big],
-
-where for a given matrix :math:`A`, :math:`A^{-}` denotes the Moore-Penrose
-inverse, and
-
-.. math::
-
-   \mathbb{E}_n[B | D > 0] = \frac{\sum_{i=1}^n \mathbf{1}\{D_i > 0\} B_i}{
-   \sum_{i=1}^n \mathbf{1}\{D_i > 0\}}.
-
-The estimators for the dose-response function and its derivative are
-
-.. math::
-
-   \widehat{ATE}_K(d) = (\psi^K(d))' \widehat{\beta}_K, \quad \widehat{ACR}_K(d) =
-   (\partial \psi^K(d))' \widehat{\beta}_K,
-
-where
-
-.. math::
-
-   \partial \psi^K(d) = \left(\frac{d\psi_{K1}(d)}{dd}, \ldots,
-   \frac{d\psi_{KK}(d)}{dd}\right)'
-
-contains the derivatives of the basis functions.
-
-The user controls the spline degree and number of interior knots, allowing flexible
-modeling of the dose-response relationship. With ``degree=3`` and ``num_knots=0``
-(the default), this fits a global cubic polynomial.
-
-Data-Driven Nonparametric Estimation (CCK)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For fully nonparametric estimation without arbitrary tuning parameter choices, the
-module implements the data-driven sieve estimator of `Chen, Christensen, and Kankanala
-(2024) <https://arxiv.org/abs/2107.11869>`_. This approach uses dyadic cubic
-B-splines with adaptive selection of the sieve dimension.
-
-Let :math:`\mathcal{K} = \{(2^k + 3) : k \in \mathbb{N} \cup \{0\}\}` be the set of
-candidate sieve dimensions. The data-driven choice :math:`\widehat{K}` uses a
-Lepskii-type selection procedure. The key idea is to select the most parsimonious
-specification across all candidates, provided that the estimated :math:`ATE_K(d)`
-curves are not "statistically different" from each other.
-
-**Algorithm (Data-Driven Sieve Dimension Selection)**
-
-1. Compute the data-driven index set of sieve dimensions
-
-   .. math::
-
-      \widehat{\mathcal{K}} = \left\{K \in \mathcal{K} : 0.1(\log \widehat{K}_{
-      \max})^2 \le K \le \widehat{K}_{\max}\right\},
-
-   where :math:`\widehat{K}_{\max} = \min\{K \in \mathcal{K} : K\sqrt{\log K} v_n
-   \le 10\sqrt{n} < K^+\sqrt{\log K^+} v_n\}` with :math:`v_n = \max\{1, (0.1 \log
-   n)^4\}` and :math:`K^+ = \min\{k \in \mathcal{K} : k > K\}`.
-
-2. For bootstrap draws :math:`\{\omega_i\}_{i=1}^n` (iid standard normal, independent
-   of the data), compute the sup-t statistic
-
-   .. math::
-
-      \sup_{(d, K, K_2) \in \mathcal{D}_{+}^c \times \widehat{\mathcal{K}} \times
-      \widehat{\mathcal{K}} : K_2 > K} \left|\mathbb{Z}_n^*(d, K, K_2)\right|,
-
-   where :math:`\mathbb{Z}_n^*(d, K, K_2)` is a normalized bootstrap process
-   comparing estimators at different sieve dimensions. Let :math:`\gamma_{1-
-   \widehat{\alpha}}^*` denote the :math:`(1 - \widehat{\alpha})` quantile.
-
-3. The data-driven choice is
-
-   .. math::
-
-      \widehat{K} = \inf\Bigg\{K \in \widehat{\mathcal{K}} : \sup_{\substack{(d,
-      K_2) \in \mathcal{D}_{+}^c \times \widehat{\mathcal{K}} \\ K_2 > K}}
-      \frac{\sqrt{n}|\widehat{ATE}_K(d) - \widehat{ATE}_{K_2}(d)|}{
-      \widehat{\sigma}_{K,K_2}(d)} \le 1.1 \gamma_{1-\widehat{\alpha}}^*\Bigg\}.
-
-The intuition is that if increasing :math:`K` leads to a statistically different
-estimate of :math:`ATE_K(d)`, then it is "worth it" to increase the dimension. This
-is how the algorithm trades off bias and variance.
-
-Convergence Rates and Confidence Bands
+Whose level effect the curve describes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The data-driven estimators achieve the minimax rate for estimating :math:`ATE(d)`
-and :math:`ACR(d)` in sup-norm. Under appropriate regularity conditions, let
-:math:`\mathcal{H}^p` denote the Hölder ball of smoothness :math:`p` and let
-:math:`p \in [\underline{p}, \bar{p}]` with :math:`\bar{p} > \underline{p} > 0.5`.
-The following convergence results hold.
-
-For level effects, there exists a universal constant :math:`C_1 > 0` for which
+The level effect of dose :math:`d` is :math:`Y_2(d)-Y_2(0)`.
+Its average within a group that received dose :math:`d'` and its
+population average are
 
 .. math::
 
-   \sup_{p \in [\underline{p}, \bar{p}]} \sup_{ATE(\cdot) \in \mathcal{H}^p}
-   \mathbb{P}_{ATE}\Bigg(\sup_{d \in \mathcal{D}_{+}^c} |(\widehat{ATE}_{
-   \widehat{K}} - ATE)(d)| > C_1 \left(\frac{\log n}{n}\right)^{\frac{p}{2p+1}}
-   \Bigg) \to 0.
+   \begin{aligned}
+   ATT(d\mid d')&=\mathbb E[Y_2(d)-Y_2(0)\mid D=d'],\\
+   ATE(d)&=\mathbb E[Y_2(d)-Y_2(0)].
+   \end{aligned}
 
-For derivatives, when :math:`\underline{p} > 1`, there exists a universal constant
-:math:`C_1' > 0` for which
+The first argument specifies the counterfactual dose. The second specifies
+the population whose effect we average. The diagonal curve
+:math:`ATT(d\mid d)` changes both arguments as :math:`d` increases.
+A higher point can reflect a different response to treatment or a different
+set of units receiving that dose.
 
-.. math::
+For a continuous dose, conditioning on :math:`D=d` describes a
+conditional mean function rather than a subgroup with positive probability.
+The support and smoothness conditions make that function meaningful.
+In a finite sample, a regression estimates it using nearby doses.
 
-   \sup_{p \in [\underline{p}, \bar{p}]} \sup_{ATE(\cdot) \in \mathcal{H}^p}
-   \mathbb{P}_{ATE}\Bigg(\sup_{d \in \mathcal{D}_{+}^c} |(\widehat{ACR}_{
-   \widehat{K}} - ACR)(d)| > C_1' \left(\frac{\log n}{n}\right)^{\frac{p-1}{2p+1}}
-   \Bigg) \to 0.
+What a marginal increase would change
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The convergence rates :math:`(\log n / n)^{p/(2p+1)}` for level effects and :math:
-`(\log n / n)^{(p-1)/(2p+1)}` for derivatives are the minimax rates for estimating
-functions in Hölder balls under sup-norm loss. As expected, the derivative estimator
-converges more slowly.
-
-**Uniform Confidence Bands**. The module provides data-driven uniform confidence
-bands (UCBs) that are both honest (asymptotically correct coverage) and adaptive
-(contract at the minimax rate). For :math:`ATE(d)`,
+A causal response holds the population fixed while changing its dose.
+For continuous treatment, define
 
 .. math::
 
-   C_n(d) = \Bigg[\widehat{ATE}_{\widehat{K}}(d) - (z_{1-\alpha}^* +
-   \widehat{A}\gamma_{1-\widehat{\alpha}}^*) \frac{\widehat{\sigma}_{\widehat{K}}(d)}
-   {\sqrt{n}}, \; \widehat{ATE}_{\widehat{K}}(d) + (z_{1-\alpha}^* +
-   \widehat{A}\gamma_{1-\widehat{\alpha}}^*) \frac{\widehat{\sigma}_{\widehat{K}}(d)}
-   {\sqrt{n}}\Bigg],
+   ACRT(d\mid d')
+   =\left.\frac{\partial ATT(l\mid d')}{\partial l}\right|_{l=d},
+   \qquad
+   ACR(d)=\frac{\partial ATE(d)}{\partial d}.
 
-where :math:`z_{1-\alpha}^*` is the :math:`(1-\alpha)` quantile of a bootstrap
-sup-t statistic and :math:`\widehat{A} = \log \log \widehat{K}` inflates critical
-values to account for potential bias.
+These definitions require the corresponding derivatives to exist.
+Interchanging unit-level differentiation and expectation additionally
+requires an integrability condition. The conditional mean definitions
+avoid imposing differentiability on every unit's path.
 
-Summary Parameter Estimation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The full dose-response curve is informative but can be hard to summarize. Two scalar summary
-parameters distill the curve into single numbers that are easy to report and compare.
-
-Binarized DiD for :math:`ATT^o`
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The summary parameter :math:`ATT^o` is estimated by a simple regression
+For discrete doses, set :math:`d_0=0`. The corresponding responses
+between adjacent doses are
 
 .. math::
 
-   \Delta Y_i = \beta_0^{bin} + D_i^{>0} \beta^{bin} + \epsilon_i,
+   \begin{aligned}
+   ACRT(d_j\mid d_k)
+      &=\mathbb E[Y_2(d_j)-Y_2(d_{j-1})\mid D=d_k],\\
+   ACR(d_j)
+      &=\mathbb E[Y_2(d_j)-Y_2(d_{j-1})].
+   \end{aligned}
 
-where :math:`D_i^{>0} = \mathbf{1}\{D_i > 0\}`. The OLS coefficient
-:math:`\widehat{\beta}^{bin}` consistently estimates :math:`ATT^o` under parallel
-trends (or :math:`ATE^o` under strong parallel trends).
+These are finite changes rather than derivatives per unit of dose.
+With binary treatment, the finite change from zero to treatment is also
+the level effect. With several doses, that coincidence no longer holds.
 
-Average Causal Response
-^^^^^^^^^^^^^^^^^^^^^^^
+Averages over the treated dose distribution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The summary parameter :math:`ACR^o` is estimated using the plug-in principle
-
-.. math::
-
-   \widehat{ACR}^o = \mathbb{E}_n[\widehat{ACR}_{\widehat{K}}(D) | D > 0] =
-   \frac{1}{n_{D>0}} \sum_{i : D_i > 0} \widehat{ACR}_{\widehat{K}}(D_i),
-
-where :math:`n_{D>0} = \sum_{i=1}^n \mathbf{1}\{D_i > 0\}`.
-
-Under appropriate regularity conditions, the estimator is asymptotically normal,
+If your question concerns an overall effect, the treated dose distribution
+gives a natural set of weights. Define
 
 .. math::
 
-   \sqrt{n_{D>0}} \frac{(\widehat{ACR}^o - ACR^o)}{\widehat{\sigma}_{ACR^o}}
-   \xrightarrow{d} \mathcal{N}(0, 1),
+   \begin{aligned}
+   ATT^o&=\mathbb E[ATT(D\mid D)\mid D>0],&
+   ATE^o&=\mathbb E[ATE(D)\mid D>0],\\
+   ACRT^o&=\mathbb E[ACRT(D\mid D)\mid D>0],&
+   ACR^o&=\mathbb E[ACR(D)\mid D>0].
+   \end{aligned}
 
-where :math:`\widehat{\sigma}_{ACR^o}^2 \xrightarrow{p} V_{ACR}` with
-:math:`V_{ACR}` being the semiparametric efficiency bound
+The conditioning distribution determines how much weight each dose receives.
+It does not change the population inside :math:`ATE(d)` or :math:`ACR(d)`.
+For example, :math:`ATE^o` averages population effects at doses drawn
+from the treated distribution. It need not equal the average effect actually
+experienced by treated units.
+
+Identifying the level curve
+---------------------------
+
+The missing untreated outcome can be recovered if untreated mean changes
+agree across dose groups. We first impose that familiar DiD condition.
+It makes comparisons with dose zero interpretable without equating
+treatment effects across positive-dose groups.
+
+.. admonition:: Assumption 4 Parallel trends
+   :class: assumption
+
+   For every :math:`d\in\mathcal D`,
+
+   .. math::
+
+      \mathbb E[Y_2(0)-Y_1(0)\mid D=d]
+      =\mathbb E[Y_2(0)-Y_1(0)\mid D=0].
+
+This condition restricts untreated potential outcomes. It leaves the
+response to a positive dose free to differ across units and dose groups.
+Adding and subtracting the pre-treatment outcome gives
 
 .. math::
 
-   V_{ACR} = \text{Var}\Bigg[ACR(D) - (\Delta Y - \mathbb{E}[\Delta Y | D, D > 0])
-   \frac{f'_{D|D>0}(D)}{f_{D|D>0}(D)} \,\Big|\, D > 0\Bigg].
+   \begin{aligned}
+   ATT(d\mid d)
+      &=\mathbb E[Y_2(d)-Y_1(0)\mid D=d]\\
+      &\quad-\mathbb E[Y_2(0)-Y_1(0)\mid D=d]\\
+      &=\mathbb E[\Delta Y\mid D=d]
+         -\mathbb E[\Delta Y\mid D=0].
+   \end{aligned}
 
-Extensions to Staggered Adoption
+The first mean change is observed within dose group :math:`d`.
+Parallel trends replaces its missing untreated change with the observed
+change in the zero-dose group.
+
+.. admonition:: Theorem 3.1 Level effects under parallel trends
+   :class: theorem
+
+   Under Assumptions 1 through 4, every :math:`d\in\mathcal D_+`
+   satisfies
+
+   .. math::
+
+      ATT(d\mid d)
+      =\mathbb E[\Delta Y\mid D=d]-\mathbb E[\Delta Y\mid D=0].
+
+   Averaging over positive doses also identifies
+
+   .. math::
+
+      ATT^o
+      =\mathbb E[\Delta Y\mid D>0]-\mathbb E[\Delta Y\mid D=0].
+
+The overall ATT can therefore be estimated without fitting a dose curve.
+A binary indicator for receiving any positive dose recovers that summary.
+The curve is needed when you want to describe how level effects differ
+across the units receiving different amounts of treatment.
+
+Why the slope needs another assumption
+---------------------------------------
+
+A derivative of the observed level curve changes the dose and the
+conditioning group together. The causal response changes only the dose.
+We can see the difference by differentiating the two arguments separately.
+
+.. admonition:: Theorem 3.2 Selection in comparisons across doses
+   :class: theorem
+
+   Under Assumptions 1 through 4, the continuous-dose case satisfies,
+   wherever the component derivatives exist,
+
+   .. math::
+
+      \begin{aligned}
+      \frac{d\,\mathbb E[\Delta Y\mid D=d]}{dd}
+      &=\frac{d\,ATT(d\mid d)}{dd}\\
+      &=ACRT(d\mid d)
+        +\left.\frac{\partial ATT(d\mid l)}{\partial l}\right|_{l=d}.
+      \end{aligned}
+
+   For any :math:`(h,l)\in\mathcal D\times\mathcal D`,
+
+   .. math::
+
+      \begin{aligned}
+      \mathbb E[\Delta Y\mid D=h]-\mathbb E[\Delta Y\mid D=l]
+      &=ATT(h\mid h)-ATT(l\mid l)\\
+      &=\mathbb E[Y_2(h)-Y_2(l)\mid D=h]\\
+      &\quad+ATT(l\mid h)-ATT(l\mid l).
+      \end{aligned}
+
+   With discrete treatment and adjacent doses, the last expression becomes
+
+   .. math::
+
+      ACRT(d_j\mid d_j)
+      +ATT(d_{j-1}\mid d_j)-ATT(d_{j-1}\mid d_{j-1}).
+
+   Thus parallel trends alone does not identify the causal response
+   from comparisons across doses.
+
+The final term compares the effect of the same dose :math:`l`
+for two different groups. Parallel trends does not constrain that term.
+If units at higher doses would benefit more even at dose :math:`l`,
+the observed difference includes those different gains.
+
+For the continuous-dose decomposition, the second derivative term concerns
+selection into the conditioning group. The first derivative term concerns
+a marginal intervention on dose. Estimating the left-hand side precisely
+does not separate those two contributions.
+
+.. admonition:: Read a reported slope conditionally
+   :class: important
+
+   The ``acrt_d`` field contains the derivative of the estimated level
+   curve. Under ordinary parallel trends, that derivative combines a causal
+   response and selection across dose groups. A causal interpretation
+   requires an additional restriction on treated potential outcomes.
+
+Identifying effects for a common population
+--------------------------------------------
+
+If you want to compare doses for the same population, the restriction must
+also connect treated potential outcomes across dose groups. Strong parallel
+trends does this through the population mean outcome path.
+
+.. admonition:: Assumption 5 Strong parallel trends
+   :class: assumption
+
+   For every :math:`d\in\mathcal D`,
+
+   .. math::
+
+      \mathbb E[Y_2(d)-Y_1(0)]
+      =\mathbb E[Y_2(d)-Y_1(0)\mid D=d].
+
+The right-hand side is the observed mean change for dose group :math:`d`.
+The left-hand side is the population mean change if everyone received that
+dose. The assumption equates those quantities separately at each dose,
+including zero.
+
+Assumptions 4 and 5 are non-nested. Strong parallel trends alone identifies
+population effects rather than automatically identifying the diagonal ATT.
+If ordinary parallel trends is also maintained, Theorem C.1 gives
+
+.. math::
+
+   ATT(d\mid d)=ATE(d),\qquad d\in\mathcal D.
+
+That equality concerns a dose group's effect at its own dose.
+Even the two assumptions together do not imply
+:math:`ATT(l\mid h)=ATT(l\mid l)` for every pair of different doses.
+The stronger alternative assumption in Appendix C imposes equality
+of potential mean changes across every conditioning dose group.
+
+.. admonition:: Theorem 3.3 Population effects under strong parallel trends
+   :class: theorem
+
+   Under Assumptions 1 through 3 and 5, every
+   :math:`d\in\mathcal D_+` satisfies
+
+   .. math::
+
+      ATE(d)=\mathbb E[\Delta Y\mid D=d]-\mathbb E[\Delta Y\mid D=0].
+
+   For continuous treatment,
+
+   .. math::
+
+      ACR(d)=\frac{d\,\mathbb E[\Delta Y\mid D=d]}{dd}
+            =\frac{d\,ATE(d)}{dd}.
+
+   For every :math:`(h,l)\in\mathcal D\times\mathcal D`,
+
+   .. math::
+
+      ATE(h)-ATE(l)
+      =\mathbb E[Y_2(h)-Y_2(l)]
+      =\mathbb E[\Delta Y\mid D=h]-\mathbb E[\Delta Y\mid D=l].
+
+   For discrete treatment, adjacent differences identify
+   :math:`ACR(d_j)` by setting :math:`h=d_j` and :math:`l=d_{j-1}`.
+
+The observed comparison has the same form as it did under parallel trends.
+Its interpretation changes because the stronger restriction changes whose
+counterfactual mean the dose group represents. In particular, the identified
+slope is the population response :math:`ACR(d)`. It need not equal
+:math:`ACRT(d\mid d)` without an additional restriction.
+
+Corollary 3.1 identifies the corresponding summaries,
+
+.. math::
+
+   \begin{aligned}
+   ATE^o
+      &=\mathbb E[\Delta Y\mid D>0]-\mathbb E[\Delta Y\mid D=0],\\
+   ACR^o
+      &=\int_{d_L}^{d_U}
+         \frac{d\,\mathbb E[\Delta Y\mid D=d]}{dd}
+         f_{D\mid D>0}(d)\,dd.
+   \end{aligned}
+
+For discrete doses, replace the integral with
+
+.. math::
+
+   ACR^o
+   =\sum_{j=1}^J
+      \bigl(\mathbb E[\Delta Y\mid D=d_j]
+            -\mathbb E[\Delta Y\mid D=d_{j-1}]\bigr)
+      P(D=d_j\mid D>0).
+
+These averages use the observed treated dose distribution.
+They avoid the weights implicit in a regression of changes on one dose
+variable.
+
+What a linear dose regression averages
+---------------------------------------
+
+A linear regression on the dose can produce an unattractive summary even
+with only two periods. The problem already appears without staggered
+timing. We can examine its population coefficient through the same
+conditional change function :math:`m(d)=\mathbb E[\Delta Y\mid D=d]`.
+
+If :math:`\mu_D=\mathbb E[D]` and
+:math:`v_D=\operatorname{Var}(D)>0`, the coefficient is
+
+.. math::
+
+   \beta^{twfe}
+   =\frac{\operatorname{Cov}(D,\Delta Y)}{v_D}
+   =\frac{\mathbb E[(D-\mu_D)m(D)]}{v_D}.
+
+Under parallel trends, subtracting :math:`m(0)` replaces :math:`m(d)`
+with :math:`ATT(d\mid d)` in this expression. Under strong parallel
+trends, the same subtraction yields :math:`ATE(d)`. The level weights
+on positive doses are
+
+.. math::
+
+   w^{lev}(d)=\frac{(d-\mu_D)f_D(d)}{v_D},\qquad d\in[d_L,d_U],
+
+where :math:`f_D(d)=P(D>0)f_{D\mid D>0}(d)`.
+Weights below the mean dose are negative. The full signed weighting measure,
+including its zero-dose atom, has total mass zero,
+
+.. math::
+
+   \int_{d_L}^{d_U}w^{lev}(d)\,dd
+   -\frac{\mu_D P(D=0)}{v_D}=0.
+
+The zero-dose level effect is zero. Its weight disappears from the level
+integral. That weight still matters when describing the weighting measure's
+total mass. This coefficient is therefore not a convex average of level
+effects.
+
+The slope representation has positive weights. Because the positive-dose
+support starts above zero, it also includes a bridge from no treatment to
+the smallest positive dose. Define
+
+.. math::
+
+   w^{acr}(d)
+      =\frac{\mathbb E[(D-\mu_D)\mathbf 1\{D\geq d\}]}{v_D},
+   \qquad
+   w_0^{acr}=\frac{d_L\mu_D P(D=0)}{v_D}.
+
+Then the continuous-dose decomposition in Theorem 3.4 gives
+
+.. math::
+
+   \beta^{twfe}
+   =\int_{d_L}^{d_U}w^{acr}(d)m'(d)\,dd
+     +w_0^{acr}\frac{m(d_L)-m(0)}{d_L},
+   \qquad
+   \int_{d_L}^{d_U}w^{acr}(d)\,dd+w_0^{acr}=1.
+
+Under ordinary parallel trends, :math:`m'(d)` includes the selection
+term from Theorem 3.2. Under strong parallel trends, it is :math:`ACR(d)`.
+Even in that case, these weights generally differ from
+:math:`f_{D\mid D>0}`. The weighting differences cease to matter if
+the causal response is constant and the scaled level effect at
+:math:`d_L` equals that same response. A constant slope on the
+positive-dose interval alone does not establish that second condition.
+
+The same coefficient also admits the paper's scaled-level and
+high-versus-low dose decompositions. Dividing a level effect by its dose
+changes the target to an effect per unit of treatment. Positive weights
+on a high-versus-low contrast do not remove its selection term.
+Choosing the level curve or the average response directly makes the target
+explicit before estimation.
+
+What weaker restrictions can support
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Strong parallel trends may be implausible in an application. Section 5.1
+describes restrictions that answer narrower questions. For example, if
+:math:`\partial ATT(d\mid l)/\partial l\geq0` at :math:`l=d`,
+Theorem 3.2 makes the observed slope an upper bound on
+:math:`ACRT(d\mid d)`. Reversing that restriction reverses the bound.
+
+A local version of strong parallel trends can identify population dose
+contrasts and slopes within the interval where it holds. Identifying a
+level effect relative to zero additionally requires a restriction linking
+that interval to the untreated reference. A covariate-conditional version
+instead compares mean paths within pre-treatment covariate values and
+averages over a specified covariate distribution. That extension also
+needs support for the relevant conditional dose comparisons.
+
+If no untreated units exist, a common untreated mean trend across positive
+dose groups still yields
+
+.. math::
+
+   \mathbb E[\Delta Y\mid D=d]-\mathbb E[\Delta Y\mid D=d_L]
+   =ATT(d\mid d)-ATT(d_L\mid d_L).
+
+This contrast retains the selection issue. If strong parallel trends holds
+over the positive-dose support, it instead identifies
+:math:`ATE(d)-ATE(d_L)`. Neither contrast fixes the absolute effect
+relative to zero without more information. The formal support assumptions
+above and the package's baseline comparison require untreated units.
+
+Fitting the curve in ModernDiD
+-------------------------------
+
+The identifying comparison supplies a conditional mean function.
+Estimation still needs a way to fit that function from finitely many doses.
+We separate a fixed spline specification from a sieve chosen from the data.
+
+For discrete doses, a saturated regression of :math:`\Delta Y_i`
+on dose indicators has untreated units as its reference,
+
+.. math::
+
+   \Delta Y_i=\beta_0+
+      \sum_{j=1}^J\mathbf 1\{D_i=d_j\}\beta_j+\varepsilon_i.
+
+Each coefficient estimates the level comparison at that dose.
+Under strong parallel trends, :math:`\beta_1` estimates :math:`ACR(d_1)`.
+For :math:`j\geq2`, :math:`\beta_j-\beta_{j-1}` estimates
+:math:`ACR(d_j)`. This is a theoretical discrete-dose estimator.
+ModernDiD currently accepts only ``treatment_type="continuous"``.
+
+A spline for positive doses
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let :math:`\psi^K(d)` be a vector of :math:`K` B-spline basis functions,
+including an intercept. Write :math:`\overline{\Delta Y}_0` for the
+sample mean change among zero-dose units. The positive-dose regression is
+
+.. math::
+
+   \widehat\beta_K
+   =\left[\sum_{i:D_i>0}\psi^K(D_i)\psi^K(D_i)'\right]^{-}
+      \sum_{i:D_i>0}\psi^K(D_i)(\Delta Y_i-\overline{\Delta Y}_0),
+
+where :math:`(\cdot)^{-}` denotes the Moore-Penrose inverse.
+The estimated level function and its slope are
+
+.. math::
+
+   \widehat h_K(d)=\psi^K(d)'\widehat\beta_K,
+   \qquad \widehat h_K'(d)=\partial\psi^K(d)'\widehat\beta_K.
+
+Under ordinary parallel trends, :math:`h(d)=ATT(d\mid d)`.
+Under strong parallel trends, :math:`h(d)=ATE(d)`.
+That distinction carries through to every fitted curve and summary.
+
+The default ``dose_est_method="parametric"`` uses ``degree=3``
+and ``num_knots=0``. This is a single cubic polynomial on positive doses.
+Increasing the number of interior knots permits a more flexible curve.
+A fixed specification generally estimates a projection if the true function
+lies outside its span. Consistency for an unrestricted dose function
+requires an increasing sieve dimension under suitable regularity conditions.
+
+The untreated mean is estimated rather than known. Its sampling error
+contributes to uncertainty in the level curve. Differentiating the
+positive-dose curve eliminates an additive constant. That particular
+error does not contribute to uncertainty in the fitted slope.
+
+Choosing the sieve from the data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``dose_est_method="cck"`` path uses the nonparametric regression
+special case of `Chen, Christensen, and Kankanala (2024)
+<https://arxiv.org/abs/2107.11869>`_. It compares fits across a dyadic set of
+dimensions instead of choosing one polynomial specification in advance.
+The :ref:`nonparametric IV background <background-npiv>` derives the
+selection and confidence-band procedures.
+
+For scalar dose and cubic splines, the theoretical grid is
+
+.. math::
+
+   \mathcal K=\{2^l+3:l=0,1,\ldots\},
+   \qquad
+   v_n=\max\{1,(0.1\log n_+)^4\},
+
+where :math:`n_+` is the number of positive-dose observations.
+The procedure bounds feasible dimensions using
+:math:`K\sqrt{\log K}\,v_n` and compares larger fits with smaller ones.
+It chooses the smallest dimension whose standardized differences from
+larger candidates do not exceed a bootstrap threshold.
+A final truncation protects against choosing the grid's largest dimension.
+
+ModernDiD's CCK path requires two periods and one treated timing cohort.
+It uses cubic splines at quantile knots and passes dose as both the
+regressor and instrument. The current path uses 999 multiplier draws
+internally. The generic ``npiv`` API exposes the broader selection
+controls. The current ``cont_did`` API requires a single treatment
+cohort for CCK estimation.
+
+Conditions for the nonparametric guarantees
+-------------------------------------------
+
+Adaptive estimation and coverage need more than parallel trends.
+The error moments and the way uncertainty grows with sieve dimension
+also matter. We state the conditions used for the paper's nonparametric
+regression results before reporting their guarantees.
+
+Let :math:`u=\Delta Y-\mathbb E[\Delta Y\mid D]` for treated observations.
+For a candidate dimension :math:`K`, define
+
+.. math::
+
+   \begin{aligned}
+   H_K&=\mathbb E[\psi^K(D)\psi^K(D)'\mid D>0],\\
+   s_K^2(d)&=\psi^K(d)'H_K^{-1}\psi^K(d),\\
+   \sigma_K^2(d)
+      &=\psi^K(d)'H_K^{-1}
+         \mathbb E[u^2\psi^K(D)\psi^K(D)'\mid D>0]
+         H_K^{-1}\psi^K(d),\\
+   s_{K,1}^2(d)&=\partial\psi^K(d)'H_K^{-1}\partial\psi^K(d).
+   \end{aligned}
+
+These are population variance measures for the regression approximation.
+The derivative basis changes the growth rate of the last quantity.
+All inverses in these population conditions require nonsingular
+:math:`H_K`.
+
+.. admonition:: Assumption 6 Nonparametric regression regularity
+   :class: assumption
+
+   There are finite positive constants
+   :math:`c,C,\underline\sigma,\overline\sigma` and
+   :math:`\rho\in(0,1)` such that, almost surely among treated units,
+
+   .. math::
+
+      \mathbb E[u^4\mid D]\leq\overline\sigma^2,
+      \qquad \mathbb E[u^2\mid D]\geq\underline\sigma^2.
+
+   For every :math:`K\in\mathcal K`,
+
+   .. math::
+
+      \begin{aligned}
+      cK&\leq\inf_d s_K^2(d)\leq\sup_d s_K^2(d)\leq CK,\\
+      cK^3&\leq\inf_d s_{K,1}^2(d)
+               \leq\sup_d s_{K,1}^2(d)\leq CK^3.
+      \end{aligned}
+
+   Here extrema run over :math:`\mathcal D_+^c`. The variance ratios satisfy
+
+   .. math::
+
+      \limsup_{K\to\infty}
+      \sup_{\substack{d\in\mathcal D_+^c\\K_2\in\mathcal K,\ K_2>K}}
+      \frac{\sigma_K^2(d)}{\sigma_{K_2}^2(d)}<\rho.
+
+   The derivative variance condition is needed for derivative bands.
+
+To describe smoothness, let :math:`\mathcal H^p` be a Hölder ball of
+radius :math:`M` and smoothness :math:`p` on the positive-dose interval.
+Its members have uniformly bounded derivatives and the corresponding
+Hölder continuity bound. The paper uses the Hölder-Zygmund notation
+:math:`H_{\infty,\infty}^p(M)` for this class.
+Take :math:`p\in[\underline p,\overline p]` for fixed
+:math:`\overline p>\underline p>1/2`. Take spline order
+:math:`r\geq\lfloor\overline p\rfloor+1` so the approximation space
+can represent this smoothness range. The :ref:`NPIV background
+<background-npiv>` defines the smoothness class and its approximation
+conditions more fully.
+
+.. admonition:: Theorem 4.1 Adaptive rates for the level and slope curves
+   :class: theorem
+
+   Under Assumptions 1, 2(a), 3, 5, and 6, the paper's data-driven
+   estimator has constants :math:`C_1,C_1'>0` such that
+
+   .. math::
+
+      \sup_{p\in[\underline p,\overline p]}
+      \sup_{h\in\mathcal H^p}
+      P_h\!\left(
+         \|\widehat h_{\widehat K}-h\|_\infty
+         >C_1(\log n/n)^{p/(2p+1)}
+      \right)\longrightarrow0.
+
+   If :math:`\underline p>1`, its derivative also satisfies
+
+   .. math::
+
+      \sup_{p\in[\underline p,\overline p]}
+      \sup_{h\in\mathcal H^p}
+      P_h\!\left(
+         \|\widehat h_{\widehat K}'-h'\|_\infty
+         >C_1'(\log n/n)^{(p-1)/(2p+1)}
+      \right)\longrightarrow0.
+
+   Here :math:`h=ATE` and the norm is the largest absolute error over
+   :math:`\mathcal D_+^c`. The probabilities range over distributions
+   satisfying the stated conditions.
+
+These are minimax rates for the specified smoothness classes.
+The derivative converges more slowly because small changes in the function
+can produce larger changes in its slope. The result concerns the increasing
+sieve procedure. It does not establish unrestricted-function consistency
+for the default fixed cubic fit.
+
+Which functions can have adaptive bands
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Uniform coverage means covering every dose at once.
+To adapt band width to unknown smoothness, the paper additionally restricts
+how the function's approximation error behaves across dimensions.
+Let :math:`\Pi_Kh` be its population least-squares projection onto
+the spline space. For fixed :math:`0<\underline B<\overline B`
+and a fixed starting dimension :math:`K_*`, define
+
+.. math::
+
+   \begin{aligned}
+   \mathcal G^p
+      &=\left\{h\in\mathcal H^p:
+          \|\Pi_Kh-h\|_\infty\geq\underline B K^{-p}
+          \text{ for every }K\in\mathcal K,\ K\geq K_*
+         \right\},\\
+   \mathcal G&=\bigcup_{p\in[\underline p,\overline p]}\mathcal G^p.
+   \end{aligned}
+
+The upper approximation bound is
+:math:`\|\Pi_Kh-h\|_\infty\leq\overline B K^{-p}`.
+Together, these bounds describe the self-similar subclass used for honest
+adaptive bands. A coverage statement over this subclass is more specific
+than one over every smooth function.
+
+Write :math:`\widehat{se}_K(d)` for the level standard error and
+:math:`z_{1-\alpha}^*` for the bootstrap quantile over doses and candidate
+dimensions. If :math:`\gamma^*` is the selection critical value, the
+paper's level band is
+
+.. math::
+
+   C_n(d,A)=
+      [\,\widehat h_{\widehat K}(d)
+         \ \pm\ (z_{1-\alpha}^*+A\gamma^*)\widehat{se}_{\widehat K}(d)\,].
+
+The derivative band :math:`C_n^1(d,A)` uses the fitted derivative,
+its standard error, and the corresponding bootstrap quantile.
+The parameter :math:`\alpha\in(0,1)` is the family's noncoverage
+probability.
+
+.. admonition:: Theorem 4.2 Coverage and width of adaptive bands
+   :class: theorem
+
+   Under the conditions of Theorem 4.1, sufficiently large fixed
+   :math:`A` gives
+
+   .. math::
+
+      \liminf_{n\to\infty}\inf_{h\in\mathcal G}
+      P_h\{h(d)\in C_n(d,A)\text{ for all }d\in\mathcal D_+^c\}
+      \geq1-\alpha.
+
+   For some universal :math:`C_2>0`,
+
+   .. math::
+
+      \inf_{p\in[\underline p,\overline p]}\inf_{h\in\mathcal G^p}
+      P_h\!\left\{
+         \sup_d|C_n(d,A)|
+         \leq C_2(1+A)(\log n/n)^{p/(2p+1)}
+      \right\}\longrightarrow1.
+
+   If :math:`\underline p>1`, sufficiently large :math:`A` also gives
+
+   .. math::
+
+      \liminf_{n\to\infty}\inf_{h\in\mathcal G}
+      P_h\{h'(d)\in C_n^1(d,A)\text{ for all }d\in\mathcal D_+^c\}
+      \geq1-\alpha,
+
+   with width bounded in the same uniform probability sense by
+   :math:`C_2'(1+A)(\log n/n)^{(p-1)/(2p+1)}`.
+   The required lower thresholds for :math:`A` are independent of
+   :math:`\alpha` but can differ between levels and derivatives.
+
+The recommended :math:`\widehat A=\log\log\widehat K` allows coverage
+over the stated subclasses without choosing a fixed inflation constant.
+Its band widths carry an additional :math:`\log\log n` factor.
+These asymptotic coverage results do not supply a finite-sample guarantee
+for a particular data set.
+
+In the CCK implementation, the level standard error also incorporates
+uncertainty in the untreated mean. Its simultaneous level band uses a
+conservative approximation based on the NPIV critical value. Treat that
+implementation as a numerical procedure informed by the theorem's
+construction rather than an exact reproduction of every theoretical
+candidate-set calculation.
+
+Summarizing the fitted effects
 --------------------------------
 
-The methodology extends to settings with multiple time periods and variation in
-treatment timing. Let :math:`G_i` denote the time period when unit :math:`i` first
-receives a positive dose, with :math:`G_i = \infty` for never-treated units. The
-potential outcomes are indexed by both timing and dose, :math:`Y_{i,t}(g, d)`.
+The overall level effect can be estimated directly from mean changes.
+The slope summary instead averages a fitted derivative over positive doses.
+We keep those estimation problems separate because their uncertainty has
+different sources.
 
-The **group-time-dose average treatment effect** is
-
-.. math::
-
-   ATE(g, t, d) = \mathbb{E}[Y_t(g, d) - Y_t(0) | G = g],
-
-which measures the average effect in period :math:`t` of becoming treated in period
-:math:`g` with dose :math:`d`, among units in timing group :math:`g`.
-
-Under a multi-period version of strong parallel trends, this is identified as
+For :math:`ATT^o`, the regression
 
 .. math::
 
-   ATE(g, t, d) = \mathbb{E}[Y_t - Y_{g-1} | G = g, D = d] -
-   \mathbb{E}[Y_t - Y_{g-1} | G = \infty, D = 0].
+   \Delta Y_i=\beta_0^{bin}+\mathbf1\{D_i>0\}\beta^{bin}+\varepsilon_i
 
-The expression involves "long differences" in outcomes from period :math:`g - 1`
-(the last period before treatment) to :math:`t`. Not-yet-treated units can also be
-used as a comparison group.
+estimates the binary DiD comparison from Theorem 3.1.
+Under strong parallel trends, the same coefficient estimates
+:math:`ATE^o`. ModernDiD's overall level result uses this direct
+comparison rather than requiring the integral of the fitted level curve
+to reproduce the binary estimate.
 
-Aggregation Strategies
-~~~~~~~~~~~~~~~~~~~~~~
-
-The high-dimensional :math:`ATE(g, t, d)` parameters can be aggregated in two main
-ways.
-
-**Dose Aggregation**. Averaging across timing groups and time periods yields
-dose-response functions
+For :math:`ACR^o`, the plug-in estimator is
 
 .. math::
 
-   ATE^{dose}(d), \quad ACR^{dose}(d),
+   \widehat{ACR}^o
+   =\frac1{n_+}\sum_{i:D_i>0}\widehat h'(D_i).
 
-which highlight heterogeneity across different dose levels. These are analogous to
-:math:`ATE(d)` and :math:`ACR(d)` in the two-period case.
+The regularity conditions for root-sample-size inference are stronger than
+those needed to estimate a smooth curve.
 
-**Event-Study Aggregation**. Averaging across doses while keeping event-time
-structure yields
+.. admonition:: Assumption 7 Average derivative regularity
+   :class: assumption
+
+   The treated dose density is continuously differentiable and vanishes
+   at the endpoints of :math:`[d_L,d_U]`. Its density
+   score has finite second moment,
+
+   .. math::
+
+      \mathbb E\!\left[
+         \left(\frac{f_{D\mid D>0}'(D)}{f_{D\mid D>0}(D)}\right)^2
+         \,\middle|\,D>0
+      \right]<\infty.
+
+The boundary condition permits integration by parts without an endpoint
+term. Appendix A adds it to Assumption 2(a)'s density conditions.
+A density cannot remain uniformly bounded away from zero arbitrarily
+close to an endpoint and also vanish continuously there.
+The two conditions therefore conflict if read literally.
+The theorem below retains the paper's original assumption references.
+Applying it requires resolving this boundary issue rather than treating
+Assumption 7 as an automatic consequence of the support condition.
+
+The variance construction treats the fitted curve as a series regression
+whose coefficients are estimated from the positive-dose sample.
+For that sample, define
 
 .. math::
 
-   ATT^{es}(e), \quad ACR^{es}(e),
+   \begin{aligned}
+   \widehat u_i
+      &=\Delta Y_i-\overline{\Delta Y}_0-\widehat h_K(D_i),\\
+   \widehat{\mathbf G}_K
+      &=\frac1{n_+}\sum_{i:D_i>0}
+         \psi^K(D_i)\psi^K(D_i)',\\
+   \widehat{\mathbf a}_K'
+      &=\frac1{n_+}\sum_{i:D_i>0}\partial\psi^K(D_i)'.
+   \end{aligned}
 
-where :math:`e = t - g` is the time since treatment. These highlight how treatment
-effects and causal responses evolve with length of exposure.
+The proposed influence-function estimate and variance estimate are
 
-Pre-treatment event-study estimates (:math:`e < 0`) can be used to assess the
-plausibility of the identifying assumptions. Plotting :math:`ATT^{es}(e)` for :math:`e < 0`
-tests whether untreated outcome paths are parallel across dose groups (standard PT).
+.. math::
 
-.. tip::
+   \begin{aligned}
+   \widehat\eta_i
+      &=\widehat h_K'(D_i)-\widehat{ACR}^o
+        +\widehat{\mathbf a}_K'
+         \widehat{\mathbf G}_K^-\psi^K(D_i)\widehat u_i,\\
+   \widehat\sigma_{ACR^o}^{\,2}
+      &=\frac1{n_+}\sum_{i:D_i>0}\widehat\eta_i^{\,2}.
+   \end{aligned}
 
-   To assess strong parallel trends specifically, examine :math:`ACR^{es}(e)` for
-   :math:`e < 0`, which tests whether the dose-response relationship is stable in the
-   pre-treatment period. Violations of pre-treatment :math:`ACR^{es}` provide evidence
-   against SPT that :math:`ATT^{es}` pre-trends cannot detect, since the additional content
-   of SPT involves treated potential outcomes :math:`Y_t(d)` for :math:`d > 0`.
+The first part measures variation in the fitted responses across sampled
+doses. The weighted residual term accounts for uncertainty in estimating
+the response curve.
 
-.. note::
+.. admonition:: Theorem 4.3 Efficient inference for the average response
+   :class: theorem
 
-   For complete theoretical details including formal assumptions, asymptotic
-   properties, and efficiency results, refer to `Callaway, Goodman-Bacon, and
-   Sant'Anna (2024) <https://arxiv.org/abs/2107.02637>`_. The nonparametric
-   estimation procedures build on `Chen, Christensen, and Kankanala (2024)
-   <https://arxiv.org/abs/2107.11869>`_.
+   Under Assumptions 1, 2(a), 3, 5, 6, and 7, the paper's
+   plug-in estimator and proposed variance estimator satisfy
+
+   .. math::
+
+      \frac{\sqrt{n_+}(\widehat{ACR}^o-ACR^o)}
+           {\widehat\sigma_{ACR^o}}
+      \xrightarrow{d}N(0,1),
+      \qquad
+      \widehat\sigma_{ACR^o}^2\xrightarrow{p}V_{ACR},
+
+   where, for positive limiting variance,
+
+   .. math::
+
+      V_{ACR}
+      =\operatorname{Var}\!\left[
+         ACR(D)-u\,\frac{f_{D\mid D>0}'(D)}{f_{D\mid D>0}(D)}
+         \,\middle|\,D>0
+      \right].
+
+   This is the semiparametric efficiency bound for :math:`ACR^o`
+   under the paper's model.
+
+The theorem concerns the paper's increasing-sieve estimator and variance
+construction. A fixed polynomial slope average is a different estimator
+unless its specification and approximation conditions justify the same
+target. The package names slope summaries ``overall_acrt``.
+The identifying assumptions determine whether that reported quantity
+has a population causal-response interpretation.
+
+Adding staggered adoption
+---------------------------
+
+When treatment starts at different dates, timing and dose must both
+describe the counterfactual path. Let :math:`G_i` be the first treatment
+period and let :math:`G_i=\infty` identify a never-treated unit.
+The paper instead codes never-treated timing with zero.
+The dose :math:`D_i` stays fixed after adoption. Write
+
+.. math::
+
+   W_{it}=D_i\mathbf1\{t\geq G_i\},
+   \qquad Y_{it}(g,d)
+
+for the treatment received at time :math:`t` and the potential outcome
+under adoption time :math:`g` and dose :math:`d`.
+Here :math:`W_{it}` is a treatment amount rather than an instrument.
+Set :math:`Y_{it}(0)=Y_{it}(\infty,0)`.
+
+The Appendix D assumptions make the support and outcome-path restrictions
+explicit before identifying each timing-dose comparison.
+
+.. admonition:: Assumptions 1-MP through 3-MP Panel treatment paths
+   :class: assumption
+
+   Assumption 1-MP requires independent, identically distributed
+   vectors :math:`(Y_{i1},\ldots,Y_{iT},D_i,G_i)`.
+
+   Assumption 2-MP(a) requires compact dose support
+   :math:`\mathcal D=\{0\}\cup\mathcal D_+\subset\mathbb R_+`,
+   positive untreated mass, and common positive-dose support across
+   finite timing cohorts. Every dose in :math:`\mathcal D_+` has
+   positive conditional density or mass within each finite cohort.
+
+   Assumption 2-MP(b), for derivatives, requires
+   :math:`\mathcal D_+=[d_L,d_U]` for
+   :math:`0<d_L<d_U<\infty` and continuous differentiability of
+   :math:`\mathbb E[Y_t-Y_{t-1}\mid G=g,D=d]` in dose
+   for each finite cohort and :math:`t=2,\ldots,T`.
+
+   Assumption 3-MP requires no anticipation for every treatment path,
+
+   .. math::
+
+      Y_{it}(g,d)=Y_{it}(0),\qquad t<g,
+
+   and an untreated first period followed by an absorbing positive dose,
+
+   .. math::
+
+      W_{i1}=0,\qquad
+      W_{i,t-1}=d\Longrightarrow W_{it}=d,\quad t=2,\ldots,T,\quad d>0.
+
+   Observed outcomes follow the unit's actual adoption time and dose.
+
+The relevant target averages effects within one timing cohort,
+
+.. math::
+
+   ATE(g,t,d)
+   =\mathbb E[Y_t(g,d)-Y_t(0)\mid G=g],
+   \qquad
+   ACR(g,t,d)=\frac{\partial ATE(g,t,d)}{\partial d}.
+
+Unlike an effect conditional on both :math:`G=g` and :math:`D=d`,
+the first target represents the whole timing cohort under dose :math:`d`.
+
+.. admonition:: Assumption 5-MP Strong parallel trends across timing and dose
+   :class: assumption
+
+   For every finite timing cohort :math:`g`, period
+   :math:`t=2,\ldots,T`, and supported positive dose :math:`d`,
+
+   .. math::
+
+      \begin{aligned}
+      \mathbb E[Y_t(g,d)-Y_{t-1}(g,d)\mid G=g,D=d]
+         &=\mathbb E[Y_t(g,d)-Y_{t-1}(g,d)\mid G=g],\\
+      \mathbb E[Y_t(0)-Y_{t-1}(0)\mid G=g,D=d]
+         &=\mathbb E[Y_t(0)-Y_{t-1}(0)\mid G=\infty,D=0].
+      \end{aligned}
+
+The first restriction connects dose groups within a timing cohort under
+the same counterfactual treatment path. The second connects untreated
+changes across timing and dose groups. Together with no anticipation,
+summing these changes from :math:`g` through :math:`t` gives the
+long-difference comparison.
+
+.. admonition:: Theorem D.1 Timing-dose identification
+   :class: theorem
+
+   Under Assumptions 1-MP, 2-MP(a), 3-MP, and 5-MP,
+   for every supported finite cohort :math:`g` and
+   :math:`2\leq g\leq t\leq T` with an observed base :math:`g-1`,
+
+   .. math::
+
+      ATE(g,t,d)
+      =\mathbb E[Y_t-Y_{g-1}\mid G=g,D=d]
+       -\mathbb E[Y_t-Y_{g-1}\mid W_t=0],
+      \qquad d\in\mathcal D_+.
+
+   If Assumption 2-MP(b) also holds,
+
+   .. math::
+
+      ACR(g,t,d)
+      =\frac{\partial\,\mathbb E[Y_t-Y_{g-1}\mid G=g,D=d]}
+             {\partial d}.
+
+   The zero-treatment comparison can instead use never-treated units.
+
+The paper's theorem allows not-yet-treated units because their long
+difference remains untreated under no anticipation. The package uses
+``control_group="notyettreated"`` by default. With anticipation, it
+requires comparison units to remain unaffected beyond the relevant
+endpoints and moves the clean base backward. That is an extension of the
+no-anticipation statement above. The :ref:`staggered adoption background
+<background-did>` explains why the base and comparison cutoff must move
+together.
+
+Averages across dose and exposure
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For dose aggregation, we combine timing-period curves at a fixed dose.
+If all post-treatment cells are identified, define cohort shares
+:math:`q_g=P(G=g\mid G<\infty)` and weights
+
+.. math::
+
+   w_{g,t}=\frac{q_g}{T-g+1},\qquad g\leq t\leq T,
+   \qquad
+   ATE^{dose}(d)=\sum_g\sum_{t=g}^T w_{g,t}ATE(g,t,d).
+
+The corresponding slope average uses :math:`ACR(g,t,d)` with the same
+weights. Each cohort receives its population share in total.
+Its share is divided among its observed post-treatment periods.
+This is the package's group-style dose aggregation when the target retains
+all those cells. Common dose support matters because each contributing
+cohort must supply a curve at the dose being averaged.
+
+An event study instead holds exposure length :math:`e=t-g` fixed.
+For the level target, the package first estimates a cohort-period binary
+ATT for receipt of any positive dose. For the slope target, it averages
+the fitted cohort-period slopes over that cohort's positive-dose
+distribution. It combines those cell summaries across cohorts observed
+at the requested event time.
+
+The set of contributing cohorts can change as exposure grows.
+A changing event-study average can therefore reflect composition as well
+as changing effects. The ``balance_e`` option fixes post-treatment
+cohort support over a chosen horizon. Its use changes the target population
+to cohorts observed for that whole horizon.
+
+.. admonition:: Match the supported estimation path
+   :class: tip
+
+   The current API requires a balanced panel and ``xformla="~1"``.
+   It does not implement sampling weights or discrete-dose estimation.
+   Clustering arguments are ignored with a warning. These results therefore
+   use independent-unit inference. Choose ``aggregation="dose"`` for curves
+   or ``aggregation="eventstudy"`` for exposure profiles.
+
+What pre-treatment comparisons can establish
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Extra pre-treatment periods let you examine untreated mean changes
+across doses and timing cohorts. A violation challenges the corresponding
+extension of parallel trends. A small estimated violation can also arise
+when the comparison is imprecise. A failure to reject therefore does not
+establish the identifying restriction.
+
+Pre-treatment level contrasts and dose-slope contrasts emphasize different
+features of observed untreated changes. They cannot isolate the extra
+restriction that strong parallel trends places on treated potential outcomes.
+Those counterfactual treated paths are not observed before adoption.
+The same limitation applies when a pre-treatment event-study slope looks
+close to zero.
+
+The :ref:`continuous treatment example <example_cont_did>` shows the
+reported level and slope curves alongside their summaries. Read the slope
+as a causal response only after deciding which population the maintained
+parallel trends assumption lets each dose group represent.

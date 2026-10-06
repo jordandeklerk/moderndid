@@ -13,6 +13,23 @@ def mpdta_data():
 
 
 @pytest.fixture
+def mpdta_pop_weighted(mpdta_data):
+    return mpdta_data.with_columns(pl.col("lpop").exp().alias("pop"))
+
+
+@pytest.fixture
+def mpdta_unbalanced(mpdta_data):
+    return mpdta_data.filter(~((pl.col("countyreal") % 7 == 0) & (pl.col("year") == 2005)))
+
+
+@pytest.fixture
+def mpdta_unbalanced_varying_weights(mpdta_unbalanced):
+    return mpdta_unbalanced.with_columns(
+        (pl.col("lpop").exp() * (1 + (pl.col("countyreal") + pl.col("year")) % 4)).alias("w")
+    )
+
+
+@pytest.fixture
 def att_gt_baseline_result(mpdta_data):
     return att_gt(
         data=mpdta_data,

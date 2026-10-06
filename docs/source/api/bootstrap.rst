@@ -1,16 +1,18 @@
 .. _api-bootstrap:
 
-Bootstrap Functions
-===================
+Bootstrap
+=========
 
-The bootstrap module provides functions for computing bootstrap standard errors
-and confidence intervals for all DiD estimators in the package. Both weighted
-bootstrap and multiplier bootstrap methods are supported.
-
-Multiplier Bootstrap
----------------------
+The staggered, two-period, and triple differences estimators call these
+functions when you ask for bootstrapped inference. The multiplier bootstrap
+reweights each unit's influence function instead of reestimating the model.
+The weighted bootstrap draws random weights for the units and reestimates the
+model on every draw.
 
 .. currentmodule:: moderndid
+
+Multiplier bootstrap
+--------------------
 
 .. autosummary::
    :toctree: generated/bootstrap/
@@ -19,12 +21,13 @@ Multiplier Bootstrap
    mboot
    mboot_did
    mboot_twfep_did
+   mboot_ddd
 
-Weighted Bootstrap
+Weighted bootstrap
 ------------------
 
-Panel Data Bootstrap
-^^^^^^^^^^^^^^^^^^^^
+Panel data
+^^^^^^^^^^
 
 .. autosummary::
    :toctree: generated/bootstrap/
@@ -36,9 +39,10 @@ Panel Data Bootstrap
    wboot_std_ipw_panel
    wboot_reg_panel
    wboot_twfe_panel
+   wboot_ddd
 
-Repeated Cross-Section Bootstrap
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Repeated cross-sections
+^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autosummary::
    :toctree: generated/bootstrap/

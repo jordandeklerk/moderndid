@@ -15,9 +15,10 @@ from moderndid.didcont.estimation import (
 from moderndid.didcont.estimation.process_dose import (
     _compute_dose_influence_functions,
     _compute_overall_att_inf_func,
+    _dose_basis,
     _weighted_combine_arrays,
 )
-from tests.didcont.conftest import mock_gt_results
+from tests.didcont.conftest import mock_dose_cell_pieces, mock_gt_results
 
 
 def test_dose_result_creation():
@@ -136,6 +137,7 @@ def test_process_dose_gt_zero_degree(mock_pte_params_with_dose):
                     "beta": np.random.randn(n_basis),
                     "bread": np.random.randn(n_basis, n_basis),
                     "x_expanded": np.random.randn(50, n_basis),
+                    **mock_dose_cell_pieces(n_units, n_treated=50),
                 },
             }
             extra_gt_returns.append(dose_results)
@@ -236,91 +238,91 @@ def test_compute_overall_att_inffunc_none():
 def test_compute_dose_influence_functions_basic():
     np.random.seed(42)
     n_obs = 100
-    n_groups = 3
-    n_doses = 10
-    n_basis = 4
-
-    x_expanded_by_group = [np.random.randn(30, n_basis) for _ in range(n_groups)]
-    bread_matrices = [np.random.randn(n_basis, n_basis) for _ in range(n_groups)]
-    basis_matrix = np.random.randn(n_doses, n_basis)
-    derivative_matrix = np.random.randn(n_doses, n_basis)
-    acrt_influence_matrix = np.random.randn(n_obs, n_groups)
-    att_influence_matrix = np.random.randn(n_obs, n_groups)
+    dose_values = np.linspace(0.1, 0.9, 10)
+    cells = [
+        {
+            "x_expanded": np.random.randn(30, 4),
+            "bread": np.random.randn(4, 4),
+            **mock_dose_cell_pieces(n_obs, n_treated=30, n_cell=60),
+        }
+        for _ in range(3)
+    ]
     weights = np.array([0.3, 0.4, 0.3])
 
-    att_dose_inf, acrt_dose_inf = _compute_dose_influence_functions(
-        x_expanded_by_group,
-        bread_matrices,
-        basis_matrix,
-        derivative_matrix,
-        acrt_influence_matrix,
-        att_influence_matrix,
-        weights,
-        n_obs,
-    )
+    att_dose_inf, acrt_dose_inf = _compute_dose_influence_functions(cells, dose_values, 3, np.array([]), weights, n_obs)
 
-    assert att_dose_inf.shape == (n_obs, n_doses)
-    assert acrt_dose_inf.shape == (n_obs, n_doses)
+    assert att_dose_inf.shape == (n_obs, len(dose_values))
+    assert acrt_dose_inf.shape == (n_obs, len(dose_values))
+
+
+def test_compute_dose_influence_functions_cell_terms():
+    np.random.seed(0)
+    n_obs = 80
+    dose_values = np.linspace(0.2, 0.8, 7)
+    cell = {
+        "x_expanded": np.random.randn(25, 4),
+        "bread": np.eye(4),
+        **mock_dose_cell_pieces(n_obs, n_treated=25, n_cell=50),
+    }
+    cell["boundary_knots"] = [0.1, 0.9]
+
+    att_inf, acrt_inf = _compute_dose_influence_functions([cell], dose_values, 3, np.array([]), np.array([0.5]), n_obs)
+
+    basis, derivative = _dose_basis(dose_values, 3, np.array([]), [0.1, 0.9])
+    rows, treated = cell["rows"], cell["treated"]
+    outside = np.setdiff1d(np.arange(n_obs), rows)
+    comparison = np.tile(cell["att_inf_func"][~treated][:, None], (1, len(dose_values)))
+    np.testing.assert_allclose(att_inf[rows[treated]], 0.5 * (n_obs / 25) * cell["x_expanded"] @ basis.T)
+    np.testing.assert_allclose(acrt_inf[rows[treated]], 0.5 * (n_obs / 25) * cell["x_expanded"] @ derivative.T)
+    np.testing.assert_allclose(att_inf[rows[~treated]], 0.5 * comparison)
+    assert np.all(acrt_inf[rows[~treated]] == 0)
+    assert np.all(att_inf[outside] == 0)
+    assert np.all(acrt_inf[outside] == 0)
 
 
 def test_compute_dose_influence_functions_with_none():
     np.random.seed(42)
     n_obs = 100
-    n_groups = 3
-    n_doses = 10
-    n_basis = 4
-
-    x_expanded_by_group = [None, np.random.randn(30, n_basis), None]
-    bread_matrices = [None, np.random.randn(n_basis, n_basis), None]
-    basis_matrix = np.random.randn(n_doses, n_basis)
-    derivative_matrix = np.random.randn(n_doses, n_basis)
-    acrt_influence_matrix = np.random.randn(n_obs, n_groups)
-    att_influence_matrix = np.random.randn(n_obs, n_groups)
-    weights = np.array([0.3, 0.4, 0.3])
+    dose_values = np.linspace(0.1, 0.9, 10)
+    cell = {
+        "x_expanded": np.random.randn(30, 4),
+        "bread": np.random.randn(4, 4),
+        **mock_dose_cell_pieces(n_obs, n_treated=30, n_cell=60),
+    }
 
     att_dose_inf, acrt_dose_inf = _compute_dose_influence_functions(
-        x_expanded_by_group,
-        bread_matrices,
-        basis_matrix,
-        derivative_matrix,
-        acrt_influence_matrix,
-        att_influence_matrix,
-        weights,
-        n_obs,
+        [None, cell, None], dose_values, 3, np.array([]), np.array([0.3, 0.4, 0.3]), n_obs
+    )
+    att_alone, acrt_alone = _compute_dose_influence_functions(
+        [cell], dose_values, 3, np.array([]), np.array([0.4]), n_obs
     )
 
-    assert att_dose_inf.shape == (n_obs, n_doses)
-    assert acrt_dose_inf.shape == (n_obs, n_doses)
+    np.testing.assert_array_equal(att_dose_inf, att_alone)
+    np.testing.assert_array_equal(acrt_dose_inf, acrt_alone)
 
 
 def test_compute_dose_influence_functions_zero_weights():
     np.random.seed(42)
     n_obs = 100
-    n_groups = 3
-    n_doses = 10
-    n_basis = 4
-
-    x_expanded_by_group = [np.random.randn(30, n_basis) for _ in range(n_groups)]
-    bread_matrices = [np.random.randn(n_basis, n_basis) for _ in range(n_groups)]
-    basis_matrix = np.random.randn(n_doses, n_basis)
-    derivative_matrix = np.random.randn(n_doses, n_basis)
-    acrt_influence_matrix = np.random.randn(n_obs, n_groups)
-    att_influence_matrix = np.random.randn(n_obs, n_groups)
-    weights = np.array([0.0, 1.0, 0.0])
+    dose_values = np.linspace(0.1, 0.9, 10)
+    cells = [
+        {
+            "x_expanded": np.random.randn(30, 4),
+            "bread": np.random.randn(4, 4),
+            **mock_dose_cell_pieces(n_obs, n_treated=30, n_cell=60),
+        }
+        for _ in range(3)
+    ]
 
     att_dose_inf, acrt_dose_inf = _compute_dose_influence_functions(
-        x_expanded_by_group,
-        bread_matrices,
-        basis_matrix,
-        derivative_matrix,
-        acrt_influence_matrix,
-        att_influence_matrix,
-        weights,
-        n_obs,
+        cells, dose_values, 3, np.array([]), np.array([0.0, 1.0, 0.0]), n_obs
+    )
+    att_alone, acrt_alone = _compute_dose_influence_functions(
+        cells[1:2], dose_values, 3, np.array([]), np.array([1.0]), n_obs
     )
 
-    assert att_dose_inf.shape == (n_obs, n_doses)
-    assert acrt_dose_inf.shape == (n_obs, n_doses)
+    np.testing.assert_array_equal(att_dose_inf, att_alone)
+    np.testing.assert_array_equal(acrt_dose_inf, acrt_alone)
 
 
 def test_summary_dose_result():
@@ -474,7 +476,7 @@ def test_process_dose_gt_nan_in_dose_results(pte_params_basic):
     n_groups = 2
     n_times = 2
     n_gt = n_groups * n_times
-    n_units = 100
+    n_units = pte_params_basic.data["id"].n_unique()
     n_doses = 10
 
     attgt_list = []
@@ -495,6 +497,7 @@ def test_process_dose_gt_nan_in_dose_results(pte_params_basic):
                 "beta": np.random.randn(2),
                 "bread": np.random.randn(2, 2),
                 "x_expanded": np.random.randn(20, 2),
+                **mock_dose_cell_pieces(n_units, n_treated=20, n_cell=60),
             },
         }
         extra_gt_returns.append(dose_results)

@@ -244,6 +244,22 @@ def test_didinter_result_estimation_params_default(minimal_effects):
     assert result.estimation_params == {}
 
 
+@pytest.mark.parametrize(
+    ("params", "se_type", "vcov_info"),
+    [
+        ({}, "Analytical", {"vcov_type": "analytical", "clustervar": None}),
+        ({"cluster": "state"}, "Clustered", {"vcov_type": "clustered", "clustervar": "state"}),
+        ({"boot": True}, "Bootstrap", {"vcov_type": "bootstrap", "clustervar": None}),
+        ({"boot": True, "cluster": "state"}, "Bootstrap", {"vcov_type": "bootstrap", "clustervar": "state"}),
+    ],
+)
+def test_maketables_labels_the_standard_errors(minimal_effects, params, se_type, vcov_info):
+    result = DIDInterResult(effects=minimal_effects, estimation_params=params)
+
+    assert result.__maketables_stat__("se_type") == se_type
+    assert result.__maketables_vcov_info__ == vcov_info
+
+
 def test_didinter_result_estimation_params(minimal_effects):
     params = {
         "effects": 3,

@@ -60,7 +60,11 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
         critical_value = boot_results["crit_val"]
 
     se = boot_results["se"]
-    pre_indices = np.where(groups > times)[0]
+    # A cell without variance, such as the reference period under a universal base, carries nothing for the
+    # pre-test and would make its covariance singular.
+    analytic_se = np.sqrt(np.diag(to_numpy(vcov_analytical)) / n_units)
+    zero_variance = analytic_se <= np.sqrt(np.finfo(float).eps) * 10
+    pre_indices = np.where((groups > times) & ~zero_variance)[0]
     pre_att = att[pre_indices]
     pre_vcov = vcov_analytical[np.ix_(pre_indices, pre_indices)]
 
@@ -83,21 +87,17 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
         except (np.linalg.LinAlgError, Exception):  # noqa: BLE001
             warnings.warn("Could not compute Wald statistic due to numerical issues", UserWarning)
 
-    if hasattr(pte_params, "data") and hasattr(pte_params, "tname"):
-        original_time_periods = np.sort(np.unique(pte_params.data[pte_params.tname]))
+    time_map = _period_labels(pte_params)
+    if time_map:
+        groups = np.array([time_map.get(g, g) for g in groups])
+        times = np.array([time_map.get(t, t) for t in times])
 
-        if hasattr(pte_params, "t_list") and not np.all(np.isin(pte_params.t_list, original_time_periods)):
-            time_map = {i + 1: orig for i, orig in enumerate(original_time_periods)}
-
-            groups = np.array([time_map.get(g, g) for g in groups])
-            times = np.array([time_map.get(t, t) for t in times])
-
-            if extra_gt_returns:
-                for egr in extra_gt_returns:
-                    if "group" in egr:
-                        egr["group"] = time_map.get(egr["group"], egr["group"])
-                    if "time_period" in egr:
-                        egr["time_period"] = time_map.get(egr["time_period"], egr["time_period"])
+        if extra_gt_returns:
+            for egr in extra_gt_returns:
+                if "group" in egr:
+                    egr["group"] = time_map.get(egr["group"], egr["group"])
+                if "time_period" in egr:
+                    egr["time_period"] = time_map.get(egr["time_period"], egr["time_period"])
 
     return GroupTimeATTResult(
         groups=groups,
@@ -115,3 +115,28 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
         pte_params=pte_params,
         extra_gt_returns=extra_gt_returns,
     )
+
+
+def _period_labels(pte_params):
+    """Map the period positions that index the cells to the periods as the data codes them."""
+    data = getattr(pte_params, "data", None)
+    tname = getattr(pte_params, "tname", None)
+    t_list = getattr(pte_params, "t_list", None)
+    if data is None or tname is None or t_list is None:
+        return {}
+
+    # Cells index periods by their position in the "period" column. Reading each position's label from the
+    # data keeps a coding such as 2, 3, 4, 5 from passing for positions.
+    columns = getattr(data, "columns", [])
+    if "period" in columns and tname in columns and tname != "period":
+        pairs = data.select("period", tname).unique()
+        positions = pairs["period"].to_numpy()
+        if not np.all(np.isin(t_list, positions)):
+            return {}
+        time_map = dict(zip(positions.tolist(), pairs[tname].to_list(), strict=True))
+        return {} if all(position == label for position, label in time_map.items()) else time_map
+
+    original_time_periods = np.sort(np.unique(data[tname]))
+    if np.all(np.isin(t_list, original_time_periods)):
+        return {}
+    return {i + 1: orig for i, orig in enumerate(original_time_periods)}

@@ -85,19 +85,21 @@ def create_sensitivity_results_sm(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
+    seed=0,
 ):
     r"""Perform sensitivity analysis using smoothness restrictions.
 
     Implements methods for robust inference in difference-in-differences and event study
     designs using smoothness restrictions :math:`\Delta^{SD}(M)` on the underlying trend,
-    following [1]_. This function computes confidence intervals across a range of smoothness
-    bounds :math:`M`, facilitating sensitivity analysis that shows what causal conclusions
-    can be drawn under various assumptions about possible trend nonlinearities.
+    following [1]_. It computes one confidence interval for each smoothness bound :math:`M`.
+    Together they show which causal conclusions hold as the trend is allowed to bend further.
 
     The FLCI method has finite-sample near-optimal expected length for :math:`\Delta^{SD}`
-    and is recommended when no additional shape restrictions are imposed.
-    The conditional and hybrid methods (C-F, C-LF) provide uniform size control and are
-    recommended when monotonicity or sign restrictions are added.
+    and is the default when no additional shape restrictions are imposed. Since the FLCI
+    ignores sign and shape restrictions, the default switches to the conditional FLCI hybrid
+    (C-F) when ``bias_direction`` or ``monotonicity_direction`` is given. The conditional and
+    hybrid methods invert a test over a grid of candidate values. Their bounds are points of
+    that grid.
 
     See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
     function applied to event study estimates from outside moderndid.
@@ -114,15 +116,11 @@ def create_sensitivity_results_sm(
         Number of pre-treatment periods.
     num_post_periods : int
         Number of post-treatment periods.
-    method : str, optional
-        Confidence interval method. Options are:
-
-        - "FLCI": Fixed-length confidence intervals
-        - "Conditional": Conditional confidence intervals
-        - "C-F": Conditional FLCI hybrid
-        - "C-LF": Conditional least-favorable hybrid
-
-        Default is "FLCI" if no restrictions, "C-F" otherwise.
+    method : {'FLCI', 'Conditional', 'C-F', 'C-LF'}, optional
+        Confidence interval method. 'FLCI' is the fixed-length confidence interval,
+        'Conditional' the conditional test, 'C-F' the conditional FLCI hybrid, and 'C-LF'
+        the conditional least favorable hybrid. If None, uses 'FLCI' without sign or shape
+        restrictions and 'C-F' with them.
     m_vec : ndarray, optional
         Vector of M values for sensitivity analysis. If None, constructs
         default sequence from 0 to data-driven upper bound.
@@ -141,11 +139,19 @@ def create_sensitivity_results_sm(
         Lower bound for grid search. If None, uses data-driven bound.
     grid_ub : float, optional
         Upper bound for grid search. If None, uses data-driven bound.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with columns: lb, ub, method, Delta, M.
+        One row per value of :math:`M` with columns:
+
+        - **lb**: Lower bound of the robust confidence interval
+        - **ub**: Upper bound of the robust confidence interval
+        - **method**: Confidence interval method
+        - **delta**: Restriction set, such as 'DeltaSD' or 'DeltaSDPB'
+        - **m**: Smoothness bound :math:`M`
 
     See Also
     --------
@@ -241,6 +247,7 @@ def create_sensitivity_results_sm(
                 "grid_points": grid_points,
                 "grid_lb": grid_lb,
                 "grid_ub": grid_ub,
+                "seed": seed,
             }
 
             if monotonicity_direction is not None:
@@ -280,17 +287,19 @@ def create_sensitivity_results_rm(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
+    seed=0,
 ):
     r"""Perform sensitivity analysis using relative magnitude bounds.
 
     Implements methods for robust inference using the relative magnitudes restriction
-    :math:`\Delta^{RM}(\bar{M})`, following [1]_. This restriction bounds post-treatment
-    violations of parallel trends by :math:`\bar{M}` times the maximum pre-treatment
-    violation, formalizing the intuition that confounding factors in the post-treatment
-    period should be similar in magnitude to those observed pre-treatment. When
-    :math:`\bar{M} = 1`, the worst-case post-treatment violation is bounded by the
-    maximum pre-treatment violation. This function computes confidence intervals across
-    a range of :math:`\bar{M}` values, facilitating sensitivity analysis.
+    :math:`\Delta^{RM}(\bar{M})`, following [1]_. The restriction bounds each change in the
+    violation of parallel trends from the step into the first post-treatment period onward by
+    :math:`\bar{M}` times the largest such change up to the reference period. It formalizes the
+    idea that the confounding factors after treatment are similar in size to those before it.
+    When :math:`\bar{M} = 1`, no change after treatment can exceed the largest one before it.
+
+    The function computes one confidence interval for each value of :math:`\bar{M}`. Both
+    methods invert a test over a grid of candidate values. Their bounds are points of that grid.
 
     See the :ref:`sensitivity analysis example <example_honest_did_external>` for this
     function applied to event study estimates from outside moderndid.
@@ -305,14 +314,11 @@ def create_sensitivity_results_rm(
         Number of pre-treatment periods.
     num_post_periods : int
         Number of post-treatment periods.
-    bound : str, default="deviation from parallel trends"
-        Type of bound:
-
-        - "Deviation from parallel trends": :math:`\Delta^{RM}` and variants
-        - "Deviation from linear trend": :math:`\Delta^{SDRM}` and variants
-
-    method : str, default="C-LF"
-        Confidence interval method: "Conditional" or "C-LF".
+    bound : {'deviation from parallel trends', 'deviation from linear trend'}, default='deviation from parallel trends'
+        Type of bound. 'deviation from parallel trends' selects :math:`\Delta^{RM}` and its
+        variants. 'deviation from linear trend' selects :math:`\Delta^{SDRM}` and its variants.
+    method : {'C-LF', 'Conditional'}, default='C-LF'
+        Confidence interval method.
     m_bar_vec : ndarray, optional
         Vector of :math:`\bar{M}` values. Default is 10 values from 0 to 2.
     l_vec : ndarray, optional
@@ -329,11 +335,19 @@ def create_sensitivity_results_rm(
         Lower bound for grid search.
     grid_ub : float, optional
         Upper bound for grid search.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with columns: lb, ub, method, Delta, Mbar.
+        One row per value of :math:`\bar{M}` with columns:
+
+        - **lb**: Lower bound of the robust confidence interval
+        - **ub**: Upper bound of the robust confidence interval
+        - **method**: Confidence interval method
+        - **delta**: Restriction set, such as 'DeltaRM' or 'DeltaRMPB'
+        - **Mbar**: Relative magnitude bound :math:`\bar{M}`
 
     See Also
     --------
@@ -416,6 +430,7 @@ def create_sensitivity_results_rm(
             "grid_points": grid_points,
             "grid_lb": current_grid_lb,
             "grid_ub": current_grid_ub,
+            "seed": seed,
         }
 
         if monotonicity_direction is not None:
@@ -450,7 +465,7 @@ def construct_original_cs(
     r"""Construct original (non-robust) confidence set.
 
     Constructs a standard confidence interval for the parameter of interest
-    assuming the parallel trends assumption holds exactly, i.e.,
+    assuming the parallel trends assumption holds exactly, so that
     :math:`\delta_{post} = 0`. This provides a baseline for comparison with
     robust confidence intervals from sensitivity analysis. The original
     confidence set uses only the post-treatment coefficients and their
@@ -478,7 +493,12 @@ def construct_original_cs(
     Returns
     -------
     OriginalCSResult
-        NamedTuple with lb, ub, method="Original", delta=None.
+        NamedTuple containing:
+
+        - **lb**: Lower bound of the confidence interval
+        - **ub**: Upper bound of the confidence interval
+        - **method**: The string "Original"
+        - **delta**: None, since no restriction is imposed
 
     See Also
     --------

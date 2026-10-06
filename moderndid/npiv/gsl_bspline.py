@@ -1,12 +1,13 @@
 """B-spline basis functions for nonparametric estimation."""
 
 import warnings
-from typing import NamedTuple
 
 import numpy as np
 from scipy.interpolate import BSpline
+from scipy.special import factorial
 
 from ..cupy.backend import get_backend, to_device, to_numpy
+from .container import BSplineBasis
 
 try:
     from cupyx.scipy.interpolate import BSpline as CupyBSpline
@@ -15,27 +16,6 @@ try:
 except ImportError:
     _HAS_CUPY_SPLINE = False
     CupyBSpline = None
-
-
-class BSplineBasis(NamedTuple):
-    """Container for B-spline basis construction results."""
-
-    #: B-spline basis matrix.
-    basis: np.ndarray
-    #: Degree of the B-spline.
-    degree: int
-    #: Number of breakpoints.
-    nbreak: int
-    #: Derivative order.
-    deriv: int
-    #: Minimum x value.
-    x_min: float
-    #: Maximum x value.
-    x_max: float
-    #: Knot positions.
-    knots: np.ndarray | None
-    #: Whether an intercept column is included.
-    intercept: bool
 
 
 def gsl_bs(
@@ -52,6 +32,10 @@ def gsl_bs(
 
     Creates a B-spline basis matrix for a given set of data points,
     supporting derivative computation and boundary extrapolation.
+
+    Points outside ``[x_min, x_max]`` get the Taylor expansion of the boundary
+    polynomial piece. The basis and its derivatives therefore stay continuous
+    at the boundary.
 
     Parameters
     ----------
@@ -77,20 +61,14 @@ def gsl_bs(
     BSplineBasis
         NamedTuple containing:
 
-        - basis: B-spline basis matrix
-        - degree: Degree of the spline
-        - nbreak: Number of breakpoints
-        - deriv: Derivative order
-        - x_min: Minimum support value
-        - x_max: Maximum support value
-        - knots: Knot locations used
-        - intercept: Whether intercept was included
-
-    References
-    ----------
-
-    .. [1] de Boor, C. (1978). A Practical Guide to Splines.
-        Springer-Verlag.
+        - **basis**: B-spline basis matrix
+        - **degree**: Degree of the spline
+        - **nbreak**: Number of breakpoints
+        - **deriv**: Derivative order
+        - **x_min**: Minimum support value
+        - **x_max**: Maximum support value
+        - **knots**: Knot locations used
+        - **intercept**: Whether intercept was included
     """
     x = to_numpy(x).ravel()
     n = len(x)
@@ -254,7 +232,8 @@ def _compute_bspline_basis(
         ord_ = degree + 1
         derivs = np.arange(deriv, degree + 1)
 
-        scalef = 1 if ord_ == deriv else np.array([np.prod(np.arange(1, ord_ - deriv + 1))])
+        # Term k of the Taylor expansion at the boundary is divided by k!.
+        scalef = factorial(np.arange(ord_ - deriv))[:, None]
 
         if np.any(ol) and (ord_ > deriv):
             k_pivot = x_min

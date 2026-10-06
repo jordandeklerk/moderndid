@@ -471,10 +471,6 @@ class DIDInterTreatmentValidator(BaseValidator):
         if n_switchers == 0:
             errors.append("No units change treatment. Cannot estimate effects.")
 
-        n_never_switchers = int((treatment_changes["n_unique"] == 1).sum())
-        if n_never_switchers == 0:
-            warnings.append("No never-switchers found. Control group will be empty.")
-
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
 

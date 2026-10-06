@@ -116,9 +116,11 @@ def format_didinter_result(result: DIDInterResult) -> str:
 
     lines.extend(format_section_header("Inference"))
     lines.append(f" Confidence level: {conf_level}%")
+    if params.get("boot"):
+        lines.append(" Standard errors: Bootstrap")
     if params.get("cluster"):
         lines.append(f" Clustered standard errors: {params['cluster']}")
-    else:
+    elif not params.get("boot"):
         lines.append(" Standard errors: Analytical")
 
     if result.vcov_warnings:

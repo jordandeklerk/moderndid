@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from moderndid.npiv import lepski
 from moderndid.npiv.lepski import npiv_j, npiv_jhat_max
 
 
@@ -285,3 +286,72 @@ def test_integrated_lepski_workflow(simple_data):
 
     assert lepski_result["j_tilde"] > 0
     assert lepski_result["j_tilde"] <= jhat_result["j_hat_max"]
+
+
+def test_jhat_max_stops_where_sieve_measure_is_zero(simple_data, monkeypatch):
+    _, x, w = simple_data
+    monkeypatch.setattr(lepski, "_compute_sieve_measure", lambda *args: 0.0 if args[2] >= 4 else 0.5)
+
+    result = npiv_jhat_max(x=x, w=w)
+
+    np.testing.assert_array_equal(result["j_x_segments_set"], [1, 2])
+    assert result["j_hat_max"] == 5
+
+
+def test_sieve_measure_failure_returns_zero(simple_data, monkeypatch):
+    _, x, w = simple_data
+
+    def broken_svd(*args, **kwargs):
+        raise np.linalg.LinAlgError("SVD did not converge")
+
+    monkeypatch.setattr(np.linalg, "svd", broken_svd)
+
+    assert (
+        lepski._compute_sieve_measure(x, w, 2, 8, 3, 4, 1, 1, "uniform", "tensor", None, None, None, None, 200) == 0.0
+    )
+
+
+def test_lepski_zero_support_bound_is_used(simple_data):
+    y, x, w = simple_data
+    kwargs = {"j_x_segments_set": np.array([2, 4]), "k_w_segments_set": np.array([8, 16]), "biters": 20, "seed": 1}
+
+    zero = npiv_j(y=y, x=x, w=w, w_min=0.0, w_max=1.0, **kwargs)
+    tiny = npiv_j(y=y, x=x, w=w, w_min=1e-300, w_max=1.0, **kwargs)
+    data = npiv_j(y=y, x=x, w=w, w_max=1.0, **kwargs)
+
+    assert zero["theta_star"] == pytest.approx(tiny["theta_star"], rel=1e-9)
+    assert zero["theta_star"] != data["theta_star"]
+
+
+def test_lepski_additive_matches_tensor_with_one_regressor(simple_data):
+    y, x, w = simple_data
+    kwargs = {
+        "j_x_segments_set": np.array([1, 2, 4]),
+        "k_w_segments_set": np.array([4, 8, 16]),
+        "biters": 30,
+        "seed": 2,
+    }
+
+    tensor = npiv_j(y=y, x=x, w=w, basis="tensor", **kwargs)
+    additive = npiv_j(y=y, x=x, w=w, basis="additive", **kwargs)
+
+    assert additive["theta_star"] == pytest.approx(tensor["theta_star"], rel=1e-8)
+    np.testing.assert_allclose(additive["z_sup"], tensor["z_sup"], rtol=1e-8)
+    assert additive["j_x_seg"] == tensor["j_x_seg"]
+
+
+def test_lepski_sieve_measure_additive_matches_tensor_with_one_regressor(simple_data):
+    _, x, w = simple_data
+    common = (x, w, 2, 8, 3, 4, 1, 1, "uniform")
+
+    tensor = lepski._compute_sieve_measure(*common, "tensor", None, None, None, None, len(x))
+    additive = lepski._compute_sieve_measure(*common, "additive", None, None, None, None, len(x))
+
+    assert additive == pytest.approx(tensor, rel=1e-8)
+
+
+def test_lepski_unidentified_dimension_raises(simple_data):
+    y, x, w = simple_data
+
+    with pytest.raises(ValueError, match="not identified"):
+        npiv_j(y=y, x=x, w=w, j_x_segments_set=np.array([2, 8]), k_w_segments_set=np.array([3, 4]), biters=10)

@@ -1,4 +1,4 @@
-"""Andrews-Roth-Pakes (APR) confidence intervals with no nuisance parameters."""
+"""ARP confidence intervals with no nuisance parameters."""
 
 import warnings
 from typing import NamedTuple
@@ -62,7 +62,7 @@ def compute_arp_ci(
     flci_l=None,
     lf_cv=None,
 ):
-    r"""Compute Andrews-Roth-Pakes (ARP) confidence interval with no nuisance parameters.
+    r"""Compute the ARP confidence interval with no nuisance parameters.
 
     Constructs confidence intervals for the parameter of interest :math:`\theta = l' \tau_{\text{post}}`
     in the special case where :math:`\bar{T} = 1` (single post-treatment period), which means
@@ -71,7 +71,7 @@ def compute_arp_ci(
 
     For each value :math:`\bar{\theta}` on a grid, the method tests the null hypothesis
     :math:`H_0: \theta = \bar{\theta}, \delta \in \Delta` where :math:`\Delta = \{\delta: A \delta \leq d\}`.
-    Following the results from [1]_, this is equivalent to testing whether there exists
+    This is equivalent to testing whether there exists
     :math:`\tau_{\text{post}} \in \mathbb{R}^{\bar{T}}` such that :math:`l' \tau_{\text{post}} = \bar{\theta}`
     and
 
@@ -82,7 +82,7 @@ def compute_arp_ci(
 
     where :math:`Y_n = A \hat{\beta}_n - d` and :math:`L_{\text{post}} = [0, I]'`.
 
-    In the no-nuisance case (:math:`\bar{T} = 1`), the profiled test statistic from equation (14) in [2]_
+    In the no-nuisance case (:math:`\bar{T} = 1`), the profiled test statistic
     simplifies to :math:`\hat{\eta} = \max_i (A \hat{\beta}_n - d)_i / \tilde{\sigma}_{n,i}` where
     :math:`\tilde{\sigma}_{n,i} = \sqrt{(A \Sigma_n A')_{ii}}`. The test conditions on the event
     that constraint :math:`j = \arg\max_i (A \hat{\beta}_n - d)_i / \tilde{\sigma}_{n,i}` is binding,
@@ -133,14 +133,6 @@ def compute_arp_ci(
     APRCIResult
         NamedTuple containing CI bounds, grid of tested values, acceptance
         indicators, and optimization status.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     beta_hat = np.asarray(beta_hat).flatten()
     sigma = np.asarray(sigma)
@@ -247,16 +239,18 @@ def test_in_identified_set(
     d,
     alpha,
     _precomputed=None,
+    a_bar_extra=None,
+    d_bar_extra=None,
     **kwargs,
 ):
     r"""Test whether :math:`\bar{\theta}` lies in the identified set using the ARP conditional approach.
 
     Tests the null hypothesis :math:`H_0: \theta = \bar{\theta}, \delta \in \Delta` by checking
     whether the moment inequalities :math:`\mathbb{E}[\tilde{Y}_n(\bar{\theta}) - \tilde{X}\tilde{\tau}] \leq 0`
-    hold for some :math:`\tilde{\tau}` (equation 13 in [2]_). In the no-nuisance case where :math:`\bar{T} = 1`,
+    hold for some :math:`\tilde{\tau}`. In the no-nuisance case where :math:`\bar{T} = 1`,
     there is no :math:`\tilde{\tau}` to optimize over.
 
-    Following equations (14)-(15) in [2]_, the test statistic is the solution to the dual program
+    The test statistic is the solution to the dual program
 
     .. math::
         \hat{\eta} = \max_{\gamma} \gamma' \tilde{Y}_n(\bar{\theta})
@@ -270,6 +264,7 @@ def test_in_identified_set(
     The test conditions on the event :math:`\{\gamma_* \in \hat{V}_n, S_n = s\}` where :math:`\gamma_*`
     is the optimal vertex. Under this conditioning, :math:`\hat{\eta}` follows a truncated normal
     distribution with truncation bounds :math:`[v^{lo}, v^{up}]` that ensure :math:`\gamma_*` remains optimal.
+    The test rejects when :math:`\hat{\eta}` exceeds the larger of zero and the conditional critical value.
 
     Parameters
     ----------
@@ -286,6 +281,11 @@ def test_in_identified_set(
         Significance level :math:`\alpha` for the test.
     _precomputed : dict, optional
         Pre-computed A_tilde and d_tilde to avoid redundant computation in grid loops.
+    a_bar_extra : ndarray, optional
+        Extra rows :math:`\bar{A}` added to the conditioning event :math:`\bar{A} Y \leq \bar{d}`
+        without entering the test statistic.
+    d_bar_extra : ndarray, optional
+        Bounds :math:`\bar{d}` for ``a_bar_extra``.
     **kwargs
         Unused parameters for compatibility with hybrid tests.
 
@@ -293,14 +293,6 @@ def test_in_identified_set(
     -------
     bool
         True if null is NOT rejected (i.e., :math:`\theta_0` is in the confidence set).
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if _precomputed is not None:
         A_tilde = _precomputed["A_tilde"]
@@ -315,46 +307,30 @@ def test_in_identified_set(
     max_location = np.argmax(normalized_moments)
     max_moment = normalized_moments[max_location]
 
-    # If max_moment is positive, we have a constraint violation
-    # In this case, we need to check if it's statistically significant
     if max_moment <= 0:
         return True
 
-    # Construct conditioning event
     T_B = selection_matrix([max_location + 1], size=len(normalized_moments), select="rows")
     iota = np.ones((len(normalized_moments), 1))
 
     gamma = A_tilde.T @ T_B.T
     A_bar = A_tilde - iota @ T_B @ A_tilde
     d_bar = (np.eye(len(d_tilde)) - iota @ T_B) @ d_tilde
+    if a_bar_extra is not None:
+        A_bar = np.vstack([A_bar, a_bar_extra])
+        d_bar = np.concatenate([d_bar, d_bar_extra])
 
-    # Compute conditional distribution parameters
     sigma_bar = np.sqrt(gamma.T @ sigma @ gamma).item()
     c = sigma @ gamma / (gamma.T @ sigma @ gamma).item()
     z = (np.eye(len(y)) - c @ gamma.T) @ y
 
     v_lo, v_up = compute_bounds(eta=gamma, sigma=sigma, A=A_bar, b=d_bar, z=z)
 
-    # Check if the observed max_moment is within the truncation bounds
-    # If max_moment < v_lo, then the observed value is outside the conditional support
-    # and we should reject (this point cannot arise under the null)
-    if max_moment < v_lo:
-        # The observed value is impossible under the null hypothesis
-        # given the conditioning event, so we reject
-        return False
+    # The truncation bounds and quantile refer to gamma'y, the moment plus its bound.
+    bound = d_tilde[max_location]
+    quantile = _norminvp_generalized(p=1 - alpha, lower=v_lo, upper=v_up, mu=bound, sd=sigma_bar)
 
-    critical_val = max(
-        0,
-        _norminvp_generalized(
-            p=1 - alpha,
-            lower=v_lo,
-            upper=v_up,
-            mu=(T_B @ d_tilde).item(),
-            sd=sigma_bar,
-        ),
-    )
-
-    reject = max_moment > critical_val
+    reject = max_moment > max(0.0, quantile - bound)
     return not reject
 
 
@@ -371,20 +347,19 @@ def test_in_identified_set_flci_hybrid(
 ):
     r"""Hybrid test combining fixed-length confidence interval (FLCI) constraints with ARP conditional test.
 
-    Implements a two-stage hybrid test following the general structure described in Section 3.2
-    of [2]_. The first stage checks whether the FLCI constraints :math:`|\ell' Y| \leq h_{FLCI}`
-    are satisfied, where :math:`\ell` is an optimally chosen weight vector and :math:`h_{FLCI}`
-    is the FLCI half-length. If these constraints are violated (i.e., if :math:`|\ell' Y| > h_{FLCI}`),
-    the test rejects immediately with size :math:`\kappa`.
+    Implements a two-stage hybrid test. The first stage checks whether the FLCI constraints
+    :math:`|\ell' Y| \leq h_{FLCI}` are satisfied, where :math:`\ell` is an optimally chosen weight
+    vector and :math:`h_{FLCI}` is the FLCI half-length. If these constraints are violated,
+    meaning :math:`|\ell' Y| > h_{FLCI}`, the test rejects immediately with size :math:`\kappa`.
 
-    If the first stage does not reject, the second stage proceeds with a modified conditional
-    test that includes the FLCI constraints in the constraint set. Following the hybrid approach,
-    the second stage uses adjusted size :math:`\tilde{\alpha} = \frac{\alpha - \kappa}{1 - \kappa}`
-    to ensure overall size :math:`\alpha` control.
+    If the first stage does not reject, the second stage runs the conditional test on the original
+    moments and adds the event that the first stage passed to its conditioning event. Following the
+    hybrid approach, the second stage uses adjusted size
+    :math:`\tilde{\alpha} = \frac{\alpha - \kappa}{1 - \kappa}` to ensure overall size :math:`\alpha` control.
 
-    The FLCI constraints :math:`|\ell' Y| \leq h_{FLCI}` are reformulated as two linear inequalities:
-    :math:`\ell' Y \leq h_{FLCI}` and :math:`-\ell' Y \leq h_{FLCI}`, which are added to the
-    original constraint set :math:`\Delta = \{\delta : A\delta \leq d\}` for the second stage test.
+    The FLCI constraints :math:`|\ell' Y| \leq h_{FLCI}` are reformulated as two linear inequalities,
+    :math:`\ell' Y \leq h_{FLCI}` and :math:`-\ell' Y \leq h_{FLCI}`. They narrow the truncation bounds
+    of the second stage but do not enter its test statistic.
 
     Parameters
     ----------
@@ -403,7 +378,7 @@ def test_in_identified_set_flci_hybrid(
     flci_halflength : float
         Half-length :math:`h_{FLCI}` of the fixed-length confidence interval.
     flci_l : ndarray
-        Weight vector :math:`\ell` from FLCI optimization.
+        Weight vector :math:`\ell` from FLCI optimization over all event study coefficients.
     **kwargs
         Unused parameters for compatibility.
 
@@ -418,14 +393,6 @@ def test_in_identified_set_flci_hybrid(
     by minimizing worst-case CI length. This often provides tighter bounds than
     the least favorable approach, especially when :math:`\Delta` has special
     structure like smoothness restrictions.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     # First stage: test FLCI constraint
     flci_l = np.asarray(flci_l).flatten()
@@ -437,20 +404,16 @@ def test_in_identified_set_flci_hybrid(
     if np.max(A_firststage @ y - d_firststage) > 0:
         return False
 
-    # Second stage: run modified APR test
-    # Adjust significance level
     alpha_tilde = (alpha - hybrid_kappa) / (1 - hybrid_kappa)
-
-    # Add first-stage constraints to main constraints
-    A_combined = np.vstack([A, A_firststage])
-    d_combined = np.hstack([d, d_firststage])
 
     return test_in_identified_set(
         y=y,
         sigma=sigma,
-        A=A_combined,
-        d=d_combined,
+        A=A,
+        d=d,
         alpha=alpha_tilde,
+        a_bar_extra=A_firststage,
+        d_bar_extra=d_firststage,
     )
 
 
@@ -468,23 +431,24 @@ def test_in_identified_set_lf_hybrid(
     r"""Conditional-least favorable (LF) hybrid test.
 
     Implements the conditional-LF hybrid test that combines a least favorable (LF) first stage
-    with a conditional second stage. As described in [1]_, the distribution of :math:`\hat{\eta}`
-    under the null is bounded above (in the sense of first-order stochastic dominance) by
-    the distribution when :math:`\tilde{\mu}(\bar{\theta}) = 0`.
+    with a conditional second stage. The distribution of :math:`\hat{\eta}` under the null is
+    bounded above (in the sense of first-order stochastic dominance) by the distribution when
+    :math:`\tilde{\mu}(\bar{\theta}) = 0`.
 
     The first stage uses a size-:math:`\kappa` LF test that rejects when
     :math:`\hat{\eta} > c_{LF,\kappa}`, where :math:`c_{LF,\kappa}` is the :math:`1-\kappa`
     quantile of :math:`\max_{\gamma \in V(\Sigma)} \gamma' \xi` with :math:`\xi \sim \mathcal{N}(0, \tilde{\Sigma}_n)`.
     This critical value can be calculated by simulation as it depends only on :math:`\tilde{\Sigma}_n`.
 
-    If the first stage does not reject, the second stage conducts a modified conditional test
-    with size :math:`\frac{\alpha - \kappa}{1 - \kappa}` that also conditions on the event
-    :math:`\{\hat{\eta} \leq c_{LF,\kappa}\}`. The truncation upper bound becomes
-    :math:`v_H^{up} = \min\{v^{up}, c_{LF,\kappa}\}`, ensuring the test conditions on passing
-    the first stage.
+    If the first stage does not reject, the second stage runs the conditional test with size
+    :math:`\frac{\alpha - \kappa}{1 - \kappa}`. It conditions only on which normalized moment is
+    largest and leaves the event :math:`\{\hat{\eta} \leq c_{LF,\kappa}\}` out of its conditioning
+    event. Since the truncation interval is never narrower without that event, the critical value is
+    never smaller. The test therefore still controls size but can be more conservative than a second
+    stage that truncates at :math:`c_{LF,\kappa}`.
 
     This hybrid approach improves power when binding and non-binding moments are close together
-    (relative to sampling variation) while maintaining exact size :math:`\alpha` control.
+    (relative to sampling variation) while keeping the size at most :math:`\alpha`.
 
     Parameters
     ----------
@@ -511,14 +475,6 @@ def test_in_identified_set_lf_hybrid(
     -------
     bool
         True if null is NOT rejected (value is in identified set).
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2023). Inference for Linear
-        Conditional Moment Inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if _precomputed is not None:
         A_tilde = _precomputed["A_tilde"]
@@ -553,18 +509,11 @@ def test_in_identified_set_lf_hybrid(
     v_lo, v_up = compute_bounds(eta=gamma, sigma=sigma, A=A_bar, b=d_bar, z=z)
     alpha_tilde = (alpha - hybrid_kappa) / (1 - hybrid_kappa)
 
-    critical_val = max(
-        0,
-        _norminvp_generalized(
-            p=1 - alpha_tilde,
-            lower=v_lo,
-            upper=v_up,
-            mu=(T_B @ d_tilde).item(),
-            sd=sigma_bar,
-        ),
-    )
+    # The truncation bounds and quantile refer to gamma'y, the moment plus its bound.
+    bound = d_tilde[max_location]
+    quantile = _norminvp_generalized(p=1 - alpha_tilde, lower=v_lo, upper=v_up, mu=bound, sd=sigma_bar)
 
-    reject = max_moment > critical_val
+    reject = max_moment > max(0.0, quantile - bound)
     return not reject
 
 

@@ -7,8 +7,12 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
+import moderndid.didinter.compute_did_multiplegt as compute_module
 from moderndid import did_multiplegt
+from moderndid.core.preprocess.config import DIDInterConfig
 from moderndid.didinter import ATEResult, DIDInterResult, EffectsResult, PlacebosResult
+from moderndid.didinter.bootstrap import cluster_bootstrap
+from moderndid.didinter.container import BootstrapResult
 
 
 def test_basic_estimation(simple_panel_data):
@@ -304,6 +308,7 @@ def test_influence_functions_returned(simple_panel_data):
         ("placebo", 2),
         ("normalized", True),
         ("same_switchers", True),
+        ("boot", False),
     ],
 )
 def test_estimation_params_stored(simple_panel_data, param_key, expected_value):
@@ -509,3 +514,610 @@ def test_warnings_for_options(simple_panel_data, kwargs, expected_warning):
             effects=1,
             **kwargs,
         )
+
+
+def test_clustered_ate_standard_error_sums_influence_within_clusters(clustered_panel_data):
+    result = did_multiplegt(
+        clustered_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        cluster="cluster",
+    )
+
+    weights = result.effects.n_switchers / result.effects.n_switchers.sum()
+    denominator = weights @ result.effects.estimates / result.ate.estimate
+    ate_influence = result.influence_effects @ weights / denominator
+    cluster_sums = np.bincount(np.arange(50) // 10, weights=ate_influence)
+
+    np.testing.assert_allclose(result.ate.std_error, np.sqrt(np.sum(cluster_sums**2)) / 50, rtol=1e-12)
+
+
+def test_clustered_placebo_joint_test_uses_uncentered_cluster_sums(clustered_panel_data):
+    result = did_multiplegt(
+        clustered_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        placebo=2,
+        cluster="cluster",
+    )
+
+    clusters = np.arange(50) // 10
+    sums = np.column_stack([np.bincount(clusters, weights=col) for col in result.influence_placebos.T])
+    vcov = sums.T @ sums / 50**2
+    estimates = result.placebos.estimates
+
+    np.testing.assert_allclose(np.sqrt(np.diag(vcov)), result.placebos.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(
+        result.placebo_joint_test["chi2_stat"], estimates @ np.linalg.solve(vcov, estimates), rtol=1e-10
+    )
+
+
+def test_placebo_joint_test_uses_uncentered_covariance(simple_panel_data):
+    result = did_multiplegt(
+        simple_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        placebo=2,
+    )
+
+    vcov = result.influence_placebos.T @ result.influence_placebos / 50**2
+    estimates = result.placebos.estimates
+
+    np.testing.assert_allclose(
+        result.placebo_joint_test["chi2_stat"], estimates @ np.linalg.solve(vcov, estimates), rtol=1e-10
+    )
+
+
+def test_clustered_effects_equal_test_uses_cluster_sums(clustered_panel_data):
+    result = did_multiplegt(
+        clustered_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=3,
+        effects_equal=True,
+        cluster="cluster",
+    )
+
+    sums = np.column_stack([np.bincount(np.arange(50) // 10, weights=col) for col in result.influence_effects.T])
+    vcov = sums.T @ sums / 50**2
+    contrast = np.eye(2, 3) - np.ones((2, 3)) / 3
+    diff = contrast @ result.effects.estimates
+
+    np.testing.assert_allclose(
+        result.effects_equal_test["chi2_stat"],
+        diff @ np.linalg.solve(contrast @ vcov @ contrast.T, diff),
+        rtol=1e-10,
+    )
+
+
+def test_clustered_se_keeps_groups_missing_their_first_period(clustered_panel_data):
+    kwargs = {
+        "yname": "y",
+        "idname": "id",
+        "tname": "time",
+        "dname": "d",
+        "effects": 2,
+        "placebo": 1,
+        "cluster": "cluster",
+    }
+    first_row = (pl.col("id") == 25) & (pl.col("time") == 1)
+    dropped = clustered_panel_data.filter(~first_row)
+    missing = clustered_panel_data.with_columns(pl.when(first_row).then(None).otherwise(pl.col("y")).alias("y"))
+
+    result_dropped = did_multiplegt(dropped, **kwargs)
+    result_missing = did_multiplegt(missing, **kwargs)
+
+    np.testing.assert_allclose(result_dropped.effects.std_errors, result_missing.effects.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(result_dropped.placebos.std_errors, result_missing.placebos.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(result_dropped.ate.std_error, result_missing.ate.std_error, rtol=1e-12)
+
+
+def test_clustering_leaves_heterogeneity_covariates_as_observed(favara_imbs_data):
+    kwargs = {
+        "yname": "Dl_vloans_b",
+        "idname": "county",
+        "tname": "year",
+        "dname": "inter_bra",
+        "effects": 2,
+        "predict_het": (["state_n"], [-1]),
+    }
+
+    clustered = did_multiplegt(favara_imbs_data, **kwargs, cluster="state_n")
+    unclustered = did_multiplegt(favara_imbs_data, **kwargs)
+
+    for het_clustered, het_unclustered in zip(clustered.heterogeneity, unclustered.heterogeneity, strict=True):
+        assert het_clustered.n_obs == het_unclustered.n_obs
+        np.testing.assert_allclose(het_clustered.estimates, het_unclustered.estimates, rtol=1e-12)
+
+
+def test_placebo_switchers_need_the_outcome_of_the_matching_effect(simple_panel_data):
+    late_outcome = (pl.col("id") >= 20) & (pl.col("id") < 30) & (pl.col("time") == 4)
+    data = simple_panel_data.with_columns(pl.when(late_outcome).then(None).otherwise(pl.col("y")).alias("y"))
+
+    result = did_multiplegt(
+        data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=1,
+        placebo=1,
+    )
+
+    assert result.effects.n_switchers[0] == 20
+    assert result.placebos.n_switchers[0] == 20
+    assert np.all(np.isfinite(result.placebos.std_errors))
+
+
+def test_ate_counts_each_cell_once(simple_panel_data):
+    result = did_multiplegt(
+        simple_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+    )
+
+    assert result.effects.n_observations.tolist() == [80.0, 70.0]
+    assert result.ate.n_observations == 130
+    assert result.ate.n_switchers == 60
+
+
+def test_ate_switcher_count_is_unweighted(weighted_panel_data):
+    result = did_multiplegt(
+        weighted_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        weightsname="w",
+        effects=2,
+    )
+
+    assert result.ate.n_switchers == result.effects.n_switchers.sum()
+
+
+@pytest.mark.filterwarnings("ignore:When trends_lin=True:UserWarning")
+def test_trends_lin_reports_no_ate(simple_panel_data):
+    result = did_multiplegt(
+        simple_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        trends_lin=True,
+    )
+
+    assert result.ate is None
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_bootstrap_reports_bootstrap_ate_standard_error(simple_panel_data, fake_bootstrap, monkeypatch):
+    monkeypatch.setattr(compute_module, "cluster_bootstrap", lambda **kwargs: fake_bootstrap)
+
+    result = did_multiplegt(
+        simple_panel_data,
+        yname="y",
+        idname="id",
+        tname="time",
+        dname="d",
+        effects=2,
+        boot=True,
+    )
+
+    assert result.ate.std_error == 0.25
+    np.testing.assert_allclose(result.ate.estimate - result.ate.ci_lower, 1.959963984540054 * 0.25, rtol=1e-12)
+    np.testing.assert_allclose(result.ate.ci_upper - result.ate.estimate, 1.959963984540054 * 0.25, rtol=1e-12)
+    np.testing.assert_array_equal(result.effects.std_errors, [0.5, 0.6])
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_bootstrap_results_label_their_standard_errors(simple_panel_data, fake_bootstrap, monkeypatch):
+    monkeypatch.setattr(compute_module, "cluster_bootstrap", lambda **kwargs: fake_bootstrap)
+
+    result = did_multiplegt(simple_panel_data, yname="y", idname="id", tname="time", dname="d", effects=2, boot=True)
+
+    assert result.estimation_params["boot"] is True
+    assert " Standard errors: Bootstrap" in str(result)
+    assert "Analytical" not in str(result)
+    assert result.__maketables_stat__("se_type") == "Bootstrap"
+    assert result.__maketables_vcov_info__ == {"vcov_type": "bootstrap", "clustervar": None}
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+def test_bootstrap_matches_fits_on_relabelled_cluster_copies(clustered_panel_data, fixed_draws, relabel_cluster_copies):
+    draws = [[0, 0, 2, 3, 3], [1, 2, 2, 4, 4], [0, 1, 1, 3, 4]]
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 1}
+
+    result = did_multiplegt(
+        clustered_panel_data, **kwargs, cluster="cluster", boot=True, biters=3, random_state=fixed_draws(draws)
+    )
+    fits = [
+        did_multiplegt(relabel_cluster_copies(clustered_panel_data, draw, "cluster", "id"), **kwargs) for draw in draws
+    ]
+
+    np.testing.assert_allclose(
+        result.effects.std_errors, np.std([fit.effects.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+    np.testing.assert_allclose(
+        result.placebos.std_errors, np.std([fit.placebos.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+    np.testing.assert_allclose(result.ate.std_error, np.std([fit.ate.estimate for fit in fits], ddof=1), rtol=1e-10)
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+@pytest.mark.filterwarnings("ignore:When trends_lin=True:UserWarning")
+@pytest.mark.filterwarnings("ignore:Requested effects=4:UserWarning")
+def test_bootstrap_draw_estimates_the_horizons_its_switchers_reach(
+    clustered_panel_data, fixed_draws, relabel_cluster_copies
+):
+    draws = [[2, 2, 3, 4, 4], [2, 3, 3, 3, 4]]
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 4, "trends_lin": True}
+
+    result = did_multiplegt(
+        clustered_panel_data, **kwargs, cluster="cluster", boot=True, biters=2, random_state=fixed_draws(draws)
+    )
+    fits = [
+        did_multiplegt(relabel_cluster_copies(clustered_panel_data, draw, "cluster", "id"), **kwargs) for draw in draws
+    ]
+
+    np.testing.assert_allclose(
+        result.effects.std_errors[:3], np.std([fit.effects.estimates for fit in fits], axis=0, ddof=1), rtol=1e-10
+    )
+    assert np.isnan(result.effects.std_errors[3])
+
+
+def test_cluster_bootstrap_gives_each_cluster_copy_new_group_ids(clustered_panel_data, fixed_draws, draw_recorder):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d", cluster="cluster")
+
+    result = cluster_bootstrap(
+        clustered_panel_data, config, draw_recorder, biters=1, random_state=fixed_draws([[0, 0, 2, 3, 3]])
+    )
+    drawn = draw_recorder.frames[0]
+    first_cluster = clustered_panel_data.filter(pl.col("cluster") == 0)["y"].to_numpy()
+
+    assert isinstance(result, BootstrapResult)
+    assert drawn.height == 300
+    assert drawn["id"].n_unique() == 50
+    assert drawn.group_by("cluster").agg(pl.col("id").n_unique()).sort("cluster")["id"].to_list() == [20, 10, 20]
+    np.testing.assert_array_equal(
+        np.sort(drawn.filter(pl.col("cluster") == 0)["y"].to_numpy()), np.sort(np.tile(first_cluster, 2))
+    )
+
+
+def test_rows_with_a_missing_cluster_are_dropped_with_a_warning(clustered_panel_data):
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 1}
+    missing = ((pl.col("id") < 3) & (pl.col("time") == 2)) | (pl.col("id") == 40)
+    blanked = clustered_panel_data.with_columns(
+        pl.when(missing).then(None).otherwise(pl.col("cluster")).alias("cluster")
+    )
+
+    with pytest.warns(UserWarning, match="Dropped 9 rows from original data due to a missing cluster in 'cluster'"):
+        result = did_multiplegt(blanked, **kwargs, cluster="cluster")
+    expected = did_multiplegt(clustered_panel_data.filter(~missing), **kwargs, cluster="cluster")
+
+    assert result.n_units == expected.n_units == 49
+    np.testing.assert_array_equal(result.effects.estimates, expected.effects.estimates)
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+    np.testing.assert_array_equal(result.placebos.estimates, expected.placebos.estimates)
+    np.testing.assert_array_equal(result.ate.std_error, expected.ate.std_error)
+
+
+def test_groups_in_more_than_one_cluster_raise(clustered_panel_data):
+    moved = clustered_panel_data.with_columns(
+        pl.when((pl.col("id") == 5) & (pl.col("time") >= 4)).then(3).otherwise(pl.col("cluster")).alias("cluster")
+    )
+
+    with pytest.raises(ValueError, match="Some groups belong to more than one cluster in 'cluster'"):
+        did_multiplegt(moved, yname="y", idname="id", tname="time", dname="d", cluster="cluster")
+
+
+def test_clustering_by_the_group_column_matches_no_clustering(clustered_panel_data):
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 1}
+
+    by_group = did_multiplegt(clustered_panel_data, **kwargs, cluster="id")
+    unclustered = did_multiplegt(clustered_panel_data, **kwargs)
+
+    np.testing.assert_allclose(by_group.effects.std_errors, unclustered.effects.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(by_group.placebos.std_errors, unclustered.placebos.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(by_group.ate.std_error, unclustered.ate.std_error, rtol=1e-12)
+
+
+def test_cluster_bootstrap_leaves_out_rows_without_a_cluster(clustered_panel_data, fixed_draws, draw_recorder):
+    missing = ((pl.col("id") < 3) & (pl.col("time") == 2)) | (pl.col("id") == 40)
+    data = clustered_panel_data.with_columns(pl.when(missing).then(None).otherwise(pl.col("cluster")).alias("cluster"))
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d", cluster="cluster")
+
+    cluster_bootstrap(data, config, draw_recorder, biters=1, random_state=fixed_draws([[0, 1, 2, 3, 4]]))
+    drawn = draw_recorder.frames[0]
+
+    assert drawn.height == 291
+    assert drawn["cluster"].null_count() == 0
+    assert drawn["id"].n_unique() == 49
+
+
+def test_cluster_bootstrap_keeps_a_cluster_without_usable_rows_in_the_pool(
+    clustered_panel_data, fixed_draws, draw_recorder
+):
+    data = clustered_panel_data.with_columns(
+        pl.when(pl.col("cluster") == 4).then(None).otherwise(pl.col("y")).alias("y")
+    )
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d", cluster="cluster")
+    draws = [[4, 4, 4, 4, 4], [0, 1, 2, 3, 4]]
+
+    cluster_bootstrap(data, config, draw_recorder, biters=2, random_state=fixed_draws(draws))
+
+    assert [frame.height for frame in draw_recorder.frames] == [0, 240]
+
+
+def test_bootstrap_warns_once_about_the_rows_it_drops(panel_with_controls):
+    data = panel_with_controls.with_columns(
+        pl.when((pl.col("time") == 2) & (pl.col("id") < 10)).then(None).otherwise(pl.col("x1")).alias("x1"),
+        pl.when(pl.col("id") == 45).then(None).otherwise(pl.col("id") // 10).alias("cluster"),
+    )
+
+    with pytest.warns(UserWarning) as caught:
+        did_multiplegt(
+            data,
+            yname="y",
+            idname="id",
+            tname="time",
+            dname="d",
+            xformla="~ x1",
+            cluster="cluster",
+            boot=True,
+            biters=5,
+            random_state=0,
+        )
+    dropped = [str(w.message) for w in caught if str(w.message).startswith("Dropped")]
+
+    assert dropped == [
+        "Dropped 10 rows from original data due to missing covariates",
+        "Dropped 6 rows from original data due to a missing cluster in 'cluster'",
+    ]
+
+
+def test_placebos_cannot_outnumber_the_effects(simple_panel_data):
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 1}
+
+    with pytest.warns(UserWarning, match="Requested placebo=2 but the number of placebos cannot exceed the number"):
+        result = did_multiplegt(simple_panel_data, **kwargs, placebo=2, same_switchers=True, same_switchers_pl=True)
+    expected = did_multiplegt(simple_panel_data, **kwargs, placebo=1, same_switchers=True, same_switchers_pl=True)
+
+    assert result.estimation_params["placebo"] == 1
+    np.testing.assert_array_equal(result.placebos.estimates, expected.placebos.estimates)
+    np.testing.assert_array_equal(result.placebos.n_switchers, expected.placebos.n_switchers)
+
+
+@pytest.mark.parametrize(("switchers", "directions"), [("", [1, -1]), ("in", [1]), ("out", [-1])])
+def test_first_effect_matches_hand_computation_with_not_yet_switched_controls(
+    two_way_panel_data, first_effect_by_hand, switchers, directions
+):
+    result = did_multiplegt(
+        two_way_panel_data, yname="y", idname="id", tname="time", dname="d", effects=1, switchers=switchers
+    )
+
+    np.testing.assert_allclose(
+        result.effects.estimates[0], first_effect_by_hand(two_way_panel_data, directions), rtol=1e-12
+    )
+
+
+def test_switchers_out_measure_the_effect_with_its_sign(two_way_panel_data):
+    result = did_multiplegt(
+        two_way_panel_data, yname="y", idname="id", tname="time", dname="d", effects=2, switchers="out"
+    )
+
+    assert np.all(result.effects.estimates > 0.5)
+    np.testing.assert_array_equal(result.effects.n_switchers, [12, 12])
+
+
+@pytest.mark.parametrize("cluster", [None, "cluster"])
+def test_pooled_estimates_combine_both_directions_by_switcher_counts(two_way_panel_data, cluster):
+    kwargs = dict(yname="y", idname="id", tname="time", dname="d", effects=2, placebo=1, cluster=cluster)
+    pooled = did_multiplegt(two_way_panel_data, **kwargs)
+    rises = did_multiplegt(two_way_panel_data, **kwargs, switchers="in")
+    falls = did_multiplegt(two_way_panel_data, **kwargs, switchers="out")
+    n_rise, n_fall = rises.effects.n_switchers, falls.effects.n_switchers
+    influence = (n_rise * rises.influence_effects + n_fall * falls.influence_effects) / (n_rise + n_fall)
+    pl_rise, pl_fall = rises.placebos.n_switchers, falls.placebos.n_switchers
+
+    np.testing.assert_allclose(
+        pooled.effects.estimates,
+        (n_rise * rises.effects.estimates + n_fall * falls.effects.estimates) / (n_rise + n_fall),
+        rtol=1e-12,
+    )
+    np.testing.assert_allclose(pooled.influence_effects, influence, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(
+        pooled.placebos.estimates,
+        (pl_rise * rises.placebos.estimates + pl_fall * falls.placebos.estimates) / (pl_rise + pl_fall),
+        rtol=1e-12,
+    )
+    np.testing.assert_array_equal(pooled.effects.n_switchers, n_rise + n_fall)
+    np.testing.assert_array_less(
+        pooled.effects.n_observations, rises.effects.n_observations + falls.effects.n_observations
+    )
+    assert (pooled.n_switchers, rises.n_switchers, falls.n_switchers) == (40, 28, 12)
+    assert pooled.n_units == rises.n_units == falls.n_units == 60
+
+
+@pytest.mark.parametrize(("switchers", "directions"), [("", [1, -1]), ("in", [1]), ("out", [-1])])
+def test_sample_sizes_count_each_cell_once(two_way_panel_data, cells_used_by_hand, switchers, directions):
+    result = did_multiplegt(
+        two_way_panel_data, yname="y", idname="id", tname="time", dname="d", effects=2, placebo=2, switchers=switchers
+    )
+    effect_cells = [cells_used_by_hand(two_way_panel_data, h, directions) for h in (1, 2)]
+    placebo_cells = [cells_used_by_hand(two_way_panel_data, h, directions, placebo=True) for h in (1, 2)]
+
+    np.testing.assert_array_equal(result.effects.n_observations, effect_cells)
+    np.testing.assert_array_equal(result.placebos.n_observations, placebo_cells)
+
+
+def test_switchers_out_without_decreases_raises(simple_panel_data):
+    with pytest.raises(ValueError, match="no switching group whose treatment decreases"):
+        did_multiplegt(simple_panel_data, yname="y", idname="id", tname="time", dname="d", switchers="out")
+
+
+@pytest.mark.filterwarnings("error")
+def test_groups_that_switch_later_are_controls_when_no_group_never_switches(
+    all_switch_panel_data, first_effect_by_hand
+):
+    result = did_multiplegt(all_switch_panel_data, yname="y", idname="id", tname="time", dname="d", effects=2)
+
+    np.testing.assert_allclose(
+        result.effects.estimates[0], first_effect_by_hand(all_switch_panel_data, [1, -1]), rtol=1e-12
+    )
+    np.testing.assert_array_equal(result.effects.n_switchers, [45, 15])
+    assert result.n_never_switchers == 0
+
+
+@pytest.mark.parametrize(("switchers", "n_effects"), [("", 2), ("in", 2), ("out", 1)])
+def test_requested_horizons_stop_where_the_controls_run_out(all_switch_panel_data, switchers, n_effects):
+    kwargs = dict(yname="y", idname="id", tname="time", dname="d", effects=3, placebo=3, switchers=switchers)
+
+    with (
+        pytest.warns(UserWarning, match=f"effects can only be estimated up to horizon {n_effects}"),
+        pytest.warns(UserWarning, match="placebos can only be estimated up to horizon 1"),
+    ):
+        result = did_multiplegt(all_switch_panel_data, **kwargs)
+
+    np.testing.assert_array_equal(result.effects.horizons, np.arange(1, n_effects + 1))
+    np.testing.assert_array_equal(result.placebos.horizons, [-1])
+    assert np.all(np.isfinite(result.effects.std_errors))
+    assert np.isfinite(result.placebos.std_errors[0])
+
+
+@pytest.mark.parametrize(
+    "coding",
+    [
+        pl.col("time") - 1,
+        2000 + 2 * pl.col("time"),
+        pl.col("time").replace_strict({1: 3, 2: 4, 3: 9, 4: 10, 5: 17, 6: 30}),
+    ],
+    ids=["zero-based", "spacing-two", "irregular-gaps"],
+)
+@pytest.mark.filterwarnings("ignore:When trends_lin=True:UserWarning")
+@pytest.mark.parametrize("extra", [{}, {"trends_lin": True}, {"cluster": "cluster", "normalized": True}])
+def test_estimates_do_not_depend_on_how_periods_are_coded(two_way_panel_data, coding, extra):
+    kwargs = dict(yname="y", idname="id", tname="time", dname="d", effects=2, placebo=1, **extra)
+    base = did_multiplegt(two_way_panel_data, **kwargs)
+    recoded = did_multiplegt(two_way_panel_data.with_columns(coding.alias("time")), **kwargs)
+
+    np.testing.assert_allclose(recoded.effects.estimates, base.effects.estimates, rtol=1e-12)
+    np.testing.assert_allclose(recoded.effects.std_errors, base.effects.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(recoded.placebos.estimates, base.placebos.estimates, rtol=1e-12)
+    np.testing.assert_array_equal(recoded.effects.n_switchers, base.effects.n_switchers)
+
+
+def test_ate_divides_by_the_average_treatment_change_at_each_horizon(dose_panel_data):
+    result = did_multiplegt(dose_panel_data, yname="y", idname="id", tname="time", dname="d", effects=2)
+
+    weights = np.array([2.0, 1.0]) / 3.0
+    np.testing.assert_array_equal(result.effects.n_switchers, [6, 3])
+    np.testing.assert_allclose(
+        result.ate.estimate, weights @ result.effects.estimates / (weights @ [1.5, 1.0]), rtol=1e-12
+    )
+
+
+@pytest.mark.filterwarnings("ignore:When trends_lin=True:UserWarning")
+@pytest.mark.parametrize("horizon", [1, 2, 3])
+def test_trends_lin_sums_effects_over_the_switchers_that_reach_the_horizon(
+    trends_panel_data, first_differences, trend_switchers_by_hand, horizon
+):
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d"}
+    result = did_multiplegt(trends_panel_data, **kwargs, effects=3, placebo=2, trends_lin=True)
+    same = did_multiplegt(first_differences(trends_panel_data), **kwargs, effects=horizon, same_switchers=True)
+    influence = same.influence_effects.sum(axis=1)
+
+    np.testing.assert_allclose(result.effects.estimates[horizon - 1], same.effects.estimates.sum(), rtol=1e-12)
+    np.testing.assert_allclose(result.effects.std_errors[horizon - 1], np.sqrt(influence @ influence) / influence.size)
+    assert result.effects.n_switchers[horizon - 1] == trend_switchers_by_hand(trends_panel_data, horizon)
+
+
+@pytest.mark.filterwarnings("ignore:When trends_lin=True:UserWarning")
+@pytest.mark.parametrize("horizon", [1, 2])
+def test_trends_lin_sums_placebos_over_the_switchers_that_reach_the_placebo(
+    trends_panel_data, first_differences, horizon
+):
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d"}
+    result = did_multiplegt(trends_panel_data, **kwargs, effects=3, placebo=2, trends_lin=True)
+    same = did_multiplegt(
+        first_differences(trends_panel_data),
+        **kwargs,
+        effects=horizon,
+        placebo=horizon,
+        same_switchers=True,
+        same_switchers_pl=True,
+    )
+    influence = same.influence_placebos.sum(axis=1)
+
+    np.testing.assert_allclose(result.placebos.estimates[horizon - 1], same.placebos.estimates.sum(), rtol=1e-12)
+    np.testing.assert_allclose(result.placebos.std_errors[horizon - 1], np.sqrt(influence @ influence) / influence.size)
+
+
+@pytest.mark.filterwarnings("ignore:When trends_lin=True:UserWarning")
+def test_trends_lin_leaves_differences_across_absent_periods_missing(trends_panel_data):
+    gaps = (pl.col("id") < 24) & (
+        ((pl.col("id") % 4 == 3) & (pl.col("time") == 4))
+        | ((pl.col("id") % 4 == 0) & (pl.col("time") == 5))
+        | ((pl.col("id") % 4 == 1) & (pl.col("time") == 6))
+    )
+    kwargs = {
+        "yname": "y",
+        "idname": "id",
+        "tname": "time",
+        "dname": "d",
+        "effects": 3,
+        "placebo": 2,
+        "trends_lin": True,
+    }
+    absent = did_multiplegt(trends_panel_data.filter(~gaps), **kwargs)
+    blank = did_multiplegt(
+        trends_panel_data.with_columns(pl.when(gaps).then(None).otherwise(pl.col("y")).alias("y")), **kwargs
+    )
+
+    np.testing.assert_allclose(absent.effects.estimates, blank.effects.estimates, rtol=1e-12)
+    np.testing.assert_allclose(absent.effects.std_errors, blank.effects.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(absent.placebos.estimates, blank.placebos.estimates, rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("ignore:When continuous > 0:UserWarning")
+@pytest.mark.parametrize("degree", [1, 2])
+def test_continuous_compares_all_groups_with_period_by_baseline_controls(
+    continuous_panel_data, baseline_trend_controls, degree
+):
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "effects": 3, "placebo": 2}
+    result = did_multiplegt(continuous_panel_data, dname="d", continuous=degree, **kwargs)
+    data, formula = baseline_trend_controls(continuous_panel_data, degree)
+    expected = did_multiplegt(data, dname="d_change", xformla=formula, **kwargs)
+
+    np.testing.assert_allclose(result.effects.estimates, expected.effects.estimates, rtol=1e-12)
+    np.testing.assert_allclose(result.effects.std_errors, expected.effects.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(result.placebos.estimates, expected.placebos.estimates, rtol=1e-12)
+    np.testing.assert_allclose(result.placebos.std_errors, expected.placebos.std_errors, rtol=1e-12)
+    np.testing.assert_allclose(result.ate.estimate, expected.ate.estimate, rtol=1e-12)
+    np.testing.assert_allclose(result.ate.std_error, expected.ate.std_error, rtol=1e-12)
+    np.testing.assert_array_equal(result.effects.n_switchers, [90, 90, 60])
+
+
+def test_same_switchers_pl_restricts_only_the_placebos(simple_panel_data):
+    kwargs = {"yname": "y", "idname": "id", "tname": "time", "dname": "d", "effects": 2, "placebo": 2}
+    same = did_multiplegt(simple_panel_data, **kwargs, same_switchers=True)
+    same_pl = did_multiplegt(simple_panel_data, **kwargs, same_switchers=True, same_switchers_pl=True)
+
+    np.testing.assert_array_equal(same_pl.effects.estimates, same.effects.estimates)
+    np.testing.assert_array_equal(same_pl.effects.n_switchers, [30, 30])
+    np.testing.assert_array_equal(same.placebos.n_switchers, [30, 10])
+    np.testing.assert_array_equal(same_pl.placebos.n_switchers, [10, 10])

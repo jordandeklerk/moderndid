@@ -21,7 +21,7 @@ def test_emfx_simple_returns_emfx_result(etwfe_baseline):
 def test_emfx_simple_overall_att(etwfe_baseline):
     result = emfx(etwfe_baseline, type="simple")
     np.testing.assert_allclose(result.overall_att, -0.04771, atol=1e-4)
-    np.testing.assert_allclose(result.overall_se, 0.012341, atol=1e-4)
+    np.testing.assert_allclose(result.overall_se, 0.013265, atol=1e-6)
 
 
 def test_emfx_simple_no_disaggregated_arrays(etwfe_baseline):
@@ -52,16 +52,42 @@ def test_emfx_event_att_values(etwfe_baseline):
 
 def test_emfx_event_se_values(etwfe_baseline):
     result = emfx(etwfe_baseline, type="event")
-    expected = np.array([0.013204, 0.017089, 0.030408, 0.032949])
-    np.testing.assert_allclose(result.se_by_event, expected, atol=1e-4)
+    expected = np.array([0.013621, 0.018873, 0.035455, 0.033874])
+    np.testing.assert_allclose(result.se_by_event, expected, atol=1e-6)
 
 
-@pytest.mark.parametrize("agg_type", ["event", "group", "calendar"])
-def test_emfx_overall_consistent_across_types(etwfe_baseline, agg_type):
+def test_emfx_group_overall_weights_cohorts_by_size(etwfe_baseline):
+    result = emfx(etwfe_baseline, type="group")
+    sizes = np.array([20.0, 40.0, 131.0])
+    np.testing.assert_allclose(result.overall_att, np.sum(sizes * result.att_by_event) / sizes.sum(), atol=1e-12)
+    np.testing.assert_allclose(result.overall_att, -0.0422662461503152, atol=1e-10)
+    np.testing.assert_allclose(result.overall_se, 0.014378, atol=1e-6)
+
+
+def test_emfx_event_overall_averages_post_event_times(etwfe_never):
+    result = emfx(etwfe_never, type="event", post_only=False)
+    post = result.event_times >= 0
+    np.testing.assert_allclose(result.overall_att, result.att_by_event[post].mean(), atol=1e-12)
+
+
+def test_emfx_calendar_overall_averages_calendar_times(etwfe_baseline):
+    result = emfx(etwfe_baseline, type="calendar")
+    np.testing.assert_allclose(result.overall_att, result.att_by_event.mean(), atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "agg_type,expected",
+    [("group", -0.0310182822287484), ("event", -0.0772398214573151), ("calendar", -0.0417004321312822)],
+)
+def test_emfx_never_overall_matches_cohort_summaries(etwfe_never, agg_type, expected):
+    result = emfx(etwfe_never, type=agg_type)
+    np.testing.assert_allclose(result.overall_att, expected, atol=1e-10)
+
+
+def test_emfx_simple_overall_differs_from_group_summary(etwfe_baseline):
     simple = emfx(etwfe_baseline, type="simple")
-    result = emfx(etwfe_baseline, type=agg_type)
-    np.testing.assert_allclose(result.overall_att, simple.overall_att, atol=1e-10)
-    np.testing.assert_allclose(result.overall_se, simple.overall_se, atol=1e-10)
+    group = emfx(etwfe_baseline, type="group")
+    assert abs(simple.overall_att - group.overall_att) > 1e-3
 
 
 def test_emfx_event_ci_computation(etwfe_baseline):
@@ -89,14 +115,14 @@ def test_emfx_group_values(etwfe_baseline):
     result = emfx(etwfe_baseline, type="group")
     np.testing.assert_array_equal(result.event_times, [2004.0, 2006.0, 2007.0])
     np.testing.assert_allclose(result.att_by_event, [-0.084619, -0.018339, -0.043106], atol=1e-4)
-    np.testing.assert_allclose(result.se_by_event, [0.025016, 0.015958, 0.017891], atol=1e-4)
+    np.testing.assert_allclose(result.se_by_event, [0.025699, 0.020082, 0.018431], atol=1e-6)
 
 
 def test_emfx_calendar_values(etwfe_baseline):
     result = emfx(etwfe_baseline, type="calendar")
     np.testing.assert_array_equal(result.event_times, [2004.0, 2005.0, 2006.0, 2007.0])
     np.testing.assert_allclose(result.att_by_event, [-0.019372, -0.078319, -0.043683, -0.048737], atol=1e-4)
-    np.testing.assert_allclose(result.se_by_event, [0.030820, 0.027551, 0.016639, 0.015147], atol=1e-4)
+    np.testing.assert_allclose(result.se_by_event, [0.022382, 0.030488, 0.018831, 0.015745], atol=1e-6)
 
 
 def test_emfx_event_window(etwfe_baseline):
@@ -125,6 +151,70 @@ def test_emfx_never_event_pretreatment_values(etwfe_never):
     pre_mask = result.event_times < 0
     pre_atts = result.att_by_event[pre_mask]
     np.testing.assert_allclose(pre_atts, [0.003306, 0.025022, 0.024459, 0.0], atol=1e-4)
+
+
+def test_emfx_never_post_only_true_keeps_post_event_times(etwfe_never):
+    result = emfx(etwfe_never, type="event")
+    np.testing.assert_array_equal(result.event_times, [0.0, 1.0, 2.0, 3.0])
+
+
+def test_emfx_never_reference_period_zero_with_nan_se(etwfe_never):
+    result = emfx(etwfe_never, type="event", post_only=False)
+    ref = result.event_times == -1
+    assert result.att_by_event[ref][0] == 0.0
+    assert np.isnan(result.se_by_event[ref][0])
+    assert np.all(np.isfinite(result.se_by_event[~ref]))
+
+
+def test_emfx_notyet_post_only_false_adds_no_pre_periods(etwfe_baseline):
+    with_pre = emfx(etwfe_baseline, type="event", post_only=False)
+    post = emfx(etwfe_baseline, type="event")
+    np.testing.assert_array_equal(with_pre.event_times, post.event_times)
+    np.testing.assert_array_equal(with_pre.att_by_event, post.att_by_event)
+
+
+def test_emfx_does_not_refit(etwfe_baseline, monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("emfx refit the regression")
+
+    monkeypatch.setattr("pyfixest.estimation.estimation.feols", fail)
+    result = emfx(etwfe_baseline, type="event")
+    assert len(result.event_times) == 4
+
+
+def test_emfx_dropped_cells_nan_with_warning(mpdta_state_dummies):
+    data, xformla = mpdta_state_dummies
+    with pytest.warns(UserWarning, match="dropped the treatment cells"):
+        mod = etwfe(data=data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", xformla=xformla)
+    with pytest.warns(UserWarning, match="every aggregate that includes them"):
+        result = emfx(mod, type="event")
+    assert np.all(np.isnan(result.att_by_event))
+    assert np.all(np.isnan(result.se_by_event))
+    assert np.isnan(result.overall_att)
+
+
+@pytest.mark.parametrize(
+    "family,expected_att,expected_se",
+    [("logit", -0.0224197006154885, 0.0102903054621714), ("probit", -0.0225302051434962, 0.0103439266043137)],
+)
+def test_emfx_binary_family_simple(mpdta_moderators, family, expected_att, expected_se):
+    mod = etwfe(
+        data=mpdta_moderators,
+        yname="ybin",
+        tname="year",
+        gname="first.treat",
+        idname="countyreal",
+        family=family,
+    )
+    result = emfx(mod)
+    np.testing.assert_allclose(result.overall_att, expected_att, atol=1e-8)
+    np.testing.assert_allclose(result.overall_se, expected_se, rtol=1e-4)
+
+
+def test_emfx_poisson_default_clusters_by_idname(etwfe_poisson_id):
+    result = emfx(etwfe_poisson_id)
+    np.testing.assert_allclose(result.overall_att, -0.0491937687308089, atol=1e-8)
+    np.testing.assert_allclose(result.overall_se, 0.01375294644126, rtol=1e-4)
 
 
 def test_emfx_never_post_only_fewer_event_times(etwfe_never):
@@ -162,6 +252,11 @@ def test_emfx_invalid_type(etwfe_baseline):
 def test_emfx_wrong_input_type():
     with pytest.raises(TypeError, match="Expected EtwfeResult"):
         emfx("not_a_result", type="simple")
+
+
+def test_emfx_without_model_coefficients_raises(etwfe_baseline):
+    with pytest.raises(ValueError, match="no model_coefficients"):
+        emfx(etwfe_baseline._replace(model_coefficients=None))
 
 
 def test_emfx_preserves_n_obs(etwfe_baseline):

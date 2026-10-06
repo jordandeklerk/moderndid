@@ -43,114 +43,36 @@ def test__get_group_vars(trends_nonparam, expected_len, expected_vars):
 
 
 @pytest.mark.parametrize(
-    "horizon_type,n_horizons,has_l_g",
+    ("n_effects", "expected"),
     [
-        ("effect", 2, True),
-        ("placebo", 1, False),
-        ("effect", 3, True),
+        (1, {1: True, 2: True, 3: True, 4: True, 5: False, 6: False, 7: True, 8: False}),
+        (2, {1: True, 2: False, 3: True, 4: True, 5: False, 6: False, 7: False, 8: False}),
     ],
 )
-def test_compute_same_switchers_mask_basic(horizon_type, n_horizons, has_l_g):
-    config = DIDInterConfig(
-        yname="y",
-        tname="time",
-        gname="id",
-        dname="d",
-    )
+def test_same_switchers_need_an_outcome_change_and_a_control_at_every_effect(reach_panel, n_effects, expected):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d")
 
-    if has_l_g:
-        df = pl.DataFrame(
-            {
-                "id": [1, 1, 2, 2, 3, 3],
-                "time": [1, 2, 1, 2, 1, 2],
-                "L_g": [3.0, 3.0, 2.0, 2.0, 1.0, 1.0],
-            }
-        )
-    else:
-        df = pl.DataFrame(
-            {
-                "id": [1, 1, 1, 2, 2, 2, 3, 3, 3],
-                "time": [1, 2, 3, 1, 2, 3, 1, 2, 3],
-                "F_g": [2.0, 2.0, 2.0, 3.0, 3.0, 3.0, float("inf"), float("inf"), float("inf")],
-            }
-        )
+    result = _compute_same_switchers_mask(reach_panel, config, n_effects, 0, 6)
 
-    result = _compute_same_switchers_mask(df, config, n_horizons=n_horizons, _t_max=3, horizon_type=horizon_type)
-
-    assert "same_switcher_valid" in result.columns
+    flags = dict(result.group_by("id").agg(pl.col("_same_switcher").first()).iter_rows())
+    assert flags == expected
+    assert "_same_switcher_pl" not in result.columns
 
 
-def test_compute_same_switchers_mask_effect_validation():
-    config = DIDInterConfig(
-        yname="y",
-        tname="time",
-        gname="id",
-        dname="d",
-    )
+@pytest.mark.parametrize(
+    ("n_placebos", "expected"),
+    [
+        (1, {1: True, 2: True, 3: True, 4: True, 5: False, 6: False, 7: True, 8: False}),
+        (2, {1: False, 2: False, 3: True, 4: False, 5: False, 6: False, 7: False, 8: False}),
+    ],
+)
+def test_same_switchers_for_placebos_need_every_placebo(reach_panel, n_placebos, expected):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d")
 
-    df = pl.DataFrame(
-        {
-            "id": [1, 1, 2, 2, 3, 3],
-            "time": [1, 2, 1, 2, 1, 2],
-            "L_g": [3.0, 3.0, 2.0, 2.0, 1.0, 1.0],
-        }
-    )
+    result = _compute_same_switchers_mask(reach_panel, config, 1, n_placebos, 6)
 
-    result = _compute_same_switchers_mask(df, config, n_horizons=2, _t_max=2, horizon_type="effect")
-    result_sorted = result.sort(["id", "time"])
-    valid_values = result_sorted["same_switcher_valid"].to_list()
-
-    assert valid_values[0] is True
-    assert valid_values[2] is True
-    assert valid_values[4] is False
-
-
-def test_compute_same_switchers_mask_no_l_g():
-    config = DIDInterConfig(
-        yname="y",
-        tname="time",
-        gname="id",
-        dname="d",
-    )
-
-    df = pl.DataFrame(
-        {
-            "id": [1, 1, 2, 2],
-            "time": [1, 2, 1, 2],
-        }
-    )
-
-    result = _compute_same_switchers_mask(df, config, n_horizons=2, _t_max=2, horizon_type="effect")
-
-    assert "same_switcher_valid" in result.columns
-    assert result["same_switcher_valid"].all()
-
-
-def test_compute_same_switchers_mask_large_n_horizons():
-    config = DIDInterConfig(
-        yname="y",
-        tname="time",
-        gname="id",
-        dname="d",
-    )
-
-    df = pl.DataFrame(
-        {
-            "id": [1, 1, 1, 1, 2, 2, 2, 2],
-            "time": [1, 2, 3, 4, 1, 2, 3, 4],
-            "L_g": [4.0, 4.0, 4.0, 4.0, 2.0, 2.0, 2.0, 2.0],
-        }
-    )
-
-    result = _compute_same_switchers_mask(df, config, n_horizons=3, _t_max=4, horizon_type="effect")
-
-    assert "same_switcher_valid" in result.columns
-
-    id1_valid = result.filter(pl.col("id") == 1)["same_switcher_valid"][0]
-    id2_valid = result.filter(pl.col("id") == 2)["same_switcher_valid"][0]
-
-    assert id1_valid is True
-    assert id2_valid is False
+    flags = dict(result.group_by("id").agg(pl.col("_same_switcher_pl").first()).iter_rows())
+    assert flags == expected
 
 
 def test_compute_delta_d_positive_for_increasing_treatment(switcher_data, basic_config):
@@ -237,7 +159,7 @@ def test_compute_ate_returns_none_for_all_nan():
         "estimates_unnorm": np.array([np.nan, np.nan]),
         "n_switchers": np.array([0.0, 0.0]),
         "n_switchers_weighted": np.array([0.0, 0.0]),
-        "delta_d_arr": np.array([1.0, 1.0]),
+        "ate_delta": np.array([1.0, 1.0]),
     }
     z_crit = 1.96
     n_groups = 100
@@ -255,16 +177,14 @@ def test_compute_ate_returns_none_for_all_nan():
         (np.array([200.0, 100.0]), 2 / 3),
     ],
 )
-def test_compute_ate_weighting_by_switchers(n_switchers, expected_weight_ratio):
+def test_compute_ate_weighting_by_switchers(n_switchers, expected_weight_ratio, ate_variance_inputs):
     effects_results = {
         "estimates": np.array([1.0, 0.0]),
         "estimates_unnorm": np.array([1.0, 0.0]),
-        "std_errors": np.array([0.1, 0.1]),
         "n_switchers": n_switchers,
         "n_switchers_weighted": n_switchers,
-        "delta_d_arr": np.array([1.0, 2.0]),
-        "n_observations": np.array([500.0, 500.0]),
-        "vcov": np.diag([0.01, 0.01]),
+        "ate_delta": np.array([1.0, 1.0]),
+        **ate_variance_inputs(2),
     }
     z_crit = 1.96
     n_groups = 100
@@ -272,6 +192,30 @@ def test_compute_ate_weighting_by_switchers(n_switchers, expected_weight_ratio):
     result = _compute_ate(effects_results, z_crit, n_groups)
 
     np.testing.assert_almost_equal(result.estimate, expected_weight_ratio, decimal=5)
+
+
+def test_compute_ate_divides_by_the_weighted_treatment_changes(ate_variance_inputs):
+    effects_results = {
+        "estimates": np.array([1.2, 0.9]),
+        "estimates_unnorm": np.array([1.2, 0.9]),
+        "n_switchers": np.array([6.0, 3.0]),
+        "n_switchers_weighted": np.array([6.0, 3.0]),
+        "ate_delta": np.array([1.5, 1.0]),
+        **ate_variance_inputs(2),
+    }
+
+    result = _compute_ate(effects_results, 1.96, 100)
+
+    np.testing.assert_allclose(result.estimate, (2 / 3 * 1.2 + 1 / 3 * 0.9) / (2 / 3 * 1.5 + 1 / 3 * 1.0))
+
+
+def test_compute_ate_standard_error_and_size_come_from_influence_functions_and_cells(effects_results_basic):
+    result = _compute_ate(effects_results_basic, 1.96, 100)
+
+    influence = effects_results_basic["influence_func_unnorm"] @ (np.array([100.0, 90.0, 80.0]) / 270.0)
+    cells = effects_results_basic["df"].select(pl.any_horizontal(pl.all() == 1).sum()).item()
+    np.testing.assert_allclose(result.std_error, np.sqrt(np.sum(influence**2)) / 100, rtol=1e-12)
+    assert result.n_observations == cells
 
 
 @pytest.mark.parametrize(

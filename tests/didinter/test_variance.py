@@ -3,9 +3,19 @@
 import numpy as np
 import pytest
 
+from tests.helpers import importorskip
+
+pl = importorskip("polars")
+
 from moderndid.didinter.variance import (
+    compute_cluster_influence,
     compute_clustered_variance,
+    compute_cohort_dof,
+    compute_control_dof,
+    compute_dof_scaling,
     compute_joint_test,
+    compute_path_cohort_dof,
+    compute_union_dof,
 )
 
 
@@ -157,3 +167,175 @@ def test_compute_joint_test_handles_nan_estimates():
 
     assert result is not None
     assert result["df"] == 2
+
+
+def test_compute_cohort_dof_counts_only_weighted_switchers(variance_config):
+    df = pl.DataFrame(
+        {
+            "is_switcher_1": [1, 1, 1, 0],
+            "weight_gt": [1.0, 2.0, 0.0, 1.0],
+            "weighted_diff_1": [1.0, 4.0, 0.0, 9.0],
+            "d_sq": [0.0, 0.0, 0.0, 0.0],
+            "F_g": [3.0, 3.0, 3.0, 4.0],
+            "d_fg": [1.0, 1.0, 1.0, 1.0],
+        }
+    )
+
+    result = compute_cohort_dof(df, 1, variance_config)
+
+    assert result["dof_switcher_1"].to_list() == [2, 2, None, None]
+    np.testing.assert_allclose(result["cohort_mean_1"].to_list()[:2], [5.0 / 3.0, 5.0 / 3.0])
+
+
+def test_compute_cohort_dof_counts_distinct_clusters(variance_config):
+    df = pl.DataFrame(
+        {
+            "is_switcher_1": [1, 1, 1, 0],
+            "weight_gt": [1.0, 1.0, 1.0, 1.0],
+            "weighted_diff_1": [0.1, 0.2, 0.3, 0.4],
+            "d_sq": [0.0, 0.0, 0.0, 0.0],
+            "F_g": [3.0, 3.0, 3.0, 3.0],
+            "d_fg": [1.0, 1.0, 1.0, 1.0],
+            "cl": [1, 1, 2, 3],
+        }
+    )
+
+    result = compute_cohort_dof(df, 1, variance_config, "cl")
+
+    assert result["dof_switcher_1"].to_list() == [2, 2, 2, None]
+
+
+def test_compute_control_dof_skips_zero_weight_rows(variance_config):
+    df = pl.DataFrame(
+        {
+            "time": [2, 2, 2, 2],
+            "d_sq": [0.0, 0.0, 0.0, 0.0],
+            "never_change_1": [1.0, 1.0, 1.0, None],
+            "weight_gt": [1.0, 1.0, 0.0, 1.0],
+            "weighted_diff_1": [0.5, 1.5, 0.0, 0.0],
+        }
+    )
+
+    result = compute_control_dof(df, 1, variance_config)
+
+    assert result["dof_control_1"].to_list() == [2, 2, None, None]
+    assert result["control_mean_1"].to_list()[:2] == [1.0, 1.0]
+
+
+def test_compute_control_dof_counts_distinct_clusters(variance_config):
+    df = pl.DataFrame(
+        {
+            "time": [2, 2, 2, 2],
+            "d_sq": [0.0, 0.0, 0.0, 0.0],
+            "never_change_1": [1.0, 1.0, 0.0, 1.0],
+            "weight_gt": [1.0, 1.0, 1.0, 1.0],
+            "weighted_diff_1": [0.0, 0.0, 0.0, 0.0],
+            "cl": [5, 6, 7, 6],
+        }
+    )
+
+    result = compute_control_dof(df, 1, variance_config, "cl")
+
+    assert result["dof_control_1"].to_list() == [2, 2, None, 2]
+
+
+def test_compute_union_dof_counts_distinct_weighted_clusters(variance_config):
+    df = pl.DataFrame(
+        {
+            "time": [3, 3, 3, 3, 3],
+            "d_sq": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "is_switcher_1": [1, 0, 0, 0, None],
+            "never_change_1": [0.0, 1.0, 1.0, 0.0, None],
+            "weight_gt": [1.0, 1.0, 0.0, 1.0, 1.0],
+            "weighted_diff_1": [0.0, 0.0, 0.0, 0.0, 0.0],
+            "cl": [1, 2, 3, 4, 5],
+        }
+    )
+
+    result = compute_union_dof(df, 1, variance_config, "cl")
+
+    assert result["dof_union_1"].to_list() == [2, 2, None, None, None]
+
+
+@pytest.mark.parametrize("less_conservative_se", [False, True])
+def test_compute_dof_scaling_applies_with_less_conservative_se(variance_config, less_conservative_se):
+    variance_config.less_conservative_se = less_conservative_se
+    df = pl.DataFrame(
+        {
+            "time": [3, 2, 5],
+            "F_g": [3.0, 3.0, 3.0],
+            "dof_switcher_1": [4, None, None],
+            "dof_control_1": [None, 5, None],
+            "dof_union_1": [None, None, 1],
+        }
+    )
+
+    result = compute_dof_scaling(df, 1, variance_config)
+
+    np.testing.assert_allclose(result["dof_scale_1"].to_list(), [np.sqrt(4 / 3), np.sqrt(5 / 4), 1.0])
+
+
+def test_compute_path_cohort_dof_falls_back_to_coarser_paths(variance_config):
+    df = pl.DataFrame(
+        {
+            "is_switcher_2": [1, 1, 1, 1],
+            "weight_gt": [1.0, 1.0, 1.0, 1.0],
+            "weighted_diff_2": [1.0, 3.0, 5.0, 11.0],
+            "path_0": [0, 0, 0, 0],
+            "path_1": [1, 1, 1, 2],
+            "path_2": [3, 3, 4, 5],
+            "valid_cohort_1": [1, 1, 1, 0],
+            "valid_cohort_2": [1, 1, 0, 0],
+        }
+    )
+
+    result = compute_path_cohort_dof(df, 2, variance_config)
+
+    assert result["dof_switcher_2"].to_list() == [2, 2, 3, 4]
+    np.testing.assert_allclose(result["cohort_mean_2"].to_list(), [2.0, 2.0, 3.0, 5.0])
+    assert not any(col.startswith("_path_") for col in result.columns)
+
+
+def test_compute_path_cohort_dof_ignores_clusters_and_zero_weights(variance_config):
+    df = pl.DataFrame(
+        {
+            "is_switcher_1": [1, 1, 1],
+            "weight_gt": [1.0, 1.0, 0.0],
+            "weighted_diff_1": [2.0, 4.0, 0.0],
+            "path_0": [0, 0, 0],
+            "path_1": [1, 1, 1],
+            "valid_cohort_1": [1, 1, 1],
+            "cl": [7, 7, 7],
+        }
+    )
+
+    result = compute_path_cohort_dof(df, 1, variance_config)
+
+    assert result["dof_switcher_1"].to_list() == [2, 2, None]
+    np.testing.assert_allclose(result["cohort_mean_1"].to_list()[:2], [3.0, 3.0])
+
+
+def test_compute_cluster_influence_sums_rows_within_clusters():
+    influence = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+
+    result = compute_cluster_influence(influence, pl.Series([7, 7, 9]))
+
+    np.testing.assert_allclose(result, [[4.0, 6.0], [5.0, 6.0]])
+
+
+def test_compute_cluster_influence_without_clusters_keeps_groups():
+    result = compute_cluster_influence(np.array([1.0, 2.0, 3.0]))
+
+    np.testing.assert_allclose(result, [[1.0], [2.0], [3.0]])
+
+
+def test_compute_cluster_influence_drops_groups_without_cluster():
+    result = compute_cluster_influence(np.array([1.0, 2.0, 3.0, 4.0]), pl.Series(["a", None, "b", "a"]))
+
+    np.testing.assert_allclose(result, [[5.0], [3.0]])
+
+
+def test_compute_cluster_influence_single_cluster_keeps_groups():
+    result = compute_cluster_influence(np.array([1.0, 2.0]), pl.Series([3, 3]))
+
+    np.testing.assert_allclose(result, [[1.0], [2.0]])

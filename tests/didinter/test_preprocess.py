@@ -10,6 +10,7 @@ pl = importorskip("polars")
 from moderndid.core.preprocess import PreprocessDataBuilder
 from moderndid.core.preprocess.config import DIDInterConfig
 from moderndid.core.preprocess.models import DIDInterData
+from moderndid.core.preprocess.transformers import ControlsTimeFilter
 
 
 @pytest.fixture
@@ -293,3 +294,76 @@ def test_time_invariant_data_columns(simple_panel, basic_config, expected_column
 
     assert result.time_invariant_data is not None
     assert expected_column in result.time_invariant_data.columns
+
+
+def test_time_ranker_numbers_periods_by_rank_and_keeps_their_values(simple_panel, basic_config):
+    years = {1: 1990, 2: 1992, 3: 1993, 4: 1999, 5: 2004}
+    df = simple_panel.with_columns(pl.col("time").replace_strict(years))
+    basic_config.trends_lin = True
+
+    result = PreprocessDataBuilder().with_data(df).with_config(basic_config).validate().transform().build()
+
+    assert sorted(result.data["time"].unique().to_list()) == [2, 3, 4, 5]
+    np.testing.assert_array_equal(result.config.time_periods, [1992, 1993, 1999, 2004])
+    assert result.data.filter(pl.col("id") == 10)["F_g"][0] == 4
+
+
+def test_controls_time_filter_keeps_periods_with_not_yet_switched_groups():
+    df = pl.DataFrame(
+        {
+            "id": [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3],
+            "time": [1, 2, 3, 4] * 3,
+            "d_sq": [0.0] * 12,
+            "F_g": [2.0] * 4 + [3.0] * 4 + [4.0] * 4,
+        }
+    )
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d")
+
+    result = ControlsTimeFilter().transform(df, config)
+
+    assert sorted(result["time"].unique().to_list()) == [1, 2, 3]
+    assert result.height == 9
+
+
+@pytest.mark.filterwarnings("ignore:Requested effects=4:UserWarning")
+def test_switchers_out_keep_groups_whose_treatment_rises(two_way_panel_data):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d", switchers="out", effects=4)
+
+    result = PreprocessDataBuilder().with_data(two_way_panel_data).with_config(config).validate().transform().build()
+
+    assert result.data.filter(pl.col("S_g") == 1)["id"].n_unique() == 28
+    assert config.effects == 3
+
+
+def test_continuous_pools_distinct_baselines_and_marks_each_switch(continuous_panel_data):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d", effects=3, continuous=2)
+
+    data = (
+        PreprocessDataBuilder().with_data(continuous_panel_data).with_config(config).validate().transform().build().data
+    )
+    switched = data.filter(pl.col("F_g") != float("inf"))
+    trends = [name for name in data.columns if name.startswith("_baseline_trend_")]
+    row = data.filter((pl.col("id") == 5) & (pl.col("time") == 4))
+
+    assert data["id"].n_unique() == 120
+    assert (data["d_sq"] == 0).all()
+    assert (data.filter(pl.col("F_g") == float("inf"))["weight_gt"] == 1).all()
+    np.testing.assert_array_equal(switched["d"], switched["S_g"] * (switched["time"] >= switched["F_g"]))
+    np.testing.assert_array_equal(switched["d_fg"], switched["S_g"])
+    assert trends == [f"_baseline_trend_{t}_{k}" for t in range(2, 7) for k in (1, 2)]
+    np.testing.assert_allclose(row["_baseline_trend_3_2"], row["d_sq_orig"] ** 2)
+    np.testing.assert_allclose(row["_baseline_trend_5_1"], 0.0)
+
+
+def test_trends_lin_keeps_outcome_levels_and_baseline_trends_after_the_first_period(continuous_panel_data):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d", effects=3, continuous=1, trends_lin=True)
+
+    data = (
+        PreprocessDataBuilder().with_data(continuous_panel_data).with_config(config).validate().transform().build().data
+    )
+    levels = data.join(continuous_panel_data.select("id", "time", pl.col("y").alias("raw")), on=["id", "time"])
+
+    assert [name for name in data.columns if name.startswith("_baseline_trend_")] == [
+        f"_baseline_trend_{t}_1" for t in range(3, 7)
+    ]
+    np.testing.assert_allclose(levels["_outcome_levels"], levels["raw"])

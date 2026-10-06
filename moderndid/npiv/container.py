@@ -1,4 +1,4 @@
-"""Result structures for NPIV estimation."""
+"""Result containers for nonparametric instrumental variables estimation."""
 
 from typing import NamedTuple
 
@@ -32,9 +32,12 @@ class NPIVResult(NamedTuple):
         Pointwise asymptotic standard errors :math:`\hat{\sigma}_J^a(x)` for
         derivatives.
     cv : float or None
-        Bootstrap critical value :math:`z_{1-\alpha}^*` for function UCBs.
+        Critical value for the function bands. With a fixed sieve dimension it
+        is the bootstrap quantile :math:`z_{1-\alpha}^*`. With a data-driven
+        dimension it is that quantile plus the selection penalty of
+        :func:`compute_cck_ucb`.
     cv_deriv : float or None
-        Bootstrap critical value :math:`z_{1-\alpha}^{a*}` for derivative UCBs.
+        Critical value for the derivative bands, built the same way as ``cv``.
     residuals : ndarray
         TSLS residuals :math:`\hat{u}_{i,J} = Y_i - \hat{h}_J(X_i)`.
     j_x_degree : int
@@ -46,8 +49,9 @@ class NPIVResult(NamedTuple):
     k_w_segments : int
         Number of segments for :math:`W` basis.
     args : dict
-        Diagnostic information. When data-driven selection is used, includes
-        ``j_x_seg``, ``k_w_seg``, ``j_hat_max``, ``theta_star``, and other
+        Diagnostic information such as the sample size and the basis
+        dimensions. When data-driven selection is used, it also holds
+        ``j_x_seg``, ``k_w_seg``, ``j_hat_max``, ``theta_star``, and the other
         selection diagnostics from the Lepski procedure.
     """
 
@@ -69,9 +73,9 @@ class NPIVResult(NamedTuple):
     asy_se: np.ndarray
     #: Pointwise asymptotic standard errors for derivatives.
     deriv_asy_se: np.ndarray
-    #: Bootstrap critical value for function uniform confidence bands.
+    #: Critical value for the function uniform confidence bands.
     cv: float | None
-    #: Bootstrap critical value for derivative uniform confidence bands.
+    #: Critical value for the derivative uniform confidence bands.
     cv_deriv: float | None
     #: TSLS residuals.
     residuals: np.ndarray
@@ -85,3 +89,52 @@ class NPIVResult(NamedTuple):
     k_w_segments: int
     #: Diagnostic information and selection diagnostics.
     args: dict
+
+
+class BSplineBasis(NamedTuple):
+    """Container for B-spline basis construction results."""
+
+    #: B-spline basis matrix.
+    basis: np.ndarray
+    #: Degree of the B-spline.
+    degree: int
+    #: Number of breakpoints.
+    nbreak: int
+    #: Derivative order.
+    deriv: int
+    #: Minimum x value.
+    x_min: float
+    #: Maximum x value.
+    x_max: float
+    #: Knot positions.
+    knots: np.ndarray | None
+    #: Whether an intercept column is included.
+    intercept: bool
+
+
+class MultivariateBasis(NamedTuple):
+    """Container for multivariate spline basis construction results."""
+
+    #: Spline basis matrix.
+    basis: np.ndarray
+    #: Dimension of the basis without tensor product.
+    dim_no_tensor: int
+    #: Matrix of degrees for each variable.
+    degree_matrix: np.ndarray
+    #: Number of segments for each variable.
+    n_segments: np.ndarray
+    #: Type of basis construction used.
+    basis_type: str
+
+
+class FullRankCheckResult(NamedTuple):
+    """Container for full rank check results."""
+
+    #: Whether the matrix has full rank.
+    is_full_rank: bool
+    #: Condition number of the matrix.
+    condition_number: float
+    #: Minimum eigenvalue.
+    min_eigenvalue: float
+    #: Maximum eigenvalue.
+    max_eigenvalue: float

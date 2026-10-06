@@ -23,7 +23,7 @@ def ordid(
 ):
     r"""Wrap the outcome regression DiD estimators for the ATT.
 
-    This function is a wrapper for outcome regression DiD estimators.
+    This function is a wrapper for outcome regression DiD estimators [1]_, [2]_.
     It calls the appropriate estimator based on the panel argument and
     performs pre-processing for the data.
 

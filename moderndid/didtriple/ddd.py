@@ -118,8 +118,11 @@ def ddd(
     biters : int, default=1000
         Number of bootstrap repetitions (only used if boot=True).
     cluster : str, optional
-        Name of the clustering variable for clustered standard errors.
-        Currently only supported for 2-period data with bootstrap.
+        Name of the column that assigns each unit to a cluster, such as its
+        county. A unit must keep the same cluster in every period. With two
+        periods, a cluster sets boot=True and requires boot_type="multiplier".
+        With several periods, it takes effect only when boot=True. Cells that
+        pool several not-yet-treated comparison groups ignore it.
     alpha : float, default=0.05
         Significance level for confidence intervals.
     trim_level : float, default=0.995
@@ -319,6 +322,9 @@ def ddd(
             n_jobs=n_jobs,
         )
 
+    if cluster is not None and boot_type != "multiplier":
+        raise ValueError("cluster requires boot_type='multiplier' with two periods.")
+
     if is_rcs:
         return _ddd_rc_2period(
             data=data,
@@ -335,6 +341,8 @@ def ddd(
             alpha=alpha,
             trim_level=trim_level,
             random_state=random_state,
+            cluster=cluster,
+            idname=idname,
         )
 
     ddd_data = preprocess_ddd_2periods(
@@ -370,4 +378,5 @@ def ddd(
         influence_func=True,
         alpha=ddd_data.config.alp,
         random_state=random_state,
+        cluster=ddd_data.cluster,
     )

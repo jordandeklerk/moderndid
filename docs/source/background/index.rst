@@ -4,9 +4,11 @@
 Background
 ##########
 
-This section provides theoretical background on the difference-in-differences
-methodologies implemented in **ModernDiD**; for practical usage see the
-:ref:`User Guide <user-guide>`.
+Each guide develops the assumptions, identification arguments, and inference
+results behind a ModernDiD estimator. We connect those results to the choices
+you make in the package so you can see what an estimate measures and what
+its interpretation requires. The :doc:`examples <../examples/index>` show those
+choices in complete analyses.
 
 .. list-table::
    :class: section-index-table
@@ -51,10 +53,9 @@ methodologies implemented in **ModernDiD**; for practical usage see the
 Acknowledgements
 ================
 
-The **ModernDiD** package implements various difference-in-differences methodologies from
-the econometric literature. We acknowledge the original authors of these methods and the
-authors of the R packages that inspired this implementation. See the
-:doc:`acknowledgements <../acknowledgements>` for the full list.
+The :doc:`acknowledgements <../acknowledgements>` credit the researchers and
+software authors whose work these estimators build on. Each background guide
+links to the source papers for the method it develops.
 
 .. raw:: html
 

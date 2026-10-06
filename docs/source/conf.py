@@ -1,12 +1,16 @@
 """moderndid sphinx configuration."""
 
 import math
+import os
 import sys
 from datetime import date
 from importlib.metadata import metadata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "_ext"))
+
+# Executed pages load the stored results in prerun, and the notebook kernels inherit this path.
+os.environ["PYTHONPATH"] = os.pathsep.join(filter(None, [str(Path(__file__).parent), os.environ.get("PYTHONPATH")]))
 
 # -- Project information
 
@@ -171,6 +175,8 @@ htmlhelp_basename = "moderndid"
 sphinx_immaterial_custom_admonitions = [
     {"name": "example", "override": True, "icon": "material/code-braces", "color": (49, 91, 196)},
     {"name": "important", "override": True, "icon": "material/alert-decagram", "color": (124, 77, 255)},
+    {"name": "assumption", "icon": "material/format-list-checks", "color": (201, 63, 117)},
+    {"name": "theorem", "icon": "material/equal-box", "color": (0, 200, 83)},
 ]
 
 myst_enable_extensions = ["linkify", "colon_fence", "dollarmath"]
@@ -226,9 +232,12 @@ def _landing_template(app, pagename, templatename, context, doctree):
     return None
 
 
-def _user_guide_sections(app, pagename, templatename, context, doctree):
-    """Display guide sections as headings without expanding the API sidebar."""
-    if pagename.startswith("user_guide/") and not pagename.startswith("user_guide/example_"):
+def _sidebar_sections(app, pagename, templatename, context, doctree):
+    """Display User Guide and API sections as sidebar headings over their pages."""
+    # The theme turns only the sidebar's second level into headings. Since the API index nests its
+    # pages under its own section headings, each page's generated entries stay folded.
+    guide_page = pagename.startswith("user_guide/") and not pagename.startswith("user_guide/example_")
+    if guide_page or pagename.startswith("api/"):
         theme = context["config"]["theme"]
         features = [*theme["features"], "navigation.sections"]
         context["config"] = {**context["config"], "theme": {**theme, "features": features}}
@@ -251,8 +260,18 @@ def _open_examples_boxes(app, doctree):
             node["collapsible"] = "open"
 
 
+def _panel_diagnostics_signature(app, what, name, obj, options, signature, return_annotation):
+    """Render the dataclass factory as valid syntax so Sphinx can identify its parameters."""
+    if what == "class" and name == "moderndid.core.panel.PanelDiagnostics" and signature:
+        # inspect renders a dataclass factory as <factory>. Sphinx then treats each
+        # annotated parameter declaration as a single, unmatchable name.
+        return signature.replace("= <factory>", "= field(default_factory=list)"), return_annotation
+    return None
+
+
 def setup(app):
-    """Register the landing page, grouped guide navigation, and API example boxes."""
+    """Register the landing page, grouped guide and API navigation, and API example boxes."""
     app.connect("html-page-context", _landing_template)
-    app.connect("html-page-context", _user_guide_sections, priority=600)
+    app.connect("html-page-context", _sidebar_sections, priority=600)
     app.connect("doctree-read", _open_examples_boxes)
+    app.connect("autodoc-process-signature", _panel_diagnostics_signature)

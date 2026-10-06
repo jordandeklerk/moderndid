@@ -3,9 +3,6 @@
 Inspired by https://github.com/armandkapllani/etwfe/
 """
 
-from __future__ import annotations
-
-import re
 import warnings
 
 import numpy as np
@@ -14,84 +11,70 @@ from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess.config import EtwfeConfig
 
 from .compute import (
-    _build_gt_coefficient_map,
+    _cell_column,
+    _format_cells,
     build_etwfe_formula,
+    clean_etwfe_data,
     prepare_etwfe_data,
     run_etwfe_regression,
     set_references,
+    treatment_cells,
 )
 from .container import EtwfeResult
 
 
 def etwfe(
     data,
-    yname: str,
-    tname: str,
-    gname: str,
-    idname: str | None = None,
-    xformla: str | None = None,
-    xvar: str | None = None,
+    yname,
+    tname,
+    gname,
+    idname=None,
+    xformla=None,
+    xvar=None,
     tref=None,
     gref=None,
-    cgroup: str = "notyet",
-    fe: str = "vs",
+    cgroup="notyet",
+    fe="vs",
     family=None,
-    weightsname: str | None = None,
-    vcov: str | dict | None = None,
-    alp: float = 0.05,
+    weightsname=None,
+    vcov=None,
+    alp=0.05,
     backend=None,
-) -> EtwfeResult:
+):
     r"""Estimate the Extended Two-Way Fixed Effects model.
 
-    Implements the ETWFE methodology for difference-in-differences with
-    staggered treatment adoption and heterogeneous treatment effects
-    [1]_ [2]_. Rather than discarding the TWFE estimator, the approach
-    saturates the model with cohort-by-time interaction terms so that the
-    coefficients on the treatment indicators directly recover the
-    cohort-time-specific average treatment effects on the treated,
+    Implements the extended two-way fixed effects (ETWFE) estimator for
+    difference-in-differences with staggered adoption and heterogeneous
+    treatment effects [1]_ [2]_. Rather than discarding the two-way fixed
+    effects regression, the estimator adds an indicator for every treated
+    cohort-time cell. The coefficient on each indicator is the average
+    treatment effect on the treated for that cohort and period. Pooled least
+    squares on this saturated regression gives the same estimates as cohort
+    imputation (Proposition 5.2 in [1]_).
 
-    .. math::
+    Use :func:`~moderndid.etwfe.emfx.emfx` to average the cell estimates into
+    overall, group, calendar, or event-study summaries.
 
-        \tau_{g,t} \equiv E[y_t(g) - y_t(\infty) \mid d_g = 1],
-        \quad t \ge g.
+    Rows with a missing period, cohort, unit, control, moderator, weight, or
+    cluster variable leave the sample with a warning before the controls are
+    demeaned.
 
-    Under no anticipation (NA), conditional parallel trends (CPT), and
-    linearity (LIN), the conditional expectation of the never-treated
-    potential outcome is
+    Since no untreated period identifies their effects, units already treated in
+    the first period leave with a warning as well. So do the units of any other
+    treated cohort with no untreated row in the sample. Under
+    ``cgroup="never"`` that row must lie in period :math:`g - 1`.
 
-    .. math::
+    The covariate in ``xvar`` is demeaned within each cohort-time cell before it
+    interacts with the treatment cells. Because each category indicator of a
+    string covariate gets its own year terms, the estimates do not depend on
+    which category comes first. The controls in ``xformla`` already interact
+    with every cell. A covariate that is constant within the cells, or that
+    varies there only as a linear function of those controls, therefore adds no
+    terms and draws a warning.
 
-        E[y_t(\infty) \mid \mathbf{d}, \mathbf{x}]
-        = \alpha + \sum_g \beta_g d_g + \mathbf{x}\boldsymbol{\kappa}
-        + \sum_g (d_g \cdot \mathbf{x})\boldsymbol{\xi}_g
-        + \sum_s \gamma_s f_{s,t}
-        + \sum_s (f_{s,t} \cdot \mathbf{x})\boldsymbol{\pi}_s,
-
-    where :math:`d_g` are treatment cohort indicators, :math:`f_{s,t}` are
-    time dummies, and :math:`\mathbf{x}` are time-constant covariates.
-    The ATTs are identified as
-
-    .. math::
-
-        \tau_{g,t}
-        = E(y_t \mid d_g = 1)
-        - \bigl[(\alpha + \beta_g + \gamma_t)
-        + E(\mathbf{x} \mid d_g = 1)
-        \cdot (\boldsymbol{\kappa} + \boldsymbol{\xi}_g
-        + \boldsymbol{\pi}_t)\bigr].
-
-    The ETWFE regression includes the full set of
-    :math:`w_t \cdot d_g \cdot f_{s,t}` treatment interactions, with
-    covariates demeaned about their cohort means
-    :math:`\dot{\mathbf{x}}_g = \mathbf{x} - \bar{\mathbf{x}}_g`.
-    The pooled OLS estimates of :math:`\tau_{g,t}` from this saturated
-    regression are numerically identical to a cohort imputation
-    procedure (Proposition 5.2 in [2]_). Use
-    :func:`~moderndid.etwfe.emfx.emfx` to aggregate the cell-level
-    estimates into overall, group, calendar, or event-study summaries.
-
-    See the :ref:`extended TWFE example <example_etwfe>` for ``etwfe`` on the minimum
-    wage data with covariates, control groups, model families, and variance options.
+    See the :ref:`extended TWFE example <example_etwfe>` for ``etwfe`` on the
+    minimum wage data with not-yet-treated and never-treated controls, a
+    covariate, and standard errors clustered by county and by state.
 
     Parameters
     ----------
@@ -104,89 +87,142 @@ def etwfe(
     tname : str
         The name of the column containing the time periods.
     gname : str
-        The name of the variable that contains the first period when a
-        particular observation is treated. This should be a positive number
-        for all observations in treated groups. It should be 0 for units in
-        the untreated group. It defines which "cohort" a unit belongs to.
+        The name of the column that holds the first period in which each unit
+        is treated. Never-treated units have 0, infinity, or a value after the
+        last period.
     idname : str or None, default=None
-        The individual (cross-sectional unit) id name. When provided, unit
-        fixed effects are absorbed in the regression.
+        The individual (cross-sectional unit) id name. When provided, linear
+        models absorb unit fixed effects and the default standard errors
+        cluster by unit.
     xformla : str or None, default=None
-        A formula for the covariates to include in the model. It should be of
-        the form ``"~ x1 + x2"``. Controls are demeaned within cohort groups
-        following the Mundlak device so that the parallel trends assumption
-        need only hold conditional on covariates.
+        A formula for the controls, such as ``"~ x1 + x2"``. Each term is a
+        column name. A name with spaces or symbols goes in backticks, as in
+        ``"~ `log pop` + x"``. Since every term must be a column, a
+        transformation such as ``I(x**2)`` or an interaction such as ``x1:x2``
+        raises an error and belongs in the data as a column of its own.
     xvar : str or None, default=None
-        Name of a covariate to interact with treatment for heterogeneous
-        treatment effect analysis. The variable is demeaned within cohorts and
-        interacted with the treatment and time indicators.
+        Name of a covariate to interact with the treatment cells for
+        heterogeneous treatment effects. A string covariate enters as an
+        indicator for each category but the first.
     tref : numeric or None, default=None
-        Reference time period. Defaults to the minimum time period in the data.
+        Reference period, a value of ``tname``. Defaults to the first period.
     gref : numeric or None, default=None
-        Reference cohort (control group). Auto-detected based on ``cgroup``.
-        For ``"never"``, selects the group beyond the last observed period.
-        For ``"notyet"``, defaults to the latest-treated cohort.
+        Reference cohort. Any never-treated code, such as 0, refers to every
+        never-treated unit. Another value must be a cohort in ``gname`` first
+        treated after the first period. Defaults to the never-treated units.
+        Without them, ``cgroup="notyet"`` uses the latest-treated cohort.
+        ``cgroup="never"`` then raises an error. Under ``cgroup="notyet"``, any
+        treated reference cohort drops every row from its first treated period
+        on.
     cgroup : {'notyet', 'never'}, default='notyet'
-        Control group strategy:
-
-        - ``"notyet"``: use not-yet-treated units as controls (drops
-          observations once the reference cohort enters treatment)
-        - ``"never"``: use never-treated units as controls
+        Control group. ``"notyet"`` compares the treated cells with the
+        never-treated units, the reference cohort, and the rows of other
+        cohorts before they are treated. ``"never"`` leaves out those
+        not-yet-treated rows.
     fe : {'vs', 'feo', 'none'}, default='vs'
-        Fixed effects specification:
-
-        - ``"vs"``: varying slopes (controls interact with cohort and time FE)
-        - ``"feo"``: fixed effects only
-        - ``"none"``: no absorbed fixed effects
+        Fixed effects specification. ``"vs"`` and ``"feo"`` fit the same
+        regression. It absorbs unit and time fixed effects, or cohort and time
+        fixed effects when ``idname`` is None. Each control enters with its
+        cohort and time interactions. ``"none"`` absorbs nothing and adds cohort
+        and time dummies instead.
     family : {None, 'gaussian', 'poisson', 'logit', 'probit'}, default=None
-        GLM family for nonlinear models. ``None`` and ``"gaussian"`` use
-        OLS via ``feols``. ``"poisson"`` uses Poisson QMLE via ``fepois``.
-        ``"logit"`` and ``"probit"`` use ``feglm``. For non-Gaussian
-        families, ``fe`` is set to ``"none"`` and ``idname`` is ignored
-        (unit FE absorption is not supported for GLM).
+        Model family. ``None`` and ``"gaussian"`` fit a linear regression.
+        ``"poisson"`` fits a Poisson quasi-maximum likelihood model. ``"logit"``
+        and ``"probit"`` fit binary response models. Nonlinear families replace
+        the absorbed fixed effects with cohort and time dummies [2]_ and use
+        ``idname`` only for clustering and for counting units. The binary
+        families cannot drop collinear columns. Their controls must therefore
+        vary within every cohort and period.
     weightsname : str or None, default=None
         The name of the column containing sampling weights. If not set, all
         observations have equal weight.
     vcov : str or dict or None, default=None
-        Variance-covariance specification passed to pyfixest. Defaults to
-        ``"hetero"`` (heteroskedasticity-robust). Examples: ``"iid"``,
-        ``"hetero"``, ``"HC1"``, ``{"CRV1": "cluster_var"}``.
+        Variance-covariance specification, such as ``"iid"``, ``"hetero"``,
+        ``"HC1"``, or ``{"CRV1": "cluster_var"}``. The default clusters by
+        ``idname`` when it is given and is heteroskedasticity-robust otherwise.
+        Heteroskedasticity-robust errors ignore the correlation of a unit's
+        outcomes over time. Pass a cluster variable for panel data fitted
+        without ``idname``.
     alp : float, default=0.05
         The significance level.
     backend : {'cupy', 'jax', 'numba', 'rust', 'scipy'} or None, default=None
-        Demeaner backend for pyfixest's fixed-effects absorption.
-        ``"cupy"`` and ``"jax"`` enable GPU acceleration (require CuPy or
-        JAX with GPU support; without a GPU, pyfixest falls back to CPU).
-        ``"numba"`` (the default), ``"rust"``, and ``"scipy"`` are CPU-only.
-        ``None`` uses pyfixest's default.
+        Backend that absorbs the fixed effects. ``"numba"``, ``"rust"``, and
+        ``"scipy"`` run on the CPU. ``None`` selects ``"numba"``. ``"cupy"`` and
+        ``"jax"`` run on a GPU when CuPy or JAX finds one and otherwise use a
+        CPU solver.
 
     Returns
     -------
     EtwfeResult
         Object containing ETWFE regression results:
 
-        - **coefficients**: coefficient estimates for each interaction term
-        - **std_errors**: standard errors for each coefficient
-        - **vcov**: variance-covariance matrix
-        - **coef_names**: coefficient names from pyfixest
-        - **gt_pairs**: list of (group, time) pairs for each coefficient
+        - **coefficients**: estimate for each treatment cell (index scale for
+          nonlinear families), NaN for a cell the regression dropped as collinear
+        - **std_errors**: standard error of each cell estimate
+        - **vcov**: variance-covariance matrix of all regression coefficients
+        - **coef_names**: names of all regression coefficients
+        - **gt_pairs**: (group, time) pair of each treatment cell
         - **n_obs**: number of observations
-        - **n_units**: number of unique cross-sectional units
+        - **n_units**: number of units in the estimation sample, or of
+          observations when ``idname`` is None
         - **r_squared**: R-squared of the regression
         - **data**: fitted data (used internally by ``emfx``)
         - **config**: configuration object (used internally by ``emfx``)
-        - **estimation_params**: dictionary with estimation details
+        - **estimation_params**: dictionary of estimation details whose
+          ``formula`` names internal columns
+        - **model_coefficients**: estimates of all regression coefficients,
+          ordered as ``coef_names``
 
     See Also
     --------
     emfx : Aggregate ETWFE cell-level estimates into treatment effect summaries.
-    att_gt : Group-time ATT estimation via Callaway and Sant'Anna (2021).
+    att_gt : Group-time ATT estimation of Callaway and Sant'Anna (2021).
+
+    Notes
+    -----
+    Each cell's coefficient targets the cohort-time average treatment effect on
+    the treated,
+
+    .. math::
+
+        \tau_{g,t} \equiv E[y_t(g) - y_t(\infty) \mid d_g = 1],
+        \quad t \ge g.
+
+    Under no anticipation, conditional parallel trends, and linearity, the
+    conditional expectation of the never-treated potential outcome is
+
+    .. math::
+
+        E[y_t(\infty) \mid \mathbf{d}, \mathbf{x}]
+        = \alpha + \sum_g \beta_g d_g + \mathbf{x}\boldsymbol{\kappa}
+        + \sum_g (d_g \cdot \mathbf{x})\boldsymbol{\xi}_g
+        + \sum_s \gamma_s f_{s,t}
+        + \sum_s (f_{s,t} \cdot \mathbf{x})\boldsymbol{\pi}_s,
+
+    where :math:`d_g` are treatment cohort indicators, :math:`f_{s,t}` are
+    time dummies, and :math:`\mathbf{x}` are time-constant covariates. The
+    ATTs are then identified as
+
+    .. math::
+
+        \tau_{g,t}
+        = E(y_t \mid d_g = 1)
+        - \bigl[(\alpha + \beta_g + \gamma_t)
+        + E(\mathbf{x} \mid d_g = 1)
+        \cdot (\boldsymbol{\kappa} + \boldsymbol{\xi}_g
+        + \boldsymbol{\pi}_t)\bigr].
+
+    With :math:`w_t` the treatment indicator, the regression includes the full
+    set of treatment interactions :math:`w_t \cdot d_g \cdot f_{s,t}`. Their
+    interactions with the covariates use the covariates demeaned about their
+    cohort means, :math:`\dot{\mathbf{x}}_g = \mathbf{x} - \bar{\mathbf{x}}_g`.
 
     References
     ----------
 
-    .. [1] Wooldridge, J. M. (2021). "Two-Way Fixed Effects, the Two-Way
+    .. [1] Wooldridge, J. M. (2025). "Two-Way Fixed Effects, the Two-Way
        Mundlak Regression, and Difference-in-Differences Estimators."
+       Empirical Economics, 69, 2545-2587.
 
     .. [2] Wooldridge, J. M. (2023). "Simple Approaches to Nonlinear
        Difference-in-Differences with Panel Data." The Econometrics
@@ -196,16 +232,10 @@ def etwfe(
     if family not in (None, "gaussian", "poisson", "logit", "probit"):
         raise ValueError(f"family must be None, 'gaussian', 'poisson', 'logit', or 'probit', got '{family}'")
 
-    if family is not None and family not in (None, "gaussian"):
-        if idname is not None:
-            warnings.warn(
-                f"Non-linear family '{family}' does not support unit FE absorption. Setting idname=None.",
-                UserWarning,
-                stacklevel=2,
-            )
-            idname = None
-        if fe != "none":
-            fe = "none"
+    # Counterfactual predictions in emfx need every effect as a regressor. Nonlinear families
+    # therefore fit cohort and time dummies instead of absorbed fixed effects.
+    if family not in (None, "gaussian"):
+        fe = "none"
 
     if cgroup not in ("notyet", "never"):
         raise ValueError(f"cgroup must be 'notyet' or 'never', got '{cgroup}'")
@@ -225,6 +255,13 @@ def etwfe(
     if weightsname and weightsname not in df.columns:
         raise ValueError(f"weightsname='{weightsname}' not found in data columns")
 
+    if xvar and xvar not in df.columns:
+        raise ValueError(f"xvar='{xvar}' not found in data columns")
+
+    # A unit's outcomes are correlated over time. The default clusters by unit whenever the data name one.
+    if vcov is None:
+        vcov = {"CRV1": idname} if idname else "hetero"
+
     config = EtwfeConfig(
         yname=yname,
         tname=tname,
@@ -242,11 +279,20 @@ def etwfe(
         panel=idname is not None,
     )
 
+    df = clean_etwfe_data(df, config, vcov)
     config = set_references(config, df)
 
     df_prepared = prepare_etwfe_data(df, config)
+    if xvar and not config._xvar_dm_cols:
+        warnings.warn(
+            f"xvar='{xvar}' adds no terms. Within each cohort-time cell it is constant or a linear "
+            "function of the controls in xformla.",
+            UserWarning,
+            stacklevel=2,
+        )
 
-    formula = build_etwfe_formula(config)
+    cells = treatment_cells(df_prepared, config)
+    formula = build_etwfe_formula(config, df_prepared)
     config._formula = formula
 
     reg = run_etwfe_regression(formula, df_prepared, config, vcov=vcov, backend=backend)
@@ -262,25 +308,30 @@ def etwfe(
     r2 = model._r2
     r2_adj = model._r2_adj if hasattr(model, "_r2_adj") else None
 
-    gt_pairs = _extract_gt_pairs(coef_names)
+    coef_pos = {name: i for i, name in enumerate(coef_names)}
+    cell_pos = [coef_pos.get(f"_Dtreat:{_cell_column(g, t)}") for g, t in cells]
+    treat_beta = np.array([np.nan if i is None else beta[i] for i in cell_pos])
+    treat_se = np.array([np.nan if i is None else se[i] for i in cell_pos])
+    dropped = [cell for cell, i in zip(cells, cell_pos, strict=True) if i is None]
+    if dropped:
+        warnings.warn(
+            f"The regression dropped the treatment cells {_format_cells(dropped)} as collinear with its other "
+            "terms. Controls that span a cell or a cohort with no untreated period cause this. Their estimates "
+            "are NaN.",
+            UserWarning,
+            stacklevel=2,
+        )
 
-    gt_map = _build_gt_coefficient_map(coef_names)
-    treat_indices = np.array([gt_map[gt] for gt in gt_pairs if gt in gt_map])
-    treat_beta = beta[treat_indices] if len(treat_indices) > 0 else beta
-    treat_se = se[treat_indices] if len(treat_indices) > 0 else se
-
-    n_units = df[idname].n_unique() if idname else n_obs
+    n_units = fit_data[idname].n_unique() if idname else n_obs
     config.n_units = n_units
     config.n_obs = n_obs
-
-    vcov_label = _vcov_type_label(vcov if vcov else "hetero")
 
     return EtwfeResult(
         coefficients=treat_beta,
         std_errors=treat_se,
         vcov=vcov_mat,
         coef_names=coef_names,
-        gt_pairs=gt_pairs,
+        gt_pairs=cells,
         n_obs=n_obs,
         n_units=n_units,
         r_squared=r2,
@@ -297,39 +348,19 @@ def etwfe(
             "alpha": alp,
             "formula": formula,
             "fe_spec": f"{idname or gname} + {tname}" if fe != "none" else None,
-            "vcov_type": vcov_label,
-            "vcov_spec": vcov if vcov else "hetero",
+            "vcov_type": _vcov_type_label(vcov),
+            "vcov_spec": vcov,
             "clustervar": next(iter(vcov.values())) if isinstance(vcov, dict) else None,
             "backend": backend,
             "n_units": n_units,
             "n_obs": n_obs,
             "family": family,
         },
+        model_coefficients=beta,
     )
 
 
-def _extract_gt_pairs(coef_names: list[str]) -> list[tuple[float, float]]:
-    """Extract (group, time) pairs from pyfixest coefficient names."""
-    pattern = re.compile(
-        r"_Dtreat:C\(__etwfe_gcat\)\[([^\]]+)\]"
-        r":C\(__etwfe_tcat\)\[([^\]]+)\]$"
-    )
-
-    gt_pairs = []
-    for name in coef_names:
-        m = pattern.search(name)
-        if m:
-            try:
-                g = float(m.group(1))
-                t = float(m.group(2))
-                gt_pairs.append((g, t))
-            except ValueError:
-                continue
-
-    return gt_pairs
-
-
-def _vcov_type_label(vcov_spec) -> str:
+def _vcov_type_label(vcov_spec):
     """Convert vcov spec to human-readable label."""
     if vcov_spec is None:
         return "iid"

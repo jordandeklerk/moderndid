@@ -6,7 +6,7 @@ import numpy as np
 import scipy.optimize as opt
 
 from ...arp_no_nuisance import compute_arp_ci
-from ...arp_nuisance import compute_arp_nuisance_ci
+from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
 from ...delta.sd.sd import _create_sd_constraint_matrix, _create_sd_constraint_vector
 from ...fixed_length_ci import compute_flci
@@ -46,6 +46,7 @@ def compute_conditional_cs_sdb(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
+    seed=0,
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{SDB}(M)`.
 
@@ -55,7 +56,7 @@ def compute_conditional_cs_sdb(
 
     The combined smoothness and bias direction restriction is defined as the intersection of
     :math:`\Delta^{SD}(M)` and a sign restriction on the bias. For a positive bias, this is
-    denoted :math:`\Delta^{SDPB}(M)` in [2]_
+    denoted :math:`\Delta^{SDPB}(M)`
 
     .. math::
 
@@ -106,8 +107,8 @@ def compute_conditional_cs_sdb(
         Lower bound for grid search.
     grid_ub : float, optional
         Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -117,21 +118,12 @@ def compute_conditional_cs_sdb(
     Notes
     -----
     :math:`\Delta^{SDB}(M)` is a polyhedron formed by the intersection of smoothness and sign constraints.
-    The confidence set is constructed using either FLCIs or the moment inequality approach from
-    Section 3 of [2]_.
+    The confidence set is constructed using either FLCIs or the moment inequality approach.
 
     Unlike :math:`\Delta^{SD}(M)` alone, the optimal FLCI for :math:`\Delta^{SDB}(M)` has the same
     worst-case bias as for :math:`\Delta^{SD}(M)`, meaning FLCIs do not adapt to the additional
     sign restriction. The conditional/hybrid approach may therefore have better power when the
     sign restriction is informative.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -166,6 +158,7 @@ def compute_conditional_cs_sdb(
             grid_points=grid_points,
             grid_lb=grid_lb,
             grid_ub=grid_ub,
+            seed=seed,
         )
 
     hybrid_list = {"hybrid_kappa": hybrid_kappa}
@@ -232,6 +225,7 @@ def compute_conditional_cs_sdb(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -251,7 +245,7 @@ def compute_identified_set_sdb(
     trend :math:`\delta` lies in :math:`\Delta^{SDB}(M)`, which combines second differences bounds
     with a sign restriction.
 
-    The identified set is an interval :math:`[\theta^{lb}, \theta^{ub}]` derived from Lemma 2.1 in [2]_.
+    The identified set is an interval :math:`[\theta^{lb}, \theta^{ub}]`.
     The bounds are given by
 
     .. math::
@@ -285,14 +279,6 @@ def compute_identified_set_sdb(
     -------
     DeltaSDBResult
         Lower and upper bounds of the identified set.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
 
@@ -439,6 +425,7 @@ def _compute_cs_sdb_no_nuisance(
     grid_points,
     grid_lb,
     grid_ub,
+    seed,
 ):
     """Compute confidence set for single post-period case (no nuisance parameters)."""
     hybrid_list = {"hybrid_kappa": hybrid_kappa}
@@ -454,8 +441,7 @@ def _compute_cs_sdb_no_nuisance(
             alpha=hybrid_kappa,
         )
 
-        # For single post-period, we need only the post-period part of optimal_vec
-        hybrid_list["flci_l"] = flci_result.optimal_vec[num_pre_periods:]
+        hybrid_list["flci_l"] = flci_result.optimal_vec
         hybrid_list["flci_halflength"] = flci_result.optimal_half_length
 
         if grid_ub is None:
@@ -463,7 +449,15 @@ def _compute_cs_sdb_no_nuisance(
         if grid_lb is None:
             grid_lb = flci_result.optimal_vec @ betahat - flci_result.optimal_half_length
 
-    else:  # LF or ARP
+    else:
+        if hybrid_flag == "LF":
+            hybrid_list["lf_cv"] = compute_least_favorable_cv(
+                x_t=None,
+                sigma=A_sdb @ sigma @ A_sdb.T,
+                hybrid_kappa=hybrid_kappa,
+                seed=seed,
+            )
+
         if grid_ub is None or grid_lb is None:
             id_set = compute_identified_set_sdb(
                 m_bar=m_bar,
@@ -497,6 +491,8 @@ def _compute_cs_sdb_no_nuisance(
     if hybrid_flag == "FLCI":
         arp_kwargs["flci_l"] = hybrid_list.get("flci_l")
         arp_kwargs["flci_halflength"] = hybrid_list.get("flci_halflength")
+    elif hybrid_flag == "LF":
+        arp_kwargs["lf_cv"] = hybrid_list["lf_cv"]
 
     result = compute_arp_ci(**arp_kwargs)
 

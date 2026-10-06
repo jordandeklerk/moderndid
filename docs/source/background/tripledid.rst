@@ -1,499 +1,777 @@
 .. _background-tripledid:
 
-Triple Difference-in-Differences
-================================
+Triple differences with staggered adoption
+==========================================
 
-The ``didtriple`` module implements the triple difference-in-differences (DDD) methodology from
-`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_. This approach extends
-standard DiD to settings where treatment requires satisfying two criteria, enabling researchers to relax
-parallel trends assumptions that may be implausible in traditional DiD designs.
+Some policies apply only to eligible units within a jurisdiction. A
+jurisdiction may enable the policy in one year. An ineligible unit
+in that jurisdiction never receives the treatment. The ineligible units can help measure
+local changes that an ordinary difference-in-differences comparison
+would attribute to the policy.
 
-When Triple DiD is Appropriate
-------------------------------
+Triple differences adds that eligibility comparison to the time and
+adoption comparisons. The question becomes whether the untreated
+eligible-minus-ineligible trend gap would have evolved similarly across
+jurisdictions. This can be credible even when neither eligibility group
+satisfies an ordinary parallel trends restriction on its own.
 
-Standard difference-in-differences compares treated and untreated units under the assumption that both
-groups would have followed parallel outcome paths absent treatment. In many applications, this assumption may
-be difficult to defend. Triple DiD offers an alternative when the treatment structure has a specific form.
+We follow `Ortiz-Villavicencio and Sant'Anna (2025)
+<https://arxiv.org/abs/2505.09942>`_ to identify effects separately by
+adoption cohort and period. Their `paper <https://arxiv.org/pdf/2505.09942v1>`_
+shows why covariate adjustment and the choice of comparison cohorts
+need special care in this design. ModernDiD implements the estimators
+through :func:`~moderndid.ddd` and their summaries through
+:func:`~moderndid.agg_ddd`.
 
-Consider a policy that only affects units meeting two conditions simultaneously. For example, a state-level
-program might target women specifically, a trade policy might affect particular crops in certain countries,
-or an insurance program might be available only to farmers in participating regions. In these cases, a unit
-receives treatment only if it belongs to both a group that enables treatment (such as a state that adopted
-the policy) and a population partition that qualifies for treatment (such as women, specific crops, or
-farmers).
+Adoption and eligibility describe different groups
+--------------------------------------------------
 
-This two-dimensional treatment structure creates four types of units. In the treated group
-(policy-enabling region), some units qualify for treatment while others do not. In the comparison group
-(non-enabling region), we observe the same partition. The triple difference exploits this structure
-by comparing how the gap between qualified and non-qualified units evolves differently across enabling and
-non-enabling groups.
-
-The key advantage is that DDD allows for violations of standard parallel trends that affect either
-dimension separately. Trends may differ between enabling and non-enabling groups, and trends may differ
-between qualified and non-qualified units. What DDD requires is that these differential trends are stable
-across the other dimension.
-
-Setup and Notation
-------------------
-
-We consider a panel with :math:`T` time periods and units indexed by :math:`i`. Each unit belongs to a
-group :math:`S_i` indicating when treatment was enabled. Let :math:`S_i \in \{2, \ldots, T, \infty\}`,
-where :math:`S_i = g` means unit :math:`i` belongs to a group that first enabled treatment in period
-:math:`g`, and :math:`S_i = \infty` indicates units in groups that never enable treatment.
-
-Additionally, each unit belongs to a partition determining eligibility. Let :math:`Q_i = 1` if unit
-:math:`i` qualifies for treatment and :math:`Q_i = 0` otherwise. This eligibility is assumed
-time-invariant.
-
-A unit is treated in period :math:`t` if and only if both conditions hold, namely that the group has enabled
-treatment by period :math:`t` (i.e., :math:`t \geq S_i`) and that the unit qualifies (:math:`Q_i = 1`).
-The treatment indicator is thus
+Consider a panel observed in periods :math:`1,\ldots,T`. Let
+:math:`S_i\in\{2,\ldots,T,\infty\}` be the first period when
+unit :math:`i`'s jurisdiction enables treatment. Let
+:math:`Q_i\in\{0,1\}` be its fixed eligibility status. Treatment
+requires both an enabled jurisdiction and an eligible unit,
 
 .. math::
 
-   D_{i,t} = \mathbf{1}\{t \geq S_i, Q_i = 1\}.
+   D_{i,t}=\mathbf1\{t\geq S_i,\ Q_i=1\}.
 
-Treatment is an absorbing state, so once treated, units remain treated. Let :math:`G_i` denote the first
-period in which unit :math:`i` is treated. For qualified units, :math:`G_i = S_i`. For non-qualified
-units, :math:`G_i = \infty` since they are never treated regardless of their group's enabling status.
+Once treatment begins, it remains in place. The actual treatment cohort
+:math:`G_i` equals :math:`S_i` for eligible units and
+:math:`\infty` for ineligible units. By contrast, :math:`S_i`
+records the enabling date for both eligibility groups. Write
+:math:`\mathcal S` for its support and
+:math:`\mathcal G_{trt}=\mathcal S\setminus\{\infty\}` for the
+finite cohorts containing eligible treated units.
 
-Let :math:`Y_{i,t}(g)` denote the potential outcome for unit
-:math:`i` at time :math:`t` if first treated in period :math:`g`, and :math:`Y_{i,t}(\infty)` denote
-the never-treated potential outcome. The observed outcome combines these based on treatment status.
+.. admonition:: Record the enabling date for everyone
+   :class: tip
 
-Parameters of Interest
-----------------------
+   Pass the enabling-cohort column :math:`S` as ``gname`` and eligibility
+   :math:`Q` as ``pname`` in ``ddd``. Ineligible units in an adopting
+   jurisdiction must keep that jurisdiction's enabling date. Coding
+   them all as never enabled would remove the within-jurisdiction
+   comparison the estimator needs.
 
-The fundamental parameter is the group-time average treatment effect for units first treated in period
-:math:`g`, evaluated at time :math:`t`
+Let :math:`Y_{i,t}(g)` be the potential outcome under first treatment
+in period :math:`g`, and let :math:`Y_{i,t}(\infty)` be the outcome
+without treatment. Consistency gives
+:math:`Y_{i,t}=Y_{i,t}(G_i)`. This notation presumes that another
+unit's treatment does not change unit :math:`i`'s outcome.
 
-.. math::
-
-   ATT(g, t) = \mathbb{E}[Y_t(g) - Y_t(\infty) \mid G = g] = \mathbb{E}[Y_t(g) - Y_t(\infty) \mid S = g, Q = 1].
-
-This parameter captures how treatment affects the average outcome for a specific cohort at a specific time.
-The collection of all :math:`ATT(g,t)` parameters provides a complete picture of treatment effect
-heterogeneity across cohorts and over time.
-
-For summarizing results, the event-study aggregation averages effects by time elapsed since treatment
-
-.. math::
-
-   ES(e) = \sum_{g \in \mathcal{G}_{\text{trt}}} \mathbb{P}(G = g \mid G + e \in [2, T]) \cdot ATT(g, g+e),
-
-where :math:`e = t - g` represents event time. This aggregation weights each cohort's contribution by its
-relative size among cohorts observed at that event time. A simple overall summary averages across all
-post-treatment event times
+The effect for an eligible cohort in a particular period is
 
 .. math::
 
-   ES_{\text{avg}} = \frac{1}{N_E} \sum_{e \in \mathcal{E}} ES(e).
+   ATT(g,t)
+      =\mathbb E[Y_t(g)-Y_t(\infty)\mid S=g,Q=1],
+   \qquad g\in\mathcal G_{trt},\quad t\geq g.
 
-Identification Assumptions
---------------------------
+This target averages over eligible units in the adopting cohort.
+It does not average over the ineligible units used to estimate the
+counterfactual. Keeping that population fixed will determine how
+covariate adjustment enters the estimator.
 
-Identification relies on several assumptions that parallel those in standard DiD but are adapted to the DDD
-structure.
+The paper assumes a never-enabled cohort is available. Without one,
+comparisons using later adopters are possible only while those adopters
+remain untreated. In particular, periods at or after the last enabling
+date have no such comparison cohort.
 
-.. admonition:: Assumption (Strong Overlap)
+The untreated trend gap that must be stable
+-------------------------------------------
 
-   For every combination of enabling group :math:`g` and eligibility status :math:`q`, and for some
-   :math:`\epsilon > 0`,
+A standard DiD would compare outcome changes across enabling cohorts
+for eligible units alone. DDD allows that comparison to have a bias
+if the same bias can be measured among ineligible units. We state
+that restriction conditional on pre-treatment covariates :math:`X`,
+along with the sampling, support, and timing conditions it needs.
+
+.. admonition:: Assumption S Random sampling
+   :class: assumption
+
+   The vectors
+   :math:`W_i=(Y_{i,1},\ldots,Y_{i,T},X_i',G_i,S_i,Q_i)'`,
+   for :math:`i=1,\ldots,n`, are independent and identically
+   distributed draws from their population law.
+
+This sampling statement treats the unit as the independent observation.
+Dependence within a unit across periods is unrestricted. Clustered
+inference requires a sampling justification at the cluster level
+rather than interpreting this assumption as independence within clusters.
+
+.. admonition:: Assumption SO Strong overlap
+   :class: assumption
+
+   There exists :math:`\varepsilon>0` such that, for every
+   :math:`(s,q)\in\mathcal S\times\{0,1\}`,
 
    .. math::
 
-      \mathbb{P}[S = g, Q = q \mid X] > \epsilon
+      P(S=s,Q=q\mid X)>\varepsilon
+      \qquad\text{almost surely}.
 
-   with probability one.
+Strong overlap supplies all relevant cohort-by-eligibility cells at
+covariate values represented in the target population. A covariate
+profile observed only among eligible adopters cannot support the
+DDD counterfactual without additional extrapolation assumptions.
 
-This ensures that for any covariate value, we can find units in all four cells of the group-by-eligibility
-matrix. Without overlap, certain comparisons would rely on extrapolation rather than observed data.
+.. admonition:: Assumption NA No anticipation
+   :class: assumption
 
-.. admonition:: Assumption (No Anticipation)
-
-   For all :math:`g` in the set of treated cohorts and all pre-treatment periods :math:`t < g`,
-
-   .. math::
-
-      \mathbb{E}[Y_t(g) \mid S = g, Q = 1, X] = \mathbb{E}[Y_t(\infty) \mid S = g, Q = 1, X]
-
-   with probability one.
-
-This rules out anticipatory behavior. Units do not alter their outcomes before treatment actually begins. If
-treatment is announced in advance, the treatment date should be adjusted accordingly.
-
-.. admonition:: Assumption (DDD Conditional Parallel Trends)
-
-   For each treated cohort :math:`g`, comparison cohort :math:`g'` with :math:`g' > \max\{g, t\}`, and
-   post-treatment period :math:`t \geq g`, the following holds with probability one. Let
+   For every :math:`g\in\mathcal G_{trt}` and every :math:`t<g`,
 
    .. math::
 
-      \Delta Y_t(\infty) = Y_t(\infty) - Y_{t-1}(\infty)
+      \mathbb E[Y_t(g)\mid S=g,Q=1,X]
+         =\mathbb E[Y_t(\infty)\mid S=g,Q=1,X]
+      \qquad\text{almost surely}.
 
-   denote the change in untreated potential outcomes. Then
+This is a conditional mean restriction on the treated cohort's
+pre-treatment potential outcomes. It does not require every unit's
+individual anticipatory response to equal zero. A policy announcement
+that changes those conditional means requires an earlier effective
+adoption date or a different identifying design.
+
+.. admonition:: Assumption DDD-CPT Conditional parallel trends
+   :class: assumption
+
+   Define :math:`\Delta Y_t(\infty)=Y_t(\infty)-Y_{t-1}(\infty)`.
+   For every :math:`g\in\mathcal G_{trt}`,
+   :math:`g'\in\mathcal S`, and :math:`t\geq g` with
+   :math:`g'>\max\{g,t\}`,
 
    .. math::
 
       \begin{aligned}
-      &\mathbb{E}[\Delta Y_t(\infty) \mid S = g, Q = 1, X]
-      - \mathbb{E}[\Delta Y_t(\infty) \mid S = g, Q = 0, X] \\
-      &= \mathbb{E}[\Delta Y_t(\infty) \mid S = g', Q = 1, X]
-      - \mathbb{E}[\Delta Y_t(\infty) \mid S = g', Q = 0, X].
+      &\mathbb E[\Delta Y_t(\infty)\mid S=g,Q=1,X]
+        -\mathbb E[\Delta Y_t(\infty)\mid S=g,Q=0,X]\\
+      &\quad=\mathbb E[\Delta Y_t(\infty)\mid S=g',Q=1,X]
+        -\mathbb E[\Delta Y_t(\infty)\mid S=g',Q=0,X]
+      \qquad\text{almost surely}.
       \end{aligned}
 
-This is the core identifying assumption. It states that the gap in outcome trends between qualified and
-non-qualified units is the same across enabling groups, conditional on covariates. Importantly, this
-assumption does not require that qualified and non-qualified units follow parallel trends within a group,
-nor that the same eligibility group follows parallel trends across enabling groups. It only requires that
-the difference-in-trends is stable.
+The restriction equates differences in untreated trends. Eligible and
+ineligible units may have different trends within a jurisdiction.
+Jurisdictions may also have different trends within either eligibility
+group. The identifying requirement is that subtracting the ineligible
+trend removes the same difference across enabling cohorts.
 
-Why Standard Approaches Fail
-----------------------------
+Ineligible units remain untreated in this potential-outcome model.
+If the policy also changes their outcomes through spillovers or a
+separate policy component, their observed change need not measure
+:math:`Y_t(\infty)-Y_{t-1}(\infty)`. Eligibility is therefore an
+identifying feature of the design, rather than just a convenient
+partition of the data.
 
-The negative weighting problems of standard TWFE in binary staggered designs
-(:ref:`background-did`) extend to the DDD setting and interact with additional complications
-from the eligibility dimension.
+Why the familiar regression needs more care
+-------------------------------------------
 
-Three-Way Fixed Effects Regressions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A natural starting point for DDD analysis is the three-way fixed effects (3WFE) regression
-
-.. math::
-
-   Y_{i,t} = \gamma_i + \gamma_{s,t} + \gamma_{q,t}
-   + \beta_{3\text{wfe}} D_{i,t} + \varepsilon_{i,t},
-
-where :math:`\gamma_i` are unit fixed effects, :math:`\gamma_{s,t}` are enabling-group-by-time fixed
-effects, :math:`\gamma_{q,t}` are eligibility-group-by-time fixed effects, and :math:`D_{i,t}` is the
-treatment indicator.
-
-In the simplest setting with two periods, two enabling groups, and no covariates, the OLS estimate of
-:math:`\beta_{3\text{wfe}}` does recover the :math:`ATT(2,2)`. The estimate can be written as the
-difference of two DiD estimands
+In a two-period design without covariates, the DDD comparison is the
+eligible-minus-ineligible change in the adopting cohort minus that
+same change in a comparison cohort. Let :math:`g=2` and use a
+never-enabled comparison. The population expression is
 
 .. math::
 
    \begin{aligned}
-   \beta_{3\text{wfe}}
-   &= \underbrace{(\mathbb{E}[Y_2 - Y_1 \mid S=2, Q=1]
-   - \mathbb{E}[Y_2 - Y_1 \mid S=2, Q=0])}_{\text{DiD among } S=2} \\
-   &- \underbrace{(\mathbb{E}[Y_2 - Y_1 \mid S=\infty, Q=1]
-   - \mathbb{E}[Y_2 - Y_1 \mid S=\infty, Q=0])}_{\text{DiD among } S=\infty}.
+   ATT(2,2)
+      =&\bigl(\mathbb E[Y_2-Y_1\mid S=2,Q=1]
+              -\mathbb E[Y_2-Y_1\mid S=2,Q=0]\bigr)\\
+       &-\bigl(\mathbb E[Y_2-Y_1\mid S=\infty,Q=1]
+              -\mathbb E[Y_2-Y_1\mid S=\infty,Q=0]\bigr).
    \end{aligned}
 
-This equivalence has led many researchers to view DDD as simply "the difference between two DiDs."
-Unfortunately, this interpretation breaks down in more realistic settings.
-
-When Covariates Matter
-~~~~~~~~~~~~~~~~~~~~~~
-
-When identification requires conditioning on covariates, computing DDD as the difference of two DiD
-estimates produces biased results. The issue is that each DiD estimate integrates over covariates using its
-own group's covariate distribution. But for the DDD parameter, we need to integrate using the covariate
-distribution of the treated units (those with :math:`S = g` and :math:`Q = 1`).
-
-Taking the difference of two separately computed DiD estimates averages over the wrong distributions. The
-resulting estimator does not target the causal parameter of interest. Monte Carlo evidence demonstrates
-that this bias can be substantial, leading to incorrect signs or magnitudes even in moderately sized
-samples.
-
-Similarly, adding covariates linearly to the 3WFE specification does not solve the problem. Specifications
-like
+A saturated three-way fixed effects regression reproduces this
+four-cell contrast in the two-period setting. Its staggered-adoption
+analogue is often written
 
 .. math::
 
-   Y_{i,t} = \gamma_i + \gamma_{s,t} + \gamma_{q,t}
-   + \tilde{\beta}_{3\text{wfe}} D_{i,t} + X_i' \theta \cdot \mathbf{1}\{t=2\} + u_{i,t}
+   Y_{i,t}=\gamma_i+\gamma_{S_i,t}+\gamma_{Q_i,t}
+           +\beta_{3wfe}D_{i,t}+\varepsilon_{i,t}.
 
-remain "too rigid" to properly account for covariate-specific trends in DDD designs.
+With several adoption dates, a common coefficient can combine comparisons
+using already-treated eligible units as controls. Treatment-effect
+heterogeneity can then contaminate the coefficient's interpretation,
+just as in the :ref:`staggered DiD setting <background-did>`.
+The additional eligibility comparison does not remove that problem.
 
-The key insight is that valid DDD estimation with covariates requires *three* DiD-type comparisons, not
-two. Each comparison uses a different subset of untreated units as controls, and all three are combined
-while integrating over the treated units' covariate distribution.
+Covariates create a separate difficulty even with two periods.
+Suppose the DDD trend restriction holds only conditional on :math:`X`.
+Two separately adjusted DiD estimates can average their conditional
+comparisons over different covariate distributions. Subtracting them
+need not recover the effect for eligible units in :math:`S=g`.
+It can work under additional restrictions that make those averages
+coincide. DDD-CPT alone does not supply those restrictions.
 
-Why Pooling Not-Yet-Treated Units Fails
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The required adjustment instead evaluates all four conditional outcome
+changes at the covariate distribution of the eligible adopting cohort.
+Adding a common linear covariate-by-time term to the regression does
+not generally represent that adjustment. The identification formulas
+below show the common target population directly.
 
-In standard staggered DiD, a common and valid practice is to pool all not-yet-treated units and use them as
-an aggregate comparison group. One might expect this approach to carry over to DDD. It does not.
+Identifying one cohort-period effect
+-------------------------------------
 
-The DDD parallel trends assumption allows both group-specific and eligibility-specific deviations from
-standard parallel trends. If the fraction of qualified units varies across enabling groups, pooling
-not-yet-treated groups conflates populations with different trend structures. The deviations do not average
-out, and the resulting estimator is biased.
+Fix :math:`g\in\mathcal G_{trt}` and :math:`t\geq g`.
+Choose a comparison cohort :math:`g_c>t` and use the last
+pre-treatment period as the baseline,
 
-Formally, using the shorthand :math:`\Delta Y_t(\infty)` for the change in untreated potential outcomes,
-the DDD-CPT assumption does not imply that
+.. math::
+
+   \Delta Y=Y_t-Y_{g-1}.
+
+We use one target cell and three untreated cells. Denote their
+indicators by
 
 .. math::
 
    \begin{aligned}
-   &\mathbb{E}[\Delta Y_t(\infty) \mid S = g, Q = 1, X]
-   - \mathbb{E}[\Delta Y_t(\infty) \mid S = g, Q = 0, X] \\
-   &= \mathbb{E}[\Delta Y_t(\infty) \mid S > t, Q = 1, X]
-   - \mathbb{E}[\Delta Y_t(\infty) \mid S > t, Q = 0, X].
+   T_g&=\mathbf1\{S=g,Q=1\},\\
+   C_1&=\mathbf1\{S=g,Q=0\},\\
+   C_2&=\mathbf1\{S=g_c,Q=1\},\\
+   C_3&=\mathbf1\{S=g_c,Q=0\}.
    \end{aligned}
 
-The pooled not-yet-treated group :math:`S > t` mixes units from different enabling cohorts, each potentially
-with different eligibility compositions. Monte Carlo simulations show that pooling not-yet-treated units can
-produce estimates with the wrong sign even when the underlying assumptions are satisfied. The solution is to
-use comparison groups one at a time and combine estimates appropriately.
-
-Identification and Estimation
------------------------------
-
-Under the identifying assumptions above, the group-time average treatment effects :math:`ATT(g,t)` can be
-recovered using three approaches. Regression adjustment (RA) models the counterfactual outcome evolution
-directly. Inverse probability weighting (IPW) reweights comparison units to match the treated group's
-covariate distribution. Doubly robust (DR) estimation combines both. Each approach uses a specific
-not-yet-treated cohort :math:`g_c > t` as the comparison group. All three identify the same parameter, but
-they differ in their robustness properties and efficiency.
-
-Notation
-~~~~~~~~
-
-Let :math:`\Delta Y = Y_t - Y_{g-1}` denote the outcome change from the baseline period to the current
-period. Define the outcome regression function for units in enabling group :math:`g'` with eligibility
-:math:`q'` as
+For each comparison :math:`j=1,2,3`, define its conditional outcome
+change and its propensity score relative to the target cell,
 
 .. math::
 
-   m^{S=g', Q=q'}(X) = \mathbb{E}[\Delta Y \mid S = g', Q = q', X].
+   m_j(x)=\mathbb E[\Delta Y\mid X=x,C_j=1],
+   \qquad
+   p_j(x)=P(T_g=1\mid X=x,T_g+C_j=1).
 
-The generalized propensity score for being in the treated cell :math:`(S=g, Q=1)` versus comparison cell
-:math:`(S=g', Q=q')` is
-
-.. math::
-
-   p_{g',q'}^{S=g,Q=1}(X) = \mathbb{P}[S=g, Q=1 \mid X, (S=g, Q=1) \cup (S=g', Q=q')].
-
-Regression Adjustment Estimand
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The RA estimand adjusts for covariates by modeling the counterfactual outcome evolution directly
+The score :math:`p_j` is a two-cell conditional probability.
+It is not the unconditional probability of belonging to the target
+cohort. Its odds transport comparison-cell observations to the target
+cell's covariate distribution,
 
 .. math::
 
-   ATT_{\text{ra}, g_c}(g, t) =
-   \mathbb{E}\left[w_{\text{trt}}^{S=g,Q=1}
-   \left(\Delta Y - m^{S=g, Q=0}(X)
-   - m^{S=g_c, Q=1}(X)
-   + m^{S=g_c, Q=0}(X)\right)\right],
+   r_j(X)=\frac{p_j(X)}{1-p_j(X)},\qquad
+   w_T=\frac{T_g}{\mathbb E[T_g]},\qquad
+   w_j=\frac{C_jr_j(X)}{\mathbb E[C_jr_j(X)]}.
 
-where the weight on treated units is
+Each normalized weight has expectation one. For any integrable
+function :math:`f`, the true propensity scores imply
+:math:`\mathbb E[w_jf(X)]=\mathbb E[f(X)\mid T_g=1]`.
+That identity puts every comparison at the same covariate distribution.
 
-.. math::
-
-   w_{\text{trt}}^{S=g,Q=1} =
-   \frac{\mathbf{1}\{S=g, Q=1\}}{\mathbb{E}[\mathbf{1}\{S=g, Q=1\}]}.
-
-This estimand is consistent when all three outcome regression models are correctly specified.
-
-Inverse Probability Weighting Estimand
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The IPW estimand reweights comparison units to match the covariate distribution of treated units
-
-.. math::
-
-   \begin{aligned}
-   ATT_{\text{ipw}, g_c}(g, t)
-   &= \mathbb{E}\left[
-   \left(w_{\text{trt}}^{S=g,Q=1}
-   - w_{g,0}^{S=g,Q=1}(X)\right)\Delta Y\right] \\
-   &- \mathbb{E}\left[
-   \left(w_{g_c,1}^{S=g,Q=1}(X)
-   - w_{g_c,0}^{S=g,Q=1}(X)\right)\Delta Y\right],
-   \end{aligned}
-
-where the comparison weights :math:`w_{g',q'}^{S=g,Q=1}(X)` use the generalized propensity scores to
-reweight units from cell :math:`(g', q')` to match the treated cell's covariate distribution.
-
-This estimand is consistent when all generalized propensity score models are correctly specified.
-
-Doubly Robust Estimand
-~~~~~~~~~~~~~~~~~~~~~~
-
-The DR estimand combines both approaches
-
-.. math::
-
-   \begin{aligned}
-   ATT_{\text{dr}, g_c}(g, t)
-   &= \mathbb{E}\left[
-   \left(w_{\text{trt}} - w_{g,0}\right)
-   \left(\Delta Y - m^{S=g, Q=0}(X)\right)\right] \\
-   &+ \mathbb{E}\left[
-   \left(w_{\text{trt}} - w_{g_c,1}\right)
-   \left(\Delta Y - m^{S=g_c, Q=1}(X)\right)\right] \\
-   &- \mathbb{E}\left[
-   \left(w_{\text{trt}} - w_{g_c,0}\right)
-   \left(\Delta Y - m^{S=g_c, Q=0}(X)\right)\right].
-   \end{aligned}
-
-This estimand has a structure of three DiD-type terms. Each term compares treated units to a different
-subset of untreated units. The first uses non-qualified units in the enabling group, the second uses
-qualified units in the comparison group, and the third uses non-qualified units in the comparison group.
-The combination ensures proper integration over the treated units' covariate distribution.
-
-Multiply Robust Property
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-The DR DDD estimator enjoys a particularly strong form of robustness. For each of the three DiD-type
-components, consistency requires that either the propensity score model or the outcome regression model is
-correctly specified. Since there are three components and two model types per component, this creates eight
-possible combinations of correct specifications that all lead to consistent estimation.
-
-This "multiply robust" property provides substantial protection against model misspecification. Even if
-some models are wrong, as long as at least one model per component is correct, the estimator remains
-consistent for the :math:`ATT(g,t)`.
-
-Three DiDs, Not Two
-~~~~~~~~~~~~~~~~~~~
-
-An important conceptual point is that the DDD estimand with covariates cannot be written as the difference
-of two DiD estimands. It requires three DiD-type terms, each using a different comparison group:
-
-1. Treated units vs. non-qualified units in the same enabling group
-2. Treated units vs. qualified units in the comparison enabling group
-3. Treated units vs. non-qualified units in the comparison enabling group
-
-When all units are integrated over the treated units' covariate distribution, these three terms combine to
-identify the :math:`ATT(g,t)`.
-
-Combining Multiple Comparison Groups
+Regression adjustment and weighting
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Since any not-yet-treated cohort :math:`g_c > t` provides a valid comparison, the model is
-over-identified. Rather than choosing a single comparison group, we can combine all available estimators to
-improve precision.
-
-For a given :math:`(g, t)` pair, let
+Regression adjustment uses the three outcome regressions to predict
+the target cohort's untreated change. Its population estimand is
 
 .. math::
 
-   \mathcal{G}_c^{g,t} = \{g_c \in \mathcal{S} : g_c > \max\{g, t\}\}
+   ATT_{ra,g_c}(g,t)
+      =\mathbb E[w_T\{\Delta Y-m_1(X)-m_2(X)+m_3(X)\}].
 
-denote the set of valid comparison groups. Any weighted combination of estimators using different comparison
-groups identifies the same :math:`ATT(g,t)`, as long as the weights sum to one.
+The sign on :math:`m_3` restores the comparison-cohort ineligible
+change after the other two subtractions. Under DDD-CPT, this combination
+recovers the missing untreated change for eligible adopters.
 
-Let :math:`\widehat{ATT}_{\text{dr}}(g,t)` be the vector of estimates using each valid comparison group,
-and let :math:`\widehat{\Omega}_{g,t}` be their estimated variance-covariance matrix. The optimal
-combination that minimizes asymptotic variance is
-
-.. math::
-
-   \widehat{ATT}_{\text{dr,gmm}}(g, t) =
-   \frac{\mathbf{1}' \widehat{\Omega}_{g,t}^{-1}}
-   {\mathbf{1}' \widehat{\Omega}_{g,t}^{-1} \mathbf{1}}
-   \widehat{ATT}_{\text{dr}}(g, t).
-
-This GMM-style estimator has an interpretation as an optimal generalized method of moments estimator based
-on recentered influence functions. The weights are chosen to minimize variance subject to the constraint
-that they sum to one.
-
-In practice, using this combination can yield substantial precision gains. Monte Carlo simulations show that
-confidence intervals based on the GMM combination can be more than 50% narrower than those using only the
-never-treated comparison group. This is particularly valuable when the never-treated group is small.
-
-Asymptotic Properties and Inference
------------------------------------
-
-The DR DDD estimators have influence function representations that support standard
-asymptotic inference. This section covers the asymptotic distribution and the multiplier
-bootstrap for simultaneous confidence bands.
-
-Asymptotic Normality
-~~~~~~~~~~~~~~~~~~~~
-
-Under the identifying assumptions and standard regularity conditions, the DR DDD estimators are
-asymptotically normal. For each :math:`(g, t)` pair and comparison group :math:`g_c`,
+Inverse probability weighting represents the same covariate adjustment
+without specifying those outcome regressions,
 
 .. math::
 
-   \sqrt{n}\left(\widehat{ATT}_{\text{dr}, g_c}(g, t) - ATT(g, t)\right)
-   \xrightarrow{d} N(0, \Omega_{g,t,g_c}),
+   ATT_{ipw,g_c}(g,t)
+      =\mathbb E[(w_T-w_1-w_2+w_3)\Delta Y].
 
-where the asymptotic variance :math:`\Omega_{g,t,g_c}` can be consistently estimated using influence
-function methods.
+The relevant outcome levels need not match across the four cells.
+The weights align their covariate distributions before the changes
+are combined. Large odds can still make a sample estimator unstable
+even when population overlap holds.
 
-The GMM-combined estimator achieves the minimum asymptotic variance among all weighted combinations
+The doubly robust representation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. math::
-
-   \Omega_{g,t,\text{gmm}} = \left(\mathbf{1}'
-   \Omega_{g,t}^{-1} \mathbf{1}\right)^{-1} \leq \Omega_{g,t,g_c}
-
-for any single comparison group :math:`g_c`.
-
-Simultaneous Inference
-~~~~~~~~~~~~~~~~~~~~~~
-
-When examining multiple :math:`ATT(g,t)` parameters or event-study coefficients, pointwise confidence
-intervals can be misleading due to multiple testing concerns. The methodology provides simultaneous
-confidence bands that cover all parameters with a pre-specified probability.
-
-These bands are constructed using a multiplier bootstrap procedure that accounts for the dependence across
-different group-time estimates. The resulting simultaneous bands are wider than pointwise intervals but
-provide valid coverage for the entire collection of parameters.
-
-Event-Study Aggregation
------------------------
-
-While the group-time parameters :math:`ATT(g,t)` provide complete flexibility, researchers often want to
-summarize results by event time. The event-study aggregation computes weighted averages across cohorts for
-each elapsed time since treatment.
-
-For post-treatment event times :math:`e \geq 0`, the event-study parameter is
+A doubly robust score combines the weighting and regression approaches.
+Write :math:`s_1=s_2=1` and :math:`s_3=-1`. The resulting estimand is
 
 .. math::
 
-   ES(e) = \sum_{g \in \mathcal{G}_{\text{trt}}}
-   \mathbb{P}(G = g \mid G + e \in [2, T]) \cdot ATT(g, g+e).
+   ATT_{dr,g_c}(g,t)
+      =\sum_{j=1}^{3}s_j\,
+         \mathbb E[(w_T-w_j)\{\Delta Y-m_j(X)\}].
 
-The natural estimator replaces each :math:`ATT(g, g+e)` with its DR GMM estimate and uses sample proportions
-for the weights
+Each term subtracts a different untreated cell from the same target
+cell. These terms need not separately identify causal DiD effects
+under ordinary parallel trends. Their signed combination identifies
+the DDD effect under DDD-CPT.
+
+.. admonition:: Theorem 4.1 Identification
+   :class: theorem
+
+   Under Assumptions S, SO, NA, and DDD-CPT, for every
+   :math:`g\in\mathcal G_{trt}`, :math:`t\in\{2,\ldots,T\}`
+   with :math:`t\geq g`, and comparison cohort
+   :math:`g_c\in\mathcal S` with :math:`g_c>\max\{g,t\}`,
+
+   .. math::
+
+      ATT_{ra,g_c}(g,t)=ATT_{ipw,g_c}(g,t)
+                     =ATT_{dr,g_c}(g,t)=ATT(g,t).
+
+   Corollary 4.1 states that any combination over
+
+   .. math::
+
+      \mathcal G_c^{g,t}=\{g_c\in\mathcal S:
+                             g_c>\max\{g,t\}\},
+
+   with weights summing to one also identifies :math:`ATT(g,t)`.
+
+The theorem uses the population outcome regressions and propensity
+scores. Estimation replaces them with fitted models. Regression
+adjustment requires all three outcome models to be correct, whereas
+IPW requires all three propensity models to be correct.
+
+For the DR estimator, each comparison needs either its outcome model
+or its propensity model to be correct at the fitted population limit,
 
 .. math::
 
-   \widehat{ES}_{\text{dr,gmm}}(e) = \sum_{g \in \mathcal{G}_{\text{trt}}}
-   \mathbb{P}_n(G = g \mid G + e \in [2, T]) \cdot
-   \widehat{ATT}_{\text{dr,gmm}}(g, g+e).
+   \text{for every }j\in\{1,2,3\},\qquad
+   p_j(X;\pi_j^*)=p_j(X)
+      \quad\text{or}\quad
+   m_j(X;\beta_j^*)=m_j(X)
+   \qquad\text{almost surely}.
 
-This estimator is asymptotically normal, and inference follows from the delta method combined with the
-asymptotic theory for the underlying :math:`ATT(g,t)` estimates.
+There are eight choices of one correct model per comparison.
+This property is called multiple robustness. It permits different
+comparisons to rely on different model types. It still requires the
+causal assumptions, overlap, and the estimation regularity conditions
+stated below.
 
-An overall summary parameter that averages across all post-treatment event times is
+In ``ddd``, ``est_method="dr"`` selects this estimator.
+The alternatives ``"reg"`` and ``"ipw"`` select the regression and
+weighting estimators. An intercept-only specification assumes the
+trend-gap restriction holds without covariate adjustment. Including
+covariates changes that identifying restriction rather than merely
+adding predictors to improve precision.
+
+Using several comparison cohorts
+---------------------------------
+
+One untreated cohort can identify an effect. Several untreated cohorts
+provide several estimates of the same effect. We can use their covariance
+to combine the estimates more precisely, but must first keep their
+eligibility compositions separate.
+
+DDD-CPT does not generally remain true after pooling all later cohorts
+into a single comparison group. Within the pooled group, eligible and
+ineligible units may represent different mixtures of enabling cohorts.
+Group-specific untreated changes therefore need not cancel in the
+eligible-minus-ineligible difference. This issue disappears under some
+additional composition or trend restrictions. DDD-CPT does not itself
+supply those additional identifying restrictions.
+
+``control_group="nevertreated"`` uses the never-enabled cohort.
+``control_group="notyettreated"`` constructs comparisons with individual
+cohorts that remain untreated in the relevant periods and combines their
+estimates. This retains the cohort-specific DDD contrasts rather than
+assuming that a raw pooled contrast is valid.
+
+For a fixed :math:`(g,t)`, stack the comparison-specific DR estimates
+in :math:`\widehat{\boldsymbol{ATT}}_{dr}(g,t)`.
+Let :math:`\Omega_{g,t}` be their asymptotic covariance and
+:math:`\widehat\Omega_{g,t}` a consistent estimate. For noncollinear
+comparisons, the variance-minimizing weights and estimator are
 
 .. math::
 
-   ES_{\text{avg}} = \frac{1}{N_E} \sum_{e \in \mathcal{E}} ES(e),
+   a_{g,t}
+      =\frac{\Omega_{g,t}^{-1}\mathbf1}
+             {\mathbf1'\Omega_{g,t}^{-1}\mathbf1},
+   \qquad
+   \widehat{ATT}_{dr,opt}(g,t)
+      =\widehat a_{g,t}'\widehat{\boldsymbol{ATT}}_{dr}(g,t).
 
-where :math:`\mathcal{E}` is the set of post-treatment event times and :math:`N_E` is its cardinality.
+The weights sum to one but can be negative. They combine estimators
+of the same :math:`ATT(g,t)`. Negative values here therefore do not
+produce a negative-weight average of different cohort treatment effects.
+The optimality claim concerns linear combinations of these valid
+comparison-specific estimators. It is not an efficiency claim over
+all possible DDD estimators.
 
-Pre-Treatment Testing
----------------------
+Sampling uncertainty and first-step estimation
+----------------------------------------------
 
-The availability of pre-treatment periods allows assessment of the DDD parallel trends assumption. By
-computing the DDD estimand for periods :math:`t < g`, researchers can check whether pre-treatment
-"effects" are close to zero.
+Consistency of the DR score does not by itself provide a standard
+error. The fitted propensity scores, fitted outcome models, and estimated
+weight normalizations all contribute sampling uncertainty. The paper's
+influence function accounts for those contributions under the following
+parametric estimation conditions.
 
-Pre-treatment event-study coefficients :math:`ES(e)` for :math:`e < 0` should equal zero under the
-identification assumptions. Note that :math:`ES(-1) = 0` by construction since the baseline period is fixed
-at :math:`g-1`. For earlier pre-treatment periods, significant coefficients suggest the identifying
-assumption may be violated.
+.. admonition:: Assumption WM Working models
+   :class: assumption
 
-Event-study plots that include both pre-treatment and post-treatment periods provide visual diagnostics.
-Under the identification assumptions, pre-treatment coefficients should be statistically
-indistinguishable from zero, while post-treatment coefficients reveal the dynamic treatment effects.
+   For each propensity or outcome working model :math:`f(X;\gamma)`,
+   the parameter space :math:`\Theta\subset\mathbb R^d` is compact
+   and :math:`\gamma\mapsto f(X;\gamma)` is almost surely
+   continuous. Its pseudo-true parameter :math:`\gamma^*` lies in
+   :math:`\operatorname{int}(\Theta)`. An appropriate criterion
+   :math:`\mathcal Q` identifies it uniquely. For every
+   :math:`\varepsilon>0`, there is :math:`\delta>0` such that
 
-When pre-treatment coefficients suggest potential violations, researchers can apply sensitivity analysis
-methods following `Rambachan and Roth (2023) <https://doi.org/10.1093/restud/rdad018>`_ to assess robustness
-of conclusions to departures from parallel trends.
+   .. math::
 
-.. note::
+      \inf_{\gamma\in\Theta:\|\gamma-\gamma^*\|\geq\varepsilon}
+          \{\mathcal Q(\gamma)-\mathcal Q(\gamma^*)\}>\delta.
 
-   For complete theoretical details including proofs, regularity conditions, and additional Monte Carlo
-   evidence, see the original paper by `Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_.
+   The model is almost surely continuously differentiable on an open
+   neighborhood :math:`\Theta_0\subset\Theta` of :math:`\gamma^*`.
+   For each working propensity score, there is a common
+   :math:`\varepsilon>0` such that
+
+   .. math::
+
+      0\leq p_j(X;\pi)\leq1-\varepsilon
+      \quad\text{almost surely for every }
+                       \pi\in\operatorname{int}(\Theta_{ps}).
+
+The pseudo-true parameter is the probability limit of the fitted
+model even when that model is misspecified. Multiple robustness requires
+the corresponding fitted function to equal its population counterpart
+for at least one model in each comparison. Merely including the correct
+function somewhere in a model family does not establish that requirement.
+
+.. admonition:: Assumption ALR Asymptotic linear representations
+   :class: assumption
+
+   Each first-step estimator :math:`\widehat\gamma` is strongly
+   consistent for :math:`\gamma^*` and satisfies
+
+   .. math::
+
+      \sqrt n(\widehat\gamma-\gamma^*)
+         =\frac1{\sqrt n}\sum_{i=1}^{n}
+                    \ell_\gamma(W_i;\gamma^*)+o_P(1).
+
+   The influence function has mean zero and a finite positive
+   definite second-moment matrix. It also satisfies
+
+   .. math::
+
+      \lim_{\delta\downarrow0}
+      \mathbb E\left[
+       \sup_{\substack{\gamma\in\Theta_0\\
+                  \|\gamma-\gamma^*\|\leq\delta}}
+       \|\ell_\gamma(W;\gamma)-\ell_\gamma(W;\gamma^*)\|^2
+      \right]=0.
+
+The expansion uses the full panel sample size :math:`n`.
+A model fitted on a two-cell subsample must have its influence
+function scaled to that sample convention before the DDD components
+are combined.
+
+.. admonition:: Assumption IC Integrability
+   :class: assumption
+
+   For every relevant :math:`g,t,g_c`, let
+   :math:`\kappa^*` stack the first-step population limits and let
+   :math:`h_{g,t,g_c}(W;\kappa)` be the signed DR score above,
+   with model-dependent normalized population weights. On a small
+   neighborhood :math:`\Gamma_0` of :math:`\kappa^*`, require
+
+   .. math::
+
+      \mathbb E[|h_{g,t,g_c}(W;\kappa^*)|^2]<\infty,
+      \qquad
+      \mathbb E\left[
+         \sup_{\kappa\in\Gamma_0}
+            \|\partial_\kappa h_{g,t,g_c}(W;\kappa)\|
+      \right]<\infty.
+
+These assumptions provide the paper's justification for parametric
+first-step fitting. They do not automatically extend to arbitrary
+machine-learning fits without a separate rate and inference argument.
+
+The complete influence function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For each :math:`j`, evaluate the working functions and normalized
+weights at their population limits. Define the residual and its two
+weighted means,
+
+.. math::
+
+   R_j=\Delta Y-m_j(X;\beta_j^*),\qquad
+   \mu_{T,j}=\mathbb E[w_TR_j],\qquad
+   \mu_{C,j}=\mathbb E[w_jR_j].
+
+Dots denote derivatives with respect to the model parameters. The
+first-step adjustment vectors are
+
+.. math::
+
+   \begin{aligned}
+   b_j(W)&=\frac{C_j}
+      {\{1-p_j(X;\pi_j^*)\}^2\,
+           \mathbb E[C_jr_j(X;\pi_j^*)]},\\
+   M_{\beta,j}&=\mathbb E[(w_T-w_j)\dot m_j(X;\beta_j^*)],\\
+   M_{\pi,j}&=\mathbb E[b_j(W)\dot p_j(X;\pi_j^*)
+                               (R_j-\mu_{C,j})].
+   \end{aligned}
+
+The influence function for component :math:`j` is
+
+.. math::
+
+   \begin{aligned}
+   \psi_j(W)
+      =&\ w_T(R_j-\mu_{T,j})-w_j(R_j-\mu_{C,j})\\
+       &-\ell_{\beta_j}(W)'M_{\beta,j}
+        -\ell_{\pi_j}(W)'M_{\pi,j}.
+   \end{aligned}
+
+The centering terms account for estimated weight denominators.
+The final two terms account for first-step fitting. When both models
+are correct for a component, those adjustment vectors vanish. Under
+one correct model, the appropriate remaining fitting contribution
+must still be included in the variance.
+
+For comparison cohort :math:`g_c`, combine the three components,
+
+.. math::
+
+   \psi_{g,t,g_c}(W)=\psi_1(W)+\psi_2(W)-\psi_3(W).
+
+Stack these functions over noncollinear comparison cohorts in
+:math:`\boldsymbol\psi_{g,t}(W)`. Their covariance is
+:math:`\Omega_{g,t}=\mathbb E[\boldsymbol\psi_{g,t}
+\boldsymbol\psi_{g,t}']`. This is the covariance used to choose the
+GMM weights, as well as to measure the uncertainty of the combined
+estimate.
+
+.. admonition:: Theorem 4.2 Consistency and asymptotic normality
+   :class: theorem
+
+   Suppose Assumptions S, SO, NA, DDD-CPT, WM, ALR, and IC hold.
+   For every :math:`g\in\mathcal G_{trt}`, post-treatment
+   :math:`t\in\{2,\ldots,T\}`, and
+   :math:`g_c\in\mathcal G_c^{g,t}`, suppose each of the three
+   components has a correct propensity or outcome model at its
+   population limit. Then
+
+   .. math::
+
+      \begin{aligned}
+      \sqrt n\{\widehat{ATT}_{dr,g_c}(g,t)-ATT(g,t)\}
+         &=\frac1{\sqrt n}\sum_{i=1}^{n}\psi_{g,t,g_c}(W_i)+o_P(1)\\
+         &\xrightarrow{d}N(0,\Omega_{g,t,g_c}),
+      \end{aligned}
+
+   where :math:`\Omega_{g,t,g_c}=\mathbb E[\psi_{g,t,g_c}^2]`.
+   For noncollinear comparisons and consistently estimated GMM
+   weights,
+
+   .. math::
+
+      \begin{aligned}
+      \sqrt n\{\widehat{ATT}_{dr,opt}(g,t)-ATT(g,t)\}
+         &=\frac1{\sqrt n}\sum_{i=1}^{n}
+                     a_{g,t}'\boldsymbol\psi_{g,t}(W_i)+o_P(1)\\
+         &\xrightarrow{d}N(0,\Omega_{g,t,opt}),\\
+      \Omega_{g,t,opt}
+         &=(\mathbf1'\Omega_{g,t}^{-1}\mathbf1)^{-1}
+           \leq w'\Omega_{g,t}w
+           \quad\text{for every }\mathbf1'w=1.
+      \end{aligned}
+
+   In particular, the combined asymptotic variance is no greater
+   than that of any one comparison-cohort estimator.
+
+Estimated GMM weights create no additional first-order contribution
+when all comparison estimates share the same true effect and the
+weights sum to one. A singular covariance needs separate treatment.
+The implementation uses a pseudoinverse when ordinary inversion fails;
+the nonsingular inverse formula in the theorem does not by itself
+establish validity for every singular case.
+
+Inference for a collection of effects
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A pointwise interval covers one chosen effect. An event study often
+invites a conclusion about several periods together, such as whether
+any post-treatment effect differs from zero. Simultaneous bands target
+joint coverage of that reported collection.
+
+For estimates with influence functions :math:`\widehat\psi_k`,
+a multiplier draw uses the same mean-zero, variance-one multiplier
+:math:`V_i^{(b)}` across all effects for unit :math:`i`,
+
+.. math::
+
+   \widehat{ATT}_k^{*(b)}-\widehat{ATT}_k
+      =\frac1n\sum_{i=1}^{n}V_i^{(b)}\widehat\psi_k(W_i).
+
+Sharing multipliers preserves the covariance across cohort-period
+estimates. The empirical quantile of the maximum absolute standardized
+perturbation supplies a simultaneous critical value. This is the
+joint-inference extension described in the paper's Remark 4.6.
+
+The ``ddd`` wrapper reports pointwise intervals even when
+``boot=True`` supplies bootstrap standard errors. The lower-level
+multi-period estimators expose ``cband`` for simultaneous cohort-period
+bands. For aggregate effects, ``agg_ddd`` defaults to
+``boot=True, cband=True`` and requires bootstrap inference when
+simultaneous bands are requested.
+
+.. admonition:: Check the scope of clustered inference
+   :class: warning
+
+   Multi-period ``ddd`` uses ``cluster`` only with ``boot=True``.
+   Cells that combine several not-yet-treated cohorts retain their
+   combination-specific standard errors without the requested cluster
+   adjustment. ``agg_ddd`` does not currently propagate cluster labels
+   into its own bootstrap. Its bands need a separate justification
+   when units are dependent within clusters.
+
+For cells that combine several comparison cohorts, the current reported
+standard error uses the full sample size with a covariance calculated
+on the comparison subsample. It can differ from a standard error
+computed from the scaled full-sample influence functions. The normal
+limit above requires a covariance estimate and sample-size convention
+that represent the same sampling error.
+
+The panel formulas above use observed within-unit outcome changes.
+With ``panel=False``, the estimator works from repeated cross-sections
+and needs stable population composition across the two samples,
+including the joint distribution of :math:`S,Q,X`. Setting
+``allow_unbalanced_panel=True`` also uses that repeated-cross-section
+path. Keeping the default instead restricts each panel comparison to
+units observed in both of its periods. The panel theorem alone does
+not justify a change in sampling design or selective attrition.
+
+Turning cohort-period effects into an event study
+-------------------------------------------------
+
+The collection of :math:`ATT(g,t)` separates adoption-cohort
+heterogeneity from changes with exposure length. An event study averages
+across the cohorts observed at a common event time :math:`e=t-g`.
+Its weights therefore determine the population represented at each
+point of the curve.
+
+For post-treatment :math:`e\geq0`, define
+:math:`\mathcal H_e=\{g\in\mathcal G_{trt}:2\leq g+e\leq T\}`.
+The paper weights eligible treated units,
+
+.. math::
+
+   ES_G(e)
+      =\sum_{g\in\mathcal H_e}
+        \frac{P(S=g,Q=1)}
+             {\sum_{h\in\mathcal H_e}P(S=h,Q=1)}\,
+           ATT(g,g+e).
+
+As :math:`e` grows, later adopters can leave the observable window.
+An apparent change in the event-study curve can therefore reflect both
+effect dynamics and changing cohort composition. ``balance_e=E`` in
+``agg_ddd`` keeps cohorts observed through event time :math:`E` and
+restricts the event window to
+:math:`E-t_{max}+t_{min}\leq e\leq E`, where
+:math:`t_{min},t_{max}` are the first and last sample periods.
+Choosing ``min_e`` and
+``max_e`` alone changes the displayed window without fixing its
+cohort composition.
+
+.. admonition:: Aggregation uses enabling-cohort shares
+   :class: important
+
+   The current ``agg_ddd`` weights count enabling cohorts across both
+   eligibility groups. Its event-study target uses :math:`P(S=g)`
+   rather than :math:`P(S=g,Q=1)`. It matches the paper's eligible-unit
+   average when eligibility shares are equal across the included
+   cohorts.
+
+The targets can differ when eligibility shares vary across those cohorts.
+Writing :math:`q_g=P(S=g)`, the package's event-study target is
+
+.. math::
+
+   ES_S(e)
+      =\sum_{g\in\mathcal H_e}
+           \frac{q_g}{\sum_{h\in\mathcal H_e}q_h}\,ATT(g,g+e).
+
+The current multi-period ``ddd`` path does not pass ``weightsname``
+into its cell estimators. Observation-weight support in the two-period
+wrapper does not establish weighted estimation for the staggered design.
+The cohort counts in ``agg_ddd`` also do not use that column.
+These distinctions matter when the desired summary represents an
+observation-weighted eligible population rather than enabling-cohort size.
+
+Inference must account for estimated shares as well as estimated
+effects. For either choice of cohort population, let :math:`I_g`
+be its membership indicator, :math:`q_g=\mathbb E[I_g]`,
+:math:`Q_e=\sum_{h\in\mathcal H_e}q_h`, and
+:math:`\omega_{g,e}=q_g/Q_e`. The share influence function is
+
+.. math::
+
+   \zeta_{g,e}(W)
+      =\frac{I_g-q_g}{Q_e}
+       -\frac{q_g}{Q_e^2}
+          \sum_{h\in\mathcal H_e}(I_h-q_h).
+
+For :math:`\psi_{g,g+e}` denoting the influence function of the
+chosen cohort-period estimator, the event-study influence function is
+
+.. math::
+
+   \psi_{ES(e)}(W)
+      =\sum_{g\in\mathcal H_e}
+        \{\omega_{g,e}\psi_{g,g+e}(W)
+                           +ATT(g,g+e)\zeta_{g,e}(W)\}.
+
+This is the delta-method representation behind the paper's
+Corollary 4.2 for eligible-unit shares. The same differentiation gives
+the enabling-share version used by the package. Treating estimated
+cohort shares as fixed would omit the second term.
+
+An overall event-study average gives equal weight to the selected
+post-treatment event times,
+
+.. math::
+
+   ES_{avg}=\frac1{|\mathcal E|}\sum_{e\in\mathcal E}ES(e).
+
+The package also provides ``type="group"`` and ``type="calendar"``
+summaries. Its ``type="simple"`` summary weights the included
+post-treatment cohort-period cells by cohort size. That summary need
+not equal an equal-weight average of event-study coefficients because
+cohorts contribute different numbers of observed periods.
+
+What pre-treatment contrasts can tell you
+-----------------------------------------
+
+Pre-treatment DDD contrasts examine whether the untreated trend gap
+was stable before adoption. With ``base_period="universal"``,
+periods are measured relative to :math:`g-1` and event time
+:math:`-1` is zero by normalization. With ``"varying"``,
+pre-treatment contrasts compare adjacent periods instead.
+
+DDD-CPT as stated above restricts periods at or after adoption.
+To expect earlier contrasts to vanish in the population, extend that
+trend-gap restriction to the corresponding pre-treatment periods.
+No anticipation alone does not impose equal untreated pre-treatment
+trend gaps across cohorts.
+
+A nonzero pre-treatment contrast can challenge the credibility of
+that extension. A failure to reject zero does not prove the
+post-treatment counterfactual restriction, particularly when the
+estimates are imprecise. Pre-treatment diagnostics should inform the
+design and the interpretation of its assumptions.
+
+The :ref:`triple differences example <example_triple_did>` applies
+these choices to crop insurance adoption. For departures from a
+common-reference trend-gap restriction, the
+:ref:`sensitivity background <background-didhonest>` explains how to
+state allowable violations explicitly. DDD estimates require a
+compatible coefficient vector and joint covariance for that analysis;
+the ``honest_did`` wrapper currently expects a dynamic ``aggte``
+result rather than a ``DDDAggResult``.

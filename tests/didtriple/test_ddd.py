@@ -1,5 +1,7 @@
 """Tests for the main DDD wrapper function."""
 
+import re
+
 import numpy as np
 import pytest
 
@@ -7,7 +9,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import ddd
+from moderndid import ddd, mboot_ddd
 from moderndid.didtriple.container import DDDMultiPeriodResult, DDDPanelResult
 
 
@@ -473,3 +475,138 @@ def test_ddd_dataframe_interoperability(ddd_converted, ddd_baseline_result):
     assert np.isclose(result.se, ddd_baseline_result.se)
     assert np.isclose(result.lci, ddd_baseline_result.lci)
     assert np.isclose(result.uci, ddd_baseline_result.uci)
+
+
+@pytest.mark.parametrize("panel", [True, False])
+def test_ddd_dotted_covariate_names(two_period_df, panel):
+    renamed = two_period_df.with_columns(pl.col("cov1").alias("cov.1"), pl.col("cov2").alias("cov 2"))
+    idname = "id" if panel else None
+    spec = {"yname": "y", "tname": "time", "idname": idname, "gname": "state", "pname": "partition", "panel": panel}
+    base = ddd(data=two_period_df, xformla="~ cov1 + cov2", **spec)
+    dotted = ddd(data=renamed, xformla="~ cov.1 + `cov 2`", **spec)
+
+    assert dotted.att == base.att
+    assert dotted.se == base.se
+
+
+def test_ddd_mp_dotted_covariate_names(multi_period_df):
+    renamed = multi_period_df.with_columns(pl.col("cov1").alias("cov.1"))
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "group", "pname": "partition"}
+    base = ddd(data=multi_period_df, xformla="~ cov1 + cov2", **spec)
+    dotted = ddd(data=renamed, xformla="~ cov.1 + cov2", **spec)
+
+    np.testing.assert_array_equal(dotted.att, base.att)
+    np.testing.assert_array_equal(dotted.se, base.se)
+
+
+@pytest.mark.parametrize(
+    "data_fixture, gname, panel",
+    [("two_period_df", "state", True), ("two_period_df", "state", False), ("multi_period_df", "group", True)],
+)
+def test_ddd_rejects_transformed_covariates(request, data_fixture, gname, panel):
+    data = request.getfixturevalue(data_fixture)
+
+    with pytest.raises(ValueError, match=re.escape("xformla term 'I(cov1**2)' is not a column name")):
+        ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id" if panel else None,
+            gname=gname,
+            pname="partition",
+            xformla="~ cov1 + I(cov1**2)",
+            panel=panel,
+        )
+
+
+@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
+@pytest.mark.parametrize("data_fixture, panel", [("two_period_df", True), ("two_period_rcs_data", False)])
+def test_ddd_2period_cluster_bootstrap(request, data_fixture, panel):
+    data = request.getfixturevalue(data_fixture).with_columns((pl.col("id") % 40).cast(pl.String).alias("cl"))
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition", "panel": panel}
+    clustered = ddd(data=data, boot=True, biters=199, cluster="cl", random_state=3, **spec)
+    plain = ddd(data=data, boot=True, biters=199, random_state=3, **spec)
+    cluster = data.filter(pl.col("time") == data["time"].min()).sort("id")["cl"] if panel else data["cl"]
+    expected = mboot_ddd(clustered.att_inf_func, 199, 0.05, cluster=cluster.to_numpy(), random_state=3)
+
+    assert clustered.att == plain.att
+    assert clustered.se == expected.se[0]
+    assert clustered.se != plain.se
+    assert clustered.uci == clustered.att + expected.crit_val * expected.se[0]
+
+
+@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
+@pytest.mark.parametrize("data_fixture, panel", [("two_period_df", True), ("two_period_rcs_data", False)])
+def test_ddd_2period_cluster_sets_boot(request, data_fixture, panel):
+    data = request.getfixturevalue(data_fixture).with_columns((pl.col("id") % 40).alias("cl"))
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition", "panel": panel}
+
+    with pytest.warns(UserWarning, match="Clustered SEs require bootstrap"):
+        forced = ddd(data=data, biters=199, cluster="cl", random_state=3, **spec)
+    booted = ddd(data=data, boot=True, biters=199, cluster="cl", random_state=3, **spec)
+
+    assert forced.args["boot"] is True
+    assert forced.se == booted.se
+
+
+@pytest.mark.parametrize("data_fixture, panel", [("two_period_df", True), ("two_period_rcs_data", False)])
+def test_ddd_2period_cluster_rejects_weighted_bootstrap(request, data_fixture, panel):
+    data = request.getfixturevalue(data_fixture).with_columns((pl.col("id") % 40).alias("cl"))
+
+    with pytest.raises(ValueError, match="cluster requires boot_type='multiplier'"):
+        ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            panel=panel,
+            boot=True,
+            boot_type="weighted",
+            cluster="cl",
+        )
+
+
+@pytest.mark.parametrize(
+    "cluster, match",
+    [("county", "cluster='county' not found in data."), ("cl", "cluster='cl' has missing values.")],
+)
+def test_ddd_2period_rcs_cluster_errors(two_period_rcs_data, cluster, match):
+    data = two_period_rcs_data.with_columns(
+        pl.when(pl.col("id") % 7 == 0).then(None).otherwise(pl.col("id") % 40).alias("cl")
+    )
+
+    with pytest.raises(ValueError, match=re.escape(match)):
+        ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            panel=False,
+            boot=True,
+            cluster=cluster,
+        )
+
+
+@pytest.mark.filterwarnings("ignore:Setting cband=True for bootstrap:UserWarning")
+@pytest.mark.parametrize("allow_unbalanced_panel", [False, True])
+def test_ddd_2period_time_varying_cluster_raises(two_period_df, allow_unbalanced_panel):
+    data = two_period_df.with_columns((pl.col("id") + 1000 * pl.col("time")).alias("cl")).filter(
+        ~((pl.col("id") % 9 == 0) & (pl.col("time") == 2))
+    )
+
+    with pytest.raises(ValueError, match="Cluster variable must be time-invariant within units"):
+        ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            allow_unbalanced_panel=allow_unbalanced_panel,
+            boot=True,
+            cluster="cl",
+        )

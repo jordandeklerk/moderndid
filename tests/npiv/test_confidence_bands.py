@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from moderndid.npiv.confidence_bands import compute_ucb
-from moderndid.npiv.results import NPIVResult
+from moderndid.npiv.container import NPIVResult
+from moderndid.npiv.utils import _quantile_basis
 
 
 def test_basic_confidence_bands(simple_data):
@@ -315,3 +316,28 @@ def test_higher_order_derivatives(simple_data):
     assert result.deriv is not None
     assert result.h_lower_deriv is not None
     assert result.h_upper_deriv is not None
+
+
+@pytest.mark.parametrize(
+    "q,expected",
+    [
+        (0.95, 9.22),
+        (0.5, 3.1),
+        (0.6056, 4.91312),
+        (0.2, 0.97),
+    ],
+)
+def test_bootstrap_quantile_interpolates_between_half_steps(q, expected):
+    draws = np.array([3.1, 0.2, 5.5, 2.2, 4.8, 1.0, 9.3, 7.7, 6.1, 0.9, 2.5])
+
+    assert _quantile_basis(draws, q) == pytest.approx(expected, rel=1e-12)
+
+
+def test_default_k_w_segments_refine_j(simple_data):
+    y, x, w = simple_data
+
+    result = compute_ucb(y=y, x=x, w=w, j_x_segments=3, biters=30)
+    smoother = compute_ucb(y=y, x=x, w=w, j_x_segments=3, k_w_smooth=0, biters=30)
+
+    assert result.k_w_segments == 12
+    assert smoother.k_w_segments == 3

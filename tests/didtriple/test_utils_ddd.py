@@ -1,3 +1,4 @@
+import re
 import warnings
 
 import numpy as np
@@ -19,12 +20,19 @@ from moderndid.didtriple.utils import (
         ("~ x1 + x2 + x3", ["x1", "x2", "x3"]),
         ("~ x1 + x2", ["x1", "x2"]),
         ("  ~ x1 + x2  ", ["x1", "x2"]),
+        ("~ cov.1 + `cov 2`", ["cov.1", "cov 2"]),
         (None, None),
         ("~1", None),
     ],
 )
 def test_get_covariate_names(formula, expected):
     assert get_covariate_names(formula) == expected
+
+
+@pytest.mark.parametrize("formula, term", [("~ x1 + I(x1**2)", "I(x1**2)"), ("~ x1:x2", "x1:x2")])
+def test_get_covariate_names_rejects_transforms(formula, term):
+    with pytest.raises(ValueError, match=re.escape(f"xformla term '{term}'")):
+        get_covariate_names(formula)
 
 
 @pytest.mark.parametrize(

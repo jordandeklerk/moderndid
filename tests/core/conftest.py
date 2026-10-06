@@ -3,6 +3,7 @@
 import numpy as np
 import polars as pl
 import pytest
+from scipy.stats import chi2, norm
 
 from moderndid import (
     agg_ddd,
@@ -17,6 +18,7 @@ from moderndid import (
     load_favara_imbs,
     load_mpdta,
 )
+from moderndid.diddynamic.container import DynBalancingHistoryResult, DynBalancingResult
 from moderndid.drdid.drdid import drdid
 from moderndid.drdid.ipwdid import ipwdid
 from moderndid.drdid.ordid import ordid
@@ -231,5 +233,68 @@ def cont_did_event():
 
 
 @pytest.fixture(scope="session")
-def honest_did_result(aggte_dynamic):
-    return honest_did(aggte_dynamic, event_time=0, sensitivity_type="relative_magnitude")
+def honest_did_result(mpdta):
+    universal = att_gt(
+        data=mpdta,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        est_method="reg",
+        control_group="nevertreated",
+        base_period="universal",
+        boot=False,
+        cband=False,
+    )
+    return honest_did(
+        aggte(universal, type="dynamic"),
+        event_time=0,
+        sensitivity_type="relative_magnitude",
+        m_bar_vec=[0.0, 1.0],
+        grid_points=20,
+    )
+
+
+@pytest.fixture
+def dyn_balancing_robust_result():
+    """Dynamic balancing result with robust critical values at the 10 percent level over two periods."""
+    return DynBalancingResult(
+        att=0.3,
+        var_att=0.04,
+        mu1=8.0,
+        mu2=7.7,
+        var_mu1=0.02,
+        var_mu2=0.022,
+        robust_quantile=float(np.sqrt(chi2.ppf(0.9, 4))),
+        gaussian_quantile=float(norm.ppf(0.95)),
+        gammas={},
+        coefficients={},
+        imbalances={},
+        estimation_params={"alpha": 0.1, "n_periods": 2, "robust_quantile": True},
+    )
+
+
+@pytest.fixture
+def dyn_balancing_robust_history_result(dyn_balancing_robust_result):
+    """History result over lengths one and two with robust critical values at the 10 percent level."""
+    results = [
+        dyn_balancing_robust_result._replace(
+            robust_quantile=float(np.sqrt(chi2.ppf(0.9, 2 * length))),
+            estimation_params={**dyn_balancing_robust_result.estimation_params, "n_periods": length},
+        )
+        for length in (1, 2)
+    ]
+    summary = pl.DataFrame(
+        {
+            "period_length": [1, 2],
+            "att": [r.att for r in results],
+            "var_att": [r.var_att for r in results],
+            "mu1": [r.mu1 for r in results],
+            "var_mu1": [r.var_mu1 for r in results],
+            "mu2": [r.mu2 for r in results],
+            "var_mu2": [r.var_mu2 for r in results],
+            "robust_quantile": [r.robust_quantile for r in results],
+            "gaussian_quantile": [r.gaussian_quantile for r in results],
+        }
+    )
+    return DynBalancingHistoryResult(summary=summary, results=results)

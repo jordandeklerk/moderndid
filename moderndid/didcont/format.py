@@ -13,7 +13,7 @@ from moderndid.core.format import (
     format_title,
 )
 
-from .container import DoseResult, PTEAggteResult, PTEResult
+from .container import DoseResult, PTEAggteResult, PTEResult, _estimation_method_label
 
 
 def _format_pte_aggregation_result(result):
@@ -40,7 +40,10 @@ def _format_pte_aggregation_result(result):
         effect_label = "ACRT"
 
     lines.append("")
-    lines.append(f" Overall summary of {effect_label}'s:")
+    if result.aggregation_type == "dynamic":
+        lines.append(f" Overall summary of {effect_label}'s (average over event times e >= 0):")
+    else:
+        lines.append(f" Overall summary of {effect_label}'s:")
 
     lines.extend(
         format_single_result_table(
@@ -88,10 +91,13 @@ def _format_pte_aggregation_result(result):
         lines.append(f" Control Group: {control_text}")
         lines.append(f" Anticipation Periods: {pte_params.anticipation}")
 
-    lines.extend(format_section_header("Estimation Details"))
-    if pte_params:
-        est_method_map = {"dr": "Doubly Robust", "ipw": "Inverse Probability Weighting", "reg": "Outcome Regression"}
-        lines.append(f" Estimation Method: {est_method_map.get(pte_params.gt_type, pte_params.gt_type)}")
+    method = _estimation_method_label(pte_params)
+    if method is not None:
+        lines.extend(format_section_header("Estimation Details"))
+        lines.append(f" Estimation Method: {method}")
+        if pte_params.target_parameter == "slope":
+            lines.append(f" Spline Degree: {pte_params.degree}")
+            lines.append(f" Number of Knots: {pte_params.num_knots}")
 
     lines.extend(format_section_header("Inference"))
     lines.append(f" Significance level: {alpha}")

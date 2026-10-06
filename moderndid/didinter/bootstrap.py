@@ -1,31 +1,12 @@
 """Cluster bootstrap for did_multiplegt estimator."""
 
-from typing import NamedTuple
-
 import numpy as np
+import polars as pl
 
+from moderndid.core.preprocess.transformers import DIDInterColumnSelector, MissingDataHandler
+
+from .container import BootstrapResult
 from .numba import compute_column_std, gather_bootstrap_indices
-
-
-class BootstrapResult(NamedTuple):
-    """Container for cluster bootstrap results.
-
-    Attributes
-    ----------
-    effects_se : ndarray
-        Standard errors for effect estimates.
-    placebos_se : ndarray or None
-        Standard errors for placebo estimates.
-    ate_se : float or None
-        Standard error for ATE estimate.
-    """
-
-    #: Standard errors for effect estimates.
-    effects_se: np.ndarray
-    #: Standard errors for placebo estimates.
-    placebos_se: np.ndarray | None
-    #: Standard error for ATE estimate.
-    ate_se: float | None
 
 
 def cluster_bootstrap(
@@ -37,36 +18,64 @@ def cluster_bootstrap(
 ):
     """Compute cluster bootstrap standard errors.
 
+    Each draw samples clusters with replacement and hands the drawn rows of the
+    panel to ``compute_func``. Groups take the place of clusters when
+    ``config.cluster`` is not set. Since every copy of a drawn cluster gets new
+    group ids, a cluster drawn twice enters the draw as two separate sets of
+    groups.
+
+    As in the full-sample estimate, rows without a cluster are left out. A group
+    belongs to the smallest cluster among its rows. A cluster whose groups have
+    no usable observations can still be drawn and adds no rows to the draw.
+
     Parameters
     ----------
-    data : polars.DataFrame
-        The preprocessed panel data.
+    data : DataFrame
+        The panel before preprocessing.
     config : DIDInterConfig
         Configuration object with estimation parameters.
     compute_func : callable
-        Function to compute estimates on bootstrap sample.
+        Function that takes a drawn panel and ``config``, preprocesses the draw,
+        and returns a dict with its ``effects``, ``placebos``, and ``ate`` estimates.
     biters : int, default 999
         Number of bootstrap iterations.
-    random_state : int or None, default None
+    random_state : int, Generator, or None, default None
         Seed for random number generation.
 
     Returns
     -------
     BootstrapResult
-        NamedTuple containing standard errors for effects, placebos, and ATE.
+        NamedTuple containing:
+
+        - **effects_se**: Bootstrap standard errors of the effects
+        - **placebos_se**: Bootstrap standard errors of the placebos, or None without placebos
+        - **ate_se**: Bootstrap standard error of the average total effect, or None when
+          ``config.trends_lin`` is True
     """
     rng = np.random.default_rng(random_state)
 
-    bs_group = config.cluster if config.cluster else config.gname
+    gname = config.gname
+    bs_group = config.cluster if config.cluster else gname
 
-    data_sorted = data.sort(bs_group)
-    cluster_col = data_sorted[bs_group].to_numpy()
+    data = DIDInterColumnSelector().transform(data, config).filter(pl.col(bs_group).is_not_null())
+    data = data.with_columns(
+        (pl.col(bs_group).min().over(gname).rank("dense") - 1).cast(pl.Int64).alias("_boot_cluster")
+    )
+    n_clusters = data["_boot_cluster"].n_unique()
+    if n_clusters == 0:
+        raise ValueError(f"The bootstrap has no clusters to draw because '{bs_group}' is missing in every row.")
 
-    unique_clusters, first_indices, counts = np.unique(cluster_col, return_index=True, return_counts=True)
-    n_clusters = len(unique_clusters)
+    # The full-sample preprocessing already warned about these rows and groups. Dropping them once here keeps each
+    # draw from warning about them again.
+    data, _ = MissingDataHandler.drop_didinter_rows(data, config)
+    data = data.sort("_boot_cluster").with_columns((pl.col(gname).rank("dense") - 1).cast(pl.Int64).alias("_boot_unit"))
+    cluster_index = data["_boot_cluster"].to_numpy()
+    unit_index = data["_boot_unit"].to_numpy()
+    data = data.drop("_boot_cluster", "_boot_unit")
 
-    cluster_starts = first_indices.astype(np.int64)
-    cluster_counts = counts.astype(np.int64)
+    cluster_counts = np.bincount(cluster_index, minlength=n_clusters).astype(np.int64)
+    cluster_starts = (np.cumsum(cluster_counts) - cluster_counts).astype(np.int64)
+    n_units = int(unit_index.max()) + 1
 
     n_effects = config.effects
     n_placebos = config.placebo
@@ -79,8 +88,9 @@ def cluster_bootstrap(
         sampled_ids = rng.integers(0, n_clusters, size=n_clusters)
         row_indices = gather_bootstrap_indices(sampled_ids, cluster_starts, cluster_counts)
 
-        df_boot = data_sorted[row_indices.tolist()]
-        df_boot = df_boot.sort([config.gname, config.tname])
+        # Without new ids, two copies of a cluster would merge into groups with two rows in every period.
+        copy_index = np.repeat(np.arange(len(sampled_ids), dtype=np.int64), cluster_counts[sampled_ids])
+        df_boot = data[row_indices].with_columns(pl.Series(gname, copy_index * n_units + unit_index[row_indices]))
 
         result = compute_func(df_boot, config)
 

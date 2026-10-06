@@ -87,6 +87,41 @@ def estimation_panel(rng):
 
 
 @pytest.fixture
+def lagged_effect_panel(rng):
+    """Two-period arrays with independent treatments and a weak effect of the first one."""
+    n_units = 200
+    treatment = rng.integers(0, 2, size=(n_units, 2)).astype(float)
+    covariates = {t: rng.standard_normal((n_units, 3)) for t in range(2)}
+    outcome = 0.1 * treatment[:, 0] + 0.5 * treatment[:, 1] + covariates[1][:, 0] + rng.standard_normal(n_units)
+    ds = np.array([1.0, 1.0])
+    return outcome, treatment, covariates, ds
+
+
+@pytest.fixture
+def responsive_panel():
+    """Return two-period arrays with responsive covariates and persistent treatment plus the true potential outcomes."""
+    rng = np.random.default_rng(2026)
+    n_units = 4000
+    theta = np.array([0.4, -0.4])
+    x1 = rng.standard_normal((n_units, 2))
+    d1 = (rng.random(n_units) < 1 / (1 + np.exp(-x1 @ theta))).astype(float)
+    x2 = 0.6 * x1 + 0.8 * d1[:, None] + 0.8 * rng.standard_normal((n_units, 2))
+    d2 = (rng.random(n_units) < 1 / (1 + np.exp(-(x2 @ theta + 2.0 * (2.0 * d1 - 1.0))))).astype(float)
+    outcome = 1.0 + x2 @ np.array([1.0, -0.5]) + 0.5 * d1 + d2 + rng.standard_normal(n_units)
+    return outcome, np.column_stack([d1, d2]), {0: x1, 1: x2}, 2.9, 1.0
+
+
+@pytest.fixture
+def exact_linear_panel(rng):
+    """Two-period arrays with fixed covariates and an outcome that is exactly linear in them and the treatments."""
+    n_units = 200
+    x = rng.standard_normal((n_units, 2))
+    treatment = rng.integers(0, 2, size=(n_units, 2)).astype(float)
+    outcome = 1.0 + x @ np.array([1.0, -0.5]) + 0.5 * treatment[:, 0] + treatment[:, 1]
+    return outcome, treatment, {0: x, 1: x.copy()}, np.array([1.0, 1.0])
+
+
+@pytest.fixture
 def simple_qp_data(rng):
     """Small balanced data for direct QP testing."""
     n = 20
@@ -140,7 +175,14 @@ def sample_result():
         gaussian_quantile=1.96,
         gammas={"ds1": np.ones(10) / 10, "ds2": np.ones(10) / 10},
         coefficients={"ds1": np.array([0.1, 0.2]), "ds2": np.array([0.3, 0.4])},
-        imbalances={"ds1": 0.01, "ds2": 0.02},
+        imbalances={
+            "ds1": pl.DataFrame(
+                {"period": [1, 1, 2, 2], "covariate": ["X1", "X2", "X1", "X2"], "imbalance": [0.01, -0.02, 0.0, 0.005]}
+            ),
+            "ds2": pl.DataFrame(
+                {"period": [1, 1, 2, 2], "covariate": ["X1", "X2", "X1", "X2"], "imbalance": [0.02, 0.0, -0.01, 0.0]}
+            ),
+        },
         estimation_params={
             "n_obs": 500,
             "n_units": 250,
@@ -149,6 +191,7 @@ def sample_result():
             "method": "lasso_plain",
             "ds1": [1, 1],
             "ds2": [0, 0],
+            "n_periods": 2,
             "alpha": 0.05,
             "robust_quantile": True,
         },

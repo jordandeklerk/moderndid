@@ -10,7 +10,8 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import MPResult, att_gt
+from moderndid import MPResult, aggte, att_gt
+from moderndid.core.preprocess import preprocess_did
 from moderndid.did.compute_att_gt import ATTgtResult, ComputeATTgtResult
 
 
@@ -151,6 +152,38 @@ def test_att_gt_with_weights(mpdta_data):
 
     assert isinstance(result, MPResult)
     assert result.weights_ind is not None
+
+
+def test_att_gt_weights_any_column_name(mpdta_pop_weighted):
+    spec = dict(yname="lemp", tname="year", idname="countyreal", gname="first.treat", boot=False, cband=False)
+    named = att_gt(data=mpdta_pop_weighted, weightsname="pop", **spec)
+    renamed = att_gt(data=mpdta_pop_weighted.rename({"pop": "weights"}), weightsname="weights", **spec)
+
+    assert named.weights_ind is not None
+    np.testing.assert_array_equal(np.asarray(named.weights_ind), np.asarray(renamed.weights_ind))
+    for agg_type in ("simple", "group", "dynamic", "calendar"):
+        by_name = aggte(named, type=agg_type)
+        by_rename = aggte(renamed, type=agg_type)
+        assert by_name.overall_att == by_rename.overall_att
+        assert by_name.overall_se == by_rename.overall_se
+
+
+def test_att_gt_unbalanced_weights_ind_averages_each_unit(mpdta_unbalanced_varying_weights):
+    spec = dict(
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        weightsname="w",
+        allow_unbalanced_panel=True,
+    )
+    result = att_gt(data=mpdta_unbalanced_varying_weights, boot=False, cband=False, **spec)
+    units = preprocess_did(mpdta_unbalanced_varying_weights, **spec).time_invariant_data["countyreal"]
+    rows = mpdta_unbalanced_varying_weights.with_columns(pl.col("w") / pl.col("w").mean())
+    unit_means = rows.group_by("countyreal").agg(pl.col("w").mean())
+    expected = units.replace_strict(unit_means["countyreal"], unit_means["w"]).to_numpy()
+
+    np.testing.assert_allclose(np.asarray(result.weights_ind), expected, rtol=1e-12)
 
 
 def test_att_gt_repeated_cross_section(mpdta_data):

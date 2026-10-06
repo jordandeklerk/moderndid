@@ -17,11 +17,11 @@ def mboot(
     cluster=None,
     random_state=None,
 ):
-    """Compute multiplier bootstrap for DiD influence functions.
+    r"""Compute multiplier bootstrap for DiD influence functions.
 
     Implements the multiplier bootstrap for computing standard errors and critical
     values for uniform confidence bands. It handles both individual and clustered
-    data using Mammen weights.
+    data.
 
     Parameters
     ----------
@@ -54,14 +54,11 @@ def mboot(
 
     Notes
     -----
-    The function uses Mammen (1993) weights for the multiplier bootstrap.
+    The multiplier weights have mean zero and unit variance. Each one takes the
+    value :math:`(1 - \sqrt{5})/2` with probability
+    :math:`(1 + \sqrt{5})/(2\sqrt{5})` and :math:`(1 + \sqrt{5})/2` otherwise.
     When clustering is specified, the bootstrap is performed at the cluster
     level to preserve within-cluster dependence.
-
-    References
-    ----------
-    .. [1] Mammen, E. (1993). "Bootstrap and wild bootstrap for high dimensional
-           linear models". The Annals of Statistics, 21(1), 255-285.
     """
     inf_func = inf_func.reshape(-1, 1) if inf_func.ndim == 1 else np.atleast_2d(inf_func)
 
@@ -130,7 +127,7 @@ def _run_multiplier_bootstrap(
     biters,
     random_state=None,
 ):
-    """Run the core multiplier bootstrap using Mammen weights.
+    """Run the core multiplier bootstrap with the weights described in :func:`mboot`.
 
     Parameters
     ----------

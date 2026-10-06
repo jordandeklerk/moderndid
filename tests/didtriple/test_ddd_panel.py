@@ -203,6 +203,22 @@ def test_validate_inputs_1d_covariates():
     assert result[3].shape == (4, 1)
 
 
+@pytest.mark.parametrize("boot, boot_type", [(False, "multiplier"), (True, "weighted")])
+def test_ddd_panel_cluster_requires_multiplier_bootstrap(ddd_data_no_covariates, boot, boot_type):
+    ddd_data, covariates = ddd_data_no_covariates
+
+    with pytest.raises(ValueError, match="cluster requires boot=True and boot_type='multiplier'"):
+        ddd_panel(
+            y1=ddd_data.y1,
+            y0=ddd_data.y0,
+            subgroup=ddd_data.subgroup,
+            covariates=covariates,
+            boot=boot,
+            boot_type=boot_type,
+            cluster=np.arange(ddd_data.n_units) % 20,
+        )
+
+
 def test_validate_inputs_weight_normalization():
     y1 = np.array([1.0, 2.0, 3.0, 4.0])
     y0 = np.array([0.5, 1.5, 2.5, 3.5])

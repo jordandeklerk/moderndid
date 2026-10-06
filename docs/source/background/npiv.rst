@@ -1,770 +1,1030 @@
 .. _background-npiv:
 
-Nonparametric Instrumental Variables
-=====================================
+Nonparametric instrumental variables
+====================================
 
-The ``npiv`` module implements nonparametric instrumental variables (NPIV)
-estimation with data-driven tuning parameter selection and uniform confidence
-bands, following the methodology of `Chen, Christensen, and Kankanala (2024)
-<https://arxiv.org/abs/2107.11869>`_. This approach estimates a structural
-function and its derivatives (such as elasticities) from a conditional moment
-restriction using sieve two-stage least squares, with procedures that adapt to
-unknown smoothness and instrument strength.
+A flexible regression can describe how an outcome varies with a regressor.
+It does not necessarily recover the structural relationship you want.
+If unobserved determinants of the outcome also influence that regressor,
+the conditional mean of the outcome can differ from the structural function.
 
-NPIV estimation arises in many empirical settings where a researcher wants to
-estimate a flexible, nonparametric relationship but some regressors are
-endogenous. Applications include consumer demand (Blundell, Chen, and
-Kristensen, 2007), demand for differentiated products (Berry and Haile, 2014;
-Compiani, 2022), international trade (Adao, Arkolakis, and Ganapati, 2020),
-and Engel curve estimation.
+An instrument supplies a different restriction. It connects the structural
+function to outcome variation without requiring the regressor to be
+exogenous. Recovering a whole function from that restriction can be harder
+than estimating a linear IV coefficient. The difficulty depends on which
+features of the function the instruments reveal.
 
-The module has two main pieces. A data-driven choice of sieve dimension that
-achieves minimax convergence rates in sup-norm, and uniform confidence bands
-that are honest (correct coverage over a class of data-generating processes)
-and adaptive (contract at the minimax rate).
+We will follow that problem from identification through sieve estimation,
+dimension selection, and uncertainty over the function and its derivatives.
+The methods behind :func:`~moderndid.npiv` follow
+`Chen, Christensen, and Kankanala (2024)
+<https://arxiv.org/abs/2107.11869>`_. Their
+`author manuscript <https://arxiv.org/pdf/2107.11869>`_ gives the
+procedures in Section 2 and the formal results in Section 4.
+The assumption and theorem numbers below refer to that paper.
+The :ref:`nonparametric IV example <example_npiv>` applies the method to
+an Engel curve and a simulation.
 
+What the instrument restriction identifies
+------------------------------------------
 
-The NPIV Model
---------------
-
-The starting point is a conditional moment restriction that links the outcome, the
-endogenous regressors, and the instruments without specifying a functional form for the
-structural relationship. The structural function :math:`h_0` satisfies
-
-.. math::
-
-   \mathbb{E}[Y - h_0(X) \mid W] = 0 \quad \text{(almost surely)},
-
-where :math:`Y` is a scalar outcome, :math:`X` is a vector of possibly
-endogenous regressors, and :math:`W` is a vector of instrumental variables.
-The conditional distribution of :math:`(X, Y)` given :math:`W` is otherwise
-unspecified. This model nests nonparametric regression as the special case
-:math:`W = X`.
-
-Substituting a sieve approximation :math:`h_0(x) \approx (\psi^J(x))' c_J`
-into the conditional moment restriction gives
+Let :math:`Y` be a scalar outcome, :math:`X\in\mathbb R^d` a vector
+of possibly endogenous regressors, and :math:`W\in\mathbb R^{d_w}`
+a vector of instruments. We observe independent, identically distributed
+vectors :math:`(X_i,Y_i,W_i)` for :math:`i=1,\ldots,n`.
+The structural function :math:`h_0` satisfies
 
 .. math::
 
-   Y = (\psi^J(X))' c_J + \text{bias}_J + u, \quad \mathbb{E}[u \mid W] = 0,
+   Y=h_0(X)+u,\qquad \mathbb E[u\mid W]=0\quad\text{almost surely}.
 
-where :math:`u = Y - h_0(X)` is the structural error and
-:math:`\text{bias}_J = h_0(X) - (\psi^J(X))' c_J` is the approximation bias.
-When the bias term is small relative to :math:`u`, this looks like a linear
-instrumental variables model with :math:`\psi^J(X)` as :math:`J` endogenous
-variables and :math:`c_J` as the unknown parameter vector. Unlike standard
-nonparametric regression, :math:`\mathbb{E}[u \mid X] \neq 0` in general, so
-least squares applied directly to :math:`X` would be inconsistent for
-:math:`h_0`.
+The error :math:`u` may have a nonzero conditional mean given
+:math:`X`. Regressing :math:`Y` directly on :math:`X` would then
+recover :math:`\mathbb E[Y\mid X]` rather than :math:`h_0`.
+When :math:`W=X`, the restriction instead becomes ordinary
+nonparametric regression.
 
-
-Sieve TSLS Estimation
----------------------
-
-Given the conditional moment restriction, :math:`h_0` is estimated by projecting onto a
-finite-dimensional sieve space and applying two-stage least squares with basis functions of
-the instruments. The function :math:`h_0` is approximated by a linear combination of :math:`J`
-B-spline basis functions
+To express identification, let :math:`L_X^2` and :math:`L_W^2`
+be the spaces of functions with finite second moments under the
+regressor and instrument distributions. Define the conditional expectation
+operator
 
 .. math::
 
-   h_0(x) \approx (\psi^J(x))' c_J,
+   T:L_X^2\longrightarrow L_W^2,\qquad
+   (Th)(w)=\mathbb E[h(X)\mid W=w].
 
-where :math:`\psi^J(x) = (\psi_{J1}(x), \ldots, \psi_{JJ}(x))'` is a vector
-of basis functions and :math:`c_J` is a coefficient vector. The coefficients
-are estimated by two-stage least squares using :math:`K` B-spline basis
-functions of :math:`W` as instruments
+The observed conditional mean gives :math:`Th_0=\mathbb E[Y\mid W]`.
+If two different functions have the same conditional expectation given
+the instrument, the data cannot distinguish them. Injectivity rules out
+that ambiguity.
 
-.. math::
+.. admonition:: Assumption 1 Support and identification
+   :class: assumption
 
-   \hat{c}_J = (\boldsymbol{\Psi}_J' \mathbf{P}_K \boldsymbol{\Psi}_J)^{-}
-   \boldsymbol{\Psi}_J' \mathbf{P}_K \mathbf{Y},
+   The support of :math:`X` is :math:`\mathcal X=[0,1]^d`.
+   Its Lebesgue density satisfies, for some finite :math:`a_f>0`,
 
-where :math:`\boldsymbol{\Psi}_J` and :math:`\mathbf{B}_K` are :math:`n
-\times J` and :math:`n \times K` matrices of basis evaluations, the projection
-onto the instrument space is
+   .. math::
 
-.. math::
+      a_f^{-1}<f_X(x)<a_f,\qquad x\in\mathcal X.
 
-   \mathbf{P}_K = \mathbf{B}_K (\mathbf{B}_K' \mathbf{B}_K)^{-}
-   \mathbf{B}_K',
+   The support of :math:`W` is :math:`\mathcal W=[0,1]^{d_w}`,
+   and :math:`a_f^{-1}<f_W(w)<a_f` on :math:`\mathcal W`.
+   Finally, :math:`T` is injective,
 
-and :math:`(\cdot)^{-}` denotes the Moore-Penrose inverse. Defining the
-:math:`J \times n` matrix
+   .. math::
 
-.. math::
+      Th=0\ \text{almost surely}
+      \quad\Longrightarrow\quad
+      h=0\ \text{almost surely},\qquad h\in L_X^2.
 
-   \mathbf{M}_J = (\boldsymbol{\Psi}_J' \mathbf{P}_{K(J)}
-   \boldsymbol{\Psi}_J)^{-} \boldsymbol{\Psi}_J' \mathbf{P}_{K(J)},
+The unit-cube supports provide a normalization for the theory.
+Changing units can put rectangular supports on this scale.
+Neither rescaling nor including more instrument basis functions establishes
+injectivity. It is a restriction on the conditional distribution of the
+regressors given the instruments.
 
-the estimators of :math:`h_0` and its derivatives become
+.. admonition:: Assumption 2 Error moments
+   :class: assumption
 
-.. math::
+   There are finite positive constants
+   :math:`\underline\sigma,\overline\sigma` such that
 
-   \hat{h}_J(x) = (\psi^J(x))' \mathbf{M}_J \mathbf{Y}, \quad
-   \partial^a \hat{h}_J(x) = (\partial^a \psi^J(x))' \mathbf{M}_J \mathbf{Y}.
+   .. math::
 
-The matrix :math:`\mathbf{M}_J` recurs in the variance estimation and
-bootstrap steps that follow.
+      \mathbb E[u^4\mid W]\leq\overline\sigma^2,\qquad
+      \mathbb E[u^2\mid W]\geq\underline\sigma^2
+      \quad\text{almost surely}.
 
-B-spline Basis Choice
-~~~~~~~~~~~~~~~~~~~~~
+These conditions permit heteroskedasticity and non-Gaussian errors.
+They bound fourth moments and prevent conditional variance from vanishing.
+The iid sampling setup concerns independent observations rather than a
+clustered or serially dependent sample.
 
-Of the many sieve bases available (polynomial splines, wavelets, Fourier
-series, various polynomials), only B-splines and Cohen-Daubechies-Vial (CDV)
-wavelets have been shown to achieve the optimal minimax sup-norm convergence
-rates under a suitable choice of :math:`J`
-(`Chen and Christensen, 2018 <https://doi.org/10.3982/ECTA12560>`_). Both
-bases share a bounded Lebesgue constant, meaning the
-:math:`L^\infty` norm of the :math:`L^2` projection onto the sieve space
-remains bounded as :math:`J` grows. Bases without this property, such as
-polynomials and Fourier series, cannot attain the minimax sup-norm rate and
-therefore cannot yield rate-adaptive estimators or confidence bands.
+Approximating the function with a sieve
+---------------------------------------
 
-B-splines are characterized by their order :math:`r` (equivalently, polynomial
-degree :math:`r - 1`). The module uses a cubic B-spline (:math:`r = 4`) to
-approximate :math:`h_0` and a quartic B-spline (:math:`r = 5`) for the
-reduced-form relationship between the instruments and the endogenous
-regressors, since the reduced form is smoother than :math:`h_0` itself.
-
-Dyadic Grid and Instrument Linkage
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The set of candidate sieve dimensions forms a dyadic grid
+Recovering an unrestricted function directly is an infinite-dimensional
+problem. A sieve replaces it with a growing space of finite-dimensional
+approximations. We use :math:`J` basis functions of :math:`X`
+and :math:`K` basis functions of :math:`W`,
 
 .. math::
 
-   \mathcal{T} = \{J = (2^l + r - 1)^d : l \in \mathbb{N}_0\},
+   \psi^J(x)=(\psi_{J1}(x),\ldots,\psi_{JJ}(x))',
+   \qquad b^K(w)=(b_{K1}(w),\ldots,b_{KK}(w))'.
 
-where :math:`l` is the resolution level. For scalar :math:`X` with cubic
-B-splines, this gives :math:`\mathcal{T} = \{4, 5, 7, 11, 19, 35, \ldots\}`.
-Using a dyadic grid ensures enough separation between consecutive candidates
-that the bias and variance of estimators at different :math:`J` can be
-accurately compared, improving numerical stability.
-
-The instrument dimension :math:`K(J)` is linked to :math:`J` through the
-resolution levels. Given the resolution level :math:`l` for the basis for
-:math:`X`, the resolution level for the instrument basis is
-:math:`l_w = \lceil (l + q) d / d_w \rceil` for some :math:`q \in \mathbb{N}_0`,
-where :math:`d_w` is the dimension of :math:`W`. This defines a mapping
-:math:`K(J)` satisfying :math:`\lim_{J \to \infty} K(J)/J = c \in [1, \infty)`.
-Setting :math:`q` to the second- or third-smallest value for which
-:math:`K(J) \geq J` holds for all :math:`J` is recommended. Larger values of
-:math:`q` are inadvisable because the number of basis functions grows
-exponentially in the resolution level.
-
-The performance of the estimator is sensitive to the choice of :math:`J` and
-not sensitive to :math:`K` as long as :math:`K \geq J`. If :math:`J` is too
-small, the estimator has large bias. If :math:`J` is too large, the estimator
-is noisy and confidence bands are uninformatively wide.
-
-
-Ill-Posedness and Instrument Strength
--------------------------------------
-
-What distinguishes NPIV from nonparametric regression is the *sieve measure of
-ill-posedness*, which quantifies how difficult it is to invert the conditional
-expectation operator and recover :math:`h_0`. Let :math:`T:
-L_X^2 \to L_W^2` denote the operator :math:`Th(w) = \mathbb{E}[h(X) \mid W =
-w]` and define
+A prime denotes transpose. The candidate structural function is
+:math:`\psi^J(x)'c_J`. Substituting it into the model gives
 
 .. math::
 
-   \tau_J = \sup_{h \in \Psi_J : \|h\|_{L_X^2} \neq 0}
-   \frac{\|h\|_{L_X^2}}{\|Th\|_{L_W^2}}.
+   Y=\psi^J(X)'c_J+
+      \bigl(h_0(X)-\psi^J(X)'c_J\bigr)+u.
 
-Since conditional expectations are (weakly) contractive, :math:`\tau_J \geq 1`.
-The model is classified into two regimes.
+The middle term is approximation error. It generally does not have
+conditional mean zero given the instruments. The IV approximation becomes
+accurate only as that term becomes sufficiently small.
 
-- **Mildly ill-posed** with :math:`\tau_J \asymp J^{\varsigma/d}` for some
-  :math:`\varsigma \geq 0`. This includes nonparametric regression as the
-  special case :math:`\varsigma = 0`.
-- **Severely ill-posed** with :math:`\tau_J \asymp \exp(C J^{\varsigma/d})`
-  for some :math:`C, \varsigma > 0`.
+How two-stage least squares estimates the coefficients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The data-driven procedures adapt to both regimes without requiring the
-researcher to know which regime applies.
-
-
-Data-Driven Sieve Dimension Selection
--------------------------------------
-
-The estimator's performance hinges on the sieve dimension :math:`J`. Too small and the
-approximation bias dominates; too large and the estimate is noisy. This section describes
-a Lepski-type procedure that selects :math:`J` from the data, adapting to the unknown
-smoothness of :math:`h_0` and the degree of ill-posedness.
-
-Why Cross Validation Fails with Endogeneity
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The standard leave-one-out cross-validation criterion is
+Evaluate the bases at the sample observations to form matrices
+:math:`\boldsymbol\Psi_J` of size :math:`n\times J`
+and :math:`\mathbf B_K` of size :math:`n\times K`.
+For the outcome vector :math:`\mathbf Y=(Y_1,\ldots,Y_n)'`, define
 
 .. math::
 
-   \text{CV}(J) = \frac{1}{n} \sum_{i=1}^n (Y_i - \hat{h}_{-i,J}(X_i))^2,
+   \mathbf P_K=\mathbf B_K(\mathbf B_K'\mathbf B_K)^{-}\mathbf B_K',
+   \qquad
+   \widehat c_J=
+      (\boldsymbol\Psi_J'\mathbf P_K\boldsymbol\Psi_J)^{-}
+      \boldsymbol\Psi_J'\mathbf P_K\mathbf Y.
 
-where :math:`\hat{h}_{-i,J}` is the estimator computed from a sub-sample that
-excludes the :math:`i`-th observation. This can be expanded into three terms
+The matrix :math:`\mathbf P_K` projects onto the instrument basis.
+The superscript :math:`{}^{-}` denotes the Moore-Penrose inverse.
+The first stage projects the regressor basis onto the instrument basis.
+The second estimates the outcome relation using that projected basis.
 
-.. math::
+At least :math:`K\geq J` is necessary for identifying all sieve
+coefficients. It is not sufficient for full rank or useful instrument
+strength. A generalized inverse returns a numerical solution when a matrix
+is singular. It does not restore information missing from the data.
 
-   \text{CV}(J) = \underbrace{\frac{1}{n} \sum_{i=1}^n (h_0(X_i) -
-   \hat{h}_{-i,J}(X_i))^2}_{\text{MSE estimate}} +
-   \underbrace{\frac{1}{n} \sum_{i=1}^n u_i^2}_{\text{independent of } J} +
-   \underbrace{\frac{2}{n} \sum_{i=1}^n u_i (h_0(X_i) -
-   \hat{h}_{-i,J}(X_i))}_{\text{cross term}}.
-
-The first term estimates the mean-squared error, the second does not depend
-on :math:`J`, and the third estimates
-:math:`\mathbb{E}[u(h_0(X) - \hat{h}_J(X))]`. In nonparametric regression
-where :math:`\mathbb{E}[u \mid X] = 0`, this cross term vanishes
-asymptotically, making CV a valid criterion for choosing :math:`J` (Li, 1987).
-In models with endogeneity where :math:`\mathbb{E}[u \mid X] \neq 0`, the
-cross term depends on :math:`J` and may be non-negligible even asymptotically.
-Cross validation then gives a biased estimate of the MSE, and a
-cross-validated :math:`J` may not even yield a consistent estimator of
-:math:`h_0`. Even in the exogenous case, CV balances bias and sampling
-uncertainty in :math:`L^2` norm, which is not the right criterion for
-estimation or adaptive UCBs in sup-norm.
-
-Instead, the module uses a Lepski-type procedure that remains valid under
-endogeneity.
-
-Step 1: Maximum Feasible Dimension
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The first step determines how many basis functions the data can support before the estimator
-becomes too noisy. This upper bound depends on the sample size and the empirical
-ill-posedness. The search grid is determined by
+Write the coefficient map as
 
 .. math::
 
-   \hat{J}_{\max} = \min\left\{J \in \mathcal{T} : J\sqrt{\log J}\,
-   \hat{s}_J^{-1} \leq 10\sqrt{n} < J^+\sqrt{\log J^+}\,
-   \hat{s}_{J^+}^{-1}\right\},
+   \mathbf M_J=
+      (\boldsymbol\Psi_J'\mathbf P_{K(J)}\boldsymbol\Psi_J)^{-}
+      \boldsymbol\Psi_J'\mathbf P_{K(J)}.
 
-where :math:`\mathcal{T}` is a dyadic grid of candidate values and
-:math:`\hat{s}_J` is the smallest singular value of
+Linking the instrument dimension to :math:`J` gives
+:math:`K=K(J)`. The fitted function is
+:math:`\widehat h_J(x)=\psi^J(x)'\mathbf M_J\mathbf Y`.
+This same matrix maps outcome disturbances into estimation error and
+appears in the variance and bootstrap calculations.
 
-.. math::
+Derivatives and their units
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   (\mathbf{B}_K'\mathbf{B}_K)^{-1/2}
-   (\mathbf{B}_K'\boldsymbol{\Psi}_J)
-   (\boldsymbol{\Psi}_J'\boldsymbol{\Psi}_J)^{-1/2},
-
-the sample analog of the inverse ill-posedness measure. The candidate set is
-then
-
-.. math::
-
-   \hat{\mathcal{J}} = \{J \in \mathcal{T} : 0.1(\log \hat{J}_{\max})^2
-   \leq J \leq \hat{J}_{\max}\}.
-
-Step 2: Lepski Selection
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-For each pair :math:`(J, J_2)` with :math:`J_2 > J`, the procedure computes a
-sup-:math:`t` statistic for the difference in estimates, studentized by the
-estimated standard deviation of the difference
+A derivative answers a question about changing a regressor while holding
+the others fixed. For a multi-index :math:`a=(a_1,\ldots,a_d)`
+of nonnegative integers, let :math:`|a|=\sum_j a_j` and define
 
 .. math::
 
-   \sup_{x \in \mathcal{X}} \left|
-   \frac{\hat{h}_J(x) - \hat{h}_{J_2}(x)}{\hat{\sigma}_{J,J_2}(x)}
-   \right|.
+   \partial^a h(x)
+      =\frac{\partial^{|a|}h(x)}
+             {\partial x_1^{a_1}\cdots\partial x_d^{a_d}},
+   \qquad
+   \partial^a\widehat h_J(x)
+      =\partial^a\psi^J(x)'\mathbf M_J\mathbf Y.
 
-The variance of the difference is estimated as
+The estimator differentiates the basis rather than taking finite
+differences of the plotted curve. The API uses ``deriv_index`` to select
+one coordinate with one-based indexing. The ``deriv_order`` argument
+selects repeated differentiation with respect to that coordinate.
+The general multi-index notation in the theory also covers mixed derivatives.
 
-.. math::
+A derivative is an elasticity only when the variable transformations
+justify that interpretation. If both outcome and regressor enter in logs,
+the derivative of the log structural function with respect to the log
+regressor is an elasticity. In levels, an elasticity instead involves
+:math:`x_j\partial_jh_0(x)/h_0(x)` where the denominator is nonzero.
+A confidence band for that ratio requires inference for the transformed
+function rather than merely relabeling a derivative band.
 
-   \hat{\sigma}_{J,J_2}^2(x) = \hat{\sigma}_J^2(x) + \hat{\sigma}_{J_2}^2(x)
-   - 2\,\tilde{\sigma}_{J,J_2}(x),
+Why B-splines and their dimensions matter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-where the individual variance terms are computed from the
-heteroskedasticity-robust formula
+A B-spline of order :math:`r` has polynomial degree :math:`r-1`.
+Its local basis functions describe the curve over a knot partition.
+More segments create a larger space. Too few leave approximation bias.
+Too many can make the inverse problem noisy.
 
-.. math::
+The paper develops its sup-norm guarantees for B-splines and
+Cohen-Daubechies-Vial wavelets. Their bounded projection norms control
+how approximation errors behave uniformly over the support.
+These basis conditions are part of the result. The theorem does not
+justify substituting an arbitrary basis without checking its properties.
 
-   \hat{\sigma}_J^2(x) = (\psi^J(x))' \mathbf{M}_J \widehat{\mathbf{U}}_{J,J}
-   \mathbf{M}_J' \psi^J(x),
-
-with :math:`\widehat{\mathbf{U}}_{J,J}` being a diagonal matrix whose
-:math:`i`-th entry is :math:`\hat{u}_{i,J}^2` (the squared TSLS residuals),
-and the cross term is
-:math:`\tilde{\sigma}_{J,J_2}(x) = (\psi^J(x))' \mathbf{M}_J
-\widehat{\mathbf{U}}_{J,J_2} \mathbf{M}_{J_2}' \psi^{J_2}(x)` with
-:math:`\widehat{\mathbf{U}}_{J,J_2}` having diagonal entries
-:math:`\hat{u}_{i,J} \hat{u}_{i,J_2}`.
-
-The bootstrap significance level is set to
-
-.. math::
-
-   \hat{\alpha} = \min\left\{0.5,\;
-   \left(\frac{\log \hat{J}_{\max}}{\hat{J}_{\max}}\right)^{1/2}\right\}.
-
-A multiplier bootstrap then determines the critical value
-:math:`\theta_{1-\hat{\alpha}}^*` as the :math:`(1-\hat{\alpha})` quantile of
-
-.. math::
-
-   \sup_{\{(x, J, J_2) \in \mathcal{X} \times \hat{\mathcal{J}} \times
-   \hat{\mathcal{J}} : J_2 > J\}} \left|
-   \frac{D_J^*(x) - D_{J_2}^*(x)}{\hat{\sigma}_{J,J_2}(x)}
-   \right|,
-
-where
+For tensor-product splines at dyadic resolution :math:`l`, the theoretical
+dimensions form
 
 .. math::
 
-   D_J^*(x) = (\psi^J(x))' \mathbf{M}_J \hat{\mathbf{u}}_J^*
+   \mathcal T=\{(2^l+r-1)^d:l=0,1,\ldots\}.
 
-is a bootstrap analog of the estimation error. Here
-:math:`\hat{\mathbf{u}}_J^* = (\hat{u}_{1,J}\varpi_1, \ldots,
-\hat{u}_{n,J}\varpi_n)'` with :math:`(\varpi_i)_{i=1}^n` drawn i.i.d.
-:math:`N(0,1)` independently of the data. The bootstrap weights
-:math:`\varpi_i` are held fixed when computing the supremum over
-:math:`(x, J, J_2)` for each draw. Taking 1000 independent draws is
-sufficient in practice.
+For a scalar regressor and cubic splines, the dimensions are
+:math:`4,5,7,11,19,\ldots`. The paper links instrument resolutions
+to regressor resolutions and assumes :math:`J\leq K(J)\lesssim J`.
+A dimension-adjusted linkage uses
+:math:`l_w=\lceil(l+q)d/d_w\rceil`.
+Instrument splines have sufficient order for the conditional mean
+relationships being approximated.
 
-The data-driven dimension is
+ModernDiD defaults to ``j_x_degree=3`` and ``k_w_degree=4``.
+Its ``k_w_smooth=2`` makes the instrument basis use four times as many
+segments per coordinate as the regressor basis. This is a refinement
+setting, not a direct estimate of instrument strength. If
+:math:`d\ne d_w`, equal refinement per coordinate does not automatically
+give the paper's proportional-dimension linkage.
 
-.. math::
+How much information the instruments reveal
+---------------------------------------------
 
-   \tilde{J} = \min\{\hat{J}, \hat{J}_n\},
+Injectivity permits identification. The inversion can still magnify
+sampling noise. We measure that difficulty over each sieve space before
+choosing how large a space the data can support.
 
-where :math:`\hat{J}` is the smallest dimension passing the Lepski test
-
-.. math::
-
-   \hat{J} = \min\left\{J \in \hat{\mathcal{J}} :
-   \sup_{(x, J_2) \in \mathcal{X} \times \hat{\mathcal{J}} : J_2 > J}
-   \left|\frac{\hat{h}_J(x) - \hat{h}_{J_2}(x)}
-   {\hat{\sigma}_{J,J_2}(x)}\right| \leq 1.1\,\theta_{1-\hat{\alpha}}^*
-   \right\},
-
-and :math:`\hat{J}_n = \max\{J \in \hat{\mathcal{J}} : J < \hat{J}_{\max}\}`
-is a conservative truncation.
-
-Practical Implementation
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-The supremums over :math:`x` in Steps 1 and 2 are computed as maxima over a
-fine grid of evaluation points, since the functions involved are continuous in
-:math:`x`. The constants 10 and 0.1 in Step 1 can in principle be replaced by
-other values, as long as :math:`\hat{\mathcal{J}}` contains several candidate
-dimensions to search over. The constant 1.1 in the Lepski test can be replaced
-by any constant larger than 1. The value 1.1 performs well in simulations and
-is consistent with other implementations of Lepski's method
-(Chernozhukov, Chetverikov, and Kato, 2014).
-
-.. tip::
-
-   B-spline order :math:`r` should match the derivatives of interest. For the structural
-   function and first derivatives, :math:`r \geq 3` and minimal smoothness
-   :math:`\underline{p} \geq 1` suffice. For second derivatives and cross elasticities,
-   :math:`r \geq 4` and :math:`\underline{p} \geq 2` are needed.
-
-In the empirical application and the vast majority of simulation designs
-(between 99.6% and 100% depending on the design and sample size), the
-data-driven choice satisfies :math:`\tilde{J} = \hat{J}`, meaning the Lepski
-selection rather than the conservative truncation determines the final
-dimension.
-
-
-Minimax Rate Adaptivity
------------------------
-
-The data-driven estimator :math:`\hat{h}_{\tilde{J}}` achieves the minimax
-sup-norm convergence rate across both ill-posedness regimes. Let
-:math:`\mathcal{H}^p` denote the Holder ball of smoothness :math:`p`.
-
-In the mildly ill-posed regime, there exists a universal constant :math:`C` for
-which
+Let :math:`\Psi_J` and :math:`B_K` be the function spaces spanned by
+the regressor and instrument bases. For
+:math:`\|h\|_{L_X^2}=(\mathbb E[h(X)^2])^{1/2}`, define
 
 .. math::
 
-   \sup_{p \in [\underline{p}, \bar{p}]} \sup_{h_0 \in \mathcal{H}^p}
-   \mathbb{P}_{h_0}\left(\|\hat{h}_{\tilde{J}} - h_0\|_\infty > C
-   \left(\frac{\log n}{n}\right)^{\frac{p}{2(p+\varsigma)+d}}\right) \to 0.
+   \tau_J=
+      \sup_{\substack{h\in\Psi_J\\\|h\|_{L_X^2}\ne0}}
+      \frac{\|h\|_{L_X^2}}{\|Th\|_{L_W^2}}.
 
+A function can vary substantially with :math:`X` while its conditional
+mean given :math:`W` varies very little. Large :math:`\tau_J`
+describes that loss of information. Conditional expectation is contractive,
+so :math:`\tau_J\geq1`.
+
+In the mildly ill-posed regime,
+:math:`\tau_J\asymp J^{\varsigma/d}` for :math:`\varsigma\geq0`.
 In the severely ill-posed regime,
+:math:`\tau_J\asymp\exp(CJ^{\varsigma/d})`
+for :math:`C,\varsigma>0`. The notation :math:`\asymp` means
+that the ratio is bounded above and below by positive constants.
+For nonparametric regression, :math:`T` is the identity and
+:math:`\tau_J=1`.
+
+Conditions on the approximation spaces
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The instrument basis must approximate the conditional means generated
+by the regressor basis. Bias must also remain controlled when mapped
+through the inverse problem. We make those requirements precise with
+population projections,
 
 .. math::
 
-   \sup_{p \in [\underline{p}, \bar{p}]} \sup_{h_0 \in \mathcal{H}^p}
-   \mathbb{P}_{h_0}\left(\|\hat{h}_{\tilde{J}} - h_0\|_\infty > C
-   (\log n)^{-p/\varsigma}\right) \to 0.
+   \begin{aligned}
+   \Pi_Jf&=\arg\min_{h\in\Psi_J}\|f-h\|_{L_X^2},\\
+   \Pi_{K(J)}f&=\arg\min_{b\in B_{K(J)}}\|f-b\|_{L_W^2},\\
+   Q_Jf&=\arg\min_{h\in\Psi_J}
+      \|\Pi_{K(J)}T(f-h)\|_{L_W^2}.
+   \end{aligned}
 
-The same data-driven choice :math:`\tilde{J}` also yields minimax rates for
-derivative estimation. For a derivative of order :math:`|a|`, in the mildly
-ill-posed regime the rate is
+The first two are least-squares projections. The last is the population
+TSLS projection. Write
+:math:`\|h\|_\infty=\sup_{x\in\mathcal X}|h(x)|`
+for the largest absolute value over the regressor support.
+
+.. admonition:: Assumption 3 Approximation and stability
+   :class: assumption
+
+   For every :math:`J\in\mathcal T`, there is
+   :math:`v_J<1` with :math:`v_J\to0` such that
+
+   .. math::
+
+      \sup_{\substack{h\in\Psi_J\\\|h\|_{L_X^2}=1}}
+      \tau_J\|\Pi_{K(J)}Th-Th\|_{L_W^2}\leq v_J.
+
+   For finite positive constants :math:`C_T,C_Q`,
+
+   .. math::
+
+      \begin{aligned}
+      \tau_J\|T(h_0-\Pi_Jh_0)\|_{L_W^2}
+         &\leq C_T\|h_0-\Pi_Jh_0\|_{L_X^2},\\
+      \|Q_J(h_0-\Pi_Jh_0)\|_\infty
+         &\leq C_Q\|h_0-\Pi_Jh_0\|_\infty.
+      \end{aligned}
+
+   Both inequalities hold for every :math:`J\in\mathcal T`.
+
+The first condition prevents the instrument approximation from losing
+important sieve directions. The next two bound the way approximation
+error propagates through the structural fit. They hold trivially for
+nonparametric regression with matching bases. They require justification
+in an IV problem.
+
+How uncertainty grows with dimension
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Dimension selection compares estimates at different resolutions.
+The theory therefore needs a variance scale and a restriction ensuring
+that larger dimensions provide a meaningfully noisier comparison.
+Define population matrices
 
 .. math::
 
-   \left(\frac{\log n}{n}\right)^{\frac{p-|a|}{2(p+\varsigma)+d}},
+   \begin{aligned}
+   G_{b,J}&=\mathbb E[b^{K(J)}(W)b^{K(J)}(W)'],\\
+   S_J&=\mathbb E[b^{K(J)}(W)\psi^J(X)'],\\
+   H_J&=S_J'G_{b,J}^{-1}S_J,\\
+   \Omega_J&=\mathbb E[u^2b^{K(J)}(W)b^{K(J)}(W)'].
+   \end{aligned}
 
-and in the severely ill-posed regime it is
+For nonsingular population matrices, define the information scale
+and the variance scale,
 
 .. math::
 
-   (\log n)^{-(p-|a|)/\varsigma}.
+   \begin{aligned}
+   s_J^2(x)&=\psi^J(x)'H_J^{-1}\psi^J(x),\\
+   L_J(x)&=\psi^J(x)'H_J^{-1}S_J'G_{b,J}^{-1},\\
+   \sigma_J^2(x)&=L_J(x)\Omega_JL_J(x)',\\
+   s_{J,a}^2(x)&=\partial^a\psi^J(x)'H_J^{-1}\partial^a\psi^J(x).
+   \end{aligned}
 
+The error moment bounds make :math:`s_J(x)` and
+:math:`\sigma_J(x)` comparable uniformly in :math:`x`.
+These are population scales for sample-size-normalized fluctuations.
+They are distinct from the standard error of a sample estimate.
 
-Uniform Confidence Bands
-------------------------
+.. admonition:: Assumption 4 Sieve variance growth
+   :class: assumption
 
-Point estimates of :math:`h_0` are useful only if accompanied by a measure of uncertainty.
-Pointwise confidence intervals (one at each evaluation point) understate uncertainty because
-they do not account for the multiplicity of simultaneous statements. Uniform confidence bands
-cover the entire function with prescribed probability, giving a more honest picture. Two
-approaches are available, depending on whether the sieve dimension was chosen by the
-data-driven procedure or fixed in advance.
+   For finite positive :math:`c,C` and every :math:`J\in\mathcal T`,
 
-Variance Estimation and the Multiplier Bootstrap
+   .. math::
+
+      c\tau_J^2J
+      \leq\inf_x s_J^2(x)
+      \leq\sup_x s_J^2(x)
+      \leq C\tau_J^2J.
+
+   For some :math:`\gamma\in(0,1)`,
+
+   .. math::
+
+      \limsup_{J\to\infty}
+      \sup_{\substack{x\in\mathcal X\\J_2\in\mathcal T,\ J_2>J}}
+      \frac{\sigma_J(x)}{\sigma_{J_2}(x)}<\gamma.
+
+   For derivative bands, part (iii) additionally requires
+
+   .. math::
+
+      c\tau_J^2J^{1+2|a|/d}
+      \leq\inf_x s_{J,a}^2(x)
+      \leq\sup_x s_{J,a}^2(x)
+      \leq C\tau_J^2J^{1+2|a|/d}
+
+   for every :math:`J\in\mathcal T` and the derivative being studied.
+
+These conditions describe uncertainty across the theoretical sieve
+sequence. They do not follow merely from a successful matrix inversion
+in one fitted model. The increasing variance is one reason the procedure
+compares geometrically separated dimensions.
+
+Choosing the dimension before constructing a band
+--------------------------------------------------
+
+A tuning rule for outcome prediction need not recover a structural function.
+We first examine that issue before using comparisons across sieve dimensions
+that respect the IV restriction.
+
+Why ordinary prediction cross-validation can fail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Both confidence band constructions rely on the same variance estimation and
-bootstrap machinery. The estimation error :math:`\hat{h}_J(x) - h_0(x)` is
-approximated by
+Leave-one-out squared-error cross-validation uses
 
 .. math::
 
-   D_J(x) = (\psi^J(x))' \mathbf{M}_J \hat{\mathbf{u}}_J,
+   CV(J)=\frac1n\sum_{i=1}^n
+      (Y_i-\widehat h_{-i,J}(X_i))^2,
 
-where :math:`\hat{\mathbf{u}}_J = (Y_1 - \hat{h}_J(X_1), \ldots,
-Y_n - \hat{h}_J(X_n))'` is the :math:`n \times 1` residual vector. The
-heteroskedasticity-robust variance of :math:`D_J(x)` is estimated by
-
-.. math::
-
-   \hat{\sigma}_J^2(x) = (\psi^J(x))' \mathbf{M}_J
-   \widehat{\mathbf{U}}_{J,J} \mathbf{M}_J' \psi^J(x),
-
-where :math:`\widehat{\mathbf{U}}_{J,J}` is a diagonal matrix with entries
-:math:`\hat{u}_{i,J}^2`. The derivative counterparts are
+where the fit excludes observation :math:`i`.
+Substituting :math:`Y_i=h_0(X_i)+u_i` gives
 
 .. math::
 
-   D_J^a(x) = (\partial^a \psi^J(x))' \mathbf{M}_J \hat{\mathbf{u}}_J,
-   \quad
-   \hat{\sigma}_J^{a\,2}(x) = (\partial^a \psi^J(x))' \mathbf{M}_J
-   \widehat{\mathbf{U}}_{J,J} \mathbf{M}_J' (\partial^a \psi^J(x)).
-
-The multiplier bootstrap replicates these statistics by replacing
-:math:`\hat{\mathbf{u}}_J` with
-:math:`\hat{\mathbf{u}}_J^* = (\hat{u}_{1,J}\varpi_1, \ldots,
-\hat{u}_{n,J}\varpi_n)'`, where :math:`(\varpi_i)_{i=1}^n` are drawn i.i.d.
-:math:`N(0,1)` independently of the data. This yields
-
-.. math::
-
-   D_J^*(x) = (\psi^J(x))' \mathbf{M}_J \hat{\mathbf{u}}_J^*, \quad
-   D_J^{a*}(x) = (\partial^a \psi^J(x))' \mathbf{M}_J \hat{\mathbf{u}}_J^*.
-
-Drawing the weights many times (1000 draws is sufficient) and computing the
-resulting sup-:math:`t` statistics gives the critical values for the
-confidence bands.
-
-Undersmoothing Approach
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Given a fixed sieve dimension :math:`J`, the multiplier bootstrap constructs
-uniform confidence bands
-
-.. math::
-
-   C_{n,J}(x) = \left[\hat{h}_J(x) \pm z_{1-\alpha,J}^* \hat{\sigma}_J(x)
-   \right],
-
-where :math:`z_{1-\alpha,J}^*` is the :math:`(1-\alpha)` quantile of
-the bootstrap sup-:math:`t` statistic
-
-.. math::
-
-   \sup_{x \in \mathcal{X}} \left|\frac{D_J^*(x)}{\hat{\sigma}_J(x)}\right|.
-
-For derivatives, the band is
-
-.. math::
-
-   C_{n,J}^a(x) = \left[\partial^a \hat{h}_J(x) \pm z_{1-\alpha,J}^{a*}
-   \hat{\sigma}_J^a(x)\right],
-
-where :math:`z_{1-\alpha,J}^{a*}` is the corresponding quantile using
-:math:`D_J^{a*}(x) / \hat{\sigma}_J^a(x)`.
-
-These bands have correct coverage provided :math:`J` exceeds the
-oracle-optimal dimension :math:`J_0`, so that approximation bias is of smaller
-order than sampling uncertainty. In practice, :math:`J_0` depends on the
-unknown smoothness of :math:`h_0` and other unknown model features, so the
-researcher must guess how large :math:`J` should be. Choosing :math:`J` too
-conservatively produces wider bands than necessary.
-
-Data-Driven Adaptive UCBs
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The data-driven UCBs avoid the efficiency loss of undersmoothing by folding
-information from the dimension selection step into the critical value. Let
-:math:`\underline{p} > d/2` denote the minimal degree of smoothness
-assumed for :math:`h_0` (for instance, :math:`\underline{p} = 1` when
-:math:`X` is scalar and :math:`h_0` is assumed to be at least Lipschitz).
-Define :math:`\hat{A} = \log\log\tilde{J}` and the candidate set
-
-.. math::
-
-   \hat{\mathcal{J}}_- = \begin{cases}
-   \{J \in \hat{\mathcal{J}} : J < \hat{J}_n\}
-   & \text{if } \tilde{J} = \hat{J}, \\
-   \hat{\mathcal{J}} & \text{if } \tilde{J} = \hat{J}_n.
-   \end{cases}
-
-The critical value :math:`z_{1-\alpha}^*` is the :math:`(1-\alpha)` quantile
-of
-
-.. math::
-
-   \sup_{(x,J) \in \mathcal{X} \times \hat{\mathcal{J}}_-}
-   \left|\frac{D_J^*(x)}{\hat{\sigma}_J(x)}\right|,
-
-which takes the supremum over both evaluation points and candidate dimensions,
-so the resulting bands are robust to the particular dimension selected. The
-:math:`100(1-\alpha)\%` UCB for :math:`h_0` is
-
-.. math::
-
-   C_n(x) = \left[\hat{h}_{\tilde{J}}(x) \pm \text{cv}^*(x)\,
-   \hat{\sigma}_{\tilde{J}}(x)\right],
-
-where the critical value function has two cases
-
-.. math::
-
-   \text{cv}^*(x) = \begin{cases}
-   z_{1-\alpha}^* + \hat{A}\,\theta_{1-\hat{\alpha}}^*
-   & \text{if } \tilde{J} = \hat{J}, \\
-   z_{1-\alpha}^* + \hat{A}\,\max\!\left\{\theta_{1-\hat{\alpha}}^*,\;
-   \tilde{J}^{-\underline{p}/d} / \hat{\sigma}_{\tilde{J}}(x)\right\}
-   & \text{if } \tilde{J} = \hat{J}_n.
-   \end{cases}
-
-In the mildly ill-posed regime, which covers the vast majority of simulations
-and the empirical application, only the first case is relevant. The second case
-includes a bias correction for possible residual approximation bias when the
-conservative truncation binds, as can happen in the severely ill-posed regime.
-
-Derivative UCBs
-~~~~~~~~~~~~~~~
-
-UCBs for derivatives :math:`\partial^a h_0` (with :math:`0 < |a| <
-\underline{p}`) follow the same recipe. The critical value
-:math:`z_{1-\alpha}^{a*}` is the :math:`(1-\alpha)` quantile of
-
-.. math::
-
-   \sup_{(x,J) \in \mathcal{X} \times \hat{\mathcal{J}}_-}
-   \left|\frac{D_J^{a*}(x)}{\hat{\sigma}_J^a(x)}\right|,
-
-and the UCB is
-
-.. math::
-
-   C_n^a(x) = \left[\partial^a \hat{h}_{\tilde{J}}(x) \pm
-   \text{cv}^{a*}(x)\,\hat{\sigma}_{\tilde{J}}^a(x)\right],
-
-where
-
-.. math::
-
-   \text{cv}^{a*}(x) = \begin{cases}
-   z_{1-\alpha}^{a*} + \hat{A}\,\theta_{1-\hat{\alpha}}^*
-   & \text{if } \tilde{J} = \hat{J}, \\
-   z_{1-\alpha}^{a*} + \hat{A}\,\max\!\left\{\theta_{1-\hat{\alpha}}^*,\;
-   \tilde{J}^{(|a|-\underline{p})/d} / \hat{\sigma}_{\tilde{J}}^a(x)\right\}
-   & \text{if } \tilde{J} = \hat{J}_n.
-   \end{cases}
-
-Honesty and Adaptivity
-~~~~~~~~~~~~~~~~~~~~~~
-
-In the mildly ill-posed regime, the data-driven UCBs satisfy two properties.
-
-- **Honest** in that coverage is guaranteed uniformly over a generic class of
-  data-generating processes
-
-  .. math::
-
-     \liminf_{n \to \infty} \inf_{h_0 \in \mathcal{G}}
-     \mathbb{P}_{h_0}(h_0(x) \in C_n(x) \;\forall x \in \mathcal{X})
-     \geq 1 - \alpha.
-
-- **Adaptive** in that the band width contracts at (within a :math:`\log\log n`
-  factor of) the minimax rate
-
-  .. math::
-
-     \sup_{x \in \mathcal{X}} |C_n(x)| = O_p\left((\log\log n)
-     \left(\frac{\log n}{n}\right)^{\frac{p}{2(p+\varsigma)+d}}\right).
-
-The same properties hold for derivative UCBs, with the band width contracting
-at the derivative minimax rate
-
-.. math::
-
-   (\log\log n)\left(\frac{\log n}{n}\right)^{\frac{p-|a|}{2(p+\varsigma)+d}}.
-
-In the severely ill-posed regime, the UCBs with the critical value
-corresponding to :math:`\tilde{J} = \hat{J}_n` have valid (and in fact
-conservative) coverage. In simulation studies calibrated to an empirically
-relevant Engel curve design that is severely ill-posed, the UCBs maintain
-correct coverage across all sample sizes despite the coverage guarantee being
-formally established only for the mildly ill-posed case.
-
-The data-driven bands are therefore asymptotically more efficient than
-undersmoothed bands, which sacrifice estimation efficiency for coverage. In
-simulation studies calibrated to an international trade application, the
-data-driven bands are approximately 40% narrower than undersmoothed bands with
-comparable coverage, and have substantially higher power for detecting
-departures from parametric specifications.
-
-
-Multivariate Basis Construction
--------------------------------
-
-When :math:`X` is multivariate, the module supports three types of basis
-construction from the marginal B-spline bases.
-
-- **Tensor product** uses the full Kronecker product
-  :math:`\psi^J(x) = \psi_1^{J_1}(x_1) \otimes \cdots \otimes
-  \psi_d^{J_d}(x_d)`, yielding :math:`\prod_i J_i` basis functions. This
-  provides the most flexible approximation but the dimension grows
-  exponentially.
-
-- **Additive** uses the concatenation of marginal bases,
-  yielding :math:`\sum_i J_i` basis functions and restricting
-  :math:`h_0` to an additive structure :math:`h_0(x) = \sum_i h_i(x_i)`.
-
-- **Generalized linear product (GLP)** is a hierarchical construction that
-  includes main effects and selected interactions, providing a compromise
-  between the tensor and additive bases.
-
-The theory and data-driven procedures apply to all three constructions.
-
-
-Extensions
-----------
-
-The data-driven procedures carry over to structured models that mitigate the
-curse of dimensionality when additional assumptions on :math:`h_0` are
-warranted.
-
-Additive Structural Functions
+   \begin{aligned}
+   CV(J)
+      &=\frac1n\sum_i(h_0(X_i)-\widehat h_{-i,J}(X_i))^2
+        +\frac1n\sum_i u_i^2\\
+      &\quad+\frac2n\sum_i
+         u_i(h_0(X_i)-\widehat h_{-i,J}(X_i)).
+   \end{aligned}
+
+The last term can depend on :math:`J` when
+:math:`\mathbb E[u\mid X]\ne0`. Minimizing this criterion can therefore
+favor prediction of the endogenous conditional mean rather than recovery
+of :math:`h_0`. This is a limitation of this ordinary prediction
+criterion, not of every possible IV-specific validation method.
+
+Even under exogeneity, squared prediction error targets an average-error
+criterion. A confidence band requires control of the largest error over
+the support. The paper instead uses a bootstrap Lepski procedure that
+compares entire fitted functions at different resolutions.
+
+Bounding the feasible search
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When :math:`h_0` is assumed to take the additive form
+The first step estimates how much inversion the sample can support.
+Let :math:`J^+` be the next larger dimension in :math:`\mathcal T`.
+Let :math:`\widehat s_J` be the smallest singular value of
 
 .. math::
 
-   h_0(x) = c_0 + h_{10}(x_1) + \ldots + h_{d0}(x_d),
+   (\mathbf B_{K(J)}'\mathbf B_{K(J)})^{-1/2}
+   (\mathbf B_{K(J)}'\boldsymbol\Psi_J)
+   (\boldsymbol\Psi_J'\boldsymbol\Psi_J)^{-1/2}.
 
-where :math:`c_0` is an intercept and the component functions :math:`h_{i0}`
-are suitably normalized for identifiability, the curse of dimensionality can be
-circumvented. Stone (1985) showed that imposing additivity in nonparametric
-regression yields estimators that achieve the same optimal rate for general
-:math:`d` as for :math:`d = 1`.
-
-The additive basis concatenates centered marginal B-spline bases. For each
-coordinate :math:`i`, the centered basis functions are
+The negative half power denotes the inverse of the positive-definite
+square root. The reciprocal :math:`\widehat s_J^{-1}` estimates
+the inversion difficulty. The paper chooses
 
 .. math::
 
-   \tilde{\psi}_{Jj}(x_i) = \psi_{Jj}(x_i) - \int_0^1 \psi_{Jj}(v)\,dv,
+   \widehat J_{\max}
+   =\min\left\{J\in\mathcal T:
+      J\sqrt{\log J}\,\widehat s_J^{-1}\leq10\sqrt n
+      <J^+\sqrt{\log J^+}\,\widehat s_{J^+}^{-1}
+      \right\}.
 
-and the full basis vector is
-
-.. math::
-
-   \psi^J(x) = (1, \tilde{\psi}_1^J(x_1)', \ldots,
-   \tilde{\psi}_d^J(x_d)')'.
-
-The data-driven choice of :math:`J` follows the
-same procedure as before, just with this basis plugged in. UCBs for each
-component :math:`h_{i0}` restrict the bootstrap sup-statistics to the
-coordinates of interest, taking supremums only over the support
-:math:`\mathcal{X}_i` of :math:`x_i`.
-
-Partially Linear Structural Functions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In many applications, some regressors enter :math:`h_0` linearly while others
-enter nonparametrically, giving the partially linear specification (Ai and
-Chen, 2003)
+Its search set and testing level are
 
 .. math::
 
-   h_0(x) = h_{10}(x_1) + x_2' \beta_0,
+   \begin{aligned}
+   \widehat{\mathcal J}
+      &=\{J\in\mathcal T:
+          0.1(\log\widehat J_{\max})^2\leq J\leq\widehat J_{\max}\},\\
+   \widehat\alpha
+      &=\min\{0.5,(\log\widehat J_{\max}/\widehat J_{\max})^{1/2}\}.
+   \end{aligned}
 
-where :math:`x = (x_1', x_2')'`, :math:`h_{10}` is an unknown function of the
-:math:`d_1`-dimensional subvector :math:`x_1`, and :math:`\beta_0` is an
-unknown finite-dimensional parameter vector. When :math:`X` is exogenous, this
-reduces to the partially linear regression model of Robinson (1988).
+The testing level :math:`\widehat\alpha` controls the dimension
+comparison. It is different from the desired confidence-band
+noncoverage probability :math:`\alpha`.
 
-The basis vector takes the form
-:math:`\psi^J(x) = (\psi_1^J(x_1)', x_2')'`, and the TSLS estimator jointly
-estimates the sieve coefficients and the linear parameters. For dimension
-selection and UCBs targeting :math:`h_{10}`, one substitutes
-:math:`\psi_0^J(x_1) = (\psi_1^J(x_1)', 0_{d_2})'` in place of
-:math:`\psi^J(x)` when computing contrasts and variance terms, so that the
-:math:`t`-statistics depend only on :math:`x_1` and supremums are taken over
-:math:`\mathcal{X}_1`.
+Comparing small and large fits
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Nonparametric Regression
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Setting :math:`W = X` reduces the NPIV model to nonparametric regression.
-The instrument projection drops out and the TSLS estimator collapses to
-ordinary least squares
+The same observations produce every candidate fit. Their errors are
+correlated. A standardized difference needs the covariance between fits.
+For fitted residuals
+:math:`\widehat u_{i,J}=Y_i-\widehat h_J(X_i)`, write
 
 .. math::
 
-   \hat{h}_J(x) = (\psi^J(x))' \hat{c}_J, \quad
-   \hat{c}_J = (\boldsymbol{\Psi}_J' \boldsymbol{\Psi}_J)^{-}
-   \boldsymbol{\Psi}_J' \mathbf{Y},
+   \widehat U_{J,J_2}
+      =\operatorname{diag}
+         (\widehat u_{1,J}\widehat u_{1,J_2},\ldots,
+          \widehat u_{n,J}\widehat u_{n,J_2}).
 
-and :math:`\mathbf{M}_J = (\boldsymbol{\Psi}_J' \boldsymbol{\Psi}_J)^{-}
-\boldsymbol{\Psi}_J'`. The maximum feasible dimension in Step 1 simplifies to
-
-.. math::
-
-   \hat{J}_{\max} = \min\left\{J \in \mathcal{T} : J\sqrt{\log J}\,v_n
-   \leq 10\sqrt{n} < J^+\sqrt{\log J^+}\,v_n\right\},
-
-with :math:`v_n = \max\{1, (0.1 \log n)^4\}` replacing the ill-posedness
-measure :math:`\hat{s}_J^{-1}`. The Lepski selection and bootstrap are
-otherwise unchanged, and the data-driven UCBs simplify to
+Define the estimated variance and cross-covariance,
 
 .. math::
 
-   C_n(x) = \left[\hat{h}_{\tilde{J}}(x) \pm
-   (z_{1-\alpha}^* + \hat{A}\,\theta_{1-\hat{\alpha}}^*)\,
-   \hat{\sigma}_{\tilde{J}}(x)\right],
+   \begin{aligned}
+   \widehat\sigma_J^2(x)
+      &=\psi^J(x)'\mathbf M_J\widehat U_{J,J}
+          \mathbf M_J'\psi^J(x),\\
+   \widetilde\sigma_{J,J_2}(x)
+      &=\psi^J(x)'\mathbf M_J\widehat U_{J,J_2}
+          \mathbf M_{J_2}'\psi^{J_2}(x),\\
+   \widehat\sigma_{J,J_2}^2(x)
+      &=\widehat\sigma_J^2(x)+\widehat\sigma_{J_2}^2(x)
+          -2\widetilde\sigma_{J,J_2}(x).
+   \end{aligned}
 
-without the additional bias correction term present in the severely ill-posed
-case, since nonparametric regression corresponds to :math:`\varsigma = 0`
-(the mildly ill-posed regime with the strongest possible instruments). The
-conservative truncation :math:`\hat{J}_n` is not needed, so
-:math:`\tilde{J} = \hat{J}` directly.
+Here :math:`\widehat\sigma_J(x)` is already a standard error.
+No further division by :math:`\sqrt n` is needed in a band.
+For :math:`J_2>J`, the observed comparison is
 
-The minimax rate-adaptivity and honesty-plus-adaptivity guarantees from the
-general NPIV case still hold here, specialized to the nonparametric regression
-rates.
+.. math::
 
+   T_{J,J_2}
+      =\sup_{x\in\mathcal X}
+         \left|
+         \frac{\widehat h_J(x)-\widehat h_{J_2}(x)}
+              {\widehat\sigma_{J,J_2}(x)}
+         \right|.
 
-.. note::
+The bootstrap simulates the largest standardized difference under sampling
+variation. Draw independent standard normal multipliers :math:`\varpi_i`,
+independently of the data. Define
 
-   For complete theoretical details including formal regularity conditions,
-   proofs of minimax rate adaptivity, and extensions to partially linear and
-   partially additive models, refer to `Chen, Christensen, and Kankanala (2024)
-   <https://arxiv.org/abs/2107.11869>`_. The undersmoothing UCB approach
-   builds on `Chen and Christensen (2018)
-   <https://arxiv.org/abs/1508.03365>`_.
+.. math::
+
+   \begin{aligned}
+   \widehat{\mathbf u}_J^*
+      &=(\widehat u_{1,J}\varpi_1,\ldots,
+          \widehat u_{n,J}\varpi_n)',\\
+   D_J^*(x)&=\psi^J(x)'\mathbf M_J\widehat{\mathbf u}_J^*.
+   \end{aligned}
+
+Each draw uses the same multiplier for an observation across all candidate
+dimensions. This preserves their estimated covariance.
+Let :math:`\theta_{1-\widehat\alpha}^*` be the bootstrap quantile of
+
+.. math::
+
+   \sup_{\substack{x\in\mathcal X\\J,J_2\in\widehat{\mathcal J},\ J_2>J}}
+      \left|
+      \frac{D_J^*(x)-D_{J_2}^*(x)}
+           {\widehat\sigma_{J,J_2}(x)}
+      \right|.
+
+The paper then selects
+
+.. math::
+
+   \begin{aligned}
+   \widehat J
+      &=\min\left\{J\in\widehat{\mathcal J}:
+         \sup_{\substack{J_2\in\widehat{\mathcal J}\\J_2>J}}
+            T_{J,J_2}
+         \leq1.1\theta_{1-\widehat\alpha}^*
+         \right\},\\
+   \widehat J_n&=\max\{J\in\widehat{\mathcal J}:J<\widehat J_{\max}\},\\
+   \widetilde J&=\min\{\widehat J,\widehat J_n\}.
+   \end{aligned}
+
+A small fit is retained only if all larger fits remain sufficiently close.
+The truncation prevents choosing the largest feasible dimension.
+The construction assumes a search set with enough candidates to make
+those comparisons meaningful.
+
+The numerical search in the package
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Leaving ``j_x_segments=None`` calls :func:`~moderndid.npiv_choose_j`.
+A supplied number of segments fixes the structural sieve instead.
+The ``args`` field records selection quantities such as
+``j_tilde``, ``j_hat``, and ``theta_star`` when selection succeeds.
+
+The implementation uses a finite dyadic grid and retains its candidates
+through the computed upper cutoff. It does not enforce the paper's
+log-squared lower cutoff on that grid. Its upper-cutoff calculation also
+protects the inverse singular value with :math:`(0.1\log n)^4`.
+Those are numerical choices rather than additional identifying assumptions.
+
+For multiple regressors, the default comparison grid has 50 rows.
+Each coordinate runs through equally spaced values in those rows.
+It is not a full Cartesian product of coordinates. A grid that misses
+important parts of joint support can miss differences between fitted
+functions there.
+
+.. admonition:: Set the region your band covers
+   :class: important
+
+   Supply ``x_grid`` to control where dimension selection compares
+   fits and ``x_eval`` to control where bands are evaluated.
+   The package takes maxima over those finite points.
+   A numerical maximum approximates the paper's supremum over
+   :math:`\mathcal X` only when the grid adequately represents that region.
+
+If selection fails, the high-level estimator issues a warning and uses
+fallback segment counts. That fit is not the paper's selected sieve.
+Read the warning and the recorded arguments before interpreting a reported
+band as a result of adaptive selection.
+
+What adaptivity means for estimation
+------------------------------------
+
+The procedure does not require you to supply the true smoothness or
+ill-posedness exponent. Its rate guarantees still need a defined class of
+functions and the regularity conditions above.
+We introduce that class before stating the convergence result.
+
+Let :math:`B_{\infty,\infty}^p(M)` be the Hölder-Zygmund ball of
+smoothness :math:`p` and radius :math:`M`.
+One characterization uses an integer :math:`k>p` and the finite difference
+
+.. math::
+
+   \Delta_v^k h(x)
+      =\sum_{j=0}^k(-1)^{k-j}\binom{k}{j}h(x+jv).
+
+The norm defining the ball controls
+
+.. math::
+
+   \|h\|_\infty+
+   \sup_{0<\|v\|\leq1}
+      \frac{\|\Delta_v^k h\|_\infty}{\|v\|^p},
+
+where the differences use points remaining in the support.
+For noninteger :math:`p`, this is equivalent to bounding derivatives
+through order :math:`\lfloor p\rfloor` and imposing Hölder continuity
+of order :math:`p-\lfloor p\rfloor` on the highest derivatives.
+
+Take a fixed smoothness range
+:math:`\overline p>\underline p>d/2` and enough spline order,
+:math:`r\geq\lfloor\overline p\rfloor+1`.
+The paper's class :math:`\mathcal H^p` contains members of
+:math:`B_{\infty,\infty}^p(M)` that satisfy the stability conditions
+in Assumption 3(ii) and (iii) with the fixed constants.
+Probabilities :math:`P_h` refer to iid data generated under
+:math:`Y=h(X)+u` and the stated distributional assumptions.
+
+.. admonition:: Theorem 4.1 and Corollary 4.1 Adaptive sup-norm rates
+   :class: theorem
+
+   Under Assumptions 1 through 3 and 4(i) and (ii), the paper's
+   data-driven estimator satisfies, for some universal :math:`C_a>0`,
+
+   .. math::
+
+      \sup_{p\in[\underline p,\overline p]}
+      \sup_{h\in\mathcal H^p}
+      P_h\!\left(
+         \|\partial^a\widehat h_{\widetilde J}-\partial^a h\|_\infty
+         >C_a r_{n,a}(p)
+      \right)\longrightarrow0.
+
+   For :math:`a=0` this is Theorem 4.1. For derivatives with
+   :math:`0<|a|<\underline p` it is Corollary 4.1. The rates are
+
+   .. math::
+
+      r_{n,a}(p)=
+      \begin{cases}
+      (\log n/n)^{(p-|a|)/(2(p+\varsigma)+d)},
+         &\text{mildly ill-posed},\\
+      (\log n)^{-(p-|a|)/\varsigma},
+         &\text{severely ill-posed}.
+      \end{cases}
+
+   The sieve spaces and dimension-selection rule are those specified
+   in the paper.
+
+These are minimax sup-norm rates for the stated classes.
+The estimator adapts to unknown smoothness and inversion difficulty in
+both regimes. Estimating a derivative lowers the exponent because it
+magnifies variation at small scales.
+
+The order condition also limits what a low-degree spline can approximate.
+A fixed cubic order does not give exact minimax adaptivity over arbitrarily
+smooth classes. The paper's Remark 4.2 describes the slower rate when
+the spline order is insufficient for the true smoothness.
+
+Uncertainty over the function
+-----------------------------
+
+A pointwise interval targets one evaluation point.
+A uniform band targets the entire selected region at once.
+Its construction must account for sampling variation, approximation bias,
+and the uncertainty introduced by selecting a dimension.
+
+Separating structural noise from approximation error
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For the true error vector :math:`\mathbf u=(u_1,\ldots,u_n)'`,
+the fitted function has the exact decomposition
+
+.. math::
+
+   \begin{aligned}
+   \widehat h_J(x)-h_0(x)
+      &=\psi^J(x)'\mathbf M_J\mathbf u\\
+      &\quad+\psi^J(x)'\mathbf M_J
+         (h_0(X_1),\ldots,h_0(X_n))'-h_0(x).
+   \end{aligned}
+
+The first term is the fluctuation due to structural errors.
+The second contains the sample approximation term.
+Fitted residuals estimate the error variance and enter the bootstrap.
+They do not replace :math:`\mathbf u` in this decomposition.
+
+In particular, multiplying the fitted residual vector by
+:math:`\mathbf M_J` gives zero under the TSLS normal equations.
+The variance estimator instead uses squared residuals inside the sandwich
+matrix defined above. The multiplier bootstrap changes their signs and
+magnitudes observation by observation. Its fluctuation can therefore be
+nonzero even though the unweighted fitted-residual term vanishes.
+
+For derivatives, replace :math:`\psi^J(x)` by
+:math:`\partial^a\psi^J(x)` in the error decomposition, variance,
+and bootstrap expressions.
+
+Bands when the dimension is fixed
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For a chosen :math:`J`, let :math:`z_{1-\alpha,J}^*` be the
+bootstrap quantile of
+:math:`\sup_x|D_J^*(x)/\widehat\sigma_J(x)|`.
+The fixed-sieve band is
+
+.. math::
+
+   C_{n,J}(x)=
+      [\,\widehat h_J(x)\ \pm\
+         z_{1-\alpha,J}^*\widehat\sigma_J(x)\,].
+
+The derivative counterpart uses its derivative bootstrap quantile and
+standard error. These are the undersmoothing bands studied by
+`Chen and Christensen (2018)
+<https://arxiv.org/abs/1508.03365>`_.
+
+For structural coverage, the approximation term must be negligible
+relative to the band's sampling scale. Selecting a fixed number of
+segments does not establish that condition.
+The theory uses a sequence of dimensions that grows sufficiently quickly
+to make bias negligible while respecting the rank, moment, and
+growth requirements. Larger dimensions can reduce approximation bias
+and increase uncertainty at the same time.
+
+Adaptive bands and self-similar functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Honest adaptive bands require a further restriction on approximation
+error. They cannot have those properties uniformly over every Hölder
+ball of unknown smoothness. The paper uses a self-similar subclass
+whose approximation error remains detectable across resolutions.
+
+For a fixed :math:`0<\underline B<\overline B` and starting
+dimension :math:`J_*`, define
+
+.. math::
+
+   \begin{aligned}
+   \mathcal G^p
+      &=\left\{h\in\mathcal H^p:
+         \|\Pi_Jh-h\|_\infty\geq\underline B J^{-p/d}
+         \text{ for all }J\in\mathcal T,\ J\geq J_*
+         \right\},\\
+   \mathcal G&=\bigcup_{p\in[\underline p,\overline p]}\mathcal G^p.
+   \end{aligned}
+
+Spline approximation also gives the upper bound
+:math:`\|\Pi_Jh-h\|_\infty\leq\overline B J^{-p/d}`
+on the smoothness class. The lower bound prevents the bias from becoming
+arbitrarily small at some resolutions while remaining large at others.
+
+A band is honest over :math:`\mathcal G` if its simultaneous coverage
+is at least :math:`1-\alpha` asymptotically, uniformly over that class.
+It is adaptive if its width contracts at the rate associated with the
+function's own smoothness rather than the least smooth member of the class.
+
+The paper accounts for dimension selection by using the candidate set
+
+.. math::
+
+   \widehat{\mathcal J}_-=
+   \begin{cases}
+   \{J\in\widehat{\mathcal J}:J<\widehat J_n\},
+      &\widehat J\leq\widehat J_n,\\
+   \widehat{\mathcal J},
+      &\widehat J>\widehat J_n.
+   \end{cases}
+
+Let :math:`z_{1-\alpha}^*` be the bootstrap quantile of
+
+.. math::
+
+   \sup_{\substack{x\in\mathcal X\\J\in\widehat{\mathcal J}_-}}
+      \left|\frac{D_J^*(x)}{\widehat\sigma_J(x)}\right|.
+
+This writes Procedure 2 with equality assigned to its first branch.
+The convention makes the candidate set unambiguous when selection and
+truncation choose the same dimension.
+In the mild regime, a band with inflation constant :math:`A` is
+
+.. math::
+
+   C_n(x,A)=
+      [\,\widehat h_{\widetilde J}(x)\ \pm\
+         (z_{1-\alpha}^*+A\theta_{1-\widehat\alpha}^*)
+         \widehat\sigma_{\widetilde J}(x)\,].
+
+The derivative band :math:`C_n^a(x,A)` uses
+:math:`\partial^a\widehat h_{\widetilde J}`, its standard error,
+and a derivative bootstrap quantile over the same dimensions.
+
+.. admonition:: Theorems 4.2 and 4.4 Mild-regime coverage and width
+   :class: theorem
+
+   Under Assumptions 1 through 4 and mild ill-posedness, there is
+   :math:`A_*>0` independent of :math:`\alpha` such that
+   every fixed :math:`A\geq A_*` gives
+
+   .. math::
+
+      \liminf_{n\to\infty}\inf_{h\in\mathcal G}
+      P_h\{h(x)\in C_n(x,A)\text{ for all }x\in\mathcal X\}
+      \geq1-\alpha.
+
+   For a universal :math:`C>0`,
+
+   .. math::
+
+      \inf_{p\in[\underline p,\overline p]}
+      \inf_{h\in\mathcal G^p}
+      P_h\!\left\{
+         \sup_x|C_n(x,A)|
+         \leq C(1+A)(\log n/n)^{p/(2(p+\varsigma)+d)}
+      \right\}\longrightarrow1.
+
+   For :math:`0<|a|<\underline p`, Assumption 4(iii) gives the same
+   coverage statement for :math:`\partial^a h` and
+   :math:`C_n^a`. Its width bound replaces :math:`p` in the numerator
+   of the exponent by :math:`p-|a|`.
+   The thresholds and constants can differ for functions and derivatives.
+
+These statements use the complete theoretical procedures and the
+self-similar class. The recommended
+:math:`\widehat A=\log\log\widetilde J` grows slowly enough that
+coverage holds for the stated classes and width is within a
+:math:`\log\log n` factor of the minimax rate.
+The guarantee includes nonparametric regression as :math:`\varsigma=0`.
+
+What changes in the severe regime
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Adaptive point estimation does not by itself imply adaptive bands.
+When instruments reveal very little about high-frequency variation,
+approximation bias can dominate the optimal estimator's sampling error.
+The severe-regime coverage result adds an explicit bias envelope.
+
+For the structural function, the paper's modified critical value is
+
+.. math::
+
+   cv_{\mathrm{sev}}^*(x,A)
+      =z_{1-\alpha}^*
+       +A\max\left\{
+          \theta_{1-\widehat\alpha}^*,
+          \frac{\widetilde J^{-\underline p/d}}
+               {\widehat\sigma_{\widetilde J}(x)}
+         \right\}.
+
+For a derivative, replace the bias factor by
+:math:`\widetilde J^{(|a|-\underline p)/d}`
+and use its derivative standard error and quantile.
+The least assumed smoothness :math:`\underline p` controls this
+envelope. It can therefore produce conservative bands for smoother
+functions in the stated class.
+
+.. admonition:: Theorems 4.3 and 4.5 Severe-regime coverage
+   :class: theorem
+
+   Under Assumptions 1 through 4 and severe ill-posedness, the modified
+   bands using the bias envelope have a constant :math:`A_*>0`
+   independent of :math:`\alpha` such that, for every fixed
+   :math:`A\geq A_*`,
+
+   .. math::
+
+      \liminf_{n\to\infty}\inf_{h\in\mathcal G}
+      P_h\{h(x)\in C_{n,\mathrm{sev}}(x,A)
+         \text{ for all }x\in\mathcal X\}
+      \geq1-\alpha.
+
+   Their widths satisfy, for a universal :math:`C>0`,
+
+   .. math::
+
+      \inf_{p\in[\underline p,\overline p]}
+      \inf_{h\in\mathcal G^p}
+      P_h\!\left\{
+         \sup_x|C_{n,\mathrm{sev}}(x,A)|
+         \leq C(1+A)(\log n)^{-\underline p/\varsigma}
+      \right\}\longrightarrow1.
+
+   If :math:`0<|a|<\underline p` and Assumption 4(iii) holds,
+   the derivative band has the corresponding coverage guarantee.
+   Its width bound is
+   :math:`C_a(1+A)(\log n)^{-(\underline p-|a|)/\varsigma}`.
+
+The width depends on the lower smoothness bound rather than automatically
+on the true :math:`p`. These bands are therefore not generally
+rate-adaptive to smoother functions in the severe regime.
+The point estimator's adaptive rates from Theorem 4.1 remain a separate
+result.
+
+.. admonition:: Separate the implemented band from the severe-regime theorem
+   :class: warning
+
+   ModernDiD's adaptive band uses the bootstrap quantile plus the
+   mild-regime selection penalty. It does not implement the severe-regime
+   bias envelope above. The severe-regime coverage theorem therefore
+   cannot be attached to the returned band without an additional argument.
+
+Reading the package's bands
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For successful data-driven selection, the implementation uses a
+candidate-dimension bootstrap and adds
+:math:`\max\{0,\log\log\widetilde J\}\theta^*`
+to the critical value. Its finite bootstrap dimension set is a numerical
+implementation choice rather than exactly
+:math:`\widehat{\mathcal J}_-` in Procedure 2.
+
+The default ``biters=99`` controls the number of multiplier draws.
+More draws reduce Monte Carlo error in the estimated critical values.
+No fixed count establishes asymptotic coverage or guarantees precise
+tail quantiles. Passing ``seed`` makes the random draws reproducible.
+
+With fixed ``j_x_segments``, the estimator uses the fixed-sieve
+undersmoothing construction. With ``ucb_h=False`` or
+``ucb_deriv=False``, it omits the corresponding bands.
+The ``asy_se`` and ``deriv_asy_se`` result fields are standard errors
+on the scale of the estimates. The band endpoints already apply their
+reported critical values to those standard errors.
+
+Changing the structural restrictions
+-------------------------------------
+
+A multivariate tensor-product sieve can grow quickly.
+Reducing its dimension by restricting the structural function changes
+the model you estimate. We distinguish those restrictions from a tuning
+choice within an unrestricted model.
+
+Tensor, additive, and restricted interactions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With ``basis="tensor"``, the basis is the product of marginal spline
+bases. If coordinate :math:`j` has :math:`J_j` functions, the joint
+dimension is :math:`\prod_jJ_j`. This is the construction used in the
+main theoretical results above.
+
+With ``basis="additive"``, the basis combines marginal functions and
+an intercept. The structural restriction is
+
+.. math::
+
+   h_0(x)=c_0+\sum_{j=1}^d h_{j0}(x_j).
+
+Component normalizations separate the intercept from the individual
+functions. Section 6 describes centered marginal bases,
+
+.. math::
+
+   \widetilde\psi_{Jk}(x_j)
+      =\psi_{Jk}(x_j)-\int_0^1\psi_{Jk}(v)\,dv.
+
+Additivity removes general interactions from the target function.
+The paper's extension develops the corresponding estimation and
+component-band procedures under additive-model conditions.
+It does not make the unrestricted tensor-product theorem apply unchanged.
+
+The ``basis="glp"`` construction retains main effects and selected
+lower-order interactions of the marginal bases. Its dimension lies between
+the additive and tensor constructions. The paper's main tensor-product
+guarantees do not automatically cover this different approximation space.
+Its use requires a structural approximation that those retained
+interactions can support.
+
+Partially linear structural functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If some regressors enter linearly, the theoretical model can take the form
+
+.. math::
+
+   h_0(x)=h_{10}(x_1)+x_2'\beta_0,
+   \qquad
+   \psi^J(x)=(\psi_1^J(x_1)',x_2')'.
+
+The sieve TSLS regression then estimates the nonlinear function and the
+linear coefficients together. For a band on the nonlinear component,
+Section 6 replaces the evaluation vector with
+:math:`(\psi_1^J(x_1)',0_{d_2}')'`.
+This changes the target of the bootstrap contrast.
+The high-level ``npiv`` API does not expose a separate partially linear
+specification argument. This extension is therefore a statement about the
+method rather than an automatic option of that call.
+
+Nonparametric regression as a special case
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When ``w`` equals ``x``, the package makes the instrument and regressor
+bases match. The instrument projection drops out,
+
+.. math::
+
+   \widehat c_J=
+      (\boldsymbol\Psi_J'\boldsymbol\Psi_J)^{-}
+      \boldsymbol\Psi_J'\mathbf Y,
+   \qquad
+   \mathbf M_J=
+      (\boldsymbol\Psi_J'\boldsymbol\Psi_J)^{-}
+      \boldsymbol\Psi_J'.
+
+The paper's regression procedure replaces the estimated inverse
+ill-posedness measure with
+:math:`v_n=\max\{1,(0.1\log n)^4\}`.
+It uses its regression-specific selection and band construction.
+ModernDiD also uses that cutoff safeguard when the arrays match.
+Its generic numerical selection still applies the final dimension
+truncation. The mild-regime interpretation follows from
+:math:`\tau_J=1` rather than from stronger IV assumptions.
+
+This regression special case supports the data-driven dose estimator
+described in the :ref:`continuous treatment background <background-didcont>`.
+For an IV analysis, the :ref:`nonparametric IV example <example_npiv>`
+shows the fitted structural function, its derivative, and the regions
+where the instrument-supported estimate is most uncertain.
