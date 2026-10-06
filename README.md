@@ -72,33 +72,6 @@ installs straight from GitHub.
 uv add "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
 ```
 
-## Quickstart
-
-The example below estimates how state minimum wage increases that took effect in
-different years affected teen employment. The
-[staggered adoption example](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html)
-works through the same analysis at a deeper level.
-
-```python
-import moderndid as did
-
-# County teen employment and state minimum wage increases from 2003 to 2007
-data = did.load_mpdta()
-
-# An average effect for each treatment cohort and year
-result = did.att_gt(
-    data=data,
-    yname="lemp",
-    tname="year",
-    idname="countyreal",
-    gname="first.treat",
-)
-
-# An event study by time relative to treatment, plotted with the plots extra
-event_study = did.aggte(result, type="dynamic")
-did.plot_event_study(event_study)
-```
-
 ## Features
 
 ModernDiD covers the main research designs in the modern DiD literature.
@@ -129,6 +102,33 @@ Every estimator also comes with the tools the rest of an analysis needs.
 - Parallel threads and an optional Numba bootstrap speed up estimation on one
   machine.
 - Supported estimators also run on NVIDIA GPUs through CuPy for large panels.
+
+## Quickstart
+
+The example below estimates how state minimum wage increases that took effect in
+different years affected teen employment. The
+[staggered adoption example](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html)
+works through the same analysis at a deeper level.
+
+```python
+import moderndid as did
+
+# County teen employment and state minimum wage increases from 2003 to 2007
+data = did.load_mpdta()
+
+# An average effect for each treatment cohort and year
+result = did.att_gt(
+    data=data,
+    yname="lemp",
+    tname="year",
+    idname="countyreal",
+    gname="first.treat",
+)
+
+# An event study by time relative to treatment, plotted with the plots extra
+event_study = did.aggte(result, type="dynamic")
+did.plot_event_study(event_study)
+```
 
 ## Documentation
 
