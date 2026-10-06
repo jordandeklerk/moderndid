@@ -3,11 +3,11 @@
 DiD with intertemporal treatment effects
 ========================================
 
-A policy can change intensity, be withdrawn, and still affect later outcomes.
-If you compare groups only by their current treatment, you can miss those
-past exposures. The ``didinter`` module estimates the effect of a group's
-observed treatment path relative to continuing its initial treatment level.
-It uses groups that retain the same initial treatment as comparison groups.
+Comparing groups only by their current treatment can miss the effects of
+earlier exposure when a policy changes intensity or is withdrawn. The
+``didinter`` module estimates the effect of a group's observed treatment
+path relative to continuing its initial treatment level by comparing it
+with groups that retain the same initial treatment.
 
 We follow the framework of `de Chaisemartin and D'Haultfœuille
 <https://doi.org/10.1162/rest_a_01414>`_. Its potential outcomes allow current
@@ -18,8 +18,9 @@ intervention or homogeneous treatment effects.
 
 The distinction from a :ref:`staggered adoption analysis <background-did>`
 is therefore the treatment path and counterfactual you want to compare.
-Staggered DiD already allows effects to evolve after adoption. Here, treatment
-can subsequently decrease or increase again. The :ref:`worked example
+Staggered DiD already allows effects to evolve after adoption while the
+intervention remains in place. Here, treatment can also decrease or increase
+again after its first change. The :ref:`worked example
 <example_inter_did>` connects these targets to
 :func:`~moderndid.did_multiplegt`.
 
@@ -41,17 +42,17 @@ from it by
    F_g=\min\{t\geq2:D_{g,t}\ne b_g\},
    \qquad F_g=T+1\text{ if treatment never changes}.
 
-All periods before :math:`F_g` have treatment :math:`b_g`. Subsequent periods
-can have different assignments. The status-quo potential outcome is
+Before :math:`F_g`, treatment remains at :math:`b_g` and can take different
+values afterward. The status-quo potential outcome is
 
 .. math::
 
    Q_{g,t}=Y_{g,t}(b_g,\ldots,b_g).
 
-For an initially untreated group, this is its outcome if treatment never
-starts. For an initially treated group, it is the outcome if treatment stays
-at its initial level. That second counterfactual explains why baseline
-treatment must enter the comparison.
+This is the outcome if treatment never starts for an initially untreated
+group or if it stays at its initial level for an initially treated group.
+The latter counterfactual explains why baseline treatment must enter
+the comparison.
 
 .. admonition:: Design restriction 1 An available same-baseline comparison
    :class: assumption
@@ -109,9 +110,9 @@ and the target population to depend on the realized paths.
 
       Y_{g,t}(d_1,\ldots,d_T)=Y_{g,t}(d_1,\ldots,d_t).
 
-Current outcomes can depend on every past assignment. Future treatment
-realizations cannot affect an outcome measured before those assignments.
-A policy announcement can therefore require an earlier treatment date if
+No anticipation leaves outcomes free to depend on every past assignment
+while ruling out a response to treatment that has not yet occurred. A
+policy announcement can therefore require an earlier treatment date if
 behavior changes before implementation.
 
 Let :math:`\mathcal D_1^r` contain baseline treatment values shared by at
@@ -129,12 +130,11 @@ within these relevant baseline categories.
       \mathbb E[Q_{g,t}-Q_{g,t-1}\mid\boldsymbol D]
       =\mathbb E[Q_{g',t}-Q_{g',t-1}\mid\boldsymbol D].
 
-Since the assumption restricts changes in the status-quo outcome, groups
-can have different outcome levels. It does not require their treatment effects
-to be equal. Comparing initially treated and initially untreated groups under
-a common status-quo trend would impose an additional restriction beyond this
-assumption. Matching baseline treatment avoids needing that cross-baseline
-comparison.
+Since the assumption restricts changes in the status-quo outcome, it permits
+groups to have different outcome levels and treatment effects. Comparing
+initially treated and initially untreated groups under a common status-quo
+trend would impose an additional restriction beyond this assumption.
+Matching baseline treatment avoids needing that cross-baseline comparison.
 
 An effect of the observed path
 ------------------------------
@@ -150,9 +150,9 @@ actual-versus-status-quo effect is
               \mid\boldsymbol D],
    \qquad g\in\mathcal I_\ell.
 
-For a group that adopts binary treatment permanently, this is the effect of
-:math:`\ell` treated periods. For a group that later exits, it includes the
-remaining effect of earlier exposure. Different groups can reach the same
+This effect covers :math:`\ell` treated periods for a group that adopts
+binary treatment permanently and includes the remaining effect of earlier
+exposure for a group that later exits. Different groups can reach the same
 horizon with different doses and different numbers of treated periods.
 
 The comparison uses the period immediately before the first change as its
@@ -187,15 +187,15 @@ period. The corresponding DiD is
       \mathbb E[\operatorname{DID}_{g,\ell}\mid\boldsymbol D]
       =\delta_{g,\ell}.
 
-No anticipation makes the switcher's baseline outcome a status-quo outcome.
-Parallel trends supplies its missing status-quo change from the controls.
-Subtracting that change leaves the effect of the whole observed path through
-the horizon. No assumption removes the effects of earlier post-switch
+Because no anticipation makes the switcher's baseline outcome a status-quo
+outcome, parallel trends can supply its missing status-quo change from the
+controls. Subtracting that change leaves the effect of the whole observed
+path through the horizon, including the effects of earlier post-switch
 assignments.
 
 ``only_never_switchers=False`` permits controls that switch later. Setting
 it to ``True`` restricts controls to groups whose treatment never changes.
-The baseline-treatment match remains necessary in both cases.
+Both choices still require controls to match the switcher's baseline treatment.
 
 Orienting increases and decreases
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -212,11 +212,11 @@ baseline.
    For each group, either :math:`D_{g,t}\geq b_g` for every period, or
    :math:`D_{g,t}\leq b_g` for every period.
 
-A path can return to its baseline and can vary repeatedly on the same side
-of it. The restriction rules out going both above and below baseline. It
-supports a same-direction interpretation and the nonnegative normalized
-weights below. Lemma 1's conditional unbiasedness itself uses Assumptions 1
-and 2 rather than this restriction.
+A path can return to baseline and vary repeatedly on the same side of it
+without crossing to the other side. This restriction supports a same-direction
+interpretation and the nonnegative normalized weights below. Lemma 1's
+conditional unbiasedness itself uses Assumptions 1 and 2 rather than this
+restriction.
 
 Let :math:`S_g=\operatorname{sign}(D_{g,F_g}-b_g)` for switchers and
 :math:`S_g=0` for never-switching groups. The
@@ -230,10 +230,11 @@ oriented event-study target and estimator are
    =\frac1{N_\ell}\sum_{g\in\mathcal I_\ell}S_g
        \operatorname{DID}_{g,\ell}.
 
-Lemma 1 gives conditional unbiasedness for this average. ``switchers="in"``
-retains first increases and ``switchers="out"`` retains first decreases.
-The default pools both directions after reversing the sign of decreases.
-Groups excluded as switchers can still serve as controls until they switch.
+Lemma 1 gives conditional unbiasedness for this average whether
+``switchers="in"`` retains first increases or ``switchers="out"`` retains
+first decreases. The default pools both directions after reversing the
+sign of decreases. Groups excluded as switchers can still serve as controls
+until they switch.
 
 By default, the package discards a group's periods after its treatment has
 been both above and below baseline. Earlier valid horizons can remain in the
@@ -243,10 +244,10 @@ the same-direction and nonnegative-weight interpretations need not hold.
 Which groups enter each horizon
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A change between horizon estimates can reflect both the treatment path and
-a change in the groups being averaged. Longer horizons require later outcomes
-and a comparison group that has not yet switched. They often use fewer
-switchers.
+A change between horizon estimates can reflect both the treatment path
+and the groups being averaged. Longer horizons often use fewer switchers
+because they require later outcomes and a comparison group that has not
+yet switched.
 
 ``same_switchers=True`` keeps only switchers that reach every requested effect
 horizon. Reaching a horizon requires both an observed outcome change and
@@ -268,8 +269,8 @@ identifying assumption.
 Putting effects on a treatment-dose scale
 -----------------------------------------
 
-An unnormalized estimate is in outcome units. If groups receive different
-doses, you may instead want the outcome effect per unit of additional exposure.
+When groups receive different doses, you may want to convert the unnormalized
+estimate from outcome units to an effect per unit of additional exposure.
 We first define that denominator for a group and examine what it does to
 the aggregate target.
 
@@ -302,8 +303,8 @@ that agree with the observed path through :math:`\tau-k-1` and have treatment
                      \mid\boldsymbol D]}
           {D_{g,\tau-k}-b_g}.
 
-When the denominator is zero, set the slope contribution to zero.
-The two potential outcomes then coincide. Each slope changes one treatment
+Set the slope contribution to zero when the denominator is zero because
+the two potential outcomes then coincide. Each slope changes one treatment
 assignment while holding earlier assignments at observed values and later
 assignments at baseline.
 
@@ -322,14 +323,14 @@ assignments at baseline.
 
    Under design restriction 2, every :math:`w_{g,\ell,k}` is nonnegative.
 
-This is a telescoping decomposition of potential outcomes. For binary
-absorbing treatment, the weights equal :math:`1/\ell`. With a varying dose,
-a lag receives more weight when its dose differs more from baseline.
-The normalized estimate is consequently an average of lag effects through
-that horizon, rather than a separate estimate of its last lag's effect.
+The telescoping decomposition gives each lag weight :math:`1/\ell` under
+binary absorbing treatment. With a varying dose, a lag receives more weight
+when its dose differs more from baseline. The normalized estimate is
+consequently an average of lag effects through that horizon, rather than
+a separate estimate of its last lag's effect.
 
-The aggregate denominator is the average cumulative, oriented dose change.
-With ``normalized=True``, the target is
+The aggregate target under ``normalized=True`` divides the oriented effect
+by the average cumulative, oriented dose change,
 
 .. math::
 
@@ -376,9 +377,9 @@ groups and periods. Over the eligible group-periods, define
                   \sum_{\ell=1}^{T_g-F_g+1}\delta_{g,\ell}}{B}.
 
 Provided :math:`B>0`, replacing each group effect with its DiD gives a
-conditionally unbiased estimate under Assumptions 1 and 2. The denominator
-counts each period's additional treatment once. The numerator includes the
-effect of that treatment on subsequent observed outcome periods as well.
+conditionally unbiased estimate under Assumptions 1 and 2. Each period's
+additional treatment enters the denominator once, even though its effects
+can enter the numerator through subsequent observed outcome periods as well.
 
 Lemma 3 in the paper states that, under design restrictions 1 and 3,
 
@@ -388,10 +389,9 @@ Lemma 3 in the paper states that, under design restrictions 1 and 3,
    =\sum_{\ell=1}^L\frac{N_\ell}{B}\delta_\ell,
    \qquad L=\max_{g:F_g\leq T_g}(T_g-F_g+1).
 
-The factors are nonnegative but generally do not sum to one. Their units
-convert the horizon effects into a total effect per additional treatment dose.
-Calling this expression a convex average of the horizon effects would lose
-that distinction.
+These nonnegative factors convert the horizon effects into a total effect
+per additional treatment dose. Since they generally do not sum to one,
+the expression is not a convex average of the horizon effects.
 
 If the outcome is expressed in monetary units, doses have a linear cost
 :math:`c_{g,\ell}\geq0`, and the discount factor is one, the paper's
@@ -409,12 +409,12 @@ cannot establish whether the intervention's benefits exceed its monetary cost.
 
 The API's ``ate`` field uses the requested effect horizons and their available
 switchers. It divides summed oriented effects by summed oriented treatment
-changes at each outcome period. Both sums use the package's cell weights.
-It remains
-this total-effect ratio when ``normalized=True``. Pooling treatment decreases
-reverses their signs. Separate directions before applying the paper's
-increasing-treatment cost-benefit interpretation. With
-``trends_lin=True``, the package does not compute ``ate``.
+changes at each outcome period using the package's cell weights for both
+sums. This remains a total-effect ratio when ``normalized=True``.
+Before applying the paper's increasing-treatment cost-benefit interpretation,
+separate directions to account for the sign reversal when pooling treatment
+decreases.
+With ``trends_lin=True``, the package does not compute ``ate``.
 
 Checking the pre-switch comparison
 ----------------------------------
@@ -472,10 +472,10 @@ per-dose effect by
    =\frac{I_g(I_g-\overline I)}
           {\sum_h(I_h-\overline I)^2}.
 
-Under the relevant common-trend restriction, these weights sum to one.
-A positive dose below the mean dose receives a negative weight. Consequently,
-the coefficient need not be an average with nonnegative weights of the
-heterogeneous per-dose effects.
+Although these weights sum to one under the relevant common-trend restriction,
+a positive dose below the mean dose receives a negative weight. The coefficient
+therefore need not give a nonnegative weighted average of the heterogeneous
+per-dose effects.
 
 A local projection of later observed outcomes on current treatment can also
 combine the current assignment's effect with the effects of later assignments.
@@ -512,10 +512,10 @@ The relevant horizons have growing numbers of eligible switchers,
    Conditional on the infinite sequence of treatment paths, the outcome
    vectors :math:`(\boldsymbol Y_g)_{g\geq1}` are mutually independent.
 
-This permits serial dependence within a group. It also permits dependence
-between groups' treatment paths because the statement conditions on those
-paths. Cross-group outcome dependence requires an additional sampling and
-inference argument, such as independent clusters containing several groups.
+Conditioning on treatment paths permits dependence between those paths
+as well as serial dependence in outcomes within a group. Cross-group
+outcome dependence requires an additional sampling and inference argument,
+such as independent clusters containing several groups.
 
 .. admonition:: Assumption 5 Asymptotic design support
    :class: assumption
@@ -555,9 +555,9 @@ control in each finite sample does not supply this asymptotic support.
       \qquad
       \inf_{g\geq1}\lambda_{\min}(\Sigma_g)>0.
 
-The moment bound controls unusually large outcome contributions.
-The eigenvalue condition rules out zero variance for nontrivial linear
-combinations of a group's observed outcomes.
+Alongside the moment bound on unusually large outcome contributions, the
+eigenvalue condition rules out zero variance for nontrivial linear combinations
+of a group's observed outcomes.
 
 The variance and normal approximation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -593,9 +593,9 @@ expressed directly using the comparison sets. The true variance scale is
    =\frac1{N_\ell}\sum_{g=1}^G
        \operatorname{Var}(U_{g,\ell}^G\mid\boldsymbol D).
 
-The group means of these contributions need not be equal or consistently
-estimable. The paper estimates each mean by averaging contributions within
-the cohort defined by :math:`(b_g,F_g,S_g)`. Write that average as
+Since the group means of these contributions need not be equal or consistently
+estimable, the paper uses their average within the cohort defined by
+:math:`(b_g,F_g,S_g)` to estimate each mean. Write that average as
 :math:`\widehat\theta_{g,\ell}`. The variance estimator and pointwise
 interval are
 
@@ -637,35 +637,36 @@ interval are
    i.i.d. and :math:`\boldsymbol D_g` is a function of
    :math:`(b_g,F_g,S_g)`.
 
-The conservative coverage accommodates differences in expected group
-contributions within a cohort. The additional condition fixes the entire
-path from the cohort information. It holds, for example, for binary treatment
-that changes at most once. For normalized effects, the studentized limit and interval coverage follow
+Conservative coverage accommodates differences in expected group contributions
+within a cohort. The additional condition fixes the entire path from the cohort
+information, as it does for binary treatment that changes at most once.
+For normalized effects, the studentized limit and interval coverage follow
 by dividing by a positive dose denominator fixed conditional on
 :math:`\boldsymbol D`. Consistency of the normalized effect also requires
 the unnormalized estimation error divided by its dose denominator to converge
 to zero in probability.
 
-These intervals cover each horizon separately. Their confidence level does
-not promise simultaneous coverage of the full event-study curve. The paper's
-fixed-period, discrete-baseline argument also does not establish inference
-for every extension that the API accepts.
+Because these intervals cover each horizon separately, their confidence
+level does not promise simultaneous coverage of the full event-study curve.
+The paper's fixed-period, discrete-baseline argument also does not establish
+inference for every extension that the API accepts.
 
 What the package reports
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-By default, ``ci_level=95.0`` produces pointwise analytical intervals. The
-variance uses group contributions and cohort demeaning. It accounts for
-controls reused across comparisons. The default switcher cohorts use
-baseline treatment, first-switch date, and treatment at that switch. ``cluster`` collects groups into
-clusters and sums their contributions within clusters before computing the
-variance. Each group must belong to a single cluster; reliable inference
-requires a suitable number of independent clusters.
+By default, ``ci_level=95.0`` produces pointwise analytical intervals with
+variance estimated from group contributions and cohort demeaning to account
+for controls reused across comparisons. The default switcher cohorts use
+baseline treatment, first-switch date, and treatment at that switch.
+``cluster`` collects groups into clusters and sums their contributions
+within clusters before computing the variance. Each group must belong to a
+single cluster; reliable inference requires a suitable number of independent
+clusters.
 
 ``less_conservative_se=True`` demeans switcher changes among groups sharing
-the whole observed path through the horizon. A group alone on that path falls
-back to a coarser cohort. This option changes the variance calculation rather
-than the effect target. It leaves the placebo variance unchanged.
+the whole observed path through the horizon and falls back to a coarser
+cohort for a group alone on that path. This option changes the variance
+calculation without changing the effect target or the placebo variance.
 
 With ``boot=True``, each draw resamples clusters with replacement and reruns
 the estimation. Without a clustering column, the draws resample groups.
@@ -726,8 +727,8 @@ functional-form restriction.
 
    The discrete-baseline asymptotic theorem above does not establish normal
    inference for the continuous-baseline extension. The API warns when
-   ``continuous>0`` is used without ``boot=True``. Resampling is an available
-   inference procedure. It does not itself prove that the extension's
+   ``continuous>0`` is used without ``boot=True``. Resampling provides an
+   inference procedure without itself proving that the extension's
    approximation or identifying assumptions hold.
 
 Finally, the paper discusses fuzzy designs where treatment varies within

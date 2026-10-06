@@ -4,16 +4,16 @@ Staggered difference-in-differences
 ===================================
 
 In the :ref:`minimum wage example <example_staggered_did>`, counties whose
-states raised the minimum wage in 2004 and 2006 are both treated by 2006.
-The earlier cohort has already had two more years of exposure. If employment
+states raised the minimum wage in 2004 have already had two years of
+exposure by the time the 2006 cohort adopts. If employment
 responds differently across cohorts or changes with exposure, a single
 regression coefficient can hide the effects you want to measure.
 
 We'll build the analysis around the effect for one adoption cohort in one
 period. The approach of `Callaway and Sant'Anna (2021)
 <https://doi.org/10.1016/j.jeconom.2020.12.001>`_ first identifies those effects
-through comparisons with untreated units. You can then average them to answer
-a particular question. This page works through the assumptions and
+through comparisons with untreated units so you can then average them to answer
+your question. This page works through the assumptions and
 identification formulas behind :func:`~moderndid.att_gt`, the targets behind
 :func:`~moderndid.aggte`, and the inference you need to interpret their results.
 Sections 2 through 4 and Appendix B of the
@@ -29,7 +29,7 @@ The effect for one cohort in one period
 
 We start with a panel of :math:`n` units observed in periods
 :math:`1,\ldots,T`. Let :math:`D_{it}` indicate whether unit :math:`i`
-is treated in period :math:`t`. Its value is one for treated units and
+is treated in period :math:`t`, taking the value one for treated units and
 zero otherwise. We omit the unit index :math:`i` when writing population
 conditions, as in the treatment restriction below.
 
@@ -57,8 +57,8 @@ and the indicator for membership in cohort :math:`g` are
    D_{it}=\mathbf{1}\{G_i\leq t\},
    \qquad A_{ig}=\mathbf{1}\{G_i=g\}.
 
-The data column passed as ``gname`` records :math:`G_i`, rather than
-:math:`D_{it}`. Its value stays the same across a unit's rows. ModernDiD uses
+Because the data column passed as ``gname`` records :math:`G_i` rather than
+:math:`D_{it}`, its value stays the same across a unit's rows. ModernDiD uses
 ``0`` to record never-treated units, even though the theory writes their
 adoption time as infinity.
 
@@ -67,8 +67,8 @@ periods. If your numeric time labels have gaps, recode them before interpreting
 ``anticipation`` or event time as a number of observation periods.
 
 Let :math:`Y_{it}(g)` be the outcome unit :math:`i` would have in period
-:math:`t` if it first adopted in period :math:`g`. Let :math:`Y_{it}(0)` be
-its outcome without treatment. Each unit follows only one observed path,
+:math:`t` if it first adopted in period :math:`g` and let :math:`Y_{it}(0)`
+denote its outcome without treatment. Each unit follows only one observed path,
 
 .. math::
 
@@ -91,8 +91,8 @@ effect is
 
 For example, :math:`ATT(2004,2006)` compares employment in the 2004 cohort
 in 2006 with its own employment in 2006 under no minimum wage increase.
-Counties in another cohort supply information about that missing outcome.
-They do not change whose treatment effect the parameter measures. Effects
+Counties in another cohort supply information about that missing outcome
+without changing whose treatment effect the parameter measures. Effects
 can differ across cohorts, calendar periods, exposure lengths, and
 pre-treatment characteristics without changing this definition.
 
@@ -121,9 +121,9 @@ If treatment reverses or its dose changes over time, use a framework that repres
 those paths, such as :ref:`intertemporal DiD <background-didinter>`.
 
 Write :math:`X_i` for unit :math:`i`'s pre-treatment covariates, such as
-county population measured before a minimum wage increase. The panel
-sampling condition concerns whole units rather than individual rows.
-Repeated observations of one county can depend on each other.
+county population measured before a minimum wage increase. Since the panel
+sampling condition concerns whole units rather than individual rows,
+repeated observations of one county can depend on each other.
 
 .. admonition:: Assumption 2 Random panel sampling
    :class: assumption
@@ -165,7 +165,7 @@ that change can distort the effect attributed to the later cohort.
 
 `Goodman-Bacon (2021) <https://doi.org/10.1016/j.jeconom.2021.03.014>`_
 decomposes the pooled coefficient into two-group, two-period DiD
-comparisons. The weights on those comparisons are nonnegative. A different
+comparisons whose weights are nonnegative. A different
 decomposition into underlying treatment effects can have negative weights,
 as `de Chaisemartin and D'Haultfoeuille (2020)
 <https://doi.org/10.1257/aer.20181169>`_ show. Because the two decompositions weight
@@ -229,9 +229,9 @@ window and require their conditional mean to be zero earlier.
 
       \mathbb{E}[Y_r(g)\mid X,G=g]=\mathbb{E}[Y_r(0)\mid X,G=g].
 
-For ``anticipation=0``, this rules out an average response before adoption.
-For ``anticipation=1``, the period immediately before adoption may already
-contain a response. The last unaffected base period is therefore
+Setting ``anticipation=0`` rules out an average response before adoption,
+whereas ``anticipation=1`` allows the period immediately before adoption
+to contain a response. The last unaffected base period is therefore
 
 .. math::
 
@@ -316,11 +316,12 @@ indicator
          & \text{not-yet-treated comparison}.
    \end{cases}
 
-For :math:`t\geq g-\delta`, the second indicator in the not-yet-treated
-definition is redundant. Keeping it makes clear that the target cohort
-cannot also be a control. The choice of :math:`B_{g,t}` changes the
-counterfactual assumption and the available observations. Although more controls can help precision, their number cannot establish
-parallel trends.
+Although the second indicator in the not-yet-treated definition is redundant
+for :math:`t\geq g-\delta`, retaining it makes clear that the target cohort
+cannot also be a control. Choosing :math:`B_{g,t}` determines both the
+counterfactual assumption and the available observations. Having more
+controls can help precision without establishing that their untreated trends
+match those of the cohort.
 
 If every unit adopts by :math:`g_{\max}`, not-yet-treated comparisons
 identify effects only while :math:`t<g_{\max}-\delta`. The last cohort
@@ -348,8 +349,8 @@ Overlap makes the conditional comparison possible
 Matching untreated trends at the same :math:`X` also requires controls
 at the covariate values observed in the treated cohort. The generalized
 propensity score describes the probability of cohort membership within
-the selected comparison. The paper indexes that comparison by a cutoff
-:math:`s`. To distinguish the cutoff from the outcome period, write
+the selected comparison. Since the paper indexes that comparison by a cutoff
+:math:`s`, we distinguish the cutoff from the outcome period by writing
 
 .. math::
 
@@ -386,17 +387,17 @@ comparison and its selected controls,
    p_{g,t}(X)=P(A_g=1\mid X,A_g+B_{g,t}=1),
    \qquad A_g=\mathbf{1}\{G=g\}.
 
-For never-treated controls, this is :math:`p^{\mathrm{cut}}_{g,T}`.
-For not-yet-treated controls, it is :math:`p^{\mathrm{cut}}_{g,t+\delta}`.
+This probability is :math:`p^{\mathrm{cut}}_{g,T}` for never-treated controls
+and :math:`p^{\mathrm{cut}}_{g,t+\delta}` for not-yet-treated controls.
 
 Since the ATT targets treated units, it does not require treated
 counterparts for every control unit.
 
-Propensity scores close to one produce large control weights. That is
-evidence that a comparison rests on little support, even if estimation
-returns a number. Choosing ``est_method="reg"`` instead of weighting
-does not remove the overlap requirement. The regression would have to
-extrapolate the missing untreated change into those regions.
+The large control weights produced by propensity scores close to one are
+evidence that a comparison rests on little support even if estimation returns
+a number. Choosing ``est_method="reg"`` instead of weighting still requires
+overlap because the regression would otherwise have to extrapolate the
+missing untreated change into those regions.
 
 Identification and estimation of a group-time effect
 ----------------------------------------------------
@@ -484,16 +485,16 @@ inverse probability weighting identity,
    ATT(g,t)=\mathbb{E}\bigl[
       (w_g^1-w_{g,t}^0)\Delta Y_{g,t}\bigr].
 
-The cohort and control weights each sum to one in expectation. Their
-difference subtracts a control change from a treated change. Those negative
-signs implement the DiD comparison. They do not assign negative weights to
-the treatment effects averaged later by :func:`~moderndid.aggte`.
+Because the cohort and control weights each sum to one in expectation,
+their difference subtracts a control change from a treated change. The
+negative signs implement this DiD comparison without assigning negative
+weights to the treatment effects averaged later by :func:`~moderndid.aggte`.
 
 Combining the regression and the weights
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 An outcome regression estimate requires a correct model of the control
-change. An IPW estimate instead requires a correct model of cohort
+change, whereas an IPW estimate requires a correct model of cohort
 membership. Under the identifying assumptions and suitable regularity
 conditions, the untrimmed doubly robust estimator remains consistent
 if either model is correct. We combine the two routes by applying
@@ -562,9 +563,9 @@ mean. Its bias satisfies
    =\mathbb{E}\bigl[(w_g^1-\widetilde w^0)
       (m_{g,t}(X)-\widetilde m(X))\bigr].
 
-Correct outcome regression makes the regression error on the right zero.
-Correct propensity weighting balances that error across treated units and
-controls.
+The bias vanishes when the outcome regression is correct because the
+regression error on the right is zero. A correct propensity model also
+removes the bias by balancing that error across treated units and controls.
 
 .. admonition:: Keep the identifying assumptions
    :class: important
@@ -592,7 +593,7 @@ average changes,
             -\mathbb{E}[\Delta Y_{g,t}\mid B_{g,t}=1].
 
 Setting ``xformla=None`` or ``xformla="~1"`` makes this unconditional
-comparison. It assumes parallel trends without covariate adjustment.
+comparison under a parallel trends assumption without covariate adjustment.
 Adding covariates to a pooled DiD regression generally gives a different
 coefficient from the conditional identification formulas above. Remark 4
 of Callaway and Sant'Anna discusses restrictions that make that regression
@@ -640,10 +641,10 @@ When different units are observed in each period
 ------------------------------------------------
 
 The panel derivation uses each unit's observed change between two periods.
-If different units are sampled in each period, that change is unavailable.
-In a repeated cross-section, we reconstruct each group's mean change
-from separate outcome means at the two endpoints. We can compare those means if the
-cohorts' composition is stable.
+When different units are sampled in each period, we cannot observe that
+change and instead reconstruct each group's mean change from separate
+outcome means at the two endpoints. Comparing those repeated-cross-section
+means requires stable cohort composition.
 
 Let :math:`S\in\{1,\ldots,T\}` denote the observation period and
 :math:`\lambda_r=P(S=r)` its sampling probability. The repeated-cross-section
@@ -702,13 +703,13 @@ Let :math:`J_u=\mathbf{1}\{S=u\}`. The period-specific weights are
 
 Here the population weights :math:`w_g^1` and :math:`w_{g,t}^0` use
 :math:`\mathbb{E}_M` in their normalizing denominators. Assumption B.1
-justifies the factorization by :math:`\lambda_u`. These weights
+justifies the factorization by :math:`\lambda_u` so these weights
 reconstruct each group's outcome means at each endpoint. The outcome
 regression expression averages the difference between the four
-conditional means over the treated cohort's covariates. The IPW
-expression reconstructs that comparison using the period-specific
-weights. The DR expression adds weighted residual adjustments to the
-regression expression. Together, the three repeated-cross-section
+conditional means over the treated cohort's covariates, whereas the IPW
+expression reconstructs that comparison using the period-specific weights.
+The DR expression uses the regression expression as its starting point and
+adds weighted residual adjustments. The three repeated-cross-section
 estimands are
 
 .. math::
@@ -754,13 +755,12 @@ between the two control regressions. Correctness of both control level
 regressions is sufficient but stronger than correctness of their
 difference, as Sant'Anna and Zhao's Theorem 1 shows.
 
-Set ``panel=False`` for this sampling design. By default,
-``panel=True`` and ``allow_unbalanced_panel=False`` retain units observed
-in every period. Setting ``allow_unbalanced_panel=True`` allows missing
-periods but uses the repeated-cross-section estimation path. That setting
-does not establish that attrition leaves the identifying comparison
-valid. You still need a reason why the observed samples represent the
-population in your target.
+Set ``panel=False`` for this sampling design. The defaults ``panel=True``
+and ``allow_unbalanced_panel=False`` retain units observed in every period,
+whereas ``allow_unbalanced_panel=True`` allows missing periods and uses the
+repeated-cross-section estimation path. You still need a reason why the
+observed samples represent the population in your target, because this setting
+does not establish that attrition leaves the identifying comparison valid.
 
 Choosing what the effects should average
 ----------------------------------------
@@ -805,11 +805,12 @@ weights those cohort averages by their shares,
    \theta_{\mathrm{group}}^{O}
    =\sum_{g\in\mathcal{G}}q_g\theta_{\mathrm{group}}(g).
 
-Every treated unit receives the same total weight in this overall target
-when sampling weights are equal. Early adopters are averaged over more
-exposure periods than late adopters. A difference between cohort averages
-therefore combines cohort heterogeneity and different exposure windows.
-It does not identify what would happen if the same units adopted earlier.
+When sampling weights are equal, every treated unit receives the same total
+weight in this overall target. Because early adopters are averaged over more
+exposure periods than late adopters, a difference between cohort averages
+combines cohort heterogeneity and different exposure windows. You therefore
+cannot interpret that difference as what would happen if the same units
+adopted earlier.
 
 If you instead want an average over treated unit-periods in the
 observation window, ``type="simple"`` weights each post-treatment cell
@@ -850,11 +851,11 @@ Passing ``type="dynamic"`` averages the effects within each event time,
    \theta_{\mathrm{dynamic}}(e)
    =\sum_{g\in\mathcal{G}_e}q_{g,e}ATT(g,g+e).
 
-Event time zero measures the adoption-period effect. Later event times
-describe progressively longer exposure, but only among cohorts observed
+Event time zero measures the adoption-period effect, whereas later event
+times describe progressively longer exposure among the cohorts observed
 that long. In the minimum wage example, all three cohorts contribute at
-event time zero. Only the 2004 cohort contributes two and three years
-after adoption. Growth between those points can therefore reflect a
+event time zero, whereas only the 2004 cohort contributes two and three
+years after adoption. Growth between those points can therefore reflect a
 change in the cohorts being averaged.
 
 For :math:`0\leq e_1<e_2`, let :math:`a_g(e)=ATT(g,g+e)`.
@@ -898,11 +899,11 @@ For that fixed set of cohorts, the parameter is
    \qquad 0\leq e\leq E.
 
 Balancing changes the target to cohorts observed for the whole exposure
-window. It can discard many later adopters. Keeping this fixed set for
+window and can discard many later adopters as a result. Keeping this fixed set for
 post-treatment effects also does not ensure identical cohort support at
 negative event times, since early cohorts may lack the required
-pre-treatment observations. ``min_e`` and ``max_e`` select the reported
-event window. Truncating that window alone does not balance the cohorts.
+pre-treatment observations. Although ``min_e`` and ``max_e`` select the
+reported event window, truncating that window alone does not balance the cohorts.
 
 The dynamic result's ``overall_att`` averages its included nonnegative
 event-time effects equally. It therefore gives equal weight to exposure
@@ -951,10 +952,10 @@ using Assumption 5 in place of Assumption 4.
 Conditions on the nuisance fits
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The identification formulas use population probabilities and conditional
-means. In a sample, we fit chosen function families, such as logistic
-and linear regressions, to estimate those quantities. These function
-families are our working models.
+To estimate the population probabilities and conditional means in the
+identification formulas, we fit chosen function families such as logistic
+and linear regressions to the sample. These function families are the
+working models on which the estimation procedure relies.
 
 Here expectations use the panel distribution in Assumption 2. The indicator
 :math:`C=\mathbf{1}\{G=\infty\}` selects never-treated controls. Their
@@ -980,8 +981,8 @@ An influence function describes a unit's contribution to the leading
 estimation error. An asymptotically linear expansion writes that error
 as an average of these contributions plus a smaller remainder. The
 :math:`\sqrt n` scaling tracks fluctuations at the :math:`n^{-1/2}`
-rate. The notation :math:`o_p(1)` denotes a remainder that converges
-to zero in probability.
+rate and :math:`o_p(1)` denotes a remainder that converges to zero
+in probability.
 
 The following conditions apply to both working models and their fitting
 procedures. They specify the smoothness, moments, and expansions needed
@@ -1053,8 +1054,8 @@ to carry that reasoning through to the estimator.
    where :math:`\Gamma_{g,t}^*` is a neighborhood of
    :math:`\kappa_{g,t}^*` and :math:`\|\cdot\|` is the Euclidean norm.
 
-These are population and large-sample requirements. A fitted propensity
-score below a numerical threshold does not establish them. The overlap
+These population and large-sample requirements cannot be established by
+checking that a fitted propensity score lies below a numerical threshold. The overlap
 bound on the working model also differs from Assumption 6's bound on the
 true propensity score.
 
@@ -1108,13 +1109,13 @@ For the first-step influence functions :math:`\ell_{g,t}^{\beta}` and
       -\ell_{g,t}^{\beta}(W)'M_{g,t}^{\beta}
       -\ell_g^{\pi}(W)'M_{g,t}^{\pi}.
 
-This normalized-ratio form differentiates both the control weights'
-numerator and their normalizing mean. The term :math:`\mu_{g,t}^0` stays
+In this normalized-ratio form, differentiating both the control weights'
+numerator and their normalizing mean keeps the term :math:`\mu_{g,t}^0`
 inside the propensity contribution. The same normalization appears in
 `Sant'Anna and Zhao's Appendix A, equation A.2
 <https://arxiv.org/html/1812.01723v3#A1.E2>`_.
-When both nuisance models are correct, both :math:`M` terms vanish.
-With only one correct model, a fitting term can remain. The influence
+Both :math:`M` terms vanish when both nuisance models are correct, whereas
+a fitting term can remain with only one correct model. The influence
 function is therefore not generally the DR score minus the ATT.
 
 The joint large-sample distribution
@@ -1167,11 +1168,11 @@ influence functions in :math:`\Psi(W)` in the same order.
       \end{gathered}
 
 The diagonal entries of :math:`\Sigma` describe the variances of the
-scaled estimation errors. Its off-diagonal entries describe how errors
-in two effects move together. The covariance matrix of the ATT
+scaled estimation errors, whereas its off-diagonal entries describe how
+errors in two effects move together. The covariance matrix of the ATT
 estimates is approximately :math:`\Sigma/n` in large samples.
 
-The one-correct-model condition gives consistency. Valid inference
+Although the one-correct-model condition gives consistency, valid inference
 also needs a variance estimate that keeps the appropriate fitting terms.
 The paper's cell set includes allowed anticipation periods measured
 against the clean base. It does not automatically include the package's
@@ -1207,9 +1208,10 @@ the aggregate influence function is
       \left[w(g,t)\psi_{g,t}(W)
             +ATT(g,t)\xi^w_{g,t}(W)\right].
 
-The first term propagates estimation error in the effects. The second
-propagates estimation error in their weights. For weights fixed in
-advance, the second term is zero. The resulting expansion and limit are
+The aggregate's estimation error includes both the error in the effects
+through the first term and the error in their weights through the second.
+For weights fixed in advance, the second term is zero. The resulting
+expansion and limit are
 
 .. math::
 
@@ -1225,9 +1227,10 @@ this weight uncertainty.
 Simultaneous bands and the multiplier bootstrap
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Pointwise intervals give a separate coverage statement for each effect.
-A simultaneous band gives one coverage statement for all selected
-effects together. To construct that band, we need a critical value for
+Pointwise intervals give a separate coverage statement for each effect,
+whereas a simultaneous band gives one coverage statement for all selected
+effects together.
+To construct that band, we need a critical value for
 the largest absolute estimation error measured in standard-error units. The
 multiplier bootstrap constructs that joint fluctuation from estimated
 influence functions. We keep the observed data fixed and perturb the

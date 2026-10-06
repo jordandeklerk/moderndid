@@ -77,7 +77,7 @@ uv add "moderndid[all] @ git+https://github.com/jordandeklerk/moderndid.git"
 ModernDiD covers the main research designs in the modern DiD literature.
 
 - [Staggered adoption](https://moderndid.readthedocs.io/en/latest/user_guide/example_staggered_did.html): `att_gt` and `aggte`, based on Callaway and Sant'Anna (2021)
-- [Two periods](https://moderndid.readthedocs.io/en/latest/api/drdid.html): `drdid`, `ipwdid`, and `ordid`, based on Sant'Anna and Zhao (2020)
+- [Doubly Robust Two periods](https://moderndid.readthedocs.io/en/latest/api/drdid.html): `drdid`, `ipwdid`, and `ordid`, based on Sant'Anna and Zhao (2020)
 - [Triple differences](https://moderndid.readthedocs.io/en/latest/user_guide/example_triple_did.html): `ddd` and `agg_ddd`, based on Ortiz-Villavicencio and Sant'Anna (2025)
 - [Continuous treatment](https://moderndid.readthedocs.io/en/latest/user_guide/example_cont_did.html): `cont_did`, based on Callaway, Goodman-Bacon, and Sant'Anna (2024)
 - [Treatments that switch on and off](https://moderndid.readthedocs.io/en/latest/user_guide/example_inter_did.html): `did_multiplegt`, based on de Chaisemartin and D'Haultfoeuille (2024)

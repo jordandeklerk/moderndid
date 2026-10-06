@@ -3,16 +3,17 @@
 Doubly robust DiD
 =================
 
-Suppose the treated and comparison groups differ in their pre-treatment characteristics.
-Those characteristics may also predict how outcomes change over time. We need a way to adjust for those differences without making the
-entire analysis depend on one regression specification. Doubly robust difference-in-differences
-combines an outcome model with a treatment assignment model. The estimator remains consistent if
-either model is correct, provided the assumptions that identify the treatment effect still hold.
+When the treated and comparison groups differ in pre-treatment characteristics that predict
+outcome changes, a DiD estimate needs to adjust for those differences. We want to make that
+adjustment without making the entire analysis depend on one regression specification. Doubly
+robust difference-in-differences combines an outcome model with a treatment assignment model
+so that the estimator remains consistent if either model is correct, provided the assumptions
+that identify the treatment effect still hold.
 
 This page develops the two-period estimators in `Sant'Anna and Zhao (2020)
 <https://psantanna.com/files/SantAnna_Zhao_DRDID.pdf>`_. We will follow the missing counterfactual
-through identification, estimation, and inference. Along the way, we will distinguish what you can
-learn from a panel from what you can learn from repeated cross-sections. Those differences explain
+through identification, estimation, and inference as we distinguish what you can learn from a
+panel from what you can learn from repeated cross-sections. Those differences explain
 the options in :func:`~moderndid.drdid` and the additional outcome regressions needed for efficient
 estimation when the same units cannot be followed over time.
 
@@ -47,8 +48,8 @@ the comparison group's outcome change, after adjusting for the covariates.
 
 The sampling design determines which changes we actually observe. A panel contains
 :math:`(Y_{i0},Y_{i1},D_i,X_i)` for each of :math:`n` units. We can therefore form the
-individual change :math:`\Delta Y_i=Y_{i1}-Y_{i0}` from each unit's observed outcomes. Repeated cross-sections contain different units in the two
-periods. In that design, :math:`T_i` indicates the sampled period and
+individual change :math:`\Delta Y_i=Y_{i1}-Y_{i0}` from each unit's observed outcomes. Repeated cross-sections instead contain different units in the two
+periods. For these observations, :math:`T_i` indicates the sampled period and
 :math:`Y_i=T_iY_{i1}+(1-T_i)Y_{i0}` is the single observed outcome. Write
 :math:`\lambda=\mathbb{P}(T=1)` for the post-treatment sampling share.
 
@@ -107,8 +108,8 @@ groups to have parallel trends before covariate adjustment.
 
    almost surely on the covariate support relevant to treated units.
 
-The groups may differ in their outcome levels. They may also differ in the covariates that
-predict their trends. What we require is a comparison group with the same untreated mean change
+The groups may differ both in their outcome levels and in the covariates that predict their
+trends. What we require is a comparison group with the same untreated mean change
 after conditioning on those covariates. To make that comparison possible, define the propensity
 score :math:`p(X)=\mathbb{P}(D=1\mid X)` and the treated share :math:`q=\mathbb{E}[D]`.
 
@@ -156,8 +157,8 @@ treatment effect heterogeneity without imposing this regression's common-slope s
 .. admonition:: Keep the identifying assumptions
    :class: important
 
-   Double robustness protects against misspecifying one nuisance model. It still requires
-   conditional parallel trends, overlap, and the sampling conditions above. Adding covariates
+   Double robustness protects against misspecifying one nuisance model only under conditional
+   parallel trends, overlap, and the sampling conditions above. Adding covariates
    through ``xformla`` does not establish those assumptions for your application.
 
 Two routes to the missing trend
@@ -208,9 +209,9 @@ for a panel, and
    \frac{T-\lambda}{\lambda(1-\lambda)}Y\right]
 
 for repeated cross-sections. An outcome regression estimator needs a correct model of the
-comparison group's mean change. An IPW estimator needs a correct propensity score model.
-Neither requirement implies the other. Choosing one approach therefore leaves the estimate
-dependent on a particular modeling choice.
+comparison group's mean change whereas IPW needs a correct propensity score model.
+Since neither requirement implies the other, choosing either approach leaves the estimate
+dependent on that modeling choice.
 
 Combining the two models
 ------------------------
@@ -220,8 +221,8 @@ model is wrong, a correct propensity score makes the correction recover its miss
 If the outcome model is correct, the remaining comparison-group residuals have mean zero, even
 under misspecified weights. We will use :math:`\pi(X)` for a working propensity score and
 :math:`\mu` for working outcome regressions to distinguish those models from the true functions.
-All the expectations below must exist. Each normalizing denominator must also be positive and
-finite for the corresponding weighted average to be defined.
+For the weighted averages below to be defined, all their expectations must exist and each
+normalizing denominator must be positive and finite.
 
 Panel data
 ~~~~~~~~~~
@@ -237,9 +238,8 @@ With a panel, the outcome model can target the change directly. Let
    \frac{\pi(X)(1-D)/(1-\pi(X))}
    {\mathbb{E}[\pi(X)(1-D)/(1-\pi(X))]}.
 
-Both normalized weights have expectation one over the population used for estimation. The
-doubly robust estimand compares the groups after
-subtracting the predicted untreated change,
+With both weights normalized to have expectation one over the population used for estimation,
+the doubly robust estimand compares the groups after subtracting the predicted untreated change,
 
 .. math::
 
@@ -289,8 +289,8 @@ comparison-group outcome models,
    \tau_1^{dr,rc}=\mathbb{E}\left[
    (w_1^{rc}-w_0^{rc}(\pi))(Y-\mu_{0,Y}^{rc}(T,X))\right].
 
-The second score also uses treated-group regressions to improve precision. Define
-:math:`a_t(X)=\mu_{1,t}^{rc}(X)-\mu_{0,t}^{rc}(X)` and write the adjustment as
+To improve precision, the second score also uses treated-group regressions through the
+adjustment defined by :math:`a_t(X)=\mu_{1,t}^{rc}(X)-\mu_{0,t}^{rc}(X)`,
 
 .. math::
 
@@ -336,16 +336,17 @@ efficiency without adding a model correctness requirement for identification.
    specification of treated-group outcome regressions is not required for these equalities.
 
 For repeated cross-sections, the outcome condition concerns the difference of the two control
-regressions. Errors in the two levels can cancel when we take their difference. Requiring each
-level model to be correct is sufficient and stronger than the identification result needs.
+regressions because errors in their levels can cancel when we take that difference. Requiring
+each level model to be correct is therefore sufficient and stronger than the identification
+result needs.
 
 How much information the design contains
 ----------------------------------------
 
-Identification tells us which population quantity the score recovers. Efficiency asks how
-precisely a regular estimator can recover it from a given sample. An influence function describes
-the first-order contribution of one observation to an estimator's sampling error. Its variance
-determines the limiting variance of :math:`\sqrt{n}(\hat\tau-\tau)`.
+Once identification tells us which population quantity the score recovers, efficiency asks how
+precisely a regular estimator can recover it from a given sample. An influence function
+describes the first-order contribution of one observation to the estimator's sampling error
+and its variance determines the limiting variance of :math:`\sqrt{n}(\hat\tau-\tau)`.
 
 Panel outcomes contain information about within-unit changes that repeated cross-sections cannot
 observe. We can see that difference directly in the efficient influence functions from
@@ -405,10 +406,10 @@ Comparing panels and repeated cross-sections
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To compare the two designs, imagine sampling from the same underlying population and revealing
-either both outcomes or just one. Assume :math:`T` is independent of
-:math:`(Y_1,Y_0,D,X)`. This makes the two designs' population distributions compatible for
-an efficiency comparison. Suppress the
-design superscripts on the common conditional outcome means and define weighted residuals
+either both outcomes or just one. Assuming :math:`T` is independent of
+:math:`(Y_1,Y_0,D,X)` makes their population distributions compatible for an efficiency
+comparison. We can then suppress the design superscripts on the common conditional outcome
+means and define weighted residuals
 
 .. math::
 
@@ -425,7 +426,7 @@ Corollary 1 gives the efficiency loss from observing just one outcome per unit,
    +\sqrt{\frac{\lambda}{1-\lambda}}H_0\right)^2\right]
    \geq0.
 
-The loss is convex in the post-treatment sampling share. Its minimum need not occur at equal
+The loss is convex in the post-treatment sampling share but need not be smallest at equal
 sample sizes, because the weighted residual variances may differ across periods. If :math:`\sigma_t^2=\mathbb{E}[H_t^2]` is positive in both periods, the
 minimizing share is
 
@@ -433,9 +434,9 @@ minimizing share is
 
    \lambda^*=\frac{\sigma_1}{\sigma_0+\sigma_1}.
 
-Equal weighted residual variances give :math:`\lambda^*=1/2`. Otherwise, the noisier period
-receives a larger sample in this comparison. The post-treatment variance is usually unknown
-when a study is designed. The formula therefore describes the information trade-off without
+Equal weighted residual variances give :math:`\lambda^*=1/2`; otherwise, the noisier period
+receives a larger sample in this comparison. Since the post-treatment variance is usually
+unknown when a study is designed, the formula describes the information trade-off without
 providing an automatically available sampling rule.
 
 The gain from treated-group regressions
@@ -509,8 +510,8 @@ optimization problems imply
    X(\Delta Y-X'\hat\beta^{wls})]&=0.
    \end{aligned}
 
-The first equation balances covariate moments. The second makes the weighted control residuals
-orthogonal to the same covariates. Together, they remove the nuisance estimation terms from
+These fitting conditions balance covariate moments and make the weighted control residuals
+orthogonal to those same covariates. Together, they remove the nuisance estimation terms from
 the first-order ATT expansion, including when one working model is misspecified.
 
 For repeated cross-sections, we fit the two control level regressions separately using the same
@@ -541,7 +542,7 @@ parametric requirements in Appendix A of the paper. A pseudo-true parameter is t
 limit of a fitted model, whether or not that model is correct.
 
 Let :math:`g(X;\theta)` denote any nuisance model and let :math:`W` contain the observed data
-for the relevant design. Stack the nuisance parameters in :math:`\kappa`. Define
+for the relevant design. After stacking the nuisance parameters in :math:`\kappa`, define
 :math:`h^p(W;\kappa)` and :math:`h^{rc,1}(W;\kappa)` as the integrands in the panel and first
 repeated-cross-section estimands. For the second repeated-cross-section estimand, use
 
@@ -556,7 +557,7 @@ repeated-cross-section estimands. For the second repeated-cross-section estimand
    +w_{0,0}^{rc}(\pi)(Y-\mu_{0,0}^{rc}).
    \end{aligned}
 
-Its expectation is :math:`\tau_2^{dr,rc}`. All outcome models in this expression are evaluated
+The score has expectation :math:`\tau_2^{dr,rc}` and evaluates all its outcome models
 at :math:`X`. A dot below denotes a derivative with respect to the stacked parameter.
 
 .. admonition:: Assumption A (Parametric regularity)
@@ -631,9 +632,9 @@ For the second improved estimator, fitting all four level models gives
    +w_{0,0}^{rc}(\pi^*)(Y-\mu_{0,0}^{rc,*}).
    \end{aligned}
 
-The starred regressions in this influence function can be misspecified even though its
-expression resembles the efficient influence function. It becomes the efficient influence function when all the nuisance models are
-correct. That distinction separates double robustness from local efficiency.
+Although this expression resembles the efficient influence function, its starred regressions
+can be misspecified under double robustness. Under correct specification of all the nuisance
+models, it becomes the efficient influence function and attains local efficiency.
 
 .. admonition:: Improved estimation and inference
    :class: theorem
@@ -662,9 +663,9 @@ correct. That distinction separates double robustness from local efficiency.
    The first repeated-cross-section estimator need not attain that bound.
 
 We can estimate :math:`V` by the sample variance of fitted influence values and use
-:math:`\sqrt{\hat V/n}` as the standard error. The same influence-function formula remains
-valid whichever nuisance model is correct. Its numerical variance can still change across
-data-generating processes; double robustness for inference does not mean a universal variance.
+:math:`\sqrt{\hat V/n}` as the standard error. The same influence-function formula remains valid whichever nuisance model is correct even
+though its numerical variance can change across data-generating processes. Double robustness
+for inference does not mean a universal variance.
 
 Choosing the package estimator
 ------------------------------
@@ -684,9 +685,9 @@ For repeated cross-sections, ``est_method="imp"`` implements the first improved 
 :math:`\hat\tau_1^{dr,rc}`. Choose ``est_method="imp_local"`` for the second improved estimator
 :math:`\hat\tau_2^{dr,rc}` and its additional treated-group outcome regressions.
 ``est_method="trad"`` implements the second estimator with traditional nuisance fits.
-``est_method="trad_local"`` implements the first estimator with traditional nuisance fits instead. Local efficiency is
-a property of the second score under correct nuisance models. The option names alone therefore
-do not identify which repeated-cross-section score is being fitted.
+``est_method="trad_local"`` implements the first estimator with traditional nuisance fits instead. Since local efficiency is a property of the second score under correct nuisance
+models, the option names alone do not identify which repeated-cross-section score is being
+fitted.
 
 .. admonition:: Trimming changes the score
    :class: warning

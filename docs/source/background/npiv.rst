@@ -3,19 +3,20 @@
 Nonparametric instrumental variables
 ====================================
 
-A flexible regression can describe how an outcome varies with a regressor.
-It does not necessarily recover the structural relationship you want.
-If unobserved determinants of the outcome also influence that regressor,
-the conditional mean of the outcome can differ from the structural function.
+A flexible regression can describe how an outcome varies with a regressor
+without recovering the structural relationship you want. When unobserved
+determinants of the outcome also influence that regressor, the conditional
+mean of the outcome can differ from the structural function.
 
-An instrument supplies a different restriction. It connects the structural
-function to outcome variation without requiring the regressor to be
-exogenous. Recovering a whole function from that restriction can be harder
-than estimating a linear IV coefficient. The difficulty depends on which
+An instrument connects the structural function to outcome variation
+through a restriction that does not require the regressor to be exogenous.
+Recovering a whole function from that restriction can be harder than
+estimating a linear IV coefficient because the difficulty depends on which
 features of the function the instruments reveal.
 
-We will follow that problem from identification through sieve estimation,
-dimension selection, and uncertainty over the function and its derivatives.
+We examine how the instrument restriction identifies the function before
+turning to sieve estimation, dimension selection, and uncertainty over the
+function and its derivatives.
 The methods behind :func:`~moderndid.npiv` follow
 `Chen, Christensen, and Kankanala (2024)
 <https://arxiv.org/abs/2107.11869>`_. Their
@@ -54,10 +55,10 @@ operator
    T:L_X^2\longrightarrow L_W^2,\qquad
    (Th)(w)=\mathbb E[h(X)\mid W=w].
 
-The observed conditional mean gives :math:`Th_0=\mathbb E[Y\mid W]`.
-If two different functions have the same conditional expectation given
-the instrument, the data cannot distinguish them. Injectivity rules out
-that ambiguity.
+The observed conditional mean gives :math:`Th_0=\mathbb E[Y\mid W]`
+without distinguishing two different functions with the same conditional
+expectation given the instrument. Identification therefore requires
+injectivity to rule out that ambiguity.
 
 .. admonition:: Assumption 1 Support and identification
    :class: assumption
@@ -79,8 +80,8 @@ that ambiguity.
       \quad\Longrightarrow\quad
       h=0\ \text{almost surely},\qquad h\in L_X^2.
 
-The unit-cube supports provide a normalization for the theory.
-Changing units can put rectangular supports on this scale.
+The unit-cube supports normalize the theory to a scale that rectangular
+supports can reach through a change of units.
 Neither rescaling nor including more instrument basis functions establishes
 injectivity. It is a restriction on the conditional distribution of the
 regressors given the instruments.
@@ -97,16 +98,17 @@ regressors given the instruments.
       \mathbb E[u^2\mid W]\geq\underline\sigma^2
       \quad\text{almost surely}.
 
-These conditions permit heteroskedasticity and non-Gaussian errors.
-They bound fourth moments and prevent conditional variance from vanishing.
+By bounding fourth moments and preventing conditional variance from
+vanishing, these conditions still permit heteroskedasticity and
+non-Gaussian errors.
 The iid sampling setup concerns independent observations rather than a
 clustered or serially dependent sample.
 
 Approximating the function with a sieve
 ---------------------------------------
 
-Recovering an unrestricted function directly is an infinite-dimensional
-problem. A sieve replaces it with a growing space of finite-dimensional
+To make the infinite-dimensional recovery problem estimable, a sieve
+replaces the unrestricted function with a growing space of finite-dimensional
 approximations. We use :math:`J` basis functions of :math:`X`
 and :math:`K` basis functions of :math:`W`,
 
@@ -115,16 +117,17 @@ and :math:`K` basis functions of :math:`W`,
    \psi^J(x)=(\psi_{J1}(x),\ldots,\psi_{JJ}(x))',
    \qquad b^K(w)=(b_{K1}(w),\ldots,b_{KK}(w))'.
 
-A prime denotes transpose. The candidate structural function is
-:math:`\psi^J(x)'c_J`. Substituting it into the model gives
+Using a prime to denote transpose, we write the candidate structural
+function as :math:`\psi^J(x)'c_J` and substitute that approximation
+into the model,
 
 .. math::
 
    Y=\psi^J(X)'c_J+
       \bigl(h_0(X)-\psi^J(X)'c_J\bigr)+u.
 
-The middle term is approximation error. It generally does not have
-conditional mean zero given the instruments. The IV approximation becomes
+Because the approximation error in the middle generally does not have
+conditional mean zero given the instruments, the IV approximation becomes
 accurate only as that term becomes sufficiently small.
 
 How two-stage least squares estimates the coefficients
@@ -145,13 +148,15 @@ For the outcome vector :math:`\mathbf Y=(Y_1,\ldots,Y_n)'`, define
 
 The matrix :math:`\mathbf P_K` projects onto the instrument basis.
 The superscript :math:`{}^{-}` denotes the Moore-Penrose inverse.
-The first stage projects the regressor basis onto the instrument basis.
-The second estimates the outcome relation using that projected basis.
+In the first stage, that projection determines the part of the regressor
+basis explained by the instrument basis. The second stage estimates the
+outcome relation from those projected basis functions.
 
 At least :math:`K\geq J` is necessary for identifying all sieve
-coefficients. It is not sufficient for full rank or useful instrument
-strength. A generalized inverse returns a numerical solution when a matrix
-is singular. It does not restore information missing from the data.
+coefficients, although this dimension requirement alone does not ensure
+full rank or useful instrument strength. A generalized inverse can return
+a numerical solution when a matrix is singular without restoring information
+missing from the data.
 
 Write the coefficient map as
 
@@ -161,11 +166,11 @@ Write the coefficient map as
       (\boldsymbol\Psi_J'\mathbf P_{K(J)}\boldsymbol\Psi_J)^{-}
       \boldsymbol\Psi_J'\mathbf P_{K(J)}.
 
-Linking the instrument dimension to :math:`J` gives
-:math:`K=K(J)`. The fitted function is
+When we link the instrument dimension to :math:`J` through
+:math:`K=K(J)`, the fitted function becomes
 :math:`\widehat h_J(x)=\psi^J(x)'\mathbf M_J\mathbf Y`.
-This same matrix maps outcome disturbances into estimation error and
-appears in the variance and bootstrap calculations.
+Because the same matrix maps outcome disturbances into estimation error,
+it also appears in the variance and bootstrap calculations.
 
 Derivatives and their units
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -184,9 +189,9 @@ of nonnegative integers, let :math:`|a|=\sum_j a_j` and define
       =\partial^a\psi^J(x)'\mathbf M_J\mathbf Y.
 
 The estimator differentiates the basis rather than taking finite
-differences of the plotted curve. The API uses ``deriv_index`` to select
-one coordinate with one-based indexing. The ``deriv_order`` argument
-selects repeated differentiation with respect to that coordinate.
+differences of the plotted curve. Use ``deriv_index`` to select one
+coordinate with one-based indexing and ``deriv_order`` to choose how
+many times to differentiate with respect to that coordinate.
 The general multi-index notation in the theory also covers mixed derivatives.
 
 A derivative is an elasticity only when the variable transformations
@@ -201,15 +206,16 @@ Why B-splines and their dimensions matter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 A B-spline of order :math:`r` has polynomial degree :math:`r-1`.
-Its local basis functions describe the curve over a knot partition.
-More segments create a larger space. Too few leave approximation bias.
-Too many can make the inverse problem noisy.
+Its local basis functions describe the curve over a knot partition that
+you can refine by adding segments. Too few segments leave approximation
+bias and too many can make the inverse problem noisy.
 
 The paper develops its sup-norm guarantees for B-splines and
 Cohen-Daubechies-Vial wavelets. Their bounded projection norms control
 how approximation errors behave uniformly over the support.
-These basis conditions are part of the result. The theorem does not
-justify substituting an arbitrary basis without checking its properties.
+Because these basis conditions are part of the result, substituting
+an arbitrary basis requires checking its properties before applying the
+theorem.
 
 For tensor-product splines at dyadic resolution :math:`l`, the theoretical
 dimensions form
@@ -236,9 +242,9 @@ give the paper's proportional-dimension linkage.
 How much information the instruments reveal
 ---------------------------------------------
 
-Injectivity permits identification. The inversion can still magnify
-sampling noise. We measure that difficulty over each sieve space before
-choosing how large a space the data can support.
+Even when injectivity permits identification, inverting the instrument
+restriction can magnify sampling noise. We measure that difficulty over
+each sieve space before choosing how large a space the data can support.
 
 Let :math:`\Psi_J` and :math:`B_K` be the function spaces spanned by
 the regressor and instrument bases. For
@@ -281,8 +287,8 @@ population projections,
       \|\Pi_{K(J)}T(f-h)\|_{L_W^2}.
    \end{aligned}
 
-The first two are least-squares projections. The last is the population
-TSLS projection. Write
+The first two projections minimize least-squares distances and the last
+is the population TSLS projection. Write
 :math:`\|h\|_\infty=\sup_{x\in\mathcal X}|h(x)|`
 for the largest absolute value over the regressor support.
 
@@ -311,9 +317,9 @@ for the largest absolute value over the regressor support.
    Both inequalities hold for every :math:`J\in\mathcal T`.
 
 The first condition prevents the instrument approximation from losing
-important sieve directions. The next two bound the way approximation
-error propagates through the structural fit. They hold trivially for
-nonparametric regression with matching bases. They require justification
+important sieve directions. The next two bound how approximation error
+propagates through the structural fit, a requirement that holds trivially
+for nonparametric regression with matching bases but needs justification
 in an IV problem.
 
 How uncertainty grows with dimension
@@ -347,8 +353,8 @@ and the variance scale,
 
 The error moment bounds make :math:`s_J(x)` and
 :math:`\sigma_J(x)` comparable uniformly in :math:`x`.
-These are population scales for sample-size-normalized fluctuations.
-They are distinct from the standard error of a sample estimate.
+Both describe population scales for sample-size-normalized fluctuations
+rather than the standard error of a sample estimate.
 
 .. admonition:: Assumption 4 Sieve variance growth
    :class: assumption
@@ -381,9 +387,9 @@ They are distinct from the standard error of a sample estimate.
 
    for every :math:`J\in\mathcal T` and the derivative being studied.
 
-These conditions describe uncertainty across the theoretical sieve
-sequence. They do not follow merely from a successful matrix inversion
-in one fitted model. The increasing variance is one reason the procedure
+These conditions describe how uncertainty changes across the theoretical
+sieve sequence, beyond what a successful matrix inversion in one fitted
+model can establish. The increasing variance is one reason the procedure
 compares geometrically separated dimensions.
 
 Choosing the dimension before constructing a band
@@ -430,9 +436,10 @@ compares entire fitted functions at different resolutions.
 Bounding the feasible search
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The first step estimates how much inversion the sample can support.
-Let :math:`J^+` be the next larger dimension in :math:`\mathcal T`.
-Let :math:`\widehat s_J` be the smallest singular value of
+To estimate how much inversion the sample can support, we compare each
+dimension with the next larger one in the theoretical sequence. Denote
+that next dimension by :math:`J^+` in :math:`\mathcal T` and let
+:math:`\widehat s_J` be the smallest singular value of
 
 .. math::
 
@@ -471,8 +478,9 @@ noncoverage probability :math:`\alpha`.
 Comparing small and large fits
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The same observations produce every candidate fit. Their errors are
-correlated. A standardized difference needs the covariance between fits.
+Since the same observations produce every candidate fit, standardizing
+their differences requires accounting for the covariance between their
+estimation errors.
 For fitted residuals
 :math:`\widehat u_{i,J}=Y_i-\widehat h_J(X_i)`, write
 
@@ -499,8 +507,8 @@ Define the estimated variance and cross-covariance,
           -2\widetilde\sigma_{J,J_2}(x).
    \end{aligned}
 
-Here :math:`\widehat\sigma_J(x)` is already a standard error.
-No further division by :math:`\sqrt n` is needed in a band.
+Because :math:`\widehat\sigma_J(x)` is already a standard error, a
+band uses it without another division by :math:`\sqrt n`.
 For :math:`J_2>J`, the observed comparison is
 
 .. math::
@@ -525,8 +533,8 @@ independently of the data. Define
    D_J^*(x)&=\psi^J(x)'\mathbf M_J\widehat{\mathbf u}_J^*.
    \end{aligned}
 
-Each draw uses the same multiplier for an observation across all candidate
-dimensions. This preserves their estimated covariance.
+Using the same multiplier for an observation across all candidate
+dimensions preserves the estimated covariance between their fits.
 Let :math:`\theta_{1-\widehat\alpha}^*` be the bootstrap quantile of
 
 .. math::
@@ -552,16 +560,17 @@ The paper then selects
    \widetilde J&=\min\{\widehat J,\widehat J_n\}.
    \end{aligned}
 
-A small fit is retained only if all larger fits remain sufficiently close.
-The truncation prevents choosing the largest feasible dimension.
-The construction assumes a search set with enough candidates to make
-those comparisons meaningful.
+A small fit is retained only if all larger fits remain sufficiently close,
+subject to truncation that prevents choosing the largest feasible dimension.
+Those comparisons require a search set with enough candidates to be
+meaningful.
 
 The numerical search in the package
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Leaving ``j_x_segments=None`` calls :func:`~moderndid.npiv_choose_j`.
-A supplied number of segments fixes the structural sieve instead.
+To choose the sieve dimension from the data, leave ``j_x_segments=None``
+so the estimator calls :func:`~moderndid.npiv_choose_j`. Supplying a
+number of segments instead fixes the structural sieve for your analysis.
 The ``args`` field records selection quantities such as
 ``j_tilde``, ``j_hat``, and ``theta_star`` when selection succeeds.
 
@@ -571,11 +580,11 @@ log-squared lower cutoff on that grid. Its upper-cutoff calculation also
 protects the inverse singular value with :math:`(0.1\log n)^4`.
 Those are numerical choices rather than additional identifying assumptions.
 
-For multiple regressors, the default comparison grid has 50 rows.
-Each coordinate runs through equally spaced values in those rows.
-It is not a full Cartesian product of coordinates. A grid that misses
-important parts of joint support can miss differences between fitted
-functions there.
+For multiple regressors, the default comparison grid has 50 rows in
+which each coordinate runs through equally spaced values. Since these
+rows do not form a full Cartesian product of coordinates, the grid can
+miss differences between fitted functions in parts of joint support
+that it does not cover.
 
 .. admonition:: Set the region your band covers
    :class: important
@@ -587,17 +596,17 @@ functions there.
    :math:`\mathcal X` only when the grid adequately represents that region.
 
 If selection fails, the high-level estimator issues a warning and uses
-fallback segment counts. That fit is not the paper's selected sieve.
-Read the warning and the recorded arguments before interpreting a reported
-band as a result of adaptive selection.
+fallback segment counts instead of the paper's selected sieve. Read the
+warning and the recorded arguments before interpreting a reported band
+as a result of adaptive selection.
 
 What adaptivity means for estimation
 ------------------------------------
 
-The procedure does not require you to supply the true smoothness or
-ill-posedness exponent. Its rate guarantees still need a defined class of
-functions and the regularity conditions above.
-We introduce that class before stating the convergence result.
+Although the procedure does not require you to supply the true smoothness
+or ill-posedness exponent, its rate guarantees still depend on the
+regularity conditions above and the class of functions being estimated.
+Specifying that class gives the convergence result a precise scope.
 
 Let :math:`B_{\infty,\infty}^p(M)` be the Hölder-Zygmund ball of
 smoothness :math:`p` and radius :math:`M`.
@@ -661,10 +670,10 @@ Probabilities :math:`P_h` refer to iid data generated under
    The sieve spaces and dimension-selection rule are those specified
    in the paper.
 
-These are minimax sup-norm rates for the stated classes.
-The estimator adapts to unknown smoothness and inversion difficulty in
-both regimes. Estimating a derivative lowers the exponent because it
-magnifies variation at small scales.
+The estimator attains these minimax sup-norm rates for the stated classes
+in both regimes without knowing the smoothness or inversion difficulty.
+Estimating a derivative lowers the exponent because it magnifies
+variation at small scales.
 
 The order condition also limits what a low-degree spline can approximate.
 A fixed cubic order does not give exact minimax adaptivity over arbitrarily
@@ -674,10 +683,10 @@ the spline order is insufficient for the true smoothness.
 Uncertainty over the function
 -----------------------------
 
-A pointwise interval targets one evaluation point.
-A uniform band targets the entire selected region at once.
-Its construction must account for sampling variation, approximation bias,
-and the uncertainty introduced by selecting a dimension.
+Whereas a pointwise interval targets one evaluation point, a uniform band
+targets the entire selected region at once. Constructing that band requires
+accounting for sampling variation, approximation bias, and the uncertainty
+introduced by selecting a dimension.
 
 Separating structural noise from approximation error
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -694,10 +703,10 @@ the fitted function has the exact decomposition
          (h_0(X_1),\ldots,h_0(X_n))'-h_0(x).
    \end{aligned}
 
-The first term is the fluctuation due to structural errors.
-The second contains the sample approximation term.
-Fitted residuals estimate the error variance and enter the bootstrap.
-They do not replace :math:`\mathbf u` in this decomposition.
+The decomposition separates the fluctuation caused by structural errors
+from the sample approximation term. Although fitted residuals estimate
+the error variance and enter the bootstrap, they cannot replace
+:math:`\mathbf u` in this decomposition.
 
 In particular, multiplying the fitted residual vector by
 :math:`\mathbf M_J` gives zero under the TSLS normal equations.
@@ -740,10 +749,10 @@ and increase uncertainty at the same time.
 Adaptive bands and self-similar functions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Honest adaptive bands require a further restriction on approximation
-error. They cannot have those properties uniformly over every Hölder
-ball of unknown smoothness. The paper uses a self-similar subclass
-whose approximation error remains detectable across resolutions.
+Since bands cannot be both honest and adaptive uniformly over every Hölder
+ball of unknown smoothness, the paper restricts approximation error to a
+self-similar subclass. In this subclass, approximation error remains
+detectable across resolutions rather than disappearing at selected scales.
 
 For a fixed :math:`0<\underline B<\overline B` and starting
 dimension :math:`J_*`, define
@@ -899,11 +908,11 @@ functions in the stated class.
    Its width bound is
    :math:`C_a(1+A)(\log n)^{-(\underline p-|a|)/\varsigma}`.
 
-The width depends on the lower smoothness bound rather than automatically
-on the true :math:`p`. These bands are therefore not generally
-rate-adaptive to smoother functions in the severe regime.
-The point estimator's adaptive rates from Theorem 4.1 remain a separate
-result.
+Because the width depends on the lower smoothness bound rather than
+automatically on the true :math:`p`, these bands are not generally
+rate-adaptive to smoother functions in the severe regime. This limitation
+on band width does not change the point estimator's adaptive rates from
+Theorem 4.1.
 
 .. admonition:: Separate the implemented band from the severe-regime theorem
    :class: warning
@@ -923,10 +932,11 @@ to the critical value. Its finite bootstrap dimension set is a numerical
 implementation choice rather than exactly
 :math:`\widehat{\mathcal J}_-` in Procedure 2.
 
-The default ``biters=99`` controls the number of multiplier draws.
-More draws reduce Monte Carlo error in the estimated critical values.
-No fixed count establishes asymptotic coverage or guarantees precise
-tail quantiles. Passing ``seed`` makes the random draws reproducible.
+The default ``biters=99`` sets the number of multiplier draws used to
+estimate critical values. Increasing that count reduces Monte Carlo error
+without establishing asymptotic coverage or guaranteeing precise tail
+quantiles at any fixed count. Passing ``seed`` makes those random draws
+reproducible across runs of the same analysis.
 
 With fixed ``j_x_segments``, the estimator uses the fixed-sieve
 undersmoothing construction. With ``ucb_h=False`` or
@@ -938,10 +948,10 @@ reported critical values to those standard errors.
 Changing the structural restrictions
 -------------------------------------
 
-A multivariate tensor-product sieve can grow quickly.
-Reducing its dimension by restricting the structural function changes
-the model you estimate. We distinguish those restrictions from a tuning
-choice within an unrestricted model.
+Reducing the rapidly growing dimension of a multivariate tensor-product
+sieve by restricting the structural function changes the model you estimate.
+We distinguish that modeling decision from choosing a tuning setting
+within an unrestricted model.
 
 Tensor, additive, and restricted interactions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -966,10 +976,10 @@ functions. Section 6 describes centered marginal bases,
    \widetilde\psi_{Jk}(x_j)
       =\psi_{Jk}(x_j)-\int_0^1\psi_{Jk}(v)\,dv.
 
-Additivity removes general interactions from the target function.
-The paper's extension develops the corresponding estimation and
-component-band procedures under additive-model conditions.
-It does not make the unrestricted tensor-product theorem apply unchanged.
+Because additivity removes general interactions from the target function,
+its estimation and component-band procedures use the additive-model
+conditions developed in the paper's extension. The unrestricted
+tensor-product theorem does not apply unchanged to that restricted model.
 
 The ``basis="glp"`` construction retains main effects and selected
 lower-order interactions of the marginal bases. Its dimension lies between
@@ -994,9 +1004,9 @@ linear coefficients together. For a band on the nonlinear component,
 Section 6 replaces the evaluation vector with
 :math:`(\psi_1^J(x_1)',0_{d_2}')'`.
 This changes the target of the bootstrap contrast.
-The high-level ``npiv`` API does not expose a separate partially linear
-specification argument. This extension is therefore a statement about the
-method rather than an automatic option of that call.
+Because the high-level ``npiv`` API does not expose a separate partially
+linear specification argument, this extension describes the method rather
+than an automatic option of that call.
 
 Nonparametric regression as a special case
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1016,8 +1026,8 @@ bases match. The instrument projection drops out,
 
 The paper's regression procedure replaces the estimated inverse
 ill-posedness measure with
-:math:`v_n=\max\{1,(0.1\log n)^4\}`.
-It uses its regression-specific selection and band construction.
+:math:`v_n=\max\{1,(0.1\log n)^4\}` as part of its regression-specific
+selection and band construction.
 ModernDiD also uses that cutoff safeguard when the arrays match.
 Its generic numerical selection still applies the final dimension
 truncation. The mild-regime interpretation follows from

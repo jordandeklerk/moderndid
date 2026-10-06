@@ -4,9 +4,10 @@ Sensitivity to departures from parallel trends
 ==============================================
 
 An event study can show little evidence of a pre-treatment difference
-without ruling out a difference large enough to change your conclusion.
-The estimates may be imprecise. Even a precisely estimated pre-treatment
-path leaves us to decide how that path would continue after treatment.
+without ruling out a difference large enough to change your conclusion,
+particularly when the estimates are imprecise. Even a precisely estimated
+pre-treatment path leaves us to decide how that path would continue after
+treatment.
 
 The approach of `Rambachan and Roth (2023)
 <https://doi.org/10.1093/restud/rdad018>`_ makes that decision explicit.
@@ -18,20 +19,20 @@ study and the counterfactual path. The
 provides the assumptions and results developed below.
 
 In ModernDiD, :func:`~moderndid.honest_did` takes an estimated event
-study into this calculation. The lower-level sensitivity functions
-accept a coefficient vector and its covariance matrix. They do not
-estimate the original DiD design or determine which departures from
-parallel trends are plausible in your application.
+study into this calculation. To use the lower-level sensitivity functions,
+you supply a coefficient vector and its covariance matrix from an existing
+analysis. Choosing the original DiD design and deciding which departures
+from parallel trends are plausible remain part of your application.
 
 What the event-study coefficients measure
 ------------------------------------------
 
 We begin with estimates that have a causal interpretation under parallel
-trends. A single-coefficient two-way fixed effects event study can mix
-effects across cohorts and event times. Sensitivity analysis does not
-repair that interpretation problem. For staggered adoption, first use
-an estimator whose effects and comparison groups match your target,
-such as the one in the :ref:`staggered DiD background <background-did>`.
+trends, since sensitivity analysis cannot repair the mixing of effects
+across cohorts and event times in a single-coefficient two-way fixed
+effects event study. For staggered adoption, first use an estimator whose
+effects and comparison groups match your target, such as the one in the
+:ref:`staggered DiD background <background-did>`.
 
 Let :math:`T_{pre}` and :math:`T_{post}` count the estimated pre-treatment
 and post-treatment coefficients. Stack them in chronological order,
@@ -45,8 +46,9 @@ Every coefficient uses one common untreated reference period. Following
 the paper, we label that omitted period :math:`0` and the first
 post-treatment period :math:`1`. The estimated coefficients correspond
 to :math:`-T_{pre},\ldots,-1,1,\ldots,T_{post}`. This numbering describes
-the sensitivity model. With no anticipation, period :math:`1` here
-corresponds to event time zero in a ModernDiD event study.
+the sensitivity model rather than the event-time labels in your original
+analysis. With no anticipation, period :math:`1` here corresponds to
+event time zero in a ModernDiD event study.
 
 .. admonition:: Keep a common reference period
    :class: tip
@@ -80,9 +82,9 @@ difference that the comparison failed to remove.
 
 In a two-group design, :math:`\delta_t` is the treated-minus-comparison
 untreated outcome difference in period :math:`t`, relative to that
-difference in the reference period. We normalize :math:`\delta_0=0`.
-Its first difference describes a departure from parallel trends.
-Exact post-treatment parallel trends would give
+difference in the reference period. After we normalize :math:`\delta_0=0`,
+its first difference describes a departure from parallel trends.
+Exact post-treatment parallel trends would therefore give
 :math:`\delta_{post}=0` and identify :math:`\tau_{post}=\beta_{post}`.
 
 The zero pre-treatment causal response is a separate requirement.
@@ -92,11 +94,11 @@ the pre-treatment part and choose an unaffected reference. The
 including the shift implied by its anticipation setting.
 
 A pre-test examines whether the estimated pre-treatment differences
-are distinguishable from zero. It does not establish the counterfactual
-post-treatment path. Selecting an analysis because its pre-test did not
-reject can also change the distribution of subsequent estimates and
-intervals. The direction of that distortion depends on the design and
-the underlying departures from parallel trends.
+are distinguishable from zero without establishing how the counterfactual
+post-treatment path would evolve. Selecting an analysis because its
+pre-test did not reject can also change the distribution of subsequent
+estimates and intervals. The direction of that distortion depends on the
+design and the underlying departures from parallel trends.
 
 From one effect to an identified set
 ------------------------------------
@@ -109,7 +111,7 @@ nonzero vector :math:`\ell\in\mathbb{R}^{T_{post}}`,
 
    \theta=\ell'\tau_{post}.
 
-A basis vector selects one period. Equal entries summing to one select
+A basis vector selects one period and equal entries summing to one select
 an average. The ``l_vec`` argument of
 :func:`~moderndid.create_sensitivity_results_sm` and
 :func:`~moderndid.create_sensitivity_results_rm` makes this choice
@@ -128,10 +130,10 @@ paths and the population coefficients,
    =\left\{\ell'\beta_{post}-\ell'\delta_{post}:
        \delta\in\Delta,\ \delta_{pre}=\beta_{pre}\right\}.
 
-The equality on the pre-treatment coordinates follows from Assumption 1.
-It uses population coefficients, rather than treating noisy estimates
-as the true pre-treatment path. That distinction will matter when we
-construct confidence sets.
+The equality on the pre-treatment coordinates follows from Assumption 1
+and uses population coefficients rather than treating noisy estimates
+as the true pre-treatment path. Constructing a confidence set therefore
+requires us to account for uncertainty in that estimated path.
 
 For a nonempty polyhedral restriction with finite extrema, the bounds
 come from two linear programs,
@@ -149,8 +151,9 @@ come from two linear programs,
              \ell'\delta_{post}.
    \end{aligned}
 
-Convexity fills the interval between these bounds. For more general
-sets, use an infimum and supremum when extrema are not attained.
+For a convex restriction, every value between these bounds is also
+compatible with the population coefficients. More general sets require
+an infimum and supremum when extrema are not attained.
 The identified set can be empty if the restriction contradicts the
 population pre-treatment path, or unbounded if it leaves the target
 unrestricted. Sampling uncertainty does not remove these distinctions.
@@ -190,10 +193,11 @@ normalized event-study coefficients.
       \end{aligned}
 
 At :math:`\bar M=1`, every allowed post-treatment slope is no larger
-in absolute value than the largest pre-treatment slope. Larger values
-allow larger departures. The scale is a feature of the population
-pre-treatment path. Inference must account for uncertainty in that
-path rather than substitute the largest estimated slope as known.
+in absolute value than the largest pre-treatment slope. Increasing the
+factor allows larger departures from the untreated trend.
+Because this scale comes from the population pre-treatment path, inference
+must account for uncertainty in that path rather than substitute the
+largest estimated slope as known.
 
 :func:`~moderndid.create_sensitivity_results_rm` uses this restriction
 by default through ``bound="deviation from parallel trends"``.
@@ -223,11 +227,11 @@ change in its slope is more direct than bounding its level.
       \end{aligned}
 
 Setting :math:`M=0` restricts the untreated difference to a linear
-path. It does not impose parallel trends, since the path may have a
-nonzero slope. Positive :math:`M` allows that slope to change by at
-most :math:`M` each period. The bound has the outcome's units per
-squared observation period. Its meaning therefore depends on the
-spacing and scale of your data.
+path that may still have a nonzero slope, rather than imposing parallel
+trends. Positive :math:`M` allows that slope to change by at most
+:math:`M` each period. Because the bound has the outcome's units per
+squared observation period, its meaning depends on the spacing and scale
+of your data.
 
 :func:`~moderndid.create_sensitivity_results_sm` implements this
 restriction. Its ``m_vec`` argument supplies the smoothness bounds
@@ -266,7 +270,7 @@ estimated pre-treatment coefficients for that option.
 Sign and monotonicity restrictions can further restrict the allowed
 paths when your application supports them. For example, a positive
 post-treatment bias imposes :math:`\delta_t\geq0` after treatment.
-These restrictions add identifying information. They should follow
+Because these restrictions add identifying information, they should follow
 from the economic concern rather than from the sign of the estimate.
 The ``bias_direction`` and ``monotonicity_direction`` arguments select
 supported restrictions in the sensitivity functions.
@@ -300,15 +304,15 @@ component. In particular,
 If each component confidence set covers the true target with probability
 at least :math:`1-\alpha` whenever its component is correct, their
 union has the same lower coverage bound whenever the union restriction
-is correct. The true path belongs to at least one component. This
+is correct. Since the true path belongs to at least one component, this
 argument does not require a multiple-testing adjustment across components.
 
 Confidence sets that include sampling uncertainty
 -------------------------------------------------
 
-The identified set is a population object. Its estimated endpoints are
-uncertain because both the pre-treatment and post-treatment coefficients
-are uncertain. Plugging the estimated pre-treatment path into the bounds
+Although the identified set is a population object, estimating its endpoints
+introduces uncertainty from both the pre-treatment and post-treatment
+coefficients. Plugging the estimated pre-treatment path into the bounds
 and then attaching an ordinary standard error would ignore part of
 that uncertainty.
 
@@ -346,10 +350,11 @@ effects,
       \bigl(\ell'\tau_{post}\in\mathcal C_{\alpha,n}\bigr)
    \geq1-\alpha.
 
-This covers each admissible true value uniformly. It does not require
+Uniform coverage applies to each admissible true value, without requiring
 one confidence set to contain every point of the identified set
-simultaneously with that probability. Those are different coverage
-requirements in a partially identified model.
+simultaneously with that probability. In a partially identified model,
+covering the true effect and covering the entire identified set are
+different requirements.
 
 Testing a candidate effect through moment inequalities
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -370,8 +375,8 @@ Choose an invertible :math:`T_{post}\times T_{post}` matrix
    \qquad\Omega=A V_n A'.
 
 The null hypothesis requires a :math:`\nu` satisfying
-:math:`\mathbb E[Y]-X\nu\leq0`. The covariance :math:`\Omega`
-does not depend on that nuisance parameter. This is the linear
+:math:`\mathbb E[Y]-X\nu\leq0`. Because the covariance :math:`\Omega`
+does not depend on that nuisance parameter, the problem has the linear
 structure used by `Andrews, Roth, and Pakes (2023)
 <https://doi.org/10.1093/restud/rdac034>`_ and implemented by the
 conditional inference routines.
@@ -396,11 +401,10 @@ feasible set is nonempty, the same linear program has the representation
    \mathcal G(\sigma)
       =\{\gamma\geq0:\gamma'X=0,\ \gamma'\sigma=1\}.
 
-The maximum occurs at a vertex of this polyhedron. Write
-:math:`\mathcal V(\sigma)` for its vertices and
-:math:`\widehat\gamma` for an optimizing vertex. These vertices
-are possible combinations of moment inequalities, rather than
-alternative treatment-effect estimators.
+The maximum occurs at a vertex of this polyhedron, whose vertices we
+denote by :math:`\mathcal V(\sigma)`. An optimizing vertex
+:math:`\widehat\gamma` selects a combination of moment inequalities
+rather than an alternative treatment-effect estimator.
 
 Least-favorable, conditional, and hybrid tests
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -528,8 +532,8 @@ nonzero rows of :math:`A` and a fixed :math:`\ell\ne0`. Let
       \inf_{a\geq0}\inf_{j\ne k}
          \|(\bar\gamma_k-a\bar\gamma_j)'A\|>0.
 
-Assumption 5 controls degeneracy in the moment problem. It does not
-require a unique solution for the identified-set endpoints. In the
+Assumption 5 controls degeneracy in the moment problem without requiring
+a unique solution for the identified-set endpoints. In the
 large-sample result, the covariance supplied to the test is
 :math:`\widehat V_n=\widehat\Sigma_n/n`.
 
@@ -555,9 +559,9 @@ large-sample result, the covariance supplied to the test is
       \end{aligned}
 
 Inverting either test gives uniform asymptotic coverage of the true
-:math:`\theta_P`. It does not make the economic restriction correct.
-Coverage applies to the class of laws whose untreated paths belong
-to the restriction you chose.
+:math:`\theta_P` over the class of laws whose untreated paths belong
+to the restriction you chose. Whether that economic restriction is
+credible remains a separate judgment about your application.
 
 What consistency and local power add
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -643,8 +647,7 @@ the geometry of the binding constraints determines power. Let
 If :math:`B^*` indexes its binding constraints, the paper's linear
 independence constraint qualification, or LICQ, requires that some
 optimizer has :math:`-A_{(B^*,post)}` of full row rank. It is enough
-for this to hold at one optimizer. Requiring it at every optimizer
-would be stronger.
+for this condition to hold at one optimizer, rather than at every optimizer.
 
 For :math:`\varepsilon>0`, let :math:`\mathcal P_\varepsilon`
 contain laws satisfying LICQ in direction :math:`\ell` with the
@@ -707,8 +710,8 @@ For fixed covariance :math:`V_n`, consider the affine estimator
       =[a+v'\widehat\beta_n-\chi,
         a+v'\widehat\beta_n+\chi].
 
-The post-treatment effects are unrestricted. A finite worst-case bias
-therefore requires :math:`v_{post}=\ell`. Under that requirement,
+Since the post-treatment effects are unrestricted, a finite worst-case
+bias requires :math:`v_{post}=\ell`. Under that requirement,
 
 .. math::
 
@@ -793,10 +796,11 @@ the optimal fixed-length interval. This is a result in the exact
 Gaussian model with known covariance, rather than an unconditional
 finite-sample guarantee for an estimated event study.
 
-The smoothness class is convex and centrosymmetric. Assumption 8's
-condition on the true path still matters. It holds at a linear
-untreated path for that class, including the zero path. Sign restrictions
-and relative-magnitude classes do not inherit the same comparison.
+Although the smoothness class is convex and centrosymmetric, the true
+path must also satisfy Assumption 8 for this comparison to apply. A linear
+untreated path in that class satisfies the condition, including the zero
+path. Sign restrictions and relative-magnitude classes do not inherit
+the same comparison.
 
 When a fixed-length interval cannot adapt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -853,9 +857,9 @@ condition to hold everywhere in the class. In the three-period
 smoothness example for the first post-treatment effect, that length
 is :math:`2M`. For relative magnitudes with :math:`\bar M>0` and
 :math:`\theta=\tau_1`, every affine estimator has infinite worst-case
-bias. The only uniformly valid fixed-length interval is the entire
-real line. This is why the relative-magnitude functions use conditional
-or hybrid inference rather than an ordinary finite FLCI.
+bias and the only uniformly valid fixed-length interval is the entire
+real line. The relative-magnitude functions therefore use conditional or
+hybrid inference rather than an ordinary finite FLCI.
 
 Choosing the method and reading a sensitivity analysis
 ------------------------------------------------------
@@ -869,9 +873,9 @@ The LF-hybrid results above concern ``"C-LF"``; ``"C-F"`` conditions
 on a first-stage FLCI screening event instead.
 
 The conditional methods invert tests over a finite grid of candidate
-values. A returned lower or upper bound is a point on that grid. Its
-resolution and range are part of the numerical calculation, even when
-the statistical procedure has valid theoretical coverage.
+values. Because a returned lower or upper bound is a point on that grid,
+its resolution and range remain part of the numerical calculation even
+when the statistical procedure has valid theoretical coverage.
 
 .. admonition:: Check the inversion grid
    :class: warning
@@ -896,19 +900,18 @@ nonrejection or rejection over the evaluated range rather than a known
 breakdown value outside it. Different choices of :math:`\ell`,
 restriction class, and confidence method can give different crossings.
 
-The magnitude needs an economic interpretation. A smoothness bound is
-an allowed change in slope in the outcome's units. A relative-magnitude
-factor scales the largest pre-treatment departure. Neither is a
+To interpret the magnitude economically, read a smoothness bound as
+an allowed change in slope in the outcome's units and a relative-magnitude
+factor as a scale for the largest pre-treatment departure. Neither is a
 probability that parallel trends fails or a data-estimated limit on
 possible confounding.
 
-The paper also considers restrictions conditional on covariates. Those
-can sharpen bounds when the stronger conditional restrictions are
-credible. Covariate adjustment alone does not establish those stronger
-restrictions. The ``honest_did`` wrapper does not infer them from
-unit-level covariate columns.
-The input coefficient vector and its joint covariance must represent
-the target for the conditional analysis you intend to perform.
+The paper also considers restrictions conditional on covariates that
+can sharpen bounds when those stronger restrictions are credible.
+Covariate adjustment alone does not establish them and the
+``honest_did`` wrapper does not infer them from unit-level covariate columns.
+For a conditional analysis, the input coefficient vector and its joint
+covariance must represent the target you intend to study.
 
 The :ref:`sensitivity analysis example <example_honest_did>` takes
 an event study through these choices, compares the restrictions, and

@@ -3,11 +3,11 @@
 Extended two-way fixed effects
 ==============================
 
-A staggered-adoption study rarely gives us reason to expect the same effect for every cohort in
-every period. A regression with one treatment coefficient nevertheless asks the data for one
-effect. Extended two-way fixed effects, or ETWFE, keeps the regression approach but gives each
-treated cohort-time cell its own coefficient. We can estimate those effects first and choose
-how to average them afterward.
+With staggered adoption, you rarely have reason to expect the same treatment effect for every
+cohort in every period, even though a regression with one treatment coefficient asks the data
+for one effect. Extended two-way fixed effects, or ETWFE, gives each treated cohort-time cell
+its own coefficient within the regression. We can then estimate those effects before choosing
+how to average them.
 
 This page follows `Wooldridge (2025) <https://doi.org/10.1007/s00181-025-02807-z>`_ for the
 linear estimator and `Wooldridge (2023) <https://doi.org/10.1093/ectj/utad016>`_ for nonlinear
@@ -25,10 +25,10 @@ its single treatment coefficient can place negative weights on some cohort-time 
 covariates to that regression does not remove the restriction that one coefficient summarize
 all treated observations.
 
-ETWFE replaces that coefficient with a full set of cohort-time treatment indicators. A cohort
-can have a different effect in each post-treatment period. Two cohorts observed in the same
-calendar period can also have different effects. The remaining challenge is to specify an
-untreated outcome model that makes those cell coefficients interpretable.
+By replacing that coefficient with a full set of cohort-time treatment indicators, ETWFE
+allows effects to differ both across a cohort's post-treatment periods and across cohorts
+observed in the same calendar period. The remaining challenge is to specify an untreated
+outcome model that makes those cell coefficients interpretable.
 
 Cohorts, periods, and potential outcomes
 ----------------------------------------
@@ -61,7 +61,7 @@ indicator. These definitions give the observed treatment status
    w_{it}=\sum_{g\in\mathcal{G}}d_{g,i}p_{g,t}
    =\sum_{g\in\mathcal{G}}\sum_{s=g}^T d_{g,i}f_{s,t}.
 
-The post-treatment cells partition the observations where :math:`w_{it}=1`. Thus, adding
+Since the post-treatment cells partition the observations where :math:`w_{it}=1`, adding
 :math:`w_{it}` alongside all those cell indicators supplies no new regression variation.
 Keeping it in the notation will help us describe the change from untreated to treated
 predictions when we reach nonlinear models.
@@ -101,9 +101,8 @@ on a variable changed by the intervention can change the causal question.
 
 A covariate being constant in the dataset does not by itself establish NBC. A variable
 constructed from post-treatment information can remain constant across its repeated rows
-while still being affected by treatment. Pre-treatment measurement gives the assumption a
-more credible basis. Its justification still comes from the application's timing and causal
-relationships.
+while still being affected by treatment. Pre-treatment measurement gives the assumption a more credible basis, though its justification
+still comes from the application's timing and causal relationships.
 
 .. admonition:: Assumption NA (Conditional no anticipation)
    :class: assumption
@@ -119,7 +118,7 @@ relationships.
    to zero and is weaker than requiring identical potential outcomes before adoption.
 
 No anticipation allows pre-treatment observations of eventual adopters to inform the untreated
-mean. Parallel trends determines how we carry that information into later periods.
+mean that parallel trends carries into later periods.
 
 .. admonition:: Assumption CPT (Conditional parallel trends)
    :class: assumption
@@ -166,8 +165,9 @@ conditional means depend on the covariates.
    Set :math:`\gamma_1=0` and :math:`\boldsymbol{\pi}_1=\mathbf{0}`. The trend equation
    implies CPT because cohort membership does not enter its right-hand side.
 
-Without covariates, the baseline equation records the separate cohort means. The trend equation
-then states parallel trends without imposing further restrictions on the period means. With covariates, both generally impose functional form restrictions.
+Without covariates, these equations record separate cohort means and state parallel trends
+without imposing further restrictions on the period means. With covariates, both generally
+impose functional form restrictions.
 A complete set of mutually exclusive indicators for the covariates' joint support removes those
 functional form restrictions within the represented strata. A short list of separate indicators
 for several covariates need not be saturated in their joint distribution.
@@ -190,10 +190,9 @@ Combining the baseline and trend models gives the untreated conditional mean. De
    +\sum_{s=2}^Tf_{s,t}\mathbf{x}_i\boldsymbol{\pi}_s.
    \end{aligned}
 
-Here and below, sums over :math:`g` run over :math:`\mathcal{G}`. The cohort intercepts and
-slopes allow selection into treatment based on untreated levels. The time interactions let
-different covariate values have different trends. Cohort-specific untreated time shifts are
-excluded by CPT.
+Here and below, sums over :math:`g` run over :math:`\mathcal{G}`. The cohort intercepts and slopes allow selection into treatment based on untreated levels
+alongside the different covariate-specific trends captured by the time interactions. CPT
+excludes cohort-specific untreated time shifts from this model.
 
 For a control observation with :math:`w_{it}=0`, NA equates the observed conditional mean
 with :math:`b_{it}`. Pooled OLS on those observations can therefore identify the untreated
@@ -238,10 +237,10 @@ Write the resulting coefficient vector as
    (\tilde\gamma_s)_{s=2}^T,
    (\widetilde{\boldsymbol{\pi}}_s)_{s=2}^T\bigr).
 
-This step pools all admissible untreated observations under the common conditional trend model.
-It imposes more structure across pre-treatment periods than a collection of separate two-period
-comparisons. That structure is useful when it is credible; using more observations alone does
-not guarantee a smaller variance under every pattern of serial dependence.
+Pooling all admissible untreated observations under the common conditional trend model
+imposes more structure across pre-treatment periods than separate two-period comparisons.
+That structure is useful when it is credible; using more observations alone does not guarantee
+a smaller variance under every pattern of serial dependence.
 
 Imputing and averaging
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -259,10 +258,10 @@ The second step predicts the untreated conditional mean for every treated observ
    +\sum_{s=2}^Tf_{s,t}\mathbf{x}_i\widetilde{\boldsymbol{\pi}}_s.
    \end{aligned}
 
-Subtract this prediction from the observed outcome to form
-:math:`\widetilde{te}_{it}=y_{it}-\tilde y_{it}(\infty)`. This residual contains both the
-treatment effect and outcome noise. We do not observe an individual causal effect merely by
-subtracting a conditional mean prediction.
+Subtracting this prediction from the observed outcome gives
+:math:`\widetilde{te}_{it}=y_{it}-\tilde y_{it}(\infty)`, a residual that contains both the
+treatment effect and outcome noise. You therefore do not observe an individual causal effect
+merely by subtracting a conditional mean prediction.
 
 The third step averages those residuals within a cohort-time cell. Define
 :math:`N_g=\sum_i d_{g,i}`,
@@ -336,8 +335,8 @@ the treatment contrast at zero covariates rather than its cohort average.
    This algebraic equivalence from Wooldridge (2025) holds independently of whether the
    identifying assumptions are true for the data.
 
-The algebra tells us that the procedures agree. The assumptions tell us whether their common
-estimate is causal. Under SUTVA, NBC, NA, CPT, and LIN, independently sampled unit histories
+Although the algebra establishes that the procedures agree, the causal interpretation of
+their common estimate still depends on the assumptions. Under SUTVA, NBC, NA, CPT, and LIN, independently sampled unit histories
 with finite second moments and a nonsingular population control-regressor moment matrix give
 consistent estimates as :math:`N` grows with :math:`T` fixed. Each included cohort must also
 have positive probability so that its sample size grows. In the no-covariate balanced design, Wooldridge also establishes unbiasedness
@@ -354,10 +353,10 @@ every nonlinear or covariate-adjusted ETWFE estimate is unbiased in a finite sam
 Why unit fixed effects can give the same answer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The pooled regression controls for cohort differences in the untreated outcome mean. The usual
-panel regression instead absorbs an intercept for every unit in the sample. For the balanced, time-constant specification above, they give the same cell
-effect estimates. The two-way Mundlak result explains why those additional unit intercepts do
-not change the treatment coefficients.
+The pooled regression controls for cohort differences in the untreated outcome mean rather
+than absorbing an intercept for every unit as the usual panel regression does. For the
+balanced, time-constant specification above, the two-way Mundlak result explains why those
+additional unit intercepts leave the cell effect estimates unchanged.
 
 To state the general result, let :math:`\mathbf{z}_{it}` contain the regressors whose
 coefficients we want to recover. Define their averages and double-demeaned values,
@@ -395,10 +394,10 @@ coefficients we want to recover. Define their averages and double-demeaned value
    unchanged. This is Theorem 3.1 in Wooldridge (2025).
 
 In the saturated ETWFE design, cohort indicators and their covariate interactions span the
-unit averages of the treatment regressors. Period indicators and their covariate interactions
-span the period averages. That gives the equality between the cohort-based pooled regression
-and the corresponding regression with unit fixed effects. Random effects with the matching
-Mundlak controls also gives the same treatment coefficients.
+unit averages of the treatment regressors just as period indicators and their covariate
+interactions span the period averages. These terms establish the equality between the
+cohort-based pooled regression and the corresponding regression with unit fixed effects.
+Random effects with the matching Mundlak controls also gives the same treatment coefficients.
 
 For this matched design, the equivalence chain is
 
@@ -430,10 +429,9 @@ With ``cgroup="never"``, each treated cohort instead uses period :math:`g-1` as 
 and receives a separate indicator for every other period. Earlier pre-treatment rows therefore
 estimate placebo contrasts rather than contributing to a pooled pre-treatment baseline.
 
-The distinction matters because the two designs impose different restrictions on how the
-pre-treatment observations enter the untreated model. It also explains why a not-yet-treated
-fit has no estimated leads to display. An event graph does not create those placebo coefficients
-after estimation.
+The two designs impose different restrictions on how the pre-treatment observations enter
+the untreated model. Since a not-yet-treated fit has no estimated leads, an event graph cannot
+create those placebo coefficients after estimation.
 
 If no never-treated units exist, we can use the latest-treated cohort as the reference only
 while it remains untreated. Let :math:`g_{\max}` denote that adoption date. A treatment
@@ -512,9 +510,9 @@ model how a violation of parallel trends would continue after treatment.
 
 In the package, fit ``cgroup="never"`` and call
 ``emfx(result, type="event", post_only=False)`` to report those pre-treatment contrasts.
-The reference exposure :math:`e=-1` is shown at zero. ``cgroup="notyet"`` fits post-treatment
-cells only. The same aggregation option therefore does not supply a pre-treatment test for that
-control design.
+The reference exposure :math:`e=-1` is shown at zero. Since ``cgroup="notyet"`` fits
+post-treatment cells only, the same aggregation option does not supply a pre-treatment test
+for that control design.
 
 Allowing cohort-specific trends
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -533,10 +531,10 @@ A linear untreated gap predicts :math:`a_3(0)=2a_2-a_1`, giving
 
    \tau_3=a_3-2a_2+a_1.
 
-This is a second difference of the between-group gap. It identifies the period-3 effect if
-the untreated gap would have continued linearly. More pre-treatment periods permit higher-order
-trend models. Their post-treatment extrapolation still needs justification from the application's
-untreated outcome dynamics. Trend terms
+This second difference of the between-group gap identifies the period-3 effect if the
+untreated gap would have continued linearly. More pre-treatment periods permit higher-order
+trend models whose post-treatment extrapolation still needs justification from the
+application's untreated outcome dynamics. Trend terms
 can also be highly correlated with the treatment indicators and substantially reduce precision.
 
 The corresponding imputation and saturated-regression equivalences can be derived with the
@@ -546,9 +544,10 @@ so this theoretical extension is not selected by changing ``xformla`` alone.
 Nonlinear outcomes and index parallel trends
 --------------------------------------------
 
-An additive untreated mean model may be poorly suited to a binary outcome near zero or one.
-The same issue arises when an additive prediction for a nonnegative outcome becomes negative.
-A nonlinear mean model respects the outcome's range and changes the parallel-trends assumption. We need to state that change before interpreting a nonlinear treatment coefficient.
+An additive untreated mean model may be poorly suited to a binary outcome near zero or one
+or give negative predictions for a nonnegative outcome. A nonlinear mean model respects the
+outcome's range but also changes the parallel-trends assumption that we need to state before
+interpreting its treatment coefficients.
 
 Let :math:`G` be a known, strictly increasing mean function and let
 :math:`a_{it}` have the same additive cohort, covariate, and period terms as :math:`b_{it}`.
@@ -583,20 +582,20 @@ The nonlinear untreated mean is :math:`G(a_{it})`.
    This is the staggered conditional index restriction in Wooldridge (2023), together with its
    specified baseline mean. It replaces the linear mean assumptions CPT and LIN.
 
-The identity mean function gives the linear model. An exponential mean imposes common
-conditional growth factors. Without covariates, it requires
+The identity mean function gives the linear model whereas an exponential mean imposes common
+conditional growth factors. Without covariates, the exponential model requires
 
 .. math::
 
    \frac{\mathbb{E}[y_t(\infty)\mid\mathbf{d}]}
    {\mathbb{E}[y_1(\infty)\mid\mathbf{d}]}=e^{\gamma_t}.
 
-A logistic mean instead makes the untreated log-odds change common across cohorts. These are
-different identifying restrictions. Changing the family therefore changes more than the scale of
-a regression output.
+A logistic mean instead makes the untreated log-odds change common across cohorts. Since
+these mean functions impose different identifying restrictions, changing the family changes
+more than the scale of a regression output.
 
-A latent-outcome example makes the distinction concrete. Suppose
-:math:`y_t^*(\infty)=\alpha+\beta D+\gamma_t+U_t` and
+Suppose the untreated latent outcome is
+:math:`y_t^*(\infty)=\alpha+\beta D+\gamma_t+U_t` and the corresponding binary response is
 :math:`y_t(\infty)=\mathbf{1}\{y_t^*(\infty)>0\}`. If :math:`U_t` is independent of
 :math:`D` and has the same cumulative distribution :math:`F` in every period, then
 
@@ -659,9 +658,8 @@ fit binary response models; that theoretical coverage does not establish support
 or variable-upper-bound outcomes in the current interface.
 
 The package supports ``family="poisson"``, ``family="logit"``, and
-``family="probit"`` in addition to the linear default. Probit has no corresponding
-canonical Bernoulli link. The imputation-pooled equality above therefore does not apply to this
-family even in the matched design.
+``family="probit"`` in addition to the linear default. Since probit has no corresponding canonical Bernoulli link, the imputation-pooled equality
+above does not apply to this family even in the matched design.
 Nonlinear fits use cohort and period dummies rather than absorbed unit effects.
 Supplying ``idname`` selects clustering and unit counts for these fits.
 
@@ -687,8 +685,8 @@ where :math:`\hat a_{it}` predicts the untreated index. The pooled response cont
    \left[G(\hat a_{it}+\hat\ell_{g,t}(\mathbf{x}_i))
    -G(\hat a_{it})\right].
 
-Canonical-link score equations equate the cell's average treated prediction with its observed
-mean. This makes the two response contrast estimates agree in the matched design. For nonlinear families,
+By equating the cell's average treated prediction with its observed mean, canonical-link
+score equations make the two response contrast estimates agree in the matched design. For nonlinear families,
 :func:`~moderndid.emfx` computes the second expression from observation-level predictions.
 
 .. admonition:: Report response-scale effects
@@ -705,8 +703,8 @@ For an exponential mean, the conditional proportional effect is exactly
    \frac{G(a_{it}+\ell_{g,t}(\mathbf{x}_i))-G(a_{it})}{G(a_{it})}
    =e^{\ell_{g,t}(\mathbf{x}_i)}-1.
 
-If the index shift is constant within a cell, :math:`e^{\delta_{g,t}}-1` is its common
-proportional effect. It is not an approximation. With covariate-dependent shifts, averaging
+If the index shift is constant within a cell, :math:`e^{\delta_{g,t}}-1` gives its exact common
+proportional effect. With covariate-dependent shifts, averaging
 proportional effects and averaging effects in outcome units answer different questions,
 
 .. math::
@@ -743,10 +741,10 @@ The overall effect averages over treated observations,
    \qquad
    \hat\omega_g=\frac{N_g}{\sum_hK_hN_h}.
 
-If all post-treatment cells through :math:`T` are identified,
-:math:`K_g=T-g+1`. Larger cohorts have more weight in each cell. Earlier cohorts contribute
-more periods when their effects remain identified throughout the sample. Thus, the result describes an average treated observation rather than an average
-cohort with equal weight on every adoption date.
+If all post-treatment cells through :math:`T` are identified, :math:`K_g=T-g+1`. Because larger
+cohorts have more weight in each cell and earlier cohorts contribute more periods when their
+effects remain identified throughout the sample, the result describes an average treated
+observation rather than an average cohort with equal weight on every adoption date.
 
 Event time, cohorts, and calendar time
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -761,9 +759,9 @@ Event time :math:`e=t-g` records the number of periods since adoption. Let
    \frac{N_g}{\sum_{h\in\mathcal{G}_e}N_h}
    \hat\tau_{g,g+e}.
 
-The weights are nonnegative and sum to one. The contributing cohorts usually change with
-:math:`e`. Differences between exposure effects can therefore reflect both treatment dynamics
-and changes in cohort composition. A reported event window restricts the exposures; it does not automatically
+The nonnegative weights sum to one over the contributing cohorts, whose membership usually
+changes with :math:`e`. Differences between exposure effects can therefore reflect both
+treatment dynamics and changes in cohort composition. A reported event window restricts the exposures; it does not automatically
 hold that composition fixed.
 
 Group and calendar averages use the same cell estimates along different dimensions,
@@ -780,9 +778,9 @@ The group effects compare cohorts' average post-treatment experiences. Calendar 
 the mean treatment effect among cohorts observed treated in a particular period. Their changes
 do not by themselves isolate the influence of macroeconomic conditions or concurrent policies.
 
-Each aggregation also reports a one-number summary. The group summary weights cohorts by their
-unit counts. The event and calendar summaries weight their reported nonnegative event times and
-calendar periods equally,
+Each aggregation reports a one-number summary that weights cohorts by their unit counts in
+the group case. The event and calendar summaries give equal weight to their reported
+nonnegative event times and calendar periods, respectively,
 
 .. math::
 
@@ -804,8 +802,8 @@ levels over their available observations. Its marginal-effect aggregation does n
 Inference for a fitted effect
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The regression supplies a joint covariance matrix for its coefficients. Aggregation can use this
-matrix to retain dependence across the cell estimates. If :math:`\boldsymbol{\beta}` stacks the fitted coefficients and
+The joint covariance matrix supplied by the regression lets aggregation retain dependence
+across the cell estimates. If :math:`\boldsymbol{\beta}` stacks the fitted coefficients and
 :math:`m(\boldsymbol{\beta})` is a response contrast or aggregate, the delta method uses
 
 .. math::
@@ -835,9 +833,9 @@ and does not account for within-unit dependence.
    their additional sampling variation. Population-ATT inference that includes this variation
    requires an adjustment or a bootstrap that repeats fitting, centering, and aggregation.
 
-The intervals from ``emfx`` are pointwise normal intervals. A collection of those intervals
-does not give simultaneous coverage for an entire event path. This distinction matters when
-you want to assess several periods together rather than one reported effect at a time.
+The pointwise normal intervals from ``emfx`` do not give simultaneous coverage for an entire
+event path, as you would need to assess several periods together rather than one reported
+effect at a time.
 
 When the balanced-panel argument changes
 ----------------------------------------
@@ -909,10 +907,10 @@ consequences after it ends. A fully interacted regression would replace
 and untreated-trend assumptions for those paths. Exit triggered by time-varying untreated
 outcome shocks would violate the corresponding strict exogeneity restriction.
 
-The current ``etwfe`` function takes first adoption dates and constructs absorbing treatment.
-It does not implement this entry-exit path extension. For estimators designed around treatment
+The current ``etwfe`` function takes first adoption dates and constructs absorbing treatment
+without implementing this entry-exit path extension. For estimators designed around treatment
 changes and their subsequent effects, see the :ref:`intertemporal DiD background <background-didinter>`.
 
-The :ref:`extended TWFE example <example_etwfe>` puts these choices into an analysis using
-the package. Its control-group and nonlinear comparisons are useful places to see how a changed
-specification changes both the estimand and the evidence you can report.
+The :ref:`extended TWFE example <example_etwfe>` compares control groups and nonlinear
+specifications so you can see how those choices change both the estimand and the evidence
+you can report.
