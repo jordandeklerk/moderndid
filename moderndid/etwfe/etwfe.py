@@ -9,6 +9,7 @@ import numpy as np
 
 from moderndid.core.dataframe import to_polars
 from moderndid.core.preprocess.config import EtwfeConfig
+from moderndid.core.preprocess.validators import check_columns
 
 from .compute import (
     _cell_column,
@@ -55,9 +56,16 @@ def etwfe(
     Use :func:`~moderndid.etwfe.emfx.emfx` to average the cell estimates into
     overall, group, calendar, or event-study summaries.
 
-    Rows with a missing period, cohort, unit, control, moderator, weight, or
-    cluster variable leave the sample with a warning before the controls are
-    demeaned.
+    Rows with a null, NaN, or infinite value in the period, cohort, unit,
+    control, moderator, weight, or cluster variable leave the sample with a
+    warning before the controls are demeaned. Since an infinite cohort marks a
+    never-treated unit, it stays. The weights that remain must be non-negative
+    with a positive mean.
+
+    A column that the call names may not take the name of a column the
+    regression adds. These are ``_g``, ``_t``, ``_Dtreat``, a name that starts
+    with ``__etwfe_``, a control's name followed by ``_dm``, and a name that
+    ends in ``_xdm`` and starts with the moderator's name or with ``_t``.
 
     Since no untreated period identifies their effects, units already treated in
     the first period leave with a warning as well. So do the units of any other
@@ -244,19 +252,17 @@ def etwfe(
         raise ValueError(f"fe must be 'vs', 'feo', or 'none', got '{fe}'")
 
     df = to_polars(data)
-
-    for col_name, col_label in [(yname, "yname"), (tname, "tname"), (gname, "gname")]:
-        if col_name not in df.columns:
-            raise ValueError(f"{col_label}='{col_name}' not found in data columns")
-
-    if idname and idname not in df.columns:
-        raise ValueError(f"idname='{idname}' not found in data columns")
-
-    if weightsname and weightsname not in df.columns:
-        raise ValueError(f"weightsname='{weightsname}' not found in data columns")
-
-    if xvar and xvar not in df.columns:
-        raise ValueError(f"xvar='{xvar}' not found in data columns")
+    check_columns(
+        df,
+        yname=yname,
+        tname=tname,
+        gname=gname,
+        idname=idname,
+        xformla=xformla,
+        xvar=xvar,
+        weightsname=weightsname,
+        vcov=vcov if isinstance(vcov, dict) else None,
+    )
 
     # A unit's outcomes are correlated over time. The default clusters by unit whenever the data name one.
     if vcov is None:

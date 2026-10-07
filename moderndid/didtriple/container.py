@@ -370,6 +370,8 @@ class DDDMultiPeriodResult(NamedTuple):
         Array of treatment group for each unit (length n).
     unit_weights : ndarray or None
         Sampling weight of each unit (length n), or None without weights.
+    unit_clusters : ndarray or None
+        Cluster of each unit (length n), or None without a cluster.
     """
 
     #: Array of ATT(g,t) point estimates.
@@ -398,6 +400,8 @@ class DDDMultiPeriodResult(NamedTuple):
     unit_groups: np.ndarray
     #: Sampling weight of each unit, or None without weights.
     unit_weights: np.ndarray | None = None
+    #: Cluster of each unit, or None without a cluster.
+    unit_clusters: np.ndarray | None = None
 
     @property
     def __maketables_coef_table__(self):
@@ -503,6 +507,8 @@ class DDDMultiPeriodRCResult(NamedTuple):
         Array of treatment group for each observation (length n).
     unit_weights : ndarray or None
         Sampling weight of each observation (length n), or None without weights.
+    unit_clusters : ndarray or None
+        Cluster of each observation (length n), or None without a cluster.
     """
 
     #: Array of ATT(g,t) point estimates.
@@ -531,6 +537,8 @@ class DDDMultiPeriodRCResult(NamedTuple):
     unit_groups: np.ndarray
     #: Sampling weight of each observation, or None without weights.
     unit_weights: np.ndarray | None = None
+    #: Cluster of each observation, or None without a cluster.
+    unit_clusters: np.ndarray | None = None
 
     @property
     def __maketables_coef_table__(self):

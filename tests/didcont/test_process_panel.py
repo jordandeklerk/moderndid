@@ -393,6 +393,27 @@ def test_pte_default_keeps_labels_when_columns_are_named_g_or_period(contdid_dat
     )
 
 
+@pytest.mark.filterwarnings("ignore:Simultaneous band smaller than pointwise:UserWarning")
+@pytest.mark.parametrize("renamed", [{"G": "cohort", "id": "G"}, {"Y": "outcome", "id": "Y"}])
+def test_pte_default_unit_column_named_like_a_working_column(contdid_data, renamed):
+    names = {column: renamed.get(column, column) for column in ("Y", "id", "G")}
+    kwargs = {"tname": "period", "d_outcome": True, "biters": 10, "random_state": 0}
+    reference = pte_default(
+        data=contdid_data.drop("D").rename({"Y": "outcome", "id": "unit", "G": "cohort"}),
+        yname="outcome",
+        idname="unit",
+        gname="cohort",
+        **kwargs,
+    )
+    result = pte_default(
+        data=contdid_data.drop("D").rename(renamed), yname=names["Y"], idname=names["id"], gname=names["G"], **kwargs
+    )
+
+    np.testing.assert_allclose(result.att_gt.att, reference.att_gt.att, rtol=1e-12)
+    np.testing.assert_allclose(result.event_study.att_by_event, reference.event_study.att_by_event, rtol=1e-12)
+    np.testing.assert_allclose(result.event_study.se_by_event, reference.event_study.se_by_event, rtol=1e-12)
+
+
 def test_pte_default_empirical_bootstrap_rejects_event_time_options(contdid_data):
     with pytest.raises(ValueError, match="The empirical bootstrap doesn't support min_e, balance_e\\."):
         pte_default(

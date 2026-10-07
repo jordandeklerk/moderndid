@@ -481,10 +481,22 @@ def mp_first_period_cohort_df(multi_period_df):
 
 
 @pytest.fixture
+def mp_all_treated_first_df(multi_period_df):
+    """Multi-period panel in which every unit is first treated in the first period."""
+    return multi_period_df.with_columns(pl.col("time").min().alias("group"))
+
+
+@pytest.fixture
 def mp_no_never_treated_df():
     """Panel over five periods whose units are all treated by period 4."""
     data = gen_ddd_scalable(n=1500, n_periods=5, n_cohorts=3, n_covariates=4, random_state=11)["data"]
     return data.filter(pl.col("group") != 0)
+
+
+@pytest.fixture
+def mp_no_never_treated_gap_df(request, mp_no_never_treated_df):
+    """The panel without never-treated units in which every fifth unit misses the period in request.param."""
+    return mp_no_never_treated_df.filter(~((pl.col("id") % 5 == 0) & (pl.col("time") == request.param)))
 
 
 @pytest.fixture
@@ -528,3 +540,55 @@ def mp_rcs_weighted_df(mp_rcs_data):
 def mp_rcs_weighted_replicated_df(mp_rcs_weighted_df):
     """The weighted cross-section with each observation copied as many times as its weight."""
     return mp_rcs_weighted_df.with_columns(pl.int_ranges(pl.col("w")).alias("copy")).explode("copy").drop("copy", "w")
+
+
+@pytest.fixture
+def mp_three_cohort_df():
+    """Panel over five periods with never-treated units, cohorts 2, 3, and 4, and 50 clusters in cluster.
+
+    Under not-yet-treated comparisons, ATT(2,3), ATT(3,1), and ATT(3,3) pool two comparison groups and leave
+    out a whole cohort.
+    """
+    return gen_ddd_scalable(n=1500, n_periods=5, n_cohorts=3, n_covariates=4, random_state=11)["data"]
+
+
+@pytest.fixture
+def mp_unbalanced_df(multi_period_df):
+    """Multi-period panel in which every sixth unit misses period 3."""
+    return multi_period_df.filter(~((pl.col("id") % 6 == 0) & (pl.col("time") == 3)))
+
+
+@pytest.fixture
+def two_period_unbalanced_df(two_period_df):
+    """Two-period panel in which every seventh unit misses period 2."""
+    return two_period_df.filter(~((pl.col("id") % 7 == 0) & (pl.col("time") == 2)))
+
+
+@pytest.fixture
+def mp_never_treated_incomplete_df(multi_period_df):
+    """Multi-period panel in which every never-treated unit misses period 2."""
+    return multi_period_df.filter(~((pl.col("group") == 0) & (pl.col("time") == 2)))
+
+
+@pytest.fixture
+def mp_one_missing_df(request, multi_period_df):
+    """Multi-period panel with weights in w and the missing value in request.param in the period-3 row of unit 3."""
+    column, value = request.param
+    row = (pl.col("id") == 3) & (pl.col("time") == 3)
+    data = multi_period_df.with_columns(pl.lit(1.0).alias("w"))
+    missing = pl.when(row).then(pl.lit(value, pl.Float64)).otherwise(pl.col(column).cast(pl.Float64))
+    return data.with_columns(missing.alias(column))
+
+
+@pytest.fixture
+def mp_repeated_row_missing_outcome_df(multi_period_df):
+    """Multi-period panel with a second period-1 row for unit 3 whose outcome is missing."""
+    repeated = multi_period_df.filter((pl.col("id") == 3) & (pl.col("time") == 1))
+    return pl.concat([multi_period_df, repeated.with_columns(pl.lit(None, pl.Float64).alias("y"))])
+
+
+@pytest.fixture
+def two_period_one_missing_df(request, two_period_df):
+    """Two-period panel with a missing value in the column request.param of the period-2 row of unit 11."""
+    row = (pl.col("id") == 11) & (pl.col("time") == 2)
+    return two_period_df.with_columns(pl.when(row).then(None).otherwise(pl.col(request.param)).alias(request.param))

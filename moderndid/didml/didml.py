@@ -14,6 +14,7 @@ from moderndid.core.preprocess import (
     DIDMLConfig,
     PreprocessDataBuilder,
 )
+from moderndid.core.preprocess.validators import check_columns
 
 from .compute import compute_didml
 from .container import didml_result
@@ -266,6 +267,16 @@ def didml(
         raise ValueError(f"n_jobs={n_jobs} must be a positive integer or -1.")
     if clustervars is not None and isinstance(clustervars, str):
         raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
+    check_columns(
+        data,
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        gname=gname,
+        xformla=xformla,
+        weightsname=weightsname,
+        clustervars=clustervars,
+    )
 
     config = DIDMLConfig(
         yname=yname,

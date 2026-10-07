@@ -179,7 +179,7 @@ def test_het_regression_hc2bm_handles_weights_that_vary_within_a_cluster(
     cohort = het_sample["F_g"].to_numpy()
     X = np.column_stack([np.ones(60), het_sample.select("x1", "x2").to_numpy(), cohort == 4.0, cohort == 5.0])
     expected = block_hc2_by_hand(
-        X, het_sample["_prod_het"].to_numpy(), het_sample["weight_gt"].to_numpy(), het_sample["cluster_id"].to_numpy()
+        X, het_sample[".prod_het"].to_numpy(), het_sample["weight_gt"].to_numpy(), het_sample["cluster_id"].to_numpy()
     )
 
     np.testing.assert_allclose(result.std_errors, expected[1:3], rtol=1e-10)

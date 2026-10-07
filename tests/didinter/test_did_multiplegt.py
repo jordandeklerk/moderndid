@@ -17,6 +17,22 @@ from moderndid.didinter.bootstrap import cluster_bootstrap
 from moderndid.didinter.container import BootstrapResult
 
 
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"idname": "idd"}, "idname='idd' is not a column in the data. Did you mean 'id'?"),
+        ({"dname": "dd"}, "dname='dd' is not a column in the data. Did you mean 'd'?"),
+        ({"trends_nonparam": ["regoin"]}, "'regoin' in trends_nonparam is not a column in the data."),
+        ({"predict_het": (["regoin"], [1])}, "'regoin' in predict_het is not a column in the data."),
+    ],
+)
+def test_did_multiplegt_names_misspelled_columns(simple_panel_data, changes, message):
+    spec = {"yname": "y", "tname": "time", "idname": "id", "dname": "d"} | changes
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        did_multiplegt(simple_panel_data, **spec)
+
+
 def test_basic_estimation(simple_panel_data):
     result = did_multiplegt(
         simple_panel_data,
@@ -1293,6 +1309,238 @@ def test_reserved_column_names_raise(panel_with_controls, reserved, column, argu
             tname="time",
             dname="d",
             xformla=f"~ {reserved} + x2" if column == "x1" else "~ x1 + x2",
+        )
+
+
+@pytest.mark.parametrize(
+    ("column", "name"),
+    [
+        *(
+            ("x1", name)
+            for name in [
+                "diff_y_1",
+                "never_change_1",
+                "never_change_w_1",
+                "n_control_1",
+                "count_1",
+                "dist_to_switch_1",
+                "dist_to_switch_w_1",
+                "n_treated_1",
+                "inf_func_1_temp",
+                "inf_func_1",
+                "is_switcher_1",
+                "weighted_diff_1",
+                "dof_scale_1",
+                "E_hat_1",
+                "inf_func_var_1",
+                "part2_1",
+                "dummy_u_gg_1",
+                "time_constraint_1",
+                "treat_h0",
+                "treat_h1",
+                "path_0",
+                "path_1",
+                "n_groups_path_0",
+                "n_groups_path_1",
+                "valid_cohort_0",
+                "valid_cohort_1",
+                "weight_sum_1_switcher",
+                "diff_sum_1_switcher",
+                "dof_switcher_1",
+                "cohort_mean_1",
+                "control_weight_sum_1",
+                "control_diff_sum_1",
+                "dof_control_1",
+                "control_mean_1",
+                "is_union_1",
+                "union_weight_sum_1",
+                "union_diff_sum_1",
+                "dof_union_1",
+                "union_mean_1",
+                "_treat_at_horizon",
+                "_path_weight_0",
+                "_path_diff_h",
+                "_path_size_1",
+                "_ctrl_first_diff_y",
+                "_ctrl_first_diff_0",
+                "_ctrl_centered_0",
+                "_ctrl_influence_0",
+                "_ctrl_raw_weight",
+                "_ctrl_sample",
+                "_ctrl_period_count",
+                "_ctrl_diff_0_1",
+                "_same_switcher",
+                "_reaches_diff_1",
+                "_reaches_1",
+                "_control_cluster_1",
+                "_union_cluster_1",
+            ]
+        ),
+        *(
+            ("het", name)
+            for name in ["_Y_baseline", "_feasible_het", "_gr_id", "_Y_h1", "_Y_h-1", "_diff_het", "_prod_het"]
+        ),
+        *(
+            ("cl", name)
+            for name in ["_cluster_flag_1", "_control_cluster_1", "_union_cluster_1", "is_switcher_1", "path_1"]
+        ),
+        ("id", "sum_treat"),
+        ("id", "n_uniq"),
+    ],
+)
+def test_columns_named_like_former_internal_columns_give_the_same_estimates(
+    fit_every_option, every_option_result, column, name
+):
+    result = fit_every_option({column: name})
+
+    np.testing.assert_array_equal(result.effects.estimates, every_option_result.effects.estimates)
+    np.testing.assert_array_equal(result.effects.std_errors, every_option_result.effects.std_errors)
+    np.testing.assert_array_equal(result.placebos.estimates, every_option_result.placebos.estimates)
+    np.testing.assert_array_equal(result.placebos.std_errors, every_option_result.placebos.std_errors)
+    np.testing.assert_array_equal(tuple(result.ate), tuple(every_option_result.ate))
+    np.testing.assert_array_equal(
+        [het.estimates for het in result.heterogeneity or []],
+        [het.estimates for het in every_option_result.heterogeneity],
+    )
+    np.testing.assert_array_equal(
+        [het.std_errors for het in result.heterogeneity or []],
+        [het.std_errors for het in every_option_result.heterogeneity],
+    )
+
+
+@pytest.mark.filterwarnings("ignore:did_multiplegt computes analytical standard errors:UserWarning")
+@pytest.mark.parametrize("name", ["_boot_cluster", "_boot_unit"])
+def test_controls_named_like_former_bootstrap_columns_give_the_same_standard_errors(fit_every_option, name):
+    expected = fit_every_option(boot=True, biters=4, random_state=1)
+    result = fit_every_option({"x1": name}, boot=True, biters=4, random_state=1)
+
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+    np.testing.assert_array_equal(result.placebos.std_errors, expected.placebos.std_errors)
+    assert result.ate.std_error == expected.ate.std_error
+
+
+@pytest.mark.filterwarnings("ignore:When trends_lin=True:UserWarning")
+@pytest.mark.filterwarnings("ignore:predict_het runs no placebo regressions:UserWarning")
+@pytest.mark.parametrize(
+    ("column", "name", "options"),
+    [
+        *(
+            ("x1", name, {})
+            for name in [
+                "_mean_D",
+                "_mean_Y",
+                "_d_diff",
+                "_d_sq_pre",
+                "_diff_from_sq",
+                "_F_g_pre",
+                "_T_max_unit",
+                "_ever_strict_increase",
+                "_ever_strict_decrease",
+                "_first_diff",
+                "_F_g_for_std",
+                "_var_F_g",
+                "_not_yet_switched",
+                "_controls_time",
+                "_first_t",
+                "_F_g_trunc",
+            ]
+        ),
+        ("x1", "_min_treat_time", {"drop_missing_preswitch": True}),
+        *(("id", name, {}) for name in ["_mean_D", "_F_g_pre", "_T_max_unit", "_first_diff", "_first_t"]),
+        ("het", "_outcome_levels", {"trends_lin": True}),
+        ("x1", "_outcome_levels", {"trends_lin": True}),
+    ],
+)
+def test_columns_named_like_former_preprocessing_columns_give_the_same_estimates(
+    fit_every_option, column, name, options
+):
+    expected = fit_every_option(**options)
+    result = fit_every_option({column: name}, **options)
+
+    np.testing.assert_array_equal(result.effects.estimates, expected.effects.estimates)
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+    np.testing.assert_array_equal(result.placebos.estimates, expected.placebos.estimates)
+    np.testing.assert_array_equal(result.placebos.std_errors, expected.placebos.std_errors)
+    np.testing.assert_array_equal(result.ate or (), expected.ate or ())
+    np.testing.assert_array_equal(
+        [het.estimates for het in result.heterogeneity or []], [het.estimates for het in expected.heterogeneity]
+    )
+
+
+@pytest.mark.filterwarnings("ignore:When continuous > 0:UserWarning")
+@pytest.mark.parametrize(
+    ("column", "name"),
+    [
+        ("x1", "d_sq_orig"),
+        ("x1", "d_sq_1"),
+        ("x1", "d_orig"),
+        ("x1", "_baseline_trend_2_1"),
+        ("het", "_baseline_trend_x"),
+        ("het", "d_sq_orig"),
+        ("y", "d_orig"),
+        ("y", "d_sq_1"),
+    ],
+)
+def test_columns_named_like_former_continuous_treatment_columns_give_the_same_estimates(
+    continuous_option_panel, column, name
+):
+    names = {"y": "y", "x1": "x1", "het": "het", column: name}
+    kwargs = {"tname": "time", "idname": "id", "dname": "d", "continuous": 1, "effects": 2, "placebo": 1}
+    expected = did_multiplegt(
+        continuous_option_panel, yname="y", xformla="~ x1 + x2", predict_het=(["het"], [-1]), **kwargs
+    )
+    result = did_multiplegt(
+        continuous_option_panel.rename({column: name}),
+        yname=names["y"],
+        xformla=f"~ {names['x1']} + x2",
+        predict_het=([names["het"]], [-1]),
+        **kwargs,
+    )
+
+    np.testing.assert_array_equal(result.effects.estimates, expected.effects.estimates)
+    np.testing.assert_array_equal(result.effects.std_errors, expected.effects.std_errors)
+    np.testing.assert_array_equal(result.placebos.estimates, expected.placebos.estimates)
+    np.testing.assert_array_equal(tuple(result.ate), tuple(expected.ate))
+    np.testing.assert_array_equal(
+        [het.estimates for het in result.heterogeneity], [het.estimates for het in expected.heterogeneity]
+    )
+
+
+@pytest.mark.filterwarnings("error")
+@pytest.mark.parametrize(
+    ("column", "name", "argument"),
+    [
+        ("x1", ".count_1", "xformla"),
+        ("x1", ".x", "xformla"),
+        ("x1", ".d_diff", "xformla"),
+        ("het", ".prod_het", "predict_het"),
+        ("cl", ".boot_cluster", "cluster"),
+        ("y", ".outcome_levels", "yname"),
+        ("id", ".unit", "idname"),
+        ("id", "F_g", "idname"),
+    ],
+)
+def test_columns_that_could_meet_internal_columns_raise_before_preprocessing(
+    every_option_panel, column, name, argument
+):
+    names = {"y": "y", "x1": "x1", "het": "het", "cl": "cl", "id": "id", column: name}
+    holed = every_option_panel.with_columns(pl.when(pl.col("id") == 3).then(None).otherwise(pl.col("x2")).alias("x2"))
+    message = (
+        f"{argument} names the column '{name}'. "
+        "Since moderndid uses that name for an internal column, rename the column."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        did_multiplegt(
+            holed.rename({column: name}),
+            yname=names["y"],
+            tname="time",
+            idname=names["id"],
+            dname="d",
+            xformla=f"~ `{names['x1']}` + x2",
+            cluster=names["cl"],
+            predict_het=([names["het"]], [-1]),
+            effects=2,
         )
 
 

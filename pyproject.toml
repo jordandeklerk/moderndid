@@ -26,7 +26,7 @@ dynamic = ["version", "description"]
 dependencies = [
   "numpy>=1.22.0",
   "scipy>=1.17",
-  "polars>=1.0.0",
+  "polars>=1.38",
   "pyarrow>=8.0.0",
   "narwhals>=1.13.3",
   "statsmodels>=0.14.4",
@@ -111,6 +111,7 @@ doc = [
     "tqdm>=4.0.0",
     "seaborn>=0.13.0",
     "great-tables>=0.15.0",
+    "maketables>=0.1.9,<0.2",
     "colorama",
     "commonmark",
     "faicons",

@@ -1,469 +1,250 @@
 .. _gpu:
 
-===========================
-GPU Acceleration with CuPy
-===========================
+GPU acceleration
+================
 
-**ModernDiD** can offload numerical operations to NVIDIA GPUs via
-`CuPy <https://cupy.dev/>`_. When the GPU backend is active, matrix
-operations in the two-period doubly robust estimators (weighted least
-squares, logistic IRLS, influence function computation) and in the
-continuous treatment estimator (CCK/NPIV path and multiplier bootstrap)
-run on the GPU using cuBLAS and cuSOLVER, which can substantially
-reduce runtime for large datasets on powerful GPUs.
+For an analysis with large matrix calculations, an NVIDIA GPU can provide
+another way to reduce the time spent fitting models and drawing bootstrap
+replications. ModernDiD uses CuPy for supported GPU calculations while keeping
+the data and returned results in the forms you already use. We will set up
+the CUDA environment, run an estimation with the GPU backend, and examine
+how to decide whether that choice helps your analysis.
 
+The amount of work inside each comparison matters as much as the total number
+of rows. A GPU can be slower than the CPU for small comparisons because
+transferring arrays and starting GPU kernels also takes time. Treat the backend as a
+choice to measure on your specification rather than a guarantee of faster
+estimation.
 
-Requirements
-------------
+Setting up a CUDA environment
+-----------------------------
 
-You need an NVIDIA GPU with CUDA support and a CuPy installation that
-matches your CUDA toolkit version.
+You need an NVIDIA GPU, a compatible driver, and a CuPy installation that can
+use your CUDA environment. The ``gpu`` extra installs the CUDA 12 build of
+CuPy and RAPIDS Memory Manager (RMM). Check the `CuPy installation guide
+<https://docs.cupy.dev/en/stable/install.html>`_ and the `RAPIDS installation
+requirements <https://docs.rapids.ai/install/>`_ before choosing this extra
+for your machine.
 
-Install the GPU extra:
+.. tab-set::
 
-.. code-block:: bash
+   .. tab-item:: pip
 
-    uv add "moderndid[gpu]"        # in a project managed by uv
-    pip install "moderndid[gpu]"   # with pip
+      .. code-block:: bash
 
-This installs a CuPy wheel that matches the CUDA version specified in
-the package metadata.  If you need a different CuPy wheel for your CUDA
-runtime, install it directly and then install **ModernDiD** without the
-extra:
+         python -m pip install "moderndid[gpu]"
 
-.. code-block:: bash
+   .. tab-item:: uv
 
-    uv add cupy-cuda11x moderndid        # example for CUDA 11
-    pip install cupy-cuda11x moderndid   # the same with pip
+      .. code-block:: bash
 
-Verify the installation:
+         uv add "moderndid[gpu]"
 
-.. code-block:: python
+If you need another CUDA version or cannot install RMM in your environment,
+install ModernDiD and the matching CuPy wheel separately following CuPy's
+installation instructions. Keep only one CuPy distribution in that environment
+to avoid conflicts between its wheels. On a machine without a supported
+NVIDIA GPU, run the Python analysis in a remote GPU environment and install
+these dependencies there.
 
-    import moderndid as did
-
-    print(did.HAS_CUPY)  # True if CuPy is available
-
-.. note::
-
-   ``HAS_CUPY`` only checks whether CuPy can be imported. It does not
-   verify that a CUDA GPU is present. GPU availability is validated when
-   you first call ``set_backend("cupy")`` or pass ``backend="cupy"`` to
-   an estimator.
-
-
-Enabling the backend
---------------------
-
-The GPU backend is opt-in. Pass ``backend="cupy"`` to
-:func:`~moderndid.att_gt`, :func:`~moderndid.ddd`, or
-:func:`~moderndid.cont_did` to run a single call on the GPU. The
-backend activates only for that call and reverts automatically when it
-returns:
+Before fitting a model, check that the backend can use the GPU.
 
 .. code-block:: python
 
-    import moderndid as did
+   import moderndid as did
 
-    result = did.att_gt(
-        data=data,
-        yname="y",
-        tname="time",
-        idname="id",
-        gname="group",
-        est_method="dr",
-        backend="cupy",
-    )
+   print(did.HAS_CUPY)
 
-For multiple consecutive GPU calls, you can either set the backend
-globally or use the :func:`~moderndid.use_backend` context manager:
+   with did.use_backend("cupy"):
+       xp = did.get_backend()
+       print(xp.__name__)
+       print(float(xp.arange(3).sum()))
 
-.. code-block:: python
+``HAS_CUPY`` reports whether CuPy was importable when ModernDiD loaded.
+Entering the context checks for an available CUDA device before the sum
+tests a small GPU calculation that your estimator will need to perform.
+If this setup fails, the :ref:`troubleshooting section <gpu-troubleshooting>`
+below explains where to check the installation.
 
-    # Option 1: global setting
-    did.set_backend("cupy")
-    result1 = did.att_gt(...)
-    result2 = did.ddd(...)
-    did.set_backend("numpy")  # revert when done
+Trying an estimation on the GPU
+-------------------------------
 
-    # Option 2: context manager (reverts automatically)
-    from moderndid import use_backend
+:func:`~moderndid.att_gt`, :func:`~moderndid.ddd`, and
+:func:`~moderndid.cont_did` accept ``backend="cupy"`` for one call. That call
+temporarily activates CuPy and restores the previous backend when it returns,
+including when estimation raises an exception.
 
-    with use_backend("cupy"):
-        result1 = did.att_gt(...)
-        result2 = did.ddd(...)
-
-All three approaches are thread-safe and compose correctly with
-``n_jobs > 1``.
-
-If CuPy is installed but no GPU is available, ``backend="cupy"``
-raises a ``RuntimeError`` with an actionable message. If CuPy is not
-installed at all, it raises an ``ImportError``.
-
-To check the active backend at any point:
+We will use the minimum wage data to show a complete GPU call. The same
+comparison group and covariates appear in the :ref:`staggered example
+<example_staggered_did>`, where you can follow the interpretation of the
+estimated effects. Its small sample makes it a convenient installation check
+rather than a performance benchmark.
 
 .. code-block:: python
 
-    xp = did.get_backend()
-    print(xp.__name__)  # "numpy" or "cupy"
+   data = did.load_mpdta()
+   spec = {
+       "data": data,
+       "yname": "lemp",
+       "tname": "year",
+       "idname": "countyreal",
+       "gname": "first.treat",
+       "xformla": "~ lpop",
+       "control_group": "nevertreated",
+       "est_method": "dr",
+       "base_period": "universal",
+       "boot": True,
+       "cband": True,
+       "biters": 999,
+       "random_state": 42,
+   }
 
+   result = did.att_gt(**spec, backend="cupy")
+   print(result)
 
-What gets accelerated
----------------------
+You pass an ordinary DataFrame rather than constructing CuPy arrays yourself.
+ModernDiD prepares the data on the CPU and transfers arrays as the supported
+calculations need them. Since the returned result contains CPU arrays,
+:func:`~moderndid.aggte` and :func:`~moderndid.plots.plot_gt` use their usual calls.
+GPU and CPU calculations may differ slightly because of numerical rounding.
+Their random number generators can also produce different bootstrap draws
+even when you provide the same seed.
 
-The GPU backend accelerates the low-level numerical operations inside
-the two-period estimators that :func:`~moderndid.att_gt` and
-:func:`~moderndid.ddd` call for each group-time cell, for both panel
-and repeated cross-section data with any ``est_method``. It also
-accelerates the continuous treatment estimator
-:func:`~moderndid.cont_did`.
+Choosing which calculations use CuPy
+------------------------------------
 
-- **Weighted least squares** (``reg``, ``dr``) — Design matrix
-  multiplication, normal equation solve via cuSOLVER, and fitted value
-  computation via cuBLAS.
-
-- **Logistic IRLS** (``ipw``, ``dr``) — Iteratively reweighted least
-  squares for the propensity score model. Each iteration runs sigmoid
-  evaluation, Gram matrix accumulation, and a linear solve on the GPU.
-
-- **Influence function computation** — All matrix algebra in the
-  influence function (inverse Hessians, score products, weighted sums)
-  runs on GPU arrays. Results transfer back to CPU only at function
-  boundaries.
-
-- **Multiplier bootstrap** — Random Mammen weight generation and the
-  batched matrix multiply for bootstrap replication run on the GPU.
-  Draws are batched to stay within a configurable memory budget (1 GB
-  by default) so that large bootstrap runs do not exhaust GPU memory.
-
-- **Cluster aggregation** — Scatter-add operations to aggregate
-  influence functions at the cluster level use GPU kernels.
-
-- **Continuous treatment CCK/NPIV estimation**
-  (:func:`~moderndid.cont_did` with ``dose_est_method="cck"``) — Spline
-  basis construction, regression solves, and derivative computation run
-  on the GPU via cuBLAS.
-
-- **Continuous treatment bootstrap** — The multiplier bootstrap for both
-  the parametric and CCK paths of :func:`~moderndid.cont_did` uses
-  GPU-accelerated batched matrix multiplication when ``backend="cupy"``
-  is active. The parametric path uses CuPy B-spline basis construction
-  on the GPU but converts the results back to NumPy for the per-group
-  least squares solves, since the per-group matrices are too small to
-  benefit from keeping the full solve on the GPU.
-
-These operations are dominated by dense linear algebra (matrix
-multiplication, triangular solves) that maps well to GPU hardware.
-The group-time loop, cell scheduling, and aggregation logic remain
-on the CPU.
-
-.. note::
-
-   :func:`~moderndid.cont_did` supports GPU acceleration but scaling benchmarks have
-   not been collected yet.
-
-The intertemporal estimator (:func:`~moderndid.did_multiplegt`) and
-the sensitivity analysis module (:func:`~moderndid.honest_did`) do
-not use the GPU backend. These estimators operate on small matrices
-(per-group comparisons and LP constraints respectively) where GPU
-kernel launch and data transfer overhead would exceed any computation
-benefit.
-
-
-When it helps
--------------
-
-GPU acceleration provides the largest speedups when the per-cell
-sample sizes are large enough to saturate the GPU. This typically
-means thousands of units per group-time cell, multiple covariates
-producing larger design matrices, and doubly robust estimation
-(``est_method="dr"``) which runs both outcome regression and propensity
-score estimation per cell.
-
-For small datasets (a few hundred units per cell), the overhead of
-transferring data to and from the GPU can outweigh the computation
-savings. In those cases, the CPU backend is faster.
-
-The benefit also depends on estimation method. Doubly robust estimation
-performs roughly twice as much linear algebra per cell as pure regression
-or pure IPW, so the GPU speedup is more pronounced with ``est_method="dr"``.
-Bootstrap inference multiplies the work by ``biters``, making the GPU
-advantage larger when ``boot=True`` with many iterations.
-
-
-How data moves between CPU and GPU
------------------------------------
-
-**ModernDiD** handles data transfer automatically. You do not need to create
-CuPy arrays yourself.
-
-1. Input data (Polars or pandas DataFrames) is preprocessed on the CPU
-   as usual.
-2. During the tensor construction step, arrays are transferred to the
-   GPU in bulk using :func:`~moderndid.cupy.to_device`.
-3. All cell-level computation runs on GPU arrays.
-4. Results (ATT estimates, influence functions) are transferred back to
-   the CPU using :func:`~moderndid.cupy.to_numpy` before being stored
-   in the result object.
-
-Because the bulk transfer happens once and results transfer once, the
-CPU-GPU communication overhead is small relative to the computation.
-
-
-Memory management
------------------
-
-The ``[gpu]`` extra installs `RAPIDS Memory Manager (RMM)
-<https://docs.rapids.ai/api/rmm/stable/>`_ alongside **ModernDiD**. When ``backend="cupy"`` is activated, **ModernDiD** automatically
-configures CuPy to use RMM's pool allocator instead of the default
-per-allocation ``cudaMalloc`` calls. This eliminates the ~1 ms
-overhead per GPU allocation that otherwise dominates tight loops such
-as the multiplier bootstrap inner loop.
-
-The pool starts empty (``initial_pool_size=0``) and grows on demand.
-Allocations are reused across calls within the same process, so
-repeated estimator calls do not pay repeated allocation costs. No user
-configuration is required. The pool is initialized the first time
-``set_backend("cupy")`` or ``backend="cupy"`` is used and remains
-active for the rest of the process.
-
-If RMM is not installed (for example, when CuPy is installed manually
-without the ``[gpu]`` extra), **ModernDiD** falls back to CuPy's built-in
-memory pool silently.
-
-**Advanced pool configuration.** If you need to control pool sizing
-(for example, to share GPU memory with other frameworks), you can
-initialize RMM yourself before calling any **ModernDiD** estimator.
-**ModernDiD** will detect that RMM is already initialized and skip its own
-setup:
+If several calls should share the GPU backend, use
+:func:`~moderndid.use_backend` around that part of your analysis. The context
+restores the previous backend on exit so you can keep CPU and GPU work in the
+same session without resetting the setting after each call.
 
 .. code-block:: python
 
-    import rmm
-    from rmm.allocators.cupy import rmm_cupy_allocator
-    import cupy as cp
+   with did.use_backend("cupy"):
+       result = did.att_gt(**spec)
 
-    pool = rmm.mr.PoolMemoryResource(
-        rmm.mr.CudaMemoryResource(),
-        initial_pool_size="2GiB",
-        maximum_pool_size="8GiB",
-    )
-    rmm.mr.set_current_device_resource(pool)
-    cp.cuda.set_allocator(rmm_cupy_allocator)
+   print(did.get_backend().__name__)
 
-    import moderndid as did
+You can also use :func:`~moderndid.set_backend` to change the backend in the
+current execution context until you change it again.
+``did.set_backend("numpy")`` restores CPU computation. Worker threads created
+by ModernDiD's ``n_jobs`` setting inherit the active backend, although those
+threads still share one GPU.
 
-    result = did.att_gt(..., backend="cupy")
+For staggered DiD and triple differences, supported outcome regressions,
+propensity score fits, influence function calculations, and multiplier
+bootstrap operations use CuPy. The group-time comparisons and their
+scheduling still run from Python on the CPU. The two-period
+:func:`~moderndid.drdid` and :func:`~moderndid.npiv` functions also use the
+active backend for supported numerical operations. Select it with a context
+for those functions because they do not accept a ``backend`` argument.
 
-**Visible memory usage.** RMM's pool (or CuPy's built-in pool, when
-RMM is not installed) caches allocated GPU memory for reuse rather
-than returning it to the OS after each operation. This means
-``nvidia-smi`` may show high memory usage even when arrays have been
-freed. This is expected behavior and does not indicate a memory leak.
+The continuous treatment estimator uses CuPy in spline calculations and
+bootstrap operations. Its ``dose_est_method="cck"`` path also uses GPU
+regression and derivative calculations through the NPIV implementation.
+The parametric path mixes CPU and GPU calculations because it transfers
+spline bases back to NumPy for its least squares fits.
 
-**Profiling GPU memory.** RMM provides built-in memory statistics and
-profiling that can help diagnose allocation issues:
+The intertemporal estimator :func:`~moderndid.did_multiplegt`, dynamic
+balancing :func:`~moderndid.diddynamic.dyn_balancing`, and sensitivity analysis
+:func:`~moderndid.honest_did` do not provide a CuPy estimation path.
+Selecting a GPU backend for one of the supported estimators does not move
+every other part of your analysis to the GPU.
 
-.. code-block:: python
+:func:`~moderndid.etwfe` selects the backend for fixed effects absorption
+through its own ``backend`` argument. Its ``"cupy"`` and ``"jax"`` options can
+use GPU calculations when the required libraries and hardware are available.
+Because this setting is independent of :func:`~moderndid.use_backend`, check
+the ETWFE API when choosing it for that estimator.
 
-    import rmm
-    import rmm.statistics
+Measuring the time your analysis takes
+--------------------------------------
 
-    rmm.statistics.enable_statistics()
-
-    result = did.att_gt(..., backend="cupy")
-
-    print(rmm.statistics.get_statistics())
-
-
-If a regression or IRLS solve exhausts GPU memory, **ModernDiD** raises a
-``MemoryError`` with a message suggesting you reduce the problem size
-or switch back to ``backend='numpy'``. The bootstrap implementation
-batches draws to stay within a 1 GB GPU allocation per batch, but very
-large influence function matrices can still exceed available memory.
-
-
-GPU device selection
---------------------
-
-If your machine has multiple GPUs, CuPy uses device 0 by default.
-All computation runs on a single GPU; **ModernDiD** does not split work
-across devices. To select a different GPU, wrap the call in a CuPy
-device context:
+To compare backends, keep the data, estimation method, clustering, bootstrap
+iterations, and other statistical choices fixed. We will time the complete
+estimator call so that preparation and data transfers count toward the result.
+Since CuPy runs GPU operations asynchronously, synchronize the device before
+and after the timed call as described in its `performance guide
+<https://docs.cupy.dev/en/stable/user_guide/performance.html>`_.
 
 .. code-block:: python
 
-    import cupy as cp
-    import moderndid as did
+   import time
 
-    with cp.cuda.Device(1):
-        result = did.att_gt(
-            data=data, yname="y", tname="time",
-            idname="id", gname="group", backend="cupy",
-        )
+   import cupy as cp
 
+   did.att_gt(**spec, backend="cupy")
+   cp.cuda.runtime.deviceSynchronize()
 
-Benchmarking correctly
-----------------------
+   start = time.perf_counter()
+   result = did.att_gt(**spec, backend="cupy")
+   cp.cuda.runtime.deviceSynchronize()
+   elapsed = time.perf_counter() - start
 
-GPU execution is asynchronous. Standard Python timing
-(``time.perf_counter``, ``%timeit``) measures only the time to
-*launch* GPU kernels, not the time for them to complete. For accurate
-benchmarks, synchronize the GPU before taking timestamps:
+   print(f"GPU estimation took {elapsed:.3f} seconds")
 
-.. code-block:: python
+The untimed call allows CUDA initialization and kernel compilation to finish
+before the measurement. Repeat the measurement on your data and compare it
+with the same specification using ``backend="numpy"``. When you also vary
+``n_jobs``, keep track of that setting separately so you can tell which
+change helped. You should also check that point estimates agree within a
+suitable numerical tolerance rather than comparing running time alone.
 
-    import cupy as cp
-    import time
-
-    cp.cuda.Stream.null.synchronize()
-    start = time.perf_counter()
-
-    result = did.att_gt(
-        data=data, yname="y", tname="time",
-        idname="id", gname="group", backend="cupy",
-    )
-
-    cp.cuda.Stream.null.synchronize()
-    elapsed = time.perf_counter() - start
-
-The first call in a process incurs one-time overhead from CUDA context
-initialization and kernel compilation. CuPy caches compiled kernels in
-``~/.cupy/kernel_cache``, so subsequent calls in the same or later
-sessions are faster.
-
-
-Local GPU setup
----------------
-
-Cloud GPU environments (Colab, SageMaker, Databricks) generally ship
-with CUDA drivers and runtime libraries pre-installed.  On a local
-machine you may need a few extra steps after installing the ``[gpu]``
-extra.
-
-**Verify that CuPy can compile and execute GPU kernels**
-
-.. code-block:: python
-
-    import cupy as cp
-
-    print(f"CuPy version: {cp.__version__}")
-    print(f"GPU: {cp.cuda.runtime.getDeviceProperties(0)['name'].decode()}")
-    print(f"Devices: {cp.cuda.runtime.getDeviceCount()}")
-
-    # Triggers kernel compilation; fails if NVRTC or headers are missing
-    a = cp.array([1, 2, 3])
-    print(f"Test compute: {cp.sum(a)}")  # Should print 6
-
-If this snippet fails, the most common cause is missing CUDA runtime
-libraries.  See the platform-specific notes below.
-
-**Windows**
-
-The CuPy wheel does not bundle all required CUDA runtime libraries on
-Windows.  CuPy relies on ``cuda-pathfinder`` to locate DLLs at runtime.
-Missing libraries surface as errors such as
-``No such file: nvrtc*.dll``,
-``cannot open source file "cuda_fp16.h"``, or
-``No such file: cublasLt*.dll``.  Install the full set via pip.
-
-.. code-block:: bash
-
-    pip install nvidia-cuda-nvrtc nvidia-cuda-cccl nvidia-cuda-runtime
-    pip install nvidia-cublas nvidia-cusparse nvidia-cusolver nvidia-cufft nvidia-curand nvidia-nvjitlink
-
-**Linux**
-
-These libraries are typically included with a full CUDA Toolkit
-installation (``apt install nvidia-cuda-toolkit`` or the NVIDIA runfile
-installer).  If you installed CUDA through the system package manager,
-no additional pip packages are needed.
-
-**macOS**
-
-macOS does not have local NVIDIA GPU support.  Apple dropped CUDA after
-macOS 10.13 (High Sierra), and Apple Silicon uses Metal instead of CUDA.
-``backend="cupy"`` still works from macOS when connected to a remote GPU
-such as a cloud notebook or an SSH session to a GPU server.  Install the
-``[gpu]`` extra on the
-remote environment where CuPy has access to an NVIDIA GPU.
-
-**Corrupted installs**
-
-If ``did.HAS_CUPY`` is ``False`` even though CuPy appears installed, pip
-may have recorded the package while the actual library files are missing.
-Force reinstall to fix this.
-
-.. code-block:: bash
-
-    pip install --force-reinstall cupy-cuda12x  # match your CUDA version
-
-
-Verifying GPU usage
+Managing GPU memory
 -------------------
 
-After running an estimator with ``backend="cupy"`` you can confirm the
-GPU was used.
+GPU memory limits the arrays that can participate in a calculation.
+ModernDiD attempts to use RMM's pool allocator when RMM is installed;
+otherwise CuPy uses its own memory pool. Because these pools retain allocations
+for reuse, memory reported by ``nvidia-smi`` may remain allocated after a
+fit ends. CuPy's `memory management guide
+<https://docs.cupy.dev/en/stable/user_guide/memory.html>`_ explains this
+behavior and the controls for its default pool.
 
-**From Python**
+.. admonition:: Leave room for temporary arrays
+   :class: tip
+
+   The data's size on disk is not the amount of GPU memory a fit needs.
+   Check usage with your full specification before scaling up because design
+   matrices, influence functions, and temporary arrays also occupy memory.
+
+The GPU multiplier bootstrap batches its draws to reduce temporary memory
+use. That batching does not impose a limit on the entire estimator, since
+the influence function matrix and other arrays still need memory. If a fit
+exhausts the GPU, reduce the concurrent work or use ``backend="numpy"``.
+Resetting the backend alone does not empty memory already cached by a pool.
+
+CuPy normally selects device 0; a device context lets you choose another
+GPU when your machine has several available. This selects one device for
+the call rather than splitting it across those devices.
 
 .. code-block:: python
 
-    import cupy as cp
+   with cp.cuda.Device(1):
+       result = did.att_gt(**spec, backend="cupy")
 
-    cp.get_default_memory_pool().free_all_blocks()
-    mem_before = cp.cuda.runtime.memGetInfo()[0]
-
-    result = did.att_gt(
-        data=data, yname="y", tname="time",
-        idname="id", gname="group", backend="cupy",
-    )
-
-    mem_after = cp.cuda.runtime.memGetInfo()[0]
-    print(f"GPU memory consumed: {(mem_before - mem_after) / 1024**2:.1f} MB")
-
-A value greater than 0 MB confirms GPU execution.
-
-**From a separate terminal**
-
-.. code-block:: bash
-
-    nvidia-smi --query-gpu=utilization.gpu,utilization.memory,memory.used --format=csv -l 1
-
-This prints GPU utilization every second so you can watch it spike
-during computation.
-
+This last snippet requires a machine with a second visible CUDA device.
+Start with one worker when measuring a single GPU, since extra worker
+threads may increase memory use without making its calculations faster.
 
 .. _gpu-troubleshooting:
 
-Troubleshooting
----------------
+Checking installation problems
+------------------------------
 
-**"CuPy is not installed"** when calling ``set_backend("cupy")``
+If ``did.HAS_CUPY`` is false, check that you installed CuPy in the Python
+environment running your analysis. Restart the Python process after installing
+it because ModernDiD checks import availability when its backend module loads.
+An ``ImportError`` from selecting CuPy means that this import check failed.
 
-The most common cause is installing the generic ``cupy`` package, which
-tries to compile from source.  Install a prebuilt wheel that matches
-your CUDA driver version instead, such as ``uv add cupy-cuda12x`` or ``pip install cupy-cuda12x``.
-Run ``nvidia-smi`` to check which CUDA version your driver supports.
-After installing, restart your Python process (or notebook runtime)
-before importing **ModernDiD**.  CuPy availability is checked once at
-import time.
+A ``RuntimeError`` reporting that no CUDA GPU is available means CuPy imported
+but could not use a device. Run ``nvidia-smi`` in that environment and check
+that your notebook or remote session has access to a GPU. Driver errors,
+missing CUDA headers, and kernel compilation failures need a compatible CUDA
+installation even when the CuPy import succeeds.
 
-**"cudaErrorInsufficientDriver"**
-
-The installed CuPy wheel expects a newer CUDA version than your driver
-provides.  Check ``nvidia-smi`` and switch to the matching wheel.
-
-**"No CUDA GPU is available"**
-
-Make sure ``nvidia-smi`` shows a device.  In cloud notebooks, verify
-that a GPU runtime is selected.
-
-
-Next steps
-----------
-
-- :ref:`Quickstart <quickstart>` covers estimation options, aggregation
-  types, and visualization for local workflows.
-- The :ref:`Examples <user-guide>` section walks through each estimator
-  end-to-end with real and simulated data.
+For details about the installed runtime, run ``cupy.show_config()`` and compare
+its report with the `CuPy installation troubleshooting instructions
+<https://docs.cupy.dev/en/stable/install.html#faq>`_. Once the small calculation
+above works, rerun your specification and use the timing comparison to decide
+whether to keep the GPU backend for that analysis.

@@ -383,7 +383,7 @@ Version constraints
 -------------------
 
 Core dependencies are pinned with minimum versions in ``pyproject.toml``
-(e.g., ``numpy>=1.22.0``, ``polars>=1.0.0``). These minimums represent the
+(such as ``numpy>=1.22.0`` and ``polars>=1.38``). These minimums represent the
 oldest versions we test against and support. When bumping a minimum version,
 ensure the full CI matrix still passes since all Python versions in the matrix
 use the same dependency floor.

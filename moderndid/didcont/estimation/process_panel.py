@@ -509,14 +509,15 @@ def setup_pte(
     g_list = recoded_groups[np.isin(recoded_groups, t_list)]
     g_list = g_list[g_list >= (min_t_for_g + anticipation)]
 
-    groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
-    data = data.filter(~pl.col("G").is_in(groups_to_drop))
+    # Since is_in compares only values of one type, both sides are compared as floats.
+    groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1, dtype=float)
+    data = data.filter(~pl.col("G").cast(pl.Float64).is_in(groups_to_drop))
 
     params_dict = {
         "yname": yname,
         "gname": ".group_label",
         "tname": ".period_label",
-        "idname": idname,
+        "idname": "id",
         "data": data,
         "g_list": g_list,
         "t_list": t_list,
@@ -766,31 +767,29 @@ def _build_pte_params(
         Settings for estimating the group-time effects. Its ``gname`` and
         ``tname`` are the internal columns ``.group_label`` and
         ``.period_label``. These hold each unit's group and each period as
-        the data codes them.
+        the data codes them. Its ``idname`` is the internal column ``id``.
     """
     config = cont_did_data.config
     data = cont_did_data.data.clone()
-
-    data = data.with_columns(
-        [
-            pl.col(config.gname).alias("G"),
-            pl.col(config.idname).alias("id"),
-            pl.col(config.tname).alias("period"),
-            pl.col(config.yname).alias("Y"),
-        ]
-    )
-    if config.dname:
-        data = data.with_columns(pl.col(config.dname).alias("D"))
-    else:
-        data = data.with_columns(pl.lit(0).alias("D"))
 
     if config.weightsname:
         ids = cont_did_data.time_invariant_data[config.idname].to_list()
         weights = cont_did_data.weights.tolist()
         weight_map = dict(zip(ids, weights, strict=False))
-        data = data.with_columns(pl.col(config.idname).replace_strict(weight_map, default=1.0).alias(".w"))
+        unit_weights = pl.col(config.idname).replace_strict(weight_map, default=1.0)
     else:
-        data = data.with_columns(pl.lit(1.0).alias(".w"))
+        unit_weights = pl.lit(1.0)
+
+    # Since every working column comes from the input columns in one step, an input column that already has one of
+    # these names can't feed the wrong one.
+    data = data.with_columns(
+        pl.col(config.gname).alias("G"),
+        pl.col(config.idname).alias("id"),
+        pl.col(config.tname).alias("period"),
+        pl.col(config.yname).alias("Y"),
+        (pl.col(config.dname) if config.dname else pl.lit(0)).alias("D"),
+        unit_weights.alias(".w"),
+    )
 
     time_periods = config.time_periods
     groups = config.treated_groups
@@ -809,8 +808,9 @@ def _build_pte_params(
     g_list = groups[np.isin(groups, t_list)]
     g_list = g_list[g_list >= (min_t_for_g + anticipation)]
 
-    groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1)
-    data = data.filter(~pl.col("G").is_in(groups_to_drop))
+    # Since is_in compares only values of one type, both sides are compared as floats.
+    groups_to_drop = np.arange(1, required_pre_periods + anticipation + 1, dtype=float)
+    data = data.filter(~pl.col("G").cast(pl.Float64).is_in(groups_to_drop))
 
     # Cells index periods by their position in "period" and "G". Since an input column may itself be named
     # "G" or "period", results and cohort shares read the data's own period labels from separate columns.
@@ -844,7 +844,7 @@ def _build_pte_params(
         "yname": config.yname,
         "gname": ".group_label",
         "tname": ".period_label",
-        "idname": config.idname,
+        "idname": "id",
         "data": data,
         "g_list": g_list,
         "t_list": t_list,

@@ -227,9 +227,10 @@ transformation, or a different data layout.
 
 The pipeline has four extension points that you may need to customize.
 
-1. **Validators** check the raw data before anything else runs, confirming
-   that columns exist, treatment is time-invariant, weights are non-negative,
-   and so on.
+1. **Validators** confirm on the data as given that the named columns exist
+   and that the arguments are valid. Their structural checks, such as a
+   treatment date that stays fixed within each unit, run later on the rows
+   that the missing-data step keeps.
 2. **Transformers** clean and reshape the data in sequence by selecting
    columns, dropping nulls, normalizing weights, encoding treatment, and
    balancing panels.
@@ -253,8 +254,8 @@ Every estimator calls the pipeline through the same builder.
        PreprocessDataBuilder()
        .with_data(data)          # Convert any Arrow-compatible DataFrame to Polars
        .with_config(config)      # Select validators + transformers for this config type
-       .validate()               # Run all validators; raise on errors, warn on warnings
-       .transform()              # Run all transformers in sequence, then update config
+       .validate()               # Run the column checks; raise on errors, warn on warnings
+       .transform()              # Run transformers + structural checks, then update config
        .build()                  # Construct the typed data container
    )
 
@@ -268,9 +269,15 @@ guide.
 Validators
 ^^^^^^^^^^^
 
-Validators run before the transformers and check that the raw data is
-suitable for estimation. Each validator subclasses ``BaseValidator``, an
-abstract base class with a single method.
+Validators run in two phases to check that the data is suitable for
+estimation. The column phase runs in ``validate()`` on the data as given
+and covers the columns that the arguments name, their types, the reserved
+column names, and the argument values. The structure phase runs inside
+``transform()`` right after the missing-data step. Since it sees only the
+rows that step keeps, a single missing value never decides what it finds.
+
+Each validator subclasses ``BaseValidator``, an abstract base class with a
+single method.
 
 .. code-block:: python
 
@@ -312,51 +319,52 @@ whether the outcome variable has variation.
 
 The library already provides several validators you can reuse. For example,
 ``ColumnValidator`` confirms that required columns exist and are numeric.
-``WeightValidator`` rejects negative weights. ``TreatmentValidator`` ensures
-treatment is time-invariant per unit. ``PanelStructureValidator`` catches
-duplicate rows and panel imbalance. ``ClusterValidator`` verifies that
-clustering variables do not vary over time. See
+``TreatmentValidator`` ensures treatment is time-invariant per unit.
+``PanelStructureValidator`` catches a unit observed twice in one period and
+a ``panel`` setting that doesn't fit the data. ``ClusterValidator`` verifies
+that clustering variables do not vary over time. The weights have no
+validator, since ``WeightNormalizer`` checks them among the transformers. See
 `validators.py <https://github.com/jordandeklerk/moderndid/blob/main/moderndid/core/preprocess/validators.py>`_
 for the full set.
 
 To make your validators run, register them in
-``CompositeValidator._get_default_validators()`` in the same file. The
-method dispatches on a string key, so add a new branch for your config
-type early in the chain and return a list of validator instances.
+``CompositeValidator._get_default_validators()`` in the same file. Since the
+method dispatches on a string key, add a branch for your config type that
+lists its column checks and its structural checks. The method then returns
+the list for the phase it is asked for.
 
 .. code-block:: python
 
    # In CompositeValidator._get_default_validators()
 
    @staticmethod
-   def _get_default_validators(config_type="did"):
+   def _get_default_validators(config_type="did", phase="columns"):
        if config_type == "two_period":
-           return [
-               PrePostColumnValidator(),
-               PrePostArgumentValidator(),
-               # ...
-           ]
+           columns = [PrePostColumnValidator(), PrePostArgumentValidator()]
+           structure = [PrePostDataValidator(), PrePostPanelValidator()]
+       elif config_type == "my_estimator":              # Add your branch
+           columns = [ColumnValidator()]
+           structure = [PanelStructureValidator(), MyCustomValidator()]
+       # ... remaining branches ...
+       else:
+           # Default validators for "did", "cont_did", etc.
+           columns = [ArgumentValidator(), ColumnValidator()]
+           structure = [TreatmentValidator(), PanelStructureValidator(), ClusterValidator()]
+           if config_type == "cont_did":
+               structure.append(DoseValidator())
 
-       if config_type == "my_estimator":                # Add your branch
-           return [
-               ColumnValidator(),
-               WeightValidator(),
-               PanelStructureValidator(),
-               MyCustomValidator(),
-           ]
+       return structure if phase == "structure" else columns
 
-       # Default validators for "did", "cont_did", etc.
-       common_validators = [
-           ArgumentValidator(),
-           ColumnValidator(),
-           WeightValidator(),
-           TreatmentValidator(),
-           PanelStructureValidator(),
-           ClusterValidator(),
-       ]
-       if config_type == "cont_did":
-           common_validators.append(DoseValidator())
-       return common_validators
+The builder runs the column phase in ``validate()`` and raises at once on
+an error. ``transform()`` hands the structure phase to the transformer
+pipeline to run right after ``MissingDataHandler``. A pipeline without that
+step therefore runs no structural checks.
+
+Before any of this, the estimator's public function calls ``check_columns``
+from the same file. It takes each argument that names a column, as in
+``check_columns(data, yname=yname, tname=tname, xformla=xformla)``, and
+raises one error that lists every missing column with the closest names.
+Code that reads the data then never meets a misspelled column.
 
 
 Transformers
@@ -487,10 +495,12 @@ this.
 
    # In DataTransformerPipeline.transform()
 
-   def transform(self, data, config):
+   def transform(self, data, config, checks=None):
        df = to_polars(data)
        for transformer in self.transformers:
            df = transformer.transform(df, config)
+           if checks is not None and isinstance(transformer, MissingDataHandler):
+               checks.validate(df, config).raise_if_invalid()  # The structure phase
 
        if isinstance(config, DDDConfig):
            DDDConfigUpdater.update(df, config)
@@ -579,15 +589,16 @@ so insert yours above any parent class it inherits from.
        self._config = config
 
        if isinstance(config, TwoPeriodDIDConfig):
-           self._validator = CompositeValidator(config_type="two_period")
-           self._transformer = DataTransformerPipeline.get_two_period_pipeline()
+           config_type, pipeline = "two_period", DataTransformerPipeline.get_two_period_pipeline()
        elif isinstance(config, MyEstimatorConfig):    # Add your branch
-           self._validator = CompositeValidator(config_type="my_estimator")
-           self._transformer = DataTransformerPipeline.get_my_estimator_pipeline()
-       elif isinstance(config, DIDConfig):
-           self._validator = CompositeValidator(config_type="did")
-           self._transformer = DataTransformerPipeline.get_did_pipeline()
+           config_type, pipeline = "my_estimator", DataTransformerPipeline.get_my_estimator_pipeline()
        # ... remaining branches ...
+       else:
+           config_type, pipeline = "did", DataTransformerPipeline.get_did_pipeline()
+
+       self._validator = CompositeValidator(config_type=config_type)
+       self._structure_validator = CompositeValidator(config_type=config_type, phase="structure")
+       self._transformer = pipeline
 
        return self
 
@@ -786,7 +797,8 @@ runs the estimation, and returns an immutable result object.
 The function follows four phases, shown in the code example below.
 
 1. **Delegation.** Check for a CuPy backend and dispatch accordingly.
-2. **Setup.** Validate inputs, construct the config dataclass, and run the
+2. **Setup.** Validate inputs, check the named columns with
+   ``check_columns``, construct the config dataclass, and run the
    preprocessing builder.
 3. **Estimation.** Call the core compute function, derive standard errors
    from the influence function matrix, and optionally run the bootstrap.
@@ -809,7 +821,9 @@ section 5 (config fields), section 7 (core computation), and section 11
    # myestimator/estimator.py
    import numpy as np
    import scipy.stats
+   from moderndid.core.dataframe import to_polars
    from moderndid.core.preprocess import PreprocessDataBuilder
+   from moderndid.core.preprocess.validators import check_columns
    from moderndid.cupy.backend import to_numpy
    from .config import MyEstimatorConfig
    from .container import MyEstimatorResult
@@ -846,6 +860,11 @@ section 5 (config fields), section 7 (core computation), and section 11
            raise ValueError("gname is required.")
        if not 0 < alp < 1:
            raise ValueError(f"alp={alp} must be between 0 and 1.")
+       data = to_polars(data)
+       check_columns(
+           data, yname=yname, tname=tname, idname=idname, gname=gname,
+           xformla=xformla, clustervars=clustervars,
+       )
 
        # 3. Build configuration
        config = MyEstimatorConfig(

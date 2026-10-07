@@ -226,9 +226,18 @@ plot_rcparams = {
 
 
 def _landing_template(app, pagename, templatename, context, doctree):
-    """Render the documentation home with the landing page template."""
+    """Choose the landing template or forward an old documentation address."""
     if pagename == app.config.root_doc:
         return "landing.html"
+    redirects = {
+        "getting_started/index": "user_guide/index",
+        "getting_started/installation": "user_guide/installation",
+        "getting_started/causal_inference": "user_guide/causal_inference",
+        "getting_started/overview": "user_guide/index",
+    }
+    if pagename in redirects:
+        context["redirect_target"] = redirects[pagename]
+        return "redirect.html"
     return None
 
 

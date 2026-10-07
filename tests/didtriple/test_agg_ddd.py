@@ -1,9 +1,10 @@
 """Tests for DDD aggregate treatment effects."""
 
 import numpy as np
+import polars as pl
 import pytest
 
-from moderndid import agg_ddd, ddd
+from moderndid import agg_ddd, ddd, mboot_ddd
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
@@ -249,3 +250,64 @@ def test_agg_ddd_weighted_shares_match_replicated_units(mp_weighted_df, mp_weigh
     replicated = agg_ddd(ddd(data=mp_weighted_replicated_df, **spec), type=agg_type, boot=False, cband=False)
 
     np.testing.assert_allclose(weighted.overall_att, replicated.overall_att, rtol=1e-10, atol=1e-10)
+
+
+@pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
+def test_agg_ddd_analytic_standard_errors_sum_within_clusters(mp_three_cohort_df, agg_type):
+    result = ddd(
+        data=mp_three_cohort_df,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        cluster="cluster",
+    )
+    agg = agg_ddd(result, type=agg_type, boot=False, cband=False)
+    clusters = mp_three_cohort_df.filter(pl.col("time") == 1).sort("id")["cluster"].to_numpy()
+    _, cluster_idx = np.unique(clusters, return_inverse=True)
+    columns = agg.inf_func_overall[:, None] if agg.inf_func is None else agg.inf_func
+    sums = np.stack([np.bincount(cluster_idx, weights=column) for column in columns.T], axis=1)
+    expected = np.sqrt(np.sum(sums**2, axis=0)) / result.n
+    expected[expected < 1e-7] = np.nan
+    overall_sums = np.bincount(cluster_idx, weights=agg.inf_func_overall)
+
+    np.testing.assert_allclose(agg.overall_se, np.sqrt(np.sum(overall_sums**2)) / result.n, rtol=1e-12)
+    if agg.se_egt is not None:
+        np.testing.assert_allclose(agg.se_egt, expected, rtol=1e-12)
+    assert agg.args["cluster"] == "cluster"
+
+
+def test_agg_ddd_bootstrap_draws_one_multiplier_per_cluster(mp_three_cohort_df):
+    result = ddd(
+        data=mp_three_cohort_df,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        cluster="cluster",
+    )
+    agg = agg_ddd(result, type="eventstudy", biters=199, cband=False, random_state=3)
+    clusters = mp_three_cohort_df.filter(pl.col("time") == 1).sort("id")["cluster"].to_numpy()
+    expected = mboot_ddd(agg.inf_func, 199, 0.05, cluster=clusters, random_state=3)
+
+    np.testing.assert_array_equal(agg.se_egt, expected.se)
+
+
+@pytest.mark.parametrize("boot", [False, True])
+def test_agg_ddd_calendar_overall_se_averages_periods_with_cells(mp_ddd_result, boot):
+    empty = (mp_ddd_result.groups == 3) & (mp_ddd_result.times == 3)
+    gapped = mp_ddd_result._replace(att=np.where(empty, np.nan, mp_ddd_result.att))
+    agg = agg_ddd(gapped, type="calendar", dropna=True, boot=boot, cband=False, biters=199, random_state=3)
+    valid = np.isfinite(agg.att_egt)
+    if boot:
+        draws = mboot_ddd(agg.inf_func, 199, 0.05, random_state=3).bres[:, valid].mean(axis=1)
+        expected = (np.percentile(draws, 75) - np.percentile(draws, 25)) / 1.3489795 / np.sqrt(mp_ddd_result.n)
+    else:
+        expected = np.sqrt(np.mean(agg.inf_func[:, valid].mean(axis=1) ** 2) / mp_ddd_result.n)
+
+    np.testing.assert_array_equal(agg.egt, [3, 4, 5])
+    np.testing.assert_array_equal(valid, [False, True, True])
+    np.testing.assert_allclose(agg.overall_att, np.mean(agg.att_egt[valid]), rtol=1e-12)
+    np.testing.assert_allclose(agg.overall_se, expected, rtol=1e-12)

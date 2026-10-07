@@ -11,7 +11,7 @@ from scipy import stats
 from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
 
-from ..bootstrap.mboot_ddd import mboot_ddd
+from ..bootstrap.mboot_ddd import mboot_ddd, sum_within_clusters
 from ..container import ATTgtResult, DDDMultiPeriodResult
 from ..utils import is_balanced_panel
 from .ddd_panel import ddd_panel
@@ -38,6 +38,7 @@ def ddd_mp(
     random_state=None,
     n_jobs=1,
     weights_col=None,
+    trim_level=0.995,
 ):
     r"""Compute the multi-period doubly robust DDD estimator for the ATT with panel data.
 
@@ -116,14 +117,17 @@ def ddd_mp(
     cband : bool, default False
         Whether to compute uniform confidence bands (only used if boot=True).
     cluster : str or None, default None
-        Name of the column containing cluster identifiers for clustered
-        standard errors. If provided, the bootstrap resamples at the cluster
-        level (only used if boot=True).
+        Name of the column that assigns each unit to a cluster. A unit should
+        keep the same cluster in every period. The standard errors then sum
+        the influence function within clusters. With boot=True, the bootstrap
+        draws one multiplier per cluster.
     alpha : float, default 0.05
         Significance level for confidence intervals.
     allow_unbalanced_panel : bool, default False
         Whether to keep units observed in only some periods. If False, each
-        cell keeps only the units observed in both of its periods.
+        cell keeps only the units observed in both of its periods. Since
+        :func:`~moderndid.ddd` balances the panel before it calls this
+        function, that rule applies only to direct calls.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
     n_jobs : int, default=1
@@ -132,6 +136,9 @@ def ddd_mp(
     weights_col : str or None, default None
         Name of the column of sampling weights. A unit should keep the same
         weight in every period. If None, every unit has weight 1.
+    trim_level : float, default 0.995
+        Trimming level for propensity scores. Only used for an unbalanced
+        panel with allow_unbalanced_panel=True.
 
     Returns
     -------
@@ -151,6 +158,7 @@ def ddd_mp(
         - **args**: Estimation arguments
         - **unit_groups**: Treatment cohort of each unit
         - **unit_weights**: Sampling weight of each unit, or None without weights
+        - **unit_clusters**: Cluster of each unit, or None without a cluster
 
     See Also
     --------
@@ -171,8 +179,22 @@ def ddd_mp(
         \widehat{se}_{g,t} = \sqrt{\widehat{V}_{g,t,g,t} / n}
 
     where :math:`\widehat{\Psi}` is the :math:`n \times k` matrix of influence
-    functions. For cells with GMM aggregation, the standard error formula from
-    Equation 4.12 is used instead.
+    functions. A cell that pools several comparison groups takes the standard
+    error from Equation 4.12 of [1]_ instead
+
+    .. math::
+        \widehat{se}_{\mathrm{gmm}}(g,t) = \left(n \, \mathbf{1}'
+            \widehat{\Omega}_{g,t}^{-1} \mathbf{1}\right)^{-1/2}.
+
+    Each comparison's influence function enters :math:`\widehat{\Omega}_{g,t}`
+    at the scale of the full sample and is zero for the units outside the
+    comparison. The standard error then agrees with the cell's column of
+    :math:`\widehat{\Psi}`.
+
+    With a cluster, every cell takes the cluster-robust standard error defined
+    in :func:`~moderndid.mboot_ddd`. A cell that pools several comparison groups
+    takes it too. With boot=True, the multiplier bootstrap replaces every
+    analytic standard error.
 
     An unbalanced panel with ``allow_unbalanced_panel=True`` lacks the outcome
     change of any unit missing one of a cell's two periods. Each cell then
@@ -234,6 +256,7 @@ def ddd_mp(
                     unique_ids,
                     unbalanced,
                     weights_col,
+                    trim_level,
                 )
             )
 
@@ -271,32 +294,9 @@ def ddd_mp(
     unit_groups = unit_info[group_col].to_numpy()
     unit_weights = None if weights_col is None else unit_info[weights_col].to_numpy()
 
-    if boot:
-        boot_result = mboot_ddd(
-            inf_func=inf_func_trimmed,
-            biters=biters,
-            alpha=alpha,
-            cluster=cluster_vals,
-            random_state=random_state,
-        )
-        se_computed = boot_result.se.copy()
-
-        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
-        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
-
-        se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-
-        cv = boot_result.crit_val if cband and np.isfinite(boot_result.crit_val) else stats.norm.ppf(1 - alpha / 2)
-    else:
-        V = inf_func_trimmed.T @ inf_func_trimmed / n_units
-        se_computed = np.sqrt(np.diag(V) / n_units)
-
-        valid_se_mask = ~np.isnan(se_array[: len(se_computed)])
-        se_computed[valid_se_mask] = se_array[: len(se_computed)][valid_se_mask]
-
-        se_computed[se_computed <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
-
-        cv = stats.norm.ppf(1 - alpha / 2)
+    se_computed, cv = _cell_inference(
+        inf_func_trimmed, se_array[: len(attgt_list)], boot, biters, alpha, cband, cluster_vals, random_state
+    )
 
     uci = att_array + cv * se_computed
     lci = att_array - cv * se_computed
@@ -330,6 +330,7 @@ def ddd_mp(
         args=args,
         unit_groups=unit_groups,
         unit_weights=unit_weights,
+        unit_clusters=cluster_vals,
     )
 
 
@@ -352,6 +353,7 @@ def _process_gt_cell(
     unique_ids,
     unbalanced,
     weights_col=None,
+    trim_level=0.995,
 ):
     """Process a single (g,t) cell and return results.
 
@@ -396,6 +398,7 @@ def _process_gt_cell(
             est_method,
             unique_ids,
             weights_col,
+            trim_level,
         )
         if att_result is None:
             return None
@@ -447,8 +450,7 @@ def _process_gt_cell(
             pret,
             covariate_cols,
             est_method,
-            n_units,
-            n_cell,
+            unique_ids,
             weights_col,
         )
         if result[0] is not None:
@@ -557,13 +559,13 @@ def _process_multiple_controls(
     pret,
     covariate_cols,
     est_method,
-    n_units,
-    n_cell,
+    unique_ids,
     weights_col=None,
 ):
     """Process a (g,t) cell with multiple control groups using GMM aggregation."""
+    n_units = len(unique_ids)
     ddd_results = []
-    inf_funcs_local = []
+    inf_cols = []
     all_common_ids = set()
 
     for ctrl in available_controls:
@@ -592,27 +594,17 @@ def _process_multiple_controls(
         all_common_ids.update(common_ids)
         ddd_results.append(att_result)
 
-        inf_funcs_local.append((inf_func, common_ids))
+        # Scaling every comparison to the whole sample makes the GMM standard error agree with the cell's column.
+        inf_col = np.zeros(n_units)
+        inf_col[np.searchsorted(unique_ids, common_ids)] = (n_units / len(common_ids)) * inf_func
+        inf_cols.append(inf_col)
 
     if len(ddd_results) == 0:
         return None, None, None, None
 
     cell_id_list = np.sort(np.array(list(all_common_ids)))
-    cell_id_to_local = {uid: idx for idx, uid in enumerate(cell_id_list)}
-    n_cell_actual = len(cell_id_list)
-
-    inf_mat_local = []
-    for inf_func, common_ids in inf_funcs_local:
-        inf_func_scaled = (n_cell_actual / len(common_ids)) * inf_func
-        inf_full = np.zeros(n_cell_actual)
-        for i, uid in enumerate(common_ids):
-            if uid in cell_id_to_local and i < len(inf_func_scaled):
-                inf_full[cell_id_to_local[uid]] = inf_func_scaled[i]
-        inf_mat_local.append(inf_full)
-
-    att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_mat_local), n_units)
-    inf_func_scaled = (n_units / n_cell_actual) * if_gmm
-    return att_gmm, inf_func_scaled, cell_id_list, se_gmm
+    att_gmm, if_gmm, se_gmm = _gmm_aggregate(np.array(ddd_results), np.column_stack(inf_cols), n_units)
+    return att_gmm, if_gmm[np.searchsorted(unique_ids, cell_id_list)], cell_id_list, se_gmm
 
 
 def _process_unbalanced_cell(
@@ -629,6 +621,7 @@ def _process_unbalanced_cell(
     est_method,
     unique_ids,
     weights_col=None,
+    trim_level=0.995,
 ):
     """Process a (g,t) cell of an unbalanced panel with the repeated cross-section estimator."""
     n_units = len(unique_ids)
@@ -638,7 +631,18 @@ def _process_unbalanced_cell(
     for ctrl in available_controls:
         subset_data = cell_data.filter((pl.col(group_col) == g) | (pl.col(group_col) == ctrl))
         att_result, inf_func = _compute_unbalanced_ddd(
-            subset_data, y_col, time_col, group_col, partition_col, g, t, covariate_cols, est_method, ctrl, weights_col
+            subset_data,
+            y_col,
+            time_col,
+            group_col,
+            partition_col,
+            g,
+            t,
+            covariate_cols,
+            est_method,
+            ctrl,
+            weights_col,
+            trim_level,
         )
         if att_result is None:
             continue
@@ -662,11 +666,21 @@ def _process_unbalanced_cell(
 
 
 def _compute_unbalanced_ddd(
-    cell_data, y_col, time_col, group_col, partition_col, g, t, covariate_cols, est_method, ctrl, weights_col=None
+    cell_data,
+    y_col,
+    time_col,
+    group_col,
+    partition_col,
+    g,
+    t,
+    covariate_cols,
+    est_method,
+    ctrl,
+    weights_col=None,
+    trim_level=0.995,
 ):
     """Compute DDD for one comparison group of an unbalanced panel cell."""
-    cell_data = _with_subgroup(cell_data, group_col, partition_col, g)
-    subgroup = cell_data["subgroup"].to_numpy()
+    subgroup = _subgroup(cell_data, group_col, partition_col, g)
 
     if 4 not in set(subgroup):
         return None, None
@@ -680,6 +694,7 @@ def _compute_unbalanced_ddd(
             i_weights=None if weights_col is None else cell_data[weights_col].to_numpy(),
             est_method=est_method,
             influence_func=True,
+            trim_level=trim_level,
         )
         return result.att, result.att_inf_func
     except (ValueError, np.linalg.LinAlgError) as error:
@@ -695,17 +710,39 @@ def _warn_failed_comparison(g, t, ctrl, error):
     )
 
 
-def _with_subgroup(cell_data, group_col, partition_col, g):
-    """Label each row with its treatment-by-eligibility subgroup."""
-    treat_col = (pl.col(group_col) == g).cast(pl.Int64).alias("treat")
-    subgroup_expr = (
-        4 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
-        + 3 * (pl.col("treat") == 1).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
-        + 2 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 1).cast(pl.Int64)
-        + 1 * (pl.col("treat") == 0).cast(pl.Int64) * (pl.col(partition_col) == 0).cast(pl.Int64)
-    ).alias("subgroup")
+def _subgroup(frame, group_col, partition_col, g):
+    """Return the treatment-by-eligibility subgroup of each row.
 
-    return cell_data.with_columns([treat_col]).with_columns([subgroup_expr])
+    Since the subgroup comes back as an array rather than a new column, no
+    column of the data can stand in for it.
+
+    Parameters
+    ----------
+    frame : pl.DataFrame
+        Rows of one comparison.
+    group_col : str
+        Name of the cohort column.
+    partition_col : str
+        Name of the partition column.
+    g : int or float
+        Cohort of the treated units.
+
+    Returns
+    -------
+    ndarray
+        Subgroup of each row. It is 4 for treated and eligible units, 3 for
+        treated and ineligible units, 2 for eligible comparisons, and 1 for
+        ineligible comparisons.
+    """
+    treat = (pl.col(group_col) == g).cast(pl.Int64)
+    eligible = pl.col(partition_col)
+    subgroup = (
+        4 * (treat == 1).cast(pl.Int64) * (eligible == 1).cast(pl.Int64)
+        + 3 * (treat == 1).cast(pl.Int64) * (eligible == 0).cast(pl.Int64)
+        + 2 * (treat == 0).cast(pl.Int64) * (eligible == 1).cast(pl.Int64)
+        + 1 * (treat == 0).cast(pl.Int64) * (eligible == 0).cast(pl.Int64)
+    )
+    return frame.select(subgroup).to_series().to_numpy()
 
 
 def _design_matrix(frame, covariate_cols):
@@ -732,8 +769,6 @@ def _compute_single_ddd(
     weights_col=None,
 ):
     """Compute DDD for a single (g,t) cell with a single control group."""
-    cell_data = _with_subgroup(cell_data, group_col, partition_col, g)
-
     post_data = cell_data.filter(pl.col(time_col) == t).sort(id_col)
     pre_data = cell_data.filter(pl.col(time_col) == pret).sort(id_col)
 
@@ -751,7 +786,7 @@ def _compute_single_ddd(
 
     y1 = post_data[y_col].to_numpy()
     y0 = pre_data[y_col].to_numpy()
-    subgroup = post_data["subgroup"].to_numpy()
+    subgroup = _subgroup(post_data, group_col, partition_col, g)
 
     if 4 not in set(subgroup):
         return None, None, None
@@ -777,7 +812,25 @@ def _compute_single_ddd(
 
 
 def _gmm_aggregate(att_vals, inf_mat, n_total):
-    """Compute GMM-weighted aggregate of ATT estimates across control groups."""
+    """Compute GMM-weighted aggregate of ATT estimates across control groups.
+
+    Parameters
+    ----------
+    att_vals : ndarray
+        ATT estimate of each comparison group.
+    inf_mat : ndarray
+        Influence functions of the comparisons with one row for each of the n_total units or
+        observations of the sample and one column per comparison. A row outside a comparison is 0.
+    n_total : int
+        Number of units or observations in the sample.
+
+    Returns
+    -------
+    tuple
+        - **att_gmm**: GMM-weighted estimate of the ATT
+        - **if_gmm**: Influence function of the GMM estimate
+        - **se_gmm**: Standard error of the GMM estimate
+    """
     omega = np.cov(inf_mat, rowvar=False)
     if omega.ndim == 0:
         omega = np.array([[omega]])
@@ -795,3 +848,57 @@ def _gmm_aggregate(att_vals, inf_mat, n_total):
     se_gmm = np.sqrt(1 / (n_total * np.sum(inv_omega)))
 
     return att_gmm, if_gmm, se_gmm
+
+
+def _cell_inference(inf_func, se_gmm, boot, biters, alpha, cband, cluster, random_state):
+    """Compute the standard error of every (g,t) cell and the critical value of its interval.
+
+    Parameters
+    ----------
+    inf_func : ndarray
+        Influence function matrix with one row per unit or observation and one column per cell.
+    se_gmm : ndarray
+        GMM standard error of each cell that pools several comparison groups. Every other cell holds NaN.
+    boot : bool
+        Whether the multiplier bootstrap replaces the analytic standard errors.
+    biters : int
+        Number of bootstrap repetitions.
+    alpha : float
+        Significance level for confidence intervals.
+    cband : bool
+        Whether the intervals use the critical value of a uniform confidence band.
+    cluster : ndarray or None
+        Cluster of each row of the influence function matrix.
+    random_state : int, Generator, or None
+        Controls random number generation for the bootstrap.
+
+    Returns
+    -------
+    tuple
+        - **se**: Standard error of each cell
+        - **cv**: Critical value of the intervals
+    """
+    n = inf_func.shape[0]
+    tiny = np.sqrt(np.finfo(float).eps) * 10
+    if cluster is not None and not boot:
+        sums = sum_within_clusters(inf_func, cluster)
+        se = np.sqrt(np.sum(sums**2, axis=0)) / n
+    else:
+        V = inf_func.T @ inf_func / n
+        se = np.sqrt(np.diag(V) / n)
+        pooled = ~np.isnan(se_gmm)
+        se[pooled] = se_gmm[pooled]
+    se[se <= tiny] = np.nan
+
+    cv = stats.norm.ppf(1 - alpha / 2)
+    if boot:
+        boot_result = mboot_ddd(
+            inf_func=inf_func, biters=biters, alpha=alpha, cluster=cluster, random_state=random_state
+        )
+        # Cells without an analytic standard error, such as the reference period, keep none.
+        computed = ~np.isnan(se)
+        se[computed] = boot_result.se[computed]
+        se[se <= tiny] = np.nan
+        if cband and np.isfinite(boot_result.crit_val):
+            cv = boot_result.crit_val
+    return se, cv

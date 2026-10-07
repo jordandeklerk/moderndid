@@ -32,13 +32,13 @@ def test_didml_balanced_panel(mpdta_data, mpdta_spec, didml_options):
 def test_didml_unbalanced_panel_matches_complete_units(
     mpdta_unbalanced, mpdta_without_county_8001, mpdta_spec, didml_options
 ):
-    with (
-        pytest.warns(UserWarning, match="^1 units have unbalanced observations and will be dropped$"),
-        pytest.warns(UserWarning, match="^Dropped 1 units while converting to balanced panel$"),
-    ):
+    with pytest.warns(UserWarning) as record:
         result = didml(mpdta_unbalanced, **mpdta_spec, **didml_options)
     expected = didml(mpdta_without_county_8001, **mpdta_spec, **didml_options)
 
+    assert [str(warning.message) for warning in record if "units" in str(warning.message)] == [
+        "Dropped 1 units while converting to balanced panel"
+    ]
     assert result.n_units == 499
     assert result.estimation_params["n_obs"] == 2495
     assert result.estimation_params["cohort_counts"][2007.0] == 130
@@ -50,10 +50,7 @@ def test_didml_unbalanced_panel_matches_complete_units(
 
 
 def test_didml_unbalanced_panel_benchmark_values(mpdta_unbalanced, mpdta_spec, didml_options):
-    with (
-        pytest.warns(UserWarning, match="^1 units have unbalanced observations and will be dropped$"),
-        pytest.warns(UserWarning, match="^Dropped 1 units while converting to balanced panel$"),
-    ):
+    with pytest.warns(UserWarning, match="^Dropped 1 units while converting to balanced panel$"):
         result = didml(mpdta_unbalanced, **mpdta_spec, **didml_options)
 
     np.testing.assert_allclose(
@@ -94,6 +91,18 @@ def test_didml_unbalanced_panel_benchmark_values(mpdta_unbalanced, mpdta_spec, d
         rtol=0,
         atol=1e-9,
     )
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"tname": "yeer"}, "tname='yeer' is not a column in the data. Did you mean 'year'?"),
+        ({"idname": "countyrel"}, "idname='countyrel' is not a column in the data. Did you mean 'countyreal'?"),
+    ],
+)
+def test_didml_names_misspelled_columns(mpdta_data, mpdta_spec, didml_options, changes, message):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        didml(mpdta_data, **(mpdta_spec | changes), **didml_options)
 
 
 def test_didml_without_never_treated_leaves_latest_cohort_out(mpdta_without_never_treated, mpdta_spec, didml_options):

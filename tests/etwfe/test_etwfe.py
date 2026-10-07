@@ -322,6 +322,18 @@ def test_etwfe_missing_column(mpdta_data, kwargs, match):
         etwfe(data=mpdta_data, **kwargs)
 
 
+@pytest.mark.parametrize(
+    ("vcov", "message"),
+    [
+        ({"CRV1": "county"}, "'county' in vcov is not a column in the data. Did you mean 'countyreal'?"),
+        ({"CRV1": "countyreal+yeer"}, "'yeer' in vcov is not a column in the data. Did you mean 'year'?"),
+    ],
+)
+def test_etwfe_names_a_misspelled_cluster_column(mpdta_data, vcov, message):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", vcov=vcov)
+
+
 def test_etwfe_xvar_heterogeneous_effects(mpdta_data):
     mod = etwfe(data=mpdta_data, yname="lemp", tname="year", gname="first.treat", idname="countyreal", xvar="lpop")
     assert isinstance(mod, EtwfeResult)
@@ -687,6 +699,114 @@ def test_etwfe_drops_rows_with_missing_cluster_values(mpdta_states, code):
         mod = _fit(holed, vcov={"CRV1": "st"})
     _assert_same_fit(mod, _fit(data.filter(~missing), vcov={"CRV1": "st"}))
     assert (mod.n_obs, mod.n_units) == (2485, 497)
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf")])
+@pytest.mark.parametrize(
+    "column,kwargs",
+    [
+        ("x", {"xformla": "~ lpop + x"}),
+        ("z", {"xvar": "z"}),
+        ("w", {"weightsname": "w"}),
+        ("st", {"vcov": {"CRV1": "st"}}),
+        ("year", {}),
+    ],
+)
+def test_etwfe_drops_rows_with_infinite_values(mpdta_extra, column, kwargs, value):
+    row = (pl.col("countyreal") == 17005) & (pl.col("year") == 2005)
+    data = mpdta_extra.with_columns(pl.col(column).cast(pl.Float64))
+    holed = data.with_columns(pl.when(row).then(value).otherwise(pl.col(column)).alias(column))
+    with pytest.warns(UserWarning, match=rf"^Dropped 1 rows with missing values in {column}\.$"):
+        mod = _fit(holed, **kwargs)
+    _assert_same_fit(mod, _fit(data.filter(~row), **kwargs))
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("nan")])
+@pytest.mark.parametrize("column", ["year", "countyreal"])
+def test_etwfe_drops_repeated_non_finite_units_and_periods(mpdta_data, column, value):
+    data = mpdta_data.with_columns(pl.col("year", "countyreal").cast(pl.Float64))
+    rows = {
+        "year": (pl.col("countyreal") == 17005) & pl.col("year").is_in([2004.0, 2005.0]),
+        "countyreal": pl.col("countyreal").is_in(data["countyreal"].unique().sort().head(2).to_list())
+        & (pl.col("year") == 2005),
+    }[column]
+    holed = data.with_columns(pl.when(rows).then(value).otherwise(pl.col(column)).alias(column))
+    with pytest.warns(UserWarning, match=rf"^Dropped 2 rows with missing values in {column}\.$"):
+        mod = _fit(holed)
+    _assert_same_fit(mod, _fit(data.filter(~rows)))
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), float("nan")])
+def test_etwfe_treats_a_non_finite_outcome_like_a_missing_one(mpdta_lone_cell, value):
+    data, row = mpdta_lone_cell
+    mod = _fit(data.with_columns(pl.when(row).then(value).otherwise(pl.col("lemp")).alias("lemp")))
+    _assert_same_fit(mod, _fit(data.with_columns(pl.when(row).then(None).otherwise(pl.col("lemp")).alias("lemp"))))
+
+
+@pytest.mark.parametrize(
+    "weights",
+    [
+        pytest.param(pl.when(pl.col("countyreal") == 17005).then(-1.0).otherwise(1.0), id="one-negative"),
+        pytest.param(pl.lit(0.0), id="all-zero"),
+    ],
+)
+def test_etwfe_rejects_weights_without_positive_mean(mpdta_data, weights):
+    message = "The weights variable 'w' must be non-negative with a positive mean."
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        _fit(mpdta_data.with_columns(weights.alias("w")), weightsname="w")
+
+
+def test_etwfe_checks_weights_after_dropping_rows_with_missing_values(mpdta_extra):
+    row = (pl.col("countyreal") == 17005) & (pl.col("year") == 2005)
+    holed = mpdta_extra.with_columns(
+        pl.when(row).then(-1.0).otherwise(pl.col("w")).alias("w"),
+        pl.when(row).then(None).otherwise(pl.col("x")).alias("x"),
+    )
+    with pytest.warns(UserWarning, match=r"^Dropped 1 rows with missing values in x\.$"):
+        mod = _fit(holed, xformla="~ x", weightsname="w")
+    _assert_same_fit(mod, _fit(mpdta_extra.filter(~row), xformla="~ x", weightsname="w"))
+
+
+@pytest.mark.parametrize(
+    "argument,renamed,kwargs",
+    [
+        ("yname", {"lemp": "_t"}, {"yname": "_t"}),
+        ("xformla", {"x": "_g"}, {"xformla": "~ _g"}),
+        ("xformla", {"x": "_Dtreat"}, {"xformla": "~ _Dtreat"}),
+        ("xformla", {"x": "lpop_dm"}, {"xformla": "~ lpop + lpop_dm"}),
+        ("xformla", {"x": "z_xdm"}, {"xformla": "~ z_xdm", "xvar": "z"}),
+        ("idname", {"countyreal": "__etwfe_id"}, {"idname": "__etwfe_id"}),
+        ("vcov", {"st": "_g"}, {"vcov": {"CRV1": "_g"}}),
+        ("xvar", {"z": "_t"}, {"xvar": "_t"}),
+        ("weightsname", {"w": "__etwfe_w"}, {"weightsname": "__etwfe_w"}),
+    ],
+)
+def test_etwfe_rejects_named_columns_that_meet_internal_columns(mpdta_extra, argument, renamed, kwargs):
+    name = next(iter(renamed.values()))
+    message = (
+        f"{argument} names the column '{name}'. "
+        "Since moderndid uses that name for an internal column, rename the column."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        _fit(mpdta_extra.rename(renamed), **kwargs)
+
+
+def test_etwfe_control_named_event_gives_the_same_event_study(mpdta_extra):
+    kwargs = {"yname": "emp", "family": "poisson"}
+    expected = emfx(_fit(mpdta_extra, xformla="~ x", **kwargs), type="event")
+    result = emfx(_fit(mpdta_extra.rename({"x": "event"}), xformla="~ event", **kwargs), type="event")
+
+    np.testing.assert_allclose(result.att_by_event, expected.att_by_event, rtol=1e-12)
+    np.testing.assert_allclose(result.se_by_event, expected.se_by_event, rtol=1e-12)
+
+
+def test_etwfe_keeps_only_the_columns_it_names(mpdta_data, etwfe_baseline):
+    mod = _fit(mpdta_data.with_columns(pl.lit("a").alias("note"), pl.lit(1.0).alias("_g")))
+
+    _assert_same_fit(mod, etwfe_baseline)
+    assert "note" not in mod.data.columns
 
 
 def test_etwfe_n_units_counts_units_in_estimation_sample(mpdta_data):

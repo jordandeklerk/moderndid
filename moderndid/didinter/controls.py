@@ -40,7 +40,7 @@ def compute_control_coefficients(df, config, n_groups):
     Returns
     -------
     df : pl.DataFrame
-        Data with the influence columns ``_ctrl_influence_{j}``.
+        Data with the influence columns ``.ctrl_influence_{j}``.
     coefficients : dict
         Mapping from the rank ``d_sq_int`` of each baseline treatment to its coefficients:
 
@@ -94,10 +94,10 @@ def compute_control_coefficients(df, config, n_groups):
 
     gname = config.gname
     tname = config.tname
-    first_diff_y = "_ctrl_first_diff_y"
-    first_diffs = [f"_ctrl_first_diff_{k}" for k in range(len(controls))]
-    centered = [f"_ctrl_centered_{k}" for k in range(len(controls))]
-    influence_cols = [f"_ctrl_influence_{k}" for k in range(len(controls))]
+    first_diff_y = ".ctrl_first_diff_y"
+    first_diffs = [f".ctrl_first_diff_{k}" for k in range(len(controls))]
+    centered = [f".ctrl_centered_{k}" for k in range(len(controls))]
+    influence_cols = [f".ctrl_influence_{k}" for k in range(len(controls))]
     cells = [tname, "d_sq_int", *(config.trends_nonparam or [])]
     raw_weight = pl.col(config.weightsname).fill_null(0.0) if config.weightsname else pl.lit(1.0)
 
@@ -108,23 +108,23 @@ def compute_control_coefficients(df, config, n_groups):
             (pl.col(ctrl) - pl.col(ctrl).shift(1).over(gname)).alias(name)
             for ctrl, name in zip(controls, first_diffs, strict=True)
         ],
-        raw_weight.cast(pl.Float64).alias("_ctrl_raw_weight"),
+        raw_weight.cast(pl.Float64).alias(".ctrl_raw_weight"),
     )
     not_yet_switched = (pl.col(tname) < pl.col("F_g")) & pl.col(first_diff_y).is_not_null()
     observed = pl.all_horizontal(pl.col(name).is_not_null() for name in first_diffs)
     df = df.with_columns(
-        (not_yet_switched & observed).alias("_ctrl_sample"),
-        not_yet_switched.sum().over([tname, "d_sq_int"]).cast(pl.Float64).alias("_ctrl_period_count"),
+        (not_yet_switched & observed).alias(".ctrl_sample"),
+        not_yet_switched.sum().over([tname, "d_sq_int"]).cast(pl.Float64).alias(".ctrl_period_count"),
     )
-    sample_weight = pl.when(pl.col("_ctrl_sample")).then(pl.col("weight_gt")).otherwise(0.0)
+    sample_weight = pl.when(pl.col(".ctrl_sample")).then(pl.col("weight_gt")).otherwise(0.0)
     df = df.with_columns(
-        pl.when(pl.col("_ctrl_sample"))
+        pl.when(pl.col(".ctrl_sample"))
         .then(pl.col(name) - (sample_weight * pl.col(name)).sum().over(cells) / sample_weight.sum().over(cells))
         .alias(centered_name)
         for name, centered_name in zip(first_diffs, centered, strict=True)
     )
 
-    sample = df.filter(pl.col("_ctrl_sample"))
+    sample = df.filter(pl.col(".ctrl_sample"))
     baselines = dict(df.group_by("d_sq_int").agg(pl.col("d_sq").first()).drop_nulls().iter_rows())
     coefficients = {}
     influence_frames = []
@@ -152,7 +152,7 @@ def compute_control_coefficients(df, config, n_groups):
 
         n_control = df.filter(is_level & not_yet_switched)["weight_gt"].sum()
         scores = _control_scores(rows, config, first_diffs, centered) / n_control
-        score_cols = [f"_ctrl_score_{k}" for k in range(len(controls))]
+        score_cols = [f".ctrl_score_{k}" for k in range(len(controls))]
         in_sum = (
             rows.select(gname, *[pl.Series(name, scores[:, k]) for k, name in enumerate(score_cols)])
             .group_by(gname)
@@ -180,7 +180,7 @@ def compute_control_coefficients(df, config, n_groups):
             stacklevel=4,
         )
 
-    df = df.drop(first_diff_y, *first_diffs, *centered, "_ctrl_raw_weight", "_ctrl_sample", "_ctrl_period_count")
+    df = df.drop(first_diff_y, *first_diffs, *centered, ".ctrl_raw_weight", ".ctrl_sample", ".ctrl_period_count")
     if influence_frames:
         df = df.join(pl.concat(influence_frames), on=gname, how="left")
     else:
@@ -207,7 +207,7 @@ def apply_control_adjustment(df, config, horizon, coefficients, horizon_type):
     Parameters
     ----------
     df : pl.DataFrame
-        Data sorted by group and period with the outcome difference ``diff_y_{horizon}``.
+        Data sorted by group and period with the outcome difference ``.diff_y_{horizon}``.
     config : DIDInterConfig
         Configuration object.
     horizon : int
@@ -220,15 +220,15 @@ def apply_control_adjustment(df, config, horizon, coefficients, horizon_type):
     Returns
     -------
     pl.DataFrame
-        Data with the adjusted outcome difference and the control differences ``_ctrl_diff_{j}_{horizon}``.
+        Data with the adjusted outcome difference and the control differences ``.ctrl_diff_{j}_{horizon}``.
     """
     controls = _control_names(df, config)
     if not controls or not coefficients:
         return df
 
     gname = config.gname
-    diff_col = f"diff_y_{horizon}"
-    diff_cols = [f"_ctrl_diff_{k}_{horizon}" for k in range(len(controls))]
+    diff_col = f".diff_y_{horizon}"
+    diff_cols = [f".ctrl_diff_{k}_{horizon}" for k in range(len(controls))]
     if horizon_type == "effect":
         differences = [pl.col(ctrl) - pl.col(ctrl).shift(horizon).over(gname) for ctrl in controls]
     else:
@@ -274,7 +274,7 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
     Returns
     -------
     pl.DataFrame
-        Data with the variance term ``part2_{horizon}`` of each group.
+        Data with the variance term ``.part2_{horizon}`` of each group.
 
     Notes
     -----
@@ -298,13 +298,13 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
     where :math:`\psi_{g,d,j}` is zero unless :math:`D_{g,1} = d`.
     """
     controls = _control_names(df, config)
-    part2_col = f"part2_{horizon}"
+    part2_col = f".part2_{horizon}"
     useful = {level: coef for level, coef in coefficients.items() if coef["useful"]}
     if not controls or not useful:
         return df.with_columns(pl.lit(0.0).alias(part2_col))
 
     tname = config.tname
-    n_control = pl.col(f"n_control_{horizon}")
+    n_control = pl.col(f".n_control_{horizon}")
     safe_n_control = pl.when(n_control.is_null() | (n_control == 0)).then(1.0).otherwise(n_control)
     comparison = (
         ((pl.col("T_g") - 2) >= horizon).cast(pl.Float64)
@@ -312,15 +312,15 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
         * pl.col("weight_gt")
         * (
             pl.col(dist_col)
-            - (pl.col(f"n_treated_{horizon}") / safe_n_control) * pl.col(f"never_change_{horizon}").fill_null(0.0)
+            - (pl.col(f".n_treated_{horizon}") / safe_n_control) * pl.col(f".never_change_{horizon}").fill_null(0.0)
         )
         / n_switchers
     )
     totals = df.select(
         pl.when(pl.col("d_sq_int") == level)
-        .then(comparison * pl.col(f"_ctrl_diff_{k}_{horizon}"))
+        .then(comparison * pl.col(f".ctrl_diff_{k}_{horizon}"))
         .sum()
-        .alias(f"_ctrl_m_{index}_{k}")
+        .alias(f".ctrl_m_{index}_{k}")
         for index, level in enumerate(useful)
         for k in range(len(controls))
     ).row(0)
@@ -328,7 +328,7 @@ def compute_variance_adjustment(df, config, horizon, coefficients, n_switchers, 
 
     part2 = pl.lit(0.0)
     for level_weights, (level, coef) in zip(weights, useful.items(), strict=True):
-        influence = sum(float(m) * pl.col(f"_ctrl_influence_{k}") for k, m in enumerate(level_weights))
+        influence = sum(float(m) * pl.col(f".ctrl_influence_{k}") for k, m in enumerate(level_weights))
         part2 = (
             part2
             + pl.when(pl.col("d_sq_int") == level).then(influence).otherwise(0.0)
@@ -342,7 +342,7 @@ def _control_names(df, config):
     """Get the control columns of the formula and the continuous baseline trends."""
     controls = get_covariate_names_from_formula(config.xformla) or []
     if config.continuous > 0:
-        controls = [*controls, *(name for name in df.columns if name.startswith("_baseline_trend_"))]
+        controls = [*controls, *(name for name in df.columns if name.startswith(".baseline_trend_"))]
     return controls
 
 
@@ -350,9 +350,9 @@ def _control_scores(rows, config, first_diffs, centered):
     """Score each sample row against a period fixed-effects fit of the outcome differences."""
     tname = config.tname
     times = rows[tname].to_numpy()
-    raw_weight = rows["_ctrl_raw_weight"].to_numpy()
+    raw_weight = rows[".ctrl_raw_weight"].to_numpy()
     dx = rows.select(first_diffs).to_numpy()
-    dy = rows["_ctrl_first_diff_y"].to_numpy()
+    dy = rows[".ctrl_first_diff_y"].to_numpy()
 
     # Since a zero-weight row cannot set a period's mean, it only receives a fitted value.
     fit = raw_weight > 0
@@ -373,7 +373,7 @@ def _control_scores(rows, config, first_diffs, centered):
         covered = periods[position] == times
         fitted[covered] = (dy_mean - dx_mean @ beta)[position[covered]] + dx[covered] @ beta
 
-    count = rows["_ctrl_period_count"].to_numpy()
+    count = rows[".ctrl_period_count"].to_numpy()
     enough = count >= 2
     kappa = np.ones(len(count))
     kappa[enough] = np.sqrt(count[enough] / (count[enough] - 1))

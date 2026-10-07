@@ -86,11 +86,8 @@ def mboot_ddd(
         cluster = np.asarray(cluster).ravel()
         if len(cluster) != n:
             raise ValueError(f"cluster has {len(cluster)} entries but inf_func has {n} rows.")
-        _, cluster_idx = np.unique(cluster, return_inverse=True)
-        n_eff = int(cluster_idx.max()) + 1
-        inf_func_boot = np.column_stack(
-            [np.bincount(cluster_idx, weights=inf_func[:, j], minlength=n_eff) for j in range(k)]
-        )
+        inf_func_boot = sum_within_clusters(inf_func, cluster)
+        n_eff = inf_func_boot.shape[0]
     else:
         inf_func_boot = inf_func
         n_eff = n
@@ -123,6 +120,28 @@ def mboot_ddd(
             crit_val = np.percentile(b_t_finite, 100 * (1 - alpha))
 
     return MbootResult(bres=bres, se=se_full, crit_val=crit_val)
+
+
+def sum_within_clusters(inf_func, cluster):
+    """Sum the rows of an influence function matrix within each cluster.
+
+    Parameters
+    ----------
+    inf_func : ndarray
+        Influence function matrix of shape (n, k).
+    cluster : ndarray
+        Cluster of each of the n rows.
+
+    Returns
+    -------
+    ndarray
+        Matrix of shape (G, k) with one row for each of the G clusters, in sorted order.
+    """
+    _, cluster_idx = np.unique(cluster, return_inverse=True)
+    n_clusters = int(cluster_idx.max()) + 1
+    return np.column_stack(
+        [np.bincount(cluster_idx, weights=inf_func[:, j], minlength=n_clusters) for j in range(inf_func.shape[1])]
+    )
 
 
 def wboot_ddd(

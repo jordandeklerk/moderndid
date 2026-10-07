@@ -2,6 +2,7 @@
 
 import functools
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -1226,8 +1227,14 @@ def test_cont_did_invalid_data_type_raises():
 
 def test_cont_did_missing_columns_raises():
     data = pl.DataFrame({"id": [1, 2], "time": [1, 2], "y": [1.0, 2.0]})
+    message = (
+        "yname='Y' is not a column in the data. Did you mean 'y'?\n"
+        "tname='time_period' is not a column in the data.\n"
+        "gname='G' is not a column in the data.\n"
+        "dname='D' is not a column in the data. Did you mean 'id'?"
+    )
 
-    with pytest.raises(ValueError, match="Missing columns"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         cont_did(
             data=data,
             yname="Y",

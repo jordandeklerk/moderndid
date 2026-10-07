@@ -397,6 +397,27 @@ def get_transformed_terms(formula):
     return transformed
 
 
+def get_column_terms(formula):
+    """List the columns that the plain terms of a covariate formula name.
+
+    A plain term is one column name with or without backticks. A transformed
+    term such as ``I(x**2)``, the intercept ``1``, and a left-hand side name
+    no column here.
+
+    Parameters
+    ----------
+    formula : str
+        Covariate formula such as ``"~ x1 + I(x2**2)"``.
+
+    Returns
+    -------
+    list of str
+        The column names in the order given, each once.
+    """
+    _, terms = _split_formula(formula)
+    return list(dict.fromkeys(name for name in map(_column_name, terms) if name is not None))
+
+
 def get_formula_columns(formula, columns):
     """List the data columns that a formula refers to.
 

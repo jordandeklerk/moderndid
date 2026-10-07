@@ -12,19 +12,29 @@ import polars as pl
 from scipy import stats
 
 from moderndid.core.preprocess.utils import parse_formula
-from moderndid.core.preprocess.validators import _duplicate_unit_period_error
+from moderndid.core.preprocess.validators import _duplicate_unit_period_error, _reserved_name_errors, _weights_error
 
 
 def clean_etwfe_data(data, config, vcov=None):
     """Drop the rows and units that cannot enter the regression.
 
-    Two rows for one unit in one period raise an error before any row is
-    dropped, since the regression would count that period twice.
+    Since the step keeps only the columns that the call names, the columns
+    that the regression adds can't meet another column of the data. A named
+    column may not take one of their names. These are ``_g``, ``_t``,
+    ``_Dtreat``, a name that starts with ``__etwfe_``, and a control's name
+    followed by ``_dm``. The moderator's columns end in ``_xdm`` and start
+    with its name or with ``_t``.
 
-    Rows with a missing value in the time, cohort, or unit column, a control,
-    the moderator, the weights, or a cluster variable leave the sample before
-    any control is demeaned. A missing outcome does not, since the regression
-    drops it later.
+    Two rows for one unit in one period raise an error before any row is
+    dropped, since the regression would count that period twice. Rows that
+    miss the unit or the period don't count. They leave the sample anyway.
+
+    Rows with a null, NaN, or infinite value in the time, cohort, or unit
+    column, a control, the moderator, the weights, or a cluster variable
+    leave the sample before any control is demeaned. Since an infinite cohort
+    marks a never-treated unit, it stays. A row with a missing outcome stays
+    as well. The regression drops it later. The weights that stay must be
+    non-negative with a positive mean.
 
     Units already treated in the first period leave next. Since their cohort has
     no untreated period, no comparison identifies its effects. Each of the two
@@ -42,24 +52,31 @@ def clean_etwfe_data(data, config, vcov=None):
     Returns
     -------
     pl.DataFrame
-        The rows that can enter the regression.
+        The rows and named columns that can enter the regression.
     """
     ctrls = _get_control_vars(config)
     missing_cols = [c for c in ctrls if c not in data.columns]
     if missing_cols:
         raise ValueError(f"xformla columns {missing_cols} not found in data columns")
 
+    clusters = _cluster_columns(vcov, data.columns)
+    errors = _internal_name_errors(config, clusters)
+    if errors:
+        raise ValueError("\n".join(errors))
+
     if config.idname is not None:
-        duplicate_error = _duplicate_unit_period_error(data, config.idname, config.tname)
+        keyed = data.filter(~_is_missing(data, config.idname) & ~_is_missing(data, config.tname))
+        duplicate_error = _duplicate_unit_period_error(keyed, config.idname, config.tname)
         if duplicate_error is not None:
             raise ValueError(duplicate_error)
 
-    clusters = _cluster_columns(vcov, data.columns)
     cols = [config.tname, config.gname, config.idname, *ctrls, config.xvar, config.weightsname, *clusters]
     cols = list(dict.fromkeys(c for c in cols if c is not None))
-    incomplete = [c for c in cols if data.select(_is_missing(data, c).any()).item()]
+    data = data.select([c for c in data.columns if c in {config.yname, *cols}])
+    missing = {c: _is_missing(data, c, keep_infinite=c == config.gname) for c in cols}
+    incomplete = [c for c in cols if data.select(missing[c].any()).item()]
     if incomplete:
-        df = data.filter(~pl.any_horizontal([_is_missing(data, c) for c in incomplete]))
+        df = data.filter(~pl.any_horizontal([missing[c] for c in incomplete]))
         warnings.warn(
             f"Dropped {data.height - df.height} rows with missing values in {', '.join(incomplete)}.",
             UserWarning,
@@ -69,6 +86,10 @@ def clean_etwfe_data(data, config, vcov=None):
 
     if data.height == 0:
         raise ValueError("No rows are left to estimate from.")
+    if config.weightsname is not None:
+        weights_error = _weights_error(data[config.weightsname], config.weightsname)
+        if weights_error is not None:
+            raise ValueError(weights_error)
     first, last = data[config.tname].min(), data[config.tname].max()
     g = pl.col(config.gname).cast(pl.Float64)
     early = ~_never_treated(g, last) & (g <= first)
@@ -502,10 +523,10 @@ def compute_emfx(fit_data, config, coef_names, beta, vcov_matrix, agg_type="simp
     else:
         df = df.filter(post)
 
-    if agg_type == "event":
-        df = df.with_columns((pl.col("_t") - pl.col("_g")).cast(pl.Int64).alias("event"))
-        if window is not None:
-            df = df.filter((pl.col("event") >= window[0]) & (pl.col("event") <= window[1]))
+    # Since a column of event times could overwrite a column the call names, they stay an expression.
+    event = (pl.col("_t") - pl.col("_g")).cast(pl.Int64)
+    if agg_type == "event" and window is not None:
+        df = df.filter((event >= window[0]) & (event <= window[1]))
 
     cells = treatment_cells(fit_data, config)
     coef_pos = {str(name): i for i, name in enumerate(coef_names)}
@@ -538,8 +559,8 @@ def compute_emfx(fit_data, config, coef_names, beta, vcov_matrix, agg_type="simp
             "dropped_cells": dropped_cells,
         }
 
-    level_col = {"event": "event", "group": "_g", "calendar": "_t"}[agg_type]
-    level_vals = df[level_col].to_numpy()
+    level = {"event": event, "group": pl.col("_g"), "calendar": pl.col("_t")}[agg_type]
+    level_vals = df.select(level).to_series().to_numpy()
     unique_vals = np.sort(np.unique(level_vals))
 
     att_list, se_list, grad_list = [], [], []
@@ -630,12 +651,57 @@ def _cluster_columns(vcov, columns):
     return names
 
 
-def _is_missing(data, col):
-    """Flag the rows where a column is null or NaN."""
+def _is_missing(data, col, keep_infinite=False):
+    """Flag the rows where a column holds a missing value.
+
+    A null always counts as missing. In a float column so do NaN and the
+    infinities. Since an infinite cohort marks a never-treated unit,
+    ``keep_infinite`` lets the infinities stay.
+    """
     missing = pl.col(col).is_null()
     if data.schema[col].is_float():
-        missing = missing | pl.col(col).is_nan()
+        missing = missing | (pl.col(col).is_nan() if keep_infinite else ~pl.col(col).is_finite())
     return missing
+
+
+def _internal_name_errors(config, clusters):
+    """Describe the columns of a call that take the name of a column the regression adds.
+
+    Parameters
+    ----------
+    config : EtwfeConfig
+        ETWFE configuration.
+    clusters : list of str
+        Columns that the variance specification clusters by.
+
+    Returns
+    -------
+    list of str
+        One message for each named column whose name the regression also uses.
+    """
+    ctrls = _get_control_vars(config)
+    named_columns = {
+        "yname": config.yname,
+        "tname": config.tname,
+        "gname": config.gname,
+        "idname": config.idname,
+        "xformla": ctrls,
+        "xvar": config.xvar,
+        "weightsname": config.weightsname,
+        "vcov": clusters,
+    }
+    added = {"_g", "_t", "_Dtreat", *(f"{name}_dm" for name in ctrls)}
+    # The moderator's columns and their period terms end in _xdm and start with its name or with _t.
+    moderator_prefixes = (f"{config.xvar}_", "_t") if config.xvar is not None else ()
+    names = [name for value in named_columns.values() for name in ([value] if isinstance(value, str) else value or [])]
+    reserved = [
+        name
+        for name in names
+        if name in added
+        or name.startswith("__etwfe_")
+        or (name.endswith("_xdm") and name.startswith(moderator_prefixes))
+    ]
+    return _reserved_name_errors(named_columns, tuple(reserved))
 
 
 def _formula_name(name, internal):

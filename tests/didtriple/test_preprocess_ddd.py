@@ -1,5 +1,6 @@
 """Tests for DDD preprocessing."""
 
+import re
 import warnings
 
 import pytest
@@ -165,7 +166,7 @@ def test_preprocess_ddd_missing_column():
     result = gen_ddd_2periods(n=200, dgp_type=1, random_state=42)
     data = result["data"]
 
-    with pytest.raises(ValueError, match="yname='missing' not found"):
+    with pytest.raises(ValueError, match="yname='missing' is not a column in the data"):
         preprocess_ddd_2periods(
             data=data,
             yname="missing",
@@ -368,6 +369,35 @@ def test_preprocess_ddd_pairs_outcomes_by_unit_id(two_period_df):
 
     np.testing.assert_array_equal(ddd_data.y0, wide["1"].to_numpy())
     np.testing.assert_array_equal(ddd_data.y1, wide["2"].to_numpy())
+
+
+@pytest.mark.parametrize("missing", [None, float("nan")])
+def test_ddd_checks_the_partition_on_the_rows_that_remain(two_period_df, missing):
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"}
+    data = two_period_df.with_columns(pl.col("partition").cast(pl.Float64))
+    row = (pl.col("id") == 1) & (pl.col("time") == 2)
+    expected = ddd(data.filter(pl.col("id") != 1), **spec)
+
+    with pytest.warns(UserWarning, match="^Dropped 1 units while converting to balanced panel$"):
+        result = ddd(
+            data.with_columns(pl.when(row).then(missing).otherwise(pl.col("partition")).alias("partition")), **spec
+        )
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+
+
+@pytest.mark.parametrize(("data_name", "gname"), [("two_period_df", "state"), ("multi_period_df", "group")])
+@pytest.mark.parametrize(
+    ("argument", "value", "suggestion"),
+    [("tname", "tim", "time"), ("idname", "idd", "id"), ("pname", "partitoin", "partition")],
+)
+def test_ddd_names_misspelled_columns(request, data_name, gname, argument, value, suggestion):
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": gname, "pname": "partition"} | {argument: value}
+    message = f"{argument}='{value}' is not a column in the data. Did you mean '{suggestion}'?"
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        ddd(request.getfixturevalue(data_name), **spec)
 
 
 @pytest.mark.parametrize("two_period_duplicated_df", ["compensating_rows"], indirect=True)

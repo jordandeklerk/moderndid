@@ -130,8 +130,8 @@ to construct the right config and the builder handles the rest.
        PreprocessDataBuilder()
        .with_data(raw_dataframe)
        .with_config(config)
-       .validate()      # Runs all validators
-       .transform()     # Applies all transformations
+       .validate()      # Runs the column checks
+       .transform()     # Applies the transformations and the structural checks
        .build()         # Returns DIDData
    )
 

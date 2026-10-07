@@ -34,6 +34,7 @@ from moderndid.core.preprocess.validators import (
     ColumnValidator,
     PanelStructureValidator,
     TreatmentValidator,
+    check_columns,
 )
 from moderndid.did.aggte import aggte
 from moderndid.did.att_gt import att_gt
@@ -444,7 +445,6 @@ class TestPreprocessDid:
         assert (result.data["g"] == NEVER_TREATED_VALUE).any()
         assert len(result.config.treated_groups) > 0
 
-    @pytest.mark.filterwarnings("ignore:.*units were already treated:UserWarning")
     @pytest.mark.filterwarnings("ignore:Dropped.*units:UserWarning")
     def test_empty_groups_error(self):
         df = create_test_panel_data()
@@ -616,7 +616,6 @@ class TestDataIntegrity:
                 gname="g",
             )
 
-    @pytest.mark.filterwarnings("ignore:.*units were already treated:UserWarning")
     @pytest.mark.filterwarnings("ignore:Dropped.*units:UserWarning")
     def test_early_treatment_handling(self):
         df = create_test_panel_data(n_periods=5)
@@ -726,7 +725,6 @@ class TestWeightHandling:
 
 
 class TestUnbalancedPanelHandling:
-    @pytest.mark.filterwarnings("ignore:.*units have unbalanced observations:UserWarning")
     @pytest.mark.filterwarnings("ignore:Dropped.*units while converting:UserWarning")
     def test_unbalanced_to_balanced_conversion(self):
         df = create_unbalanced_panel_data(missing_fraction=0.3)
@@ -813,11 +811,9 @@ class TestClusteringOptions:
 
     def test_invalid_cluster_var(self):
         df = create_test_panel_data()
+        message = "Validation failed:\n'nonexistent_var' in clustervars is not a column in the data."
 
-        with pytest.raises(
-            (ValueError, KeyError, pl.exceptions.ColumnNotFoundError),
-            match="not found|Column not found|unable to find column",
-        ):
+        with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
             preprocess_did(
                 data=df,
                 yname="y",
@@ -1092,6 +1088,69 @@ def test_column_validator_rejects_reserved_names(reserved):
         f"yname names the column '{reserved}'. "
         "Since moderndid uses that name for an internal column, rename the column."
     ]
+
+
+def test_column_validator_checks_idname_without_a_panel(mpdta_data):
+    config = DIDConfig(yname="lemp", tname="year", idname="county", gname="first.treat", panel=False)
+
+    result = ColumnValidator().validate(mpdta_data, config)
+
+    assert result.errors == ["idname='county' is not a column in the data. Did you mean 'countyreal'?"]
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        ({"tname": "Year"}, "tname='Year' is not a column in the data. Did you mean 'year'?"),
+        ({"weightsname": "population"}, "weightsname='population' is not a column in the data."),
+        (
+            {"clustervars": ["countyreal", "county"]},
+            "'county' in clustervars is not a column in the data. Did you mean 'countyreal'?",
+        ),
+        (
+            {"xformla": "~ lpop + I(lemp**2) + lpopp"},
+            "'lpopp' in xformla is not a column in the data. Did you mean 'lpop'?",
+        ),
+        ({"vcov": {"CRV1": "countyreal+yeer"}}, "'yeer' in vcov is not a column in the data. Did you mean 'year'?"),
+        (
+            {"yname": "lemp", "tname": "yeer", "idname": None, "gname": "first_treat"},
+            "tname='yeer' is not a column in the data. Did you mean 'year'?\n"
+            "gname='first_treat' is not a column in the data. Did you mean 'first.treat' or 'treat'?",
+        ),
+    ],
+)
+def test_check_columns_names_each_missing_column(mpdta_data, arguments, message):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        check_columns(mpdta_data, **arguments)
+
+
+def test_check_columns_suggests_at_most_three_columns():
+    data = pl.DataFrame({"cov1": [1.0], "cov2": [1.0], "cov3": [1.0], "cov4": [1.0]})
+    message = "'cov5' in xformla is not a column in the data. Did you mean 'cov1', 'cov2', or 'cov3'?"
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        check_columns(data, xformla="~ cov1 + cov5")
+
+
+def test_check_columns_accepts_columns_that_exist(mpdta_data):
+    result = check_columns(
+        mpdta_data.to_pandas(),
+        yname="lemp",
+        tname="year",
+        idname=None,
+        clustervars=["countyreal"],
+        xformla="~ lpop + I(lpop**2)",
+        vcov={"CRV1": "countyreal+year"},
+    )
+
+    assert result is None
+
+
+def test_preprocess_did_names_a_misspelled_column(mpdta_data):
+    message = "Validation failed:\ntname='yeer' is not a column in the data. Did you mean 'year'?"
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        preprocess_did(mpdta_data, yname="lemp", tname="yeer", idname="countyreal", gname="first.treat")
 
 
 @pytest.mark.parametrize(

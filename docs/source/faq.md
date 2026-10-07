@@ -41,8 +41,8 @@ and takes the dummy itself as `dname`.
 
 moderndid accepts any DataFrame from a library that implements the Arrow PyCapsule
 interface.
-{ref}`The quickstart <quickstart-dataframes>` shows polars, pandas, and pyarrow
-inputs side by side. A polars LazyFrame works
+{ref}`The data guide <data-formats>` shows how to prepare polars, pandas, and
+pyarrow inputs. A polars LazyFrame works
 too once you call `.collect()` on it. If a pandas DataFrame keeps the unit or
 period in its index, call `reset_index()` first, since only columns survive the
 conversion. The id, time, outcome, and timing columns must all be numeric. Map
@@ -120,14 +120,15 @@ comparison on the same county data.
 
 ### Should I use a varying or universal base period?
 
-`base_period` changes only the estimates before adoption, since every effect
-after adoption uses $g-1$ as its base under either setting. The default
+With no anticipation, `base_period` changes only the estimates before adoption,
+since every effect after adoption uses $g-1$ as its base under either setting. The default
 `"varying"` makes each estimate before adoption a change over one period. Under
 `"universal"` every period is measured against $g-1$ and the placebo estimates
 sit on the same scale as the effects. Choose `"universal"` for an event study
 you plot or set beside a regression event study. Always choose it before
-{func}`~moderndid.honest_did`, since `honest_did` treats event time −1 as the
-reference and drops whatever estimate sits there.
+{func}`~moderndid.honest_did`, since it removes the normalized reference period
+at event time $-1-\text{anticipation}$. With a positive anticipation setting,
+the universal base is $g-\text{anticipation}-1$ rather than $g-1$.
 [The base period](user_guide/example_staggered_did.md#the-base-period) puts the
 two settings side by side on the county data.
 
@@ -138,15 +139,15 @@ two settings side by side on the county data.
 `+`. Build any transformation, dummy, or interaction as its own column first,
 such as `pl.col("pop").log().alias("lpop")`.
 
-:::{admonition} Formula terms are dropped without a warning
+:::{admonition} Build transformed covariates before estimation
 :class: warning
 
-The parser keeps only the column names inside `log()`, `C()`, `I()`, powers, and
-interactions. On mpdta, for example, `"~ lpop + I(lpop**2)"` gives exactly the
-same estimates as `"~ lpop"`. In the same way `"~ C(region)"` enters a numeric `region` code as one
-covariate rather than a set of dummies. The two-period {func}`~moderndid.drdid`,
-{func}`~moderndid.ipwdid`, and {func}`~moderndid.ordid` are the exception and
-evaluate the full formula.
+The named-column parser rejects transformations, categorical terms, powers,
+and interactions rather than evaluating them. For an `att_gt` fit with a
+squared population covariate, create that column first and name it in
+`xformla`. The two-period {func}`~moderndid.drdid`, {func}`~moderndid.ipwdid`,
+and {func}`~moderndid.ordid` can evaluate a full formula when the `formulaic`
+dependency is installed.
 :::
 
 ### Can my covariates change over time?
@@ -201,10 +202,10 @@ that result reuses them. The other estimators that cluster spell the option in t
 
 - {func}`~moderndid.etwfe` takes `vcov={"CRV1": "state"}`.
 - {func}`~moderndid.did_multiplegt` takes `cluster="state"`.
-- {func}`~moderndid.ddd` takes `cluster="state"` together with `boot=True`.
+- {func}`~moderndid.ddd` takes `cluster="state"` for itself and for {func}`~moderndid.agg_ddd`.
 
-For now, {func}`~moderndid.agg_ddd` and {func}`~moderndid.cont_did` can't
-cluster standard errors above the level of the unit.
+For now, {func}`~moderndid.cont_did` can't cluster standard errors above the
+level of the unit.
 [Clustering by state](user_guide/example_staggered_did.md#clustering-by-state)
 clusters the county data by state and shows why the bands for a lone treated
 state come out too narrow.
@@ -248,11 +249,13 @@ comparison units.
 
 ### How do I get results into a DataFrame or a paper table?
 
-Since every result is a `NamedTuple`, you can read fields such as `overall_att`
-and `att_by_event` as attributes. {func}`~moderndid.to_df` turns a result into a
-polars DataFrame with one row per estimate and columns for the estimate, its
-standard error, and its band. For a `type="simple"` aggregation `to_df` raises
-an error instead, since the single number already sits in `overall_att`.
+Results expose their estimates as attributes whose names depend on the
+estimator. For an `aggte` result, those include `overall_att` and
+`att_by_event`. {func}`~moderndid.to_df` converts supported result types to a
+polars DataFrame containing estimates and uncertainty. For a `type="simple"`
+aggregation, read `overall_att` and `overall_se` directly because that scalar
+result cannot be converted with `to_df`. The
+{doc}`results guide <user_guide/results>` explains the fields and aggregation choices.
 {ref}`Publication tables <publication_tables>` shows how to combine several
 results into one table for a paper.
 
@@ -268,7 +271,7 @@ whose extra is missing raises an `ImportError` that names the install command,
 such as `uv add 'moderndid[didcont]'` for {func}`~moderndid.cont_did`. If
 {func}`~moderndid.etwfe` or {func}`~moderndid.diddynamic.dyn_balancing` raises a
 plain `ModuleNotFoundError` instead, install the `etwfe` or `diddynamic` extra.
-{doc}`Installation <getting_started/installation>` lists every extra along with
+{doc}`Installation <user_guide/installation>` lists every extra along with
 fixes for common install failures.
 
 ### How do I speed up estimation on a large panel?
@@ -278,5 +281,6 @@ On one machine, `n_jobs=-1` lets {func}`~moderndid.att_gt` and
 changing the results. Since the multiplier bootstrap is often the slowest step,
 the `numba` extra and a smaller `biters` both help. With an NVIDIA GPU and the
 `gpu` extra, `backend="cupy"` runs `att_gt`, `ddd`, and
-{func}`~moderndid.cont_did` on the GPU. {ref}`GPU acceleration <gpu>` explains
-why that pays off only once cells hold thousands of units.
+{func}`~moderndid.cont_did` through supported GPU calculations.
+{ref}`GPU acceleration <gpu>` explains how to benchmark the full call,
+including preparation and transfers, to find out whether it helps your specification.

@@ -54,9 +54,9 @@ def test_same_switchers_need_an_outcome_change_and_a_control_at_every_effect(rea
 
     result = _compute_same_switchers_mask(reach_panel, config, n_effects, 0, 6)
 
-    flags = dict(result.group_by("id").agg(pl.col("_same_switcher").first()).iter_rows())
+    flags = dict(result.group_by("id").agg(pl.col(".same_switcher").first()).iter_rows())
     assert flags == expected
-    assert "_same_switcher_pl" not in result.columns
+    assert ".same_switcher_pl" not in result.columns
 
 
 @pytest.mark.parametrize(
@@ -71,7 +71,7 @@ def test_same_switchers_for_placebos_need_every_placebo(reach_panel, n_placebos,
 
     result = _compute_same_switchers_mask(reach_panel, config, 1, n_placebos, 6)
 
-    flags = dict(result.group_by("id").agg(pl.col("_same_switcher_pl").first()).iter_rows())
+    flags = dict(result.group_by("id").agg(pl.col(".same_switcher_pl").first()).iter_rows())
     assert flags == expected
 
 
@@ -110,7 +110,7 @@ def test_compute_delta_d_handles_decreasing_treatment(basic_config):
             "F_g": [3.0, 3.0, 3.0],
             "S_g": [-1, -1, -1],
             "weight_gt": [1.0, 1.0, 1.0],
-            "dist_to_switch_1": [0.0, 0.0, 1.0],
+            ".dist_to_switch_1": [0.0, 0.0, 1.0],
         }
     )
 

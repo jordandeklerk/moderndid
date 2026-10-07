@@ -17,6 +17,7 @@ from moderndid.core.preprocess import (
     EstimationMethod,
     PreprocessDataBuilder,
 )
+from moderndid.core.preprocess.validators import check_columns
 from moderndid.cupy.backend import to_numpy
 
 from .compute_att_gt import _is_unbalanced_panel, compute_att_gt
@@ -253,6 +254,16 @@ def att_gt(
         raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
     if clustervars is not None and isinstance(clustervars, str):
         raise TypeError(f"clustervars must be a list of strings, not a string. Use clustervars=['{clustervars}'].")
+    check_columns(
+        data,
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        gname=gname,
+        xformla=xformla,
+        weightsname=weightsname,
+        clustervars=clustervars,
+    )
 
     if anticipation > 0:
         warnings.warn(

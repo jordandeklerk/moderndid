@@ -340,8 +340,14 @@ def test_cont_did_invalid_data():
 
 def test_cont_did_missing_columns():
     df = pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+    message = (
+        "yname='Y' is not a column in the data. Did you mean 'y'?\n"
+        "tname='time' is not a column in the data.\n"
+        "idname='id' is not a column in the data.\n"
+        "dname='D' is not a column in the data."
+    )
 
-    with pytest.raises(ValueError, match="Missing columns"):
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         cont_did(
             data=df,
             yname="Y",
@@ -349,6 +355,47 @@ def test_cont_did_missing_columns():
             idname="id",
             dname="D",
         )
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"gname": "GG"}, "gname='GG' is not a column in the data. Did you mean 'G'?"),
+        ({"gname": None, "dname": "dose"}, "dname='dose' is not a column in the data."),
+    ],
+)
+def test_cont_did_names_misspelled_columns(contdid_data, changes, message):
+    spec = {"yname": "Y", "tname": "period", "idname": "id", "gname": "G", "dname": "D"} | changes
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        cont_did(contdid_data, **spec)
+
+
+@pytest.mark.parametrize("contdid_one_missing_dose", [None, float("nan"), float("-inf")], indirect=True)
+def test_cont_did_drops_a_missing_dose_like_any_missing_value(contdid_one_missing_dose):
+    spec = {
+        "yname": "Y",
+        "tname": "period",
+        "idname": "id",
+        "gname": "G",
+        "dname": "D",
+        "biters": 99,
+        "random_state": 3,
+    }
+    unit = contdid_one_missing_dose.filter(~pl.col("D").is_finite().fill_null(False))["id"].item()
+    expected = cont_did(contdid_one_missing_dose.filter(pl.col("id") != unit), **spec)
+
+    with pytest.warns(UserWarning) as record:
+        result = cont_did(contdid_one_missing_dose, **spec)
+
+    assert [str(warning.message) for warning in record] == [
+        "Dropped 1 rows from original data due to missing values",
+        "Dropped 1 units while converting to balanced panel",
+    ]
+    np.testing.assert_array_equal(result.att_d, expected.att_d)
+    np.testing.assert_array_equal(result.att_d_se, expected.att_d_se)
+    assert result.overall_att == expected.overall_att
+    assert result.overall_acrt == expected.overall_acrt
 
 
 def test_cont_did_covariates_not_supported(contdid_data):
@@ -1412,6 +1459,112 @@ def test_cont_did_drops_infinite_rows_like_missing_ones(contdid_one_infinite):
 def test_cont_did_rejects_reserved_outcome_name(contdid_data):
     with pytest.raises(ValueError, match=re.escape("yname names the column '.w'")):
         cont_did(data=contdid_data.rename({"Y": ".w"}), yname=".w", tname="period", idname="id", gname="G", dname="D")
+
+
+@pytest.mark.parametrize(
+    "renamed",
+    [
+        {"Y": "outcome", "D": "Y"},
+        {"G": "cohort", "D": "G"},
+        {"period": "time", "D": "period"},
+        {"id": "unit", "D": "id"},
+        {"G": "cohort", "id": "G"},
+        {"period": "time", "id": "period"},
+        {"Y": "outcome", "id": "Y"},
+        {"D": "dose", "id": "D"},
+    ],
+)
+def test_cont_did_columns_named_like_its_working_columns_give_the_same_estimates(contdid_data, renamed):
+    names = {column: renamed.get(column, column) for column in ("Y", "period", "id", "G", "D")}
+    kwargs = {"target_parameter": "level", "aggregation": "dose", "degree": 2, "biters": 10, "random_state": 0}
+    expected = cont_did(
+        data=contdid_data.rename({"Y": "outcome", "period": "time", "id": "unit", "G": "cohort", "D": "dose"}),
+        yname="outcome",
+        tname="time",
+        idname="unit",
+        gname="cohort",
+        dname="dose",
+        **kwargs,
+    )
+    result = cont_did(
+        data=contdid_data.rename(renamed),
+        yname=names["Y"],
+        tname=names["period"],
+        idname=names["id"],
+        gname=names["G"],
+        dname=names["D"],
+        **kwargs,
+    )
+
+    np.testing.assert_allclose(result.overall_att, expected.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(result.overall_att_se, expected.overall_att_se, rtol=1e-12)
+    np.testing.assert_allclose(result.att_d, expected.att_d, rtol=1e-12)
+    np.testing.assert_allclose(result.att_d_se, expected.att_d_se, rtol=1e-12)
+
+
+def test_cont_did_empirical_bootstrap_with_a_unit_column_named_g(contdid_data):
+    kwargs = {
+        "yname": "Y",
+        "tname": "period",
+        "gname": "cohort",
+        "dname": "D",
+        "target_parameter": "level",
+        "aggregation": "eventstudy",
+        "boot_type": "empirical",
+        "biters": 5,
+        "random_state": 0,
+    }
+    expected = cont_did(data=contdid_data.rename({"G": "cohort", "id": "unit"}), idname="unit", **kwargs)
+    result = cont_did(data=contdid_data.rename({"G": "cohort", "id": "G"}), idname="G", **kwargs)
+
+    np.testing.assert_allclose(result.event_study.att_by_event, expected.event_study.att_by_event, rtol=1e-12)
+    np.testing.assert_allclose(result.event_study.se_by_event, expected.event_study.se_by_event, rtol=1e-12)
+    assert result.att_gt.n_units == expected.att_gt.n_units == 1000
+
+
+@pytest.mark.parametrize("extra", ["G", ".G", "_group"])
+def test_cont_did_without_gname_ignores_columns_named_like_its_group_columns(contdid_staggered_dose, extra):
+    kwargs = {"yname": "Y", "tname": "period", "idname": "id", "dname": "D", "gname": None, "degree": 2, "biters": 10}
+    expected = cont_did(data=contdid_staggered_dose, random_state=0, **kwargs)
+    result = cont_did(data=contdid_staggered_dose.with_columns(pl.col("Y").alias(extra)), random_state=0, **kwargs)
+
+    np.testing.assert_allclose(result.overall_att, expected.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(result.overall_att_se, expected.overall_att_se, rtol=1e-12)
+    np.testing.assert_allclose(result.att_d, expected.att_d, rtol=1e-12)
+    np.testing.assert_allclose(result.att_d_se, expected.att_d_se, rtol=1e-12)
+
+
+@pytest.mark.parametrize("column", ["Y", "id", "D"])
+def test_cont_did_without_gname_keeps_a_named_column_called_g(contdid_staggered_dose, column):
+    names = {"Y": "Y", "id": "id", "D": "D", column: "G"}
+    kwargs = {"tname": "period", "gname": None, "degree": 2, "biters": 10, "random_state": 0}
+    expected = cont_did(data=contdid_staggered_dose, yname="Y", idname="id", dname="D", **kwargs)
+    result = cont_did(
+        data=contdid_staggered_dose.rename({column: "G"}),
+        yname=names["Y"],
+        idname=names["id"],
+        dname=names["D"],
+        **kwargs,
+    )
+
+    np.testing.assert_allclose(result.overall_att, expected.overall_att, rtol=1e-12)
+    np.testing.assert_allclose(result.overall_att_se, expected.overall_att_se, rtol=1e-12)
+    np.testing.assert_allclose(result.att_d, expected.att_d, rtol=1e-12)
+    np.testing.assert_allclose(result.att_d_se, expected.att_d_se, rtol=1e-12)
+
+
+def test_cont_did_without_gname_rejects_a_named_column_called_dot_g(contdid_staggered_dose):
+    message = "yname names the column '.G'. Since moderndid uses that name for an internal column, rename the column."
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        cont_did(
+            data=contdid_staggered_dose.rename({"Y": ".G"}),
+            yname=".G",
+            tname="period",
+            idname="id",
+            dname="D",
+            gname=None,
+        )
 
 
 @pytest.mark.filterwarnings("error:.*unbalanced:UserWarning")

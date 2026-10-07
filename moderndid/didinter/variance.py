@@ -29,7 +29,7 @@ def build_treatment_paths(df, horizon, config):
     Returns
     -------
     pl.DataFrame
-        DataFrame with path_0, path_1, ..., path_h columns identifying treatment
+        DataFrame with .path_0, .path_1, ..., .path_h columns identifying treatment
         trajectories, and validity flags for cohorts with sufficient observations.
     """
     gname = config.gname
@@ -41,36 +41,36 @@ def build_treatment_paths(df, horizon, config):
         pl.when(pl.col(tname) == pl.col("F_g") + h - 1)
         .then(pl.col(dname))
         .otherwise(pl.lit(None))
-        .alias("_treat_at_horizon")
+        .alias(".treat_at_horizon")
     )
 
-    df = df.with_columns(pl.col("_treat_at_horizon").mean().over(gname).alias(f"treat_h{h}"))
+    df = df.with_columns(pl.col(".treat_at_horizon").mean().over(gname).alias(f".treat_h{h}"))
 
     if h == 1:
-        df = df.with_columns(pl.col("d_sq").alias("treat_h0"))
-        df = df.with_columns(pl.struct(["treat_h0", "F_g"]).hash(seed=42).alias("path_0"))
+        df = df.with_columns(pl.col("d_sq").alias(".treat_h0"))
+        df = df.with_columns(pl.struct([".treat_h0", "F_g"]).hash(seed=42).alias(".path_0"))
 
-    if h > 1 and f"treat_h{h - 1}" in df.columns:
+    if h > 1 and f".treat_h{h - 1}" in df.columns:
         df = df.with_columns(
-            pl.when(pl.col(f"treat_h{h}").is_null())
-            .then(pl.col(f"treat_h{h - 1}"))
-            .otherwise(pl.col(f"treat_h{h}"))
-            .alias(f"treat_h{h}")
+            pl.when(pl.col(f".treat_h{h}").is_null())
+            .then(pl.col(f".treat_h{h - 1}"))
+            .otherwise(pl.col(f".treat_h{h}"))
+            .alias(f".treat_h{h}")
         )
 
-    prev_path = f"path_{h - 1}" if h > 1 else "path_0"
+    prev_path = f".path_{h - 1}" if h > 1 else ".path_0"
     if prev_path in df.columns:
-        df = df.with_columns(pl.struct([prev_path, f"treat_h{h}"]).hash(seed=42).alias(f"path_{h}"))
+        df = df.with_columns(pl.struct([prev_path, f".treat_h{h}"]).hash(seed=42).alias(f".path_{h}"))
 
-    if h == 1 and "path_0" in df.columns:
-        df = df.with_columns(pl.col(gname).n_unique().over("path_0").alias("n_groups_path_0"))
-        df = df.with_columns((pl.col("n_groups_path_0") > 1).cast(pl.Int64).alias("valid_cohort_0"))
+    if h == 1 and ".path_0" in df.columns:
+        df = df.with_columns(pl.col(gname).n_unique().over(".path_0").alias(".n_groups_path_0"))
+        df = df.with_columns((pl.col(".n_groups_path_0") > 1).cast(pl.Int64).alias(".valid_cohort_0"))
 
-    if f"path_{h}" in df.columns:
-        df = df.with_columns(pl.col(gname).n_unique().over(f"path_{h}").alias(f"n_groups_path_{h}"))
-        df = df.with_columns((pl.col(f"n_groups_path_{h}") > 1).cast(pl.Int64).alias(f"valid_cohort_{h}"))
+    if f".path_{h}" in df.columns:
+        df = df.with_columns(pl.col(gname).n_unique().over(f".path_{h}").alias(f".n_groups_path_{h}"))
+        df = df.with_columns((pl.col(f".n_groups_path_{h}") > 1).cast(pl.Int64).alias(f".valid_cohort_{h}"))
 
-    df = df.drop("_treat_at_horizon")
+    df = df.drop(".treat_at_horizon")
 
     return df
 
@@ -92,13 +92,13 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
     Returns
     -------
     pl.DataFrame
-        DataFrame with dof_switcher_{h} and cohort_mean_{h} columns.
+        DataFrame with .dof_switcher_{h} and .cohort_mean_{h} columns.
     """
     h = abs(horizon)
     trends = config.trends_nonparam or []
-    switcher_flag = f"is_switcher_{h}"
-    weighted_diff = f"weighted_diff_{h}"
-    dist_col = f"dist_to_switch_{h}"
+    switcher_flag = f".is_switcher_{h}"
+    weighted_diff = f".weighted_diff_{h}"
+    dist_col = f".dist_to_switch_{h}"
 
     # A zero-weight switcher adds nothing to the cohort mean and does not count toward the cohort size.
     is_switcher = (pl.col(switcher_flag) == 1) & (pl.col("weight_gt") != 0)
@@ -107,8 +107,8 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
     group_vars = base_group_vars + list(trends)
     group_vars = [c for c in group_vars if c in df.columns]
 
-    weight_sum_col = f"weight_sum_{h}_switcher"
-    diff_sum_col = f"diff_sum_{h}_switcher"
+    weight_sum_col = f".weight_sum_{h}_switcher"
+    diff_sum_col = f".diff_sum_{h}_switcher"
 
     val_weight = pl.when(is_switcher).then(pl.col("weight_gt")).otherwise(None)
     val_diff = pl.when(is_switcher).then(pl.col(weighted_diff)).otherwise(None)
@@ -118,12 +118,12 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
         pl.when(is_switcher).then(val_diff.sum().over(group_vars)).otherwise(None).alias(diff_sum_col),
     )
 
-    dof_col = f"dof_switcher_{h}"
+    dof_col = f".dof_switcher_{h}"
     if cluster_col is None:
         val_dof = pl.when(is_switcher).then(pl.col(switcher_flag)).otherwise(None)
         df = df.with_columns(pl.when(is_switcher).then(val_dof.sum().over(group_vars)).otherwise(None).alias(dof_col))
     else:
-        cluster_flag = f"_cluster_flag_{h}"
+        cluster_flag = f".cluster_flag_{h}"
         df = df.with_columns(pl.when(is_switcher).then(pl.col(cluster_col)).otherwise(None).alias(cluster_flag))
         df = df.with_columns(
             pl.when(pl.col(cluster_flag).is_not_null())
@@ -136,7 +136,7 @@ def compute_cohort_dof(df, horizon, config, cluster_col=None):
     ws = pl.col(weight_sum_col).fill_null(1.0)
     ds = pl.col(diff_sum_col).fill_null(0.0)
 
-    df = df.with_columns((ds / ws).alias(f"cohort_mean_{h}"))
+    df = df.with_columns((ds / ws).alias(f".cohort_mean_{h}"))
 
     return df
 
@@ -166,44 +166,44 @@ def compute_path_cohort_dof(df, horizon, config):
     Returns
     -------
     pl.DataFrame
-        DataFrame with dof_switcher_{h} and cohort_mean_{h} columns.
+        DataFrame with .dof_switcher_{h} and .cohort_mean_{h} columns.
     """
     h = abs(horizon)
     trends = list(config.trends_nonparam or [])
-    is_switcher = (pl.col(f"is_switcher_{h}") == 1) & (pl.col("weight_gt") != 0)
+    is_switcher = (pl.col(f".is_switcher_{h}") == 1) & (pl.col("weight_gt") != 0)
     weight = pl.when(is_switcher).then(pl.col("weight_gt")).otherwise(None)
-    diff = pl.when(is_switcher).then(pl.col(f"weighted_diff_{h}")).otherwise(None)
+    diff = pl.when(is_switcher).then(pl.col(f".weighted_diff_{h}")).otherwise(None)
     size = is_switcher.cast(pl.Int64)
 
-    levels = {"0": "path_0", "1": "path_1", "h": f"path_{h}"}
+    levels = {"0": ".path_0", "1": ".path_1", "h": f".path_{h}"}
     for tag, path in levels.items():
         keys = [path, *trends]
         df = df.with_columns(
-            weight.sum().over(keys).alias(f"_path_weight_{tag}"),
-            diff.sum().over(keys).alias(f"_path_diff_{tag}"),
-            size.sum().over(keys).alias(f"_path_size_{tag}"),
+            weight.sum().over(keys).alias(f".path_weight_{tag}"),
+            diff.sum().over(keys).alias(f".path_diff_{tag}"),
+            size.sum().over(keys).alias(f".path_size_{tag}"),
         )
 
-    weight_sum_col = f"weight_sum_{h}_switcher"
-    diff_sum_col = f"diff_sum_{h}_switcher"
+    weight_sum_col = f".weight_sum_{h}_switcher"
+    diff_sum_col = f".diff_sum_{h}_switcher"
     df = df.with_columns(
-        pl.when(is_switcher).then(_finest_path("_path_weight", h)).otherwise(None).alias(weight_sum_col),
-        pl.when(is_switcher).then(_finest_path("_path_diff", h)).otherwise(None).alias(diff_sum_col),
-        pl.when(is_switcher).then(_finest_path("_path_size", h)).otherwise(None).alias(f"dof_switcher_{h}"),
+        pl.when(is_switcher).then(_finest_path(".path_weight", h)).otherwise(None).alias(weight_sum_col),
+        pl.when(is_switcher).then(_finest_path(".path_diff", h)).otherwise(None).alias(diff_sum_col),
+        pl.when(is_switcher).then(_finest_path(".path_size", h)).otherwise(None).alias(f".dof_switcher_{h}"),
     )
     df = df.with_columns(
-        (pl.col(diff_sum_col).fill_null(0.0) / pl.col(weight_sum_col).fill_null(1.0)).alias(f"cohort_mean_{h}")
+        (pl.col(diff_sum_col).fill_null(0.0) / pl.col(weight_sum_col).fill_null(1.0)).alias(f".cohort_mean_{h}")
     )
 
-    return df.drop([f"_path_{part}_{tag}" for part in ("weight", "diff", "size") for tag in levels])
+    return df.drop([f".path_{part}_{tag}" for part in ("weight", "diff", "size") for tag in levels])
 
 
 def _finest_path(prefix, horizon):
     """Pick the path cohort that demeans each switcher."""
     return (
-        pl.when(pl.col("valid_cohort_1") == 0)
+        pl.when(pl.col(".valid_cohort_1") == 0)
         .then(pl.col(f"{prefix}_0"))
-        .when(pl.col(f"valid_cohort_{horizon}") == 1)
+        .when(pl.col(f".valid_cohort_{horizon}") == 1)
         .then(pl.col(f"{prefix}_h"))
         .otherwise(pl.col(f"{prefix}_1"))
     )
@@ -215,7 +215,7 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
     Parameters
     ----------
     df : pl.DataFrame
-        Data with the never_change column and the baseline treatment rank ``d_sq_int``.
+        Data with the .never_change column and the baseline treatment rank ``d_sq_int``.
     horizon : int
         Current horizon.
     config : DIDInterConfig
@@ -226,14 +226,14 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
     Returns
     -------
     pl.DataFrame
-        DataFrame with dof_control_{h} and control_mean_{h} columns.
+        DataFrame with .dof_control_{h} and .control_mean_{h} columns.
     """
     h = abs(horizon)
     tname = config.tname
     trends = config.trends_nonparam or []
 
-    never_col = f"never_change_{h}"
-    weighted_diff = f"weighted_diff_{h}"
+    never_col = f".never_change_{h}"
+    weighted_diff = f".weighted_diff_{h}"
 
     if never_col not in df.columns:
         return df
@@ -242,10 +242,10 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
     is_control = (pl.col(never_col) == 1.0) & (pl.col("weight_gt") != 0)
     group_vars = [tname, "d_sq_int", *list(trends)]
 
-    weight_sum_col = f"control_weight_sum_{h}"
-    diff_sum_col = f"control_diff_sum_{h}"
-    dof_col = f"dof_control_{h}"
-    mean_col = f"control_mean_{h}"
+    weight_sum_col = f".control_weight_sum_{h}"
+    diff_sum_col = f".control_diff_sum_{h}"
+    dof_col = f".dof_control_{h}"
+    mean_col = f".control_mean_{h}"
 
     val_weight = pl.when(is_control).then(pl.col("weight_gt")).otherwise(None)
     val_diff = pl.when(is_control).then(pl.col(weighted_diff)).otherwise(None)
@@ -259,7 +259,7 @@ def compute_control_dof(df, horizon, config, cluster_col=None):
         val_dof = pl.when(is_control).then(pl.lit(1)).otherwise(None)
         df = df.with_columns(pl.when(is_control).then(val_dof.sum().over(group_vars)).otherwise(None).alias(dof_col))
     else:
-        cluster_flag = f"_control_cluster_{h}"
+        cluster_flag = f".control_cluster_{h}"
         df = df.with_columns(pl.when(is_control).then(pl.col(cluster_col)).otherwise(None).alias(cluster_flag))
         df = df.with_columns(
             pl.when(pl.col(cluster_flag).is_not_null())
@@ -296,15 +296,15 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
     Returns
     -------
     pl.DataFrame
-        DataFrame with dof_union_{h} and union_mean_{h} columns.
+        DataFrame with .dof_union_{h} and .union_mean_{h} columns.
     """
     h = abs(horizon)
     tname = config.tname
     trends = config.trends_nonparam or []
 
-    switcher_flag = f"is_switcher_{h}"
-    never_col = f"never_change_{h}"
-    weighted_diff = f"weighted_diff_{h}"
+    switcher_flag = f".is_switcher_{h}"
+    never_col = f".never_change_{h}"
+    weighted_diff = f".weighted_diff_{h}"
 
     if switcher_flag not in df.columns or never_col not in df.columns:
         return df
@@ -312,11 +312,11 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
     is_union = ((pl.col(switcher_flag) == 1) | (pl.col(never_col) == 1.0)) & (pl.col("weight_gt") != 0)
     group_vars = [tname, "d_sq_int", *list(trends)]
 
-    union_flag = f"is_union_{h}"
-    weight_sum_col = f"union_weight_sum_{h}"
-    diff_sum_col = f"union_diff_sum_{h}"
-    dof_col = f"dof_union_{h}"
-    mean_col = f"union_mean_{h}"
+    union_flag = f".is_union_{h}"
+    weight_sum_col = f".union_weight_sum_{h}"
+    diff_sum_col = f".union_diff_sum_{h}"
+    dof_col = f".dof_union_{h}"
+    mean_col = f".union_mean_{h}"
 
     df = df.with_columns(is_union.cast(pl.Int64).alias(union_flag))
 
@@ -332,7 +332,7 @@ def compute_union_dof(df, horizon, config, cluster_col=None):
         val_dof = pl.when(is_union).then(pl.col(union_flag)).otherwise(None)
         df = df.with_columns(pl.when(is_union).then(val_dof.sum().over(group_vars)).otherwise(None).alias(dof_col))
     else:
-        cluster_flag = f"_union_cluster_{h}"
+        cluster_flag = f".union_cluster_{h}"
         df = df.with_columns(pl.when(is_union).then(pl.col(cluster_col)).otherwise(None).alias(cluster_flag))
         df = df.with_columns(
             pl.when(pl.col(cluster_flag).is_not_null())
@@ -367,18 +367,18 @@ def compute_e_hat(df, horizon, config):
     Returns
     -------
     pl.DataFrame
-        DataFrame with E_hat_{h} column.
+        DataFrame with .E_hat_{h} column.
     """
     h = abs(horizon)
     tname = config.tname
 
-    e_hat_col = f"E_hat_{h}"
-    dof_s_col = f"dof_switcher_{h}"
-    dof_ns_col = f"dof_control_{h}"
-    dof_union_col = f"dof_union_{h}"
-    mean_s_col = f"cohort_mean_{h}"
-    mean_ns_col = f"control_mean_{h}"
-    mean_union_col = f"union_mean_{h}"
+    e_hat_col = f".E_hat_{h}"
+    dof_s_col = f".dof_switcher_{h}"
+    dof_ns_col = f".dof_control_{h}"
+    dof_union_col = f".dof_union_{h}"
+    mean_s_col = f".cohort_mean_{h}"
+    mean_ns_col = f".control_mean_{h}"
+    mean_union_col = f".union_mean_{h}"
 
     time = pl.col(tname)
     fg = pl.col("F_g")
@@ -424,7 +424,7 @@ def compute_dof_scaling(df, horizon, config):
     Parameters
     ----------
     df : pl.DataFrame
-        Data with dof_switcher, dof_control, and dof_union columns.
+        Data with .dof_switcher, .dof_control, and .dof_union columns.
     horizon : int
         Current horizon.
     config : DIDInterConfig
@@ -433,15 +433,15 @@ def compute_dof_scaling(df, horizon, config):
     Returns
     -------
     pl.DataFrame
-        DataFrame with dof_scale_{h} column.
+        DataFrame with .dof_scale_{h} column.
     """
     h = abs(horizon)
     tname = config.tname
 
-    dof_col = f"dof_scale_{h}"
-    dof_s_col = f"dof_switcher_{h}"
-    dof_ns_col = f"dof_control_{h}"
-    dof_union_col = f"dof_union_{h}"
+    dof_col = f".dof_scale_{h}"
+    dof_s_col = f".dof_switcher_{h}"
+    dof_ns_col = f".dof_control_{h}"
+    dof_union_col = f".dof_union_{h}"
 
     df = df.with_columns(pl.lit(1.0).alias(dof_col))
 

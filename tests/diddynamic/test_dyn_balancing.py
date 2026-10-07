@@ -31,6 +31,32 @@ def test_returns_result(estimator_panel):
     assert isinstance(result, DynBalancingResult)
 
 
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"treatment_name": "DD"}, "treatment_name='DD' is not a column in the data. Did you mean 'D'?"),
+        (
+            {"clustervars": ["clustr_var"]},
+            "'clustr_var' in clustervars is not a column in the data. Did you mean 'cluster_var'?",
+        ),
+        ({"histories_length": [1, 2], "xformla": "~ X3"}, "'X3' in xformla is not a column in the data."),
+    ],
+)
+def test_dyn_balancing_names_misspelled_columns(estimator_panel, changes, message):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "treatment_name": "D",
+        "ds1": [0, 1, 1],
+        "ds2": [0, 0, 0],
+        "xformla": "~ X1",
+    } | changes
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        dyn_balancing(data=estimator_panel, **spec)
+
+
 def test_att_is_finite(estimator_panel):
     result = dyn_balancing(
         data=estimator_panel,

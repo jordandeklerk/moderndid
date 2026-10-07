@@ -63,8 +63,13 @@ def agg_ddd(
 
         \theta_t = \sum_{g \leq t} \mathbb{P}(G=g \mid G \leq t) \, ATT(g, t).
 
+    Its overall effect averages :math:`\theta_t` over the periods that have at
+    least one :math:`ATT(g, t)`.
+
     When :func:`ddd` used sampling weights, each unit counts toward these cohort
-    shares with its weight.
+    shares with its weight. When it clustered its standard errors, the
+    standard errors here sum the influence functions within the same
+    clusters. The bootstrap then draws one multiplier per cluster.
 
     See the :ref:`triple differences example <example_triple_did>` for an event study
     and an overall effect from the crop insurance data.

@@ -49,7 +49,7 @@ def control_test_data():
             "x1": x1,
             "x2": x2,
             "weight_gt": np.ones(len(units)),
-            "diff_y_1": diff_y_1,
+            ".diff_y_1": diff_y_1,
         }
     )
 
@@ -94,8 +94,8 @@ def test_compute_control_coefficients_no_controls(xformla):
 @pytest.mark.parametrize(
     "xformla,expected_column",
     [
-        ("~ x1 + x2", "diff_y_1"),
-        ("~1", "diff_y_1"),
+        ("~ x1 + x2", ".diff_y_1"),
+        ("~1", ".diff_y_1"),
     ],
 )
 def test_apply_control_adjustment_returns_diff_column(control_test_data, xformla, expected_column):
@@ -114,7 +114,7 @@ def test_apply_control_adjustment_returns_diff_column(control_test_data, xformla
 
 @pytest.mark.parametrize(
     "expected_column",
-    ["_ctrl_diff_0_1", "_ctrl_diff_1_1"],
+    [".ctrl_diff_0_1", ".ctrl_diff_1_1"],
 )
 def test_apply_control_adjustment_creates_diff_columns(control_test_data, expected_column):
     config = DIDInterConfig(
@@ -191,7 +191,7 @@ def test_compute_control_coefficients_insufficient_data():
             "x1": [1.0],
             "x2": [2.0],
             "weight_gt": [1.0],
-            "diff_y_1": [0.1],
+            ".diff_y_1": [0.1],
         }
     )
 

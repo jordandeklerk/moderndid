@@ -1,6 +1,7 @@
 """Wrapper for outcome regression DiD estimators."""
 
 from moderndid.core.preprocess import preprocess_drdid
+from moderndid.core.preprocess.validators import check_columns
 
 from .container import ORDIDResult
 from .estimators.reg_did_panel import reg_did_panel
@@ -142,6 +143,15 @@ def ordid(
         raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted' or 'multiplier'.")
     if not isinstance(n_boot, int) or n_boot < 1:
         raise ValueError(f"n_boot={n_boot} is not valid. Must be a positive integer.")
+    check_columns(
+        data,
+        yname=yname,
+        tname=tname,
+        idname=idname if panel else None,
+        treatname=treatname,
+        xformla=xformla,
+        weightsname=weightsname,
+    )
 
     call_params = {
         "yname": yname,

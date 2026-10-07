@@ -12,11 +12,9 @@ from moderndid.core.preprocess import (
     get_first_difference as _get_first_difference,
 )
 from moderndid.core.preprocess import (
-    get_group,
-)
-from moderndid.core.preprocess import (
     make_balanced_panel as _make_balanced_panel,
 )
+from moderndid.core.preprocess.validators import _reserved_name_errors, check_columns
 from moderndid.core.preprocessing import preprocess_cont_did
 from moderndid.cupy.backend import get_backend, to_device, to_numpy, use_backend
 from moderndid.npiv import gsl_bs, npiv
@@ -111,7 +109,9 @@ def cont_did(
         when treatment starts for each unit. Each group must be one of the
         observed periods, or 0 for never-treated units. If None, each unit's
         group is the first period in which its dose is positive. The dose
-        must then be 0 before treatment starts.
+        must then be 0 before treatment starts. Because the group is stored
+        in a column named ``.G``, no column that the other arguments name may
+        be called ``.G``.
     dname : str
         Name of the column containing the continuous treatment variable,
         the "dose" or amount of treatment received. Each unit's dose must
@@ -355,17 +355,15 @@ def cont_did(
     if dose_est_method == "cck" and aggregation != "dose":
         raise ValueError("Event study not supported with CCK estimator yet, use aggregation='dose'")
 
-    missing_cols = []
-    required_cols = [yname, dname, tname, idname]
-    for col in required_cols:
-        if col not in data.columns:
-            missing_cols.append(col)
-    if missing_cols:
-        raise ValueError(f"Missing columns in data: {missing_cols}")
+    check_columns(data, yname=yname, tname=tname, idname=idname, gname=gname, dname=dname)
 
     if gname is None:
-        data = get_group(data, idname=idname, tname=tname, treatname=dname)
-        data = data.rename({"G": ".G"})
+        errors = _reserved_name_errors({"yname": yname, "tname": tname, "idname": idname, "dname": dname}, (".G",))
+        if errors:
+            raise ValueError("\n".join(errors))
+        # Writing the group straight to .G leaves every column of the data as it was.
+        first_dose = pl.col(tname).filter(pl.col(dname) > 0).min().over(idname)
+        data = data.with_columns(first_dose.fill_null(0).cast(pl.Int64).alias(".G"))
         gname = ".G"
         treated_starts = data.filter(pl.col(gname) > 0)[gname]
         if treated_starts.len() > 0 and (treated_starts == data[tname].min()).all():

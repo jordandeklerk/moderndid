@@ -159,6 +159,19 @@ def mpdta_cohort_after_panel(mpdta_data):
 
 
 @pytest.fixture
+def mpdta_early_cohorts(mpdta_data):
+    """mpdta in which counties below 9000 start treatment in 2003 and the others below 13000 in 2004."""
+    return mpdta_data.with_columns(
+        pl.when(pl.col("countyreal") < 9000)
+        .then(2003)
+        .when(pl.col("countyreal") < 13000)
+        .then(2004)
+        .otherwise(pl.col("first.treat"))
+        .alias("first.treat")
+    )
+
+
+@pytest.fixture
 def cohort_codes_panel():
     return pl.DataFrame(
         {

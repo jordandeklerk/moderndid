@@ -49,6 +49,9 @@ def get_covariate_names(xformla: str | None) -> list[str] | None:
 def detect_multiple_periods(data: DataFrame, tname: str, gname: str) -> bool:
     """Detect whether data has multiple periods.
 
+    Rows with a missing period or cohort don't count. The missing-data step
+    drops them before the estimation.
+
     Parameters
     ----------
     data : DataFrame
@@ -64,9 +67,12 @@ def detect_multiple_periods(data: DataFrame, tname: str, gname: str) -> bool:
         True if data has more than 2 time periods or treatment groups.
     """
     df = to_polars(data)
-    n_time_periods = df[tname].n_unique()
+    periods = df[tname].drop_nulls()
+    if periods.dtype.is_float():
+        periods = periods.filter(periods.is_finite())
+    n_time_periods = periods.n_unique()
 
-    gvals = df[gname].unique().to_list()
+    gvals = df[gname].drop_nulls().unique().to_list()
     finite_gvals = [g for g in gvals if np.isfinite(g)]
     n_groups = len(finite_gvals)
 

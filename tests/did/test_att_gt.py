@@ -449,6 +449,37 @@ def test_att_gt_missing_column(mpdta_data):
         )
 
 
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"tname": "yeer"}, "tname='yeer' is not a column in the data. Did you mean 'year'?"),
+        (
+            {"gname": "first_treat"},
+            "gname='first_treat' is not a column in the data. Did you mean 'first.treat' or 'treat'?",
+        ),
+        ({"idname": "countyrel"}, "idname='countyrel' is not a column in the data. Did you mean 'countyreal'?"),
+        (
+            {"idname": "countyrel", "panel": False},
+            "idname='countyrel' is not a column in the data. Did you mean 'countyreal'?",
+        ),
+        (
+            {"clustervars": ["county"]},
+            "'county' in clustervars is not a column in the data. Did you mean 'countyreal'?",
+        ),
+        (
+            {"tname": "yeer", "xformla": "~ lpopp"},
+            "tname='yeer' is not a column in the data. Did you mean 'year'?\n"
+            "'lpopp' in xformla is not a column in the data. Did you mean 'lpop'?",
+        ),
+    ],
+)
+def test_att_gt_names_misspelled_columns(mpdta_data, changes, message):
+    spec = {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"} | changes
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        att_gt(mpdta_data, **spec)
+
+
 def test_att_gt_all_treated_notyettreated(mpdta_data):
     result = att_gt(
         data=mpdta_data,
@@ -901,6 +932,75 @@ def test_att_gt_drops_infinite_rows_like_missing_ones(mpdta_one_infinite, spec):
         np.testing.assert_array_equal(result.times, expected.times)
         np.testing.assert_array_equal(result.att_gt, expected.att_gt)
         np.testing.assert_array_equal(result.se_gt, expected.se_gt)
+
+
+@pytest.mark.parametrize("mpdta_one_nan", ["first.treat", "cluster"], indirect=True)
+@pytest.mark.parametrize("allow_unbalanced_panel", [False, True])
+def test_att_gt_checks_cohorts_and_clusters_on_the_rows_that_remain(mpdta_one_nan, allow_unbalanced_panel):
+    spec = {
+        "yname": "lemp",
+        "tname": "year",
+        "idname": "countyreal",
+        "gname": "first.treat",
+        "clustervars": ["cluster"],
+        "boot": True,
+        "biters": 49,
+        "random_state": 7,
+        "allow_unbalanced_panel": allow_unbalanced_panel,
+        "est_method": "reg",
+    }
+    missing = pl.any_horizontal(pl.col("first.treat", "cluster").cast(pl.Float64).is_nan())
+    county = mpdta_one_nan.filter(missing)["countyreal"].item()
+    keep = ~missing if allow_unbalanced_panel else pl.col("countyreal") != county
+    expected = att_gt(mpdta_one_nan.filter(keep), **spec)
+
+    for data in (mpdta_one_nan, mpdta_one_nan.to_pandas()):
+        result = att_gt(data, **spec)
+        assert result.n_units == (500 if allow_unbalanced_panel else 499)
+        np.testing.assert_array_equal(result.att_gt, expected.att_gt)
+        np.testing.assert_array_equal(result.se_gt, expected.se_gt)
+
+
+@pytest.mark.parametrize(("anticipation", "n_dropped"), [(0, 10), (1, 43)])
+def test_att_gt_warns_once_about_units_treated_in_the_first_period(mpdta_early_cohorts, anticipation, n_dropped):
+    with pytest.warns(UserWarning) as record:
+        result = att_gt(
+            mpdta_early_cohorts,
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            anticipation=anticipation,
+            est_method="reg",
+        )
+
+    messages = [str(warning.message) for warning in record if "first period" in str(warning.message)]
+    assert messages == [f"Dropped {n_dropped} units that were already treated in the first period"]
+    assert result.n_units == 500 - n_dropped
+
+
+def test_att_gt_warns_once_about_units_dropped_to_balance_the_panel(mpdta_unbalanced):
+    with pytest.warns(UserWarning) as record:
+        result = att_gt(
+            mpdta_unbalanced, yname="lemp", tname="year", idname="countyreal", gname="first.treat", est_method="reg"
+        )
+
+    assert [str(warning.message) for warning in record] == ["Dropped 74 units while converting to balanced panel"]
+    assert result.n_units == 426
+
+
+@pytest.mark.parametrize("mpdta_one_infinite", [("year", float("-inf"))], indirect=True)
+def test_att_gt_warns_only_about_the_rows_and_units_it_drops(mpdta_one_infinite):
+    with pytest.warns(UserWarning) as record:
+        result = att_gt(
+            mpdta_one_infinite, yname="lemp", tname="year", idname="countyreal", gname="first.treat", est_method="reg"
+        )
+
+    assert [str(warning.message) for warning in record] == [
+        "Dropped 1 rows from original data due to missing values",
+        "Dropped 1 units while converting to balanced panel",
+    ]
+    assert result.n_units == 499
 
 
 @pytest.mark.parametrize("mpdta_bad_weights", ["zero", "zero outside an infinite row", "one negative"], indirect=True)

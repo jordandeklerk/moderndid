@@ -1,5 +1,6 @@
 """Validation classes for preprocessing."""
 
+from difflib import SequenceMatcher
 from typing import Protocol
 
 import numpy as np
@@ -17,7 +18,7 @@ from .config import (
 )
 from .constants import ROW_ID_COLUMN, WEIGHTS_COLUMN
 from .models import ValidationResult
-from .utils import extract_vars_from_formula, get_formula_columns, nonfinite_to_null
+from .utils import extract_vars_from_formula, get_column_terms, get_formula_columns, nonfinite_to_null
 
 
 class DataValidator(Protocol):
@@ -33,75 +34,43 @@ class ColumnValidator(BaseValidator):
     def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
         df = to_polars(data)
-        errors = []
-        warnings = []
-        data_columns = df.columns
 
-        required_cols = {
+        covariate_names = []
+        if config.xformla and config.xformla != "~1":
+            covariate_names = extract_vars_from_formula(config.xformla)
+        dname = config.dname if isinstance(config, ContDIDConfig) else None
+        named_columns = {
             "yname": config.yname,
             "tname": config.tname,
             "gname": config.gname,
+            "idname": config.idname,
+            "weightsname": config.weightsname,
+            "clustervars": config.clustervars,
+            "xformla": covariate_names,
+            "dname": dname,
         }
+        errors = _missing_column_errors(df.columns, named_columns)
+        if errors:
+            return self._create_result(errors)
 
-        if config.panel and config.idname:
-            required_cols["idname"] = config.idname
+        if not _is_numeric_dtype(df[config.tname]):
+            errors.append(f"tname = '{config.tname}' is not numeric. Please convert it")
 
-        for col_type, col_name in required_cols.items():
-            if col_name not in data_columns:
-                errors.append(f"{col_type} = '{col_name}' must be a column in the dataset")
+        if not _is_numeric_dtype(df[config.gname]):
+            errors.append(f"gname = '{config.gname}' is not numeric. Please convert it")
 
-        if config.weightsname and config.weightsname not in data_columns:
-            errors.append(f"weightsname = '{config.weightsname}' must be a column in the dataset")
+        if config.idname and not _is_numeric_dtype(df[config.idname]):
+            errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
 
-        if config.clustervars:
-            for cluster_var in config.clustervars:
-                if cluster_var not in data_columns:
-                    errors.append(f"clustervars contains '{cluster_var}' which is not in the dataset")
+        if not _is_numeric_dtype(df[config.yname]):
+            errors.append(f"yname = '{config.yname}' is not numeric. Please convert it")
 
-        if isinstance(config, ContDIDConfig) and config.dname and config.dname not in data_columns:
-            errors.append(f"dname = '{config.dname}' must be a column in the dataset")
+        if dname and not _is_numeric_dtype(df[dname]):
+            errors.append(f"dname = '{dname}' is not numeric. Please convert it")
 
-        if not errors:
-            if config.tname in data_columns and not _is_numeric_dtype(df[config.tname]):
-                errors.append(f"tname = '{config.tname}' is not numeric. Please convert it")
+        errors.extend(_reserved_name_errors(named_columns, (WEIGHTS_COLUMN, ROW_ID_COLUMN)))
 
-            if config.gname in data_columns and not _is_numeric_dtype(df[config.gname]):
-                errors.append(f"gname = '{config.gname}' is not numeric. Please convert it")
-
-            if config.idname and config.idname in data_columns and not _is_numeric_dtype(df[config.idname]):
-                errors.append(f"idname = '{config.idname}' is not numeric. Please convert it")
-
-            if config.yname in data_columns and not _is_numeric_dtype(df[config.yname]):
-                errors.append(f"yname = '{config.yname}' is not numeric. Please convert it")
-
-            covariate_names = []
-            if config.xformla and config.xformla != "~1":
-                covariate_names = extract_vars_from_formula(config.xformla)
-                for cov in covariate_names:
-                    if cov not in data_columns:
-                        errors.append(f"xformla contains '{cov}' which is not a column in the dataset")
-
-            if (
-                isinstance(config, ContDIDConfig)
-                and config.dname
-                and config.dname in data_columns
-                and not _is_numeric_dtype(df[config.dname])
-            ):
-                errors.append(f"dname = '{config.dname}' is not numeric. Please convert it")
-
-            named_columns = {
-                "yname": config.yname,
-                "tname": config.tname,
-                "gname": config.gname,
-                "idname": config.idname,
-                "weightsname": config.weightsname,
-                "clustervars": config.clustervars,
-                "xformla": covariate_names,
-                "dname": config.dname if isinstance(config, ContDIDConfig) else None,
-            }
-            errors.extend(_reserved_name_errors(named_columns, (WEIGHTS_COLUMN, ROW_ID_COLUMN)))
-
-        return self._create_result(errors, warnings)
+        return self._create_result(errors)
 
     @staticmethod
     def _create_result(errors: list[str] | None = None, warnings: list[str] | None = None) -> ValidationResult:
@@ -130,15 +99,6 @@ class TreatmentValidator(BaseValidator):
                 "periods for each particular unit. The treatment must be irreversible."
             )
 
-        first_period = df[config.tname].min()
-        treated_first_mask = (pl.col(config.gname) > 0) & (pl.col(config.gname) <= first_period)
-        treated_first_df = df.filter(treated_first_mask)
-
-        n_first_period = treated_first_df[config.idname].n_unique() if config.idname else len(treated_first_df)
-
-        if n_first_period > 0:
-            warnings.append(f"{n_first_period} units were already treated in the first period and will be dropped")
-
         return self._create_result(errors, warnings)
 
     @staticmethod
@@ -166,14 +126,6 @@ class PanelStructureValidator(BaseValidator):
             duplicate_error = _duplicate_unit_period_error(df, config.idname, config.tname)
             if duplicate_error is not None:
                 errors.append(duplicate_error)
-            # Since a repeated row counts toward its unit's rows, the unbalanced count would misdescribe that unit.
-            elif not config.allow_unbalanced_panel:
-                n_time_periods = df[config.tname].n_unique()
-                unit_counts = df.group_by(config.idname).len()
-
-                if not (unit_counts["len"] == n_time_periods).all():
-                    n_unbalanced = (unit_counts["len"] != n_time_periods).sum()
-                    warnings.append(f"{n_unbalanced} units have unbalanced observations and will be dropped")
 
         return self._create_result(errors, warnings)
 
@@ -198,10 +150,6 @@ class ClusterValidator(BaseValidator):
             return self._create_result(errors, warnings)
 
         cluster_vars = [cv for cv in config.clustervars if cv != config.idname]
-
-        if len(cluster_vars) > 1:
-            errors.append("You can only provide 1 cluster variable additionally to the one provided in idname")
-            return self._create_result(errors, warnings)
 
         if len(cluster_vars) > 0 and config.idname and config.panel:
             for clust_var in cluster_vars:
@@ -233,6 +181,9 @@ class ArgumentValidator(BaseValidator):
         if isinstance(config, ContDIDConfig) and config.required_pre_periods < 0:
             errors.append("required_pre_periods must be non-negative")
 
+        if len([name for name in (config.clustervars or []) if name != config.idname]) > 1:
+            errors.append("You can only provide 1 cluster variable additionally to the one provided in idname")
+
         return self._create_result(errors, warnings)
 
     @staticmethod
@@ -255,15 +206,8 @@ class DoseValidator(BaseValidator):
         if not isinstance(config, ContDIDConfig) or not config.dname:
             return self._create_result(errors, warnings)
 
-        if config.dname in df.columns:
-            dose_values = df[config.dname]
-
-            if (dose_values < 0).any():
-                errors.append(f"dname = '{config.dname}' contains negative values")
-
-            n_missing = dose_values.is_null().sum()
-            if n_missing > 0:
-                warnings.append(f"{n_missing} observations have missing dose values and will be handled")
+        if config.dname in df.columns and (df[config.dname] < 0).any():
+            errors.append(f"dname = '{config.dname}' contains negative values")
 
         return self._create_result(errors, warnings)
 
@@ -288,21 +232,19 @@ class PrePostColumnValidator(BaseValidator):
         if not isinstance(config, TwoPeriodDIDConfig):
             return self._create_result(errors, warnings)
 
+        # Since the formula engine evaluates a transformed term such as I(x**2), only the plain terms are checked here.
+        column_terms = []
+        if config.xformla and config.xformla != "~1":
+            column_terms = get_column_terms(config.xformla)
         required_cols = {
             "yname": config.yname,
             "tname": config.tname,
             "treat_col": config.treat_col,
+            "idname": config.idname,
+            "weightsname": config.weightsname,
+            "xformla": column_terms,
         }
-
-        if config.panel and config.idname:
-            required_cols["idname"] = config.idname
-
-        for col_type, col_name in required_cols.items():
-            if col_name not in data_columns:
-                errors.append(f"{col_type} = '{col_name}' must be a column in the dataset")
-
-        if config.weightsname and config.weightsname not in data_columns:
-            errors.append(f"weightsname = '{config.weightsname}' must be a column in the dataset")
+        errors.extend(_missing_column_errors(data_columns, required_cols))
 
         if not errors:
             if config.tname in data_columns and not _is_numeric_dtype(df[config.tname]):
@@ -429,38 +371,17 @@ class DIDInterColumnValidator(BaseValidator):
             return ValidationResult(is_valid=True, errors=[], warnings=[])
 
         df = to_polars(data)
-        errors = []
         warnings = []
-        data_columns = df.columns
-
-        required_cols = {
-            "yname": config.yname,
-            "tname": config.tname,
-            "gname": config.gname,
-            "dname": config.dname,
-        }
-
-        for col_type, col_name in required_cols.items():
-            if col_name not in data_columns:
-                errors.append(f"{col_type} = '{col_name}' must be a column in the dataset")
-
-        if config.weightsname and config.weightsname not in data_columns:
-            errors.append(f"weightsname = '{config.weightsname}' must be a column in the dataset")
-
-        if config.cluster and config.cluster not in data_columns:
-            errors.append(f"cluster = '{config.cluster}' must be a column in the dataset")
 
         covariate_names = []
         if config.xformla and config.xformla != "~1":
             covariate_names = extract_vars_from_formula(config.xformla)
-            for ctrl in covariate_names:
-                if ctrl not in data_columns:
-                    errors.append(f"xformla contains '{ctrl}' which is not in the dataset")
 
+        # The intertemporal config stores the caller's idname column in gname.
         named_columns = {
             "yname": config.yname,
             "tname": config.tname,
-            "gname": config.gname,
+            "idname": config.gname,
             "dname": config.dname,
             "weightsname": config.weightsname,
             "cluster": config.cluster,
@@ -468,6 +389,7 @@ class DIDInterColumnValidator(BaseValidator):
             "trends_nonparam": config.trends_nonparam,
             "predict_het": config.predict_het[0] if config.predict_het else None,
         }
+        errors = _missing_column_errors(df.columns, named_columns)
         reserved = (
             WEIGHTS_COLUMN,
             "F_g",
@@ -481,7 +403,8 @@ class DIDInterColumnValidator(BaseValidator):
             "first_obs_by_gp",
             "t_max_by_group",
         )
-        errors.extend(_reserved_name_errors(named_columns, reserved))
+        # Every other column that preprocessing or the estimation adds starts with a dot.
+        errors.extend(_reserved_name_errors(named_columns, reserved, prefix="."))
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
 
@@ -498,7 +421,10 @@ class DIDInterTreatmentValidator(BaseValidator):
         errors = []
         warnings = []
 
-        treatment_changes = df.group_by(config.gname).agg(pl.col(config.dname).n_unique().alias("n_unique"))
+        # Since the intertemporal estimator keeps rows with a missing treatment, only the observed values count.
+        treatment_changes = df.group_by(config.gname).agg(
+            pl.col(config.dname).drop_nulls().n_unique().alias("n_unique")
+        )
         n_switchers = int((treatment_changes["n_unique"] > 1).sum())
 
         if n_switchers == 0:
@@ -527,21 +453,13 @@ class DIDInterPanelValidator(BaseValidator):
 
         df = to_polars(data)
         errors = []
-        warnings = []
 
         # The intertemporal config stores the caller's idname column in gname.
         duplicate_error = _duplicate_unit_period_error(df, config.gname, config.tname)
         if duplicate_error is not None:
             errors.append(duplicate_error)
-        elif not config.allow_unbalanced_panel:
-            n_time_periods = df[config.tname].n_unique()
-            unit_counts = df.group_by(config.gname).len()
 
-            if not (unit_counts["len"] == n_time_periods).all():
-                n_unbalanced = int((unit_counts["len"] != n_time_periods).sum())
-                warnings.append(f"{n_unbalanced} units have unbalanced observations and will be dropped")
-
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
 
 
 class DDDColumnValidator(BaseValidator):
@@ -553,45 +471,14 @@ class DDDColumnValidator(BaseValidator):
             return ValidationResult(is_valid=True, errors=[], warnings=[])
 
         df = to_polars(data)
-        errors = []
         warnings = []
-        data_columns = df.columns
-
-        required_cols = {
-            "yname": config.yname,
-            "tname": config.tname,
-            "idname": config.idname,
-            "gname": config.gname,
-            "pname": config.pname,
-        }
-
-        for col_type, col_name in required_cols.items():
-            if col_name not in data_columns:
-                errors.append(f"{col_type}='{col_name}' not found in data.")
-
-        if config.cluster is not None and config.cluster not in data_columns:
-            errors.append(f"cluster='{config.cluster}' not found in data.")
-
-        if config.weightsname is not None and config.weightsname not in data_columns:
-            errors.append(f"weightsname='{config.weightsname}' not found in data.")
 
         covariate_vars = []
         if config.xformla != "~1":
             try:
                 covariate_vars = extract_vars_from_formula(config.xformla)
             except ValueError as e:
-                errors.append(f"Invalid formula: {e}")
-                return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
-
-            for var in covariate_vars:
-                if var not in data_columns:
-                    errors.append(f"Covariate '{var}' from formula not found in data.")
-
-        if not errors:
-            for col_type in ["yname", "tname", "idname", "gname"]:
-                col_name = getattr(config, col_type)
-                if col_name in data_columns and not _is_numeric_dtype(df[col_name]):
-                    errors.append(f"{col_type}='{col_name}' is not numeric. Please convert it.")
+                return ValidationResult(is_valid=False, errors=[f"Invalid formula: {e}"], warnings=warnings)
 
         named_columns = {
             "yname": config.yname,
@@ -603,6 +490,14 @@ class DDDColumnValidator(BaseValidator):
             "weightsname": config.weightsname,
             "xformla": covariate_vars,
         }
+        errors = _missing_column_errors(df.columns, named_columns)
+
+        if not errors:
+            for col_type in ["yname", "tname", "idname", "gname"]:
+                col_name = getattr(config, col_type)
+                if not _is_numeric_dtype(df[col_name]):
+                    errors.append(f"{col_type}='{col_name}' is not numeric. Please convert it.")
+
         errors.extend(_reserved_name_errors(named_columns, (WEIGHTS_COLUMN, "_post", "_subgroup")))
 
         return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
@@ -697,44 +592,28 @@ class DynBalancingColumnValidator(BaseValidator):
             return ValidationResult(is_valid=True, errors=[], warnings=[])
 
         df = to_polars(data)
-        errors = []
-        warnings = []
-        data_columns = df.columns
 
-        required_cols = {
+        covariate_vars = []
+        if config.xformla and config.xformla != "~1":
+            covariate_vars = extract_vars_from_formula(config.xformla)
+        named_columns = {
             "yname": config.yname,
             "tname": config.tname,
             "idname": config.idname,
             "treatment_name": config.treatment_name,
+            "clustervars": config.clustervars,
+            "fixed_effects": config.fixed_effects,
+            "xformla": covariate_vars,
         }
-
-        for col_type, col_name in required_cols.items():
-            if col_name not in data_columns:
-                errors.append(f"{col_type}='{col_name}' not found in data.")
-
-        if config.clustervars:
-            for cv in config.clustervars:
-                if cv not in data_columns:
-                    errors.append(f"clustervars contains '{cv}' which is not in the dataset.")
-
-        if config.fixed_effects:
-            for fe in config.fixed_effects:
-                if fe not in data_columns:
-                    errors.append(f"fixed_effects contains '{fe}' which is not in the dataset.")
-
-        if config.xformla and config.xformla != "~1":
-            covariate_vars = extract_vars_from_formula(config.xformla)
-            for var in covariate_vars:
-                if var not in data_columns:
-                    errors.append(f"xformla contains '{var}' which is not in the dataset.")
+        errors = _missing_column_errors(df.columns, named_columns)
 
         if not errors:
             for col_type in ["yname", "tname", "idname"]:
                 col_name = getattr(config, col_type)
-                if col_name in data_columns and not _is_numeric_dtype(df[col_name]):
+                if not _is_numeric_dtype(df[col_name]):
                     errors.append(f"{col_type}='{col_name}' is not numeric. Please convert it.")
 
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings)
+        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=[])
 
 
 class DynBalancingPanelValidator(BaseValidator):
@@ -751,67 +630,53 @@ class DynBalancingPanelValidator(BaseValidator):
 
 
 class CompositeValidator(BaseValidator):
-    """Composite validator."""
+    """Run several validators and collect their errors and warnings.
 
-    def __init__(self, validators: list[BaseValidator] | None = None, config_type: str = "did"):
+    The default validators come in two phases. The ``"columns"`` phase checks
+    the columns that the arguments name, their types, the reserved column
+    names, and the argument values. Since these checks need no rows, they run
+    on the data as given.
+
+    The ``"structure"`` phase checks how the rows fit together, such as a
+    cohort that changes within a unit or a unit observed twice in one period.
+    It runs on the rows that the missing-data step keeps. A missing value in
+    one row therefore never decides what these checks find.
+    """
+
+    def __init__(self, validators=None, config_type="did", phase="columns"):
         """Initialize composite validator."""
         if validators is not None:
             self.validators = validators
         else:
-            self.validators = self._get_default_validators(config_type)
+            self.validators = self._get_default_validators(config_type, phase)
 
     @staticmethod
-    def _get_default_validators(config_type: str = "did") -> list[BaseValidator]:
-        """Get default validators."""
+    def _get_default_validators(config_type="did", phase="columns"):
+        """Get the default validators of one phase."""
         if config_type == "two_period":
-            return [
-                PrePostColumnValidator(),
-                PrePostArgumentValidator(),
-                PrePostDataValidator(),
-                PrePostPanelValidator(),
-            ]
+            columns = [PrePostColumnValidator(), PrePostArgumentValidator()]
+            structure = [PrePostDataValidator(), PrePostPanelValidator()]
+        elif config_type == "didinter":
+            columns = [DIDInterColumnValidator(), DIDInterArgumentValidator()]
+            structure = [DIDInterTreatmentValidator(), DIDInterPanelValidator()]
+        elif config_type == "etwfe":
+            columns = [ColumnValidator()]
+            structure = [PanelStructureValidator()]
+        elif config_type == "ddd":
+            columns = [DDDColumnValidator(), DDDArgumentValidator()]
+            structure = [DDDPanelStructureValidator(), DDDInvarianceValidator(), DDDDataValidator()]
+        elif config_type == "dyn_balancing":
+            # Since this pipeline has no missing-data step, the duplicate check runs first. It skips rows without
+            # a unit or a period.
+            columns = [DynBalancingColumnValidator(), DynBalancingPanelValidator()]
+            structure = []
+        else:
+            columns = [ArgumentValidator(), ColumnValidator()]
+            structure = [TreatmentValidator(), PanelStructureValidator(), ClusterValidator()]
+            if config_type == "cont_did":
+                structure.append(DoseValidator())
 
-        if config_type == "didinter":
-            return [
-                DIDInterColumnValidator(),
-                DIDInterArgumentValidator(),
-                DIDInterTreatmentValidator(),
-                DIDInterPanelValidator(),
-            ]
-
-        if config_type == "etwfe":
-            return [
-                ColumnValidator(),
-                PanelStructureValidator(),
-            ]
-
-        if config_type == "ddd":
-            return [
-                DDDColumnValidator(),
-                DDDArgumentValidator(),
-                DDDPanelStructureValidator(),
-                DDDInvarianceValidator(),
-                DDDDataValidator(),
-            ]
-
-        if config_type == "dyn_balancing":
-            return [
-                DynBalancingColumnValidator(),
-                DynBalancingPanelValidator(),
-            ]
-
-        common_validators = [
-            ArgumentValidator(),
-            ColumnValidator(),
-            TreatmentValidator(),
-            PanelStructureValidator(),
-            ClusterValidator(),
-        ]
-
-        if config_type == "cont_did":
-            common_validators.append(DoseValidator())
-
-        return common_validators
+        return structure if phase == "structure" else columns
 
     def validate(self, data: DataFrame, config: BasePreprocessConfig) -> ValidationResult:
         """Validate data."""
@@ -824,6 +689,85 @@ class CompositeValidator(BaseValidator):
             all_warnings.extend(result.warnings)
 
         return ValidationResult(is_valid=len(all_errors) == 0, errors=all_errors, warnings=all_warnings)
+
+
+def check_columns(data, **arguments):
+    """Check that the data hold every column that the arguments name.
+
+    Each keyword is an argument of an estimator and gives the column it
+    names, a list of columns, or None. The ``xformla`` keyword gives a
+    formula whose plain terms name columns. A transformed term such as
+    ``I(x**2)`` is left to the formula engine. A dict, such as the variance
+    specification ``{"CRV1": "state"}``, names the columns in its values.
+    Two-way clustering joins two of them with a plus sign.
+
+    A single error lists every missing column. Each line names the argument
+    and suggests the closest column names, as in "tname='yeer' is not a
+    column in the data. Did you mean 'year'?".
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data that the estimator reads.
+    **arguments
+        Each argument of the estimator that names columns, mapped to its
+        value.
+    """
+    columns = to_polars(data).columns
+    named_columns = {}
+    for argument, value in arguments.items():
+        if argument == "xformla":
+            value = get_column_terms(value) if value else []
+        elif isinstance(value, dict):
+            specs = [spec for spec in value.values() if isinstance(spec, str)]
+            value = [part.strip() for spec in specs for part in ([spec] if spec in columns else spec.split("+"))]
+        named_columns[argument] = value
+
+    errors = _missing_column_errors(columns, named_columns)
+    if errors:
+        raise ValueError("\n".join(errors))
+
+
+def _missing_column_errors(columns, named_columns):
+    """Describe each column that an argument names and the data lack.
+
+    Parameters
+    ----------
+    columns : list of str
+        Column names of the data.
+    named_columns : dict
+        Each argument, such as ``"tname"``, mapped to the column or list of
+        columns it names. None names no column.
+
+    Returns
+    -------
+    list of str
+        One message for each missing column. It names the argument and
+        suggests the closest column names.
+    """
+    available = set(columns)
+    errors = []
+    for argument, names in named_columns.items():
+        listed = [names] if isinstance(names, str) else names or []
+        for name in dict.fromkeys(listed):
+            if name in available:
+                continue
+            where = f"{argument}='{name}'" if isinstance(names, str) else f"'{name}' in {argument}"
+            message = f"{where} is not a column in the data."
+            close = [f"'{column}'" for column in _closest_columns(name, columns)]
+            if close:
+                options = " or ".join(close) if len(close) < 3 else f"{', '.join(close[:-1])}, or {close[-1]}"
+                message += f" Did you mean {options}?"
+            errors.append(message)
+    return errors
+
+
+def _closest_columns(name, columns):
+    """Return up to three column names that resemble a name."""
+    lowered = str(name).lower()
+    scores = {column: SequenceMatcher(None, lowered, column.lower()).ratio() for column in columns}
+    close = [column for column in columns if scores[column] >= 0.6]
+    return sorted(close, key=scores.get, reverse=True)[:3]
 
 
 def _check_panel_mismatch(df: pl.DataFrame, idname: str | None, tname: str, panel: bool) -> tuple[list[str], list[str]]:
@@ -877,7 +821,7 @@ def _duplicate_unit_period_error(df, idname, tname):
     if idname not in df.columns or tname not in df.columns:
         return None
 
-    # Since etwfe and dyn_balancing keep rows with an infinite unit or period, two such rows still repeat a pair.
+    # Since dyn_balancing keeps rows with an infinite unit or period, two such rows still repeat a pair.
     keys = nonfinite_to_null(df.select(idname, tname), keep_infinite=(idname, tname)).drop_nulls()
     repeated = keys.filter(keys.is_duplicated()).unique().sort(idname, tname)
     if repeated.height == 0:
@@ -991,12 +935,13 @@ def _weights_error(weights, weightsname):
     return None
 
 
-def _reserved_name_errors(named_columns, reserved):
+def _reserved_name_errors(named_columns, reserved, prefix=None):
     """Describe the columns of a call whose names an internal column also uses.
 
     Preprocessing adds its own columns next to the columns a call names. A
     user column with the same name would be overwritten or read in place of
-    the internal one.
+    the internal one. When the other internal columns of an estimator share a
+    prefix, every name that starts with it is reserved too.
 
     Parameters
     ----------
@@ -1005,6 +950,8 @@ def _reserved_name_errors(named_columns, reserved):
         columns it names. None names no column.
     reserved : tuple of str
         Names of the internal columns that the estimator adds.
+    prefix : str, optional
+        Prefix that the estimator's other internal columns start with.
 
     Returns
     -------
@@ -1018,7 +965,7 @@ def _reserved_name_errors(named_columns, reserved):
             f"{argument} names the column '{name}'. Since moderndid uses that name for an internal column, "
             "rename the column."
             for name in dict.fromkeys(names)
-            if name in reserved
+            if name in reserved or (prefix is not None and name.startswith(prefix))
         )
     return errors
 

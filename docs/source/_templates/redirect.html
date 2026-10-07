@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="{{ language or 'en' }}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="0; url={{ pathto(redirect_target) }}">
+    <link rel="canonical" href="{{ pathto(redirect_target) }}">
+    <title>{{ title }} | {{ docstitle }}</title>
+  </head>
+  <body>
+    <p>This page is part of the <a href="{{ pathto(redirect_target) }}">User Guide</a>.
+      Follow the link if your browser does not redirect you automatically.</p>
+  </body>
+</html>

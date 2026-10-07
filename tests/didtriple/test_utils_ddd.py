@@ -71,6 +71,20 @@ def test_detect_multiple_periods_with_inf_groups():
 
 
 @pytest.mark.parametrize(
+    "times,groups",
+    [
+        ([1, 1, 2, 2, None], [0, 3, 0, 3, 3]),
+        ([1.0, 1.0, 2.0, 2.0, np.nan], [0, 3, 0, 3, 3]),
+        ([1.0, 1.0, 2.0, 2.0, np.inf], [0, 3, 0, 3, 3]),
+        ([1, 1, 2, 2, 2], [0, 3, 0, 3, None]),
+    ],
+)
+def test_detect_multiple_periods_ignores_missing_periods_and_cohorts(times, groups):
+    df = pl.DataFrame({"time": times, "group": groups})
+    assert detect_multiple_periods(df, "time", "group") is False
+
+
+@pytest.mark.parametrize(
     "times,ids,panel,allow_unbalanced,expected",
     [
         ([1, 2], [1, 2], False, False, True),

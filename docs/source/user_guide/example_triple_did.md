@@ -222,7 +222,7 @@ the event study. If you
 For the 361 households missing from at least one year, some comparisons have no
 change to measure. With `allow_unbalanced_panel=True`, each comparison pools
 everyone observed in either of its two years and treats those years as separate
-samples. The default `False` would keep only the households seen in both.
+samples. The default `False` would instead drop every household missing from any year.
 Because moderndid adds up each household's contributions before computing
 standard errors, the household stays the unit of inference throughout.
 [Households seen every year](#households-seen-every-year) drops those 361

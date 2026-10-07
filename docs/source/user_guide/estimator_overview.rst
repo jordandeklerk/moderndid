@@ -1,482 +1,273 @@
 .. _estimator-overview:
 
-==================
-Estimator Overview
-==================
+Choosing an estimator
+=====================
 
-**ModernDiD** provides several estimators for different research designs. All
-estimators share a common API pattern, so once you learn one the others
-follow naturally. This page provides an overview of each estimator, its key
-arguments, and important caveats. For detailed usage with real data, see the
-individual example pages:
-:ref:`Staggered DiD <example_staggered_did>`,
-:ref:`Continuous DiD <example_cont_did>`,
-:ref:`Triple DiD <example_triple_did>`,
-:ref:`Intertemporal DiD <example_inter_did>`, and
-:ref:`Sensitivity Analysis <example_honest_did>`.
+Choosing an estimator starts with your treatment history and the effect you
+want to learn about. A method that compares adoption cohorts needs different
+information from one that compares changing treatment histories or doses.
+We'll use those distinctions to find the method that matches your design
+before turning to its function arguments.
 
+Start by checking whether treatment starts once and stays in place, whether
+units receive different doses, and whether you need to account for treatment
+changes later on. Although the functions share familiar names for outcomes
+and periods, their inputs, identifying assumptions, and inference options
+differ.
+For the inputs your method needs, :doc:`data` explains how to prepare them
+before estimation. The :ref:`background guides <background>` state the
+assumptions behind each method and explain what they identify.
 
-Choosing the right estimator
------------------------------
+Treatment that starts once
+--------------------------
 
-The choice of estimator depends on the structure of your treatment variable
-and research question.
+When a policy takes effect in different years across units and remains in
+place afterward, an adoption cohort is the set of units first treated in the
+same period. Several estimators keep each cohort's effects separate so that
+an earlier cohort's changing response does not become another cohort's
+untreated comparison. The choice between them depends on the model you want
+for untreated outcomes and the flexibility you need in adjusting for
+covariates.
 
-- Many applied settings involve a binary treatment that turns on permanently
-  at staggered times across groups. :func:`~moderndid.att_gt` handles this
-  staggered adoption case and is a good starting point for most analyses.
-- :func:`~moderndid.etwfe` provides an alternative regression-based approach
-  to the same staggered adoption setting. It saturates a TWFE regression with
-  cohort-by-time interactions and extends naturally to nonlinear models
-  (Poisson, logit, probit) where the semiparametric methods are unavailable.
-- When treatment intensity varies continuously across units,
-  :func:`~moderndid.cont_did` extends the framework to recover
-  dose-response functions showing how effects scale with dosage.
-- When a policy enables treatment for a group but only a subset of units
-  within that group is actually eligible, :func:`~moderndid.ddd` exploits
-  this additional within-group variation. Parental leave affecting women but
-  not men, or minimum wage affecting hourly but not salaried workers, are
-  canonical examples.
-- When treatment is not permanent and can switch on and off or change
-  intensity over time, :func:`~moderndid.did_multiplegt` provides valid
-  inference by comparing units whose treatment changed to those with the
-  same baseline treatment that have not yet changed.
-- When units dynamically select into treatment based on past outcomes and
-  covariates, ``dyn_balancing`` estimates the effect of specific treatment
-  histories using sequential covariate balancing weights that do not require
-  propensity score estimation. This is appropriate when parallel trends is
-  violated by dynamic treatment selection.
-- After running any estimator, :func:`~moderndid.honest_did` assesses how
-  large violations of the parallel trends assumption would need to be to
-  overturn your conclusions.
-- :func:`~moderndid.npiv` estimates nonparametric structural functions using
-  instrumental variables and B-spline sieves. It serves as a standalone tool
-  for Engel curve estimation and similar problems, and also powers the
-  nonparametric dose-response estimator in :func:`~moderndid.cont_did`.
+Group-time effects with att_gt
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+:func:`~moderndid.att_gt` estimates an average treatment effect for each
+adoption cohort in each period. You identify the outcome, period, unit, and
+first treatment period through ``yname``, ``tname``, ``idname``, and
+``gname``. Treatment must be binary and absorbing, meaning it stays in place
+once it begins. Both panel data and repeated cross-sections are supported
+through the ``panel`` argument.
 
-Staggered Difference-in-Differences
------------------------------------
+By default, never-treated units provide the untreated comparisons for every
+adoption cohort. With
+``control_group="notyettreated"``, future adopters can also contribute while
+they remain untreated and outside any anticipation window. Either choice
+requires parallel trends for the units it compares, possibly conditional
+on covariates in ``xformla``. The default ``est_method="dr"`` combines
+outcome regression and propensity score weighting; ``"reg"`` and ``"ipw"``
+use each approach separately. After the :doc:`quickstart` gives you a first
+analysis, the :ref:`staggered DiD example <example_staggered_did>` examines
+these choices on the minimum wage data.
 
-The :func:`~moderndid.did.att_gt` function is the primary estimator for
-staggered treatment adoption with binary, absorbing treatment. It estimates
-group-time average treatment effects on the treated (ATT(g,t)) and
-is the recommended starting point for most DiD analyses. This implements the
-`Callaway and Sant'Anna (2021) <https://doi.org/10.1016/j.jeconom.2020.12.001>`_
-framework.
+:func:`~moderndid.aggte` averages the fitted effects by exposure length,
+cohort, or calendar period, or into an overall average. These summaries
+answer different questions about the effects you have already estimated.
+The :doc:`results`
+guide explains their weights and how to read their uncertainty.
 
-.. code-block:: python
+Regression models with etwfe
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    result = did.att_gt(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        gname="first_treated",
-        xformla="~ covariate",
-        control_group="nevertreated",
-        est_method="dr",
-    )
+If you want to specify the comparison through a regression,
+:func:`~moderndid.etwfe` includes a separate treatment indicator for each
+adoption cohort in each treated period. Its linear model therefore allows
+effects to differ across cohorts and over time. After fitting the model,
+:func:`~moderndid.emfx` computes the summary you want through ``type="simple"``,
+``"event"``, ``"group"``, or ``"calendar"``.
 
-The result includes group-time ATT estimates, analytical standard errors, a
-variance-covariance matrix, and influence functions. A Wald pre-test for
-parallel trends is computed automatically from pre-treatment periods.
+This approach also supports ``family="poisson"``, ``"logit"``, and
+``"probit"`` when the outcome calls for a nonlinear model. Those choices
+change the scale on which you model untreated trends. To interpret their
+estimates causally, their assumptions need to suit your application.
+Comparison groups use ``cgroup="notyet"`` or
+``"never"``; covariance estimates use ``vcov`` rather than the bootstrap
+arguments of ``att_gt``. The :ref:`extended TWFE example <example_etwfe>`
+compares the regression choices on the minimum wage data. For the assumptions
+behind each model, :doc:`../background/etwfe` explains the linear and nonlinear
+specifications.
 
-Group-time estimates are typically aggregated into interpretable summary
-parameters using :func:`~moderndid.aggte`:
+Flexible covariate adjustment with didml
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. code-block:: python
+:func:`~moderndid.didml` estimates group-time effects using machine learning
+models for the covariate adjustments. To calculate those adjustments, it
+applies models trained on other parts of the sample, a procedure called
+cross-fitting. The fitted result also includes predictions of conditional
+treatment effects for individual units. You can use :func:`~moderndid.aggte_didml`
+to produce a dynamic event study from its fitted results. The
+:ref:`machine learning API <api-didml>` describes the model choices, aggregation,
+and functions for examining heterogeneity.
 
-    # Event study (dynamic effects relative to treatment)
-    event_study = did.aggte(result, type="dynamic")
+The current implementation uses balanced panel data and drops incomplete
+units. Flexible covariate adjustment still requires the design's parallel
+trends and overlap assumptions, including when you use conditional effects
+to study heterogeneity.
 
-    # Simple weighted average across all post-treatment (g,t) cells
-    simple_agg = did.aggte(result, type="simple")
+.. admonition:: Machine learning inference is currently pointwise
+   :class: important
 
-    # Group-level averages (one ATT per cohort)
-    group_agg = did.aggte(result, type="group")
+   ``didml`` does not yet support clustered standard errors or bootstrap
+   simultaneous bands, even if ``clustervars`` or ``cband`` is supplied.
+   These limits matter if your policy is assigned to groups of units or your
+   conclusions rely on coverage over a whole event study.
 
-    # Calendar-time averages (one ATT per period)
-    calendar_agg = did.aggte(result, type="calendar")
+A single two-period comparison
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Clustered standard errors require ``boot=True``. When ``clustervars`` is
-specified without the bootstrap, the reported standard errors do not account
-for clustering. At most two clustering variables are supported.
+If your data contain one period before treatment and one after it,
+:func:`~moderndid.drdid` estimates a single average treatment effect on the
+treated without constructing a staggered-adoption summary. For this two-period comparison, the same wrapper supports either panel
+data or repeated cross-sections. The argument ``treatname`` names
+the treatment group indicator instead of an adoption-year column.
 
+The default improved doubly robust method uses propensity score tilting and
+weighted outcome regression. :func:`~moderndid.ipwdid` and
+:func:`~moderndid.ordid` provide the weighting and regression approaches
+separately. The :ref:`two-period API <api-drdid>` describes these wrappers
+and their estimators for array inputs; :doc:`../background/drdid` explains
+what double robustness requires and how panel and cross-section inference
+differ.
 
-Extended Two-Way Fixed Effects (ETWFE)
---------------------------------------
+Doses and eligibility
+---------------------
 
-The :func:`~moderndid.etwfe` function provides a regression-based
-alternative to :func:`~moderndid.att_gt` for the same staggered adoption
-setting. It saturates the model with cohort-by-time interaction terms so that
-each (cohort, period) cell gets its own treatment effect, avoiding the
-negative weighting problem of conventional TWFE. This implements the
-`Wooldridge (2025) <https://doi.org/10.1007/s00181-025-02807-z>`_ framework.
+An adoption year alone may leave out information essential to the research
+question. A policy can give treated units different amounts of exposure or
+apply only to eligible units within an adopting group. We need to retain
+that information when choosing the estimator and defining its comparison.
 
-.. code-block:: python
+Continuous treatment with cont_did
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    mod = did.etwfe(
-        data=data,
-        yname="outcome",
-        tname="year",
-        gname="first_treated",
-        idname="unit_id",
-        xformla="~ covariate",
-    )
+:func:`~moderndid.cont_did` handles units that adopt once and receive a dose
+that stays fixed after adoption. The column named by ``gname`` records when
+treatment begins and the column named by ``dname`` records the dose. The estimator fits effects
+over the dose and can average them into an event study.
 
-The cell-level estimates are then aggregated using :func:`~moderndid.emfx`,
-which plays the same role as :func:`~moderndid.aggte` for the Callaway and
-Sant'Anna estimator.
+With ``aggregation="dose"``, the result contains curves for level effects
+and their slopes. With ``aggregation="eventstudy"``,
+``target_parameter="level"`` or ``"slope"`` chooses what is averaged at
+each exposure length. A level effect compares outcomes with no treatment
+among units that received a particular dose. Interpreting differences or
+slopes across doses as causal responses requires additional assumptions
+about how units select their doses. The :doc:`continuous treatment background
+<../background/didcont>` explains this distinction before the
+:ref:`continuous treatment example <example_cont_did>` applies it to
+geological exposure to fracking.
 
-.. code-block:: python
+The implementation currently requires a balanced panel and supports neither
+covariates nor sampling weights nor clustered inference. The B-spline
+method always bootstraps its standard errors regardless of ``boot``.
+The data-driven ``dose_est_method="cck"`` option requires two periods and
+a single treated cohort and cannot produce an event study. Check
+:func:`~moderndid.cont_did` for these restrictions before adapting a binary
+DiD specification to doses.
 
-    simple = did.emfx(mod, type="simple")
-    event  = did.emfx(mod, type="event")
-    group  = did.emfx(mod, type="group")
-    cal    = did.emfx(mod, type="calendar")
+Triple differences with ddd
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A key advantage of ETWFE over the semiparametric approach is native support
-for nonlinear models. Setting ``family="poisson"`` imposes parallel trends on
-the log scale, which is often more plausible for count or nonnegative
-outcomes. ``"logit"`` and ``"probit"`` are also available. Heterogeneous
-treatment effects by a categorical covariate can be estimated with the
-``xvar`` parameter.
+:func:`~moderndid.ddd` uses an eligibility partition to separate units that can
+receive treatment within groups that enable it. The column named by ``gname``
+records when a group's policy starts,
+and ``pname`` distinguishes its eligible and ineligible units. Its target is
+the average effect among eligible units in the treated group.
 
-.. code-block:: python
+The additional comparison can account for local trends shared by eligible
+and ineligible units even when an ordinary DiD comparison would fail.
+It requires parallel trends in the eligible-ineligible outcome gap across
+treatment-enabling groups, conditional on the specified covariates.
+The function handles two or multiple periods in panels and repeated
+cross-sections. In multiple periods, :func:`~moderndid.agg_ddd` produces
+summaries from the group-time results. The :ref:`triple differences example
+<example_triple_did>` shows how the insurance application supplies this
+partition under the identifying assumption developed in
+:doc:`../background/tripledid`.
 
-    mod_pois = did.etwfe(
-        data=data,
-        yname="count_outcome",
-        tname="year",
-        gname="first_treated",
-        family="poisson",
-    )
-    did.emfx(mod_pois, type="event")
-
-
-Triple Difference-in-Differences
+Treatment that changes over time
 --------------------------------
 
-The :func:`~moderndid.didtriple.ddd` function leverages an additional
-dimension of variation such as eligibility status. The API follows
-the same pattern as the other estimators.
-This implements the
-`Ortiz-Villavicencio and Sant'Anna (2025) <https://arxiv.org/abs/2505.09942>`_
-framework.
+Some treatments can switch off, increase, or decrease after their first change.
+Since the subsequent history can affect the outcome, a single adoption year
+no longer describes the exposure you want to study. Two approaches in moderndid
+address different questions about these histories and rely on different
+identifying assumptions.
 
-.. code-block:: python
+Effects of changes with did_multiplegt
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-    result = did.ddd(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        gname="first_treated",
-        pname="eligible",              # partition/eligibility variable
-        xformla="~ covariate",
-        control_group="nevertreated",
-        est_method="dr",
-    )
+:func:`~moderndid.did_multiplegt` estimates event-study effects after a
+group's first change in treatment. Its panel treatment column ``dname`` can
+be binary or take multiple nonnegative values that change over time.
+Switchers are compared with groups that had the same first-period treatment
+and have not changed yet. Validity relies on parallel trends and no
+anticipation for these comparisons, including when lagged treatments affect
+the outcome.
 
-The triple DiD estimator adds ``pname`` to specify the partition variable
-that identifies eligible units within treatment groups. All other core
-arguments work the same as :func:`~moderndid.att_gt`.
+The arguments ``effects`` and ``placebo`` set the requested post-change and
+pre-change horizons. With ``normalized=True``, the estimates are scaled by
+the cumulative treatment change and average effects of current and lagged
+treatment. By default, periods after a group's treatment has been both above
+and below its first-period value are excluded because keeping them can
+introduce negative weights. For a
+continuous baseline treatment, the analytical variance lacks a proved
+asymptotic normal approximation. The API recommends bootstrapping the estimates
+for this continuous treatment specification.
+The :ref:`intertemporal treatment example <example_inter_did>` follows bank
+branching deregulation through the comparisons and normalization derived
+in :doc:`../background/didinter`.
 
-The estimator automatically detects whether the data has two periods or
-multiple periods, and whether the data is a balanced panel or repeated
-cross-sections. For two-period data the ``control_group`` and
-``base_period`` parameters are ignored since there is only one possible
-comparison.
+Comparing histories with dyn_balancing
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+:func:`~moderndid.diddynamic.dyn_balancing` compares potential outcomes under two binary
+treatment histories supplied as ``ds1`` and ``ds2``. It is intended for
+settings where observed past outcomes and covariates help explain how units
+select into treatment over time. The dynamic balancing method constructs
+weights by solving a quadratic program; ``balancing="ipw"`` and ``"aipw"``
+provide alternative estimators.
 
-Difference-in-Differences with Continuous Treatments
-----------------------------------------------------
+This approach relies on sequential conditional independence, overlap, and
+restrictions on the outcome projections rather than a DiD parallel trends
+assumption. The current implementation requires binary panel histories and at least one
+covariate or fixed effect for the outcome projections and the balancing. The :ref:`dynamic covariate
+balancing example <example_dyn_balancing>` compares democracy histories and
+economic growth under the identifying assumptions developed in
+:doc:`../background/diddynamic`.
 
-The :func:`~moderndid.didcont.cont_did` function handles settings with
-treatment intensity rather than binary treatment. This implements the
-`Callaway, Goodman-Bacon, and Sant'Anna (2025) <https://psantanna.com/files/CGBS_v4.pdf>`_
-framework.
+Sensitivity and instrumental variables
+---------------------------------------
 
-.. code-block:: python
+After estimating a DiD event study, you may want to examine how much your
+conclusions depend on parallel trends. If your design instead identifies a
+structural relationship through an instrument, the package also provides an
+estimator for that separate problem.
 
-    result = did.cont_did(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        gname="first_treated",
-        dname="dose",
-        control_group="notyettreated",
-        anticipation=0,
-        base_period="varying",
-        alp=0.05,
-        boot=True,
-        biters=1000,
-        clustervars=["unit_id"],
-        # Method-specific options
-        target_parameter="level",      # level or slope
-        aggregation="dose",            # dose or eventstudy
-        dose_est_method="parametric",  # parametric or cck
-    )
+Relaxing parallel trends with honest_did
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The inference options (``alp``, ``boot``, ``biters``, ``clustervars``,
-``cband``) and the shared estimation options (``control_group``,
-``anticipation``, ``base_period``) mean what they mean in
-:func:`~moderndid.att_gt` except in two places. On two-period data
-:func:`~moderndid.att_gt` turns ``cband`` off, since its single cell needs no
-simultaneous band. A dose aggregation keeps the band there, because the band
-covers the whole grid of doses. ``anticipation`` also counts the periods in the
-data rather than units of ``tname``. The two readings differ only when the
-periods are spaced unevenly.
+:func:`~moderndid.honest_did` computes confidence sets under specified bounds
+on violations of parallel trends. For a moderndid event study, estimate with
+``att_gt(base_period="universal")`` and aggregate with
+``aggte(type="dynamic")`` before passing the result to ``honest_did``.
+The input needs influence functions and consecutive event times on either
+side of its omitted reference period.
 
-.. important::
+Under a smoothness restriction, you bound how much the differential trend
+can change from one period to the next. Relative
+magnitude restrictions compare possible later violations with the deviations
+observed before treatment. You choose the restrictions and their magnitudes
+rather than asking the data to establish parallel trends. The
+:ref:`sensitivity analysis example <example_honest_did>` examines both choices
+on Medicaid expansion data and shows how to supply external estimates.
+For the precise restrictions on differential trends, the
+:doc:`sensitivity background <../background/didhonest>` states their formal
+definitions and derives the confidence sets.
 
-   The continuous treatment estimator does not yet support covariates (only
-   ``xformla="~1"``), sampling weights, unbalanced panels, or discrete
-   treatment values. Two-way clustering is not supported. The CCK estimation
-   method (``dose_est_method="cck"``) requires exactly two groups and two time
-   periods and cannot be combined with event study aggregation.
+Structural functions with npiv
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+:func:`~moderndid.npiv` estimates a nonparametric structural function and its
+derivatives when a regressor is endogenous and suitable instruments are
+available. You supply the outcome, endogenous regressor, and instrument
+through ``yname``, ``xname``, and ``wname``, or pass arrays directly.
+The method approximates the function with B-splines and estimates their
+coefficients by instrumental variables.
 
-Dynamic Covariate Balancing DiD
--------------------------------
-
-The ``dyn_balancing`` function estimates treatment effects in panel data
-where treatments change dynamically over time and units select into
-treatment based on past outcomes and covariates. This implements the
-`Viviano and Bradic (2026) <https://doi.org/10.1093/biomet/asag016>`_
-framework.
-
-.. code-block:: python
-
-    from moderndid.diddynamic import dyn_balancing
-
-    result = dyn_balancing(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        treatment_name="treatment",
-        ds1=[1, 1],                   # always treated for 2 periods
-        ds2=[0, 0],                   # never treated for 2 periods
-        xformla="~ covariate1 + covariate2",
-        fixed_effects=["region"],
-        balancing="dcb",
-    )
-
-The result includes the ATE, potential outcomes under each treatment
-history, analytical standard errors, and covariate imbalance diagnostics.
-The ``ds1`` and ``ds2`` arguments specify the two treatment sequences to
-compare, where the last element corresponds to the final period.
-
-Three estimation modes are available through additional arguments.
-``histories_length`` traces out how the effect evolves with exposure
-length (1 through :math:`h` periods), ``final_periods`` estimates effects
-at different final time points, and ``impulse_response=True`` measures
-the effect of a one-period treatment shock at varying horizons.
-
-.. code-block:: python
-
-    history = dyn_balancing(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        treatment_name="treatment",
-        ds1=[1, 1, 1, 1, 1],
-        ds2=[0, 0, 0, 0, 0],
-        histories_length=[1, 2, 3, 4, 5],
-        xformla="~ covariate1 + covariate2",
-    )
-
-Unlike the staggered DiD estimators, dynamic covariate balancing does not
-require parallel trends or staggered adoption. Instead, it relies on
-sequential ignorability (no unobserved confounders conditional on past
-observables) and a high-dimensional linear model on potential outcomes.
-The DCB weights are constructed through a quadratic program that does not
-require estimating or specifying the propensity score.
-
-
-Difference-in-Differences with Intertemporal Treatment Effects
---------------------------------------------------------------
-
-The :func:`~moderndid.didinter.did_multiplegt` function handles settings with
-non-binary, non-absorbing (time-varying) treatments where lagged treatments
-may affect outcomes. This implements the
-`de Chaisemartin and D'Haultfoeuille (2024) <https://doi.org/10.1162/rest_a_01414>`_
-framework.
-
-.. code-block:: python
-
-    result = did.did_multiplegt(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        dname="treatment",            # treatment variable (can vary over time)
-        effects=5,                    # number of post-treatment periods
-        placebo=3,                    # number of placebo periods
-        cluster="unit_id",
-    )
-
-Unlike :func:`~moderndid.att_gt` which requires a ``gname`` (first treatment period), the
-intertemporal estimator uses ``dname`` directly since treatment can change
-multiple times. The estimator compares units whose treatment changes
-("switchers") to units with the same baseline treatment that have not yet
-switched. Setting ``effects=L`` produces estimates for each period of
-exposure from 1 through L, and ``placebo=K`` produces K pre-treatment
-placebo estimates for testing parallel trends.
-
-.. code-block:: python
-
-    result = did.did_multiplegt(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        dname="treatment",
-        # Effect options
-        effects=5,
-        placebo=3,
-        normalized=True,              # normalize by cumulative treatment change
-        effects_equal=True,           # chi-squared test for equal effects
-        # Inference options
-        cluster="unit_id",
-        ci_level=95.0,
-        boot=True,
-        biters=1000,
-        # Control options
-        controls=["covariate1", "covariate2"],
-        trends_lin=True,              # unit-specific linear trends
-    )
-
-By default, units that experience both treatment increases and decreases
-(bidirectional switchers) are dropped because their treatment effects can
-be written as a linear combination with negative weights, making the
-estimates difficult to interpret causally. Set
-``keep_bidirectional_switchers=True`` to override this, but interpret
-results with caution.
-
-The result includes an average total effect (ATE) per unit of treatment
-that accounts for both contemporaneous and lagged effects. The ATE is not
-computed when ``trends_lin=True``. The estimator can also restrict to
-one direction of treatment change with ``switchers="in"`` or
-``switchers="out"``, and test for effect heterogeneity across
-time-invariant covariates with ``predict_het``. See the
-:ref:`intertemporal example <example_inter_did>` for a full analysis of bank
-branching deregulation across US states.
-
-.. important::
-
-   When ``continuous > 0``, the variance estimators are not backed by
-   proven asymptotic normality. Bootstrap inference (``boot=True``) is
-   recommended.
-
-
-.. tip::
-
-   Both :func:`~moderndid.cont_did` and :func:`~moderndid.did_multiplegt` accept
-   a dose/treatment variable ``dname``, but they target fundamentally
-   different settings.
-
-   - :func:`~moderndid.cont_did` assumes treatment is **absorbing**. Once
-     treated, a unit stays treated. Units differ only in how *much*
-     treatment they receive (e.g., different minimum wage amounts across
-     counties). The goal is to recover a dose-response function.
-
-   - :func:`~moderndid.did_multiplegt` allows treatment to be
-     **non-absorbing**. A unit's treatment can change, reverse, or
-     fluctuate over time (e.g., tax rates adjusted every year). The goal is
-     to estimate the effect of a treatment *change*, accounting for dynamics
-     and lagged effects.
-
-   As a rule of thumb, if each unit receives a fixed dose at adoption, use
-   :func:`~moderndid.cont_did`. If treatment values shift period to period,
-   use :func:`~moderndid.did_multiplegt`.
-
-
-Nonparametric Instrumental Variables
-------------------------------------
-
-The :func:`~moderndid.npiv` function estimates nonparametric structural
-functions using B-spline sieves and two-stage least squares, with uniform
-confidence bands from the weighted bootstrap. This implements the
-`Chen, Christensen, and Kankanala (2024) <https://arxiv.org/abs/2107.11869>`_
-methodology.
-
-.. code-block:: python
-
-    result = did.npiv(
-        data=data,
-        yname="food_share",
-        xname="log_expenditure",
-        wname="log_wages",
-        j_x_segments=5,
-        biters=200,
-        seed=42,
-    )
-
-The result contains the estimated function ``h``, derivative ``deriv``, and
-95% uniform confidence bands. When ``j_x_segments`` is omitted, the sieve
-dimension is selected automatically using the Lepski method, yielding
-adaptive confidence bands that are honest over a class of data-generating
-processes.
-
-NPIV also serves as the estimation engine behind the nonparametric (CCK)
-dose-response estimator in :func:`~moderndid.cont_did`. As a standalone
-tool, it is useful for Engel curve estimation, structural demand analysis,
-and other settings where the regressor is endogenous and the functional
-form is unknown.
-
-
-Sensitivity Analysis for Parallel Trends Violations
----------------------------------------------------
-
-The :mod:`~moderndid.didhonest` module assesses robustness to parallel
-trends violations. It takes results from :func:`~moderndid.att_gt`, or external event
-study results, and produces confidence intervals that remain valid under
-specified degrees of parallel trends violation. This follows the
-`Rambachan and Roth (2023) <https://doi.org/10.1093/restud/rdad018>`_
-framework.
-
-.. code-block:: python
-
-    from moderndid.didhonest import honest_did
-
-    # First estimate group-time effects
-    result = did.att_gt(
-        data=data,
-        yname="outcome",
-        tname="year",
-        idname="unit_id",
-        gname="first_treated",
-    )
-
-    # Aggregate into an event study (required)
-    event_study = did.aggte(result, type="dynamic")
-
-    # Then conduct sensitivity analysis
-    sensitivity = honest_did(event_study, event_time=0, sensitivity_type="smoothness")
-
-The input must be a dynamic event study aggregation (not group- or
-calendar-level), and the event study must have influence functions computed.
-Pre-treatment and post-treatment event times must be consecutive integers
-with no gaps. The requested ``event_time`` must exist in the post-treatment
-periods.
-
-
-Next steps
-----------
-
-Each estimator has a dedicated example page that walks through a full
-analysis with real or simulated data.
-
-- :doc:`example_staggered_did` for staggered adoption with :func:`~moderndid.att_gt`
-- :doc:`example_etwfe` for extended TWFE with :func:`~moderndid.etwfe`
-- :doc:`example_cont_did` for the paper's fracking event studies and dose curves
-- :doc:`example_triple_did` for triple differences with :func:`~moderndid.ddd`
-- :doc:`example_inter_did` for time-varying treatments with :func:`~moderndid.did_multiplegt`
-- :doc:`example_dyn_balancing` for dynamic treatments with ``dyn_balancing``
-- :doc:`example_honest_did` for sensitivity analysis with :func:`~moderndid.honest_did`
-- :doc:`example_npiv` for nonparametric IV with :func:`~moderndid.npiv`
+Leaving ``j_x_segments`` unset selects the sieve dimension from the data
+and constructs adaptive uniform confidence bands. Supplying a fixed
+dimension requires the approximation bias to be small enough for its bands
+to be valid. The :ref:`nonparametric IV example <example_npiv>` fits an Engel
+curve under the moment condition and band construction explained in
+:doc:`../background/npiv`. This standalone IV estimator also provides the
+nonparametric estimation method used by the CCK option in ``cont_did``.

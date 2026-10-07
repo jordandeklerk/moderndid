@@ -33,7 +33,9 @@ class PreprocessDataBuilder:
         self._data: pl.DataFrame | None = None
         self._config: BasePreprocessConfig | None = None
         self._validator: CompositeValidator | None = None
+        self._structure_validator: CompositeValidator | None = None
         self._transformer: DataTransformerPipeline | None = None
+        self._validated = False
         self._warnings: list[str] = []
 
     def with_data(self, data: DataFrame) -> "PreprocessDataBuilder":
@@ -68,29 +70,23 @@ class PreprocessDataBuilder:
         self._config = config
 
         if isinstance(config, TwoPeriodDIDConfig):
-            self._validator = CompositeValidator(config_type="two_period")
-            self._transformer = DataTransformerPipeline.get_two_period_pipeline()
+            config_type, pipeline = "two_period", DataTransformerPipeline.get_two_period_pipeline()
         elif isinstance(config, DIDInterConfig):
-            self._validator = CompositeValidator(config_type="didinter")
-            self._transformer = DataTransformerPipeline.get_didinter_pipeline()
+            config_type, pipeline = "didinter", DataTransformerPipeline.get_didinter_pipeline()
         elif isinstance(config, DynBalancingConfig):
-            self._validator = CompositeValidator(config_type="dyn_balancing")
-            self._transformer = DataTransformerPipeline.get_dyn_balancing_pipeline()
+            config_type, pipeline = "dyn_balancing", DataTransformerPipeline.get_dyn_balancing_pipeline()
         elif isinstance(config, DDDConfig):
-            self._validator = CompositeValidator(config_type="ddd")
-            self._transformer = DataTransformerPipeline.get_ddd_pipeline()
+            config_type, pipeline = "ddd", DataTransformerPipeline.get_ddd_pipeline()
         elif isinstance(config, EtwfeConfig):
-            self._validator = CompositeValidator(config_type="etwfe")
-            self._transformer = DataTransformerPipeline.get_etwfe_pipeline()
-        elif isinstance(config, DIDConfig):
-            self._validator = CompositeValidator(config_type="did")
-            self._transformer = DataTransformerPipeline.get_did_pipeline()
+            config_type, pipeline = "etwfe", DataTransformerPipeline.get_etwfe_pipeline()
         elif isinstance(config, ContDIDConfig):
-            self._validator = CompositeValidator(config_type="cont_did")
-            self._transformer = DataTransformerPipeline.get_cont_did_pipeline()
+            config_type, pipeline = "cont_did", DataTransformerPipeline.get_cont_did_pipeline()
         else:
-            self._validator = CompositeValidator(config_type="did")
-            self._transformer = DataTransformerPipeline.get_did_pipeline()
+            config_type, pipeline = "did", DataTransformerPipeline.get_did_pipeline()
+
+        self._validator = CompositeValidator(config_type=config_type)
+        self._structure_validator = CompositeValidator(config_type=config_type, phase="structure")
+        self._transformer = pipeline
 
         return self
 
@@ -119,15 +115,16 @@ class PreprocessDataBuilder:
     def validate(self) -> "PreprocessDataBuilder":
         """Validate data and configuration.
 
+        The column checks cover the columns that the arguments name, their
+        types, the reserved names, and the argument values. They raise at
+        once. The structural checks, such as a cohort that changes within a
+        unit, run later in :meth:`transform` on the rows that the missing-data
+        step keeps.
+
         Returns
         -------
         PreprocessDataBuilder
             Self for method chaining.
-
-        Raises
-        ------
-        ValueError
-            If data or config not set, or if validation fails.
         """
         if self._data is None:
             raise ValueError("Data not set. Use with_data() first.")
@@ -145,28 +142,28 @@ class PreprocessDataBuilder:
                 warnings.warn(warning)
 
         result.raise_if_invalid()
+        self._validated = True
 
         return self
 
     def transform(self) -> "PreprocessDataBuilder":
         """Apply data transformations.
 
+        After :meth:`validate`, the structural checks run on the rows that the
+        missing-data step keeps.
+
         Returns
         -------
         PreprocessDataBuilder
             Self for method chaining.
-
-        Raises
-        ------
-        ValueError
-            If data, config, or transformer not set.
         """
         if self._data is None or self._config is None:
             raise ValueError("Must set data and config before transforming")
         if self._transformer is None:
             raise ValueError("Transformer not initialized. Use with_config() first.")
 
-        self._data = self._transformer.transform(self._data, self._config)
+        checks = self._structure_validator if self._validated else None
+        self._data = self._transformer.transform(self._data, self._config, checks=checks)
 
         self._validate_transformed_data()
 

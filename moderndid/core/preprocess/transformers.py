@@ -34,7 +34,7 @@ from .utils import (
     nonfinite_to_null,
     validate_subgroup_sizes,
 )
-from .validators import _ddd_subgroup_error, _weights_error
+from .validators import _ddd_subgroup_error, _missing_column_errors, _weights_error
 
 try:
     import formulaic
@@ -162,12 +162,12 @@ class MissingDataHandler(BaseTransformer):
                 )
         df = df.with_columns(
             [
-                pl.col(config.dname).mean().over(config.gname).alias("_mean_D"),
-                pl.col(config.yname).mean().over(config.gname).alias("_mean_Y"),
+                pl.col(config.dname).mean().over(config.gname).alias(".mean_D"),
+                pl.col(config.yname).mean().over(config.gname).alias(".mean_Y"),
             ]
         )
-        df = df.filter(pl.col("_mean_D").is_not_null() & pl.col("_mean_Y").is_not_null())
-        return df.drop(["_mean_D", "_mean_Y"]), messages
+        df = df.filter(pl.col(".mean_D").is_not_null() & pl.col(".mean_Y").is_not_null())
+        return df.drop([".mean_D", ".mean_Y"]), messages
 
 
 class WeightNormalizer(BaseTransformer):
@@ -636,11 +636,9 @@ class PrePostColumnSelector(BaseTransformer):
                 formula_vars = get_formula_columns(config.xformla, df.columns)
             else:
                 formula_vars = extract_vars_from_formula(config.xformla)
-                missing = [name for name in formula_vars if name not in df.columns]
+                missing = _missing_column_errors(df.columns, {"xformla": formula_vars})
                 if missing:
-                    raise ValueError(
-                        "\n".join(f"xformla contains '{name}' which is not a column in the dataset" for name in missing)
-                    )
+                    raise ValueError("\n".join(missing))
             formula_vars = [v for v in formula_vars if v != config.yname]
             cols_to_keep.extend(formula_vars)
 
@@ -854,60 +852,60 @@ class SwitcherIdentifier(BaseTransformer):
         df = to_polars(data)
         df = df.sort([config.gname, config.tname])
 
-        df = df.with_columns((pl.col(config.dname) - pl.col(config.dname).shift(1).over(config.gname)).alias("_d_diff"))
+        df = df.with_columns((pl.col(config.dname) - pl.col(config.dname).shift(1).over(config.gname)).alias(".d_diff"))
 
         base_treatment_pre = (
             df.filter(pl.col(config.tname) == pl.col(config.tname).min().over(config.gname))
-            .select([config.gname, pl.col(config.dname).alias("_d_sq_pre")])
+            .select([config.gname, pl.col(config.dname).alias(".d_sq_pre")])
             .unique()
         )
         df = df.join(base_treatment_pre, on=config.gname, how="left", maintain_order="left")
-        df = df.with_columns((pl.col(config.dname) - pl.col("_d_sq_pre")).alias("_diff_from_sq"))
+        df = df.with_columns((pl.col(config.dname) - pl.col(".d_sq_pre")).alias(".diff_from_sq"))
 
         first_switch_pre = (
-            df.filter((pl.col("_d_diff") != 0) & pl.col("_d_diff").is_not_null())
+            df.filter((pl.col(".d_diff") != 0) & pl.col(".d_diff").is_not_null())
             .group_by(config.gname)
-            .agg(pl.col(config.tname).min().alias("_F_g_pre"))
+            .agg(pl.col(config.tname).min().alias(".F_g_pre"))
         )
         df = df.join(first_switch_pre, on=config.gname, how="left", maintain_order="left")
 
-        t_max_per_unit = df.group_by(config.gname).agg(pl.col(config.tname).max().alias("_T_max_unit"))
+        t_max_per_unit = df.group_by(config.gname).agg(pl.col(config.tname).max().alias(".T_max_unit"))
         df = df.join(t_max_per_unit, on=config.gname, how="left", maintain_order="left")
 
         df = df.with_columns(
-            pl.when(pl.col("_F_g_pre").is_not_null())
-            .then(pl.col("_T_max_unit") - pl.col("_F_g_pre") + 1)
+            pl.when(pl.col(".F_g_pre").is_not_null())
+            .then(pl.col(".T_max_unit") - pl.col(".F_g_pre") + 1)
             .otherwise(pl.lit(0.0))
             .alias("L_g")
         )
-        df = df.drop(["_F_g_pre", "_T_max_unit"])
+        df = df.drop([".F_g_pre", ".T_max_unit"])
 
         df = df.with_columns(
             [
-                pl.when((pl.col("_diff_from_sq") > 0) & pl.col(config.dname).is_not_null())
+                pl.when((pl.col(".diff_from_sq") > 0) & pl.col(config.dname).is_not_null())
                 .then(1)
                 .otherwise(0)
                 .cum_sum()
                 .clip(upper_bound=1)
                 .over(config.gname)
-                .alias("_ever_strict_increase"),
-                pl.when((pl.col("_diff_from_sq") < 0) & pl.col(config.dname).is_not_null())
+                .alias(".ever_strict_increase"),
+                pl.when((pl.col(".diff_from_sq") < 0) & pl.col(config.dname).is_not_null())
                 .then(1)
                 .otherwise(0)
                 .cum_sum()
                 .clip(upper_bound=1)
                 .over(config.gname)
-                .alias("_ever_strict_decrease"),
+                .alias(".ever_strict_decrease"),
             ]
         )
 
         if not config.keep_bidirectional_switchers:
-            df = df.filter(~((pl.col("_ever_strict_increase") == 1) & (pl.col("_ever_strict_decrease") == 1)))
+            df = df.filter(~((pl.col(".ever_strict_increase") == 1) & (pl.col(".ever_strict_decrease") == 1)))
 
-        df = df.drop(["_ever_strict_increase", "_ever_strict_decrease", "_d_sq_pre", "_diff_from_sq"])
+        df = df.drop([".ever_strict_increase", ".ever_strict_decrease", ".d_sq_pre", ".diff_from_sq"])
 
         first_switch = (
-            df.filter((pl.col("_d_diff") != 0) & pl.col("_d_diff").is_not_null())
+            df.filter((pl.col(".d_diff") != 0) & pl.col(".d_diff").is_not_null())
             .group_by(config.gname)
             .agg(pl.col(config.tname).min().alias("F_g"))
         )
@@ -930,18 +928,18 @@ class SwitcherIdentifier(BaseTransformer):
         df = df.join(switch_treatment, on=config.gname, how="left", maintain_order="left")
 
         switch_direction = (
-            df.filter(pl.col("_d_diff").is_not_null() & (pl.col("_d_diff") != 0))
+            df.filter(pl.col(".d_diff").is_not_null() & (pl.col(".d_diff") != 0))
             .group_by(config.gname)
-            .agg(pl.col("_d_diff").first().alias("_first_diff"))
+            .agg(pl.col(".d_diff").first().alias(".first_diff"))
         )
         df = df.join(switch_direction, on=config.gname, how="left", maintain_order="left")
 
         df = df.with_columns(
             pl.when(pl.col("F_g") == float("inf"))
             .then(0)
-            .when(pl.col("_first_diff") > 0)
+            .when(pl.col(".first_diff") > 0)
             .then(1)
-            .when(pl.col("_first_diff") < 0)
+            .when(pl.col(".first_diff") < 0)
             .then(-1)
             .otherwise(0)
             .alias("S_g")
@@ -951,21 +949,21 @@ class SwitcherIdentifier(BaseTransformer):
             min_treat_time = (
                 df.filter(pl.col(config.dname).is_not_null())
                 .group_by(config.gname)
-                .agg(pl.col(config.tname).min().alias("_min_treat_time"))
+                .agg(pl.col(config.tname).min().alias(".min_treat_time"))
             )
             df = df.join(min_treat_time, on=config.gname, how="left", maintain_order="left")
 
             df = df.filter(
                 ~(
-                    (pl.col("_min_treat_time") < pl.col("F_g"))
-                    & (pl.col(config.tname) >= pl.col("_min_treat_time"))
+                    (pl.col(".min_treat_time") < pl.col("F_g"))
+                    & (pl.col(config.tname) >= pl.col(".min_treat_time"))
                     & (pl.col(config.tname) < pl.col("F_g"))
                     & pl.col(config.dname).is_null()
                 )
             )
-            df = df.drop("_min_treat_time")
+            df = df.drop(".min_treat_time")
 
-        df = df.drop(["_d_diff", "_first_diff"])
+        df = df.drop([".d_diff", ".first_diff"])
 
         return df.with_columns(pl.col("d_sq").rank("dense").cast(pl.Int64).alias("d_sq_int"))
 
@@ -985,13 +983,13 @@ class FgVariationFilter(BaseTransformer):
             group_cols.extend(config.trends_nonparam)
 
         df = df.with_columns(
-            pl.when(pl.col("F_g") == float("inf")).then(0).otherwise(pl.col("F_g")).alias("_F_g_for_std")
+            pl.when(pl.col("F_g") == float("inf")).then(0).otherwise(pl.col("F_g")).alias(".F_g_for_std")
         )
 
-        df = df.with_columns(pl.col("_F_g_for_std").std().over(group_cols).round(3).alias("_var_F_g"))
+        df = df.with_columns(pl.col(".F_g_for_std").std().over(group_cols).round(3).alias(".var_F_g"))
 
-        df = df.filter(pl.col("_var_F_g") > 0)
-        df = df.drop(["_var_F_g", "_F_g_for_std"])
+        df = df.filter(pl.col(".var_F_g") > 0)
+        df = df.drop([".var_F_g", ".F_g_for_std"])
 
         return df
 
@@ -1008,16 +1006,16 @@ class ControlsTimeFilter(BaseTransformer):
 
         # A group is a control until its first switch. A period without a never-switcher still has
         # controls when some group with the same baseline treatment switches later.
-        df = df.with_columns((pl.col("F_g") > pl.col(config.tname)).cast(pl.Int64).alias("_not_yet_switched"))
+        df = df.with_columns((pl.col("F_g") > pl.col(config.tname)).cast(pl.Int64).alias(".not_yet_switched"))
 
         ctrl_group = [config.tname, "d_sq"]
         if config.trends_nonparam:
             ctrl_group.extend(config.trends_nonparam)
 
-        df = df.with_columns(pl.col("_not_yet_switched").max().over(ctrl_group).alias("_controls_time"))
+        df = df.with_columns(pl.col(".not_yet_switched").max().over(ctrl_group).alias(".controls_time"))
 
-        df = df.filter(pl.col("_controls_time") > 0)
-        df = df.drop(["_not_yet_switched", "_controls_time"])
+        df = df.filter(pl.col(".controls_time") > 0)
+        df = df.drop([".not_yet_switched", ".controls_time"])
 
         return df
 
@@ -1027,8 +1025,8 @@ class ContinuousTreatmentProcessor(BaseTransformer):
 
     Since few groups share a value of a continuous baseline treatment, groups with the same
     baseline cannot serve as each other's controls. With ``continuous`` set to a degree :math:`p`,
-    the baseline goes to ``d_sq_orig`` and its powers up to :math:`p` go to ``d_sq_1``, ...,
-    ``d_sq_p``. Setting ``d_sq`` to 0 and its rank ``d_sq_int`` to 1 for every group lets all
+    the baseline goes to ``.d_sq_orig`` and its powers up to :math:`p` go to ``.d_sq_1``, ...,
+    ``.d_sq_p``. Setting ``d_sq`` to 0 and its rank ``d_sq_int`` to 1 for every group lets all
     groups compare with each other. :class:`ContinuousTreatmentBinarizer` later adds the controls
     that let the outcome trends depend on the baseline.
     """
@@ -1038,9 +1036,9 @@ class ContinuousTreatmentProcessor(BaseTransformer):
         if not isinstance(config, DIDInterConfig) or config.continuous <= 0:
             return to_polars(data)
 
-        df = to_polars(data).with_columns(pl.col("d_sq").cast(pl.Float64).alias("d_sq_orig"))
+        df = to_polars(data).with_columns(pl.col("d_sq").cast(pl.Float64).alias(".d_sq_orig"))
         df = df.with_columns(
-            (pl.col("d_sq_orig") ** power).alias(f"d_sq_{power}") for power in range(1, config.continuous + 1)
+            (pl.col(".d_sq_orig") ** power).alias(f".d_sq_{power}") for power in range(1, config.continuous + 1)
         )
         return df.with_columns(pl.lit(0.0).alias("d_sq"), pl.lit(1, dtype=pl.Int64).alias("d_sq_int"))
 
@@ -1048,13 +1046,13 @@ class ContinuousTreatmentProcessor(BaseTransformer):
 class ContinuousTreatmentBinarizer(BaseTransformer):
     """Turn a continuous treatment into the signed indicator of having switched.
 
-    The original treatment goes to ``{dname}_orig``. The treatment becomes ``S_g`` from ``F_g`` on
+    The original treatment goes to ``.d_orig``. The treatment becomes ``S_g`` from ``F_g`` on
     and 0 before. ``d_fg`` and the treatment paths then track the switch and its direction. The
     original treatment and baseline still measure the size of each switch for the normalized
     effects and the average total effect.
 
     For every period :math:`j` after the first and every power :math:`k` up to ``continuous``, the
-    step also adds the control ``_baseline_trend_{j}_{k}``. It interacts the indicator of period
+    step also adds the control ``.baseline_trend_{j}_{k}``. It interacts the indicator of period
     :math:`j` or later with the :math:`k`-th power of the baseline treatment. The first differences
     of these controls let the outcome evolution of each period depend on a polynomial in the
     baseline treatment.
@@ -1069,7 +1067,7 @@ class ContinuousTreatmentBinarizer(BaseTransformer):
         df = to_polars(data)
         switched = pl.col("F_g") != float("inf")
         df = df.with_columns(
-            pl.col(config.dname).alias(f"{config.dname}_orig"),
+            pl.col(config.dname).alias(".d_orig"),
             pl.when(switched)
             .then(pl.col("S_g") * (pl.col(tname) >= pl.col("F_g")).cast(pl.Float64))
             .otherwise(None)
@@ -1079,8 +1077,8 @@ class ContinuousTreatmentBinarizer(BaseTransformer):
 
         periods = sorted(df[tname].unique().to_list())
         return df.with_columns(
-            ((pl.col(tname) >= period).cast(pl.Float64) * pl.col(f"d_sq_{power}")).alias(
-                f"_baseline_trend_{period}_{power}"
+            ((pl.col(tname) >= period).cast(pl.Float64) * pl.col(f".d_sq_{power}")).alias(
+                f".baseline_trend_{period}_{power}"
             )
             for period in periods[1:]
             for power in range(1, config.continuous + 1)
@@ -1225,7 +1223,8 @@ class DIDInterConfigUpdater:
             Number of placebos that some switcher reaches.
         """
         df = to_polars(data)
-        directions = DIDInterConfigUpdater.switcher_directions(config)
+        # Since S_g holds floats, is_in needs the directions as floats too.
+        directions = [float(d) for d in DIDInterConfigUpdater.switcher_directions(config)]
         switchers = df.filter((pl.col("F_g") != float("inf")) & pl.col("S_g").is_in(directions))
         if switchers.is_empty():
             return 0, 0
@@ -1243,7 +1242,7 @@ class DIDInterConfigUpdater:
 class TrendsLinTransformer(BaseTransformer):
     """Apply first-differencing transformation for linear trends.
 
-    The outcome in levels stays in ``_outcome_levels`` for the heterogeneity regressions.
+    The outcome in levels stays in ``.outcome_levels`` for the heterogeneity regressions.
     """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
@@ -1261,7 +1260,7 @@ class TrendsLinTransformer(BaseTransformer):
         df = df.sort([config.gname, config.tname])
 
         df = df.with_columns(
-            pl.col(config.yname).alias("_outcome_levels"),
+            pl.col(config.yname).alias(".outcome_levels"),
             (pl.col(config.yname) - pl.col(config.yname).shift(1).over(config.gname)).alias(config.yname),
         )
 
@@ -1302,10 +1301,10 @@ class DIDInterDataPreparer(BaseTransformer):
             .alias("weight_gt")
         )
 
-        first_obs = df.group_by(gname).agg(pl.col(tname).min().alias("_first_t")).select([gname, "_first_t"])
+        first_obs = df.group_by(gname).agg(pl.col(tname).min().alias(".first_t")).select([gname, ".first_t"])
         df = df.join(first_obs, on=gname, how="left")
-        df = df.with_columns((pl.col(tname) == pl.col("_first_t")).cast(pl.Int64).alias("first_obs_by_gp"))
-        df = df.drop("_first_t")
+        df = df.with_columns((pl.col(tname) == pl.col(".first_t")).cast(pl.Int64).alias("first_obs_by_gp"))
+        df = df.drop(".first_t")
 
         t_max_by_group = df.group_by(gname).agg(pl.col(tname).max().alias("t_max_by_group"))
         df = df.join(t_max_by_group, on=gname, how="left")
@@ -1318,10 +1317,10 @@ class DIDInterDataPreparer(BaseTransformer):
             pl.when(pl.col("F_g") == float("inf"))
             .then(pl.col("t_max_by_group") + 1)
             .otherwise(pl.col("F_g"))
-            .alias("_F_g_trunc")
+            .alias(".F_g_trunc")
         )
-        df = df.with_columns((pl.col("_F_g_trunc").max().over(group_cols) - 1).alias("T_g"))
-        df = df.drop("_F_g_trunc")
+        df = df.with_columns((pl.col(".F_g_trunc").max().over(group_cols) - 1).alias("T_g"))
+        df = df.drop(".F_g_trunc")
 
         return df
 
@@ -1882,11 +1881,35 @@ class DataTransformerPipeline:
             ]
         )
 
-    def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
-        """Transform data."""
+    def transform(self, data, config, checks=None):
+        """Run every step of the pipeline and update the config from the result.
+
+        The structural checks run on the rows that the missing-data step
+        keeps, before any later step drops units or balances the panel. They
+        raise their errors at once.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Data in long format.
+        config : BasePreprocessConfig
+            Configuration that the steps read and update.
+        checks : CompositeValidator, optional
+            Structural checks to run after the missing-data step.
+
+        Returns
+        -------
+        pl.DataFrame
+            The transformed data.
+        """
         df = to_polars(data)
         for transformer in self.transformers:
             df = transformer.transform(df, config)
+            if checks is not None and isinstance(transformer, MissingDataHandler):
+                result = checks.validate(df, config)
+                for message in result.warnings:
+                    warnings.warn(message)
+                result.raise_if_invalid()
 
         if isinstance(config, DynBalancingConfig):
             DynBalancingConfigUpdater.update(df, config)

@@ -36,7 +36,7 @@ machine and supported estimators also run on NVIDIA GPUs for large panels.
 ModernDiD is under active development so expect sharp edges. Please help by trying it out,
 [reporting bugs](https://github.com/jordandeklerk/moderndid/issues), and telling
 us what you think. If you're new to DiD, the
-[introduction](https://moderndid.readthedocs.io/en/latest/getting_started/causal_inference.html)
+[introduction](https://moderndid.readthedocs.io/en/latest/user_guide/causal_inference.html)
 covers the ideas behind the methods before any code.
 
 ## Installation
@@ -64,7 +64,7 @@ uv add "moderndid[gpu]"              # CUDA 12 GPU dependencies
 ```
 
 The `all` extra includes `didml` and leaves out `gpu`. The
-[installation guide](https://moderndid.readthedocs.io/en/latest/getting_started/installation.html)
+[installation guide](https://moderndid.readthedocs.io/en/latest/user_guide/installation.html)
 covers every extra, GPU setup, and troubleshooting. The development version
 installs straight from GitHub.
 
@@ -132,8 +132,7 @@ did.plot_event_study(event_study)
 
 ## Documentation
 
-- [Getting Started](https://moderndid.readthedocs.io/en/latest/getting_started/index.html): installation, background, and the quickstart.
-- [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html): estimator selection, panel data, plots, tables, and scaling.
+- [User Guide](https://moderndid.readthedocs.io/en/latest/user_guide/index.html): installation, a first analysis, data preparation, results, and computation.
 - [Examples](https://moderndid.readthedocs.io/en/latest/examples/index.html): analyses for each treatment design.
 - [API Reference](https://moderndid.readthedocs.io/en/latest/api/index.html): function signatures, parameters, and result objects.
 - [FAQ](https://moderndid.readthedocs.io/en/latest/faq.html): answers to common questions about data, estimators, and results.

@@ -18,6 +18,7 @@ from moderndid.core.preprocess.utils import (
     extract_covariates,
     extract_ddd_covariates,
     extract_vars_from_formula,
+    get_column_terms,
     get_covariate_names_from_formula,
     get_first_difference,
     get_formula_columns,
@@ -382,6 +383,20 @@ def test_get_transformed_terms(formula, expected):
 def test_get_transformed_terms_rejects_invalid_formulas(formula, message):
     with pytest.raises(ValueError, match=message):
         get_transformed_terms(formula)
+
+
+@pytest.mark.parametrize(
+    "formula, expected",
+    [
+        ("~1", []),
+        ("~ x1 + x2 + x1", ["x1", "x2"]),
+        ("~ x1 + I(x2**2) + C(g)", ["x1"]),
+        ("~ `log pop` + 1 + x.2", ["log pop", "x.2"]),
+        ("y ~ x1", ["x1"]),
+    ],
+)
+def test_get_column_terms(formula, expected):
+    assert get_column_terms(formula) == expected
 
 
 @pytest.mark.parametrize(

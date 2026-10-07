@@ -1,6 +1,7 @@
 """Validation tests comparing Python DDD implementation with R triplediff package."""
 
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -2271,6 +2272,9 @@ def r_estimate_ddd_mp(
     base_period="universal",
     est_method="dr",
     agg_types=(),
+    cluster=None,
+    boot=False,
+    nboot=999,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         data_path = Path(tmpdir) / "data.csv"
@@ -2282,11 +2286,14 @@ def r_estimate_ddd_mp(
         panel_str = "TRUE" if panel else "FALSE"
         unbalanced_str = "TRUE" if allow_unbalanced_panel else "FALSE"
         agg_str = ", ".join(f'"{agg_type}"' for agg_type in agg_types)
+        cluster_str = "NULL" if cluster is None else f'"{cluster}"'
+        boot_str = "TRUE" if boot else "FALSE"
 
         r_script = f"""
 library(triplediff)
 library(jsonlite)
 
+set.seed(42)
 data <- read.csv("{data_path}")
 
 result <- ddd(
@@ -2303,12 +2310,14 @@ result <- ddd(
     weightsname = {weights_str},
     panel = {panel_str},
     allow_unbalanced_panel = {unbalanced_str},
-    boot = FALSE
+    boot = {boot_str},
+    nboot = {nboot},
+    cluster = {cluster_str}
 )
 
 output <- list(att = result$ATT, se = result$se, groups = result$groups, times = result$periods, n = result$n)
 for (agg_type in c({agg_str})) {{
-    agg <- agg_ddd(result, type = agg_type, boot = FALSE)$aggte_ddd
+    agg <- agg_ddd(result, type = agg_type, boot = FALSE, cband = FALSE)$aggte_ddd
     output[[agg_type]] <- list(
         overall_att = agg$overall.att,
         overall_se = agg$overall.se,
@@ -2474,3 +2483,290 @@ def test_mp_weighted_aggregations_match_reference(request, data_fixture, idname,
             np.testing.assert_allclose(py_agg.se_egt, _convert_r_array(np.atleast_1d(r_agg["se_egt"])), atol=1e-6)
         if agg_type != "group":
             np.testing.assert_allclose(py_agg.overall_se, r_agg["overall_se"], rtol=0, atol=1e-6)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("est_method", ["dr", "reg"])
+def test_mp_rcs_pooled_cells_match_reference(mp_rcs_data, est_method):
+    py_result = ddd(
+        data=mp_rcs_data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        control_group="notyettreated",
+        est_method=est_method,
+        panel=False,
+    )
+    r_result = r_estimate_ddd_mp(mp_rcs_data, panel=False, control_group="notyettreated", est_method=est_method)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    assert py_result.n == r_result["n"]
+    np.testing.assert_array_equal(py_result.times, np.atleast_1d(r_result["times"]))
+    np.testing.assert_allclose(py_result.att, _convert_r_array(np.atleast_1d(r_result["att"])), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_result.se, _convert_r_array(np.atleast_1d(r_result["se"])), rtol=0, atol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize(
+    ("data_fixture", "panel", "allow_unbalanced_panel", "control_group"),
+    [
+        ("mp_ddd_clustered_data", True, False, "nevertreated"),
+        ("mp_ddd_clustered_data", True, False, "notyettreated"),
+        ("mp_ddd_unbalanced_clustered_data", True, True, "notyettreated"),
+        ("mp_rcs_clustered_data", False, False, "notyettreated"),
+    ],
+)
+def test_mp_analytic_clustered_se_matches_reference(
+    request, data_fixture, panel, allow_unbalanced_panel, control_group
+):
+    data = request.getfixturevalue(data_fixture)
+    agg_types = ["simple", "eventstudy", "group", "calendar"]
+    py_result = ddd(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        control_group=control_group,
+        est_method="dr",
+        panel=panel,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+        cluster="cluster",
+    )
+    r_result = r_estimate_ddd_mp(
+        data,
+        panel=panel,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+        control_group=control_group,
+        cluster="cluster",
+        agg_types=agg_types,
+    )
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    np.testing.assert_allclose(py_result.att, _convert_r_array(np.atleast_1d(r_result["att"])), rtol=0, atol=1e-8)
+    np.testing.assert_allclose(py_result.se, _convert_r_array(np.atleast_1d(r_result["se"])), rtol=0, atol=1e-8)
+    for agg_type in agg_types:
+        py_agg = agg_ddd(py_result, type=agg_type, boot=False, cband=False)
+        r_agg = r_result[agg_type]
+        if agg_type != "simple":
+            np.testing.assert_allclose(py_agg.se_egt, _convert_r_array(np.atleast_1d(r_agg["se_egt"])), atol=1e-8)
+        if agg_type != "group":
+            np.testing.assert_allclose(py_agg.overall_se, r_agg["overall_se"], rtol=0, atol=1e-8)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+def test_mp_bootstrap_pooled_cells_match_reference(mp_rcs_data):
+    py_result = ddd(
+        data=mp_rcs_data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        control_group="notyettreated",
+        est_method="dr",
+        panel=False,
+        boot=True,
+        biters=20000,
+        random_state=42,
+    )
+    r_result = r_estimate_ddd_mp(mp_rcs_data, panel=False, control_group="notyettreated", boot=True, nboot=20000)
+
+    if r_result is None:
+        pytest.fail("R bootstrap estimation failed")
+
+    np.testing.assert_allclose(py_result.att, _convert_r_array(np.atleast_1d(r_result["att"])), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_result.se, _convert_r_array(np.atleast_1d(r_result["se"])), rtol=0.05)
+
+
+def r_ddd_mp_error(data, control_group="nevertreated"):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_path = Path(tmpdir) / "data.csv"
+        result_path = Path(tmpdir) / "result.json"
+
+        data.write_csv(data_path)
+
+        r_script = f"""
+library(triplediff)
+library(jsonlite)
+
+data <- read.csv("{data_path}")
+
+message <- tryCatch({{
+    ddd(
+        yname = "y",
+        tname = "time",
+        idname = "id",
+        gname = "group",
+        pname = "partition",
+        xformla = ~1,
+        data = data,
+        control_group = "{control_group}",
+        base_period = "universal",
+        est_method = "reg",
+        boot = FALSE
+    )
+    NA
+}}, error = function(e) conditionMessage(e))
+
+write_json(list(error = message), "{result_path}", auto_unbox = TRUE)
+"""
+        try:
+            return _run_r_script(r_script, result_path, timeout=120)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+            return None
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+def test_mp_without_never_treated_units_stops_like_reference(mp_no_never_treated_data):
+    r_result = r_ddd_mp_error(mp_no_never_treated_data)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    assert r_result["error"] == "There is no available never-treated group"
+    with pytest.raises(ValueError, match=re.escape(r_result["error"])):
+        ddd(
+            data=mp_no_never_treated_data,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            control_group="nevertreated",
+            est_method="reg",
+        )
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("control_group", ["nevertreated", "notyettreated"])
+def test_mp_unbalanced_panel_drops_incomplete_units_like_reference(mp_ddd_unbalanced_data, control_group):
+    agg_types = ["simple", "eventstudy"]
+    py_result = ddd(
+        data=mp_ddd_unbalanced_data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        control_group=control_group,
+        est_method="dr",
+    )
+    r_result = r_estimate_ddd_mp(mp_ddd_unbalanced_data, control_group=control_group, agg_types=agg_types)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    assert py_result.n == r_result["n"] == mp_ddd_unbalanced_data.filter(pl.len().over("id") == 5)["id"].n_unique()
+    np.testing.assert_allclose(py_result.att, _convert_r_array(np.atleast_1d(r_result["att"])), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_result.se, _convert_r_array(np.atleast_1d(r_result["se"])), rtol=0, atol=1e-10)
+    for agg_type in agg_types:
+        py_agg = agg_ddd(py_result, type=agg_type, boot=False, cband=False)
+        np.testing.assert_allclose(py_agg.overall_att, r_result[agg_type]["overall_att"], rtol=0, atol=1e-10)
+        np.testing.assert_allclose(py_agg.overall_se, r_result[agg_type]["overall_se"], rtol=0, atol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize("mp_ddd_missing_value_data", ["cohort", "repeated_row"], indirect=True)
+def test_mp_drops_rows_with_missing_values_before_checking_the_panel_like_reference(mp_ddd_missing_value_data):
+    py_result = ddd(
+        data=mp_ddd_missing_value_data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        est_method="reg",
+    )
+    r_result = r_estimate_ddd_mp(mp_ddd_missing_value_data, est_method="reg")
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    assert py_result.n == r_result["n"]
+    np.testing.assert_allclose(py_result.att, _convert_r_array(np.atleast_1d(r_result["att"])), rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_result.se, _convert_r_array(np.atleast_1d(r_result["se"])), rtol=0, atol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+def test_mp_balanced_panel_allowing_unbalanced_panels_matches_reference_panel_path(mp_ddd_weighted_data):
+    py_result = ddd(
+        data=mp_ddd_weighted_data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        xformla="~ cov1 + cov2",
+        est_method="dr",
+        allow_unbalanced_panel=True,
+    )
+    r_result = r_estimate_ddd_mp(mp_ddd_weighted_data, xformla="~ cov1 + cov2", allow_unbalanced_panel=False)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    np.testing.assert_allclose(py_result.att, _convert_r_array(np.atleast_1d(r_result["att"])), rtol=0, atol=1e-8)
+    np.testing.assert_allclose(py_result.se, _convert_r_array(np.atleast_1d(r_result["se"])), rtol=0, atol=1e-8)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R triplediff package not available")
+@pytest.mark.parametrize(
+    ("mp_no_never_treated_layout_data", "panel", "allow_unbalanced_panel"),
+    [
+        ("late_gap", True, False),
+        ("cohort_gap", True, False),
+        ("late_only", True, True),
+        ("one_row_per_id", False, False),
+    ],
+    indirect=["mp_no_never_treated_layout_data"],
+)
+def test_mp_no_never_treated_leaves_out_periods_without_comparisons_like_reference(
+    mp_no_never_treated_layout_data, panel, allow_unbalanced_panel
+):
+    data = mp_no_never_treated_layout_data
+    agg_types = ["simple", "eventstudy"]
+    py_result = ddd(
+        data=data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        control_group="notyettreated",
+        est_method="reg",
+        panel=panel,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+    )
+    r_result = r_estimate_ddd_mp(
+        data,
+        panel=panel,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+        control_group="notyettreated",
+        est_method="reg",
+        agg_types=agg_types,
+    )
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    r_cells = list(zip(np.atleast_1d(r_result["groups"]), np.atleast_1d(r_result["times"])))
+    py_cells = {cell: i for i, cell in enumerate(zip(py_result.groups, py_result.times))}
+    rows = [py_cells[cell] for cell in r_cells]
+    assert py_result.n == r_result["n"]
+    assert {int(g) for g, _ in set(py_cells) - set(r_cells)} == {4}
+    r_att = _convert_r_array(np.atleast_1d(r_result["att"]))
+    r_se = _convert_r_array(np.atleast_1d(r_result["se"]))
+    np.testing.assert_allclose(py_result.att[rows], r_att, rtol=0, atol=1e-10)
+    np.testing.assert_allclose(py_result.se[rows], r_se, rtol=0, atol=1e-10)
+    for agg_type in agg_types:
+        py_agg = agg_ddd(py_result, type=agg_type, boot=False, cband=False)
+        np.testing.assert_allclose(py_agg.overall_att, r_result[agg_type]["overall_att"], rtol=0, atol=1e-10)
+        np.testing.assert_allclose(py_agg.overall_se, r_result[agg_type]["overall_se"], rtol=0, atol=1e-10)

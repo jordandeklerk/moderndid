@@ -36,7 +36,8 @@ class PTEParams(NamedTuple):
         When the cells index periods by position, as in ``cont_did`` results,
         this is the internal column ``.period_label``.
     idname : str
-        Name of the id variable.
+        Name of the column that holds each unit's id. In ``cont_did`` and
+        ``pte_default`` results this is the internal column ``id``.
     data : pl.DataFrame
         Panel data as a pandas DataFrame.
     g_list : np.ndarray

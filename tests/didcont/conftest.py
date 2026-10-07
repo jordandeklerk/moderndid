@@ -625,6 +625,21 @@ def contdid_data():
 
 
 @pytest.fixture
+def contdid_staggered_dose(contdid_data):
+    """contdid_data without its group column and with each dose at 0 before the unit's group starts."""
+    before = pl.col("period") < pl.col("G")
+    return contdid_data.with_columns(pl.when(before).then(0.0).otherwise(pl.col("D")).alias("D")).drop("G")
+
+
+@pytest.fixture
+def contdid_one_missing_dose(request, contdid_data):
+    """Give the last-period row of the first treated unit a missing dose."""
+    unit = contdid_data.filter(pl.col("D") > 0)["id"][0]
+    row = (pl.col("id") == unit) & (pl.col("period") == contdid_data["period"].max())
+    return contdid_data.with_columns(pl.when(row).then(request.param).otherwise(pl.col("D")).alias("D"))
+
+
+@pytest.fixture
 def contdid_two_period_data():
     data = gen_cont_did_data(n=1000, num_time_periods=2, dose_linear_effect=0.5, dose_quadratic_effect=0.3, seed=2024)
     return data.rename({"time_period": "period"})

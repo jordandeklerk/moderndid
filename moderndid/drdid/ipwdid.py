@@ -1,6 +1,7 @@
 """Wrapper for inverse propensity weighted DiD estimators."""
 
 from moderndid.core.preprocess import preprocess_drdid
+from moderndid.core.preprocess.validators import check_columns
 
 from .container import IPWDIDResult
 from .estimators.ipw_did_panel import ipw_did_panel
@@ -182,6 +183,15 @@ def ipwdid(
         raise ValueError(f"n_boot={n_boot} is not valid. Must be a positive integer.")
     if not 0 < trim_level < 1:
         raise ValueError(f"trim_level={trim_level} is not valid. Must be between 0 and 1 (exclusive).")
+    check_columns(
+        data,
+        yname=yname,
+        tname=tname,
+        idname=idname if panel else None,
+        treatname=treatname,
+        xformla=xformla,
+        weightsname=weightsname,
+    )
 
     call_params = {
         "yname": yname,

@@ -219,6 +219,23 @@ def mpdta_one_infinite_csv_path(mpdta_one_infinite, tmp_path):
 
 
 @pytest.fixture
+def mpdta_one_missing(request):
+    """Cluster mpdta by the last digit of the county and leave one value missing in the 2005 record of 17005."""
+    column, value = request.param
+    row = (pl.col("countyreal") == 17005) & (pl.col("year") == 2005)
+    data = load_mpdta().with_columns((pl.col("countyreal") % 10).alias("cluster"))
+    return data.with_columns(pl.when(row).then(value).otherwise(pl.col(column).cast(pl.Float64)).alias(column))
+
+
+@pytest.fixture
+def mpdta_one_missing_csv_path(mpdta_one_missing, tmp_path):
+    """Write the mpdta panel with the missing value to a CSV file and return its path."""
+    path = tmp_path / "mpdta_one_missing.csv"
+    mpdta_one_missing.write_csv(path)
+    return str(path)
+
+
+@pytest.fixture
 def mpdta_bad_weights(request):
     """Give mpdta weights in w that are all zero, zero outside one infinite record, or negative in one record."""
     row = (pl.col("countyreal") == 17005) & (pl.col("year") == 2005)
@@ -919,6 +936,19 @@ def mp_no_never_treated_data():
 
 
 @pytest.fixture
+def mp_no_never_treated_layout_data(request, mp_no_never_treated_data):
+    """The panel without never-treated units with gaps from period 4 on, units seen only then, or one row per id."""
+    data = mp_no_never_treated_data
+    if request.param == "late_gap":
+        return data.filter(~((pl.col("id") % 5 == 0) & (pl.col("time") == 5)))
+    if request.param == "cohort_gap":
+        return data.filter(~((pl.col("id") % 5 == 0) & (pl.col("time") == 4)))
+    if request.param == "late_only":
+        return data.filter(~((pl.col("id") % 7 == 0) & (pl.col("time") <= 3)))
+    return data.with_columns(pl.int_range(pl.len()).alias("id"))
+
+
+@pytest.fixture
 def mp_ddd_weighted_data():
     """Multi-period panel with a sampling weight from U(0.2, 5) for each unit in w."""
     data = gen_ddd_mult_periods(n=1000, random_state=7)["data"]
@@ -938,3 +968,32 @@ def mp_ddd_weighted_unbalanced_data(mp_ddd_weighted_data):
 def mp_rcs_weighted_data(mp_ddd_weighted_data):
     """The weighted multi-period panel with every row taken as an observation of its own in rid."""
     return mp_ddd_weighted_data.with_columns(pl.int_range(pl.len()).alias("rid"))
+
+
+@pytest.fixture
+def mp_ddd_unbalanced_clustered_data(mp_ddd_clustered_data):
+    """Drop about 8 percent of the rows of the clustered multi-period panel to unbalance it."""
+    keep = np.random.default_rng(7).random(mp_ddd_clustered_data.height) >= 0.08
+    return mp_ddd_clustered_data.filter(pl.Series(keep))
+
+
+@pytest.fixture
+def mp_rcs_clustered_data(mp_rcs_data):
+    """Nest clusters of unequal size in the groups of the cross-section and shock the eligible observations of each."""
+    data = mp_rcs_data.with_columns(
+        (100 * pl.col("group") + (pl.col("id") % 300 + 1).sqrt().floor()).cast(pl.Int64).alias("cluster")
+    )
+    clusters = data["cluster"].unique().sort().to_list()
+    shocks = dict(zip(clusters, np.random.default_rng(10).normal(0, 1, len(clusters))))
+    shock = pl.col("cluster").replace_strict(shocks, return_dtype=pl.Float64)
+    return data.with_columns(pl.col("y") + pl.col("partition") * shock)
+
+
+@pytest.fixture
+def mp_ddd_missing_value_data(request, mp_ddd_data):
+    """Multi-period panel in which unit 3 misses its period-3 cohort or repeats period 1 without an outcome."""
+    if request.param == "cohort":
+        row = (pl.col("id") == 3) & (pl.col("time") == 3)
+        return mp_ddd_data.with_columns(pl.when(row).then(None).otherwise(pl.col("group")).alias("group"))
+    repeated = mp_ddd_data.filter((pl.col("id") == 3) & (pl.col("time") == 1))
+    return pl.concat([mp_ddd_data, repeated.with_columns(pl.lit(None, pl.Float64).alias("y"))])

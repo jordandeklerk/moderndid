@@ -10,6 +10,7 @@ import polars as pl
 from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
 from moderndid.core.preprocess import DynBalancingConfig, PreprocessDataBuilder
+from moderndid.core.preprocess.validators import check_columns
 
 from .container import DynBalancingHetResult, DynBalancingHistoryResult, DynBalancingResult
 from .estimation.inference import compute_quantiles, compute_variance, compute_variance_clustered
@@ -278,6 +279,17 @@ def dyn_balancing(
         warnings.warn("ds1 contains one element. No dynamics will be considered.", stacklevel=2)
     if pooled and clustervars is None:
         clustervars = [idname]
+    data = to_polars(data)
+    check_columns(
+        data,
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        treatment_name=treatment_name,
+        xformla=xformla,
+        fixed_effects=fixed_effects,
+        clustervars=clustervars,
+    )
 
     if histories_length is not None:
         return _run_history(
@@ -353,8 +365,6 @@ def dyn_balancing(
             random_state=random_state,
         )
 
-    df = to_polars(data)
-
     config = DynBalancingConfig(
         yname=yname,
         tname=tname,
@@ -387,7 +397,7 @@ def dyn_balancing(
         demeaned_fe=demeaned_fe,
     )
 
-    dp = PreprocessDataBuilder().with_data(df).with_config(config).validate().transform().build()
+    dp = PreprocessDataBuilder().with_data(data).with_config(config).validate().transform().build()
 
     n_periods = config.n_periods
     outcome = dp.outcome_vector

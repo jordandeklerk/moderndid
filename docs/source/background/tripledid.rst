@@ -604,30 +604,27 @@ bands. For aggregate effects, ``agg_ddd`` defaults to
 ``boot=True, cband=True`` and requires bootstrap inference when
 simultaneous bands are requested.
 
-.. admonition:: Check the scope of clustered inference
-   :class: warning
+.. admonition:: Clustering on every route
+   :class: note
 
-   Multi-period ``ddd`` uses ``cluster`` only with ``boot=True``.
-   Cells that combine several not-yet-treated cohorts retain their
-   combination-specific standard errors without the requested cluster
-   adjustment. ``agg_ddd`` does not currently propagate cluster labels
-   into its own bootstrap. Its bands need a separate justification
-   when units are dependent within clusters.
+   Every route of ``ddd`` clusters its standard errors when you pass
+   ``cluster``. With several periods, each cohort-period cell sums its
+   influence function within clusters, even a cell that combines several
+   not-yet-treated cohorts. ``agg_ddd`` reuses those clusters in its
+   standard errors and its bootstrap.
 
-For cells that combine several comparison cohorts, the current reported
-standard error uses the full sample size with a covariance calculated
-on the comparison subsample. It can differ from a standard error
-computed from the scaled full-sample influence functions. The normal
-limit above requires a covariance estimate and sample-size convention
-that represent the same sampling error.
+For a cell that combines several comparison cohorts, the estimated
+covariance comes from the influence functions scaled to the full sample.
+Its standard error therefore matches the one that the cell's combined
+influence function implies, as the normal limit above requires.
 
 The panel formulas above use observed within-unit outcome changes.
 With ``panel=False``, the estimator works from repeated cross-sections
 and needs stable population composition across the two samples,
 including the joint distribution of :math:`S,Q,X`. Setting
 ``allow_unbalanced_panel=True`` also uses that repeated-cross-section
-path. Keeping the default instead restricts each panel comparison to
-units observed in both of its periods. The panel theorem alone does
+path. The default instead drops the units that miss a period and warns
+about them, as ``att_gt`` does. The panel theorem alone does
 not justify a change in sampling design or selective attrition.
 
 Turning cohort-period effects into an event study

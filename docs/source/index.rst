@@ -15,7 +15,6 @@ ModernDiD
    :maxdepth: 1
    :hidden:
 
-   Getting Started <getting_started/index>
    User Guide <user_guide/index>
    Examples <examples/index>
    API Reference <api/index>

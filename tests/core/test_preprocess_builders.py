@@ -531,3 +531,109 @@ def test_builder_names_the_columns_when_no_row_is_complete(mpdta):
 
     with pytest.raises(ValueError, match="^Every row has a missing value in 'lpop'\\. No data is left"):
         builder.transform()
+
+
+@pytest.mark.parametrize(
+    ("config_class", "config_kwargs", "data_name", "column", "value", "unit"),
+    [
+        (
+            DIDConfig,
+            {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"},
+            "mpdta",
+            "first.treat",
+            None,
+            None,
+        ),
+        (
+            DIDConfig,
+            {
+                "yname": "lemp",
+                "tname": "year",
+                "idname": "countyreal",
+                "gname": "first.treat",
+                "allow_unbalanced_panel": False,
+            },
+            "mpdta",
+            "first.treat",
+            float("nan"),
+            "countyreal",
+        ),
+        (
+            ContDIDConfig,
+            {
+                "yname": "Y",
+                "tname": "time_period",
+                "idname": "id",
+                "gname": "G",
+                "dname": "D",
+                "allow_unbalanced_panel": False,
+            },
+            "cont_did_panel_with_nan",
+            "D",
+            float("-inf"),
+            "id",
+        ),
+        (
+            TwoPeriodDIDConfig,
+            {"yname": "y", "tname": "year", "treat_col": "treat", "panel": False},
+            "drdid_panel_data",
+            "year",
+            float("nan"),
+            None,
+        ),
+        (
+            DDDConfig,
+            {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition"},
+            "ddd_panel_with_nan",
+            "partition",
+            None,
+            "id",
+        ),
+    ],
+)
+def test_builder_checks_structure_on_the_rows_that_remain(
+    request, config_class, config_kwargs, data_name, column, value, unit
+):
+    data = request.getfixturevalue(data_name).with_columns(pl.col(column).cast(pl.Float64))
+    first = pl.int_range(pl.len()) == 0
+    with_missing = data.with_columns(pl.when(first).then(value).otherwise(pl.col(column)).alias(column))
+    dropped = first if unit is None else pl.col(unit) == data[unit][0]
+    built = [
+        PreprocessDataBuilder().with_data(frame).with_config(config_class(**config_kwargs)).validate().transform()._data
+        for frame in (with_missing, data.filter(~dropped))
+    ]
+
+    assert built[0].equals(built[1])
+
+
+@pytest.mark.parametrize(
+    ("config_type", "config_class", "config_kwargs", "data_name"),
+    [
+        ("did", DIDConfig, {"yname": "lemp", "tname": "year", "idname": "countyreal", "gname": "first.treat"}, "mpdta"),
+        (
+            "cont_did",
+            ContDIDConfig,
+            {"yname": "Y", "tname": "time_period", "idname": "id", "gname": "G", "dname": "D"},
+            "cont_did_panel_with_nan",
+        ),
+    ],
+)
+def test_builder_accepts_clustervars_none(request, config_type, config_class, config_kwargs, data_name):
+    data = request.getfixturevalue(data_name)
+    expected = (
+        PreprocessDataBuilder()
+        .with_data(data)
+        .with_config(config_class(**config_kwargs))
+        .validate()
+        .transform()
+        .build()
+    )
+    builders = [
+        PreprocessDataBuilder().with_data(data).with_config(config_class(**config_kwargs, clustervars=None)),
+        PreprocessDataBuilder().with_data(data).with_config_dict(config_type, **config_kwargs, clustervars=None),
+    ]
+
+    for builder in builders:
+        result = builder.validate().transform().build()
+        assert result.cluster is None
+        assert result.data.equals(expected.data)

@@ -8,6 +8,8 @@ import pytest
 from moderndid.core.data import load_nsw
 from moderndid.drdid import drdid_imp_panel, drdid_imp_rc
 from moderndid.drdid.drdid import drdid
+from moderndid.drdid.ipwdid import ipwdid
+from moderndid.drdid.ordid import ordid
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
@@ -738,7 +740,7 @@ def test_drdid_rejects_dropping_the_intercept(nsw_data, xformla):
 
 
 def test_drdid_missing_covariate_raises(nsw_data):
-    with pytest.raises(ValueError, match="xformla contains 'nope' which is not a column in the dataset"):
+    with pytest.raises(ValueError, match="^'nope' in xformla is not a column in the data\\.$"):
         drdid(
             data=nsw_data,
             yname="re",
@@ -808,6 +810,39 @@ def test_drdid_drops_infinite_rows_of_repeated_cross_sections(nsw_one_infinite, 
 
     assert result.att == expected.att
     assert result.se == expected.se
+
+
+@pytest.mark.parametrize("nsw_one_infinite", [("year", float("nan")), ("year", float("inf"))], indirect=True)
+@pytest.mark.parametrize("estimator", [drdid, ipwdid, ordid])
+def test_repeated_cross_sections_count_the_periods_of_the_rows_that_remain(nsw_one_infinite, estimator):
+    spec = {"yname": "re", "tname": "year", "treatname": "experimental", "panel": False}
+    expected = estimator(data=nsw_one_infinite.filter(pl.col("year").is_finite()), **spec)
+
+    with pytest.warns(UserWarning, match="^Dropped 1 rows from original data due to missing values$"):
+        result = estimator(data=nsw_one_infinite, **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"tname": "yaer"}, "tname='yaer' is not a column in the data. Did you mean 'year'?"),
+        (
+            {"treatname": "experimentl"},
+            "treatname='experimentl' is not a column in the data. Did you mean 'experimental'?",
+        ),
+        ({"idname": "idd"}, "idname='idd' is not a column in the data. Did you mean 'id'?"),
+        ({"tname": "yaer", "panel": False}, "tname='yaer' is not a column in the data. Did you mean 'year'?"),
+    ],
+)
+@pytest.mark.parametrize("estimator", [drdid, ipwdid, ordid])
+def test_two_period_estimators_name_misspelled_columns(nsw_data, estimator, changes, message):
+    spec = {"yname": "re", "tname": "year", "treatname": "experimental", "idname": "id"} | changes
+
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        estimator(data=nsw_data, **spec)
 
 
 @pytest.mark.parametrize("nsw_one_infinite", [("re", float("inf")), ("w", float("-inf"))], indirect=True)

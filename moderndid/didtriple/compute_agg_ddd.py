@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 from scipy import stats
 
-from .bootstrap.mboot_ddd import mboot_ddd
+from .bootstrap.mboot_ddd import mboot_ddd, sum_within_clusters
 from .container import DDDAggResult
 
 
@@ -27,7 +27,9 @@ def compute_agg_ddd(
     """Compute aggregated treatment effect parameters for DDD.
 
     Aggregates group-time average treatment effects into different summary
-    measures based on the specified aggregation type.
+    measures based on the specified aggregation type. When ``ddd_result``
+    holds the cluster of each unit, the standard errors and the bootstrap sum
+    the influence functions within clusters.
 
     Parameters
     ----------
@@ -87,6 +89,7 @@ def compute_agg_ddd(
         if ddd_result.unit_weights is None
         else np.asarray(ddd_result.unit_weights, dtype=float)
     )
+    cluster = getattr(ddd_result, "unit_clusters", None)
 
     args = {
         "aggregation_type": aggregation_type,
@@ -99,6 +102,8 @@ def compute_agg_ddd(
     for key in ("yname", "pname", "est_method", "control_group", "base_period", "panel"):
         if key in src_args:
             args[key] = src_args[key]
+    if cluster is not None:
+        args["cluster"] = src_args.get("cluster")
 
     if not dropna and np.any(np.isnan(att)):
         raise ValueError("Missing values in ATT(g,t) found. Set dropna=True to remove them.")
@@ -160,6 +165,7 @@ def compute_agg_ddd(
             orig_group,
             unit_groups,
             unit_weights,
+            cluster,
         )
 
     if aggregation_type == "group":
@@ -183,6 +189,7 @@ def compute_agg_ddd(
             random_state,
             unit_groups,
             unit_weights,
+            cluster,
         )
 
     if aggregation_type == "calendar":
@@ -205,6 +212,7 @@ def compute_agg_ddd(
             orig_group,
             unit_groups,
             unit_weights,
+            cluster,
         )
 
     return _compute_eventstudy(
@@ -230,6 +238,7 @@ def compute_agg_ddd(
         random_state,
         unit_groups,
         unit_weights,
+        cluster,
     )
 
 
@@ -247,6 +256,7 @@ def _compute_simple(
     orig_group,
     unit_groups,
     unit_weights,
+    cluster=None,
 ):
     """Compute simple ATT aggregation."""
     simple_att = np.sum(att[keepers] * pg_obs[keepers]) / pg_obs[keepers].sum()
@@ -261,7 +271,7 @@ def _compute_simple(
             keepers=keepers, pg=pg_obs, unit_groups=unit_groups, glist=orig_group, unit_weights=unit_weights
         )
         simple_if = _get_agg_inf_func(inf_func_mat, keepers, weights) + wif @ att[keepers]
-        simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state)
+        simple_se = _compute_se(simple_if, n, boot, biters, alpha, random_state, cluster)
 
     return DDDAggResult(
         overall_att=simple_att,
@@ -297,6 +307,7 @@ def _compute_group(
     random_state,
     unit_groups,
     unit_weights,
+    cluster=None,
 ):
     """Compute group-specific ATT aggregation."""
     selective_att_g = np.zeros(len(glist_recoded))
@@ -325,6 +336,7 @@ def _compute_group(
         alpha,
         cband,
         random_state,
+        cluster,
     )
 
     selective_att_g_clean = np.where(np.isnan(selective_att_g), 0, selective_att_g)
@@ -340,7 +352,7 @@ def _compute_group(
     )
 
     selective_inf_func = selective_inf_func_g @ weights_overall + wif @ selective_att_g_clean
-    selective_se = _compute_se(selective_inf_func, n, boot, biters, alpha, random_state)
+    selective_se = _compute_se(selective_inf_func, n, boot, biters, alpha, random_state, cluster)
 
     return DDDAggResult(
         overall_att=selective_att,
@@ -375,6 +387,7 @@ def _compute_calendar(
     orig_group,
     unit_groups,
     unit_weights,
+    cluster=None,
 ):
     """Compute calendar time ATT aggregation."""
     min_g = group.min()
@@ -409,21 +422,19 @@ def _compute_calendar(
         alpha,
         cband,
         random_state,
+        cluster,
     )
 
     calendar_att = np.nanmean(calendar_att_t)
 
-    weights_calendar = np.ones(len(calendar_tlist)) / len(calendar_tlist)
-    calendar_inf_func = calendar_inf_func_t @ weights_calendar
+    # Like the overall effect, its influence function averages only the periods that have a cell.
+    valid = ~np.isnan(calendar_att_t)
+    weights_calendar = np.ones(valid.sum()) / valid.sum()
+    calendar_inf_func = calendar_inf_func_t[:, valid] @ weights_calendar
     if boot and bres is not None:
-        calendar_se = _overall_se_from_bres(
-            bres,
-            np.ones(len(calendar_tlist), dtype=bool),
-            weights_calendar,
-            n,
-        )
+        calendar_se = _overall_se_from_bres(bres, valid, weights_calendar, n, cluster)
     else:
-        calendar_se = _compute_se(calendar_inf_func, n, False, biters, alpha, random_state)
+        calendar_se = _compute_se(calendar_inf_func, n, False, biters, alpha, random_state, cluster)
 
     orig_calendar_tlist = np.array([_t2orig(tc, orig_gtlist, uniquet) for tc in calendar_tlist])
 
@@ -464,6 +475,7 @@ def _compute_eventstudy(
     random_state,
     unit_groups,
     unit_weights,
+    cluster=None,
 ):
     """Compute event study ATT aggregation."""
     eseq = np.unique(orig_periods - orig_group)
@@ -513,6 +525,7 @@ def _compute_eventstudy(
         alpha,
         cband and len(eseq) > 0,
         random_state,
+        cluster,
     )
 
     epos = eseq >= 0
@@ -521,9 +534,9 @@ def _compute_eventstudy(
         n_pos = epos.sum()
         dynamic_inf_func = dynamic_inf_func_e[:, epos] @ (np.ones(n_pos) / n_pos)
         if boot and bres is not None:
-            dynamic_se = _overall_se_from_bres(bres, epos, np.ones(n_pos) / n_pos, n)
+            dynamic_se = _overall_se_from_bres(bres, epos, np.ones(n_pos) / n_pos, n, cluster)
         else:
-            dynamic_se = _compute_se(dynamic_inf_func, n, False, biters, alpha, random_state)
+            dynamic_se = _compute_se(dynamic_inf_func, n, False, biters, alpha, random_state, cluster)
     else:
         dynamic_att = np.nan
         dynamic_se = np.nan
@@ -548,13 +561,15 @@ def _compute_eventstudy(
     )
 
 
-def _compute_se(inf_func, n, boot, biters, alpha, random_state):
+def _compute_se(inf_func, n, boot, biters, alpha, random_state, cluster=None):
     """Compute standard error from influence function."""
     if boot:
-        boot_result = mboot_ddd(inf_func.reshape(-1, 1), biters, alpha, random_state=random_state)
+        boot_result = mboot_ddd(inf_func.reshape(-1, 1), biters, alpha, cluster=cluster, random_state=random_state)
         se = boot_result.se[0]
-    else:
+    elif cluster is None:
         se = np.sqrt(np.mean(inf_func**2) / n)
+    else:
+        se = np.sqrt(np.sum(sum_within_clusters(inf_func.reshape(-1, 1), cluster) ** 2)) / n
 
     if not np.isnan(se) and se <= np.sqrt(np.finfo(float).eps) * 10:
         se = np.nan
@@ -562,7 +577,7 @@ def _compute_se(inf_func, n, boot, biters, alpha, random_state):
     return se
 
 
-def _batched_bootstrap(inf_func_mat, n, boot, biters, alpha, cband, random_state):
+def _batched_bootstrap(inf_func_mat, n, boot, biters, alpha, cband, random_state, cluster=None):
     """Compute per-column SEs and critical value from stacked influence functions."""
     k = inf_func_mat.shape[1]
     pointwise_crit = stats.norm.ppf(1 - alpha / 2)
@@ -571,12 +586,15 @@ def _batched_bootstrap(inf_func_mat, n, boot, biters, alpha, cband, random_state
         return np.array([]), pointwise_crit, None
 
     if not boot:
-        se_array = np.sqrt(np.mean(inf_func_mat**2, axis=0) / n)
+        if cluster is None:
+            se_array = np.sqrt(np.mean(inf_func_mat**2, axis=0) / n)
+        else:
+            se_array = np.sqrt(np.sum(sum_within_clusters(inf_func_mat, cluster) ** 2, axis=0)) / n
         eps_thresh = np.sqrt(np.finfo(float).eps) * 10
         se_array = np.where((~np.isnan(se_array)) & (se_array <= eps_thresh), np.nan, se_array)
         return se_array, pointwise_crit, None
 
-    boot_result = mboot_ddd(inf_func_mat, biters, alpha, random_state=random_state)
+    boot_result = mboot_ddd(inf_func_mat, biters, alpha, cluster=cluster, random_state=random_state)
     se_array = boot_result.se.copy()
 
     eps_thresh = np.sqrt(np.finfo(float).eps) * 10
@@ -597,7 +615,7 @@ def _batched_bootstrap(inf_func_mat, n, boot, biters, alpha, cband, random_state
     return se_array, crit_val, boot_result.bres
 
 
-def _overall_se_from_bres(bres, col_mask, weights, n):
+def _overall_se_from_bres(bres, col_mask, weights, n, cluster=None):
     """Derive overall SE from stacked bootstrap draws."""
     overall_bres = bres[:, col_mask] @ weights
 
@@ -609,7 +627,8 @@ def _overall_se_from_bres(bres, col_mask, weights, n):
     if np.isnan(b_sigma) or b_sigma <= eps_thresh:
         return np.nan
 
-    se = b_sigma / np.sqrt(n)
+    # The draws scale with the number of clusters, as in mboot_ddd.
+    se = b_sigma / np.sqrt(n) if cluster is None else b_sigma * np.sqrt(len(np.unique(cluster))) / n
     if se <= eps_thresh:
         return np.nan
 

@@ -1,5 +1,7 @@
 """Tests for DIDInter preprocessing."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -11,6 +13,7 @@ from moderndid.core.preprocess import PreprocessDataBuilder
 from moderndid.core.preprocess.config import DIDInterConfig
 from moderndid.core.preprocess.models import DIDInterData
 from moderndid.core.preprocess.transformers import ControlsTimeFilter, SwitcherIdentifier
+from moderndid.core.preprocessing import preprocess_didinter
 
 
 @pytest.fixture
@@ -209,7 +212,28 @@ def test_validation_no_switchers():
     )
 
     with pytest.raises(ValueError, match="No units change treatment"):
-        PreprocessDataBuilder().with_data(df).with_config(config).validate()
+        PreprocessDataBuilder().with_data(df).with_config(config).validate().transform()
+
+
+def test_validation_counts_only_observed_treatment_changes(panel_with_a_missing_treatment):
+    config = DIDInterConfig(yname="y", tname="time", gname="id", dname="d")
+
+    with pytest.raises(
+        ValueError, match="^Validation failed:\nNo units change treatment\\. Cannot estimate effects\\.$"
+    ):
+        PreprocessDataBuilder().with_data(panel_with_a_missing_treatment).with_config(config).validate().transform()
+
+
+def test_preprocess_didinter_keeps_unbalanced_groups_without_warning(unbalanced_panel_data):
+    spec = {"yname": "y", "tname": "time", "gname": "id", "dname": "d"}
+    expected = preprocess_didinter(unbalanced_panel_data, allow_unbalanced_panel=True, **spec)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        result = preprocess_didinter(unbalanced_panel_data, **spec)
+
+    assert result.config.n_groups == expected.config.n_groups
+    assert result.data.equals(expected.data)
 
 
 @pytest.fixture
@@ -342,7 +366,7 @@ def test_continuous_pools_distinct_baselines_and_marks_each_switch(continuous_pa
         PreprocessDataBuilder().with_data(continuous_panel_data).with_config(config).validate().transform().build().data
     )
     switched = data.filter(pl.col("F_g") != float("inf"))
-    trends = [name for name in data.columns if name.startswith("_baseline_trend_")]
+    trends = [name for name in data.columns if name.startswith(".baseline_trend_")]
     row = data.filter((pl.col("id") == 5) & (pl.col("time") == 4))
 
     assert data["id"].n_unique() == 120
@@ -351,9 +375,9 @@ def test_continuous_pools_distinct_baselines_and_marks_each_switch(continuous_pa
     assert (data.filter(pl.col("F_g") == float("inf"))["weight_gt"] == 1).all()
     np.testing.assert_array_equal(switched["d"], switched["S_g"] * (switched["time"] >= switched["F_g"]))
     np.testing.assert_array_equal(switched["d_fg"], switched["S_g"])
-    assert trends == [f"_baseline_trend_{t}_{k}" for t in range(2, 7) for k in (1, 2)]
-    np.testing.assert_allclose(row["_baseline_trend_3_2"], row["d_sq_orig"] ** 2)
-    np.testing.assert_allclose(row["_baseline_trend_5_1"], 0.0)
+    assert trends == [f".baseline_trend_{t}_{k}" for t in range(2, 7) for k in (1, 2)]
+    np.testing.assert_allclose(row[".baseline_trend_3_2"], row[".d_sq_orig"] ** 2)
+    np.testing.assert_allclose(row[".baseline_trend_5_1"], 0.0)
 
 
 def test_trends_lin_keeps_outcome_levels_and_baseline_trends_after_the_first_period(continuous_panel_data):
@@ -364,10 +388,10 @@ def test_trends_lin_keeps_outcome_levels_and_baseline_trends_after_the_first_per
     )
     levels = data.join(continuous_panel_data.select("id", "time", pl.col("y").alias("raw")), on=["id", "time"])
 
-    assert [name for name in data.columns if name.startswith("_baseline_trend_")] == [
-        f"_baseline_trend_{t}_1" for t in range(3, 7)
+    assert [name for name in data.columns if name.startswith(".baseline_trend_")] == [
+        f".baseline_trend_{t}_1" for t in range(3, 7)
     ]
-    np.testing.assert_allclose(levels["_outcome_levels"], levels["raw"])
+    np.testing.assert_allclose(levels[".outcome_levels"], levels["raw"])
 
 
 def test_balanced_panel_keeps_the_observed_baseline_in_every_row(baseline_shift_panels):

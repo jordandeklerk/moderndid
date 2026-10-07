@@ -213,6 +213,26 @@ def mpdta_states(mpdta_data):
 
 
 @pytest.fixture
+def mpdta_extra(mpdta_data):
+    """mpdta with a control that varies within counties, a moderator, weights, each county's state, and employment."""
+    return mpdta_data.with_columns(
+        ((pl.col("countyreal") * 7 + pl.col("year") * 13) % 11).cast(pl.Float64).alias("x"),
+        (pl.col("countyreal") % 3).cast(pl.Float64).alias("z"),
+        (1 + (pl.col("countyreal") % 7) / 7).alias("w"),
+        (pl.col("countyreal") // 1000).cast(pl.Float64).alias("st"),
+        pl.col("lemp").exp().alias("emp"),
+    )
+
+
+@pytest.fixture
+def mpdta_lone_cell(mpdta_data):
+    """mpdta in which one county of the 2004 cohort is the only one observed in 2007, and the row of that county."""
+    county = mpdta_data.filter(pl.col("first.treat") == 2004)["countyreal"].min()
+    late = (pl.col("first.treat") == 2004) & (pl.col("year") == 2007)
+    return mpdta_data.filter(~late | (pl.col("countyreal") == county)), late
+
+
+@pytest.fixture
 def mpdta_converted(request, mpdta_data):
     df_type = request.param
     if df_type == "pandas":

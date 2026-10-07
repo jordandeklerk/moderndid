@@ -333,7 +333,7 @@ def test_missing_required_column_raises(simple_panel, col):
         ds2=[0, 0, 0, 0],
     )
     config[col] = "nonexistent"
-    with pytest.raises(ValueError, match="not found in data"):
+    with pytest.raises(ValueError, match=f"^Validation failed:\n{col}='nonexistent' is not a column in the data\\.$"):
         build_dyn_balancing(simple_panel, **config)
 
 
@@ -348,12 +348,14 @@ def test_missing_id_or_time_column_raises(simple_panel, col):
         ds2=[0, 0, 0, 0],
     )
     config[col] = "nonexistent"
-    with pytest.raises(ValueError, match="not found in data"):
+    with pytest.raises(ValueError, match=f"^Validation failed:\n{col}='nonexistent' is not a column in the data\\.$"):
         build_dyn_balancing(simple_panel, **config)
 
 
 def test_missing_covariate_raises(simple_panel, base_config):
-    with pytest.raises(ValueError, match="not in the dataset"):
+    with pytest.raises(
+        ValueError, match="^Validation failed:\n'nonexistent' in xformla is not a column in the data\\.$"
+    ):
         build_dyn_balancing(simple_panel, **base_config, xformla="~nonexistent")
 
 

@@ -11,7 +11,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import load_favara_imbs
+from moderndid import did_multiplegt, load_favara_imbs
 from moderndid.didinter.container import EffectsResult
 
 
@@ -136,6 +136,70 @@ def panel_with_controls(simple_panel_data, rng):
     )
 
 
+@pytest.fixture(scope="module")
+def every_option_panel():
+    """Panel of 50 groups with two controls, a covariate fixed within groups, and clusters of five groups."""
+    rng = np.random.default_rng(42)
+    units = np.repeat(np.arange(50), 6)
+    periods = np.tile(np.arange(1, 7), 50)
+    treated = ((units < 20) & (periods >= 3)) | ((units >= 20) & (units < 30) & (periods >= 4))
+    return pl.DataFrame(
+        {
+            "id": units,
+            "time": periods,
+            "y": rng.standard_normal(300) + 2.0 * treated,
+            "d": treated.astype(float),
+            "x1": rng.standard_normal(300),
+            "x2": rng.standard_normal(300),
+            "het": np.repeat(rng.standard_normal(50), 6),
+            "cl": units // 5,
+        }
+    )
+
+
+@pytest.fixture(scope="module")
+def fit_every_option(every_option_panel):
+    """Function that fits did_multiplegt with every option on the panel after renaming some of its columns."""
+
+    def fit(renamed=None, **options):
+        names = {"id": "id", "x1": "x1", "het": "het", "cl": "cl", **(renamed or {})}
+        return did_multiplegt(
+            every_option_panel.rename(renamed or {}),
+            yname="y",
+            tname="time",
+            idname=names["id"],
+            dname="d",
+            xformla=f"~ {names['x1']} + x2",
+            cluster=names["cl"],
+            predict_het=([names["het"]], [-1]),
+            effects=2,
+            placebo=1,
+            same_switchers=True,
+            less_conservative_se=True,
+            **options,
+        )
+
+    return fit
+
+
+@pytest.fixture(scope="module")
+def every_option_result(fit_every_option):
+    """Every-option fit under the panel's own column names."""
+    return fit_every_option()
+
+
+@pytest.fixture(scope="module")
+def continuous_option_panel(every_option_panel):
+    """Every-option panel whose treatment starts at a continuous baseline and rises by a group's own step."""
+    rng = np.random.default_rng(7)
+    switched = every_option_panel["d"].to_numpy()
+    step = np.repeat(rng.uniform(0.5, 1.5, 50), 6) * switched
+    return every_option_panel.with_columns(
+        pl.Series("d", np.repeat(rng.uniform(0.0, 2.0, 50), 6) + step),
+        pl.Series("y", rng.standard_normal(300) + 1.5 * step),
+    )
+
+
 @pytest.fixture
 def weighted_clustered_panel(panel_with_controls):
     """Panel with controls, a weight of 2 in w, and ten clusters of five groups in cl."""
@@ -220,7 +284,7 @@ def switcher_data():
             "F_g": [3.0, 3.0, 3.0, 2.0, 2.0, 2.0],
             "S_g": [1, 1, 1, 1, 1, 1],
             "weight_gt": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-            "dist_to_switch_1": [0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+            ".dist_to_switch_1": [0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
         }
     )
 
@@ -230,7 +294,7 @@ def ate_variance_inputs(rng):
     """Function that builds the influence functions of 100 groups and the cell counts for a number of horizons."""
 
     def build(n_horizons):
-        counts = {f"count_{horizon}": rng.integers(0, 2, 30) for horizon in range(1, n_horizons + 1)}
+        counts = {f".count_{horizon}": rng.integers(0, 2, 30) for horizon in range(1, n_horizons + 1)}
         return {"influence_func_unnorm": rng.standard_normal((100, n_horizons)), "df": pl.DataFrame(counts)}
 
     return build
@@ -264,7 +328,7 @@ def het_sample():
     n = 60
     return pl.DataFrame(
         {
-            "_prod_het": rng.standard_normal(n),
+            ".prod_het": rng.standard_normal(n),
             "weight_gt": rng.uniform(0.5, 2.0, n),
             "x1": rng.standard_normal(n),
             "x2": rng.standard_normal(n),
@@ -679,3 +743,16 @@ def simple_panel_duplicated(request, simple_panel_data):
     if request.param == "hidden_gap":
         return pl.concat([simple_panel_data.filter(~(unit & (pl.col("time") == 4))), row])
     return pl.concat([simple_panel_data, row.with_columns(pl.col("y") + 1)])
+
+
+@pytest.fixture
+def panel_with_a_missing_treatment(rng):
+    """Panel of 10 groups whose treatment stays 0 and is missing for group 0 in period 3."""
+    return pl.DataFrame(
+        {
+            "id": np.repeat(np.arange(10), 3),
+            "time": np.tile([1, 2, 3], 10),
+            "d": [None if (group, t) == (0, 3) else 0.0 for group in range(10) for t in (1, 2, 3)],
+            "y": rng.standard_normal(30),
+        }
+    )

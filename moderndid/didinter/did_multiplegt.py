@@ -4,6 +4,7 @@ import warnings
 
 from moderndid.core.preprocess import PreprocessDataBuilder
 from moderndid.core.preprocess.config import DIDInterConfig
+from moderndid.core.preprocess.validators import check_columns
 
 from .compute_did_multiplegt import compute_did_multiplegt
 
@@ -59,6 +60,11 @@ def did_multiplegt(
     of the current treatment and its lags. The average total effect in ``ate`` adds up
     the effects over the estimated horizons and divides them by the treatment changes
     over the same horizons.
+
+    The estimator adds its own columns next to the ones the call names. A column that
+    an argument names can't start with a dot or use one of the names ``F_g``, ``S_g``,
+    ``L_g``, ``T_g``, ``d_sq``, ``d_sq_int``, ``d_fg``, ``weight_gt``,
+    ``first_obs_by_gp``, or ``t_max_by_group``.
 
     See the :ref:`intertemporal treatment example <example_inter_did>` for a full
     analysis of the banking deregulation data.
@@ -348,6 +354,18 @@ def did_multiplegt(
         not isinstance(trends_nonparam, list) or not all(isinstance(v, str) for v in trends_nonparam)
     ):
         raise ValueError("trends_nonparam must be a list of variable name strings.")
+    check_columns(
+        data,
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        dname=dname,
+        cluster=cluster,
+        weightsname=weightsname,
+        xformla=xformla,
+        trends_nonparam=trends_nonparam,
+        predict_het=None if predict_het is None else predict_het[0],
+    )
 
     config = DIDInterConfig(
         yname=yname,

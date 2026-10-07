@@ -205,7 +205,7 @@ def test_clean_drops_rows_with_missing_values(mpdta_missing, base_config, column
     holed = data.with_columns(pl.when(missing).then(None).otherwise(pl.col(column)).alias(column))
     with pytest.warns(UserWarning, match=f"Dropped 158 rows with missing values in {column}"):
         cleaned = clean_etwfe_data(holed, base_config)
-    assert cleaned.equals(holed.filter(~missing))
+    assert cleaned.equals(holed.filter(~missing).select(cleaned.columns))
 
 
 def test_clean_drops_rows_with_nan_controls(mpdta_missing, base_config):
@@ -232,14 +232,14 @@ def test_clean_drops_rows_with_missing_cluster_values(mpdta_states, base_config,
     holed = data.with_columns(pl.when(missing).then(None).otherwise(pl.col("st")).alias("st"))
     with pytest.warns(UserWarning, match="Dropped 15 rows with missing values in st"):
         cleaned = clean_etwfe_data(holed, base_config, vcov)
-    assert cleaned.equals(holed.filter(~missing))
+    assert cleaned.equals(holed.filter(~missing).select(cleaned.columns))
 
 
 @pytest.mark.parametrize("vcov", [None, "hetero", {"CRV1": "countyreal"}])
 def test_clean_keeps_rows_missing_only_an_unused_cluster(mpdta_states, base_config, vcov):
     data, missing = mpdta_states
     holed = data.with_columns(pl.when(missing).then(None).otherwise(pl.col("st")).alias("st"))
-    assert clean_etwfe_data(holed, base_config, vcov).equals(holed)
+    assert clean_etwfe_data(holed, base_config, vcov).equals(holed.select("year", "countyreal", "lemp", "first.treat"))
 
 
 @pytest.mark.parametrize("idname", ["countyreal", None])
@@ -259,7 +259,7 @@ def test_clean_drops_cohorts_treated_in_first_period(mpdta_always_treated, base_
     base_config.idname = idname
     with pytest.warns(UserWarning, match=f"Dropped {dropped} of cohorts already treated in the first period"):
         cleaned = clean_etwfe_data(data, base_config)
-    assert cleaned.equals(expected)
+    assert cleaned.equals(expected.select(cleaned.columns))
 
 
 def test_clean_rejects_data_without_complete_rows(mpdta_data, base_config):
@@ -271,7 +271,7 @@ def test_clean_rejects_data_without_complete_rows(mpdta_data, base_config):
 
 def test_clean_keeps_complete_data(mpdta_data, base_config):
     base_config.xformla = "~ lpop"
-    assert clean_etwfe_data(mpdta_data, base_config).equals(mpdta_data)
+    assert clean_etwfe_data(mpdta_data, base_config).equals(mpdta_data.drop("treat"))
 
 
 def test_clean_rejects_controls_missing_from_data(mpdta_data, base_config):

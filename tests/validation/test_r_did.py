@@ -105,6 +105,46 @@ write_json(out, "{result_path}", digits = 16)
         return None
 
 
+def r_att_gt_preprocessing_path(data_path, clustervars=None, faster_mode=True):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    clustervars_str = "NULL" if clustervars is None else f'"{clustervars}"'
+
+    r_script = f"""
+library(did)
+library(jsonlite)
+
+data <- read.csv("{data_path}")
+
+result <- att_gt(
+  yname = "lemp",
+  tname = "year",
+  idname = "countyreal",
+  gname = "first.treat",
+  data = data,
+  est_method = "reg",
+  clustervars = {clustervars_str},
+  bstrap = FALSE,
+  faster_mode = {str(faster_mode).upper()}
+)
+
+out <- list(
+  groups = result$group,
+  times = result$t,
+  att_gt = result$att,
+  se_gt = result$se,
+  n_units = result$n
+)
+
+write_json(out, "{result_path}", digits = 16)
+"""
+    try:
+        return _run_r_script(r_script, result_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
 def r_att_gt_error(data_path, weightsname=None):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         result_path = f.name
@@ -2046,6 +2086,73 @@ def test_att_gt_drops_non_finite_rows_like_r(mpdta_one_infinite, mpdta_one_infin
     assert py_result.n_units == r_result["n_units"][0]
     np.testing.assert_allclose(py_result.att_gt, np.asarray(r_result["att_gt"], dtype=float), rtol=1e-9, atol=1e-10)
     np.testing.assert_allclose(py_result.se_gt, np.asarray(r_result["se_gt"], dtype=float), rtol=1e-9, atol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.filterwarnings("ignore:Dropped 1 rows from original data due to missing values:UserWarning")
+@pytest.mark.filterwarnings("ignore:Dropped 1 units while converting to balanced panel:UserWarning")
+@pytest.mark.parametrize(
+    "mpdta_one_missing",
+    [("first.treat", float("nan")), ("first.treat", None)],
+    indirect=True,
+    ids=["nan", "null"],
+)
+def test_att_gt_drops_a_row_without_a_cohort_before_checking_the_panel_like_r(
+    mpdta_one_missing, mpdta_one_missing_csv_path
+):
+    r_result = r_att_gt_preprocessing_path(mpdta_one_missing_csv_path)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_result = att_gt(
+        data=mpdta_one_missing,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        est_method="reg",
+        boot=False,
+    )
+
+    assert list(zip(py_result.groups.tolist(), py_result.times.tolist())) == list(
+        zip(r_result["groups"], r_result["times"])
+    )
+    assert py_result.n_units == r_result["n_units"][0] == 499
+    np.testing.assert_allclose(py_result.att_gt, np.asarray(r_result["att_gt"], dtype=float), rtol=1e-9, atol=1e-10)
+    np.testing.assert_allclose(py_result.se_gt, np.asarray(r_result["se_gt"], dtype=float), rtol=1e-9, atol=1e-10)
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.filterwarnings("ignore:Dropped 1 rows from original data due to missing values:UserWarning")
+@pytest.mark.filterwarnings("ignore:Dropped 1 units while converting to balanced panel:UserWarning")
+@pytest.mark.filterwarnings("ignore:Clustering the standard errors requires using the bootstrap:UserWarning")
+@pytest.mark.filterwarnings("ignore:The Wald pre-test is not reported:UserWarning")
+@pytest.mark.parametrize("mpdta_one_missing", [("cluster", float("nan"))], indirect=True)
+def test_att_gt_drops_a_row_without_a_cluster_before_checking_the_panel_like_r(
+    mpdta_one_missing, mpdta_one_missing_csv_path
+):
+    r_result = r_att_gt_preprocessing_path(mpdta_one_missing_csv_path, clustervars="cluster", faster_mode=False)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_result = att_gt(
+        data=mpdta_one_missing,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        clustervars=["cluster"],
+        est_method="reg",
+        boot=False,
+    )
+
+    assert list(zip(py_result.groups.tolist(), py_result.times.tolist())) == list(
+        zip(r_result["groups"], r_result["times"])
+    )
+    assert py_result.n_units == r_result["n_units"][0] == 499
+    np.testing.assert_allclose(py_result.att_gt, np.asarray(r_result["att_gt"], dtype=float), rtol=1e-9, atol=1e-10)
 
 
 @pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
