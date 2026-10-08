@@ -122,6 +122,81 @@ def test_get_group_first_switch_detection():
     assert groups == [3, 2, 0]
 
 
+@pytest.mark.parametrize("name", ["_group", "_ever", "_is_treated", "_treat_cumsum", "_first_treat"])
+@pytest.mark.parametrize(
+    "treat_period, expected",
+    [
+        (None, [3, 3, 3, 3, 2, 2, 2, 2, 0, 0, 0, 0]),
+        (2, [2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0]),
+    ],
+    ids=["first_switch", "treat_period"],
+)
+def test_get_group_keeps_user_column_named_like_a_helper(staggered_panel, name, treat_period, expected):
+    data = staggered_panel.with_columns(pl.lit(9).alias(name))
+    result = get_group(data, "id", "time", "treat", treat_period=treat_period)
+    assert result.columns == [*data.columns, "G"]
+    assert result[name].to_list() == [9] * 12
+    assert result["G"].to_list() == expected
+
+
+@pytest.mark.parametrize(
+    "treat_period, expected",
+    [
+        (None, [3, 3, 3, 3, 2, 2, 2, 2, 0, 0, 0, 0]),
+        (2, [2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0]),
+    ],
+    ids=["first_switch", "treat_period"],
+)
+def test_get_group_replaces_existing_G_column(staggered_panel, treat_period, expected):
+    data = staggered_panel.with_columns(pl.lit(9).alias("G")).select("id", "G", "time", "y", "treat")
+    result = get_group(data, "id", "time", "treat", treat_period=treat_period)
+    assert result.columns == ["id", "G", "time", "y", "treat"]
+    assert result["G"].to_list() == expected
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf"), float("-inf")])
+def test_get_group_skips_rows_with_missing_period(missing):
+    data = pl.DataFrame(
+        {
+            "id": [1, 1, 1, 1, 2, 2, 2],
+            "time": [missing, 1.0, 2.0, 3.0, missing, 1.0, 2.0],
+            "treat": [1, 0, 1, 1, 1, 0, 0],
+        }
+    )
+    result = get_group(data, "id", "time", "treat")
+    assert result["G"].to_list() == [2, 2, 2, 2, 0, 0, 0]
+
+
+@pytest.mark.parametrize(
+    "treat_period, by_id",
+    [
+        (None, {1: 3, 2: 2, 3: 0}),
+        (2, {1: 2, 2: 2, 3: 0}),
+    ],
+    ids=["first_switch", "treat_period"],
+)
+def test_get_group_keeps_row_order(staggered_panel, treat_period, by_id):
+    shuffled = staggered_panel.sample(fraction=1.0, shuffle=True, seed=1)
+    result = get_group(shuffled, "id", "time", "treat", treat_period=treat_period)
+    assert result.drop("G").equals(shuffled)
+    assert result["G"].to_list() == [by_id[unit] for unit in shuffled["id"]]
+
+
+@pytest.mark.parametrize("treat_period", [None, 2], ids=["first_switch", "treat_period"])
+def test_get_group_assigns_no_group_to_rows_without_unit_id(treat_period):
+    data = pl.DataFrame(
+        {
+            "id": [1, 1, None, None, 2, 2],
+            "time": [1, 2, 1, 2, 1, 2],
+            "treat": [0, 1, 0, 1, 0, 0],
+        }
+    )
+    result = get_group(data, "id", "time", "treat", treat_period=treat_period)
+    assert result.filter(pl.col("id") == 1)["G"].to_list() == [2, 2]
+    assert result.filter(pl.col("id") == 2)["G"].to_list() == [0, 0]
+    assert result.filter(pl.col("id").is_null())["G"].fill_null(0).to_list() == [0, 0]
+
+
 @pytest.mark.parametrize(
     "control_group, base_period, g, tp, check_fn",
     [

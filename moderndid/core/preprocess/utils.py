@@ -134,6 +134,10 @@ def get_first_difference(df, idname, yname, tname):
 def get_group(df, idname, tname, treatname, treat_period=None):
     """Get group.
 
+    A unit's group is the first period in which its treatment is positive.
+    A unit that is never treated gets 0. A row whose period is missing never
+    counts as that period. Null, NaN, and infinite periods are missing.
+
     Parameters
     ----------
     df : pd.DataFrame or pl.DataFrame
@@ -147,45 +151,31 @@ def get_group(df, idname, tname, treatname, treat_period=None):
     treat_period : int or None
         Known treatment onset period. When provided, units with any positive
         value of *treatname* are assigned ``G = treat_period`` and all others
-        receive ``G = 0``, bypassing the first-switch detection logic.
+        receive ``G = 0``.
 
     Returns
     -------
     pl.DataFrame
-        DataFrame with original columns plus 'G' column containing group assignment.
+        The data with a ``G`` column added, or replaced if the data already has one.
     """
     data = to_polars(df)
+    # A row without a unit id belongs to no unit. It must not pool with the other such rows.
+    has_unit = pl.col(idname).is_not_null()
 
+    # Since the windows below add no helper columns, no column of the data can clash with one.
     if treat_period is not None:
-        ever_treated = (
-            data.group_by(idname)
-            .agg((pl.col(treatname) > 0).any().alias("_ever"))
-            .with_columns(
-                pl.when(pl.col("_ever"))
-                .then(pl.lit(treat_period, dtype=pl.Int64))
-                .otherwise(pl.lit(0, dtype=pl.Int64))
-                .alias("G")
-            )
-            .drop("_ever")
-        )
-        return data.join(ever_treated, on=idname, how="left")
+        ever_treated = (pl.col(treatname) > 0).any().over(idname)
+        group = pl.when(ever_treated).then(pl.lit(treat_period, dtype=pl.Int64)).otherwise(pl.lit(0, dtype=pl.Int64))
+        return data.with_columns(pl.when(has_unit).then(group).alias("G"))
 
-    df_sorted = data.sort([idname, tname])
-
-    df_with_treat = df_sorted.with_columns(
-        (pl.col(treatname) > 0).alias("_is_treated"),
-        (pl.col(treatname) > 0).cum_sum().over(idname).alias("_treat_cumsum"),
-    ).with_columns(((pl.col("_treat_cumsum") == 1) & pl.col("_is_treated")).alias("_first_treat"))
-
-    first_treat_df = (
-        df_with_treat.filter(pl.col("_first_treat")).group_by(idname).agg(pl.col(tname).first().alias("_group"))
-    )
-
-    result = data.join(first_treat_df, on=idname, how="left").with_columns(
-        pl.col("_group").fill_null(0).cast(pl.Int64).alias("G")
-    )
-
-    return result.drop("_group")
+    is_treated = pl.col(treatname) > 0
+    # NaN and infinity are missing periods like null.
+    # Only float columns can hold them. is_finite raises on strings, dates, booleans, and decimals.
+    if data[tname].dtype.is_float():
+        is_treated = is_treated & pl.col(tname).is_finite()
+    first_period = pl.col(tname).filter(is_treated).min().over(idname)
+    group = pl.when(has_unit).then(first_period).fill_null(0)
+    return data.with_columns(group.cast(pl.Int64).alias("G"))
 
 
 def two_by_two_subset(

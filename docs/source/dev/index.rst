@@ -4,10 +4,16 @@
 Development
 ###########
 
-These guides explain how ModernDiD works inside and how to extend it, from the
-shared estimator interfaces to adding an estimator. If you want to set up an
-environment and send a change, start with
-:ref:`Contributing <contributing-index>` instead.
+To make sense of a change to an estimator, you need to know what happens between
+the data a user supplies and the result they read. We'll follow that
+calculation through the package so you can see where a correction or a new
+method belongs. The architecture guide comes first because it explains
+which parts you can reuse and where estimators need their own approach.
+
+If you're preparing your first contribution, the
+:ref:`Contributing guides <contributing-index>` cover the environment,
+tests, and review process. You can return here to trace a calculation,
+extend the package, or investigate a result that needs closer attention.
 
 .. list-table::
    :class: section-index-table
@@ -17,11 +23,13 @@ environment and send a change, start with
    * - Guide
      - Description
    * - :doc:`architecture`
-     - Understand the library's estimator, data, and result interfaces.
+     - Follow data preparation, estimation, inference, and result presentation.
    * - :doc:`new_estimator`
-     - Add an estimator that fits the shared API.
-   * - :doc:`debugging` and :doc:`benchmarking`
-     - Diagnose issues and measure performance.
+     - Develop an estimator from its target through computation and inference.
+   * - :doc:`debugging`
+     - Locate a difference in the data, fitted effects, or uncertainty.
+   * - :doc:`benchmarking`
+     - Measure a defined workload and compare performance across revisions.
 
 .. toctree::
    :maxdepth: 2

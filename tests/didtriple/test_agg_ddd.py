@@ -303,7 +303,8 @@ def test_agg_ddd_calendar_overall_se_averages_periods_with_cells(mp_ddd_result, 
     valid = np.isfinite(agg.att_egt)
     if boot:
         draws = mboot_ddd(agg.inf_func, 199, 0.05, random_state=3).bres[:, valid].mean(axis=1)
-        expected = (np.percentile(draws, 75) - np.percentile(draws, 25)) / 1.3489795 / np.sqrt(mp_ddd_result.n)
+        quartiles = np.percentile(draws, [75, 25], method="inverted_cdf")
+        expected = (quartiles[0] - quartiles[1]) / 1.3489795 / np.sqrt(mp_ddd_result.n)
     else:
         expected = np.sqrt(np.mean(agg.inf_func[:, valid].mean(axis=1) ** 2) / mp_ddd_result.n)
 
@@ -311,3 +312,29 @@ def test_agg_ddd_calendar_overall_se_averages_periods_with_cells(mp_ddd_result, 
     np.testing.assert_array_equal(valid, [False, True, True])
     np.testing.assert_allclose(agg.overall_att, np.mean(agg.att_egt[valid]), rtol=1e-12)
     np.testing.assert_allclose(agg.overall_se, expected, rtol=1e-12)
+
+
+@pytest.mark.parametrize("agg_type", ["simple", "eventstudy", "group", "calendar"])
+@pytest.mark.parametrize("base_period", ["universal", "varying"])
+def test_agg_ddd_without_never_treated_units_matches_the_trimmed_panel(mp_no_never_treated_df, agg_type, base_period):
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "pname": "partition",
+        "control_group": "notyettreated",
+        "base_period": base_period,
+        "est_method": "reg",
+    }
+    result = agg_ddd(ddd(data=mp_no_never_treated_df, **spec), type=agg_type, boot=False, cband=False)
+    trimmed = ddd(data=mp_no_never_treated_df.filter(pl.col("time") < 4), **spec)
+    expected = agg_ddd(trimmed, type=agg_type, boot=False, cband=False)
+
+    np.testing.assert_allclose(result.overall_att, expected.overall_att, rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(result.overall_se, expected.overall_se, rtol=1e-10, atol=1e-10)
+    if expected.egt is not None:
+        np.testing.assert_array_equal(result.egt, expected.egt)
+        np.testing.assert_allclose(result.att_egt, expected.att_egt, rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(result.se_egt, expected.se_egt, rtol=1e-10, atol=1e-10)
+    assert str(result) == str(expected)

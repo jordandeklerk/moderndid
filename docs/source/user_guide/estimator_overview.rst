@@ -29,8 +29,8 @@ untreated comparison. The choice between them depends on the model you want
 for untreated outcomes and the flexibility you need in adjusting for
 covariates.
 
-Group-time effects with att_gt
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Group-time effects with :func:`~moderndid.att_gt`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :func:`~moderndid.att_gt` estimates an average treatment effect for each
 adoption cohort in each period. You identify the outcome, period, unit, and
@@ -39,16 +39,17 @@ first treatment period through ``yname``, ``tname``, ``idname``, and
 once it begins. Both panel data and repeated cross-sections are supported
 through the ``panel`` argument.
 
-By default, never-treated units provide the untreated comparisons for every
-adoption cohort. With
-``control_group="notyettreated"``, future adopters can also contribute while
-they remain untreated and outside any anticipation window. Either choice
+Never-treated units provide the default untreated comparisons for every
+adoption cohort. You can also use future adopters with
+``control_group="notyettreated"`` as long as they remain untreated and
+outside any anticipation window. Either choice
 requires parallel trends for the units it compares, possibly conditional
 on covariates in ``xformla``. The default ``est_method="dr"`` combines
 outcome regression and propensity score weighting; ``"reg"`` and ``"ipw"``
-use each approach separately. After the :doc:`quickstart` gives you a first
-analysis, the :ref:`staggered DiD example <example_staggered_did>` examines
-these choices on the minimum wage data.
+use each approach separately. After you've followed the
+:doc:`first analysis <quickstart>`, the
+:ref:`staggered DiD example <example_staggered_did>` examines these choices on
+the minimum wage data.
 
 :func:`~moderndid.aggte` averages the fitted effects by exposure length,
 cohort, or calendar period, or into an overall average. These summaries
@@ -56,8 +57,8 @@ answer different questions about the effects you have already estimated.
 The :doc:`results`
 guide explains their weights and how to read their uncertainty.
 
-Regression models with etwfe
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Regression models with :func:`~moderndid.etwfe`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 If you want to specify the comparison through a regression,
 :func:`~moderndid.etwfe` includes a separate treatment indicator for each
@@ -77,14 +78,15 @@ compares the regression choices on the minimum wage data. For the assumptions
 behind each model, :doc:`../background/etwfe` explains the linear and nonlinear
 specifications.
 
-Flexible covariate adjustment with didml
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Flexible covariate adjustment with :func:`~moderndid.didml`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :func:`~moderndid.didml` estimates group-time effects using machine learning
 models for the covariate adjustments. To calculate those adjustments, it
 applies models trained on other parts of the sample, a procedure called
-cross-fitting. The fitted result also includes predictions of conditional
-treatment effects for individual units. You can use :func:`~moderndid.aggte_didml`
+cross-fitting. Alongside those group-time effects, the fitted result includes
+predictions of conditional treatment effects for individual units so you can
+examine heterogeneity. You can use :func:`~moderndid.aggte_didml`
 to produce a dynamic event study from its fitted results. The
 :ref:`machine learning API <api-didml>` describes the model choices, aggregation,
 and functions for examining heterogeneity.
@@ -107,9 +109,9 @@ A single two-period comparison
 
 If your data contain one period before treatment and one after it,
 :func:`~moderndid.drdid` estimates a single average treatment effect on the
-treated without constructing a staggered-adoption summary. For this two-period comparison, the same wrapper supports either panel
-data or repeated cross-sections. The argument ``treatname`` names
-the treatment group indicator instead of an adoption-year column.
+treated without constructing a staggered-adoption summary. The same function
+supports either panel data or repeated cross-sections and uses ``treatname``
+to identify the treatment group instead of an adoption-year column.
 
 The default improved doubly robust method uses propensity score tilting and
 weighted outcome regression. :func:`~moderndid.ipwdid` and
@@ -127,13 +129,14 @@ question. A policy can give treated units different amounts of exposure or
 apply only to eligible units within an adopting group. We need to retain
 that information when choosing the estimator and defining its comparison.
 
-Continuous treatment with cont_did
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Continuous treatment with :func:`~moderndid.cont_did`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :func:`~moderndid.cont_did` handles units that adopt once and receive a dose
-that stays fixed after adoption. The column named by ``gname`` records when
-treatment begins and the column named by ``dname`` records the dose. The estimator fits effects
-over the dose and can average them into an event study.
+that stays fixed after adoption. To link each unit's treatment timing to its
+dose, name the adoption-date column with ``gname`` and the dose column with
+``dname``. The estimator fits effects over the dose and can average them into
+an event study.
 
 With ``aggregation="dose"``, the result contains curves for level effects
 and their slopes. With ``aggregation="eventstudy"``,
@@ -154,14 +157,14 @@ a single treated cohort and cannot produce an event study. Check
 :func:`~moderndid.cont_did` for these restrictions before adapting a binary
 DiD specification to doses.
 
-Triple differences with ddd
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Triple differences with :func:`~moderndid.ddd`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :func:`~moderndid.ddd` uses an eligibility partition to separate units that can
-receive treatment within groups that enable it. The column named by ``gname``
-records when a group's policy starts,
-and ``pname`` distinguishes its eligible and ineligible units. Its target is
-the average effect among eligible units in the treated group.
+receive treatment within groups that enable it. You record when a group's
+policy starts in the column named by ``gname`` and distinguish eligible and
+ineligible units with ``pname``. Its target is the average effect among
+eligible units in the treated group.
 
 The additional comparison can account for local trends shared by eligible
 and ineligible units even when an ordinary DiD comparison would fail.
@@ -183,8 +186,8 @@ no longer describes the exposure you want to study. Two approaches in moderndid
 address different questions about these histories and rely on different
 identifying assumptions.
 
-Effects of changes with did_multiplegt
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Effects of changes with :func:`~moderndid.did_multiplegt`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :func:`~moderndid.did_multiplegt` estimates event-study effects after a
 group's first change in treatment. Its panel treatment column ``dname`` can
@@ -207,8 +210,8 @@ The :ref:`intertemporal treatment example <example_inter_did>` follows bank
 branching deregulation through the comparisons and normalization derived
 in :doc:`../background/didinter`.
 
-Comparing histories with dyn_balancing
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Comparing histories with :func:`~moderndid.diddynamic.dyn_balancing`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :func:`~moderndid.diddynamic.dyn_balancing` compares potential outcomes under two binary
 treatment histories supplied as ``ds1`` and ``ds2``. It is intended for
@@ -233,8 +236,8 @@ conclusions depend on parallel trends. If your design instead identifies a
 structural relationship through an instrument, the package also provides an
 estimator for that separate problem.
 
-Relaxing parallel trends with honest_did
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Relaxing parallel trends with :func:`~moderndid.honest_did`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :func:`~moderndid.honest_did` computes confidence sets under specified bounds
 on violations of parallel trends. For a moderndid event study, estimate with
@@ -254,8 +257,8 @@ For the precise restrictions on differential trends, the
 :doc:`sensitivity background <../background/didhonest>` states their formal
 definitions and derives the confidence sets.
 
-Structural functions with npiv
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Structural functions with :func:`~moderndid.npiv`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 :func:`~moderndid.npiv` estimates a nonparametric structural function and its
 derivatives when a regressor is endogenous and suitable instruments are

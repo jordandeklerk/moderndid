@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import scipy.stats
 
-from moderndid.did.mboot import mboot
+from moderndid.did.mboot import _mboot
 
 from ...cupy.backend import get_backend, to_numpy
 from ..container import GroupTimeATTResult
@@ -47,19 +47,30 @@ def process_att_gt(att_gt_results, pte_params, rng=None):
     cband = pte_params.cband
     alpha = pte_params.alp
 
-    critical_value = scipy.stats.norm.ppf(1 - alpha / 2)
-    boot_results = mboot(
+    pointwise_value = scipy.stats.norm.ppf(1 - alpha / 2)
+    critical_value = pointwise_value
+    # Since dropping the draws that move a column with zero bootstrap scale would condition the band on that column
+    # staying at zero, they stay in the sample.
+    boot_results = _mboot(
         influence_func,
         n_units=n_units,
         biters=int(pte_params.biters) if pte_params.biters else 1000,
         alp=alpha,
         random_state=rng,
+        keep_infinite_draws=True,
     )
 
     if cband:
         critical_value = boot_results["crit_val"]
+        # A band that covers every cell at once can't be narrower than the pointwise intervals.
+        if critical_value < pointwise_value:
+            warnings.warn("Simultaneous band smaller than pointwise; using pointwise intervals.")
+            critical_value = pointwise_value
 
     se = boot_results["se"]
+    # Since the reference period of a universal base has no estimate, its standard error stays undefined.
+    if pte_params.base_period == "universal":
+        se = np.where(times == groups - 1 - pte_params.anticipation, np.nan, se)
     # A cell without variance, such as the reference period under a universal base, carries nothing for the
     # pre-test and would make its covariance singular.
     analytic_se = np.sqrt(np.diag(to_numpy(vcov_analytical)) / n_units)

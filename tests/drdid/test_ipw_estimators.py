@@ -82,6 +82,19 @@ def test_ipw_did_rc_extreme_propensity():
     assert np.isnan(result)
 
 
+@pytest.mark.filterwarnings("error")
+def test_ipw_did_rc_treated_unit_with_propensity_score_one(forbid_errstate):
+    y = np.arange(1.0, 9.0)
+    post = np.array([0, 1, 0, 1, 0, 1, 0, 1])
+    d = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+    ps = np.array([0.3, 0.4, 0.5, 0.6, 0.5, 0.5, 0.5, 0.5])
+    expected = ipw_rc(y, post, d, ps, np.ones(8))
+    ps[-1] = 1.0
+    forbid_errstate()
+
+    assert ipw_rc(y, post, d, ps, np.ones(8)) == expected
+
+
 def test_ipw_did_rc_lambda_edge_cases():
     rng = np.random.default_rng(42)
     n = 50

@@ -6,6 +6,7 @@ import pytest
 pytestmark = pytest.mark.slow
 
 from moderndid import drdid_rc
+from moderndid.drdid.estimators.drdid_rc import _compute_weights
 
 
 def dgp_rc_for_test(n=5000, seed=42):
@@ -305,3 +306,19 @@ def test_bootstrap_types(boot_type):
     assert len(result.boots) == 20
     assert result.se > 0
     assert result.lci < result.uci
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_compute_weights_propensity_score_one(forbid_errstate):
+    d = np.array([0, 0, 0, 0, 1, 1, 0])
+    post = np.array([0, 1, 0, 1, 0, 1, 0])
+    ps_fit = np.array([1.0, 1.0, 0.5, 0.5, 1.0, 0.5, 1.0])
+    i_weights = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, -2.0])
+    trim_ps = np.ones(7, dtype=bool)
+    forbid_errstate()
+
+    weights = _compute_weights(d, post, ps_fit, i_weights, trim_ps)
+
+    largest = np.finfo(float).max
+    assert weights["w_cont_pre"].tolist() == [largest, 0.0, 1.0, 0.0, 0.0, 0.0, -largest]
+    assert weights["w_cont_post"].tolist() == [0.0, largest, 0.0, 1.0, 0.0, 0.0, 0.0]

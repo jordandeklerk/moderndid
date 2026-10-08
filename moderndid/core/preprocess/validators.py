@@ -666,10 +666,8 @@ class CompositeValidator(BaseValidator):
             columns = [DDDColumnValidator(), DDDArgumentValidator()]
             structure = [DDDPanelStructureValidator(), DDDInvarianceValidator(), DDDDataValidator()]
         elif config_type == "dyn_balancing":
-            # Since this pipeline has no missing-data step, the duplicate check runs first. It skips rows without
-            # a unit or a period.
-            columns = [DynBalancingColumnValidator(), DynBalancingPanelValidator()]
-            structure = []
+            columns = [DynBalancingColumnValidator()]
+            structure = [DynBalancingPanelValidator()]
         else:
             columns = [ArgumentValidator(), ColumnValidator()]
             structure = [TreatmentValidator(), PanelStructureValidator(), ClusterValidator()]
@@ -798,11 +796,12 @@ def _check_panel_mismatch(df: pl.DataFrame, idname: str | None, tname: str, pane
     return errors, warnings
 
 
-def _duplicate_unit_period_error(df, idname, tname):
+def _duplicate_unit_period_error(df, idname, tname, id_argument="idname", time_argument="tname"):
     """Describe the units that have more than one row in a period.
 
-    The message names up to three of the repeated pairs. Rows that miss the
-    unit or the period are left out, since the missing-data step drops them.
+    The message names up to three of the repeated pairs. Since the missing-data
+    step drops rows whose unit or period is null, NaN, or infinite, the check
+    leaves them out.
 
     Parameters
     ----------
@@ -812,6 +811,10 @@ def _duplicate_unit_period_error(df, idname, tname):
         Name of the unit identifier column.
     tname : str
         Name of the period column.
+    id_argument : str, default "idname"
+        Name that the message gives the argument of the unit column.
+    time_argument : str, default "tname"
+        Name that the message gives the argument of the period column.
 
     Returns
     -------
@@ -821,8 +824,7 @@ def _duplicate_unit_period_error(df, idname, tname):
     if idname not in df.columns or tname not in df.columns:
         return None
 
-    # Since dyn_balancing keeps rows with an infinite unit or period, two such rows still repeat a pair.
-    keys = nonfinite_to_null(df.select(idname, tname), keep_infinite=(idname, tname)).drop_nulls()
+    keys = nonfinite_to_null(df.select(idname, tname)).drop_nulls()
     repeated = keys.filter(keys.is_duplicated()).unique().sort(idname, tname)
     if repeated.height == 0:
         return None
@@ -835,12 +837,13 @@ def _duplicate_unit_period_error(df, idname, tname):
     else:
         where = f"{repeated.height} ({idname}, {tname}) pairs, such as {listed}"
     return (
-        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        f"The value of {id_argument} must be unique (by {time_argument}). "
+        "Some units are observed more than once in a period. "
         f"Rows repeat for {where}."
     )
 
 
-def _ddd_partition_error(df, pname):
+def _ddd_partition_error(df, pname, argument="pname"):
     """Describe a partition that takes values other than 0 and 1.
 
     Since the missing-data step drops rows with null values, the check skips them.
@@ -851,6 +854,8 @@ def _ddd_partition_error(df, pname):
         Data that holds the partition column.
     pname : str
         Name of the partition column.
+    argument : str, default "pname"
+        Name that the message gives the argument of the partition column.
 
     Returns
     -------
@@ -862,13 +867,13 @@ def _ddd_partition_error(df, pname):
 
     values = df[pname].drop_nulls()
     if not (values.dtype.is_numeric() or values.dtype == pl.Boolean):
-        return f"pname='{pname}' is not numeric. Code it 1 for eligible units and 0 for ineligible units."
+        return f"{argument}='{pname}' is not numeric. Code it 1 for eligible units and 0 for ineligible units."
 
     invalid = values.filter(~values.cast(pl.Float64).is_in([0.0, 1.0])).unique().sort()
     if len(invalid) == 0:
         return None
     return (
-        f"pname='{pname}' must be 1 for eligible units and 0 for ineligible units, "
+        f"{argument}='{pname}' must be 1 for eligible units and 0 for ineligible units, "
         f"but it also takes the values {invalid.head(5).to_list()}."
     )
 

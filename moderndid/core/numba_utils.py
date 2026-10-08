@@ -38,11 +38,8 @@ def _multiplier_bootstrap_impl(inf_func, weights_matrix):
     k = inf_func.shape[1]
     bres = np.zeros((nboot, k))
 
-    k1 = 0.5 * (1 - np.sqrt(5))
-    k2 = 0.5 * (1 + np.sqrt(5))
-
     for b in range(nboot):
-        v = np.where(weights_matrix[b] == 1, k1, k2)
+        v = np.where(weights_matrix[b] == 1, 1.0, -1.0)
         bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
 
     return bres
@@ -142,14 +139,11 @@ if HAS_NUMBA:
         k = inf_func.shape[1]
         bres = np.zeros((nboot, k))
 
-        k1 = 0.5 * (1 - np.sqrt(5))
-        k2 = 0.5 * (1 + np.sqrt(5))
-
         for b in nb.prange(nboot):
             for j in range(k):
                 total = 0.0
                 for i in range(n):
-                    v = k1 if weights_matrix[b, i] == 1 else k2
+                    v = 1.0 if weights_matrix[b, i] == 1 else -1.0
                     total += inf_func[i, j] * v
                 bres[b, j] = total / n
 
@@ -270,7 +264,7 @@ def compute_cluster_sums(influence_func, cluster_ids):
 
 
 def multiplier_bootstrap(inf_func, biters, random_state=None):
-    """Run the multiplier bootstrap using Mammen weights.
+    """Run the multiplier bootstrap using Rademacher weights.
 
     Parameters
     ----------
@@ -297,7 +291,6 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
     n = inf_func.shape[0]
     k = inf_func.shape[1]
     rng = np.random.default_rng(random_state)
-    p_kappa = 0.5 * (1 + np.sqrt(5)) / np.sqrt(5)
     max_batch_bytes = 1 << 30
     batch_size = max(1, max_batch_bytes // n)
     batch_size = min(batch_size, biters)
@@ -305,14 +298,14 @@ def multiplier_bootstrap(inf_func, biters, random_state=None):
     inf_c = np.ascontiguousarray(inf_func)
 
     if batch_size >= biters:
-        weights_matrix = rng.binomial(1, p_kappa, size=(biters, n)).astype(np.int8)
+        weights_matrix = rng.binomial(1, 0.5, size=(biters, n)).astype(np.int8)
         return _multiplier_bootstrap_impl(inf_c, weights_matrix)
 
     bres = np.empty((biters, k), dtype=np.float64)
     for start in range(0, biters, batch_size):
         end = min(start + batch_size, biters)
         b = end - start
-        weights_batch = rng.binomial(1, p_kappa, size=(b, n)).astype(np.int8)
+        weights_batch = rng.binomial(1, 0.5, size=(b, n)).astype(np.int8)
         bres[start:end] = _multiplier_bootstrap_impl(inf_c, weights_batch)
     return bres
 

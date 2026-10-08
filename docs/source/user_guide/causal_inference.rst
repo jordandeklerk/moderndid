@@ -1,20 +1,23 @@
 .. _causal_inference:
 
-============================
-The idea behind a comparison
-============================
+=========================================
+Introduction to difference-in-differences
+=========================================
 
-An outcome changing after a policy begins does not tell you how much of that
-change the policy caused. In the minimum wage data used in our
-:doc:`quickstart`, teen employment could change because of the wage increase,
-the business cycle, or other developments in a county. Difference-in-differences
-(DiD) uses an untreated comparison group to estimate the change that the
-treated counties would have experienced without the policy.
+Difference-in-differences (DiD) studies a treatment's effect by comparing
+outcome changes for units that receive treatment with changes for units that
+remain untreated. For the minimum wage data used in our
+:doc:`first analysis <quickstart>`, the question is how raising the wage
+affected teen employment. An employment change after the increase cannot
+answer that question on its own because employment could also respond to
+the business cycle or other developments in a county. The untreated counties
+help estimate what would have happened without the wage increase.
 
-We'll use the employment question to work through what makes that comparison
-causal, starting with one treatment date before considering staggered
-adoption. You can then connect the identifying assumptions to the comparison
-groups and summaries you choose in a ModernDiD analysis. The
+We'll follow that question from the basic causal inference problem through
+the two-group, two-period DiD design to studies where treatment begins at
+different times. Along the way, you'll see why the assumptions matter, how
+conventional regressions enter the analysis, and why modern estimators keep
+some comparisons separate. The
 :doc:`background pages <../background/index>` give the formal assumptions and
 derivations for each method once you want to work through them in detail.
 
@@ -43,6 +46,14 @@ counterfactual employment under no increase, :math:`Y_t(0)`, is missing.
 A before-and-after comparison does not recover it because employment might
 have changed even without the policy.
 
+Comparing treated and untreated counties in the post-treatment year alone
+also leaves a problem. Counties whose states chose to raise the wage may
+have had different employment even if neither group had received treatment.
+With observational data, treatment assignment can reflect characteristics
+that also affect outcomes. DiD uses the earlier outcomes to allow for
+differences between the groups, provided those differences would have
+remained stable on average without treatment.
+
 Use an untreated change to construct the comparison
 ---------------------------------------------------
 
@@ -51,6 +62,12 @@ receives treatment in period :math:`t`. Under no anticipation, the earlier
 outcomes have not already responded to the future policy. We use that
 untreated period as a baseline and subtract the comparison group's outcome
 change from the treated group's change over the same periods.
+
+You can think of that calculation as constructing a missing outcome. Start
+from the treated group's average employment before the policy and add the
+change observed among untreated counties. The result is the treated group's
+counterfactual average employment after the policy if both groups would
+have experienced the same untreated change.
 
 For that subtraction to recover the ATT, the groups must have the same
 average change in outcomes under no treatment. This is the parallel trends
@@ -76,6 +93,20 @@ that trend into the ATT gives the two-period DiD formula,
    ATT = \mathbb{E}[Y_t-Y_{t-1}\mid D=1]
    - \mathbb{E}[Y_t-Y_{t-1}\mid D=0].
 
+The figure below shows how this comparison separates an observed outcome
+change from the treatment effect. The dashed path carries the comparison
+group's change forward from the treated group's starting point. Since its
+endpoint is unobserved, parallel trends supplies that part of the comparison.
+The vertical gap between this endpoint and the treated group's observed
+outcome is the ATT.
+
+.. figure:: ../_static/did_counterfactual.svg
+   :alt: Two-period DiD schematic. Treated and comparison group outcomes rise. The treated group's unobserved no-treatment path rises by the same amount as the comparison group's path. The post-treatment gap between observed treated outcomes and this counterfactual is the ATT.
+   :width: 100%
+
+   The paths in this schematic illustrate the DiD calculation rather than
+   employment estimates from the county data.
+
 This interpretation also requires that the comparison units remain
 untreated and that their outcomes are not changed by spillovers from the
 treated units. The estimate cannot distinguish a treatment effect from an
@@ -87,6 +118,18 @@ unrelated shock that affects only the treated group at the same time.
    A fitted model cannot establish why the untreated group represents the
    treated group's missing outcome path. That argument comes from the policy,
    how treatment was assigned and what else changed during your study.
+
+The timing and measurement of the outcome belong in that argument too.
+If employers respond to an announced wage increase before it takes effect,
+the period just before adoption may already contain a policy response.
+You would need an earlier unaffected baseline or a method that allows for
+anticipation. Parallel trends also concerns the outcome as you measure it.
+In the county example, the outcome is log employment. Its parallel trends
+assumption therefore concerns changes in log employment rather than changes
+in the number of jobs.
+`Roth and Sant'Anna (2023) <https://psantanna.com/files/ECTA19402.pdf>`_
+explain why parallel trends in one outcome scale generally does not imply
+parallel trends in another.
 
 ModernDiD's :func:`~moderndid.drdid` estimates this two-period ATT with panel
 data or repeated cross-sections. The :doc:`two-period background
@@ -104,12 +147,11 @@ to consider. If employment trends vary with population, a comparison that
 adjusts for pre-policy population can be more plausible than one that treats
 all counties as comparable.
 
-Conditional parallel trends asks for the same untreated outcome change among
-treated and comparison units with the same covariates :math:`X`. To make that
-comparison, the analysis also needs overlap so the data contains comparison
-units with the characteristics represented among treated units. Covariate
-adjustment cannot supply those comparisons when they are absent from the
-sample.
+Conditional parallel trends requires the same untreated outcome change among
+treated and comparison units with the same covariates :math:`X`. You also need
+overlap so that the characteristics of treated units are represented among
+comparison units in the data. If those comparisons are absent from the sample,
+covariate adjustment cannot supply them.
 
 You pass the covariates through ``xformla`` in estimators such as
 :func:`~moderndid.att_gt`. Its default ``est_method="dr"`` combines an outcome
@@ -123,17 +165,34 @@ treatment can affect them.
 Keep adoption dates separate
 ----------------------------
 
-When units adopt in different periods and remain treated afterward, an
-earlier adopter is already exposed to treatment when a later adopter begins.
-Using the earlier adopter's outcome change as the later adopter's comparison
-can then subtract a treatment response. A conventional two-way fixed effects
-regression includes such comparisons. Its coefficient can be difficult to
-interpret when effects differ across cohorts or change with exposure.
+The two-period calculation can also be estimated through a regression.
+In a balanced panel with two periods, one treated group, and no covariates,
+ordinary least squares with unit and period fixed effects gives the same
+estimate as subtracting the two groups' sample mean changes. This numerical
+equivalence helped make two-way fixed effects (TWFE) regressions a common
+way to estimate DiD designs with more periods and adoption dates. Their
+convenience comes from summarizing all those observations in one treatment
+coefficient.
 
-The comparison problem also affects event-study regressions when treatment
-effects differ across cohorts or exposure lengths. Their lead and lag
-coefficients can mix effects from other event times, so apparent
-pre-treatment differences can arise from that mixing.
+Once adoption dates differ across units, the regression coefficient combines
+a broader set of comparisons. When units adopt in different periods and
+remain treated afterward, an earlier adopter is
+already exposed to treatment when a later adopter begins. A conventional
+TWFE regression compares later adopters partly against these already-treated
+units. If the earlier cohort's effect changes during the comparison, its
+outcome change contains a treatment response that the regression subtracts
+from the later cohort's change. `Goodman-Bacon (2021)
+<https://doi.org/10.1016/j.jeconom.2021.03.014>`_ explains how the coefficient
+combines these two-group, two-period comparisons. Even under parallel
+trends and no anticipation, that combination need not recover the average
+effect you want when effects differ across cohorts or change with exposure.
+
+Following the response over time often involves an event study, where effects
+are indexed by periods before or after adoption. A conventional TWFE
+event-study regression replaces the single treatment indicator with leads
+and lags. When treatment effects vary across adoption cohorts, its lead and lag
+coefficients can mix effects from other event times. As a result, apparent
+pre-treatment differences can arise from treatment effects after adoption.
 `Sun and Abraham (2021) <https://doi.org/10.1016/j.jeconom.2020.09.006>`_
 explain this problem for conventional event-study regressions. It is a reason
 to choose the estimator before interpreting the shape of an event study.
@@ -148,16 +207,17 @@ first treated in period :math:`g`, its target is
    ATT(g,t) = \mathbb{E}[Y_t(g)-Y_t(0)\mid G=g].
 
 Here :math:`Y_t(g)` describes the outcome under adoption in period :math:`g`,
-so :math:`ATT(2004,2006)` concerns the 2004 cohort's employment in 2006
+rather than the binary treatment state used in the two-period notation.
+The target :math:`ATT(2004,2006)` concerns the 2004 cohort's employment in 2006
 relative to its own employment under no wage increase. We use untreated
 comparison counties to learn about that missing outcome through a parallel
 trends assumption.
 
 The :func:`~moderndid.att_gt` function estimates these group-time effects.
 Its ``control_group`` argument chooses never-treated units or units that
-remain untreated during the comparison. To use later adopters as comparison
-units, you need a credible parallel trends assumption for those comparisons
-and attention to anticipation rather than randomly assigned adoption dates.
+remain untreated during the comparison. Later adopters can serve as comparison
+units without randomly assigned adoption dates as long as parallel trends is
+credible for those comparisons and you account for possible anticipation.
 
 Decide which average answers your question
 ------------------------------------------
@@ -184,21 +244,42 @@ Assess the assumptions behind the result
 -----------------------------------------
 
 Pre-treatment comparisons can reveal differences in outcome changes before
-the policy begins. This provides evidence about the research design without
+the policy begins. With several observations before adoption, we can examine
+those changes through plots and tests of pre-treatment effects.
+This provides evidence about the research design without
 verifying the treated group's unobserved post-treatment outcomes.
 A failure to detect a pre-treatment difference may also reflect imprecise
-estimates rather than close agreement between the groups. For the same
-reason, confidence intervals quantify sampling uncertainty under the design's
+estimates rather than close agreement between the groups. Confidence
+intervals quantify sampling uncertainty under the design's
 assumptions without measuring how far those assumptions might be from holding.
 The :doc:`results guide <results>` explains how to read that uncertainty for
 an individual effect and for an entire event study.
+
+Treat these checks as part of the argument for your design rather than a
+requirement to obtain a large p-value. Choosing a specification because it
+passes a pre-treatment test can also change the statistical behavior of the
+reported estimates and intervals, as `Roth (2022)
+<https://www.jonathandroth.com/assets/files/roth_pretrends_testing.pdf>`_
+shows. `Sant'Anna's lecture on pre-tests
+<https://psantanna.com/DiD/10_Pretest.pdf>`_ discusses what earlier outcomes
+can establish and how the conclusion depends on the assumptions being tested.
 
 The :ref:`sensitivity analysis example <example_honest_did>` shows another way
 to assess the conclusion. It uses :func:`~moderndid.honest_did` to construct
 confidence intervals under specified bounds on departures from parallel
 trends. You still need to justify those bounds in the context of the study.
 
-With that interpretation in place, the :doc:`quickstart` takes these choices
-into a first fit. If your treatment can reverse, varies in dose, or applies
-only to an eligible subgroup, start with :doc:`estimator_overview` to find
-the assumptions and comparisons that match that design.
+The :doc:`first analysis <quickstart>` puts this reasoning into a fit using
+ModernDiD's bundled county data. Designs where treatment reverses,
+varies in dose, or applies only to an eligible subgroup need their own
+definitions of effects and comparisons. The :doc:`estimator guide
+<estimator_overview>` helps you find the method and assumptions for those
+settings.
+
+For a longer introduction, `Pedro Sant'Anna's public DiD course
+<https://psantanna.com/did-resources/>`_ works through the foundations and
+extensions in lecture slides. `Baker, Callaway, Cunningham, Goodman-Bacon,
+and Sant'Anna's practitioner guide (2026)
+<https://psantanna.com/files/DiD_JEL.pdf>`_ develops the same questions
+through an applied study, from defining the causal target to estimation
+and inference.

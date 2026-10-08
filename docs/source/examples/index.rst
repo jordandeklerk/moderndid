@@ -22,6 +22,8 @@ use each method.
      - Study treatments that change over time and their dynamic effects.
    * - :doc:`Continuous treatment <../user_guide/example_cont_did>`
      - Estimate effects when treatment varies in dose rather than just status.
+   * - :doc:`Fracking paper replication <../user_guide/example_cont_did_replication>`
+     - Reproduce the published event studies and pooled dose curves for county employment.
    * - :doc:`Dynamic covariate balancing <../user_guide/example_dyn_balancing>`
      - Balance covariates and outcomes for dynamic treatment effects.
    * - :doc:`Sensitivity analysis <../user_guide/example_honest_did>`
@@ -39,6 +41,7 @@ use each method.
    ../user_guide/example_triple_did
    ../user_guide/example_inter_did
    ../user_guide/example_cont_did
+   ../user_guide/example_cont_did_replication
    ../user_guide/example_dyn_balancing
    ../user_guide/example_honest_did
    ../user_guide/example_etwfe

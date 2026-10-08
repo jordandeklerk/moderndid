@@ -9,12 +9,12 @@ kernelspec:
 
 # Scaling your analysis
 
-Because a staggered analysis fits a separate comparison for each treatment
-cohort and period, its running time depends on both the size of the data and
-the number of comparisons. Bootstrap inference adds another calculation that
-can take time even after those comparisons have been fitted. We can speed up
-some of this work on one machine by fitting comparisons in parallel, using
-compiled CPU helpers, or moving supported calculations to an NVIDIA GPU.
+An analysis that runs quickly on a small panel can take much longer when you
+add counties, treatment cohorts, or observed periods. Staggered DiD fits a
+separate comparison for each cohort and period before bootstrap inference
+adds its own calculations. We can speed up some of this work on one machine
+by fitting comparisons in parallel, using compiled CPU helpers, or moving
+supported calculations to an NVIDIA GPU.
 
 The choice depends on where your analysis spends its time. More worker threads
 can help when you have many comparisons to fit, whereas a GPU may help with
@@ -38,9 +38,10 @@ number of threads or use `n_jobs=-1` for the machine's reported CPU count.
 These threads share the data within one Python process rather than copying
 it to separate worker processes.
 
-We will use the minimum wage data to show the change at the call site. The
-specification below keeps the same comparison group, covariates, and inference
-settings in both fits so you can compare their estimated effects directly.
+To check what changes when comparisons run in parallel, we fit the minimum
+wage data with one worker and two workers. Both calls use the same comparison
+group, covariates, and inference settings so their estimated effects can be
+compared directly.
 
 ```{code-cell} ipython3
 import moderndid as did
@@ -70,11 +71,11 @@ np.testing.assert_allclose(sequential.att_gt, parallel.att_gt)
 print(parallel)
 ```
 
-The assertion checks that the treatment effect estimates agree within numerical
-tolerance. Since you still receive the usual result object, aggregation and
-plotting use the same functions as the {ref}`staggered example <example_staggered_did>`.
-This small dataset demonstrates the setting; it does
-not establish that using two threads will make your own analysis faster.
+The assertion checks that the treatment effect estimates agree within
+numerical tolerance. The returned object still works with the aggregation
+and plotting functions used in the {ref}`staggered example <example_staggered_did>`.
+To find out whether two threads also reduce the running time, you need to
+measure your own analysis; this small dataset only demonstrates the setting.
 
 {func}`~moderndid.didml` also parallelizes group-time comparisons through
 `n_jobs`. For {func}`~moderndid.diddynamic.dyn_balancing`, that argument applies when you

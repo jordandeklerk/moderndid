@@ -2,15 +2,14 @@
 Start here
 ==========
 
-Your first analysis needs a working installation and a clear idea of which
-outcomes supply the untreated comparison. These pages introduce both before
-you move on to the choices that depend on your own study.
+Begin with :doc:`installation` if you still need to set up ModernDiD and its
+plotting dependencies. The :doc:`DiD introduction <causal_inference>` explains how the
+method uses observed outcomes to learn about a policy's effect and what
+makes that interpretation credible.
 
-Start with :doc:`installation` if you haven't installed ModernDiD yet. The
-:doc:`causal_inference` page explains what the untreated comparison lets you
-learn before the :doc:`quickstart` takes you from loading the minimum wage
-data to reading an event study. If you're already familiar with DiD, you can
-go straight to the quickstart and return to the explanation as needed.
+If your environment is ready and those ideas are familiar, you can go
+straight to the :doc:`first analysis <quickstart>`. We'll use bundled data
+there so you can concentrate on the function calls and the results they return.
 
 .. list-table::
    :class: section-index-table

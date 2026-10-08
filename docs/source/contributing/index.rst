@@ -4,11 +4,15 @@
 Contributing
 ############
 
-We welcome contributions of every size, from a typo fix to a new estimator, and
-these guides walk you through how we work, from setting up an environment to
-getting a change merged and released. If you want to learn how the library
-works inside, the :ref:`Development <development>` section covers its
-architecture and how to add an estimator.
+If you've found a confusing explanation, a result that needs checking, or an
+estimator you'd like to add, these pages help you turn that idea into a change
+we can review. We'll begin with a working checkout and follow the change
+through testing and a pull request. The review and release pages explain what
+happens once a contribution is ready to join the package.
+
+You can work on a guide or investigate a particular estimator without learning
+the whole library first. When you need to follow an estimator's implementation
+or extend it, :ref:`Development <development>` explains how the pieces connect.
 
 .. list-table::
    :class: section-index-table
@@ -18,15 +22,15 @@ architecture and how to add an estimator.
    * - Guide
      - Description
    * - :doc:`guide`
-     - Set up a development environment, run the checks CI runs, and manage dependencies.
+     - Set up a checkout, run focused checks, and preview documentation.
    * - :doc:`workflow`
-     - Name branches and commits, keep a branch current, and link issues.
+     - Keep a change easy to review as you work on a branch and open a pull request.
    * - :doc:`testing`
-     - Write tests in the project's style and check results against known values.
+     - Choose tests that check behavior, numerical results, and meaningful edge cases.
    * - :doc:`reviewing`
-     - Review pull requests, merge them, and triage issues as a maintainer.
+     - Review the method, implementation, and evidence behind a change.
    * - :doc:`releasing`
-     - Bump the version, write the release notes, and tag a release.
+     - Check package metadata and artifacts before tagging and publishing a release.
 
 .. toctree::
    :maxdepth: 2

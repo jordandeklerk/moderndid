@@ -88,11 +88,15 @@ class MissingDataHandler(BaseTransformer):
     infinity marks never-treated units in the cohort column, it stays there.
     The intertemporal estimator keeps rows with a missing outcome or
     treatment and drops the rows and groups that :meth:`drop_didinter_rows`
-    describes.
+    describes. The dynamic balancing estimator drops only the rows that
+    :meth:`drop_dyn_balancing_rows` describes.
     """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
+        if isinstance(config, DynBalancingConfig):
+            return self.drop_dyn_balancing_rows(data, config)
+
         # The intertemporal estimator's gname names groups. Every other gname holds cohorts.
         cohort = getattr(config, "gname", None)
         keep_infinite = [] if isinstance(config, DIDInterConfig) or cohort is None else [cohort]
@@ -169,6 +173,51 @@ class MissingDataHandler(BaseTransformer):
         df = df.filter(pl.col(".mean_D").is_not_null() & pl.col(".mean_Y").is_not_null())
         return df.drop([".mean_D", ".mean_Y"]), messages
 
+    @staticmethod
+    def drop_dyn_balancing_rows(data, config):
+        """Drop the rows that miss the unit, the period, or the cluster.
+
+        A null, a NaN, and an infinity all count as missing. Every later step
+        reads the unit and the period, and the variance reads the cluster. A
+        unit that loses a period this way leaves at the history check.
+
+        Missing outcomes, treatments, and covariates stay for the later steps
+        to handle. An infinite outcome, treatment, or covariate counts as
+        missing and becomes a NaN.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Panel before preprocessing.
+        config : DynBalancingConfig
+            Configuration that names the unit, period, and cluster columns.
+
+        Returns
+        -------
+        pl.DataFrame
+            The panel without those rows.
+        """
+        df = to_polars(data)
+        key_columns = list(dict.fromkeys([config.idname, config.tname, *(config.clustervars or [])]))
+        keys = nonfinite_to_null(df.select(key_columns))
+        missing = keys.select(pl.any_horizontal(pl.all().is_null())).to_series()
+        n_missing = int(missing.sum())
+
+        if n_missing > 0:
+            if n_missing == len(df):
+                quoted = [f"'{name}'" for name in key_columns]
+                where = " or ".join(quoted) if len(quoted) < 3 else f"{', '.join(quoted[:-1])}, or {quoted[-1]}"
+                raise ValueError(f"Every row has a missing value in {where}. No data is left to estimate from.")
+            warnings.warn(f"Dropped {n_missing} rows from original data due to missing values")
+            df = df.filter(~missing)
+
+        # Since the later steps already read a NaN as missing, an infinity becomes a NaN.
+        float_columns = [name for name, dtype in df.schema.items() if dtype.is_float() and name not in key_columns]
+        return df.with_columns(
+            pl.when(pl.col(name).is_infinite()).then(float("nan")).otherwise(pl.col(name)).alias(name)
+            for name in float_columns
+        )
+
 
 class WeightNormalizer(BaseTransformer):
     """Check the sampling weights and divide them by their mean.
@@ -215,7 +264,15 @@ class TreatmentEncoder(BaseTransformer):
     after the last period. For att_gt, a cohort that starts at most
     ``anticipation`` periods after the last period stays treated. Its units
     already react inside the panel. A negative cohort raises an error.
+
+    Parameters
+    ----------
+    cohort_argument : str, default "gname"
+        Name that the error gives the argument of the cohort column.
     """
+
+    def __init__(self, cohort_argument="gname"):
+        self.cohort_argument = cohort_argument
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -226,9 +283,9 @@ class TreatmentEncoder(BaseTransformer):
         negative = df.filter(cohort < 0)[config.gname]
         if len(negative) > 0:
             raise ValueError(
-                f"gname = '{config.gname}' holds negative values such as {negative.min():g}. It must hold 0 for "
-                "never-treated units and the first treated period for the others. Since 0 marks never-treated "
-                "units, shift the periods so that the earliest one is positive."
+                f"{self.cohort_argument} = '{config.gname}' holds negative values such as {negative.min():g}. "
+                "It must hold 0 for never-treated units and the first treated period for the others. "
+                "Since 0 marks never-treated units, shift the periods so that the earliest one is positive."
             )
 
         last_start = df[config.tname].max()
@@ -320,7 +377,19 @@ class ControlGroupCreator(BaseTransformer):
 
 
 class PanelBalancer(BaseTransformer):
-    """Panel balancer."""
+    """Panel balancer.
+
+    Parameters
+    ----------
+    option : str, default "panel=False"
+        Option that the error suggests when no unit is observed in every period.
+    id_argument : str, default "idname"
+        Name that the error gives the argument of the unit column.
+    """
+
+    def __init__(self, option="panel=False", id_argument="idname"):
+        self.option = option
+        self.id_argument = id_argument
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
         """Transform data."""
@@ -344,7 +413,7 @@ class PanelBalancer(BaseTransformer):
         if len(df) == 0:
             raise ValueError(
                 "All observations dropped while converting to balanced panel. "
-                "Consider setting panel=False and/or revisiting 'idname'"
+                f"Consider setting {self.option} and/or revisiting '{self.id_argument}'"
             )
 
         return df
@@ -1349,7 +1418,12 @@ class DDDColumnSelector(BaseTransformer):
         cols_to_keep = list(dict.fromkeys(cols_to_keep))
         cols_to_keep = [col for col in cols_to_keep if col is not None and col in df.columns]
 
-        return df.select(cols_to_keep)
+        df = df.select(cols_to_keep)
+        # Since an infinite cohort marks a never-treated unit, the two-period steps read it as the 0 they expect.
+        if df.schema[config.gname].is_float():
+            never_treated = pl.col(config.gname) == float("inf")
+            df = df.with_columns(pl.when(never_treated).then(0.0).otherwise(pl.col(config.gname)).alias(config.gname))
+        return df
 
 
 class DDDWeightProcessor(BaseTransformer):
@@ -1632,6 +1706,13 @@ class DynBalancingPooler(BaseTransformer):
             )
         num_periods = final_period - config.initial_period
 
+        ids = df[idname]
+        unit_text = pl.col(idname).cast(pl.Utf8)
+        # Since a whole-number float id names its units like the same integer, the stacked units sort in the same
+        # order whatever the id type.
+        if ids.dtype.is_float() and ((ids == ids.round()) & (ids.abs() < 2.0**53)).all():
+            unit_text = pl.col(idname).cast(pl.Int64).cast(pl.Utf8)
+
         if num_periods <= 0:
             warnings.warn(
                 "pooled=True has no effect because no earlier treatment-history window ends "
@@ -1640,12 +1721,17 @@ class DynBalancingPooler(BaseTransformer):
             )
             df = df.with_columns(
                 pl.col(tname).alias("new_Time"),
-                pl.col(idname).cast(pl.Utf8).alias("new_name"),
+                unit_text.alias("new_name"),
             )
             config.idname = "new_name"
             if config.fixed_effects and tname in config.fixed_effects:
                 config.fixed_effects = ["new_Time" if fe == tname else fe for fe in config.fixed_effects]
             return df
+
+        # Since polars 2.0 rejects is_in of a float column against integers and sums UInt64 and Int64 into Int128,
+        # periods are compared and shifted as Int64 or Float64.
+        period_type = pl.Int64 if df.schema[tname].is_integer() else pl.Float64
+        period = pl.col(tname).cast(period_type)
 
         # Build lag offsets and the time windows they require
         lags = pl.DataFrame({"_lag": list(range(1, num_periods + 1))})
@@ -1662,7 +1748,7 @@ class DynBalancingPooler(BaseTransformer):
         df_with_lag = df.join(lags, how="cross")
 
         # Keep only rows whose time falls within the needed window for that lag
-        df_with_lag = df_with_lag.filter(pl.col(tname).is_in(pl.col("_needed")))
+        df_with_lag = df_with_lag.filter(period.is_in(pl.col("_needed").cast(pl.List(period_type))))
 
         # Filter to units that have complete windows for each lag
         complete_keys = (
@@ -1676,13 +1762,14 @@ class DynBalancingPooler(BaseTransformer):
         if df_with_lag.height > 0:
             pseudo = df_with_lag.with_columns(
                 pl.col(tname).alias("new_Time"),
-                (pl.col(idname).cast(pl.Utf8) + "l" + pl.col("_lag").cast(pl.Utf8) + "unit").alias("new_name"),
-                (pl.col(tname) + pl.col("_lag")).alias(tname),
+                (unit_text + "l" + pl.col("_lag").cast(pl.Utf8) + "unit").alias("new_name"),
+                (period + pl.col("_lag")).alias(tname),
             ).drop("_lag", "_needed")
 
             original = df.with_columns(
                 pl.col(tname).alias("new_Time"),
-                pl.col(idname).cast(pl.Utf8).alias("new_name"),
+                unit_text.alias("new_name"),
+                period.alias(tname),
             )
             pooled_df = pl.concat([original, pseudo.select(original.columns)], how="vertical_relaxed")
         else:
@@ -1693,7 +1780,7 @@ class DynBalancingPooler(BaseTransformer):
             )
             original = df.with_columns(
                 pl.col(tname).alias("new_Time"),
-                pl.col(idname).cast(pl.Utf8).alias("new_name"),
+                unit_text.alias("new_name"),
             )
             pooled_df = original
 
@@ -1708,7 +1795,8 @@ class DynBalancingFixedEffectDummifier(BaseTransformer):
 
     This step runs after the window filter and the panel balancer. A level
     that appears only outside the estimation sample would give an all-zero
-    column that still counts toward the number of balanced covariates.
+    column that still counts toward the number of balanced covariates. A null,
+    NaN, or infinite value leaves every dummy of its row missing.
     """
 
     def transform(self, data: DataFrame, config: BasePreprocessConfig) -> pl.DataFrame:
@@ -1722,10 +1810,10 @@ class DynBalancingFixedEffectDummifier(BaseTransformer):
         df = to_polars(data)
 
         for fe_col in config.fixed_effects:
-            unique_vals = sorted(df[fe_col].unique().to_list())
-            for val in unique_vals:
-                col_name = f"{fe_col}_{val}"
-                df = df.with_columns((pl.col(fe_col) == val).cast(pl.Int32).alias(col_name))
+            # Since a missing value names no level, every dummy of its row stays missing like a missing covariate.
+            levels = nonfinite_to_null(df.select(fe_col)).to_series()
+            for val in sorted(levels.drop_nulls().unique().to_list()):
+                df = df.with_columns((levels == val).cast(pl.Int32).alias(f"{fe_col}_{val}"))
 
         return df
 
@@ -1874,6 +1962,7 @@ class DataTransformerPipeline:
         return DataTransformerPipeline(
             [
                 DynBalancingColumnSelector(),
+                MissingDataHandler(),
                 DynBalancingPooler(),
                 DynBalancingPeriodFilter(),
                 DynBalancingPanelBalancer(),

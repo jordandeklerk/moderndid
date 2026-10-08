@@ -619,8 +619,8 @@ def _overall_se_from_bres(bres, col_mask, weights, n, cluster=None):
     """Derive overall SE from stacked bootstrap draws."""
     overall_bres = bres[:, col_mask] @ weights
 
-    q75 = np.percentile(overall_bres, 75)
-    q25 = np.percentile(overall_bres, 25)
+    q75 = np.percentile(overall_bres, 75, method="inverted_cdf")
+    q25 = np.percentile(overall_bres, 25, method="inverted_cdf")
     b_sigma = (q75 - q25) / 1.3489795
 
     eps_thresh = np.sqrt(np.finfo(float).eps) * 10

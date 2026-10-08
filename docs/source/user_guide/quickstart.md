@@ -9,17 +9,17 @@ kernelspec:
 
 # Your first analysis
 
-We'll use the county minimum wage data for your first analysis to ask whether
-state minimum wage increases changed teen employment. Since the increases
-began in different years, we need an untreated comparison for each group of
-counties whose states adopted together. The {func}`~moderndid.att_gt` function
-estimates their effects separately so an earlier adopter's treatment response
-does not become a later adopter's untreated comparison.
+We'll start with the county employment data included in ModernDiD and carry
+one fit through the tools you'll use in later analyses. The question is how
+teen employment changed after state minimum wage increases. As you follow the
+code, you'll see what {func}`~moderndid.att_gt` returns, how
+{func}`~moderndid.aggte` summarizes those estimates, and how to display them
+in an event study.
 
-This page takes you from loading the data to reading an event study. If you
-haven't installed the package yet, {doc}`installation` covers the installation
-and the plotting dependency used below. The {doc}`causal_inference` page
-introduces the assumptions that turn these comparisons into causal effects.
+Before running the code, use {doc}`installation` to install the package and
+the plotting dependency. If the logic of the comparison is new to you,
+{doc}`causal_inference` explains how untreated outcomes help identify a
+treatment effect.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -111,15 +111,15 @@ an outcome regression with propensity score weighting. Under these identifying
 assumptions, its estimate is consistent if either of those two models is
 correctly specified.
 
-The universal base period measures each cohort's estimates relative to the
-year before its increase. Because counties in the same state share a policy
-and may share employment shocks, the multiplier bootstrap clusters them by
-state. The `idname="countyreal"` argument identifies the panel units.
-The options `cband=True` and `alp=0.05`, the default significance level,
-request a 95 percent simultaneous band over the reported effects. The seed
-makes the bootstrap calculations reproducible when you rerun the same analysis.
-The report omits the analytical Wald pre-test because its covariance does not
-account for dependence between counties in the same state.
+For each cohort, the universal base period sets the year before its increase
+as the reference. Although `idname="countyreal"` identifies counties as the
+panel units, the multiplier bootstrap keeps counties in the same state
+together because they share the policy and may share employment shocks.
+With `cband=True` and `alp=0.05`, the default significance level, the report
+provides a 95 percent simultaneous band over its effects. Keeping the seed
+fixed makes the bootstrap calculation reproducible when you rerun the same
+analysis. Since the analytical covariance does not account for dependence
+between counties in the same state, the report omits the Wald pre-test.
 
 In the printed report, each row pairs an adoption year with an observation
 year. Rows in and after the adoption year estimate effects on treated counties;
@@ -154,21 +154,22 @@ event_study = did.aggte(result, type="dynamic", random_state=42)
 print(event_study)
 ```
 
-Event time counts the years from a state's first minimum wage increase,
-beginning at 0 in the adoption year and reaching 1 in the following year.
+Event time puts each cohort on a common scale according to the years since
+its state's first minimum wage increase. The adoption year is event time 0
+and the following year is event time 1.
 The negative event times show the placebo contrasts before adoption, except
 for event time -1, the normalized zero reference with no estimated standard
-error. Cohorts contribute only at the event times the data observe. As you
-move along the horizontal axis, check which counties
-can still contribute to the average. In this sample, only the 2004 cohort
-contributes two or three years after adoption. The overall estimate at the
-top of this report averages the post-treatment event-time estimates; it
-answers a different question from the cohort-year average below.
+error. Because each event time includes only the cohorts observed at that
+horizon, the counties behind the average can change as exposure length
+increases. The overall estimate at the top of this report averages the
+post-treatment event-time estimates; it answers a different question from the
+cohort-year average below.
 
-An overall average answers a separate question about the effects across the
-observed treated years. The `"simple"` aggregation weights the cohort-year
-effects by cohort size, giving earlier adopters more weight because they
-contribute more treated years.
+To summarize the effects across the observed treated years, we'll also
+calculate the `"simple"` aggregation. Each cohort-year effect receives a
+weight proportional to its cohort's size. Earlier adopters therefore
+contribute more to the overall average because they appear in more treated
+years.
 
 ```{code-cell} ipython3
 overall = did.aggte(result, type="simple", random_state=42)
@@ -177,7 +178,7 @@ print(overall)
 
 The overall estimate of -0.0418 log points indicates lower teen employment in
 the treated counties relative to their estimated employment without the
-minimum wage increases. Its 95 percent interval runs from -0.0770 to -0.0065
+minimum wage increases. Its 95 percent interval runs from -0.0795 to -0.0040
 log points under the state-clustered bootstrap we chose. This uncertainty
 concerns the average across treated county-years rather than an effect shared
 by every cohort. The
@@ -201,11 +202,10 @@ plot = did.plot_event_study(
 plot
 ```
 
-The points before adoption show how much the observed employment contrasts
-depart from zero before the policy takes effect. Small placebo estimates can
-support the design without establishing that parallel trends holds after
-adoption. Points after adoption describe the estimated response at each
-exposure length for the cohorts still observed at that horizon.
+In this plot, a band that covers zero does not rule out a zero effect at that
+horizon. The placebo points before adoption give you a check on the comparison,
+although their proximity to zero cannot establish parallel trends after
+adoption.
 
 :::{admonition} Read the late horizons cautiously
 :class: warning

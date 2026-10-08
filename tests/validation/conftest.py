@@ -5,6 +5,7 @@ import polars as pl
 import pytest
 
 from moderndid import (
+    ddd,
     ddd_mp,
     gen_ddd_mult_periods,
     gen_ddd_scalable,
@@ -997,3 +998,39 @@ def mp_ddd_missing_value_data(request, mp_ddd_data):
         return mp_ddd_data.with_columns(pl.when(row).then(None).otherwise(pl.col("group")).alias("group"))
     repeated = mp_ddd_data.filter((pl.col("id") == 3) & (pl.col("time") == 1))
     return pl.concat([mp_ddd_data, repeated.with_columns(pl.lit(None, pl.Float64).alias("y"))])
+
+
+@pytest.fixture
+def mp_ddd_offsetting_cohort_data():
+    """Multi-period panel where cohort 2 has two eligible units with opposite shocks and cohorts 3 to 5 carry noise."""
+    rng = np.random.default_rng(6)
+    records = []
+    for cohort, first_unit in ((0, 0), (3, 60), (4, 120), (5, 180), (2, 240)):
+        for unit in range(first_unit, first_unit + 60):
+            partition = unit % 2
+            level = rng.normal()
+            for time in range(1, 7):
+                y = level + time + float(cohort > 0 and time >= cohort and partition == 1)
+                if cohort in (3, 4, 5) and partition == 1:
+                    y += rng.normal(0, 0.5)
+                if cohort == 2 and partition == 1 and time >= 2:
+                    y += {241: 0.4, 243: -0.4}.get(unit, 0.0) * time
+                records.append({"id": unit, "time": time, "y": y, "group": cohort, "partition": partition})
+    return pl.DataFrame(records)
+
+
+@pytest.fixture
+def mp_ddd_offsetting_cohort_result(mp_ddd_offsetting_cohort_data):
+    """Analytic ATT(g,t) estimates of the offsetting-cohort panel."""
+    return ddd(
+        data=mp_ddd_offsetting_cohort_data,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        control_group="nevertreated",
+        base_period="universal",
+        est_method="reg",
+        boot=False,
+    )

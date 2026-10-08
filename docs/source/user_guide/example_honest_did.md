@@ -85,16 +85,9 @@ columns it uses, it would throw out all 192 rows of the 16 states that hadn't
 expanded by 2019 if you passed `yexp2` as `gname`.
 :::
 
-Counting the states in each cohort shows how thin the later cohorts are.
-
-```{code-cell} ipython3
-# Count the states in each expansion cohort, using one row per state.
-states = data.filter(pl.col("year") == 2008)
-states.group_by("expansion_year").agg(states=pl.len()).sort("expansion_year")
-```
-
-The 2014 cohort holds 22 states, against just 3, 2, 1, and 2 in the 2015, 2016,
-2017, and 2019 cohorts. The remaining 16 states hadn't expanded at all by 2019,
+The expansion years tell us how much information supports each part of the
+event study. The 2014 cohort holds 22 states, against just 3, 2, 1, and 2 in
+the 2015, 2016, 2017, and 2019 cohorts. The remaining 16 states hadn't expanded at all by 2019,
 the last year of the data. Because the data starts in 2008, the 2014 cohort is
 observed for six years before it expanded. Any estimate seven or more years
 before expansion therefore rests only on states that expanded in 2015 or later,
@@ -515,16 +508,8 @@ data reach, back to eleven years before expansion.
 # The same event study with every event time the data reach.
 full_window = did.aggte(result, type="dynamic")
 
-# The six event times the five-year window left out, with their pointwise intervals.
-print(f"{'event time':>10}{'estimate':>10}   [95% Pointwise Conf. Band]")
-for e, att, se, crit in zip(
-    full_window.event_times,
-    full_window.att_by_event,
-    full_window.se_by_event,
-    full_window.critical_values,
-):
-    if e < -5:
-        print(f"{int(e):>10}{att:>10.4f}   [{att - crit * se:8.4f}, {att + crit * se:8.4f}]")
+# Inspect the additional placebo estimates and their pointwise intervals.
+did.to_df(full_window).filter(pl.col("event_time") < -5)
 ```
 
 Three of the six new placebo estimates have intervals that exclude zero, among
@@ -649,31 +634,9 @@ placebo estimates is weaker ground for one.
 
 ### Where each analysis reaches zero
 
-For every analysis so far, the table below lists the largest bound on its grid
-whose interval still excludes zero and the interval at that bound. Each
-breakdown value lies between that bound and the next one on the grid.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-
-# For each analysis, the largest bound whose interval still excludes zero, and that interval.
-analyses = {
-    "our specification (smoothness)": smoothness,
-    "relative magnitudes": relative,
-    "three years after, smoothness": later,
-    "three years after, relative magnitudes": later_relative,
-    "longer window, smoothness": full_smoothness,
-    "longer window, relative magnitudes": full_relative,
-    "conditional FLCI hybrid": hybrid,
-    "hybrid with a positive bias": positive,
-}
-
-print(f"{'analysis':<40}{'largest bound':>16}   [95% robust interval]")
-for name, analysis in analyses.items():
-    row = analysis.robust_ci.filter(pl.col("lb") > 0).row(-1, named=True)
-    label = f"M = {row['m']:.3f}" if "m" in row else f"Mbar = {row['Mbar']:.1f}"
-    print(f"{name:<40}{label:>16}   [{row['lb']:8.4f}, {row['ub']:8.4f}]")
-```
+We can compare these analyses by the largest bound on each grid whose interval
+still excludes zero. Since each breakdown value lies between that bound and
+the next one, the grid brackets the threshold rather than locating it exactly.
 
 Under smoothness, the effect in the year of expansion barely notices the other
 choices. The longer window, the hybrid, and the hybrid with a sign all keep zero

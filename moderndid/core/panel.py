@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 import polars as pl
 
@@ -103,12 +102,7 @@ class PanelDiagnostics:
         return _format_panel_diagnostics(self)
 
 
-def diagnose_panel(
-    data: Any,
-    idname: str,
-    tname: str,
-    treatname: str | None = None,
-) -> PanelDiagnostics:
+def diagnose_panel(data, idname, tname, treatname=None):
     """Run a diagnostic battery on panel data.
 
     Inspects the data for common issues that would cause estimation to fail
@@ -221,7 +215,7 @@ def diagnose_panel(
     )
 
 
-def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: int | None = None) -> Any:
+def get_group(data, idname, tname, treatname, treat_period=None):
     """Extract treatment-group timing into a ``"G"`` column.
 
     Staggered difference-in-differences estimators like :func:`att_gt`
@@ -231,7 +225,8 @@ def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: 
     begins. This function converts that indicator into the group-timing
     variable ``"G"`` expected by the estimator. For each treated unit,
     ``G`` equals the first period where the treatment indicator is
-    positive. For never-treated units, ``G`` is 0.
+    positive. For never-treated units, ``G`` is 0. A row whose period is
+    null, NaN, or infinite never counts as a unit's first treated period.
 
     When the treatment indicator is *static* (e.g., a region dummy that
     equals 1 in every period for treated units), the first-switch logic
@@ -258,14 +253,14 @@ def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: 
     treat_period : int or None
         Known treatment onset period.  When provided, units with any
         positive value of *treatname* are assigned ``G = treat_period``
-        and all others receive ``G = 0``, bypassing the first-switch
-        detection logic.  Useful for static treatment indicators that do
-        not switch on at a specific time.
+        and all others receive ``G = 0``.  Useful for static treatment
+        indicators that do not switch on at a specific time.
 
     Returns
     -------
     DataFrame
-        Original columns plus ``"G"``, in the same format as *data*.
+        The data in its original format. A ``"G"`` column is added, or
+        replaced if the data already has one.
 
     See Also
     --------
@@ -276,7 +271,7 @@ def get_group(data: Any, idname: str, tname: str, treatname: str, treat_period: 
     return from_polars(result, data)
 
 
-def get_first_difference(data: Any, idname: str, yname: str, tname: str) -> Any:
+def get_first_difference(data, idname, yname, tname):
     r"""Add a ``"dy"`` column containing first-differenced outcomes.
 
     First-differencing computes :math:`\Delta Y_{it} = Y_{it} - Y_{i,t-1}`
@@ -313,7 +308,7 @@ def get_first_difference(data: Any, idname: str, yname: str, tname: str) -> Any:
     return from_polars(result, data)
 
 
-def make_balanced_panel(data: Any, idname: str, tname: str) -> Any:
+def make_balanced_panel(data, idname, tname):
     """Drop units not observed in every time period.
 
     Many difference-in-differences estimators require a strictly balanced
@@ -353,7 +348,7 @@ def make_balanced_panel(data: Any, idname: str, tname: str) -> Any:
     return from_polars(result, data)
 
 
-def is_balanced_panel(data: Any, idname: str, tname: str) -> bool:
+def is_balanced_panel(data, idname, tname):
     """Check whether the panel is balanced.
 
     A balanced panel has exactly one observation for every unit-period
@@ -389,7 +384,7 @@ def is_balanced_panel(data: Any, idname: str, tname: str) -> bool:
     return _is_balanced_panel_impl(data, tname, idname)
 
 
-def deduplicate_panel(data: Any, idname: str, tname: str, strategy: str = "last") -> Any:
+def deduplicate_panel(data, idname, tname, strategy="last"):
     """Remove duplicate unit-time pairs.
 
     Duplicate unit-time rows cause hard errors during the preprocessing
@@ -452,7 +447,7 @@ def deduplicate_panel(data: Any, idname: str, tname: str, strategy: str = "last"
     return from_polars(result, data)
 
 
-def fill_panel_gaps(data: Any, idname: str, tname: str) -> Any:
+def fill_panel_gaps(data, idname, tname):
     """Make the panel rectangular by inserting ``null`` rows for missing pairs.
 
     Unlike :func:`make_balanced_panel` (which drops incomplete units), this
@@ -493,7 +488,7 @@ def fill_panel_gaps(data: Any, idname: str, tname: str) -> Any:
     return from_polars(result, data)
 
 
-def complete_data(data: Any, idname: str, tname: str, min_periods: int | None = None) -> Any:
+def complete_data(data, idname, tname, min_periods=None):
     """Keep units observed in at least *min_periods* time periods.
 
     Provides a flexible alternative to :func:`make_balanced_panel`. Rather
@@ -543,7 +538,7 @@ def complete_data(data: Any, idname: str, tname: str, min_periods: int | None = 
     return from_polars(result, data)
 
 
-def assign_rc_ids(data: Any) -> Any:
+def assign_rc_ids(data):
     """Add a unique ``"rowid"`` column for repeated cross-section data.
 
     In repeated cross-section designs each observation is a different
@@ -577,7 +572,7 @@ def assign_rc_ids(data: Any) -> Any:
     return from_polars(result, data)
 
 
-def are_varying(data: Any, idname: str, cols: list[str] | None = None) -> dict[str, bool]:
+def are_varying(data, idname, cols=None):
     """Check which columns vary within units over time.
 
     Difference-in-differences estimators distinguish between time-varying
@@ -621,7 +616,7 @@ def are_varying(data: Any, idname: str, cols: list[str] | None = None) -> dict[s
     return result
 
 
-def scan_gaps(data: Any, idname: str, tname: str) -> Any:
+def scan_gaps(data, idname, tname):
     """Identify missing unit-time combinations.
 
     Returns a DataFrame listing every unit-period pair that is absent from
@@ -662,7 +657,7 @@ def scan_gaps(data: Any, idname: str, tname: str) -> Any:
     return from_polars(gaps, data)
 
 
-def has_gaps(data: Any, idname: str, tname: str) -> bool:
+def has_gaps(data, idname, tname):
     """Check whether the panel has any implicit missing unit-time pairs.
 
     A lightweight Boolean check that compares the number of observed
@@ -701,7 +696,7 @@ def has_gaps(data: Any, idname: str, tname: str) -> bool:
     return n_unique_pairs < n_units * n_periods
 
 
-def panel_to_wide(data: Any, idname: str, tname: str, separator: str = "_") -> Any:
+def panel_to_wide(data, idname, tname, separator="_"):
     """Pivot a long panel to wide format.
 
     Reshapes the data so that each unit occupies a single row. Time-varying
@@ -766,13 +761,7 @@ def panel_to_wide(data: Any, idname: str, tname: str, separator: str = "_") -> A
     return from_polars(result, data)
 
 
-def wide_to_panel(
-    data: Any,
-    idname: str,
-    stub_names: list[str],
-    separator: str = "_",
-    tname: str = "time",
-) -> Any:
+def wide_to_panel(data, idname, stub_names, separator="_", tname="time"):
     """Unpivot wide-format data into a long panel.
 
     Gathers time-varying columns back into long format using the stub
@@ -858,7 +847,7 @@ def wide_to_panel(
     return from_polars(result, data)
 
 
-def _format_panel_diagnostics(diag: PanelDiagnostics) -> str:
+def _format_panel_diagnostics(diag):
     """Pretty-print a :class:`PanelDiagnostics` instance."""
 
     def _bool_str(val: bool | None) -> str:

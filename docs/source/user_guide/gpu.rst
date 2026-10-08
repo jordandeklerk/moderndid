@@ -3,12 +3,12 @@
 GPU acceleration
 ================
 
-For an analysis with large matrix calculations, an NVIDIA GPU can provide
-another way to reduce the time spent fitting models and drawing bootstrap
+If large matrix calculations account for much of your analysis time, an
+NVIDIA GPU may reduce the time spent fitting models and drawing bootstrap
 replications. ModernDiD uses CuPy for supported GPU calculations while keeping
-the data and returned results in the forms you already use. We will set up
-the CUDA environment, run an estimation with the GPU backend, and examine
-how to decide whether that choice helps your analysis.
+the data and returned results in the forms you already use. We start with a
+small estimation to check that the CUDA environment works before measuring
+whether the GPU helps with your specification.
 
 The amount of work inside each comparison matters as much as the total number
 of rows. A GPU can be slower than the CPU for small comparisons because
@@ -74,11 +74,11 @@ Trying an estimation on the GPU
 temporarily activates CuPy and restores the previous backend when it returns,
 including when estimation raises an exception.
 
-We will use the minimum wage data to show a complete GPU call. The same
-comparison group and covariates appear in the :ref:`staggered example
+The minimum wage data gives us a small estimation to check the installation.
+Its comparison group and covariates also appear in the :ref:`staggered example
 <example_staggered_did>`, where you can follow the interpretation of the
-estimated effects. Its small sample makes it a convenient installation check
-rather than a performance benchmark.
+estimated effects. Since this sample is small, it cannot tell you how much
+time the GPU might save in a larger analysis.
 
 .. code-block:: python
 
@@ -102,13 +102,12 @@ rather than a performance benchmark.
    result = did.att_gt(**spec, backend="cupy")
    print(result)
 
-You pass an ordinary DataFrame rather than constructing CuPy arrays yourself.
-ModernDiD prepares the data on the CPU and transfers arrays as the supported
-calculations need them. Since the returned result contains CPU arrays,
-:func:`~moderndid.aggte` and :func:`~moderndid.plots.plot_gt` use their usual calls.
-GPU and CPU calculations may differ slightly because of numerical rounding.
-Their random number generators can also produce different bootstrap draws
-even when you provide the same seed.
+You can pass your usual DataFrame because ModernDiD prepares the data on the
+CPU and transfers arrays as the supported calculations need them. Since the
+returned result contains CPU arrays, :func:`~moderndid.aggte` and
+:func:`~moderndid.plots.plot_gt` use their usual calls. Small differences from
+CPU estimates can arise from numerical rounding. Even with the same seed,
+the backends' random number generators can produce different bootstrap draws.
 
 Choosing which calculations use CuPy
 ------------------------------------
@@ -160,11 +159,12 @@ the ETWFE API when choosing it for that estimator.
 Measuring the time your analysis takes
 --------------------------------------
 
-To compare backends, keep the data, estimation method, clustering, bootstrap
-iterations, and other statistical choices fixed. We will time the complete
-estimator call so that preparation and data transfers count toward the result.
-Since CuPy runs GPU operations asynchronously, synchronize the device before
-and after the timed call as described in its `performance guide
+Once the installation works, we can measure the complete estimator call so
+that preparation and data transfers count toward its running time. Keep the
+data, estimation method, clustering, bootstrap iterations, and other
+statistical choices fixed when comparing backends. Since CuPy runs GPU
+operations asynchronously, synchronize the device before and after the timed
+call as described in its `performance guide
 <https://docs.cupy.dev/en/stable/user_guide/performance.html>`_.
 
 .. code-block:: python

@@ -327,9 +327,9 @@ def attgt_pte_aggregations(attgt_list, pte_params):
 
             e_mask = e_values >= 0
             overall_weights = np.zeros(len(attgt_df))
-            with np.errstate(divide="ignore", invalid="ignore"):
-                weights_calc = overall_w_values / group_post_length_values
-                weights_calc = np.nan_to_num(weights_calc, nan=0.0, posinf=0.0, neginf=0.0)
+            # group_post_length is a row count of at least one, or NaN for a group without post-treatment periods.
+            weights_calc = overall_w_values / group_post_length_values
+            weights_calc = np.nan_to_num(weights_calc, nan=0.0, posinf=0.0, neginf=0.0)
             overall_weights[e_mask] = weights_calc[e_mask]
         else:
             overall_att = np.nan

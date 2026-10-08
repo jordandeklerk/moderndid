@@ -275,6 +275,33 @@ def test_overall_weights_e_mask(basic_attgt_data, create_pte_params):
             assert np.isclose(result["overall_results"], computed_overall, rtol=0.01)
 
 
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_overall_weights_for_group_without_post_treatment_periods(basic_attgt_data, create_pte_params, forbid_errstate):
+    attgt_list = [row for row in basic_attgt_data if row["time_period"] < row["group"] or row["group"] == 2004]
+    pte_params = create_pte_params()
+    pte_params = pte_params._replace(
+        data=pte_params.data.with_columns(pl.when(pl.col("id") % 2 == 0).then(2004).otherwise(2006).alias("G"))
+    )
+    forbid_errstate()
+
+    result = attgt_pte_aggregations(attgt_list, pte_params)
+
+    assert sorted(result["overall_weights"].tolist()) == [0.0, 0.0, 0.5, 0.5]
+    assert result["overall_results"] == pytest.approx(0.175)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_overall_weights_when_no_unit_belongs_to_a_group(basic_attgt_data, create_pte_params, forbid_errstate):
+    pte_params = create_pte_params()
+    pte_params = pte_params._replace(data=pte_params.data.with_columns(pl.lit(0).alias("G")))
+    forbid_errstate()
+
+    result = attgt_pte_aggregations(basic_attgt_data, pte_params)
+
+    assert result["overall_weights"].tolist() == [0.0, 0.0, 0.0, 0.0, 0.0]
+    assert np.isnan(result["overall_results"])
+
+
 @pytest.mark.parametrize("quantile", [0.25, 0.5, 0.75])
 def test_qtt_pte_aggregations(quantile_test_data, create_pte_params, quantile):
     pte_params = create_pte_params(ret_quantile=quantile)

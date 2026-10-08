@@ -543,6 +543,19 @@ def mp_rcs_weighted_replicated_df(mp_rcs_weighted_df):
 
 
 @pytest.fixture
+def mp_rcs_missing_outcome_df(mp_rcs_data):
+    """Multi-period repeated cross-section whose rows 1, 5, and 9 miss the outcome."""
+    rows = pl.int_range(pl.len()).is_in([1, 5, 9])
+    return mp_rcs_data.with_columns(pl.when(rows).then(None).otherwise(pl.col("y")).alias("y"))
+
+
+@pytest.fixture
+def mp_rcs_no_never_treated_df(mp_no_never_treated_df):
+    """The panel without never-treated units with every row taken as an observation of its own in id."""
+    return mp_no_never_treated_df.with_columns(pl.int_range(pl.len()).alias("id"))
+
+
+@pytest.fixture
 def mp_three_cohort_df():
     """Panel over five periods with never-treated units, cohorts 2, 3, and 4, and 50 clusters in cluster.
 
@@ -556,6 +569,12 @@ def mp_three_cohort_df():
 def mp_unbalanced_df(multi_period_df):
     """Multi-period panel in which every sixth unit misses period 3."""
     return multi_period_df.filter(~((pl.col("id") % 6 == 0) & (pl.col("time") == 3)))
+
+
+@pytest.fixture
+def mp_clustered_df(multi_period_df):
+    """Multi-period panel whose units fall into 25 clusters in cluster."""
+    return multi_period_df.with_columns((pl.col("id") % 25).alias("cluster"))
 
 
 @pytest.fixture

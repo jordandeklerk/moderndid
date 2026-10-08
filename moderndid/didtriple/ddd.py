@@ -1,40 +1,21 @@
 """Main wrapper for Triple Difference-in-Differences estimation."""
 
 import warnings
-from dataclasses import replace
 
 import numpy as np
 import polars as pl
 
 from moderndid.core.dataframe import to_polars
-from moderndid.core.preprocess.config import DDDConfig
 from moderndid.core.preprocess.constants import ROW_ID_COLUMN, WEIGHTS_COLUMN
-from moderndid.core.preprocess.models import ValidationResult
-from moderndid.core.preprocess.transformers import (
-    DDDColumnSelector,
-    DDDWeightProcessor,
-    EarlyTreatmentFilter,
-    MissingDataHandler,
-    PanelBalancer,
-    TreatmentEncoder,
-    WeightNormalizer,
-)
 from moderndid.core.preprocess.utils import get_column_terms
-from moderndid.core.preprocess.validators import (
-    DDDColumnValidator,
-    DDDInvarianceValidator,
-    _ddd_partition_error,
-    _duplicate_unit_period_error,
-    _reserved_name_errors,
-    check_columns,
-)
+from moderndid.core.preprocess.validators import _reserved_name_errors, check_columns
 from moderndid.core.preprocessing import preprocess_ddd_2periods
 
-from .estimators.ddd_mp import ddd_mp
-from .estimators.ddd_mp_rc import ddd_mp_rc
+from .estimators.ddd_mp import _check_options, _ddd_mp, _preprocess_multiple_periods
+from .estimators.ddd_mp_rc import _ddd_mp_rc
 from .estimators.ddd_panel import ddd_panel
 from .estimators.ddd_rc import _ddd_rc_2period
-from .utils import add_intercept, detect_multiple_periods, detect_rcs_mode, get_covariate_names
+from .utils import _complete_rows, add_intercept, detect_multiple_periods, detect_rcs_mode, get_covariate_names
 
 
 def ddd(
@@ -133,7 +114,8 @@ def ddd(
         This parameter is ignored for 2-period data. "nevertreated" requires
         at least one never-treated unit. Without never-treated units,
         "notyettreated" leaves out the periods from the first period of the
-        latest cohort on.
+        latest cohort on. That cohort then serves only as a comparison and
+        gets no ATT(g,t) of its own.
     base_period : {"universal", "varying"}, default="universal"
         Base period selection for multi-period settings.
         This parameter is ignored for 2-period data.
@@ -174,7 +156,8 @@ def ddd(
         False, the units that miss one of the remaining periods leave the data
         with a warning. The periods that "notyettreated" leaves out without
         never-treated units don't count. A balanced panel takes the panel
-        estimators either way.
+        estimators either way. Since rows with a missing value leave the data
+        first, a unit that loses a row this way misses that period.
     random_state : int, Generator, optional
         Random seed for reproducibility of bootstrap.
     n_jobs : int, default=1
@@ -210,7 +193,8 @@ def ddd(
         - **se**: Standard errors for each ATT(g,t)
         - **uci**, **lci**: Confidence interval bounds
         - **groups**, **times**: Treatment cohort and time for each estimate
-        - **glist**, **tlist**: Unique cohorts and periods
+        - **glist**: Cohorts with ATT(g,t) estimates
+        - **tlist**: Unique periods
         - **inf_func_mat**: Influence function matrix
         - **n**: Number of units
         - **args**: Estimation arguments
@@ -284,22 +268,7 @@ def ddd(
         raise ValueError("pname is required. Please specify the partition/eligibility column.")
     if panel and idname is None:
         raise ValueError("idname must be provided when panel=True.")
-    if est_method not in ("dr", "reg", "ipw"):
-        raise ValueError(f"est_method='{est_method}' is not valid. Must be 'dr', 'reg', or 'ipw'.")
-    if control_group not in ("nevertreated", "notyettreated"):
-        raise ValueError(f"control_group='{control_group}' is not valid. Must be 'nevertreated' or 'notyettreated'.")
-    if base_period not in ("universal", "varying"):
-        raise ValueError(f"base_period='{base_period}' is not valid. Must be 'universal' or 'varying'.")
-    if not 0 < alpha < 1:
-        raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
-    if not isinstance(biters, int) or biters < 1:
-        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
-    if boot_type not in ("weighted", "multiplier"):
-        raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted' or 'multiplier'.")
-    if not 0 < trim_level < 1:
-        raise ValueError(f"trim_level={trim_level} is not valid. Must be between 0 and 1 (exclusive).")
-    if not isinstance(n_jobs, int) or (n_jobs < 1 and n_jobs != -1):
-        raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
+    _check_options(est_method, control_group, base_period, alpha, biters, trim_level, n_jobs, boot_type)
     named_columns = {
         "yname": yname,
         "tname": tname,
@@ -312,20 +281,22 @@ def ddd(
     }
     data = to_polars(data)
     check_columns(data, **named_columns)
+    covariate_terms = get_column_terms(xformla) if xformla else []
     # Since the cross-section routes number the rows in an internal column, no named column may take its name.
-    reserved = _reserved_name_errors(
-        named_columns | {"xformla": get_column_terms(xformla) if xformla else []}, (ROW_ID_COLUMN,)
-    )
+    reserved = _reserved_name_errors(named_columns | {"xformla": covariate_terms}, (ROW_ID_COLUMN,))
     if reserved:
         raise ValueError("\n".join(reserved))
 
-    is_rcs = detect_rcs_mode(data, tname, idname, panel, allow_unbalanced_panel)
+    # Since a missing value must not pick the route, the routing reads the rows that the missing-data step keeps.
+    # The route's own missing-data step still drops the rows with a missing value and warns once.
+    complete = _complete_rows(data, [yname, tname, idname, gname, pname, cluster, weightsname, *covariate_terms], gname)
+    is_rcs = detect_rcs_mode(complete, tname, idname, panel, allow_unbalanced_panel)
 
     if is_rcs and idname is None:
         data = data.with_columns(pl.Series(ROW_ID_COLUMN, np.arange(len(data))))
         idname = ROW_ID_COLUMN
 
-    multiple_periods = detect_multiple_periods(data, tname, gname)
+    multiple_periods = detect_multiple_periods(complete, tname, gname)
 
     # Settling the inference options before routing gives every data layout the same interval level.
     if alpha > 0.10:
@@ -342,14 +313,14 @@ def ddd(
 
     if multiple_periods:
         covariate_cols = get_covariate_names(xformla)
-        data = _preprocess_multiple_periods(
+        data, glist = _preprocess_multiple_periods(
             data,
             yname,
             tname,
             idname,
             gname,
             pname,
-            xformla,
+            covariate_cols,
             weightsname,
             cluster,
             panel,
@@ -358,8 +329,9 @@ def ddd(
         )
         weights_col = None if weightsname is None else WEIGHTS_COLUMN
         if not panel:
-            return ddd_mp_rc(
+            return _ddd_mp_rc(
                 data=data,
+                glist=glist,
                 y_col=yname,
                 time_col=tname,
                 id_col=idname,
@@ -379,8 +351,9 @@ def ddd(
                 n_jobs=n_jobs,
                 weights_col=weights_col,
             )
-        return ddd_mp(
+        return _ddd_mp(
             data=data,
+            glist=glist,
             y_col=yname,
             time_col=tname,
             id_col=idname,
@@ -459,126 +432,3 @@ def ddd(
         random_state=random_state,
         cluster=ddd_data.cluster,
     )
-
-
-def _preprocess_multiple_periods(
-    data,
-    yname,
-    tname,
-    idname,
-    gname,
-    pname,
-    xformla,
-    weightsname,
-    cluster,
-    panel,
-    allow_unbalanced_panel,
-    control_group,
-):
-    """Check and clean data with several periods before the group-time estimation.
-
-    The steps follow two-period ddd and att_gt. Rows with a missing value
-    leave the data with a warning. The checks of how the rows fit together
-    then run on the rows that remain. A repeated unit and period, a partition
-    other than 0 and 1, and a partition, cohort, cluster, or panel weight that
-    changes over time raise an error.
-
-    A cohort of 0, infinity, or a period after the last one marks a
-    never-treated unit. Units already treated in the first period have no
-    period to compare with and leave the data with a warning. When no other
-    unit remains, an error says that no data is left. Without
-    never-treated units, no comparison group exists from the first period of
-    the latest cohort on. Not-yet-treated comparisons then leave those periods
-    out. Unless allow_unbalanced_panel is True, the units of a panel that miss
-    one of the remaining periods leave the data with a warning. Never-treated
-    comparisons raise an error when no never-treated unit remains.
-
-    Parameters
-    ----------
-    data : pl.DataFrame
-        Data in long format.
-    yname : str
-        Name of the outcome column.
-    tname : str
-        Name of the period column.
-    idname : str
-        Name of the unit column, or of the row index of repeated cross-sections.
-    gname : str
-        Name of the cohort column.
-    pname : str
-        Name of the partition column.
-    xformla : str or None
-        Covariate formula.
-    weightsname : str or None
-        Name of the sampling weights column.
-    cluster : str or None
-        Name of the cluster column.
-    panel : bool
-        Whether the data follow the same units over time.
-    allow_unbalanced_panel : bool
-        Whether a panel keeps the units that miss some periods.
-    control_group : {"nevertreated", "notyettreated"}
-        Which units serve as comparisons.
-
-    Returns
-    -------
-    pl.DataFrame
-        The columns that the estimation uses. Never-treated units have cohort
-        0. When given, the weights divided by their mean sit in their own
-        column.
-    """
-    config = DDDConfig(
-        yname=yname,
-        tname=tname,
-        idname=idname,
-        gname=gname,
-        pname=pname,
-        xformla=xformla or "~1",
-        weightsname=weightsname,
-        cluster=cluster,
-        panel=panel,
-        allow_unbalanced_panel=allow_unbalanced_panel,
-    )
-    DDDColumnValidator().validate(data, config).raise_if_invalid()
-    data = DDDColumnSelector().transform(data, config)
-    data = MissingDataHandler().transform(data, config)
-
-    # Because the missing-data step has run, a single missing value can't decide what these checks find.
-    errors = [_ddd_partition_error(data, pname)]
-    if panel:
-        errors.append(_duplicate_unit_period_error(data, idname, tname))
-        errors.extend(DDDInvarianceValidator().validate(data, config).errors)
-    if cluster is not None and data.select(pl.col(cluster).n_unique().over(idname).max()).item() > 1:
-        errors.append("Cluster variable must be time-invariant within units.")
-    _raise_errors(errors)
-
-    if weightsname is not None:
-        # Since each row of a repeated cross-section is its own observation, only a panel unit keeps one weight.
-        data = (DDDWeightProcessor() if panel else WeightNormalizer()).transform(data, config)
-
-    cohort_dtype = data.schema[gname]
-    data = TreatmentEncoder().transform(data, config)
-    # Without a unit column, the filter counts the dropped rows of a repeated cross-section.
-    early_config = replace(config, idname=None if idname == ROW_ID_COLUMN else idname)
-    data = EarlyTreatmentFilter().transform(data, early_config)
-    # Since the missing-data step raises rather than empty the data, only the first-period filter can empty it here.
-    if data.is_empty():
-        raise ValueError("Every unit was already treated in the first period. No data is left to estimate from.")
-    # Trimming before balancing keeps a unit that misses only periods no cell uses.
-    if control_group == "notyettreated" and not data[gname].is_infinite().any():
-        data = data.filter(pl.col(tname) < data[gname].max())
-    data = PanelBalancer().transform(data, config)
-    if control_group == "nevertreated" and not data[gname].is_infinite().any():
-        raise ValueError(
-            "There is no available never-treated group. A cohort of 0, infinity, or a period after the last one "
-            "marks a never-treated unit. Set control_group='notyettreated' to compare with the units treated later."
-        )
-    # The estimators and the printed summary read cohort 0 as never treated.
-    never_treated = ~pl.col(gname).is_finite()
-    return data.with_columns(pl.when(never_treated).then(0).otherwise(pl.col(gname)).cast(cohort_dtype).alias(gname))
-
-
-def _raise_errors(errors):
-    """Raise the messages that a check found, if any."""
-    found = [error for error in errors if error is not None]
-    ValidationResult(is_valid=not found, errors=found).raise_if_invalid()

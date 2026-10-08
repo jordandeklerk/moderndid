@@ -107,6 +107,19 @@ def test_get_group_treat_period_all_untreated():
     assert (result["G"] == 0).all()
 
 
+@pytest.mark.parametrize(
+    "converter",
+    [lambda df: df, lambda df: df.to_pandas(), lambda df: df.to_arrow()],
+    ids=["polars", "pandas", "pyarrow"],
+)
+def test_get_group_keeps_user_group_column(converter, staggered_panel):
+    data = converter(staggered_panel.with_columns(pl.lit(9).alias("_group")))
+    result = pl.DataFrame(get_group(data, "id", "time", "treat"))
+    assert result.columns == ["id", "time", "y", "treat", "_group", "G"]
+    assert result["_group"].to_list() == [9] * 12
+    assert result["G"].to_list() == [3, 3, 3, 3, 2, 2, 2, 2, 0, 0, 0, 0]
+
+
 def test_are_varying_time_invariant():
     df = pl.DataFrame(
         {

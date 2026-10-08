@@ -12,6 +12,7 @@ from moderndid.cupy.regression import cupy_logistic_irls
 
 from ..bootstrap.boot_mult import mboot_did
 from ..bootstrap.boot_rc import wboot_drdid_rc2
+from ..utils import _divide_by_complement
 from .wols import ols_rc
 
 
@@ -286,9 +287,8 @@ def _compute_weights(d, post, ps_fit, i_weights, trim_ps):
     w_treat_pre = trim_ps * i_weights * d * (1 - post)
     w_treat_post = trim_ps * i_weights * d * post
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = trim_ps * i_weights * ps_fit * (1 - d) * (1 - post) / (1 - ps_fit)
-        w_cont_post = trim_ps * i_weights * ps_fit * (1 - d) * post / (1 - ps_fit)
+    w_cont_pre = _divide_by_complement(trim_ps * i_weights * ps_fit * (1 - d) * (1 - post), ps_fit)
+    w_cont_post = _divide_by_complement(trim_ps * i_weights * ps_fit * (1 - d) * post, ps_fit)
 
     w_cont_pre = np.nan_to_num(w_cont_pre)
     w_cont_post = np.nan_to_num(w_cont_post)

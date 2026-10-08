@@ -1,5 +1,8 @@
 """Tests for the multi-period DDD repeated cross-section estimator."""
 
+import re
+import warnings
+
 import numpy as np
 import pytest
 
@@ -7,6 +10,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
+from moderndid import ddd
 from moderndid.didtriple.estimators.ddd_mp_rc import ddd_mp_rc
 
 
@@ -274,3 +278,253 @@ def test_ddd_mp_rc_parallel_matches_sequential(mp_rcs_data, base_period):
     np.testing.assert_array_equal(result_seq.times, result_par.times)
     np.testing.assert_allclose(result_seq.se, result_par.se, rtol=1e-10, equal_nan=True)
     np.testing.assert_allclose(result_seq.inf_func_mat, result_par.inf_func_mat, rtol=1e-10)
+
+
+@pytest.mark.parametrize(
+    ("data_fixture", "options"),
+    [
+        ("mp_rcs_data", {"alpha": 0.2}),
+        ("mp_rcs_missing_outcome_df", {}),
+        ("mp_rcs_no_never_treated_df", {"control_group": "notyettreated"}),
+        ("mp_rcs_no_never_treated_df", {"control_group": "notyettreated", "base_period": "varying"}),
+    ],
+)
+def test_ddd_mp_rc_matches_ddd_on_the_same_data(request, data_fixture, options):
+    data = request.getfixturevalue(data_fixture)
+
+    with warnings.catch_warnings(record=True) as expected_warnings:
+        warnings.simplefilter("always")
+        expected = ddd(
+            data=data,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            panel=False,
+            est_method="reg",
+            **options,
+        )
+    with warnings.catch_warnings(record=True) as direct_warnings:
+        warnings.simplefilter("always")
+        result = ddd_mp_rc(
+            data=data,
+            y_col="y",
+            time_col="time",
+            id_col="id",
+            group_col="group",
+            partition_col="partition",
+            est_method="reg",
+            **options,
+        )
+
+    assert result.n == expected.n
+    np.testing.assert_array_equal(result.tlist, expected.tlist)
+    np.testing.assert_array_equal(result.groups, expected.groups)
+    np.testing.assert_array_equal(result.times, expected.times)
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
+    np.testing.assert_array_equal(result.lci, expected.lci)
+    np.testing.assert_array_equal(result.inf_func_mat, expected.inf_func_mat)
+    np.testing.assert_array_equal(result.unit_groups, expected.unit_groups)
+    assert [str(w.message) for w in direct_warnings] == [str(w.message) for w in expected_warnings]
+
+
+def test_ddd_mp_rc_without_an_observation_column_matches_ddd(mp_first_period_cohort_df):
+    with warnings.catch_warnings(record=True) as expected_warnings:
+        warnings.simplefilter("always")
+        expected = ddd(
+            data=mp_first_period_cohort_df,
+            yname="y",
+            tname="time",
+            gname="group",
+            pname="partition",
+            panel=False,
+            est_method="reg",
+        )
+    with warnings.catch_warnings(record=True) as direct_warnings:
+        warnings.simplefilter("always")
+        result = ddd_mp_rc(
+            data=mp_first_period_cohort_df,
+            y_col="y",
+            time_col="time",
+            id_col=None,
+            group_col="group",
+            partition_col="partition",
+            est_method="reg",
+        )
+
+    assert result.n == expected.n
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
+    np.testing.assert_array_equal(result.inf_func_mat, expected.inf_func_mat)
+    assert [str(w.message) for w in direct_warnings] == [str(w.message) for w in expected_warnings]
+    assert any("observations that were already treated in the first period" in str(w.message) for w in direct_warnings)
+
+
+def test_ddd_mp_rc_normalizes_weights_like_ddd(mp_rcs_weighted_df):
+    expected = ddd(
+        data=mp_rcs_weighted_df,
+        yname="y",
+        tname="time",
+        idname="id",
+        gname="group",
+        pname="partition",
+        weightsname="w",
+        panel=False,
+    )
+    result = ddd_mp_rc(
+        data=mp_rcs_weighted_df,
+        y_col="y",
+        time_col="time",
+        id_col="id",
+        group_col="group",
+        partition_col="partition",
+        weights_col="w",
+    )
+
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
+    np.testing.assert_array_equal(result.unit_weights, expected.unit_weights)
+    np.testing.assert_allclose(result.unit_weights.mean(), 1.0, rtol=1e-12)
+
+
+@pytest.mark.parametrize("base_period", ["universal", "varying"])
+def test_ddd_mp_rc_without_never_treated_units_estimates_no_cell_for_the_latest_cohort(
+    mp_rcs_no_never_treated_df, base_period
+):
+    spec = {
+        "y_col": "y",
+        "time_col": "time",
+        "id_col": "id",
+        "group_col": "group",
+        "partition_col": "partition",
+        "control_group": "notyettreated",
+        "base_period": base_period,
+        "est_method": "reg",
+    }
+    result = ddd_mp_rc(data=mp_rcs_no_never_treated_df, **spec)
+    trimmed = ddd_mp_rc(data=mp_rcs_no_never_treated_df.filter(pl.col("time") < 4), **spec)
+
+    assert result.n == trimmed.n
+    np.testing.assert_array_equal(result.glist, [2, 3])
+    np.testing.assert_array_equal(result.groups, trimmed.groups)
+    np.testing.assert_array_equal(result.times, trimmed.times)
+    np.testing.assert_allclose(result.att, trimmed.att, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(result.se, trimmed.se, rtol=1e-12, atol=1e-12)
+
+
+def test_ddd_mp_rc_without_never_treated_units_needs_a_cohort_besides_the_latest(mp_rcs_no_never_treated_df):
+    with pytest.raises(ValueError, match=re.escape("No cohort is left to estimate.")):
+        ddd_mp_rc(
+            data=mp_rcs_no_never_treated_df.filter(pl.col("group") == 4),
+            y_col="y",
+            time_col="time",
+            id_col="id",
+            group_col="group",
+            partition_col="partition",
+            control_group="notyettreated",
+            est_method="reg",
+        )
+
+
+def test_ddd_mp_rc_warns_about_panel_data_with_its_own_argument_names(multi_period_df):
+    with pytest.warns(UserWarning, match=re.escape("panel=False was specified, but units appear across all time")):
+        expected = ddd(
+            data=multi_period_df,
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="group",
+            pname="partition",
+            panel=False,
+            est_method="reg",
+        )
+    with pytest.warns(UserWarning, match=re.escape("Units in id_col='id' appear in every period. For panel data, use")):
+        result = ddd_mp_rc(
+            data=multi_period_df,
+            y_col="y",
+            time_col="time",
+            id_col="id",
+            group_col="group",
+            partition_col="partition",
+            est_method="reg",
+        )
+
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
+
+
+@pytest.mark.parametrize(
+    ("change", "ddd_options", "direct_options", "ddd_message", "direct_message"),
+    [
+        (
+            pl.col("y"),
+            {"yname": "yy"},
+            {"y_col": "yy"},
+            "yname='yy' is not a column in the data. Did you mean 'y'?",
+            "y_col='yy' is not a column in the data. Did you mean 'y'?",
+        ),
+        (
+            pl.col("id").cast(pl.String),
+            {},
+            {},
+            "idname='id' is not numeric. Please convert it.",
+            "id_col='id' is not numeric. Please convert it.",
+        ),
+        (
+            pl.col("partition") + 1,
+            {},
+            {},
+            "pname='partition' must be 1 for eligible units and 0 for ineligible units",
+            "partition_col='partition' must be 1 for eligible units and 0 for ineligible units",
+        ),
+        (
+            pl.when(pl.col("id") == 3).then(-1).otherwise(pl.col("group")).alias("group"),
+            {},
+            {},
+            "gname = 'group' holds negative values such as -1.",
+            "group_col = 'group' holds negative values such as -1.",
+        ),
+        (
+            pl.when(pl.col("group") == 0).then(3).otherwise(pl.col("group")).alias("group"),
+            {},
+            {},
+            "There is no available never-treated group.",
+            "There is no available never-treated group.",
+        ),
+        (
+            pl.col("y"),
+            {"est_method": "foo"},
+            {"est_method": "foo"},
+            "est_method='foo' is not valid.",
+            "est_method='foo' is not valid.",
+        ),
+    ],
+)
+def test_ddd_mp_rc_raises_the_errors_of_ddd_with_its_own_argument_names(
+    mp_rcs_data, change, ddd_options, direct_options, ddd_message, direct_message
+):
+    data = mp_rcs_data.with_columns(change)
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "pname": "partition",
+        "panel": False,
+        "est_method": "reg",
+    }
+    direct = {
+        "y_col": "y",
+        "time_col": "time",
+        "id_col": "id",
+        "group_col": "group",
+        "partition_col": "partition",
+        "est_method": "reg",
+    }
+
+    with pytest.raises(ValueError, match=re.escape(ddd_message)):
+        ddd(data=data, **(spec | ddd_options))
+    with pytest.raises(ValueError, match=re.escape(direct_message)):
+        ddd_mp_rc(data=data, **(direct | direct_options))

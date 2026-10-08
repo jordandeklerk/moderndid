@@ -4,7 +4,7 @@ import warnings
 
 import numpy as np
 
-from moderndid.cupy.backend import HAS_CUPY, get_backend
+from moderndid.cupy.backend import HAS_CUPY, _array_module, get_backend
 
 __all__ = [
     "_check_coefficients_validity",
@@ -151,3 +151,20 @@ def _is_array(arr):
 
         return isinstance(arr, cp.ndarray)
     return False
+
+
+def _divide_by_complement(numerator, ps):
+    """Divide by one minus the propensity score without a warning at a score of one."""
+    xp = _array_module(numerator, ps)
+    complement = 1 - ps
+    at_one = complement == 0
+    quotient = numerator / xp.where(at_one, 1.0, complement)
+    numerator_at_one = numerator[at_one]
+    # A zero numerator, such as a treated unit's, carries no weight at a score of one.
+    # Since callers treat infinity and NaN differently, any other numerator gives infinity with its sign or stays NaN.
+    quotient[at_one] = xp.where(
+        numerator_at_one == 0,
+        0.0,
+        xp.where(numerator_at_one > 0, xp.inf, xp.where(numerator_at_one < 0, -xp.inf, xp.nan)),
+    )
+    return quotient

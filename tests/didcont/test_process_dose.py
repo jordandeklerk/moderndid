@@ -1,5 +1,7 @@
 """Tests for continuous treatment dose-response processing."""
 
+from importlib import import_module
+
 import numpy as np
 import pytest
 
@@ -556,3 +558,51 @@ def test_process_dose_gt_mismatched_groups_times(pte_params_basic):
 
     with pytest.raises(ValueError, match="Mismatch between order of groups and time periods"):
         process_dose_gt(gt_results, pte_params)
+
+
+def test_process_dose_gt_bands_are_pointwise_when_draws_move_a_zero_scale_dose(
+    fix_bootstrap_draws, central_zero_scale_draws, mock_gt_results_with_dose, mock_pte_params_with_dose
+):
+    fix_bootstrap_draws(central_zero_scale_draws)
+
+    with pytest.warns(UserWarning, match="NA/Inf"):
+        result = process_dose_gt(mock_gt_results_with_dose, mock_pte_params_with_dose)
+
+    assert result.att_d_crit_val == pytest.approx(st.norm.ppf(0.975))
+    assert result.acrt_d_crit_val == pytest.approx(st.norm.ppf(0.975))
+    np.testing.assert_allclose(result.att_d_se[::2], 10 / 1.3489795, rtol=1e-12)
+    np.testing.assert_array_equal(result.att_d_se[1::2], 0.0)
+    np.testing.assert_allclose(result.acrt_d_se[::2], 10 / 1.3489795, rtol=1e-12)
+    np.testing.assert_array_equal(result.acrt_d_se[1::2], 0.0)
+
+
+def test_process_dose_gt_overall_att_se_is_nan_and_overall_acrt_se_is_zero_without_variation(
+    fix_bootstrap_draws, mock_gt_results_with_dose, mock_pte_params_with_dose
+):
+    fix_bootstrap_draws(np.zeros((21, 1)))
+
+    with pytest.warns(UserWarning, match="NA/Inf"):
+        result = process_dose_gt(mock_gt_results_with_dose, mock_pte_params_with_dose)
+
+    assert np.isnan(result.overall_att_se)
+    assert result.overall_acrt_se == 0.0
+    np.testing.assert_array_equal(result.att_d_se, 0.0)
+    np.testing.assert_array_equal(result.acrt_d_se, 0.0)
+
+
+def test_process_dose_gt_does_not_floor_the_cell_band_that_it_leaves_unused(
+    monkeypatch, central_zero_scale_draws, mock_gt_results_with_dose, mock_pte_params_with_dose, recwarn
+):
+    below_pointwise = np.linspace(-1.0, 1.0, 99)[:, None]
+    above_pointwise = central_zero_scale_draws[:, [0]]
+
+    def draws(inf_func, biters, random_state=None):
+        column = below_pointwise if inf_func.shape[1] == 12 else above_pointwise
+        return np.tile(column, (1, inf_func.shape[1]))
+
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws)
+
+    result = process_dose_gt(mock_gt_results_with_dose, mock_pte_params_with_dose)
+
+    assert result.att_d_crit_val == pytest.approx(50 / (10 / 1.3489795))
+    assert not [w for w in recwarn if "smaller than pointwise" in str(w.message)]

@@ -68,6 +68,24 @@ header.md-header,
   font-weight: 600;
 }
 
+/* Question markers help readers scan the FAQ without changing its headings. */
+.md-typeset #faq ~ h3 {
+  position: relative;
+  padding-inline-start: 1.7em;
+}
+
+.md-typeset #faq ~ h3::before {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0.1em;
+  width: 1.2em;
+  height: 1.2em;
+  background-color: var(--md-typeset-a-color);
+  content: "";
+  -webkit-mask: var(--md-admonition-icon--question) no-repeat center / contain;
+  mask: var(--md-admonition-icon--question) no-repeat center / contain;
+}
+
 /* Keep table text and spacing consistent across indexes and subpages. */
 .md-typeset table:not([class]),
 .md-typeset table.data:not(.plain) {
@@ -84,6 +102,21 @@ of wrapping text never need the sideways scrolling the theme's block layout allo
 .md-typeset table.data.section-index-table {
   display: table;
   width: 100%;
+}
+
+.md-typeset .architecture-table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.md-typeset .architecture-table table {
+  display: table;
+  min-width: 34rem;
+}
+
+.md-typeset .architecture-table code {
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .md-nav {
@@ -207,7 +240,7 @@ Python, so their token colors are cleared.
   background-color: transparent;
 }
 
-.md-typeset .cell_output .output.traceback {
+.md-typeset :is(.cell_output, .cell-output) .output.traceback {
   border: none;
   background: none;
 }
@@ -352,7 +385,7 @@ button.copybtn.success {
 }
 
 /* Wide printed tables scroll inside the code element, so room at its end keeps the last column clear of the copy button. */
-.md-typeset .cell_output div.highlight pre > code {
+.md-typeset :is(.cell_output, .cell-output) div.highlight pre > code {
   padding-right: 2.5rem;
 }
 
@@ -432,7 +465,7 @@ the search bar and repository widget in place.
 plotnine reports each plot's size in pixels, and the fixed height would stretch
 the image once the column narrows its width.
 */
-.md-typeset .cell_output img {
+.md-typeset :is(.cell_output, .cell-output) img {
   height: auto !important;
 }
 
@@ -537,7 +570,7 @@ body[data-md-color-scheme="slate"] {
 }
 
 /* The sheet cancels the 1em indent MyST-NB gives every output to line up with the code cell. */
-.md-typeset .cell_output .output:is(.stream, .text_plain) {
+.md-typeset :is(.cell_output, .cell-output) .output:is(.stream, .text_plain) {
   position: relative;
   margin: 1.6em 0 0 -1em;
   border: 1px solid var(--mdid-output-border);
@@ -546,13 +579,17 @@ body[data-md-color-scheme="slate"] {
   box-shadow: var(--mdid-output-shadow);
 }
 
+.md-typeset .cell-output .output:is(.stream, .text_plain) {
+  margin-left: 0;
+}
+
 /* Since MyST-NB leaves no space between an output and a plot or table after it, the sheet keeps a gap of its own. */
-.md-typeset .cell_output .output:is(.stream, .text_plain):not(:last-child) {
+.md-typeset :is(.cell_output, .cell-output) .output:is(.stream, .text_plain):not(:last-child) {
   margin-bottom: 1em;
 }
 
 /* The label on the top edge marks where the code ends and its printed results begin. */
-.md-typeset .cell_output .output:is(.stream, .text_plain)::before {
+.md-typeset :is(.cell_output, .cell-output) .output:is(.stream, .text_plain)::before {
   content: "Output";
   position: absolute;
   top: 0;
@@ -570,11 +607,11 @@ body[data-md-color-scheme="slate"] {
 }
 
 /* A cell that prints twice keeps one label. */
-.md-typeset .cell_output .output:is(.stream, .text_plain) + .output:is(.stream, .text_plain)::before {
+.md-typeset :is(.cell_output, .cell-output) .output:is(.stream, .text_plain) + .output:is(.stream, .text_plain)::before {
   content: none;
 }
 
-.md-typeset .cell_output .output:is(.stream, .text_plain) .highlight {
+.md-typeset :is(.cell_output, .cell-output) .output:is(.stream, .text_plain) .highlight {
   background-color: transparent;
 }
 
@@ -582,7 +619,7 @@ body[data-md-color-scheme="slate"] {
 A line height under Fira Mono's 1.5em vertical box line lets each one overlap the next so table borders join.
 Two thirds of a rem makes each character a whole 8px wide so the horizontal rules meet on pixel edges.
 */
-.md-typeset .cell_output .output:is(.stream, .text_plain) pre > code {
+.md-typeset :is(.cell_output, .cell-output) .output:is(.stream, .text_plain) pre > code {
   padding: 1.1rem 1.2rem 1rem;
   border-radius: calc(var(--mystnb-source-border-radius) - 1px);
   background-color: transparent;
@@ -596,14 +633,14 @@ Two thirds of a rem makes each character a whole 8px wide so the horizontal rule
 The copy button rides the top edge across from the label so a wide report never scrolls under it.
 The right gutter then only needs to match the left.
 */
-.md-typeset .cell_output .output:is(.stream, .text_plain) button.copybtn {
+.md-typeset :is(.cell_output, .cell-output) .output:is(.stream, .text_plain) button.copybtn {
   top: 0;
   right: 0.6rem;
   transform: translateY(-50%);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .md-typeset .cell_output .output:is(.stream, .text_plain) button.copybtn {
+  .md-typeset :is(.cell_output, .cell-output) .output:is(.stream, .text_plain) button.copybtn {
     transition: none;
   }
 }
@@ -613,11 +650,11 @@ pandas and polars frames render the way JupyterLab draws them, with a rule
 under the header, striped rows, and no cell borders. The colors come from the
 theme so the frames read in both schemes.
 */
-.md-typeset .cell_output .output.text_html {
+.md-typeset :is(.cell_output, .cell-output) .output.text_html {
   overflow-x: auto;
 }
 
-.md-typeset .cell_output table.dataframe {
+.md-typeset :is(.cell_output, .cell-output) table.dataframe {
   border: none;
   border-collapse: collapse;
   border-spacing: 0;
@@ -627,13 +664,13 @@ theme so the frames read in both schemes.
   font-variant-numeric: tabular-nums;
 }
 
-.md-typeset .cell_output table.dataframe thead {
+.md-typeset :is(.cell_output, .cell-output) table.dataframe thead {
   border-bottom: 0.05rem solid var(--md-default-fg-color--lighter);
   vertical-align: bottom;
 }
 
-.md-typeset .cell_output table.dataframe th,
-.md-typeset .cell_output table.dataframe td {
+.md-typeset :is(.cell_output, .cell-output) table.dataframe th,
+.md-typeset :is(.cell_output, .cell-output) table.dataframe td {
   border: none;
   padding: 0.5em;
   line-height: normal;
@@ -641,11 +678,11 @@ theme so the frames read in both schemes.
   white-space: normal;
 }
 
-.md-typeset .cell_output table.dataframe th {
+.md-typeset :is(.cell_output, .cell-output) table.dataframe th {
   font-weight: 700;
 }
 
-.md-typeset .cell_output table.dataframe td {
+.md-typeset :is(.cell_output, .cell-output) table.dataframe td {
   vertical-align: middle;
 }
 
@@ -656,15 +693,15 @@ theme so the frames read in both schemes.
 }
 
 /* MyST-NB 1.3 shades odd rows a fixed light gray, which matches the even rows on the light scheme and washes out the text on the dark one. */
-.md-typeset .cell_output table.dataframe tbody tr:nth-child(odd) {
+.md-typeset :is(.cell_output, .cell-output) table.dataframe tbody tr:nth-child(odd) {
   background-color: transparent;
 }
 
-.md-typeset .cell_output table.dataframe tbody tr:nth-child(even) {
+.md-typeset :is(.cell_output, .cell-output) table.dataframe tbody tr:nth-child(even) {
   background-color: var(--md-code-bg-color);
 }
 
-.md-typeset .cell_output table.dataframe tbody tr:hover {
+.md-typeset :is(.cell_output, .cell-output) table.dataframe tbody tr:hover {
   background-color: var(--md-accent-fg-color--transparent);
 }
 

@@ -71,26 +71,10 @@ Despite its name, `logwages` records the log of the household head's gross earni
 before taxes rather than an hourly wage.
 :::
 
-Since a curve can only be pinned down where there are households, the next cell
-checks how they spread along total spending and how closely earnings follow it.
-
-```{code-cell} ipython3
-# How the households spread over log total spending and how closely earnings follow it.
-spending = data["logexp"].to_numpy()
-earnings = data["logwages"].to_numpy()
-low, high = np.percentile(spending, [1, 99])
-under = np.sum(spending < 4.5)
-over = np.sum(spending > 6.5)
-correlation = np.corrcoef(spending, earnings)[0, 1]
-
-print(f"{len(spending)} households, log spending from {spending.min():.2f} to {spending.max():.2f}")
-print(f"1st and 99th percentiles {low:.2f} and {high:.2f}")
-print(f"{len(spending) - under - over} between 4.5 and 6.5, {under} below and {over} above")
-print(f"correlation of log spending and log earnings {correlation:.3f}")
-```
-
-Although log total spending runs from 3.61 to 7.43, only 24 households fall below
-4.5 and only 24 above 6.5. The other 1,607 lie between 4.5 and 6.5, two values
+The households' spending tells us where we can estimate the curve with support
+from the data. Although log total spending runs from 3.61 to 7.43, only 24
+households fall below 4.5 and only 24 above 6.5. The other 1,607 lie between
+4.5 and 6.5, two values
 close to the 1st and 99th percentiles of 4.45 and 6.57. With a correlation of
 0.514 between the two logs, households that earn more tend to spend more as well.
 That link is the first thing an instrument for total spending has to show.
@@ -278,24 +262,8 @@ measures how much width it adds.
 :::
 
 The result keeps the curve in `h` and its band in `h_lower` and `h_upper`. The
-slope and its band sit in `deriv`, `h_lower_deriv`, and `h_upper_deriv`. The cell
-below prints all six at every quarter step of log spending.
-
-```{code-cell} ipython3
-# The curve and its slope with their bands at every quarter step of log total spending.
-print(f"{'log spending':>12}{'food share':>12}{'95% band':>20}{'slope':>10}{'95% band':>21}")
-for i in range(0, len(grid), 10):
-    share_band = f"[{result.h_lower[i]:.4f}, {result.h_upper[i]:.4f}]"
-    slope_band = f"[{result.h_lower_deriv[i]:7.4f}, {result.h_upper_deriv[i]:7.4f}]"
-    row = f"{grid[i]:>12.2f}{result.h[i]:>12.4f}{share_band:>20}"
-    print(f"{row}{result.deriv[i]:>10.4f}{slope_band:>21}")
-
-# A flat line fits inside the band only if the lowest upper edge clears the highest lower edge.
-highest_lower = result.h_lower.max()
-lowest_upper = result.h_upper.min()
-print(f"\nhighest lower edge {highest_lower:.4f}, lowest upper edge {lowest_upper:.4f}")
-print(f"the curve falls at {np.sum(np.diff(result.h) < 0)} of {len(grid) - 1} steps")
-```
+slope and its band sit in `deriv`, `h_lower_deriv`, and `h_upper_deriv`, all
+evaluated on the same spending grid so you can compare their shapes.
 
 You can see the food share fall at all 80 steps of the grid, from 0.2614 at log
 spending 4.5 to 0.1288 at 6.5. Households at the top of the range devote about half
@@ -338,8 +306,8 @@ curve = pl.DataFrame(
 
 ## How fast the share falls
 
-In the slope columns of the same table, you can read how steeply the share falls
-at each level of spending. The point estimates stay between −0.0555 and −0.0566 up
+The derivative estimates tell you how steeply the share falls at each level of
+spending. The point estimates stay between −0.0555 and −0.0566 up
 to log spending 5.0 and then steepen to −0.0934 at 6.5. Among households that
 already spend a lot, the share falls faster with each further rise in spending.
 
@@ -350,18 +318,9 @@ spending at that point. It comes to 0.760 at log spending 5.0, 0.697 at 5.5, and
 necessity.
 
 The slope's own band asks more of the data, since it has to sit below zero at a
-point before it shows the share falling there. The next cell finds where that band
-lies entirely below zero.
-
-```{code-cell} ipython3
-# The points of the grid where the whole slope band lies below zero.
-below = grid[result.h_upper_deriv < 0]
-print(f"slope band below zero at {len(below)} of {len(grid)} points")
-print(f"from log spending {below.min():.3f} to {below.max():.3f}")
-```
-
-The band lies wholly below zero at only 15 of the 81 points, from log spending
-5.750 to 6.100. Everywhere else it reaches above zero, even though the band for
+point before it shows the share falling there. It lies wholly below zero at
+only 15 of the 81 points, from log spending 5.750 to 6.100. Everywhere else it
+reaches above zero, even though the band for
 the curve rules out a flat line. Ruling out a flat curve only takes a difference
 in the share between two points of the grid, a much weaker claim than a negative
 slope at every point.
@@ -419,20 +378,6 @@ To measure what the instrument does to the curve, the cell below refits it with
 ```{code-cell} ipython3
 # Use total spending as its own instrument to turn the fit into a regression.
 regression = did.npiv(data, **(spec | {"wname": "logexp"}))
-fits = {"earnings as instrument": result, "regression": regression}
-
-# Each fit's segments, food share at 5.0 and 6.0, the fall between them, and average band width.
-print(f"{'':<24}{'segments':>9}{'share 5.0':>11}{'share 6.0':>11}{'fall':>8}{'band width':>12}")
-for name, fit in fits.items():
-    at_5, at_6 = np.interp([5.0, 6.0], grid, fit.h)
-    width = np.mean(fit.h_upper - fit.h_lower)
-    shares = f"{at_5:>11.4f}{at_6:>11.4f}{at_5 - at_6:>8.4f}"
-    print(f"{name:<24}{fit.j_x_segments:>9}{shares}{width:>12.4f}")
-
-# The grid points where the regression's curve lies inside the band of the instrumented curve.
-inside_band = (regression.h >= result.h_lower) & (regression.h <= result.h_upper)
-print(f"\nregression curve inside our band at {inside_band.sum()} of {len(grid)} points")
-print(f"outside it at log spending {grid[~inside_band].round(3).tolist()}")
 ```
 
 Although the regression also settles on a single segment, its curve falls by
@@ -461,6 +406,7 @@ mystnb:
 from plotnine import scale_color_manual, scale_fill_manual
 
 # Stack both fits and their bands, labeled by how each treats total spending.
+fits = {"earnings as instrument": result, "regression": regression}
 both = pl.concat(
     pl.DataFrame(
         {"spending": grid, "share": fit.h, "lower": fit.h_lower, "upper": fit.h_upper, "fit": name}
@@ -529,15 +475,6 @@ than four times.
 ```{code-cell} ipython3
 # Give the instrument twice as many segments as the curve instead of four times.
 coarser = did.npiv(data, **(spec | {"k_w_smooth": 1}))
-
-# The fall from 5.0 to 6.0, the average band width, and the flat-line test.
-at_5, at_6 = np.interp([5.0, 6.0], grid, coarser.h)
-width = np.mean(coarser.h_upper - coarser.h_lower)
-flat_ruled_out = "yes" if coarser.h_lower.max() > coarser.h_upper.min() else "no"
-
-print(f"segments chosen {coarser.j_x_segments}, instrument segments {coarser.k_w_segments}")
-print(f"share at 5.0 {at_5:.4f}, at 6.0 {at_6:.4f}, fall {at_5 - at_6:.4f}")
-print(f"critical value {coarser.cv:.4f}, band width {width:.4f}, rules out flat {flat_ruled_out}")
 ```
 
 The selection again picks one segment, now with 2 instrument segments instead of
@@ -555,14 +492,6 @@ curve and for the regression of the first check.
 # The selection compared over the full range of total spending, for both fits.
 full_range = did.npiv(data, **(spec | {"x_grid": None}))
 full_range_regression = did.npiv(data, **(spec | {"wname": "logexp", "x_grid": None}))
-full_range_fits = {"earnings as instrument": full_range, "regression": full_range_regression}
-for name, fit in full_range_fits.items():
-    searched = fit.args["j_x_segments_set"].tolist()
-    print(f"{name:<24}candidates {searched}, chose {fit.j_x_segments}, critical value {fit.cv:.4f}")
-
-# How many of 64 equal intervals over the full range hold no household.
-counts, _ = np.histogram(spending, bins=64)
-print(f"{np.sum(counts == 0)} of 64 equal intervals over the full range hold no household")
 ```
 
 For the instrumented curve, the full range leaves the single segment in place and
@@ -599,36 +528,8 @@ seeds would draw.
 
 ### Comparing the checks
 
-The table below collects each check's number of segments, the fall in the food
-share from 5.0 to 6.0, the average band width, and whether the band rules out a
-flat line.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-
-# Each check's segments, the fall in the food share from 5.0 to 6.0, its band width, and the
-# flat-line test.
-checks = {
-    "our specification": result,
-    "regression": regression,
-    "1 segment fixed": fixed[1],
-    "2 segments fixed": fixed[2],
-    "4 segments fixed": fixed[4],
-    "8 segments fixed": fixed[8],
-    "instrument segments halved": coarser,
-    "selection over full range": full_range,
-}
-
-print(f"{'check':<27}{'segments':>9}{'fall 5 to 6':>13}{'band width':>12}{'rules out flat':>16}")
-for name, fit in checks.items():
-    at_5, at_6 = np.interp([5.0, 6.0], grid, fit.h)
-    width = np.mean(fit.h_upper - fit.h_lower)
-    flat_ruled_out = "yes" if fit.h_lower.max() > fit.h_upper.min() else "no"
-    print(f"{name:<27}{fit.j_x_segments:>9}{at_5 - at_6:>13.4f}{width:>12.4f}{flat_ruled_out:>16}")
-```
-
-The table sorts the choices into those that move the fall in the food share and
-those that mostly change how wide its band is. Dropping the instrument changes the
+The checks distinguish choices that move the fall in the food share from those
+that mostly change how wide its band is. Dropping the instrument changes the
 fall the most, since the regression's curve falls by 0.1113 between 5.0 and 6.0
 against 0.0630 for ours. Half as many instrument segments come next and flatten the
 fall to 0.0432. Fixed numbers of segments keep the fall between 0.0630 and 0.0713
@@ -636,8 +537,8 @@ but change the band from about a third narrower with one segment to 3.6 times as
 wide with eight. Selecting over the full range and changing the seed leave the
 curve alone.
 
-In every row of the table except eight fixed segments, the band rules out a food
-share that stays flat as total spending rises. How fast it falls depends most on
+Apart from the fit with eight fixed segments, each band rules out a food share
+that stays flat as total spending rises. How fast it falls depends most on
 whether earnings serve as the instrument and on how finely the instrument's splines
 are cut. Only the first of those choices leans on the assumption that earnings are
 unrelated to food tastes and reach the food share only through total spending. With

@@ -60,21 +60,15 @@ to banks, the outcome is the growth of mortgage lending by banks. Because it is
 already a growth rate, an effect that persists means the volume of loans keeps
 pulling away from where it would have been.
 
-{func}`~moderndid.load_favara_imbs` loads the county panel that Favara and Imbs
-(2015) assembled. Each of its rows holds one county in one year between 1994 and
-2005.
+{func}`~moderndid.load_favara_imbs` loads the panel of 1,048 counties in 50 states
+that Favara and Imbs (2015) assembled. Each of its rows holds one county in one
+year between 1994 and 2005.
 
 ```{code-cell} ipython3
 import moderndid as did
 import polars as pl
 
-# Load the panel and report how many counties and states it covers and over which years.
 data = did.load_favara_imbs()
-years = data["year"]
-print(
-    f"{data['county'].n_unique()} counties in {data['state_n'].n_unique()} states, "
-    f"observed from {years.min()} to {years.max()}"
-)
 data.head()
 ```
 
@@ -99,57 +93,14 @@ the same effects but hide the size of each step and every later change from the
 per-restriction effects and the average total effect.
 :::
 
-Since the estimator dates every county by its state's first change, the first
-table shows when those first changes came and how many restrictions each one
-lifted.
-
-```{code-cell} ipython3
-# A state sets the restrictions for all of its counties, so one row per state and year is enough.
-state_years = (
-    data.group_by("state_n", "year")
-    .agg(pl.col("inter_bra").first())
-    .sort("state_n", "year")
-    .with_columns(step=pl.col("inter_bra").diff().over("state_n"))
-)
-
-# Note each state's first change, the size of that first step, how often the state changed, and
-# where it ended up in 2005.
-changed = pl.col("step") != 0
-states = state_years.group_by("state_n").agg(
-    first_change=pl.col("year").filter(changed).first(),
-    first_step=pl.col("step").filter(changed).first(),
-    changes=changed.sum(),
-    falls=(pl.col("step") < 0).any(),
-    final=pl.col("inter_bra").last(),
-)
-counties = data.group_by("state_n").agg(counties=pl.col("county").n_unique())
-states = states.join(counties, on="state_n")
-
-# Group the states by the year of their first change.
-states.group_by("first_change").agg(
-    states=pl.len(),
-    counties=pl.col("counties").sum(),
-    smallest_step=pl.col("first_step").min(),
-    largest_step=pl.col("first_step").max(),
-).sort("first_change", nulls_last=True)
-```
-
 Of the 42 states that lifted any restriction, 38 made their first change between
 1995 and 1998 and the last four in 2000 or 2001. A first change could lift a
-single restriction or all four at once. The row with a null first change holds
-the eight never-deregulating states and their 130 counties.
+single restriction or all four at once. The eight never-deregulating states
+supply 130 counties that remain at zero throughout the panel.
 
-Because every later change becomes part of the effects estimated below, the
-second table lists the states that kept changing their count after the first
-change.
-
-```{code-cell} ipython3
-# The states whose count changed more than once.
-states.filter(pl.col("changes") > 1).sort("state_n")
-```
-
-Of these nine states, eight changed their count twice and one changed it three
-times. Every one of those later changes lifted more restrictions, except in
+Because nine states changed their count more than once, their effects include
+later policy changes as well as the first step. Eight changed their count twice
+and one changed it three times. Every one of those later changes lifted more restrictions, except in
 Indiana (state code 18). Indiana lifted all four restrictions in 1998 and ended
 the panel at three after one of them came back. Even so, no county's count ever
 falls below its starting value.
@@ -450,8 +401,8 @@ for ell in range(1, 10):
     )
 ```
 
-Each coefficient and its 95 percent interval appear below next to the effect at
-the same horizon from the eight-year run, first in a table and then in a figure.
+The figure below places each coefficient and its 95 percent interval beside the
+effect at the same horizon from the eight-year run.
 
 ```{code-cell} ipython3
 ---
@@ -478,13 +429,10 @@ panels = [
 ]
 effects = eight_years.effects
 rows = []
-print(f"{'horizon':>7}{'local projection':>18}   [95% Conf. Interval]{'did_multiplegt':>16}")
 for ell, fit in projections.items():
     coefficient = fit.tidy().loc["inter_bra"]
     estimate, low, high = coefficient["Estimate"], coefficient["2.5%"], coefficient["97.5%"]
     rows.append((panels[0], ell, estimate, low, high))
-    effect = f"{effects.estimates[ell - 1]:16.4f}" if ell <= len(effects.horizons) else ""
-    print(f"{ell:>7}{estimate:>18.4f}   [{low:8.4f}, {high:8.4f}]{effect}")
 for horizon, (effect, low, high) in enumerate(
     zip(effects.estimates, effects.ci_lower, effects.ci_upper), start=1
 ):
@@ -596,21 +544,15 @@ The joint placebo test is even further from rejecting, at a p-value of 0.8039.
 ### Standard errors that ignore states
 
 The standard errors below drop the state clusters and treat every county as an
-independent draw.
+independent draw. {func}`~moderndid.to_df` puts the estimates, standard errors,
+and interval bounds into a table you can compare with the earlier report.
 
 ```{code-cell} ipython3
 # The same specification with standard errors that treat counties as independent.
 unclustered = did.did_multiplegt(data, **(spec | {"cluster": None}))
-
-# Set the two sets of standard errors side by side.
-print(f"{'horizon':>7}{'by state':>10}{'by county':>11}")
-for horizon in range(5):
-    clustered_se = result.effects.std_errors[horizon]
-    county_se = unclustered.effects.std_errors[horizon]
-    print(f"{horizon + 1:>7}{clustered_se:>10.4f}{county_se:>11.4f}")
-
 ate = unclustered.ate
-print(f"\naverage total effect {ate.estimate:.4f} [{ate.ci_lower:.4f}, {ate.ci_upper:.4f}]")
+print(f"average total effect {ate.estimate:.4f} [{ate.ci_lower:.4f}, {ate.ci_upper:.4f}]")
+did.to_df(unclustered)
 ```
 
 Dropping the clusters shrinks the standard errors at every horizon, by 30
@@ -651,18 +593,9 @@ bootstrapped = stored(
 ```
 
 ```{code-cell} ipython3
-# Set the bootstrap standard errors next to the analytic ones.
-print(f"{'horizon':>7}{'analytic':>10}{'bootstrap':>11}")
-for horizon in range(5):
-    analytic_se = result.effects.std_errors[horizon]
-    bootstrap_se = bootstrapped.effects.std_errors[horizon]
-    print(f"{horizon + 1:>7}{analytic_se:>10.4f}{bootstrap_se:>11.4f}")
-
-# The fifth year's interval and the average total effect under the bootstrap.
-low, high = bootstrapped.effects.ci_lower[4], bootstrapped.effects.ci_upper[4]
 ate = bootstrapped.ate
-print(f"\nfifth year {bootstrapped.effects.estimates[4]:.4f} [{low:.4f}, {high:.4f}]")
 print(f"average total effect {ate.estimate:.4f} [{ate.ci_lower:.4f}, {ate.ci_upper:.4f}]")
+did.to_df(bootstrapped)
 ```
 
 The bootstrap standard errors run 14 to 28 percent above the analytic ones. At
@@ -680,29 +613,6 @@ analytic report above.
 
 ### The five-year effect under each check
 
-To show which settings move the answer, the last table sets every check's
-one-year and five-year effects beside its 95 percent interval at five years.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-
-# The one-year and five-year effects under each check, with the 95 percent interval at five years.
-checks = {
-    "our specification": result,
-    "never-deregulating controls": never,
-    "states weighted roughly equally": state_weighted,
-    "county-level standard errors": unclustered,
-    "bootstrap over states": bootstrapped,
-}
-print(f"{'check':<33}{'one year':>10}{'five years':>12}   [95% Conf. Interval]")
-for name, check in checks.items():
-    effects = check.effects
-    print(
-        f"{name:<33}{effects.estimates[0]:>10.4f}{effects.estimates[4]:>12.4f}   "
-        f"[{effects.ci_lower[4]:8.4f}, {effects.ci_upper[4]:8.4f}]"
-    )
-```
-
 Since the five-year effect stays between 0.1476 and 0.1618 across the checks and
 remains the largest of the five, none of these choices makes the boost to
 mortgage lending wear off. The first year moves the most, from 0.0435 to 0.1087
@@ -711,7 +621,7 @@ five-year effect can be told apart from zero depends on the standard errors.
 Every interval built from the analytic standard errors excludes zero at five
 years. Only the bootstrap's interval reaches down to −0.0072 and covers it.
 
-All five rows of the table still assume parallel trends between the switchers
+All five specifications still assume parallel trends between the switchers
 and the counties still at zero.
 {ref}`Dynamic covariate balancing <example_dyn_balancing>` replaces that
 assumption with one about how treatment is assigned, that each year's treatment

@@ -99,7 +99,7 @@ def ddd_panel(
     boot : bool, default False
         Whether to use bootstrap for inference.
     boot_type : {"multiplier", "weighted"}, default "multiplier"
-        Type of bootstrap. The multiplier bootstrap draws Mammen weights on the
+        Type of bootstrap. The multiplier bootstrap draws Rademacher weights on the
         influence function. The weighted bootstrap re-estimates with exponential weights.
     biters : int, default 1000
         Number of bootstrap repetitions.

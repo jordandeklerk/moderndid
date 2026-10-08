@@ -2,9 +2,10 @@
 Installation
 ============
 
-ModernDiD requires Python 3.12 or later. For the :doc:`quickstart`, we use the
-``plots`` extra so you can both estimate treatment effects and draw the event
-study. You can add the dependencies for other estimators when you need them.
+ModernDiD requires Python 3.12 or later. To follow the
+:doc:`first analysis <quickstart>`, we'll install the ``plots`` extra so you
+can estimate treatment effects and draw the event study. The dependencies for
+other estimators can wait until you need those methods in your analysis.
 
 Install in your environment
 ---------------------------
@@ -109,8 +110,10 @@ package and load one of its datasets.
    print(did.__version__)
    print(did.load_mpdta().shape)
 
-The dataset has 2,500 rows and six columns. If this works in a terminal but
-fails in a notebook, check which interpreter the notebook uses.
+The dataset has 2,500 rows and six columns. If this code works in a terminal
+but fails in a notebook, the notebook may be using a different Python
+environment. You can check its interpreter by running the following cell
+inside the notebook.
 
 .. code-block:: python
 
@@ -118,10 +121,11 @@ fails in a notebook, check which interpreter the notebook uses.
 
    print(sys.executable)
 
-Install a missing extra into that interpreter's environment before trying
-the estimator again. Optional functions load dependencies when you access
-or call them, depending on the estimator. A successful import of ModernDiD
-therefore does not check every dependency an optional fit needs.
+If an estimator needs an extra you haven't installed, add it to the
+environment identified by that interpreter before trying the fit again.
+Importing ModernDiD alone does not check every dependency a fit may need
+because optional functions load their dependencies when you access or call
+them.
 
 Resolve an installation problem
 --------------------------------
@@ -160,5 +164,6 @@ the commit you use if you need to reproduce the analysis later.
 
 If you're planning to change the package itself, the
 :doc:`contributor setup <../contributing/guide>` covers the development
-environment. Once the installation is working, the :doc:`quickstart` uses
-the county data you just loaded to estimate your first event study.
+environment. Once the installation is working, the
+:doc:`first analysis <quickstart>` uses the county data you just loaded to
+estimate your first event study.

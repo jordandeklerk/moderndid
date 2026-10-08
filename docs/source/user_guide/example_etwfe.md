@@ -73,21 +73,6 @@ do counties already treated in the first year, since no untreated year is left
 to identify their effects.
 :::
 
-Since the cohort sizes later set the weights of the overall effect, the table
-below counts the counties and states in each cohort along with their average log
-population.
-
-```{code-cell} ipython3
-# Since cohort, state, and population are constant within a county, the 2003 rows are enough.
-counties = data.filter(pl.col("year") == 2003)
-counties.group_by("first.treat").agg(
-    counties=pl.len(),
-    states=pl.col("state").n_unique(),
-    state_codes=pl.col("state").unique().sort(),
-    mean_lpop=pl.col("lpop").mean().round(2),
-).sort("first.treat")
-```
-
 Of the 191 treated counties, 131 adopted in 2007, 40 in 2006, and 20 in 2004.
 The 16 states without an increase supply the other 309 counties as never-treated
 controls. Because all 20 counties of the 2004 cohort lie in Illinois (state code
@@ -494,32 +479,8 @@ way to see shocks to Illinois as a whole.
 
 ### Four estimates of the overall effect
 
-In the table below, each check's overall effect and 95 percent interval sit
-under those of our specification.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-
-from scipy.stats import norm
-
-# One row per fit, our specification first, with intervals from the normal critical value.
-checks = {
-    "our specification": by_cohort,
-    "never-treated controls": never_by_cohort,
-    "without lpop": unadjusted_by_cohort,
-    "clustered by state": clustered_by_cohort,
-}
-z = norm.ppf(0.975)
-
-print(f"{'check':<26}{'overall effect':>15}   [95% Conf. Interval]")
-for name, check in checks.items():
-    low = check.overall_att - z * check.overall_se
-    high = check.overall_att + z * check.overall_se
-    print(f"{name:<26}{check.overall_att:>15.4f}   [{low:8.4f}, {high:8.4f}]")
-```
-
-Across the four rows the estimate ranges from −0.0329 to −0.0452 with every
-interval below zero. Only the switch to never-treated controls moves the
+Across these four specifications the estimate ranges from −0.0329 to −0.0452
+with every interval below zero. Only the switch to never-treated controls moves the
 estimate much, by 0.0123 against 0.0029 for dropping the covariate. The size of
 the drop in teen employment therefore turns on which years count as controls,
 about 3.2 percent with never-treated counties alone against 4.4 percent under

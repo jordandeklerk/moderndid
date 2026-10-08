@@ -8,18 +8,13 @@ from moderndid.didtriple import numba
 
 
 def _multiplier_bootstrap_py(inf_func, biters, random_state):
-    sqrt5 = np.sqrt(5)
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    p_kappa = 0.5 * (1 + sqrt5) / sqrt5
-
     n, k = inf_func.shape
     rng = np.random.default_rng(random_state)
     bres = np.zeros((biters, k))
 
     for b in range(biters):
-        v = rng.binomial(1, p_kappa, size=n)
-        v = np.where(v == 1, k1, k2)
+        v = rng.binomial(1, 0.5, size=n)
+        v = np.where(v == 1, 1.0, -1.0)
         bres[b] = np.mean(inf_func * v[:, np.newaxis], axis=0)
 
     return bres
@@ -121,17 +116,15 @@ def test_aggregate_by_cluster_single_cluster():
     np.testing.assert_allclose(result[0], expected)
 
 
-def test_multiplier_bootstrap_mammen_weights():
+def test_multiplier_bootstrap_rademacher_weights():
     rng = np.random.default_rng(42)
     inf_func = rng.standard_normal((50, 3)).astype(np.float64)
-    weights_matrix = rng.binomial(1, 0.7, size=(20, 50)).astype(np.int8)
+    weights_matrix = rng.binomial(1, 0.5, size=(20, 50)).astype(np.int8)
 
     result = _multiplier_bootstrap_impl(np.ascontiguousarray(inf_func), weights_matrix)
 
-    k1 = 0.5 * (1 - np.sqrt(5))
-    k2 = 0.5 * (1 + np.sqrt(5))
     for b in range(20):
-        v = np.where(weights_matrix[b] == 1, k1, k2)
+        v = np.where(weights_matrix[b] == 1, 1.0, -1.0)
         expected = np.mean(inf_func * v[:, np.newaxis], axis=0)
         np.testing.assert_allclose(result[b], expected, rtol=1e-10)
 

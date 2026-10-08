@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import tempfile
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ pl = importorskip("polars")
 np = importorskip("numpy")
 
 from moderndid import cont_did, gen_cont_did_data
+from moderndid.did.mboot import _mboot
 from moderndid.didcont.estimation import pte_default
 
 
@@ -1156,6 +1158,172 @@ def test_cck_overall_acrt_se_matches(r_test_data_cck):
         atol=0.05,
         err_msg="CCK: Overall ACRT SE mismatch",
     )
+
+
+def r_bootstrap_rule_on_draws(draws, n_units, alpha):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        draws_path = Path(tmpdir) / "draws.csv"
+        result_path = Path(tmpdir) / "result.json"
+        np.savetxt(draws_path, draws, delimiter=",", fmt="%.17g")
+
+        r_script = f"""
+library(ptetools)
+library(jsonlite)
+
+draws <- as.matrix(read.csv("{draws_path}", header = FALSE))
+dimnames(draws) <- NULL
+
+after_draws <- ptetools:::mboot2
+stopifnot(grepl("lapply", paste(deparse(body(after_draws)[[3]]), collapse = "")))
+body(after_draws)[[3]] <- quote(bout <- lapply(seq_len(nrow(draws)), function(b) draws[b, ]))
+
+out <- suppressWarnings(
+    after_draws(inffunc = matrix(0, nrow = {n_units}, ncol = ncol(draws)), biters = nrow(draws), alp = {alpha})
+)
+se <- as.numeric(out$boot_se)
+se[is.na(se)] <- NaN
+
+write_json(
+    list(crit_val = as.numeric(out$crit_val), se = se),
+    "{result_path}", digits = NA, na = "string", auto_unbox = TRUE
+)
+"""
+        try:
+            return _run_r_script(r_script, result_path)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+            return None
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R contdid package not available")
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+@pytest.mark.parametrize(
+    "mboot_draws",
+    ["zero_scale_moved", "zero_scale_unmoved", "negligible_scale", "missing", "ordinary"],
+    indirect=True,
+)
+def test_bootstrap_critical_value_and_standard_errors_match_on_the_same_draws(monkeypatch, mboot_draws):
+    n_units = 200
+    monkeypatch.setattr(
+        import_module("moderndid.did.mboot"),
+        "_run_multiplier_bootstrap",
+        lambda *args, **kwargs: mboot_draws / np.sqrt(n_units),
+    )
+
+    py_result = _mboot(
+        np.zeros((n_units, mboot_draws.shape[1])), n_units=n_units, biters=len(mboot_draws), keep_infinite_draws=True
+    )
+    r_result = r_bootstrap_rule_on_draws(py_result["bres"], n_units, 0.05)
+
+    if r_result is None:
+        pytest.fail("R bootstrap failed")
+
+    np.testing.assert_allclose(py_result["crit_val"], float(r_result["crit_val"]), rtol=1e-9)
+    np.testing.assert_allclose(py_result["se"], np.asarray(r_result["se"], dtype=float), rtol=1e-9)
+
+
+@functools.cache
+def r_cell_standard_errors_reference(base_period):
+    data = load_r_data()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_path = Path(tmpdir) / "data.csv"
+        result_path = Path(tmpdir) / "result.json"
+
+        data.write_csv(data_path)
+
+        r_script = f"""
+library(ptetools)
+library(jsonlite)
+
+set.seed(42)
+data <- read.csv("{data_path}")
+
+result <- suppressWarnings(pte_default(
+    yname = "Y",
+    gname = "G",
+    tname = "time_period",
+    idname = "id",
+    data = data,
+    d_outcome = TRUE,
+    control_group = "notyettreated",
+    base_period = "{base_period}",
+    biters = 99
+))
+
+write_json(
+    list(groups = result$att_gt$group, times = result$att_gt$t, se = result$att_gt$se),
+    "{result_path}", auto_unbox = TRUE, digits = NA, na = "null"
+)
+"""
+        try:
+            return _run_r_script(r_script, result_path, timeout=180)
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+            return None
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R contdid package not available")
+@pytest.mark.parametrize("base_period", ["universal", "varying"])
+def test_cells_without_a_standard_error_match(r_test_data, base_period):
+    py_result = cont_did(
+        data=r_test_data,
+        yname="Y",
+        tname="time_period",
+        idname="id",
+        gname="G",
+        dname="D",
+        aggregation="eventstudy",
+        base_period=base_period,
+        biters=99,
+        random_state=42,
+    )
+    r_result = r_cell_standard_errors_reference(base_period)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_se = cells(py_result.att_gt.groups, py_result.att_gt.times, py_result.att_gt.se)
+    r_se = cells(r_result["groups"], r_result["times"], np.asarray(r_result["se"], dtype=float))
+
+    assert py_se.keys() == r_se.keys()
+    assert {cell for cell, se in py_se.items() if np.isnan(se)} == {cell for cell, se in r_se.items() if np.isnan(se)}
+    assert (base_period == "universal") == any(np.isnan(se) for se in r_se.values())
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R contdid package not available")
+@pytest.mark.filterwarnings("ignore:Simultaneous:UserWarning")
+@pytest.mark.parametrize(
+    "mboot_draws",
+    ["below_pointwise", "zero_scale_moved", "negligible_scale", "ordinary"],
+    indirect=True,
+)
+def test_cell_critical_value_matches_on_the_same_draws(monkeypatch, r_test_data, mboot_draws):
+    calls = []
+
+    def draws(inf_func, biters, random_state=None):
+        used = mboot_draws[:, np.arange(inf_func.shape[1]) % mboot_draws.shape[1]] / np.sqrt(inf_func.shape[0])
+        calls.append((used, inf_func.shape[0]))
+        return used
+
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws)
+
+    py_result = cont_did(
+        data=r_test_data,
+        yname="Y",
+        tname="time_period",
+        idname="id",
+        gname="G",
+        dname="D",
+        aggregation="eventstudy",
+        cband=True,
+        biters=len(mboot_draws),
+        random_state=42,
+    )
+    used, n_units = calls[0]
+    r_result = r_bootstrap_rule_on_draws(np.sqrt(n_units) * used, n_units, 0.05)
+
+    if r_result is None:
+        pytest.fail("R bootstrap failed")
+
+    np.testing.assert_allclose(py_result.att_gt.critical_value, float(r_result["crit_val"]), rtol=1e-9)
 
 
 def test_cont_did_returns_valid_structure(cont_did_data):

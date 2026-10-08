@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+import scipy.stats
 
 from moderndid.did.mboot import mboot
 from moderndid.didcont.estimation import (
@@ -164,3 +165,87 @@ def test_process_att_gt_with_real_mp_result(att_gt_result):
     assert len(result.groups) == len(att_gt_result.groups)
     assert len(result.times) == len(att_gt_result.times)
     assert len(result.att) == len(att_gt_result.att_gt)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_process_att_gt_critical_value_is_infinite_when_draws_move_a_zero_scale_cell(
+    fix_bootstrap_draws, zero_scale_draws, two_cell_results, pte_params_basic
+):
+    fix_bootstrap_draws(zero_scale_draws)
+
+    result = process_att_gt(two_cell_results, pte_params_basic)
+
+    assert result.critical_value == np.inf
+    np.testing.assert_allclose(result.se, [10 / 1.3489795, 0.0], rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_process_att_gt_standard_error_is_zero_for_a_cell_that_every_draw_leaves_at_zero(
+    fix_bootstrap_draws, central_zero_scale_draws, two_cell_results, pte_params_basic
+):
+    fix_bootstrap_draws(np.column_stack([central_zero_scale_draws[:, 0], np.zeros(21)]))
+
+    result = process_att_gt(two_cell_results, pte_params_basic)
+
+    np.testing.assert_allclose(result.critical_value, 50 / (10 / 1.3489795), rtol=1e-12)
+    np.testing.assert_allclose(result.se, [10 / 1.3489795, 0.0], rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_process_att_gt_critical_value_is_never_below_the_pointwise_value(
+    fix_bootstrap_draws, two_cell_results, pte_params_basic
+):
+    fix_bootstrap_draws(np.linspace(-1.0, 1.0, 99)[:, None])
+
+    with pytest.warns(UserWarning, match="smaller than pointwise"):
+        result = process_att_gt(two_cell_results, pte_params_basic)
+
+    assert result.critical_value == pytest.approx(scipy.stats.norm.ppf(0.975))
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_process_att_gt_critical_value_is_pointwise_when_no_draw_has_a_deviation(
+    fix_bootstrap_draws, two_cell_results, pte_params_basic
+):
+    fix_bootstrap_draws(np.zeros((21, 1)))
+
+    with pytest.warns(UserWarning, match="smaller than pointwise"):
+        result = process_att_gt(two_cell_results, pte_params_basic)
+
+    assert result.critical_value == pytest.approx(scipy.stats.norm.ppf(0.975))
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_process_att_gt_keeps_a_critical_value_above_the_pointwise_value(
+    fix_bootstrap_draws, central_zero_scale_draws, two_cell_results, pte_params_basic, recwarn
+):
+    fix_bootstrap_draws(central_zero_scale_draws[:, [0]])
+
+    result = process_att_gt(two_cell_results, pte_params_basic)
+
+    assert result.critical_value == pytest.approx(50 / (10 / 1.3489795))
+    assert not [w for w in recwarn if "smaller than pointwise" in str(w.message)]
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_process_att_gt_pointwise_value_needs_no_floor_without_a_band(
+    fix_bootstrap_draws, two_cell_results, pte_params_basic, recwarn
+):
+    fix_bootstrap_draws(np.linspace(-1.0, 1.0, 99)[:, None])
+
+    result = process_att_gt(two_cell_results, pte_params_basic._replace(cband=False))
+
+    assert result.critical_value == pytest.approx(scipy.stats.norm.ppf(0.975))
+    assert not [w for w in recwarn if "smaller than pointwise" in str(w.message)]
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+@pytest.mark.parametrize("base_period, expected", [("universal", np.nan), ("varying", 0.0)])
+def test_process_att_gt_leaves_the_standard_error_of_a_reference_cell_undefined(
+    fix_bootstrap_draws, central_zero_scale_draws, two_cell_results, pte_params_basic, base_period, expected
+):
+    fix_bootstrap_draws(np.column_stack([np.zeros(21), central_zero_scale_draws[:, 0]]))
+
+    result = process_att_gt(two_cell_results, pte_params_basic._replace(base_period=base_period))
+
+    np.testing.assert_allclose(result.se, [expected, 10 / 1.3489795], rtol=1e-12)

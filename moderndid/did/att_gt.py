@@ -22,7 +22,7 @@ from moderndid.cupy.backend import to_numpy
 
 from .compute_att_gt import _is_unbalanced_panel, compute_att_gt
 from .container import mp
-from .mboot import mboot
+from .mboot import _mboot
 
 
 def att_gt(
@@ -349,13 +349,16 @@ def att_gt(
                 val_to_code = {v: i for i, v in enumerate(unique_vals.to_list())}
                 cluster = np.array([val_to_code[v] for v in combined.to_list()])
 
-        bootstrap_results = mboot(
+        # Since a cell with a negligible bootstrap scale would swamp the band, the group-time critical value leaves
+        # such cells out and keeps every draw.
+        bootstrap_results = _mboot(
             inf_func=influence_functions_dense,
             n_units=n_units,
             biters=biters,
             alp=alp,
             cluster=cluster,
             random_state=random_state,
+            skip_small_scales=True,
         )
 
         if len(zero_na_sd_indices) > 0:

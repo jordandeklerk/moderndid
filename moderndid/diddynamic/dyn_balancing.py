@@ -81,6 +81,10 @@ def dyn_balancing(
     covariates. The reported interval uses the Gaussian critical value by
     default. The inference theorem of [1]_ supports that choice.
 
+    Rows with a null, NaN, or infinite unit, period, or cluster are dropped with a
+    warning. An infinite outcome, treatment, or covariate counts as missing. So
+    does a null, NaN, or infinite fixed effect.
+
     See the :ref:`dynamic covariate balancing example <example_dyn_balancing>`
     for a full analysis of the democracy and economic growth data.
 

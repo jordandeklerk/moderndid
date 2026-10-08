@@ -7,11 +7,17 @@ import warnings
 import numpy as np
 import polars as pl
 
-from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
 
 from ..container import ATTgtRCResult, DDDMultiPeriodRCResult
-from .ddd_mp import _cell_inference, _gmm_aggregate, _subgroup, _warn_failed_comparison
+from .ddd_mp import (
+    _cell_inference,
+    _check_and_prepare,
+    _check_options,
+    _gmm_aggregate,
+    _subgroup,
+    _warn_failed_comparison,
+)
 from .ddd_rc import ddd_rc
 
 
@@ -76,6 +82,10 @@ def ddd_mp_rc(
             {\mathbf{1}' \widehat{\Omega}_{g,t}^{-1} \mathbf{1}}
             \widehat{ATT}_{\mathrm{dr}}(g,t).
 
+    Before the estimation, the data go through the checks and cleaning of
+    :func:`~moderndid.ddd` with ``panel=False``. A call with the same data and
+    options therefore gives the same estimates, warnings, and errors.
+
     Parameters
     ----------
     data : DataFrame
@@ -85,19 +95,28 @@ def ddd_mp_rc(
         Name of the outcome variable column.
     time_col : str
         Name of the time period column.
-    id_col : str
+    id_col : str or None
         Name of the observation identifier column. For RCS, this can be a row index
-        since units are not tracked across periods.
+        since units are not tracked across periods. If None, every row is an
+        observation of its own.
     group_col : str
-        Name of the treatment group column (first period when treatment enabled).
-        Use 0 or np.inf for never-treated units.
+        Name of the treatment group column, the first period in which
+        treatment is enabled for the unit's group. Use 0 or np.inf for
+        never-treated units. A unit first treated after the last period counts
+        as never treated. Since an observation already treated in the first
+        period has no earlier period to compare with, it leaves the data with a
+        warning.
     partition_col : str
         Name of the partition/eligibility column (1 = eligible, 0 = ineligible).
     covariate_cols : list of str or None, default None
         Names of covariate columns in the data. If None, uses intercept only.
     control_group : {"nevertreated", "notyettreated"}, default "nevertreated"
-        Which units to use as controls. With "notyettreated", multiple comparison
-        groups may be available, triggering GMM aggregation.
+        Which units to use as controls. "nevertreated" requires at least one
+        never-treated unit. With "notyettreated", a cell that has several
+        comparison groups pools them with GMM weights. Without never-treated
+        units, "notyettreated" leaves out the periods from the first period of
+        the latest cohort on. That cohort then serves only as a comparison and
+        gets no ATT(g,t) of its own.
     base_period : {"universal", "varying"}, default "universal"
         Base period selection. "universal" uses period g-1 as baseline for all
         comparisons; "varying" uses period t-1 for each t.
@@ -114,7 +133,8 @@ def ddd_mp_rc(
         standard errors then sum the influence function within clusters. With
         boot=True, the bootstrap draws one multiplier per cluster.
     alpha : float, default 0.05
-        Significance level for confidence intervals.
+        Significance level for confidence intervals. A value above 0.10 is
+        replaced by 0.05 with a warning.
     trim_level : float, default 0.995
         Trimming level for propensity scores.
     random_state : int, Generator, or None, default None
@@ -137,13 +157,13 @@ def ddd_mp_rc(
         - **lci**: Lower confidence interval bounds
         - **groups**: Treatment cohort for each estimate
         - **times**: Time period for each estimate
-        - **glist**: Unique cohorts
+        - **glist**: Cohorts with ATT(g,t) estimates
         - **tlist**: Unique periods
         - **inf_func_mat**: Influence function matrix (n_obs x k)
         - **n**: Number of observations
         - **args**: Estimation arguments
-        - **unit_groups**: Treatment cohort of each observation
-        - **unit_weights**: Sampling weight of each observation, or None without weights
+        - **unit_groups**: Treatment cohort of each observation, or 0 for a never-treated one
+        - **unit_weights**: Normalized sampling weight of each observation, or None without weights
         - **unit_clusters**: Cluster of each observation, or None without a cluster
 
     See Also
@@ -168,11 +188,80 @@ def ddd_mp_rc(
         Journal of Econometrics, 219(1), 101-122.
         https://doi.org/10.1016/j.jeconom.2020.06.003
     """
-    data = to_polars(data)
+    _check_options(est_method, control_group, base_period, alpha, biters, trim_level, n_jobs)
+    data, glist, alpha, weights_col = _check_and_prepare(
+        data,
+        y_col,
+        time_col,
+        id_col,
+        group_col,
+        partition_col,
+        covariate_cols,
+        weights_col,
+        cluster,
+        panel=False,
+        allow_unbalanced_panel=False,
+        control_group=control_group,
+        alpha=alpha,
+    )
+    return _ddd_mp_rc(
+        data=data,
+        glist=glist,
+        y_col=y_col,
+        time_col=time_col,
+        id_col=id_col,
+        group_col=group_col,
+        partition_col=partition_col,
+        covariate_cols=covariate_cols,
+        control_group=control_group,
+        base_period=base_period,
+        est_method=est_method,
+        boot=boot,
+        biters=biters,
+        cband=cband,
+        cluster=cluster,
+        alpha=alpha,
+        trim_level=trim_level,
+        random_state=random_state,
+        n_jobs=n_jobs,
+        weights_col=weights_col,
+    )
 
+
+def _ddd_mp_rc(
+    data,
+    glist,
+    y_col,
+    time_col,
+    id_col,
+    group_col,
+    partition_col,
+    covariate_cols,
+    control_group,
+    base_period,
+    est_method,
+    boot,
+    biters,
+    cband,
+    cluster,
+    alpha,
+    trim_level,
+    random_state,
+    n_jobs,
+    weights_col,
+):
+    """Estimate every group-time cell of repeated cross-sections that :func:`_preprocess_multiple_periods` prepared.
+
+    The arguments follow :func:`ddd_mp_rc`. Here ``weights_col`` names the
+    column of normalized weights that the preparation adds. The cells belong
+    to the cohorts in the ``glist`` that the preparation returns.
+
+    Returns
+    -------
+    DDDMultiPeriodRCResult
+        The result that :func:`ddd_mp_rc` describes.
+    """
     tlist = np.sort(data[time_col].unique().to_numpy())
-    glist_raw = data[group_col].unique().to_numpy()
-    glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
 
     n_obs = len(data)
     n_periods = len(tlist)

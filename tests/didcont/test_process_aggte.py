@@ -373,3 +373,38 @@ def test_event_times_match_labels_with_rounding_error():
     np.testing.assert_array_equal(fractional, [0.2, 0.2, 0.0])
     np.testing.assert_array_equal(whole, [2, -1, 1_000_000_001, 946_080_001])
     assert whole.dtype.kind == "i"
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_get_se_is_zero_when_every_draw_leaves_the_influence_function_at_zero(fix_bootstrap_draws):
+    fix_bootstrap_draws(np.zeros((21, 1)))
+
+    se = get_se(np.ones((200, 1)), bootstrap=True, bootstrap_iterations=21, alpha=0.05)
+
+    assert se == 0.0
+
+
+@pytest.mark.parametrize("aggregation_type", ["dynamic", "group"])
+def test_aggregate_att_gt_band_is_pointwise_when_draws_move_a_zero_scale_column(
+    fix_bootstrap_draws, central_zero_scale_draws, mock_att_gt_result, aggregation_type
+):
+    fix_bootstrap_draws(central_zero_scale_draws)
+
+    with pytest.warns(UserWarning, match="NA/Inf"):
+        result = aggregate_att_gt(
+            mock_att_gt_result, aggregation_type=aggregation_type, min_event_time=0, max_event_time=1
+        )
+
+    assert result.critical_value == pytest.approx(scipy.stats.norm.ppf(0.975))
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_aggregate_att_gt_overall_band_standardizes_a_column_with_a_negligible_scale(
+    fix_bootstrap_draws, central_zero_scale_draws, mock_att_gt_result
+):
+    fix_bootstrap_draws(1e-9 * central_zero_scale_draws[:, [0]])
+
+    result = aggregate_att_gt(mock_att_gt_result, aggregation_type="overall")
+
+    assert result.critical_value == pytest.approx(50 / (10 / 1.3489795))
+    assert np.isnan(result.overall_se)

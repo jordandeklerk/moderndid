@@ -12,8 +12,11 @@ restrictions than ordinary parallel trends. The :ref:`background page
 <background-didcont>` explains the target populations, identifying assumptions,
 and estimation paths supported by the package.
 
-The :ref:`continuous treatment example <example_cont_did>` reproduces the
-fracking application from the authors' separate 2024 event-study paper.
+The :ref:`continuous treatment example <example_cont_did>` uses county
+employment data to fit dose curves and an event study with the public
+estimator. The :ref:`fracking replication <example_cont_did_replication>`
+reproduces the figures from the authors' separate 2024 event-study paper
+and explains how its pooling procedure differs.
 
 .. currentmodule:: moderndid
 

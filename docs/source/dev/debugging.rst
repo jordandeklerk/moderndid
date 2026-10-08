@@ -1,306 +1,229 @@
 .. _debugging:
 
-=================
-Debugging Guide
-=================
-
-**ModernDiD** combines several technologies (Polars DataFrames, Numba JIT
-compilation, and CuPy GPU arrays) that each have their own debugging
-characteristics and common failure modes.
-
-General strategies
-==================
-
-Start simple
-------------
-
-When a test fails or you get unexpected results, first isolate the problem.
-
-1. **Run the failing test in isolation**::
-
-      pytest tests/did/test_att_gt.py::test_specific_case -vv
-
-2. **Check if the failure is deterministic.** Run it a few times. Flaky
-   failures often point to race conditions (in parallel code) or
-   insufficient numerical tolerances (in stochastic tests).
-
-3. **Reduce the problem.** If a test uses a large dataset, try reducing the
-   number of units or periods. If a test uses bootstrap, try running without
-   it first (``boot=False``).
-
-Reading test output
--------------------
-
-Test output includes suppressed warnings by default (configured in
-``pyproject.toml``). If you suspect a warning is relevant, run with all
-warnings visible::
-
-   pytest tests/did/test_att_gt.py -W default -vv
-
-For assertion failures on numerical results, the output will show the
-expected and actual values. Pay attention to whether the discrepancy is in
-the point estimate (likely a logic bug) or the standard error (likely a
-numerical precision or bootstrap issue).
-
-Numerical issues
-================
-
-Floating-point precision
-------------------------
-
-The most common class of bugs in econometric software is numerical precision.
-Symptoms include tests passing on one platform but failing on another,
-results that differ slightly between runs, and ``RuntimeWarning: overflow
-encountered`` or ``invalid value encountered`` messages.
-
-To diagnose, add intermediate logging statements or use a debugger to inspect
-values at key points in the computation. Look for very large or very small
-intermediate values that could overflow or underflow, division by quantities
-that could be near zero, and matrix operations on near-singular matrices.
-
-Common fixes include using ``np.clip`` to bound propensity scores away from
-0 and 1, using ``scipy.linalg.solve`` instead of explicit matrix inversion,
-adding ``atol`` and ``rtol`` parameters to ``np.testing.assert_allclose``
-that match the expected precision of the computation, and checking symmetry
-and positive semi-definiteness of variance-covariance matrices before using
-them.
-
-Tolerance selection
--------------------
-
-When a test fails with a numerical mismatch, don't just loosen tolerances
-until it passes. Instead, understand *why* the results differ.
-
-- Deterministic code should match to high precision
-  (``rtol=1e-5, atol=1e-6``).
-- Standard errors with analytical formulas may have slightly lower precision
-  (``rtol=1e-3, atol=1e-4``) due to intermediate rounding.
-- Bootstrap results are inherently stochastic. Use ratio-based checks (e.g.,
-  ``assert 0.7 < se_ratio < 1.3``) or compare distributions rather than
-  point values.
-- Cross-language validation (Python vs R) may show small differences due to
-  different linear algebra backends or floating-point operation ordering.
-
-Debugging Numba-compiled code
-=============================
-
-**ModernDiD** uses Numba for JIT compilation of performance-critical loops in
-`numba_utils.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/core/numba_utils.py>`__,
-`didcont numba.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didcont/numba.py>`__, and
-`didhonest numba.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/didhonest/numba.py>`__. These functions use ``@nb.njit`` with
-``cache=True`` and often ``parallel=True``.
-
-Disabling JIT for debugging
-----------------------------
-
-Numba-compiled functions cannot be stepped through with a normal Python
-debugger. To disable JIT and run the pure-Python fallback, set the
-environment variable before running tests::
-
-   NUMBA_DISABLE_JIT=1 pytest tests/did/test_att_gt.py -vv
-
-With JIT disabled, you can use ``pdb``, ``breakpoint()``, or your IDE's
-debugger to step through the code. Performance will be much slower, so use
-a small dataset.
-
-**ModernDiD**'s Numba functions are written with pure-Python fallback paths.
-The dispatch pattern in ``moderndid/core/numba_utils.py`` checks
-``HAS_NUMBA`` and falls back to plain NumPy implementations when Numba is
-unavailable. This means
-
-- If a test passes with ``NUMBA_DISABLE_JIT=1`` but fails without it, the
-  bug is in the Numba-compiled version specifically
-- If it fails both ways, the bug is in the shared logic
-
-Stale cache issues
-------------------
-
-Numba caches compiled functions to disk. If you change a Numba-decorated
-function and the test still uses the old behavior, clear the cache::
-
-   find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null
-   find . -name "*.nbi" -delete 2>/dev/null
-   find . -name "*.nbc" -delete 2>/dev/null
-
-Or disable caching temporarily by setting::
-
-   NUMBA_DISABLE_CACHING=1 pytest ...
-
-Type errors in nopython mode
------------------------------
-
-Numba's ``nopython`` mode (the default for ``@nb.njit``) requires that all
-types can be inferred at compile time. If you see
-``numba.core.errors.TypingError``, it usually means you are passing a Python
-object that Numba can't handle (e.g., a dict with mixed-type values, a Polars
-Series, or a custom class), using a NumPy function that Numba doesn't support,
-or there is a type mismatch between function arguments and the expected types.
-
-The error message will point to the specific line and show the inferred types.
-Compare them with what you intended.
-
-Debugging CuPy and GPU code
-============================
-
-GPU-accelerated code lives in `cupy <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/cupy>`__ and uses a backend
-dispatch pattern. The active backend is controlled via context variable::
-
-   from moderndid.cupy.backend import use_backend
-
-   with use_backend("cupy"):
-       result = att_gt(data=df, ...)
-
-Common GPU issues
------------------
-
-**CuPy not found.** If ``import cupy`` fails, the code automatically falls
-back to NumPy. Check your CUDA installation::
-
-   python -c "import cupy; print(cupy.cuda.runtime.getDeviceCount())"
-
-**Out of memory.** GPU memory is more limited than system RAM. Symptoms
-include ``cupy.cuda.memory.OutOfMemoryError``. Reduce the dataset size or
-batch size. The RMM memory pool (initialized automatically by
-``set_backend("cupy")``) helps with memory fragmentation but doesn't
-increase total memory.
-
-**Results differ between CPU and GPU.** Small floating-point differences
-(< 1e-6) are normal due to different operation ordering and fused
-multiply-add instructions on GPU. Larger differences suggest a bug in
-the GPU code path.
-
-**Comparing CPU and GPU results.** To isolate GPU-specific issues, run the
-same computation on both backends and compare step by step::
-
-   import numpy as np
-   from moderndid.cupy.backend import use_backend, to_numpy
-
-   # Run on CPU
-   result_cpu = att_gt(data=df, boot=False)
-
-   # Run on GPU
-   with use_backend("cupy"):
-       result_gpu = att_gt(data=df, boot=False)
-
-   # Compare
-   np.testing.assert_allclose(
-       result_cpu.att_gt, to_numpy(result_gpu.att_gt), rtol=1e-5
-   )
-
-
-Test failure patterns
+Debugging an analysis
 =====================
 
-Here are common test failure patterns and what they typically indicate.
+When an estimate changes unexpectedly, we need to find out where the
+difference comes from before deciding whether the code or the expectation
+should change. It may come from the observations entering the comparison,
+the effect calculation, or the way uncertainty is calculated. This guide
+follows a failing test through those possibilities and shows you how to
+inspect the compiled and GPU paths when they're involved.
 
-.. list-table::
-   :header-rows: 1
-   :widths: 40 60
+Run the commands from the repository root in the development environment
+described in :doc:`../contributing/guide`. The :doc:`architecture` guide maps
+the calculation to its source files if you need help finding the next place
+to inspect.
 
-   * - Symptom
-     - Likely cause
-   * - ``AssertionError`` on point estimates
-     - Logic bug in estimation, incorrect data transformation, or
-       wrong group/time filtering
-   * - ``AssertionError`` on standard errors only
-     - Influence function calculation error, incorrect degrees of freedom,
-       or clustering implementation bug
-   * - ``RuntimeWarning: overflow encountered``
-     - Propensity scores near 0/1, very large treatment effects, or
-       insufficient trimming
-   * - Test passes locally, fails in CI
-     - Platform-dependent floating-point behavior, missing dependency in
-       CI environment, or random seed not properly set
-   * - Test passes alone, fails when run with other tests
-     - Shared mutable state between tests, or fixture scope issue (a
-       ``module``-scoped fixture being modified)
-   * - ``TypingError`` from Numba
-     - Type mismatch in Numba-compiled function arguments
-   * - R validation test fails after code change
-     - Likely a regression that changed estimation results. Investigate
-       carefully before loosening tolerances, as these tests verify that
-       Python matches the reference R packages
+Reproduce the smallest failing comparison
+-----------------------------------------
 
-Using a debugger
-================
+Start with the test that exposed the problem so you retain its data,
+specification, and expected result. You can select a single test by its node
+identifier rather than running an entire estimator's suite. The following
+command selects an existing test of the minimum wage fit.
 
-For code outside Numba, standard Python debugging works well.
+.. code-block:: console
 
-**With pytest**, add the ``--pdb`` flag to drop into the debugger on the
-first failure::
+   pixi run -e dev pytest tests/did/test_att_gt.py::test_att_gt_basic_functionality -vv -x
 
-   pytest tests/did/test_att_gt.py::test_specific_case -vv --pdb
+Replace that identifier with the failing case and add ``--pdb`` to inspect
+its state at the first failure. The debugger's ``p`` command reads a value,
+``n`` advances within the current function, and ``s`` steps into a call. An
+IDE debugger can inspect the same test if it uses the development environment's
+Python interpreter.
 
-Use ``n`` (next), ``s`` (step into), ``p variable`` (print), and ``c``
-(continue) to navigate.
+Before reducing the data, preserve the treatment cohorts and untreated
+comparisons that trigger the failure. Removing a cohort, a cluster, or a
+missing observation can remove the condition you are trying to investigate.
+For a stochastic calculation, record the seed and recreate the random
+generator for each comparison rather than reusing a generator whose state
+has already advanced.
 
-**With breakpoints in code**, insert ``breakpoint()`` at the line you want
-to inspect, then run the test normally. Python will drop into the debugger
-at that point.
+If a parallel fit fails, repeat it with ``n_jobs=1`` where that argument is
+supported so you can inspect one comparison at a time. A difference
+between sequential and threaded runs is a reason to examine shared state
+and backend propagation rather than assume the numerical formula is wrong.
 
-**With an IDE**, most editors (VS Code, PyCharm) can run pytest with their
-built-in debugger. Set breakpoints visually and use the IDE's variable
-inspector.
+Read the warnings alongside the failure
+---------------------------------------
 
-Profiling
-=========
+Warnings can explain why a fit uses fewer observations or cannot estimate a
+comparison. The filters in ``tests/conftest.py`` suppress selected numerical
+and dependency warnings during tests. Library ``UserWarning`` messages remain
+visible unless a particular test filters them. To inspect the warnings that
+the usual run hides, request the default warning behavior explicitly.
 
-Before optimizing code, profile it to identify the actual bottleneck. A
-function that *looks* slow may account for a fraction of total runtime,
-while the real bottleneck may be somewhere unexpected.
+.. code-block:: console
 
-Finding CPU bottlenecks
------------------------
+   pixi run -e dev pytest tests/did/test_att_gt.py::test_att_gt_basic_functionality -vv -W default
 
-The built-in ``cProfile`` module works well for getting a high-level view
-of where time is spent::
+The warning gives you a place to start looking before changing the
+calculation. If rows were dropped, check the required columns to see which
+observations remain in the sample. If the warning concerns overlap, look
+at the treated and comparison observations used by that particular fit.
 
-   python -m cProfile -s cumtime -c "from moderndid import att_gt; att_gt(data=df)" 2>&1 | head -30
+Separate the effect from its uncertainty
+----------------------------------------
 
-For a more granular view, ``line_profiler`` shows time spent on each line
-within a function. Install it with ``pip install line_profiler``, then
-decorate the function you want to profile with ``@profile`` and run::
+A mismatch in standard errors can arise even when the fitted effects agree.
+We first compare the observations, cohort and period labels, and point
+estimates before examining influence functions, clustering, and critical
+values. For ``att_gt``, a small fit without bootstrap standard errors or
+simultaneous bands gives us a useful starting point.
 
-   kernprof -lv your_script.py
+.. code-block:: python
 
-To profile within a test, use pytest-benchmark (already in the test
-dependencies) to get reliable timing with warmup and multiple iterations::
+   import moderndid as did
 
-   pytest tests/did/test_att_gt.py -k "test_specific" --benchmark-only
+   data = did.load_mpdta()
+   spec = dict(
+       data=data,
+       yname="lemp",
+       tname="year",
+       idname="countyreal",
+       gname="first.treat",
+       xformla="~lpop",
+       control_group="nevertreated",
+       base_period="universal",
+       boot=False,
+       cband=False,
+       n_jobs=1,
+       random_state=42,
+   )
+   result = did.att_gt(**spec)
 
-Measuring memory usage
------------------------
+Before comparing two arrays of effects, inspect ``result.groups`` and
+``result.times`` alongside ``result.att_gt`` so you know that each position
+refers to the same comparison. The same care applies to the
+``influence_func`` rows because they must represent the same units or
+observations on both sides. Once those contributions agree, you can follow
+the variance calculation and aggregation weights to understand any remaining
+difference in confidence limits. After finding the cause in this simpler
+fit, return to the original bootstrap and clustering settings.
 
-For memory-intensive operations (large influence function matrices, bootstrap
-resampling), ``memory_profiler`` shows line-by-line memory allocation. Install
-with ``pip install memory_profiler``, decorate with ``@profile``, and run::
+The :doc:`testing guide <../contributing/testing>` explains how to choose
+assertions for these quantities. An absolute tolerance matters near zero
+where a relative tolerance alone provides little room for rounding error.
+Choose both from the quantity's scale and the reference calculation rather
+than assigning one tolerance to every estimate and standard error.
 
-   python -m memory_profiler your_script.py
+.. admonition:: Preserve the statistical comparison
+   :class: important
 
-For a quick check of peak memory without instrumenting code, use the ``/usr/bin/time``
-utility (note the full path to avoid the shell builtin)::
+   Clipping propensity scores, adding regularization, or changing the retained
+   sample can change the estimator. Establish why a calculation fails before
+   introducing one of these changes as a numerical fix.
 
-   /usr/bin/time -l python -c "from moderndid import att_gt; att_gt(data=large_df)"
+Inspect the compiled CPU path
+-----------------------------
 
-The "maximum resident set size" field shows peak memory in bytes.
+Some numerical helpers have Numba implementations that compile on first use.
+To step through their Python bodies, set ``NUMBA_DISABLE_JIT`` before starting
+the interpreter. We'll use a multiplier-bootstrap test here because it
+reaches the numerical helper; an analytical fit can bypass that code.
 
-Profiling Numba-compiled code
-------------------------------
+.. code-block:: console
 
-Standard Python profilers cannot see inside Numba-compiled functions. To
-profile Numba code, temporarily disable JIT (``NUMBA_DISABLE_JIT=1``) and
-profile the pure-Python fallback. The hot spots in the pure-Python version
-will correspond to the same hot spots in the JIT version, even though absolute
-timings differ.
+   NUMBA_DISABLE_JIT=1 pixi run -e dev pytest tests/did/test_mboot.py::test_basic_functionality -vv -x
 
-Profiling GPU code
--------------------
+With compilation disabled, you can use ordinary breakpoints to inspect the
+decorated functions as Python code. Keep in mind that this need not be the
+same implementation that runs when Numba cannot be imported. In
+``core/numba_utils.py``, for example, installing Numba selects the compiled
+function bodies; disabling compilation runs those bodies as Python rather
+than restoring the earlier fallback definitions.
 
-For CuPy GPU profiling, use NVIDIA's ``nsys`` profiler to see kernel execution
-times and memory transfers::
+If the test fails only with compilation enabled, you've narrowed the
+search to that execution path without yet establishing that the compiler
+is at fault. Start by inspecting argument dtypes, array shapes, contiguous
+layout, and the operations accepted by the compiled function. A
+``TypingError`` traceback helps you locate the operation and inferred types
+that compilation could not resolve.
 
-   nsys profile python your_gpu_script.py
+If you suspect a compiled cache, point ``NUMBA_CACHE_DIR`` to an empty scratch
+directory for a fresh run. This avoids deleting caches throughout the checkout
+or the development environment.
 
-The most common performance issue with GPU code is excessive data transfer
-between CPU and GPU. Look for repeated ``to_device()`` and ``to_numpy()``
-calls within loops.
+.. code-block:: console
+
+   NUMBA_CACHE_DIR=/tmp/moderndid-numba-debug pixi run -e dev pytest \
+       tests/did/test_mboot.py::test_basic_functionality -vv -x
+
+Use a new directory when repeating this probe so the comparison actually
+starts without a previous compiled cache. After the diagnosis, rerun the
+affected tests with normal compilation enabled to check the supported path.
+
+Compare supported CPU and GPU calculations
+------------------------------------------
+
+Before comparing backends, check that the calculation you're investigating
+supports GPU execution. The :doc:`GPU user guide <../user_guide/gpu>` explains
+which estimators support it and what you need to install. If you explicitly
+request the CuPy backend when CuPy or a CUDA device is unavailable, the
+request raises an error rather than silently becoming a CPU fit.
+
+On a machine with a working CUDA installation, reuse the same specification
+to compare the CPU and GPU effects. The context manager restores the previous
+backend when its block ends.
+
+.. code-block:: python
+
+   import numpy as np
+
+   cpu = did.att_gt(**spec, backend="numpy")
+   with did.use_backend("cupy"):
+       gpu = did.att_gt(**spec)
+
+   difference = np.asarray(cpu.att_gt) - np.asarray(gpu.att_gt)
+   print(np.max(np.abs(difference)))
+
+This calculation checks the effects without treating one fixed precision
+threshold as appropriate for every problem. If the discrepancy matters at
+the scale of your application, compare the nuisance fits and influence
+functions before adding bootstrap randomness. NumPy arrays in these result
+fields have already returned to the CPU even when the internal fit used CuPy.
+
+If allocation fails on the GPU, start by checking the array sizes and how
+often data move between host and device. Calls to ``set_backend("cupy")``
+and ``use_backend("cupy")`` attempt to configure an allocator when the
+optional RMM dependency is available, though they do not supply additional
+device memory or guarantee that RMM was installed. Before reducing the
+workload, preserve the comparison that causes the failure so you can still
+investigate it in the smaller fit.
+
+Profile the workload you intend to improve
+------------------------------------------
+
+Once the result is correct, profiling can tell you whether time is spent
+preparing data, fitting comparisons, or drawing inference. Save the small
+``att_gt`` script above as ``profile_analysis.py`` and profile it from the
+development environment.
+
+.. code-block:: console
+
+   pixi run -e dev python -m cProfile -s cumulative profile_analysis.py
+
+The report includes imports and the first fit's setup costs. To profile
+a fit after its warmup, start the profiler around that call rather than
+around the whole script.
+
+.. code-block:: python
+
+   import cProfile
+
+   did.att_gt(**spec)
+   profiler = cProfile.Profile()
+   profiler.runcall(did.att_gt, **spec)
+   profiler.print_stats(sort="cumulative")
+
+Python profiling shows calls into compiled helpers but does not reveal
+the work inside every compiled kernel. Timings
+with JIT disabled describe a different execution path and should not be used
+to predict the compiled path's bottlenecks.
+
+For GPU timings, account for asynchronous execution by synchronizing the
+device around the measured operation. Otherwise the host can finish timing
+before the device finishes its work. The :doc:`benchmarking` guide describes
+the project's CPU workloads and revision comparisons once you are ready to
+measure a proposed change consistently.

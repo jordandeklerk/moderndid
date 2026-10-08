@@ -9,15 +9,16 @@ kernelspec:
 
 # Plotting treatment effects
 
-Once you've chosen the effects you want to report, a figure helps your reader
-see how they vary across cohorts, years, or doses. Its labels and confidence
-bands need to describe the estimates you computed. ModernDiD's plot functions
-read those estimates directly from result objects so you can adjust the
-presentation without rebuilding the results.
+An event-study plot lets your reader follow the estimated response after
+adoption without searching through each row of a report. Its labels and
+confidence bands need to describe the estimates you computed. ModernDiD's
+plot functions read those estimates directly from result objects so you can
+adjust the presentation without rebuilding the results.
 
-We will build an event study from the minimum wage data and adapt its labels,
-colors, and export settings before making a comparison across specifications.
-Every plotting function returns a [plotnine](https://plotnine.org/)
+We use the minimum wage data to make an event study whose labels and reference
+lines describe the employment comparison. After preparing that figure for
+export, we put two specifications on the same axis to see their estimates
+together. Every plotting function returns a [plotnine](https://plotnine.org/)
 `ggplot` object that you can customize by adding a theme or another layer
 with `+`.
 
@@ -44,6 +45,11 @@ state minimum wage increases reduced teen employment. We use the same
 county data here and adjust for population measured before the increases.
 The universal base period measures each estimate against the year before
 adoption, so the event-study reference line belongs at event time minus one.
+
+Without `clustervars`, this bootstrap treats counties as independent units.
+The bands below therefore differ from those in the
+{doc}`results guide <results>`. To use state-clustered bands in these plots,
+fit the specification from that guide before calling the plotting functions.
 
 ```{code-cell} ipython3
 import moderndid as did
@@ -103,12 +109,12 @@ and simultaneous bands must be chosen during estimation or aggregation.
 
 ## Choosing a plot for your result
 
-A plot of the unaggregated fit needs to keep each cohort's effects in
-calendar time visible. If you aggregate those effects, the figure instead
-follows the event times, cohorts, or calendar periods selected by that
-aggregation. The functions below use those different axes so the figure
-describes the result you want to report. The {doc}`results guide <results>`
-explains how to choose an aggregation for your question.
+The plot's axis follows the effect you have chosen to report. For the
+unaggregated fit, each cohort has its own effects in calendar time. An
+aggregation instead puts event times, cohorts, or calendar periods on that
+axis. The functions below accept those different results; the
+{doc}`results guide <results>` explains how to choose an aggregation for your
+question.
 
 ```{eval-rst}
 .. tab-set::
@@ -192,9 +198,9 @@ cohort_plot = (
 cohort_plot
 ```
 
-The separate panels make differences across adoption cohorts easier to see.
-A taller figure keeps those panels readable without squeezing the intervals
-or their axis labels.
+With each cohort in its own panel, you can compare their estimated responses
+over calendar time. The taller figure leaves enough room to read the
+intervals and axis labels in all of those panels.
 
 
 ## Changing labels, references, and themes
@@ -297,11 +303,11 @@ level effects. Interpreting the slope as a causal response requires additional
 restrictions, as the {ref}`continuous treatment background <background-didcont>`
 explains.
 
-We will compare the event study above with one that also uses counties whose
-states have not yet increased their minimum wage. That changes the required
-parallel trends assumption by adding later adopters to the comparison group.
-The {ref}`staggered DiD example <example_staggered_did>` examines how much
-that choice changes the employment estimates.
+To see both specifications on the same axis, we add an event study that also
+uses counties whose states have not yet increased their minimum wage. Adding
+later adopters to the comparison group changes the required parallel trends
+assumption. The {ref}`staggered DiD example <example_staggered_did>` examines
+how much that choice changes the employment estimates.
 
 ```{code-cell} ipython3
 import polars as pl
@@ -375,8 +381,8 @@ county data and their estimation errors are related.
 The examples put these figures back into the questions their data answer.
 The {ref}`staggered adoption example <example_staggered_did>` reads cohort
 plots alongside an event study. The
-{ref}`continuous treatment example <example_cont_did>` compares employment
-paths across fracking dose groups. For other designs, see the
+{ref}`continuous treatment example <example_cont_did>` plots fitted dose
+curves and employment effects over time in the fracking data. For other designs, see the
 {ref}`triple difference <example_triple_did>`,
 {ref}`intertemporal treatment <example_inter_did>`, and
 {ref}`dynamic balancing <example_dyn_balancing>` examples.

@@ -16,25 +16,23 @@ county-years, or the employment response as time passes after adoption.
 Choosing among those summaries changes both the population and the periods
 your estimate describes.
 
-We'll follow a minimum wage fit from its printed report into the result
-object, the averages you can construct from it, and the tables you export.
-This gives you a way to work with estimates before moving into a full
-application. Other estimators return different fields, but you still need to
-identify the effect being reported and understand how its uncertainty was
-calculated.
+We'll use a minimum wage fit to compare those summaries and follow the
+estimates from the printed report into the result object and exported tables.
+Although other estimators return different fields, interpreting their reports
+still means identifying the effect being reported and understanding how its
+uncertainty was calculated.
 
 ## Fit the comparison you intend to report
 
-Before averaging the effects, we need a fit that records the comparison and
-inference choices we intend to use. This specification compares counties
-whose states raised the minimum wage with counties whose states never raised
-it during the observed years. It adjusts for pre-policy population and
-clusters the bootstrap by state because counties in the same state share a
-policy and may share employment shocks.
+The comparison and inference choices stay with the result when we summarize
+its effects. Here we compare counties whose states raised the minimum wage
+with counties whose states never raised it during the observed years and
+adjust for pre-policy population. Clustering the bootstrap by state accounts
+for the fact that counties in the same state share a policy and may share
+employment shocks.
 
 ```{code-cell} ipython3
 import moderndid as did
-import numpy as np
 import polars as pl
 
 data = did.load_mpdta().with_columns(
@@ -84,12 +82,11 @@ compares untreated outcome changes under the same base-period convention.
 The zero rows immediately before adoption are imposed reference values, so
 their standard errors appear as `NA`.
 
-The confidence limits describe uncertainty around the estimates under our
-state-clustered bootstrap. Here they form a 95 percent simultaneous band
-over the group-time effects, rather than a separate pointwise interval for
-each row. A star marks a band that excludes zero under those inference
-choices. If a band's endpoints straddle zero, the estimate remains
-compatible with effects of either sign at the chosen confidence level.
+Under our state-clustered bootstrap, the confidence limits form a 95 percent
+simultaneous band over the group-time effects rather than a separate
+pointwise interval for each row. A star marks a band that excludes zero under
+those inference choices. When a band's endpoints straddle zero, the estimate
+remains compatible with effects of either sign at the chosen confidence level.
 
 The returned {class}`~moderndid.did.container.MPResult` keeps the same rows
 in its `groups`, `times`, `att_gt`, and `se_gt` arrays. To inspect those
@@ -194,7 +191,7 @@ print(county_year_average)
 ```
 
 The estimate of -0.0418 log points describes the average across treated
-county-years. Its 95 percent interval of -0.0770 to -0.0065 log points
+county-years. Its 95 percent interval of -0.0795 to -0.0040 log points
 excludes zero under the state-clustered bootstrap, although the group
 average's interval includes zero. Those reports answer different questions
 because their weights assign different importance to earlier adopters.
@@ -247,12 +244,12 @@ balanced = did.aggte(
 print(balanced)
 ```
 
-This drops the 2007 cohort and changes the population described by the
-curve. The adoption-year effect is now -0.0042 log points, compared with
--0.0211 log points when the 2007 cohort was included. Setting only `min_e`
-and `max_e` would trim the event times without holding cohort composition
-fixed. That distinction matters when you want to interpret movement along
-the curve as a change with exposure.
+After dropping the 2007 cohort, the curve describes a different population
+and its adoption-year effect is -0.0042 log points, compared with -0.0211 log
+points when the 2007 cohort was included. Setting only `min_e` and `max_e` would
+trim the event times without holding cohort composition fixed. Holding the
+cohorts fixed helps us separate changes in exposure from changes in the
+counties contributing to the average.
 
 This report labels its bands as pointwise even though the original fit
 requests simultaneous bands. For this window and seed, the bootstrap
@@ -270,15 +267,8 @@ change in a county's employment between two years.
 
 For a log effect {math}`a`, the corresponding percentage change is
 {math}`100(\exp(a)-1)`. Multiplying the log effect by 100 gives a close
-approximation when its magnitude is small. We can apply the exact
-transformation to the overall cohort average from the group report.
-
-```{code-cell} ipython3
-percent_effect = 100 * np.expm1(cohort_effects.overall_att)
-print(f"Percentage change corresponding to the average log effect: {percent_effect:.2f}")
-```
-
-The group average corresponds to a 3.23 percent decline in employment
+approximation when its magnitude is small. Applying the exact transformation
+to the overall cohort average gives a 3.23 percent decline in employment
 relative to the estimated untreated path. Averaging log effects and
 averaging county percentage changes produce different summaries, so
 describe this transformation as the percentage change corresponding to
@@ -290,10 +280,8 @@ the units of the count.
 
 The reports above carry the state-clustered bootstrap and inference
 settings from the original fit. For `att_gt`, `boot=True` uses
-multiplier bootstrap standard errors, while `cband=True` adds a simultaneous
-critical value for the group-time effects. Simultaneous bands account for
-examining a collection of effects, whereas pointwise intervals describe
-each effect separately.
+multiplier bootstrap standard errors and `cband=True` adds a simultaneous
+critical value for the group-time effects.
 
 If you use the default `boot=False`, `att_gt` calculates analytical standard
 errors. Although `cband=True` is also a default, its group-time bands use a
@@ -355,9 +343,7 @@ estimates.write_csv("employment-event-study.csv")
 Save the input data version, full specification, package version, and seeds
 alongside the exported estimates. An integer seed reproduces a bootstrap
 call under the same settings; changing the seed can change its standard
-errors and bands without changing the underlying point estimates. A CSV
-records the estimates but does not retain the influence functions needed
-for later aggregation or sensitivity analysis.
+errors and bands without changing the underlying point estimates.
 
 The {doc}`plotting` guide draws these results and explains how to save a
 figure. For publication tables that retain the estimator's labels and

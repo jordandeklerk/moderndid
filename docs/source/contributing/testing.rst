@@ -1,321 +1,197 @@
-==================
-Testing ModernDiD
-==================
+######################
+Testing a contribution
+######################
 
-Econometric estimators must produce numerically correct results across a wide
-range of data configurations, sample sizes, and edge cases. A thorough test
-suite is what gives users confidence that **ModernDiD**'s estimates match the
-established R implementations and remain stable as the codebase evolves.
+The test you write should catch the problem that brought you to the code.
+An incorrect comparison group, a misaligned influence
+function, and a confidence interval built from the wrong variance each need a
+check of the affected behavior. We'll begin with the smallest case that exposes
+that problem and add numerical evidence where the calculation needs it.
 
-How to run the test suite
-=========================
+Choosing what to run
+====================
 
-The recommended way to run the test suite is via ``pixi``, which manages isolated
-environments and ensures consistent results across different machines. Pixi
-handles dependencies automatically, allowing you to test the library with
-different combinations of optional dependencies from the same development
-environment.
-
-To run the fast test suite (recommended for development):
+In the development environment from :doc:`guide`, you can select the affected
+file, one function, or a group of tests that share the behavior you're changing.
+We'll use existing tests for group-time effects below to show the selection patterns
+you can apply to your own work.
 
 .. code-block:: bash
 
-   pixi run -e dev tests-core
+   pixi run -e dev pytest tests/did/test_att_gt.py -m "not slow" -vv
+   pixi run -e dev pytest \
+       tests/did/test_att_gt.py::test_att_gt_estimation_methods -vv
+   pixi run -e dev pytest tests/did/ -k "weights" -m "not slow" -vv
 
-To run the full test suite (all tests including slow ones):
-
-.. code-block:: bash
-
-   pixi run -e dev tests-full
-
-To run the R validation tests (requires R with ``did``, ``DRDID``, and related
-packages installed via the ``validation`` environment):
-
-.. code-block:: bash
-
-   pixi run -e validation tests-validation
-
-To run style checks:
-
-.. code-block:: bash
-
-   pixi run -e check lint
+The ``slow`` marker identifies tests that take longer, including some bootstrap
+and numerical validation checks. If your change affects that behavior, run the
+relevant slow test explicitly rather than assuming the faster tests cover it.
+The ``tests-core`` and ``tests-full`` Pixi tasks select the fast suite and the
+suite without marker filtering respectively; they cover much more than a
+focused development check.
 
 .. _testing-how-to-write:
 
-How to write tests
-==================
+Writing a regression test
+=========================
 
-Consistent test conventions make the codebase easier to navigate and help
-contributors understand what to expect when reading or writing tests. The
-patterns here have evolved from practical experience with the test suite.
-
-Imports and optional dependencies
----------------------------------
-
-**ModernDiD** supports several optional dependencies, and tests need to handle cases
-where these dependencies may not be installed. Use the ``importorskip`` helper
-function from `helpers.py <https://github.com/jordandeklerk/moderndid/tree/main/tests/helpers.py>`__ for any import outside of the Python standard
-library plus NumPy:
-
-.. code-block:: python
-
-   import numpy as np
-
-   from tests.helpers import importorskip
-
-   pd = importorskip("pandas")
-
-   # in the code use pd.DataFrame, pd.Series as usual
-
-When ``importorskip`` encounters a missing dependency, it skips all tests in that
-file. Because of this behavior, you should organize tests so that core functionality
-tests live in their own files with no optional dependency imports, while tests that
-require optional dependencies go in separate files.
-
-Test structure and style
-------------------------
-
-Each test file should have a module-level docstring describing what it tests.
-Individual test functions should not have docstrings because the function name
-itself should clearly communicate the test's purpose. A well-named test function
-like ``test_drdid_panel_with_weights`` is more useful than a generic name with
-a docstring explanation:
-
-.. code-block:: python
-
-   """Tests for the DRDID panel estimator."""
-
-   def test_drdid_panel_with_weights():
-       # No docstring needed, the function name explains the test
-       ...
-
-Prefer standalone test functions over test classes. Classes add organizational
-overhead without much benefit for most tests. Use classes only when you have a
-logical group of related tests that benefit from the organizational clarity, such
-as testing different aspects of the same component:
-
-.. code-block:: python
-
-   class TestValidators:
-       def test_column_validator(self):
-           ...
-
-       def test_treatment_validator(self):
-           ...
-
-Fixtures belong in conftest.py
-------------------------------
-
-All pytest fixtures should be defined in ``conftest.py`` files, never in test
-files themselves. This keeps test files focused on test logic and makes fixtures
-discoverable and reusable. Each submodule has its own
-``tests/<submodule>/conftest.py`` for fixtures specific to that module (e.g.,
-`conftest.py <https://github.com/jordandeklerk/moderndid/tree/main/tests/did/conftest.py>`__):
-
-.. code-block:: python
-
-   # tests/did/conftest.py
-
-   @pytest.fixture(scope="module")
-   def mpdta_data():
-       return load_mpdta()
-
-   @pytest.fixture
-   def rng():
-       return np.random.default_rng(42)
-
-Parameterization
-----------------
-
-When you need to test the same logic with different inputs, use
-``pytest.mark.parametrize`` instead of writing multiple similar test functions.
-Parameterization reduces code duplication and makes it clear that the tests are
-variations of the same scenario. It also makes adding new test cases trivial:
-
-.. code-block:: python
-
-   @pytest.mark.parametrize("est_method", ["dr", "ipw", "reg"])
-   def test_att_gt_estimation_methods(est_method, mpdta_data):
-       result = att_gt(data=mpdta_data, est_method=est_method, ...)
-       assert result.att is not None
-
-   @pytest.mark.parametrize(
-       "value,expected",
-       [
-           (1e-20, 0.0),
-           (0.5, 0.5),
-       ],
-   )
-   def test_round_eps(value, expected):
-       assert round_eps(value) == expected
-
-Random number generation
-------------------------
-
-Reproducibility is essential for debugging test failures. NumPy recommends using
-the `Generator <https://numpy.org/doc/stable/reference/random/generator.html>`_
-interface rather than the legacy ``np.random`` functions. Always use
-``np.random.default_rng()`` with an explicit seed so that tests produce the same
-results every time:
-
-.. code-block:: python
-
-   def test_drdid_panel_basic():
-       rng = np.random.default_rng(42)
-
-       d = rng.binomial(1, 0.5, n_units)
-       y0 = rng.standard_normal(n_units)
-       ...
-
-Marking slow tests
-------------------
-
-Tests that take significant time to run should be marked as slow so developers
-can skip them during rapid iteration. This is particularly important for tests
-that involve bootstrap inference or validation against R implementations, which
-can take several minutes or more.
-
-Use module-level marking when all tests in a file are slow:
+Place a test near the behavior it checks in ``tests/<module>/``. Use a
+standalone test function whose name describes the result you expect and put
+reusable data or setup in that module's ``conftest.py``. The fixture below
+gives the county employment tests access to the same dataset while keeping data
+loading separate from the calculation under test.
 
 .. code-block:: python
 
    import pytest
 
-   pytestmark = pytest.mark.slow
+   from moderndid import load_mpdta
 
-   def test_expensive_r_validation():
-       ...
 
-For individual slow tests in an otherwise fast file, use the decorator directly:
+   @pytest.fixture
+   def mpdta_data():
+       return load_mpdta()
 
-.. code-block:: python
+A bug fix needs an assertion that fails before the fix and passes after it. New
+calculations can be checked against a hand-computed small case, a property
+implied by the method, or an independently obtained reference result. Merely
+checking that the function returns an object won't catch a plausible estimate
+computed for the wrong sample.
 
-   @pytest.mark.slow
-   def test_bootstrap_with_many_iterations():
-       ...
-
-Run tests excluding slow ones with ``pytest -m "not slow"``.
-
-Warning handling
-----------------
-
-Some code paths intentionally raise warnings, and tests need to handle these
-appropriately. When testing code that raises expected warnings, suppress them
-with ``pytest.mark.filterwarnings`` to keep test output clean. This prevents
-expected warnings from cluttering the test output while still allowing unexpected
-warnings to surface:
+The test below checks that reordering the rows preserves group-time effects
+when the county and year identifiers remain unchanged. We turn off bootstrap
+inference and simultaneous bands so the comparison checks row handling without
+introducing a random draw.
 
 .. code-block:: python
 
-   @pytest.mark.filterwarnings("ignore:Be aware that there are some small groups:UserWarning")
-   def test_single_treated_unit():
-       ...
+   import numpy as np
 
-When you need to verify that code correctly raises a warning, use ``pytest.warns``
-to assert that the expected warning appears:
+   from moderndid import att_gt
 
-.. code-block:: python
 
-   def test_asymmetric_matrix_warning():
-       with pytest.warns(UserWarning, match="Matrix sigma not exactly symmetric"):
-           validate_symmetric_psd(asymmetric_matrix)
+   def test_att_gt_row_order(mpdta_data):
+       spec = {
+           "yname": "lemp",
+           "tname": "year",
+           "idname": "countyreal",
+           "gname": "first.treat",
+           "est_method": "reg",
+           "boot": False,
+           "cband": False,
+       }
+       expected = att_gt(data=mpdta_data, **spec)
+       shuffled = mpdta_data.sample(fraction=1, shuffle=True, seed=42)
+       actual = att_gt(data=shuffled, **spec)
 
-Skipping and expected failures
-------------------------------
+       np.testing.assert_array_equal(actual.groups, expected.groups)
+       np.testing.assert_array_equal(actual.times, expected.times)
+       np.testing.assert_allclose(
+           actual.att_gt, expected.att_gt, rtol=1e-10, atol=1e-12
+       )
 
-When a test cannot run under certain conditions (missing dependency, wrong
-platform, known bug), use pytest markers to handle it gracefully rather than
-letting it fail with a confusing error.
+When several methods or input forms should meet the same expectation,
+``pytest.mark.parametrize`` lets you express that relationship in one test.
+Different expectations belong in separate tests so you can tell which behavior
+changed when one fails. Keeping imports at the top of the file and fixtures in
+``conftest.py`` leaves the test body free to show its input, call, and
+assertion.
 
-To skip a test conditionally based on the environment:
-
-.. code-block:: python
-
-   import sys
-
-   @pytest.mark.skipif(sys.platform == "win32", reason="R validation not supported on Windows")
-   def test_r_validation():
-       ...
-
-To mark a test as a known failure that you expect to be fixed later:
-
-.. code-block:: python
-
-   @pytest.mark.xfail(reason="known precision issue with small sample sizes, see #42")
-   def test_small_sample_bootstrap():
-       ...
-
-An ``xfail`` test that unexpectedly passes will be reported as ``XPASS``,
-alerting you that the underlying issue may have been resolved and the marker
-can be removed.
-
-Running specific tests
------------------------
-
-During development you rarely need to run the full suite. Pytest provides
-several ways to narrow down what runs.
-
-.. code-block:: bash
-
-   # Run a single test file
-   pytest tests/did/test_att_gt.py -vv
-
-   # Run a single test function
-   pytest tests/did/test_att_gt.py::test_basic_panel -vv
-
-   # Run tests matching a keyword expression
-   pytest tests/did/ -k "bootstrap and not slow" -vv
-
-   # Run tests for a specific estimator module
-   pytest tests/didcont/ -vv
+Checking numerical results
+==========================
 
 .. _testing-numerical-tolerances:
 
-Numerical tolerances
---------------------
+Choosing numerical tolerances
+-----------------------------
 
-Floating-point arithmetic means that numerical results rarely match exactly.
-When comparing results, choose tolerances appropriate to what you're testing.
-Deterministic calculations should match to high precision, while stochastic
-methods like bootstrap naturally have more variation.
+Use the absolute tolerance to control differences near zero and the relative
+tolerance to scale with the reference value's magnitude. Set both explicitly in
+``np.testing.assert_allclose`` and choose them for the quantity you're
+checking. A deterministic difference of means usually permits a tighter
+comparison than a standard error from an iterative fit.
 
-.. code-block:: python
+For a bootstrap or simulation, use an explicit ``random_state`` when the
+function accepts it and a seeded ``np.random.default_rng`` for generated data.
+Although reproducibility helps diagnose a discrepancy, identical seeds do not
+guarantee identical draws across different algorithms. A comparison of
+independent bootstrap runs needs a tolerance supported by their sampling
+variation, not a wider bound chosen only after the test fails.
 
-   # High precision for deterministic calculations
-   np.testing.assert_allclose(py_result, r_result, rtol=1e-5, atol=1e-6)
+If a discrepancy is larger than expected, trace the sample selection,
+normalization, weight convention, and inference settings before changing the
+tolerance. For help locating the source of a numerical discrepancy, the
+:ref:`debugging guide <debugging>` follows the calculation through the
+implementation.
 
-   # More lenient for standard errors
-   np.testing.assert_allclose(py_se, r_se, rtol=1e-3, atol=1e-4)
+Running reference validation
+----------------------------
 
-   # Even more lenient for bootstrap/Monte Carlo results
-   assert 0.7 < se_ratio < 1.3
+The tests in ``tests/validation/`` compare estimates and inference with
+independent reference calculations on the same inputs. Their environment has
+additional tools and supports Linux and macOS. Since the setup task compiles
+some dependencies from source, it needs a working Rust toolchain and can take
+longer than installing the ordinary development environment.
 
-When using ``np.testing.assert_allclose``, prefer passing both ``rtol`` and
-``atol`` explicitly rather than relying on defaults. The defaults
-(``rtol=1e-7``, ``atol=0``) are often too strict for econometric
-computations.
+.. code-block:: bash
 
-Testing with different backends
--------------------------------
+   pixi install -e validation
+   pixi run -e validation setup-r
+   pixi run -e validation did
 
-Some tests need to verify behavior across multiple backends (NumPy vs CuPy).
-Use ``importorskip`` to gate backend-specific tests so they
-are skipped gracefully when the backend is not available.
+The ``did`` task selects ``tests/validation/test_r_did.py`` to check the
+staggered adoption estimator. Other available tasks include ``drdid``,
+``didcont``, ``didtriple``, ``didinter``, ``didhonest``, and ``npiv``. You can
+select an individual test through ``pixi run -e validation pytest`` when the
+whole estimator's validation file is unnecessary. The setup script checks
+installed versions and can update outdated dependencies on later runs as well
+as installing missing ones.
 
-.. code-block:: python
+.. admonition:: Read validation skips
+   :class: important
 
-   from tests.helpers import importorskip
+   A missing reference dependency can skip a numerical comparison rather
+   than fail it. Check the skip reasons before treating a completed
+   validation run as evidence that your estimates agree.
 
-   cp = importorskip("cupy")
+Handling warnings and optional dependencies
+===========================================
 
-   def test_gpu_att_gt():
-       from moderndid.cupy.backend import use_backend
+When a warning is part of the behavior you're changing, assert it with
+``pytest.warns`` and a message match. If a test is about another behavior and a
+particular warning is expected, use a narrowly matched
+``pytest.mark.filterwarnings`` marker. A broad warning filter can hide new
+problems in the calculation you're trying to check.
 
-       with use_backend("cupy"):
-           result = att_gt(data=df, boot=False)
-       assert result.att_gt is not None
+Tests that require an optional dependency can use
+``tests.helpers.importorskip`` at module level. Since a missing dependency
+normally skips that file, keep those tests separate from checks that should run
+with the base package. GPU tests also need a usable device and runtime;
+importing the backend alone does not establish that a computation can run.
 
-Organize backend-specific tests in separate files (e.g., ``test_att_gt_gpu.py``)
-so that a missing optional dependency skips the entire file rather than
-producing scattered skips throughout the main test file.
+Use ``pytest.mark.skipif`` for a known environment limitation and explain it in
+the reason. An expected failure should point to an unresolved issue and use
+``strict=True`` so an unexpected pass calls attention to a marker that may no
+longer belong there.
+
+Understanding automated checks
+==============================
+
+``.github/workflows/test.yml`` defines pull request checks and a matrix of
+Python 3.12 and 3.13 on Ubuntu and Windows. The environments selected by its
+Tox invocation depend on ``tox.ini`` and the interpreter mappings defined
+there. A separate job runs ``full-coverage`` on Python 3.14 for pushes to
+``main``.
+
+The weekly full-suite workflow runs on Sunday at 02:00 UTC and can also be
+started manually. An upstream dependency workflow runs at 03:00 UTC on Sunday
+despite its ``nightly`` name. It selects ``tox -e nightly`` to try prerelease
+scientific Python dependencies; the command is available locally wherever Tox
+is installed. CodeQL scans Python on pull requests, pushes to ``main``, and its
+weekly schedule.
+
+A failed job gives the command and environment you need to reproduce it.
+Include that evidence and your focused local checks in the pull request so a
+reviewer can distinguish a tested behavior from one that still needs an
+environment-specific check. :doc:`reviewing` explains how we read those checks
+alongside the method and implementation.

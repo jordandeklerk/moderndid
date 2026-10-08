@@ -1,201 +1,121 @@
 .. _workflow:
 
-==============================
-Git Workflow and Conventions
-==============================
+#########################
+Working on a contribution
+#########################
 
-Following consistent git conventions keeps the commit history readable, makes
-automated changelog generation possible, and helps reviewers understand your
-changes at a glance.
+Once you've found a fix or a clearer explanation, someone else needs enough
+context to check your work. We'll keep the problem, the new behavior, and its
+tests together in a separate branch and a focused pull request. That gives the
+reviewer a path through the change and lets you keep working without mixing it
+with unrelated edits in your checkout.
 
-Commit message format
-=====================
+Starting a branch
+=================
 
-Every commit message should begin with a **category prefix** followed by a
-colon and a short description. The prefix indicates the type of change and is
-used by tooling to generate changelogs and filter history.
+If you've followed :doc:`guide`, ``origin`` points to your fork and
+``upstream`` points to the main repository. Start a new contribution from the
+latest upstream ``main`` after saving any work already in progress.
 
-Use the imperative mood in the subject line ("add feature", not "added feature"
-or "adds feature"). Keep the subject under 72 characters. If more detail is
-needed, add a blank line followed by a longer explanation in the body.
-
-::
-
-   ENH: add bootstrap confidence intervals for DDD estimator
-
-   Implements the multiplier bootstrap for the triple-differences
-   estimator, following the same pattern as the DiD module. Uses
-   Mammen two-point weights and supports both pointwise and
-   simultaneous confidence bands.
-
-Standard prefixes
------------------
-
-The following prefixes are used throughout the project. Choose the one that
-best describes the primary purpose of your commit.
-
-::
-
-   BUG:   Bug fix
-   BEN:   Benchmark additions or modifications
-   CI:    Changes to CI configuration or workflows
-   DEV:   Development tool changes (pre-commit, pixi, tox config)
-   DOC:   Documentation only (docstrings, RST files, README)
-   ENH:   Enhancement to existing functionality
-   FEAT:  New feature or module
-   FIX:   Equivalent to BUG (either is acceptable)
-   MAINT: Maintenance (dependency updates, cleanup, deprecation removal)
-   REF:   Code refactoring with no behavior change
-   REL:   Release-related changes (version bumps, release notes)
-   TEST:  Test additions or modifications
-
-When a commit spans multiple categories, use the prefix for the most
-significant change. A refactoring that also fixes a bug should use ``BUG``.
-A new feature that includes its tests should use ``FEAT``.
-
-Messages should be understandable without looking at the code changes. A commit
-message like ``MAINT: fixed another one`` is an example of what not to do; the
-reader has to go look for context elsewhere.
-
-Branch naming
-=============
-
-Create a new branch for each piece of work. It's usually a good idea to use a descriptive name that
-reflects what the branch does, with words separated by hyphens::
-
-   git checkout -b fix-bootstrap-standard-errors
-   git checkout -b add-ddd-event-study-plots
-   git checkout -b ref-consolidate-preprocessing
-
-There is no strict naming convention beyond clarity. It's best to avoid generic names like
-``patch`` or ``update``. The branch name appears in the merge commit, so
-future readers should be able to tell what the branch was about.
-
-Working with branches
-=====================
-
-Starting a new branch
----------------------
-
-Always branch from an up-to-date ``main``::
+.. code-block:: bash
 
    git fetch upstream
-   git checkout -b my-feature upstream/main
+   git switch -c fix-bootstrap-standard-errors upstream/main
 
-This ensures your branch starts from the latest code and avoids unnecessary
-merge conflicts.
+Choose a branch name that describes the work, such as
+``fix-bootstrap-standard-errors`` or ``clarify-continuous-dose-guide``. The
+name helps you and a reviewer identify the branch; there is no hook that
+enforces a particular naming pattern.
 
-Keeping your branch current
-----------------------------
+Keeping the change focused
+==========================
 
-If ``main`` has moved forward while you're working, rebase your branch onto
-the latest ``main``::
+As you work, inspect the diff for edits that don't help explain or fix the
+problem. A formatting cleanup in another estimator is easier to review
+separately because it needs different evidence from your bug fix. You can stage
+selected parts of a file when several changes share your working directory.
+
+.. code-block:: bash
+
+   git diff
+   git add -p
+   git diff --staged
+
+A commit message should name the behavior it changes so someone reading the
+history doesn't need the original discussion. A subject such as ``BUG: preserve
+county weights in an unbalanced panel`` explains more than ``fix another
+issue``. Prefixes such as ``BUG``, ``ENH``, ``DOC``, ``TEST``, and ``MAINT``
+can help identify the kind of work even though the hooks don't enforce them.
+The generated changelog uses GitHub release content rather than parsing these
+prefixes.
+
+If the reason for the change isn't apparent from its subject, add it to the
+commit body. For numerical code, that explanation may need to name the
+estimand, the sample on which a failure occurs, or the distinction between an
+estimate and its standard error.
+
+Updating a branch during development
+====================================
+
+When upstream changes affect your work, fetch the new commits before choosing
+how to incorporate them. If you're the only person working on the branch, a
+rebase can replay your commits on the current ``main``.
+
+.. code-block:: bash
 
    git fetch upstream
    git rebase upstream/main
 
-Rebasing replays your commits on top of the updated ``main``, resulting in a
-clean, linear history. If you've already pushed your branch and need to force
-push after rebasing::
+Resolve any conflicts by checking the intended behavior on both sides; rerun
+the affected tests after the rebase because a clean merge of text can still
+change a calculation. If you've already shared the branch, coordinate before
+rewriting its history. A merge is another way to incorporate upstream work
+without changing existing commit identities.
 
-   git push --force-with-lease origin my-feature
+.. admonition:: Keep review changes visible
+   :class: tip
 
-The ``--force-with-lease`` flag is safer than ``--force`` because it refuses
-to overwrite commits that someone else may have pushed to your branch.
+   Once review has begun, pushing additional commits usually makes feedback
+   easier to follow. Discuss a rebase with collaborators before replacing
+   the history they have already reviewed.
 
-.. note::
+Opening the pull request
+========================
 
-   Rebasing on ``main`` is preferred over merging upstream back to your
-   branch. Using ``git merge`` and ``git pull`` is discouraged when
-   working on feature branches.
+After running the checks for your change, push the branch to your fork and open
+a pull request against the main repository's ``main`` branch.
 
-Making clean commits
---------------------
+.. code-block:: bash
 
-Each commit should represent a single logical change. Avoid commits that mix
-unrelated changes (e.g., a bug fix and a formatting cleanup in the same
-commit). If you have unstaged changes you want to split across commits, use::
+   git push -u origin fix-bootstrap-standard-errors
 
-   git add -p
+Use the description to give a reviewer the context you had when making the
+change. For a bug fix, a small input that fails before the change and succeeds
+afterward often explains the problem and its resolution more clearly than a
+tour of the edited functions. If you're adding an estimator, explain which
+design it supports and give the method's source and the checks used to verify
+its estimates and inference.
 
-This lets you stage individual hunks interactively.
+Include the commands you ran and any limits to that evidence. For example,
+check a changed guide through a rendered build as well as a unit test, and
+confirm that a numerical validation ran rather than being skipped. Link the
+relevant issue with ``Fixes #123`` when the pull request resolves it, or ``Refs
+#123`` when the issue should remain open.
 
-If you have work-in-progress commits that you want to clean up before
-submitting a PR, use interactive rebase to squash or reword them::
+You can open a draft while a methodological question or implementation choice
+is still being discussed. Describe the remaining work so a reviewer can focus
+on that question without assuming the change is ready to merge.
 
-   git rebase -i upstream/main
+Following the review
+====================
 
-Common operations in interactive rebase are
+The Actions checks on the pull request show which job and command failed. Use
+that output to reproduce the failure locally rather than rerunning unrelated
+tests. If feedback changes the specification or implementation, update the
+tests and explanation that support the new behavior too.
 
-- ``squash`` combines multiple small commits into one meaningful commit
-- ``reword`` fixes a commit message without changing the code
-- ``drop`` removes a commit entirely (e.g., a debugging commit you forgot
-  to remove)
-
-Recovering from mistakes
-------------------------
-
-**Undo the last commit** (keep changes staged)::
-
-   git reset --soft HEAD~1
-
-**Undo the last commit** (keep changes unstaged)::
-
-   git reset HEAD~1
-
-**Discard all uncommitted changes** (use with care)::
-
-   git checkout -- .
-
-**Recover a deleted branch or lost commit**::
-
-   git reflog
-
-The reflog shows recent HEAD positions and is useful for finding commits
-that are no longer referenced by any branch.
-
-Pull request workflow
-=====================
-
-1. Push your branch to your fork::
-
-      git push -u origin my-feature
-
-2. Open a pull request against ``main`` on GitHub.
-
-3. Write a clear title and description. The title should follow the same
-   prefix convention as commits (e.g., "ENH: add bootstrap for DDD
-   estimator"). The description should explain *what* changed and *why*,
-   not just restate the diff. Reference any related issues with
-   "Closes #123" or "Fixes #456".
-
-4. CI runs automatically. All checks must pass before merging.
-
-5. Address review feedback by pushing new commits to the same branch.
-   Avoid force-pushing during review unless asked, as it makes it harder
-   for reviewers to see incremental changes.
-
-6. Once approved, the maintainer will merge your PR. We typically use
-   squash merges for single-purpose PRs and regular merges for larger
-   branches with meaningful individual commits.
-
-Skipping CI on draft commits
------------------------------
-
-If you push a work-in-progress commit and don't want to consume CI resources,
-add ``[skip ci]`` to the commit message. This skips all GitHub Actions jobs
-for that push::
-
-   git commit -m "DOC: wip draft of user guide [skip ci]"
-
-Use this sparingly and only for genuine drafts. Remove the tag before
-requesting review, since CI must pass before merging.
-
-Linking issues
---------------
-
-Use GitHub keywords in commit messages and PR descriptions to link to related
-issues. When the PR is merged, referenced issues are closed automatically.
-
-- ``Closes #123`` or ``Fixes #123`` closes the issue on merge
-- ``See #123`` or ``Refs #123`` links without closing
+Push follow-up changes to the same branch so they remain in the original pull
+request. If you disagree with a suggestion, explain the technical reason in its
+thread and give the reviewer evidence to assess it. :doc:`reviewing` describes
+the method, code, and documentation checks that help us decide when a
+contribution is ready to merge.

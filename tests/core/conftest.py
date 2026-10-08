@@ -385,3 +385,16 @@ def didinter_panel_with_nan():
     x = rng.normal(size=ids.size)
     y[13], d[20], x[31] = np.nan, np.nan, np.nan
     return pl.DataFrame({"id": ids, "t": t, "d": d, "y": y, "x": x})
+
+
+@pytest.fixture
+def dyn_balancing_panel_with_nan():
+    """Panel of 40 units over three periods with a NaN period in one row and a NaN unit in another."""
+    rng = np.random.default_rng(3)
+    ids = np.repeat(np.arange(40.0), 3)
+    t = np.tile(np.arange(1.0, 4.0), 40)
+    d = np.where(ids < 20, np.tile([0.0, 1.0, 1.0], 40), 0.0)
+    y = rng.normal(size=ids.size) + d
+    x = rng.normal(size=ids.size)
+    t[7], ids[30] = np.nan, np.nan
+    return pl.DataFrame({"id": ids, "time": t, "d": d, "y": y, "x": x})

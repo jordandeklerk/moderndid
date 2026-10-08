@@ -4,7 +4,7 @@ import warnings
 
 import numpy as np
 
-from ..utils import _weighted_sum
+from ..utils import _divide_by_complement, _weighted_sum
 
 
 def aipw_did_panel(delta_y, d, ps, out_reg, i_weights, trim_ps=None):
@@ -210,9 +210,8 @@ def aipw_did_rc_imp1(y, post, d, ps, out_reg, i_weights, trim_ps=None):
             UserWarning,
         )
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = trim_ps * normalized_weights * ps * (1 - d) * (1 - post) / (1 - ps)
-        w_cont_post = trim_ps * normalized_weights * ps * (1 - d) * post / (1 - ps)
+    w_cont_pre = _divide_by_complement(trim_ps * normalized_weights * ps * (1 - d) * (1 - post), ps)
+    w_cont_post = _divide_by_complement(trim_ps * normalized_weights * ps * (1 - d) * post, ps)
 
     residual = y - out_reg
 
@@ -347,7 +346,6 @@ def aipw_did_rc_imp2(
     w_treat_pre = trim_ps * normalized_weights * d * (1 - post)
     w_treat_post = trim_ps * normalized_weights * d * post
 
-    denominator_cont_ps = 1 - ps
     problematic_ps_for_controls_pre = (ps == 1.0) & (d == 0) & (post == 0)
     problematic_ps_for_controls_post = (ps == 1.0) & (d == 0) & (post == 1)
 
@@ -358,9 +356,8 @@ def aipw_did_rc_imp2(
             UserWarning,
         )
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w_cont_pre = trim_ps * normalized_weights * ps * (1 - d) * (1 - post) / denominator_cont_ps
-        w_cont_post = trim_ps * normalized_weights * ps * (1 - d) * post / denominator_cont_ps
+    w_cont_pre = _divide_by_complement(trim_ps * normalized_weights * ps * (1 - d) * (1 - post), ps)
+    w_cont_post = _divide_by_complement(trim_ps * normalized_weights * ps * (1 - d) * post, ps)
 
     # Extra weights for efficiency
     w_d = trim_ps * normalized_weights * d

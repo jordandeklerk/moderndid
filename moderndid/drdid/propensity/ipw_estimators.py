@@ -4,6 +4,8 @@ import warnings
 
 import numpy as np
 
+from ..utils import _divide_by_complement
+
 
 def ipw_rc(y, post, d, ps, i_weights, trim_ps=None):
     r"""Compute the inverse propensity weighted (IPW) estimator for repeated cross-sections.
@@ -93,8 +95,7 @@ def ipw_rc(y, post, d, ps, i_weights, trim_ps=None):
         )
         return np.nan
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ipw_term = d - ps * (1 - d) / denominator_ps
+    ipw_term = d - _divide_by_complement(ps * (1 - d), ps)
 
     time_adj = (post - lambda_val) / (lambda_val * (1 - lambda_val))
     numerator = np.mean(i_weights * trim_ps * ipw_term * time_adj * y)

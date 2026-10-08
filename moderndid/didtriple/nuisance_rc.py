@@ -10,6 +10,7 @@ import statsmodels.api as sm
 
 from moderndid.cupy.backend import get_backend, to_numpy
 from moderndid.cupy.regression import cupy_logistic_irls, cupy_wls
+from moderndid.drdid.utils import _divide_by_complement
 
 from .utils import check_overlap_and_warn, get_comparison_description
 
@@ -285,13 +286,8 @@ def _compute_did_rc(
         w_cont_post = None
         w_reg_control = keep_ps * sub_weights * pa4
     else:
-        if xp is np:
-            with np.errstate(divide="ignore", invalid="ignore"):
-                w_cont_pre = keep_ps * sub_weights * pscore * pa_comp * (1 - sub_post) / (1 - pscore)
-                w_cont_post = keep_ps * sub_weights * pscore * pa_comp * sub_post / (1 - pscore)
-        else:
-            w_cont_pre = keep_ps * sub_weights * pscore * pa_comp * (1 - sub_post) / (1 - pscore)
-            w_cont_post = keep_ps * sub_weights * pscore * pa_comp * sub_post / (1 - pscore)
+        w_cont_pre = _divide_by_complement(keep_ps * sub_weights * pscore * pa_comp * (1 - sub_post), pscore)
+        w_cont_post = _divide_by_complement(keep_ps * sub_weights * pscore * pa_comp * sub_post, pscore)
         w_cont_pre = xp.nan_to_num(w_cont_pre)
         w_cont_post = xp.nan_to_num(w_cont_post)
         w_reg_control = None

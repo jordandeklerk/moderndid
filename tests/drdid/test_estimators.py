@@ -314,6 +314,40 @@ def test_aipw_rc_ps_one_for_control_unit():
     assert_allclose_with_nans(actual_att, np.nan)
 
 
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+@pytest.mark.parametrize(
+    "unit, weight, warned",
+    [
+        (0, 1.0, "Sum of weights for att_cont_pre is inf. Term will be NaN."),
+        (2, 1.0, "Sum of weights for att_cont_post is inf. Term will be NaN."),
+        (0, -1.0, "Sum of weights for att_cont_pre is -inf. Term will be NaN."),
+    ],
+)
+def test_aipw_rc_control_with_propensity_score_one_keeps_its_infinite_weight(forbid_errstate, unit, weight, warned):
+    args = [arr.copy() for arr in ALL_VALID_ARGS_RC]
+    args[3][unit] = 1.0
+    args[-1][unit] = weight
+    forbid_errstate()
+
+    with pytest.warns(UserWarning) as record:
+        actual_att = aipw_did_rc_imp2(*args)
+
+    control_sums = [str(warn.message) for warn in record if str(warn.message).startswith("Sum of weights for att_cont")]
+    assert control_sums == [warned]
+    assert np.isnan(actual_att)
+
+
+@pytest.mark.filterwarnings("error")
+def test_aipw_rc_treated_unit_with_propensity_score_one(forbid_errstate):
+    args = [arr.copy() for arr in ALL_VALID_ARGS_RC]
+    args[3][4] = 0.5
+    expected = aipw_did_rc_imp2(*args)
+    args[3][4] = 1.0
+    forbid_errstate()
+
+    assert aipw_did_rc_imp2(*args) == expected
+
+
 def test_aipw_rc_all_zero_i_weights():
     args = list(ALL_VALID_ARGS_RC)
     args[-1] = np.zeros_like(I_WEIGHTS_RC_UNIT_VALID)
@@ -488,6 +522,42 @@ def test_aipw_rc_basic_ps_one_for_control_unit():
             for name in ["aipw_0_pre is inf", "aipw_0_pre is nan", "aipw_0_post is inf", "aipw_0_post is nan"]
         )
     assert_allclose_with_nans(actual_att, np.nan)
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+@pytest.mark.parametrize(
+    "unit, weight, warned",
+    [
+        (0, 1.0, "Sum of weights for aipw_0_pre is inf. Term will be NaN."),
+        (2, 1.0, "Sum of weights for aipw_0_post is inf. Term will be NaN."),
+        (0, -1.0, "Sum of weights for aipw_0_pre is -inf. Term will be NaN."),
+    ],
+)
+def test_aipw_rc_basic_control_with_propensity_score_one_keeps_its_infinite_weight(
+    forbid_errstate, unit, weight, warned
+):
+    args = [arr.copy() for arr in ALL_VALID_ARGS_RC_BASIC]
+    args[3][unit] = 1.0
+    args[-1][unit] = weight
+    forbid_errstate()
+
+    with pytest.warns(UserWarning) as record:
+        actual_att = aipw_did_rc_imp1(*args)
+
+    control_sums = [str(warn.message) for warn in record if str(warn.message).startswith("Sum of weights for aipw_0")]
+    assert control_sums == [warned]
+    assert np.isnan(actual_att)
+
+
+@pytest.mark.filterwarnings("error")
+def test_aipw_rc_basic_treated_unit_with_propensity_score_one(forbid_errstate):
+    args = [arr.copy() for arr in ALL_VALID_ARGS_RC_BASIC]
+    args[3][4] = 0.5
+    expected = aipw_did_rc_imp1(*args)
+    args[3][4] = 1.0
+    forbid_errstate()
+
+    assert aipw_did_rc_imp1(*args) == expected
 
 
 def test_aipw_rc_basic_all_zero_i_weights():

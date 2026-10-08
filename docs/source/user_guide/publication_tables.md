@@ -16,13 +16,14 @@ objects can pass their estimates and inference information directly to
 [maketables](https://py-econometrics.github.io/maketables/), so the table
 can be rebuilt from the analysis that produced it.
 
-We will carry the minimum wage analysis from a description of the county
-sample through an event-study table and a comparison of specifications.
-The tables below render directly from the code so you can see how a choice
-of rows, labels, or uncertainty changes the display. `ETable` reads supported
-result objects, `DTable` describes the data, and `MTable` gives you control
-over custom panels. All three can produce LaTeX, HTML, Word, and Typst output
-for the document you're preparing.
+We begin with the minimum wage county sample so readers know whose employment
+the estimates describe. The event-study table then puts each estimate beside
+its uncertainty before we compare specifications in separate columns. Each
+table renders directly from the code so you can see how the rows, labels, and
+uncertainty appear together.
+`ETable` reads supported result objects, `DTable` describes the data, and
+`MTable` gives you control over custom panels. All three can produce LaTeX,
+HTML, Word, and Typst output for the document you're preparing.
 
 
 ## Installing the table package
@@ -73,11 +74,11 @@ sample_table = mt.DTable(
 sample_table.make("gt")
 ```
 
-The county count belongs to this baseline sample rather than the number of
-county-year observations used for estimation. Because the variables are
-logs, the reported means and standard deviations describe their log values.
-A descriptive table helps readers understand the sample without establishing
-the parallel trends assumption needed to interpret an effect.
+Because each county appears once in this table, its count describes the
+baseline sample rather than the county-year observations used for estimation.
+The means and standard deviations also retain the variables' log units.
+These summaries help readers understand the sample, although they do not
+establish the parallel trends assumption needed to interpret an effect.
 
 ## Making a table from an event study
 
@@ -150,11 +151,12 @@ keeps readers from confusing those two sample sizes.
 
 ## Comparing specifications in columns
 
-A second specification should tell the reader what changed in the comparison.
-We will keep the data, population adjustment, and inference settings fixed
-while changing either the comparison group or the estimation method. The two
-doubly robust columns differ in whether later adopters can serve as controls
-before their own minimum wage increases.
+Placing specifications side by side helps readers see how a particular choice
+affects the estimates. We keep the data, population adjustment, and inference
+settings fixed so the columns isolate a change in either the comparison group
+or the estimation method. In the two doubly robust columns, that choice is
+whether later adopters can serve as controls before their own minimum wage
+increases.
 
 ```{code-cell} ipython3
 changes = [
@@ -284,12 +286,12 @@ starred_table.make("gt")
 
 ## Adding statistics and table metadata
 
-We can report details of the comparison alongside the overall effect so
-readers can see what each column represents. The table interface supplies
-statistics available in each result, such as the aggregation type, comparison
-group, or standard error method. Here `custom_model_stats` adds joint pre-trend
-p-values directly from the underlying group-time fits so the diagnostic
-updates alongside the analysis.
+An overall effect needs enough context for readers to identify the comparison
+it summarizes. The table interface can report details available in each
+result, such as the aggregation type, comparison group, or standard error
+method. We use `custom_model_stats` to add joint pre-trend p-values directly
+from the underlying group-time fits so the diagnostic updates alongside the
+analysis.
 
 ```{code-cell} ipython3
 overall = [did.aggte(model, type="group", cband=False) for model in models[:2]]
@@ -338,11 +340,11 @@ one column per result can provide. `MTable` accepts a pandas DataFrame whose
 cells you construct yourself. We use a row `MultiIndex` for the panel
 headings and a column `MultiIndex` for spanners that group related columns.
 
-We will compare the population-adjusted estimates with estimates under
-unconditional parallel trends. Simple, group, dynamic, and calendar
-aggregations answer different averaging questions within each panel. Their
-row labels make those questions explicit so you can identify which effect
-each estimate describes.
+The panels below compare the population-adjusted estimates with estimates
+under unconditional parallel trends. Within each panel, simple, group,
+dynamic, and calendar aggregations answer different averaging questions.
+Keeping the aggregation in the row label tells readers which effect each
+estimate describes even when several summaries appear in the same table.
 
 ```{code-cell} ipython3
 unadjusted = did.att_gt(data, **(spec | {"xformla": None}))

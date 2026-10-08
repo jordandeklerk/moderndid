@@ -7,7 +7,7 @@ import polars as pl
 import scipy.stats as st
 
 from moderndid.core.preprocess import map_to_idx as _map_to_idx
-from moderndid.did.mboot import mboot
+from moderndid.did.mboot import _mboot
 
 from ..container import PTEAggteResult
 
@@ -128,12 +128,15 @@ def aggregate_att_gt(
         valid_cols = ~np.isnan(att_by_group)
 
         if confidence_band and np.any(valid_cols):
-            mb_result = mboot(
+            # Since dropping the draws that move a column with zero bootstrap scale would condition the band on that
+            # column staying at zero, they stay in the sample.
+            mb_result = _mboot(
                 inf_by_group[:, valid_cols],
                 n_units=inf_func.shape[0],
                 biters=bootstrap_iterations,
                 alp=alpha,
                 random_state=rng,
+                keep_infinite_draws=True,
             )
             crit_val = check_critical_value(mb_result["crit_val"], alpha)
 
@@ -268,12 +271,13 @@ def aggregate_att_gt(
         valid_dyn = ~np.isnan(dyn_att)
 
         if confidence_band and np.any(valid_dyn):
-            mb_result = mboot(
+            mb_result = _mboot(
                 inf_dyn[:, valid_dyn],
                 n_units=inf_func.shape[0],
                 biters=bootstrap_iterations,
                 alp=alpha,
                 random_state=rng,
+                keep_infinite_draws=True,
             )
             crit_val = check_critical_value(mb_result["crit_val"], alpha)
 
@@ -352,12 +356,13 @@ def aggregate_att_gt(
     crit_val = pointwise_z
 
     if confidence_band:
-        mb_result = mboot(
+        mb_result = _mboot(
             inf_overall.reshape(-1, 1),
             n_units=inf_func.shape[0],
             biters=bootstrap_iterations,
             alp=alpha,
             random_state=rng,
+            keep_infinite_draws=True,
         )
         crit_val = check_critical_value(mb_result["crit_val"], alpha)
 
@@ -482,7 +487,14 @@ def get_se(influence_function, bootstrap=True, bootstrap_iterations=100, alpha=0
     n = influence_function.shape[0]
 
     if bootstrap:
-        boot_result = mboot(influence_function, n_units=n, biters=bootstrap_iterations, alp=alpha, random_state=rng)
+        boot_result = _mboot(
+            influence_function,
+            n_units=n,
+            biters=bootstrap_iterations,
+            alp=alpha,
+            random_state=rng,
+            keep_infinite_draws=True,
+        )
         return float(np.asarray(boot_result["se"]).reshape(-1)[0])
 
     vec = np.asarray(influence_function).reshape(n, -1)[:, 0]

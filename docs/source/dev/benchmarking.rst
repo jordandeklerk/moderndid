@@ -1,120 +1,160 @@
 .. _benchmarking:
 
-============
-Benchmarking
-============
+Measuring performance
+=====================
 
-We use Airspeed Velocity (ASV) to measure estimator runtime across revisions.
-The suite covers staggered DiD, triple DiD, continuous DiD, intertemporal DiD,
-and aggregation. Its workloads vary the number of units, periods, treatment
-cohorts, covariates, and bootstrap iterations. A second command runs the same
-workloads through the R packages that implement each method and reports how
-the speed and the results compare.
+When you change a calculation to make it faster, you need to check both
+its results and the time it takes. We use the benchmark suite to measure
+a specific workload after checking that its effects and uncertainty are
+still correct. This page shows you how to run that workload on your
+checkout, compare committed revisions, and understand which parts of the
+calculation each timing covers.
 
-Run the commands on this page from the repository root. The ``benchmark``
-Pixi environment contains the package and benchmark tools. Its dependencies
-are recorded in ``pixi.lock``.
+The suite uses Airspeed Velocity (ASV) through the commands in
+``.spin/cmds.py``. Run them from the repository root using the locked
+``benchmark`` environment so the package and measurement tools come from the
+same setup.
 
-Running the current checkout
-----------------------------
+Choose a workload before collecting timings
+-------------------------------------------
 
-Install the locked environment and register the machine before your first run.
-Use ``--quick`` to run each benchmark once and check that it executes.
+Workloads in ``benchmarks/cases.py`` vary the number of units, periods,
+cohorts, and covariates, as well as the inference settings. Choose a case
+that exercises the calculation you changed rather than running every large
+workload while you are still checking execution. A first run needs the
+environment and ASV's machine registration.
 
 .. code-block:: console
 
    pixi install --frozen -e benchmark
    pixi run -e benchmark benchmark-machine
-   pixi run -e benchmark bench --quick
+   pixi run -e benchmark bench --quick -t 'bench_estimators.ATTgt.*small'
 
-Without ``--quick``, ASV collects repeated timing samples. Use ``-t`` to select
-a module, class, method, or workload profile. Repeat ``-t`` to select more than
-one expression.
-
-.. code-block:: console
-
-   pixi run -e benchmark spin bench -t bench_estimators.ATTgt --quick
-   pixi run -e benchmark spin bench -t bench_aggregation
-
-``spin bench`` measures the current checkout in the active environment.
-These runs print results without adding them to the performance history.
-``spin bench --help`` lists the available options.
-
-Comparing revisions
--------------------
-
-Use ``--compare`` to measure two committed revisions in separate ASV
-environments. For example, compare ``main`` and ``HEAD`` on the same machine.
+The first run uses ``--quick`` to execute each selected benchmark once so
+you can check that it runs before collecting repeated measurements. Once
+it runs successfully, leave that option out to let ASV collect the samples
+needed for a timing comparison. The ``-t`` expression selects a module,
+class, method, or parameter value and can be repeated to include another
+selection.
 
 .. code-block:: console
 
-   pixi run -e benchmark spin bench --compare main HEAD -t bench_estimators.ATTgt
+   pixi run -e benchmark bench -t 'bench_estimators.ATTgt.*small'
+   pixi run -e benchmark spin bench --help
 
-ASV installs the package source from each selected commit. Uncommitted library
-changes are excluded. The benchmark code and configuration come from your
-current checkout and define the workload for both revisions. The managed
-environments use the dependency versions specified in
-``benchmarks/asv.conf.json``.
+The current-checkout run measures the package in your active environment
+and prints the results without adding them to a saved performance history.
+If you share a timing, include the machine, workload, dependency versions,
+and thread settings so another contributor can reproduce the comparison.
 
-Keeping a performance history
------------------------------
+Understand the operation inside a timing
+----------------------------------------
 
-Use ``spin asv run`` to save measurements for a revision. ``spin asv`` passes
-its arguments to ASV from the benchmark directory.
+Estimator benchmarks in ``benchmarks/benchmarks/bench_estimators.py`` time
+complete public calls, including preprocessing and the requested inference.
+Their setup prepares the data and runs a warmup outside the timed operation.
+Aggregation benchmarks in ``bench_aggregation.py`` fit the underlying model
+during setup so the timing covers aggregation rather than another estimator
+fit.
+
+The environment limits the configured numerical libraries to one thread.
+Although this helps make repeated measurements comparable, it does not
+establish performance for a multithreaded fit or a GPU workload. If your optimization
+targets either case, define and report the relevant workload explicitly.
+The :doc:`debugging` guide explains why compilation and asynchronous GPU
+execution need special care when profiling.
+
+ASV's repeated samples help you see whether a timing is stable enough to
+support a speed claim. If the result changes substantially between runs,
+repeat the measurement under stable machine conditions before drawing that
+conclusion. Keep checking the estimates alongside the timings whenever an
+optimization changes the numerical calculation.
+
+Compare two committed revisions
+-------------------------------
+
+To measure a proposed change against another revision, ``--compare`` creates
+ASV environments for the selected commits. The following command compares
+``main`` with ``HEAD`` using the same small staggered-adoption workload.
+
+.. code-block:: console
+
+   pixi run -e benchmark spin bench --compare main HEAD \
+       -t 'bench_estimators.ATTgt.*small'
+
+Because these runs install committed package source, they don't include
+uncommitted library changes. Both revisions use the benchmark suite and
+configuration from your current checkout so the workload stays the same
+across the comparison. The dependencies for the managed environments come
+from ``benchmarks/asv.conf.json`` rather than your development environment.
+
+When the benchmark changes alongside the library, check that the revised
+workload still runs meaningfully against both commits. Comparing different
+observations or inference settings would make it hard to tell whether the
+code change explains the timing difference.
+
+Save a performance history when needed
+--------------------------------------
+
+The lower-level ``spin asv`` command passes its arguments to ASV from the
+benchmark directory. Use it when you want to save measurements for a commit
+instead of printing a current-checkout run.
 
 .. code-block:: console
 
    pixi run -e benchmark spin asv run --show-stderr HEAD
 
-ASV stores environments and results under ``benchmarks/.asv/``. Machine
-metadata is stored in ``~/.asv-machine.json``. Generated files are ignored by
-Git. Keep the machine and dependency configuration consistent when comparing
-saved results, since changes to either can affect runtime.
+You can find the managed environments and results under ``benchmarks/.asv/``
+and the machine metadata in ``~/.asv-machine.json``. Since these generated
+files are outside the tracked source, keep the configuration and machine
+conditions consistent when interpreting a history.
 
-Comparing with R
-----------------
+Read numerical reference comparisons
+------------------------------------
 
-``spin compare`` runs moderndid and the R package behind each method on the
-same seeded workload. It reports the median time of each side, their ratio,
-and the largest gap in estimates and standard errors over the cells both sides
-report. The benchmark environment includes R. Its ``setup-r`` task installs the
-packages that conda-forge doesn't carry.
+The separate reference runner compares configured implementations on the
+same seeded workload and reports timings alongside gaps in estimates and
+standard errors. Select the estimators and workloads that relate to your
+change rather than treating a full comparison as a prerequisite for every
+documentation edit.
 
 .. code-block:: console
 
-   pixi run -e benchmark setup-r
-   pixi run -e benchmark benchmark-r
    pixi run -e benchmark spin compare --estimators att_gt aggte --workloads small baseline
 
-The references come from did, DRDID, triplediff, contdid, and
-DIDmultiplegtDYN. A reference whose package is missing or fails to load is
-reported as unavailable instead of stopping the run. The command exits with an error only when an
-estimate or standard error falls outside its tolerance. The
-`benchmarks README <https://github.com/jordandeklerk/moderndid/blob/main/benchmarks/README.md>`__
-explains the tolerances and the cases that need care when you read the report.
+You'll need to set up the reference dependencies first, as described in
+the :doc:`testing guide <../contributing/testing>`. The runner reports a
+missing or failing reference as unavailable and continues with the other
+cases. Before treating a successful run as numerical agreement, read the
+status and count of shared cells to see which comparisons were actually made.
 
-Writing and checking benchmarks
--------------------------------
+The runner exits with an error when a case is marked ``differs``. It compares
+finite cells shared by both outputs and leaves some standard errors out of
+the comparison. In particular, continuous-treatment bootstrap standard errors
+are excluded, as is the overall standard error for group aggregation of triple
+differences. The current exclusions and tolerances live in
+``benchmarks/compare.py``; they limit what the report can verify.
 
-Timing modules live in ``benchmarks/benchmarks/``. Workload definitions live
-in ``benchmarks/cases.py`` and shared setup helpers live in
-``benchmarks/common.py``. Put data generation and warmup in ``setup``. A
-``time_`` method should contain the operation you want to measure.
+Add a benchmark for the changed calculation
+-------------------------------------------
 
-Estimator timings include the complete public function call, including its
-preprocessing and inference. Aggregation timings build the estimator result
-in setup so they measure aggregation alone. The R call behind each comparison
-lives in ``benchmarks/references.py``.
+Put data generation and warmup in ``setup`` so a ``time_`` method measures
+the operation its name describes. Shared helpers in ``benchmarks/common.py``
+prepare estimator calls and check their outputs. Reuse them when they supply
+the workload you need rather than creating a second version of the same
+specification.
 
-Keep ``params`` and ``param_names`` stable so ASV can follow a workload across
-revisions. Increase the benchmark's ``version`` when its inputs, setup, or
-measured operation change. Check discovery and run the module you edited
-before requesting review.
+Keep ``params`` and ``param_names`` stable when the workload remains the
+same. Increase the benchmark's ``version`` when its setup, inputs, or measured
+operation changes so ASV does not treat the new measurement as a continuation
+of an unchanged task. Check discovery and run the affected case before
+requesting review.
 
 .. code-block:: console
 
    pixi run -e benchmark benchmark-check
-   pixi run -e benchmark bench --quick -t small
+   pixi run -e benchmark bench --quick -t 'bench_estimators.ATTgt.*small'
 
-A quick run checks execution. Collect repeated measurements on a quiet machine
-when you need to assess a change in performance.
+A quick run establishes that the selected case executes successfully.
+Collect repeated measurements under comparable conditions before describing
+the change as faster in a pull request.

@@ -1437,8 +1437,11 @@ comparisons examine untreated changes rather than the extra restrictions
 that SPT places on treated potential outcomes. Those counterfactual
 treated paths are not observed before adoption.
 
-The :ref:`continuous treatment example <example_cont_did>` reproduces
-the fracking application in the authors' separate 2024 paper,
+The :ref:`continuous treatment example <example_cont_did>` applies
+:func:`~moderndid.cont_did` to county employment data and explains how
+the fitted dose curves and event study answer different questions.
+The :ref:`fracking replication <example_cont_did_replication>` reproduces
+the figures in the authors' separate 2024 paper,
 `Event Studies with a Continuous Treatment
 <https://doi.org/10.1257/pandp.20241047>`_. Its dose-group event studies
 and pooled level curves provide an application of these identification

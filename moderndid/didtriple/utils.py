@@ -10,6 +10,7 @@ from moderndid.core.preprocess.utils import (
     extract_covariates,
     extract_vars_from_formula,
     is_balanced_panel,
+    nonfinite_to_null,
 )
 from moderndid.core.preprocess.validators import _check_panel_mismatch
 
@@ -44,6 +45,33 @@ def get_covariate_names(xformla: str | None) -> list[str] | None:
     if xformla is None or xformla == "~1":
         return None
     return extract_vars_from_formula(xformla) or None
+
+
+def _complete_rows(data, columns, gname):
+    """Return the rows that the missing-data step keeps.
+
+    A null, NaN, or infinite value in one of the columns counts as missing.
+    Since an infinite cohort marks a never-treated unit, it stays. When the
+    checks that pick the estimator read these rows, a row that the estimation
+    never sees can't change their choice.
+
+    Parameters
+    ----------
+    data : DataFrame
+        The input data.
+    columns : list of str or None
+        Names of the columns that the call uses. An entry of None names no
+        column.
+    gname : str
+        Name of the cohort column.
+
+    Returns
+    -------
+    pl.DataFrame
+        The named columns of the rows without a missing value.
+    """
+    used = list(dict.fromkeys(column for column in columns if column is not None))
+    return nonfinite_to_null(to_polars(data).select(used), keep_infinite=[gname]).drop_nulls()
 
 
 def detect_multiple_periods(data: DataFrame, tname: str, gname: str) -> bool:

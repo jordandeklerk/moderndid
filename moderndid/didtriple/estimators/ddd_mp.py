@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from dataclasses import replace
 
 import numpy as np
 import polars as pl
@@ -10,10 +11,29 @@ from scipy import stats
 
 from moderndid.core.dataframe import to_polars
 from moderndid.core.parallel import parallel_map
+from moderndid.core.preprocess.config import DDDConfig
+from moderndid.core.preprocess.constants import ROW_ID_COLUMN, WEIGHTS_COLUMN
+from moderndid.core.preprocess.models import ValidationResult
+from moderndid.core.preprocess.transformers import (
+    DDDWeightProcessor,
+    EarlyTreatmentFilter,
+    MissingDataHandler,
+    PanelBalancer,
+    TreatmentEncoder,
+    WeightNormalizer,
+)
+from moderndid.core.preprocess.validators import (
+    DDDInvarianceValidator,
+    _check_panel_mismatch,
+    _ddd_partition_error,
+    _duplicate_unit_period_error,
+    _reserved_name_errors,
+    check_columns,
+)
 
 from ..bootstrap.mboot_ddd import mboot_ddd, sum_within_clusters
 from ..container import ATTgtResult, DDDMultiPeriodResult
-from ..utils import is_balanced_panel
+from ..utils import _complete_rows, is_balanced_panel
 from .ddd_panel import ddd_panel
 from .ddd_rc import ddd_rc
 
@@ -84,6 +104,10 @@ def ddd_mp(
             {\mathbf{1}' \widehat{\Omega}_{g,t}^{-1} \mathbf{1}}
             \widehat{ATT}_{dr}(g,t).
 
+    Before the estimation, the data go through the checks and cleaning of
+    :func:`~moderndid.ddd`. A call with the same data and options therefore
+    gives the same estimates, warnings, and errors.
+
     Parameters
     ----------
     data : DataFrame
@@ -96,15 +120,22 @@ def ddd_mp(
     id_col : str
         Name of the unit identifier column.
     group_col : str
-        Name of the treatment group column (first period when treatment enabled).
-        Use 0 or np.inf for never-treated units.
+        Name of the treatment group column, the first period in which
+        treatment is enabled for the unit's group. Use 0 or np.inf for
+        never-treated units. A unit first treated after the last period counts
+        as never treated. Since a unit already treated in the first period has
+        no earlier period to compare with, it leaves the data with a warning.
     partition_col : str
         Name of the partition/eligibility column (1 = eligible, 0 = ineligible).
     covariate_cols : list of str or None, default None
         Names of covariate columns in the data. If None, uses intercept only.
     control_group : {"nevertreated", "notyettreated"}, default "nevertreated"
-        Which units to use as controls. With "notyettreated", multiple comparison
-        groups may be available, triggering GMM aggregation.
+        Which units to use as controls. "nevertreated" requires at least one
+        never-treated unit. With "notyettreated", a cell that has several
+        comparison groups pools them with GMM weights. Without never-treated
+        units, "notyettreated" leaves out the periods from the first period of
+        the latest cohort on. That cohort then serves only as a comparison and
+        gets no ATT(g,t) of its own.
     base_period : {"universal", "varying"}, default "universal"
         Base period selection. "universal" uses period g-1 as baseline for all
         comparisons; "varying" uses period t-1 for each t.
@@ -117,24 +148,27 @@ def ddd_mp(
     cband : bool, default False
         Whether to compute uniform confidence bands (only used if boot=True).
     cluster : str or None, default None
-        Name of the column that assigns each unit to a cluster. A unit should
+        Name of the column that assigns each unit to a cluster. A unit must
         keep the same cluster in every period. The standard errors then sum
         the influence function within clusters. With boot=True, the bootstrap
         draws one multiplier per cluster.
     alpha : float, default 0.05
-        Significance level for confidence intervals.
+        Significance level for confidence intervals. A value above 0.10 is
+        replaced by 0.05 with a warning.
     allow_unbalanced_panel : bool, default False
-        Whether to keep units observed in only some periods. If False, each
-        cell keeps only the units observed in both of its periods. Since
-        :func:`~moderndid.ddd` balances the panel before it calls this
-        function, that rule applies only to direct calls.
+        Whether to keep the units that miss some periods. If True, an
+        unbalanced panel takes the repeated cross-section estimator in each
+        cell. If False, the units that miss one of the remaining periods leave
+        the data with a warning. The periods that "notyettreated" leaves out
+        without never-treated units don't count. A balanced panel takes the
+        panel estimator either way.
     random_state : int, Generator, or None, default None
         Controls random number generation for bootstrap reproducibility.
     n_jobs : int, default=1
         Number of parallel jobs for group-time estimation. 1 = sequential
         (default), -1 = all cores, >1 = that many workers.
     weights_col : str or None, default None
-        Name of the column of sampling weights. A unit should keep the same
+        Name of the column of sampling weights. A unit must keep the same
         weight in every period. If None, every unit has weight 1.
     trim_level : float, default 0.995
         Trimming level for propensity scores. Only used for an unbalanced
@@ -151,13 +185,13 @@ def ddd_mp(
         - **lci**: Lower confidence interval bounds
         - **groups**: Treatment cohort for each estimate
         - **times**: Time period for each estimate
-        - **glist**: Unique cohorts
+        - **glist**: Cohorts with ATT(g,t) estimates
         - **tlist**: Unique periods
         - **inf_func_mat**: Influence function matrix (n x k)
         - **n**: Number of units
         - **args**: Estimation arguments
-        - **unit_groups**: Treatment cohort of each unit
-        - **unit_weights**: Sampling weight of each unit, or None without weights
+        - **unit_groups**: Treatment cohort of each unit, or 0 for a never-treated unit
+        - **unit_weights**: Normalized sampling weight of each unit, or None without weights
         - **unit_clusters**: Cluster of each unit, or None without a cluster
 
     See Also
@@ -212,11 +246,82 @@ def ddd_mp(
         *Better Understanding Triple Differences Estimators.*
         arXiv preprint arXiv:2505.09942. https://arxiv.org/abs/2505.09942
     """
-    data = to_polars(data)
+    _check_options(est_method, control_group, base_period, alpha, biters, trim_level, n_jobs)
+    data, glist, alpha, weights_col = _check_and_prepare(
+        data,
+        y_col,
+        time_col,
+        id_col,
+        group_col,
+        partition_col,
+        covariate_cols,
+        weights_col,
+        cluster,
+        panel=True,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+        control_group=control_group,
+        alpha=alpha,
+    )
+    return _ddd_mp(
+        data=data,
+        glist=glist,
+        y_col=y_col,
+        time_col=time_col,
+        id_col=id_col,
+        group_col=group_col,
+        partition_col=partition_col,
+        covariate_cols=covariate_cols,
+        control_group=control_group,
+        base_period=base_period,
+        est_method=est_method,
+        boot=boot,
+        biters=biters,
+        cband=cband,
+        cluster=cluster,
+        alpha=alpha,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+        random_state=random_state,
+        n_jobs=n_jobs,
+        weights_col=weights_col,
+        trim_level=trim_level,
+    )
 
+
+def _ddd_mp(
+    data,
+    glist,
+    y_col,
+    time_col,
+    id_col,
+    group_col,
+    partition_col,
+    covariate_cols,
+    control_group,
+    base_period,
+    est_method,
+    boot,
+    biters,
+    cband,
+    cluster,
+    alpha,
+    allow_unbalanced_panel,
+    random_state,
+    n_jobs,
+    weights_col,
+    trim_level,
+):
+    """Estimate every group-time cell of a panel that :func:`_preprocess_multiple_periods` prepared.
+
+    The arguments follow :func:`ddd_mp`. Here ``weights_col`` names the column
+    of normalized weights that the preparation adds. The cells belong to the
+    cohorts in the ``glist`` that the preparation returns.
+
+    Returns
+    -------
+    DDDMultiPeriodResult
+        The result that :func:`ddd_mp` describes.
+    """
     tlist = np.sort(data[time_col].unique().to_numpy())
-    glist_raw = data[group_col].unique().to_numpy()
-    glist = np.sort([g for g in glist_raw if g > 0 and np.isfinite(g)])
 
     n_units = data[id_col].n_unique()
     n_periods = len(tlist)
@@ -332,6 +437,337 @@ def ddd_mp(
         unit_weights=unit_weights,
         unit_clusters=cluster_vals,
     )
+
+
+def _check_options(est_method, control_group, base_period, alpha, biters, trim_level, n_jobs, boot_type="multiplier"):
+    """Raise an error for an option of the triple difference estimators that takes an invalid value.
+
+    Parameters
+    ----------
+    est_method : str
+        Estimation method.
+    control_group : str
+        Which units serve as comparisons.
+    base_period : str
+        How each cell picks its base period.
+    alpha : float
+        Significance level for confidence intervals.
+    biters : int
+        Number of bootstrap repetitions.
+    trim_level : float
+        Trimming level for propensity scores.
+    n_jobs : int
+        Number of parallel jobs.
+    boot_type : str, default "multiplier"
+        Bootstrap type of two-period data. Data with several periods always
+        take the multiplier bootstrap.
+    """
+    if est_method not in ("dr", "reg", "ipw"):
+        raise ValueError(f"est_method='{est_method}' is not valid. Must be 'dr', 'reg', or 'ipw'.")
+    if control_group not in ("nevertreated", "notyettreated"):
+        raise ValueError(f"control_group='{control_group}' is not valid. Must be 'nevertreated' or 'notyettreated'.")
+    if base_period not in ("universal", "varying"):
+        raise ValueError(f"base_period='{base_period}' is not valid. Must be 'universal' or 'varying'.")
+    if not 0 < alpha < 1:
+        raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
+    if not isinstance(biters, int) or biters < 1:
+        raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
+    if boot_type not in ("weighted", "multiplier"):
+        raise ValueError(f"boot_type='{boot_type}' is not valid. Must be 'weighted' or 'multiplier'.")
+    if not 0 < trim_level < 1:
+        raise ValueError(f"trim_level={trim_level} is not valid. Must be between 0 and 1 (exclusive).")
+    if not isinstance(n_jobs, int) or (n_jobs < 1 and n_jobs != -1):
+        raise ValueError(f"n_jobs={n_jobs} is not valid. Must be a positive integer or -1 for all cores.")
+
+
+def _check_and_prepare(
+    data,
+    y_col,
+    time_col,
+    id_col,
+    group_col,
+    partition_col,
+    covariate_cols,
+    weights_col,
+    cluster,
+    panel,
+    allow_unbalanced_panel,
+    control_group,
+    alpha,
+):
+    """Run the checks and cleaning of :func:`~moderndid.ddd` for a call to ddd_mp or ddd_mp_rc.
+
+    The steps run in the order that ddd runs them. The same data and options
+    therefore give the same estimates, warnings, and errors. The messages name
+    the arguments of ddd_mp and ddd_mp_rc.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data in long format.
+    y_col : str
+        Name of the outcome column.
+    time_col : str
+        Name of the period column.
+    id_col : str or None
+        Name of the unit column, or of the observation column of repeated
+        cross-sections. Repeated cross-sections may go without one.
+    group_col : str
+        Name of the cohort column.
+    partition_col : str
+        Name of the partition column.
+    covariate_cols : list of str or None
+        Names of the covariate columns.
+    weights_col : str or None
+        Name of the sampling weights column.
+    cluster : str or None
+        Name of the cluster column.
+    panel : bool
+        Whether the data follow the same units over time.
+    allow_unbalanced_panel : bool
+        Whether a panel keeps the units that miss some periods.
+    control_group : {"nevertreated", "notyettreated"}
+        Which units serve as comparisons.
+    alpha : float
+        Significance level for confidence intervals.
+
+    Returns
+    -------
+    tuple
+        - **data**: The data that :func:`_preprocess_multiple_periods` returns
+        - **glist**: The cohorts that get group-time cells
+        - **alpha**: The significance level, or 0.05 in place of a value above 0.10
+        - **weights_col**: Name of the column of normalized weights, or None without weights
+    """
+    if panel and id_col is None:
+        raise ValueError("id_col must be provided for panel data.")
+    data = to_polars(data)
+    check_columns(
+        data,
+        y_col=y_col,
+        time_col=time_col,
+        id_col=id_col,
+        group_col=group_col,
+        partition_col=partition_col,
+        covariate_cols=covariate_cols,
+        weights_col=weights_col,
+        cluster=cluster,
+    )
+    # Since the estimation reads a single covariate given as a string as one column, the preparation does too.
+    covariates = [covariate_cols] if isinstance(covariate_cols, str) else covariate_cols
+    columns = [y_col, time_col, id_col, group_col, partition_col, cluster, weights_col, *(covariates or [])]
+    # As in ddd, the check reads the rows that the missing-data step keeps.
+    errors, warns = _check_panel_mismatch(_complete_rows(data, columns, group_col), id_col, time_col, panel)
+    if errors:
+        raise ValueError(
+            f"No unit in id_col='{id_col}' appears in more than one period. For repeated cross-sections, use ddd_mp_rc."
+        )
+    if warns:
+        warnings.warn(
+            f"Units in id_col='{id_col}' appear in every period. For panel data, use ddd_mp.", UserWarning, stacklevel=3
+        )
+    if alpha > 0.10:
+        warnings.warn(f"alpha={alpha} is above 0.10. Using alpha=0.05.", UserWarning, stacklevel=3)
+        alpha = 0.05
+    data, glist = _preprocess_multiple_periods(
+        data,
+        y_col,
+        time_col,
+        id_col,
+        group_col,
+        partition_col,
+        covariates,
+        weights_col,
+        cluster,
+        panel,
+        allow_unbalanced_panel,
+        control_group,
+        arguments={
+            "yname": "y_col",
+            "tname": "time_col",
+            "idname": "id_col",
+            "gname": "group_col",
+            "pname": "partition_col",
+            "weightsname": "weights_col",
+            "xformla": "covariate_cols",
+        },
+    )
+    return data, glist, alpha, None if weights_col is None else WEIGHTS_COLUMN
+
+
+def _preprocess_multiple_periods(
+    data,
+    yname,
+    tname,
+    idname,
+    gname,
+    pname,
+    covariates,
+    weightsname,
+    cluster,
+    panel,
+    allow_unbalanced_panel,
+    control_group,
+    arguments=None,
+):
+    """Check and clean data with several periods before the group-time estimation.
+
+    The steps follow two-period ddd and att_gt. Rows with a missing value
+    leave the data with a warning. The checks of how the rows fit together
+    then run on the rows that remain. A repeated unit and period, a partition
+    other than 0 and 1, and a partition, cohort, cluster, or panel weight that
+    changes over time raise an error.
+
+    A cohort of 0, infinity, or a period after the last one marks a
+    never-treated unit. Units already treated in the first period have no
+    period to compare with and leave the data with a warning. When no other
+    unit remains, an error says that no data is left. Without
+    never-treated units, no comparison group exists from the first period of
+    the latest cohort on. Not-yet-treated comparisons then leave those periods
+    out. Since the latest cohort is untreated in every period that remains, it
+    serves only as a comparison and gets no cells. An error says when no
+    other cohort is left. Unless allow_unbalanced_panel is True, the units of
+    a panel that miss one of the remaining periods leave the data with a
+    warning. Never-treated comparisons raise an error when no never-treated
+    unit remains.
+
+    In the data that come back, never-treated units have cohort 0. When
+    given, the weights divided by their mean sit in their own column. The
+    messages name the arguments of :func:`~moderndid.ddd` unless
+    ``arguments`` renames them.
+
+    Parameters
+    ----------
+    data : pl.DataFrame
+        Data in long format.
+    yname : str
+        Name of the outcome column.
+    tname : str
+        Name of the period column.
+    idname : str or None
+        Name of the unit column, or of the row index of repeated cross-sections.
+        Without it, each row of repeated cross-sections is an observation of
+        its own.
+    gname : str
+        Name of the cohort column.
+    pname : str
+        Name of the partition column.
+    covariates : list of str or None
+        Names of the covariate columns.
+    weightsname : str or None
+        Name of the sampling weights column.
+    cluster : str or None
+        Name of the cluster column.
+    panel : bool
+        Whether the data follow the same units over time.
+    allow_unbalanced_panel : bool
+        Whether a panel keeps the units that miss some periods.
+    control_group : {"nevertreated", "notyettreated"}
+        Which units serve as comparisons.
+    arguments : dict or None, default None
+        Names that the messages give the arguments of :func:`~moderndid.ddd`,
+        such as ``{"tname": "time_col"}``. An argument left out keeps its name.
+
+    Returns
+    -------
+    tuple
+        - **data**: The columns that the estimation uses
+        - **glist**: The cohorts that get group-time cells
+    """
+    config = DDDConfig(
+        yname=yname,
+        tname=tname,
+        idname=idname,
+        gname=gname,
+        pname=pname,
+        weightsname=weightsname,
+        cluster=cluster,
+        panel=panel,
+        allow_unbalanced_panel=allow_unbalanced_panel,
+    )
+    names = {name: name for name in ("yname", "tname", "idname", "gname", "pname", "weightsname", "xformla")}
+    names.update(arguments or {})
+    named_columns = {
+        names["yname"]: yname,
+        names["tname"]: tname,
+        names["idname"]: idname,
+        names["gname"]: gname,
+        names["pname"]: pname,
+        "cluster": cluster,
+        names["weightsname"]: weightsname,
+        names["xformla"]: covariates,
+    }
+    numeric_columns = {names["yname"]: yname, names["tname"]: tname, names["idname"]: idname, names["gname"]: gname}
+    errors = [
+        f"{argument}='{column}' is not numeric. Please convert it."
+        for argument, column in numeric_columns.items()
+        if column is not None and not data[column].dtype.is_numeric()
+    ]
+    errors.extend(_reserved_name_errors(named_columns, (WEIGHTS_COLUMN, "_post", "_subgroup")))
+    _raise_errors(errors)
+    columns = [yname, tname, idname, gname, pname, cluster, weightsname, *(covariates or [])]
+    data = data.select(list(dict.fromkeys(column for column in columns if column is not None)))
+    data = MissingDataHandler().transform(data, config)
+
+    # Because the missing-data step has run, a single missing value can't decide what these checks find.
+    errors = [_ddd_partition_error(data, pname, names["pname"])]
+    if panel:
+        errors.append(_duplicate_unit_period_error(data, idname, tname, names["idname"], names["tname"]))
+        errors.extend(DDDInvarianceValidator().validate(data, config).errors)
+    # Without a unit column, every row is an observation of its own with a single cluster.
+    if (
+        cluster is not None
+        and idname is not None
+        and data.select(pl.col(cluster).n_unique().over(idname).max()).item() > 1
+    ):
+        errors.append("Cluster variable must be time-invariant within units.")
+    _raise_errors(errors)
+
+    if weightsname is not None:
+        # Since each row of a repeated cross-section is its own observation, only a panel unit keeps one weight.
+        data = (DDDWeightProcessor() if panel else WeightNormalizer()).transform(data, config)
+
+    cohort_dtype = data.schema[gname]
+    data = TreatmentEncoder(names["gname"]).transform(data, config)
+    # Without a unit column, the filter counts the dropped rows of a repeated cross-section.
+    early_config = replace(config, idname=None if idname == ROW_ID_COLUMN else idname)
+    data = EarlyTreatmentFilter().transform(data, early_config)
+    # Since the missing-data step raises rather than empty the data, only the first-period filter can empty it here.
+    if data.is_empty():
+        raise ValueError("Every unit was already treated in the first period. No data is left to estimate from.")
+    latest = None
+    # Trimming before balancing keeps a unit that misses only periods no cell uses.
+    if control_group == "notyettreated" and not data[gname].is_infinite().any():
+        latest = data[gname].max()
+        data = data.filter(pl.col(tname) < latest)
+    data = PanelBalancer("allow_unbalanced_panel=True", names["idname"]).transform(data, config)
+    if control_group == "nevertreated" and not data[gname].is_infinite().any():
+        raise ValueError(
+            "There is no available never-treated group. A cohort of 0, infinity, or a period after the last one "
+            "marks a never-treated unit. Set control_group='notyettreated' to compare with the units treated later."
+        )
+    # The estimators and the printed summary read cohort 0 as never treated.
+    never_treated = ~pl.col(gname).is_finite()
+    data = data.with_columns(pl.when(never_treated).then(0).otherwise(pl.col(gname)).cast(cohort_dtype).alias(gname))
+    cohorts = data[gname].unique().to_numpy()
+    glist = np.sort(cohorts[cohorts > 0])
+    if latest is not None:
+        # Since the latest cohort is untreated in every period that remains, it serves only as a comparison.
+        glist = glist[glist < latest]
+        if len(glist) == 0:
+            start = int(latest) if float(latest).is_integer() else latest
+            raise ValueError(
+                "No cohort is left to estimate. Without never-treated units, the not-yet-treated comparisons leave "
+                f"out the periods from {start} on. Cohort {start} then serves only as a comparison. A cohort of 0, "
+                "infinity, or a period after the last one marks a never-treated unit."
+            )
+    return data, glist
+
+
+def _raise_errors(errors):
+    """Raise the messages that a check found, if any."""
+    found = [error for error in errors if error is not None]
+    ValidationResult(is_valid=not found, errors=found).raise_if_invalid()
 
 
 def _process_gt_cell(

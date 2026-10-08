@@ -78,29 +78,6 @@ country was a democracy that year. The row also records the year from 0 to 5 in
 earlier. Because `lag1.Value1` in each of the rows above repeats `Y` from the
 year before, you can also tell that the six years are consecutive.
 
-Since only a few countries ever change status, we start by counting the
-treatment histories that the last two years contain.
-
-```{code-cell} ipython3
-# Each country's democracy status in the last two years, how often it changed status,
-# and its log GDP per capita in the year before the last two.
-countries = data.group_by("Unit").agg(
-    last_two_years=pl.col("D").sort_by("Time").tail(2).cast(pl.String).str.join(""),
-    changes=pl.col("D").sort_by("Time").diff().abs().sum(),
-    gdp_year_before=pl.col("Y").filter(pl.col("Time") == 3).first(),
-    final_gdp_missing=pl.col("Y").filter(pl.col("Time") == 5).first().is_null(),
-    region=pl.col("region").first(),
-)
-changed = (countries["changes"] > 0).sum()
-print(f"{changed} of {countries.height} countries change status at least once")
-
-countries.group_by("last_two_years").agg(
-    countries=pl.len(),
-    mean_gdp_year_before=pl.col("gdp_year_before").mean().round(1),
-    final_gdp_missing=pl.col("final_gdp_missing").sum(),
-).sort("last_two_years")
-```
-
 In the last two years, 91 countries were democracies throughout and 46 were
 autocracies throughout, against three that became democracies and one that
 stopped being one. Before those two years began, the democracies' mean log GDP
@@ -109,22 +86,9 @@ log points is what a plain comparison would mistake for an effect of democracy.
 
 Four countries, two on each of those main histories, have no GDP per capita
 figure for the last year. Since the estimator drops them with a warning, the
-main estimates rest on 137 countries. Splitting the same histories by region
-shows where the autocracies are.
-
-```{code-cell} ipython3
-# The number of countries in each region that followed each history over the last two years.
-countries.pivot(
-    on="last_two_years",
-    index="region",
-    values="Unit",
-    aggregate_function="len",
-    sort_columns=True,
-).fill_null(0).sort("region")
-```
-
-Every industrialized country (INL) and every South Asian one (SAS) was a
-democracy in both years. The Middle East and North Africa (MNA) is the mirror
+main estimates rest on 137 countries. The regional distribution limits those
+comparisons because every industrialized country (INL) and every South Asian
+one (SAS) was a democracy in both years. The Middle East and North Africa (MNA) is the mirror
 image, since 10 of its 11 countries were autocracies in both. Those gaps come
 back later, when the weights try to match the autocracies to the full set of
 countries.
@@ -342,23 +306,12 @@ both years. Under two years of autocracy, `mu(ds2)` puts the same mean at
 Each set of weights tries to make the countries on its history look like all 137
 countries in every covariate. The `imbalances` field of the result measures how
 far each one falls short, as the gap between a covariate's weighted mean and its
-target in standard deviations of the covariate. Below, you'll see the largest
-imbalance the democracy weights leave, followed by the first-year imbalances of
-the autocracy weights next to whether the lasso kept each covariate.
+target in standard deviations of the covariate. We can inspect the autocracy
+weights in the first year to see where those matches fall short.
 
 ```{code-cell} ipython3
-# The largest imbalance the democracy weights leave on any covariate in either year.
-democracy_imbalance = result.imbalances["ds1"]["imbalance"].abs().max()
-print(f"largest imbalance under the democracy weights: {democracy_imbalance:.4f}\n")
-
-# The autocracy weights' first-year imbalances next to the covariates the lasso kept.
-# The first year's lasso fit sits at index 0 and starts with its intercept.
-first_year = result.imbalances["ds2"].filter(pl.col("period") == 1)
-kept = result.coefficients["ds2"][0][1:] != 0
-print(f"{'covariate':<14}{'imbalance':>10}   kept by the lasso")
-rows = zip(first_year["covariate"], first_year["imbalance"], kept)
-for covariate, imbalance, in_model in rows:
-    print(f"{covariate:<14}{imbalance:>10.4f}   {'yes' if in_model else 'no'}")
+# Read the first year's diagnostic directly from the result.
+result.imbalances["ds2"].filter(pl.col("period") == 1).select("covariate", "imbalance")
 ```
 
 The democracy weights match every covariate to within 0.0013 standard deviations
@@ -505,27 +458,14 @@ start that region doesn't explain into the estimate of 0.3067.
 ### Swapping the outcome model or the tolerance
 
 This check turns to the settings that shape each of the estimator's two stages.
-Below our specification, the fully interacted model, a nearly unpenalized ridge
-fit, and a single tolerance for every covariate each take a row of their own.
+We try the fully interacted model, a nearly unpenalized ridge fit, and a single
+tolerance for every covariate before comparing their results in the final table.
 
 ```{code-cell} ipython3
 # The two-year effect when only the outcome model or the balance tolerance changes.
-changes = {
-    "our specification": {},
-    "lasso_subsample": {"method": "lasso_subsample"},
-    "ridge": {"regularization": False},
-    "one tolerance": {"adaptive_balancing": False},
-}
-variants = {}
-for name, change in changes.items():
-    variant = did.dyn_balancing(data, **(spec | change))
-    variants[name] = variant
-    # The worst match on past GDP per capita that the autocracy weights leave in either year.
-    past_gdp = variant.imbalances["ds2"].filter(pl.col("covariate").str.starts_with("lag"))
-    print(
-        f"{name:>17}  effect {variant.att:.4f}  standard error {variant.se:.4f}"
-        f"  past GDP imbalance {past_gdp['imbalance'].abs().max():.4f}"
-    )
+interacted = did.dyn_balancing(data, **(spec | {"method": "lasso_subsample"}))
+ridge = did.dyn_balancing(data, **(spec | {"regularization": False}))
+one_tolerance = did.dyn_balancing(data, **(spec | {"adaptive_balancing": False}))
 ```
 
 Under these swaps the effect runs from −0.0241 to −0.0121, a spread smaller than
@@ -535,7 +475,7 @@ GDP per capita more closely than a lasso that keeps only `lag1.Value1`, their
 residuals in the last year and the year-to-year changes in their projections
 both come out smaller.
 
-In the last column you can see what adaptive balancing protects. When one
+The imbalance diagnostics show what adaptive balancing protects. When one
 tolerance applies to every covariate, the INL gap forces it wide enough to leave
 past GDP per capita off by as much as 0.1220 standard deviations, against 0.0150
 in our specification. Ridge leaves the same gap, since none of its coefficients
@@ -551,21 +491,8 @@ share shocks.
 
 ```{code-cell} ipython3
 # The same estimate under a chi-squared critical value and under region clusters.
-changes = {
-    "chi-squared": {"robust_quantile": True},
-    "region clusters": {"clustervars": ["region"]},
-}
-uncertainty = {}
-for name, change in changes.items():
-    estimate = did.dyn_balancing(data, **(spec | change))
-    uncertainty[name] = estimate
-    # robust_quantile holds the critical value behind each printed interval.
-    low = estimate.att - estimate.robust_quantile * estimate.se
-    high = estimate.att + estimate.robust_quantile * estimate.se
-    print(
-        f"{name:>16}  standard error {estimate.se:.4f}"
-        f"  critical value {estimate.robust_quantile:.4f}  interval [{low:.4f}, {high:.4f}]"
-    )
+chi_squared = did.dyn_balancing(data, **(spec | {"robust_quantile": True}))
+region_clusters = did.dyn_balancing(data, **(spec | {"clustervars": ["region"]}))
 ```
 
 The chi-squared critical value of 3.0802 widens the interval to run from −0.0864
@@ -583,28 +510,31 @@ regional shocks could matter rather than as a measure of how much.
 ### The spread across the checks
 
 For our specification and every check, the table below gives the two-year
-effect, its standard error, and its 95 percent interval.
+effect, its standard error, and its 95 percent interval. The public
+{func}`~moderndid.to_df` converter supplies those bounds from each result's
+inference settings when you want to compare fits in your own analysis.
 
 ```{code-cell} ipython3
 :tags: [hide-input]
 
-# The two-year effect, its standard error, and its 95 percent interval under each check.
+# Extract the ATE row from each result using its own inference settings.
 checks = {
     "our specification": result,
     "stacked earlier windows": pooled,
     "without past GDP per capita": without_past_gdp,
-    "fully interacted outcome model": variants["lasso_subsample"],
-    "ridge outcome model": variants["ridge"],
-    "one balance tolerance": variants["one tolerance"],
-    "chi-squared critical value": uncertainty["chi-squared"],
-    "clustered by region": uncertainty["region clusters"],
+    "fully interacted outcome model": interacted,
+    "ridge outcome model": ridge,
+    "one balance tolerance": one_tolerance,
+    "chi-squared critical value": chi_squared,
+    "clustered by region": region_clusters,
 }
 
-print(f"{'check':<32}{'effect':>9}{'std. error':>12}   [95% Conf. Interval]")
-for name, check in checks.items():
-    low = check.att - check.robust_quantile * check.se
-    high = check.att + check.robust_quantile * check.se
-    print(f"{name:<32}{check.att:>9.4f}{check.se:>12.4f}   [{low:8.4f}, {high:8.4f}]")
+rows = []
+for name, fitted in checks.items():
+    ate = did.to_df(fitted).filter(pl.col("parameter") == "ATE")
+    rows.append(ate.with_columns(pl.lit(name).alias("check")))
+
+pl.concat(rows).select("check", "estimate", "se", "ci_lower_robust", "ci_upper_robust")
 ```
 
 Whenever past GDP per capita stays among the covariates, the two-year effect

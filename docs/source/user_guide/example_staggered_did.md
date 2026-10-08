@@ -75,21 +75,6 @@ in all five years, it can't separate treated years from untreated ones and
 moderndid never reads it.
 :::
 
-Before estimating anything, it helps to know how the counties split across the
-cohorts. Since a county's cohort, state, and population never change, one row
-per county is enough to count them.
-
-```{code-cell} ipython3
-# Count the counties and states in each cohort, along with their average size.
-counties = data.filter(pl.col("year") == 2003)
-counties.group_by("first.treat").agg(
-    counties=pl.len(),
-    states=pl.col("state").n_unique(),
-    state_codes=pl.col("state").unique().sort(),
-    mean_lpop=pl.col("lpop").mean().round(2),
-).sort("first.treat")
-```
-
 The 2004, 2006, and 2007 cohorts hold 20, 40, and 131 counties. The remaining
 309 counties sit in the 16 states that never raised their minimum wage during
 these years. One thing to keep in mind for later is that Illinois (state code
@@ -363,7 +348,7 @@ print(by_cohort)
 
 The overall effect of −0.0328 means that teen employment in the treated counties
 sat about 3.2 percent below where it would have been without the increases.
-With a 95 percent interval from −0.0566 to −0.0090, this is our answer to how
+With a 95 percent interval from −0.0567 to −0.0089, this is our answer to how
 much employment fell.
 
 ### Why the other averages come out larger
@@ -506,14 +491,14 @@ clustered_by_cohort = did.aggte(clustered, type="group")
 print(clustered_by_cohort)
 ```
 
-With state clusters, the standard error of the overall effect rises from 0.0121
-to 0.0172. Its interval now runs from −0.0666 to 0.0009 and just barely covers
+With state clusters, the standard error of the overall effect rises from 0.0122
+to 0.0176. Its interval now runs from −0.0674 to 0.0018 and just barely covers
 zero.
 
 :::{admonition} Don't trust Illinois's clustered bands
 :class: danger
 
-Illinois's standard error falls from 0.0247 to 0.0177 under state clusters
+Illinois's standard error falls from 0.0265 to 0.0190 under state clusters
 because all its counties share one cluster. With a single treated state the
 bootstrap can't see state-level shocks. The 2004 cohort's clustered bands and
 those at event times 2 and 3 are too narrow as a result.
@@ -529,7 +514,7 @@ print(clustered_event_study)
 ```
 
 Every placebo band still covers zero once the bootstrap clusters by state. The
-band at event time 1 widens to run from −0.1176 to 0.0116 and now covers zero as
+band at event time 1 widens to run from −0.1185 to 0.0125 and now covers zero as
 well. Clustering also drops the Wald pre-test and leaves the placebo bands as
 the only check.
 
@@ -544,43 +529,15 @@ neither one settles them on its own.
 
 ### Putting the checks together
 
-To close the loop on the question this example started with, the table below
-lines up the overall effect and its 95 percent interval under every check above.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-
-from scipy.stats import norm
-
-# The overall effect and its 95 percent interval under each check, next to our specification.
-checks = {
-    "our specification": by_cohort,
-    "not-yet-treated controls": variants["notyettreated"],
-    "inverse probability weighting": variants["ipw"],
-    "outcome regression": variants["reg"],
-    "without lpop": unadjusted_by_cohort,
-    "varying base period": varying_by_cohort,
-    "one year of anticipation": anticipating_by_cohort,
-    "clustered by state": clustered_by_cohort,
-}
-z = norm.ppf(0.975)
-
-print(f"{'check':<31}{'overall effect':>15}   [95% Conf. Interval]")
-for name, check in checks.items():
-    low = check.overall_att - z * check.overall_se
-    high = check.overall_att + z * check.overall_se
-    print(f"{name:<31}{check.overall_att:>15.4f}   [{low:8.4f}, {high:8.4f}]")
-```
-
-Lined up this way, the checks tell a fairly clear story about the answer. The
-comparison group, the estimator, the covariate, and the base period barely move
-the overall effect. It stays between −0.0310 and −0.0329 in every one of those
-rows.
+The checks help distinguish choices that move the employment estimate from
+choices that change how precisely we can measure it. Changing the comparison
+group, the estimator, the covariate, or the base period leaves the overall effect
+between −0.0310 and −0.0329.
 
 The two choices that do matter end up working in quite different ways. Allowing
 one year of anticipation moves the estimate itself to −0.0500 and keeps its
-interval below zero, from −0.0836 to −0.0165. Clustering by state instead leaves
-the estimate at −0.0328 but widens its interval until it reaches 0.0009. How
+interval below zero, from −0.0839 to −0.0161. Clustering by state instead leaves
+the estimate at −0.0328 but widens its interval until it reaches 0.0018. How
 large the effect is depends on what you're willing to assume about the year
 before adoption. How confident you can be in the estimate depends on how you
 cluster.

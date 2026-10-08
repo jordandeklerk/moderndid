@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import warnings
 from typing import NamedTuple
 
 import numpy as np
@@ -77,6 +76,15 @@ def mboot_ddd(
 
     Summing rather than averaging within clusters gives every unit the same
     weight when clusters differ in size.
+
+    The critical value for uniform confidence bands is the ``1 - alpha`` quantile
+    of the largest deviation in each draw after each column is divided by its
+    bootstrap scale. A column whose scale is zero or at most about 1.5e-7 has no
+    deviation to compare. It has a NaN standard error and stays out of the maximum
+    of every draw. The critical value is NaN when no column remains.
+
+    Every quantile, including the two quartiles behind each scale, is the
+    smallest draw with at least that share of the draws at or below it.
     """
     inf_func = inf_func.reshape(-1, 1) if inf_func.ndim == 1 else np.atleast_2d(inf_func)
 
@@ -102,8 +110,8 @@ def mboot_ddd(
     crit_val = np.nan
 
     if bres_clean.shape[1] > 0:
-        q75 = np.percentile(bres_clean, 75, axis=0)
-        q25 = np.percentile(bres_clean, 25, axis=0)
+        q75 = np.percentile(bres_clean, 75, axis=0, method="inverted_cdf")
+        q25 = np.percentile(bres_clean, 25, axis=0, method="inverted_cdf")
         b_sigma = (q75 - q25) / 1.3489795
         b_sigma[b_sigma <= np.sqrt(np.finfo(float).eps) * 10] = np.nan
         if cluster is None:
@@ -111,13 +119,13 @@ def mboot_ddd(
         else:
             se_full[ndg_dim] = b_sigma * np.sqrt(n_eff) / n
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=RuntimeWarning)
-            b_t = np.max(np.abs(bres_clean / b_sigma), axis=1)
-
-        b_t_finite = b_t[np.isfinite(b_t)]
-        if len(b_t_finite) > 0:
-            crit_val = np.percentile(b_t_finite, 100 * (1 - alpha))
+        # Since a column with a negligible or NaN scale has no deviation to compare, every draw ignores it.
+        usable = np.isfinite(b_sigma)
+        if usable.any():
+            b_t = np.max(np.abs(bres_clean[:, usable] / b_sigma[usable]), axis=1)
+            b_t_finite = b_t[np.isfinite(b_t)]
+            if len(b_t_finite) > 0:
+                crit_val = np.percentile(b_t_finite, 100 * (1 - alpha), method="inverted_cdf")
 
     return MbootResult(bres=bres, se=se_full, crit_val=crit_val)
 

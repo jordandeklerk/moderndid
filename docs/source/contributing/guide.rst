@@ -1,416 +1,171 @@
 .. _contributing:
 
-#########################
-Contributing to ModernDiD
-#########################
-
-Welcome to **ModernDiD**! We appreciate your interest in contributing to the project.
-Whether you're fixing a bug, adding a new feature, improving documentation, or
-helping with code review, your contributions are valuable.
-
-If you have questions or run into issues, feel free to open an issue on
-`GitHub <https://github.com/jordandeklerk/moderndid>`__.
-
-Development process
-===================
-
-Here's a summary of the contribution workflow:
-
-1. **Set up your environment**
-
-   We use `pixi <https://pixi.sh/>`__ to manage development environments. Pixi
-   handles Python, conda, and PyPI dependencies in a single lockfile so every
-   contributor gets an identical setup.
-
-   * `Install pixi <https://pixi.sh/latest/#installation>`__ if you don't have
-     it already
-
-   * Fork the repository on GitHub, then clone your fork::
-
-      git clone https://github.com/your-username/moderndid.git
-      cd moderndid
-
-   * Add the upstream repository::
-
-      git remote add upstream https://github.com/jordandeklerk/moderndid.git
-
-   * Install the dev environment (this creates an isolated environment with all
-     dependencies)::
-
-      pixi install -e dev
-
-   **Alternative: pip-based setup.** If you prefer not to use pixi, you can set
-   up a virtual environment manually::
-
-      python -m venv .venv && source .venv/bin/activate
-      uv pip install -e ".[all,test,dev]"
-
-2. **Develop your contribution**
-
-   * Create a branch for your work. Use a descriptive name that reflects
-     what you're working on::
-
-      git checkout -b fix-bootstrap-standard-errors
-
-   * Make your changes, writing tests for any new functionality
-
-   * Commit locally as you progress using clear, descriptive commit messages
-
-3. **Validate your changes**
-
-   * Run the test suite to make sure your changes don't break anything::
-
-      pixi run -e dev tests-core
-
-   * Run the pre-commit hooks to check style::
-
-      pixi run lint
-
-   * If you've modified documentation, build and review it::
-
-      pixi run docs
-
-4. **Submit your contribution**
-
-   * Push your changes to your fork::
-
-      git push origin fix-bootstrap-standard-errors
-
-   * Open a pull request on GitHub. Provide a clear title and description
-     explaining what your changes do and why
-
-5. **Review process**
-
-   * Reviewers will provide feedback on your pull request. This is a
-     collaborative process, and we review all contributions with the goal
-     of improving the project together
-
-   * Update your PR by making changes locally, committing, and pushing
-     to the same branch. The PR will update automatically
-
-   * CI tests must pass before your PR can be merged
-
-Guidelines
-==========
-
-All code changes should include tests that verify the new behavior. See
-:ref:`how to write tests <testing-how-to-write>` for details on conventions
-including fixtures, parameterization, and
-:ref:`numerical tolerances <testing-numerical-tolerances>`.
-
-Public functions and classes should be documented with docstrings following the
-NumPy docstring standard. This ensures consistency across the codebase and
-enables automatic API documentation generation.
-
-If you're adding a new estimator, follow the established architecture patterns
-described in :ref:`architecture`. That document covers the preprocessing pipeline,
-result object design, and the consistent API conventions that make **ModernDiD**
-predictable for users.
-
-All changes require review and approval before merging. If you don't receive
-feedback within a week, feel free to ping the reviewers on the pull request.
-
-Stylistic guidelines
-====================
-
-We follow `PEP 8 <https://www.python.org/dev/peps/pep-0008/>`__ style conventions.
-Run ``pixi run lint`` to verify your code before submitting a pull request.
-
-For imports, use the standard conventions of ``import numpy as np`` and
-``import polars as pl``. Keep imports organized with standard library imports
-first, followed by third-party packages, and then local imports.
-
-Prefer clear, descriptive names over brevity. Code is read more often than it
-is written, and a few extra characters in a variable name can save significant
-time for future readers.
-
-Code quality tools
-==================
-
-We use `ruff <https://docs.astral.sh/ruff/>`__ for linting and formatting. Ruff
-is built in Rust and is very fast. It replaces flake8, pylint, black, and isort
-in a single tool:
-
-* **Linting**: Pyflakes, Pycodestyle, pydocstyle, bugbear, and more
-* **Formatting**: Consistent code style (replaces black)
-* **Import sorting**: Organized imports (replaces isort)
-
-Ruff is configured in ``pyproject.toml``. To check your code manually::
-
-   ruff check moderndid tests     # Lint
-   ruff format moderndid tests    # Format
-
-To auto-fix issues::
-
-   ruff check --fix moderndid tests
-
-Pre-commit hooks
-----------------
-
-We use `prek <https://github.com/j178/prek>`__ to manage pre-commit hooks. Prek
-is built in Rust and is very fast. Hooks run automatically before each commit
-to catch issues early.
-
-To install the hooks after cloning the repository::
-
-   prek install
-
-The hooks will then run automatically on ``git commit``. To run all hooks
-manually on all files::
-
-   prek run --all-files
-
-If you need to bypass hooks temporarily (not recommended)::
-
-   git commit --no-verify
-
-Test coverage
-=============
-
-Pull requests that modify code should include tests that sufficiently cover the new functionality.
-Tests should aim to address edge cases and realistic scenarios. We aim for high test coverage
-across the codebase.
-
-Run the test suite locally before pushing::
-
-   pixi run -e dev tests-core      # Fast test suite (recommended during development)
-   pixi run -e dev tests-full      # Full test suite including slow tests
-
-R validation tests
-==================
-
-**ModernDiD** includes a validation suite that compares Python estimates against
-the original R packages (``did``, ``DRDID``, ``contdid``, ``triplediff``,
-``HonestDiD``, ``DIDmultiplegtDYN``). These tests live in
-`validation <https://github.com/jordandeklerk/moderndid/tree/main/tests/validation>`__ and run inside the ``validation`` pixi environment,
-which is supported on **Linux and macOS** only (``linux-64``, ``osx-arm64``,
-``osx-64``). Windows is not supported because several R dependencies
-(``r-base``, ``r-did``, ``r-drdid``) lack reliable conda-forge Windows
-builds.
-
-Prerequisites
--------------
-
-The validation environment requires a **Rust toolchain** (``cargo``,
-``rustc``) to compile the R ``polars`` package from source. Install Rust
-via `rustup <https://rustup.rs/>`__ if you don't have it already::
-
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-R itself and the R packages that are on conda-forge (``did``, ``DRDID``,
-``jsonlite``) are installed automatically by pixi when you first use the
-validation environment.
-
-One-time setup
---------------
-
-Before running validation tests for the first time, install the CRAN-only
-R packages::
-
-   pixi run -e validation setup-r
-
-This runs `setup-r.sh <https://github.com/jordandeklerk/moderndid/tree/main/.github/scripts/setup-r.sh>`__, which installs ``contdid``,
-``triplediff``, ``HonestDiD``, ``DIDmultiplegtDYN``, ``Rglpk``, and
-``polars`` from CRAN and r-universe. The first run compiles everything from
-source and can take a few minutes (most of that is the Rust build for
-``polars``). Subsequent runs finish in seconds because the script only
-installs packages that are missing.
-
-Running tests
--------------
-
-Run validation tests for individual estimators::
-
-   pixi run -e validation did          # Staggered DiD
-   pixi run -e validation drdid        # Doubly robust DiD
-   pixi run -e validation didcont      # Continuous treatment
-   pixi run -e validation didtriple    # Triple differences
-   pixi run -e validation didinter     # Intertemporal treatment
-   pixi run -e validation didhonest    # Sensitivity analysis
-
-Or run the full validation suite::
-
-   pixi run -e validation all
-
-Each test file calls the corresponding R package via ``subprocess``, runs
-the same estimation on the same data in both R and Python, and asserts that
-the results match within numerical tolerance. Tests that depend on an R
-package that failed to install are automatically skipped.
-
-
-Building documentation
-======================
-
-Documentation is built using Sphinx and lives in the `docs <https://github.com/jordandeklerk/moderndid/tree/main/docs>`__ directory. The
-documentation includes API references generated from docstrings, user guides,
-and example notebooks.
-
-To build and preview the documentation locally::
-
-   pixi run docs
-
-The built documentation will be available in ``docs/_build/``. Open
-``index.html`` in a browser to review your changes before submitting.
-
-Continuous integration
-======================
-
-Every pull request and push to ``main`` triggers automated checks via GitHub
-Actions. Understanding what each workflow does helps you diagnose failures
-quickly.
-
-Primary test suite
--------------------
-
-The ``test.yml`` workflow runs on every pull request and on pushes to ``main``
-(excluding changes under ``docs/``). It has two jobs.
-
-- The ``test`` job runs the core test suite (excluding slow tests) across
-  Python 3.12 and 3.13 on Ubuntu and Windows. This is the most common job to
-  check when your PR fails.
-- The ``coverage`` job runs the full test suite (including slow tests) on
-  Python 3.14 on ``main`` only. It does not run on PRs.
-
-All jobs upload coverage reports to Codecov.
-
-Weekly full test suite
------------------------
-
-The ``test-full.yml`` workflow runs every Sunday at 02:00 UTC and can be
-triggered manually. It exercises the full test suite including slow tests that
-are skipped in normal CI. Check this workflow if a release candidate fails
-tests that passed in regular CI.
-
-Package publishing
--------------------
-
-The ``publish.yml`` workflow triggers when a ``v*`` tag is pushed. It builds
-the wheel and source distribution with build provenance attestation, then
-publishes to PyPI via Trusted Publishing (OIDC). The publish step requires
-maintainer approval through the ``publish`` GitHub environment. See
-:doc:`releasing` for the full release process.
-
-Post-release changelog
------------------------
-
-The ``post-release.yml`` workflow runs when a GitHub Release is published. It
-regenerates ``CHANGELOG.md`` from all releases using
-``changelog-from-release`` and opens a PR with the updated file.
-
-Nightly upstream testing
--------------------------
-
-The ``nightly.yml`` workflow runs every Sunday at 03:00 UTC (one hour after the
-full suite) and can be triggered manually. It installs nightly wheels of numpy,
-scipy, polars, pyarrow, and statsmodels from the
-`scientific-python-nightly-wheels <https://anaconda.org/scientific-python-nightly-wheels>`__
-index and runs the core test suite against them.
-
-Failures here are expected and informational. They flag upcoming breaking
-changes in upstream packages before those changes are released. This workflow
-does not block PRs.
-
-To run the same check locally::
-
-   tox -e nightly
-
-Security scanning
-------------------
-
-The ``codeql.yml`` workflow runs CodeQL static analysis for Python on pushes
-to ``main``, pull requests against ``main``, and weekly on Monday at midnight
-UTC.
-
-Diagnosing CI failures
------------------------
-
-When CI fails on your PR, start by clicking through to the failing job in the
-GitHub Actions tab. The most common causes are
-
-- Test failures in the ``test`` job. The output shows which test failed and
-  why. Run the same test locally with ``pixi run -e dev tests-core`` to
-  reproduce.
-- Lint failures from ruff or mypy. Run ``pixi run lint`` locally to see the
-  same errors.
-- Platform differences. CI runs on Ubuntu while you may develop on macOS.
-  Floating-point behavior can differ slightly between platforms. See
-  :ref:`debugging` for guidance on numerical tolerances.
-
-Registering new public API
+########################
+Setting up to contribute
+########################
+
+A checkout of moderndid gives you a place to trace an unexpected estimate,
+improve an explanation, or try a method the package doesn't yet provide.
+We'll set it up here and use the tests and documentation
+build to check what your change does before presenting it for review.
+
+For a bug report, include a small dataset or an existing data loader, the
+function call, and the behavior you expected to see. You can open a report in
+the `issue tracker <https://github.com/jordandeklerk/moderndid/issues>`__
+before working on a fix. For a new estimator or a change to the public API,
+describing the proposal there first gives us a place to discuss the method and
+its scope.
+
+Preparing your checkout
+=======================
+
+Fork the repository on GitHub, clone your fork, and add the main repository as
+``upstream`` so you can keep your checkout current.
+
+.. code-block:: bash
+
+   git clone https://github.com/your-username/moderndid.git
+   cd moderndid
+   git remote add upstream https://github.com/jordandeklerk/moderndid.git
+
+The project uses `Pixi <https://pixi.sh/>`__ to manage its development,
+documentation, and validation environments. Their dependencies and tasks are
+defined in ``pixi.toml`` and their resolved versions are recorded for each
+supported platform in ``pixi.lock``. The Pixi environments support Linux and
+macOS; the package itself also runs on Windows.
+
+After `installing Pixi <https://pixi.sh/latest/installation/>`__, install the
+development environment and create a branch for your contribution.
+
+.. code-block:: bash
+
+   pixi install -e dev
+   git switch -c fix-bootstrap-standard-errors
+   pixi run -e dev python -c "import moderndid; print(moderndid.__file__)"
+
+The path printed above tells you which copy of the package Python is using.
+It should point into this checkout because the installation is editable.
+That means changes to the source become available without reinstalling the package. You
+can keep using ``pixi run -e dev`` to select this environment for a command even
+if another virtual environment is active in your terminal.
+
+If you're developing on Windows or prefer a virtual environment, use Python
+3.12 or newer and install the development extras directly.
+
+.. code-block:: bash
+
+   python -m venv .venv
+
+Activate ``.venv`` so the installation commands below apply to your isolated
+environment. On Linux and macOS, use ``source .venv/bin/activate``; in Windows
+PowerShell, use ``.venv\Scripts\Activate.ps1``.
+
+.. code-block:: bash
+
+   python -m pip install --upgrade pip
+   python -m pip install -e ".[all,test,dev]"
+
+You can then run ``pytest`` and ``pre-commit`` directly in that environment.
+The separate documentation dependencies are available through the ``doc`` extra
+if your contribution needs a Sphinx build.
+
+Finding the code for your change
+================================
+
+You can find each estimator under ``moderndid/`` and its tests and fixtures in
+the corresponding folder under ``tests/``. Shared input handling in
+``moderndid/core/`` determines the sample and specification those estimators
+receive. Use the :ref:`architecture guide <architecture>` to understand how
+those pieces connect or :ref:`adding an estimator <new-estimator>` to follow a
+new method through the public API.
+
+Before editing an estimator, reproduce the behavior on the smallest input that
+still exposes it. A preprocessing error needs a different check from an
+incorrect influence function or confidence interval. Keeping that distinction
+clear helps you choose a test that would fail for the original problem rather
+than merely exercise the new code.
+
+Public functions use NumPy-style docstrings to explain their inputs and
+results. Worked analyses belong in the guides under ``docs/source/`` so readers
+can follow the choices that give those results their meaning. If your change
+alters a user's inputs, results, or interpretation, update that explanation
+alongside the code. The :doc:`testing` page covers regression tests and
+numerical checks in more detail.
+
+Checking your work locally
 ==========================
 
-**ModernDiD** uses a lazy-loading import system in `__init__.py <https://github.com/jordandeklerk/moderndid/tree/main/moderndid/__init__.py>`__ so
-that ``import moderndid`` is fast even though the package has many optional
-dependencies. When you add a new public function, class, or module, you need
-to register it in this system.
+During development, run the file or test that covers the behavior you're
+changing. For example, work on group-time effects can begin with a focused test
+file rather than every estimator in the package.
 
-The lazy loader resolves names through three dictionaries checked in order.
+.. code-block:: bash
 
-``_lazy_imports``
-   Maps names to their source module for functions and classes that are always
-   available (no optional dependencies). For example,
-   ``"att_gt": "moderndid.did.att_gt"`` means that ``moderndid.att_gt`` will
-   import ``att_gt`` from ``moderndid.did.att_gt`` on first access.
+   pixi run -e dev pytest tests/did/test_att_gt.py -m "not slow" -vv
+   pixi run lint
 
-``_optional_imports``
-   Maps names to a ``(module_path, extra_name)`` tuple for items that require
-   an optional dependency. If the dependency is not installed, accessing the
-   name raises an ``ImportError`` with a helpful message telling the user
-   which extra to install. For example,
-   ``"cont_did": ("moderndid.didcont.cont_did", "didcont")`` means the user
-   sees ``uv add 'moderndid[didcont]'`` in the error.
+The lint task runs the hooks in ``.pre-commit-config.yaml``. They check file
+syntax and whitespace as well as Python linting and formatting with Ruff. Since
+some hooks edit files, inspect the resulting diff and rerun the checks if they
+report fixes. You can install the same hooks to run before each local commit.
 
-``_submodules``
-   A set of submodule names that can be accessed as ``moderndid.<submodule>``.
-   When accessed, the full submodule is imported.
+.. code-block:: bash
 
-To register a new always-available function, add an entry to ``_lazy_imports``
-and add the name to ``__all__``. For a new optional function, add it to
-``_optional_imports`` with the correct extra name and add it to ``__all__``.
+   pixi run -e check pre-commit install
 
-.. note::
+.. admonition:: Work on a branch
+   :class: important
 
-   If a function name shadows a submodule name (as ``drdid`` the function
-   shadows ``drdid`` the submodule), the function must be imported eagerly
-   at the top of ``__init__.py`` rather than through the lazy loader. See
-   the existing ``from moderndid.drdid.drdid import drdid`` line for this
-   pattern.
+   Keep your contribution on its own branch because the hooks refuse
+   commits to ``main`` during the local commit checks.
 
-Dependency management
+Previewing documentation
+========================
+
+Read your edited page after a build as well as in its source form. Since Sphinx
+resolves cross-references and executes the example pages, the rendered
+review can reveal stale calls or outputs that a text edit would miss. We'll
+use a scratch directory to keep this build separate from the maintainer's
+``docs/_build`` and ``docs/_doctree`` folders.
+
+.. code-block:: bash
+
+   docs_scratch=$(mktemp -d "${TMPDIR:-/tmp}/moderndid-docs.XXXXXX")
+   pixi run -e docs env -u VIRTUAL_ENV sphinx-build \
+       -b html --keep-going -W \
+       -d "$docs_scratch/doctree" docs/source "$docs_scratch/html"
+   pixi run -e docs python -m http.server 8765 \
+       --directory "$docs_scratch/html" --bind 127.0.0.1
+
+Open ``http://127.0.0.1:8765`` to read the page as a user would. Check the
+links, code blocks, outputs, and figures in both color schemes; stop the server
+with ``Ctrl+C`` when you're done. Reuse the same scratch directory for later
+builds so unchanged examples can use their execution cache. Run one Sphinx
+build at a time because concurrent builds can write to the same cache.
+
+Managing dependencies
 =====================
 
-Version constraints
--------------------
+A new dependency needs a place in both the user installation and the
+environment that tests it. ``pyproject.toml`` describes what users install and
+``pixi.toml`` defines the environments used to develop and check the package.
+If only one estimator needs the dependency, it usually belongs in that
+estimator's optional extra and the matching Pixi feature. Consider whether
+users of unrelated estimators would need it before adding it to the base
+package.
 
-Core dependencies are pinned with minimum versions in ``pyproject.toml``
-(such as ``numpy>=1.22.0`` and ``polars>=1.38``). These minimums represent the
-oldest versions we test against and support. When bumping a minimum version,
-ensure the full CI matrix still passes since all Python versions in the matrix
-use the same dependency floor.
+Update both dependency declarations and regenerate ``pixi.lock`` when changing
+an environment. For a documentation import, check the ``doc`` extra and the
+``docs`` Pixi feature. Optional public names also need the appropriate import
+registration described in :ref:`adding an estimator <new-estimator>` so a
+missing dependency produces a useful installation message.
 
-Optional dependencies are grouped under extras in ``pyproject.toml`` and
-mirrored as pixi features in ``pixi.toml``. The ``all`` extra includes
-everything except GPU support.
+The minimum versions in ``pyproject.toml`` are installation constraints; the
+lockfile and CI installs can select newer releases. Passing those checks alone
+doesn't establish compatibility with every declared minimum. If you change a
+version floor, test the affected behavior at that floor and explain the reason
+in the pull request.
 
-Adding a new dependency
-------------------------
-
-Before adding a dependency, consider whether it is truly necessary. Each new
-dependency increases installation complexity and potential for version
-conflicts.
-
-If the dependency is needed for only one estimator or feature, make it an
-optional extra rather than a core dependency. Follow the existing pattern
-in ``pyproject.toml`` to define a new optional group, then register the
-affected functions in ``_optional_imports`` in ``moderndid/__init__.py`` so
-users get a clear error message when the dependency is missing. Add the
-dependency to the appropriate pixi feature in ``pixi.toml`` and the
-corresponding tox testenv in ``tox.ini``.
-
-Python version support
------------------------
-
-**ModernDiD** supports Python 3.12 and above (``requires-python = ">=3.12"``).
-CI tests against 3.12 and 3.13, and the coverage job on ``main`` runs 3.14. Do
-not use language features that need a Python version above 3.12, such as type
-parameter defaults from 3.13, without gating them behind a version check.
+Once the change has a focused test and a clean rendered explanation,
+:doc:`workflow` shows how to present it for review without losing the context
+that helped you make it.

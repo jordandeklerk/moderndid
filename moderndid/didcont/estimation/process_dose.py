@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import scipy.stats as st
 
-from moderndid.did.mboot import mboot
+from moderndid.did.mboot import _mboot
 
 from ...cupy.backend import to_numpy
 from ..container import DoseResult
@@ -14,6 +14,7 @@ from .process_aggte import (
     check_critical_value,
     get_se,
     overall_weights,
+    set_small_se_to_nan,
     weight_influence_function_from_cells,
 )
 from .process_attgt import process_att_gt
@@ -58,7 +59,8 @@ def process_dose_gt(
     if rng is None:
         rng = np.random.default_rng()
 
-    att_gt = process_att_gt(gt_results, pte_params, rng=rng)
+    # Since only the cells are used below, a cell-level band would add a warning about a value nobody reads.
+    att_gt = process_att_gt(gt_results, pte_params._replace(cband=False), rng=rng)
     all_extra_gt_returns = att_gt.extra_gt_returns
 
     if not all_extra_gt_returns:
@@ -109,6 +111,7 @@ def process_dose_gt(
             rng=rng,
         )
     )
+    overall_att_se = set_small_se_to_nan(overall_att_se)
 
     overall_acrt = float(np.nansum(acrt_overall_by_group * weights))
     overall_acrt_inf_func = _compute_overall_att_inf_func(
@@ -162,12 +165,28 @@ def process_dose_gt(
     att_d_inf_func = att_d_inf_func + weight_inf_func @ _stack_cell_curves(att_d_by_group, len(dose_values))
     acrt_d_inf_func = acrt_d_inf_func + weight_inf_func @ _stack_cell_curves(acrt_d_by_group, len(dose_values))
 
-    boot_res = mboot(att_d_inf_func, n_units=n_obs, biters=bootstrap_iterations, alp=alpha, random_state=rng)
+    # Since dropping the draws that move a column with zero bootstrap scale would condition the band on that column
+    # staying at zero, they stay in the sample.
+    boot_res = _mboot(
+        att_d_inf_func,
+        n_units=n_obs,
+        biters=bootstrap_iterations,
+        alp=alpha,
+        random_state=rng,
+        keep_infinite_draws=True,
+    )
     att_d_se = boot_res["se"]
     att_d_crit_val = boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
     att_d_crit_val = check_critical_value(att_d_crit_val, alpha)
 
-    acrt_boot_res = mboot(acrt_d_inf_func, n_units=n_obs, biters=bootstrap_iterations, alp=alpha, random_state=rng)
+    acrt_boot_res = _mboot(
+        acrt_d_inf_func,
+        n_units=n_obs,
+        biters=bootstrap_iterations,
+        alp=alpha,
+        random_state=rng,
+        keep_infinite_draws=True,
+    )
     acrt_d_se = acrt_boot_res["se"]
     acrt_d_crit_val = acrt_boot_res["crit_val"] if confidence_band else st.norm.ppf(1 - alpha / 2)
     acrt_d_crit_val = check_critical_value(acrt_d_crit_val, alpha)

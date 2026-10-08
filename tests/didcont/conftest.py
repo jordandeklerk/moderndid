@@ -1,5 +1,7 @@
 """Shared fixtures for tests."""
 
+from importlib import import_module
+
 import numpy as np
 import polars as pl
 import pytest
@@ -398,6 +400,21 @@ def simple_influence_func():
 
 
 @pytest.fixture
+def fix_bootstrap_draws(monkeypatch):
+    """Replace the multiplier draws with fixed columns that repeat in turn across the influence function."""
+
+    def install(columns):
+        columns = np.asarray(columns, dtype=float)
+
+        def draws(inf_func, biters, random_state=None):
+            return columns[:, np.arange(inf_func.shape[1]) % columns.shape[1]]
+
+        monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws)
+
+    return install
+
+
+@pytest.fixture
 def att_gt_raw_results():
     np.random.seed(42)
     n_groups = 3
@@ -413,6 +430,16 @@ def att_gt_raw_results():
     n_units = 200
     influence_func = np.random.randn(n_units, n_gt) * 0.1
 
+    return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": []}
+
+
+@pytest.fixture
+def two_cell_results():
+    attgt_list = [
+        {"att": 0.1, "group": 2004, "time_period": 2003},
+        {"att": 0.2, "group": 2004, "time_period": 2005},
+    ]
+    influence_func = np.random.default_rng(0).standard_normal((200, 2))
     return {"attgt_list": attgt_list, "influence_func": influence_func, "extra_gt_returns": []}
 
 

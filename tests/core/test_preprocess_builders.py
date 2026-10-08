@@ -16,8 +16,10 @@ from moderndid.core.preprocess.config import (
     DDDConfig,
     DIDConfig,
     DIDInterConfig,
+    DynBalancingConfig,
     TwoPeriodDIDConfig,
 )
+from moderndid.core.preprocess.validators import _duplicate_unit_period_error
 from moderndid.core.preprocessing import preprocess_cont_did, preprocess_did
 
 
@@ -424,6 +426,19 @@ def test_small_group_guard_cross_sections_count_rows_per_period(small_never_trea
             {"yname": "y", "tname": "t", "gname": "id", "dname": "d", "xformla": "~ x"},
             "didinter_panel_with_nan",
         ),
+        (
+            DynBalancingConfig,
+            {
+                "yname": "y",
+                "tname": "time",
+                "idname": "id",
+                "treatment_name": "d",
+                "ds1": [0, 1, 1],
+                "ds2": [0, 0, 0],
+                "xformla": "~ x",
+            },
+            "dyn_balancing_panel_with_nan",
+        ),
     ],
 )
 def test_builder_treats_nan_as_missing_for_pandas_and_polars(request, config_class, config_kwargs, data_name):
@@ -464,6 +479,19 @@ def test_builder_treats_nan_as_missing_for_pandas_and_polars(request, config_cla
             DIDInterConfig,
             {"yname": "y", "tname": "t", "gname": "id", "dname": "d", "xformla": "~ x"},
             "didinter_panel_with_nan",
+        ),
+        (
+            DynBalancingConfig,
+            {
+                "yname": "y",
+                "tname": "time",
+                "idname": "id",
+                "treatment_name": "d",
+                "ds1": [0, 1, 1],
+                "ds2": [0, 0, 0],
+                "xformla": "~ x",
+            },
+            "dyn_balancing_panel_with_nan",
         ),
     ],
 )
@@ -637,3 +665,22 @@ def test_builder_accepts_clustervars_none(request, config_type, config_class, co
         result = builder.validate().transform().build()
         assert result.cluster is None
         assert result.data.equals(expected.data)
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf"), -float("inf")])
+def test_repeated_unit_period_check_skips_rows_missing_the_unit_or_period(missing):
+    data = pl.DataFrame(
+        {"id": [1.0, 1.0, missing, missing], "time": [missing, missing, 2.0, 2.0]},
+        schema={"id": pl.Float64, "time": pl.Float64},
+    )
+
+    assert _duplicate_unit_period_error(data, "id", "time") is None
+
+
+def test_repeated_unit_period_check_names_a_repeated_pair_beside_rows_missing_the_unit():
+    data = pl.DataFrame({"id": [1.0, 1.0, float("inf"), float("inf")], "time": [2.0, 2.0, 3.0, 3.0]})
+
+    assert _duplicate_unit_period_error(data, "id", "time") == (
+        "The value of idname must be unique (by tname). Some units are observed more than once in a period. "
+        "Rows repeat for the (id, time) pair (1.0, 2.0)."
+    )

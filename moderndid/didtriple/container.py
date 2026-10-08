@@ -357,7 +357,7 @@ class DDDMultiPeriodResult(NamedTuple):
     times : ndarray
         Array of time period identifiers for each estimate.
     glist : ndarray
-        Unique treatment cohorts.
+        Cohorts with ATT(g,t) estimates.
     tlist : ndarray
         Unique time periods.
     inf_func_mat : ndarray
@@ -386,7 +386,7 @@ class DDDMultiPeriodResult(NamedTuple):
     groups: np.ndarray
     #: Array of time period identifiers for each estimate.
     times: np.ndarray
-    #: Unique treatment cohorts.
+    #: Cohorts with ATT(g,t) estimates.
     glist: np.ndarray
     #: Unique time periods.
     tlist: np.ndarray
@@ -494,7 +494,7 @@ class DDDMultiPeriodRCResult(NamedTuple):
     times : ndarray
         Array of time period identifiers for each estimate.
     glist : ndarray
-        Unique treatment cohorts.
+        Cohorts with ATT(g,t) estimates.
     tlist : ndarray
         Unique time periods.
     inf_func_mat : ndarray
@@ -523,7 +523,7 @@ class DDDMultiPeriodRCResult(NamedTuple):
     groups: np.ndarray
     #: Array of time period identifiers for each estimate.
     times: np.ndarray
-    #: Unique treatment cohorts.
+    #: Cohorts with ATT(g,t) estimates.
     glist: np.ndarray
     #: Unique time periods.
     tlist: np.ndarray

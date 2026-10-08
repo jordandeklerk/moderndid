@@ -1,6 +1,7 @@
 """Tests for group-time average treatment effects."""
 
 import re
+from importlib import import_module
 from unittest.mock import patch
 
 import numpy as np
@@ -14,6 +15,7 @@ pl = importorskip("polars")
 from moderndid import MPResult, aggte, att_gt
 from moderndid.core.preprocess import preprocess_did
 from moderndid.did.compute_att_gt import ATTgtResult, ComputeATTgtResult
+from moderndid.did.mboot import _mboot
 
 
 def test_att_gt_basic_functionality(mpdta_data):
@@ -1163,3 +1165,55 @@ def test_att_gt_rejects_repeated_unit_periods(mpdta_duplicated, allow_unbalanced
             est_method="reg",
             allow_unbalanced_panel=allow_unbalanced_panel,
         )
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_att_gt_critical_value_skips_cells_with_a_small_bootstrap_scale(
+    monkeypatch, draws_from_weights, offsetting_spike_weights, did_offsetting_cohort_data
+):
+    kwargs = {
+        "data": did_offsetting_cohort_data,
+        "yname": "y",
+        "tname": "t",
+        "idname": "id",
+        "gname": "g",
+        "xformla": "~1",
+    }
+    cells = att_gt(**kwargs)
+    weights = offsetting_spike_weights(cells.n_units, *np.flatnonzero(np.abs(cells.influence_func[:, 0]) > 1e-8))
+    monkeypatch.setattr(import_module("moderndid.did.mboot"), "_run_multiplier_bootstrap", draws_from_weights(weights))
+
+    result = att_gt(**kwargs, boot=True, biters=999, cband=True)
+
+    bres = np.sqrt(cells.n_units) * (weights @ cells.influence_func / cells.n_units)
+    bres = bres[:, np.sum(bres**2, axis=0) > np.sqrt(np.finfo(float).eps) * 10]
+    scale = (
+        np.percentile(bres, 75, axis=0, method="inverted_cdf") - np.percentile(bres, 25, axis=0, method="inverted_cdf")
+    ) / 1.3489795
+    usable = scale > np.sqrt(np.finfo(float).eps) * 10
+    expected = np.percentile(np.max(np.abs(bres[:, usable]) / scale[usable], axis=1), 95, method="inverted_cdf")
+
+    assert usable.sum() == 15
+    assert 2 < result.critical_value < 7
+    np.testing.assert_allclose(result.critical_value, expected, rtol=1e-12)
+
+
+def test_att_gt_warns_once_when_the_critical_value_is_large(monkeypatch, mpdta_data):
+    counties = mpdta_data["countyreal"].unique().sort()[:100].to_list()
+    monkeypatch.setattr(
+        import_module("moderndid.did.att_gt"), "_mboot", lambda **kwargs: {**_mboot(**kwargs), "crit_val": 8.0}
+    )
+
+    with pytest.warns(UserWarning, match="too large") as record:
+        att_gt(
+            data=mpdta_data.filter(pl.col("countyreal").is_in(counties)),
+            yname="lemp",
+            tname="year",
+            idname="countyreal",
+            gname="first.treat",
+            boot=True,
+            biters=20,
+            cband=True,
+        )
+
+    assert sum("too large" in str(warning.message) for warning in record) == 1

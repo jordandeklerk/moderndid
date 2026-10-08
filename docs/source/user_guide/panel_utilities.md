@@ -9,17 +9,17 @@ kernelspec:
 
 # Preparing panel data
 
-Before estimating a treatment effect, you need to know what an observation
-represents and whether the same units appear throughout the study. Missing
-years, duplicate records, and changes in treatment can each alter the
-comparisons an estimator can make. The panel utilities help you inspect those
-features before deciding how to handle them.
+When a panel has missing years or duplicate records, the comparisons an
+estimator can make may differ from those you intended. The panel utilities
+help you check what each observation represents, whether the same units
+appear throughout the study, and how treatment changes over time before
+deciding how to handle the data.
 
 We will work with the county panel from Favara and Imbs (2015), where states
 lifted restrictions on interstate bank branching between 1994 and 2005.
 The data record the number of restrictions lifted and the growth of mortgage
-lending in each county. A few counties have missing years, so this panel gives
-you a chance to see how filling gaps differs from dropping incomplete units.
+lending in each county. Because some counties have missing years, we can use
+this panel to compare filling gaps with dropping incomplete units.
 The {ref}`intertemporal treatment example <example_inter_did>` takes the same
 data through an analysis of the deregulations' effects on lending.
 
@@ -134,9 +134,9 @@ groups = did.get_group(
 print(groups["G"].unique().sort().to_list())
 ```
 
-These six adoption dates and the untreated group describe the timing of the
-first deregulation. Those dates do not capture later increases in the number
-of restrictions a state has lifted.
+The six adoption dates and the untreated group describe the timing of the
+first deregulation rather than later increases in the number of restrictions
+a state has lifted.
 For the lending analysis, {func}`~moderndid.did_multiplegt` uses the full
 period-specific dose rather than treating every positive dose as the same
 absorbing policy.

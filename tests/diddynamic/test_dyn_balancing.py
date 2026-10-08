@@ -11,6 +11,7 @@ import moderndid.diddynamic.format  # noqa: F401
 from moderndid.core.converters import dynbalancinghetresult_to_polars, dynbalancingresult_to_polars
 from moderndid.diddynamic.container import DynBalancingResult
 from moderndid.diddynamic.dyn_balancing import dyn_balancing
+from tests.diddynamic.conftest import dropped_messages
 
 
 def test_returns_result(estimator_panel):
@@ -1224,3 +1225,185 @@ def test_dyn_balancing_rejects_repeated_unit_periods(estimator_panel_duplicated)
             nfolds=3,
             adaptive_balancing=False,
         )
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf"), -float("inf")])
+def test_dyn_balancing_drops_a_period_that_is_missing_twice_in_one_unit(float_keyed_panel, estimator_spec, missing):
+    repeated = (pl.col("id") == 5.0) & pl.col("time").is_in([1.0, 2.0])
+    data = float_keyed_panel.with_columns(pl.when(repeated).then(missing).otherwise(pl.col("time")).alias("time"))
+    expected = dyn_balancing(data=float_keyed_panel.filter(pl.col("id") != 5.0), **estimator_spec)
+
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=data, **estimator_spec)
+
+    assert dropped_messages(record) == [
+        "Dropped 2 rows from original data due to missing values",
+        "Dropped 1 units that are not observed in every period of the treatment history.",
+    ]
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == 59
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf"), -float("inf")])
+def test_dyn_balancing_drops_a_unit_that_is_missing_twice_in_one_period(float_keyed_panel, estimator_spec, missing):
+    repeated = pl.col("id").is_in([5.0, 6.0]) & (pl.col("time") == 3.0)
+    data = float_keyed_panel.with_columns(pl.when(repeated).then(missing).otherwise(pl.col("id")).alias("id"))
+    expected = dyn_balancing(data=float_keyed_panel.filter(~pl.col("id").is_in([5.0, 6.0])), **estimator_spec)
+
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=data, **estimator_spec)
+
+    assert dropped_messages(record) == [
+        "Dropped 2 rows from original data due to missing values",
+        "Dropped 2 units that are not observed in every period of the treatment history.",
+    ]
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == 58
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), float("inf"), -float("inf")])
+def test_dyn_balancing_ignores_a_full_history_without_a_unit(float_keyed_panel, estimator_spec, missing):
+    orphan = float_keyed_panel.head(3).with_columns(
+        pl.lit(missing, dtype=pl.Float64).alias("id"), pl.lit(40.0).alias("y")
+    )
+    expected = dyn_balancing(data=float_keyed_panel, **estimator_spec)
+
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=pl.concat([float_keyed_panel, orphan]), **estimator_spec)
+
+    assert dropped_messages(record) == ["Dropped 3 rows from original data due to missing values"]
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == 60
+
+
+def test_dyn_balancing_drops_a_row_missing_the_period_when_pooling(estimator_panel, estimator_spec):
+    spec = estimator_spec | {"ds1": [1, 1], "ds2": [0, 0], "pooled": True}
+    row = (pl.col("id") == 5) & (pl.col("time") == 2)
+    data = estimator_panel.with_columns(pl.when(row).then(None).otherwise(pl.col("time")).alias("time"))
+
+    with pytest.warns(UserWarning) as expected_record:
+        expected = dyn_balancing(data=estimator_panel.filter(~row), **spec)
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=data, **spec)
+
+    assert dropped_messages(record) == [
+        "Dropped 1 rows from original data due to missing values",
+        *dropped_messages(expected_record),
+    ]
+    assert result.att == expected.att
+    assert result.estimation_params["n_stacked_units"] == expected.estimation_params["n_stacked_units"]
+
+
+@pytest.mark.parametrize("period_dtype", [pl.UInt8, pl.UInt64, pl.Float32, pl.Float64])
+def test_pooled_estimate_does_not_depend_on_the_period_dtype(estimator_panel, estimator_spec, period_dtype):
+    spec = estimator_spec | {"ds1": [1, 1], "ds2": [0, 0], "pooled": True}
+    expected = dyn_balancing(data=estimator_panel, **spec)
+
+    result = dyn_balancing(data=estimator_panel.with_columns(pl.col("time").cast(period_dtype)), **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_stacked_units"] == expected.estimation_params["n_stacked_units"]
+
+
+@pytest.mark.parametrize("id_dtype", [pl.Int32, pl.UInt16, pl.Float32, pl.Float64])
+def test_pooled_estimate_does_not_depend_on_the_unit_id_dtype(estimator_panel, estimator_spec, id_dtype):
+    spec = estimator_spec | {"ds1": [1, 1], "ds2": [0, 0], "pooled": True}
+    expected = dyn_balancing(data=estimator_panel, **spec)
+
+    result = dyn_balancing(data=estimator_panel.with_columns(pl.col("id").cast(id_dtype)), **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_stacked_units"] == expected.estimation_params["n_stacked_units"]
+
+
+@pytest.mark.parametrize("infinite", [float("inf"), -float("inf")])
+def test_dyn_balancing_reads_an_infinite_final_outcome_like_nan(estimator_panel, estimator_spec, infinite):
+    row = (pl.col("id") == 5) & (pl.col("time") == 3)
+    with_nan = estimator_panel.with_columns(pl.when(row).then(float("nan")).otherwise(pl.col("y")).alias("y"))
+    with_infinity = estimator_panel.with_columns(pl.when(row).then(infinite).otherwise(pl.col("y")).alias("y"))
+
+    with pytest.warns(UserWarning) as expected_record:
+        expected = dyn_balancing(data=with_nan, **estimator_spec)
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=with_infinity, **estimator_spec)
+
+    assert dropped_messages(expected_record) == ["Dropped 1 units with a missing final-period outcome."]
+    assert dropped_messages(record) == dropped_messages(expected_record)
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == expected.estimation_params["n_units"] == 59
+
+
+@pytest.mark.parametrize("period", [1, 2, 3])
+@pytest.mark.parametrize("infinite", [float("inf"), -float("inf")])
+def test_dyn_balancing_reads_an_infinite_treatment_like_nan(estimator_panel, estimator_spec, infinite, period):
+    row = (pl.col("id") == 5) & (pl.col("time") == period)
+    with_nan = estimator_panel.with_columns(pl.when(row).then(float("nan")).otherwise(pl.col("D")).alias("D"))
+    with_infinity = estimator_panel.with_columns(pl.when(row).then(infinite).otherwise(pl.col("D")).alias("D"))
+
+    with pytest.warns(UserWarning) as expected_record:
+        expected = dyn_balancing(data=with_nan, **estimator_spec)
+    with pytest.warns(UserWarning) as record:
+        result = dyn_balancing(data=with_infinity, **estimator_spec)
+
+    assert dropped_messages(expected_record) == [
+        "Dropped 1 units that are not observed in every period of the treatment history."
+    ]
+    assert dropped_messages(record) == dropped_messages(expected_record)
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == expected.estimation_params["n_units"] == 59
+
+
+@pytest.mark.parametrize("period", [1, 2, 3])
+@pytest.mark.parametrize("infinite", [float("inf"), -float("inf")])
+def test_dyn_balancing_reads_an_infinite_covariate_like_nan(estimator_panel, estimator_spec, infinite, period, recwarn):
+    row = (pl.col("id") == 5) & (pl.col("time") == period)
+    with_nan = estimator_panel.with_columns(pl.when(row).then(float("nan")).otherwise(pl.col("X1")).alias("X1"))
+    with_infinity = estimator_panel.with_columns(pl.when(row).then(infinite).otherwise(pl.col("X1")).alias("X1"))
+
+    expected = dyn_balancing(data=with_nan, **estimator_spec)
+    result = dyn_balancing(data=with_infinity, **estimator_spec)
+
+    assert dropped_messages(recwarn) == []
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == expected.estimation_params["n_units"] == 60
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), float("inf")])
+def test_dyn_balancing_drops_a_unit_whose_final_cluster_is_missing(estimator_panel, estimator_spec, value):
+    row = (pl.col("id") == 5) & (pl.col("time") == 3)
+    cluster = pl.col("cluster_var").cast(pl.Float64)
+    data = estimator_panel.with_columns(pl.when(row).then(value).otherwise(cluster).alias("cluster_var"))
+    without_unit = estimator_panel.filter(pl.col("id") != 5).with_columns(cluster)
+    expected = dyn_balancing(data=without_unit, clustervars="cluster_var", **estimator_spec)
+
+    with pytest.warns(UserWarning, match="Dropped 1 rows from original data due to missing values"):
+        result = dyn_balancing(data=data, clustervars="cluster_var", **estimator_spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == expected.estimation_params["n_units"] == 59
+
+
+@pytest.mark.parametrize("value", [None, float("inf")])
+def test_dyn_balancing_reads_a_missing_fixed_effect_like_nan(estimator_panel, estimator_spec, value, recwarn):
+    row = (pl.col("id") == 5) & (pl.col("time") == 3)
+    level = (pl.col("id") % 4).cast(pl.Float64)
+    with_nan = estimator_panel.with_columns(pl.when(row).then(float("nan")).otherwise(level).alias("fe"))
+    with_value = estimator_panel.with_columns(pl.when(row).then(value).otherwise(level).alias("fe"))
+    spec = {**estimator_spec, "fixed_effects": ["fe"]}
+
+    expected = dyn_balancing(data=with_nan, **spec)
+    result = dyn_balancing(data=with_value, **spec)
+
+    assert dropped_messages(recwarn) == []
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert result.estimation_params["n_units"] == 60

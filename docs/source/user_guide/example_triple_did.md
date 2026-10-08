@@ -84,21 +84,12 @@ in 2000, 2001, and 2002.
 
 {func}`~moderndid.core.panel.get_group` turns the flag into that year. With
 `treat_period=2003`, households in the insured county get 2003 and everyone else
-gets 0. Because no household ever switches county or crop, a single row per
-household is enough to size up the four groups the design compares.
+gets 0. We add that adoption year before passing the data to the estimator.
 
 ```{code-cell} ipython3
 # Give households in the insured county the year insurance arrived and every other household a 0.
 data = did.get_group(data, idname="hhno", tname="year", treatname="treatment", treat_period=2003)
 data = data.rename({"G": "group"})
-
-# Count the households and counties in each of the four groups, and how many appear every year.
-households = data.group_by("hhno").agg(pl.col("group", "sector", "county").first(), years=pl.len())
-print(f"{(households['years'] == 9).sum()} of {households.height} households appear in all nine years")
-households.group_by("group", "sector").agg(
-    households=pl.len(),
-    counties=pl.col("county").n_unique(),
-).sort("group", "sector")
 ```
 
 Inside the insured county sit 837 tobacco farmers and 161 households growing
@@ -260,7 +251,7 @@ row reads 0.0000 with no standard error because 2002 is the anchor year. The two
 rows above it serve as placebo tests for the years before coverage. Had the gap between tobacco farmers and other
 households moved alike in every county before 2003, both would hover near zero.
 
-Instead, the 2000 estimate of −0.0599 has an interval from −0.1089 to −0.0108
+Instead, the 2000 estimate of −0.0599 has an interval from −0.1081 to −0.0116
 that excludes zero. The 2001 estimate of −0.0264 sits between it and the base
 year, as if the gap were already widening on its way to 2002. We'll come back to
 that pattern near the end, since it shapes how to read everything after 2003.
@@ -283,8 +274,9 @@ print(event_study)
 The estimates are the same as in the table above, since event time $e$ is just
 the year $2003 + e$. The bands, however, now cover all eight estimates together
 with 95 percent probability and come out wider as a result. Under these bands,
-only the effects at event times 4 and 5 exclude zero. The placebo band at event
-time −3 now runs from −0.1268 to 0.0071 and just covers zero.
+only the effect at event time 5 excludes zero. Both the band at event time 4, from
+−0.0059 to 0.1830, and the placebo band at event time −3, from −0.1250 to 0.0052,
+just cover zero.
 
 :::{admonition} One adoption year makes every aggregation agree
 :class: note
@@ -314,7 +306,7 @@ The overall effect at the top of the event study answers the central question.
 It averages the effects of the six years after the insurance arrived. At 0.0652,
 it says insured tobacco farmers kept about 6.5 percentage points more of their
 net savings in checking accounts than they would have without the insurance. Its
-95 percent interval runs from 0.0261 to 0.1044, entirely above zero. Like
+95 percent interval runs from 0.0246 to 0.1059, entirely above zero. Like
 everything here, it holds only if the four assumptions above do.
 
 ### Against the original regression
@@ -343,10 +335,9 @@ regression = pf.feols(
 )
 ```
 
-The table and figure below line up both sets of estimates with 95 percent
+The figure below lines up both sets of estimates with 95 percent
 pointwise intervals, as Figure 5 of Ortiz-Villavicencio and Sant'Anna (2025)
-does. The last column divides the width of the regression's interval by the
-width of the triple difference's.
+does. It lets you compare the paths and their precision at each event time.
 
 ```{code-cell} ipython3
 :tags: [hide-input]
@@ -378,14 +369,12 @@ regression_rows = {
 }
 
 rows = []
-print(f"{'event time':>10}{'triple diff':>14}{'regression':>13}{'width ratio':>14}")
 for e, att, se in zip(event_study.egt, event_study.att_egt, event_study.se_egt):
     if e == -1:
         continue
     estimate, low, high = regression_rows[int(e)]
     rows.append(("triple difference", int(e), att, att - z * se, att + z * se))
     rows.append(("three-way fixed effects", int(e), estimate, low, high))
-    print(f"{int(e):>10}{att:>14.4f}{estimate:>13.4f}{(high - low) / (2 * z * se):>14.2f}")
 
 comparison = pl.DataFrame(rows, schema=["estimator", "event_time", "att", "low", "high"], orient="row")
 dodge = position_dodge(width=0.3)
@@ -408,7 +397,7 @@ gray circles of the regression rise together in the figure after 2003. They part
 most at the
 ends, where the regression's 2000 placebo is −0.0175 against −0.0599 and its
 2008 effect is 0.1047 against 0.1553. On this data the regression's intervals
-also come out narrower, between 0.74 and 0.95 times as wide as the triple
+also come out narrower, between 0.71 and 0.94 times as wide as the triple
 difference's.
 
 :::{admonition} Narrower isn't the same as better
@@ -484,7 +473,7 @@ between 0.0565 and 0.0608. The estimator and the adjustment for size and age
 matter little here.
 Outcome regression does give the least precise estimate of the three. Its
 standard error of
-0.0220 compares with 0.0200 for the doubly robust one.
+0.0218 compares with 0.0207 for the doubly robust one.
 
 ### The trend before 2003
 
@@ -522,6 +511,7 @@ its years.
 
 ```{code-cell} ipython3
 # The same specification on the households observed in every year.
+households = data.group_by("hhno").agg(years=pl.len())
 complete_households = households.filter(pl.col("years") == 9).get_column("hhno").to_list()
 complete = data.filter(pl.col("hhno").is_in(complete_households))
 balanced = did.ddd(complete, **(spec | {"allow_unbalanced_panel": False}))
@@ -537,31 +527,6 @@ placebo of −0.0564 shows the same widening before 2003. Dropping the household
 that miss a year doesn't remove the trend.
 
 ### The checks side by side
-
-The table below starts with our own specification and then collects the overall
-effect and its 95 percent interval from every check.
-
-```{code-cell} ipython3
-:tags: [hide-input]
-
-# Every check's overall effect and 95 percent interval, starting with our specification.
-checks = {
-    "our specification": event_study,
-    "tobacco farmers across counties": two_differences["tobacco farmers across counties"],
-    "both crops inside the insured county": two_differences["both crops inside the insured county"],
-    "inverse probability weighting": variants["ipw"],
-    "outcome regression": variants["reg"],
-    "without covariates": variants["without covariates"],
-    "varying base period": varying_event_study,
-    "households seen every year": balanced_event_study,
-}
-
-print(f"{'check':<38}{'overall effect':>15}   [95% Conf. Interval]")
-for name, check in checks.items():
-    low = check.overall_att - z * check.overall_se
-    high = check.overall_att + z * check.overall_se
-    print(f"{name:<38}{check.overall_att:>15.4f}   [{low:8.4f}, {high:8.4f}]")
-```
 
 Read together, the checks separate the choices that matter from the ones that
 don't. The estimator, the covariates, and the base period keep the overall effect

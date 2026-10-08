@@ -14,7 +14,8 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 np = importorskip("numpy")
 
-from moderndid import aggte, att_gt, load_mpdta
+from moderndid import aggte, att_gt, load_mpdta, mboot
+from moderndid.core.numba_utils import multiplier_bootstrap
 
 
 def _run_r_script(r_script, result_path, timeout=120):
@@ -1866,6 +1867,122 @@ def test_aggte_bootstrap_critical_value(mpdta_small, mpdta_small_csv_path, agg_t
         assert 0.5 < cv_ratio < 2.0, (
             f"{agg_type}: Bootstrap critical value ratio outside reasonable range: {cv_ratio:.2f}"
         )
+
+
+def r_mboot(draws_path, n_units, alpha):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+library(did)
+library(jsonlite)
+
+raw <- as.matrix(read.csv("{draws_path}", header = FALSE))
+dimnames(raw) <- NULL
+assignInNamespace("run_multiplier_bootstrap", function(...) raw, ns = "did")
+
+params <- list(
+  idname = "id", clustervars = NULL, biters = nrow(raw), tname = "period", alp = {alpha},
+  panel = TRUE, true_repeated_cross_sections = FALSE, allow_unbalanced_panel = FALSE,
+  cluster_vector = NULL, faster_mode = TRUE
+)
+out <- mboot(matrix(0, nrow = {n_units}, ncol = ncol(raw)), params, return_V = FALSE)
+
+write_json(
+  list(crit_val = as.numeric(out$crit.val), se = as.numeric(out$se)),
+  "{result_path}", digits = NA, na = "string", auto_unbox = TRUE
+)
+"""
+    try:
+        return _run_r_script(r_script, result_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+@pytest.mark.parametrize("noise", [0.0, 1e-12])
+def test_mboot_zero_and_tiny_scale_columns_match_reference(inf_func_with_zero_scale_column, tmp_path, noise):
+    inf_func = inf_func_with_zero_scale_column
+    inf_func[2:, 1] = noise * np.random.default_rng(1).standard_normal(len(inf_func) - 2)
+    draws_path = tmp_path / "draws.csv"
+    np.savetxt(draws_path, multiplier_bootstrap(inf_func, 999, 7), delimiter=",", fmt="%.17g")
+
+    r_result = r_mboot(draws_path, len(inf_func), 0.05)
+
+    if r_result is None:
+        pytest.fail("R multiplier bootstrap failed")
+
+    py_result = mboot(inf_func, n_units=len(inf_func), biters=999, alp=0.05, random_state=7)
+
+    assert np.isfinite(py_result["crit_val"])
+    np.testing.assert_allclose(py_result["crit_val"], r_result["crit_val"], rtol=1e-9)
+    np.testing.assert_allclose(py_result["se"], r_result["se"], rtol=1e-9)
+
+
+def r_att_gt_critical_value(data_path, draws_path, biters):
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+        result_path = f.name
+
+    r_script = f"""
+library(did)
+library(jsonlite)
+
+raw <- as.matrix(read.csv("{draws_path}", header = FALSE))
+dimnames(raw) <- NULL
+assignInNamespace("run_multiplier_bootstrap", function(...) raw, ns = "did")
+
+data <- read.csv("{data_path}")
+
+result <- att_gt(
+  yname = "y",
+  tname = "t",
+  idname = "id",
+  gname = "g",
+  xformla = ~1,
+  data = data,
+  est_method = "dr",
+  control_group = "nevertreated",
+  bstrap = TRUE,
+  biters = {biters},
+  cband = TRUE
+)
+
+write_json(list(critical_value = as.numeric(result$c)), "{result_path}", digits = NA, auto_unbox = TRUE)
+"""
+    try:
+        return _run_r_script(r_script, result_path)
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError, RuntimeError):
+        return None
+
+
+@pytest.mark.skipif(not R_AVAILABLE, reason="R did package not available")
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_att_gt_critical_value_with_offsetting_cohort_matches_reference(did_offsetting_cohort_data, tmp_path):
+    data_path = tmp_path / "data.csv"
+    did_offsetting_cohort_data.write_csv(data_path)
+    kwargs = {
+        "data": did_offsetting_cohort_data,
+        "yname": "y",
+        "tname": "t",
+        "idname": "id",
+        "gname": "g",
+        "xformla": "~1",
+        "est_method": "dr",
+        "control_group": "nevertreated",
+    }
+    cells = att_gt(**kwargs)
+    draws_path = tmp_path / "draws.csv"
+    np.savetxt(draws_path, multiplier_bootstrap(cells.influence_func, 999, 7), delimiter=",", fmt="%.17g")
+
+    r_result = r_att_gt_critical_value(data_path, draws_path, 999)
+
+    if r_result is None:
+        pytest.fail("R estimation failed")
+
+    py_result = att_gt(**kwargs, boot=True, biters=999, cband=True, random_state=7)
+
+    np.testing.assert_allclose(py_result.critical_value, r_result["critical_value"], rtol=1e-9)
 
 
 def r_att_gt_cohort_coding(data_path, control_group, anticipation, base_period, est_method):

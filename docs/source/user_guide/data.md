@@ -9,11 +9,11 @@ kernelspec:
 
 # Data for estimation
 
-Before fitting a difference-in-differences model, you need to tell the
-estimator which outcome to study, which units to follow, and when treatment
-begins. Those choices also determine which observations can enter the
-comparison. Duplicate rows, inconsistent adoption dates, and missing outcomes
-can change that comparison even when the data appears to be a complete panel.
+The column names in an estimation call tell ModernDiD which outcome to study,
+which units to follow, and when treatment begins. Because those columns
+determine which observations can enter a comparison, inconsistent adoption
+dates, duplicate rows, and missing outcomes can affect the analysis even in a
+table that appears to contain a complete panel.
 
 We'll use the bundled minimum wage data to connect each data argument to the
 observations it describes. The checks below cover the table's layout,
@@ -36,10 +36,6 @@ import polars as pl
 
 data = did.load_mpdta()
 print(data.head())
-print(
-    f"{data['countyreal'].n_unique()} counties observed "
-    f"from {data['year'].min()} through {data['year'].max()}"
-)
 ```
 
 You can see that `countyreal` and `year` identify the county and year on
@@ -91,9 +87,6 @@ to either format without changing its observations or their meaning.
 ```{code-cell} ipython3
 pandas_data = data.to_pandas()
 arrow_data = data.to_arrow()
-
-print(pandas_data.shape)
-print(arrow_data.shape)
 ```
 
 Both representations retain the same rows and columns as the original data.
@@ -119,25 +112,16 @@ rows. The minimum wage data's `first.treat` therefore stays constant within
 each county. A zero-one indicator that switches on during treated years
 cannot provide the cohort information this argument needs.
 
-You can inspect those dates using one row per county rather than counting
-the same county once for every year.
-
-```{code-cell} ipython3
-counties = data.select("countyreal", "first.treat").unique()
-print(counties.group_by("first.treat").len().sort("first.treat"))
-```
-
-The zero cohort contains the counties whose states never raised their
-minimum wage during the observed years. Because each county belongs to one
-adoption cohort, the other rows count counties by the year their state's
-increase began.
+In this sample, 309 counties belong to the zero cohort because their states
+never raised the minimum wage during the observed years. The 2004, 2006, and
+2007 adoption cohorts contain 20, 40, and 131 counties, respectively.
 
 With `anticipation=0`, `att_gt` drops units treated in or before the first
 observed period because they have no observed untreated baseline. If outcomes
 may respond before formal adoption, `anticipation` specifies how many earlier
-periods can already be affected, and the untreated baseline must precede that
-window. Shortening your panel or allowing a longer anticipation window can
-therefore change which cohorts remain usable.
+periods can already be affected. Since the untreated baseline must precede that
+window, shortening your panel or allowing a longer anticipation window can
+change which cohorts remain usable.
 
 Time and adoption dates must use the same numeric scale. If you replace
 calendar years by positive period indices, apply the same mapping to positive
@@ -148,29 +132,25 @@ periods to consecutive positions.
 
 ## Check what will remain in the sample
 
-An estimator can only use observations with the columns its comparison
-requires. Before fitting, inspect duplicate unit-period pairs, missing
-values, and the number of periods observed per unit. This small check counts
-the duplicate pairs and reports null values in the county columns we need.
+Before fitting the model, we need to check that each row represents a unique
+county-year observation and that its required columns have observed values.
+The {func}`~moderndid.core.panel.diagnose_panel` report brings together checks
+for duplicate pairs, missing years, and rows containing nulls.
 
 ```{code-cell} ipython3
-repeated_pairs = (
-    data.group_by("countyreal", "year")
-    .len()
-    .filter(pl.col("len") > 1)
+diagnostics = did.diagnose_panel(
+    data,
+    idname="countyreal",
+    tname="year",
 )
-print(repeated_pairs)
-print(data.select("countyreal", "year", "first.treat", "lemp", "lpop").null_count())
-
-period_counts = data.group_by("countyreal").agg(periods=pl.col("year").n_unique())
-print(period_counts.group_by("periods").len().sort("periods"))
+print(diagnostics)
 ```
 
-The empty duplicate table and zero null counts show that these county
-columns pass the checks. The final table also confirms that all counties
-appear in each of the five years, so balancing the panel will not remove
-any of them. For your own data, the {doc}`panel utilities <panel_utilities>`
-provide fuller diagnostics and tools for inspecting gaps.
+The report confirms that there are no duplicate county-year pairs or rows
+containing nulls. All 500 counties appear in each of the five years, so
+balancing this panel will not remove any of them. For your own data, the
+{doc}`panel utilities <panel_utilities>` explain the diagnostics and provide
+tools for inspecting gaps.
 If duplicates appear, resolve them according to what each row means in your
 study rather than keeping one arbitrarily. Null counts alone miss
 floating-point infinities and NaNs. If your outcome construction can produce

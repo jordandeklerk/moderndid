@@ -17,6 +17,11 @@ def build_dyn_balancing(data, **config_kwargs):
     return PreprocessDataBuilder().with_data(data).with_config(config).validate().transform().build()
 
 
+def dropped_messages(record):
+    """List the recorded warnings that report dropped rows or units."""
+    return [str(warning.message) for warning in record if str(warning.message).startswith("Dropped")]
+
+
 @pytest.fixture
 def rng():
     return np.random.default_rng(42)
@@ -326,3 +331,27 @@ def estimator_panel_duplicated(request, estimator_panel):
     if request.param == "hidden_gap":
         return pl.concat([estimator_panel.filter(~(unit & (pl.col("time") == 2))), row])
     return pl.concat([estimator_panel, row.with_columns(pl.col("y") + 1)])
+
+
+@pytest.fixture
+def estimator_spec():
+    """Keyword arguments of a small dyn_balancing call on the estimator panel."""
+    return dict(
+        yname="y",
+        tname="time",
+        idname="id",
+        treatment_name="D",
+        ds1=[0, 1, 1],
+        ds2=[0, 0, 0],
+        xformla="~ X1",
+        ub=20.0,
+        grid_length=50,
+        nfolds=3,
+        adaptive_balancing=False,
+    )
+
+
+@pytest.fixture
+def float_keyed_panel(estimator_panel):
+    """Estimator panel whose unit and period columns are floats, so that they can hold NaN and infinity."""
+    return estimator_panel.with_columns(pl.col("id", "time").cast(pl.Float64))

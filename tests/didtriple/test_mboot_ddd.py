@@ -1,5 +1,7 @@
 """Tests for the DDD multiplier bootstrap."""
 
+from importlib import import_module
+
 import numpy as np
 import pytest
 
@@ -182,6 +184,84 @@ def test_mboot_ddd_larger_biters():
 
     assert result.bres.shape == (500, 1)
     assert np.isfinite(result.se[0])
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_mboot_ddd_zero_scale_column_is_ignored_in_every_draw(monkeypatch, zero_scale_draws):
+    monkeypatch.setattr(
+        import_module("moderndid.didtriple.bootstrap.mboot_ddd"),
+        "multiplier_bootstrap",
+        lambda *args, **kwargs: zero_scale_draws,
+    )
+
+    result = mboot_ddd(np.zeros((1, 2)), biters=21)
+
+    np.testing.assert_allclose(result.crit_val, 10 / (10 / 1.3489795), rtol=1e-12)
+    np.testing.assert_allclose(result.se[0], 10 / 1.3489795, rtol=1e-12)
+    assert np.isnan(result.se[1])
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_mboot_ddd_negligible_scale_column_is_ignored_in_every_draw(monkeypatch, zero_scale_draws):
+    first = zero_scale_draws[:, 0]
+    draws = np.column_stack([first, np.where(first == -10, 1.0, 1e-9 * first)])
+    monkeypatch.setattr(
+        import_module("moderndid.didtriple.bootstrap.mboot_ddd"), "multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+
+    result = mboot_ddd(np.zeros((1, 2)), biters=21)
+
+    np.testing.assert_allclose(result.crit_val, 10 / (10 / 1.3489795), rtol=1e-12)
+    assert np.isnan(result.se[1])
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_mboot_ddd_critical_value_is_nan_when_every_column_is_ignored(monkeypatch):
+    draws = np.ones((21, 2))
+    monkeypatch.setattr(
+        import_module("moderndid.didtriple.bootstrap.mboot_ddd"), "multiplier_bootstrap", lambda *args, **kwargs: draws
+    )
+
+    result = mboot_ddd(np.zeros((1, 2)), biters=21)
+
+    assert np.isnan(result.crit_val)
+    assert np.all(np.isnan(result.se))
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_mboot_ddd_zero_scale_column_critical_value_from_bootstrap_draws(
+    monkeypatch, draws_from_weights, offsetting_spike_weights, inf_func_with_zero_scale_column
+):
+    monkeypatch.setattr(
+        import_module("moderndid.didtriple.bootstrap.mboot_ddd"),
+        "multiplier_bootstrap",
+        draws_from_weights(offsetting_spike_weights(200, 0, 1)),
+    )
+
+    result = mboot_ddd(inf_func_with_zero_scale_column, biters=999)
+
+    bres = result.bres
+    quartiles = np.percentile(bres, [75, 25], axis=0, method="inverted_cdf")
+    scale = (quartiles[0] - quartiles[1]) / 1.3489795
+    largest = np.max(np.abs(bres[:, [0, 2]]) / scale[[0, 2]], axis=1)
+
+    assert scale[1] == 0
+    np.testing.assert_allclose(result.crit_val, np.percentile(largest, 95, method="inverted_cdf"), rtol=1e-12)
+    assert np.isnan(result.se[1])
+
+
+@pytest.mark.filterwarnings("error::RuntimeWarning")
+def test_mboot_ddd_critical_value_without_ignored_columns_is_quantile_of_largest_standardized_draw():
+    inf_func = np.random.default_rng(3).standard_normal((150, 4))
+
+    result = mboot_ddd(inf_func, biters=499, random_state=5)
+
+    bres = result.bres
+    quartiles = np.percentile(bres, [75, 25], axis=0, method="inverted_cdf")
+    scale = (quartiles[0] - quartiles[1]) / 1.3489795
+    expected = np.percentile(np.max(np.abs(bres / scale), axis=1), 95, method="inverted_cdf")
+
+    assert result.crit_val == expected
 
 
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])

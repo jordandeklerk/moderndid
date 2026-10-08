@@ -1,207 +1,126 @@
 .. _reviewing:
 
-======================================
-Reviewing and Maintainer Guidelines
-======================================
+########################
+Reviewing a contribution
+########################
 
-Reviewing open pull requests helps move the project forward. We encourage
-people outside the project to get involved as well; it's a great way to get
-familiar with the codebase.
+As a reviewer, you're trying to understand what changes for the
+user and whether the method and code support that behavior. You can help with
+part of that work even if you don't know every estimator; reading an
+explanation as a new user or reproducing an input error often reveals something
+the author has missed. We'll follow the change through its calculation, tests,
+and explanation so the discussion has evidence to work from.
 
-For reviewers
-=============
+Beginning with the purpose
+==========================
 
-Anyone can review a pull request. You don't need to be a maintainer or an
-expert in every part of the codebase. Reviews of documentation, CI configuration,
-and general code quality are always welcome. Reviews of estimator implementations,
-however, should come from contributors with experience in econometrics or
-statistics, since correctness depends on understanding the underlying methodology.
+Begin with the pull request's description so you can identify the problem, the
+intended behavior after the change, and the checks used to support it before
+reading the implementation. If that reasoning is missing, ask for it before
+trying to infer the purpose from the diff.
 
-Communication
--------------
+Review the parts you can assess and point out any methodological question that
+needs another reviewer. Estimator changes need someone to check the
+identification conditions, estimand, and inference against the source paper; a
+successful test run cannot establish that the method itself was interpreted
+correctly.
 
-Review is a collaborative process, not an adversarial one. The goal is to
-improve the code together.
+When you write a comment, explain which input produces a problem, where an
+argument in the paper is lost, or what a reader would misunderstand. Giving
+that consequence helps the author assess the concern and respond to it.
+Distinguish a correction needed for correctness from an optional wording or
+implementation suggestion so the author can see what needs to change.
 
-- Every PR, good or bad, is an act of generosity. Opening with a positive
-  comment helps the author feel rewarded, and your subsequent remarks will
-  be heard more clearly.
-- Be specific. Instead of "this is confusing," explain what is confusing
-  and suggest a concrete alternative.
-- Distinguish requirements from suggestions. Mark non-blocking style
-  preferences as "nit:" or "suggestion:" so the author knows what must be
-  addressed and what is optional.
-- If a contributor solved a tricky problem well or wrote clean code, say so.
-  Positive feedback matters.
-- Ask questions instead of making demands. "Could you explain why this uses
-  a list comprehension instead of a generator?" invites discussion. "Change
-  this to a generator" assumes you know better without context.
-- Try to respond within a few business days. If you can't review promptly,
-  leave a comment letting the author know when you'll get to it.
+Following the calculation
+=========================
 
-What to look for
------------------
+To assess a numerical change, first check how units, periods, treatment groups,
+missing values, and weights reach the calculation. Those choices matter
+because a correct formula applied to a different sample can still produce the
+wrong effect. The :ref:`architecture guide <architecture>` shows where input
+handling and estimation meet.
 
-When reviewing a pull request, consider the following areas. Not every item
-applies to every PR, so use judgment about what matters most for the change
-at hand.
+From there, follow the estimate into its influence function or other inference
+calculation, if the method uses one. Check normalization, clustering, and
+aggregation against the specification the pull request claims to implement.
+Since existing estimators use several different result structures and
+estimation paths, assess the relevant method rather than requiring every
+function to follow one universal template.
 
-**Correctness**
+For a new public argument or result field, compare what it means with related
+APIs so users can carry the same concept from one estimator to another. Check
+imports of optional dependencies too, since users of other estimators should still
+be able to work without that extra. Anyone who does need it should get an
+installation message when the extra is unavailable.
 
-- Does the code do what it claims to do?
-- Are edge cases handled? Consider empty inputs, single observations,
-  missing data, and boundary conditions common in panel data
-  (single-period groups, all-treated cohorts, unbalanced panels).
-- For numerical code, are there potential overflow, underflow, or
-  division-by-zero issues? Are tolerances appropriate?
+Assessing the evidence
+======================
 
-**Design and architecture**
+A regression test should demonstrate the failure that motivated a fix. For a
+new estimator, look for numerical checks of both estimates and inference,
+including a small case you can understand independently of the implementation.
+The :doc:`testing` page explains how to choose those checks and interpret their
+tolerances.
 
-- Does the change follow the patterns described in :ref:`architecture`?
-  New estimators should use the preprocessing pipeline, return immutable
-  ``NamedTuple`` results, and include influence functions.
-- Is the public API consistent with existing estimators? Check parameter
-  names against the :ref:`consistent argument naming <consistent-argument-naming>`
-  conventions.
-- Are new dependencies justified? **ModernDiD** keeps optional dependencies
-  truly optional, and core functionality should work with only the base
-  dependencies.
+Review the reported test commands as well as their status. A skipped reference
+comparison needs a dependency or platform check before it can support a
+numerical claim. Although a seeded bootstrap makes a run repeatable, checking
+only one dataset may still miss errors in weighting or sample alignment.
 
-**Tests**
+Performance evidence should measure the operation being changed, including any
+setup costs that contribute to its runtime. For example, replacing a loop over
+group-time comparisons calls for a benchmark of that workload. The
+:ref:`benchmarking guide <benchmarking>` explains the project's timing tools;
+a speed claim should state the input and settings used to measure it.
 
-- Are there tests for the new or changed behavior? See
-  :ref:`how to write tests <testing-how-to-write>` for conventions.
-- Do tests cover both the happy path and meaningful edge cases?
-- Are numerical tolerances appropriate for the type of computation?
-  (See :ref:`numerical tolerances <testing-numerical-tolerances>`.)
-- For new estimators, is there a validation test against the corresponding
-  R package in `validation <https://github.com/jordandeklerk/moderndid/tree/main/tests/validation>`__?
+Reading the user's explanation
+==============================
 
-**Performance**
+If behavior changes, read the affected docstring and guide as someone who has
+not followed the development discussion. The explanation should say what the
+function computes, what data it needs, and which choices change the
+interpretation of its results. Worked guides should show the outputs and plots
+they ask the reader to interpret.
 
-- Could the change introduce performance regressions on large datasets?
-- If the code adds loops over observations, should it use Numba or
-  vectorized operations instead?
+A rendered documentation review can reveal broken references, clipped math, or
+stale output that source text alone won't show. Check important callouts in
+both color schemes and confirm that code a reader copies has the imports and
+inputs it needs. :doc:`guide` gives the scratch build and preview commands.
 
-**Documentation**
+Deciding whether to merge
+=========================
 
-- Do public functions have docstrings following the NumPy docstring
-  standard?
-- If the change affects user-facing behavior, is the user guide updated?
-- Are commit messages and the PR description clear about what changed
-  and why?
+If you're merging the contribution, read the final description against the
+implementation and the answers to any numerical or methodological concerns.
+The relevant checks need to pass for that version of the change. A failure in
+an unrelated environment still needs an explanation so it isn't silently
+treated as evidence for this change.
 
-**Style**
+Resolve review discussions by recording the decision and its reason. When a
+suggestion is declined, the technical explanation should remain visible to
+future readers. If the pull request combines work that needs different reviews,
+discuss splitting it so each change can be assessed on its own evidence.
 
-- Does the code pass ``pixi run lint`` without new warnings?
-- Are variable names descriptive? Avoid single-letter names except for
-  conventional loop variables (``i``, ``j``) and well-known mathematical
-  notation (``X``, ``y``, ``n``).
+Choose the merge strategy available in the repository that best preserves a
+readable account of the contribution. A squash can collect a single change's
+development commits into one commit, or a merge can retain a useful sequence of
+separate implementation steps. Check the resulting commit message rather than
+assuming the pull request title explains every merged edit.
 
-For maintainers
-===============
+Helping with issues and unfinished work
+=======================================
 
-Maintainers have merge access and carry additional responsibilities beyond
-reviewing code.
+When an issue comes in, try to reproduce the report on a small input so you can
+identify the affected estimator or documentation page. If the report doesn't
+include the function call, relevant package versions, or expected behavior, ask
+for those details before diagnosing the calculation. A usage question may also
+reveal a gap in the guide even when the calculation is working as intended.
 
-Merge criteria
---------------
+If a contribution has been inactive, ask whether the author plans to continue
+and describe what remains to be checked. Any decision to close it should leave
+enough context for the author or another contributor to resume the work. When
+continuing someone else's branch, credit the original contribution so readers
+can follow where the work began.
 
-Before merging a pull request, verify the following.
-
-1. CI must pass. All test jobs must be green. Do not
-   merge with failing checks unless there is a known flaky test that is
-   unrelated to the PR, and document this in a comment.
-
-2. At least one approving review. Every PR needs at least one review from
-   someone who did not author the change.
-
-3. No unresolved conversations. All review threads should be resolved
-   before merging. If a suggestion was declined, the author should explain
-   why.
-
-4. Scope is appropriate. Large PRs that mix multiple concerns should be
-   split if possible. A PR that adds a new estimator should not also
-   refactor the plotting system.
-
-Merge strategy
---------------
-
-Use squash merge for most PRs. This keeps ``main`` history clean with
-one commit per logical change. Ensure the squashed commit message follows
-the :doc:`commit conventions <workflow>`.
-
-Use a regular merge for large feature branches where the individual commits
-tell a meaningful story (e.g., a multi-step estimator implementation
-where each commit adds a distinct piece).
-
-Handling stale PRs
-------------------
-
-If a PR has had no activity for 30 days, leave a friendly comment asking if
-the author plans to continue. If there is no response after another 14 days,
-close the PR with a comment explaining that it can be reopened when the
-author is ready.
-
-If the work is valuable and the author is unresponsive, it's acceptable
-to open a new PR based on their branch, crediting the original author
-in the commit message.
-
-Backporting
------------
-
-**ModernDiD** does not currently maintain multiple release branches. All
-development targets ``main``, and releases are cut from ``main`` via tags.
-If a multi-branch strategy becomes necessary in the future, this section
-will be updated with backporting procedures.
-
-Triaging issues
----------------
-
-When new issues come in, start by trying to reproduce the bug. Ask for a
-minimal reproducible example if one is not provided. Use labels to categorize
-issues (bug, enhancement, documentation, etc.). If an issue is well-scoped
-and doesn't require deep knowledge of the codebase, label it as a good first
-issue to help onboard new contributors.
-
-Standard responses
-------------------
-
-Maintaining a set of canned responses saves time and keeps communication
-consistent. Here are templates for common situations that you can adapt as
-needed.
-
-**Requesting a minimal example** (when a bug report lacks enough detail to
-reproduce)::
-
-   Thanks for the report. Could you provide a minimal reproducible example?
-   Ideally this would include the imports, a small dataset (or a call to
-   one of our data generators like `gen_did_scalable()`), and the exact
-   function call that triggers the issue. That will help us diagnose it
-   quickly.
-
-**Redirecting a usage question** (when an issue is really a support
-request)::
-
-   This looks like a usage question rather than a bug. The issue tracker
-   is best reserved for bugs and feature requests. You might find the
-   answer in the user guide: https://moderndid.readthedocs.io/
-
-**Acknowledging a good first contribution** (when a first-time contributor
-opens a PR)::
-
-   Welcome and thanks for your first PR! I'll review this in the next
-   few days. In the meantime, please make sure CI passes. You can check
-   the status at the bottom of this PR.
-
-**Requesting that unrelated changes be split** (when a PR mixes concerns)::
-
-   Thanks for working on this. The PR currently includes both the bug fix
-   and some unrelated refactoring. Could you split these into separate PRs?
-   That makes each one easier to review and keeps the git history clear.
-
-**Closing a stale PR**::
-
-   It looks like this PR has been inactive for a while. I'm going to close
-   it for now, but feel free to reopen when you're ready to continue. If
-   someone else wants to pick up the work, the branch is still available.
+Once a reviewed change is merged, the :doc:`release guide <releasing>` explains
+how maintainers check the distribution that will carry it to users.

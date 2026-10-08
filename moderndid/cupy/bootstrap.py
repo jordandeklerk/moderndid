@@ -6,13 +6,8 @@ from .backend import get_backend, to_numpy
 
 
 def _multiplier_bootstrap_cupy(inf_func, biters, random_state=None):
-    """Batched GPU multiplier bootstrap."""
+    """Batched GPU multiplier bootstrap with Rademacher weights."""
     xp = get_backend()
-
-    sqrt5 = float(np.sqrt(5))
-    k1 = 0.5 * (1 - sqrt5)
-    k2 = 0.5 * (1 + sqrt5)
-    p_kappa = 0.5 * (1 + sqrt5) / sqrt5
 
     n = inf_func.shape[0]
     k = inf_func.shape[1] if inf_func.ndim == 2 else 1
@@ -30,8 +25,8 @@ def _multiplier_bootstrap_cupy(inf_func, biters, random_state=None):
     for start in range(0, biters, batch_size):
         end = min(start + batch_size, biters)
         b = end - start
-        draws = rng.binomial(1, p_kappa, size=(b, n))
-        v = xp.where(draws == 1, k1, k2).astype(xp.float64)
+        draws = rng.binomial(1, 0.5, size=(b, n))
+        v = xp.where(draws == 1, 1.0, -1.0).astype(xp.float64)
         bres[start:end] = to_numpy((v @ inf_gpu) / n)
         del draws, v
 

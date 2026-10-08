@@ -11,7 +11,7 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 
 from moderndid import ddd, ddd_rc, mboot_ddd
-from moderndid.didtriple.container import DDDMultiPeriodResult, DDDPanelResult
+from moderndid.didtriple.container import DDDMultiPeriodResult, DDDPanelResult, DDDRCResult
 
 
 @pytest.mark.parametrize("est_method", ["dr", "reg", "ipw"])
@@ -987,10 +987,41 @@ def test_ddd_mp_no_never_treated_cells_match_trimmed_panel(mp_no_never_treated_d
     result = ddd(data=mp_no_never_treated_df, **spec)
     trimmed = ddd(data=mp_no_never_treated_df.filter(pl.col("time") < 4), **spec)
 
-    cells = {(g, t): i for i, (g, t) in enumerate(zip(result.groups, result.times))}
-    rows = [cells[(g, t)] for g, t in zip(trimmed.groups, trimmed.times)]
-    np.testing.assert_allclose(result.att[rows], trimmed.att, rtol=1e-10, atol=1e-10)
-    np.testing.assert_allclose(result.se[rows], trimmed.se, rtol=1e-10, atol=1e-10)
+    assert result.n == trimmed.n == mp_no_never_treated_df["id"].n_unique()
+    np.testing.assert_array_equal(result.glist, trimmed.glist)
+    np.testing.assert_array_equal(result.groups, trimmed.groups)
+    np.testing.assert_array_equal(result.times, trimmed.times)
+    np.testing.assert_allclose(result.att, trimmed.att, rtol=1e-10, atol=1e-10)
+    np.testing.assert_allclose(result.se, trimmed.se, rtol=1e-10, atol=1e-10)
+    assert [line for line in str(result).splitlines() if line.startswith("│")] == [
+        line for line in str(trimmed).splitlines() if line.startswith("│")
+    ]
+
+
+def test_ddd_mp_no_never_treated_latest_cohort_stays_a_comparison_after_first_period_units_leave(
+    mp_no_never_treated_df,
+):
+    early = (pl.col("group") == 2) & (pl.col("id") % 5 == 0)
+    data = mp_no_never_treated_df.with_columns(pl.when(early).then(1).otherwise(pl.col("group")).alias("group"))
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "group",
+        "pname": "partition",
+        "control_group": "notyettreated",
+        "est_method": "reg",
+    }
+    n_early = data.filter(pl.col("group") == 1)["id"].n_unique()
+
+    with pytest.warns(UserWarning, match=f"^Dropped {n_early} units that were already treated in the first period$"):
+        result = ddd(data=data, **spec)
+    expected = ddd(data=data.filter(pl.col("group") != 1), **spec)
+
+    np.testing.assert_array_equal(result.glist, [2, 3])
+    assert 4 in result.unit_groups
+    np.testing.assert_array_equal(result.att, expected.att)
+    np.testing.assert_array_equal(result.se, expected.se)
 
 
 @pytest.mark.parametrize("mp_no_never_treated_gap_df", [4, 5], indirect=True)
@@ -1035,11 +1066,38 @@ def test_ddd_mp_rcs_without_never_treated_units_matches_trimmed_cross_section(mp
     result = ddd(data=mp_no_never_treated_df, **spec)
     trimmed = ddd(data=mp_no_never_treated_df.filter(pl.col("time") < 4), **spec)
 
-    cells = {(g, t): i for i, (g, t) in enumerate(zip(result.groups, result.times))}
-    rows = [cells[(g, t)] for g, t in zip(trimmed.groups, trimmed.times)]
     assert result.n == trimmed.n == mp_no_never_treated_df.filter(pl.col("time") < 4).height
-    np.testing.assert_allclose(result.att[rows], trimmed.att, rtol=1e-12, atol=1e-12)
-    np.testing.assert_allclose(result.se[rows], trimmed.se, rtol=1e-12, atol=1e-12)
+    np.testing.assert_array_equal(result.glist, trimmed.glist)
+    np.testing.assert_array_equal(result.groups, trimmed.groups)
+    np.testing.assert_array_equal(result.times, trimmed.times)
+    np.testing.assert_allclose(result.att, trimmed.att, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(result.se, trimmed.se, rtol=1e-12, atol=1e-12)
+    assert str(result) == str(trimmed)
+
+
+@pytest.mark.parametrize("base_period", ["universal", "varying"])
+@pytest.mark.parametrize("panel", [True, False])
+def test_ddd_mp_without_never_treated_units_needs_a_cohort_besides_the_latest(
+    mp_no_never_treated_df, base_period, panel
+):
+    message = (
+        "No cohort is left to estimate. Without never-treated units, the not-yet-treated comparisons leave out the "
+        "periods from 4 on. Cohort 4 then serves only as a comparison."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ddd(
+            data=mp_no_never_treated_df.filter(pl.col("group") == 4),
+            yname="y",
+            tname="time",
+            idname="id" if panel else None,
+            gname="group",
+            pname="partition",
+            control_group="notyettreated",
+            base_period=base_period,
+            panel=panel,
+            est_method="reg",
+        )
 
 
 @pytest.mark.parametrize("base_period", ["universal", "varying"])
@@ -1394,6 +1452,86 @@ def test_ddd_2period_cross_section_routes_drop_a_row_with_a_missing_value(
     assert result.att == expected.att
     assert result.se == expected.se
     np.testing.assert_array_equal(result.att_inf_func, expected.att_inf_func)
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [(column, value) for column in ["y", "cov1", "w", "time", "partition"] for value in [None, np.nan, np.inf]]
+    + [("state", None), ("state", np.nan)],
+)
+def test_ddd_2period_balanced_panel_that_loses_a_row_takes_the_unbalanced_route(two_period_df, column, value):
+    row = (pl.col("id") == 11) & (pl.col("time") == 2)
+    data = two_period_df.with_columns((1 + pl.col("id") % 3).alias("w"))
+    missing = pl.when(row).then(pl.lit(value, pl.Float64)).otherwise(pl.col(column).cast(pl.Float64))
+    data = data.with_columns(missing.alias(column))
+    spec = {
+        "yname": "y",
+        "tname": "time",
+        "idname": "id",
+        "gname": "state",
+        "pname": "partition",
+        "xformla": "~ cov1 + cov2",
+        "weightsname": "w",
+        "est_method": "reg",
+        "allow_unbalanced_panel": True,
+    }
+    expected = ddd(data=data.filter(~row), **spec)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = ddd(data=data, **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+    assert isinstance(result, DDDRCResult)
+    assert len(result.att_inf_func) == two_period_df["id"].n_unique()
+    assert [str(w.message) for w in caught if str(w.message).startswith("Dropped")] == [
+        "Dropped 1 rows from original data due to missing values"
+    ]
+
+
+def test_ddd_2period_panel_reads_an_infinite_cohort_as_never_treated(two_period_df):
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition", "est_method": "reg"}
+    never_treated = pl.when(pl.col("state") == 0).then(float("inf")).otherwise(pl.col("state").cast(pl.Float64))
+
+    expected = ddd(data=two_period_df, **spec)
+    result = ddd(data=two_period_df.with_columns(never_treated.alias("state")), **spec)
+
+    assert result.att == expected.att
+    assert result.se == expected.se
+
+
+def test_ddd_2period_routing_keeps_an_infinite_cohort(two_period_df):
+    row = (pl.col("id") == 11) & (pl.col("time") == 2)
+    cohort = pl.when(row).then(float("inf")).otherwise(pl.col("state").cast(pl.Float64))
+    message = "The value of state must be the same across all periods for each unit."
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        ddd(
+            data=two_period_df.with_columns(cohort.alias("state")),
+            yname="y",
+            tname="time",
+            idname="id",
+            gname="state",
+            pname="partition",
+            est_method="reg",
+            allow_unbalanced_panel=True,
+        )
+
+
+def test_ddd_2period_period_without_outcomes_keeps_the_two_period_estimator(two_period_df):
+    extra = two_period_df.filter(pl.col("time") == 2).with_columns(
+        (pl.col("time") + 1).alias("time"), pl.lit(None, pl.Float64).alias("y")
+    )
+    spec = {"yname": "y", "tname": "time", "idname": "id", "gname": "state", "pname": "partition", "est_method": "reg"}
+    expected = ddd(data=two_period_df, **spec)
+
+    with pytest.warns(UserWarning, match=f"^Dropped {extra.height} rows from original data due to missing values$"):
+        result = ddd(data=pl.concat([two_period_df, extra]), **spec)
+
+    assert isinstance(result, DDDPanelResult)
+    assert result.att == expected.att
+    assert result.se == expected.se
 
 
 @pytest.mark.parametrize("argument", ["pname", "cluster", "weightsname"])
