@@ -1,7 +1,5 @@
 """Aggregate Group-Time Average Treatment Effects."""
 
-from __future__ import annotations
-
 import numpy as np
 
 from .compute_aggte import compute_aggte
@@ -17,17 +15,111 @@ def aggte(
     boot=None,
     biters=None,
     cband=None,
-    alp=None,
+    alpha=None,
     clustervars=None,
     random_state=None,
 ):
     r"""Aggregate group-time average treatment effects.
 
     Takes the full set of group-time average treatment effects from ``att_gt``
-    and aggregates them into interpretable summary measures, following Callaway
-    and Sant'Anna (2021) [1]_. Different aggregation schemes answer different
-    policy questions about treatment effect heterogeneity.
+    and aggregates them into the summary measures of Callaway and Sant'Anna
+    (2021) [1]_. Different aggregation schemes answer different policy
+    questions about treatment effect heterogeneity.
 
+    Each overall effect averages post-treatment group-time effects. When none
+    is left, because those cells failed to estimate or ``max_e`` leaves them
+    out, the overall effect is NaN. A warning names the cause. The group and
+    calendar aggregations report only the cohorts and periods with an
+    estimated post-treatment effect. An event study without one still reports
+    its pre-treatment event times. An att_gt result without group-time
+    effects, or an event-study window without event times, stops with an
+    error.
+
+    Since aggte has no data of its own, its standard errors can only reuse
+    the cluster assignments of the att_gt fit. Apart from the idname, a
+    request for a variable the fit did not cluster on stops with an error.
+    With clusters, the analytic standard errors sum each aggregated influence
+    function within clusters. The bootstrap, including the one behind a
+    uniform band, draws one multiplier for each cluster.
+
+    See the :ref:`staggered DiD example <example_staggered_did>` for event study,
+    cohort, and overall aggregations of the minimum wage effects.
+
+    Parameters
+    ----------
+    MP : MPResult
+        The result of :func:`~moderndid.att_gt`.
+    type : {'simple', 'dynamic', 'group', 'calendar'}, default='group'
+        Which aggregated treatment effect parameter to compute. 'simple'
+        averages all post-treatment group-time effects with weights
+        proportional to group size. 'dynamic' averages effects by length of
+        exposure to the treatment, as an event study does. 'group' averages
+        effects within each treatment group. 'calendar' averages effects
+        within each time period.
+    balance_e : int, optional
+        Event time to balance an event study on. With ``balance_e=2``, the
+        event study keeps only the groups observed at event times 0, 1, and 2
+        and reports event times up to 2. The composition of groups then stays
+        the same across event times. The other aggregations ignore it.
+    min_e : float, default=-inf
+        Smallest event time to include in an event study. The other
+        aggregations ignore it.
+    max_e : float, default=inf
+        Largest event time to include. It limits the event study and the
+        post-treatment effects that the simple and group aggregations average.
+        The calendar aggregation ignores it.
+    na_rm : bool, default=False
+        Whether to leave out group-time effects that are NaN before
+        aggregating. Without it, a NaN effect stops the aggregation with an
+        error.
+    boot : bool, optional
+        Whether to compute standard errors with the multiplier bootstrap
+        instead of analytically. Defaults to the setting of the att_gt fit.
+    biters : int, optional
+        Number of bootstrap draws for the standard errors and the uniform
+        confidence band. Defaults to the setting of the att_gt fit.
+    cband : bool, optional
+        Whether to report a uniform confidence band that covers all the
+        disaggregated effects with probability 1 - alpha. It does not require
+        ``boot=True``. Defaults to the setting of the att_gt fit.
+    alpha : float, optional
+        Significance level. Defaults to the level of the att_gt fit.
+    clustervars : list[str], optional
+        Variables to cluster the standard errors on. Each must be the idname or
+        one of the clustervars of the att_gt fit. An empty list, or the idname
+        alone, gives unit-level inference. Defaults to the clustervars of the
+        att_gt fit.
+    random_state : int, Generator, optional
+        Controls the randomness of the bootstrap. Pass an int for reproducible
+        results across multiple function calls. Can also accept a NumPy
+        ``Generator`` instance.
+
+    Returns
+    -------
+    AGGTEResult
+        Object containing the aggregated treatment effect results:
+
+        - **overall_att**: Overall average treatment effect on the treated
+        - **overall_se**: Standard error of the overall effect
+        - **aggregation_type**: The aggregation that ``type`` selected
+        - **event_times**: Event times, groups, or periods of the disaggregated effects
+        - **att_by_event**: Effect at each event time, group, or period
+        - **se_by_event**: Standard error of each disaggregated effect
+        - **critical_values**: Critical value of the confidence band for each disaggregated effect
+        - **influence_func**: Influence functions of the disaggregated effects, or of the overall effect for 'simple'
+        - **influence_func_overall**: Influence function of the overall effect
+        - **min_event_time**: Lower end of an event study's window, or None without one
+        - **max_event_time**: Upper end of an event study's window, or None without one
+        - **balanced_event_threshold**: The ``balance_e`` that balanced an event study, or None
+        - **estimation_params**: Dictionary of the estimation settings
+        - **call_info**: Dictionary describing the call that produced the result
+
+    See Also
+    --------
+    att_gt : Compute group-time average treatment effects.
+
+    Notes
+    -----
     Let :math:`\mathcal{G}` denote the set of treatment groups, :math:`\mathcal{T}`
     the final time period, :math:`G` the random variable for treatment timing,
     and :math:`ATT(g,t)` the group-time average treatment effect for group
@@ -42,172 +134,43 @@ def aggte(
         \theta_{es}(e) = \sum_{g \in \mathcal{G}} \mathbf{1}\{g + e \le \mathcal{T}\}
         P(G = g \mid G + e \le \mathcal{T}) \, ATT(g, g + e).
 
-    Group-specific aggregation averages effects over time for each treatment
-    cohort :math:`\tilde{g}`, revealing whether early versus late adopters
-    experience different effects
+    Group-specific aggregation shows whether early and late adopters
+    experience different effects. It averages the effects of each treatment
+    cohort :math:`\tilde{g}` over its post-treatment periods
 
     .. math::
 
         \theta_{sel}(\tilde{g}) = \frac{1}{\mathcal{T} - \tilde{g} + 1}
         \sum_{t=\tilde{g}}^{\mathcal{T}} ATT(\tilde{g}, t).
 
-    Calendar-time aggregation averages across treated groups within each period
-    :math:`\tilde{t}`, showing how effects vary with time-specific factors
-
-    .. math::
-
-        \theta_{c}(\tilde{t}) = \sum_{g \in \mathcal{G}} \mathbf{1}\{\tilde{t} \ge g\}
-        P(G = g \mid G \le \tilde{t}) \, ATT(g, \tilde{t}).
-
-    The simple or overall aggregation provides a single summary measure by
-    weighting group-specific effects by the distribution of treatment timing
+    The group aggregation's overall effect weights these cohort effects by the
+    distribution of treatment timing
 
     .. math::
 
         \theta_{sel}^O = \sum_{g \in \mathcal{G}} \theta_{sel}(g) \,
         P(G = g \mid G \le \mathcal{T}).
 
-    Parameters
-    ----------
-    MP : MPResult
-        An MP object (i.e., the results of the att_gt() method).
-    type : {'simple', 'dynamic', 'group', 'calendar'}, default='group'
-        Which type of aggregated treatment effect parameter to compute:
+    Calendar-time aggregation shows how effects vary with time-specific
+    factors. It averages across the groups treated by each period
+    :math:`\tilde{t}`
 
-        - 'simple': Computes a weighted average of all group-time average
-          treatment effects with weights proportional to group size.
-        - 'dynamic': Computes average effects across different lengths of
-          exposure to the treatment (similar to an event study).
-        - 'group': Computes average treatment effects across different groups.
-        - 'calendar': Computes average treatment effects across different
-          time periods.
-    balance_e : int, optional
-        If set (and if one computes dynamic effects), it balances the sample
-        with respect to event time. For example, if balance_e=2, aggte will
-        drop groups that are not exposed to treatment for at least three
-        periods (the initial period when e=0 as well as the next two periods
-        when e=1 and e=2). This ensures that the composition of groups does
-        not change when event time changes.
-    min_e : float, default=-inf
-        For event studies, this is the smallest event time to compute dynamic
-        effects for. By default, min_e = -Inf so that effects at all lengths
-        of exposure are computed.
-    max_e : float, default=inf
-        For event studies, this is the largest event time to compute dynamic
-        effects for. By default, max_e = Inf so that effects at all lengths
-        of exposure are computed.
-    na_rm : bool, default=False
-        Logical value if we are to remove missing values from analyses.
-    boot : bool, optional
-        Boolean for whether or not to compute standard errors using the
-        multiplier bootstrap. If standard errors are clustered, then one must
-        set boot=True. Default is value set in the MP object. If boot is
-        False, then analytical standard errors are reported.
-    biters : int, optional
-        The number of bootstrap iterations to use. The default is the value
-        set in the MP object, and this is only applicable if boot=True.
-    cband : bool, optional
-        Boolean for whether or not to compute a uniform confidence band that
-        covers all of the group-time average treatment effects with fixed
-        probability 1-alp. In order to compute uniform confidence bands,
-        boot must also be set to True. The default is the value set in
-        the MP object.
-    alp : float, optional
-        The significance level, default is value set in the MP object.
-    clustervars : list[str], optional
-        A vector of variables to cluster on. At most, there can be two
-        variables (otherwise will throw an error) and one of these must be
-        the same as idname which allows for clustering at the individual
-        level. Default is the variables set in the MP object.
-    random_state : int, Generator, optional
-        Controls the randomness of the bootstrap. Pass an int for reproducible
-        results across multiple function calls. Can also accept a NumPy
-        ``Generator`` instance.
+    .. math::
 
-    Returns
-    -------
-    AGGTEResult
-        An AGGTEobj object that holds the results from the aggregation.
+        \theta_{c}(\tilde{t}) = \sum_{g \in \mathcal{G}} \mathbf{1}\{\tilde{t} \ge g\}
+        P(G = g \mid G \le \tilde{t}) \, ATT(g, \tilde{t}).
 
-    Examples
-    --------
-    First, we compute group-time average treatment effects using the ``att_gt`` function:
+    The simple aggregation averages every post-treatment group-time effect with
+    weights proportional to group size
 
-    .. ipython::
-        :okwarning:
+    .. math::
 
-        In [1]: import numpy as np
-           ...: from moderndid import att_gt, aggte, load_mpdta
-           ...:
-           ...: df = load_mpdta()
-           ...:
-           ...: # Compute group-time ATTs
-           ...: att_gt_result = att_gt(
-           ...:     data=df,
-           ...:     yname="lemp",
-           ...:     tname="year",
-           ...:     gname="first.treat",
-           ...:     idname="countyreal",
-           ...:     est_method="dr",
-           ...:     boot=False
-           ...: )
+        \theta_{W}^O = \frac{1}{\kappa} \sum_{g \in \mathcal{G}} \sum_{t=2}^{\mathcal{T}}
+        \mathbf{1}\{g \le t\} \, ATT(g, t) \, P(G = g \mid G \le \mathcal{T}),
 
-    Now we can aggregate these group-time effects in different ways. The "simple" aggregation
-    computes an overall ATT by taking a weighted average of all group-time ATTs:
-
-    .. ipython::
-        :okwarning:
-
-        In [2]: # Simple aggregation - overall ATT
-           ...: simple_agg = aggte(MP=att_gt_result, type="simple")
-           ...: print(simple_agg)
-
-    The "group" aggregation computes average treatment effects separately for each treatment
-    cohort (units first treated in the same period):
-
-    .. ipython::
-        :okwarning:
-
-        In [3]: # Group aggregation - ATT by treatment cohort
-           ...: group_agg = aggte(MP=att_gt_result, type="group")
-           ...: print(group_agg)
-
-    The "dynamic" aggregation creates an event study, showing how treatment effects evolve
-    relative to the treatment start date:
-
-    .. ipython::
-        :okwarning:
-
-        In [4]: # Dynamic aggregation - event study
-           ...: dynamic_agg = aggte(MP=att_gt_result, type="dynamic")
-           ...: print(dynamic_agg)
-
-    We can also limit the event study to specific event times:
-
-    .. ipython::
-        :okwarning:
-
-        In [5]: # Dynamic effects from 2 periods before to 2 periods after treatment
-           ...: dynamic_limited = aggte(
-           ...:     MP=att_gt_result,
-           ...:     type="dynamic",
-           ...:     min_e=-2,
-           ...:     max_e=2
-           ...: )
-           ...: print(dynamic_limited)
-
-    The "calendar" aggregation computes average treatment effects by calendar time period:
-
-    .. ipython::
-        :okwarning:
-
-        In [6]: # Calendar time aggregation - ATT by year
-           ...: calendar_agg = aggte(MP=att_gt_result, type="calendar")
-           ...: print(calendar_agg)
-
-    See Also
-    --------
-    att_gt : Compute group-time average treatment effects.
+    where :math:`\kappa` makes the weights sum to one. Since a group
+    contributes one term for each period after it is treated, groups treated
+    earlier receive more weight than in :math:`\theta_{sel}^O`.
 
     References
     ----------
@@ -218,8 +181,8 @@ def aggte(
     valid_types = ("simple", "dynamic", "group", "calendar")
     if type not in valid_types:
         raise ValueError(f"type='{type}' is not valid. Must be one of: 'simple', 'dynamic', 'group', 'calendar'.")
-    if alp is not None and not 0 < alp < 1:
-        raise ValueError(f"alp={alp} is not valid. Must be between 0 and 1 (exclusive).")
+    if alpha is not None and not 0 < alpha < 1:
+        raise ValueError(f"alpha={alpha} is not valid. Must be between 0 and 1 (exclusive).")
     if biters is not None and (not isinstance(biters, int) or biters < 1):
         raise ValueError(f"biters={biters} is not valid. Must be a positive integer.")
     if balance_e is not None and (not isinstance(balance_e, int) or balance_e < 0):
@@ -241,9 +204,9 @@ def aggte(
         max_e=max_e,
         dropna=na_rm,
         bootstrap=boot,
-        bootstrap_iterations=biters,
+        biters=biters,
         confidence_band=cband,
-        alpha=alp,
+        alpha=alpha,
         clustervars=clustervars,
         random_state=random_state,
     )

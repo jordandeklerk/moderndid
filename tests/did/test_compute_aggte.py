@@ -7,118 +7,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import compute_aggte, compute_att_gt, load_mpdta, mp, preprocess_did
-
-
-@pytest.fixture
-def mpdta_mp_result():
-    mpdta = load_mpdta()
-    mpdta = mpdta.with_columns((pl.col("countyreal") % 10).alias("cluster"))
-
-    data = preprocess_did(
-        mpdta,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
-        xformla="~lpop",
-        panel=True,
-        control_group="nevertreated",
-        anticipation=0,
-        clustervars=["cluster"],
-    )
-
-    att_result = compute_att_gt(data)
-
-    groups = np.array([r.group for r in att_result.attgt_list])
-    times = np.array([r.year for r in att_result.attgt_list])
-    att_gt = np.array([r.att for r in att_result.attgt_list])
-
-    inf_func = att_result.influence_functions.toarray()
-    n_units = data.config.id_count
-
-    vcov = np.cov(inf_func.T)
-    se_gt = np.sqrt(np.diag(vcov) / n_units)
-
-    gname = data.config.gname
-    G = data.time_invariant_data[gname].to_numpy()
-    weights_ind = np.ones(n_units)
-
-    mp_result = mp(
-        groups=groups,
-        times=times,
-        att_gt=att_gt,
-        vcov_analytical=vcov,
-        se_gt=se_gt,
-        critical_value=1.96,
-        influence_func=inf_func,
-        n_units=n_units,
-        alpha=0.05,
-        estimation_params={
-            "bootstrap": False,
-            "uniform_bands": False,
-            "control_group": "nevertreated",
-            "anticipation_periods": 0,
-            "estimation_method": "dr",
-            "data": data,
-            "panel": True,
-        },
-        G=G,
-        weights_ind=weights_ind,
-    )
-
-    return mp_result
-
-
-@pytest.fixture
-def synthetic_mp_result():
-    groups = []
-    times = []
-    att_gt = []
-
-    for g in [2004, 2006, 2007]:
-        for t in [2003, 2004, 2005, 2006, 2007]:
-            groups.append(g)
-            times.append(t)
-            if g <= t:
-                att_gt.append(0.05 + 0.01 * (t - g))
-            else:
-                att_gt.append(0.0)
-
-    groups = np.array(groups)
-    times = np.array(times)
-    att_gt = np.array(att_gt)
-
-    n_units = 500
-    n_gt = len(groups)
-    inf_func = np.random.normal(0, 0.01, size=(n_units, n_gt))
-
-    vcov = np.cov(inf_func.T)
-    se_gt = np.sqrt(np.diag(vcov) / n_units)
-
-    G = np.tile([2004, 2006, 2007, 0], n_units // 4)
-    weights_ind = np.ones(n_units)
-
-    return mp(
-        groups=groups,
-        times=times,
-        att_gt=att_gt,
-        vcov_analytical=vcov,
-        se_gt=se_gt,
-        critical_value=1.96,
-        influence_func=inf_func,
-        n_units=n_units,
-        alpha=0.05,
-        estimation_params={
-            "bootstrap": False,
-            "uniform_bands": False,
-            "control_group": "nevertreated",
-            "anticipation_periods": 0,
-            "estimation_method": "dr",
-        },
-        G=G,
-        weights_ind=weights_ind,
-    )
+from moderndid import compute_aggte, mp
 
 
 @pytest.mark.parametrize("agg_type", ["simple", "dynamic", "group", "calendar"])
@@ -170,12 +59,58 @@ def test_group_aggregation_groups(mpdta_mp_result):
 def test_calendar_aggregation_periods(mpdta_mp_result):
     result = compute_aggte(mpdta_mp_result, aggregation_type="calendar")
 
-    min_group = mpdta_mp_result.groups.min()
-    expected_times = np.unique(mpdta_mp_result.times)
-    expected_times = expected_times[expected_times >= min_group]
+    np.testing.assert_array_equal(result.event_times, [2004, 2005, 2006, 2007])
 
-    assert len(result.event_times) == len(expected_times)
-    assert np.allclose(result.event_times, expected_times)
+
+def test_calendar_aggregation_leaves_out_periods_without_treated_effects(synthetic_mp_result):
+    failed = (synthetic_mp_result.groups == 2004) & (synthetic_mp_result.times >= 2004)
+    with_failed_cells = synthetic_mp_result._replace(att_gt=np.where(failed, np.nan, synthetic_mp_result.att_gt))
+
+    result = compute_aggte(with_failed_cells, aggregation_type="calendar", dropna=True)
+
+    np.testing.assert_array_equal(result.event_times, [2006, 2007])
+    np.testing.assert_allclose(result.att_by_event, [0.05, 0.055], rtol=1e-12)
+    np.testing.assert_allclose(result.overall_att, 0.0525, rtol=1e-12)
+
+
+def test_group_aggregation_leaves_out_cohorts_without_post_treatment_effects(synthetic_mp_result):
+    failed = (synthetic_mp_result.groups == 2004) & (synthetic_mp_result.times >= 2004)
+    dropped = synthetic_mp_result._replace(
+        groups=synthetic_mp_result.groups[~failed],
+        times=synthetic_mp_result.times[~failed],
+        att_gt=synthetic_mp_result.att_gt[~failed],
+        influence_func=synthetic_mp_result.influence_func[:, ~failed],
+    )
+    with_nan = synthetic_mp_result._replace(att_gt=np.where(failed, np.nan, synthetic_mp_result.att_gt))
+
+    from_dropped = compute_aggte(dropped, aggregation_type="group")
+    from_nan = compute_aggte(with_nan, aggregation_type="group", dropna=True)
+
+    np.testing.assert_array_equal(from_dropped.event_times, [2006, 2007])
+    np.testing.assert_array_equal(from_nan.event_times, [2006, 2007])
+    np.testing.assert_allclose(from_dropped.att_by_event, [0.055, 0.05], rtol=1e-12)
+    np.testing.assert_allclose(from_nan.att_by_event, [0.055, 0.05], rtol=1e-12)
+    np.testing.assert_allclose(from_dropped.overall_att, 0.0525, rtol=1e-12)
+    np.testing.assert_allclose(from_nan.overall_att, 0.0525, rtol=1e-12)
+    np.testing.assert_allclose(from_dropped.se_by_event, from_nan.se_by_event, rtol=1e-12)
+    np.testing.assert_allclose(from_dropped.overall_se, from_nan.overall_se, rtol=1e-12)
+
+
+@pytest.mark.parametrize("aggregation_type", ["simple", "dynamic", "group", "calendar"])
+def test_aggregation_with_only_pre_treatment_cells_left_reports_nan(synthetic_mp_result, aggregation_type):
+    post_treatment = synthetic_mp_result.groups <= synthetic_mp_result.times
+    with_failed_cells = synthetic_mp_result._replace(
+        att_gt=np.where(post_treatment, np.nan, synthetic_mp_result.att_gt)
+    )
+
+    with pytest.warns(
+        UserWarning,
+        match="^The overall effect is NaN because no post-treatment group-time effect is left to average\\. ",
+    ):
+        result = compute_aggte(with_failed_cells, aggregation_type=aggregation_type, dropna=True)
+
+    assert np.isnan(result.overall_att)
+    assert np.isnan(result.overall_se)
 
 
 @pytest.mark.parametrize("min_e,max_e", [(-2, 2), (-1, 1), (0, 3)])
@@ -212,27 +147,37 @@ def test_bootstrap_options(synthetic_mp_result, bstrap, cband):
         synthetic_mp_result,
         aggregation_type="group",
         bootstrap=bstrap,
-        bootstrap_iterations=20,
+        biters=999,
         confidence_band=cband,
         random_state=42,
     )
 
     assert result.estimation_params["bootstrap"] == bstrap
-    if not bstrap or not cband:
-        assert result.estimation_params["uniform_bands"] == cband
+    assert result.estimation_params["uniform_bands"] == cband
+    assert len(result.critical_values) == len(result.event_times)
+    if cband:
+        assert np.all(result.critical_values > 1.96)
     else:
-        assert isinstance(result.estimation_params["uniform_bands"], bool)
-
-    if cband and result.critical_values is not None:
-        assert len(result.critical_values) == len(result.event_times)
+        np.testing.assert_allclose(result.critical_values, 1.959964, rtol=1e-6)
 
 
-@pytest.mark.parametrize("alp", [0.01, 0.05, 0.10])
-def test_significance_levels(synthetic_mp_result, alp):
-    result = compute_aggte(synthetic_mp_result, aggregation_type="simple", alpha=alp)
+@pytest.mark.parametrize("alpha", [0.01, 0.05, 0.10])
+def test_significance_levels(synthetic_mp_result, alpha):
+    result = compute_aggte(synthetic_mp_result, aggregation_type="simple", alpha=alpha)
 
     stored_alpha = result.estimation_params.get("alpha", synthetic_mp_result.alpha)
-    assert stored_alpha == alp
+    assert stored_alpha == alpha
+
+
+def test_compute_aggte_stores_biters(synthetic_mp_result):
+    result = compute_aggte(synthetic_mp_result, aggregation_type="group", bootstrap=True, biters=77, random_state=4)
+
+    assert result.estimation_params["biters"] == 77
+
+
+def test_compute_aggte_rejects_the_removed_bootstrap_iterations_argument(synthetic_mp_result):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'bootstrap_iterations'"):
+        compute_aggte(synthetic_mp_result, aggregation_type="simple", bootstrap_iterations=99)
 
 
 def test_invalid_aggregation_type(synthetic_mp_result):
@@ -245,7 +190,7 @@ def test_single_group_edge_case():
     times = np.array([2003, 2004, 2005])
     att_gt = np.array([0.0, 0.05, 0.06])
 
-    inf_func = np.random.normal(0, 0.01, size=(100, 3))
+    inf_func = np.random.default_rng(0).normal(0, 0.01, size=(100, 3))
     vcov = np.eye(3) * 0.01
     se_gt = np.array([0.01, 0.01, 0.01])
 
@@ -260,9 +205,13 @@ def test_single_group_edge_case():
         n_units=100,
     )
 
-    result = compute_aggte(mp_result, aggregation_type="group")
-    assert len(result.event_times) == 1
-    assert result.event_times[0] == 2004
+    with pytest.warns(
+        UserWarning, match="^Unit-level data \\(unit_level_groups and unit_level_weights\\) not provided"
+    ):
+        result = compute_aggte(mp_result, aggregation_type="group")
+
+    np.testing.assert_array_equal(result.event_times, [2004])
+    np.testing.assert_allclose(result.att_by_event, [0.055], rtol=1e-12)
 
 
 def test_no_post_treatment_edge_case():
@@ -283,22 +232,30 @@ def test_no_post_treatment_edge_case():
         critical_value=1.96,
         influence_func=inf_func,
         n_units=100,
+        G=np.r_[np.full(40, 2010), np.zeros(60)],
+        weights_ind=np.ones(100),
     )
 
-    result = compute_aggte(mp_result, aggregation_type="simple")
-    assert np.isnan(result.overall_att) or result.overall_att == 0
+    with pytest.warns(
+        UserWarning,
+        match="^The overall effect is NaN because no post-treatment group-time effect is left to average\\. ",
+    ):
+        result = compute_aggte(mp_result, aggregation_type="simple")
+
+    assert np.isnan(result.overall_att)
+    assert np.isnan(result.overall_se)
 
 
-def test_all_positive_standard_errors(mpdta_mp_result):
-    for agg_type in ["simple", "group", "dynamic", "calendar"]:
-        result = compute_aggte(mpdta_mp_result, aggregation_type=agg_type)
+@pytest.mark.parametrize("agg_type", ["simple", "group", "dynamic", "calendar"])
+def test_all_positive_standard_errors(mpdta_mp_result, agg_type):
+    result = compute_aggte(mpdta_mp_result, aggregation_type=agg_type)
 
-        if not np.isnan(result.overall_se):
-            assert result.overall_se > 0
+    if not np.isnan(result.overall_se):
+        assert result.overall_se > 0
 
-        if result.se_by_event is not None:
-            valid_se = result.se_by_event[~np.isnan(result.se_by_event)]
-            assert np.all(valid_se > 0)
+    if result.se_by_event is not None:
+        valid_se = result.se_by_event[~np.isnan(result.se_by_event)]
+        assert np.all(valid_se > 0)
 
 
 def test_influence_function_properties(mpdta_mp_result):
@@ -364,7 +321,7 @@ def test_clustered_standard_errors(mpdta_mp_result):
         mpdta_mp_result,
         aggregation_type="group",
         bootstrap=True,
-        bootstrap_iterations=50,
+        biters=50,
         random_state=42,
     )
 
@@ -372,7 +329,7 @@ def test_clustered_standard_errors(mpdta_mp_result):
         mpdta_mp_result,
         aggregation_type="group",
         bootstrap=True,
-        bootstrap_iterations=50,
+        biters=50,
         clustervars=["cluster"],
         random_state=42,
     )
@@ -381,3 +338,27 @@ def test_clustered_standard_errors(mpdta_mp_result):
     assert result_with_cluster.overall_se > 0
     assert not np.isnan(result_with_cluster.overall_se)
     assert result_no_cluster.overall_se != result_with_cluster.overall_se
+    assert result_no_cluster.estimation_params["cluster"] is None
+    assert result_with_cluster.estimation_params["clustervars"] == ["cluster"]
+    np.testing.assert_array_equal(
+        result_with_cluster.estimation_params["cluster"], mpdta_mp_result.estimation_params["data"].cluster
+    )
+
+
+def test_hand_built_result_resolves_clusters_from_its_data(mpdta_mp_result):
+    draws = {"aggregation_type": "group", "bootstrap": True, "biters": 99, "random_state": 42}
+
+    by_unit = compute_aggte(mpdta_mp_result, clustervars=["countyreal"], **draws)
+    unclustered = compute_aggte(mpdta_mp_result, clustervars=[], **draws)
+
+    assert by_unit.estimation_params["clustervars"] == []
+    assert by_unit.estimation_params["cluster"] is None
+    assert by_unit.overall_se == unclustered.overall_se
+    np.testing.assert_array_equal(by_unit.se_by_event, unclustered.se_by_event)
+    with pytest.raises(
+        ValueError,
+        match="^The att_gt fit did not cluster on 'state'\\. Since the aggregation reuses the clusters of the att_gt "
+        "fit, pass the cluster variable to att_gt instead\\. To aggregate this fit, pass clustervars=\\['cluster'\\] "
+        "to reuse its clusters, or an empty list for unit-level inference\\.$",
+    ):
+        compute_aggte(mpdta_mp_result, clustervars=["state"], **draws)

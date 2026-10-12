@@ -1,5 +1,7 @@
 """Tests for computing ATT-GT."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -8,37 +10,14 @@ from tests.helpers import importorskip
 pl = importorskip("polars")
 import scipy.sparse as sp
 
-from moderndid import load_mpdta
 from moderndid.core.preprocess import DIDConfig, preprocess_did
 from moderndid.did.compute_att_gt import (
-    ATTgtResult,
-    ComputeATTgtResult,
     compute_att_gt,
     get_did_cohort_index,
     run_att_gt_estimation,
     run_drdid,
 )
-
-
-@pytest.fixture
-def mpdta_data():
-    df = load_mpdta()
-    return df
-
-
-@pytest.fixture
-def panel_data(mpdta_data):
-    return preprocess_did(
-        mpdta_data,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
-        xformla="~lpop",
-        panel=True,
-        control_group="nevertreated",
-        est_method="dr",
-    )
+from moderndid.did.container import ATTgtResult, ComputeATTgtResult
 
 
 def test_attgt_result_structure():
@@ -548,35 +527,119 @@ def test_cohort_index_edge_cases(mpdta_data):
     assert isinstance(cohort_index, np.ndarray)
 
 
-@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
-def test_influence_function_aggregation(mpdta_data):
+def test_influence_function_aggregation(mpdta_unbalanced):
     data = preprocess_did(
-        mpdta_data,
+        mpdta_unbalanced,
         yname="lemp",
         tname="year",
         idname="countyreal",
         gname="first.treat",
         xformla="~lpop",
-        panel=False,
         allow_unbalanced_panel=True,
         control_group="nevertreated",
     )
 
-    n_units = 100
+    rng = np.random.default_rng(0)
+    n_rows = 100
     cohort_data = {
-        "D": np.random.choice([0, 1], n_units),
-        "y": np.random.randn(n_units),
-        "post": np.random.choice([0, 1], n_units),
-        "weights": np.ones(n_units),
-        "rowid": np.repeat(np.arange(50), 2),
+        "D": rng.choice([0, 1], n_rows),
+        "y": rng.standard_normal(n_rows),
+        "post": rng.choice([0, 1], n_rows),
+        "weights": np.ones(n_rows),
+        "unit_index": np.repeat(np.arange(50), 2),
     }
-    covariates = np.column_stack([np.ones(n_units), np.random.randn(n_units)])
+    covariates = np.column_stack([np.ones(n_rows), rng.standard_normal(n_rows)])
 
     result = run_drdid(cohort_data, covariates, data)
 
     assert "att" in result
-    assert "inf_func" in result
-    assert len(result["inf_func"]) <= n_units
+    assert result["inf_func"].shape == (data.config.id_count,)
+    assert np.any(result["inf_func"][:50] != 0)
+    assert not result["inf_func"][50:].any()
+
+
+@pytest.mark.filterwarnings("ignore:panel=False was specified:UserWarning")
+def test_compute_att_gt_cross_section_keys_every_row_whatever_idname(mpdta_data):
+    spec = dict(yname="lemp", tname="year", gname="first.treat", xformla="~lpop", panel=False)
+
+    plain = compute_att_gt(preprocess_did(mpdta_data, **spec))
+    with_id = compute_att_gt(preprocess_did(mpdta_data, idname="countyreal", **spec))
+
+    assert with_id.influence_functions.shape == (mpdta_data.height, len(with_id.attgt_list))
+    np.testing.assert_array_equal(with_id.influence_functions.toarray(), plain.influence_functions.toarray())
+
+
+def test_compute_att_gt_unbalanced_rows_follow_time_invariant_data(mpdta_unbalanced):
+    data = preprocess_did(
+        mpdta_unbalanced,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        allow_unbalanced_panel=True,
+        control_group="nevertreated",
+    )
+
+    result = compute_att_gt(data)
+    influence = result.influence_functions.toarray()
+    cohorts = data.time_invariant_data["first.treat"].to_numpy()
+
+    assert not data.config.panel
+    assert influence.shape[0] == data.time_invariant_data.height
+    for column, cell in enumerate(result.attgt_list):
+        other_cohorts = np.isfinite(cohorts) & (cohorts != cell.group)
+        assert np.any(influence[cohorts == cell.group, column] != 0)
+        assert not influence[other_cohorts, column].any()
+
+
+def test_run_att_gt_estimation_unbalanced_matches_compute_att_gt(mpdta_unbalanced):
+    data = preprocess_did(
+        mpdta_unbalanced,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        allow_unbalanced_panel=True,
+        control_group="nevertreated",
+    )
+
+    full = compute_att_gt(data)
+    cell = run_att_gt_estimation(group_idx=0, time_idx=1, data=data)
+
+    assert (full.attgt_list[1].group, full.attgt_list[1].year) == (2004, 2005)
+    assert cell["att"] == full.attgt_list[1].att
+    np.testing.assert_array_equal(cell["inf_func"], full.influence_functions.toarray()[:, 1])
+
+
+def test_compute_att_gt_skips_each_cell_whose_treated_regression_is_unidentified_with_one_warning(
+    rcs_small_cohort_period,
+):
+    data = preprocess_did(
+        rcs_small_cohort_period,
+        yname="y",
+        tname="t",
+        idname="id",
+        gname="g",
+        xformla="~ x0 + x1 + x2 + x3 + x4",
+        panel=False,
+        est_method="dr",
+    )
+    advice = (
+        "Pass fewer covariates. The estimators drdid_imp_rc and drdid_trad_rc fit no regression for the treated "
+        "group and accept this design."
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = compute_att_gt(data)
+
+    assert result.attgt_list == []
+    assert [str(warning.message) for warning in caught] == [
+        "The 2x2 comparison for group 3 in time period 2 failed. The treated group in the post-period has fewer "
+        f"observations (4) than regression coefficients (6). {advice}",
+        "The 2x2 comparison for group 3 in time period 3 failed. The treated group in the pre-period has fewer "
+        f"observations (4) than regression coefficients (6). {advice}",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -610,21 +673,6 @@ def test_compute_att_gt_parallel_matches_sequential(mpdta_data, base_period, con
     inf_seq = result_seq.influence_functions.toarray()
     inf_par = result_par.influence_functions.toarray()
     np.testing.assert_allclose(inf_seq, inf_par, rtol=1e-10)
-
-
-@pytest.fixture
-def _preprocessed_panel(mpdta_data):
-    return preprocess_did(
-        mpdta_data,
-        yname="lemp",
-        tname="year",
-        idname="countyreal",
-        gname="first.treat",
-        xformla="~lpop",
-        panel=True,
-        control_group="nevertreated",
-        base_period="varying",
-    )
 
 
 def _check_att_gt_result(result, n_ids):

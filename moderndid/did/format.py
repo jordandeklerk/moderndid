@@ -11,8 +11,10 @@ from moderndid.core.format import (
     format_section_header,
     format_significance_note,
     format_single_result_table,
+    format_standard_errors,
     format_title,
 )
+from moderndid.core.result import extract_clustervar
 
 from .container import AGGTEResult, MPPretestResult, MPResult
 
@@ -72,9 +74,10 @@ def format_aggte_result(result):
             lines.append(" Time Effects:")
             col1_header = "Time"
 
-        bootstrap = result.estimation_params.get("bootstrap", False)
+        # aggte draws its simultaneous bands from a bootstrap even without boot=True, and it clears
+        # uniform_bands when it falls back to pointwise intervals, so the flag alone decides the label.
         uniform_bands = result.estimation_params.get("uniform_bands", False)
-        cb_label = "Simult. Conf. Band" if bootstrap and uniform_bands else "Pointwise Conf. Band"
+        cb_label = "Simult. Conf. Band" if uniform_bands else "Pointwise Conf. Band"
 
         if result.critical_values is not None:
             crit_vals = result.critical_values
@@ -120,10 +123,7 @@ def format_aggte_result(result):
     lines.extend(format_section_header("Inference"))
     lines.append(f" Significance level: {alpha}")
     bootstrap = result.estimation_params.get("bootstrap", False)
-    if bootstrap:
-        lines.append(" Bootstrap standard errors")
-    else:
-        lines.append(" Analytical standard errors")
+    lines.append(format_standard_errors(bootstrap, extract_clustervar(result.estimation_params)))
 
     lines.extend(format_footer("Reference: Callaway and Sant'Anna (2021)"))
 
@@ -163,6 +163,12 @@ def format_mp_result(result):
     if result.wald_pvalue is not None:
         lines.append("")
         lines.append(f" P-value for pre-test of parallel trends assumption:  {result.wald_pvalue:.4f}")
+    elif extract_clustervar(result.estimation_params) is not None:
+        # Since a missing pre-test would read as an oversight, the report says why a clustered fit has none.
+        lines.append("")
+        lines.append(" Since a Wald test on a cluster-robust covariance rejects too often at")
+        lines.append(" realistic cluster counts, no pre-test of parallel trends is reported.")
+        lines.append(" Use the bootstrap's uniform bands over the pre-treatment cells instead.")
 
     lines.extend(format_section_header("Data Info"))
     control_group = result.estimation_params.get("control_group")
@@ -184,10 +190,7 @@ def format_mp_result(result):
 
     lines.extend(format_section_header("Inference"))
     lines.append(f" Significance level: {result.alpha}")
-    if bootstrap:
-        lines.append(" Bootstrap standard errors")
-    else:
-        lines.append(" Analytical standard errors")
+    lines.append(format_standard_errors(bootstrap, extract_clustervar(result.estimation_params)))
 
     lines.extend(format_footer("Reference: Callaway and Sant'Anna (2021)"))
 

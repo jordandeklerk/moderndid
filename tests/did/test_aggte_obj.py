@@ -178,6 +178,36 @@ def test_aggte_formatting_group():
     assert "Group" in formatted
 
 
+@pytest.mark.parametrize(
+    ("estimation_params", "line"),
+    [
+        ({"bootstrap": False}, " Analytical standard errors"),
+        ({"bootstrap": True}, " Bootstrap standard errors"),
+        (
+            {"bootstrap": True, "clustervars": ["state"], "cluster": np.repeat(np.arange(50), 2)},
+            " Bootstrap standard errors clustered by state",
+        ),
+        (
+            {"bootstrap": False, "clustervars": ["state"], "cluster": np.repeat(np.arange(50), 2)},
+            " Analytical standard errors clustered by state",
+        ),
+        ({"bootstrap": True, "clustervars": ["copy"], "cluster": np.arange(100)}, " Bootstrap standard errors"),
+    ],
+)
+def test_aggte_formatting_names_the_clusters_of_the_standard_errors(estimation_params, line):
+    result = aggte(
+        overall_att=1.5,
+        overall_se=0.2,
+        aggregation_type="simple",
+        estimation_params={"alpha": 0.05, **estimation_params},
+    )
+
+    lines = format_aggte_result(result).splitlines()
+
+    assert line in lines
+    assert lines[lines.index(line) - 1] == " Significance level: 0.05"
+
+
 def test_aggte_display_methods():
     result = aggte(
         overall_att=2.0,
