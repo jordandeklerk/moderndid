@@ -7,6 +7,7 @@ from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
+import moderndid
 from moderndid.core.converters import to_df
 from moderndid.didinter import (
     ATEResult,
@@ -15,45 +16,6 @@ from moderndid.didinter import (
     HeterogeneityResult,
     PlacebosResult,
 )
-
-
-@pytest.fixture
-def effects_result():
-    return EffectsResult(
-        horizons=np.array([1, 2, 3]),
-        estimates=np.array([0.5, 0.6, 0.7]),
-        std_errors=np.array([0.1, 0.12, 0.15]),
-        ci_lower=np.array([0.3, 0.36, 0.4]),
-        ci_upper=np.array([0.7, 0.84, 1.0]),
-        n_switchers=np.array([100, 90, 80]),
-        n_observations=np.array([500, 450, 400]),
-    )
-
-
-@pytest.fixture
-def placebos_result():
-    return PlacebosResult(
-        horizons=np.array([-1, -2]),
-        estimates=np.array([0.01, -0.02]),
-        std_errors=np.array([0.05, 0.06]),
-        ci_lower=np.array([-0.09, -0.14]),
-        ci_upper=np.array([0.11, 0.10]),
-        n_switchers=np.array([100, 95]),
-        n_observations=np.array([500, 480]),
-    )
-
-
-@pytest.fixture
-def minimal_effects():
-    return EffectsResult(
-        horizons=np.array([1]),
-        estimates=np.array([0.5]),
-        std_errors=np.array([0.1]),
-        ci_lower=np.array([0.3]),
-        ci_upper=np.array([0.7]),
-        n_switchers=np.array([100]),
-        n_observations=np.array([500]),
-    )
 
 
 def test_effects_result_creation(effects_result):
@@ -171,27 +133,27 @@ def test_heterogeneity_result_to_dataframe_values():
     assert df["Horizon"].to_list() == [2, 2, 2]
 
 
-def test_didinter_result_creation(minimal_effects):
+def test_didinter_result_creation(single_horizon_effects):
     result = DIDInterResult(
-        effects=minimal_effects,
+        effects=single_horizon_effects,
         n_units=200,
         n_switchers=100,
         n_never_switchers=100,
-        ci_level=95.0,
+        alpha=0.05,
     )
 
-    assert result.effects is minimal_effects
+    assert result.effects is single_horizon_effects
     assert result.placebos is None
     assert result.ate is None
     assert result.n_units == 200
     assert result.n_switchers == 100
     assert result.n_never_switchers == 100
-    assert result.ci_level == 95.0
+    assert result.alpha == 0.05
 
 
-def test_didinter_result_with_placebos(minimal_effects, placebos_result):
+def test_didinter_result_with_placebos(single_horizon_effects, placebos_result):
     result = DIDInterResult(
-        effects=minimal_effects,
+        effects=single_horizon_effects,
         placebos=placebos_result,
         n_units=200,
         n_switchers=100,
@@ -202,12 +164,12 @@ def test_didinter_result_with_placebos(minimal_effects, placebos_result):
     assert len(result.placebos.horizons) == 2
 
 
-def test_didinter_result_with_tests(minimal_effects):
+def test_didinter_result_with_tests(single_horizon_effects):
     effects_equal_test = {"chi2_stat": 1.5, "df": 1, "p_value": 0.22}
     placebo_joint_test = {"chi2_stat": 2.3, "df": 2, "p_value": 0.32}
 
     result = DIDInterResult(
-        effects=minimal_effects,
+        effects=single_horizon_effects,
         effects_equal_test=effects_equal_test,
         placebo_joint_test=placebo_joint_test,
     )
@@ -224,7 +186,7 @@ def test_didinter_result_with_tests(minimal_effects):
         ("n_units", 0),
         ("n_switchers", 0),
         ("n_never_switchers", 0),
-        ("ci_level", 95.0),
+        ("alpha", 0.05),
         ("effects_equal_test", None),
         ("placebo_joint_test", None),
         ("influence_effects", None),
@@ -232,19 +194,39 @@ def test_didinter_result_with_tests(minimal_effects):
         ("heterogeneity", None),
     ],
 )
-def test_didinter_result_defaults(minimal_effects, field, expected_default):
-    result = DIDInterResult(effects=minimal_effects)
+def test_didinter_result_defaults(single_horizon_effects, field, expected_default):
+    result = DIDInterResult(effects=single_horizon_effects)
 
     assert getattr(result, field) == expected_default
 
 
-def test_didinter_result_estimation_params_default(minimal_effects):
-    result = DIDInterResult(effects=minimal_effects)
+def test_didinter_result_estimation_params_default(single_horizon_effects):
+    result = DIDInterResult(effects=single_horizon_effects)
 
     assert result.estimation_params == {}
 
 
-def test_didinter_result_estimation_params(minimal_effects):
+@pytest.mark.parametrize(
+    ("params", "se_type", "vcov_info"),
+    [
+        ({}, "Analytical", {"vcov_type": "analytical", "clustervar": None}),
+        ({"cluster": "state"}, "Analytical clustered by state", {"vcov_type": "analytical", "clustervar": "state"}),
+        ({"boot": True}, "Bootstrap", {"vcov_type": "bootstrap", "clustervar": None}),
+        (
+            {"boot": True, "cluster": "state"},
+            "Bootstrap clustered by state",
+            {"vcov_type": "bootstrap", "clustervar": "state"},
+        ),
+    ],
+)
+def test_maketables_labels_the_standard_errors(single_horizon_effects, params, se_type, vcov_info):
+    result = DIDInterResult(effects=single_horizon_effects, estimation_params=params)
+
+    assert result.__maketables_stat__("se_type") == se_type
+    assert result.__maketables_vcov_info__ == vcov_info
+
+
+def test_didinter_result_estimation_params(single_horizon_effects):
     params = {
         "effects": 3,
         "placebo": 2,
@@ -252,8 +234,15 @@ def test_didinter_result_estimation_params(minimal_effects):
         "switchers": "in",
     }
 
-    result = DIDInterResult(effects=minimal_effects, estimation_params=params)
+    result = DIDInterResult(effects=single_horizon_effects, estimation_params=params)
 
     assert result.estimation_params == params
     assert result.estimation_params["effects"] == 3
     assert result.estimation_params["normalized"] is True
+
+
+def test_top_level_names_resolve_to_the_didinter_containers():
+    assert moderndid.DIDInterATEResult is ATEResult
+    assert moderndid.DIDInterEffectsResult is EffectsResult
+    assert moderndid.DIDInterPlacebosResult is PlacebosResult
+    assert moderndid.DIDInterResult is DIDInterResult

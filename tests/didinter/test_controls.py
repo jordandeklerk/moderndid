@@ -14,47 +14,6 @@ from moderndid.didinter.controls import (
 )
 
 
-@pytest.fixture
-def control_test_data():
-    rng = np.random.default_rng(42)
-    n_units = 30
-    n_periods = 4
-
-    units = np.repeat(np.arange(n_units), n_periods)
-    periods = np.tile(np.arange(1, n_periods + 1), n_units)
-
-    d_sq = np.zeros(len(units))
-    d_sq[units < 10] = 0.0
-    d_sq[(units >= 10) & (units < 20)] = 1.0
-    d_sq[units >= 20] = 1.0
-
-    f_g = np.full(len(units), float("inf"))
-    for unit in range(10, 20):
-        unit_mask = units == unit
-        f_g[unit_mask] = 3
-
-    x1 = rng.standard_normal(len(units))
-    x2 = rng.standard_normal(len(units))
-    y = rng.standard_normal(len(units)) + 0.5 * x1 + 0.3 * x2
-    diff_y_1 = np.zeros(len(units))
-
-    return pl.DataFrame(
-        {
-            "id": units,
-            "time": periods,
-            "y": y,
-            "d_sq": d_sq,
-            "F_g": f_g,
-            "x1": x1,
-            "x2": x2,
-            "weight_gt": np.ones(len(units)),
-            "diff_y_1": diff_y_1,
-            "lag_x1_1": np.roll(x1, 1),
-            "lag_x2_1": np.roll(x2, 1),
-        }
-    )
-
-
 def test_compute_control_coefficients_basic(control_test_data):
     config = DIDInterConfig(
         yname="y",
@@ -64,7 +23,7 @@ def test_compute_control_coefficients_basic(control_test_data):
         xformla="~ x1 + x2",
     )
 
-    coefficients = compute_control_coefficients(control_test_data, config, horizon=1)
+    _, coefficients = compute_control_coefficients(control_test_data, config, n_groups=30)
 
     assert isinstance(coefficients, dict)
 
@@ -87,7 +46,7 @@ def test_compute_control_coefficients_no_controls(xformla):
         }
     )
 
-    coefficients = compute_control_coefficients(df, config, horizon=1)
+    _, coefficients = compute_control_coefficients(df, config, n_groups=2)
 
     assert not coefficients
 
@@ -95,8 +54,8 @@ def test_compute_control_coefficients_no_controls(xformla):
 @pytest.mark.parametrize(
     "xformla,expected_column",
     [
-        ("~ x1 + x2", "diff_y_1"),
-        ("~1", "diff_y_1"),
+        ("~ x1 + x2", ".diff_y_1"),
+        ("~1", ".diff_y_1"),
     ],
 )
 def test_apply_control_adjustment_returns_diff_column(control_test_data, xformla, expected_column):
@@ -108,14 +67,14 @@ def test_apply_control_adjustment_returns_diff_column(control_test_data, xformla
         xformla=xformla,
     )
 
-    result = apply_control_adjustment(control_test_data, config, horizon=1, coefficients={})
+    result = apply_control_adjustment(control_test_data, config, horizon=1, coefficients={}, horizon_type="effect")
 
     assert expected_column in result.columns
 
 
 @pytest.mark.parametrize(
     "expected_column",
-    ["diff_x1_1", "diff_x2_1"],
+    [".ctrl_diff_0_1", ".ctrl_diff_1_1"],
 )
 def test_apply_control_adjustment_creates_diff_columns(control_test_data, expected_column):
     config = DIDInterConfig(
@@ -127,11 +86,13 @@ def test_apply_control_adjustment_creates_diff_columns(control_test_data, expect
     )
 
     coefficients = {
-        0.0: {"theta": np.array([0.5, 0.3]), "inv_denom": None, "useful": True},
-        1.0: {"theta": np.array([0.4, 0.2]), "inv_denom": None, "useful": True},
+        1: {"theta": np.array([0.5, 0.3]), "inv_denom": None, "useful": True},
+        2: {"theta": np.array([0.4, 0.2]), "inv_denom": None, "useful": True},
     }
 
-    result = apply_control_adjustment(control_test_data, config, horizon=1, coefficients=coefficients)
+    result = apply_control_adjustment(
+        control_test_data, config, horizon=1, coefficients=coefficients, horizon_type="effect"
+    )
 
     assert expected_column in result.columns
 
@@ -149,7 +110,7 @@ def test_coefficient_structure_keys(control_test_data, expected_key):
         xformla="~ x1 + x2",
     )
 
-    coefficients = compute_control_coefficients(control_test_data, config, horizon=1)
+    _, coefficients = compute_control_coefficients(control_test_data, config, n_groups=30)
 
     for _, coef_dict in coefficients.items():
         assert expected_key in coef_dict
@@ -164,7 +125,7 @@ def test_coefficient_useful_is_bool(control_test_data):
         xformla="~ x1 + x2",
     )
 
-    coefficients = compute_control_coefficients(control_test_data, config, horizon=1)
+    _, coefficients = compute_control_coefficients(control_test_data, config, n_groups=30)
 
     for _, coef_dict in coefficients.items():
         assert isinstance(coef_dict["useful"], bool)
@@ -185,17 +146,16 @@ def test_compute_control_coefficients_insufficient_data():
             "time": [1],
             "y": [0.5],
             "d_sq": [0.0],
+            "d_sq_int": [1],
             "F_g": [float("inf")],
             "x1": [1.0],
             "x2": [2.0],
             "weight_gt": [1.0],
-            "diff_y_1": [0.1],
-            "lag_x1_1": [0.5],
-            "lag_x2_1": [1.0],
+            ".diff_y_1": [0.1],
         }
     )
 
-    coefficients = compute_control_coefficients(df, config, horizon=1)
+    _, coefficients = compute_control_coefficients(df, config, n_groups=1)
 
     for _, coef_dict in coefficients.items():
         assert coef_dict["useful"] is False

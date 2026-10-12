@@ -10,16 +10,17 @@ from moderndid.core.format import (
     format_section_header,
     format_significance_note,
     format_single_result_table,
+    format_standard_errors,
     format_title,
 )
 
 from .container import DIDInterResult
 
 
-def format_didinter_result(result: DIDInterResult) -> str:
-    """Format an intertemporal treatment effect result for display."""
+def format_didinter_result(result):
+    """Format a ``DIDInterResult`` for display."""
     lines = []
-    conf_level = int(result.ci_level)
+    conf_level = int((1 - result.alpha) * 100)
 
     lines.extend(format_title("Intertemporal Treatment Effects"))
 
@@ -116,10 +117,7 @@ def format_didinter_result(result: DIDInterResult) -> str:
 
     lines.extend(format_section_header("Inference"))
     lines.append(f" Confidence level: {conf_level}%")
-    if params.get("cluster"):
-        lines.append(f" Clustered standard errors: {params['cluster']}")
-    else:
-        lines.append(" Standard errors: Analytical")
+    lines.append(format_standard_errors(params.get("boot", False), params.get("cluster")))
 
     if result.vcov_warnings:
         lines.extend(format_section_header("Warnings"))

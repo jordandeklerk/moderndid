@@ -77,7 +77,7 @@ def test_confidence_intervals(favara_imbs_data, ci_level):
         dname="inter_bra",
         effects=2,
         placebo=0,
-        ci_level=float(ci_level),
+        alpha=1 - ci_level / 100,
     )
 
     assert_allclose(
@@ -378,9 +378,9 @@ def test_placebo_joint_test(favara_imbs_data):
         ("effects", -1, "effects=-1 is not valid"),
         ("placebo", -1, "placebo=-1 is not valid"),
         ("switchers", "bad", "switchers='bad' is not valid"),
-        ("ci_level", 0, "ci_level=0 is not valid"),
-        ("ci_level", 100, "ci_level=100 is not valid"),
-        ("ci_level", -5, "ci_level=-5 is not valid"),
+        ("alpha", 0, "alpha=0 is not valid"),
+        ("alpha", 1, "alpha=1 is not valid"),
+        ("alpha", -0.05, "alpha=-0.05 is not valid"),
     ],
 )
 def test_did_multiplegt_invalid_params(favara_imbs_data, param, value, match):
