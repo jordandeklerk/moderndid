@@ -8,6 +8,7 @@ pytestmark = pytest.mark.slow
 from moderndid.didhonest import (
     DeltaRMBResult,
     compute_conditional_cs_rmb,
+    compute_identified_set_rm,
     compute_identified_set_rmb,
 )
 from moderndid.didhonest.delta.rm.rmb import (
@@ -83,9 +84,28 @@ def test_create_constraint_vector(basic_params):
     assert len(d_rmb) == A_rmb.shape[0]
 
 
-@pytest.mark.parametrize("s", [-1, 0])
-@pytest.mark.parametrize("max_positive", [True, False])
-def test_compute_identified_set_rmb_fixed_s(simple_event_study_data, s, max_positive):
+def test_compute_identified_set_rmb_fixed_s_at_the_largest_difference(simple_event_study_data):
+    num_pre_periods, num_post_periods, _, _, true_beta, l_vec = simple_event_study_data
+
+    result = _compute_identified_set_rmb_fixed_s(
+        s=-2,
+        m_bar=1,
+        max_positive=True,
+        true_beta=true_beta,
+        l_vec=l_vec,
+        num_pre_periods=num_pre_periods,
+        num_post_periods=num_post_periods,
+        bias_direction="positive",
+    )
+
+    assert isinstance(result, DeltaRMBResult)
+    assert (result.id_lb, result.id_ub) == pytest.approx((0.15, 0.3), abs=1e-8)
+
+
+@pytest.mark.parametrize("s,max_positive", [(-2, False), (-1, True), (-1, False), (0, True), (0, False)])
+def test_compute_identified_set_rmb_fixed_s_empty_away_from_the_largest_difference(
+    simple_event_study_data, s, max_positive
+):
     num_pre_periods, num_post_periods, _, _, true_beta, l_vec = simple_event_study_data
 
     result = _compute_identified_set_rmb_fixed_s(
@@ -99,11 +119,8 @@ def test_compute_identified_set_rmb_fixed_s(simple_event_study_data, s, max_posi
         bias_direction="positive",
     )
 
-    assert isinstance(result, DeltaRMBResult)
-    assert result.id_lb <= result.id_ub
-
-    observed_val = l_vec @ true_beta[num_pre_periods:]
-    assert result.id_lb <= observed_val <= result.id_ub
+    assert np.isnan(result.id_lb)
+    assert np.isnan(result.id_ub)
 
 
 def test_compute_identified_set_rmb_basic(simple_event_study_data):
@@ -254,8 +271,6 @@ def test_rmb_vs_rm_restriction():
     true_beta = np.array([0, 0, 0, 0.5, 0.5])
     l_vec = np.array([1, 0])
 
-    from moderndid.didhonest import compute_identified_set_rm
-
     result_rm = compute_identified_set_rm(
         m_bar=1,
         true_beta=true_beta,
@@ -278,39 +293,31 @@ def test_rmb_vs_rm_restriction():
     assert result_rmb.id_ub - result_rmb.id_lb <= result_rm.id_ub - result_rm.id_lb
 
 
-@pytest.mark.parametrize(
-    "num_pre,num_post,error_msg",
-    [
-        (1, 2, "Need at least 2 pre-periods"),
-        (0, 3, "Need at least 2 pre-periods"),
-    ],
-)
-def test_insufficient_pre_periods_errors(num_pre, num_post, error_msg):
-    rng = np.random.default_rng(0)
-    true_beta = rng.standard_normal(num_pre + num_post)
-    l_vec = np.ones(num_post) / num_post if num_post > 0 else np.array([])
+def test_no_pre_periods_raises():
+    betahat = np.array([0.1, 0.2, 0.3])
 
-    with pytest.raises(ValueError, match=error_msg):
+    with pytest.raises(ValueError, match="needs at least one pre-treatment period"):
         compute_identified_set_rmb(
-            m_bar=1,
-            true_beta=true_beta,
-            l_vec=l_vec,
-            num_pre_periods=num_pre,
-            num_post_periods=num_post,
+            m_bar=1, true_beta=betahat, l_vec=np.ones(3) / 3, num_pre_periods=0, num_post_periods=3
+        )
+    with pytest.raises(ValueError, match="needs at least one pre-treatment period"):
+        compute_conditional_cs_rmb(
+            betahat=betahat, sigma=np.eye(3) * 0.01, num_pre_periods=0, num_post_periods=3, m_bar=1
         )
 
-    if num_pre + num_post >= 3:
-        betahat = true_beta
-        sigma = np.eye(num_pre + num_post) * 0.01
 
-        with pytest.raises(ValueError, match=error_msg):
-            compute_conditional_cs_rmb(
-                betahat=betahat,
-                sigma=sigma,
-                num_pre_periods=num_pre,
-                num_post_periods=num_post,
-                m_bar=1,
-            )
+@pytest.mark.parametrize("m_bar", [0.0, 0.5, 1.0, 2.0])
+def test_identified_set_rmb_one_pre_period_matches_closed_form(one_pre_period_event_study, m_bar):
+    betahat = one_pre_period_event_study["betahat"]
+    first, second = np.array([1.0, 0.0]), np.array([0.0, 1.0])
+
+    positive_first = compute_identified_set_rmb(m_bar, betahat, first, 1, 2, bias_direction="positive")
+    positive_second = compute_identified_set_rmb(m_bar, betahat, second, 1, 2, bias_direction="positive")
+    negative_first = compute_identified_set_rmb(m_bar, betahat, first, 1, 2, bias_direction="negative")
+
+    assert (positive_first.id_lb, positive_first.id_ub) == pytest.approx((0.10 - 0.03 * m_bar, 0.10), abs=1e-8)
+    assert (positive_second.id_lb, positive_second.id_ub) == pytest.approx((0.12 - 0.06 * m_bar, 0.12), abs=1e-8)
+    assert (negative_first.id_lb, negative_first.id_ub) == pytest.approx((0.10, 0.10 + 0.03 * m_bar), abs=1e-8)
 
 
 def test_identified_set_monotonicity_in_m_bar():
@@ -529,3 +536,99 @@ def test_post_period_moments_only_flag(fast_config):
 
     assert np.any(result_all_moments["accept"] > 0)
     assert np.any(result_post_only["accept"] > 0)
+
+
+def test_identified_set_rmb_bounded_when_mbar_at_least_one(rm_cases):
+    l_vec = np.array([1.0, 0.0])
+
+    positive = compute_identified_set_rmb(1.0, rm_cases["A"], l_vec, 3, 2, bias_direction="positive")
+    negative = compute_identified_set_rmb(1.0, rm_cases["A"], l_vec, 3, 2, bias_direction="negative")
+
+    assert (positive.id_lb, positive.id_ub) == pytest.approx((0.03, 0.05))
+    assert (negative.id_lb, negative.id_ub) == pytest.approx((0.05, 0.07))
+
+
+@pytest.mark.parametrize(
+    "case,m_bar,expected",
+    [
+        ("A", 1.0, [0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0]),
+        ("B", 0.5, [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]),
+    ],
+)
+def test_conditional_cs_rmb_conditional_accepts(rm_cases, case, m_bar, expected):
+    result = compute_conditional_cs_rmb(
+        betahat=rm_cases[case],
+        sigma=rm_cases["sigma"],
+        num_pre_periods=3,
+        num_post_periods=2,
+        l_vec=np.array([1.0, 0.0]),
+        m_bar=m_bar,
+        hybrid_flag="ARP",
+        grid_points=11,
+        grid_lb=-0.1,
+        grid_ub=0.2,
+    )
+
+    assert result["accept"].tolist() == expected
+
+
+def test_conditional_cs_rmb_single_post_period(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "m_bar": 1.0,
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    arp = compute_conditional_cs_rmb(**kwargs, hybrid_flag="ARP")
+    lf_first = compute_conditional_cs_rmb(**kwargs, hybrid_flag="LF")
+    lf_second = compute_conditional_cs_rmb(**kwargs, hybrid_flag="LF")
+
+    assert arp["accept"].astype(int).tolist() == [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0]
+    assert np.array_equal(lf_first["accept"], lf_second["accept"])
+
+
+def test_conditional_cs_rmb_at_zero_m_bar_with_duplicated_rows(one_pre_period_event_study):
+    result = compute_conditional_cs_rmb(
+        betahat=one_pre_period_event_study["betahat"],
+        sigma=one_pre_period_event_study["sigma"],
+        num_pre_periods=1,
+        num_post_periods=2,
+        l_vec=np.array([0.5, 0.5]),
+        m_bar=0.0,
+        bias_direction="negative",
+        hybrid_flag="ARP",
+        grid_points=76,
+        grid_lb=-0.25,
+        grid_ub=0.5,
+    )
+
+    assert np.asarray(result["accept"]).astype(int).tolist() == [0] * 32 + [1] * 9 + [0] * 35
+
+
+def test_conditional_cs_rmb_default_grid_reaches_past_a_noisy_long_horizon_set(noisy_long_horizon_event_study):
+    l_vec = np.zeros(8)
+    l_vec[-1] = 1.0
+
+    result = compute_conditional_cs_rmb(
+        betahat=noisy_long_horizon_event_study["betahat"],
+        sigma=noisy_long_horizon_event_study["sigma"],
+        num_pre_periods=3,
+        num_post_periods=8,
+        l_vec=l_vec,
+        m_bar=2.0,
+        bias_direction="positive",
+        hybrid_flag="LF",
+        grid_points=30,
+    )
+
+    accept = np.asarray(result["accept"]).astype(bool)
+    grid = np.asarray(result["grid"])
+    assert not accept[0]
+    assert not accept[-1]
+    assert (grid[accept].min(), grid[accept].max()) == pytest.approx((-1.4551743, -0.2291392), abs=1e-6)

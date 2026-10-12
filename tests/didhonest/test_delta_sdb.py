@@ -37,7 +37,7 @@ def test_compute_identified_set_sdb_basic(simple_data):
     num_pre_periods, num_post_periods, betahat, _, l_vec = simple_data
 
     result = compute_identified_set_sdb(
-        m_bar=0.1,
+        m_bar=0.3,
         true_beta=betahat,
         l_vec=l_vec,
         num_pre_periods=num_pre_periods,
@@ -46,9 +46,23 @@ def test_compute_identified_set_sdb_basic(simple_data):
     )
 
     assert isinstance(result, DeltaSDBResult)
-    assert result.id_lb <= result.id_ub
-    assert np.isfinite(result.id_lb)
-    assert np.isfinite(result.id_ub)
+    assert (result.id_lb, result.id_ub) == pytest.approx((-0.13, 0.15), abs=1e-8)
+
+
+def test_compute_identified_set_sdb_empty_when_pre_period_curvature_exceeds_m(simple_data):
+    num_pre_periods, num_post_periods, betahat, _, l_vec = simple_data
+
+    result = compute_identified_set_sdb(
+        m_bar=0.1,
+        true_beta=betahat,
+        l_vec=l_vec,
+        num_pre_periods=num_pre_periods,
+        num_post_periods=num_post_periods,
+        bias_direction="positive",
+    )
+
+    assert np.isnan(result.id_lb)
+    assert np.isnan(result.id_ub)
 
 
 def test_compute_identified_set_sdb_negative_bias():
@@ -58,7 +72,7 @@ def test_compute_identified_set_sdb_negative_bias():
     l_vec = np.array([1, 0])
 
     result_pos = compute_identified_set_sdb(
-        m_bar=0.1,
+        m_bar=0.3,
         true_beta=betahat,
         l_vec=l_vec,
         num_pre_periods=num_pre_periods,
@@ -67,7 +81,7 @@ def test_compute_identified_set_sdb_negative_bias():
     )
 
     result_neg = compute_identified_set_sdb(
-        m_bar=0.1,
+        m_bar=0.3,
         true_beta=betahat,
         l_vec=l_vec,
         num_pre_periods=num_pre_periods,
@@ -75,24 +89,24 @@ def test_compute_identified_set_sdb_negative_bias():
         bias_direction="negative",
     )
 
-    assert result_pos.id_lb >= 0 or result_pos.id_ub >= result_neg.id_ub
+    assert (result_pos.id_lb, result_pos.id_ub) == pytest.approx((-0.43, -0.15), abs=1e-8)
+    assert (result_neg.id_lb, result_neg.id_ub) == pytest.approx((-0.15, 0.17), abs=1e-8)
 
 
-def test_compute_identified_set_sdb_zero_smoothness(simple_data):
-    num_pre_periods, num_post_periods, betahat, _, l_vec = simple_data
+def test_compute_identified_set_sdb_zero_smoothness():
+    betahat = np.array([-0.06, -0.04, -0.02, 0.15, 0.25])
+    l_vec = np.array([1, 0])
 
-    result = compute_identified_set_sdb(
-        m_bar=0,
-        true_beta=betahat,
-        l_vec=l_vec,
-        num_pre_periods=num_pre_periods,
-        num_post_periods=num_post_periods,
-        bias_direction="positive",
+    positive = compute_identified_set_sdb(
+        m_bar=0, true_beta=betahat, l_vec=l_vec, num_pre_periods=3, num_post_periods=2, bias_direction="positive"
+    )
+    negative = compute_identified_set_sdb(
+        m_bar=0, true_beta=betahat, l_vec=l_vec, num_pre_periods=3, num_post_periods=2, bias_direction="negative"
     )
 
-    observed_val = l_vec @ betahat[num_pre_periods:]
-    assert result.id_lb >= 0
-    assert result.id_ub >= observed_val
+    assert (positive.id_lb, positive.id_ub) == pytest.approx((0.13, 0.13), abs=1e-8)
+    assert np.isnan(negative.id_lb)
+    assert np.isnan(negative.id_ub)
 
 
 def test_compute_conditional_cs_sdb_single_post_period(fast_config):
@@ -245,3 +259,54 @@ def test_compute_identified_set_sdb_large_smoothness(simple_data):
     )
 
     assert result.id_ub - result.id_lb > 0
+
+
+def test_conditional_cs_sdb_single_post_period(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "grid_points": 11,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    arp = compute_conditional_cs_sdb(**kwargs, m_bar=0.01, hybrid_flag="ARP", bias_direction="positive")
+    flci = compute_conditional_cs_sdb(**kwargs, m_bar=0.01, hybrid_flag="FLCI", bias_direction="positive")
+    lf_first = compute_conditional_cs_sdb(**kwargs, m_bar=0.01, hybrid_flag="LF", bias_direction="positive")
+    lf_second = compute_conditional_cs_sdb(**kwargs, m_bar=0.01, hybrid_flag="LF", bias_direction="positive")
+
+    assert arp["accept"].astype(int).tolist() == [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+    assert flci["accept"][np.argmin(np.abs(flci["grid"] - 0.045))] == 1
+    assert np.array_equal(lf_first["accept"], lf_second["accept"])
+
+
+@pytest.mark.parametrize("num_post_periods", [1, 2])
+@pytest.mark.parametrize("hybrid_flag", ["LF", "ARP"])
+def test_conditional_cs_sdb_default_grid_covers_an_effect_far_from_zero(
+    far_effect_event_study, num_post_periods, hybrid_flag
+):
+    size = 3 + num_post_periods
+    kwargs = {
+        "betahat": far_effect_event_study["betahat"][:size],
+        "sigma": far_effect_event_study["sigma"][:size, :size],
+        "num_pre_periods": 3,
+        "num_post_periods": num_post_periods,
+        "l_vec": np.eye(num_post_periods)[0],
+        "m_bar": 0.005,
+        "bias_direction": "positive",
+        "hybrid_flag": hybrid_flag,
+    }
+
+    default = compute_conditional_cs_sdb(**kwargs, grid_points=101)
+    fine = compute_conditional_cs_sdb(**kwargs, grid_points=401, grid_lb=0.4, grid_ub=0.6)
+
+    accept = np.asarray(default["accept"]).astype(bool)
+    fine_accepted = np.asarray(fine["grid"])[np.asarray(fine["accept"]).astype(bool)]
+    tolerance = (default["grid"][1] - default["grid"][0]) + 0.0005
+    assert not accept[0]
+    assert not accept[-1]
+    assert default["grid"][accept].min() == pytest.approx(fine_accepted.min(), abs=tolerance)
+    assert default["grid"][accept].max() == pytest.approx(fine_accepted.max(), abs=tolerance)

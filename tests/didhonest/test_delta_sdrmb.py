@@ -114,7 +114,7 @@ def test_compute_conditional_cs_sdrmb_single_post_period(fast_config):
     assert all(x in [0, 1] for x in result["accept"])
 
 
-def test_compute_conditional_cs_sdrmb_multiple_post_periods(basic_setup, fast_config):
+def test_compute_conditional_cs_sdrmb_multiple_post_periods(basic_setup):
     result = compute_conditional_cs_sdrmb(
         betahat=basic_setup["betahat"],
         sigma=basic_setup["sigma"],
@@ -122,12 +122,14 @@ def test_compute_conditional_cs_sdrmb_multiple_post_periods(basic_setup, fast_co
         num_post_periods=basic_setup["num_post_periods"],
         m_bar=0.5,
         alpha=0.05,
-        grid_points=fast_config["grid_points_small"],
+        grid_points=40,
     )
 
     assert isinstance(result, dict)
-    assert len(result["grid"]) == fast_config["grid_points_small"]
+    assert len(result["grid"]) == 40
     assert np.any(result["accept"] == 1)
+    assert result["accept"][0] == 0
+    assert result["accept"][-1] == 0
 
 
 @pytest.mark.parametrize("hybrid_flag", ["LF", "ARP"])
@@ -232,10 +234,18 @@ def test_compute_conditional_cs_sdrmb_insufficient_pre_periods():
     betahat = np.array([0.1, 0.2, 0.15, 0.1])
     sigma = np.eye(4) * 0.01
 
-    with pytest.raises(ValueError, match="Not enough pre-periods"):
+    with pytest.raises(ValueError, match="need at least two pre-treatment periods"):
         compute_conditional_cs_sdrmb(
             betahat=betahat,
             sigma=sigma,
+            num_pre_periods=num_pre_periods,
+            num_post_periods=num_post_periods,
+        )
+    with pytest.raises(ValueError, match="need at least two pre-treatment periods"):
+        compute_identified_set_sdrmb(
+            m_bar=1.0,
+            true_beta=betahat,
+            l_vec=np.array([1.0, 0.0, 0.0]),
             num_pre_periods=num_pre_periods,
             num_post_periods=num_post_periods,
         )
@@ -271,3 +281,56 @@ def test_compute_conditional_cs_sdrmb_negative_bias(basic_setup, fast_config):
 
     assert isinstance(result, dict)
     assert len(result["grid"]) == fast_config["grid_points_small"]
+
+
+def test_conditional_cs_sdrmb_default_grid_covers_the_set_on_a_linear_pre_trend(linear_trend_event_study):
+    kwargs = {
+        "betahat": linear_trend_event_study["betahat"],
+        "sigma": linear_trend_event_study["sigma"],
+        "num_pre_periods": 3,
+        "num_post_periods": 4,
+        "l_vec": np.array([0.0, 0.0, 0.0, 1.0]),
+        "m_bar": 0.5,
+        "bias_direction": "positive",
+    }
+
+    default = compute_conditional_cs_sdrmb(**kwargs, grid_points=51)
+    fine = compute_conditional_cs_sdrmb(**kwargs, grid_points=161, grid_lb=-0.4, grid_ub=0.4)
+
+    accept = np.asarray(default["accept"]).astype(bool)
+    fine_accepted = np.asarray(fine["grid"])[np.asarray(fine["accept"]).astype(bool)]
+    tolerance = (default["grid"][1] - default["grid"][0]) + 0.005
+    assert not accept[0]
+    assert not accept[-1]
+    assert default["grid"][accept].min() == pytest.approx(fine_accepted.min(), abs=tolerance)
+    assert default["grid"][accept].max() == pytest.approx(fine_accepted.max(), abs=tolerance)
+
+
+@pytest.mark.parametrize(
+    "hybrid_flag,post_only_range,all_rows_range",
+    [("ARP", (-0.09, 0.58), (-0.2025, 0.5875)), ("LF", (-0.0975, 0.585), (-0.21, 0.5925))],
+)
+def test_conditional_cs_sdrmb_one_post_period_uses_only_post_period_rows(
+    two_pre_period_event_study, hybrid_flag, post_only_range, all_rows_range
+):
+    kwargs = {
+        "betahat": two_pre_period_event_study["betahat"][:3],
+        "sigma": two_pre_period_event_study["sigma"][:3, :3],
+        "num_pre_periods": 2,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "m_bar": 0.0,
+        "bias_direction": "positive",
+        "hybrid_flag": hybrid_flag,
+        "grid_points": 1001,
+        "grid_lb": -1.0,
+        "grid_ub": 1.5,
+    }
+
+    post_only = compute_conditional_cs_sdrmb(**kwargs)
+    all_rows = compute_conditional_cs_sdrmb(**kwargs, post_period_moments_only=False)
+
+    post_only_grid = post_only["grid"][np.asarray(post_only["accept"]).astype(bool)]
+    all_rows_grid = all_rows["grid"][np.asarray(all_rows["accept"]).astype(bool)]
+    assert (post_only_grid.min(), post_only_grid.max()) == pytest.approx(post_only_range, abs=1e-9)
+    assert (all_rows_grid.min(), all_rows_grid.max()) == pytest.approx(all_rows_range, abs=1e-9)

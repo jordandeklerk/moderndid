@@ -129,8 +129,10 @@ def test_compute_identified_set_rm_basic(simple_event_study_data):
     observed_val = l_vec @ true_beta[num_pre_periods:]
     assert result.id_lb <= observed_val <= result.id_ub
 
-    max_pre_effect = np.max(np.abs(true_beta[:num_pre_periods]))
-    assert result.id_ub - result.id_lb <= 2 * max_pre_effect * 1
+    max_pre_diff = np.max(np.abs(np.diff(np.append(true_beta[:num_pre_periods], 0.0))))
+    assert max_pre_diff == pytest.approx(0.15)
+    assert result.id_lb == pytest.approx(observed_val - max_pre_diff)
+    assert result.id_ub == pytest.approx(observed_val + max_pre_diff)
 
 
 def test_compute_identified_set_rm_zero_m_bar():
@@ -186,12 +188,10 @@ def test_analytical_case_single_post_period():
     )
 
     observed_effect = 0.5
-    pre_diffs = [abs(true_beta[1] - true_beta[0]), abs(true_beta[2] - true_beta[1]), abs(true_beta[2] - true_beta[0])]
-    max_pre_diff = max(pre_diffs)
+    max_pre_diff = np.max(np.abs(np.diff(np.append(true_beta[:3], 0.0))))
 
-    assert result.id_lb <= observed_effect
-    assert result.id_ub >= observed_effect
-    assert result.id_ub - result.id_lb <= 2 * max_pre_diff
+    assert result.id_lb == pytest.approx(observed_effect - max_pre_diff)
+    assert result.id_ub == pytest.approx(observed_effect + max_pre_diff)
 
 
 def test_compute_identified_set_rm_monotonicity():
@@ -217,38 +217,28 @@ def test_compute_identified_set_rm_monotonicity():
         assert results[i].id_ub >= results[i - 1].id_ub
 
 
-@pytest.mark.parametrize(
-    "num_pre,num_post,error_msg",
-    [
-        (1, 2, "Need at least 2 pre-periods"),
-        (0, 3, "Need at least 2 pre-periods"),
-    ],
-)
-def test_insufficient_pre_periods_errors(num_pre, num_post, error_msg):
-    true_beta = np.random.randn(num_pre + num_post)
-    l_vec = np.ones(num_post) / num_post if num_post > 0 else np.array([])
+def test_no_pre_periods_raises():
+    betahat = np.array([0.1, 0.2, 0.3])
 
-    with pytest.raises(ValueError, match=error_msg):
+    with pytest.raises(ValueError, match="needs at least one pre-treatment period"):
         compute_identified_set_rm(
-            m_bar=1,
-            true_beta=true_beta,
-            l_vec=l_vec,
-            num_pre_periods=num_pre,
-            num_post_periods=num_post,
+            m_bar=1, true_beta=betahat, l_vec=np.ones(3) / 3, num_pre_periods=0, num_post_periods=3
+        )
+    with pytest.raises(ValueError, match="needs at least one pre-treatment period"):
+        compute_conditional_cs_rm(
+            betahat=betahat, sigma=np.eye(3) * 0.01, num_pre_periods=0, num_post_periods=3, m_bar=1
         )
 
-    if num_pre + num_post >= 3:
-        betahat = true_beta
-        sigma = np.eye(num_pre + num_post) * 0.01
 
-        with pytest.raises(ValueError, match=error_msg):
-            compute_conditional_cs_rm(
-                betahat=betahat,
-                sigma=sigma,
-                num_pre_periods=num_pre,
-                num_post_periods=num_post,
-                m_bar=1,
-            )
+@pytest.mark.parametrize("m_bar", [0.0, 0.5, 1.0, 2.0])
+def test_identified_set_rm_one_pre_period_matches_closed_form(one_pre_period_event_study, m_bar):
+    betahat = one_pre_period_event_study["betahat"]
+
+    first = compute_identified_set_rm(m_bar, betahat, np.array([1.0, 0.0]), 1, 2)
+    second = compute_identified_set_rm(m_bar, betahat, np.array([0.0, 1.0]), 1, 2)
+
+    assert (first.id_lb, first.id_ub) == pytest.approx((0.10 - 0.03 * m_bar, 0.10 + 0.03 * m_bar), abs=1e-8)
+    assert (second.id_lb, second.id_ub) == pytest.approx((0.12 - 0.06 * m_bar, 0.12 + 0.06 * m_bar), abs=1e-8)
 
 
 def test_compute_conditional_cs_rm_basic(simple_event_study_data, fast_config):
@@ -514,3 +504,94 @@ def test_confidence_set_contains_true_value(fast_config):
         ci_lb = grid[accepted_indices[0]]
         ci_ub = grid[accepted_indices[-1]]
         assert ci_lb <= true_effect <= ci_ub
+
+
+def test_identified_set_rm_uses_earliest_pre_period_difference():
+    true_beta = np.array([0.10, 0.0, 0.01, 0.0, 0.05, 0.06])
+
+    result = compute_identified_set_rm(
+        m_bar=1.0,
+        true_beta=true_beta,
+        l_vec=np.array([1.0, 0.0]),
+        num_pre_periods=4,
+        num_post_periods=2,
+    )
+
+    assert result.id_lb == pytest.approx(-0.05)
+    assert result.id_ub == pytest.approx(0.15)
+
+
+@pytest.mark.parametrize("s", [-2, -1, 0])
+def test_constraint_matrix_bounds_by_difference_ending_at_s(s):
+    A = _create_relative_magnitudes_constraint_matrix(
+        num_pre_periods=3, num_post_periods=2, m_bar=1.0, s=s, max_positive=True, drop_zero_period=False
+    )
+    delta = np.where(np.arange(6) >= 3 + s, 1.0, 0.0)
+
+    assert np.all(A @ delta <= 1e-12)
+    assert np.any(A @ np.roll(delta, 1) > 1e-12)
+
+
+def test_conditional_cs_rm_single_post_period_seeded():
+    betahat = np.array([-0.0125, -0.0067, -0.0038, -0.0049, 0.0453])
+    sigma = np.diag([0.004, 0.003, 0.003, 0.003, 0.006]) ** 2
+    kwargs = {
+        "betahat": betahat,
+        "sigma": sigma,
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "l_vec": np.array([1.0]),
+        "m_bar": 1.0,
+        "hybrid_flag": "LF",
+        "grid_points": 21,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    first = compute_conditional_cs_rm(**kwargs)
+    second = compute_conditional_cs_rm(**kwargs)
+
+    assert first["grid"].shape == (21,)
+    assert np.array_equal(first["accept"], second["accept"])
+    assert first["accept"][np.argmin(np.abs(first["grid"] - 0.045))] == 1
+    assert first["accept"][0] == 0
+    assert first["accept"][-1] == 0
+
+
+def test_conditional_cs_rm_single_post_period_conditional(one_post_event_study):
+    result = compute_conditional_cs_rm(
+        betahat=one_post_event_study["betahat"],
+        sigma=one_post_event_study["sigma"],
+        num_pre_periods=4,
+        num_post_periods=1,
+        l_vec=np.array([1.0]),
+        m_bar=1.0,
+        hybrid_flag="ARP",
+        grid_points=11,
+        grid_lb=0.0,
+        grid_ub=0.1,
+    )
+
+    assert result["accept"].astype(int).tolist() == [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0]
+
+
+def test_conditional_cs_rm_default_grid_reaches_past_a_noisy_long_horizon_set(noisy_long_horizon_event_study):
+    l_vec = np.zeros(8)
+    l_vec[-1] = 1.0
+
+    result = compute_conditional_cs_rm(
+        betahat=noisy_long_horizon_event_study["betahat"],
+        sigma=noisy_long_horizon_event_study["sigma"],
+        num_pre_periods=3,
+        num_post_periods=8,
+        l_vec=l_vec,
+        m_bar=2.0,
+        hybrid_flag="LF",
+        grid_points=30,
+    )
+
+    accept = np.asarray(result["accept"]).astype(bool)
+    grid = np.asarray(result["grid"])
+    assert not accept[0]
+    assert not accept[-1]
+    assert (grid[accept].min(), grid[accept].max()) == pytest.approx((-1.4551743, 1.4055743), abs=1e-6)

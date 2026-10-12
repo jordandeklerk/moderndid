@@ -15,6 +15,13 @@ from moderndid import (
     validate_conformable,
     validate_symmetric_psd,
 )
+from moderndid.didhonest.delta.sd.sd import _create_sd_constraint_matrix
+from moderndid.didhonest.utils import (
+    identified_set_bounds,
+    linear_trend_grid_bounds,
+    relative_magnitudes_grid_bounds,
+    union_of_identified_sets,
+)
 
 
 def test_selection_matrix_columns():
@@ -439,3 +446,84 @@ def test_create_interactions_keep2():
 def test_create_interactions_bin2(factor_data, categorical_var, bin2, expected_cols):
     result = create_interactions(factor_data[:4], var=categorical_var[:4], bin2=bin2)
     assert result.shape[1] >= expected_cols
+
+
+def test_relative_magnitudes_grid_bounds(one_pre_period_event_study):
+    betahat = one_pre_period_event_study["betahat"]
+    sigma = one_pre_period_event_study["sigma"]
+    l_vec = np.array([1.0, 0.0])
+
+    small = relative_magnitudes_grid_bounds(betahat, sigma, 1, 2, l_vec, 1.0)
+    large = relative_magnitudes_grid_bounds(betahat, sigma, 1, 2, l_vec, 10.0)
+
+    assert small == pytest.approx((0.10 - 0.03 - 20 * 0.03, 0.10 + 0.03 + 20 * 0.03))
+    assert large == pytest.approx((0.10 - 0.3 - 60 * 0.02, 0.10 + 0.3 + 60 * 0.02))
+
+
+def test_linear_trend_grid_bounds(two_pre_period_event_study):
+    betahat = two_pre_period_event_study["betahat"]
+    sigma = two_pre_period_event_study["sigma"]
+    l_vec = np.array([0.0, 1.0])
+    center_sd = np.sqrt(0.068)
+    curvature_sd = np.sqrt(0.034)
+
+    smoothness = linear_trend_grid_bounds(betahat, sigma, 2, 2, l_vec, 0.1)
+    relative_small = linear_trend_grid_bounds(betahat, sigma, 2, 2, l_vec, 0.5, relative=True)
+    relative_large = linear_trend_grid_bounds(betahat, sigma, 2, 2, l_vec, 2.0, relative=True)
+
+    assert smoothness == pytest.approx((0.36 - 0.3 - 20 * center_sd, 0.36 + 0.3 + 20 * center_sd))
+    assert relative_small == pytest.approx((0.36 - 0.135 - 20 * center_sd, 0.36 + 0.135 + 20 * center_sd))
+    assert relative_large == pytest.approx((0.36 - 0.54 - 36 * curvature_sd, 0.36 + 0.54 + 36 * curvature_sd))
+
+
+@pytest.mark.parametrize("m_bar,expected", [(0.1, (0.06, 0.66)), (0.3, (-0.54, 1.26))])
+def test_identified_set_bounds_matches_closed_form(two_pre_period_event_study, m_bar, expected):
+    a_matrix = _create_sd_constraint_matrix(2, 2)
+
+    bounds = identified_set_bounds(
+        two_pre_period_event_study["betahat"], np.array([0.0, 1.0]), a_matrix, np.full(a_matrix.shape[0], m_bar), 2, 2
+    )
+
+    assert bounds == pytest.approx(expected, abs=1e-8)
+
+
+def test_identified_set_bounds_empty_when_pre_periods_violate_the_restriction(two_pre_period_event_study):
+    a_matrix = _create_sd_constraint_matrix(2, 2)
+
+    bounds = identified_set_bounds(
+        two_pre_period_event_study["betahat"], np.array([0.0, 1.0]), a_matrix, np.full(a_matrix.shape[0], 0.05), 2, 2
+    )
+
+    assert np.all(np.isnan(bounds))
+
+
+@pytest.mark.parametrize("scale", [1e-9, 1e4])
+def test_identified_set_bounds_scale_with_the_coefficients(two_pre_period_event_study, scale):
+    a_matrix = _create_sd_constraint_matrix(2, 2)
+    betahat = two_pre_period_event_study["betahat"] * scale
+    l_vec = np.array([0.0, 1.0])
+
+    nonempty = identified_set_bounds(betahat, l_vec, a_matrix, np.full(a_matrix.shape[0], 0.1 * scale), 2, 2)
+    empty = identified_set_bounds(betahat, l_vec, a_matrix, np.full(a_matrix.shape[0], 0.05 * scale), 2, 2)
+
+    assert nonempty == pytest.approx((0.06 * scale, 0.66 * scale), rel=1e-9)
+    assert np.all(np.isnan(empty))
+
+
+def test_identified_set_bounds_with_a_small_bound_on_large_coefficients():
+    a_matrix = _create_sd_constraint_matrix(3, 2)
+    d_vec = np.ones(a_matrix.shape[0])
+    l_vec = np.array([1.0, 0.0])
+    trend = np.array([-3e4, -2e4, -1e4, 2e4, 3e4])
+    curvature = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
+
+    inside = identified_set_bounds(trend + 0.999 * curvature, l_vec, a_matrix, d_vec, 3, 2)
+    outside = identified_set_bounds(trend + 1.001 * curvature, l_vec, a_matrix, d_vec, 3, 2)
+
+    assert inside == pytest.approx((9999.0, 10001.0), rel=1e-9)
+    assert np.all(np.isnan(outside))
+
+
+def test_union_of_identified_sets_drops_empty_sets():
+    assert union_of_identified_sets([(np.nan, np.nan), (0.1, 0.3), (-0.2, 0.2)]) == (-0.2, 0.3)
+    assert np.all(np.isnan(union_of_identified_sets([(np.nan, np.nan), (np.nan, np.nan)])))

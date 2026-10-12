@@ -162,7 +162,7 @@ def test_create_sensitivity_results_errors(kwargs, error_match):
                 "num_post_periods": 2,
                 "bound": "deviation from linear trend",
             },
-            "Not enough pre-periods",
+            "needs at least two pre-treatment periods",
         ),
     ],
 )
@@ -201,3 +201,92 @@ def test_flci_warning_with_restriction(basic_event_study_data):
             method="FLCI",
             m_vec=np.array([0.1]),
         )
+
+
+def test_single_post_period_least_favorable_results_reproducible(one_post_event_study):
+    kwargs = {
+        "betahat": one_post_event_study["betahat"],
+        "sigma": one_post_event_study["sigma"],
+        "num_pre_periods": 4,
+        "num_post_periods": 1,
+        "grid_points": 21,
+        "grid_lb": 0.0,
+        "grid_ub": 0.1,
+    }
+
+    sm_first = create_sensitivity_results_sm(**kwargs, method="C-LF", m_vec=[0.01])
+    sm_second = create_sensitivity_results_sm(**kwargs, method="C-LF", m_vec=[0.01])
+    rm_first = create_sensitivity_results_rm(**kwargs, method="C-LF", m_bar_vec=[1.0])
+    rm_second = create_sensitivity_results_rm(**kwargs, method="C-LF", m_bar_vec=[1.0])
+
+    assert sm_first.equals(sm_second)
+    assert rm_first.equals(rm_second)
+    assert sm_first["lb"][0] > 0.0
+
+
+def test_default_m_vec_with_two_pre_periods():
+    betahat = np.array([0.01, -0.02, 0.3])
+    sigma = np.diag([0.0004, 0.0003, 0.0005])
+
+    result = create_sensitivity_results_sm(betahat, sigma, num_pre_periods=2, num_post_periods=1)
+
+    assert len(result) == 10
+    assert result["m"][0] == 0.0
+    assert result["m"][-1] > 0.0
+
+
+def test_linear_trend_bound_with_two_pre_periods(two_pre_period_event_study):
+    results = create_sensitivity_results_rm(
+        betahat=two_pre_period_event_study["betahat"],
+        sigma=two_pre_period_event_study["sigma"],
+        num_pre_periods=2,
+        num_post_periods=2,
+        bound="deviation from linear trend",
+        method="Conditional",
+        m_bar_vec=np.array([0.0, 0.5, 1.0]),
+        grid_points=201,
+        grid_lb=-1.0,
+        grid_ub=1.5,
+    )
+
+    assert results["delta"].to_list() == ["DeltaSDRM"] * 3
+    assert results["lb"].to_list() == pytest.approx([-0.0875, -0.2, -0.35], abs=1e-9)
+    assert results["ub"].to_list() == pytest.approx([0.65, 0.70, 0.75], abs=1e-9)
+
+
+def test_relative_magnitudes_with_one_pre_period(one_pre_period_event_study):
+    results = create_sensitivity_results_rm(
+        betahat=one_pre_period_event_study["betahat"],
+        sigma=one_pre_period_event_study["sigma"],
+        num_pre_periods=1,
+        num_post_periods=2,
+        method="Conditional",
+        m_bar_vec=np.array([0.0, 0.5, 1.0]),
+        grid_points=201,
+        grid_lb=-0.3,
+        grid_ub=0.5,
+    )
+
+    assert results["delta"].to_list() == ["DeltaRM"] * 3
+    assert results["lb"].to_list() == pytest.approx([0.044, 0.028, 0.008], abs=1e-9)
+    assert results["ub"].to_list() == pytest.approx([0.156, 0.168, 0.184], abs=1e-9)
+
+
+def test_linear_trend_bound_default_grid_covers_a_linear_pre_trend(linear_trend_event_study):
+    kwargs = {
+        "betahat": linear_trend_event_study["betahat"],
+        "sigma": linear_trend_event_study["sigma"],
+        "num_pre_periods": 3,
+        "num_post_periods": 4,
+        "bound": "deviation from linear trend",
+        "m_bar_vec": np.array([0.0, 0.5]),
+        "l_vec": np.array([0.0, 0.0, 0.0, 1.0]),
+    }
+
+    default = create_sensitivity_results_rm(**kwargs, grid_points=101)
+    fine = create_sensitivity_results_rm(**kwargs, grid_points=161, grid_lb=-0.2, grid_ub=0.2)
+
+    assert default["lb"].is_finite().all()
+    assert default["ub"].is_finite().all()
+    assert default["lb"].to_list() == pytest.approx(fine["lb"].to_list(), abs=0.01)
+    assert default["ub"].to_list() == pytest.approx(fine["ub"].to_list(), abs=0.01)

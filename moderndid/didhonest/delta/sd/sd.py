@@ -3,13 +3,12 @@
 from typing import NamedTuple
 
 import numpy as np
-import scipy.optimize as opt
 
 from ...arp_no_nuisance import compute_arp_ci
 from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...fixed_length_ci import compute_flci
 from ...numba import create_second_differences_matrix, find_rows_with_post_period_values
-from ...utils import basis_vector
+from ...utils import basis_vector, identified_set_bounds, linear_trend_grid_bounds
 
 
 class DeltaSDResult(NamedTuple):
@@ -43,7 +42,7 @@ def compute_conditional_cs_sd(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
-    seed=None,
+    seed=0,
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{SD}(M)`.
 
@@ -52,7 +51,7 @@ def compute_conditional_cs_sd(
 
     The smoothness restriction :math:`\Delta^{SD}(M)` formalizes the concern about confounding from
     secular trends that evolve smoothly over time. It bounds the discrete analog of the second
-    derivative, as defined in Equation (8) of [3]_
+    derivative
 
     .. math::
 
@@ -88,11 +87,13 @@ def compute_conditional_cs_sd(
     grid_points : int, default=1000
         Number of grid points for confidence interval search.
     grid_lb : float, optional
-        Lower bound for grid search.
+        Lower bound for grid search. If None, the FLCI hybrid uses the FLCI's lower end. The other
+        tests use a grid that centers on the extension of the last pre-treatment slope and reaches
+        past the identified set at :math:`\hat{\beta}` by a margin for sampling error.
     grid_ub : float, optional
-        Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+        Upper bound for grid search. If None, it is set the same way as ``grid_lb``.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -101,25 +102,15 @@ def compute_conditional_cs_sd(
 
     Notes
     -----
-    :math:`\Delta^{SD}(M)` is convex and centrosymmetric (i.e. :math:`\tilde{\delta} \in \Delta` implies
-    :math:`-\tilde{\delta} \in \Delta`), which allows for the use of Fixed Length Confidence Intervals
-    (FLCIs) with near-optimal finite-sample properties [2]_. The identified set under
-    :math:`\Delta^{SD}(M)` has constant length :math:`2M` regardless of the pre-treatment coefficients.
+    :math:`\Delta^{SD}(M)` is convex and centrosymmetric, meaning that :math:`\tilde{\delta} \in \Delta`
+    implies :math:`-\tilde{\delta} \in \Delta`. Fixed Length Confidence Intervals (FLCIs) then have
+    near-optimal finite-sample properties. The identified set under :math:`\Delta^{SD}(M)` has constant
+    length :math:`2M` regardless of the pre-treatment coefficients.
 
-    The confidence set is constructed using either FLCIs (default) or the moment inequality approach
-    from Section 3 of [3]_. For FLCIs, the expected length is at most 28% longer than the shortest
-    possible confidence set satisfying the coverage requirement when the true parameter is at the
-    center of the identified set (Proposition 4.1 in [2]_).
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Armstrong, T. B., & Kolesár, M. (2018). Optimal inference in a class of
-        regression models. Econometrica, 86(2), 655-683.
-    .. [3] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+    The confidence set is constructed using either FLCIs (default) or the moment inequality approach.
+    For FLCIs, the expected length is at most 28 percent longer than the shortest possible confidence
+    set satisfying the coverage requirement when the true parameter is at the center of the identified
+    set.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -178,27 +169,15 @@ def compute_conditional_cs_sd(
             hybrid_list["vbar"] = np.zeros(A_sd.shape[0])
 
     if grid_lb is None or grid_ub is None:
-        sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-
         if hybrid_flag == "FLCI":
-            # For FLCI hybrid, use the FLCI bounds centered at optimal estimate
-            if grid_ub is None:
-                grid_ub = flci_result.optimal_vec @ betahat + flci_result.optimal_half_length
-            if grid_lb is None:
-                grid_lb = flci_result.optimal_vec @ betahat - flci_result.optimal_half_length
+            default_lb = flci_result.optimal_vec @ betahat - flci_result.optimal_half_length
+            default_ub = flci_result.optimal_vec @ betahat + flci_result.optimal_half_length
         else:
-            # For LF or ARP, compute identified set under parallel trends
-            id_set = compute_identified_set_sd(
-                m_bar=m_bar,
-                true_beta=np.zeros(num_pre_periods + num_post_periods),
-                l_vec=l_vec,
-                num_pre_periods=num_pre_periods,
-                num_post_periods=num_post_periods,
+            default_lb, default_ub = linear_trend_grid_bounds(
+                betahat, sigma, num_pre_periods, num_post_periods, l_vec, m_bar
             )
-            if grid_ub is None:
-                grid_ub = id_set.id_ub + 20 * sd_theta
-            if grid_lb is None:
-                grid_lb = id_set.id_lb - 20 * sd_theta
+        grid_lb = default_lb if grid_lb is None else grid_lb
+        grid_ub = default_ub if grid_ub is None else grid_ub
 
     result = compute_arp_nuisance_ci(
         betahat=betahat,
@@ -215,6 +194,7 @@ def compute_conditional_cs_sd(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -232,7 +212,7 @@ def compute_identified_set_sd(
     Computes the identified set for :math:`l'\tau_{post}` under the restriction that the underlying
     trend :math:`\delta` lies in :math:`\Delta^{SD}(M)`.
 
-    Following Lemma 2.1 in [2]_, if :math:`\Delta` is closed and convex, then :math:`\mathcal{S}(\beta, \Delta)`
+    If :math:`\Delta` is closed and convex, then :math:`\mathcal{S}(\beta, \Delta)`
     is an interval, :math:`[\theta^{lb}(\beta, \Delta), \theta^{ub}(\beta, \Delta)]`, where
 
     .. math::
@@ -267,60 +247,18 @@ def compute_identified_set_sd(
     Returns
     -------
     DeltaSDResult
-        Lower and upper bounds of the identified set.
+        Lower and upper bounds of the identified set. Both are NaN when a pre-treatment second
+        difference exceeds :math:`M` in absolute value. The identified set is then empty.
 
     Notes
     -----
     The constraint :math:`\delta_{pre} = \beta_{pre}` reflects that pre-treatment event study coefficients
     identify the pre-treatment trend under the no-anticipation assumption.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
-    f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
-
     A_sd = _create_sd_constraint_matrix(num_pre_periods, num_post_periods)
     d_sd = _create_sd_constraint_vector(A_sd, m_bar)
 
-    A_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
-    b_eq = true_beta[:num_pre_periods]
-
-    bounds = [(None, None) for _ in range(num_pre_periods + num_post_periods)]
-
-    result_max = opt.linprog(
-        c=-f_delta,
-        A_ub=A_sd,
-        b_ub=d_sd,
-        A_eq=A_eq,
-        b_eq=b_eq,
-        bounds=bounds,
-        method="highs",
-    )
-
-    result_min = opt.linprog(
-        c=f_delta,
-        A_ub=A_sd,
-        b_ub=d_sd,
-        A_eq=A_eq,
-        b_eq=b_eq,
-        bounds=bounds,
-        method="highs",
-    )
-
-    if not result_max.success or not result_min.success:
-        observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
-        return DeltaSDResult(id_lb=observed_val, id_ub=observed_val)
-
-    # Compute bounds of identified set
-    # ID set = observed value ± bias
-    observed = l_vec.flatten() @ true_beta[num_pre_periods:]
-    id_ub = observed - result_min.fun
-    id_lb = observed + result_max.fun
+    id_lb, id_ub = identified_set_bounds(true_beta, l_vec, A_sd, d_sd, num_pre_periods, num_post_periods)
 
     return DeltaSDResult(id_lb=id_lb, id_ub=id_ub)
 
@@ -427,8 +365,7 @@ def _compute_cs_sd_no_nuisance(
             alpha=hybrid_kappa,
         )
 
-        # For single post-period, we need only the post-period part of optimal_vec
-        hybrid_list["flci_l"] = flci_result.optimal_vec[num_pre_periods:]
+        hybrid_list["flci_l"] = flci_result.optimal_vec
         hybrid_list["flci_halflength"] = flci_result.optimal_half_length
 
         if grid_ub is None:
@@ -447,18 +384,11 @@ def _compute_cs_sd_no_nuisance(
             hybrid_list["lf_cv"] = lf_cv
 
         if grid_ub is None or grid_lb is None:
-            id_set = compute_identified_set_sd(
-                m_bar=m_bar,
-                true_beta=np.zeros(num_pre_periods + num_post_periods),
-                l_vec=l_vec,
-                num_pre_periods=num_pre_periods,
-                num_post_periods=num_post_periods,
+            default_lb, default_ub = linear_trend_grid_bounds(
+                betahat, sigma, num_pre_periods, num_post_periods, l_vec, m_bar
             )
-            sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-            if grid_ub is None:
-                grid_ub = id_set.id_ub + 20 * sd_theta
-            if grid_lb is None:
-                grid_lb = id_set.id_lb - 20 * sd_theta
+            grid_lb = default_lb if grid_lb is None else grid_lb
+            grid_ub = default_ub if grid_ub is None else grid_ub
 
     result = compute_arp_ci(
         beta_hat=betahat,

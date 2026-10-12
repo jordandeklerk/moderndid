@@ -98,7 +98,7 @@ def get_delta_method(
     ----------
     sensitivity_type : {'smoothness', 'relative_magnitude'}
         Type of sensitivity analysis.
-    bound_type : str, default="deviation from parallel trends"
+    bound_type : {'deviation from parallel trends', 'deviation from linear trend'}
         Type of bound for relative magnitude methods.
     monotonicity_direction : str, optional
         Direction of monotonicity restriction: "increasing" or "decreasing".
@@ -109,11 +109,6 @@ def get_delta_method(
     -------
     tuple
         A tuple of (method_function, delta_type_name).
-
-    Raises
-    ------
-    ValueError
-        If invalid sensitivity_type is provided.
     """
     if sensitivity_type == "smoothness":
         return DeltaMethodSelector.get_smoothness_method(

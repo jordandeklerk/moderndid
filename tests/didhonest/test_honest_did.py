@@ -1,13 +1,24 @@
-"""Tests for sensitivity analysis using the approach of Rambachan and Roth (2021)."""
+"""Tests for sensitivity analysis using the approach of Rambachan and Roth (2023)."""
+
+import importlib
 
 import numpy as np
 import pytest
+from scipy import stats
 
 from tests.helpers import importorskip
 
 pl = importorskip("polars")
 
-from moderndid import AGGTEResult, HonestDiDResult, honest_did
+from moderndid import AGGTEResult, HonestDiDResult, aggte, att_gt, honest_did, load_mpdta
+from moderndid.didhonest import (
+    compute_identified_set_rm,
+    compute_identified_set_sdrm,
+    create_sensitivity_results_rm,
+    create_sensitivity_results_sm,
+)
+
+honest_did_module = importlib.import_module("moderndid.didhonest.honest_did")
 
 
 @pytest.fixture
@@ -227,3 +238,203 @@ def test_honest_did_no_post_periods():
 
     with pytest.raises(ValueError, match="post-treatment periods"):
         honest_did(result)
+
+
+def test_honest_did_rejects_varying_base_period(sample_aggte_result):
+    params = {**sample_aggte_result.estimation_params, "base_period": "varying"}
+    varying = sample_aggte_result._replace(estimation_params=params)
+
+    with pytest.raises(ValueError, match="universal base period"):
+        honest_did(varying, event_time=1)
+
+
+def test_honest_did_accepts_universal_base_period(sample_aggte_result):
+    params = {**sample_aggte_result.estimation_params, "base_period": "universal"}
+    universal = sample_aggte_result._replace(estimation_params=params)
+
+    result = honest_did(universal, event_time=1, m_vec=np.array([0.0]))
+
+    assert len(result.robust_ci) == 1
+
+
+def test_honest_did_anticipation_moves_reference_period():
+    rng = np.random.default_rng(3)
+    event_times = np.array([-5, -4, -3, -2, -1, 0, 1, 2])
+    att_by_event = np.array([0.02, -0.01, 0.03, 0.0, 0.04, 0.3, 0.35, 0.4])
+    influence_func = rng.normal(0, 0.5, (200, 8))
+    influence_func[:, 3] = 0.0
+    event_study = AGGTEResult(
+        overall_att=0.3,
+        overall_se=0.05,
+        aggregation_type="dynamic",
+        event_times=event_times,
+        att_by_event=att_by_event,
+        se_by_event=np.sqrt(np.sum(influence_func**2, axis=0)) / 200,
+        influence_func=influence_func,
+        estimation_params={"base_period": "universal", "anticipation_periods": 1},
+    )
+
+    result = honest_did(event_study, event_time=0, m_vec=np.array([0.0]))
+    anticipation = honest_did(event_study, event_time=-1, m_vec=np.array([0.0]))
+
+    se = np.sqrt(np.sum(influence_func[:, 5] ** 2)) / 200
+    assert result.original_ci.lb == pytest.approx(0.3 - 1.959963984540054 * se)
+    assert result.original_ci.ub == pytest.approx(0.3 + 1.959963984540054 * se)
+    assert anticipation.original_ci.lb < 0.04 < anticipation.original_ci.ub
+
+
+def test_honest_did_grid_points_defaults(sample_aggte_result, monkeypatch):
+    calls = []
+
+    def record(**kwargs):
+        calls.append(kwargs["grid_points"])
+        return pl.DataFrame({"lb": [0.0], "ub": [1.0]})
+
+    monkeypatch.setattr(honest_did_module, "create_sensitivity_results_sm", record)
+    monkeypatch.setattr(honest_did_module, "create_sensitivity_results_rm", record)
+
+    honest_did(sample_aggte_result, event_time=1, bias_direction="positive")
+    honest_did(sample_aggte_result, event_time=1, sensitivity_type="relative_magnitude")
+    honest_did(sample_aggte_result, event_time=1, grid_points=12)
+    honest_did(sample_aggte_result, event_time=1, sensitivity_type="relative_magnitude", grid_points=12)
+
+    assert calls == [1000, 100, 12, 12]
+
+
+def test_honest_did_relative_magnitude_one_pre_period(make_event_study):
+    event_study = make_event_study(np.array([-2, -1, 0, 1]), np.array([-0.03, 0.0, 0.10, 0.12]))
+    m_bar_vec = np.array([0.0, 0.5, 1.0])
+
+    result = honest_did(event_study, event_time=0, sensitivity_type="relative_magnitude", m_bar_vec=m_bar_vec)
+
+    influence_func = np.delete(event_study.influence_func, 1, axis=1)
+    sigma = influence_func.T @ influence_func / 200**2
+    betahat = np.array([-0.03, 0.10, 0.12])
+    expected = create_sensitivity_results_rm(
+        betahat, sigma, 1, 2, l_vec=np.array([1.0, 0.0]), m_bar_vec=m_bar_vec, grid_points=100
+    )
+    assert result.robust_ci["lb"].to_list() == pytest.approx(expected["lb"].to_list(), abs=1e-12)
+    assert result.robust_ci["ub"].to_list() == pytest.approx(expected["ub"].to_list(), abs=1e-12)
+
+    for row in result.robust_ci.iter_rows(named=True):
+        id_set = compute_identified_set_rm(row["Mbar"], betahat, np.array([1.0, 0.0]), 1, 2)
+        assert id_set.id_lb == pytest.approx(0.10 - 0.03 * row["Mbar"])
+        assert id_set.id_ub == pytest.approx(0.10 + 0.03 * row["Mbar"])
+        assert row["lb"] < id_set.id_lb
+        assert row["ub"] > id_set.id_ub
+
+
+def test_honest_did_linear_trend_two_pre_periods(make_event_study):
+    event_study = make_event_study(np.array([-3, -2, -1, 0, 1]), np.array([0.05, -0.02, 0.0, 0.30, 0.40]), seed=1)
+    m_bar_vec = np.array([0.0, 1.0])
+
+    result = honest_did(
+        event_study,
+        event_time=1,
+        sensitivity_type="relative_magnitude",
+        bound="deviation from linear trend",
+        m_bar_vec=m_bar_vec,
+    )
+
+    betahat = np.array([0.05, -0.02, 0.30, 0.40])
+    assert result.robust_ci["delta"].to_list() == ["DeltaSDRM", "DeltaSDRM"]
+    for row in result.robust_ci.iter_rows(named=True):
+        id_set = compute_identified_set_sdrm(row["Mbar"], betahat, np.array([0.0, 1.0]), 2, 2)
+        assert id_set.id_lb == pytest.approx(0.36 - 3 * 0.09 * row["Mbar"])
+        assert id_set.id_ub == pytest.approx(0.36 + 3 * 0.09 * row["Mbar"])
+        assert row["lb"] < id_set.id_lb
+        assert row["ub"] > id_set.id_ub
+
+
+def test_honest_did_smoothness_one_pre_period_uses_single_estimator(make_event_study):
+    event_study = make_event_study(np.array([-2, -1, 0]), np.array([-0.03, 0.0, 0.20]), seed=2)
+    m_vec = np.array([0.0, 0.02, 0.2])
+
+    result = honest_did(event_study, event_time=0, m_vec=m_vec)
+
+    influence_func = np.delete(event_study.influence_func, 1, axis=1)
+    sigma = influence_func.T @ influence_func / 200**2
+    h = np.sqrt(sigma[0, 0] + 2 * sigma[0, 1] + sigma[1, 1])
+    half_lengths = [stats.foldnorm.ppf(0.95, c=m / h) * h for m in m_vec]
+    assert result.robust_ci["lb"].to_list() == pytest.approx([0.17 - half for half in half_lengths], rel=1e-6)
+    assert result.robust_ci["ub"].to_list() == pytest.approx([0.17 + half for half in half_lengths], rel=1e-6)
+
+
+def test_honest_did_clusters_the_covariance(clustered_event_study):
+    result = honest_did(clustered_event_study, event_time=0, m_vec=np.array([0.0]))
+
+    cluster_sums = np.array([2.0, -1.7, 1.3, -1.1, -0.5])
+    se = np.sqrt(np.sum(cluster_sums**2)) / 10
+    z = stats.norm.ppf(0.975)
+    assert result.original_ci.lb == pytest.approx(0.30 - z * se)
+    assert result.original_ci.ub == pytest.approx(0.30 + z * se)
+
+
+def test_honest_did_robust_ci_uses_the_clustered_covariance(clustered_event_study):
+    m_vec = np.array([0.0, 0.1])
+
+    result = honest_did(clustered_event_study, event_time=1, m_vec=m_vec)
+
+    influence_func = np.delete(clustered_event_study.influence_func, 1, axis=1)
+    cluster_sums = influence_func.reshape(5, 2, 3).sum(axis=1)
+    sigma = cluster_sums.T @ cluster_sums / 100
+    expected = create_sensitivity_results_sm(
+        np.array([0.02, 0.30, 0.40]), sigma, 1, 2, l_vec=np.array([0.0, 1.0]), m_vec=m_vec
+    )
+    assert result.robust_ci["lb"].to_list() == pytest.approx(expected["lb"].to_list(), rel=1e-10)
+    assert result.robust_ci["ub"].to_list() == pytest.approx(expected["ub"].to_list(), rel=1e-10)
+
+
+def test_honest_did_without_clustervars_ignores_the_cluster_vector(clustered_event_study):
+    params = {**clustered_event_study.estimation_params, "clustervars": []}
+    unclustered = clustered_event_study._replace(estimation_params=params)
+
+    result = honest_did(unclustered, event_time=0, m_vec=np.array([0.0]))
+
+    se = np.sqrt(np.sum(clustered_event_study.influence_func[:, 2] ** 2)) / 10
+    assert result.original_ci.ub - result.original_ci.lb == pytest.approx(2 * stats.norm.ppf(0.975) * se)
+
+
+@pytest.mark.parametrize(
+    "cluster,error_match",
+    [
+        (None, "no cluster for the units"),
+        (np.array([1, 1, 2, 2, 3, 3, 4, 4, 5]), "has 9 entries but its influence function has 10 rows"),
+        (np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2]), "2 clusters and 3 coefficients"),
+    ],
+)
+def test_honest_did_rejects_unusable_clusters(clustered_event_study, cluster, error_match):
+    params = {**clustered_event_study.estimation_params, "cluster": cluster}
+    event_study = clustered_event_study._replace(estimation_params=params)
+
+    with pytest.raises(ValueError, match=error_match):
+        honest_did(event_study, event_time=0, m_vec=np.array([0.0]))
+
+
+def test_honest_did_clusters_an_att_gt_event_study():
+    data = load_mpdta().with_columns((pl.col("countyreal") // 1000).alias("state"))
+    group_time = att_gt(
+        data,
+        yname="lemp",
+        tname="year",
+        idname="countyreal",
+        gname="first.treat",
+        base_period="universal",
+        boot=True,
+        cband=False,
+        biters=100,
+        clustervars=["state"],
+        random_state=7,
+    )
+    event_study = aggte(group_time, type="dynamic")
+
+    result = honest_did(event_study, event_time=0, m_vec=np.array([0.0]))
+
+    cluster = np.asarray(event_study.estimation_params["cluster"])
+    influence_func = event_study.influence_func[:, list(event_study.event_times).index(0)]
+    _, cluster_idx = np.unique(cluster, return_inverse=True)
+    cluster_se = np.sqrt(np.sum(np.bincount(cluster_idx, weights=influence_func) ** 2)) / len(influence_func)
+    unit_se = np.sqrt(np.sum(influence_func**2)) / len(influence_func)
+    assert len(np.unique(cluster)) == 29
+    assert (result.original_ci.ub - result.original_ci.lb) / 2 == pytest.approx(stats.norm.ppf(0.975) * cluster_se)
+    assert cluster_se != pytest.approx(unit_se, rel=0.01)

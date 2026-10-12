@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from scipy import optimize, stats
 
 from moderndid.didhonest import (
     compute_delta_sd_lowerbound_m,
@@ -36,10 +37,32 @@ def test_compute_delta_sd_upperbound_m_edge_case():
 def test_compute_delta_sd_upperbound_m_invalid_periods():
     betahat = np.array([0.1, 0.2])
     sigma = np.eye(2) * 0.01
-    num_pre_periods = 2
 
     with pytest.raises(ValueError, match="Cannot estimate M"):
-        compute_delta_sd_upperbound_m(betahat, sigma, num_pre_periods)
+        compute_delta_sd_upperbound_m(betahat, sigma, 1)
+
+
+def test_compute_delta_sd_upperbound_m_two_pre_periods():
+    betahat = np.array([0.1, 0.2, 0.5])
+    sigma = np.diag([0.01, 0.02, 0.03])
+
+    result = compute_delta_sd_upperbound_m(betahat, sigma, 2, alpha=0.05)
+
+    expected = abs(0.1 - 2 * 0.2) + stats.norm.ppf(0.95) * np.sqrt(0.01 + 4 * 0.02)
+    assert result == pytest.approx(expected, rel=1e-12)
+
+
+def test_compute_delta_sd_upperbound_m_uses_reference_period_and_both_signs():
+    betahat = np.array([0.0, 0.01, 0.02, 0.2, 0.9])
+    sigma = np.eye(5) * 1e-4
+
+    result = compute_delta_sd_upperbound_m(betahat, sigma, 4, alpha=0.05)
+
+    second_diffs = np.diff(np.append(betahat[:4], 0.0), n=2)
+    se = np.sqrt(np.array([6.0, 6.0, 5.0]) * 1e-4)
+    expected = np.max(np.abs(second_diffs) + stats.norm.ppf(0.95) * se)
+    assert second_diffs[-1] == pytest.approx(-0.38)
+    assert result == pytest.approx(expected, rel=1e-12)
 
 
 def test_compute_delta_sd_lowerbound_m():
@@ -52,6 +75,22 @@ def test_compute_delta_sd_lowerbound_m():
 
     assert result >= 0
     assert result < 0.5
+
+
+def test_compute_delta_sd_lowerbound_m_two_pre_periods(two_pre_period_event_study):
+    sigma = two_pre_period_event_study["sigma"]
+    betahat = np.array([0.30, -0.05, 0.30, 0.40])
+    sd = np.sqrt(np.array([1.0, -2.0]) @ sigma[:2, :2] @ np.array([1.0, -2.0]))
+    mu = optimize.brentq(lambda m: stats.norm.cdf(0.4 / sd - m) - 0.95 - 0.05 * stats.norm.cdf(-m), -10.0, 10.0)
+
+    result = compute_delta_sd_lowerbound_m(betahat, sigma, 2, grid_ub=0.3, grid_points=1001)
+
+    assert mu * sd <= result < mu * sd + 0.0003
+
+
+def test_compute_delta_sd_lowerbound_m_one_pre_period_raises():
+    with pytest.raises(ValueError, match="fewer than two pre-treatment periods"):
+        compute_delta_sd_lowerbound_m(np.array([0.1, 0.2]), np.eye(2) * 0.01, 1)
 
 
 def test_compute_delta_sd_lowerbound_m_no_grid_ub():
@@ -106,6 +145,8 @@ def test_create_pre_period_constraint_matrix():
 
     assert np.all(d == 1)
     assert np.array_equal(A[:3, :], -A[3:, :])
+    assert np.array_equal(A[2, :], [0, 0, 1, -2])
+    assert not np.any(np.all(A == 0, axis=1))
 
 
 def test_create_pre_period_constraint_matrix_minimum():
@@ -116,8 +157,8 @@ def test_create_pre_period_constraint_matrix_minimum():
     assert A.shape == (2, 2)
     assert len(d) == 2
     assert np.all(d == 1)
-    assert np.array_equal(A[0, :], [1, -1])
-    assert np.array_equal(A[1, :], [-1, 1])
+    assert np.array_equal(A[0, :], [1, -2])
+    assert np.array_equal(A[1, :], [-1, 2])
 
 
 def test_create_pre_period_constraint_matrix_invalid():

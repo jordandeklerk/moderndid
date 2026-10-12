@@ -3,13 +3,13 @@
 from typing import NamedTuple
 
 import numpy as np
-import scipy.optimize as opt
 
 from ...arp_no_nuisance import compute_arp_ci
 from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
+from ...delta.sdrm.sdrm import _check_second_difference_pre_periods
 from ...numba import create_sdrm_constraint_matrix, find_rows_with_post_period_values
-from ...utils import basis_vector
+from ...utils import basis_vector, identified_set_bounds, linear_trend_grid_bounds, union_of_identified_sets
 
 
 class DeltaSDRMBResult(NamedTuple):
@@ -52,7 +52,7 @@ def compute_conditional_cs_sdrmb(
     lies in :math:`\Delta^{SDRMB}(\bar{M})`, which intersects :math:`\Delta^{SDRM}(\bar{M})` with
     a sign restriction on the bias.
 
-    This combined restriction is defined in Section 2.4.4 of [1]_ as
+    This combined restriction is defined as
 
     .. math::
 
@@ -80,7 +80,7 @@ def compute_conditional_cs_sdrmb(
     sigma : ndarray
         Covariance matrix of :math:`\hat{\beta}`.
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods. Must be at least 2.
     num_post_periods : int
         Number of post-treatment periods.
     l_vec : ndarray, optional
@@ -102,44 +102,30 @@ def compute_conditional_cs_sdrmb(
     grid_points : int, default=1000
         Number of grid points for confidence interval search.
     grid_lb : float, optional
-        Lower bound for grid search.
+        Lower bound for grid search. If None, the grid centers on the extension of the last
+        pre-treatment slope and reaches past the identified set under :math:`\Delta^{SDRM}(\bar{M})`
+        at :math:`\hat{\beta}` by a margin for sampling error.
     grid_ub : float, optional
-        Upper bound for grid search.
+        Upper bound for grid search. If None, it is set the same way as ``grid_lb``.
     seed : int, default=0
-        Random seed for reproducibility.
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
     dict
         Returns dict with 'grid' and 'accept' arrays.
 
-    Raises
-    ------
-    ValueError
-        If num_pre_periods == 1 (not enough pre-periods for second differences).
-        If hybrid_flag is not in {'LF', 'ARP'}.
-
     Notes
     -----
-    The confidence set is constructed using the moment inequality approach from Section 3.
-    Since :math:`\Delta^{SDRMB}(\bar{M})` is a finite union of polyhedra, we can apply Lemma 2.2
-    to construct a valid confidence set by taking the union of the confidence sets for each
-    of its components.
+    The confidence set is constructed using the moment inequality approach. Since
+    :math:`\Delta^{SDRMB}(\bar{M})` is a finite union of polyhedra, the union of the confidence
+    sets for its components is a valid confidence set.
 
     This restriction is not convex, so Fixed Length Confidence Intervals (FLCIs)
     are not recommended. The conditional/hybrid approach provides better power
     when multiple constraints are binding.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
-    if num_pre_periods == 1:
-        raise ValueError(
-            "Not enough pre-periods for Delta^{SDRMB}. Need at least 2 pre-periods to compute second differences."
-        )
+    _check_second_difference_pre_periods(num_pre_periods)
 
     if hybrid_flag not in {"LF", "ARP"}:
         raise ValueError("hybrid_flag must be 'LF' or 'ARP'.")
@@ -152,28 +138,12 @@ def compute_conditional_cs_sdrmb(
     if hybrid_kappa is None:
         hybrid_kappa = alpha / 10
 
-    # Set default grid bounds
     if grid_lb is None or grid_ub is None:
-        sel = slice(num_pre_periods, num_pre_periods + num_post_periods)
-
-        sigma_post = sigma[sel, sel]
-        sd_theta = np.sqrt(l_vec.T @ sigma_post @ l_vec)
-
-        if num_pre_periods > 1:
-            pre_betas_with_zero = np.concatenate([betahat[:num_pre_periods], [0]])
-            maxpre = np.max(np.abs(np.diff(pre_betas_with_zero)))
-        else:
-            maxpre = np.abs(betahat[0])
-
-        gridoff = betahat[sel] @ l_vec
-
-        post_period_indices = np.arange(1, num_post_periods + 1)
-        gridhalf = (m_bar * post_period_indices @ np.abs(l_vec) * maxpre) + (20 * sd_theta)
-
-        if grid_ub is None:
-            grid_ub = gridoff + gridhalf
-        if grid_lb is None:
-            grid_lb = gridoff - gridhalf
+        default_lb, default_ub = linear_trend_grid_bounds(
+            betahat, sigma, num_pre_periods, num_post_periods, l_vec, m_bar, relative=True
+        )
+        grid_lb = default_lb if grid_lb is None else grid_lb
+        grid_ub = default_ub if grid_ub is None else grid_ub
 
     min_s = -(num_pre_periods - 2)
     s_values = range(min_s, 1)
@@ -254,7 +224,7 @@ def compute_identified_set_sdrmb(
     The identified set under :math:`\Delta^{SDRMB}(\bar{M})` represents the values of
     :math:`\theta = l'\tau_{post}` consistent with the observed pre-treatment coefficients
     :math:`\beta_{pre} = \delta_{pre}`, the combined smoothness and relative magnitude constraints,
-    and a sign restriction on the post-treatment bias, as described in Section 2.4.4 of [1]_.
+    and a sign restriction on the post-treatment bias.
 
     The set is constructed by taking the union of identified sets for each sub-polyhedron,
     each corresponding to a specific pre-treatment period `s` and sign for the maximum
@@ -271,7 +241,7 @@ def compute_identified_set_sdrmb(
     l_vec : ndarray
         Vector defining parameter of interest :math:`\theta = l'\tau_{post}`.
     num_pre_periods : int
-        Number of pre-treatment periods.
+        Number of pre-treatment periods. Must be at least 2.
     num_post_periods : int
         Number of post-treatment periods.
     bias_direction : {'positive', 'negative'}, default='positive'
@@ -280,40 +250,35 @@ def compute_identified_set_sdrmb(
     Returns
     -------
     DeltaSDRMBResult
-        Lower and upper bounds of the identified set.
+        Lower and upper bounds of the identified set. Both are NaN when no trend with the bias
+        sign matches the pre-treatment coefficients. The identified set is then empty. At
+        :math:`\bar{M} = 0` the trend must continue the last pre-treatment slope. A positive bias
+        rules that out when :math:`\beta_{-1} > 0`.
 
     Notes
     -----
     The identified set is computed by solving linear programs for each choice of
     period :math:`s` and sign (positive/negative maximum), then taking the union of all
     resulting intervals, intersected with the sign restriction.
-
-    References
-    ----------
-
-    .. [1] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies.
     """
+    _check_second_difference_pre_periods(num_pre_periods)
+
     l_vec = np.asarray(l_vec).flatten()
     min_s = -(num_pre_periods - 2)
-    s_values = range(min_s, 1)  # Include s=0 to match R's min_s:0
+    # Since the second difference at s = 0 ends at the reference period, it is a pre-period one too.
+    s_values = range(min_s, 1)
 
     all_bounds = []
 
     for s in s_values:
-        bounds_pos = _compute_identified_set_sdrmb_fixed_s(
-            s, m_bar, True, true_beta, l_vec, num_pre_periods, num_post_periods, bias_direction
-        )
-        all_bounds.append(bounds_pos)
+        for max_positive in (True, False):
+            all_bounds.append(
+                _compute_identified_set_sdrmb_fixed_s(
+                    s, m_bar, max_positive, true_beta, l_vec, num_pre_periods, num_post_periods, bias_direction
+                )
+            )
 
-        bounds_neg = _compute_identified_set_sdrmb_fixed_s(
-            s, m_bar, False, true_beta, l_vec, num_pre_periods, num_post_periods, bias_direction
-        )
-        all_bounds.append(bounds_neg)
-
-    # Take union: min of lower bounds, max of upper bounds
-    id_lb = min(bound.id_lb for bound in all_bounds)
-    id_ub = max(bound.id_ub for bound in all_bounds)
+    id_lb, id_ub = union_of_identified_sets(all_bounds)
 
     return DeltaSDRMBResult(id_lb=id_lb, id_ub=id_ub)
 
@@ -357,48 +322,13 @@ def _compute_identified_set_sdrmb_fixed_s(
     Returns
     -------
     DeltaSDRMBResult
-        Identified set bounds.
+        Identified set bounds. Both are NaN when the pre-treatment coefficients rule the
+        polyhedron out.
     """
-    # Objective: min/max l'delta_post
-    l_vec = np.asarray(l_vec).flatten()
-    c = np.concatenate([np.zeros(num_pre_periods), l_vec])
-
     a_sdrmb = _create_sdrmb_constraint_matrix(num_pre_periods, num_post_periods, m_bar, s, max_positive, bias_direction)
-    b_sdrmb = _create_sdrmb_constraint_vector(a_sdrmb).flatten()
+    d_sdrmb = _create_sdrmb_constraint_vector(a_sdrmb)
 
-    a_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
-    b_eq = true_beta[:num_pre_periods]
-
-    n_vars = num_pre_periods + num_post_periods
-    unbounded = [(None, None)] * n_vars
-
-    result_max = opt.linprog(
-        c=-c,
-        A_ub=a_sdrmb,
-        b_ub=b_sdrmb,
-        A_eq=a_eq,
-        b_eq=b_eq,
-        bounds=unbounded,
-        method="highs",
-    )
-
-    result_min = opt.linprog(
-        c=c,
-        A_ub=a_sdrmb,
-        b_ub=b_sdrmb,
-        A_eq=a_eq,
-        b_eq=b_eq,
-        bounds=unbounded,
-        method="highs",
-    )
-
-    l_beta_post = l_vec @ true_beta[num_pre_periods:]
-
-    if result_max.success and result_min.success:
-        id_ub = l_beta_post - result_min.fun
-        id_lb = l_beta_post + result_max.fun
-    else:
-        id_ub = id_lb = l_beta_post
+    id_lb, id_ub = identified_set_bounds(true_beta, l_vec, a_sdrmb, d_sdrmb, num_pre_periods, num_post_periods)
 
     return DeltaSDRMBResult(id_lb=id_lb, id_ub=id_ub)
 
@@ -462,7 +392,7 @@ def _compute_conditional_cs_sdrmb_fixed_s(
     grid_ub : float
         Upper bound of grid.
     seed : int
-        Random seed.
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -476,6 +406,11 @@ def _compute_conditional_cs_sdrmb_fixed_s(
     if post_period_moments_only and num_post_periods > 1:
         post_period_indices = list(range(num_pre_periods, a_sdrmb.shape[1]))
         rows_for_arp = find_rows_with_post_period_values(a_sdrmb, post_period_indices)
+    elif post_period_moments_only:
+        # With one post-period, rows that leave out its coefficient say nothing about theta.
+        post_period_rows = np.flatnonzero(a_sdrmb[:, -1] != 0)
+        a_sdrmb = a_sdrmb[post_period_rows]
+        d_sdrmb = d_sdrmb[post_period_rows]
 
     hybrid_list = {"hybrid_kappa": hybrid_kappa}
 
@@ -513,6 +448,7 @@ def _compute_conditional_cs_sdrmb_fixed_s(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -576,8 +512,7 @@ def _create_sdrmb_constraint_matrix(
 
     Creates a matrix for the linear constraints that define
     :math:`\Delta^{SDRMB}_{s,sign}(\bar{M})`. This set combines the second-difference
-    relative magnitude constraint with a sign restriction on the bias, as discussed in
-    Section 2.4.4 of [1]_.
+    relative magnitude constraint with a sign restriction on the bias.
 
     The constraint set is the intersection of two polyhedra
 
@@ -646,7 +581,7 @@ def _create_sdrmb_constraint_vector(a_matrix):
 
     For the combined smoothness with relative magnitudes and bias restriction,
     the constraint vector :math:`d` is a vector of zeros. This is because both
-    the :math:`\Delta^{SDRM}` and :math:`\Delta^{B}` restrictions, as defined in [1]_,
+    the :math:`\Delta^{SDRM}` and :math:`\Delta^{B}` restrictions
     can be written with homogeneous inequality constraints of the form :math:`A\delta \leq 0`.
 
     Parameters

@@ -3,15 +3,14 @@
 from typing import NamedTuple
 
 import numpy as np
-import scipy.optimize as opt
 
 from ...arp_no_nuisance import compute_arp_ci
-from ...arp_nuisance import compute_arp_nuisance_ci
+from ...arp_nuisance import compute_arp_nuisance_ci, compute_least_favorable_cv
 from ...bounds import create_sign_constraint_matrix
 from ...delta.sd.sd import _create_sd_constraint_matrix, _create_sd_constraint_vector
 from ...fixed_length_ci import compute_flci
 from ...numba import find_rows_with_post_period_values
-from ...utils import basis_vector
+from ...utils import basis_vector, identified_set_bounds, linear_trend_grid_bounds
 
 
 class DeltaSDBResult(NamedTuple):
@@ -46,6 +45,7 @@ def compute_conditional_cs_sdb(
     grid_points=1000,
     grid_lb=None,
     grid_ub=None,
+    seed=0,
 ):
     r"""Compute conditional confidence set for :math:`\Delta^{SDB}(M)`.
 
@@ -55,7 +55,7 @@ def compute_conditional_cs_sdb(
 
     The combined smoothness and bias direction restriction is defined as the intersection of
     :math:`\Delta^{SD}(M)` and a sign restriction on the bias. For a positive bias, this is
-    denoted :math:`\Delta^{SDPB}(M)` in [2]_
+    denoted :math:`\Delta^{SDPB}(M)`
 
     .. math::
 
@@ -71,8 +71,8 @@ def compute_conditional_cs_sdb(
     restriction is :math:`\Delta^{SD}(M) \cap (-\Delta^{PB})`.
 
     This restriction is useful when economic theory suggests both smooth evolution of
-    confounding trends and a known direction of bias (e.g., a concurrent policy expected
-    to have a positive effect). The intersection typically leads to smaller identified sets
+    confounding trends and a known direction of bias, such as a concurrent policy expected
+    to have a positive effect. The intersection typically leads to smaller identified sets
     than using either restriction alone.
 
     Parameters
@@ -103,11 +103,14 @@ def compute_conditional_cs_sdb(
     grid_points : int, default=1000
         Number of grid points for confidence interval search.
     grid_lb : float, optional
-        Lower bound for grid search.
+        Lower bound for grid search. If None, the FLCI hybrid uses the FLCI's lower end. The other
+        tests use a grid that centers on the extension of the last pre-treatment slope and reaches
+        past the identified set under :math:`\Delta^{SD}(M)` at :math:`\hat{\beta}` by a margin for
+        sampling error.
     grid_ub : float, optional
-        Upper bound for grid search.
-    seed : int, optional
-        Random seed for reproducibility.
+        Upper bound for grid search. If None, it is set the same way as ``grid_lb``.
+    seed : int, default=0
+        Seed for the simulated least favorable critical value.
 
     Returns
     -------
@@ -117,21 +120,12 @@ def compute_conditional_cs_sdb(
     Notes
     -----
     :math:`\Delta^{SDB}(M)` is a polyhedron formed by the intersection of smoothness and sign constraints.
-    The confidence set is constructed using either FLCIs or the moment inequality approach from
-    Section 3 of [2]_.
+    The confidence set is constructed using either FLCIs or the moment inequality approach.
 
     Unlike :math:`\Delta^{SD}(M)` alone, the optimal FLCI for :math:`\Delta^{SDB}(M)` has the same
     worst-case bias as for :math:`\Delta^{SD}(M)`, meaning FLCIs do not adapt to the additional
     sign restriction. The conditional/hybrid approach may therefore have better power when the
     sign restriction is informative.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
     """
     if l_vec is None:
         l_vec = basis_vector(1, num_post_periods)
@@ -162,10 +156,10 @@ def compute_conditional_cs_sdb(
             alpha=alpha,
             hybrid_flag=hybrid_flag,
             hybrid_kappa=hybrid_kappa,
-            bias_direction=bias_direction,
             grid_points=grid_points,
             grid_lb=grid_lb,
             grid_ub=grid_ub,
+            seed=seed,
         )
 
     hybrid_list = {"hybrid_kappa": hybrid_kappa}
@@ -191,31 +185,15 @@ def compute_conditional_cs_sdb(
             hybrid_list["vbar"] = np.zeros(A_sdb.shape[0])
 
     if grid_lb is None or grid_ub is None:
-        if hybrid_flag == "FLCI" and grid_lb is None:
-            grid_lb = (flci_result.optimal_vec @ betahat) - flci_result.optimal_half_length
-        if hybrid_flag == "FLCI" and grid_ub is None:
-            grid_ub = (flci_result.optimal_vec @ betahat) + flci_result.optimal_half_length
-
-        if grid_lb is None or grid_ub is None:
-            id_set = compute_identified_set_sdb(
-                m_bar=m_bar,
-                true_beta=np.zeros(num_pre_periods + num_post_periods),
-                l_vec=l_vec,
-                num_pre_periods=num_pre_periods,
-                num_post_periods=num_post_periods,
-                bias_direction=bias_direction,
+        if hybrid_flag == "FLCI":
+            default_lb = flci_result.optimal_vec @ betahat - flci_result.optimal_half_length
+            default_ub = flci_result.optimal_vec @ betahat + flci_result.optimal_half_length
+        else:
+            default_lb, default_ub = linear_trend_grid_bounds(
+                betahat, sigma, num_pre_periods, num_post_periods, l_vec, m_bar
             )
-
-            if bias_direction == "negative":
-                new_lb = -id_set.id_ub
-                new_ub = -id_set.id_lb
-                id_set = DeltaSDBResult(id_lb=new_lb, id_ub=new_ub)
-
-            sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-            if grid_lb is None:
-                grid_lb = id_set.id_lb - 20 * sd_theta
-            if grid_ub is None:
-                grid_ub = id_set.id_ub + 20 * sd_theta
+        grid_lb = default_lb if grid_lb is None else grid_lb
+        grid_ub = default_ub if grid_ub is None else grid_ub
 
     result = compute_arp_nuisance_ci(
         betahat=betahat,
@@ -232,6 +210,7 @@ def compute_conditional_cs_sdb(
         grid_ub=grid_ub,
         grid_points=grid_points,
         rows_for_arp=rows_for_arp,
+        seed=seed,
     )
 
     return {"grid": result.accept_grid[:, 0], "accept": result.accept_grid[:, 1]}
@@ -251,7 +230,7 @@ def compute_identified_set_sdb(
     trend :math:`\delta` lies in :math:`\Delta^{SDB}(M)`, which combines second differences bounds
     with a sign restriction.
 
-    The identified set is an interval :math:`[\theta^{lb}, \theta^{ub}]` derived from Lemma 2.1 in [2]_.
+    The identified set is an interval :math:`[\theta^{lb}, \theta^{ub}]`.
     The bounds are given by
 
     .. math::
@@ -284,56 +263,14 @@ def compute_identified_set_sdb(
     Returns
     -------
     DeltaSDBResult
-        Lower and upper bounds of the identified set.
-
-    References
-    ----------
-
-    .. [1] Andrews, I., Roth, J., & Pakes, A. (2021). Inference for linear
-        conditional moment inequalities. Review of Economic Studies.
-    .. [2] Rambachan, A., & Roth, J. (2023). A more credible approach to
-        parallel trends. Review of Economic Studies, 90(5), 2555-2591.
+        Lower and upper bounds of the identified set. Both are NaN when no trend with the bias
+        sign and second differences of at most :math:`M` matches the pre-treatment coefficients.
+        The identified set is then empty.
     """
-    f_delta = np.concatenate([np.zeros(num_pre_periods), l_vec.flatten()])
-
     A_sdb = _create_sdb_constraint_matrix(num_pre_periods, num_post_periods, bias_direction)
     d_sdb = _create_sdb_constraint_vector(num_pre_periods, num_post_periods, m_bar)
 
-    A_eq = np.hstack([np.eye(num_pre_periods), np.zeros((num_pre_periods, num_post_periods))])
-    b_eq = true_beta[:num_pre_periods]
-
-    # Bounds: all variables unconstrained
-    bounds = [(None, None) for _ in range(num_pre_periods + num_post_periods)]
-
-    result_max = opt.linprog(
-        c=-f_delta,
-        A_ub=A_sdb,
-        b_ub=d_sdb,
-        A_eq=A_eq,
-        b_eq=b_eq,
-        bounds=bounds,
-        method="highs",
-    )
-
-    result_min = opt.linprog(
-        c=f_delta,
-        A_ub=A_sdb,
-        b_ub=d_sdb,
-        A_eq=A_eq,
-        b_eq=b_eq,
-        bounds=bounds,
-        method="highs",
-    )
-
-    if not result_max.success or not result_min.success:
-        observed_val = l_vec.flatten() @ true_beta[num_pre_periods:]
-        return DeltaSDBResult(id_lb=observed_val, id_ub=observed_val)
-
-    # Compute bounds of identified set
-    # ID set = observed value ± bias
-    observed = l_vec.flatten() @ true_beta[num_pre_periods:]
-    id_ub = observed - result_min.fun
-    id_lb = observed + result_max.fun
+    id_lb, id_ub = identified_set_bounds(true_beta, l_vec, A_sdb, d_sdb, num_pre_periods, num_post_periods)
 
     return DeltaSDBResult(id_lb=id_lb, id_ub=id_ub)
 
@@ -435,10 +372,10 @@ def _compute_cs_sdb_no_nuisance(
     alpha,
     hybrid_flag,
     hybrid_kappa,
-    bias_direction,
     grid_points,
     grid_lb,
     grid_ub,
+    seed,
 ):
     """Compute confidence set for single post-period case (no nuisance parameters)."""
     hybrid_list = {"hybrid_kappa": hybrid_kappa}
@@ -454,8 +391,7 @@ def _compute_cs_sdb_no_nuisance(
             alpha=hybrid_kappa,
         )
 
-        # For single post-period, we need only the post-period part of optimal_vec
-        hybrid_list["flci_l"] = flci_result.optimal_vec[num_pre_periods:]
+        hybrid_list["flci_l"] = flci_result.optimal_vec
         hybrid_list["flci_halflength"] = flci_result.optimal_half_length
 
         if grid_ub is None:
@@ -463,21 +399,21 @@ def _compute_cs_sdb_no_nuisance(
         if grid_lb is None:
             grid_lb = flci_result.optimal_vec @ betahat - flci_result.optimal_half_length
 
-    else:  # LF or ARP
-        if grid_ub is None or grid_lb is None:
-            id_set = compute_identified_set_sdb(
-                m_bar=m_bar,
-                true_beta=np.zeros(num_pre_periods + num_post_periods),
-                l_vec=l_vec,
-                num_pre_periods=num_pre_periods,
-                num_post_periods=num_post_periods,
-                bias_direction=bias_direction,
+    else:
+        if hybrid_flag == "LF":
+            hybrid_list["lf_cv"] = compute_least_favorable_cv(
+                x_t=None,
+                sigma=A_sdb @ sigma @ A_sdb.T,
+                hybrid_kappa=hybrid_kappa,
+                seed=seed,
             )
-            sd_theta = np.sqrt(l_vec.flatten() @ sigma[num_pre_periods:, num_pre_periods:] @ l_vec.flatten())
-            if grid_ub is None:
-                grid_ub = id_set.id_ub + 20 * sd_theta
-            if grid_lb is None:
-                grid_lb = id_set.id_lb - 20 * sd_theta
+
+        if grid_ub is None or grid_lb is None:
+            default_lb, default_ub = linear_trend_grid_bounds(
+                betahat, sigma, num_pre_periods, num_post_periods, l_vec, m_bar
+            )
+            grid_lb = default_lb if grid_lb is None else grid_lb
+            grid_ub = default_ub if grid_ub is None else grid_ub
 
     arp_kwargs = {
         "beta_hat": betahat,
@@ -497,6 +433,8 @@ def _compute_cs_sdb_no_nuisance(
     if hybrid_flag == "FLCI":
         arp_kwargs["flci_l"] = hybrid_list.get("flci_l")
         arp_kwargs["flci_halflength"] = hybrid_list.get("flci_halflength")
+    elif hybrid_flag == "LF":
+        arp_kwargs["lf_cv"] = hybrid_list["lf_cv"]
 
     result = compute_arp_ci(**arp_kwargs)
 
